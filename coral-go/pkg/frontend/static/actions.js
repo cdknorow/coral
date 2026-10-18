@@ -65,6 +65,9 @@ export function idOf(v) {
     return Number.isSafeInteger(n) && n > 0 && String(v).trim() === String(n) ? n : null;
 }
 
+/** withId: run f with the id when v is one (idOf), and do nothing when it is not. */
+export const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
+
 /** uuidOf: a session id (a UUID, any case), or null. */
 export function uuidOf(v) {
     return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v) ? v : null;

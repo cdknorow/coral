@@ -1996,11 +1996,6 @@ body.panel-dragging .agentic-state {
     border-color: var(--accent);
 }
 
-.inline-preview-save:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-}
-
 .inline-preview-save {
     background: var(--accent-dim);
     color: #fff;

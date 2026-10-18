@@ -580,10 +580,6 @@
     #messageboard-view .mb-more-menu #mb-pause-btn.mb-action-danger,
     #messageboard-view .mb-more-menu #mb-pause-btn.mb-action-danger:hover { color: var(--warning); opacity: 1; }
 
-    #mb-board {
-        padding-bottom: 0 !important;
-    }
-
     /* Message board full-screen on mobile */
     #messageboard-view {
         flex-direction: column;
@@ -832,7 +828,6 @@
     }
 
     #mobile-session-list .session-group-item {
-        min-height: 0;
         padding: 12px 12px 12px 14px !important;
         margin: 8px 0;
         border: 1px solid rgba(255, 255, 255, 0.06);

@@ -546,16 +546,11 @@
     border: none;
     color: var(--text-secondary);
     font-size: 0.6875rem;
-    padding: 3px 8px;
     cursor: pointer;
 }
 
 .live-view-toggle-btn + .live-view-toggle-btn {
     border-left: 1px solid var(--border);
-}
-
-.live-view-toggle-btn .material-icons {
-    font-size: 0.875rem;
 }
 
 .live-view-toggle-btn:hover {

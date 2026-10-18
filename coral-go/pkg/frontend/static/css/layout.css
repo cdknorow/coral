@@ -864,7 +864,6 @@ body.panel-dragging .sidebar {
         ),
         calc(100vw - 32px)
     );
-    display: flex;
     flex-direction: column;
     align-items: center;
     /* Centered when there is room, from the top (and scrollable) when there is not: justify-content: center would
@@ -873,7 +872,6 @@ body.panel-dragging .sidebar {
     overflow-y: auto;
     color: var(--text-secondary);
     gap: 8px;
-    padding: 24px 0;
 }
 .welcome > :first-child { margin-top: auto; }
 .welcome > :last-child { margin-bottom: auto; }
@@ -979,7 +977,7 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p,
 .editions-mode { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .editions-mode label { color: var(--text-primary); font-size: 0.8125rem; font-weight: 500; }
 .editions-auto-accept { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 0.8125rem; }
-.editions-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
+.editions-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .editions-actions-spacer { flex: 1; }
 .editions-actions .btn.editions-own { padding-left: 0; padding-right: 0; background: none; border-color: transparent; box-shadow: none; color: var(--accent); }
 .editions-actions .btn.editions-own:hover, .editions-actions .btn.editions-own:focus-visible { background: none; text-decoration: underline; }

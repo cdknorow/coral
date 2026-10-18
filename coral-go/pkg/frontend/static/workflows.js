@@ -1,7 +1,7 @@
 /* Workflows: list, detail, run views, and CRUD */
 
 import { escapeHtml as esc, escapeAttr as escAttr, showView, showToast } from './utils.js';
-import { registerActions, idOf, textOf } from './actions.js';
+import { registerActions, idOf, withId, textOf } from './actions.js';
 import { apiFetch, loadLiveSessions } from './api.js';
 import { selectLiveSession } from './sessions.js';
 import { pollEvery } from './overload.js';
@@ -755,7 +755,6 @@ function showError(el, msg) {
 // The Workflows view's generated markup (#3645): data-on-* names, never code. The view's own
 // buttons (back, build, create and the create dialog) register in app.js, which loads this module.
 // Ids are checked (idOf) before use: a bad one does nothing.
-const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
 registerActions({
     'wf-select': el => withId(el.dataset.workflowId, selectWorkflow),
     'wf-run': el => withId(el.dataset.runId, selectWorkflowRun),

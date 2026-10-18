@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
-import { registerActions, idOf, uuidOf } from './actions.js';
+import { registerActions, idOf, withId, uuidOf } from './actions.js';
 import { pollEvery } from './overload.js';
 import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
 import { ensureBuilt } from './lazy_dom.js';
@@ -488,7 +488,6 @@ export function initScheduler() {
 
 // The scheduled jobs' markup (#3645): data-on-* names, never code.
 // Ids are checked (idOf, uuidOf) before use: a bad one does nothing. Deleting still asks first.
-const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
 registerActions({
     'job-new': () => showJobModal(),
     'job-select': el => withId(el.dataset.jobId, selectScheduledJob),

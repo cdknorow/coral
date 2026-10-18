@@ -115,30 +115,6 @@
     margin: 8px 16px 12px;
 }
 
-/* Session ended overlay */
-.session-ended-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: color-mix(in srgb, var(--bg-primary) 94%, transparent); /* near-solid: the chat's empty-state text must not show through the words (#4481, UX) */
-    z-index: 10;
-    border-radius: 6px;
-}
-
-.session-ended-content {
-    text-align: center;
-    color: var(--text-muted);
-    font-size: 0.875rem;
-}
-
-.session-ended-content p {
-    margin: 0 0 12px 0;
-    font-size: 1rem;
-    color: var(--text-secondary);
-}
-
 .restart-spinner {
     display: inline-block;
     width: 24px;
@@ -1937,10 +1913,6 @@ button.subscriber-history-link {
     width: 100%;
 }
 
-.settings-modal-content {
-    max-width: 760px;
-}
-
 .settings-modal-body {
     display: flex;
     flex-direction: column;
@@ -2288,14 +2260,6 @@ button.subscriber-history-link {
 
 .acf-prompt {
     min-height: 120px;
-}
-
-.permissions-section {
-    margin-top: 4px;
-}
-
-.permissions-toggle-btn {
-    padding: 10px 0 4px;
 }
 
 .acf-auto-permissions-toggle input[type="checkbox"] {
@@ -2735,7 +2699,6 @@ button.subscriber-history-link {
     margin-bottom: 8px;
     position: relative;
     overflow: hidden;
-    transition: border-color 0.15s;
 }
 
 .team-agent-row:hover {

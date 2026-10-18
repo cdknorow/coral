@@ -6,7 +6,7 @@ import { morphHtml } from './dom_morph.js';
 import { closeOnBackdropAndEscape, releaseEscape } from './dialog_close.js';
 import { registerTaskView, redrawBoardTaskList, closeTaskDetailModal } from './task_hooks.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
-import { registerActions, idOf, tokenOf, textOf } from './actions.js';
+import { registerActions, idOf, withId, tokenOf, textOf } from './actions.js';
 import { addPendingMessage } from './live_chat.js';
 import { verificationOf } from './task_verification.js';
 import { pathId, serverUrl, artifactPath, contextServer, keyLabel, boardKeyName, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
@@ -1601,7 +1601,6 @@ registerTaskView({ renderBoardTaskList, hideTaskDetailModal });
 // Cancelling and completing a task still go through their confirm footers (task-cancel shows
 // "Yes, Cancel"; task-complete shows the completion form), as before.
 const TASK_SORTS = new Set(['id', 'priority', 'type', 'assignee', 'created_at', 'cost']);
-const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
 const isPersonal = el => el.dataset.personal === '1';
 const depContainer = el => { const id = tokenOf(el.dataset.container); return id ? document.getElementById(id) : null; };
 registerActions({

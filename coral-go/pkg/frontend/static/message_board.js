@@ -1,7 +1,7 @@
 /* Message Board: project list, messages, subscribers, posting */
 
 import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, getAgentColor, hexToRgba, showToast, externalMessageBadge, hubUserBadge, boardMessageDisplayText, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
-import { registerActions, idOf, textOf } from './actions.js';
+import { registerActions, idOf, withId, textOf } from './actions.js';
 import { boardPageChanged } from './dock_page.js';
 import { state } from './state.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
@@ -1460,7 +1460,6 @@ document.addEventListener('click', (e) => {
 
 // The board's generated markup (#3645): data-on-* names, never code. Ids and names are checked
 // before use; a bad one does nothing. Deleting a message never asked first, and still doesn't.
-const withId = (v, f) => { const id = idOf(v); if (id) f(id); };
 registerActions({
     'mb-project': el => { const p = textOf(el.dataset.project); if (p) selectBoardProject(p); },
     'mb-earlier': () => loadEarlierMessages(),

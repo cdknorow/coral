@@ -507,8 +507,6 @@
     padding: 5px 10px !important;
     margin: 0;
     border-radius: 3px 3px 0 0;
-    font-size: var(--fs-md);
-    min-height: 0;
     box-sizing: border-box;
     /* header/agents boundary lives here (the agents list no longer draws its own) */
     box-shadow: inset 0 -1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
@@ -1879,7 +1877,6 @@
 .availability-agents { display:flex; flex-direction:column; gap:6px; }
 .availability-agent { display:grid; grid-template-columns:minmax(150px,1fr) minmax(180px,2fr) auto; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; overflow-wrap:anywhere; }
 .availability-agent > p { margin:0; }
-.availability-agent > .btn { margin-top:0; }
 .availability-agent-heading small, .availability-agent li span, .availability-unassigned li span { display: block; margin: 4px 0; }
 .availability-badge { white-space: nowrap; border-radius: 12px; padding: 4px 8px; background: var(--bg-tertiary); font-size: 0.75rem; color: var(--text-secondary); }
 .availability-badge.is-free { color: var(--success); }
