@@ -1,7 +1,7 @@
 /* The search, filter and sort bar the list panels share (#4744), taken from Team Artifacts' (#4573): a search box with the count beside it, a Filters button that opens a menu, a Sort select and the chips of
  * the filters that are on. It is built once and kept in its panel (the panel's list is rebuilt on every change, which would take the keyboard focus out of a search box typed into), and told what to show with
  * set(). The server does the work: the bar only collects what to ask for. Each panel gives a spec (its fields, sorts and words) and a model (its filters: EMPTY, clean, chips, isFiltered, without; the panel's
- * own *_filters.js, which is pure). The classes are the ta-* ones agentic.css styles; the ids come from the spec so two bars never share one. */
+ * own *_filters.js, which is pure). The classes are ta-* (agentic.css, touch.css); the ids come from the spec so two bars never share one. */
 
 const DEBOUNCE_MS = 300;
 
@@ -92,7 +92,8 @@ export function buildListBar(spec, onChange) {
         if (open && fields.length) fields[0].input.focus();
     });
     node.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { e.preventDefault(); e.stopPropagation(); closeMenu(true); } });
-    document.addEventListener('click', e => { if (!menu.hidden && !node.contains(e.target)) closeMenu(false); });
+    const outside = e => { if (!menu.hidden && !node.contains(e.target)) closeMenu(false); };
+    document.addEventListener('click', outside);
     for (const fld of fields) {
         const key = fld.spec.key;
         if (fld.spec.type === 'text') fld.input.addEventListener('input', () => later({ ...f, [key]: fld.input.value }));
@@ -129,11 +130,13 @@ export function buildListBar(spec, onChange) {
             chipList.hidden = !list.length;
             filterBtn.textContent = isFiltered(f) ? `Filters (${list.filter(c => c.key !== 'q').length})` : 'Filters';
             const all = `${counts && counts.all}${counts && counts.truncated ? '+' : ''}`; // '+': older ones were not scanned
-            count.textContent = !counts ? '' : isFiltered(f) ? `${counts.matched} of ${all}` : `${all} ${spec.noun}${counts.all === 1 && !counts.truncated ? '' : 's'}`;
+            count.textContent = !counts ? '' : isFiltered(f) ? `${counts.matched} of ${all}` : `${all} ${counts.all === 1 && !counts.truncated ? spec.noun : (spec.plural || spec.noun + 's')}`;
         },
         /** The names seen in the list, offered in the text field that has a datalist (typed text still works). */
         names(list) { const fld = fields.find(x => x.list); if (fld) fld.list.replaceChildren(...list.map(n => new Option(n))); },
         closeMenu,
         focusSearch() { q.focus(); },
+        /** A bar that is replaced (a panel rebuilt for another board) lets go of the page's click listener and any search still waiting. */
+        dispose() { document.removeEventListener('click', outside); clearTimeout(timer); node.remove(); },
     };
 }
