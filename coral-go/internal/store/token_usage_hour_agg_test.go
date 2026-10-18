@@ -248,23 +248,44 @@ func TestCostViewAggregateMatchesTheRawRows(t *testing.T) {
 	built := withAgg
 	require.GreaterOrEqual(t, built, 6, "the windows that start in an hour already built read it")
 
-	// late rows into built hours, a changed row, a deleted row
-	for i := 0; i < 30; i++ {
-		a.insert(fmt.Sprintf("s%d", i%8), storeLayout(a.randomTimeIn(aggNow.Add(-90*time.Hour), aggNow.Add(-2*time.Hour))), "jsonl")
+	// Each kind of change to a built hour, alone, so its trigger is the only thing that can have marked the hour: a row added late, a row changed
+	// in place, a row moved to another hour, a row deleted.
+	refresh := func() {
+		_, err := db.RefreshTokenUsageHourAgg(ctx, aggNow, 100000)
+		require.NoError(t, err)
 	}
-	_, err = db.ExecContext(ctx, `UPDATE token_usage SET cost_usd = cost_usd + 7, recorded_at = ? WHERE id = (SELECT MIN(id) FROM token_usage WHERE session_id = 's1')`, storeLayout(aggNow.Add(-30*time.Hour)))
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `DELETE FROM token_usage WHERE id = (SELECT MAX(id) FROM token_usage WHERE session_id = 's2' AND recorded_at < ?)`, storeLayout(aggNow.Add(-60*time.Hour)))
-	require.NoError(t, err)
-	require.NoError(t, db.GetContext(ctx, &left, `SELECT COUNT(*) FROM token_usage_hour_dirty`))
-	require.Greater(t, left, 5, "the changes marked their hours")
-	withAgg = 0
-	compare("dirty hours, not refreshed", true)
-
-	_, err = db.RefreshTokenUsageHourAgg(ctx, aggNow, 100000)
-	require.NoError(t, err)
-	withAgg = 0
-	compare("refreshed again", true)
+	change := func(stage string, do func()) {
+		t.Helper()
+		refresh()
+		require.NoError(t, db.GetContext(ctx, &left, `SELECT COUNT(*) FROM token_usage_hour_dirty`))
+		require.Equal(t, 1, left)
+		do()
+		require.NoError(t, db.GetContext(ctx, &left, `SELECT COUNT(*) FROM token_usage_hour_dirty`))
+		require.Greater(t, left, 1, stage+": the change marked its hour")
+		withAgg = 0
+		compare(stage+", before the refresh", true)
+		refresh()
+		withAgg = 0
+		compare(stage+", after the refresh", true)
+	}
+	change("a row added late", func() {
+		a.insert("s4", storeLayout(aggNow.Add(-50*time.Hour+7*time.Minute)), "jsonl")
+	})
+	change("a row changed in place", func() {
+		_, err := db.ExecContext(ctx, `UPDATE token_usage SET cost_usd = cost_usd + 7, input_tokens = input_tokens + 5 WHERE id = (SELECT MAX(id) FROM token_usage WHERE session_id = 's1' AND recorded_at < ? AND recorded_at > ?)`,
+			storeLayout(aggNow.Add(-40*time.Hour)), storeLayout(aggNow.Add(-70*time.Hour)))
+		require.NoError(t, err)
+	})
+	change("a row moved to another hour", func() {
+		_, err := db.ExecContext(ctx, `UPDATE token_usage SET recorded_at = ? WHERE id = (SELECT MIN(id) FROM token_usage WHERE session_id = 's5' AND recorded_at > ?)`,
+			storeLayout(aggNow.Add(-30*time.Hour)), storeLayout(aggNow.Add(-90*time.Hour)))
+		require.NoError(t, err)
+	})
+	change("a row deleted", func() {
+		_, err := db.ExecContext(ctx, `DELETE FROM token_usage WHERE id = (SELECT MAX(id) FROM token_usage WHERE session_id = 's2' AND recorded_at < ? AND recorded_at > ?)`,
+			storeLayout(aggNow.Add(-60*time.Hour)), storeLayout(aggNow.Add(-90*time.Hour)))
+		require.NoError(t, err)
+	})
 
 	// rows in other layouts inside built hours: the hour is listed odd and read from the raw rows from then on
 	for _, at := range []string{"2026-10-17T09:15:00+02:00", "2026-10-17 12:30:00", "2026-10-17T20:45:10-05:00", "2026-10-17T13:00:00.5Z"} {
