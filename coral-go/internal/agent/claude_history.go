@@ -349,7 +349,9 @@ func (c *claudeCursor) add(line []byte) {
 		if len(text) > 200 {
 			text = text[:200]
 		}
-		c.summary = text
+		// A copy: text[:200] would keep the whole message alive (a substring shares its parent's memory), unseen by weight(), for as long
+		// as the cursor lives; with a cursor for every live agent that is the message, once per agent.
+		c.summary = strings.Clone(text)
 		c.ftsVer++ // the body opens with the summary
 	}
 }

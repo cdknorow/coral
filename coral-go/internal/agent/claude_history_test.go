@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"runtime"
 )
 
 // claudeTranscriptLines is a mix of what a Claude transcript holds: string and block content,
@@ -361,4 +362,42 @@ func TestClaudeHistoryCursorsAreBoundedByBytes(t *testing.T) {
 	assert.Len(t, got, 40, "every transcript is still indexed")
 	assert.LessOrEqual(t, len(a.hist.cursors), 5)
 	assert.GreaterOrEqual(t, len(a.hist.cursors), 1)
+}
+
+// A cursor's summary is a copy of the first 200 bytes of a message, not a slice of the message: a slice keeps the whole message in memory, which
+// weight() (the bytes bound) cannot see. Six cursors of one 8 MiB message each, search bodies dropped: only the summaries are left to hold memory.
+func TestClaudeCursorSummaryDoesNotPinTheWholeMessage(t *testing.T) {
+	const n, size = 6, 8 << 20
+	heap := func() uint64 {
+		runtime.GC()
+		runtime.GC()
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		return m.HeapAlloc
+	}
+	base := heap()
+	cs := make([]*claudeCursor, n)
+	for i := range cs {
+		c := &claudeCursor{}
+		c.add([]byte(`{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"role":"assistant","content":"` + strings.Repeat("x", size) + `"}}`))
+		require.Len(t, c.summary, 200)
+		c.fts = FTSBodyBuilder{} // the search body is counted by weight(); what is left is what weight() cannot see
+		cs[i] = c
+	}
+	held := heap() - base
+	runtime.KeepAlive(cs)
+	assert.Less(t, held, uint64(n*size/4), "the summaries hold %d MiB: each pins its whole %d MiB message", held>>20, size>>20)
+}
+
+// Even a bound smaller than one cursor keeps the cursor just used (never none): the next pass then reads the newest file's new bytes, not the
+// whole file; the cursor before it goes as soon as another file is used.
+func TestClaudeHistoryKeepsTheCursorJustUsedWhateverTheBound(t *testing.T) {
+	base := t.TempDir()
+	writeLiveTranscripts(t, base, 5)
+	lowerCursorBounds(t, 4096, 1)
+	a := &ClaudeAgent{}
+	got, err := a.ExtractSessions(base, nil)
+	require.NoError(t, err)
+	assert.Len(t, got, 5, "every transcript is still indexed")
+	assert.Len(t, a.hist.cursors, 1, "one cursor is kept, the one used last")
 }
