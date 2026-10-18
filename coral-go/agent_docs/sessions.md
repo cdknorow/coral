@@ -816,6 +816,10 @@ a page); `"truncated": true` says the search stopped at its bound (200,000 event
 what it read. Through Coral Hub the match is made on what the viewer sees (events are stored with tokens already redacted, and the connector
 redacts the reply), and a `q` holding a token, key or password is refused with a 400.
 
+A session's events in History take the same search: `GET /api/sessions/history/{sessionID}/events` with `type`, `q`, `since`, `until`, `sort`,
+`limit` and `cursor` (#4779), the same reply, the same Coral Hub rules, over that one session's events (any agent name). It has no
+`session_id` parameter (the path names it), and without a search parameter it is the plain array of the newest `limit` (at most 200).
+
 ### POST `/api/sessions/live/{name}/events`
 
 **Request Body:**

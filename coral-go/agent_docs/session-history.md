@@ -267,6 +267,8 @@ Events (tool calls, notifications) from a historical session.
 
 **Response:** Array of event objects (same shape as live session events).
 
+With `type`, `q`, `since`, `until`, `sort` or `cursor` it is a search with the live route's parameters and reply (`{events, total, next_cursor, ...}`), see "Searching the events" in sessions.md (#4779); `session_id` is not accepted there.
+
 ### GET `/api/sessions/history/{sessionID}/tasks`
 
 Tasks from a historical session.
