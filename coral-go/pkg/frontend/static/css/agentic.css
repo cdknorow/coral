@@ -1080,6 +1080,9 @@ body.panel-dragging .agentic-state {
     /* Two lines of the title, not one cut at the edge: with hundreds of tasks the title is how a row is told apart. */
     .board-task-list .board-task-item:not(.board-task-header) .board-task-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
     .board-task-list .board-task-header .board-task-desc { display: none; }
+    /* The agent column takes what the first line has left instead of a fixed 110px: with the fixed width the first line needed 360px, and in a dock
+       a little narrower than that Agent wrapped under Status, and under the Priority label in the header (#4716). */
+    .board-task-list .board-task-item .board-task-assignee { flex: 1 1 0; width: auto; min-width: 0; }
 }
 
 .board-task-item {

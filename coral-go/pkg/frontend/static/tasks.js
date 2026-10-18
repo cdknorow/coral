@@ -358,6 +358,7 @@ function _reviewRequested(t) {
 
 // Current sort and filter state for task list
 let _taskSortField = 'created_at';
+let _taskSortExplicit = false; // a column was chosen: until then open work comes before done work (#4716)
 let _taskSortAsc = false; // default newest first
 let _hideCompleted = browserLocal.get('coral-hide-completed') === 'true'; // off by default, persisted
 /** A finished task's verification (#4564), quietly: in the list a small muted icon after the title only for Evidence attached, its words only in the tooltip and the accessible name; a
@@ -374,6 +375,7 @@ function _verifyLine(t) {
 }
 
 function _toggleTaskSort(field) {
+    _taskSortExplicit = true;
     if (_taskSortField === field) {
         _taskSortAsc = !_taskSortAsc;
     } else {
@@ -394,6 +396,7 @@ function _toggleHideCompleted() {
 
 /** The tasks to show: done ones dropped when hidden, in the chosen sort order. */
 function _filterAndSortTasks(allTasks) {
+    const isDone = t => t.status === 'completed' || t.status === 'skipped';
     const tasks = allTasks.filter(t => {
         if (_hideCompleted && (t.status === 'completed' || t.status === 'skipped')) return false;
         return true;
@@ -416,6 +419,9 @@ function _filterAndSortTasks(allTasks) {
         }
         return _taskSortAsc ? cmp : -cmp;
     });
+    // The default order puts open and active work first, then the finished tasks, newest first inside each part (a stable split): with a thousand
+    // recent finished tasks the first rows were all Finished (#4716). A column the person chose sorts the whole list as it always did.
+    if (!_taskSortExplicit) return [...tasks.filter(t => !isDone(t)), ...tasks.filter(isDone)];
     return tasks;
 }
 
