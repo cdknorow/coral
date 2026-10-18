@@ -66,6 +66,7 @@ const SETTINGS_PRELOAD = `(() => {
     })()`);
     const openSwitcher = () => ev(`(() => { const d = document.querySelector('[data-server-switcher-host] details[data-server-switcher]'); d.open = true; return true; })()`);
 
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -376,6 +377,7 @@ const SETTINGS_PRELOAD = `(() => {
 
         console.log('\nAll server switcher checks passed');
     } finally {
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
 })().catch(err => {

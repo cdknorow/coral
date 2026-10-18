@@ -1,0 +1,50 @@
+// A suite that changes the server's settings puts them back (#4849). The suites of a shard share one server, so a setting one leaves is read by the next (show_session_server left False
+// changed live_list_golden; auto_wake_after_restart left false failed auto_wake). The runner restores them after each suite too (helpers/server_state.mjs), but a suite should not depend on
+// that: it works alone, on a developer's own server, and --fail-on-leak names the suites that rely on it.
+//
+//   const { guardSettings } = require('./helpers/settings_guard');
+//   const guard = await guardSettings();          // before the suite changes anything
+//   try { ... } finally { await guard.restore(); } // whatever it changed or added is put back
+//
+// restore() reads the settings again and, for every key that differs from the snapshot: under the runner (CORAL_TEST_DATA_DIR is the shard's data dir) writes the shard's database, so a key
+// the suite ADDED is deleted again and the settings are exactly as found; alone, it PUTs the old values through the API and an added key is set to '' (the API has no way to unset one; the
+// server reads '' as unset for the settings that matter here). Returns the number of keys put back.
+'use strict';
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+const { BASE } = require('../test_base');
+
+const quote = s => "'" + String(s).replace(/'/g, "''") + "'";
+
+async function readSettings(base) {
+    const r = await fetch(base + '/api/settings');
+    if (!r.ok) throw new Error(`GET /api/settings: HTTP ${r.status}`);
+    const d = await r.json();
+    return d.settings || d;
+}
+
+async function guardSettings({ base = BASE, dataDir = process.env.CORAL_TEST_DATA_DIR || '' } = {}) {
+    const before = await readSettings(base);
+    return {
+        before,
+        async restore() {
+            const after = await readSettings(base);
+            const changed = Object.keys({ ...before, ...after }).filter(k => before[k] !== after[k]);
+            if (!changed.length) return 0;
+            if (dataDir) {
+                const stmts = changed.map(k => (before[k] === undefined ? `DELETE FROM user_settings WHERE key = ${quote(k)};` : `INSERT OR REPLACE INTO user_settings (key, value) VALUES (${quote(k)}, ${quote(before[k])});`));
+                execFileSync('sqlite3', [path.join(dataDir, 'sessions.db'), `PRAGMA busy_timeout = 5000; ${stmts.join(' ')}`], { stdio: ['ignore', 'ignore', 'pipe'] });
+                return changed.length;
+            }
+            const put = async body => (await fetch(base + '/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).ok;
+            const body = Object.fromEntries(changed.map(k => [k, before[k] === undefined ? '' : before[k]]));
+            if (!(await put(body))) {
+                // One value the server refuses (a stored string it does not take back) must not keep the rest from being restored.
+                for (const k of changed) await put({ [k]: body[k] }).catch(() => {});
+            }
+            return changed.length;
+        },
+    };
+}
+
+module.exports = { guardSettings };

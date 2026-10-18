@@ -22,6 +22,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
     const { waitFor, coralReady } = require('./helpers/wait').bind(ev);
     const until = (expr, what) => waitFor(expr, what, { timeout: 8000, soft: true });
     let sid = null, name = null;
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Page.enable();
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -109,6 +110,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('no error', false, e.message);
     } finally {
         if (sid) await ev(`fetch('/api/sessions/live/${encodeURIComponent(name)}/kill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_type: 'terminal', session_id: '${sid}' }) }).then(r => r.status)`).catch(() => {});
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
     const failed = results.filter(x => !x).length;

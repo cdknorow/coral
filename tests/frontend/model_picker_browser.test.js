@@ -15,6 +15,7 @@ const { connect } = require('./agent_view_harness');
     const OPUS = { value: 'claude-opus-4-1-20250805', display_name: 'Opus 4.1', description: 'Most capable' };
     const SONNET = { value: 'claude-sonnet-4-5-20250929', display_name: 'Sonnet 4.5' };
     const HAIKU = { value: 'claude-haiku-4-5', display_name: 'Haiku 4.5' };
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -108,5 +109,8 @@ const { connect } = require('./agent_view_harness');
         await waitFor(`!document.getElementById('terminal-header-model').hidden`, 'the header chip', 5000);
         assert.equal(await ev(`document.getElementById('terminal-header-model').textContent`), 'Claude · Opus 4.1', 'the header says it too');
         console.log('\nPASS model picker and model labels');
-    } finally { await client.close(); }
+    } finally {
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
+        await client.close();
+    }
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -33,6 +33,7 @@ const BASE = require('./test_base').BASE;
   };
   const save = () => ev(`import(${MOD}+'modals.js').then(m=>m.applySettings()).then(()=>true)`);
   let original = null;
+  const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
   try {
     await Page.enable();
     // The fake goes in before the page's own code runs.
@@ -80,6 +81,7 @@ const BASE = require('./test_base').BASE;
     try {
       if (original) await ev(`fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify({ auto_wake_after_restart: original.on ?? '', auto_wake_cap: original.cap ?? '' })})}).then(r=>r.status)`);
     } catch { /* the page is gone */ }
+    await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
     await client.close();
   }
 })().catch(error => { console.error(error); process.exit(1); });

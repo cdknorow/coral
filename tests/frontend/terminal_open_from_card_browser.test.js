@@ -46,6 +46,7 @@ async function run() {
     const screen = () => ev(`(async () => { const t = ${XT}.getTerminal(); if (!t) return ''; const b = t.buffer.active; let s = ''; for (let i = 0; i < b.length; i++) { const l = b.getLine(i); if (l) s += l.translateToString(true) + '\\n'; } return s; })()`);
     const bar = () => ev(`(document.getElementById('terminal-statusbar') || { dataset: {} }).dataset.state || ''`);
     const open = () => ev(`window.__ws.filter(w => w.events.includes('open') && !w.events.includes('close')).length`);
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Page.navigate({ url: BASE + '/' });
         await coralReady();
@@ -91,6 +92,7 @@ async function run() {
     } finally {
         for (const s of launched) await httpJson('POST', '/api/sessions/live/' + encodeURIComponent(s.session_name) + '/kill', { session_id: s.session_id, agent_type: 'claude' }).catch(() => {});
         fs.rmSync(dir, { recursive: true, force: true });
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
     const failed = results.filter(r => r === 'FAIL').length;

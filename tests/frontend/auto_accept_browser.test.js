@@ -24,6 +24,7 @@ const BASE = require('./test_base').BASE;
         await Input.dispatchKeyEvent({ type: 'keyUp', key: k, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode });
     };
     const S = `(window.__coralStatic||'/static/')`;
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -341,6 +342,7 @@ const BASE = require('./test_base').BASE;
 
         console.log('PASS auto_accept_browser');
     } finally {
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
 })().catch(err => { console.error(err); process.exit(1); });

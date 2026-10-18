@@ -19,6 +19,7 @@ const BASE = require('./test_base').BASE;
   const otherClientPut = body => ev(`fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify(body)})}).then(r=>r.status)`);
   const server = async key => JSON.parse((await ev(`fetch('/api/settings').then(r=>r.json()).then(d=>d.settings)`))[key] || '[]');
   let original = {};
+  const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
   try {
     await Page.enable(); await Page.navigate({ url: BASE }); await Page.loadEventFired();
     await ev(`new Promise(r=>{const t=setInterval(()=>{if(window.__coralStatic||document.readyState==='complete'){clearInterval(t);r(true)}},50)})`);
@@ -55,6 +56,7 @@ const BASE = require('./test_base').BASE;
       for (const k of KEYS) back[k] = original[k] || '';
       await ev(`fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(${JSON.stringify(back)})}).then(r=>r.status)`);
     } catch { /* the page is gone */ }
+    await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
     await client.close();
   }
 })().catch(error => { console.error(error); process.exit(1); });

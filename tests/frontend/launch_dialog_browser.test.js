@@ -7,6 +7,7 @@ const BASE = require('./test_base').BASE;
 
 (async () => {
     const { client, Page, ev, waitFor, PRELOAD, install } = await connect();
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         await Page.navigate({ url: BASE }); await Page.loadEventFired(); await install();
@@ -133,5 +134,8 @@ const BASE = require('./test_base').BASE;
         const tpl = await ev(`window.__downloads[0].blob.text().then(t => ({ name: window.__downloads[0].name, data: JSON.parse(t) }))`);
         assert.equal(tpl.name, 'coral-team-templates.json'); assert.equal(tpl.data.type, 'coral-team-templates'); assert.deepEqual(tpl.data.templates.map(t => t.name), ['Tpl A']);
         console.log('PASS launch dialog');
-    } finally { await client.close(); }
+    } finally {
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
+        await client.close();
+    }
 })().catch(e => { console.error(e); process.exit(1); });

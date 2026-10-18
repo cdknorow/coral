@@ -52,6 +52,7 @@ async function session(noMorph) {
     // Move Down saves the order on the server: both runs start from no saved order, and leave none behind.
     const resetOrder = () => ev(`fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_order: '[]' }) }).then(r => r.ok)`);
     const steps = [];
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: STUB });
@@ -117,6 +118,7 @@ async function session(noMorph) {
     } finally {
         await Emulation.clearDeviceMetricsOverride().catch(() => {});
         await resetOrder().catch(() => {});
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
 }

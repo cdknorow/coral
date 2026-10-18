@@ -64,6 +64,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
     // The real saved value, past the fake.
     const saved = () => ev(`(() => { const f = window.__tbFake; window.__tbFake = null; return fetch('/api/system/terminal-backend').then(r => r.json()).then(j => { window.__tbFake = f; return j.saved; }); })()`);
     const toasts = () => ev(`[...document.querySelectorAll('.toast .toast-message, .toast')].map(t => t.textContent.trim())`);
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
     try {
         await Page.enable();
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -149,6 +150,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('the test ran', false, e.stack || String(e));
     } finally {
         try { await ev(`fetch('/api/system/terminal-backend', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ backend: 'tmux' }) }).then(() => true)`); } catch { /* best effort */ }
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
     const failed = results.filter(r => !r).length;

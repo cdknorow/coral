@@ -49,6 +49,7 @@ const undersized = sel => `(() => {
         { name: 'desktop', width: 1400, height: 900, mobile: false, coarse: false },
         { name: 'phone 390', width: 390, height: 844, mobile: true, coarse: true },
     ];
+    const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back before it ends (#4849)
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
         for (const v of views) {
@@ -200,11 +201,13 @@ const undersized = sel => `(() => {
         }
         await ev(`fetch('/api/views/' + ${JSON.stringify(String(viewId))}, { method: 'DELETE' }).then(r => r.status)`);
         console.log('lazy_dialogs: ok');
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
         process.exit(0);
     } catch (e) {
         console.error('FAIL', e && e.stack || e);
         try { if (viewId) await ev(`fetch('/api/views/' + ${JSON.stringify(String(viewId))}, { method: 'DELETE' }).then(r => r.status)`); } catch { /* best effort */ }
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         try { await client.close(); } catch { /* closing */ }
         process.exit(1);
     }
