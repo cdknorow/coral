@@ -16,6 +16,7 @@ import {
     serverVersion, serverAgentCount, updateBadgeHtml, belowMinimumText,
 } from './server_status.js';
 import { onBuilt } from './lazy_dom.js';
+import { syncServersBar, serverVisible, serversFiltered, resetServersBar } from './server_search.js'; // this module is in the startup graph (app.js imports it), so its search box is imported directly
 
 let _servers = [];
 let _editing = null;      // id being edited, '' for "add", null when the form is closed
@@ -65,6 +66,7 @@ export async function renderServersInto(el) {
 export function hideServersModal() {
     clearInterval(_timer); _timer = null;
     _editing = null;
+    resetServersBar();
 }
 
 // A refused URL (the server's 400 for an http URL at an address that is not private) is shown next to the URL field.
@@ -187,20 +189,22 @@ function formHtml() {
 function render() {
     const m = _host;
     if (!m) return;
-    const remotes = _servers.filter(s => !(s.local || s.id === 'local'));
+    const allRemotes = _servers.filter(s => !(s.local || s.id === 'local'));
+    syncServersBar(allRemotes, 'server', render); // the search box, from six servers up
+    const remotes = allRemotes.filter(serverVisible);
     const local = _servers.find(s => s.local || s.id === 'local') || { local: true, id: 'local', label: 'Local' };
     // The periodic refresh must not pull focus out of a row the user is on.
     const activeRow = document.activeElement && m.contains(document.activeElement) ? document.activeElement.closest('.servers-row') : null;
     const keep = activeRow && _editing === null ? { row: activeRow.id, action: document.activeElement.dataset.action } : null;
     // A long list pushes "Add server" screens below the fold: with many machines it sits above the list, beside how many answer.
-    const many = remotes.length > 5;
-    const online = remotes.filter(s => s.status === 'online').length;
-    const topBar = `<div class="servers-top"><span class="servers-summary">${remotes.length} servers, ${online} online${online < remotes.length ? `, ${remotes.length - online} not` : ''}</span><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>`;
+    const many = allRemotes.length > 5;
+    const online = allRemotes.filter(s => s.status === 'online').length;
+    const topBar = `<div class="servers-top"><span class="servers-summary">${allRemotes.length} servers, ${online} online${online < allRemotes.length ? `, ${allRemotes.length - online} not` : ''}</span><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>`;
     m.innerHTML = `<p class="servers-intro">Servers whose agents and teams appear in this hub. The hub stores each server's API key (encrypted); a key grants full control of that server.</p>
             ${_loadError ? `<div class="servers-form-error" role="alert">${escHtml(_loadError)}</div>` : ''}
             ${many && _editing === null ? topBar : ''}
             <ul class="servers-list" aria-label="Registered servers">${rowHtml(local)}${remotes.map(rowHtml).join('')}</ul>
-            ${!remotes.length && !_loadError ? '<p class="servers-empty">No remote servers yet.</p>' : ''}
+            ${!remotes.length && !_loadError ? `<p class="servers-empty">${serversFiltered() ? 'No servers match this search.' : 'No remote servers yet.'}</p>` : ''}
             ${_editing !== null ? formHtml() : many ? '' : '<div class="servers-form-actions"><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>'}`;
     if (keep) {
         const r = document.getElementById(keep.row);

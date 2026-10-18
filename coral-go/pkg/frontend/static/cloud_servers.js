@@ -21,6 +21,8 @@ import { formatLastSeen, updateNotice, RELEASES_URL, serverVersion, serverAgentC
 import { accessBlockedMessage, accessChanged } from './hub_access.js';
 import { pollEvery } from './overload.js';
 import { healthDot, healthCard } from './machine_health.js';
+// This module is loaded lazily, so its search box is loaded the same way (a static import of a module not loaded at startup could not be retried: import_hygiene).
+const { syncServersBar, serverVisible, serversFiltered, resetServersBar } = await importOnce('./server_search.js');
 
 // The Servers tab (#3070) hosts this list; there is no separate dialog.
 let host = null;
@@ -51,6 +53,7 @@ export async function renderCloudServersInto(el) {
 export function hideCloudServers() {
     clearInterval(timer); timer = null;
     host = null;
+    resetServersBar();
 }
 
 async function load() {
@@ -342,9 +345,11 @@ function render() {
     // Re-rendering replaces every row: keep focus on the same control where we can.
     const active = document.activeElement && host.contains(document.activeElement) ? document.activeElement : null;
     const keep = active && active.closest('.cs-row') ? { row: active.closest('.cs-row').id, text: active.textContent } : null;
-    const list = servers.length
-        ? h('ul', { className: 'cs-list', 'aria-label': 'Your servers' }, servers.map(row))
-        : h('p', { className: 'servers-empty', text: loadError ? '' : 'No servers connected yet.' });
+    syncServersBar(servers, 'machine', render); // the search box, from six machines up
+    const shown = servers.filter(serverVisible);
+    const list = shown.length
+        ? h('ul', { className: 'cs-list', 'aria-label': 'Your servers' }, shown.map(row))
+        : h('p', { className: 'servers-empty', text: loadError ? '' : serversFiltered() ? 'No machines match this search.' : 'No servers connected yet.' });
     // replaceChildren() would render a null as the text "null": leave it out.
     host.replaceChildren(...[
         h('p', { className: 'servers-intro', text: 'Machines connected to your account. Each one connects out to this hub; no inbound port is needed. New machines start in View.' }),

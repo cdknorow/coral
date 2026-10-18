@@ -78,7 +78,9 @@ export function buildListBar(spec, onChange) {
     // A panel with one fixed order (the board's messages: the page is the order) has no sort: spec.sorts is null.
     const sort = spec.sorts ? selectField(`${p}-sort`, 'Sort', spec.sorts.values, spec.sorts.labels) : null;
     if (sort) { sort.wrap.classList.add('list-bar-sort'); sort.input.setAttribute('aria-label', spec.sorts.aria); }
-    controls.append(...(sort ? [filterBtn, sort.wrap] : [filterBtn]));
+    // A panel with only a search (no fields: the Servers list) has no Filters button and no menu.
+    const hasFilters = spec.fields.length > 0;
+    controls.append(...[hasFilters ? filterBtn : null, sort ? sort.wrap : null].filter(Boolean));
     if (noSearch) controls.append(count);
 
     const menu = make('div', 'list-bar-menu'); menu.id = `${p}-menu`; menu.hidden = true; menu.setAttribute('role', 'group'); menu.setAttribute('aria-label', 'Filters');
@@ -88,7 +90,7 @@ export function buildListBar(spec, onChange) {
 
     const chipList = make('ul', 'list-bar-chips'); chipList.setAttribute('aria-label', 'Active filters'); chipList.hidden = true;
     if (noSearch) node.classList.add('list-bar-nosearch');
-    node.append(...(noSearch ? [] : [searchRow]), controls, menu, chipList, live);
+    node.append(...(noSearch ? [] : [searchRow]), ...(controls.children.length ? [controls] : []), ...(hasFilters ? [menu] : []), chipList, live);
 
     const apply = next => { f = clean(next); announce = true; onChange({ ...f }); };
     const later = next => { clearTimeout(timer); timer = setTimeout(() => apply(next), DEBOUNCE_MS); };
