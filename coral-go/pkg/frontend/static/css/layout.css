@@ -61,6 +61,22 @@
     font-weight: 600;
 }
 
+/* The Inbox tab's badge: how many agents wait for input (#4718). */
+.nav-tab-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    min-width: 16px;
+    border-radius: 8px;
+    background: var(--rail-badge-unread);
+    color: var(--rail-badge-text);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    vertical-align: 1px;
+}
+.nav-tab-badge[hidden] { display: none; }
 .top-nav-tab.nav-overflowed { display: none; }
 .nav-more-wrap { display: flex; flex: 0 0 auto; }
 /* The row is text only; More shows a small chevron. */

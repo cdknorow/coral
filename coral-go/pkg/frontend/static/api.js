@@ -32,6 +32,7 @@ import { renderLiveSessions, renderHistorySessions } from './render.js';
 import { buildApiParams } from './search_filters.js';
 import { serverUrl, serverForSession, initHub, fetchValidated } from './server_base.js';
 import { updateServersTabVisibility } from './servers_tab.js';
+import { updateInboxTab } from './inbox_tab.js';
 import { ageOutStored } from './local_store.js';
 
 export {
@@ -107,6 +108,7 @@ async function _loadLiveSessions(onFailure) {
         state.serversKnown = true;
         updateServersTabVisibility();
         state.liveSessions = sessions;
+        updateInboxTab(); // the waiting number follows the list (#4718)
         // Drafts of sessions that have ended (and were left a day) go (#3681), at most hourly.
         const kept = ageOutStored({ liveIds: new Set(sessions.map(s => s && s.session_id).filter(Boolean)) });
         if (kept) loadSessionDrafts(kept);

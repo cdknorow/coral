@@ -62,7 +62,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         const nav = await spy(['switchNavTab'], `
             for (const b of document.querySelectorAll('[data-on-click="m-switch-nav-tab"]')) b.click();
             const bad = document.createElement('button'); bad.setAttribute('data-on-click', 'm-switch-nav-tab'); bad.dataset.arg = 'agents; x'; document.body.appendChild(bad); bad.click(); bad.remove();`);
-        check('a nav tab passes its tab; an unlisted one does nothing', nav.length > 2 && nav.every(c => /^[a-z]+$/.test(c[1])), JSON.stringify(nav));
+        check('a nav tab passes its tab; an unlisted one does nothing', nav.length > 2 && nav.every(c => /^[a-z]+(-[a-z]+)*$/.test(c[1])), JSON.stringify(nav));
         await ev(`window.__coral.toggleTopBarSettings(); window.__coral.closeTopBarSettings(); true`); // the top-bar menu is built on first open (#4500)
         const menu = await spy(['closeTopBarSettings', 'showSettingsModal'], `
             document.querySelector('[data-on-click="m-close-top-bar-settings-then-show-settings-modal"]').click();`);

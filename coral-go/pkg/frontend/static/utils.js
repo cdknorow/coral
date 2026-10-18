@@ -215,6 +215,7 @@ const VIEW_IDS = [
     "kanban-view",
     "docs-view",
     "servers-view",
+    "inbox-view",
 ];
 
 const VIEW_DISPLAY = {
@@ -231,6 +232,7 @@ const VIEW_DISPLAY = {
     "kanban-view": "flex",
     "docs-view": "block",
     "servers-view": "block",
+    "inbox-view": "flex",
 };
 
 const FULL_WIDTH_VIEWS = new Set([
@@ -239,6 +241,7 @@ const FULL_WIDTH_VIEWS = new Set([
     "kanban-view",
     "workflows-view",
     "servers-view",
+    "inbox-view",
 ]);
 
 let _viewChanges = 0;

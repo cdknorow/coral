@@ -8,7 +8,7 @@
 import { registerActions } from './actions.js';
 
 const ICONS = { agents: 'smart_toy', history: 'chat_bubble_outline', workflows: 'account_tree', jobs: 'schedule', tokens: 'insights',
-    docs: 'menu_book', servers: 'dns', board: 'forum' };
+    docs: 'menu_book', servers: 'dns', 'hub-inbox': 'notifications', board: 'forum' };
 
 const tabsEl = () => document.querySelector('.top-nav-tabs');
 const isPhone = () => window.matchMedia('(max-width: 767px)').matches;
@@ -18,7 +18,7 @@ export function availableTabs() {
     const cloud = document.body.classList.contains('cloud-mode');
     return [...document.querySelectorAll('.top-nav-tabs > .top-nav-tab[data-arg]')]
         .filter(el => !el.hidden && el.style.display !== 'none' && !(cloud && el.hasAttribute('data-local-only')))
-        .map(el => ({ id: el.id, arg: el.dataset.arg, label: el.textContent.trim(), active: el.classList.contains('active'), el }));
+        .map(el => ({ id: el.id, arg: el.dataset.arg, label: (el.dataset.label || el.textContent).trim(), active: el.classList.contains('active'), el }));
 }
 
 // Built with the DOM, so no text from a tab is ever read as markup.

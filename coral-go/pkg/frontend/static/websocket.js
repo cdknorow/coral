@@ -15,6 +15,7 @@ import { notifyNeedsInput } from './desktop_notify.js';
 import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
 import { applySleepingView } from './sleeping_view.js';
 import { updateServersTabVisibility } from './servers_tab.js';
+import { updateInboxTab } from './inbox_tab.js';
 import { markReady } from './ready.js';
 import { isSignedOut } from './overload.js';
 import { syncUnreachableBanner } from './hub_access.js';
@@ -230,6 +231,7 @@ function _publishSessions(data) {
         data.sessions = data.sessions.map(s => mergeSession(prevMap[_feedKey(s)], s));
     }
     state.liveSessions = data.sessions;
+    updateInboxTab(); // the waiting number follows the list (#4718)
     syncUnreachableBanner(); // the selected agent's server went away or came back (#3151)
     syncAutoAcceptHeader(); // the selected agent's AUTO chip follows the feed (#3182)
     pruneTerminalGone(data.sessions); // asleep, ended or restarted: their own state takes over (#3218)

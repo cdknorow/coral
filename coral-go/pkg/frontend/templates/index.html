@@ -68,6 +68,8 @@
             <button class="top-nav-tab active" id="nav-tab-agents" data-on-click="m-switch-nav-tab" data-arg="agents" aria-current="page">Agents</button>
             <!-- Servers right after Agents (#3507, the operator's order: Agents, Servers, ..., Docs). -->
             <button class="top-nav-tab" id="nav-tab-servers" data-on-click="m-switch-nav-tab" data-arg="servers" aria-controls="servers-view" hidden>Servers</button>
+            <!-- Inbox right after Servers, only where the hub serves the dashboard (inbox_tab.js, #4718): the hub's /inbox page in a frame, the number of agents waiting for input as its badge. -->
+            <button class="top-nav-tab" id="nav-tab-hub-inbox" data-on-click="m-switch-nav-tab" data-arg="hub-inbox" data-label="Inbox" aria-controls="inbox-view" hidden>Inbox<span class="nav-tab-badge" id="nav-tab-hub-inbox-badge" hidden></span></button>
             <button class="top-nav-tab" data-local-only id="nav-tab-history" data-on-click="m-switch-nav-tab" data-arg="history">Chats</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-workflows" data-on-click="m-switch-nav-tab" data-arg="workflows">Workflows</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-jobs" data-on-click="m-switch-nav-tab" data-arg="jobs">Jobs</button>
@@ -325,6 +327,7 @@
 
             {{ template "includes/views/docs.html" . }}
             {{ template "includes/views/servers.html" . }}
+            {{ template "includes/views/inbox.html" . }}
             </div>
 {{ template "includes/right_dock.html" . }}
             </div>

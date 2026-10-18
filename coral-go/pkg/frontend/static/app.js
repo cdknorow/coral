@@ -71,6 +71,7 @@ import { teamFetch, sessionServer, keyLabel } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 import { initHubIndicator } from './hub_indicator.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
+import './inbox_tab.js'; // Inbox tab (hub only): its visibility and badge (#4718)
 import { registerActions, tokenOf } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
 import { markReady } from './ready.js';
 import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch, loadModals, loadResumeDialog, loadDefaultPromptsDialog } from './lazy_panels.js';
@@ -208,7 +209,7 @@ registerActions({
     'm-mobile-connect-open': (el, event) => { event.preventDefault(); window._showMobileConnectModal(); },
     'm-show-launch-modal-then-select-launch-type': el => { if (["agent", "team"].includes(el.dataset.arg)) { window.showLaunchModal(); window._selectLaunchType(el.dataset.arg); } },
     'm-switch-mobile-tab': el => { if (["agents", "board", "chat"].includes(el.dataset.arg)) { window.switchMobileTab(el.dataset.arg); } },
-    'm-switch-nav-tab': el => { if (["agents", "board", "docs", "history", "jobs", "servers", "tokens", "workflows"].includes(el.dataset.arg)) { window.switchNavTab(el.dataset.arg); } },
+    'm-switch-nav-tab': el => { if (["agents", "board", "docs", "history", "hub-inbox", "jobs", "servers", "tokens", "workflows"].includes(el.dataset.arg)) { window.switchNavTab(el.dataset.arg); } },
     'm-tmux-banner-close': () => { const b = document.getElementById('tmux-missing-banner'); if (b) b.style.display = 'none'; },
     'm-toggle-agentic-panel': () => { window.toggleAgenticPanel(); },
     'm-toggle-tablet-sidebar': () => { window.toggleTabletSidebar(); },
@@ -453,7 +454,7 @@ function switchNavTab(tab, opts = {}) {
     }
 
     // Toggle sidebar visibility — full-width views hide the sidebar
-    const fullWidthTabs = new Set(['tokens', 'workflows', 'servers']);
+    const fullWidthTabs = new Set(['tokens', 'workflows', 'servers', 'hub-inbox']);
     const layout = document.querySelector('.layout');
     if (layout) layout.classList.toggle('sidebar-hidden', fullWidthTabs.has(tab));
 
@@ -490,6 +491,10 @@ function switchNavTab(tab, opts = {}) {
         showView('servers-view');
         if (!opts.fromHistory) note(opts.focusId ? { view: 'servers', id: opts.focusId } : { view: 'servers' });
         importOnce('./servers_tab.js').then(m => m.showServersTabContent(opts.focusId));
+    } else if (tab === 'hub-inbox') {
+        // The hub's /inbox page in a frame; the tab writes no address of its own (the page is the hub's, not a dashboard route).
+        showView('inbox-view');
+        importOnce('./inbox_tab.js').then(m => m.showInboxTabContent());
     } else if (tab === 'tokens') {
         showWhenLoaded(loadCostDashboard, 'showCostDashboard');
     } else if (tab === 'history') {
