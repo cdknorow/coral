@@ -5,6 +5,7 @@
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
+const { safePaused } = require('./helpers/paused');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, sleep, PRELOAD, install } = await connect();
@@ -25,7 +26,7 @@ const BASE = require('./test_base').BASE;
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
         const intercept = () => Fetch.enable({ patterns: [{ urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' }, { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' }] });
-        Fetch.requestPaused(async e => {
+        safePaused(client, async e => {
             if (e.request.url.endsWith('/auth/session')) {
                 return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
                     body: Buffer.from(JSON.stringify({ authenticated: true, email: 'qa@example.com', csrf: 'qa-csrf' })).toString('base64') });
