@@ -4,6 +4,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const fs = require('node:fs');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
@@ -67,7 +68,7 @@ function page(q) {
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
         await Fetch.enable({ patterns: [{ urlPattern: `*/api/board/${B}/messages/all*` }] });
-        Fetch.requestPaused(({ requestId, request }) => {
+        safePaused(client, ({ requestId, request }) => {
             const body = Buffer.from(JSON.stringify(page(new URL(request.url).searchParams))).toString('base64');
             Fetch.fulfillRequest({ requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body }).catch(() => {});
         });

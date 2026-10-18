@@ -8,6 +8,7 @@
 // Drives Chrome over CDP (chrome-remote-interface) through agent_view_harness.js; run_cdp_suites.mjs
 // finds CDP suites by that name.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
@@ -29,7 +30,7 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
     // (/static/b/<build>/ or the bundled family's /static/bb/<build>/, #4228)
     const modOf = url => { const m = url.match(/\/static\/(?:bb?\/[^/]+\/)?([a-z_]+\.js)(\?[^#]*)?$/); return m ? m[1] + (m[2] || '') : null; };
     Network.requestWillBeSent(e => { const m = modOf(e.request.url); if (m) seen.push(m); else if (/\/api\/workflows/.test(e.request.url)) seen.push('API ' + e.request.url.replace(/^.*\/api\//, '/api/')); });
-    Fetch.requestPaused(async e => {
+    safePaused(client, async e => {
         const m = modOf(e.request.url) || '';
         const base = m.replace(/\?.*$/, '');
         const p = plan[base];

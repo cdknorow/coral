@@ -6,6 +6,7 @@
 // readable, and the next user of it (Docs) loads it again. Highlighting keeps
 // markup inside code as text.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -25,7 +26,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const seen = [];      // highlight.js requests (file name)
     let failNext = false; // fail the next highlight.min.js request
     Network.requestWillBeSent(e => { const m = /\/vendor\/hljs\/([^?]+)/.exec(e.request.url); if (m) seen.push(m[1]); });
-    Fetch.requestPaused(async e => {
+    safePaused(client, async e => {
         if (failNext && e.request.url.includes('/vendor/hljs/highlight.min.js')) { failNext = false; return Fetch.failRequest({ requestId: e.requestId, errorReason: 'Failed' }); }
         return Fetch.continueRequest({ requestId: e.requestId });
     });

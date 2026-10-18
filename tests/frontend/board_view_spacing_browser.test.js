@@ -9,6 +9,7 @@
 'use strict';
 
 const CDP = require('chrome-remote-interface');
+const { safePaused } = require('./helpers/paused');
 const fs = require('node:fs');
 const path = require('node:path');
 const BASE = require('./test_base').BASE;
@@ -52,7 +53,7 @@ const VIEWS = [
             const g = c.getContext('2d'); g.fillStyle = '#3a7bd5'; g.fillRect(0, 0, 1800, 240); g.fillStyle = '#fff'; g.fillRect(40, 40, 1720, 160);
             return c.toDataURL('image/png').split(',')[1]; })()`);
         await Fetch.enable({ patterns: [{ urlPattern: `*/api/artifacts/${HEX}*` }] });
-        Fetch.requestPaused(({ requestId }) => Fetch.fulfillRequest({ requestId, responseCode: 200,
+        safePaused(client, ({ requestId }) => Fetch.fulfillRequest({ requestId, responseCode: 200,
             responseHeaders: [{ name: 'Content-Type', value: 'image/png' }], body: png }).catch(() => {}));
 
         for (const [id, title] of [['member-1', 'Developer member-1'], ['a-very-long-subscriber-identifier-0123456789abcdef', 'Senior Platform Reliability Developer With A Long Title']]) {

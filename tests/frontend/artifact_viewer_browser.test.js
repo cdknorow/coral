@@ -5,6 +5,7 @@
 // closes and focus returns. The artifact bytes come from a stubbed fetch (the server's
 // artifact store needs an agent session to upload; board_auto_attach_e2e covers that side).
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;
@@ -53,7 +54,7 @@ const MD = [
         Network.requestWillBeSent(p => requested.push(p.request.url));
         // The image artifact's bytes, for the <img> the viewer shows (a page fetch stub can't serve an <img>).
         await Fetch.enable({ patterns: [{ urlPattern: `*/api/artifacts/${IMG_HEX}*` }] });
-        Fetch.requestPaused(p => Fetch.fulfillRequest({ requestId: p.requestId, responseCode: 200,
+        safePaused(client, p => Fetch.fulfillRequest({ requestId: p.requestId, responseCode: 200,
             responseHeaders: [{ name: 'Content-Type', value: 'image/png' }], body: PNG_B64 }).catch(() => {}));
         await Emulation.setDeviceMetricsOverride({ width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: BASE }); await Page.loadEventFired();

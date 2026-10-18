@@ -5,6 +5,7 @@
 // cloud_servers.js?retry=1), and every later importer shares that one instance.
 // A background importer that fails gets no toast.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -24,7 +25,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const json = body => ({ responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
     const seen = [];      // cloud_servers.js requests, by file name + query
     let failNext = true;  // fail the first cloud_servers.js request
-    Fetch.requestPaused(async e => {
+    safePaused(client, async e => {
         const u = new URL(e.request.url);
         if (e.resourceType === 'Document') {
             // The dashboard, as the Cloud Hub serves it (cloud-mode boot flag).

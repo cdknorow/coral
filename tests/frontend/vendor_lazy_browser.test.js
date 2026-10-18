@@ -8,6 +8,7 @@
 // Drives Chrome over CDP (chrome-remote-interface) through agent_view_harness.js; run_cdp_suites.mjs
 // finds CDP suites by that name.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
@@ -43,7 +44,7 @@ const PAGE_PRELOAD = `(() => {
     let plan = {};
     const held = [];
     Network.requestWillBeSent(e => { if (/\/vendor\//.test(e.request.url)) seen.push(e.request.url.replace(/^.*\/vendor\//, '')); });
-    Fetch.requestPaused(async e => {
+    safePaused(client, async e => {
         const rel = e.request.url.replace(/^.*\/vendor\//, '');
         const p = plan[rel];
         if (p === 'fail') { delete plan[rel]; return Fetch.failRequest({ requestId: e.requestId, errorReason: 'Failed' }); }

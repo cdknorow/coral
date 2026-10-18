@@ -5,6 +5,7 @@
 // The hub injects the boot flag into the page; here a CDP Fetch interception does the same to Coral's index.
 // Keep CSP in sync with coral-hub internal/webui ContentSecurityPolicy().
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 
@@ -42,7 +43,7 @@ async function load(policy, { strict }) {
       { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' }, // the hub's session endpoint; Coral has none
     ] });
     let served = 0;
-    Fetch.requestPaused(async ev => {
+    safePaused(client, async ev => {
       if (ev.request.url.endsWith('/auth/session')) {
         return Fetch.fulfillRequest({ requestId: ev.requestId, responseCode: 200,
           responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],

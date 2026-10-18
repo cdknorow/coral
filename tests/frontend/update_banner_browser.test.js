@@ -8,6 +8,7 @@
 // "The server was updated" is made by adding a different X-Coral-Build to the answers through CDP (Fetch domain).
 // Drives Chrome over CDP through agent_view_harness.js; run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
@@ -19,7 +20,7 @@ const NEW_BUILD = 'ffffffffffff';
     let spoof = null; // the build the server "now" reports, or null for the real header
     let remoteSpoof = null; // the X-Coral-Build header a /api/remote/ answer carries (what a self-hosted hub's proxy used to relay), or null
     const seenBuilds = [];
-    Fetch.requestPaused(async e => {
+    safePaused(client, async e => {
         if (!e.responseStatusCode && !e.responseErrorReason) return Fetch.continueRequest({ requestId: e.requestId });
         let headers = e.responseHeaders || [];
         const real = headers.find(h => h.name.toLowerCase() === 'x-coral-build');

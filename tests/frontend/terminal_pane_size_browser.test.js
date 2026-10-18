@@ -20,6 +20,7 @@
 //
 // Drives Chrome over CDP (chrome-remote-interface); run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const { execFileSync } = require('node:child_process');
 const CDP = require('chrome-remote-interface');
 
@@ -223,7 +224,7 @@ async function select(tab, a) {
         console.log('5. Socket reconnect while the server is busy');
         await main.Fetch.enable({ patterns: [{ urlPattern: '*/resize*', requestStage: 'Request' }, { urlPattern: '*/poll*', requestStage: 'Request' }] });
         let busy = 0;
-        main.Fetch.requestPaused(e => {
+        safePaused(main, e => {
             busy++;
             main.Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 503, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }, { name: 'Retry-After', value: '1' }],
                 body: Buffer.from(JSON.stringify({ error: 'busy' })).toString('base64') }).catch(() => {});

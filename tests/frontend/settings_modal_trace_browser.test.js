@@ -4,6 +4,7 @@
 // its options), the text of the status lines, which group is open, and what was fetched. Compared with fixtures/settings_modal_trace.json (sha256 per scenario, with readable lines). CORAL_UPDATE_GOLDEN=1
 // rewrites it. Drives Chrome over CDP through agent_view_harness.js; the hub case is served as the hub serves it (boot flag mode "cloud", as in hub_nav_browser).
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
@@ -38,7 +39,7 @@ const SCEN = [
         await Network.setCacheDisabled({ cacheDisabled: true });
         await Network.setBypassServiceWorker({ bypass: true }); // the service worker would answer the document before Fetch sees it
         await Fetch.enable({ patterns: [{ urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' }, { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' }] });
-        Fetch.requestPaused(async e => {
+        safePaused(client, async e => {
             if (e.request.url.endsWith('/auth/session')) return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify({ authenticated: true, email: 'tester@example.com', csrf: 'x' })).toString('base64') });
             if (e.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: e.requestId });
             const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: e.requestId });

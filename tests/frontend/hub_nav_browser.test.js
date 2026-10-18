@@ -6,6 +6,7 @@
 // Expects CORAL_TEST_URL + CDP_PORT from tests/frontend/run.sh. Drives Chrome over CDP
 // (chrome-remote-interface). Exit 0 / 1.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 
@@ -29,7 +30,7 @@ const BASE = require('./test_base').BASE;
             { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' },
             { urlPattern: `${BASE}/hub/nav.json`, requestStage: 'Request' },
         ] });
-        Fetch.requestPaused(async e => {
+        safePaused(client, async e => {
             const u = e.request.url;
             if (u.endsWith('/hub/nav.json')) {
                 navAsked++;

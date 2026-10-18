@@ -6,6 +6,7 @@
 //
 // Drives Chrome over CDP (chrome-remote-interface); run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 
@@ -26,7 +27,7 @@ const BASE = require('./test_base').BASE;
         await Network.setCacheDisabled({ cacheDisabled: true });
         Network.requestWillBeSent(e => reqs.push(e.request.url));
         await Fetch.enable({ patterns: [{ urlPattern: '*/modals.js*', requestStage: 'Request' }, { urlPattern: '*/launch_models.js*', requestStage: 'Request' }] });
-        Fetch.requestPaused(e => {
+        safePaused(client, e => {
             const member = /\/launch_models\.js/.test(e.request.url);
             if (member ? blockMember > 0 : block > 0) { if (member) blockMember--; else block--; return Fetch.failRequest({ requestId: e.requestId, errorReason: 'InternetDisconnected' }); }
             return Fetch.continueRequest({ requestId: e.requestId });

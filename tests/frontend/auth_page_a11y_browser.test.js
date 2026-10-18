@@ -4,6 +4,7 @@
 // The page is the server's own markup (the checked-in goldens, kept in step by internal/auth's TestAuthPageGolden) served through CDP request interception,
 // the script and styles are the real /static files. SHOT_DIR=<dir> saves the create page at 200%. Run against an isolated dev server.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
@@ -28,7 +29,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         // flake). Bypass it.
         await client.Network.setBypassServiceWorker({ bypass: true });
         await Fetch.enable({ patterns: [{ urlPattern: BASE + '/auth*' }] });
-        client.on('Fetch.requestPaused', p => {
+        safePaused(client, p => {
             const u = new URL(p.request.url);
             if (p.request.method === 'POST') return Fetch.fulfillRequest({ requestId: p.requestId, responseCode: reply.status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(reply.body)).toString('base64') });
             if (u.pathname !== '/auth') return Fetch.continueRequest({ requestId: p.requestId });

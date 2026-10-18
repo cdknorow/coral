@@ -6,6 +6,7 @@
 //
 // Expects CORAL_TEST_URL + CDP_PORT from the runner. CORAL_SCREENSHOT_DIR=<dir> saves screenshots.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const fs = require('node:fs');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
@@ -24,7 +25,7 @@ const BASE = require('./test_base').BASE;
         await Fetch.enable({ patterns: [{ urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' }, { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' },
             { urlPattern: `${BASE}/api/servers*`, requestStage: 'Request' }, { urlPattern: `${BASE}/api/sessions/live*`, requestStage: 'Request' }, { urlPattern: `${BASE}/enroll*`, requestStage: 'Request' }] });
         const json = (id, status, body) => Fetch.fulfillRequest({ requestId: id, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
-        Fetch.requestPaused(async e => {
+        safePaused(client, async e => {
             const u = e.request.url;
             if (u.endsWith('/auth/session')) return json(e.requestId, 200, { authenticated: true, email: 'tester@example.com', csrf: 'x' });
             if (/\/api\/servers(\?|$)/.test(u)) return json(e.requestId, 200, { servers: machines.map(m => ({ id: m.id, label: m.label, online: m.status === 'online', created_at: '2026-10-01T00:00:00Z', last_seen: '2026-10-18T00:00:00Z' })) });

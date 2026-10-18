@@ -2,6 +2,7 @@
 // existing preset) and Reset built-in are not drawn, the preset reads as read-only with the reason, and Enter in the name box sends nothing;
 // a NEW preset can still be saved (its POST is allowed). On a local dashboard both buttons work as before. Run against an isolated dev server.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const { connect } = require('./agent_view_harness');
 
 (async () => {
@@ -44,7 +45,7 @@ const { connect } = require('./agent_view_harness');
         await Network.enable(); await Network.setBypassServiceWorker({ bypass: true }); // the first load's service worker would answer the page itself
         // The page is the local server's own with the Hub's boot flag and a Hub sign-in answered, as hub_readonly_browser does it.
         await Fetch.enable({ patterns: [{ urlPattern: '*', resourceType: 'Document', requestStage: 'Response' }, { urlPattern: '*/auth/session', requestStage: 'Request' }] });
-        Fetch.requestPaused(async e => {
+        safePaused(client, async e => {
             if (e.request.url.endsWith('/auth/session')) {
                 return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
                     body: Buffer.from(JSON.stringify({ authenticated: true, email: 'qa@example.com', csrf: 'qa-csrf' })).toString('base64') });

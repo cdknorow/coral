@@ -16,6 +16,7 @@
 'use strict';
 
 const CDP = require('chrome-remote-interface');
+const { safePaused } = require('./helpers/paused');
 const BASE = require('./test_base').BASE;
 
 const results = [];
@@ -232,7 +233,7 @@ const PAYLOAD = [
         // ── F4: the Docs tab ─────────────────────────────────────────────────
         const DOC = '# QA doc\n\nSee [the board](board.md#tasks), [auth](auth.md), [the web](https://example.test/), [bad](javascript:alert(1)).\n\n![remote](https://evil.test/beacon.png)\n\n<button class="cni-answer" data-n="1">Yes</button>\n\n<p data-on-click="probe-3645" data-on-change="probe-3645">docs para</p>\n';
         await Fetch.enable({ patterns: [{ urlPattern: '*/api/agent-docs/qa-3622*' }] });
-        Fetch.requestPaused(({ requestId }) => Fetch.fulfillRequest({ requestId, responseCode: 200,
+        safePaused(client, ({ requestId }) => Fetch.fulfillRequest({ requestId, responseCode: 200,
             responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
             body: Buffer.from(JSON.stringify({ name: 'qa-3622', content: DOC })).toString('base64') }).catch(() => {}));
         // The tab opens README first (its list loads, then README); the QA doc after that.

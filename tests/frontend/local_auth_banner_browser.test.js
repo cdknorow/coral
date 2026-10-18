@@ -4,6 +4,7 @@
 // it fits a 390 px phone and 200 percent text, and the Coral Hub's view never shows it. The auth-status answer is faked in the page.
 // Run against an isolated dev server. BANNER_SHOT_DIR=<dir> saves screenshots of the banner.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const { connect } = require('./agent_view_harness');
 
 const TEXT = 'Local sign-in is OFF: any program on this computer can use Coral.';
@@ -110,7 +111,7 @@ const FAKE = `(() => {
         // The Hub's view never shows it.
         await Network.enable(); await Network.setBypassServiceWorker({ bypass: true });
         await Fetch.enable({ patterns: [{ urlPattern: '*', resourceType: 'Document', requestStage: 'Response' }, { urlPattern: '*/auth/session', requestStage: 'Request' }] });
-        Fetch.requestPaused(async e => {
+        safePaused(client, async e => {
             if (e.request.url.endsWith('/auth/session')) {
                 return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
                     body: Buffer.from(JSON.stringify({ authenticated: true, email: 'qa@example.com', csrf: 'qa-csrf' })).toString('base64') });

@@ -6,6 +6,7 @@
 // search placeholder fits its box; the Servers tab's Local row and an
 // unreachable row; opening a view before the first list load is not re-opened.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 
@@ -24,7 +25,7 @@ const BASE = require('./test_base').BASE;
     let holdNextList = false;
     let fakeHub = false;     // answer /api/health as a hub (phase 15)
     let heldReleased = false; // the held list has been answered: from then on every list is a hub's
-    Fetch.requestPaused(async e => {
+    safePaused(client, async e => {
         const u = new URL(e.request.url);
         const json = (code, body) => Fetch.fulfillRequest({ requestId: e.requestId, responseCode: code, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
         // Docs: fail as asked, then answer with a one-page list (a test build

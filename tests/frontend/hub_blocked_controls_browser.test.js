@@ -9,6 +9,7 @@
 // The hub is faked as in hub_launch_actions_browser: the page's boot data says "cloud" and /api/servers is answered in the page.
 // Drives Chrome over CDP through agent_view_harness.js; run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
@@ -37,7 +38,7 @@ const HUB_PRELOAD = `(() => {
         if (!on) return;
         await Fetch.enable({ patterns: [{ urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' }, { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' }] });
     };
-    Fetch.requestPaused(async e => {
+    safePaused(client, async e => {
         if (e.request.url.endsWith('/auth/session')) {
             return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
                 body: Buffer.from(JSON.stringify({ authenticated: true, email: 'qa@example.com', csrf: 'qa-csrf' })).toString('base64') });

@@ -4,6 +4,7 @@
 // F2: the expanded Agent UI panel is a named dialog with a 44px Close button;
 //     Close and Escape both close it and return focus to the Expand button.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -168,7 +169,7 @@ const UNDERSIZED = `(() => {
 
         // The Cloud Hub account dropdown (Servers / Sign out, #3131): the dashboard
         // as the hub serves it (cloud-mode boot flag, a signed-in session).
-        Fetch.requestPaused(async e => {
+        safePaused(client, async e => {
             if (e.resourceType === 'Document') {
                 const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: e.requestId });
                 const html = (base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body).replace('{"mode":"local"}', '{"mode":"cloud"}');

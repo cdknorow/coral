@@ -1,6 +1,7 @@
 // Isolated real-browser coverage of the four file/artifact sidebar tabs (Files, Browse, Artifacts,
 // Team Artifacts), previews in the preview pane, and lazy explorer scope.
 const assert=require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const fs=require('node:fs');
 const CDP=require('chrome-remote-interface');
 const base=require('./test_base').BASE;
@@ -8,7 +9,7 @@ const base=require('./test_base').BASE;
  const c=await CDP({port:Number(process.env.CDP_PORT||9222)});
  const ev=async expression=>{const r=await c.Runtime.evaluate({expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
  let imageRequests=[];
- c.Fetch.requestPaused(async ({requestId,request})=>{
+ safePaused(c, async ({requestId,request})=>{
   const u=new URL(request.url);imageRequests.push({filepath:u.searchParams.get('filepath'),session:u.searchParams.get('session_id'),raw:u.searchParams.get('raw')});
   const valid=u.searchParams.get('filepath')==='image.png'&&u.searchParams.get('session_id')==='a'&&u.searchParams.get('raw')==='1';
   await c.Fetch.fulfillRequest({requestId,responseCode:valid?200:404,responseHeaders:[{name:'Content-Type',value:valid?'image/png':'application/json'}],body:valid?'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=':Buffer.from(JSON.stringify({error:'File not found'})).toString('base64')});

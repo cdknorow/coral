@@ -3,6 +3,7 @@
 // goldens, kept in step by internal/auth's TestAuthPageGolden), served through CDP request interception together with canned
 // replies for #3949's routes; the script is the real /static/auth_page.js. Run against an isolated dev server.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
@@ -40,7 +41,7 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
         const keep = (log, x) => { log.push(x); if (log.length > 14) log.shift(); };
         client.Network.requestWillBeSent(e => { if (e.type === 'Document') keep(navLog, `${e.request.method} ${e.request.url.replace(BASE, '')} by ${e.initiator.type}${e.redirectResponse ? ' redirect-from ' + e.redirectResponse.url.replace(BASE, '') + ' ' + e.redirectResponse.status : ''} @${navSeq}`); });
         await Fetch.enable({ patterns: [{ urlPattern: BASE + '/auth*' }, { urlPattern: BASE + '/zz-done*' }] });
-        client.on('Fetch.requestPaused', async p => {
+        safePaused(client, async p => {
             const u = new URL(p.request.url);
             keep(servedLog, `${p.request.method} ${u.pathname}${u.search} @${navSeq}${p.redirectedRequestId ? ' (redirect hop)' : ''}`);
             const fulfill = (status, body, type, headers = {}) => Fetch.fulfillRequest({ requestId: p.requestId, responseCode: status, responseHeaders: [{ name: 'Content-Type', value: type }, ...Object.entries(headers).map(([name, value]) => ({ name, value }))], body: Buffer.from(body).toString('base64') });

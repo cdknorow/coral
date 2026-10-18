@@ -1,6 +1,7 @@
 // Focused browser regression for the optional Files / Team artifacts source.
 // Run against an isolated Coral dev server and headless Chrome via CDP.
 const assert = require('node:assert/strict');
+const { safePaused } = require('./helpers/paused');
 const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
@@ -11,7 +12,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
     const { Page, Runtime, Input, Fetch } = client;
     let linkedRequests = 0;
-    Fetch.requestPaused(async ({requestId}) => {
+    safePaused(client, async ({requestId}) => {
         linkedRequests++;
         const html = '<!doctype html><style>body{font:20px sans-serif;padding:32px;background:#eef5ff;color:#163455}</style><h1>Linked design guide</h1><p>This linked page is rendered inside Coral.</p><script>parent.postMessage("artifact-script-ran","*");document.body.dataset.scriptRan="yes"</script>';
         await Fetch.fulfillRequest({requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'text/html'}],body:Buffer.from(html).toString('base64')});
