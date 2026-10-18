@@ -531,15 +531,29 @@ func urlUserGlue(b []byte) (int, bool) {
 	for i := 0; i < len(b) && i <= maxURLUser; i++ {
 		switch c := b[i]; {
 		case c == ':':
+			countURLScan(i + 1)
 			return i + 1, false
 		case !urlUserByte(c):
+			countURLScan(i + 1)
 			return -1, false
 		}
 	}
+	countURLScan(min(len(b), maxURLUser+1))
 	if len(b) <= maxURLUser {
 		return -2, false
 	}
 	return -1, false
+}
+
+// urlScanned, when a test sets it, counts the bytes the URL finder examines (the "://" search, the user, the password's run and its
+// port check): the work of URLPasswordSpans as a number, so that its linear time is tested without a clock (#4908: a timing ratio
+// failed under a load of 32 to 54). Nil in production: each helper adds once per call, never per byte.
+var urlScanned *int
+
+func countURLScan(n int) {
+	if urlScanned != nil {
+		*urlScanned += n
+	}
 }
 
 // urlPassword measures a URL's password: up to the last '@' before the next space, quote or
@@ -566,6 +580,7 @@ func urlPassword(b []byte, final bool) (n int, need bool) {
 	for d < i && b[d] >= '0' && b[d] <= '9' {
 		d++
 	}
+	countURLScan(i + d)
 	if d > 0 && (d == i || b[d] == '/' || b[d] == '?' || b[d] == '#') {
 		return 0, false // a port
 	}

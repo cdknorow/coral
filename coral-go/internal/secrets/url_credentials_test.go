@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -175,29 +174,8 @@ func TestURLPasswordsOnOneLineAndBounded(t *testing.T) {
 	}
 }
 
-// The URL finder is linear in the text: a line made of "://" (or of "a://u:", a user and no password; "x://:"; or of whole URLs with a password) of
-// 4x the size takes about 4x as long, where a finder that rescans from each "://" takes 16x (and one that does at 12 MiB does not finish: the
-// test then runs into go test's timeout). Wall time is only compared with itself: the best of five runs at each size, so a loaded machine's
-// noise falls on both and the ratio holds (#4828: a fixed bound on the time of a whole redaction took 3.1-3.6 s alone and crossed its budget
-// under load). The sizes stay at 1 and 4 MiB: at 16 MiB the copy of the text and the heap's growth are more than the finder's own work.
-func TestURLPasswordSpansGrowLinearly(t *testing.T) {
-	best := func(text string) time.Duration {
-		d := time.Duration(1<<63 - 1)
-		for run := 0; run < 5; run++ {
-			start := time.Now()
-			redact.URLPasswordSpans(text)
-			if e := time.Since(start); e < d {
-				d = e
-			}
-		}
-		return d
-	}
-	for _, unit := range []string{"://", "a://u:", "x://:", "://u:p@"} {
-		small, large := strings.Repeat(unit, (1<<20)/len(unit)), strings.Repeat(unit, (1<<22)/len(unit))
-		ds, dl := best(small), best(large)
-		assert.Less(t, int64(dl), 10*int64(ds)+int64(30*time.Millisecond), "%q: 4x the text took %v against %v (linear is about 4x, a quadratic finder 16x)", unit, dl, ds)
-	}
-}
+// The URL finder's linear time is tested in pkg/redact (TestURLPasswordSpansWorkIsLinear), by counting the bytes it examines, and its ceiling on a
+// huge line (TestURLPasswordSpansFinishOnAHugeLine): the timing ratio that was here failed under a load of 32 to 54 on epoch (#4908).
 
 // Property: any text built from URL atoms, written in two parts, is redacted as the whole is, and a JSON string built from them stays JSON.
 func TestURLAtomsSplitAndJSONStaysValid(t *testing.T) {

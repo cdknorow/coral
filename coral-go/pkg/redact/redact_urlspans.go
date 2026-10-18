@@ -18,6 +18,7 @@ func URLPasswordSpans(text string) []Span {
 			break
 		}
 		start := from + i + len(sep)
+		countURLScan(i + len(sep))
 		from = start
 		glue, _ := urlUserGlue(b[start:])
 		if glue <= 0 {
