@@ -528,21 +528,23 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 }
 
 // restartTerminal gives the agent its terminal under the new session name: a fresh one (on pty also for a live
-// agent, whose terminal is ended first), or on tmux the old pane respawned and renamed, with its log started and its
+// agent, whose terminal is ended once the new one runs), or on tmux the old pane respawned and renamed, with its log started and its
 // title set. It returns where the start command is typed.
 func (h *SessionsHandler) restartTerminal(ctx context.Context, p *restartPlan) (string, answer) {
 	fail := func(msg string) answer { return func(w http.ResponseWriter) { errInternalServer(w, msg) } }
 	var target string
 	if p.fresh != nil || p.usePTY {
 		if p.usePTY {
-			if p.pane != nil {
-				// A live pty terminal: ended, and started again under the new name below (pty has no rename).
-				if err := h.backend.Kill(p.pane.SessionName); err != nil {
-					return "", fail(fmt.Sprintf("pty restart failed: %v", err))
-				}
-			}
 			if err := h.backend.Spawn(p.newSessionName, p.agentType, p.workdir, p.newSessionID, "", 200, 50); err != nil {
 				return "", fail(fmt.Sprintf("pty spawn failed: %v", err))
+			}
+			if p.pane != nil {
+				// A live pty terminal: ended once its replacement runs under the new name (pty has no rename), so a
+				// spawn that fails leaves the agent running.
+				if err := h.backend.Kill(p.pane.SessionName); err != nil {
+					h.backend.Kill(p.newSessionName)
+					return "", fail(fmt.Sprintf("pty restart failed: %v", err))
+				}
 			}
 		} else {
 			ptymanager.ResetAgentLog(p.newLogPath) // 0600, never through a link (#3601, W17)
@@ -824,17 +826,18 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	target := fmt.Sprintf("%s:0.0", newSessionName)
 	switch {
 	case h.restartsOnPTY(ls):
-		// On pty, as Restart (#4767): a new pty terminal under the new name, a live one ended first (pty has no rename,
+		// On pty, as Restart (#4767): a new pty terminal under the new name, then a live one ended (pty has no rename,
 		// and no pty session is named "<name>:0.0" or "<name>.0"); the start command goes to the session by name.
-		if pane != nil {
-			if err := h.backend.Kill(pane.SessionName); err != nil {
-				errInternalServer(w, fmt.Sprintf("pty resume failed: %v", err))
-				return
-			}
-		}
 		if err := h.backend.Spawn(newSessionName, agentType, workdir, newSessionID, "", 200, 50); err != nil {
 			errInternalServer(w, fmt.Sprintf("pty spawn failed: %v", err))
 			return
+		}
+		if pane != nil { // ended once its replacement runs: a spawn that fails leaves the agent running
+			if err := h.backend.Kill(pane.SessionName); err != nil {
+				h.backend.Kill(newSessionName)
+				errInternalServer(w, fmt.Sprintf("pty resume failed: %v", err))
+				return
+			}
 		}
 		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
 			log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", newSessionName)

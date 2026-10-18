@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -90,7 +91,7 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 			require.NotNil(t, ls, "the store has the new session")
 			assert.Eventually(t, func() bool {
 				replay, _ := pty.Replay(out.SessionName)
-				return bytes.Contains(replay, []byte("/usr/bin/true"))
+				return typedStart(replay)
 			}, 5*time.Second, 50*time.Millisecond, "the start command was typed into the new session")
 		})
 	}
@@ -122,8 +123,84 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 			assert.False(t, pty.IsRunning(name), "the old terminal is ended")
 			assert.Eventually(t, func() bool {
 				replay, _ := pty.Replay(out.SessionName)
-				return bytes.Contains(replay, []byte("/usr/bin/true"))
+				return typedStart(replay)
 			}, 5*time.Second, 50*time.Millisecond, "the start command was typed into the new session")
+		})
+	}
+}
+
+// typedStart reports whether a session's replay shows its start command typed: inline, or for one over the
+// inline limit (agy's, under a long TMPDIR such as macOS's /var/folders/...) the script that holds it sourced.
+func typedStart(replay []byte) bool {
+	return bytes.Contains(replay, []byte("/usr/bin/true")) || bytes.Contains(replay, []byte("/coral-command-"))
+}
+
+// spawnFails is the pty backend with a Spawn that fails, as one does at a fork limit or for a working directory
+// that is gone.
+type spawnFails struct{ *ptymanager.PTYBackend }
+
+func (spawnFails) Spawn(string, string, string, string, string, uint16, uint16) error {
+	return errors.New("fork/exec: resource temporarily unavailable")
+}
+
+// Backend's SHOULD on #4767: a restart or resume of a live pty agent whose new terminal can't start leaves the
+// agent running. The old terminal was ended before the spawn, so a failed spawn left the agent dead with a 500.
+func TestRestartOfALivePTYSessionWhoseSpawnFailsLeavesItRunning(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dataDir, err := os.MkdirTemp("/tmp", "rp")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(dataDir) })
+	cfg := config.Load(dataDir)
+	cfg.LogDir = filepath.Join(dataDir, "logs")
+	require.NoError(t, os.MkdirAll(cfg.LogDir, 0o700))
+	db, err := storetest.Open(t, filepath.Join(dataDir, "s.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	ss := store.NewSessionStore(db)
+	ctx := context.Background()
+	require.NoError(t, ss.SetSetting(ctx, "cli_path_claude", "/usr/bin/true"))
+
+	pty := ptymanager.NewPTYBackend()
+	t.Cleanup(func() {
+		var wg sync.WaitGroup
+		for _, sess := range pty.ListSessions() {
+			wg.Add(1)
+			go func(name string) { defer wg.Done(); pty.Kill(name) }(naming.SessionName(sess.AgentType, sess.SessionID))
+		}
+		wg.Wait()
+		pty.Close()
+	})
+	// Not a *PTYBackend: the restart goes the pty way because the stored session says pty.
+	h := NewSessionsHandler(db, cfg, spawnFails{pty}, ptymanager.NewPTYSessionTerminal(pty), nil)
+	r := chi.NewRouter()
+	r.Post("/api/sessions/live/{name}/restart", h.Restart)
+	r.Post("/api/sessions/live/{name}/resume", h.Resume)
+
+	for _, route := range []string{"restart", "resume"} {
+		t.Run(route, func(t *testing.T) {
+			sid := map[string]string{"restart": "4767ffff-0000-4000-8000-000000000006", "resume": "47670000-0000-4000-8000-000000000007"}[route]
+			name := naming.SessionName("claude", sid)
+			require.NoError(t, pty.Spawn(name, "claude", dataDir, sid, "", 80, 24))
+			onPTY := "pty"
+			require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+				SessionID: sid, AgentName: "tester", AgentType: "claude", WorkingDir: dataDir, Backend: &onPTY,
+			}))
+			fields := map[string]any{"session_id": sid, "agent_type": "claude"}
+			if route == "resume" {
+				fields = map[string]any{"session_id": "4767eeee-0000-4000-8000-000000000005", "agent_type": "claude", "current_session_id": sid}
+			}
+			body, _ := json.Marshal(fields)
+			req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/"+route, bytes.NewReader(body))
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+			assert.Equal(t, http.StatusInternalServerError, rec.Code, rec.Body.String())
+			assert.Contains(t, rec.Body.String(), "pty spawn failed")
+			assert.True(t, pty.IsRunning(name), "the old terminal still runs")
+			assert.Len(t, pty.ListSessions(), 1+map[string]int{"restart": 0, "resume": 1}[route], "no new terminal")
+			ls, err := ss.GetLiveSession(ctx, sid)
+			require.NoError(t, err)
+			require.NotNil(t, ls)
+			assert.Equal(t, "active", ls.Status, "the agent is still live in the store")
 		})
 	}
 }
