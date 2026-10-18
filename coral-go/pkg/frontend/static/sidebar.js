@@ -339,7 +339,8 @@ export function toggleAgenticPanel(forceState) {
  function _syncPanelToggleBtn(isOpen) {
     document.body.setAttribute('data-dock-open', isOpen ? '1' : '0'); // for the page's own layout (the board's toolbar makes room when the sidebar is open)
     const btn = document.getElementById('panel-toggle-btn');
-    if (btn) btn.classList.toggle('active', isOpen);
+    if (btn) { btn.classList.toggle('active', isOpen); btn.setAttribute('aria-pressed', isOpen ? 'true' : 'false'); }
+    document.dispatchEvent(new CustomEvent('coral:dock-changed')); // the Saved button's pressed state follows (saved_marks.js, #4742)
     const popoutBtn = document.getElementById('popout-panel-toggle-btn');
     if (popoutBtn) {
         popoutBtn.classList.toggle('active', isOpen);

@@ -106,6 +106,39 @@ function watch() {
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
 
+// The sidebar showing the Saved tab (#4742): open (a phone: the overlay) with the Saved tab the active one. The top bar's Saved button is pressed then,
+// and clicking it again, Escape in the sidebar, or the X in its header close it.
+export function savedShowing() {
+    const dock = document.getElementById('agentic-state');
+    if (!dock) return false;
+    const open = window.innerWidth <= 767 ? dock.classList.contains('mobile-panel-overlay') : !dock.classList.contains('collapsed');
+    return open && !!document.getElementById('agentic-tab-saved')?.classList.contains('active');
+}
+export function syncSavedButton() {
+    const b = document.getElementById('saved-btn');
+    if (!b) return;
+    const on = savedShowing() ? 'true' : 'false';
+    if (b.getAttribute('aria-pressed') !== on) b.setAttribute('aria-pressed', on);
+}
+document.addEventListener('coral:dock-changed', syncSavedButton);
+// The pressed state follows the sidebar however it changes (the dock's own open state per page, a tab chosen, a persisted state at load): its class, and the Saved tab's.
+function watchDock() {
+    syncSavedButton();
+    const opts = { attributes: true, attributeFilter: ['class'] };
+    for (const id of ['agentic-state', 'agentic-tab-saved']) { const el = document.getElementById(id); if (el) new MutationObserver(syncSavedButton).observe(el, opts); }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchDock); else watchDock();
+window.addEventListener('resize', syncSavedButton); // a phone's overlay and a desktop's collapsed dock are the same sidebar at another width
+// Escape closes it with the focus back on the button, when the key is meant for the sidebar: not from a field, a dialog or a menu that has it.
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || !savedShowing()) return;
+    const t = e.target instanceof Element ? e.target : document.body;
+    if (t.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], .modal')) return;
+    if (!(t === document.body || t.closest('#agentic-state') || t.id === 'saved-btn')) return;
+    e.preventDefault();
+    importOnce('./saved.js').then(m => m.closeSaved()).catch(() => {});
+});
+
 // The top bar's Saved button shows how many are open (#saved-btn .saved-count); refreshed at start and whenever the list changes.
 let countTimer = 0;
 let savedCount = 0;

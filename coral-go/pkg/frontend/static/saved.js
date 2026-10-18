@@ -6,7 +6,7 @@
 import { state } from './state.js';
 import { showToast } from './utils.js';
 import { sessionServer, normServer, serverFetch, identityKey, LOCAL_SERVER } from './server_base.js';
-import { savedChanged, setSavedCount, validSavedItem } from './saved_marks.js';
+import { savedChanged, setSavedCount, validSavedItem, savedShowing, syncSavedButton } from './saved_marks.js';
 import { effectiveLiveViewMode, setLiveViewMode, jumpToLiveMessage } from './live_chat.js';
 
 const $ = id => document.getElementById(id);
@@ -280,10 +280,29 @@ export function showSaved() {
     return showing;
 }
 
+let _before = null; // {open, tab}: the dock as it was when the Saved button opened it
+function dockOpen() {
+    const dock = $('agentic-state');
+    return !!dock && (window.innerWidth <= 767 ? dock.classList.contains('mobile-panel-overlay') : !dock.classList.contains('collapsed'));
+}
+/** Close the sidebar the Saved button opened: the tab the agent's dock had is shown again if it was open, the sidebar is shut if it was not. The focus goes back to the button. */
+export function closeSaved({ focus = true } = {}) {
+    if (!savedShowing()) return false;
+    const before = _before; _before = null;
+    if (before && before.open && before.tab && before.tab !== 'saved') window.switchAgenticTab?.(before.tab, 'top');
+    else window.toggleAgenticPanel?.(false);
+    syncSavedButton();
+    if (focus) $('saved-btn')?.focus();
+    return true;
+}
+
 /** The top bar's Saved button: the right sidebar of the page on screen open on its Saved tab (or the tab focused if it already is), the focus inside it. Every page has the
  *  sidebar and the tab (#4539), so nothing has to be selected first. */
-export async function openSaved() {
+export async function openSaved({ toggle = false } = {}) {
+    if (toggle && savedShowing()) { closeSaved(); return; } // the top bar's button is a toggle: pressed, it closes the sidebar (#4742); the jump bar's Back to Saved and the toast's link only open
     dropJumpBar();
+    // What the sidebar was before, so closing leaves an agent's own dock as it was: open on its tab, or shut.
+    _before = { open: dockOpen(), tab: document.querySelector('#agentic-block-top .agentic-tab.active')?.dataset.tab || '' };
     const btn = $('agentic-tab-saved');
     btn?.classList.remove('tab-hidden'); // a tab the user hid is still what this button opens
     window.toggleAgenticPanel?.(true);

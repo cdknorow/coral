@@ -304,6 +304,8 @@ export function switchAgenticTab(tabName, blockId) {
         browserLocal.set(dockKey(`coral-agentic-tab-${blockId}`), tabName);
     }
 
+    document.dispatchEvent(new CustomEvent('coral:dock-changed')); // the Saved button's pressed state follows (saved_marks.js, #4742)
+
     if (tabName === 'team-settings') window.renderTeamSettingsTab?.();
 
     if (tabName === 'agent-ui') refreshAgentUI();

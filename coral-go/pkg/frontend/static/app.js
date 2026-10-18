@@ -205,7 +205,8 @@ registerActions({
     'm-dismiss-auto-wake': () => { window.dismissAutoWake(); },
     'm-end-leftover-tmux': () => { window.endLeftoverTmux(); },
     'm-go-home': () => { window.__coral._goHome(); },
-    'm-show-saved': () => { importOnce('./saved.js').then(m => m.openSaved()).catch(() => {}); }, // the Saved list loads the first time it is opened (#4510)
+    'saved-close': () => { importOnce('./saved.js').then(m => m.closeSaved()).catch(() => {}); }, // the X in the Saved sidebar (#4742)
+    'm-show-saved': () => { importOnce('./saved.js').then(m => m.openSaved({ toggle: true })).catch(() => {}); }, // the Saved list loads the first time it is opened (#4510)
     'm-mobile-connect-open': (el, event) => { event.preventDefault(); window._showMobileConnectModal(); },
     'm-show-launch-modal-then-select-launch-type': el => { if (["agent", "team"].includes(el.dataset.arg)) { window.showLaunchModal(); window._selectLaunchType(el.dataset.arg); } },
     'm-switch-mobile-tab': el => { if (["agents", "board", "chat"].includes(el.dataset.arg)) { window.switchMobileTab(el.dataset.arg); } },

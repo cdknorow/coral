@@ -83,7 +83,7 @@ const REMOTE = `(() => {
     };
     const items = () => ev(`[...document.querySelectorAll('#saved-list .saved-item')].map(li => ({ id: li.dataset.id, src: li.querySelector('.src').textContent, server: (li.querySelector('.server') || {}).textContent || null, kind: li.querySelector('.kind').textContent, hasOpen: !!li.querySelector('.saved-open') }))`);
     const openSaved = async () => {
-        await ev(`document.getElementById('saved-btn').click(); true`);
+        await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
         await waitFor(`document.getElementById('agentic-panel-saved').classList.contains('active') && document.querySelectorAll('#saved-list .saved-item, #saved-list .saved-note, #saved-list .saved-empty').length > 0`, 'the Saved list', 8000);
     };
     const refresh = async () => { await ev(`import((window.__coralStatic || '/static/') + 'saved.js').then(m => m.showSaved()).then(() => true)`); await sleep(300); }; // sleep-ok: item checks draw their chips as each answer arrives
