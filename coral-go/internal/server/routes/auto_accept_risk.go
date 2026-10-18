@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/safefs"
 )
 
@@ -57,12 +58,15 @@ var (
 
 // Tools whose path input is read or written.
 var autoAcceptFileTools = map[string]string{
-	"Write":        "writes",
-	"Edit":         "writes",
-	"MultiEdit":    "writes",
-	"NotebookEdit": "writes",
-	"Update":       "writes", // Claude's screen name for Edit
-	"Read":         "reads",
+	"Write":                "writes",
+	"Edit":                 "writes",
+	"MultiEdit":            "writes",
+	"NotebookEdit":         "writes",
+	"Update":               "writes", // Claude's screen name for Edit
+	"Read":                 "reads",
+	"write_to_file":        "writes",
+	"replace_file_content": "writes",
+	"view_file":            "reads",
 }
 
 // shellRisk returns why a shell command is high-risk, or "".
@@ -644,12 +648,16 @@ func fileRisk(tool, path, workDir string) string {
 func autoAcceptRisk(agentType, workDir string, pending *pendingTool, d approvalDecision, capture string) string {
 	pendingPath := false // the PreToolUse input names the file: it is the path, the screen only shows it
 	if pending != nil {
-		if cmd, ok := pending.Input["command"].(string); ok {
+		cmd, ok := pending.Input["command"].(string)
+		if !ok {
+			cmd, ok = pending.Input["CommandLine"].(string)
+		}
+		if ok {
 			if why := shellRisk(cmd, workDir); why != "" {
 				return why
 			}
 		}
-		for _, k := range []string{"file_path", "notebook_path", "path"} {
+		for _, k := range []string{"file_path", "notebook_path", "path", "TargetFile", "AbsolutePath"} {
 			if p, ok := pending.Input[k].(string); ok && strings.TrimSpace(p) != "" {
 				pendingPath = true
 				if why := fileRisk(pending.ToolName, p, workDir); why != "" {
@@ -660,15 +668,15 @@ func autoAcceptRisk(agentType, workDir string, pending *pendingTool, d approvalD
 	}
 	tool, input := screenAction(agentType, d, capture)
 	switch tool {
-	case "command", "Bash":
+	case "command", "Bash", "run_command":
 		// A command wrapped over several screen lines: try it joined both ways.
 		for _, c := range []string{input, strings.ReplaceAll(input, "\x00", "")} {
 			if why := shellRisk(strings.ReplaceAll(c, "\x00", " "), workDir); why != "" {
 				return why
 			}
 		}
-	case "edit":
-		if why := fileRisk("Write", strings.ReplaceAll(input, "\x00", ""), workDir); why != "" {
+	case "edit", "write_to_file", "replace_file_content":
+		if why := fileRisk("write_to_file", strings.ReplaceAll(input, "\x00", ""), workDir); why != "" {
 			return why
 		}
 	default:
@@ -689,7 +697,8 @@ func autoAcceptRisk(agentType, workDir string, pending *pendingTool, d approvalD
 // a long command or path wrapped over are joined with \x00: a command is tried
 // with a space and with nothing in between, a path with nothing.
 func screenAction(agentType string, d approvalDecision, capture string) (string, string) {
-	if agentType == "codex" {
+	switch agentType {
+	case at.Codex:
 		var parts []string
 		dest := false
 		for _, l := range d.Context {
@@ -708,6 +717,23 @@ func screenAction(agentType string, d approvalDecision, capture string) (string,
 		}
 		if d.Kind == "edit" || dest {
 			return "edit", strings.Join(parts, "\x00")
+		}
+		return "command", strings.Join(parts, "\x00")
+
+	case at.Agy, at.Antigravity, at.Gemini:
+		var parts []string
+		inCmd := false
+		for _, l := range d.Context {
+			if agyApprovalHeaderRe.MatchString(l) {
+				inCmd = true
+				continue
+			}
+			if agyApprovalQuestionRe.MatchString(l) {
+				break
+			}
+			if inCmd {
+				parts = append(parts, strings.TrimSpace(l))
+			}
 		}
 		return "command", strings.Join(parts, "\x00")
 	}

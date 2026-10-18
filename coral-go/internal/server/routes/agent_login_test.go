@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -183,6 +184,58 @@ func TestCodexUsageLimitText(t *testing.T) {
 	assert.Empty(t, codexLimitText(map[string]any{"recent_lines": old}), "scrolled away once Codex runs again")
 	assert.Equal(t, "Claude AI usage limit reached", claudeLimitText("Claude AI usage limit reached|1760000000"))
 }
+
+// #4578: Antigravity's rate-limit and quota detection: CLI signals (events, transcript) over screen text,
+// real agy 1.4.2 wording, near-misses on idle ignored, and old output scrolled away.
+func TestAgyUsageLimitText(t *testing.T) {
+	_, h, _, _ := setupSessionsTestServer(t)
+	const sid = "00000000-0000-4000-8000-000000004578"
+
+	// 1. Screen fallback with real agy 1.4.2 wording
+	idle := []string{
+		"Antigravity CLI 1.4.2",
+		"user@example.com (Google AI Pro)",
+		"Gemini 3.8 Flash (High)",
+		"? for shortcuts · View model quota usage", // near miss on idle screen
+		"Quota available: 100%",                     // near miss
+	}
+	assert.Empty(t, h.usageLimitText(at.Agy, "", "", map[string]any{"recent_lines": idle}))
+
+	hitQuota := append(append([]string{}, idle...), "● You have exhausted your quota on this model", "")
+	assert.Equal(t, "You have exhausted your quota on this model", h.usageLimitText(at.Agy, "", "", map[string]any{"recent_lines": hitQuota}))
+
+	hitResource := append(append([]string{}, idle...), "Resource has been exhausted (e.g. check quota)", "")
+	assert.Equal(t, "Resource has been exhausted (e.g. check quota)", h.usageLimitText(at.Agy, "", "", map[string]any{"recent_lines": hitResource}))
+
+	hitRate := append(append([]string{}, idle...), "Rate limit reached. Please wait a few moments before trying again.", "")
+	assert.Equal(t, "Rate limit reached. Please wait a few moments before trying again.", h.usageLimitText(at.Agy, "", "", map[string]any{"recent_lines": hitRate}))
+
+	// Scrolled away past limit lines
+	old := append(append([]string{}, hitQuota...), strings.Split(strings.Repeat("more work\n", agyLimitLines+2), "\n")...)
+	assert.Empty(t, h.usageLimitText(at.Agy, "", "", map[string]any{"recent_lines": old}))
+
+	// 2. CLI signal over screen: Stop event with termination reason takes priority
+	_, err := h.ts.InsertAgentEvent(context.Background(), &store.AgentEvent{
+		AgentName: "dev",
+		SessionID: &[]string{sid}[0],
+		EventType: "stop",
+		Summary:   "Agent stopped: quota_exceeded",
+	})
+	require.NoError(t, err)
+	// Screen has nothing about quota, but event signal reports the limit
+	assert.Equal(t, "You have exhausted your quota on this model.", h.usageLimitText(at.Agy, sid, "", map[string]any{"recent_lines": idle}))
+
+	// Stop event with resource_exhausted
+	_, err = h.ts.InsertAgentEvent(context.Background(), &store.AgentEvent{
+		AgentName: "dev",
+		SessionID: &[]string{sid}[0],
+		EventType: "stop",
+		Summary:   "Agent stopped: resource_exhausted",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Resource has been exhausted (e.g. check quota).", h.usageLimitText(at.Agy, sid, "", map[string]any{"recent_lines": idle}))
+}
+
 
 // A CLI's message is capped before the dashboard shows it, without splitting a character.
 func TestCapCLIText(t *testing.T) {

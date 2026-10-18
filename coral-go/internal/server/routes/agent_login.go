@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
 	"regexp"
 	"strings"
 	"sync"
@@ -148,6 +149,107 @@ func (h *SessionsHandler) usageLimitText(agentType, sessionID, workingDir string
 		}
 	case at.Codex:
 		return codexLimitText(logInfo)
+	case at.Agy, at.Antigravity, at.Gemini:
+		return h.agyLimitText(sessionID, workingDir, logInfo)
+	}
+	return ""
+}
+
+// agyLimitRe: Antigravity's rate-limit, resource-exhausted and quota messages, from real 1.4.2 CLI output.
+var agyLimitRe = regexp.MustCompile(`(?i)^[\s\x{25A0}\x{2022}\x{258C}\x{2502}>\x{25CB}\x{25CF}\x{2503}!\-–—*]*(resource has been exhausted\b.*|you have exhausted your quota\b.*|you've exceeded your current quota\b.*|quota exceeded\b.*|allocation quota reached\b.*|individual quota reached\b.*|rate limit (?:reached|exceeded)\b.*|rate limit\b.*|too many requests\b.*)`)
+
+var agyEventLimitRe = regexp.MustCompile(`(?i)\b(quota[ _]?exceeded|resource[ _]?exhausted|rate[ _]?limit[ _]?exceeded|stop_reason_quota_exhausted)\b`)
+
+const agyLimitLines = 10
+
+func (h *SessionsHandler) agyLimitText(sessionID, workingDir string, logInfo map[string]any) string {
+	// CLI signals over screen parsing rule: check hooks/events and transcript first
+	if notice := h.agySignalLimitText(sessionID, workingDir); notice != "" {
+		return capCLIText(notice)
+	}
+	// Fall back to terminal screen text
+	return agyScreenLimitText(logInfo)
+}
+
+func (h *SessionsHandler) agySignalLimitText(sessionID, workingDir string) string {
+	if sessionID == "" {
+		return ""
+	}
+	// Check newest state event (e.g. Stop hook with termination reason)
+	if h != nil && h.ts != nil {
+		if events, err := h.ts.GetSessionStateEvents(context.Background(), []string{sessionID}); err == nil {
+			if evs := events[sessionID]; len(evs) > 0 {
+				for i := len(evs) - 1; i >= 0; i-- {
+					e := evs[i]
+					if e.EventType == "stop" {
+						detail := ""
+						if e.DetailJSON != nil {
+							detail = *e.DetailJSON
+						}
+						if notice := agyReasonToNotice(e.Summary, detail); notice != "" {
+							return notice
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+	// Check transcript error
+	if h != nil && h.jsonl != nil {
+		if errText, ok := h.jsonl.ReadAgyAPIError(sessionID, workingDir); ok && errText != "" {
+			if agyLimitRe.MatchString(errText) || agyEventLimitRe.MatchString(errText) {
+				return errText
+			}
+		}
+	}
+	return ""
+}
+
+func agyReasonToNotice(summary, detailJSON string) string {
+	if detailJSON != "" {
+		var d struct {
+			Error  string `json:"error"`
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal([]byte(detailJSON), &d) == nil {
+			if d.Error != "" && agyLimitRe.MatchString(d.Error) {
+				return d.Error
+			}
+			if d.Reason != "" && agyEventLimitRe.MatchString(d.Reason) {
+				return agyReasonNoticeText(d.Reason)
+			}
+		}
+	}
+	if m := agyEventLimitRe.FindString(summary); m != "" {
+		return agyReasonNoticeText(m)
+	}
+	return ""
+}
+
+func agyReasonNoticeText(reason string) string {
+	r := strings.ToLower(reason)
+	switch {
+	case strings.Contains(r, "quota"):
+		return "You have exhausted your quota on this model."
+	case strings.Contains(r, "resource"):
+		return "Resource has been exhausted (e.g. check quota)."
+	case strings.Contains(r, "rate"):
+		return "Rate limit reached. Please try again later."
+	default:
+		return "This agent hit its usage limit and cannot continue until the limit resets."
+	}
+}
+
+func agyScreenLimitText(logInfo map[string]any) string {
+	lines, _ := logInfo["recent_lines"].([]string)
+	if len(lines) > agyLimitLines {
+		lines = lines[len(lines)-agyLimitLines:]
+	}
+	for i := len(lines) - 1; i >= 0; i-- {
+		if m := agyLimitRe.FindStringSubmatch(lines[i]); m != nil {
+			return capCLIText(strings.TrimSpace(m[1]))
+		}
 	}
 	return ""
 }

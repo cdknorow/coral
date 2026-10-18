@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -51,9 +52,14 @@ import (
 //	don't ask again ..." and "No, and tell Codex what to do differently (esc)".
 //	The digit answers it ("You approved codex to run ... this time").
 //
-// Gemini and Antigravity are not verified yet, so the switch is disabled for
-// them (and for pi and plain terminals).
-var autoAcceptSupported = map[string]bool{at.Claude: true, at.Codex: true}
+// Gemini and Antigravity menus navigate by arrow keys and Enter.
+var autoAcceptSupported = map[string]bool{
+	at.Claude:      true,
+	at.Codex:       true,
+	at.Agy:         true,
+	at.Antigravity: true,
+	at.Gemini:      true,
+}
 
 // autoAcceptUnsupported is the feed code for an agent type without a verified
 // approval table (the UI words it).
@@ -92,6 +98,8 @@ const (
 var (
 	claudeApprovalQuestionRe = regexp.MustCompile(`(?i)^do you want to\b`)
 	codexApprovalHeaderRe    = regexp.MustCompile(`^\s*Would you like to (run the following command|make the following edits)\?\s*$`)
+	agyApprovalHeaderRe      = regexp.MustCompile(`^\s*Requesting permission for:`)
+	agyApprovalQuestionRe    = regexp.MustCompile(`(?i)^(run this command\?|allow this action\?|do you want to run\b)`)
 	// The start of a tool line, whose arguments may wrap onto the following lines.
 	claudeToolStartRe = regexp.MustCompile(`^\s*⏺\s*([A-Za-z_][\w.-]*)\((.*)$`)
 	ruleLineRe        = regexp.MustCompile(`^\s*─{8,}\s*$`)
@@ -106,6 +114,7 @@ type approvalDecision struct {
 	Kind    string // codex: "command" or "edit"
 	Context []string
 	FP      string // fingerprint of the prompt (type, text, options)
+	Screen  promptScreen
 }
 
 func normalizedLabel(s string) string { return normalizeLabel(s) }
@@ -125,7 +134,7 @@ func classifyApproval(agentType, capture string) approvalDecision {
 			break
 		}
 	}
-	d := approvalDecision{Prompt: true}
+	d := approvalDecision{Prompt: true, Screen: screen}
 	var opts []string
 	for _, o := range screen.Options {
 		opts = append(opts, o.Label)
@@ -174,6 +183,27 @@ func classifyApproval(agentType, capture string) approvalDecision {
 			return d
 		}
 		pick(func(l string) bool { return l == "yes, proceed" || strings.HasPrefix(l, "yes, proceed (") })
+	case at.Agy, at.Antigravity, at.Gemini:
+		header := -1
+		for i := firstOpt - 1; i >= 0 && i >= firstOpt-40; i-- {
+			if agyApprovalHeaderRe.MatchString(lines[i]) {
+				header = i
+				d.Kind = "command"
+				break
+			}
+		}
+		if header < 0 && !agyApprovalQuestionRe.MatchString(screen.Question) {
+			return d
+		}
+		if d.Kind == "" {
+			d.Kind = "command"
+		}
+		pick(func(l string) bool {
+			if strings.Contains(l, "always allow") || strings.Contains(l, "persist") {
+				return false
+			}
+			return l == "yes, run command" || l == "yes, allow once" || l == "yes"
+		})
 	}
 	return d
 }
@@ -191,7 +221,7 @@ func promptBlock(lines []string, firstOpt int) []string {
 		start = 0
 	}
 	for i := firstOpt - 1; i >= start; i-- {
-		if ruleLineRe.MatchString(lines[i]) || codexApprovalHeaderRe.MatchString(lines[i]) {
+		if ruleLineRe.MatchString(lines[i]) || codexApprovalHeaderRe.MatchString(lines[i]) || agyApprovalHeaderRe.MatchString(lines[i]) {
 			start = i
 			if ruleLineRe.MatchString(lines[i]) {
 				start = i + 1
@@ -345,8 +375,8 @@ func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
 	if !d.Prompt {
 		return
 	}
-	if s.AgentType == at.Claude && pending == nil {
-		// Claude sends PreToolUse before every permission prompt; without it the
+	if (s.AgentType == at.Claude || s.AgentType == at.Agy || s.AgentType == at.Antigravity || s.AgentType == at.Gemini) && pending == nil {
+		// Claude and Antigravity send PreToolUse before every permission prompt; without it the
 		// tool is unknown (the hook failed, or Coral restarted while the prompt
 		// was open: the record is kept in memory), so it can be neither checked
 		// against the high-risk list nor told apart from a question.
@@ -418,6 +448,16 @@ func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
 	// The one automated answer to an open prompt, by the operator's opt-in
 	// (#3431): through ptymanager's named exemption, logged in the input debug log.
 	if err := ptymanager.AutoAcceptSend(ctx, paneName(s), func(ctx context.Context) error {
+		if navigatesByArrows(s.AgentType) {
+			ok, err := a.h.selectUnnumbered(ctx, paneName(s), s.AgentType, s.SessionID, again.Screen, d.N)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return errors.New("auto-accept selection was not confirmed")
+			}
+			return nil
+		}
 		return a.h.terminal.SendRawInput(ctx, paneName(s), []string{strconv.Itoa(d.N)}, s.AgentType, s.SessionID)
 	}); err != nil {
 		slog.Warn("auto-accept: sending the answer failed", "session", s.SessionID, "error", err)
@@ -550,7 +590,7 @@ func (a *AutoAcceptor) forget(sessionID string) {
 // The input is capped (it reaches the browser in the event).
 func approvedWhat(agentType string, d approvalDecision, pending *pendingTool, capture string) (string, string) {
 	if pending != nil {
-		for _, k := range []string{"command", "file_path", "notebook_path", "path", "url", "query", "pattern"} {
+		for _, k := range []string{"command", "file_path", "notebook_path", "path", "url", "query", "pattern", "CommandLine", "TargetFile", "AbsolutePath"} {
 			if v, ok := pending.Input[k].(string); ok && strings.TrimSpace(v) != "" {
 				return pending.ToolName, trimInput(v)
 			}

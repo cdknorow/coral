@@ -75,6 +75,7 @@ type agyTurnCache struct {
 	event   string
 	at      time.Time
 	summary string
+	apiErr  string
 }
 
 // firstPromptCache is deliberately separate from sessionCache. The live

@@ -82,83 +82,80 @@ func updateCodexTurnState(state *codexTurnCache, line []byte) {
 
 func agyTurnLines(candidates [][]byte) (event string, at time.Time, summary string) {
 	for _, line := range candidates {
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-		var entry struct {
-			StepIndex int    `json:"step_index"`
-			Source    string `json:"source"`
-			Type      string `json:"type"`
-			Status    string `json:"status"`
-			CreatedAt string `json:"created_at"`
-			Timestamp string `json:"timestamp"`
-			ToolCalls []struct {
-				Name string `json:"name"`
-			} `json:"tool_calls"`
-		}
-		if json.Unmarshal(line, &entry) != nil {
-			continue
-		}
-		tsStr := entry.CreatedAt
-		if tsStr == "" {
-			tsStr = entry.Timestamp
-		}
-		if tsStr == "" {
-			continue
-		}
-		timestamp, err := time.Parse(time.RFC3339Nano, tsStr)
-		if err != nil {
-			timestamp, err = time.Parse(time.RFC3339, tsStr)
-			if err != nil {
-				continue
-			}
-		}
-
-		switch entry.Type {
-		case "USER_INPUT":
-			event = "prompt_submit"
-			at = timestamp
-			summary = ""
-
-		case "PLANNER_RESPONSE":
-			if entry.Status == "ERROR" {
-				event = "stop"
-				at = timestamp
-				summary = ""
-				continue
-			}
-			if len(entry.ToolCalls) > 0 {
-				isAsk := false
-				for _, tc := range entry.ToolCalls {
-					if tc.Name == "ask_question" {
-						isAsk = true
-						break
-					}
-				}
-				if isAsk {
-					event = "notification"
-					summary = "Antigravity needs your input"
-				} else {
-					event = "tool_use"
-					summary = ""
-				}
-				at = timestamp
-			} else {
-				// No tool calls means the model concluded its turn and is waiting for user
-				event = "stop"
-				at = timestamp
-				summary = ""
-			}
-
-		case "GENERIC":
-			// Tool output / execution result
-			event = "tool_use"
-			at = timestamp
-			summary = ""
+		e, t, s, _ := agyTurnLineWithErr(line)
+		if e != "" {
+			event, at, summary = e, t, s
 		}
 	}
 	return
+}
+
+func agyTurnLineWithErr(line []byte) (event string, at time.Time, summary, apiErr string) {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 {
+		return "", time.Time{}, "", ""
+	}
+	var entry struct {
+		StepIndex int    `json:"step_index"`
+		Source    string `json:"source"`
+		Type      string `json:"type"`
+		Status    string `json:"status"`
+		CreatedAt string `json:"created_at"`
+		Timestamp string `json:"timestamp"`
+		Content   string `json:"content"`
+		Error     string `json:"error"`
+		ToolCalls []struct {
+			Name string `json:"name"`
+		} `json:"tool_calls"`
+	}
+	if json.Unmarshal(line, &entry) != nil {
+		return "", time.Time{}, "", ""
+	}
+	tsStr := entry.CreatedAt
+	if tsStr == "" {
+		tsStr = entry.Timestamp
+	}
+	var timestamp time.Time
+	if tsStr != "" {
+		var err error
+		timestamp, err = time.Parse(time.RFC3339Nano, tsStr)
+		if err != nil {
+			timestamp, _ = time.Parse(time.RFC3339, tsStr)
+		}
+	}
+
+	switch entry.Type {
+	case "USER_INPUT":
+		return "prompt_submit", timestamp, "", ""
+
+	case "PLANNER_RESPONSE":
+		if entry.Status == "ERROR" {
+			errText := entry.Error
+			if errText == "" {
+				errText = entry.Content
+			}
+			return "stop", timestamp, "", errText
+		}
+		if len(entry.ToolCalls) > 0 {
+			isAsk := false
+			for _, tc := range entry.ToolCalls {
+				if tc.Name == "ask_question" {
+					isAsk = true
+					break
+				}
+			}
+			if isAsk {
+				return "notification", timestamp, "Antigravity needs your input", ""
+			}
+			return "tool_use", timestamp, "", ""
+		}
+		return "stop", timestamp, "", ""
+
+	case "GENERIC":
+		// Tool output / execution result
+		return "tool_use", timestamp, "", ""
+	}
+	return "", time.Time{}, "", ""
 }
 
 // ReadAgyTurnEvent reuses the session reader's resolved path so frequent UI
@@ -227,11 +224,32 @@ func readAgyTurnEventIncremental(path string, state *agyTurnCache) (string, time
 	f.Close()
 	scanTranscriptAppend(path, &state.transcriptReadState, func() {
 		state.event, state.at, state.summary = "", time.Time{}, ""
+		state.apiErr = ""
 	}, func(line []byte) {
-		event, atTime, summary := agyTurnLines([][]byte{line})
+		event, atTime, summary, errText := agyTurnLineWithErr(line)
 		if event != "" {
 			state.event, state.at, state.summary = event, atTime, summary
 		}
+		if event == "prompt_submit" {
+			state.apiErr = ""
+		} else if errText != "" {
+			state.apiErr = errText
+		}
 	})
 	return state.event, state.at, state.summary
+}
+
+// ReadAgyAPIError returns the latest transcript error message for an agy session, and whether one was found.
+func (r *SessionReader) ReadAgyAPIError(sessionID, workingDir string) (string, bool) {
+	c := r.getOrCreateSessionCache(sessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.path == "" {
+		if c.lastResolved.IsZero() || time.Since(c.lastResolved) >= 2*time.Second {
+			c.lastResolved = time.Now()
+			c.path = resolveTranscriptPath(sessionID, workingDir, at.Agy)
+		}
+	}
+	readAgyTurnEventIncremental(c.path, &c.agyState)
+	return c.agyState.apiErr, c.agyState.apiErr != ""
 }

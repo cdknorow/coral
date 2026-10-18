@@ -168,3 +168,37 @@ func TestAgyTurnEvent(t *testing.T) {
 		})
 	}
 }
+
+func TestReadAgyAPIError(t *testing.T) {
+	dir := t.TempDir()
+	logDir := filepath.Join(dir, ".system_generated", "logs")
+	require.NoError(t, os.MkdirAll(logDir, 0700))
+	logFile := filepath.Join(logDir, "transcript.jsonl")
+
+	sid := "00000000-0000-4000-8000-000000004578"
+	r := NewSessionReader()
+	c := r.getOrCreateSessionCache(sid)
+	c.mu.Lock()
+	c.path = logFile
+	c.mu.Unlock()
+
+	errLine := `{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"ERROR","content":"Resource has been exhausted (e.g. check quota).","created_at":"2026-10-18T07:00:00Z"}` + "\n"
+	require.NoError(t, os.WriteFile(logFile, []byte(errLine), 0600))
+
+	errText, ok := r.ReadAgyAPIError(sid, dir)
+	require.True(t, ok)
+	require.Equal(t, "Resource has been exhausted (e.g. check quota).", errText)
+
+	// A new user prompt clears the error
+	userLine := `{"step_index":2,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-10-18T07:01:00Z"}` + "\n"
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_WRONLY, 0600)
+	require.NoError(t, err)
+	_, err = f.WriteString(userLine)
+	require.NoError(t, err)
+	f.Close()
+
+	errText, ok = r.ReadAgyAPIError(sid, dir)
+	require.False(t, ok)
+	require.Empty(t, errText)
+}
+

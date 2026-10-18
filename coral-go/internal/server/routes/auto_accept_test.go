@@ -64,6 +64,36 @@ func TestClassifyApproval(t *testing.T) {
   3. No, and tell Codex what to do differently (esc)
   Press enter to confirm or esc to cancel
 `
+	agyReordered := `Requesting permission for:
+   printf x; exit 1
+
+Run this command?
+  1. Yes, and always allow in this conversation for commands that start with 'printf'
+> 2. Yes, run command
+  3. Yes, and always allow for commands that start with 'printf' (Persist to settings.json)
+  4. No, cancel
+
+  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command
+`
+	agyAlwaysOnly := `Requesting permission for:
+   printf x; exit 1
+
+Run this command?
+> 1. Yes, and always allow in this conversation for commands that start with 'printf'
+  2. Yes, and always allow for commands that start with 'printf' (Persist to settings.json)
+  3. No, cancel
+
+  ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command
+`
+	agyLogin := `
+ Welcome to the Antigravity CLI. You are currently not signed in.
+
+ Select login method:
+ > 1. Google OAuth
+   2. Use a Google Cloud project
+
+   ↑/↓ Navigate · enter Select
+`
 	for _, tc := range []struct {
 		name, agentType, screen string
 		prompt, approve         bool
@@ -88,9 +118,14 @@ func TestClassifyApproval(t *testing.T) {
 		{"codex: approve-once wherever it is listed", at.Codex, codexReordered, true, true, 2, "Yes, proceed (y)", "command"},
 		{"codex sign-in menu", at.Codex, screenCodexSignIn, true, false, 0, "", ""},
 		{"codex update menu", at.Codex, screenCodexUpdate, true, false, 0, "", ""},
+		{"agy command", at.Agy, autoAcceptScreen(t, "agy_command"), true, true, 1, "Yes, run command", "command"},
+		{"gemini command", at.Gemini, autoAcceptScreen(t, "agy_command"), true, true, 1, "Yes, run command", "command"},
+		{"agy: approve-once wherever it is listed", at.Agy, agyReordered, true, true, 2, "Yes, run command", "command"},
+		{"agy: only always allow options", at.Agy, agyAlwaysOnly, true, false, 0, "", ""},
+		{"agy login menu", at.Agy, agyLogin, true, false, 0, "", ""},
 		{"a claude prompt is not a codex approval", at.Codex, autoAcceptScreen(t, "claude_bash"), true, false, 0, "", ""},
 		{"a codex prompt is not a claude approval", at.Claude, autoAcceptScreen(t, "codex_exec"), true, false, 0, "", ""},
-		{"gemini is not in the table", at.Gemini, autoAcceptScreen(t, "claude_bash"), true, false, 0, "", ""},
+		{"a claude prompt is not a gemini approval", at.Gemini, autoAcceptScreen(t, "claude_bash"), true, false, 0, "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d := classifyApproval(tc.agentType, tc.screen)
@@ -117,10 +152,10 @@ func TestClassifyApproval(t *testing.T) {
 }
 
 func TestAutoAcceptSupported(t *testing.T) {
-	for _, typ := range []string{at.Claude, at.Codex} {
+	for _, typ := range []string{at.Claude, at.Codex, at.Agy, at.Antigravity, at.Gemini} {
 		assert.True(t, AutoAcceptSupported(typ), typ)
 	}
-	for _, typ := range []string{at.Gemini, at.Agy, at.Antigravity, at.Pi, at.Terminal, "", "zz"} {
+	for _, typ := range []string{at.Pi, at.Terminal, "", "zz"} {
 		assert.False(t, AutoAcceptSupported(typ), typ)
 	}
 }
@@ -169,6 +204,18 @@ func (r *autoAcceptRig) keys(agentType, sid string) []string {
 	r.term.mu.Lock()
 	defer r.term.mu.Unlock()
 	return append([]string(nil), r.term.raw[naming.SessionName(agentType, sid)]...)
+}
+
+func (r *autoAcceptRig) enters(agentType, sid string) int {
+	r.term.mu.Lock()
+	defer r.term.mu.Unlock()
+	return r.term.enters[naming.SessionName(agentType, sid)]
+}
+
+func (r *autoAcceptRig) arrows(agentType, sid string) []string {
+	r.term.mu.Lock()
+	defer r.term.mu.Unlock()
+	return append([]string(nil), r.term.arrows[naming.SessionName(agentType, sid)]...)
 }
 
 // The dashboard's fetch: same-origin, from this computer.
@@ -286,6 +333,30 @@ func TestAutoAcceptClaudePermissionPrompt(t *testing.T) {
 	require.Len(t, ev, 3)
 	in := detailOf(t, ev[0])["input"].(string)
 	assert.LessOrEqual(t, len([]rune(in)), autoAcceptInputMaxLen+1)
+}
+
+// agy: a permission prompt is auto-accepted with Enter only while auto-accept is on
+// and agy has a pending tool; it records the auto_accept event.
+func TestAutoAcceptAgyPermissionPrompt(t *testing.T) {
+	r := newAutoAcceptRig(t)
+	sid := r.agent(at.Agy, "agy-dev", autoAcceptScreen(t, "agy_command"))
+
+	r.run()
+	assert.Equal(t, 0, r.enters(at.Agy, sid), "off: nothing is answered")
+
+	r.enable("agy-dev", sid)
+	// Without pending tool, agy is not auto-accepted (rule: pending tool required)
+	r.run()
+	assert.Equal(t, 0, r.enters(at.Agy, sid), "no pending tool: nothing is answered")
+
+	r.h.pending.set(sid, pendingTool{ToolName: "run_command", Input: map[string]any{"CommandLine": "touch probe.txt"}, At: r.now})
+	r.run()
+	assert.Equal(t, 1, r.enters(at.Agy, sid), "the approve-once option is confirmed with Enter")
+	ev := r.events(sid, "auto_accept")
+	require.Len(t, ev, 1)
+	assert.Equal(t, "Auto-approved run_command: touch probe.txt", ev[0].Summary)
+	assert.Equal(t, map[string]any{"agent_type": "agy", "option": "Yes, run command", "tool": "run_command", "input": "touch probe.txt"}, detailOf(t, ev[0]))
+	assert.False(t, r.h.deriveSingleSessionState(context.Background(), sid, 0).NeedsInput, "the auto_accept event ends the request")
 }
 
 // Questions, plan approval, high-risk actions and unknown prompts wait for the
@@ -541,8 +612,8 @@ func TestAutoAcceptEnableValidation(t *testing.T) {
 	code, _ = r.post("/api/sessions/live/dev/auto-accept/disable", map[string]any{"session_id": "99999999-2222-3333-4444-555555555555"}, nil)
 	assert.Equal(t, http.StatusNotFound, code)
 
-	gem := r.agent(at.Gemini, "gem", "")
-	code, body = r.enableAs("gem", gem, dashboardHdr, nil)
+	term := r.agent(at.Terminal, "term", "")
+	code, body = r.enableAs("term", term, dashboardHdr, nil)
 	assert.Equal(t, http.StatusConflict, code)
 	assert.Equal(t, "agent_type_unsupported", body["code"])
 
@@ -660,7 +731,7 @@ func TestAutoAcceptFieldsAlwaysPresent(t *testing.T) {
 	h, awake := sessionFieldsFixture(t)
 	ctx := context.Background()
 	asleep := "22222222-2222-3333-4444-555555555555"
-	require.NoError(t, h.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: asleep, AgentType: at.Gemini, AgentName: "gem", WorkingDir: "/tmp/gem"}))
+	require.NoError(t, h.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: asleep, AgentType: at.Terminal, AgentName: "term", WorkingDir: "/tmp/term"}))
 	require.NoError(t, h.ss.SetSessionSleeping(ctx, asleep, true))
 	keys := []string{"auto_accept", "auto_accept_until", "auto_accept_source", "auto_accept_supported", "auto_accept_unsupported_code", "auto_accept_paused_code", "auto_accept_paused_at"}
 

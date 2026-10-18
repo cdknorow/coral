@@ -82,16 +82,19 @@ func (p *pendingTools) clear(sessionID, toolUseID string) {
 // Only the fields the chat shows are kept, each capped, so a large Write or
 // Edit payload is never held or served.
 var pendingToolFields = map[string]int{
-	"questions":   20000, // AskUserQuestion (serialized size cap)
-	"plan":        20000, // ExitPlanMode
-	"command":     4000,
-	"description": 500,
-	"file_path":   1000,
-	"path":        1000,
-	"url":         2000,
-	"query":       500,
-	"pattern":     500,
-	"prompt":      2000,
+	"questions":    20000, // AskUserQuestion (serialized size cap)
+	"plan":         20000, // ExitPlanMode
+	"command":      4000,
+	"CommandLine":  4000,
+	"description":  500,
+	"file_path":    1000,
+	"TargetFile":   1000,
+	"AbsolutePath": 1000,
+	"path":         1000,
+	"url":          2000,
+	"query":        500,
+	"pattern":      500,
+	"prompt":       2000,
 }
 
 func trimPendingInput(in map[string]any) map[string]any {
@@ -108,6 +111,16 @@ func trimPendingInput(in map[string]any) map[string]any {
 			if b, err := json.Marshal(v); err == nil && len(b) <= limit {
 				out[k] = v
 			}
+		}
+	}
+	if out["command"] == nil && out["CommandLine"] != nil {
+		out["command"] = out["CommandLine"]
+	}
+	if out["file_path"] == nil {
+		if out["TargetFile"] != nil {
+			out["file_path"] = out["TargetFile"]
+		} else if out["AbsolutePath"] != nil {
+			out["file_path"] = out["AbsolutePath"]
 		}
 	}
 	return out
