@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
@@ -21,9 +22,37 @@ import (
 // sends, with the tool's name, so the state derivation reads it and the tool's PostToolUse, a stop or a prompt clears it, as for Claude. A tool
 // that is only slow shows no prompt and records nothing.
 
-// promptWatchDelays are when the watcher looks, counted from the pending tool (a var for the tests): a prompt is drawn at once, a slow
-// terminal a little later.
-var promptWatchDelays = []time.Duration{1500 * time.Millisecond, 3 * time.Second, 5 * time.Second}
+// promptWatchDelays are when the watcher looks, counted from the pending tool (a var for the tests): every 500 ms for 6 s. A tool that
+// finishes ends its watcher at the first look (one capture), so the cost is paid only by a tool that is slow or waits on a prompt; the looks
+// were 1.5, 3 and 5 s, and agy's permission prompts were recorded at the last of them, 4.2 to 4.5 s from the send (#4874).
+var promptWatchDelays = promptLooks(500*time.Millisecond, 6*time.Second)
+
+// promptLooks are the times every, 2*every, ... up to total.
+func promptLooks(every, total time.Duration) []time.Duration {
+	var out []time.Duration
+	for d := every; d <= total; d += every {
+		out = append(out, d)
+	}
+	return out
+}
+
+// promptWatchCoarse are the looks of a watcher that starts while promptWatchFine others are running: never a busy loop, however many tools are
+// pending at once (a team of agents each running a tool), those look at the old pace.
+var promptWatchCoarse = []time.Duration{1500 * time.Millisecond, 3 * time.Second, 5 * time.Second}
+
+// promptWatchFine is how many watchers look at the fine pace at once (a var for the tests).
+var promptWatchFine int32 = 32
+
+// promptLooksFor are the looks of a watcher that starts when active watchers (itself included) are running: the fine pace up to
+// promptWatchFine of them, the coarse pace past that.
+func promptLooksFor(active int32) []time.Duration {
+	if active > promptWatchFine {
+		return promptWatchCoarse
+	}
+	return promptWatchDelays
+}
+
+var promptWatchActive atomic.Int32
 
 // watchesPrompts: the agents that report no hook of their own for a permission prompt but do send PreToolUse. Antigravity (agy) only: Gemini's
 // PreToolUse and prompt screen are not verified.
@@ -56,13 +85,15 @@ func (h *SessionsHandler) watchForPrompt(sessionID, sessionName string, t pendin
 		return
 	}
 	name, agentType, agentName := sessionName, ls.AgentType, ls.AgentName
+	delays := promptLooksFor(promptWatchActive.Add(1))
 	safego.Go("server/routes/agy_prompt_watch", func() {
 		defer promptWatches.Delete(key)
+		defer promptWatchActive.Add(-1)
 		var waited time.Duration
-		for _, delay := range promptWatchDelays {
+		for i, delay := range delays {
 			time.Sleep(delay - waited)
 			waited = delay
-			if h.confirmPromptWait(sessionID, name, agentType, agentName, t) {
+			if h.confirmPromptWait(sessionID, name, agentType, agentName, t, i+1) {
 				return
 			}
 		}
@@ -71,7 +102,7 @@ func (h *SessionsHandler) watchForPrompt(sessionID, sessionName string, t pendin
 
 // confirmPromptWait looks once. It reports true when there is nothing more to do: the tool finished or the turn moved on, a request is
 // already open, or the request was recorded now.
-func (h *SessionsHandler) confirmPromptWait(sessionID, name, agentType, agentName string, t pendingTool) bool {
+func (h *SessionsHandler) confirmPromptWait(sessionID, name, agentType, agentName string, t pendingTool, look int) bool {
 	if cur, ok := h.pending.get(sessionID, time.Now()); !ok || cur.ToolUseID != t.ToolUseID {
 		return true
 	}
@@ -79,6 +110,9 @@ func (h *SessionsHandler) confirmPromptWait(sessionID, name, agentType, agentNam
 	defer cancel()
 	screen, shown, err := h.readPromptScreen(ctx, name, agentType, sessionID)
 	if err != nil || !shown || len(screen.Options) == 0 {
+		if debugEnabled() { // why a look missed: what the screen parsed to, for a prompt that is drawn but not read (#4874)
+			slog.Info("[debug] agy prompt look found no prompt", "session", name, "tool", t.ToolName, "look", look, "error", err, "prompt_shown", shown, "options", len(screen.Options))
+		}
 		return false // no prompt on the screen (yet): the tool is only slow, or the terminal could not be read
 	}
 	byID, err := h.ts.GetSessionStateEvents(ctx, []string{sessionID})
