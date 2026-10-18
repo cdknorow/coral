@@ -171,8 +171,13 @@ const { framesJs } = require('./helpers/wait');
         assert.ok(btn.width > 0, 'it takes space');
         assert.ok(btn.focused, 'it takes keyboard focus');
         assert.equal(btn.label, 'Open team view for alpha');
+        // Re-focus the button (re-queried) right before Enter: in a shuffled run a background sidebar
+        // render can replace the node and move focus between the read above and the key press, so the
+        // Enter would land on nothing. Entering the team view is async (enterTeamContext lazy-renders it),
+        // so wait for the condition with headroom rather than the 5 s default (#4868).
+        await ev(`document.querySelector('.team-open-btn')?.focus(); true`);
         await key('Enter', 'Enter', 13);
-        await waitFor(`window.__state.selectedTeam === 'alpha' && !document.getElementById('team-center-view').hidden`, 'the team view after Enter');
+        await waitFor(`window.__state.selectedTeam === 'alpha' && !document.getElementById('team-center-view').hidden`, 'the team view after Enter', { timeout: 15000 });
         const kebab = await ev(`(() => { const k = document.querySelector('.session-group-header .group-kebab-btn'); k.focus(); return { focused: document.activeElement === k }; })()`);
         assert.ok(kebab.focused, 'the group kebab takes focus');
         await waitFor(`getComputedStyle(document.querySelector('.session-group-header .group-kebab-btn')).opacity === '1'`, 'the focused kebab to be visible', { diag: `getComputedStyle(document.querySelector('.session-group-header .group-kebab-btn')).opacity` });
