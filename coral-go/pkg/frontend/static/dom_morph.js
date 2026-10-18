@@ -176,17 +176,51 @@ function morphInto(parent, html, depth, added) {
     _state.set(parent, { parts, nodes });
 }
 
+// What names a control across a redraw: its tag, id and data-* attributes, and those of each ancestor up to the parent (classes and
+// aria text are left out: they carry state, such as is-selected, that is what changed).
+function focusKey(el, parent) {
+    const out = [];
+    for (let e = el; e && e !== parent; e = e.parentElement) {
+        let k = e.tagName + (e.id ? '#' + e.id : '');
+        for (const a of e.attributes) if (a.name.startsWith('data-')) k += `[${a.name}=${a.value}]`;
+        out.push(k);
+    }
+    return out.join('<');
+}
+
+/** Call before a background redraw of `parent`; call the result after it. If keyboard focus was on a control inside `parent` and that node
+ *  was replaced (focus falls to the body), focus goes to the control that matches it in the new markup: same tag, id and data-* attributes,
+ *  and the same place among its twins. A control that is gone, or still in the page, is left alone. A screen-reader or keyboard user on
+ *  a refreshed list stays where they were (#4882). */
+export function rememberFocus(parent) {
+    const a = document.activeElement;
+    if (!a || a === document.body || a === parent || !parent.contains(a)) return () => {};
+    const key = focusKey(a, parent);
+    const same = e => focusKey(e, parent) === key;
+    const nth = [...parent.querySelectorAll(a.tagName)].filter(same).indexOf(a);
+    return () => {
+        if (a.isConnected) return;
+        const twins = [...parent.querySelectorAll(a.tagName)].filter(same);
+        const again = twins[Math.min(Math.max(nth, 0), twins.length - 1)];
+        if (again) again.focus({ preventScroll: true });
+    };
+}
+
 /** Make `parent`'s contents equal `html`, touching only what changed. Returns the
  *  element nodes that are new (the caller wires listeners on those only); when the
- *  whole contents were replaced, that is every top-level element. */
+ *  whole contents were replaced, that is every top-level element. Focus on a control
+ *  that was replaced goes to its replacement (rememberFocus). */
 export function morphHtml(parent, html, { depth = 3 } = {}) {
+    const restoreFocus = rememberFocus(parent);
     if (morphDisabled()) {
         _state.delete(parent);
         parent.innerHTML = html;
+        restoreFocus();
         return [...parent.children];
     }
     const added = [];
     morphInto(parent, html, depth, added);
+    restoreFocus();
     return added;
 }
 

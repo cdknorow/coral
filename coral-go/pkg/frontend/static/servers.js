@@ -6,6 +6,7 @@
  * API key is write-only: it is sent on add/edit and never rendered, echoed,
  * logged or kept after the request completes. */
 
+import { rememberFocus } from './dom_morph.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isHub, initHub, isCloud } from './server_base.js';
@@ -200,12 +201,14 @@ function render() {
     const many = allRemotes.length > 5;
     const online = allRemotes.filter(s => s.status === 'online').length;
     const topBar = `<div class="servers-top"><span class="servers-summary">${allRemotes.length} servers, ${online} online${online < allRemotes.length ? `, ${allRemotes.length - online} not` : ''}</span><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>`;
+    const restoreFocus = rememberFocus(m); // a control the redraw replaced (Add server, Test, Edit) gets focus back (#4882)
     m.innerHTML = `<p class="servers-intro">Servers whose agents and teams appear in this hub. The hub stores each server's API key (encrypted); a key grants full control of that server.</p>
             ${_loadError ? `<div class="servers-form-error" role="alert">${escHtml(_loadError)}</div>` : ''}
             ${many && _editing === null ? topBar : ''}
             <ul class="servers-list" aria-label="Registered servers">${rowHtml(local)}${remotes.map(rowHtml).join('')}</ul>
             ${!remotes.length && !_loadError ? `<p class="servers-empty">${serversFiltered() ? 'No servers match this search.' : 'No remote servers yet.'}</p>` : ''}
             ${_editing !== null ? formHtml() : many ? '' : '<div class="servers-form-actions"><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>'}`;
+    restoreFocus();
     if (keep) {
         const r = document.getElementById(keep.row);
         const again = r && (keep.action ? r.querySelector(`[data-action="${keep.action}"]`) : null);

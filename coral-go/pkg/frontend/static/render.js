@@ -1331,7 +1331,8 @@ function _applyListHtml(list, html, focusedSid, focusedInMenu) {
     // Restore keyboard focus to the same agent after the rebuild
     if (focusedSid) {
         const again = list.querySelector(`.session-group-item[data-session-id="${CSS.escape(focusedSid)}"]`);
-        if (again) (focusedInMenu && again.querySelector('.sidebar-kebab-btn') || again).focus({ preventScroll: true });
+        // A control inside the row that morphHtml already put focus back on (the team's button, a row's own button) keeps it; the row takes it only where it had none.
+        if (again && (focusedInMenu || !again.contains(document.activeElement))) (focusedInMenu && again.querySelector('.sidebar-kebab-btn') || again).focus({ preventScroll: true });
     }
 
     // The phone's page takes the list itself (it is not copied: #4497)

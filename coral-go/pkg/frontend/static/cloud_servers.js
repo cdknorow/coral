@@ -14,6 +14,7 @@
  * so raising the hub setting alone never grants more than the machine permits.
  * Servers without `access_mode` (older hub) fall back to the `allow_launch` switch. */
 
+import { rememberFocus } from './dom_morph.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { h } from './cloud.js';
@@ -351,11 +352,13 @@ function render() {
         ? h('ul', { className: 'cs-list', 'aria-label': 'Your servers' }, shown.map(row))
         : h('p', { className: 'servers-empty', text: loadError ? '' : serversFiltered() ? 'No machines match this search.' : 'No servers connected yet.' });
     // replaceChildren() would render a null as the text "null": leave it out.
+    const restoreFocus = rememberFocus(host); // a control the redraw replaced gets focus back (#4882)
     host.replaceChildren(...[
         h('p', { className: 'servers-intro', text: 'Machines connected to your account. Each one connects out to this hub; no inbound port is needed. New machines start in View.' }),
         loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
         list,
         enrollBlock()].filter(Boolean));
+    restoreFocus();
     if (keep) {
         const r = document.getElementById(keep.row);
         const again = r && [...r.querySelectorAll('button, select, input')].find(el => el.textContent === keep.text);
