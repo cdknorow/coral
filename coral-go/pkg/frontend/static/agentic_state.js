@@ -10,7 +10,7 @@ import { escapeHtml, escapeAttr } from './utils.js';
 import { morphHtml } from './dom_morph.js';
 import { registerActions } from './actions.js';
 import { eventRowHtml, renderActivityChart } from './event_row.js';
-import { syncActivitySearch, loadMoreEvents } from './activity_search.js';
+import { syncActivitySearch } from './activity_search.js';
 import { serverFetch, serverForSession } from './server_base.js';
 import { formatClockTime } from './format.js';
 import { FILTER_GROUPS, eventVisible, historyEventsView } from './event_icons.js';
@@ -353,7 +353,6 @@ export function restoreAgenticTabs() {
 // The activity filter's dropdown, for the live view and history alike (#3645): data-on-* names,
 // never code. mode is "live" or "history"; each toggle function checks the key itself.
 registerActions({
-    'activity-more': () => { loadMoreEvents(); },
     'filter-dropdown': el => { if (el.dataset.mode === 'live' || el.dataset.mode === 'history') toggleFilterDropdown(el.dataset.mode); },
     'filter-toggle': (el, event) => {
         event.stopPropagation();

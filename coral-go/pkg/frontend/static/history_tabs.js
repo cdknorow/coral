@@ -1,10 +1,10 @@
 /* History tabs — read-only rendering of Activity, Tasks, and Agent Notes for historical sessions */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, sanitizeMarkdown } from './utils.js';
-import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
-import { formatClockTime } from './format.js';
-import { FILTER_GROUPS, getToolIcon, eventVisible, historyEventsView } from './event_icons.js';
+import { escapeHtml, sanitizeMarkdown } from './utils.js';
+import { eventRowHtml, renderActivityChart } from './event_row.js';
+import { setHistoryEventsSession, syncHistoryEventSearch } from './history_events_search.js';
+import { FILTER_GROUPS, eventVisible, historyEventsView } from './event_icons.js';
 import { filterItemHtml, refillFilterList } from './filter_dropdown.js';
 
 // The icon and filter definitions are shared with the live Activity view (event_icons.js)
@@ -21,6 +21,7 @@ function isEventVisible(ev) {
 // ── Activity ──────────────────────────────────────────────────────────────
 
 export async function loadHistoryEvents(sessionId) {
+    setHistoryEventsSession(sessionId);
     historyFilterHidden.clear();
     historyEvents = [];
     historyEventsView.events = historyEvents;
@@ -101,6 +102,9 @@ function renderHistoryEventTimeline() {
     const container = document.getElementById('history-events-list');
     if (!container) return;
 
+    // A search of the session's events (the bar above the list) shows its results in place of the list
+    if (syncHistoryEventSearch(renderHistoryEventTimeline)) return;
+
     if (historyEvents.length === 0) {
         container.innerHTML = '<div class="event-empty">No activity recorded</div>';
         return;
@@ -112,19 +116,7 @@ function renderHistoryEventTimeline() {
         return;
     }
 
-    container.innerHTML = visible.map(ev => {
-        const icon = getToolIcon(ev.tool_name, ev.event_type);
-        const typeCls = (ev.event_type ? `event-type-${ev.event_type}` : '') + (eventFailed(ev) ? ' event-failed' : '');
-        const extra = eventDetailText(ev);
-        return `<div class="event-item ${typeCls}" data-tooltip="${escapeAttr(icon.title === ev.summary ? '' : escapeAttr(icon.title) + ': ')}${escapeAttr(ev.summary)}${escapeAttr(extra ? escapeAttr(' (' + extra + ')') : '')}">
-            <span class="event-icon ${icon.cls}">${icon.char}</span>
-            <span class="event-body">
-                <span class="event-summary">${escapeHtml(ev.summary)}</span>
-            </span>
-            ${durationChip(ev)}
-            <span class="event-time">${formatClockTime(ev.created_at)}</span>
-        </div>`;
-    }).join('');
+    container.innerHTML = visible.map(eventRowHtml).join('');
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────
