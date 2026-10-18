@@ -203,7 +203,10 @@ export function confirmPendingMessage(sessionId, sentAt) {
     p.sending = false;
     savePendingToStorage();
     const container = document.getElementById("live-history-messages");
-    if (container && state.currentSession && state.currentSession.session_id === sessionId) syncPendingBubbles(container, sessionId);
+    if (container && state.currentSession && state.currentSession.session_id === sessionId) {
+        syncPendingBubbles(container, sessionId);
+        syncWorkingIndicator(container, state.currentSession); // the Sent bubble moves to the end: Working goes back below it
+    }
 }
 
 /** Withdraw the pending bubble of a send that was refused (its terminal was gone, #3218). */
