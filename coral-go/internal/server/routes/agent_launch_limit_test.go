@@ -118,4 +118,17 @@ func TestAgentLaunchCeiling(t *testing.T) {
 	assert.False(t, refused(team(token, 32)))
 	require.NoError(t, h.ss.SetSetting(ctx, AgentLaunchLimitSetting, "banana"))
 	assert.Equal(t, 64, h.agentLaunchLimit(httptest.NewRequest("GET", "/", nil)))
+	require.NoError(t, h.ss.SetSetting(ctx, AgentLaunchLimitSetting, "-5"))
+	assert.Equal(t, 64, h.agentLaunchLimit(httptest.NewRequest("GET", "/", nil)), "a negative stored value is not a ceiling that refuses everything")
+
+	// A store that cannot be read is never a refusal: the ceiling is the default, and a failed count lets the launch through.
+	require.NoError(t, h.ss.SetSetting(ctx, AgentLaunchLimitSetting, "1"))
+	live(1)
+	running(1)
+	require.True(t, refused(launch(token)), "the ceiling of 1 is reached")
+	require.NoError(t, db.Close())
+	assert.Equal(t, 64, h.agentLaunchLimit(httptest.NewRequest("GET", "/", nil)), "unreadable settings: the default, not 0 (no ceiling)")
+	rec = httptest.NewRecorder()
+	assert.False(t, h.refuseAgentLaunchOverLimit(rec, withActor(httptest.NewRequest(http.MethodPost, "/x", nil), token), 1), "a failed count never refuses")
+	assert.Equal(t, 200, rec.Code, "and wrote nothing")
 }
