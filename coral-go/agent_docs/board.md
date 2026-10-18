@@ -775,8 +775,8 @@ detail), as the `verification` field of the query, and as the `verification` fil
 
 | `state` | Meaning | `by` | `at` |
 |---|---|---|---|
-| `verified` | a reviewer other than the task's author approved it through the review flow (the final round was approved), or every completion gate registered on it passed for the accepted candidate revision | the approving reviewers' names, and `gate:<type>` for each passed gate | the newest approval or gate check |
-| `evidence` | no independent check, but the completion carries artifacts | `[]` | when it was completed |
+| `verified` | someone other than the agent confirmed it: a reviewer other than the task's author approved it through the review flow (the final round was approved), or every completion gate registered on it passed for the accepted candidate revision and one of them is a `registered_check`, which the server runs itself | the approving reviewers' names, and `gate:registered_check` | the newest approval or gate check |
+| `evidence` | no independent check, but the completion carries artifacts, or its `report`, `test_evidence` or `landed_revision` gates passed (the worker's own artifacts decide those gates, so they attest and do not verify) | `[]`, or `gate:<type>` of each passed worker-attested gate (for example `gate:report`) | when it was completed, or the newest gate check when `by` names gates |
 | `unverified` | neither | `[]` | when it was completed |
 
 The author approving their own work never counts (a reviewer is compared with the task's original author, ignoring case). A

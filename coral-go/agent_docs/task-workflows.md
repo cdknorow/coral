@@ -431,9 +431,11 @@ There is no separate machine-readable “integrated” or “superseded” task 
 ## Is "done" verified?
 
 A completed task with outcome `success` has a `verification` object on task detail and in the task lists: `state` is
-`verified` (a reviewer other than the author approved it through the review flow, or its registered completion gates all
-passed for the accepted candidate revision), `evidence` (no independent check, but it has artifacts) or `unverified`;
-`by` names the approving reviewers and `gate:<type>` for each passed gate; `at` is when. The server computes it from the
+`verified` (someone other than the agent confirmed it: a reviewer other than the author approved it through the review flow,
+or its completion gates all passed for the accepted candidate revision and include a `registered_check`, which the server runs
+itself), `evidence` (no independent check, but it has artifacts, or its `report`, `test_evidence` or `landed_revision` gates
+passed: the worker's own artifacts decide those, so they attest and do not verify; `by` names them, for example `gate:report`)
+or `unverified`; `by` names the approving reviewers and `gate:registered_check`; `at` is when. The server computes it from the
 review and gate records: you cannot set it, the author approving their own work never counts, and nothing is blocked by it.
 `GET /api/board/tasks` can filter by it (`verification=verified|evidence|unverified`) and return it as a field; the
 contract is in board.md (Task query).

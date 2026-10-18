@@ -20,6 +20,7 @@ func newVerEnv(t *testing.T) *verEnv {
 	t.Helper()
 	t.Setenv(completionChecksFeatureEnv, "true") // gates are an opt-in feature
 	s := testStore(t)
+	s.SetCompletionCheckRunner(passingRunner{})
 	ctx := context.Background()
 	for name, role := range map[string]string{"lead": "Orchestrator", "worker": "Developer", "rev1": "Security", "rev2": "QA"} {
 		_, err := s.Subscribe(ctx, "team", name, role, name+"-session", nil, "all")
@@ -91,6 +92,14 @@ func (e *verEnv) editWorkflow(id int64, f func(w *TaskWorkflow)) {
 }
 
 var reportGate = []CompletionGate{{Type: "report", Artifact: "report"}}
+var checkGate = []CompletionGate{{Type: "registered_check", CheckID: "go_test"}}
+
+// passingRunner stands for the server's own registered-check runner.
+type passingRunner struct{}
+
+func (passingRunner) Run(_ context.Context, _, revision string, _ map[string]string) RegisteredCheckEvidence {
+	return RegisteredCheckEvidence{Passed: true, Details: "ok", ObservedRevision: revision}
+}
 
 func TestVerificationStates(t *testing.T) {
 	e := newVerEnv(t)
@@ -101,7 +110,8 @@ func TestVerificationStates(t *testing.T) {
 	failed := e.done("failed", "failed", art, nil)
 	reviewed := e.reviewed("reviewed", art, "rev1")
 	two := e.reviewed("two", nil, "rev1", "rev2")
-	gated := e.done("gated", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: reportGate}})
+	attested := e.done("attested", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: reportGate}})
+	checked := e.done("checked", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: checkGate}})
 	pending, err := e.s.CreateTask(e.ctx, "team", "pending", "", "medium", "lead", "worker")
 	require.NoError(t, err)
 
@@ -130,10 +140,17 @@ func TestVerificationStates(t *testing.T) {
 	assert.Equal(t, VerificationVerified, v.State, "an approved review with no artifacts still verifies")
 	assert.Equal(t, []string{"rev1", "rev2"}, v.By)
 
-	v = e.task(gated).Verification
+	// A report gate is decided from the artifact the worker submitted: it attests, it does not verify.
+	v = e.task(attested).Verification
 	require.NotNil(t, v)
-	assert.Equal(t, VerificationVerified, v.State, "a passed completion gate counts")
-	assert.Equal(t, []string{"gate:report"}, v.By)
+	assert.Equal(t, VerificationEvidence, v.State, "a worker-attested gate is evidence")
+	assert.Equal(t, []string{"gate:report"}, v.By, "and it is named")
+	assert.NotEmpty(t, v.At)
+	// A registered check is run by the server: that verifies.
+	v = e.task(checked).Verification
+	require.NotNil(t, v)
+	assert.Equal(t, VerificationVerified, v.State, "a passed registered_check counts")
+	assert.Equal(t, []string{"gate:registered_check"}, v.By)
 
 	// A review task is the verdict record of someone else's work, not a work product: no state.
 	rounds := e.task(reviewed).Workflow.ReviewRounds
@@ -222,32 +239,70 @@ func TestVerificationRejectedThenApproved(t *testing.T) {
 func TestVerificationGateRules(t *testing.T) {
 	e := newVerEnv(t)
 	art := []TaskArtifact{{Name: "report", Content: "x"}}
-	id := e.done("g", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: reportGate}})
+	id := e.done("g", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: checkGate}})
 	require.Equal(t, VerificationVerified, e.task(id).Verification.State)
 
-	cases := map[string]func(w *TaskWorkflow){
-		"a result that failed":          func(w *TaskWorkflow) { w.GateResults[0].Passed = false },
-		"a result for another revision": func(w *TaskWorkflow) { w.GateResults[0].CandidateRevision = "rev-other" },
-		"a gate with no result":         func(w *TaskWorkflow) { w.GateResults = nil },
-		"fewer results than registered gates": func(w *TaskWorkflow) {
-			w.CompletionGates = append(w.CompletionGates, CompletionGate{Type: "report", Artifact: "r2"})
-		},
-		"no registered gates (stray results)": func(w *TaskWorkflow) { w.CompletionGates = nil },
-		"one of two results failed": func(w *TaskWorkflow) {
-			w.CompletionGates = append(w.CompletionGates, w.CompletionGates[0])
-			w.GateResults = append(w.GateResults, w.GateResults[0])
-			w.GateResults[1].Passed = false
-		},
+	pass := func(typ string) CompletionGateResult {
+		return CompletionGateResult{Type: typ, Passed: true, CandidateRevision: "rev-1", CheckedAt: "2026-10-18T00:00:00Z"}
 	}
-	for name, mutate := range cases {
-		e.editWorkflow(id, func(w *TaskWorkflow) { // start from the passing record each time
-			*w = TaskWorkflow{Instructions: w.Instructions, Outcome: "success", Artifacts: art, CandidateRevision: "rev-1",
-				CompletionGates: reportGate, GateResults: []CompletionGateResult{{Type: "report", Passed: true, CandidateRevision: "rev-1", CheckedAt: "2026-10-18T00:00:00Z"}}}
-			mutate(w)
-		})
+	base := func(w *TaskWorkflow, gates []CompletionGate, results ...CompletionGateResult) {
+		*w = TaskWorkflow{Instructions: w.Instructions, Outcome: "success", Artifacts: art, CandidateRevision: "rev-1", CompletionGates: gates, GateResults: results}
+	}
+	cat := func(parts ...[]CompletionGate) []CompletionGate {
+		var out []CompletionGate
+		for _, p := range parts {
+			out = append(out, p...)
+		}
+		return out
+	}
+	type tc struct {
+		name  string
+		build func(w *TaskWorkflow)
+		state string
+		by    []string
+	}
+	failed := func(typ string) CompletionGateResult {
+		r := pass(typ)
+		r.Passed = false
+		return r
+	}
+	other := func(typ string) CompletionGateResult {
+		r := pass(typ)
+		r.CandidateRevision = "rev-other"
+		return r
+	}
+	for _, c := range []tc{
+		{"a passed registered check", func(w *TaskWorkflow) { base(w, checkGate, pass("registered_check")) }, VerificationVerified, []string{"gate:registered_check"}},
+		{"report and registered check, both passed", func(w *TaskWorkflow) {
+			base(w, cat(reportGate, checkGate), pass("report"), pass("registered_check"))
+		}, VerificationVerified, []string{"gate:registered_check"}},
+		{"two registered checks: named once", func(w *TaskWorkflow) {
+			base(w, cat(checkGate, checkGate), pass("registered_check"), pass("registered_check"))
+		}, VerificationVerified, []string{"gate:registered_check"}},
+		{"a report gate alone", func(w *TaskWorkflow) { base(w, reportGate, pass("report")) }, VerificationEvidence, []string{"gate:report"}},
+		{"test_evidence and landed_revision alone", func(w *TaskWorkflow) {
+			base(w, []CompletionGate{{Type: "test_evidence"}, {Type: "landed_revision"}}, pass("test_evidence"), pass("landed_revision"))
+		}, VerificationEvidence, []string{"gate:test_evidence", "gate:landed_revision"}},
+		{"a registered check that failed", func(w *TaskWorkflow) { base(w, checkGate, failed("registered_check")) }, VerificationEvidence, []string{}},
+		{"a registered check for another revision", func(w *TaskWorkflow) { base(w, checkGate, other("registered_check")) }, VerificationEvidence, []string{}},
+		{"a registered check with no result", func(w *TaskWorkflow) { base(w, checkGate) }, VerificationEvidence, []string{}},
+		{"fewer results than gates", func(w *TaskWorkflow) { base(w, cat(checkGate, reportGate), pass("registered_check")) }, VerificationEvidence, []string{}},
+		{"registered check passed but the report failed", func(w *TaskWorkflow) {
+			base(w, cat(reportGate, checkGate), failed("report"), pass("registered_check"))
+		}, VerificationEvidence, []string{}},
+		{"stray results with no registered gates", func(w *TaskWorkflow) { base(w, nil, pass("registered_check")) }, VerificationEvidence, []string{}},
+	} {
+		e.editWorkflow(id, c.build)
 		v := e.task(id).Verification
-		assert.Equal(t, VerificationEvidence, v.State, name)
+		assert.Equal(t, c.state, v.State, c.name)
+		assert.Equal(t, c.by, v.By, c.name)
 	}
+	// no artifacts and only attested gates that passed: still evidence (the gate needed an artifact)
+	e.editWorkflow(id, func(w *TaskWorkflow) {
+		base(w, reportGate, pass("report"))
+		w.Artifacts = nil
+	})
+	assert.Equal(t, VerificationEvidence, e.task(id).Verification.State)
 }
 
 // The filter (SQL over the stored workflow) and the computed state (Go) agree for every kind of task, through the task query.
@@ -259,7 +314,10 @@ func TestVerificationFilterAgreesWithTheComputedState(t *testing.T) {
 	e.done("failed", "failed", art, nil)
 	e.reviewed("reviewed", art, "rev1")
 	e.reviewed("two", nil, "rev1", "rev2")
-	e.done("gated", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: reportGate}})
+	e.done("attested", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: reportGate}})
+	e.done("checked", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: checkGate}})
+	attestedOnly := e.done("attested-noart", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: reportGate}})
+	e.editWorkflow(attestedOnly, func(w *TaskWorkflow) { w.Artifacts = nil }) // gates passed, no artifacts recorded
 	own := e.reviewed("own", art, "rev1")
 	e.editWorkflow(own, func(w *TaskWorkflow) {
 		w.ReviewRounds[0].Reviewers = []ReviewerState{{Reviewer: w.OriginalAuthor, State: "approved"}}
@@ -268,7 +326,7 @@ func TestVerificationFilterAgreesWithTheComputedState(t *testing.T) {
 	e.editWorkflow(pendRev, func(w *TaskWorkflow) { // an approved round whose only reviewer has not approved (a hand-written record)
 		w.ReviewRounds[0].Reviewers = []ReviewerState{{Reviewer: "rev1", State: "pending"}}
 	})
-	badGate := e.done("badgate", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: reportGate}})
+	badGate := e.done("badgate", "success", art, &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: checkGate}})
 	e.editWorkflow(badGate, func(w *TaskWorkflow) { w.GateResults[0].CandidateRevision = "rev-other" })
 	_, err := e.s.CreateTask(e.ctx, "team", "pending", "", "medium", "lead", "worker")
 	require.NoError(t, err)

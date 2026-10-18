@@ -7,9 +7,11 @@ import (
 // A completed task's verification state (#4563): whether "done" can be trusted at a glance. The server computes it from the
 // review and gate records, never from anything the agent sets; it is a label only and blocks nothing.
 //
-//	verified    a reviewer other than the task's author approved it through the review flow (its final round was approved), or its
-//	            registered completion gates all passed for the accepted candidate revision
-//	evidence    no independent check, but the completion carries artifacts
+//	verified    someone other than the agent confirmed it: a reviewer other than the task's author approved it through the review
+//	            flow (its final round was approved), or its completion gates all passed for the accepted candidate revision and
+//	            include a registered_check, which the server runs itself
+//	evidence    no independent check, but the completion carries artifacts, or its report, test_evidence or landed_revision gates
+//	            passed: those gates are decided from the artifacts the worker submits, so they attest, they do not verify
 //	unverified  neither
 //
 // Only a completed task with outcome success has a state; a failed, cancelled or unfinished task has none, and neither has a review
@@ -25,9 +27,10 @@ const (
 // Verification is the state and what backs it.
 type Verification struct {
 	State string `json:"state"`
-	// By is the approving reviewers' names and "gate:<type>" for each gate that passed; empty for evidence and unverified.
+	// By is the approving reviewers' names and "gate:registered_check" for verified; for evidence, "gate:<type>" of each worker-attested
+	// gate that passed (for example gate:report), empty when the evidence is only artifacts; empty for unverified.
 	By []string `json:"by"`
-	// At is when the newest approval or gate pass happened, or when the task was completed for evidence and unverified.
+	// At is when the newest approval or gate check happened, or when the task was completed for evidence without gates and unverified.
 	At string `json:"at,omitempty"`
 }
 
@@ -57,17 +60,36 @@ func verificationOf(t *Task) *Verification {
 		}
 	}
 	// Gates: the task has registered completion gates, each has a result, every result passed, and all were checked against the
-	// revision that was accepted.
+	// revision that was accepted. Only a registered_check is run by the server; the other types are decided from the artifacts the
+	// worker submitted, so they count as evidence and are named, not as verification.
+	var attested []string
+	var attestedAt string
 	if gatesPassed(w) {
 		for _, g := range w.GateResults {
-			note("gate:"+g.Type, g.CheckedAt)
+			if g.Type == "registered_check" {
+				if !containsFold(v.By, "gate:registered_check") {
+					note("gate:registered_check", g.CheckedAt)
+				} else if g.CheckedAt > latest {
+					latest = g.CheckedAt
+				}
+			} else {
+				if !containsFold(attested, "gate:"+g.Type) {
+					attested = append(attested, "gate:"+g.Type)
+				}
+				if g.CheckedAt > attestedAt {
+					attestedAt = g.CheckedAt
+				}
+			}
 		}
 	}
 	switch {
 	case len(v.By) > 0:
 		v.State, v.At = VerificationVerified, latest
-	case len(w.Artifacts) > 0:
+	case len(w.Artifacts) > 0 || len(attested) > 0:
 		v.State, v.At = VerificationEvidence, ptrStr(t.CompletedAt)
+		if len(attested) > 0 {
+			v.By, v.At = attested, attestedAt
+		}
 	default:
 		v.State, v.At = VerificationUnverified, ptrStr(t.CompletedAt)
 	}
@@ -114,8 +136,11 @@ const (
 		AND NOT EXISTS (SELECT 1 FROM json_each(w.data, '$.gate_results') g
 			WHERE json_extract(g.value, '$.passed') IS NOT 1
 			OR COALESCE(json_extract(g.value, '$.candidate_revision'), '') != COALESCE(json_extract(w.data, '$.candidate_revision'), '')))`
-	sqlVerified = `(` + sqlReviewerApproved + ` OR ` + sqlGatesPassed + `)`
-	sqlEvidence = `json_array_length(COALESCE(json_extract(w.data, '$.artifacts'), '[]')) > 0`
+	// a registered_check among the passed results: the server ran it, so it is not the worker's say-so
+	sqlHasRegisteredCheck = `EXISTS (SELECT 1 FROM json_each(w.data, '$.gate_results') g WHERE json_extract(g.value, '$.type') = 'registered_check')`
+	sqlVerified           = `(` + sqlReviewerApproved + ` OR (` + sqlGatesPassed + ` AND ` + sqlHasRegisteredCheck + `))`
+	// artifacts, or gates that passed without a registered_check (attested by the worker's artifacts)
+	sqlEvidence = `(json_array_length(COALESCE(json_extract(w.data, '$.artifacts'), '[]')) > 0 OR ` + sqlGatesPassed + `)`
 )
 
 var verificationSQL = map[string]string{
