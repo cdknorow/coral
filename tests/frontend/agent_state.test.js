@@ -124,8 +124,9 @@ async function run() {
         await ev(`(async () => { await window.__origFetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ show_session_summary: true }) }); await (await import((window.__coralStatic||'/static/')+'modals.js')).loadSettings(); return true; })()`);
         await ev(`['coral-go','other-proj','ui-team','team-a','team-b'].forEach(g => localStorage.setItem('coral-sleeping-expanded:' + g, 'true')); true`);
         await ev(`localStorage.setItem('coral-group-by-team','${grouped ? 'true' : 'false'}'); window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__fixture))); true`);
-        // A late startup load can re-render the list: go on once the rendered rows hold still.
-        await waitStable(`[...document.querySelectorAll('#live-sessions-list .session-group-item, #mobile-session-list .session-group-item')].map(li => li.dataset.sessionId + ':' + li.getAttribute('data-state')).join()`, 'the fixture rows', 300).catch(() => {});
+        // A late startup load can re-render the list: wait for the rendered rows to hold still (a real wait with a
+        // generous timeout, not a swallowed one — a never-settling list is a bug to surface, not to race past).
+        await waitStable(`[...document.querySelectorAll('#live-sessions-list .session-group-item, #mobile-session-list .session-group-item')].map(li => li.dataset.sessionId + ':' + li.getAttribute('data-state')).join()`, 'the fixture rows', 300, { timeout: 10000 });
     };
     const ROWS = (listId) => `(() => Object.fromEntries(Array.from(document.querySelectorAll('#${listId} .session-group-item')).map(li => {
         const q = s => li.querySelector(s); const dot = q('.session-dot'); const dcs = dot ? getComputedStyle(dot) : null; const name = q('.session-label');
@@ -140,10 +141,12 @@ async function run() {
 
     try {
         await boot(1440, 900, false, false);
-        // task_idle comes from the team's board /status, fetched after the first render.
-        await until(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.taskIdle}"]')?.getAttribute('data-state') === 'task_idle'`, 'the task_idle row');
-        await until(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.waiter}"]')?.getAttribute('data-state') === 'waiting_on'`, 'the waiting_on row (#3471)');
-        await until(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.twinThere}"]')?.getAttribute('data-state') === 'waiting_on'`, "the other board's waiting row (#3473)");
+        // task_idle / waiting_on come from the team's board /status and /poll, fetched after the first render. Hard-wait
+        // for each (a generous timeout, not the soft `until` that swallowed a timeout and let the rows be read stale: the
+        // flake). If a state genuinely never arrives it fails here, loudly, instead of racing the reads below.
+        await waitFor(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.taskIdle}"]')?.getAttribute('data-state') === 'task_idle'`, 'the task_idle row', { timeout: 10000 });
+        await waitFor(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.waiter}"]')?.getAttribute('data-state') === 'waiting_on'`, 'the waiting_on row (#3471)', { timeout: 10000 });
+        await waitFor(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.twinThere}"]')?.getAttribute('data-state') === 'waiting_on'`, "the other board's waiting row (#3473)", { timeout: 10000 });
         let rows = await ev(ROWS('live-sessions-list'));
 
         // ── E/D: one vocabulary per state on row attr, dot, pill, aria, tooltip ──
