@@ -12,7 +12,7 @@ import (
 
 // Coral's own rules (#4265), added to betterleaks' for the provider keys it does not mask: an
 // Anthropic key of any length, an OpenAI key (sk-, sk-proj-, sk-svcacct-, sk-admin-) and an AWS access
-// key ID (bare, or as AWS_ACCESS_KEY_ID=). They are a Detector run beside betterleaks, so Coral Hub's
+// key ID (bare, or as AWS_ACCESS_KEY_ID=), and the password of a URL's credentials (scheme://user:password@host, #4769). They are a Detector run beside betterleaks, so Coral Hub's
 // replies and streams, agent events and coral.log lines all get them, and a library update
 // cannot take them away. Each is a Go regexp (linear time, no backtracking), so the budget is not
 // at risk; a rule is as narrow as its provider's shape, to keep ordinary words and hyphenated names
@@ -47,6 +47,9 @@ var extraRules = []extraRule{
 	// hyphen after the prefix.
 	{re: regexp.MustCompile(`\bsk-[A-Za-z0-9]{32,}`), ok: mixesLettersAndDigits},
 	{re: regexp.MustCompile(`\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}`), ok: mixesLettersAndDigits},
+	// A URL's user name that is itself the credential (https://<token>@host, no password): a long user name that mixes letters and digits.
+	// The passwords of scheme://user:password@host are found by redact.URLPasswordSpans (extraSpans), which needs the URL's own shape (#4769).
+	{re: regexp.MustCompile(`://([A-Za-z0-9._~%+-]{24,})@`), group: 1, ok: mixesLettersAndDigits},
 	// AWS access key IDs: AKIA (long-term), ASIA (temporary) and the other IAM prefixes. Amazon's
 	// documentation example (...EXAMPLE) is not a secret, as betterleaks also treats it.
 	{re: regexp.MustCompile(`\b(?:AKIA|ASIA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ABIA|ACCA)[A-Z0-9]{16}\b`), ok: notDocumentationKey},
@@ -143,7 +146,8 @@ func dropInvisibles(text string) (string, []int) {
 }
 
 func extraSpans(text string) []redact.Span {
-	var out []redact.Span
+	// The password of a URL (scheme://user:password@host, #4769): betterleaks has no rule for it, and the connector had shown it to hub viewers.
+	out := redact.URLPasswordSpans(text)
 	for _, r := range extraRules {
 		for _, m := range r.re.FindAllStringSubmatchIndex(text, -1) {
 			a, b := m[2*r.group], m[2*r.group+1]
