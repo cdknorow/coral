@@ -161,46 +161,66 @@ func (in AutomatedInput) signalDecision(ctx context.Context) (waiting bool, why,
 			noteDisagreement(in.Name, "", time.Now()) // any other decision ends the session's window
 		}
 	}()
-	var screen string
-	haveScreen := false
+	screen, haveScreen := in.signalScreen(ctx, agentType, sessionID)
+	if waiting, why, kind, decided := in.stateDecision(st, agentType, screen, haveScreen); decided {
+		return waiting, why, kind, st, true
+	}
+	waiting, why, kind, disagreed = in.idleDecision(st, agentType, screen, haveScreen)
+	return waiting, why, kind, st, true
+}
+
+// signalScreen is the agent's screen, when its terminal can show it.
+func (in AutomatedInput) signalScreen(ctx context.Context, agentType, sessionID string) (screen string, ok bool) {
 	if r, isReader := in.Term.(ScreenReader); isReader {
 		if s, err := r.AgentScreen(ctx, in.Name, agentType, sessionID); err == nil {
-			screen, haveScreen = s, true
+			return s, true
 		}
 	}
+	return "", false
+}
+
+// stateDecision decides for every state but idle: gone, starting (a trust screen is the user's), blocked, in turn
+// (a pending tool's prompt on screen for agents that signal none), unknown. decided is false for idle, and for a
+// stale in-turn state 2.2.4 takes as idle: the idle checks then decide.
+func (in AutomatedInput) stateDecision(st AgentState, agentType, screen string, haveScreen bool) (waiting bool, why, kind string, decided bool) {
 	switch st.State {
 	case StateGone:
-		return true, "signals: the agent's session ended", "", st, true
+		return true, "signals: the agent's session ended", "", true
 	case StateStarting:
 		// No hooks run before a trust screen is answered: the screen says whether
 		// the launch waits on the user (Blocked{trust} in the design; #3484's corpus).
 		if haveScreen {
 			if open, why := PromptOnScreen(screen); open && isPromptHold(why) {
-				return true, "signals: starting, screen: " + why, kindTrust, st, true
+				return true, "signals: starting, screen: " + why, kindTrust, true
 			}
 		}
-		return true, "signals: starting", "", st, true
+		return true, "signals: starting", "", true
 	case StateBlocked:
-		return true, "signals: blocked (" + st.Kind + ")", blockedKind(st.Kind), st, true
+		return true, "signals: blocked (" + st.Kind + ")", blockedKind(st.Kind), true
 	case StateInTurn:
 		// agy and pi signal no prompt: the screen is read for one only while a tool
 		// call is pending (2.2.3), so a busy footer is never a prompt.
 		if haveScreen && st.ToolPending && !hasPromptSignal(agentType) {
 			if open, why := PromptOnScreen(screen); open && isPromptHold(why) {
-				return true, "signals: in turn, tool pending, screen: " + why, kindPrompt, st, true
+				return true, "signals: in turn, tool pending, screen: " + why, kindPrompt, true
 			}
 		}
 		if in.staleRelaxation(st, agentType, screen, haveScreen) {
 			slog.Info("automated input: a stale in-turn state is taken as idle (the screen shows Claude's empty box)",
 				"session", in.Name, "last_event", st.LastEvent.Format(time.RFC3339), "cli_version", st.CLIVersion)
-			break
+			return false, "", "", false
 		}
-		return true, "signals: in turn", "", st, true
+		return true, "signals: in turn", "", true
 	case StateIdle:
-	default:
-		return true, "signals: unknown state", "", st, true
+		return false, "", "", false
 	}
-	// Idle by signals: the screen may still hold more.
+	return true, "signals: unknown state", "", true
+}
+
+// idleDecision is for an agent idle by its signals, where the screen may still hold more: a prompt (a request the
+// signals didn't show is a disagreement, noted), no input box yet for a send that needs one, or a person's draft
+// on a PTY that can't show its box.
+func (in AutomatedInput) idleDecision(st AgentState, agentType, screen string, haveScreen bool) (waiting bool, why, kind string, disagreed bool) {
 	if haveScreen {
 		if open, why := PromptOnScreen(screen); open {
 			if isPromptHold(why) && !isDialogHold(why) { // a dialog isn't a request the signals would show
@@ -210,18 +230,18 @@ func (in AutomatedInput) signalDecision(ctx context.Context) (waiting bool, why,
 						"session", in.Name, "why", why, "cli_version", st.CLIVersion)
 				}
 			}
-			return true, "signals: idle, screen: " + why, promptKind(why), st, true
+			return true, "signals: idle, screen: " + why, promptKind(why), disagreed
 		}
 	}
 	if in.RequireInputBox && (agentType == at.Claude || agentType == at.Codex) && (!haveScreen || !InputBoxOnScreen(screen)) {
-		return true, "signals: idle, the agent's input box isn't on screen yet", "", st, true
+		return true, "signals: idle, the agent's input box isn't on screen yet", "", false
 	}
 	if hr, isPTY := in.Term.(HumanInputReader); isPTY && !st.LastStop.IsZero() && hr.HumanInputSince(in.Name, in.SessionID, st.LastStop) {
 		// The PTY's box can't be read; a person who typed since the turn ended has a
 		// draft by definition (2.2.6, P3).
-		return true, whyDraft, "", st, true
+		return true, whyDraft, "", false
 	}
-	return false, "", "", st, true
+	return false, "", "", false
 }
 
 // Hold kinds (HeldTooLongFunc): what a request to the user is. "" is a hold for the
