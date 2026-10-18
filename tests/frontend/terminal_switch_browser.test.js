@@ -79,7 +79,7 @@ const BUDGET_MS = 500;
             const ms = [];
             for (let i = 0; i < 20; i++) {
                 await ev(`window.setLiveViewMode('chat'); true`);
-                await sleep(waits[i % 4]);
+                await sleep(waits[i % 4]);   // sleep-ok: how long Chat view has been showing before the switch is the variable under test (30 ms to 2 s)
                 ms.push(Math.round(await switchToTerminal()));
             }
             stop = true; if (streamer) await streamer;
@@ -91,15 +91,15 @@ const BUDGET_MS = 500;
         for (const vp of [{ width: 1280, height: 800 }, { width: 390, height: 800 }]) {
             await setup(vp);
             await select(standIns[0]);
-            await sleep(1200);
+            await sleep(1200);   // sleep-ok: lets the selected agent settle in Chat view before the timed switches; there is no completion event for "idle"
             await toggles(`${vp.width} px, idle agent`);
             await toggles(`${vp.width} px, output streaming`, standIns[0]);
             await select(standIns[1]);
-            await sleep(1200);
+            await sleep(1200);   // sleep-ok: lets the selected agent settle in Chat view before the timed switches; there is no completion event for "idle"
             await toggles(`${vp.width} px, after switching to another agent`);
             // An agent switch made while the Terminal view is showing paints the new agent's terminal too.
             await ev(`window.setLiveViewMode('terminal'); true`);
-            await sleep(600);
+            await sleep(600);   // sleep-ok: the agent switch must happen with the Terminal view already settled; a window for nothing to change, not a condition
             await select(standIns[0]);
             let t = -1;
             for (let k = 0; k < 100 && t < 0; k++) { if ((await ev(CHARS)) > 0 && (await ev(INK)) > 50) t = k * 5; else await sleep(5); }
@@ -118,7 +118,7 @@ const BUDGET_MS = 500;
             await setup({ width: 1280, height: 800 });
             await ev(`(async () => { const lc = await import(${MOD} + 'live_chat.js'); lc.terminalPrefetch.idleMs = ${idleMs}; })()`);
             await select(standIns[0]);
-            await sleep(1000);
+            await sleep(1000);   // sleep-ok: lets the page go idle before the link is throttled; there is no completion event for "idle"
             await slow();
             await ready();
             const ms = await switchToTerminal(8000);
@@ -134,7 +134,7 @@ const BUDGET_MS = 500;
             for (let k = 0; k < 400 && !(await ev(`typeof window.Terminal !== 'undefined' && typeof window.CanvasAddon !== 'undefined'`)); k++) await sleep(50);
         }, 150);
         check(`slow link, Chat view showing for the idle delay: the first switch shows text within ${BUDGET_MS} ms`, idled >= 0 && idled <= BUDGET_MS, `${Math.round(idled)} ms`);
-        const control = await cold('control', async () => { await sleep(300); });
+        const control = await cold('control', async () => { await sleep(300); }); // sleep-ok: the control waits a fixed time so nothing is fetched ahead, the thing it measures
         lines.push(`[info] slow link, nothing fetched ahead (the control): the first switch shows text after ${Math.round(control)} ms`);
         check('slow link, nothing fetched ahead: the switch is what downloads xterm.js (the control is slower than the prefetched ones)', control > Math.max(hovered, idled), `${Math.round(control)} vs ${Math.round(hovered)} and ${Math.round(idled)} ms`);
 
@@ -142,13 +142,13 @@ const BUDGET_MS = 500;
         await fast();
         await setup({ width: 1280, height: 800 });
         await select(standIns[0]);
-        await sleep(1000);
+        await sleep(1000);   // sleep-ok: lets the page go idle before the link is throttled; there is no completion event for "idle"
         await slow();
         await ev(`window.setLiveViewMode('terminal'); true`);
-        await sleep(200);
+        await sleep(200);   // sleep-ok: the Terminal view is left after a fixed 200 ms, the interval under test
         await ev(`window.setLiveViewMode('chat'); true`);
         for (let k = 0; k < 400 && !(await ev(`typeof window.Terminal !== 'undefined' && typeof window.CanvasAddon !== 'undefined'`)); k++) await sleep(50);
-        await sleep(600);
+        await sleep(600);   // sleep-ok: the agent switch must happen with the Terminal view already settled; a window for nothing to change, not a condition
         const sockets = await ev(`window.__tws.map(s => s.readyState)`);
         check('Terminal then straight back to Chat while xterm.js downloads: no terminal socket opens in Chat view', sockets.length === 0, `${sockets.length} sockets (states ${sockets.join(',')})`);
         await fast();
