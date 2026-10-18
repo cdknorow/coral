@@ -153,6 +153,14 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	burst := time.Since(burstStart)
+	// The debounce window is anchored at b-1's build on the server, not at burstStart: burstStart is
+	// set only once awaitStatus has delivered b-1 to the client, which lags the build by at most
+	// `first`. So the burst sits up to `first` into the window and spans at most `first+burst` of it,
+	// and that span -- not burst alone -- decides how many windows it crosses. Under load `first` grows
+	// (a starved client reads b-1 late) while the sends stay ~180 ms, so the window can fire mid-burst
+	// and rightly send an intermediate state; counting from burst alone then wrongly demanded a single
+	// diff (the #4736 flake: 2 diffs where it expected 1, with burst still under the window).
+	span := first + burst
 	// The other nine changes come as one diff with the latest state, within the
 	// limit, and no further diff follows. Read until the latest state has come (a loaded machine
 	// can send it later than a fixed window: the test failed that way under load after #4136),
@@ -183,15 +191,16 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 	}
 	read(10*h.cfg.WSRemoteDebounce, true)
 	read(2*h.cfg.WSRemoteDebounce, false) // nothing more should come
-	// One coalesced diff per debounce window the burst spanned: one when it fit in a window (the
-	// 180 ms it takes unloaded), more only when a loaded machine stretched its sleeps past the
-	// window, which then rightly sends what was pending. Never a diff per change, and the last one
-	// carries the latest state.
-	allowed := 1 + int(burst/h.cfg.WSRemoteDebounce)
+	// One coalesced diff per debounce window the burst crossed, counted from the window's anchor
+	// (span = first+burst): one when the whole burst landed inside a single window (the ~180 ms it
+	// takes unloaded, delivered promptly), more only when the span reached into a later window, which
+	// then rightly sends what was pending by then. Never a diff per change, and the last one carries
+	// the latest state.
+	allowed := 1 + int(span/h.cfg.WSRemoteDebounce)
 	require.NotEmpty(t, diffs, "the burst's changes arrive")
-	assert.LessOrEqual(t, len(diffs), allowed, "coalesced: %v over a %s burst", diffs, burst)
+	assert.LessOrEqual(t, len(diffs), allowed, "coalesced: %v over a %s span (first %s + burst %s)", diffs, span, first, burst)
 	assert.Equal(t, "b-10", diffs[len(diffs)-1], "the last diff carries the latest remote state")
-	if burst < h.cfg.WSRemoteDebounce {
-		assert.Equal(t, []string{"b-10"}, diffs, "one coalesced diff carrying the latest remote state")
+	if span < h.cfg.WSRemoteDebounce {
+		assert.Equal(t, []string{"b-10"}, diffs, "one coalesced diff carrying the latest remote state (span %s)", span)
 	}
 }
