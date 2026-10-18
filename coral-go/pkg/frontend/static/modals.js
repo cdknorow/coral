@@ -2607,20 +2607,8 @@ function refreshCLIPathFields() {
     }).catch(() => { /* the dialog keeps what it opened with */ });
 }
 
-export async function showSettingsModal(group) {
-    // Focus moves in on open, Tab stays inside, and focus comes back on close (accessibility pass).
-    attachDialogFocus(document.getElementById('settings-modal'));
-
-    importOnce('./terminal_backend.js').then(m => m.loadTerminalBackendRow()).catch(() => {}); // #3634
-    importOnce('./security_settings.js').then(m => m.loadSecurityRow()).catch(() => {}); // #3948
-    const s = state.settings || {};
-    // What this dialog opens with: Save sends only the fields that end up different from it.
-    _settingsAtOpen = { ...s };
-    // The CLI path fields are filled later in this function (after awaited requests): until then they are empty, and a Save
-    // made in that time (a suite that does not wait for the dialog) must not read them as "cleared".
-    for (const id of Object.values(CLI_PATH_FIELDS)) { const el = document.getElementById(id); if (el) el.dataset.filled = ''; }
-    // The machine-only parts of this dialog (privacy, remote access, database encryption, connecting to a hub) do not
-    // exist on the hub: the cloud dialog shows only the per-user settings (applyCloudSettingsDialog below).
+// The machine-only parts of the dialog (privacy, remote access, storage, database encryption, the hub connection); the hub's dialog has none of them.
+async function _fillMachineSettings(s) {
     if (!isCloud()) {
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
@@ -2658,7 +2646,10 @@ export async function showSettingsModal(group) {
         importOnce('./cloud_connect.js').then(m => { m.initCloudConnect(); m.loadCloudStatus(); }).catch(() => {});
         importOnce('./hub_mode_setting.js').then(m => m.loadHubModeSetting()).catch(() => {});
     }
+}
 
+// The theme list: the built-in themes, then the saved custom ones.
+async function _fillThemeSelect(s) {
     // Theme — populate with built-in options + saved custom themes
     const themeSelect = document.getElementById("settings-theme");
     if (themeSelect) {
@@ -2688,7 +2679,10 @@ export async function showSettingsModal(group) {
         const currentTheme = s.custom_theme ? `custom:${s.custom_theme}` : (s.theme || "dark");
         themeSelect.value = currentTheme;
     }
+}
 
+// The defaults for a new agent: render engine, agent type, permission mode and working directory.
+function _fillDefaults(s) {
     // Default Render Engine
     const currentEngine = s.default_renderer || "xterm";
     const options = getEngineNames()
@@ -2715,7 +2709,10 @@ export async function showSettingsModal(group) {
         dirInput.value = s.default_working_dir || "";
         dirInput.placeholder = dirInput.dataset.coralRoot || "/path/to/project";
     }
+}
 
+// The API key box (local only), read from the server.
+function _fillApiKey() {
     // API Key
     const apiKeyInput = document.getElementById("settings-api-key");
     if (apiKeyInput && !isCloud()) {
@@ -2728,7 +2725,10 @@ export async function showSettingsModal(group) {
             _setApiKey(apiKeyInput, data && data.key, data && data.signIn ? 'Sign in to see the API key (run: coral open)' : 'Not configured');
         }).catch(() => _setApiKey(apiKeyInput, '', 'Not available'));
     }
+}
 
+// The CLI paths and the default models (and their datalists, from the model catalog; not on the hub).
+function _fillCliAndModels(s) {
     // CLI Paths
     const cliClaude = document.getElementById("settings-cli-path-claude");
     const cliCodex = document.getElementById("settings-cli-path-codex");
@@ -2766,7 +2766,10 @@ export async function showSettingsModal(group) {
         _fillModelDatalist(document.getElementById("settings-models-agy"), "agy", models);
         _fillModelDatalist(document.getElementById("settings-models-pi"), "pi", models);
     });
+}
 
+// Grouping, terminal font and scrollback, notifications, update check and scrollbars.
+function _fillTerminalAndBrowserPrefs(s) {
     // Group by Team
     const groupByTeamCheck = document.getElementById("settings-group-by-team");
     if (groupByTeamCheck) {
@@ -2810,7 +2813,10 @@ export async function showSettingsModal(group) {
     // Show Scrollbars (defaults to true)
     const scrollbarsCheck = document.getElementById("settings-show-scrollbars");
     if (scrollbarsCheck) scrollbarsCheck.checked = s.show_scrollbars !== false;
+}
 
+// File search, git diff base and scan interval, agent priority.
+function _fillFilesAndGit(s) {
     // File Search Mode (defaults to 'directory')
     const fileSearchSelect = document.getElementById("settings-file-search-mode");
     if (fileSearchSelect) fileSearchSelect.value = s.file_search_mode || 'directory';
@@ -2837,6 +2843,35 @@ export async function showSettingsModal(group) {
     // Run agents at lower priority (#3437, a checkbox since #3712): on unless set to normal.
     const agentLowPriority = document.getElementById("settings-agent-low-priority");
     if (agentLowPriority) agentLowPriority.checked = s.agent_priority !== 'normal';
+}
+
+export async function showSettingsModal(group) {
+    // Focus moves in on open, Tab stays inside, and focus comes back on close (accessibility pass).
+    attachDialogFocus(document.getElementById('settings-modal'));
+
+    importOnce('./terminal_backend.js').then(m => m.loadTerminalBackendRow()).catch(() => {}); // #3634
+    importOnce('./security_settings.js').then(m => m.loadSecurityRow()).catch(() => {}); // #3948
+    const s = state.settings || {};
+    // What this dialog opens with: Save sends only the fields that end up different from it.
+    _settingsAtOpen = { ...s };
+    // The CLI path fields are filled later in this function (after awaited requests): until then they are empty, and a Save
+    // made in that time (a suite that does not wait for the dialog) must not read them as "cleared".
+    for (const id of Object.values(CLI_PATH_FIELDS)) { const el = document.getElementById(id); if (el) el.dataset.filled = ''; }
+    // The machine-only parts of this dialog (privacy, remote access, database encryption, connecting to a hub) do not
+    // exist on the hub: the cloud dialog shows only the per-user settings (applyCloudSettingsDialog below).
+    await _fillMachineSettings(s);
+
+    await _fillThemeSelect(s);
+
+    _fillDefaults(s);
+
+    _fillApiKey();
+
+    _fillCliAndModels(s);
+
+    _fillTerminalAndBrowserPrefs(s);
+
+    _fillFilesAndGit(s);
 
     // A partner build's name (Coral has no paid licence, #3221)
     if (!isCloud()) _loadTierBranding();
