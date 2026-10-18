@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/tmux"
 )
 
@@ -375,10 +376,11 @@ func (m *PTYBackend) Close() error {
 	var wg sync.WaitGroup
 	for _, s := range sessions {
 		wg.Add(1)
-		go func(s *session) {
+		s := s
+		safego.Go("ptymanager/close", func() {
 			defer wg.Done()
 			s.kill()
-		}(s)
+		})
 	}
 	wg.Wait()
 	return nil
