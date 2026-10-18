@@ -990,8 +990,10 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	// A post is a message, not a document: reports and logs go to artifacts. The 4 MiB body cap alone let one post be 4 MiB in the
 	// database and in every agent's terminal (#4602).
 	if len(body.Content) > maxBoardPostContent {
+		msg := fmt.Sprintf("a board post is at most %d KiB (this one is %d KiB): put the long text in an artifact (coral-agent artifact upload) and post its link", maxBoardPostContent>>10, len(body.Content)>>10)
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
-			"error":     fmt.Sprintf("a board post is at most %d KiB (this one is %d KiB): put the long text in an artifact (coral-agent artifact upload) and post its link", maxBoardPostContent>>10, len(body.Content)>>10),
+			"error":     msg,
+			"message":   msg, // coral-board prints "message" before the code (serverError): the way to fix it, not just "content_too_large"
 			"code":      "content_too_large",
 			"max_bytes": maxBoardPostContent,
 			"not_sent":  true,

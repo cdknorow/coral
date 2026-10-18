@@ -89,3 +89,29 @@ func TestBoardPostContentIsCappedAt256KiB(t *testing.T) {
 	assert.Contains(t, body, "content_too_large")
 	assert.Contains(t, body, "artifact")
 }
+
+// coral-board prints a refusal's "message" before its code (serverError): the 413 and the 507 carry one, the same
+// words as "error", so an agent reads how to fix it and not only "content_too_large" or "disk_low" (#4629).
+func TestBoardPostRefusalsCarryAMessageForTheCLI(t *testing.T) {
+	server, _ := setupBoardTestServer(t)
+	base := server.URL + "/api/board/refusals"
+	refusal := func(content string) (int, map[string]any) {
+		resp := postJSON(t, base+"/messages", map[string]string{"subscriber_id": "sess-1", "content": content})
+		defer resp.Body.Close()
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		return resp.StatusCode, out
+	}
+	code, out := refusal(strings.Repeat("x", maxBoardPostContent+1))
+	assert.Equal(t, http.StatusRequestEntityTooLarge, code)
+	assert.NotEmpty(t, out["message"])
+	assert.Equal(t, out["error"], out["message"])
+	assert.Contains(t, out["message"], "artifact", "it says what to do")
+
+	lowDisk(t, 100<<20)
+	code, out = refusal("a message")
+	assert.Equal(t, http.StatusInsufficientStorage, code)
+	assert.NotEmpty(t, out["message"])
+	assert.Equal(t, out["error"], out["message"])
+	assert.Contains(t, out["message"], "Free some space")
+}

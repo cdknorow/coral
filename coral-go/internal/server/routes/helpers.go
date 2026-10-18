@@ -267,8 +267,10 @@ func refuseIfDiskLow(w http.ResponseWriter) bool {
 	if !low {
 		return false
 	}
+	const msg = "The disk Coral stores its data on is almost full, so this was not saved. Free some space (Settings > Storage shows what Coral uses) and try again."
 	writeJSON(w, http.StatusInsufficientStorage, map[string]any{
-		"error":      "The disk Coral stores its data on is almost full, so this was not saved. Free some space (Settings > Storage shows what Coral uses) and try again.",
+		"error":      msg,
+		"message":    msg, // coral-board prints "message" before the code (serverError)
 		"code":       "disk_low",
 		"free_bytes": free,
 		"not_sent":   true,
