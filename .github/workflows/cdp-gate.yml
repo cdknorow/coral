@@ -215,7 +215,7 @@ jobs:
           THROTTLE: ${{ inputs.cpu_throttle }}
         run: |
           set -o pipefail
-          [[ "$SUITES" =~ ^[a-z0-9_.-]+(,[a-z0-9_.-]+)*$ ]] || { echo "suites: comma-separated name fragments only (a-z 0-9 _ . -)"; exit 2; }
+          [[ "$SUITES" =~ ^[a-z0-9_.][a-z0-9_.-]*(,[a-z0-9_.][a-z0-9_.-]*)*$ ]] || { echo "suites: comma-separated name fragments only (a-z 0-9 _ . -, not starting with -)"; exit 2; }
           [[ "$RUNS" =~ ^[0-9]+$ ]] && [ "$RUNS" -ge 1 ] && [ "$RUNS" -le 50 ] || { echo "runs: a whole number from 1 to 50"; exit 2; }
           [[ "$THROTTLE" =~ ^[1-8]$ ]] || { echo "cpu_throttle: a whole number from 1 to 8"; exit 2; }
           node run_cdp_suites.mjs --timeout 180 --keep --stress --only "$SUITES" --runs "$RUNS" --shards 1 --cpu-throttle "$THROTTLE" --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
