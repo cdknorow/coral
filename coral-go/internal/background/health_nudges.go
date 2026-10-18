@@ -130,10 +130,30 @@ func (h *HealthNudges) RunOnce(ctx context.Context) {
 	}
 }
 
+// healthRun is one board's run of the health rules: its settings, the time, and what the run did, for the board
+// lines at its end.
+type healthRun struct {
+	h                                      *HealthNudges
+	project                                string
+	hs                                     board.HealthSettings
+	now                                    time.Time
+	claimed, statused, escalated, renudged []string
+	budgetHit                              bool
+}
+
+// take spends one automatic action (board.TakeHealthAction: the cooldown, the per-agent and team limits), and
+// notes when the team's budget refused it.
+func (r *healthRun) take(ctx context.Context, rule, target string, cooldown time.Duration) bool {
+	why, err := r.h.store.TakeHealthAction(ctx, r.project, rule, target, r.now, board.HealthLimits{Cooldown: cooldown, PerTargetPerHour: 3, TeamPerHour: r.h.TeamBudget})
+	if why == board.HealthRefusedBudget {
+		r.budgetHit = true
+	}
+	return err == nil && why == ""
+}
+
+func healthMinutes(m int) time.Duration { return time.Duration(m) * time.Minute }
+
 func (h *HealthNudges) runProject(ctx context.Context, project string, bySession map[string]AgentInfo, hs board.HealthSettings) {
-	minutes := func(m int) time.Duration { return time.Duration(m) * time.Minute }
-	claimAfter, claimNudges := minutes(hs.ClaimNudge.AfterMin), hs.ClaimNudge.Nudges
-	statusAfter, silentAfter := minutes(hs.StatusNudge.AfterMin), minutes(hs.StatusNudge.EscalateAfterMin)
 	subs, err := h.store.ListSubscribers(ctx, project)
 	if err != nil {
 		return
@@ -147,143 +167,164 @@ func (h *HealthNudges) runProject(ctx context.Context, project string, bySession
 	for _, w := range waits {
 		waiting[w.SubscriberID] = true
 	}
-	now := h.now()
-	limits := func(cooldown time.Duration) board.HealthLimits {
-		return board.HealthLimits{Cooldown: cooldown, PerTargetPerHour: 3, TeamPerHour: h.TeamBudget}
-	}
-	var claimed, statused, escalated, renudged []string
-	budgetHit := false
-	take := func(rule, target string, cooldown time.Duration) bool {
-		why, err := h.store.TakeHealthAction(ctx, project, rule, target, now, limits(cooldown))
-		if why == board.HealthRefusedBudget {
-			budgetHit = true
-		}
-		return err == nil && why == ""
-	}
+	r := &healthRun{h: h, project: project, hs: hs, now: h.now()}
 	for _, sub := range subs {
 		a, live := bySession[sub.SessionName]
 		if !live {
 			continue
 		}
-		var mine, pending []board.Task
-		for _, t := range tasks {
-			if t.AssignedTo == nil || !board.SameIdentity(*t.AssignedTo, sub.SubscriberID) || t.Parked(now) {
-				continue // a parked task is set aside on purpose: no nudge for it (#4175 step 3)
-			}
-			switch t.Status {
-			case "in_progress":
-				mine = append(mine, t)
-			case "pending":
-				pending = append(pending, t)
-			}
-		}
+		mine, pending := agentTasks(tasks, sub.SubscriberID, r.now)
 		sig, known := h.signal(ctx, a.SessionID)
-
-		// Claim nudge: idle, nothing in progress, assigned work waiting.
-		if len(mine) > 0 {
-			h.store.ResetHealthCounters(ctx, project, ruleClaimNudge, sub.SubscriberID)
-		} else if hs.ClaimNudge.On && len(pending) > 0 && known && !sig.InTurn && !sig.NeedsInput && !waiting[sub.SubscriberID] &&
-			!sig.Since.IsZero() && now.Sub(sig.Since) >= claimAfter {
-			t := pending[0] // ListOpenTasks orders by priority, then id
-			subject := fmt.Sprint(t.ID)
-			c, err := h.store.GetHealthCounter(ctx, project, ruleClaimNudge, sub.SubscriberID, subject)
-			switch {
-			case err != nil || c.Escalated:
-			case c.Count >= claimNudges:
-				if h.store.MarkHealthEscalated(ctx, project, ruleClaimNudge, sub.SubscriberID, subject, now) == nil {
-					escalated = append(escalated, fmt.Sprintf("%s has not claimed #%d after %d nudges", teamhealth.Name(sub.SubscriberID), t.ID, c.Count))
-				}
-			case take(ruleClaimNudge, sub.SubscriberID, claimAfter):
-				if h.deliver(ctx, a, "health-claim:"+project, claimNudgeText(t.ID)) == nil {
-					h.store.BumpHealthCounter(ctx, project, ruleClaimNudge, sub.SubscriberID, subject, now)
-					claimed = append(claimed, fmt.Sprintf("%s (#%d)", teamhealth.Name(sub.SubscriberID), t.ID))
-				}
-			}
-		}
-
-		// Status nudge: a task in progress with no activity.
-		for _, t := range mine {
-			if !hs.StatusNudge.On {
-				break
-			}
-			if until, _ := h.store.TaskSnoozedUntil(ctx, project, t.ID); until.After(now) {
-				continue // the reminder is snoozed (long tests, a release gate)
-			}
-			subject := fmt.Sprint(t.ID)
-			last, _ := h.store.TaskLastActivity(ctx, project, t.ID)
-			if known && sig.LastEvent.After(last) {
-				last = sig.LastEvent
-			}
-			if last.IsZero() {
-				continue
-			}
-			c, err := h.store.GetHealthCounter(ctx, project, ruleStatusNudge, sub.SubscriberID, subject)
-			if err != nil {
-				continue
-			}
-			if c.Count > 0 || c.Escalated {
-				if at, perr := time.Parse("2006-01-02T15:04:05.000Z", c.LastAt); perr == nil && last.After(at) {
-					h.store.ResetHealthCounter(ctx, project, ruleStatusNudge, sub.SubscriberID, subject) // active again
-					c = board.HealthCounter{}
-				} else if !c.Escalated && perr == nil && now.Sub(at) >= silentAfter {
-					if h.store.MarkHealthEscalated(ctx, project, ruleStatusNudge, sub.SubscriberID, subject, now) == nil {
-						escalated = append(escalated, fmt.Sprintf("%s silent on #%d after a status nudge", teamhealth.Name(sub.SubscriberID), t.ID))
-					}
-					continue
-				} else {
-					continue
-				}
-			}
-			if silent := now.Sub(last); silent >= statusAfter && take(ruleStatusNudge, sub.SubscriberID, statusAfter) {
-				if h.deliver(ctx, a, "health-status:"+project, statusNudgeText(t.ID, int(silent.Minutes()))) == nil {
-					h.store.BumpHealthCounter(ctx, project, ruleStatusNudge, sub.SubscriberID, subject, now)
-					statused = append(statused, fmt.Sprintf("%s (#%d)", teamhealth.Name(sub.SubscriberID), t.ID))
-				}
-			}
-		}
+		r.claimNudge(ctx, sub, a, mine, pending, sig, known, waiting[sub.SubscriberID])
+		r.statusNudges(ctx, sub, a, mine, sig, known)
 	}
 
 	// Re-nudge the orchestrator, once, for agents' @-mentions it has not acted on (#4176 rule 9):
 	// once per message, one nudge per sender per window, never for Coral's own lines.
 	if orch, err := h.store.TeamOrchestrator(ctx, project); err == nil && hs.MentionRenudge.On {
-		h.renudgeMentions(ctx, project, orch, subs, bySession, now, minutes(hs.MentionRenudge.AfterMin), take, &renudged)
+		h.renudgeMentions(ctx, project, orch, subs, bySession, r.now, healthMinutes(hs.MentionRenudge.AfterMin), func(rule, target string, cooldown time.Duration) bool {
+			return r.take(ctx, rule, target, cooldown)
+		}, &r.renudged)
 	}
 
 	// An agent whose messages wait at a dialog: tell the Operator (#4175 step 3).
-	h.heldNotices(ctx, project, subs, now, hs, take)
+	h.heldNotices(ctx, project, subs, r.now, hs, func(rule, target string, cooldown time.Duration) bool { return r.take(ctx, rule, target, cooldown) })
 
-	// An escalation ends with its task (completed, cancelled, reassigned).
-	if esc, err := h.store.HealthEscalations(ctx, project); err == nil {
-		open := map[string]bool{}
-		for _, t := range tasks {
-			if t.AssignedTo != nil && (t.Status == "pending" || t.Status == "in_progress") {
-				open[*t.AssignedTo+"|"+fmt.Sprint(t.ID)] = true
+	r.endFinishedEscalations(ctx, tasks)
+	r.postLines(ctx)
+}
+
+// agentTasks is a subscriber's open tasks: in progress and pending. A parked task is set aside on purpose: no nudge
+// for it (#4175 step 3).
+func agentTasks(tasks []board.Task, subscriberID string, now time.Time) (mine, pending []board.Task) {
+	for _, t := range tasks {
+		if t.AssignedTo == nil || !board.SameIdentity(*t.AssignedTo, subscriberID) || t.Parked(now) {
+			continue
+		}
+		switch t.Status {
+		case "in_progress":
+			mine = append(mine, t)
+		case "pending":
+			pending = append(pending, t)
+		}
+	}
+	return mine, pending
+}
+
+// claimNudge: an idle agent (by its hook events: not in a turn, no prompt, not waiting, idle for ClaimNudge.AfterMin)
+// with nothing in progress and assigned work waiting is nudged to claim its first pending task, up to
+// ClaimNudge.Nudges times; then it is escalated to the orchestrator. Something in progress resets the counters.
+func (r *healthRun) claimNudge(ctx context.Context, sub board.Subscriber, a AgentInfo, mine, pending []board.Task, sig agentSignal, known, waiting bool) {
+	h, project := r.h, r.project
+	claimAfter := healthMinutes(r.hs.ClaimNudge.AfterMin)
+	if len(mine) > 0 {
+		h.store.ResetHealthCounters(ctx, project, ruleClaimNudge, sub.SubscriberID)
+		return
+	}
+	if !r.hs.ClaimNudge.On || len(pending) == 0 || !known || sig.InTurn || sig.NeedsInput || waiting ||
+		sig.Since.IsZero() || r.now.Sub(sig.Since) < claimAfter {
+		return
+	}
+	t := pending[0] // ListOpenTasks orders by priority, then id
+	subject := fmt.Sprint(t.ID)
+	c, err := h.store.GetHealthCounter(ctx, project, ruleClaimNudge, sub.SubscriberID, subject)
+	switch {
+	case err != nil || c.Escalated:
+	case c.Count >= r.hs.ClaimNudge.Nudges:
+		if h.store.MarkHealthEscalated(ctx, project, ruleClaimNudge, sub.SubscriberID, subject, r.now) == nil {
+			r.escalated = append(r.escalated, fmt.Sprintf("%s has not claimed #%d after %d nudges", teamhealth.Name(sub.SubscriberID), t.ID, c.Count))
+		}
+	case r.take(ctx, ruleClaimNudge, sub.SubscriberID, claimAfter):
+		if h.deliver(ctx, a, "health-claim:"+project, claimNudgeText(t.ID)) == nil {
+			h.store.BumpHealthCounter(ctx, project, ruleClaimNudge, sub.SubscriberID, subject, r.now)
+			r.claimed = append(r.claimed, fmt.Sprintf("%s (#%d)", teamhealth.Name(sub.SubscriberID), t.ID))
+		}
+	}
+}
+
+// statusNudges: each task in progress with no activity (its task times, or the agent's latest hook event) for
+// StatusNudge.AfterMin gets one status nudge, unless snoozed; activity after a nudge resets it, and silence for
+// StatusNudge.EscalateAfterMin after it escalates to the orchestrator.
+func (r *healthRun) statusNudges(ctx context.Context, sub board.Subscriber, a AgentInfo, mine []board.Task, sig agentSignal, known bool) {
+	h, project := r.h, r.project
+	statusAfter, silentAfter := healthMinutes(r.hs.StatusNudge.AfterMin), healthMinutes(r.hs.StatusNudge.EscalateAfterMin)
+	if !r.hs.StatusNudge.On {
+		return
+	}
+	for _, t := range mine {
+		if until, _ := h.store.TaskSnoozedUntil(ctx, project, t.ID); until.After(r.now) {
+			continue // the reminder is snoozed (long tests, a release gate)
+		}
+		subject := fmt.Sprint(t.ID)
+		last, _ := h.store.TaskLastActivity(ctx, project, t.ID)
+		if known && sig.LastEvent.After(last) {
+			last = sig.LastEvent
+		}
+		if last.IsZero() {
+			continue
+		}
+		c, err := h.store.GetHealthCounter(ctx, project, ruleStatusNudge, sub.SubscriberID, subject)
+		if err != nil {
+			continue
+		}
+		if c.Count > 0 || c.Escalated {
+			if at, perr := time.Parse("2006-01-02T15:04:05.000Z", c.LastAt); perr == nil && last.After(at) {
+				h.store.ResetHealthCounter(ctx, project, ruleStatusNudge, sub.SubscriberID, subject) // active again
+			} else if !c.Escalated && perr == nil && r.now.Sub(at) >= silentAfter {
+				if h.store.MarkHealthEscalated(ctx, project, ruleStatusNudge, sub.SubscriberID, subject, r.now) == nil {
+					r.escalated = append(r.escalated, fmt.Sprintf("%s silent on #%d after a status nudge", teamhealth.Name(sub.SubscriberID), t.ID))
+				}
+				continue
+			} else {
+				continue
 			}
 		}
-		for _, e := range esc {
-			if !open[e.Target+"|"+e.Subject] {
-				h.store.ResetHealthCounter(ctx, project, e.Rule, e.Target, e.Subject)
+		if silent := r.now.Sub(last); silent >= statusAfter && r.take(ctx, ruleStatusNudge, sub.SubscriberID, statusAfter) {
+			if h.deliver(ctx, a, "health-status:"+project, statusNudgeText(t.ID, int(silent.Minutes()))) == nil {
+				h.store.BumpHealthCounter(ctx, project, ruleStatusNudge, sub.SubscriberID, subject, r.now)
+				r.statused = append(r.statused, fmt.Sprintf("%s (#%d)", teamhealth.Name(sub.SubscriberID), t.ID))
 			}
 		}
 	}
+}
 
-	// One board line per rule (#4176 rule 6), from Coral's task-queue sender: not activity,
-	// not unread, not a mention.
+// endFinishedEscalations: an escalation ends with its task (completed, cancelled, reassigned).
+func (r *healthRun) endFinishedEscalations(ctx context.Context, tasks []board.Task) {
+	esc, err := r.h.store.HealthEscalations(ctx, r.project)
+	if err != nil {
+		return
+	}
+	open := map[string]bool{}
+	for _, t := range tasks {
+		if t.AssignedTo != nil && (t.Status == "pending" || t.Status == "in_progress") {
+			open[*t.AssignedTo+"|"+fmt.Sprint(t.ID)] = true
+		}
+	}
+	for _, e := range esc {
+		if !open[e.Target+"|"+e.Subject] {
+			r.h.store.ResetHealthCounter(ctx, r.project, e.Rule, e.Target, e.Subject)
+		}
+	}
+}
+
+// postLines posts one board line per rule (#4176 rule 6), from Coral's task-queue sender: not activity, not unread,
+// not a mention; and, once an hour, that the team's budget of automatic actions is used up.
+func (r *healthRun) postLines(ctx context.Context) {
 	line := func(what string, items []string) {
 		if len(items) == 0 {
 			return
 		}
 		sort.Strings(items)
-		h.store.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Coral health] %s: %s", what, strings.Join(items, "; ")), nil)
+		r.h.store.PostSystemMessage(ctx, r.project, "Coral Task Queue", fmt.Sprintf("[Coral health] %s: %s", what, strings.Join(items, "; ")), nil)
 	}
-	line("claim nudge sent to", claimed)
-	line("status asked of", statused)
-	line("escalated to the orchestrator", escalated)
-	line("orchestrator reminded of mentions from", renudged)
-	if budgetHit {
-		if why, err := h.store.TakeHealthAction(ctx, project, "budget-reached", "board", now, board.HealthLimits{Cooldown: time.Hour}); err == nil && why == "" {
-			h.store.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf(
-				"[Coral health actions paused] this board's budget of %d automatic actions an hour is used up; Coral acts again next hour", h.TeamBudget), nil)
+	line("claim nudge sent to", r.claimed)
+	line("status asked of", r.statused)
+	line("escalated to the orchestrator", r.escalated)
+	line("orchestrator reminded of mentions from", r.renudged)
+	if r.budgetHit {
+		if why, err := r.h.store.TakeHealthAction(ctx, r.project, "budget-reached", "board", r.now, board.HealthLimits{Cooldown: time.Hour}); err == nil && why == "" {
+			r.h.store.PostSystemMessage(ctx, r.project, "Coral Task Queue", fmt.Sprintf(
+				"[Coral health actions paused] this board's budget of %d automatic actions an hour is used up; Coral acts again next hour", r.h.TeamBudget), nil)
 		}
 	}
 }
