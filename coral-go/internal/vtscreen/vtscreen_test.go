@@ -79,13 +79,32 @@ func TestRenderHostileSequences(t *testing.T) {
 
 // An input made only of the most expensive sequences stops at the work budget: a whole screen cleared, or
 // scrolled, for every few bytes of MaxInput renders in well under a second.
+// Render caps its input and bounds its per-sequence work, so its time is linear in MaxInput whatever
+// the sequence; a regression to super-linear work (say a scroll that shifts the whole grid once per
+// newline) would be orders of magnitude slower. An absolute wall-clock bound flakes on a loaded gate,
+// so we measure each sequence against a plainly linear baseline (MaxInput printable bytes) in the same
+// process: CPU contention inflates both and cancels in the ratio, while a quadratic blow-up would be
+// thousands× the baseline, far past the loose factor below (#4909, was a 1 s bound).
 func TestRenderWorkIsBounded(t *testing.T) {
+	best := func(input []byte) time.Duration {
+		d := time.Hour
+		for i := 0; i < 5; i++ {
+			start := time.Now()
+			Render(input, MaxCols, MaxRows)
+			if e := time.Since(start); e < d {
+				d = e
+			}
+		}
+		return d
+	}
+	baseline := best([]byte(strings.Repeat("a", MaxInput)))
+	const factor = 40 // a bounded sequence stays within a small constant of the linear baseline; a quadratic one is thousands×
 	for _, seq := range []string{"\x1b[2J", "\x1b[J", "\n", "\x1b[200S", "\x1b[?1049h\x1b[?1049l", "\x1bc"} {
 		input := []byte(strings.Repeat(seq, MaxInput/len(seq)+1))
-		start := time.Now()
-		Render(input, MaxCols, MaxRows)
-		if d := time.Since(start); d > time.Second {
-			t.Errorf("an input of %q took %v", seq, d)
+		d := best(input)
+		t.Logf("%q: %v (%.1f× the %v baseline)", seq, d, float64(d)/float64(baseline), baseline)
+		if d > time.Duration(factor)*baseline {
+			t.Errorf("an input of %q took %v, over %d× the %v baseline (work not bounded?)", seq, d, factor, baseline)
 		}
 	}
 }

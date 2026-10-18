@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Security's probes on #3756 (p3731/sec_url_test.go, sec_url2_test.go), as tests.
@@ -54,20 +54,34 @@ func TestSecURLProbes(t *testing.T) {
 var urlAdversarial = []string{"://", "a://:", "://u:", "://:" + strings.Repeat("x", 1000), "://:x@",
 	"://:" + strings.Repeat("x", 1000) + "@", "@:@:", strings.Repeat("a", 900) + "://:"}
 
-// Adversarial input stays linear. The bound is loose (3 s for 4 MiB, against 11.6 s for the
-// quadratic look-ahead) so slow machines pass, and the test is skipped under -race and -short,
-// as wsredact_test.go's is; BenchmarkRedactURLAdversarial gives the real figure.
+// Adversarial input stays linear. The URL rule's work through Tokens is counted, not timed: urlScanned
+// (#4908) sums the bytes the finder's helpers examine (the "://" search, the user, the password's run
+// and its port check), so there is no clock and so no load band to fall outside -- a timing ratio of
+// 1 vs 4 MiB flaked on epoch at load 32-54 even best-of-N, a spike landing on the large runs only. For
+// each adversarial unit the count is a small constant times the text and 4x the text is about 4x the
+// count; a look-ahead that rescans from each "://" would count hundreds of times the text and fail at
+// once. BenchmarkRedactURLAdversarial gives the real time. (Mirrors #4908's work-count test, but through
+// Tokens -- the writer's URL rule path, not URLPasswordSpans.)
 func TestSecURLPerf(t *testing.T) {
-	if raceEnabled || testing.Short() {
-		t.Skip("timing bound: not under -race or -short (see BenchmarkRedactURLAdversarial)")
+	work := func(data []byte) int {
+		n := 0
+		urlScanned = &n
+		defer func() { urlScanned = nil }()
+		Tokens(data)
+		return n
 	}
 	for _, unit := range urlAdversarial {
-		data := []byte(strings.Repeat(unit, 4<<20/len(unit)))
-		st := time.Now()
-		Tokens(data)
-		took := time.Since(st)
-		t.Logf("%.20q: %v for 4 MiB", unit, took)
-		assert.Less(t, took, 3*time.Second, "unit %.20q", unit)
+		if !strings.Contains(unit, "://") {
+			continue // no URL: the finder does no counted work (a non-match, left to TestSecURLProbes); nothing to be quadratic in
+		}
+		small := []byte(strings.Repeat(unit, 1<<20/len(unit)))
+		large := []byte(strings.Repeat(unit, 4<<20/len(unit)))
+		ws, wl := work(small), work(large)
+		require.NotZero(t, ws, "%.20q: the finder did some work", unit)
+		ratio := float64(wl) / float64(ws)
+		t.Logf("%.20q: 1 MiB work %d, 4 MiB work %d, bytes/byte %.2f, ratio %.2f×", unit, ws, wl, float64(wl)/float64(len(large)), ratio)
+		assert.LessOrEqual(t, wl, 3*len(large), "unit %.20q: the finder examines at most 3 bytes per byte of text (examined %d for %d)", unit, wl, len(large))
+		assert.Less(t, ratio, 5.0, "unit %.20q: 4x the text is %.2f× the work (linear is about 4×, a quadratic finder much more)", unit, ratio)
 	}
 }
 

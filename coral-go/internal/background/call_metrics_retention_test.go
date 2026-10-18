@@ -94,6 +94,7 @@ func TestCallMetricsRetentionYieldsTheConnection(t *testing.T) {
 	j := NewCallMetricsRetention(db)
 	j.BatchSize, j.Pause, j.RunCap = 500, 20*time.Millisecond, 20000
 	done := make(chan struct{})
+	jobStart := time.Now()
 	go func() { j.RunOnce(context.Background()); close(done) }()
 	var worst time.Duration
 	for i := 0; i < 20; i++ {
@@ -106,6 +107,17 @@ func TestCallMetricsRetentionYieldsTheConnection(t *testing.T) {
 		time.Sleep(10 * time.Millisecond) // sleep-ok: spread the probes over the run
 	}
 	<-done
-	assert.Less(t, worst, 500*time.Millisecond, "a request waited %s for the retention job", worst)
+	jobDur := time.Since(jobStart)
+	// The job yields the single write connection between batches: it deletes in BatchSize chunks and
+	// frees the connection for Pause between them, so a concurrent request waits about one chunk, never
+	// the whole backlog. The real yield is the pause (deletes are fast), so we assert the pausing floor:
+	// the run is at least (batches-1) pauses of released-connection time. Load only lengthens the run, so
+	// this holds under contention, where the old fixed 500 ms worst-wait bound did not (#4909); dropping
+	// the pause or the batching from RunOnce finishes far under the floor. The worst wait staying a small
+	// fraction of the run is kept as a loose, load-independent responsiveness check.
+	batches := j.RunCap / int64(j.BatchSize)
+	assert.GreaterOrEqual(t, jobDur, time.Duration(batches-1)*j.Pause, "the job did not pause between its batches (ran in %s)", jobDur)
+	t.Logf("worst wait %s of a %s run (ratio %.3f, %d batches)", worst, jobDur, float64(worst)/float64(jobDur), batches)
+	assert.Less(t, float64(worst)/float64(jobDur), 0.33, "a request waited %s of the %s run for the retention job", worst, jobDur)
 	assert.Equal(t, 0, metricCount(t, db))
 }

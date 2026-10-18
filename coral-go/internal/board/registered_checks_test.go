@@ -32,7 +32,12 @@ func TestLocalRegisteredCheckRunnerGoTestBindsCandidateAndRuns(t *testing.T) {
 	dir, revision := gitFixture(t)
 	t.Logf("fixture dir=%s revision=%s", dir, revision)
 	runner := NewLocalRegisteredCheckRunner(dir)
-	evidence := runner.Run(context.Background(), "go_test", revision, map[string]string{"packages": "./..."})
+	// This test proves the check binds the candidate and runs go test to a pass, not the timeout: the
+	// 30 s default is a production default, and compiling the fixture's test binary from a cold build
+	// cache on a loaded gate overran it (#4909). The timeout path is covered by
+	// TestLocalRegisteredCheckRunnerUnavailableAndTimeoutAreExplicit, so give this run the full
+	// maxCheckTimeout (2 min) cap of headroom, which is about what binding+running needs under load.
+	evidence := runner.Run(context.Background(), "go_test", revision, map[string]string{"packages": "./...", "timeout_seconds": "120"})
 	require.True(t, evidence.Passed, evidence.Details+"\n"+evidence.Log)
 	require.Equal(t, revision, evidence.ObservedRevision)
 	require.Equal(t, 0, *evidence.ExitCode)
