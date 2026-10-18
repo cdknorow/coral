@@ -139,9 +139,8 @@ func TestFileRefsAreNormalisedAndPerRoute(t *testing.T) {
 	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/list", "path=/Users/me/code"))
 	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/is-git", url.Values{"path": {"/Users/me/my code"}}.Encode()))
 	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/list", "path=%2FUsers%2Fme"), "an encoded absolute path decodes to the same safe path")
-	// A remote Browse starts with an empty path (the machine's home), never "~" (#3491).
 	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/list", "path="), "an empty path is the machine's home")
-	for _, v := range []string{"/Users/me/../../etc", "file:///etc", "~/code", "/a%252F..%252Fb", "/a\\b"} {
+	for _, v := range []string{"/Users/me/../../etc", "file:///etc", "/a%252F..%252Fb", "/a\\b"} {
 		assert.Equal(t, TierNever, Classify("GET", "/api/filesystem/list", url.Values{"path": {v}}.Encode()), v)
 	}
 	// Raw control characters in a query are refused outright.
@@ -709,4 +708,33 @@ func TestHubTierChanges4274(t *testing.T) {
 	} {
 		assert.Equal(t, c.want, Classify(c.method, c.path, ""), "%s %s", c.method, c.path)
 	}
+}
+
+// Browse through Coral Hub shows the home as "~" and asks for "~/folder" (#4527): the machine takes that form back on the two
+// routes that show it, with the same checks as any file reference on the relative part, and nowhere else.
+func TestHomeRelativeBrowsePath(t *testing.T) {
+	q := func(v string) string { return url.Values{"path": {v}}.Encode() }
+	for _, route := range []string{"/api/filesystem/list", "/api/filesystem/is-git"} {
+		for _, ok := range []string{"~", "~/", "~/code", "~/code/my%20project", "~/a/b/c/d/e", "~/.config-free/x", "%7E", "~%2Fcode", "~/code%2Fsub"} {
+			assert.Equal(t, TierLaunch, Classify("GET", route, "path="+ok), "%s %s", route, ok)
+		}
+		for _, bad := range []string{
+			"~user", "~user/code", "~root", "~/../x", "~/a/../../x", "~//etc", "~/%2e%2e/x", "~/a%252F..%252Fb", "~/a\\b", "~/~x",
+			"~/file:///etc", "~/a:b", "~/\x00x", "~/a\nb", "~/-x", "~~", "~ /x", "~\\x", "~/a#b", "~/a?b",
+			"~/\u2024/x", "~/%25", "~%2F..%2Fx",
+		} {
+			assert.Equal(t, TierNever, Classify("GET", route, q(bad)), "%s %q", route, bad)
+		}
+	}
+	// Only the path parameter of those two routes: a file reference, a directory or a working directory elsewhere is refused with "~".
+	for _, c := range []struct{ route, query string }{
+		{"/api/sessions/live/a/file-content", "filepath=~/x"},
+		{"/api/sessions/live/a/search-files", "dir=~"},
+		{"/api/sessions/live/a/chat", "working_directory=~/x"},
+		{"/api/sessions/live/a/diff", "filepath=~"},
+	} {
+		assert.Equal(t, TierNever, Classify("GET", c.route, c.query), c.route+"?"+c.query)
+	}
+	// The other parameters of the two routes are not path parameters.
+	assert.Equal(t, TierNever, Classify("GET", "/api/filesystem/list", "path=~&other=~"))
 }

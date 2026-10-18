@@ -241,6 +241,8 @@ Lists visible (non-hidden) directories within a path. Restricted to the home dir
 }
 ```
 
+**Through Coral Hub** the home directory is shown as `~` and a folder under it as `~/Projects`, never as an absolute path (it would name the computer's account), and Browse asks for `~/Projects` when a folder is clicked: the connector accepts exactly `~` and `~/<relative path>` for `path` on this route and on `is-git` (the relative part is checked like any file reference: no `..`, no absolute path, no `~user`), and nowhere else. The folder must still lie inside the home directory or a project root after links are resolved and must not be a credential folder; anything else answers like a missing folder (#4527).
+
 ### Check for a Git repository
 
 ```

@@ -72,20 +72,22 @@ function renderRecentDirs() {
 
 function getCoralRoot() {
     // The hub's coral root is a hub-local path; a remote starts at its own home,
-    // asked for as an empty path: the machine lists its home for that, while a
-    // path starting with "~" is refused on the hub tunnel (pkg/tunnel safeRef)
-    // and came back not_found (#3491).
+    // asked for as an empty path: the machine lists its home for that. It answers
+    // "~" (never its absolute home, which names the account), and "~/folder" is
+    // what a click asks for next: the hub tunnel takes that form on this route
+    // (pkg/tunnel homeRef, #4527); any other "~" path is refused (safeRef).
     if (activeServer() !== LOCAL_SERVER) return "";
     const input = document.getElementById(_activeDirInputId);
     return (input && input.dataset.coralRoot) || "~";
 }
 
 /** Where Browse starts: the folder typed in the input, else the coral root. On a
- *  remote a home-relative "~..." can't cross the hub tunnel, so it starts at the
- *  remote's home instead (#3491). */
+ *  remote "~" and "~/folder" (what an earlier Browse put in the input) cross the hub
+ *  tunnel (#4527); any other "~..." (a "~user") doesn't, so it starts at the remote's
+ *  home instead (#3491). */
 export function browseStartPath(inputPath, remote, coralRoot) {
     const typed = (inputPath || '').trim();
-    if (remote) return typed.startsWith('~') ? '' : typed;
+    if (remote) return typed.startsWith('~') && typed !== '~' && !typed.startsWith('~/') ? '' : typed;
     return typed || coralRoot;
 }
 

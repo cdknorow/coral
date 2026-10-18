@@ -442,6 +442,26 @@ func safeRef(v string, allowAbs bool) bool {
 // ".." segment.
 func UnsafeFileRef(v string) bool { return !safeRef(v, false) }
 
+// homeBrowseRoutes are the routes that take a home-relative path ("~" or "~/folder") in their path parameter (#4527). Browse
+// through Coral Hub shows the home directory as "~" (hubDisplayPath: an absolute path under it would carry the OS account name
+// through the Hub) and asks for "~/folder" when a folder is clicked, so the machine has to take that form back on these two
+// routes; it is refused on every other route and parameter (safeRef), and "~user" is refused everywhere.
+var homeBrowseRoutes = map[string]bool{"GET /api/filesystem/list": true, "GET /api/filesystem/is-git": true}
+
+// homeRef reports whether v is "~", or "~/" and a relative path that is itself a plain reference (no "..", no absolute or
+// "~" start, no backslash, scheme, control or percent-encoded form left after decoding, as safeRef decides).
+func homeRef(v string) bool {
+	n, ok := normalizeRef(v)
+	if !ok {
+		return false
+	}
+	if n == "~" {
+		return true
+	}
+	rest, found := strings.CutPrefix(n, "~/")
+	return found && safeRef(rest, false)
+}
+
 // queryOK enforces the per-route query table: only the parameters the handler reads are
 // accepted, file references are normalised and checked, and everything else is refused.
 func queryOK(r route, rawQuery string) bool {
@@ -465,7 +485,7 @@ func queryOK(r route, rawQuery string) bool {
 			return false // exact value, once: no look-alikes, no repeats
 		}
 		for _, v := range vals {
-			if ps.kind == paramFile && !safeRef(v, r.tier == TierLaunch) {
+			if ps.kind == paramFile && !safeRef(v, r.tier == TierLaunch) && !(name == "path" && homeBrowseRoutes[shapeOf(r.method, r.pattern)] && homeRef(v)) {
 				return false
 			}
 		}
