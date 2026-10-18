@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -47,6 +48,71 @@ func NewHistoryHandler(db *store.DB, cfg *config.Config, bs *board.Store) *Histo
 // GET /api/sessions/history
 func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	params, chatType := parseHistoryListQuery(q)
+	page, pageSize := params.Page, params.PageSize
+
+	// ── Agent sessions ──
+	agentSessions := make([]map[string]any, 0)
+	agentTotal := 0
+	if chatType == "all" || chatType == "agent" {
+		result, err := h.ss.ListSessionsPaged(r.Context(), params)
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+
+		// Cold-start fast path: when DB is empty and no filters active,
+		// match Python's file-scan fallback response shape (page_size=0).
+		if result.Total == 0 && !historyFiltered(params) && chatType != "group" {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"sessions":  agentSessions,
+				"total":     0,
+				"page":      1,
+				"page_size": 0,
+			})
+			return
+		}
+
+		agentTotal = result.Total
+		agentSessions = append(agentSessions, agentHistoryRows(result.Sessions)...)
+	}
+
+	// ── Group chats (board projects) ──
+	var boardSessions []map[string]any
+	if (chatType == "all" || chatType == "group") && h.bs != nil {
+		boardSessions = h.boardHistoryRows(r, q.Get("q"), q.Get("date_from"), q.Get("date_to"))
+	}
+
+	// ── Merge and return ──
+	var rows []map[string]any
+	total := 0
+	switch chatType {
+	case "agent":
+		writeJSON(w, http.StatusOK, map[string]any{
+			"sessions":  agentSessions,
+			"total":     agentTotal,
+			"page":      page,
+			"page_size": pageSize,
+		})
+		return
+	case "group":
+		rows, total = boardSessions, len(boardSessions)
+	default:
+		// type == "all": merge agent + board, sorted by last_timestamp desc
+		rows, total = mergeByLastTimestamp(agentSessions, boardSessions), agentTotal+len(boardSessions)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"sessions":  pageRows(rows, page, pageSize),
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// parseHistoryListQuery reads the history list's query: the page (from 1) and its size (1 to 200, else 50), the
+// filters, and the chat type (agent, group, or all). A tag id that isn't a number is skipped; agy and Gemini share
+// their history, so either source type brings the other.
+func parseHistoryListQuery(q url.Values) (store.SessionListParams, string) {
 	page, _ := strconv.Atoi(q.Get("page"))
 	if page < 1 {
 		page = 1
@@ -85,18 +151,6 @@ func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var minDur, maxDur *int
-	if v := q.Get("min_duration_sec"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			minDur = &n
-		}
-	}
-	if v := q.Get("max_duration_sec"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			maxDur = &n
-		}
-	}
-
 	params := store.SessionListParams{
 		Page:           page,
 		PageSize:       pageSize,
@@ -107,8 +161,8 @@ func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		SourceTypes:    sourceTypes,
 		DateFrom:       q.Get("date_from"),
 		DateTo:         q.Get("date_to"),
-		MinDurationSec: minDur,
-		MaxDurationSec: maxDur,
+		MinDurationSec: optionalInt(q.Get("min_duration_sec")),
+		MaxDurationSec: optionalInt(q.Get("max_duration_sec")),
 		AgentName:      q.Get("agent_name"),
 	}
 
@@ -117,159 +171,125 @@ func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	if chatType != "agent" && chatType != "group" {
 		chatType = "all"
 	}
+	return params, chatType
+}
 
-	// Check if any filters are active (used for cold-start fast path)
-	hasAnyFilter := params.Search != "" || len(params.TagIDs) > 0 ||
+// optionalInt is v as a number, or nil when it is empty or not one.
+func optionalInt(v string) *int {
+	if v == "" {
+		return nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return nil
+	}
+	return &n
+}
+
+// historyFiltered reports whether any filter is active (used for the cold-start fast path).
+func historyFiltered(params store.SessionListParams) bool {
+	return params.Search != "" || len(params.TagIDs) > 0 ||
 		len(params.SourceTypes) > 0 || params.DateFrom != "" || params.DateTo != "" ||
 		params.MinDurationSec != nil || params.MaxDurationSec != nil ||
 		params.AgentName != ""
+}
 
-	// ── Agent sessions ──
-	agentSessions := make([]map[string]any, 0)
-	agentTotal := 0
-	if chatType == "all" || chatType == "agent" {
-		result, err := h.ss.ListSessionsPaged(r.Context(), params)
-		if err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-
-		// Cold-start fast path: when DB is empty and no filters active,
-		// match Python's file-scan fallback response shape (page_size=0).
-		if result.Total == 0 && !hasAnyFilter && chatType != "group" {
-			writeJSON(w, http.StatusOK, map[string]any{
-				"sessions":  agentSessions,
-				"total":     0,
-				"page":      1,
-				"page_size": 0,
-			})
-			return
-		}
-
-		agentTotal = result.Total
-		for _, s := range result.Sessions {
-			m := map[string]any{
-				"session_id":      s.SessionID,
-				"source_type":     s.SourceType,
-				"first_timestamp": ptr.Value(s.FirstTimestamp),
-				"last_timestamp":  ptr.Value(s.LastTimestamp),
-				"message_count":   s.MessageCount,
-				"summary":         s.Summary,
-				"summary_title":   s.SummaryTitle,
-				"has_notes":       s.HasNotes,
-				"tags":            s.Tags,
-				"branch":          s.Branch,
-				"duration_sec":    s.DurationSec,
-				"agent_name":      s.AgentName,
-				"display_name":    s.DisplayName,
-				"type":            "agent",
-			}
-			agentSessions = append(agentSessions, m)
-		}
-	}
-
-	// ── Group chats (board projects) ──
-	var boardSessions []map[string]any
-	if (chatType == "all" || chatType == "group") && h.bs != nil {
-		projects, err := h.bs.ListProjectsEnriched(r.Context())
-		if err == nil {
-			searchQ := q.Get("q")
-			dateFrom := q.Get("date_from")
-			dateTo := q.Get("date_to")
-
-			// Filter by text search
-			if searchQ != "" {
-				matchingProjects, _ := h.bs.SearchMessages(r.Context(), searchQ)
-				matchSet := make(map[string]bool, len(matchingProjects))
-				for _, p := range matchingProjects {
-					matchSet[p] = true
-				}
-				qLower := strings.ToLower(searchQ)
-				filtered := projects[:0]
-				for _, p := range projects {
-					if matchSet[p.Project] || strings.Contains(strings.ToLower(p.Project), qLower) {
-						filtered = append(filtered, p)
-					}
-				}
-				projects = filtered
-			}
-
-			// Filter by date
-			if dateFrom != "" {
-				filtered := projects[:0]
-				for _, p := range projects {
-					if p.LastMessageAt != nil && *p.LastMessageAt >= dateFrom {
-						filtered = append(filtered, p)
-					}
-				}
-				projects = filtered
-			}
-			if dateTo != "" {
-				cutoff := dateTo + "T23:59:59"
-				filtered := projects[:0]
-				for _, p := range projects {
-					if p.FirstMessageAt != nil && *p.FirstMessageAt <= cutoff {
-						filtered = append(filtered, p)
-					}
-				}
-				projects = filtered
-			}
-
-			for _, p := range projects {
-				participants := ""
-				if p.ParticipantNames != nil {
-					participants = *p.ParticipantNames
-				}
-				boardSessions = append(boardSessions, map[string]any{
-					"session_id":        fmt.Sprintf("board:%s", p.Project),
-					"title":             p.Project,
-					"type":              "group",
-					"source_type":       "board",
-					"summary":           fmt.Sprintf("%d messages, %d participants", p.MessageCount, p.SubscriberCount),
-					"first_timestamp":   ptr.Value(p.FirstMessageAt),
-					"last_timestamp":    ptr.Value(p.LastMessageAt),
-					"message_count":     p.MessageCount,
-					"subscriber_count":  p.SubscriberCount,
-					"participant_names": participants,
-					"tags":              []any{},
-					"has_notes":         false,
-				})
-			}
-		}
-	}
-
-	// ── Merge and return ──
-	if chatType == "agent" {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"sessions":  agentSessions,
-			"total":     agentTotal,
-			"page":      page,
-			"page_size": pageSize,
+// agentHistoryRows are the agent sessions' rows.
+func agentHistoryRows(sessions []store.SessionListItem) []map[string]any {
+	rows := make([]map[string]any, 0, len(sessions))
+	for _, s := range sessions {
+		rows = append(rows, map[string]any{
+			"session_id":      s.SessionID,
+			"source_type":     s.SourceType,
+			"first_timestamp": ptr.Value(s.FirstTimestamp),
+			"last_timestamp":  ptr.Value(s.LastTimestamp),
+			"message_count":   s.MessageCount,
+			"summary":         s.Summary,
+			"summary_title":   s.SummaryTitle,
+			"has_notes":       s.HasNotes,
+			"tags":            s.Tags,
+			"branch":          s.Branch,
+			"duration_sec":    s.DurationSec,
+			"agent_name":      s.AgentName,
+			"display_name":    s.DisplayName,
+			"type":            "agent",
 		})
-		return
+	}
+	return rows
+}
+
+// boardHistoryRows are the group chats (board projects): those whose messages or name match the search, with a
+// message on or after dateFrom, and one on or before the end of dateTo. None when the boards can't be read.
+func (h *HistoryHandler) boardHistoryRows(r *http.Request, searchQ, dateFrom, dateTo string) []map[string]any {
+	projects, err := h.bs.ListProjectsEnriched(r.Context())
+	if err != nil {
+		return nil
+	}
+	// Filter by text search
+	if searchQ != "" {
+		matchingProjects, _ := h.bs.SearchMessages(r.Context(), searchQ)
+		matchSet := make(map[string]bool, len(matchingProjects))
+		for _, p := range matchingProjects {
+			matchSet[p] = true
+		}
+		qLower := strings.ToLower(searchQ)
+		filtered := projects[:0]
+		for _, p := range projects {
+			if matchSet[p.Project] || strings.Contains(strings.ToLower(p.Project), qLower) {
+				filtered = append(filtered, p)
+			}
+		}
+		projects = filtered
 	}
 
-	if chatType == "group" {
-		total := len(boardSessions)
-		start := (page - 1) * pageSize
-		end := start + pageSize
-		if start > total {
-			start = total
+	// Filter by date
+	if dateFrom != "" {
+		filtered := projects[:0]
+		for _, p := range projects {
+			if p.LastMessageAt != nil && *p.LastMessageAt >= dateFrom {
+				filtered = append(filtered, p)
+			}
 		}
-		if end > total {
-			end = total
+		projects = filtered
+	}
+	if dateTo != "" {
+		cutoff := dateTo + "T23:59:59"
+		filtered := projects[:0]
+		for _, p := range projects {
+			if p.FirstMessageAt != nil && *p.FirstMessageAt <= cutoff {
+				filtered = append(filtered, p)
+			}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"sessions":  boardSessions[start:end],
-			"total":     total,
-			"page":      page,
-			"page_size": pageSize,
+		projects = filtered
+	}
+
+	var rows []map[string]any
+	for _, p := range projects {
+		participants := ""
+		if p.ParticipantNames != nil {
+			participants = *p.ParticipantNames
+		}
+		rows = append(rows, map[string]any{
+			"session_id":        fmt.Sprintf("board:%s", p.Project),
+			"title":             p.Project,
+			"type":              "group",
+			"source_type":       "board",
+			"summary":           fmt.Sprintf("%d messages, %d participants", p.MessageCount, p.SubscriberCount),
+			"first_timestamp":   ptr.Value(p.FirstMessageAt),
+			"last_timestamp":    ptr.Value(p.LastMessageAt),
+			"message_count":     p.MessageCount,
+			"subscriber_count":  p.SubscriberCount,
+			"participant_names": participants,
+			"tags":              []any{},
+			"has_notes":         false,
 		})
-		return
 	}
+	return rows
+}
 
-	// type == "all": merge agent + board, sorted by last_timestamp desc
-	merged := append(agentSessions, boardSessions...)
+// mergeByLastTimestamp is the agent and board rows together, newest last_timestamp first.
+func mergeByLastTimestamp(agentRows, boardRows []map[string]any) []map[string]any {
+	merged := append(agentRows, boardRows...)
 	sort.Slice(merged, func(i, j int) bool {
 		ti, _ := merged[i]["last_timestamp"].(string)
 		tj, _ := merged[j]["last_timestamp"].(string)
@@ -278,21 +298,20 @@ func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 		tj = strings.Replace(tj, "Z", "+00:00", 1)
 		return ti > tj
 	})
-	total := agentTotal + len(boardSessions)
+	return merged
+}
+
+// pageRows is page (from 1) of rows, pageSize to a page.
+func pageRows(rows []map[string]any, page, pageSize int) []map[string]any {
 	start := (page - 1) * pageSize
 	end := start + pageSize
-	if start > len(merged) {
-		start = len(merged)
+	if start > len(rows) {
+		start = len(rows)
 	}
-	if end > len(merged) {
-		end = len(merged)
+	if end > len(rows) {
+		end = len(rows)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"sessions":  merged[start:end],
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	return rows[start:end]
 }
 
 // GetSessionNotes returns notes for a historical session.
