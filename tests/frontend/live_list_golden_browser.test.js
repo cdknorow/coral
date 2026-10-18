@@ -51,6 +51,7 @@ const KILLED = S(15, { working_directory: '/repo/x', display_name: 'Finished', s
             const real = window.fetch; window.fetch = (u, o) => String(u).includes('/api/pinned-folders') ? Promise.resolve(new Response(JSON.stringify({ folders: [{ path: '/repo/pinned', name: 'pinned', exists: true }, { path: '/repo/x', name: 'x', exists: true }] }), { status: 200, headers: { 'content-type': 'application/json' } })) : real(u, o);
             await pf.loadPinnedFolders({ render: false }); window.fetch = real;
             filt.setAgentFilter(${JSON.stringify(filter || '')});
+            state.settings = {}; // the list reads the server's display settings (show_session_server: unset = chips with 2+ servers); an earlier suite on the same server may have saved one (server_switcher leaves it False), so the fixture pins them
             state.killedSessions = {}; state.killedSessions[${JSON.stringify(KILLED.session_id)}] = ${JSON.stringify(KILLED)};
             const hub = ${JSON.stringify(settings.__hub || false)};
             state.hub = hub;
