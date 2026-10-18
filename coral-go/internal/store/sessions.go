@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/cdknorow/coral/internal/ptr"
 )
 
 // SessionMeta holds notes and summary metadata for a session.
@@ -731,285 +733,289 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 		// request "and" when every word is required.
 		params.FTSMode = "or"
 	}
-
-	var args []interface{}
-	var whereClauses []string
-	fromClause := "session_index si"
-	orderClause := "si.last_timestamp DESC"
-
-	// Full-text search
-	if params.Search != "" {
-		safeQ := sanitizeFTSQuery(params.Search, params.FTSMode)
-		if safeQ != "" {
-			fromClause += " JOIN session_fts fts ON fts.session_id = si.session_id"
-			whereClauses = append(whereClauses, "session_fts MATCH ?")
-			args = append(args, safeQ)
-			orderClause = "rank"
-		}
-	}
-
-	// Date filters
-	if params.DateFrom != "" {
-		whereClauses = append(whereClauses, "si.last_timestamp >= ?")
-		args = append(args, params.DateFrom+"T00:00:00")
-	}
-	if params.DateTo != "" {
-		// Through the end of the date_to day, fractions of a second included: "~" sorts after every character of a timestamp, so
-		// "< date~" is every timestamp that begins with a date up to date_to (a session ending at 23:59:59.5 is not after "T23:59:59").
-		whereClauses = append(whereClauses, "si.last_timestamp < ?")
-		args = append(args, params.DateTo+"~")
-	}
-
-	// Duration filters
-	if params.MinDurationSec != nil {
-		whereClauses = append(whereClauses,
-			"(julianday(si.last_timestamp) - julianday(si.first_timestamp)) * 86400 >= ?")
-		args = append(args, *params.MinDurationSec)
-	}
-	if params.MaxDurationSec != nil {
-		whereClauses = append(whereClauses,
-			"(julianday(si.last_timestamp) - julianday(si.first_timestamp)) * 86400 <= ?")
-		args = append(args, *params.MaxDurationSec)
-	}
-
-	// Tag filters
-	if len(params.TagIDs) > 0 && params.TagLogic == "AND" {
-		for _, tid := range params.TagIDs {
-			whereClauses = append(whereClauses,
-				"si.session_id IN (SELECT session_id FROM session_tags WHERE tag_id = ?)")
-			args = append(args, tid)
-		}
-	} else if len(params.TagIDs) > 0 {
-		whereClauses = append(whereClauses,
-			"si.session_id IN (SELECT session_id FROM session_tags WHERE tag_id IN (?))")
-		args = append(args, params.TagIDs)
-	}
-
-	// Source type filter
-	if len(params.SourceTypes) > 0 {
-		whereClauses = append(whereClauses, "si.source_type IN (?)")
-		args = append(args, params.SourceTypes)
-	}
-
-	// Agent name filter
-	if params.AgentName != "" {
-		whereClauses = append(whereClauses, "si.agent_name = ?")
-		args = append(args, params.AgentName)
-	}
-
-	whereSQL := ""
-	if len(whereClauses) > 0 {
-		whereSQL = " WHERE " + strings.Join(whereClauses, " AND ")
-	}
-
-	// Count total
-	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s%s", fromClause, whereSQL)
-	countSQL, countArgs, err := sqlx.In(countSQL, args...)
+	q := sessionListQuery(params)
+	total, rows, err := s.pageSessions(ctx, q, params)
 	if err != nil {
 		return nil, err
 	}
-	var total int
-	if err := s.reader().GetContext(ctx, &total, countSQL, countArgs...); err != nil {
-		return nil, err
-	}
-
-	// Fetch page
-	offset := (params.Page - 1) * params.PageSize
-	selectFields := `si.session_id, si.source_type, si.source_file,
-		si.first_timestamp, si.last_timestamp, si.message_count, si.display_summary,
-		si.agent_name, si.display_name`
-	query := fmt.Sprintf("SELECT %s FROM %s%s ORDER BY %s LIMIT ? OFFSET ?",
-		selectFields, fromClause, whereSQL, orderClause)
-	query, pageArgs, err := sqlx.In(query, append(args, params.PageSize, offset)...)
-	if err != nil {
-		return nil, err
-	}
-
-	var rows []struct {
-		SessionID      string  `db:"session_id"`
-		SourceType     string  `db:"source_type"`
-		SourceFile     string  `db:"source_file"`
-		FirstTimestamp *string `db:"first_timestamp"`
-		LastTimestamp  *string `db:"last_timestamp"`
-		MessageCount   int     `db:"message_count"`
-		DisplaySummary string  `db:"display_summary"`
-		AgentName      *string `db:"agent_name"`
-		DisplayName    *string `db:"display_name"`
-	}
-	if err := s.reader().SelectContext(ctx, &rows, query, pageArgs...); err != nil {
-		return nil, err
-	}
-
-	// Collect session IDs for enrichment
 	sessionIDs := make([]string, len(rows))
 	for i, r := range rows {
 		sessionIDs[i] = r.SessionID
 	}
-
-	// Enrich with metadata
-	metaMap := make(map[string]struct {
-		HasNotes     bool
-		IsUserEdited bool
-		SummaryTitle string
-	})
-	tagsMap := make(map[string][]Tag)
-	branchMap := make(map[string]string)
-	agentMap := make(map[string]struct {
-		AgentName   string
-		DisplayName string
-	})
-
+	var more sessionListExtras
 	if len(sessionIDs) > 0 {
-		// Fetch notes metadata
-		metaQuery, metaArgs, _ := sqlx.In(
-			"SELECT session_id, notes_md, auto_summary, is_user_edited FROM session_meta WHERE session_id IN (?)",
-			sessionIDs)
-		var metaRows []struct {
-			SessionID    string `db:"session_id"`
-			NotesMD      string `db:"notes_md"`
-			AutoSummary  string `db:"auto_summary"`
-			IsUserEdited bool   `db:"is_user_edited"`
-		}
-		if err := s.reader().SelectContext(ctx, &metaRows, metaQuery, metaArgs...); err == nil {
-			for _, r := range metaRows {
-				content := r.NotesMD
-				if content == "" {
-					content = r.AutoSummary
-				}
-				metaMap[r.SessionID] = struct {
-					HasNotes     bool
-					IsUserEdited bool
-					SummaryTitle string
-				}{
-					HasNotes:     r.NotesMD != "" || r.AutoSummary != "",
-					IsUserEdited: r.IsUserEdited,
-					SummaryTitle: extractFirstHeader(content),
-				}
-			}
-		}
-
-		// Fetch tags
-		tagQuery, tagArgs, _ := sqlx.In(
-			`SELECT st.session_id, t.id, t.name, t.color
-			 FROM session_tags st JOIN tags t ON t.id = st.tag_id
-			 WHERE st.session_id IN (?) ORDER BY t.name`,
-			sessionIDs)
-		var tagRows []struct {
-			SessionID string `db:"session_id"`
-			ID        int64  `db:"id"`
-			Name      string `db:"name"`
-			Color     string `db:"color"`
-		}
-		if err := s.reader().SelectContext(ctx, &tagRows, tagQuery, tagArgs...); err == nil {
-			for _, r := range tagRows {
-				tagsMap[r.SessionID] = append(tagsMap[r.SessionID], Tag{
-					ID: r.ID, Name: r.Name, Color: r.Color,
-				})
-			}
-		}
-
-		// Fetch git branches
-		branchQuery, branchArgs, _ := sqlx.In(
-			`SELECT gs.session_id, gs.branch
-			 FROM git_snapshots gs
-			 INNER JOIN (
-			     SELECT session_id, MAX(recorded_at) as max_ts
-			     FROM git_snapshots WHERE session_id IN (?)
-			     GROUP BY session_id
-			 ) latest ON gs.session_id = latest.session_id AND gs.recorded_at = latest.max_ts`,
-			sessionIDs)
-		var branchRows []struct {
-			SessionID string `db:"session_id"`
-			Branch    string `db:"branch"`
-		}
-		if err := s.reader().SelectContext(ctx, &branchRows, branchQuery, branchArgs...); err == nil {
-			for _, r := range branchRows {
-				branchMap[r.SessionID] = r.Branch
-			}
-		}
-
-		// Fetch agent names from live_sessions
-		agentQuery, agentArgs, _ := sqlx.In(
-			`SELECT session_id, agent_name, display_name FROM live_sessions WHERE session_id IN (?)`,
-			sessionIDs)
-		var agentRows []struct {
-			SessionID   string  `db:"session_id"`
-			AgentName   string  `db:"agent_name"`
-			DisplayName *string `db:"display_name"`
-		}
-		if err := s.reader().SelectContext(ctx, &agentRows, agentQuery, agentArgs...); err == nil {
-			for _, r := range agentRows {
-				agentMap[r.SessionID] = struct {
-					AgentName   string
-					DisplayName string
-				}{
-					AgentName: r.AgentName,
-				}
-				if r.DisplayName != nil {
-					entry := agentMap[r.SessionID]
-					entry.DisplayName = *r.DisplayName
-					agentMap[r.SessionID] = entry
-				}
-			}
-		}
+		more = s.sessionListExtras(ctx, sessionIDs)
 	}
-
-	// Build results
 	sessions := make([]SessionListItem, len(rows))
 	for i, r := range rows {
-		meta := metaMap[r.SessionID]
-		tags := tagsMap[r.SessionID]
-		if tags == nil {
-			tags = []Tag{}
-		}
-		var branch *string
-		if b, ok := branchMap[r.SessionID]; ok {
-			branch = &b
-		}
-
-		// Agent name: use session_index as primary, live_sessions as override
-		agentName := ""
-		displayName := ""
-		if r.AgentName != nil && *r.AgentName != "" {
-			agentName = *r.AgentName
-		}
-		if r.DisplayName != nil && *r.DisplayName != "" {
-			displayName = *r.DisplayName
-		}
-		// Override with live_sessions data if available (more current for active agents)
-		if info, ok := agentMap[r.SessionID]; ok {
-			if info.AgentName != "" {
-				agentName = info.AgentName
-			}
-			if info.DisplayName != "" {
-				displayName = info.DisplayName
-			}
-		}
-
-		sessions[i] = SessionListItem{
-			SessionID:      r.SessionID,
-			SourceType:     r.SourceType,
-			SourceFile:     r.SourceFile,
-			FirstTimestamp: r.FirstTimestamp,
-			LastTimestamp:  r.LastTimestamp,
-			MessageCount:   r.MessageCount,
-			Summary:        r.DisplaySummary,
-			SummaryTitle:   meta.SummaryTitle,
-			HasNotes:       meta.HasNotes,
-			Tags:           tags,
-			Branch:         branch,
-			DurationSec:    computeDuration(r.FirstTimestamp, r.LastTimestamp),
-			AgentName:      agentName,
-			DisplayName:    displayName,
-		}
+		sessions[i] = more.item(r)
 	}
-
 	return &SessionListResult{
 		Sessions: sessions,
 		Total:    total,
 		Page:     params.Page,
 		PageSize: params.PageSize,
 	}, nil
+}
+
+// sessionListSQL is a session list's FROM, WHERE (with its arguments, a slice for an IN) and ORDER BY.
+type sessionListSQL struct {
+	from, where, order string
+	args               []interface{}
+}
+
+// sessionListQuery turns the list's filters into SQL: a full-text search (ordered by rank), the dates, the
+// duration, the tags (all or any), the source types and the agent name; newest first without a search.
+func sessionListQuery(params SessionListParams) sessionListSQL {
+	q := sessionListSQL{from: "session_index si", order: "si.last_timestamp DESC"}
+	var whereClauses []string
+	where := func(clause string, arg interface{}) {
+		whereClauses = append(whereClauses, clause)
+		q.args = append(q.args, arg)
+	}
+	if params.Search != "" {
+		if safeQ := sanitizeFTSQuery(params.Search, params.FTSMode); safeQ != "" {
+			q.from += " JOIN session_fts fts ON fts.session_id = si.session_id"
+			where("session_fts MATCH ?", safeQ)
+			q.order = "rank"
+		}
+	}
+	if params.DateFrom != "" {
+		where("si.last_timestamp >= ?", params.DateFrom+"T00:00:00")
+	}
+	if params.DateTo != "" {
+		// Through the end of the date_to day, fractions of a second included: "~" sorts after every character of a timestamp, so
+		// "< date~" is every timestamp that begins with a date up to date_to (a session ending at 23:59:59.5 is not after "T23:59:59").
+		where("si.last_timestamp < ?", params.DateTo+"~")
+	}
+	if params.MinDurationSec != nil {
+		where("(julianday(si.last_timestamp) - julianday(si.first_timestamp)) * 86400 >= ?", *params.MinDurationSec)
+	}
+	if params.MaxDurationSec != nil {
+		where("(julianday(si.last_timestamp) - julianday(si.first_timestamp)) * 86400 <= ?", *params.MaxDurationSec)
+	}
+	if len(params.TagIDs) > 0 && params.TagLogic == "AND" {
+		for _, tid := range params.TagIDs {
+			where("si.session_id IN (SELECT session_id FROM session_tags WHERE tag_id = ?)", tid)
+		}
+	} else if len(params.TagIDs) > 0 {
+		where("si.session_id IN (SELECT session_id FROM session_tags WHERE tag_id IN (?))", params.TagIDs)
+	}
+	if len(params.SourceTypes) > 0 {
+		where("si.source_type IN (?)", params.SourceTypes)
+	}
+	if params.AgentName != "" {
+		where("si.agent_name = ?", params.AgentName)
+	}
+	if len(whereClauses) > 0 {
+		q.where = " WHERE " + strings.Join(whereClauses, " AND ")
+	}
+	return q
+}
+
+// sessionPageRow is one session_index row of a list page.
+type sessionPageRow struct {
+	SessionID      string  `db:"session_id"`
+	SourceType     string  `db:"source_type"`
+	SourceFile     string  `db:"source_file"`
+	FirstTimestamp *string `db:"first_timestamp"`
+	LastTimestamp  *string `db:"last_timestamp"`
+	MessageCount   int     `db:"message_count"`
+	DisplaySummary string  `db:"display_summary"`
+	AgentName      *string `db:"agent_name"`
+	DisplayName    *string `db:"display_name"`
+}
+
+// pageSessions counts the sessions the query matches and reads the requested page of them.
+func (s *SessionStore) pageSessions(ctx context.Context, q sessionListSQL, params SessionListParams) (int, []sessionPageRow, error) {
+	countSQL, countArgs, err := sqlx.In(fmt.Sprintf("SELECT COUNT(*) FROM %s%s", q.from, q.where), q.args...)
+	if err != nil {
+		return 0, nil, err
+	}
+	var total int
+	if err := s.reader().GetContext(ctx, &total, countSQL, countArgs...); err != nil {
+		return 0, nil, err
+	}
+	offset := (params.Page - 1) * params.PageSize
+	selectFields := `si.session_id, si.source_type, si.source_file,
+		si.first_timestamp, si.last_timestamp, si.message_count, si.display_summary,
+		si.agent_name, si.display_name`
+	query, pageArgs, err := sqlx.In(fmt.Sprintf("SELECT %s FROM %s%s ORDER BY %s LIMIT ? OFFSET ?", selectFields, q.from, q.where, q.order),
+		append(q.args, params.PageSize, offset)...)
+	if err != nil {
+		return 0, nil, err
+	}
+	var rows []sessionPageRow
+	if err := s.reader().SelectContext(ctx, &rows, query, pageArgs...); err != nil {
+		return 0, nil, err
+	}
+	return total, rows, nil
+}
+
+// sessionListExtras is what a list page shows beyond session_index, per session id: notes, tags, the latest git
+// branch, and the live session's agent and display names. A lookup that fails leaves its part empty.
+type sessionListExtras struct {
+	meta   map[string]sessionNotesMeta
+	tags   map[string][]Tag
+	branch map[string]string
+	agent  map[string]liveAgentNames
+}
+
+type sessionNotesMeta struct {
+	HasNotes     bool
+	IsUserEdited bool
+	SummaryTitle string
+}
+
+type liveAgentNames struct {
+	AgentName   string
+	DisplayName string
+}
+
+func (s *SessionStore) sessionListExtras(ctx context.Context, sessionIDs []string) sessionListExtras {
+	return sessionListExtras{
+		meta:   s.sessionNotesMeta(ctx, sessionIDs),
+		tags:   s.sessionTagsOf(ctx, sessionIDs),
+		branch: s.sessionLatestBranches(ctx, sessionIDs),
+		agent:  s.liveAgentNamesOf(ctx, sessionIDs),
+	}
+}
+
+// sessionNotesMeta is whether each session has notes (its own or an auto summary) and its title: the first header
+// of its notes, else of its auto summary.
+func (s *SessionStore) sessionNotesMeta(ctx context.Context, sessionIDs []string) map[string]sessionNotesMeta {
+	out := map[string]sessionNotesMeta{}
+	metaQuery, metaArgs, _ := sqlx.In(
+		"SELECT session_id, notes_md, auto_summary, is_user_edited FROM session_meta WHERE session_id IN (?)",
+		sessionIDs)
+	var metaRows []struct {
+		SessionID    string `db:"session_id"`
+		NotesMD      string `db:"notes_md"`
+		AutoSummary  string `db:"auto_summary"`
+		IsUserEdited bool   `db:"is_user_edited"`
+	}
+	if err := s.reader().SelectContext(ctx, &metaRows, metaQuery, metaArgs...); err == nil {
+		for _, r := range metaRows {
+			content := r.NotesMD
+			if content == "" {
+				content = r.AutoSummary
+			}
+			out[r.SessionID] = sessionNotesMeta{
+				HasNotes:     r.NotesMD != "" || r.AutoSummary != "",
+				IsUserEdited: r.IsUserEdited,
+				SummaryTitle: extractFirstHeader(content),
+			}
+		}
+	}
+	return out
+}
+
+// sessionTagsOf is each session's tags, by name.
+func (s *SessionStore) sessionTagsOf(ctx context.Context, sessionIDs []string) map[string][]Tag {
+	out := map[string][]Tag{}
+	tagQuery, tagArgs, _ := sqlx.In(
+		`SELECT st.session_id, t.id, t.name, t.color
+		 FROM session_tags st JOIN tags t ON t.id = st.tag_id
+		 WHERE st.session_id IN (?) ORDER BY t.name`,
+		sessionIDs)
+	var tagRows []struct {
+		SessionID string `db:"session_id"`
+		ID        int64  `db:"id"`
+		Name      string `db:"name"`
+		Color     string `db:"color"`
+	}
+	if err := s.reader().SelectContext(ctx, &tagRows, tagQuery, tagArgs...); err == nil {
+		for _, r := range tagRows {
+			out[r.SessionID] = append(out[r.SessionID], Tag{ID: r.ID, Name: r.Name, Color: r.Color})
+		}
+	}
+	return out
+}
+
+// sessionLatestBranches is each session's git branch at its latest snapshot.
+func (s *SessionStore) sessionLatestBranches(ctx context.Context, sessionIDs []string) map[string]string {
+	out := map[string]string{}
+	branchQuery, branchArgs, _ := sqlx.In(
+		`SELECT gs.session_id, gs.branch
+		 FROM git_snapshots gs
+		 INNER JOIN (
+		     SELECT session_id, MAX(recorded_at) as max_ts
+		     FROM git_snapshots WHERE session_id IN (?)
+		     GROUP BY session_id
+		 ) latest ON gs.session_id = latest.session_id AND gs.recorded_at = latest.max_ts`,
+		sessionIDs)
+	var branchRows []struct {
+		SessionID string `db:"session_id"`
+		Branch    string `db:"branch"`
+	}
+	if err := s.reader().SelectContext(ctx, &branchRows, branchQuery, branchArgs...); err == nil {
+		for _, r := range branchRows {
+			out[r.SessionID] = r.Branch
+		}
+	}
+	return out
+}
+
+// liveAgentNamesOf is each live session's agent and display names.
+func (s *SessionStore) liveAgentNamesOf(ctx context.Context, sessionIDs []string) map[string]liveAgentNames {
+	out := map[string]liveAgentNames{}
+	agentQuery, agentArgs, _ := sqlx.In(
+		`SELECT session_id, agent_name, display_name FROM live_sessions WHERE session_id IN (?)`,
+		sessionIDs)
+	var agentRows []struct {
+		SessionID   string  `db:"session_id"`
+		AgentName   string  `db:"agent_name"`
+		DisplayName *string `db:"display_name"`
+	}
+	if err := s.reader().SelectContext(ctx, &agentRows, agentQuery, agentArgs...); err == nil {
+		for _, r := range agentRows {
+			names := liveAgentNames{AgentName: r.AgentName}
+			if r.DisplayName != nil {
+				names.DisplayName = *r.DisplayName
+			}
+			out[r.SessionID] = names
+		}
+	}
+	return out
+}
+
+// item is one list row: session_index's fields, its notes, tags and branch, and its names (session_index's, with
+// a live session's non-empty ones over them: more current for active agents).
+func (x sessionListExtras) item(r sessionPageRow) SessionListItem {
+	tags := x.tags[r.SessionID]
+	if tags == nil {
+		tags = []Tag{}
+	}
+	var branch *string
+	if b, ok := x.branch[r.SessionID]; ok {
+		branch = &b
+	}
+	agentName, displayName := ptr.Value(r.AgentName), ptr.Value(r.DisplayName)
+	if info, ok := x.agent[r.SessionID]; ok {
+		if info.AgentName != "" {
+			agentName = info.AgentName
+		}
+		if info.DisplayName != "" {
+			displayName = info.DisplayName
+		}
+	}
+	meta := x.meta[r.SessionID]
+	return SessionListItem{
+		SessionID:      r.SessionID,
+		SourceType:     r.SourceType,
+		SourceFile:     r.SourceFile,
+		FirstTimestamp: r.FirstTimestamp,
+		LastTimestamp:  r.LastTimestamp,
+		MessageCount:   r.MessageCount,
+		Summary:        r.DisplaySummary,
+		SummaryTitle:   meta.SummaryTitle,
+		HasNotes:       meta.HasNotes,
+		Tags:           tags,
+		Branch:         branch,
+		DurationSec:    computeDuration(r.FirstTimestamp, r.LastTimestamp),
+		AgentName:      agentName,
+		DisplayName:    displayName,
+	}
 }
 
 // ── Live Sessions ─────────────────────────────────────────────────────
