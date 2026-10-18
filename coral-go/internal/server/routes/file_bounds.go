@@ -6,11 +6,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/cdknorow/coral/internal/auth"
+	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/pkg/tunnel"
@@ -137,6 +139,20 @@ var sensitiveDirs = map[string]bool{
 	".docker": true, ".azure": true, ".gcloud": true, ".password-store": true, ".git-credentials": true,
 	"keychains": true, ".mozilla": true, ".chrome": true, ".terraform": true, ".vscode-server": true,
 	".terraform.d": true, ".npm": true, ".cargo": true, ".gem": true, ".m2": true, ".gradle": true,
+	// #4531 (Security's #4527 INFO 1), the audit of the list against the credential folders common on macOS, Linux and
+	// Windows. More cloud and platform CLIs (each keeps tokens or keys in its folder), build tools' credential folders
+	// (.ivy2 and .sbt, .nuget, .composer, .bundle, .cabal, .stack), a package index's and a model hub's tokens (.kaggle,
+	// .huggingface), password managers and mail (.1password, .op, .bitwarden, .lastpass, .thunderbird, .mutt), Subversion's
+	// stored passwords, the Linux wallets and flatpak's app data, and the zsh session history macOS keeps.
+	".oci": true, ".ibmcloud": true, ".bluemix": true, ".aliyun": true, ".alibabacloud": true, ".vault": true, ".minikube": true,
+	".pulumi": true, ".serverless": true, ".helm": true, ".cloudflared": true, ".wrangler": true, ".fly": true, ".heroku": true,
+	".cf": true, ".gsutil": true, ".snowsql": true, ".linode-cli": true, ".twilio-cli": true, ".stripe": true, ".ngrok": true,
+	".ngrok2": true, ".vagrant.d": true, ".ansible": true, ".chef": true, ".puppetlabs": true, ".subversion": true,
+	".ivy2": true, ".sbt": true, ".nuget": true, ".composer": true, ".bundle": true, ".cabal": true, ".stack": true,
+	".kaggle": true, ".huggingface": true, ".1password": true, ".op": true, ".bitwarden": true, ".lastpass": true,
+	".thunderbird": true, ".mutt": true, ".kde": true, ".var": true, ".zsh_sessions": true, ".expo": true, ".eas": true,
+	".vercel": true, ".netlify": true, ".supabase": true, ".planetscale": true, ".turso": true, ".azure-devops": true,
+	".sops": true, ".gcloud-config": true, "kwalletd": true,
 }
 
 // gitControlDirs are folder (or file) names whose contents git runs or obeys: a hook, git's
@@ -204,11 +220,30 @@ func (h *SessionsHandler) inHooksPath(ctx context.Context, repoRoot, rel string)
 var sensitiveSeqs = [][]string{
 	{"library", "application support"}, {"library", "cookies"}, {"library", "safari"}, {"library", "keychains"},
 	{"library", "mail"}, {"library", "messages"}, {".local", "share", "keyrings"}, {".local", "share", "gnome-keyring"},
+	// #4531: macOS app data beyond Application Support (sandboxed apps' containers, the account and preference stores, calendars);
+	// Windows' per-user app data (%APPDATA%, %LOCALAPPDATA%: browser profiles, credential and DPAPI stores); the Linux wallets and
+	// tokens kept outside .config; browser profiles of snap and flatpak installs; a model hub's token cache.
+	{"library", "containers"}, {"library", "group containers"}, {"library", "preferences"}, {"library", "accounts"},
+	{"library", "calendars"}, {"library", "identityservices"},
+	// Windows' per-user app data (Security's list): Roaming and LocalLow whole (credential, DPAPI and browser stores; nothing a
+	// project or a temp file uses) and only the named folders of Local, never all of it: the temp folder is AppData\Local\Temp,
+	// and tools (Programs) and checkouts live there.
+	{"appdata", "roaming"}, {"appdata", "locallow"},
+	{"appdata", "local", "google"}, {"appdata", "local", "microsoft"}, {"appdata", "local", "packages"}, {"appdata", "local", "mozilla"},
+	{"appdata", "local", "bravesoftware"}, {"appdata", "local", "vivaldi"}, {"appdata", "local", "opera software"},
+	{"appdata", "local", "1password"}, {"appdata", "local", "comms"},
+	{".local", "share", "kwalletd"}, {".local", "share", "python_keyring"}, {".local", "share", "opencode"}, {".local", "share", "com.vercel.cli"},
+	{".cache", "huggingface"}, {"snap", "firefox"}, {"snap", "chromium"}, {"snap", "brave"},
 }
 
 // sensitiveNames match the base name (lower case), alone or followed by . - _.
 var sensitiveNames = []string{".env", ".netrc", ".npmrc", ".pypirc", ".pgpass", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
-	"credentials", "secrets", "master.key", "kubeconfig", ".envrc", ".gitconfig", ".git-credentials", ".my.cnf", ".s3cfg"}
+	"credentials", "secrets", "master.key", "kubeconfig", ".envrc", ".gitconfig", ".git-credentials", ".my.cnf", ".s3cfg",
+	// #4531: more credential files by name: Windows' _netrc and registry hive, tool configs that hold tokens or passwords, mail
+	// clients' password settings, and the agent-adjacent tools' own config (aider).
+	"_netrc", "ntuser.dat", ".vault-token", ".databrickscfg", ".boto", ".dockercfg", ".terraformrc", ".yarnrc", ".condarc",
+	".msmtprc", ".fetchmailrc", ".mbsyncrc", ".offlineimaprc", ".smbcredentials", ".authinfo", ".mylogin.cnf", ".pg_service.conf",
+	".hgrc", ".wgetrc", ".curlrc", ".cvspass", ".sentryclirc", ".aider.conf", ".aider.chat", "kaggle.json", ".pnpmrc", ".bowerrc"}
 
 // sensitiveExact are base names matched exactly (shell startup files often export tokens).
 var sensitiveExact = map[string]bool{
@@ -224,7 +259,10 @@ var sensitiveExact = map[string]bool{
 // denied in the user's home folder only (#3672): a repository's checked-in .claude/
 // (settings.json, commands, hooks) stays readable, and the credential files in them are denied
 // anywhere by name (sensitiveExact). If the home folder can't be found they are denied anywhere.
-var agentHomeDirs = []string{".claude", ".codex", ".gemini"}
+// #4531: every agent CLI Coral drives (claude, codex, gemini and Antigravity, which keeps its state under .gemini and in its own
+// folder; pi), and the common coding assistants that keep keys or sessions in the home folder.
+var agentHomeDirs = []string{".claude", ".codex", ".gemini", ".pi", ".agy", ".antigravity", ".cursor", ".continue", ".codeium", ".windsurf",
+	".opencode", ".qwen", ".copilot", ".augment", ".goose", ".aider"}
 
 // resolvedHome is realPath(home), remembered for the last home seen (sensitivePath runs for
 // every entry of a folder listing).
@@ -272,11 +310,55 @@ func inAgentHomeDir(p string, lower []string) bool {
 	return false
 }
 
-var sensitiveSuffixes = []string{".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".kdbx", ".ppk", ".tfstate", "_history", ".history"}
+var sensitiveSuffixes = []string{".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".kdbx", ".ppk", ".tfstate", "_history", ".history",
+	// #4531: macOS keychain files, PKCS#12 by its other name, VPN profiles (they embed keys), KeePass 1, Apple's auth keys, wallets
+	// and Terraform variable files (secrets are often kept in them).
+	".keychain", ".keychain-db", ".pkcs12", ".ovpn", ".kdb", ".p8", ".wallet", ".jceks", ".tfvars"}
+
+// Coral's own data folder holds the API key, the session tokens and the databases: nothing in it is served, wherever it is
+// (CORAL_DATA_DIR, --home, or ~/.coral). The handlers register the folder they run with; the default is always covered.
+var protectedDataDirs struct {
+	sync.Mutex
+	dirs []string
+}
+
+// ProtectDataDir adds dir (and its symlink-resolved form) to the folders sensitivePath refuses.
+func ProtectDataDir(dir string) {
+	if dir == "" {
+		return
+	}
+	protectedDataDirs.Lock()
+	defer protectedDataDirs.Unlock()
+	for _, d := range []string{dir, realPath(dir)} {
+		if d = strings.ToLower(filepath.Clean(d)); d != "." && d != "" && !slices.Contains(protectedDataDirs.dirs, d) {
+			protectedDataDirs.dirs = append(protectedDataDirs.dirs, d)
+		}
+	}
+}
+
+func inCoralDataDir(p string) bool {
+	lp := strings.ToLower(filepath.Clean(p))
+	protectedDataDirs.Lock()
+	dirs := append([]string{}, protectedDataDirs.dirs...)
+	protectedDataDirs.Unlock()
+	home, _ := os.UserHomeDir()
+	homes := []string{strings.ToLower(filepath.Clean(home)), strings.ToLower(filepath.Clean(realPath(home)))}
+	for _, d := range append(dirs, strings.ToLower(filepath.Clean(config.ResolveCoralDir("")))) {
+		// A data folder that is the home folder itself (or holds it) cannot be walled off as a whole: the per-name
+		// lists still apply inside it.
+		if within(d, lp) && !within(d, homes[0]) && !within(d, homes[1]) {
+			return true
+		}
+	}
+	return false
+}
 
 // sensitivePath reports whether p names a credential-bearing or history location. It
 // checks every path component, so it also applies inside an otherwise allowed repository.
 func sensitivePath(p string) bool {
+	if inCoralDataDir(p) {
+		return true
+	}
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(p)), "/")
 	lower := make([]string, len(parts))
 	for i, c := range parts {

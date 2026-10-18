@@ -198,6 +198,8 @@ func (s *Server) newRouteHandlers() *routeHandlers {
 	s.sessHandler = sessHandler
 	// The automated-input gate reads agents' state through it (#3431).
 	sessHandler.InstallAutomatedInputHooks()
+	// Coral's own data folder (wherever --home or CORAL_DATA_DIR put it) is never served by Browse or a file read (#4531).
+	routes.ProtectDataDir(s.cfg.CoralDir())
 	sysHandler := routes.NewSystemHandler(s.db, s.cfg)
 	sysHandler.SetTerminal(s.terminal)
 	s.systemHandler = sysHandler

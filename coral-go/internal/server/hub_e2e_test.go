@@ -955,6 +955,7 @@ func TestHubE2E_LaunchOnRemoteOnly(t *testing.T) {
 	// Browse the remote's filesystem through the proxy for the working dir. A proxied
 	// (Bearer) caller is bounded to the home directory and CORAL_PROJECT_ROOTS, so the
 	// test's temp directories are declared as project roots.
+	setHome(t, b.dir) // the test servers use their data folder as the work area; a data folder that holds the home is not walled off (#4531)
 	t.Setenv("CORAL_PROJECT_ROOTS", filepath.Dir(filepath.Dir(b.work))+string(os.PathListSeparator)+a.dir)
 	var fs struct {
 		Path    string   `json:"path"`
