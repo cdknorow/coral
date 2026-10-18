@@ -42,9 +42,6 @@ EXTRA = {
     'GET /api/sessions/live/{}/events': {'type', 'q', 'since', 'until', 'sort', 'cursor'},
     # The same search on a session's history events (#4779): GetSessionEvents hands queryAgentEvents the url.Values it parsed.
     'GET /api/sessions/history/{}/events': {'type', 'q', 'since', 'until', 'sort', 'cursor'},
-    # The history list (#4713): parseHistoryListQuery reads these from the url.Values the handler hands it, which the scan above does not follow.
-    'GET /api/sessions/history': {'page', 'page_size', 'tag_ids', 'tag_logic', 'source_types', 'q', 'fts_mode', 'date_from', 'date_to',
-                                  'min_duration_sec', 'max_duration_sec', 'agent_name', 'type'},
     # The recorded hub UI sends limit with an agent's personal task list; SessionsHandler.ListTasks returns them all.
     'GET /api/sessions/live/{}/tasks': {'limit'},
     # file_explorer.js pages a directory listing with offset; the handler returns the first page regardless.
