@@ -59,6 +59,8 @@ cleanup() {
   sleep 2
   for p in ${PIDS[@]+"${PIDS[@]}"}; do kill -9 "$p" 2>/dev/null; done
   [[ -S "$WORK/d1/tmux.sock" ]] && tmux -S "$WORK/d1/tmux.sock" kill-server 2>/dev/null
+  sleep 3   # the mock agents are still writing their transcripts until they are gone
+  rm -f -- "$WORK/key.txt"
   if [[ "${KEEP_TEST_DATA:-0}" != 1 && -n "$WORK" && -d "$WORK" && "$WORK" != / ]]; then
     rm -rf -- "$WORK/d1" "$WORK/home" "$WORK/repo" "$WORK/bin" 2>/dev/null || { sleep 2; rm -rf -- "$WORK/d1" "$WORK/home" "$WORK/repo" "$WORK/bin"; }
     [[ "$OUT" == "$WORK"/* ]] || rmdir -- "$WORK" 2>/dev/null
@@ -179,6 +181,13 @@ done
 "$GO" tool pprof -top -nodecount=30 "$WORK/bin/coral" "$OUT/cpu.pprof" > "$OUT/cpu-flat.txt" 2>&1
 "$GO" tool pprof -top -sample_index=alloc_space -nodecount=30 "$WORK/bin/coral" "$OUT/allocs.pprof" > "$OUT/allocs-top.txt" 2>&1
 "$GO" tool pprof -top -nodecount=20 "$WORK/bin/coral" "$OUT/heap.pprof" > "$OUT/heap-top.txt" 2>&1
+# The Cost view's requests once each on the idle-again server, for the last day, week and all time (#4669).
+for hrs in 24 168 0; do
+  if [[ $hrs -gt 0 ]]; then S=$(python3 -I -c "import time,urllib.parse;print(urllib.parse.quote(time.strftime('%Y-%m-%dT%H:%M:%S.000Z',time.gmtime(time.time()-$hrs*3600))))"); SP="?since=$S"; TP="?since=$S&interval=1h"; else SP=""; TP="?interval=1d"; fi
+  for ep in "token-usage/summary$SP" "board/tasks" "token-usage/timeseries$TP" "token-usage/by-team$SP" "token-usage/by-branch$SP"; do
+    printf '%sh %s %s\n' "$hrs" "$ep" "$(curl -s -m 120 -o /dev/null -w '%{time_total}s %{size_download}B' -H "X-API-Key: $KEY" "http://127.0.0.1:$PORT/api/$ep")" >> "$OUT/cost-view.txt"
+  done
+done
 cp "$WORK/bin/coral" "$OUT/coral.bin"
 [[ "$RESTART_END" == 1 ]] && time_startup "start on the finished data (agents were running)"
 coral_test_sandbox_check || exit 1

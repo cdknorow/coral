@@ -11,7 +11,8 @@
 # #4669: TAB_ROLES=chat,chat,board,list,list gives each tab a role (cycled): chat (an open chat on one of
 # the largest transcripts: the tail once, then a refresh after the last index every second and an older page
 # every 8 s, walking back), board (the busy board: messages every second, status, the task list every 3 s) or
-# list (the agent list pages). Without it every tab runs the one mixed set. BIG_FILE is scale_transcripts.py's
+# list (the agent list pages) or cost (the Cost view, open: its five requests every 15 s, for the last COST_HOURS, 24 by
+# default, 0 = all time; the dashboard does not poll them otherwise). Without roles every tab runs the one mixed set. BIG_FILE is scale_transcripts.py's
 # OUT.json: the chat tabs open its largest sessions. BOARD_NAME names the board the board tabs and the poster use.
 # The process section also holds the RSS and goroutine series, one point every 30 s.
 import base64, collections, json, os, socket, struct, sys, threading, time, urllib.parse, urllib.request
@@ -139,6 +140,19 @@ def tab(i, sessions, board):
     role = ROLES[i % len(ROLES)] if ROLES else "mixed"
     bysid = {s["session_id"]: s for s in sessions}
     me, other = sessions[i % len(sessions)], sessions[(i + 1) % len(sessions)]
+    if role == "cost":
+        def cost_calls():
+            h = float(os.environ.get("COST_HOURS", "24"))
+            since = (time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - h * 3600)) if h > 0 else "")
+            sp = "?since=" + urllib.parse.quote(since) if since else ""
+            tp = ("?since=%s&interval=1h" % urllib.parse.quote(since)) if since else "?interval=1d"
+            for name, path in (("cost summary", "/api/token-usage/summary" + sp), ("cost tasks", "/api/board/tasks"),
+                               ("cost timeseries", "/api/token-usage/timeseries" + tp), ("cost by team", "/api/token-usage/by-team" + sp),
+                               ("cost by branch", "/api/token-usage/by-branch" + sp)):
+                threading.Thread(target=call, args=("GET", path), kwargs={"name": name}, daemon=True).start()
+        ths = [threading.Thread(target=ws_tab, daemon=True), threading.Thread(target=every, args=(15.0, cost_calls), daemon=True)]
+        for t in ths: t.start()
+        return ths
     if role == "chat":
         k = sum(1 for r in ROLES[:i % len(ROLES)] if r == "chat") + (i // len(ROLES)) * ROLES.count("chat")
         me = bysid.get(BIG[k % len(BIG)], me) if BIG else me
@@ -156,7 +170,7 @@ def tab(i, sessions, board):
         (10.0, "live list 10s", "/api/sessions/live"),
         (15.0, "token usage 15s", "/api/token-usage/summary"),
     ]
-    only = {"board": {"board chat 3s", "board status 5s", "board tasks 10s"}, "list": {"poll 2s", "sleep status 5s", "board status 5s", "live list 10s", "token usage 15s"}}
+    only = {"board": {"board chat 3s", "board status 5s", "board tasks 10s"}, "list": {"poll 2s", "sleep status 5s", "board status 5s", "live list 10s"}}
     fast = {"board chat 3s": 1.0, "board status 5s": 2.0, "board tasks 10s": 3.0}  # the open board's own intervals
     specs = [(fast.get(n, per) if role == "board" else per, n, path) for per, n, path in full if role == "mixed" or n in only[role]]
     ths = [threading.Thread(target=ws_tab, daemon=True)]
