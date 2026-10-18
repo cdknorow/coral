@@ -44,18 +44,11 @@ func (p *RemoteBoardPoller) SetDiscoverFn(fn func(ctx context.Context) ([]AgentI
 
 // Run starts the polling loop.
 func (p *RemoteBoardPoller) Run(ctx context.Context) error {
-	ticker := time.NewTicker(p.interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if err := p.RunOnce(ctx); err != nil {
-				p.logger.Error("poll error", "error", err)
-			}
+	return runOnTicker(ctx, p.interval, func() {
+		if err := p.RunOnce(ctx); err != nil {
+			p.logger.Error("poll error", "error", err)
 		}
-	}
+	})
 }
 
 // RunOnce performs a single remote poll pass.

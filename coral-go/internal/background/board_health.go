@@ -63,16 +63,7 @@ func (m *BoardHealthMonitor) SetIdleThresholds(remindAfter, _ time.Duration) {
 }
 
 func (m *BoardHealthMonitor) Run(ctx context.Context) error {
-	t := time.NewTicker(m.interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-t.C:
-			m.scan(ctx)
-		}
-	}
+	return runOnTicker(ctx, m.interval, func() { m.scan(ctx) })
 }
 
 func (m *BoardHealthMonitor) scan(ctx context.Context) {

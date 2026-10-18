@@ -70,16 +70,7 @@ func (p *TokenPoller) SetSubagentStore(st *store.SubagentStore) {
 
 // Run starts the polling loop.
 func (p *TokenPoller) Run(ctx context.Context) error {
-	ticker := time.NewTicker(p.interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			p.pollOnce(ctx)
-		}
-	}
+	return runOnTicker(ctx, p.interval, func() { p.pollOnce(ctx) })
 }
 
 func (p *TokenPoller) pollOnce(ctx context.Context) {

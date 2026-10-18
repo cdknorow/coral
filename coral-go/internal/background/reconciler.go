@@ -68,16 +68,7 @@ func NewSessionReconciler(ss *store.SessionStore, rt AgentRuntime, interval time
 
 // Run starts the reconciliation loop.
 func (r *SessionReconciler) Run(ctx context.Context) error {
-	ticker := time.NewTicker(r.interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			r.reconcileOnce(ctx)
-		}
-	}
+	return runOnTicker(ctx, r.interval, func() { r.reconcileOnce(ctx) })
 }
 
 func (r *SessionReconciler) reconcileOnce(ctx context.Context) {

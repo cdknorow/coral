@@ -206,18 +206,11 @@ func (s *JobScheduler) Run(ctx context.Context) error {
 	// Reap stale runs from a previous crash
 	s.reapStaleRuns(ctx)
 
-	ticker := time.NewTicker(s.interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if err := s.tick(ctx); err != nil {
-				s.logger.Error("tick error", "error", err)
-			}
+	return runOnTicker(ctx, s.interval, func() {
+		if err := s.tick(ctx); err != nil {
+			s.logger.Error("tick error", "error", err)
 		}
-	}
+	})
 }
 
 func (s *JobScheduler) reapStaleRuns(ctx context.Context) {

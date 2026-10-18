@@ -178,16 +178,7 @@ func NewThinkingTracker(ss *store.SessionStore, ts *store.TaskStore, interval ti
 
 // Run starts the polling loop.
 func (t *ThinkingTracker) Run(ctx context.Context) error {
-	ticker := time.NewTicker(t.interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			t.pollOnce(ctx)
-		}
-	}
+	return runOnTicker(ctx, t.interval, func() { t.pollOnce(ctx) })
 }
 
 func (t *ThinkingTracker) pollOnce(ctx context.Context) {

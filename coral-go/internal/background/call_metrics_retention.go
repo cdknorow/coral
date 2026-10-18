@@ -129,6 +129,21 @@ func (j *CallMetricsRetention) rollup(ctx context.Context) (hours int, rows int6
 
 // runEvery calls fn after first and then every interval until ctx ends, and returns ctx's error.
 // The retention jobs' loop (#3824: it was written twice).
+// runOnTicker runs fn on every tick of a ticker of interval until ctx is done: a fixed rate (a tick that comes while
+// fn still runs is dropped, as a time.Ticker drops it), unlike runEvery, which waits interval after fn returns.
+func runOnTicker(ctx context.Context, interval time.Duration, fn func()) error {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			fn()
+		}
+	}
+}
+
 func runEvery(ctx context.Context, first, interval time.Duration, fn func()) error {
 	wait := first
 	for {
