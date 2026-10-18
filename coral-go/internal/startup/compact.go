@@ -55,6 +55,9 @@ func Compact(ctx context.Context, cfg *config.Config, out io.Writer) error {
 		strings.TrimSuffix(filepath.Base(cfg.DBPath), ".db")+".before-compact-"+time.Now().UTC().Format("20060102T150405Z")+".db")
 	fmt.Fprintf(out, "Database: %s (%s)\nBacking up to %s ...\n", cfg.DBPath, humanBytes(before), backup)
 	started := time.Now()
+	if err := newPrivateBackup(backup); err != nil {
+		return fmt.Errorf("backup failed, nothing was changed: %w", err)
+	}
 	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", backup); err != nil {
 		os.Remove(backup)
 		return fmt.Errorf("backup failed, nothing was changed: %w", err)

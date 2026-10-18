@@ -63,6 +63,9 @@ func RebuildSearch(ctx context.Context, cfg *config.Config, out io.Writer) error
 		strings.TrimSuffix(filepath.Base(cfg.DBPath), ".db")+".before-rebuild-search-"+time.Now().UTC().Format("20060102T150405Z")+".db")
 	fmt.Fprintf(out, "Backing up to %s ...\n", backup)
 	started := time.Now()
+	if err := newPrivateBackup(backup); err != nil {
+		return fmt.Errorf("backup failed, nothing was changed: %w", err)
+	}
 	if _, err := db.ExecContext(ctx, "VACUUM INTO ?", backup); err != nil {
 		os.Remove(backup)
 		return fmt.Errorf("backup failed, nothing was changed: %w", err)
