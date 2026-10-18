@@ -89,6 +89,8 @@
     .chat-prose.chat-messages .chat-bubble .chat-save-btn { right: calc(var(--control-touch-height) - 4px); }
     .chat-prose.chat-messages .chat-bubble.human .chat-save-btn { right: -4px; }
     .chat-bubble .chat-save-btn { right: calc(var(--control-touch-height) - 4px); opacity: 1; }
+    /* The 44 px Save and Copy hang under a message (45 px with their gap): the message's own bottom margin (22 px) plus the 24 px they need, so they sit in the gap and not over the next message. */
+    .chat-prose.chat-messages .chat-bubble.assistant, .chat-prose.chat-messages .chat-bubble.human { margin-bottom: 46px; }
     .chat-bubble.human .chat-save-btn { right: 6px; }
     .board-chat-title {
         display: inline-flex;

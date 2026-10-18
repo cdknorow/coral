@@ -100,8 +100,7 @@ let countTimer = 0;
 export function setSavedCount(n) {
     const b = document.getElementById('saved-btn');
     if (!b) return;
-    const badge = b.querySelector('.saved-count');
-    if (badge) { badge.textContent = n > 0 ? (n > 99 ? '99+' : String(n)) : ''; badge.hidden = !(n > 0); }
+    for (const badge of document.querySelectorAll('#saved-btn .saved-count, .saved-menu-item .saved-count')) { badge.textContent = n > 0 ? (n > 99 ? '99+' : String(n)) : ''; badge.hidden = !(n > 0); }
     b.setAttribute('aria-label', n > 0 ? `Saved for later, ${n} open` : 'Saved for later');
     b.classList.toggle('on', n > 0);
     const tc = document.getElementById('saved-tab-count');
@@ -163,3 +162,15 @@ document.addEventListener('click', async (e) => {
         btn.focus({ preventScroll: true });
     }
 });
+
+// On a phone at large text the top bar has no room for the Saved button without cutting the view selector to "Age...": there it is an entry of the settings
+// menu (with its count) instead. Decided from the real layout, so both ways of making text large (the browser's setting and the page's) count.
+function fitSavedButton() {
+    const big = window.innerWidth <= 767 && parseFloat(getComputedStyle(document.documentElement).fontSize) >= 24;
+    document.body.classList.toggle('saved-in-menu', big);
+}
+if (typeof ResizeObserver === 'function') {
+    const start = () => { fitSavedButton(); const bar = document.querySelector('.top-bar'); if (bar) new ResizeObserver(fitSavedButton).observe(bar); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+}
+window.addEventListener('resize', fitSavedButton);

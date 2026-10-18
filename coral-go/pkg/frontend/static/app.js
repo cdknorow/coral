@@ -194,6 +194,7 @@ registerActions({
 // the markup uses.
 registerActions({
     'm-close-top-bar-settings-then-check-for-updates': () => { window.__coral.closeTopBarSettings(); window.checkForUpdates(true); },
+    'm-close-top-bar-settings-then-show-saved': () => { window.__coral.closeTopBarSettings(); importOnce('./saved.js').then(m => m.openSaved()).catch(() => {}); },
     'm-close-top-bar-settings-then-show-servers-modal': () => { window.__coral.closeTopBarSettings(); window.showServersModal(); },
     'm-close-top-bar-settings-then-show-settings-modal': () => { window.__coral.closeTopBarSettings(); window.showSettingsModal(); },
     'm-close-top-bar-settings-then-show-theme-configurator': () => { window.__coral.closeTopBarSettings(); window.showThemeConfigurator(); },

@@ -290,7 +290,27 @@ const hex = i => i.toString(16).padStart(20, '0');
         assert.ok(tb.w >= 44 && tb.h >= 44, 'the Save button is 44 px on touch: ' + JSON.stringify(tb));
         assert.ok(tb.copyW >= 44 && tb.copyH >= 44, 'Copy is 44 px on touch too: ' + JSON.stringify(tb)); assert.equal(tb.opacity, '1', 'always visible on touch'); assert.equal(tb.copyOpacity, '1', 'Copy too');
         assert.equal(tb.overlapsCopy, false, 'it does not sit on Copy: ' + JSON.stringify(tb));
+        // The 44 px Save and Copy sit in a gap of their own under a message, not over the next one (UX's phone finding).
+        const gap = await ev(`(() => { const out = []; const bubbles = [...${C}.querySelectorAll('.chat-bubble')]; for (let i = 0; i < bubbles.length - 1; i++) { const b = bubbles[i], next = bubbles[i + 1]; if (!b.querySelector('.chat-save-btn')) continue;
+            const nt = next.getBoundingClientRect().top; for (const btn of b.querySelectorAll('.chat-save-btn, .chat-copy-btn')) { const r = btn.getBoundingClientRect(); if (r.width && r.bottom > nt + 1) out.push(Math.round(r.bottom - nt)); } } return { over: out, checked: bubbles.length }; })()`);
+        assert.ok(gap.checked > 4); assert.deepEqual(gap.over, [], 'no button hangs over the next message: ' + JSON.stringify(gap));
         await shot('saved-button-phone');
+        console.log('9. A phone at 200% text: the Saved button gives way to a settings-menu entry (with its count), so the view selector keeps its name');
+        await ev(`document.documentElement.style.fontSize = '32px'; true`);
+        await waitFor(`document.body.classList.contains('saved-in-menu')`, 'the layout to move Saved into the menu', 6000);
+        const big = await ev(`(() => { const sel = document.querySelector('.nav-select'); return { btn: getComputedStyle(document.getElementById('saved-btn')).display, sel: sel ? sel.textContent.trim().replace(/\\s+/g, ' ') : null, selW: sel ? Math.round(sel.getBoundingClientRect().width) : 0 }; })()`);
+        assert.equal(big.btn, 'none', 'no top bar button at large text'); assert.ok(big.selW >= 100, 'the view selector keeps its room: ' + JSON.stringify(big));
+        await ev(`document.querySelector('[data-on-click="m-toggle-top-bar-settings"]').click(); true`);
+        await waitFor(`getComputedStyle(document.getElementById('top-bar-settings-menu')).display !== 'none'`, 'the settings menu', 4000);
+        const mi = await ev(`(() => { const e = document.querySelector('.saved-menu-item'); const r = e.getBoundingClientRect(); return { shown: getComputedStyle(e).display !== 'none' && r.width > 0, h: Math.round(r.height), count: e.querySelector('.saved-count').textContent, text: e.textContent.trim().replace(/\\s+/g, ' ') }; })()`);
+        assert.ok(mi.shown && mi.h >= 43 && mi.count === '2' && /^Saved for later/.test(mi.text), 'the menu entry has the count and is a 44 px target: ' + JSON.stringify(mi));
+        await ev(`document.querySelector('.saved-menu-item').click(); true`);
+        await waitFor(`document.getElementById('agentic-state').classList.contains('mobile-panel-overlay') && ${TAB_OPEN}`, 'the menu entry to open the Saved tab', 8000);
+        await shot('saved-menu-phone-200');
+        await ev(`document.documentElement.style.fontSize = ''; true`);
+        await waitFor(`!document.body.classList.contains('saved-in-menu')`, 'the top bar button to come back at normal text', 6000);
+        console.log('   ✓');
+
         await Emulation.setTouchEmulationEnabled({ enabled: false });
         await Emulation.clearDeviceMetricsOverride();
         for (const it of (await saved()).items) await api('DELETE', `/api/saved/${it.id}`);
