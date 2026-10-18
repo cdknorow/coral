@@ -79,12 +79,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Per-connection state for diff calculation
-	prevSessions := make(map[string]string)      // session key -> json string
-	prevByKey := make(map[string]map[string]any) // session key -> the row last sent (read-only tick data)
-	prevRunsJSON := "[]"
-	prevHealth := map[string]string{} // machine_health: each top-level field as last sent (#3444)
-	firstMessage := true
-	var lastSent time.Time // last message written to this connection
+	feed := &coralFeed{fieldDiff: fieldDiff, prevSessions: map[string]string{}, prevByKey: map[string]map[string]any{}, prevRunsJSON: "[]", prevHealth: map[string]string{}, firstMessage: true}
 	// A hub's feed (?feed=hub) is a machine client, not a dashboard: it must
 	// not receive, and so mark delivered, this server's UI notifications.
 	notifications := h.notifications
@@ -138,7 +133,6 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	var kickWait <-chan time.Time
 	lastRemoteBuild := time.Time{} // last build that carried a remote change
 	remotePending := false         // a remote change not yet in a build
-	prevServersJSON := ""
 
 	// The first coral_update goes out at once rather than after the first
 	// tick, so a dashboard or hub feed is not empty for a poll interval. It
@@ -156,7 +150,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		case <-ticker.C:
 			ticker.Reset(untilTick(time.Now(), pollInterval))
 		case <-remoteChanged:
-			if firstMessage {
+			if feed.firstMessage {
 				continue
 			}
 			remotePending = true
@@ -172,7 +166,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		case <-debounce:
 			debounce = nil
 		case <-kicked:
-			if firstMessage {
+			if feed.firstMessage {
 				continue // the first coral_update is built fresh anyway
 			}
 			if kickWait == nil {
@@ -194,16 +188,6 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("ws/coral build session list failed", "error", err)
 			continue
 		}
-		// Shared with every connection: read, never modify.
-		sessions := tick.sessions
-		remoteServers := tick.servers
-		hasRemotes := tick.hasRemotes
-		activeRuns := tick.activeRuns
-		currSessions := tick.current
-		sessionByKey := tick.byKey
-		serversJSON := tick.serversJSON
-		currRunsStr := tick.runsJSON
-
 		// Notifications this connection has not seen yet (every dashboard
 		// gets each one).
 		var pending []Notification
@@ -213,123 +197,155 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			fresh, nextCursor = notifications.Since(notifCursor)
 			pending = append(backlog, fresh...)
 		}
-		// sent records a successful write: only then do these notifications
-		// count as delivered and the cursor move past them.
-		sent := func() {
-			if notifications != nil {
-				notifications.Ack(pending)
-				backlog, notifCursor = nil, nextCursor
-			}
-		}
 
 		// The machine's health (#3444): in full in coral_update, then only the changed fields
 		// (and null for one that went away, such as reason back at ok) in coral_diff.
-		healthDelta, healthNow := h.machineHealthDelta(prevHealth)
+		healthDelta, healthNow := h.machineHealthDelta(feed.prevHealth)
 
-		if firstMessage {
-			msg := map[string]any{
-				"type":        "coral_update",
-				"sessions":    sessions,
-				"active_runs": activeRuns,
-			}
-			if healthNow != nil {
-				msg["machine_health"] = healthDelta
-				prevHealth = healthNow
-			}
-			if len(pending) > 0 {
-				msg["notifications"] = pending
-			}
-			if hasRemotes {
-				msg["servers"] = remoteServers
-			}
-			if err := wsWriteJSON(ctx, conn, forHub(msg)); err != nil {
-				return
-			}
-			sent()
-			prevServersJSON = serversJSON
-			prevSessions = currSessions
-			prevByKey = sessionByKey
-			prevRunsJSON = currRunsStr
-			firstMessage = false
-			lastSent = time.Now()
+		msg, kind := feed.frame(tick, pending, healthDelta, healthNow, time.Now(), h.heartbeatInterval())
+		if msg == nil {
 			continue
 		}
-
-		// Calculate diff
-		var changed []map[string]any
-		for key, sJSON := range currSessions {
-			if prevSessions[key] != sJSON {
-				if prev, ok := prevByKey[key]; ok && fieldDiff {
-					changed = append(changed, fieldDelta(prev, sessionByKey[key]))
-				} else {
-					changed = append(changed, sessionByKey[key])
-				}
-			}
+		var out any = msg
+		if kind != coralHeartbeat {
+			out = forHub(msg)
 		}
-
-		var removed []string
-		var removedRemote []map[string]string
-		for key := range prevSessions {
-			if _, exists := currSessions[key]; !exists {
-				if srv, k, ok := splitRemoteKey(key); ok {
-					removedRemote = append(removedRemote, map[string]string{"server": srv, "key": k})
-				} else {
-					removed = append(removed, key)
-				}
-			}
+		if err := wsWriteJSON(ctx, conn, out); err != nil {
+			return
 		}
-		serversChanged := serversJSON != prevServersJSON
+		// Only a written update or diff counts its notifications as delivered and moves the cursor past them.
+		if kind != coralHeartbeat && notifications != nil {
+			notifications.Ack(pending)
+			backlog, notifCursor = nil, nextCursor
+		}
+		feed.sent(kind, tick, healthDelta, healthNow, time.Now())
+	}
+}
 
-		runsChanged := currRunsStr != prevRunsJSON
+// coralFeed is one /ws/coral connection's view of what it was last sent, for the diffs.
+type coralFeed struct {
+	fieldDiff       bool                      // field-level diffs (#3281)
+	prevSessions    map[string]string         // session key -> json string
+	prevByKey       map[string]map[string]any // session key -> the row last sent (read-only tick data)
+	prevRunsJSON    string
+	prevHealth      map[string]string // machine_health: each top-level field as last sent (#3444)
+	prevServersJSON string
+	firstMessage    bool
+	lastSent        time.Time // last message written to this connection
+}
 
-		hasNotifications := len(pending) > 0
-		healthChanged := len(healthDelta) > 0
-		if len(changed) > 0 || len(removed) > 0 || len(removedRemote) > 0 || serversChanged || runsChanged || hasNotifications || healthChanged {
-			payload := map[string]any{"type": "coral_diff"}
-			if healthChanged {
-				payload["machine_health"] = healthDelta
+// coralFrame is the kind of frame coralFeed.frame built.
+type coralFrame int
+
+const (
+	coralUpdate coralFrame = iota
+	coralDiff
+	coralHeartbeat
+)
+
+// frame is what the connection is sent for tick (shared with every connection: read, never modified): the first
+// coral_update in full; then a coral_diff of the rows changed (whole, or field by field) or gone, the servers, the
+// runs, the machine health's changed fields and the pending notifications; a coral_heartbeat after heartbeat of
+// silence; or nil for nothing. sent records it once written.
+func (f *coralFeed) frame(tick *wsTick, pending []Notification, healthDelta map[string]any, healthNow map[string]string, now time.Time, heartbeat time.Duration) (map[string]any, coralFrame) {
+	if f.firstMessage {
+		msg := map[string]any{
+			"type":        "coral_update",
+			"sessions":    tick.sessions,
+			"active_runs": tick.activeRuns,
+		}
+		if healthNow != nil {
+			msg["machine_health"] = healthDelta
+		}
+		if len(pending) > 0 {
+			msg["notifications"] = pending
+		}
+		if tick.hasRemotes {
+			msg["servers"] = tick.servers
+		}
+		return msg, coralUpdate
+	}
+
+	// Calculate diff
+	var changed []map[string]any
+	for key, sJSON := range tick.current {
+		if f.prevSessions[key] != sJSON {
+			if prev, ok := f.prevByKey[key]; ok && f.fieldDiff {
+				changed = append(changed, fieldDelta(prev, tick.byKey[key]))
+			} else {
+				changed = append(changed, tick.byKey[key])
 			}
-			if len(changed) > 0 {
-				payload["changed"] = changed
-			}
-			if len(removed) > 0 {
-				payload["removed"] = removed
-			}
-			if len(removedRemote) > 0 {
-				payload["removed_remote"] = removedRemote
-			}
-			if hasRemotes && serversChanged {
-				payload["servers"] = remoteServers
-			}
-			if runsChanged {
-				payload["active_runs"] = activeRuns
-			}
-			if hasNotifications {
-				payload["notifications"] = pending
-			}
-			if err := wsWriteJSON(ctx, conn, forHub(payload)); err != nil {
-				return
-			}
-			sent()
-			lastSent = time.Now()
-			if healthChanged {
-				prevHealth = healthNow
-			}
-			prevServersJSON = serversJSON
-			prevSessions = currSessions
-			prevByKey = sessionByKey
-			prevRunsJSON = currRunsStr
-		} else if time.Since(lastSent) >= h.heartbeatInterval() {
-			// Nothing changed for a while. Say so, so a hub holding this feed
-			// can tell an idle server from one whose tick loop is stuck (it
-			// falls back to polling the list when the feed goes quiet).
-			// Dashboards ignore the type.
-			if err := wsWriteJSON(ctx, conn, map[string]any{"type": "coral_heartbeat"}); err != nil {
-				return
-			}
-			lastSent = time.Now()
 		}
 	}
+
+	var removed []string
+	var removedRemote []map[string]string
+	for key := range f.prevSessions {
+		if _, exists := tick.current[key]; !exists {
+			if srv, k, ok := splitRemoteKey(key); ok {
+				removedRemote = append(removedRemote, map[string]string{"server": srv, "key": k})
+			} else {
+				removed = append(removed, key)
+			}
+		}
+	}
+	serversChanged := tick.serversJSON != f.prevServersJSON
+	runsChanged := tick.runsJSON != f.prevRunsJSON
+	hasNotifications := len(pending) > 0
+	healthChanged := len(healthDelta) > 0
+	if len(changed) > 0 || len(removed) > 0 || len(removedRemote) > 0 || serversChanged || runsChanged || hasNotifications || healthChanged {
+		payload := map[string]any{"type": "coral_diff"}
+		if healthChanged {
+			payload["machine_health"] = healthDelta
+		}
+		if len(changed) > 0 {
+			payload["changed"] = changed
+		}
+		if len(removed) > 0 {
+			payload["removed"] = removed
+		}
+		if len(removedRemote) > 0 {
+			payload["removed_remote"] = removedRemote
+		}
+		if tick.hasRemotes && serversChanged {
+			payload["servers"] = tick.servers
+		}
+		if runsChanged {
+			payload["active_runs"] = tick.activeRuns
+		}
+		if hasNotifications {
+			payload["notifications"] = pending
+		}
+		return payload, coralDiff
+	}
+	if now.Sub(f.lastSent) >= heartbeat {
+		// Nothing changed for a while. Say so, so a hub holding this feed
+		// can tell an idle server from one whose tick loop is stuck (it
+		// falls back to polling the list when the feed goes quiet).
+		// Dashboards ignore the type.
+		return map[string]any{"type": "coral_heartbeat"}, coralHeartbeat
+	}
+	return nil, 0
+}
+
+// sent records a frame of kind built from tick as written at now: an update or a diff is now what the connection
+// has (the machine health only when it was sent: in full, or changed); a heartbeat only resets the silence.
+func (f *coralFeed) sent(kind coralFrame, tick *wsTick, healthDelta map[string]any, healthNow map[string]string, now time.Time) {
+	f.lastSent = now
+	if kind == coralHeartbeat {
+		return
+	}
+	switch {
+	case kind == coralUpdate && healthNow != nil:
+		f.prevHealth = healthNow
+	case kind == coralDiff && len(healthDelta) > 0:
+		f.prevHealth = healthNow
+	}
+	f.prevServersJSON = tick.serversJSON
+	f.prevSessions = tick.current
+	f.prevByKey = tick.byKey
+	f.prevRunsJSON = tick.runsJSON
+	f.firstMessage = false
 }
 
 // wsHeartbeatInterval is how long /ws/coral may stay silent before it sends a
