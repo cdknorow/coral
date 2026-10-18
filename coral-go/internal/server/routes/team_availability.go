@@ -68,6 +68,33 @@ func boardStatusCacheable(r *http.Request) bool {
 	return q != "1" && !strings.EqualFold(q, "true")
 }
 
+// boardStatusSnapshot is what a board's status is computed from, read once per request.
+type boardStatusSnapshot struct {
+	sessions          []store.LiveSession
+	subs              []board.Subscriber
+	bySession         map[string]board.Subscriber // a subscriber by its session name
+	tasks             []board.Task                // the board's open tasks
+	underReview       map[int64]string            // task id -> assignee, for tasks waiting on their completion review
+	live              map[string]bool             // session ids with a live terminal
+	events            map[string][]store.AgentEvent
+	waitsBySubscriber map[string]*board.RegisteredWait
+	personalBySession map[string][]store.AgentTask
+}
+
+// statusError is a board status request that can't be answered: forbidden, or the server's fault.
+type statusError struct {
+	forbidden bool
+	msg       string
+}
+
+func (e *statusError) write(w http.ResponseWriter) {
+	if e.forbidden {
+		errForbidden(w, e.msg)
+		return
+	}
+	errInternalServer(w, e.msg)
+}
+
 func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *http.Request) {
 	trace := newPhaseTrace("board-status")
 	defer trace.finish()
@@ -81,191 +108,27 @@ func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *htt
 		return
 	}
 	includeActivity := r.URL.Query().Get("activity") == "1" || strings.EqualFold(r.URL.Query().Get("activity"), "true")
-	activityCaller := r.URL.Query().Get("subscriber_id")
-	trace.begin("db_sessions")
-	sessions, err := h.ss.GetAllLiveSessions(ctx)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	trace.endPool("db_sessions", h.db, "rows", len(sessions))
-	trace.begin("db_board_snapshot")
-	subs, err := h.bs.ListSubscribers(ctx, name)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	if includeActivity {
-		var authorized bool
-		for _, sub := range subs {
-			if sub.IsActive != 0 && sub.SubscriberID == activityCaller && (sub.CanPeek != 0 || strings.EqualFold(strings.TrimSpace(sub.JobTitle), "Orchestrator") || strings.EqualFold(strings.TrimSpace(sub.SubscriberID), "Operator")) {
-				authorized = true
-				break
-			}
-		}
-		if !authorized {
-			errForbidden(w, "activity context requires an active Orchestrator or Operator subscription")
-			return
-		}
-	}
-	// Only open tasks matter here; see ListOpenTasks for why not ListTasks.
-	tasks, err := h.bs.ListOpenTasks(ctx, name)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	underReview, err := h.bs.TasksUnderReview(ctx, name)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	trace.endPool("db_board_snapshot", h.db, "subscribers", len(subs), "tasks", len(tasks))
-	trace.begin("terminal_discovery")
-	runtime, err := h.discoverAgents(r)
-	if err != nil {
-		errInternalServer(w, "cannot determine live agent availability")
-		return
-	}
-	trace.end("terminal_discovery", "agents", len(runtime))
-	live := map[string]bool{}
-	for _, a := range runtime {
-		live[a.SessionID] = true
-	}
-	bySession := map[string]board.Subscriber{}
-	for _, sub := range subs {
-		bySession[sub.SessionName] = sub
-	}
-	ids := []string{}
-	for _, s := range sessions {
-		if _, subscribed := bySession[s.AgentType+"-"+s.SessionID]; subscribed || (s.BoardName != nil && *s.BoardName == name) {
-			ids = append(ids, s.SessionID)
-		}
-	}
-	trace.begin("state_events")
-	events, err := h.ts.GetSessionStateEvents(ctx, ids)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	trace.endPool("state_events", h.db, "sessions", len(ids))
-	waits, _ := h.bs.ListActiveWaits(ctx, name)
-	waitsBySubscriber := make(map[string]*board.RegisteredWait)
-	for i := range waits {
-		waitsBySubscriber[waits[i].SubscriberID] = &waits[i]
-	}
-	// Every listed agent's personal tasks in one query, not one per agent (#4154).
-	personalBySession, err := h.ts.ListAgentTasksForSessions(ctx, ids)
-	if err != nil {
-		errInternalServer(w, err.Error())
+	snap, serr := h.loadBoardStatus(r, trace, name, includeActivity, r.URL.Query().Get("subscriber_id"))
+	if serr != nil {
+		serr.write(w)
 		return
 	}
 	agents := []availableAgent{}
 	seen := map[string]bool{}
-	for _, s := range sessions {
-		sub, subscribed := bySession[s.AgentType+"-"+s.SessionID]
+	for _, s := range snap.sessions {
+		sub, subscribed := snap.bySession[s.AgentType+"-"+s.SessionID]
 		if !subscribed && (s.BoardName == nil || *s.BoardName != name) {
 			continue
 		}
-		a := availableAgent{SessionID: s.SessionID, Name: s.AgentName, AgentType: s.AgentType, Tasks: []availabilityTask{}}
-		if s.DisplayName != nil && *s.DisplayName != "" {
-			a.Name = *s.DisplayName
-		}
 		if subscribed {
-			a.SubscriberID = sub.SubscriberID
-			a.Role = sub.JobTitle
 			seen[sub.SubscriberID] = true
 		}
-		if a.SubscriberID != "" && h.boardHandler != nil {
-			a.ReminderIntervalSeconds, a.Reminder = h.boardHandler.SubscriberReminderInterval(name, a.SubscriberID)
-		}
-		// As ListAgentTasks(agent name, session id): this session's tasks under this agent's name.
-		var personal []store.AgentTask
-		for _, t := range personalBySession[s.SessionID] {
-			if t.AgentName == s.AgentName {
-				personal = append(personal, t)
-			}
-		}
-		for _, t := range personal {
-			if openAvailabilityTask(t.Status) {
-				a.Tasks = append(a.Tasks, availabilityTask{t.ID, "personal", t.Title, t.Status})
-			}
-		}
-		for _, t := range tasks {
-			if a.SubscriberID != "" && t.AssignedTo != nil && *t.AssignedTo == a.SubscriberID && openAvailabilityTask(t.Status) {
-				a.Tasks = append(a.Tasks, availabilityTask{t.ID, "board", t.Title, t.Status})
-			}
-		}
-		if includeActivity && len(a.Tasks) > 0 && subscribed && sub.SessionName != "" && h.terminal != nil {
-			captureCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
-			// The session's own pane (bySession matched it by type and id), through the shared,
-			// stamp-keyed capture the poll and the login check use (#4077).
-			output, captureErr := h.sharedCapture(captureCtx, sub.SessionName, 40, s.AgentType, s.SessionID)
-			cancel()
-			if captureErr == nil {
-				a.Activity = latestStatusActivity(output)
-			}
-		}
-		input := SessionStateInput{Sleeping: s.IsSleeping != 0}
-		for _, e := range events[s.SessionID] {
-			input.Events = append(input.Events, e.StateEvent())
-		}
-		h.applyTranscriptState(&input, events[s.SessionID], s.AgentType, naming.SessionName(s.AgentType, s.SessionID), s.SessionID, s.WorkingDir)
-		var activeWait *board.RegisteredWait
-		if a.SubscriberID != "" {
-			activeWait = waitsBySubscriber[a.SubscriberID]
-		}
-		for _, task := range a.Tasks {
-			if task.Status == "in_progress" && !(task.Scope == "board" && underReview[task.ID] != "") {
-				a.TaskState = "active"
-			} else if a.TaskState == "" && task.Status == "blocked" {
-				a.TaskState = "blocked"
-			}
-		}
-		// "awaiting-review" only when one of its tasks really is under review (#3520, QA's bug
-		// bash F5): a registered wait alone (on a teammate's reply, say) isn't a review.
-		if a.TaskState != "active" && a.TaskState != "blocked" && hasTaskUnderReview(a.SubscriberID, personal, underReview) {
-			a.TaskState = "awaiting-review"
-		}
-		classifyAvailability(&a, s, live[s.SessionID], subscribed && sub.IsActive != 0, DeriveSessionState(input), len(input.Events) > 0, activeWait)
-		// An agent parked on a wait while its task is in progress isn't idle: it said what it
-		// waits for.
-		if a.TaskState == "active" && activeWait == nil {
-			state := DeriveSessionState(input)
-			if !state.Working {
-				a.TaskState = "idle"
-			}
-		}
-		agents = append(agents, a)
+		agents = append(agents, h.liveAgentStatus(ctx, snap, name, s, sub, subscribed, includeActivity))
 	}
-	for _, sub := range subs {
-		if seen[sub.SubscriberID] {
-			continue
+	for _, sub := range snap.subs {
+		if !seen[sub.SubscriberID] {
+			agents = append(agents, h.offlineSubscriberStatus(snap, name, sub))
 		}
-		a := availableAgent{SubscriberID: sub.SubscriberID, Name: sub.SubscriberID, Role: sub.JobTitle, Availability: "offline", Reason: "No registered local session", Tasks: []availabilityTask{}}
-		if h.boardHandler != nil {
-			a.ReminderIntervalSeconds, a.Reminder = h.boardHandler.SubscriberReminderInterval(name, sub.SubscriberID)
-		}
-		if sub.OriginServer != nil && *sub.OriginServer != "" {
-			a.Availability = "unknown"
-			a.Reason = "Remote agent availability is not observed locally"
-		}
-		for _, t := range tasks {
-			if t.AssignedTo != nil && *t.AssignedTo == sub.SubscriberID && openAvailabilityTask(t.Status) {
-				a.Tasks = append(a.Tasks, availabilityTask{t.ID, "board", t.Title, t.Status})
-			}
-		}
-		activeWait := waitsBySubscriber[sub.SubscriberID]
-		if activeWait != nil {
-			a.WaitingOn = activeWait
-			a.Availability = "waiting"
-			target := activeWait.TargetLabel()
-			if activeWait.Reason != "" {
-				a.Reason = fmt.Sprintf("Waiting for %s (%s)", target, activeWait.Reason)
-			} else {
-				a.Reason = fmt.Sprintf("Waiting for %s", target)
-			}
-		}
-		agents = append(agents, a)
 	}
 	sort.Slice(agents, func(i, j int) bool {
 		if agents[i].Available != agents[j].Available {
@@ -273,23 +136,215 @@ func (h *SessionsHandler) teamAvailabilityUncached(w http.ResponseWriter, r *htt
 		}
 		return agents[i].Name < agents[j].Name
 	})
-	summary := map[string]int{"total": len(agents), "available": 0, "busy": 0, "task_idle": 0, "queued": 0, "needs_input": 0, "sleeping": 0, "archived": 0, "offline": 0, "unknown": 0, "unavailable": 0, "waiting": 0}
-	for _, a := range agents {
-		summary[a.Availability]++
-	}
-	unassigned := []availabilityTask{}
-	for _, t := range tasks {
-		if (t.AssignedTo == nil || *t.AssignedTo == "") && openAvailabilityTask(t.Status) {
-			unassigned = append(unassigned, availabilityTask{t.ID, "board", t.Title, t.Status})
-		}
-	}
 	mode, err := h.bs.GetWorkingMode(ctx, name)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]any{"board": name, "team": name, "working_mode": mode, "observed_at": time.Now().UTC().Format(time.RFC3339), "agents": agents, "summary": summary, "unassigned_tasks": unassigned, "health_report": availabilityHealthReport(tasks)})
+	writeJSON(w, http.StatusOK, map[string]any{"board": name, "team": name, "working_mode": mode, "observed_at": time.Now().UTC().Format(time.RFC3339), "agents": agents, "summary": availabilitySummary(agents), "unassigned_tasks": boardTasksAssignedTo(snap.tasks, ""), "health_report": availabilityHealthReport(snap.tasks)})
+}
+
+// loadBoardStatus reads the board's sessions, subscribers, tasks, terminals, state events, waits and personal tasks,
+// in that order, each phase traced. A request for agents' activity must come from an active subscriber that may
+// peek (or the Orchestrator, or the Operator): checked as soon as the subscribers are read.
+func (h *SessionsHandler) loadBoardStatus(r *http.Request, trace *phaseTrace, name string, includeActivity bool, activityCaller string) (*boardStatusSnapshot, *statusError) {
+	ctx := r.Context()
+	internal := func(err error) *statusError { return &statusError{msg: err.Error()} }
+	snap := &boardStatusSnapshot{}
+	var err error
+	trace.begin("db_sessions")
+	if snap.sessions, err = h.ss.GetAllLiveSessions(ctx); err != nil {
+		return nil, internal(err)
+	}
+	trace.endPool("db_sessions", h.db, "rows", len(snap.sessions))
+	trace.begin("db_board_snapshot")
+	if snap.subs, err = h.bs.ListSubscribers(ctx, name); err != nil {
+		return nil, internal(err)
+	}
+	if includeActivity && !activityAuthorized(snap.subs, activityCaller) {
+		return nil, &statusError{forbidden: true, msg: "activity context requires an active Orchestrator or Operator subscription"}
+	}
+	// Only open tasks matter here; see ListOpenTasks for why not ListTasks.
+	if snap.tasks, err = h.bs.ListOpenTasks(ctx, name); err != nil {
+		return nil, internal(err)
+	}
+	if snap.underReview, err = h.bs.TasksUnderReview(ctx, name); err != nil {
+		return nil, internal(err)
+	}
+	trace.endPool("db_board_snapshot", h.db, "subscribers", len(snap.subs), "tasks", len(snap.tasks))
+	trace.begin("terminal_discovery")
+	runtime, err := h.discoverAgents(r)
+	if err != nil {
+		return nil, &statusError{msg: "cannot determine live agent availability"}
+	}
+	trace.end("terminal_discovery", "agents", len(runtime))
+	snap.live = map[string]bool{}
+	for _, a := range runtime {
+		snap.live[a.SessionID] = true
+	}
+	snap.bySession = map[string]board.Subscriber{}
+	for _, sub := range snap.subs {
+		snap.bySession[sub.SessionName] = sub
+	}
+	ids := []string{}
+	for _, s := range snap.sessions {
+		if _, subscribed := snap.bySession[s.AgentType+"-"+s.SessionID]; subscribed || (s.BoardName != nil && *s.BoardName == name) {
+			ids = append(ids, s.SessionID)
+		}
+	}
+	trace.begin("state_events")
+	if snap.events, err = h.ts.GetSessionStateEvents(ctx, ids); err != nil {
+		return nil, internal(err)
+	}
+	trace.endPool("state_events", h.db, "sessions", len(ids))
+	waits, _ := h.bs.ListActiveWaits(ctx, name)
+	snap.waitsBySubscriber = make(map[string]*board.RegisteredWait)
+	for i := range waits {
+		snap.waitsBySubscriber[waits[i].SubscriberID] = &waits[i]
+	}
+	// Every listed agent's personal tasks in one query, not one per agent (#4154).
+	if snap.personalBySession, err = h.ts.ListAgentTasksForSessions(ctx, ids); err != nil {
+		return nil, internal(err)
+	}
+	return snap, nil
+}
+
+// activityAuthorized: caller is an active subscriber that may peek, the Orchestrator or the Operator.
+func activityAuthorized(subs []board.Subscriber, caller string) bool {
+	for _, sub := range subs {
+		if sub.IsActive != 0 && sub.SubscriberID == caller && (sub.CanPeek != 0 || strings.EqualFold(strings.TrimSpace(sub.JobTitle), "Orchestrator") || strings.EqualFold(strings.TrimSpace(sub.SubscriberID), "Operator")) {
+			return true
+		}
+	}
+	return false
+}
+
+// liveAgentStatus is the status of an agent with a session on this board (subscribed or launched for it).
+func (h *SessionsHandler) liveAgentStatus(ctx context.Context, snap *boardStatusSnapshot, name string, s store.LiveSession, sub board.Subscriber, subscribed, includeActivity bool) availableAgent {
+	a := availableAgent{SessionID: s.SessionID, Name: s.AgentName, AgentType: s.AgentType, Tasks: []availabilityTask{}}
+	if s.DisplayName != nil && *s.DisplayName != "" {
+		a.Name = *s.DisplayName
+	}
+	if subscribed {
+		a.SubscriberID = sub.SubscriberID
+		a.Role = sub.JobTitle
+	}
+	if a.SubscriberID != "" && h.boardHandler != nil {
+		a.ReminderIntervalSeconds, a.Reminder = h.boardHandler.SubscriberReminderInterval(name, a.SubscriberID)
+	}
+	// As ListAgentTasks(agent name, session id): this session's tasks under this agent's name.
+	var personal []store.AgentTask
+	for _, t := range snap.personalBySession[s.SessionID] {
+		if t.AgentName == s.AgentName {
+			personal = append(personal, t)
+		}
+	}
+	for _, t := range personal {
+		if openAvailabilityTask(t.Status) {
+			a.Tasks = append(a.Tasks, availabilityTask{t.ID, "personal", t.Title, t.Status})
+		}
+	}
+	if a.SubscriberID != "" {
+		a.Tasks = append(a.Tasks, boardTasksAssignedTo(snap.tasks, a.SubscriberID)...)
+	}
+	if includeActivity && len(a.Tasks) > 0 && subscribed && sub.SessionName != "" && h.terminal != nil {
+		captureCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+		// The session's own pane (bySession matched it by type and id), through the shared,
+		// stamp-keyed capture the poll and the login check use (#4077).
+		output, captureErr := h.sharedCapture(captureCtx, sub.SessionName, 40, s.AgentType, s.SessionID)
+		cancel()
+		if captureErr == nil {
+			a.Activity = latestStatusActivity(output)
+		}
+	}
+	input := SessionStateInput{Sleeping: s.IsSleeping != 0}
+	for _, e := range snap.events[s.SessionID] {
+		input.Events = append(input.Events, e.StateEvent())
+	}
+	h.applyTranscriptState(&input, snap.events[s.SessionID], s.AgentType, naming.SessionName(s.AgentType, s.SessionID), s.SessionID, s.WorkingDir)
+	var activeWait *board.RegisteredWait
+	if a.SubscriberID != "" {
+		activeWait = snap.waitsBySubscriber[a.SubscriberID]
+	}
+	a.TaskState = taskStateOf(a.Tasks, a.SubscriberID, personal, snap.underReview)
+	state := DeriveSessionState(input)
+	classifyAvailability(&a, s, snap.live[s.SessionID], subscribed && sub.IsActive != 0, state, len(input.Events) > 0, activeWait)
+	// An agent parked on a wait while its task is in progress isn't idle: it said what it
+	// waits for.
+	if a.TaskState == "active" && activeWait == nil && !state.Working {
+		a.TaskState = "idle"
+	}
+	return a
+}
+
+// offlineSubscriberStatus is the status of a subscriber with no session here: offline, remote (unknown), or waiting.
+func (h *SessionsHandler) offlineSubscriberStatus(snap *boardStatusSnapshot, name string, sub board.Subscriber) availableAgent {
+	a := availableAgent{SubscriberID: sub.SubscriberID, Name: sub.SubscriberID, Role: sub.JobTitle, Availability: "offline", Reason: "No registered local session", Tasks: []availabilityTask{}}
+	if h.boardHandler != nil {
+		a.ReminderIntervalSeconds, a.Reminder = h.boardHandler.SubscriberReminderInterval(name, sub.SubscriberID)
+	}
+	if sub.OriginServer != nil && *sub.OriginServer != "" {
+		a.Availability = "unknown"
+		a.Reason = "Remote agent availability is not observed locally"
+	}
+	a.Tasks = append(a.Tasks, boardTasksAssignedTo(snap.tasks, sub.SubscriberID)...)
+	if wait := snap.waitsBySubscriber[sub.SubscriberID]; wait != nil {
+		a.WaitingOn = wait
+		a.Availability = "waiting"
+		a.Reason = waitingReason(wait)
+	}
+	return a
+}
+
+// boardTasksAssignedTo is the open board tasks assigned to subscriber ("": the unassigned ones).
+func boardTasksAssignedTo(tasks []board.Task, subscriber string) []availabilityTask {
+	out := []availabilityTask{}
+	for _, t := range tasks {
+		assignee := ""
+		if t.AssignedTo != nil {
+			assignee = *t.AssignedTo
+		}
+		if assignee == subscriber && openAvailabilityTask(t.Status) {
+			out = append(out, availabilityTask{t.ID, "board", t.Title, t.Status})
+		}
+	}
+	return out
+}
+
+// taskStateOf is an agent's task state from its open tasks: "active" with one in progress (a board task waiting on
+// its review doesn't count), else "blocked" with one blocked, else "awaiting-review" when one of its tasks really is
+// under review (#3520, QA's bug bash F5: a registered wait alone, on a teammate's reply say, isn't a review), else "".
+func taskStateOf(tasks []availabilityTask, subscriberID string, personal []store.AgentTask, underReview map[int64]string) string {
+	state := ""
+	for _, task := range tasks {
+		if task.Status == "in_progress" && !(task.Scope == "board" && underReview[task.ID] != "") {
+			state = "active"
+		} else if state == "" && task.Status == "blocked" {
+			state = "blocked"
+		}
+	}
+	if state != "active" && state != "blocked" && hasTaskUnderReview(subscriberID, personal, underReview) {
+		state = "awaiting-review"
+	}
+	return state
+}
+
+// availabilitySummary counts the agents by availability.
+func availabilitySummary(agents []availableAgent) map[string]int {
+	summary := map[string]int{"total": len(agents), "available": 0, "busy": 0, "task_idle": 0, "queued": 0, "needs_input": 0, "sleeping": 0, "archived": 0, "offline": 0, "unknown": 0, "unavailable": 0, "waiting": 0}
+	for _, a := range agents {
+		summary[a.Availability]++
+	}
+	return summary
+}
+
+// waitingReason is the line for an agent parked on a registered wait.
+func waitingReason(wait *board.RegisteredWait) string {
+	if wait.Reason != "" {
+		return fmt.Sprintf("Waiting for %s (%s)", wait.TargetLabel(), wait.Reason)
+	}
+	return fmt.Sprintf("Waiting for %s", wait.TargetLabel())
 }
 
 func latestStatusActivity(raw string) string {
@@ -414,12 +469,7 @@ func classifyAvailability(a *availableAgent, s store.LiveSession, online, subscr
 	case wait != nil:
 		a.Availability = "waiting"
 		a.WaitingOn = wait
-		target := wait.TargetLabel()
-		if wait.Reason != "" {
-			a.Reason = fmt.Sprintf("Waiting for %s (%s)", target, wait.Reason)
-		} else {
-			a.Reason = fmt.Sprintf("Waiting for %s", target)
-		}
+		a.Reason = waitingReason(wait)
 	case state.NeedsInput:
 		a.Availability = "needs_input"
 		a.Reason = "Waiting for user input or approval"
