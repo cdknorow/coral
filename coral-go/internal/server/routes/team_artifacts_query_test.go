@@ -92,6 +92,7 @@ func newTAEnv(t *testing.T) *taEnv {
 type taReply struct {
 	Artifacts  []teamArtifact `json:"artifacts"`
 	Total      *int           `json:"total"`
+	All        *int           `json:"all"`
 	NextCursor string         `json:"next_cursor"`
 	HasMore    bool           `json:"has_more"`
 	Offset     int            `json:"offset"`
@@ -152,6 +153,12 @@ func TestTeamArtifactsQuerySearch(t *testing.T) {
 	code, r, _ := e.get("?q=")
 	require.Equal(t, 200, code)
 	assert.Equal(t, 13, *r.Total)
+	assert.Equal(t, 13, *r.All)
+	// all is the size of the whole list however the query narrows it ("12 of 340")
+	code, r, _ = e.get("?q=zeta&origin=upload&limit=1")
+	require.Equal(t, 200, code)
+	assert.Equal(t, 1, *r.Total)
+	assert.Equal(t, 13, *r.All)
 	code, r, _ = e.get("?q=+++")
 	require.Equal(t, 200, code)
 	assert.Equal(t, 13, *r.Total)
@@ -333,6 +340,7 @@ func TestTeamArtifactsPlainListUnchanged(t *testing.T) {
 		assert.Contains(t, raw, k)
 	}
 	assert.NotContains(t, raw, "total")
+	assert.NotContains(t, raw, "all")
 	assert.NotContains(t, raw, "next_cursor")
 	assert.Len(t, plain.Artifacts, 13)
 	// the original parameters still behave

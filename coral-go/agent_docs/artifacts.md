@@ -97,7 +97,7 @@ Two more kinds of row can appear when a team uses cross-team attachments (see [A
 
 ### Searching and filtering Team Artifacts (`GET /api/board/{project}/artifacts` with parameters)
 
-The same route searches, filters, sorts and pages (for the dashboard's Team Artifacts panel and for Coral Hub). With only `limit`, `offset` and `session_id` the reply is exactly the plain list above. Any of the parameters below makes it a query: the reply has the same keys plus `total` (the count of the filtered set) and, when another page exists, `next_cursor`. Through Coral Hub it is the same View tier as the plain list, with the same redaction on every returned name and title.
+The same route searches, filters, sorts and pages (for the dashboard's Team Artifacts panel and for Coral Hub). With only `limit`, `offset` and `session_id` the reply is exactly the plain list above. Any of the parameters below makes it a query: the reply has the same keys plus `total` (the count of the filtered set), `all` (the count of the whole list before any filter, for "12 of 340") and, when another page exists, `next_cursor`. Through Coral Hub it is the same View tier as the plain list, with the same redaction on every returned name and title.
 
 | Parameter | Values |
 |---|---|

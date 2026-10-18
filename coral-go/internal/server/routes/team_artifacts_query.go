@@ -512,7 +512,7 @@ func (h *BoardHandler) queryTeamArtifacts(w http.ResponseWriter, r *http.Request
 	}
 	resp := map[string]any{
 		"project": project, "artifacts": page, "limit": limit, "offset": start,
-		"has_more": hasMore, "truncated": truncated, "total": total,
+		"has_more": hasMore, "truncated": truncated, "total": total, "all": len(items),
 	}
 	if hasMore && len(page) > 0 {
 		k := keyOf(page[len(page)-1])
