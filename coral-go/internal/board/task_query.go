@@ -165,34 +165,8 @@ func parseSince(name string, vals []string) (string, error) {
 func ParseTaskQuery(p TaskQueryParams) (*TaskQuery, error) {
 	q := &TaskQuery{Desc: true}
 	var err error
-	if f, ferr := splitMulti("fields", p.Fields); ferr != nil {
-		return nil, ferr
-	} else if f != nil {
-		var bad, names []string
-		seen := map[string]bool{}
-		add := func(n string) {
-			if !seen[n] {
-				seen[n] = true
-				names = append(names, n)
-			}
-		}
-		for _, n := range f {
-			if n == "summary" {
-				for _, m := range TaskQuerySummaryFields {
-					add(m)
-				}
-				continue
-			}
-			if _, ok := taskQueryColumns[n]; !ok && n != "board_label" && n != "verification" {
-				bad = append(bad, n)
-				continue
-			}
-			add(n)
-		}
-		if len(bad) > 0 {
-			return nil, taskQueryErr("unknown field %s (summary, or one of %s)", strings.Join(bad, ", "), strings.Join(TaskQueryFieldNames(), ", "))
-		}
-		q.Fields = names
+	if q.Fields, err = parseQueryFields(p.Fields); err != nil {
+		return nil, err
 	}
 	if q.Statuses, err = oneOf("status", p.Status, taskStatuses); err != nil {
 		return nil, err
@@ -212,19 +186,8 @@ func ParseTaskQuery(p TaskQueryParams) (*TaskQuery, error) {
 	if q.CreatedBy, err = splitMulti("created_by", p.CreatedBy); err != nil {
 		return nil, err
 	}
-	if v, ok, perr := single("parked", p.Parked); perr != nil {
-		return nil, perr
-	} else if ok {
-		switch v {
-		case "true":
-			b := true
-			q.Parked = &b
-		case "false":
-			b := false
-			q.Parked = &b
-		default:
-			return nil, taskQueryErr("parked must be true or false")
-		}
+	if q.Parked, err = parseParked(p.Parked); err != nil {
+		return nil, err
 	}
 	if q.CreatedSince, err = parseSince("created_since", p.CreatedSince); err != nil {
 		return nil, err
@@ -232,30 +195,103 @@ func ParseTaskQuery(p TaskQueryParams) (*TaskQuery, error) {
 	if q.UpdatedSince, err = parseSince("updated_since", p.UpdatedSince); err != nil {
 		return nil, err
 	}
-	if v, ok, serr := single("sort", p.Sort); serr != nil {
-		return nil, serr
+	if q.SortUpdated, q.Desc, err = parseSortOrder(p.Sort, p.Order); err != nil {
+		return nil, err
+	}
+	if q.Limit, err = parseQueryLimit(p.Limit, q.Fields); err != nil {
+		return nil, err
+	}
+	if q.cursor, err = parseQueryCursor(p.Cursor, q.SortUpdated, q.Desc); err != nil {
+		return nil, err
+	}
+	return q, nil
+}
+
+// parseQueryFields reads the fields asked for: nil when none (the whole row), "summary" standing for
+// TaskQuerySummaryFields, each name once, in the order first named; an unknown one is an error naming it.
+func parseQueryFields(vals []string) ([]string, error) {
+	f, err := splitMulti("fields", vals)
+	if err != nil || f == nil {
+		return f, err
+	}
+	var bad, names []string
+	seen := map[string]bool{}
+	add := func(n string) {
+		if !seen[n] {
+			seen[n] = true
+			names = append(names, n)
+		}
+	}
+	for _, n := range f {
+		if n == "summary" {
+			for _, m := range TaskQuerySummaryFields {
+				add(m)
+			}
+			continue
+		}
+		if _, ok := taskQueryColumns[n]; !ok && n != "board_label" && n != "verification" {
+			bad = append(bad, n)
+			continue
+		}
+		add(n)
+	}
+	if len(bad) > 0 {
+		return nil, taskQueryErr("unknown field %s (summary, or one of %s)", strings.Join(bad, ", "), strings.Join(TaskQueryFieldNames(), ", "))
+	}
+	return names, nil
+}
+
+// parseParked reads parked: nil when not given, else true or false.
+func parseParked(vals []string) (*bool, error) {
+	v, ok, err := single("parked", vals)
+	if err != nil || !ok {
+		return nil, err
+	}
+	switch v {
+	case "true":
+		b := true
+		return &b, nil
+	case "false":
+		b := false
+		return &b, nil
+	}
+	return nil, taskQueryErr("parked must be true or false")
+}
+
+// parseSortOrder reads sort (created_at, the default, or updated_at) and order (desc, the default, or asc).
+func parseSortOrder(sortVals, orderVals []string) (sortUpdated, desc bool, err error) {
+	desc = true
+	if v, ok, serr := single("sort", sortVals); serr != nil {
+		return false, false, serr
 	} else if ok {
 		switch v {
 		case "created_at":
 		case "updated_at":
-			q.SortUpdated = true
+			sortUpdated = true
 		default:
-			return nil, taskQueryErr("unknown sort %s (created_at or updated_at)", v)
+			return false, false, taskQueryErr("unknown sort %s (created_at or updated_at)", v)
 		}
 	}
-	if v, ok, serr := single("order", p.Order); serr != nil {
-		return nil, serr
+	if v, ok, serr := single("order", orderVals); serr != nil {
+		return false, false, serr
 	} else if ok {
 		switch v {
 		case "desc":
 		case "asc":
-			q.Desc = false
+			desc = false
 		default:
-			return nil, taskQueryErr("unknown order %s (asc or desc)", v)
+			return false, false, taskQueryErr("unknown order %s (asc or desc)", v)
 		}
 	}
-	large := q.Fields == nil // the whole row carries the long text
-	for _, f := range q.Fields {
+	return sortUpdated, desc, nil
+}
+
+// parseQueryLimit reads limit: a whole number from 1 to the cap, TaskQueryDefaultLimit when not given. The cap is
+// TaskQueryMaxLimitLarge for a reply carrying the long text (the whole row, or body or completion_message asked
+// for), else TaskQueryMaxLimit.
+func parseQueryLimit(vals, fields []string) (int, error) {
+	large := fields == nil // the whole row carries the long text
+	for _, f := range fields {
 		if f == "body" || f == "completion_message" {
 			large = true
 		}
@@ -264,35 +300,38 @@ func ParseTaskQuery(p TaskQueryParams) (*TaskQuery, error) {
 	if large {
 		max = TaskQueryMaxLimitLarge
 	}
-	q.Limit = TaskQueryDefaultLimit
-	if v, ok, serr := single("limit", p.Limit); serr != nil {
-		return nil, serr
-	} else if ok {
-		n := 0
-		if _, scanErr := fmt.Sscanf(v, "%d", &n); scanErr != nil || fmt.Sprint(n) != v || n < 1 || n > max {
-			return nil, taskQueryErr("limit must be a whole number from 1 to %d", max)
-		}
-		q.Limit = n
-	} else if q.Limit > max {
-		q.Limit = max
+	v, ok, err := single("limit", vals)
+	if err != nil {
+		return 0, err
 	}
-	if v, ok, serr := single("cursor", p.Cursor); serr != nil {
-		return nil, serr
-	} else if ok {
-		c, cerr := decodeQueryTaskCursor(v)
-		if cerr != nil {
-			return nil, taskQueryErr("cursor is not one this server gave")
-		}
-		sortName := "created_at"
-		if q.SortUpdated {
-			sortName = "updated_at"
-		}
-		if c.Sort != sortName || c.Desc != q.Desc {
-			return nil, taskQueryErr("cursor was made for a different sort or order")
-		}
-		q.cursor = c
+	if !ok {
+		return min(TaskQueryDefaultLimit, max), nil
 	}
-	return q, nil
+	n := 0
+	if _, scanErr := fmt.Sscanf(v, "%d", &n); scanErr != nil || fmt.Sprint(n) != v || n < 1 || n > max {
+		return 0, taskQueryErr("limit must be a whole number from 1 to %d", max)
+	}
+	return n, nil
+}
+
+// parseQueryCursor reads cursor: one this server gave, made for the same sort and order (nil when not given).
+func parseQueryCursor(vals []string, sortUpdated, desc bool) (*queryTaskCursor, error) {
+	v, ok, err := single("cursor", vals)
+	if err != nil || !ok {
+		return nil, err
+	}
+	c, cerr := decodeQueryTaskCursor(v)
+	if cerr != nil {
+		return nil, taskQueryErr("cursor is not one this server gave")
+	}
+	sortName := "created_at"
+	if sortUpdated {
+		sortName = "updated_at"
+	}
+	if c.Sort != sortName || c.Desc != desc {
+		return nil, taskQueryErr("cursor was made for a different sort or order")
+	}
+	return c, nil
 }
 
 func decodeQueryTaskCursor(s string) (*queryTaskCursor, error) {
