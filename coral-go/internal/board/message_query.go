@@ -104,8 +104,11 @@ func messageText(name string, vals []string, max int) (string, error) {
 	if err != nil || !ok {
 		return "", err
 	}
+	if querypage.HasControl(v) {
+		return "", messageQueryErr("%s is at most %d characters, without control characters", name, max)
+	}
 	v = strings.TrimSpace(v)
-	if len(v) > max || strings.ContainsAny(v, "\x00\r\n\t") {
+	if len(v) > max {
 		return "", messageQueryErr("%s is at most %d characters, without control characters", name, max)
 	}
 	return strings.ToLower(v), nil
@@ -132,12 +135,15 @@ func ParseMessageQuery(p MessageQueryParams) (*MessageQuery, error) {
 	}
 	seen := map[string]bool{}
 	for _, v := range p.From {
+		if querypage.HasControl(v) {
+			return nil, messageQueryErr("from has a value over 200 characters or with control characters")
+		}
 		for _, part := range strings.Split(v, ",") {
 			part = strings.TrimSpace(part)
 			if part == "" {
 				return nil, messageQueryErr("from has an empty value")
 			}
-			if len(part) > 200 || strings.ContainsAny(part, "\x00\r\n\t") {
+			if len(part) > 200 {
 				return nil, messageQueryErr("from has a value over 200 characters or with control characters")
 			}
 			if l := strings.ToLower(part); !seen[l] {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/querypage"
 	"net/http"
 	"net/url"
 	"sort"
@@ -75,12 +76,15 @@ func taMulti(name string, vals []string, allowed []string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
 	for _, v := range vals {
+		if querypage.HasControl(v) {
+			return nil, taErr("%s has a value over 200 characters or with control characters", name)
+		}
 		for _, p := range strings.Split(v, ",") {
 			p = strings.TrimSpace(p)
 			if p == "" {
 				return nil, taErr("%s has an empty value", name)
 			}
-			if len(p) > 200 || strings.ContainsAny(p, "\x00\r\n\t") {
+			if len(p) > 200 {
 				return nil, taErr("%s has a value over 200 characters or with control characters", name)
 			}
 			if !seen[strings.ToLower(p)] {
@@ -150,8 +154,11 @@ func parseTeamArtifactQuery(vals url.Values) (*teamArtifactQuery, error) {
 	if v, ok, serr := taSingle("q", vals["q"]); serr != nil {
 		return nil, serr
 	} else if ok {
+		if querypage.HasControl(v) {
+			return nil, taErr("q is at most %d characters, without control characters", maxTeamArtifactQLen)
+		}
 		v = strings.TrimSpace(v)
-		if len(v) > maxTeamArtifactQLen || strings.ContainsAny(v, "\x00\r\n\t") {
+		if len(v) > maxTeamArtifactQLen {
 			return nil, taErr("q is at most %d characters, without control characters", maxTeamArtifactQLen)
 		}
 		q.q = strings.ToLower(v) // empty: no search

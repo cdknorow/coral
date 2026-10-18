@@ -3,6 +3,7 @@ package routes
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cdknorow/coral/internal/querypage"
 	"net/http"
 	"net/url"
 	"os"
@@ -132,7 +133,7 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	sessionFilter := strings.TrimSpace(r.URL.Query().Get("session_id"))
-	if len(sessionFilter) > 128 || strings.ContainsAny(sessionFilter, "\x00\r\n\t") {
+	if len(sessionFilter) > 128 || querypage.HasControl(sessionFilter) {
 		errBadRequest(w, "session_id must be at most 128 characters without control characters")
 		return
 	}
@@ -547,7 +548,7 @@ func (c *uploadDirCache) merge(items []teamArtifact, coralDir string, sessions m
 // GET /api/session-artifacts?session_id=&limit=&offset=
 func (h *BoardHandler) ListSessionArtifacts(w http.ResponseWriter, r *http.Request) {
 	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
-	if sessionID == "" || len(sessionID) > 128 || strings.ContainsAny(sessionID, "\x00\r\n\t") {
+	if sessionID == "" || len(sessionID) > 128 || querypage.HasControl(sessionID) {
 		errBadRequest(w, "session_id is required")
 		return
 	}

@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"github.com/cdknorow/coral/internal/querypage"
 	"slices"
 	"strings"
 )
@@ -29,8 +30,11 @@ func parseQueryText(vals []string) (string, error) {
 	if err != nil || !ok {
 		return "", err
 	}
+	if querypage.HasControl(v) {
+		return "", taskQueryErr("q is at most %d characters, without control characters", TaskQueryMaxTextLen)
+	}
 	v = strings.TrimSpace(v)
-	if len(v) > TaskQueryMaxTextLen || strings.ContainsAny(v, "\x00\r\n\t") {
+	if len(v) > TaskQueryMaxTextLen {
 		return "", taskQueryErr("q is at most %d characters, without control characters", TaskQueryMaxTextLen)
 	}
 	return strings.ToLower(v), nil

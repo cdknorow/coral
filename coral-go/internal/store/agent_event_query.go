@@ -147,8 +147,11 @@ func ParseEventQuery(agentName string, sessionID *string, p EventQueryParams) (*
 	if v, ok, err := eventSingle("q", p.Q); err != nil {
 		return nil, err
 	} else if ok {
+		if querypage.HasControl(v) {
+			return nil, eventQueryErr("q is at most %d characters, without control characters", EventQueryMaxTextLen)
+		}
 		v = strings.TrimSpace(v)
-		if len(v) > EventQueryMaxTextLen || strings.ContainsAny(v, "\x00\r\n\t") {
+		if len(v) > EventQueryMaxTextLen {
 			return nil, eventQueryErr("q is at most %d characters, without control characters", EventQueryMaxTextLen)
 		}
 		q.Text = strings.ToLower(v)

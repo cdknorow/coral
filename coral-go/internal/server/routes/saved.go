@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/querypage"
 	"net/http"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -54,7 +56,7 @@ func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	text := strings.ToLower(strings.TrimSpace(q.Get("q")))
-	if len(text) > maxSavedSearchText || strings.ContainsAny(text, "\x00\r\n\t") {
+	if len(text) > maxSavedSearchText || querypage.HasControl(q.Get("q")) {
 		errBadRequest(w, fmt.Sprintf("q is at most %d characters, without control characters", maxSavedSearchText))
 		return
 	}
@@ -138,7 +140,7 @@ func cleanSavedField(s string) string {
 		}
 	}
 	return strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
+		if unicode.IsControl(r) {
 			return -1
 		}
 		return r
