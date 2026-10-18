@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.4.93 — Open terminal works from a waiting agent, slash commands read as sent, and simpler code
+
+### Fixes
+
+- **Open terminal on an agent that needs input shows the terminal again;** it stayed blank on Connecting.
+- **A slash command sent from Chat (such as /compact) no longer shows 'the agent didn't confirm'.**
+
+### Security and privacy
+
+- **A slash command counts as sent only once it has left the input box:** an event from the agent (a /clear's session start), a menu it opens, or, after the confirm wait, an agent that has started and shows nothing against it, confirms it then (a CLI's own command sends no hook). A command still in the box after its Enters is reported not submitted whatever the agent does, and the next message is refused until the box is empty, so two texts are never typed together.
+
+### Other changes
+
+- **Simpler code, behaviour unchanged:** the Launch dialog, launch steps, personas, board launches, team wizard and team form are moved out of modals.js into their own modules, each behind a test that pins what it does; `coral-board`'s main.go is split by command; parseAgyEntry reads each kind of entry in its own helper; an unused terminal method and an unreachable settings refusal are removed.
+- **Tests and CI:** the old-vs-new oracles run several times faster with no rule left unexercised; a table test checks that every refusal added in v1.4.91 and v1.4.92 reaches a Coral Hub caller intact; two manual CDP gate runs on one branch no longer cancel each other; the gate's suite durations are refreshed.
+
 ## v1.4.92 — A ceiling on agents starting agents, a default artifact store limit, and faster CI
 
 ### Changes
