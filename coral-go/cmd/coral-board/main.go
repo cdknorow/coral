@@ -2726,226 +2726,218 @@ func sortEntries(entries []exportEntry) {
 	}
 }
 
-func cmdWait() {
-	st := loadState()
-	project := ""
-	if st != nil {
-		project = st.Project
-	}
+// waitArgs is a coral-board wait command line.
+type waitArgs struct {
+	project, from, task, commit, operator, reason, timeout string
+	status, cancel, block                                  bool
+}
 
-	var (
-		fromAgent string
-		taskID    string
-		commitRef string
-		operatorQ string
-		reason    string
-		timeout   string
-		isStatus  bool
-		isCancel  bool
-		isBlock   bool
-	)
-	failWaitArgs := func(message string) {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", message)
-		os.Exit(2)
-	}
-	needWaitValue := func(args []string, i int, flag string) string {
-		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
-			failWaitArgs(fmt.Sprintf("%s requires a value", flag))
-		}
-		return args[i+1]
-	}
-
-	args := os.Args[2:]
+// parseWaitArgs reads wait's arguments (project: the joined board, the default), or says what is wrong with them:
+// a flag without its value, an unknown option, a second reason, more than one target, or --status or --cancel
+// with anything else.
+func parseWaitArgs(args []string, project string) (waitArgs, string) {
+	w := waitArgs{project: project}
 	for i := 0; i < len(args); i++ {
+		var dest *string
 		switch args[i] {
 		case "--board", "--project":
-			project = needWaitValue(args, i, args[i])
-			i++
+			dest = &w.project
 		case "--from":
-			fromAgent = needWaitValue(args, i, args[i])
-			i++
+			dest = &w.from
 		case "--task":
-			taskID = needWaitValue(args, i, args[i])
-			i++
+			dest = &w.task
 		case "--commit":
-			commitRef = needWaitValue(args, i, args[i])
-			i++
+			dest = &w.commit
 		case "--operator":
-			operatorQ = needWaitValue(args, i, args[i])
-			i++
+			dest = &w.operator
 		case "--reason":
-			reason = needWaitValue(args, i, args[i])
-			i++
+			dest = &w.reason
 		case "--timeout":
-			timeout = needWaitValue(args, i, args[i])
-			i++
+			dest = &w.timeout
 		case "--status":
-			isStatus = true
+			w.status = true
 		case "--cancel":
-			isCancel = true
+			w.cancel = true
 		case "--block":
-			isBlock = true
+			w.block = true
 		default:
 			if strings.HasPrefix(args[i], "-") {
-				failWaitArgs(fmt.Sprintf("unknown option %s", args[i]))
+				return w, fmt.Sprintf("unknown option %s", args[i])
 			}
-			if reason == "" {
-				reason = args[i]
-			} else {
-				failWaitArgs(fmt.Sprintf("unexpected argument %q", args[i]))
+			if w.reason != "" {
+				return w, fmt.Sprintf("unexpected argument %q", args[i])
 			}
+			w.reason = args[i]
+		}
+		if dest != nil {
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return w, fmt.Sprintf("%s requires a value", args[i])
+			}
+			*dest = args[i+1]
+			i++
 		}
 	}
 	targets := 0
-	if fromAgent != "" {
-		targets++
-	}
-	if taskID != "" {
-		targets++
-	}
-	if commitRef != "" {
-		targets++
-	}
-	if operatorQ != "" {
-		targets++
+	for _, t := range []string{w.from, w.task, w.commit, w.operator} {
+		if t != "" {
+			targets++
+		}
 	}
 	if targets > 1 {
-		failWaitArgs("choose only one of --from, --task, --commit, or --operator")
+		return w, "choose only one of --from, --task, --commit, or --operator"
 	}
-	if (isStatus || isCancel) && (targets > 0 || reason != "" || isBlock) {
-		failWaitArgs("--status and --cancel cannot be combined with wait registration options")
+	if (w.status || w.cancel) && (targets > 0 || w.reason != "" || w.block) {
+		return w, "--status and --cancel cannot be combined with wait registration options"
 	}
-	if isStatus && isCancel {
-		failWaitArgs("--status and --cancel are mutually exclusive")
+	if w.status && w.cancel {
+		return w, "--status and --cancel are mutually exclusive"
 	}
+	return w, ""
+}
 
-	if project == "" {
+// target is what the wait is for: a message (from someone, or any), a task, a commit, or the Operator's reply. An
+// Operator question is the wait's reason; Coral lists it in the orchestrator's check until the Operator posts.
+func (w waitArgs) target() (waitType, targetID, reason string) {
+	switch {
+	case w.from != "":
+		return "message", w.from, w.reason
+	case w.task != "":
+		return "task", w.task, w.reason
+	case w.commit != "":
+		return "commit", w.commit, w.reason
+	case w.operator != "":
+		return "operator", "Operator", w.operator
+	}
+	return "message", "", w.reason
+}
+
+func cmdWait() {
+	project := ""
+	if st := loadState(); st != nil {
+		project = st.Project
+	}
+	w, problem := parseWaitArgs(os.Args[2:], project)
+	if problem != "" {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", problem)
+		os.Exit(2)
+	}
+	if w.project == "" {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board. Run: coral-board join <project> --as <role> or specify --board <project>")
 		os.Exit(1)
 	}
-
 	subscriberID := resolveSubscriberID()
 	sessionName := resolveSessionName()
+	switch {
+	case w.status:
+		showWait(w.project, subscriberID)
+	case w.cancel:
+		cancelWait(w.project, subscriberID)
+	default:
+		registerWait(w, subscriberID, sessionName)
+	}
+}
 
-	if isStatus {
-		data, status, err := apiCallRaw("GET", fmt.Sprintf("/%s/waits?subscriber_id=%s", url.PathEscape(project), url.QueryEscape(subscriberID)), nil)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+// waitPath is the subscriber's wait on project, for GET and DELETE.
+func waitPath(project, subscriberID string) string {
+	return fmt.Sprintf("/%s/waits?subscriber_id=%s", url.PathEscape(project), url.QueryEscape(subscriberID))
+}
+
+// failFromServer prints a request's failure (the server's error, else its status and body) and exits 1.
+func failFromServer(data []byte, status int, err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	var errResp map[string]string
+	if json.Unmarshal(data, &errResp) == nil && errResp["error"] != "" {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", errResp["error"])
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
+	}
+	os.Exit(1)
+}
+
+// failFromRefusal is failFromServer for a refusal whose reply carries numbers and flags beside its words (the 413
+// and 409 of the bounds, #4646): its message, else its error, else the status and body.
+func failFromRefusal(data []byte, status int, err error) {
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	var errResp map[string]any
+	if json.Unmarshal(data, &errResp) == nil {
+		if text, _ := errResp["message"].(string); text != "" {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", text)
 			os.Exit(1)
 		}
-		if status != http.StatusOK {
-			var errResp map[string]string
-			if json.Unmarshal(data, &errResp) == nil && errResp["error"] != "" {
-				fmt.Fprintf(os.Stderr, "Error: %s\n", errResp["error"])
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
-			}
+		if text, _ := errResp["error"].(string); text != "" {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", text)
 			os.Exit(1)
 		}
-		var result struct {
-			Wait *struct {
-				WaitType  string `json:"wait_type"`
-				TargetID  string `json:"target_id"`
-				Reason    string `json:"reason"`
-				ExpiresAt string `json:"expires_at"`
-				Status    string `json:"status"`
-			} `json:"wait"`
-		}
-		json.Unmarshal(data, &result)
-		if result.Wait != nil {
-			target := formatWaitTarget(result.Wait.WaitType, result.Wait.TargetID)
-			fmt.Printf("Active wait on '%s':\n", project)
-			fmt.Printf("  Waiting for: %s\n", target)
-			if result.Wait.Reason != "" {
-				fmt.Printf("  Reason:      %s\n", result.Wait.Reason)
-			}
-			if result.Wait.ExpiresAt != "" {
-				fmt.Printf("  Expires:     %s\n", result.Wait.ExpiresAt)
-			}
-		} else {
-			fmt.Printf("No active wait for '%s' on '%s'.\n", subscriberID, project)
-		}
+	}
+	fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
+	os.Exit(1)
+}
+
+// showWait prints the subscriber's active wait on project, or that there is none.
+func showWait(project, subscriberID string) {
+	data, status, err := apiCallRaw("GET", waitPath(project, subscriberID), nil)
+	if err != nil || status != http.StatusOK {
+		failFromServer(data, status, err)
+	}
+	var result struct {
+		Wait *struct {
+			WaitType  string `json:"wait_type"`
+			TargetID  string `json:"target_id"`
+			Reason    string `json:"reason"`
+			ExpiresAt string `json:"expires_at"`
+			Status    string `json:"status"`
+		} `json:"wait"`
+	}
+	json.Unmarshal(data, &result)
+	if result.Wait == nil {
+		fmt.Printf("No active wait for '%s' on '%s'.\n", subscriberID, project)
 		return
 	}
-
-	if isCancel {
-		data, status, err := apiCallRaw("DELETE", fmt.Sprintf("/%s/waits?subscriber_id=%s", url.PathEscape(project), url.QueryEscape(subscriberID)), nil)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		if status != http.StatusOK {
-			var errResp map[string]string
-			if json.Unmarshal(data, &errResp) == nil && errResp["error"] != "" {
-				fmt.Fprintf(os.Stderr, "Error: %s\n", errResp["error"])
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
-			}
-			os.Exit(1)
-		}
-		fmt.Printf("Cancelled active wait for '%s' on '%s'.\n", subscriberID, project)
-		return
+	fmt.Printf("Active wait on '%s':\n", project)
+	fmt.Printf("  Waiting for: %s\n", formatWaitTarget(result.Wait.WaitType, result.Wait.TargetID))
+	if result.Wait.Reason != "" {
+		fmt.Printf("  Reason:      %s\n", result.Wait.Reason)
 	}
-
-	// Register wait
-	waitType := "message"
-	targetID := ""
-	if fromAgent != "" {
-		waitType = "message"
-		targetID = fromAgent
-	} else if taskID != "" {
-		waitType = "task"
-		targetID = taskID
-	} else if commitRef != "" {
-		waitType = "commit"
-		targetID = commitRef
-	} else if operatorQ != "" {
-		// The question is the wait's reason; Coral lists it in the orchestrator's check
-		// until the Operator posts.
-		waitType = "operator"
-		targetID = "Operator"
-		reason = operatorQ
+	if result.Wait.ExpiresAt != "" {
+		fmt.Printf("  Expires:     %s\n", result.Wait.ExpiresAt)
 	}
+}
 
-	body := map[string]string{
+// cancelWait cancels the subscriber's active wait on project.
+func cancelWait(project, subscriberID string) {
+	data, status, err := apiCallRaw("DELETE", waitPath(project, subscriberID), nil)
+	if err != nil || status != http.StatusOK {
+		failFromServer(data, status, err)
+	}
+	fmt.Printf("Cancelled active wait for '%s' on '%s'.\n", subscriberID, project)
+}
+
+// registerWait registers the wait and tells the agent to stop; with --block it waits for it here.
+func registerWait(w waitArgs, subscriberID, sessionName string) {
+	waitType, targetID, reason := w.target()
+	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(w.project)+"/waits", map[string]string{
 		"subscriber_id": subscriberID,
 		"session_name":  sessionName,
 		"wait_type":     waitType,
 		"target_id":     targetID,
 		"reason":        reason,
-		"timeout":       timeout,
+		"timeout":       w.timeout,
+	})
+	if err != nil || (status != http.StatusCreated && status != http.StatusOK) {
+		failFromRefusal(data, status, err)
 	}
-
-	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(project)+"/waits", body)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if status != http.StatusCreated && status != http.StatusOK {
-		// map[string]any: a refusal's reply carries numbers and flags beside its words (the 413 and 409 of the bounds, #4646).
-		var errResp map[string]any
-		if json.Unmarshal(data, &errResp) == nil {
-			if text, _ := errResp["message"].(string); text != "" {
-				fmt.Fprintf(os.Stderr, "Error: %s\n", text)
-				os.Exit(1)
-			}
-			if text, _ := errResp["error"].(string); text != "" {
-				fmt.Fprintf(os.Stderr, "Error: %s\n", text)
-				os.Exit(1)
-			}
-		}
-		fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
-		os.Exit(1)
-	}
-
 	var regWait struct {
 		ExpiresAt string `json:"expires_at"`
 	}
 	json.Unmarshal(data, &regWait)
-
-	targetDesc := formatWaitTarget(waitType, targetID)
-	fmt.Printf("Registered wait on '%s':\n", project)
-	fmt.Printf("  Waiting for: %s\n", targetDesc)
+	fmt.Printf("Registered wait on '%s':\n", w.project)
+	fmt.Printf("  Waiting for: %s\n", formatWaitTarget(waitType, targetID))
 	if reason != "" {
 		fmt.Printf("  Reason:      %s\n", reason)
 	}
@@ -2955,36 +2947,39 @@ func cmdWait() {
 	fmt.Println()
 	fmt.Println("Coral will automatically wake you up with a terminal notification when this happens.")
 	fmt.Println("STOP now and yield your turn. Do NOT poll or call sleep in a loop.")
+	if w.block {
+		blockUntilResolved(w.project, subscriberID)
+	}
+}
 
-	if isBlock {
-		fmt.Println("\nBlocking until wait resolves...")
-		pollClient := &http.Client{Timeout: 65 * time.Second}
-		for {
-			req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/board/%s/waits/poll?subscriber_id=%s&timeout=30", serverURL, url.PathEscape(project), url.QueryEscape(subscriberID)), nil)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Poll error:", err)
-				os.Exit(1)
-			}
-			resp, err := pollClient.Do(req)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Poll error:", err)
-				os.Exit(1)
-			}
-			respBytes, _ := readServer(resp.Body)
-			status := resp.StatusCode
-			resp.Body.Close()
-			// A non-2xx (a key-protected Coral answering 401, a 500) makes the 30 s long-poll
-			// return at once; exit instead of spinning against the server with no delay (#3589).
-			var pollResult map[string]any
-			json.Unmarshal(respBytes, &pollResult)
-			if e := serverError(status, pollResult); e != nil {
-				fmt.Fprintln(os.Stderr, e)
-				os.Exit(1)
-			}
-			if s, _ := pollResult["status"].(string); s == "resolved" {
-				fmt.Println("Wait resolved.")
-				return
-			}
+// blockUntilResolved long-polls the wait until it resolves. A non-2xx (a key-protected Coral answering 401, a 500)
+// makes the 30 s long-poll return at once: it exits instead of spinning against the server with no delay (#3589).
+func blockUntilResolved(project, subscriberID string) {
+	fmt.Println("\nBlocking until wait resolves...")
+	pollClient := &http.Client{Timeout: 65 * time.Second}
+	for {
+		req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/board/%s/waits/poll?subscriber_id=%s&timeout=30", serverURL, url.PathEscape(project), url.QueryEscape(subscriberID)), nil)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Poll error:", err)
+			os.Exit(1)
+		}
+		resp, err := pollClient.Do(req)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Poll error:", err)
+			os.Exit(1)
+		}
+		respBytes, _ := readServer(resp.Body)
+		status := resp.StatusCode
+		resp.Body.Close()
+		var pollResult map[string]any
+		json.Unmarshal(respBytes, &pollResult)
+		if e := serverError(status, pollResult); e != nil {
+			fmt.Fprintln(os.Stderr, e)
+			os.Exit(1)
+		}
+		if s, _ := pollResult["status"].(string); s == "resolved" {
+			fmt.Println("Wait resolved.")
+			return
 		}
 	}
 }
