@@ -91,9 +91,7 @@ func tmuxEnv(bin string) []string {
 	env := agentenv.Filter(os.Environ())
 	// Never an agent identity in the tmux server's environment (#3421): each pane gets its
 	// own from the launch line.
-	for _, k := range agentenv.IdentityVars {
-		env = dropEnv(env, k)
-	}
+	env = dropEnvKeys(env, agentenv.IdentityVars)
 	terminfoDir, bundled := isBundledBinary(bin)
 	if !bundled {
 		return env
@@ -233,11 +231,22 @@ func noteTmuxResult(err error, bin, socketPath string) {
 	}
 }
 
-// dropEnv returns env without key's entries.
-func dropEnv(env []string, key string) []string {
-	out := env[:0:0]
+// dropEnvKeys returns env without the entries of any of keys, in one pass and one allocation: it
+// ran once per key, each copying the whole environment, on every tmux command Coral runs (#4598).
+func dropEnvKeys(env []string, keys []string) []string {
+	out := make([]string, 0, len(env))
 	for _, kv := range env {
-		if !strings.HasPrefix(kv, key+"=") {
+		eq := strings.IndexByte(kv, '=')
+		drop := false
+		if eq >= 0 {
+			for _, k := range keys {
+				if kv[:eq] == k {
+					drop = true
+					break
+				}
+			}
+		}
+		if !drop {
 			out = append(out, kv)
 		}
 	}
