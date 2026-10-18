@@ -16,7 +16,7 @@ import {
     bareBoardName, postLaunch, waitForLaunched,
 } from './launch_server.js';
 import { pollEvery } from './overload.js';
-import { ensureBuilt, onBuilt } from './lazy_dom.js';
+import { ensureBuilt } from './lazy_dom.js';
 
 // The Launch, Info and Settings dialogs are built from their templates when this module loads, which is their first use
 // (#4500): everything below finds them in the page. Settings' load-time writers (settings_core.js and others) find nothing
@@ -34,35 +34,15 @@ const { _findPersona, _getSavedPersonas, _getSavedTeamTemplates, _renderPresetBu
 const { _syncACFModelField, _togglePermChip, _togglePermissions, getAgentConfig, renderAgentConfigForm, setAgentConfig } = await importOnce('./agent_config_form.js');
 const settingsDialog = await importOnce('./settings_dialog.js');
 const infoDialog = await importOnce('./info_dialog.js');
+const flagShortcuts = await importOnce('./flag_shortcuts.js');
+const { _syncFlagButtons } = flagShortcuts;
+export const { toggleFlag } = flagShortcuts;
 export const { showInfoModal, hideInfoModal, copyInfoCommand } = infoDialog;
 const { showSettingsModal } = settingsDialog;
 export const { hideSettingsModal, applySettings } = settingsDialog;
 export { showSettingsModal };
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
-
-export function toggleFlag(inputId, flag) {
-    const input = document.getElementById(inputId);
-    const current = input.value.trim();
-    const flags = current ? current.split(/\s+/) : [];
-    const idx = flags.indexOf(flag);
-    if (idx >= 0) {
-        flags.splice(idx, 1);
-    } else {
-        flags.push(flag);
-    }
-    input.value = flags.join(" ");
-    // Update button active states
-    input.dispatchEvent(new Event("input"));
-}
-
-function _setPermFlagsForInput(inputId, agentType, mode) {
-    const input = document.getElementById(inputId);
-    if (!input) return;
-    input.value = _normalizePermFlagsForAgent(input.value, agentType, mode);
-    input.dispatchEvent(new Event("input"));
-}
-window._setPermFlagsForInput = _setPermFlagsForInput;
 
 
 function _syncMobileLaunchSections(step) {
@@ -1976,31 +1956,6 @@ async function launchTeam() {
     }
 }
 window.launchTeam = launchTeam;
-
-
-// Sync flag shortcut button active states with the text input
-function _syncFlagButtons(inputId) {
-    const input = document.getElementById(inputId);
-    if (!input) return;
-    const flags = input.value.trim() ? input.value.trim().split(/\s+/) : [];
-    const container = input.closest("label")?.nextElementSibling;
-    if (!container) return;
-    container.querySelectorAll(".flag-shortcut-btn").forEach(btn => {
-        const flag = btn.textContent.trim();
-        btn.classList.toggle("active", flags.includes(flag));
-    });
-}
-
-// Attach input listeners for flag sync. This module loads on first use (#3140), usually long after DOMContentLoaded, so
-// attach at once; the Job dialog's input once that dialog is built (#4500), which can be later still.
-function _attachFlagSync(id) {
-    const el = document.getElementById(id);
-    if (!el || el._flagSync) return;
-    el._flagSync = true;
-    el.addEventListener("input", () => _syncFlagButtons(id));
-}
-for (const id of ["launch-flags", "restart-flags", "team-flags"]) _attachFlagSync(id);
-onBuilt("job-modal", () => _attachFlagSync("job-modal-flags"));
 
 
 // ── Mobile Connect Modal ─────────────────────────────────────────────────
