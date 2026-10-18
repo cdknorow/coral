@@ -478,7 +478,7 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 		sizeTick = tk.C
 	}
 
-	go t.readFrames(cancel)
+	safego.Go("server/routes/websocket:787", func() { t.readFrames(cancel) })
 	t.writeLoop(ch, sizeTick)
 }
 
@@ -603,7 +603,6 @@ func parseTerminalFrame(raw []byte) (msg terminalFrame, ok bool) {
 
 // readFrames receives the client's frames until the socket closes, then cancels the stream.
 func (t *terminalStream) readFrames(cancel context.CancelFunc) {
-	defer safego.Recover("server/routes/websocket:787")
 	defer cancel()
 	for {
 		_, raw, err := t.conn.Read(t.ctx)
