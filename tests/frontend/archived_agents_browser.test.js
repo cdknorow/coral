@@ -44,6 +44,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
     const render = () => ev(`T.render.renderLiveSessions(T.state.liveSessions)`);
     const menuItems = sid => ev(`(() => {
         const li = document.querySelector('#live-sessions-list li[data-session-id="${sid}"]');
+        if (li) { window.closeSidebarKebabs(); li.querySelector('.sidebar-kebab-btn').click(); } // the menu is drawn when it opens (#4611)
         return li ? [...li.querySelectorAll('.sidebar-kebab-menu .overflow-menu-item')].map(b => b.textContent.replace(/\\s+/g, ' ').trim()) : null;
     })()`);
     const modalOpen = () => ev(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`);

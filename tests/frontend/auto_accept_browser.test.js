@@ -65,7 +65,8 @@ const BASE = require('./test_base').BASE;
             return true;
         })()`);
         const row = id => `document.querySelector('.session-group-item[data-session-id="${id}"]')`;
-        const menuItem = id => `${row(id)}.querySelector('.auto-accept-menu-item')`;
+        // A row's menu is drawn when it opens (#4611): opening it first is part of reaching its item.
+        const menuItem = id => `(window.closeSidebarKebabs(), ${row(id)}.querySelector('.sidebar-kebab-btn').click(), ${row(id)}.querySelector('.auto-accept-menu-item'))`;
 
         console.log('1. AUTO chip on the row while auto-accept is on');
         assert.equal(await ev(`!!${row('aa-on')}.querySelector('.auto-accept-chip')`), true, 'on: chip');

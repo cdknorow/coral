@@ -62,6 +62,29 @@ const { framesJs } = require('./helpers/wait');
         assert.equal(r.fullRebuilds, 0, 'no full rebuild for a one-agent change');
         assert.ok(r.replacedPerChange <= 3, `a one-agent change replaces at most a few nodes (${r.replacedPerChange})`);
         assert.equal(r.burstRenders, 1, `a burst of feed messages renders once (${r.burstRenders})`);
+        // A row's action menu is drawn when it opens (#4611): none of its items are in the list until then, one menu at a time is drawn, and its keyboard and click behaviour are the same.
+        const m = await ev(`(() => {
+            const list = document.getElementById('live-sessions-list');
+            const rows = [...list.querySelectorAll('.session-group-item[data-session-id]')];
+            const out = { perRow: Math.round(list.getElementsByTagName('*').length / rows.length), idle: list.querySelectorAll('.sidebar-kebab-menu[data-lazy-menu] *').length };
+            const btn = r => r.querySelector('.sidebar-kebab-btn');
+            btn(rows[0]).click();
+            const a = rows[0].querySelector('.sidebar-kebab-menu');
+            out.openItems = a.querySelectorAll('.overflow-menu-item').length; out.openShown = getComputedStyle(a).display !== 'none'; out.kill = !!a.querySelector('[data-on-click="agent-kill"]');
+            btn(rows[1]).click();
+            const b = rows[1].querySelector('.sidebar-kebab-menu');
+            out.secondItems = b.querySelectorAll('.overflow-menu-item').length; out.firstEmptied = a.children.length === 0 && getComputedStyle(a).display === 'none';
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); list.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            out.escapeClosed = getComputedStyle(b).display === 'none';
+            btn(rows[1]).click(); btn(rows[1]).click();
+            out.toggledClosed = getComputedStyle(b).display === 'none';
+            return out;
+        })()`);
+        assert.ok(m.perRow < 40, `a row costs well under its old 70 elements: ${m.perRow}`);
+        assert.equal(m.idle, 0, 'no menu item is in the list until a menu opens');
+        assert.ok(m.openItems >= 5 && m.openShown && m.kill, 'the menu that opens has its items: ' + JSON.stringify(m));
+        assert.ok(m.secondItems >= 5 && m.firstEmptied, 'opening another row\'s menu draws it and takes the first one out: ' + JSON.stringify(m));
+        assert.ok(m.escapeClosed && m.toggledClosed, 'Escape and the button close it: ' + JSON.stringify(m));
         console.log('PASS agent_list_perf_browser');
     } finally {
         await client.close();

@@ -1,7 +1,8 @@
 import './update_banner.js'; // first: it wraps fetch before the other modules ask for anything (#3751)
 import { importOnce } from './import_once.js';
 import { startChatPrefetch } from './chat_page.js';
-import './hub_blocked_controls.js'; // dims controls the Hub tier does not allow (#3769)
+import { markBlockedControls } from './hub_blocked_controls.js'; // dims controls the Hub tier does not allow (#3769)
+import { openRowMenu } from './session_rows.js';
 import './nav_tabs.js'; // the tab row, its More menu and the phone's view dropdown (#3816)
 import { initPrerequisiteChecks } from './prerequisites.js';
 import { fetchSystemStatus } from './system_status.js';
@@ -642,6 +643,11 @@ function toggleSidebarKebab(btn) {
     const wasOpen = menu.style.display !== 'none';
     closeSidebarKebabs();
     if (!wasOpen) {
+        // An agent row's menu is drawn when it opens (#4611); the hub's tier marks follow at once rather than at the next sweep.
+        if (menu.dataset.lazyMenu) {
+            if (!openRowMenu(btn, menu)) return;
+            markBlockedControls(menu);
+        }
         // Show off-screen first to measure, then position
         menu.style.visibility = 'hidden';
         menu.style.display = 'block';

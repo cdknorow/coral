@@ -49,7 +49,10 @@ const HUB_PRELOAD = `(() => {
         return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: headers, body: Buffer.from(html).toString('base64') });
     });
     // What is dimmed, by action, inside the agent's row menu, the command pane and the sleeping bar.
-    const state = () => ev(`(() => {
+    // A row's action menu is drawn when it opens (#4611): open the awake agent's, and leave it open, so its controls are there to read.
+    const openRow = () => ev(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="bc-awake-id"]'); const m = li && li.querySelector('.sidebar-kebab-menu'); if (m && !m.dataset.drawn) li.querySelector('.sidebar-kebab-btn').click(); return !!(m && m.dataset.drawn); })()`);
+    const state = async () => { await openRow(); return stateNow(); };
+    const stateNow = () => ev(`(() => {
         const out = { row: {}, pane: {}, bar: {} };
         const pick = (root, into, attr) => { for (const el of root.querySelectorAll('[' + attr + ']')) { const a = el.getAttribute(attr); if (!a) continue; into[a] = { blocked: el.classList.contains('hub-blocked'), aria: el.getAttribute('aria-disabled'), disabled: !!el.disabled, title: el.title || '' }; } };
         const row = document.querySelector('#live-sessions-list [data-session-id="bc-awake-id"]');
@@ -99,6 +102,8 @@ const HUB_PRELOAD = `(() => {
 
         console.log('1. View: everything that needs Interact or Launch is dimmed with its reason');
         await waitFor(`!!document.querySelector('#command-toolbar [data-on-click=cmd-send].hub-blocked')`, 'Send dimmed at View', 6000);
+        await waitFor(`!!document.querySelector('#command-toolbar [data-on-click=cmd-send].hub-blocked')`, 'Send dimmed at View', 6000);
+        await openRow();
         await waitFor(`!!document.querySelector('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-rename].hub-blocked')`, 'Rename dimmed at View', 6000);
         let s = await state();
         blockedAs(s.pane, INTERACT_PANE, true, 'Interact', 'View pane');
@@ -109,6 +114,7 @@ const HUB_PRELOAD = `(() => {
 
         console.log('2. Interact: only the Launch controls stay dimmed');
         await access('interact');
+        await openRow();
         await waitFor(`!!document.querySelector('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-restart].hub-blocked')`, 'Restart dimmed at Interact', 6000);
         await marked();
         s = await state();
@@ -148,7 +154,8 @@ const HUB_PRELOAD = `(() => {
             document.body.appendChild(d);
             T.state.currentBoardServer = 'm1';   // the board that is open lives on Box One (the board view's own pause button follows it)
             return true; })()`);
-        const hubControls = () => ev(`(() => { const q = sel => { const el = document.querySelector(sel); return el ? { blocked: el.classList.contains('hub-blocked'), aria: el.getAttribute('aria-disabled'), disabled: el.disabled, title: el.getAttribute('title') || '' } : null; };
+        const hubControls = async () => { await openRow(); return hubControlsNow(); };
+    const hubControlsNow = () => ev(`(() => { const q = sel => { const el = document.querySelector(sel); return el ? { blocked: el.classList.contains('hub-blocked'), aria: el.getAttribute('aria-disabled'), disabled: el.disabled, title: el.getAttribute('title') || '' } : null; };
             return { teamSleep: q('#qa-hub-controls [data-mode=sleep][data-board="@m1/team1"]'), teamWake: q('#qa-hub-controls [data-mode=wake]'),
                 boardPanelPause: q('#qa-hub-controls [data-on-click=board-chat-pause]'), boardViewPause: q('[data-on-click=mb-pause]'), msgDelete: q('#qa-hub-controls [data-on-click=mb-msg-delete]'),
                 localTeamSleep: q('#qa-hub-controls [data-board="team-local"]'), agentSleep: q('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-sleep]') }; })()`);

@@ -57,6 +57,29 @@ function _isArchivedExpanded() {
 // Drag-and-drop state
 let _draggedSid = null;
 
+// The text of each row's action menu, by the row's identity: drawn into the row when its menu opens (openRowMenu) and not before, so a list of 100 agents holds one menu's elements instead
+// of a hundred. Every render sets each shown row's again (an agent whose state changed has a new row, which closes its menu as before); the oldest go past a thousand.
+const rowMenus = new Map();
+const rowMenuKey = (sid, server, name) => `${sid || ''}|${server || ''}|${name || ''}`;
+function rememberRowMenu(s, html) {
+    const key = rowMenuKey(s.session_id, sessionServer(s), s.name);
+    rowMenus.delete(key);
+    rowMenus.set(key, html);
+    if (rowMenus.size > 1000) rowMenus.delete(rowMenus.keys().next().value);
+}
+
+/** Draw the menu of the row `btn` (its kebab button) belongs to into `menu`, and take every other row's drawn menu out. Returns false when the row's menu text is not known. */
+export function openRowMenu(btn, menu) {
+    for (const other of document.querySelectorAll('.sidebar-kebab-menu[data-lazy-menu][data-drawn]')) {
+        if (other !== menu) { other.replaceChildren(); delete other.dataset.drawn; }
+    }
+    const row = btn.closest('.session-group-item');
+    const html = row && rowMenus.get(rowMenuKey(row.dataset.sessionId, row.dataset.server, row.dataset.name));
+    if (html === undefined) return false;
+    if (!menu.dataset.drawn) { menu.innerHTML = html; menu.dataset.drawn = '1'; }
+    return true;
+}
+
 export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) {
     const dotClass = getDotClass(s);
     const isActive = !state.selectedTeam && state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
@@ -263,10 +286,11 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
                 Remove Agent
             </button>`;
     const kebabMenuContent = isDone ? _doneMenu : (s.archived ? _archivedMenu : (s.sleeping ? _sleepingMenu : _awakeMenu));
+    // The menu's items (about 50 elements a row) are drawn when it opens (#4611): the row holds an empty menu and this module the text for it.
+    rememberRowMenu(s, kebabMenuContent);
     const kebabMenu = `<div class="sidebar-kebab-wrapper">
         <button class="sidebar-kebab-btn" data-on-click="kebab-toggle" title="More actions">&#x22EE;</button>
-        <div class="sidebar-kebab-menu" style="display:none">${kebabMenuContent}
-        </div>
+        <div class="sidebar-kebab-menu" style="display:none" data-lazy-menu="1"></div>
     </div>`;
     const compactClass = isCompact ? ' session-compact' : '';
     const collapsedClass = collapsed ? ' group-collapsed' : '';
