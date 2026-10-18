@@ -155,6 +155,15 @@ func mentionCandidateTokens(terms []string) (tokens []string, ok bool) {
 // catchUpMentionIndex indexes the messages above mentionIndexedTo, a chunk at a time, each chunk and its new
 // watermark in one transaction. It does nothing when the index is current.
 func (s *Store) catchUpMentionIndex(ctx context.Context) error {
+	// An index that is current is the common case, and it is read without the lock: only this store moves the watermark (under
+	// mentionMu, atomically), so a newest message at or below it needs nothing, and every ReadMessages of every agent no
+	// longer queues behind the one that is indexing (#4788: 97% of the mutex contention of a 250-agent run).
+	if from := s.mentionIndexedTo.Load(); from >= 0 {
+		var newest int64
+		if err := getHot(ctx, s.hot().newestMessageID, s.reader(), &newest, sqlNewestMessageID); err == nil && newest <= from {
+			return nil
+		}
+	}
 	s.mentionMu.Lock()
 	defer s.mentionMu.Unlock()
 	const chunk = 500
