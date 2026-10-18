@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -115,30 +114,22 @@ func (h *BoardHandler) relaySenderRole(w http.ResponseWriter, r *http.Request, p
 // own session).
 func (h *BoardHandler) relaySenderIdentity(w http.ResponseWriter, r *http.Request, project, subscriber, sessionName string) (string, bool) {
 	ctx := r.Context()
-	if subscriber == crossTeamOperatorID {
-		if ok, err := h.bs.BoardExists(ctx, project); err != nil {
-			errInternalServer(w, err.Error())
-			return "", false
-		} else if !ok {
-			relayError(w, http.StatusNotFound, "not_found", fmt.Sprintf("board %q not found", project), 0)
-			return "", false
-		}
-		return crossTeamOperatorID, true
-	}
-	sub, err := h.bs.GetProjectSubscription(ctx, project, subscriber)
-	if err != nil {
+	role, _, refusal, err := h.checkCrossTeamSender(ctx, project, subscriber, sessionName)
+	switch {
+	case err != nil:
 		errInternalServer(w, err.Error())
 		return "", false
-	}
-	if sub == nil || sub.IsActive == 0 || !strings.EqualFold(strings.TrimSpace(sub.JobTitle), crossTeamSenderRole) {
+	case refusal == senderNoBoard:
+		relayError(w, http.StatusNotFound, "not_found", fmt.Sprintf("board %q not found", project), 0)
+		return "", false
+	case refusal == senderNotOrchestrator:
 		relayError(w, http.StatusForbidden, "not_orchestrator", fmt.Sprintf("only an active Orchestrator of %q or the Operator can message another Coral", project), 0)
 		return "", false
-	}
-	if sn := strings.TrimSpace(sessionName); sn == "" || sub.SessionName == "" || sn != sub.SessionName {
+	case refusal == senderSessionMismatch:
 		relayError(w, http.StatusForbidden, "session_mismatch", fmt.Sprintf("session_name does not match %q's subscription on %q; send from that agent's own session", subscriber, project), 0)
 		return "", false
 	}
-	return crossTeamSenderRole, true
+	return role, true
 }
 
 // relayUnavailable maps a failure to reach Coral Hub to an answer.
@@ -290,8 +281,8 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	// The sender's quota counts only requests that reach Coral Hub: a send that couldn't
 	// (not linked, or the relay not offered) gets its token back.
 	quotaKey := "relay-out\x00" + project + "\x00" + body.SubscriberID + "\x00" + body.ToAddress
-	if allowed, wait := h.crossTeam.allow(quotaKey); !allowed {
-		relayError(w, http.StatusTooManyRequests, "rate_limited", fmt.Sprintf("retry in %ds", int(math.Ceil(wait.Seconds()))), int(math.Ceil(wait.Seconds())))
+	if secs, limited := h.crossTeamWait(quotaKey); limited {
+		relayError(w, http.StatusTooManyRequests, "rate_limited", fmt.Sprintf("retry in %ds", secs), secs)
 		return
 	}
 	if prepared != nil {

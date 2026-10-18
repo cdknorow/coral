@@ -217,14 +217,7 @@ func (h *BoardHandler) prepareRelayAttachments(w http.ResponseWriter, r *http.Re
 		relayUnavailable(w, cloud.ErrNotLinked)
 		return nil, false
 	}
-	sender := attachSender{person: subscriber == crossTeamOperatorID && callerActor(r).IsOperator(), windowKey: "operator"}
-	if !sender.person {
-		sender.windowKey = sharedUploadBucket
-		if owner, ok := VerifiedSession(ctx); ok && owner != nil && owner.SessionID != "" && sessionName != "" && owner.SessionName == sessionName {
-			sender.sessionID, sender.windowKey = owner.SessionID, "session:"+owner.SessionID
-			sender.team = h.teamSessions(ctx, project) // the sender is a subscriber: its own session is in it
-		}
-	}
+	sender := h.attachSenderFor(ctx, r, project, subscriber, sessionName)
 	atts, refused := h.resolveAttachments(raw, sender)
 	if refused != nil {
 		refused.write(w)

@@ -278,32 +278,20 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Only Orchestrators and the Operator may send.
-	role := crossTeamOperatorID
-	senderSession := "" // the sending Orchestrator's agent session name
-	if body.SubscriberID == crossTeamOperatorID {
-		if ok, err := h.bs.BoardExists(ctx, body.FromBoard); err != nil {
-			errInternalServer(w, err.Error())
-			return
-		} else if !ok {
-			errNotFound(w, fmt.Sprintf("board %q not found", body.FromBoard))
-			return
-		}
-	} else {
-		sub, err := h.bs.GetProjectSubscription(ctx, body.FromBoard, body.SubscriberID)
-		if err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-		if sub == nil || sub.IsActive == 0 || !strings.EqualFold(strings.TrimSpace(sub.JobTitle), crossTeamSenderRole) {
-			errForbidden(w, fmt.Sprintf("only an active Orchestrator of %q or the Operator can send cross-team messages", body.FromBoard))
-			return
-		}
-		if sn := strings.TrimSpace(body.SessionName); sn == "" || sub.SessionName == "" || sn != sub.SessionName {
-			errForbidden(w, fmt.Sprintf("session_name does not match %q's subscription on %q; send from that agent's own session", body.SubscriberID, body.FromBoard))
-			return
-		}
-		role = crossTeamSenderRole
-		senderSession = sub.SessionName
+	role, senderSession, refusal, err := h.checkCrossTeamSender(ctx, body.FromBoard, body.SubscriberID, body.SessionName)
+	switch {
+	case err != nil:
+		errInternalServer(w, err.Error())
+		return
+	case refusal == senderNoBoard:
+		errNotFound(w, fmt.Sprintf("board %q not found", body.FromBoard))
+		return
+	case refusal == senderNotOrchestrator:
+		errForbidden(w, fmt.Sprintf("only an active Orchestrator of %q or the Operator can send cross-team messages", body.FromBoard))
+		return
+	case refusal == senderSessionMismatch:
+		errForbidden(w, fmt.Sprintf("session_name does not match %q's subscription on %q; send from that agent's own session", body.SubscriberID, body.FromBoard))
+		return
 	}
 
 	// An unknown target is a typo, not a disabled board.
@@ -342,8 +330,7 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if ok, wait := h.crossTeam.allow(body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); !ok {
-		secs := int(math.Ceil(wait.Seconds()))
+	if secs, limited := h.crossTeamWait(body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); limited {
 		// A limit on this sender's posts, not a busy server (#3434).
 		httputil.WriteActionLimit(w, secs, "rate_limited", fmt.Sprintf("too many messages to %q; retry in %ds", target, secs))
 		return
@@ -368,14 +355,7 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 			writeJSON(w, http.StatusForbidden, map[string]string{"code": "artifacts_off", "error": fmt.Sprintf("sending artifacts is off on board %s; the Operator can turn on cross_team_artifacts in Team settings on this computer", strings.Join(off, " and "))})
 			return
 		}
-		sender := attachSender{person: body.SubscriberID == crossTeamOperatorID && callerActor(r).IsOperator(), windowKey: "operator"}
-		if !sender.person {
-			sender.windowKey = sharedUploadBucket
-			if owner, ok := VerifiedSession(ctx); ok && owner != nil && owner.SessionID != "" && senderSession != "" && owner.SessionName == senderSession {
-				sender.sessionID, sender.windowKey = owner.SessionID, "session:"+owner.SessionID
-				sender.team = h.teamSessions(ctx, body.FromBoard) // the sender is a subscriber: its own session is in it
-			}
-		}
+		sender := h.attachSenderFor(ctx, r, body.FromBoard, body.SubscriberID, senderSession)
 		var refused *attachRefusal
 		if attached, refused = h.resolveAttachments(body.Attach, sender); refused != nil {
 			refused.write(w)
