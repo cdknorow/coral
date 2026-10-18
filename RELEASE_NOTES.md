@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.4.97 — An Inbox on every Coral, Saved for later by agent or team, and a label-escaping sweep
+
+### Changes
+
+- **Every Coral has an Inbox tab:** Needs you (the agents waiting for input, each opening that agent) above Saved for later, with the waiting count as its badge. Through Coral Hub it is still the hub's own Inbox; everywhere else the dashboard builds it. At about 768 px wide with the Servers tab shown, the extra tab moves Board under More.
+- **Saved for later follows where you are:** on an agent's or a team's page it shows only what was saved there, with a heading that says which, and its counts and badge are of that scope; on the home page it shows everything. A board message's author is the board's own word, not the request's.
+- **The top bar's bookmark opens the Inbox at Saved for later** where the scope is everything; Escape or a second press goes back.
+
+### Other changes
+
+- **Simpler code, behaviour unchanged:** the cross-team receive path, workflow runs and the artifact relay are split into named steps, each compared with the old code.
+- **Tests and CI:** a browser test plants markup in 19 fields and in file and folder names, opens the pages that show them and fails if any of it is drawn as markup; a census lists every value put into HTML without escaping. It found no injection, and the one unescaped value it found, an unknown agent type in the CLI-not-found dialog, is escaped. The browser suites put back the settings they change and stop the agents and teams they start; `tools/check-patch.sh` gives each Go package 30 minutes; several flaky tests now wait for what they check.
+
 ## v1.4.96 — History events search, a Servers search, agy waiting states, and faster boards with many agents
 
 ### Changes
