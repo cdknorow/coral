@@ -905,6 +905,7 @@
     #mobile-session-list .session-name-row {
         align-items: flex-start;
         gap: 8px;
+        height: auto; /* the base row is 16 px high; a name that wraps to a second line overflowed it and the state chip was drawn over that line (#4612) */
     }
 
     #mobile-session-list .session-label {
