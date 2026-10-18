@@ -117,6 +117,11 @@ const BASE = require('./test_base').BASE;
             host.innerHTML = rows(['A', 'B']); const second = host.querySelectorAll('input')[1]; second.focus(); second.value = 'typed in B';
             const back = rememberFocus(host); host.innerHTML = rows(['NEW', 'A', 'B']); back();
             out.twins = [...host.querySelectorAll('input')].map(i => i.value);
+            // rows that carry a stable id (data-id, as the agent, server and task rows do): a row inserted above leaves focus in B's own box, not the box now at B's old place
+            const keyed = names => '<ul>' + names.map(n => '<li data-id="' + n + '"><span>' + n + '</span><input type="text" class="note"></li>').join('') + '</ul>';
+            host.innerHTML = keyed(['A', 'B']); const kb = host.querySelector('li[data-id="B"] input'); kb.focus();
+            const back1 = rememberFocus(host); host.innerHTML = keyed(['NEW', 'A', 'B']); back1();
+            out.keyedFocus = document.activeElement.closest('li')?.dataset.id;
             // a password redrawn as a text box under the same id and data-*
             host.innerHTML = '<input type="password" id="k" data-f="key">'; const pw = host.querySelector('input'); pw.focus(); pw.value = 's3cret';
             const back2 = rememberFocus(host); host.innerHTML = '<input type="text" id="k" data-f="key">'; back2();
@@ -127,6 +132,7 @@ const BASE = require('./test_base').BASE;
             out.single = host.querySelector('input').value;
             host.remove(); return out; })()`);
         assert.deepEqual(probe.twins, ['', '', ''], `a row inserted above must leave every box empty: ${JSON.stringify(probe)}`);
+        assert.equal(probe.keyedFocus, 'B', `a row inserted above keeps focus in its own row's box: ${JSON.stringify(probe)}`);
         assert.equal(probe.password, '', 'a password is never copied into a text box');
         assert.equal(probe.single, 'AB12', 'a single box of the same kind keeps its text');
         console.log('  ok');
