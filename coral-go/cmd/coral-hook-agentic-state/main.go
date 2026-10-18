@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -270,14 +271,21 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 		}
 		// Codex's PostToolUse gives a shell command's output as a plain string, with no exit code: its
 		// transcript has it (#4545).
-		codexFailed := false
+		shellFailed := false
 		if _, isText := d["tool_response"].(string); isText && hookType == "PostToolUse" && codexShellTools[tool] {
 			if code, status, ok := codexToolResult(hooks.StrVal(d, "transcript_path"), hooks.StrVal(d, "tool_use_id")); ok {
 				detail = withDetail(detail, "exit_code", code)
-				codexFailed = status == "failed" || code != 0
+				shellFailed = status == "failed" || code != 0
 			}
 		}
-		if codexFailed {
+		// agy's PostToolUse says error "" for a command that exited non-zero: its transcript has the code (#4577).
+		if step, isAgy := d["_agy_step"].(int64); isAgy && hookType == "PostToolUse" && tool == "run_command" {
+			if code, ok := agyToolResult(hooks.StrVal(d, "transcript_path"), step); ok {
+				detail = withDetail(detail, "exit_code", code)
+				shellFailed = shellFailed || code != 0
+			}
+		}
+		if shellFailed {
 			summary = "Failed: " + summary
 			detail = withDetail(detail, "failed", true)
 		}
@@ -383,6 +391,10 @@ func fromAgy(d map[string]any, event string) (map[string]any, bool) {
 	}
 	if step, ok := d["stepIdx"].(float64); ok {
 		out["tool_use_id"] = fmt.Sprintf("agy-step-%d", int64(step))
+		out["_agy_step"] = int64(step) // the transcript record of a tool's result (agyToolResult)
+	}
+	if path, _ := d["transcriptPath"].(string); path != "" {
+		out["transcript_path"] = path
 	}
 	if errMsg, _ := d["error"].(string); errMsg != "" && event == "PostToolUse" {
 		out["error"] = errMsg
@@ -587,26 +599,86 @@ var codexToolResult = func(path, callID string) (int, string, bool) {
 // codexTranscriptTail: how much of the transcript's end is read for a call's record.
 const codexTranscriptTail = 256 << 10
 
-// findCodexToolResult reads the end of a Codex rollout file for the item_completed record of callID. The
-// path comes from the hook payload: the file is opened through safefs (no symlink as its name, a regular
-// file, checked on the handle).
-func findCodexToolResult(path, callID string) (int, string, bool) {
+// readTranscriptTail is the last codexTranscriptTail bytes of a transcript the hook payload names. The path
+// comes from the payload: the file is opened through safefs (no symlink as its name, a regular file, checked
+// on the handle).
+func readTranscriptTail(path string) ([]byte, bool) {
 	root, err := safefs.OpenRoot(filepath.Dir(path))
 	if err != nil {
-		return 0, "", false
+		return nil, false
 	}
 	defer root.Close()
 	f, fi, err := root.Open(filepath.Base(path))
 	if err != nil {
-		return 0, "", false
+		return nil, false
 	}
 	defer f.Close()
-	start := fi.Size() - codexTranscriptTail
-	if start < 0 {
-		start = 0
-	}
+	start := max(fi.Size()-codexTranscriptTail, 0)
 	buf := make([]byte, fi.Size()-start)
 	if _, err := f.ReadAt(buf, start); err != nil && err != io.EOF {
+		return nil, false
+	}
+	return buf, true
+}
+
+// agyToolResult is the exit code of an Antigravity run_command, from its transcript (transcript_full.jsonl,
+// named in the hook payload): agy's PostToolUse says error "" whatever the command's exit code, and the
+// step's GENERIC record (step_index = the hook's stepIdx) says "The command exited with code N." (#4577,
+// agy 1.4.2). A record not written yet is looked for again, briefly.
+var agyToolResult = func(path string, step int64) (int, bool) {
+	if filepath.Base(path) != "transcript_full.jsonl" {
+		return 0, false
+	}
+	for attempt := 0; attempt < 6; attempt++ {
+		if attempt > 0 {
+			time.Sleep(25 * time.Millisecond)
+		}
+		if code, ok := findAgyToolResult(path, step); ok {
+			return code, true
+		}
+	}
+	return 0, false
+}
+
+// agyExitRe: the line of a run_command's result that gives its exit code. Only the first such line counts:
+// it comes before the command's output, which could print one of its own.
+var agyExitRe = regexp.MustCompile(`(?m)^The command exited with code (-?\d{1,10})\.\r?$`)
+
+func findAgyToolResult(path string, step int64) (int, bool) {
+	buf, ok := readTranscriptTail(path)
+	if !ok {
+		return 0, false
+	}
+	marker := []byte(fmt.Sprintf(`"step_index":%d,`, step))
+	lines := bytes.Split(buf, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		if !bytes.Contains(lines[i], marker) {
+			continue
+		}
+		var rec struct {
+			Step    *int64 `json:"step_index"`
+			Type    string `json:"type"`
+			Content string `json:"content"`
+		}
+		if json.Unmarshal(lines[i], &rec) != nil || rec.Step == nil || *rec.Step != step || rec.Type != "GENERIC" {
+			continue
+		}
+		m := agyExitRe.FindStringSubmatch(rec.Content)
+		if m == nil {
+			return 0, false
+		}
+		code, err := strconv.Atoi(m[1])
+		return code, err == nil
+	}
+	return 0, false
+}
+
+// findCodexToolResult reads the end of a Codex rollout file for the item_completed record of callID. The
+// path comes from the hook payload: the file is opened through safefs (no symlink as its name, a regular
+// file, checked on the handle).
+func findCodexToolResult(path, callID string) (int, string, bool) {
+	buf, ok := readTranscriptTail(path)
+	if !ok {
 		return 0, "", false
 	}
 	quoted, _ := json.Marshal(callID)

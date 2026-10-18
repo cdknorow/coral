@@ -1,0 +1,27 @@
+{
+ "artifactDirectoryPath": "/HOME/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000",
+ "conversationId": "00000000-0000-4000-8000-000000000000",
+ "error": "",
+ "modelName": "gemini-3.8-flash-high",
+ "stepIdx": 2,
+ "toolCall": {
+  "args": {
+   "AllowMultiple": false,
+   "Description": "test edit",
+   "EndLine": 1,
+   "Instruction": "update greeting",
+   "ReplacementContent": "Hello Antigravity\n",
+   "StartLine": 1,
+   "TargetContent": "Hello world\n",
+   "TargetFile": "/tmp/test_collector_write.txt",
+   "toolAction": "Updating greeting in file",
+   "toolSummary": "Update greeting"
+  },
+  "name": "replace_file_content"
+ },
+ "transcriptPath": "/HOME/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000/.system_generated/logs/transcript_full.jsonl",
+ "workspacePaths": [
+  "/WORK/coral_agyhooks",
+  "/SCRATCH/capture_hooks"
+ ]
+}

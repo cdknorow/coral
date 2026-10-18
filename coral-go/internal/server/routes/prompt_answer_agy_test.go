@@ -129,3 +129,44 @@ func TestParseAgyTrustAndPermissionMenus(t *testing.T) {
 	assert.Equal(t, "Yes, run command", perm.Options[0].Label)
 	assert.Equal(t, "No, cancel", perm.Options[3].Label)
 }
+
+// agy 1.4.2's mid-turn permission menu, captured by the Antigravity CLI tester (tmux text, redacted): open,
+// option 2 selected after Down, and the agent at work after Enter. Answered from Chat with Down then one Enter
+// (agy ignores a digit), and the menu is gone afterwards.
+func TestAnswerPrompt_AgyPermissionMenu142(t *testing.T) {
+	const sid = "00000000-0000-0000-0000-000000004578"
+	server, _, term, ss := setupSessionsTestServer(t)
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "agy", AgentName: "agy-perm", WorkingDir: "/tmp/test"}))
+	term.addSession("agy-perm", "/tmp/test")
+	fastPromptChecks(t)
+	set := func(s string) {
+		term.mu.Lock()
+		term.outputs["agy-perm"] = s
+		term.mu.Unlock()
+	}
+	open := agyMenu(t, "perm142_open.txt")
+	s, ok := parsePromptScreen(open)
+	require.True(t, ok)
+	assert.Equal(t, "Run this command?", s.Question)
+	require.Len(t, s.Options, 4)
+	set(open)
+	onTwo := false
+	term.onArrow = func(string) { onTwo = true; set(agyMenu(t, "perm142_sel2.txt")) }
+	term.onEnter = func(string) {
+		if onTwo {
+			set(agyMenu(t, "perm142_after.txt"))
+		}
+	}
+	b, _ := json.Marshal(map[string]any{"n": 2, "label": s.Options[1].Label, "session_id": sid, "agent_type": "agy"})
+	resp, err := http.Post(server.URL+"/api/sessions/live/agy-perm/answer-prompt", "application/json", bytes.NewReader(b))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "%v", body)
+	assert.Empty(t, term.raw["agy-perm"])
+	assert.Equal(t, []string{"Down"}, term.arrows["agy-perm"])
+	assert.Equal(t, 1, term.enters["agy-perm"])
+	_, still := parsePromptScreen(agyMenu(t, "perm142_after.txt"))
+	assert.False(t, still, "the menu is gone")
+}

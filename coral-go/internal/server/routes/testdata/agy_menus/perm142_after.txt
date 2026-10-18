@@ -1,0 +1,18 @@
+
+      ▄▀▀▄        Antigravity CLI 1.4.2
+     ▀▀▀▀▀▀       user@example.com (Google AI Pro)
+    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (High)
+   ▄▀▀    ▀▀▄     ~/work/coral_agyhooks
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> Run command "printf x; exit 1"
+
+○ Thought for 3.4s (The task is to execute the provided command. The available tool is suitable...)
+● Ran (printf x; exit 1) failed (ctrl+o to expand)
+⣟  Running command...
+└ Tip: Use /voice (or press f5) to record your prompt with your microphone.
+────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────
+esc to cancel                                                                Gemini 3.8 Flash · high

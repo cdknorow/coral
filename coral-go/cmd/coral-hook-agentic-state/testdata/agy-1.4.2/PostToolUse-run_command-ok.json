@@ -1,0 +1,22 @@
+{
+ "artifactDirectoryPath": "/HOME/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000",
+ "conversationId": "00000000-0000-4000-8000-000000000000",
+ "error": "",
+ "modelName": "gemini-3.8-flash-high",
+ "stepIdx": 2,
+ "toolCall": {
+  "args": {
+   "CommandLine": "echo 'EXIT_ZERO_TEST'",
+   "Cwd": "/WORK/coral_agyhooks",
+   "WaitMsBeforeAsync": 2000,
+   "toolAction": "Running shell command",
+   "toolSummary": "Shell command execution"
+  },
+  "name": "run_command"
+ },
+ "transcriptPath": "/HOME/.gemini/antigravity-cli/brain/00000000-0000-4000-8000-000000000000/.system_generated/logs/transcript_full.jsonl",
+ "workspacePaths": [
+  "/WORK/coral_agyhooks",
+  "/SCRATCH/capture_hooks"
+ ]
+}

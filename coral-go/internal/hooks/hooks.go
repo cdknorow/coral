@@ -217,12 +217,20 @@ func MakeToolSummary(tool string, inp map[string]any) string {
 	case "replace_file_content", "multi_replace_file_content":
 		return "Edited " + filepath.Base(StrVal(inp, "TargetFile"))
 	case "search_web":
-		return "Searched: " + Truncate(StrVal(inp, "Query"), 60)
+		return "Searched: " + Truncate(agyQuery(inp), 60)
 	case "read_url_content":
 		return "Fetched " + Truncate(StrVal(inp, "Url"), 60)
 	default:
 		return "Used " + tool
 	}
+}
+
+// agyQuery is search_web's query: agy 1.4.2 sends "query" (lowercase, unlike its other arguments).
+func agyQuery(inp map[string]any) string {
+	if q := StrVal(inp, "query"); q != "" {
+		return q
+	}
+	return StrVal(inp, "Query")
 }
 
 // AgyToolDetail is the detail an activity row shows for an Antigravity tool call, under the keys the other
@@ -236,7 +244,7 @@ func AgyToolDetail(tool string, inp map[string]any) map[string]any {
 	case "write_to_file", "replace_file_content", "multi_replace_file_content":
 		return map[string]any{"file_path": StrVal(inp, "TargetFile")}
 	case "search_web":
-		return map[string]any{"query": StrVal(inp, "Query")}
+		return map[string]any{"query": agyQuery(inp)}
 	case "read_url_content":
 		return map[string]any{"url": StrVal(inp, "Url")}
 	}
