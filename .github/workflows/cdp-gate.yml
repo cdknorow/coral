@@ -32,8 +32,11 @@ on:
 permissions:
   contents: read
 
+# A new push cancels the older push's gate on that branch. A manual run (workflow_dispatch: a repeat, or a gate
+# started by hand) has a group of its own, so two repeats on one branch both run: a second dispatch one second after
+# the first cancelled it, which read as a failed repeat (run 39135033726, 0 jobs).
 concurrency:
-  group: cdp-gate-${{ github.ref }}
+  group: cdp-gate-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'push' }}
   cancel-in-progress: true
 
 jobs:
