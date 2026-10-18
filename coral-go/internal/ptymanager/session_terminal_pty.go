@@ -263,14 +263,6 @@ func (p *PTYSessionTerminal) ResizeSession(_ context.Context, name string, colum
 	return p.backend.Resize(key, uint16(columns), 50)
 }
 
-func (p *PTYSessionTerminal) ResizeTarget(_ context.Context, target string, columns, rows int) error {
-	r := uint16(rows)
-	if r == 0 {
-		r = 50
-	}
-	return p.backend.Resize(target, uint16(columns), r)
-}
-
 func (p *PTYSessionTerminal) SetPaneTitle(_ context.Context, _, _ string) {
 	// No-op for PTY backend — pane titles are a tmux concept
 }

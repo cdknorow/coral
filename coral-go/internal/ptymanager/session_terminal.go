@@ -74,7 +74,6 @@ type SessionTerminal interface {
 	RestartPane(ctx context.Context, target, workDir string) error
 	RenameSession(ctx context.Context, oldName, newName string) error
 	ResizeSession(ctx context.Context, name string, columns int, agentType, sessionID string) error
-	ResizeTarget(ctx context.Context, target string, columns, rows int) error
 
 	// Logging
 	StartLogging(ctx context.Context, target, logPath string) error

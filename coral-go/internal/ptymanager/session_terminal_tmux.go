@@ -108,10 +108,6 @@ func (t *TmuxSessionTerminal) ResizeSession(ctx context.Context, name string, co
 	return t.client.ResizePane(ctx, name, columns, agentType, sessionID)
 }
 
-func (t *TmuxSessionTerminal) ResizeTarget(ctx context.Context, target string, columns, rows int) error {
-	return t.client.ResizePaneTarget(ctx, target, columns, rows)
-}
-
 func (t *TmuxSessionTerminal) SetPaneTitle(ctx context.Context, target, title string) {
 	t.client.SetPaneTitle(ctx, target, title)
 }

@@ -290,10 +290,9 @@ func (m *mockSessionTerminal) ResizeSession(_ context.Context, name string, _ in
 	}
 	return nil
 }
-func (m *mockSessionTerminal) ResizeTarget(_ context.Context, _ string, _, _ int) error { return nil }
-func (m *mockSessionTerminal) StartLogging(_ context.Context, _, _ string) error        { return nil }
-func (m *mockSessionTerminal) StopLogging(_ context.Context, _ string) error            { return nil }
-func (m *mockSessionTerminal) ClearHistory(_ context.Context, _ string) error           { return nil }
+func (m *mockSessionTerminal) StartLogging(_ context.Context, _, _ string) error { return nil }
+func (m *mockSessionTerminal) StopLogging(_ context.Context, _ string) error     { return nil }
+func (m *mockSessionTerminal) ClearHistory(_ context.Context, _ string) error    { return nil }
 
 func (m *mockSessionTerminal) HasSession(_ context.Context, name string) bool {
 	m.mu.Lock()
