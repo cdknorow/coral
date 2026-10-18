@@ -40,6 +40,7 @@ func newTQEnv(t *testing.T) *tqEnv {
 	t.Cleanup(h.WaitBackground)
 	r := chi.NewRouter()
 	r.Get("/api/board/tasks", h.ListAllTasks)
+	r.Get("/api/board/{project}/tasks/{taskID}", h.GetTask)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 	raw, err := sql.Open("sqlite", dbPath)
@@ -339,4 +340,88 @@ func TestTaskQueryBoardLabel(t *testing.T) {
 	_, out, _ := e.get("fields=id,board_id,board_label&board=alpha&limit=1")
 	m := out["tasks"].([]any)[0].(map[string]any)
 	assert.Equal(t, "alpha", m["board_id"])
+}
+
+// A completed task's verification state (#4563) is on the plain list's rows, on task detail, as a field of the query and as a
+// filter; the rest of the plain reply is unchanged.
+func TestTaskVerificationOverHTTP(t *testing.T) {
+	e := newTQEnv(t)
+	ctx := context.Background()
+	_, err := e.bs.Subscribe(ctx, "team", "lead", "Orchestrator", "lead-session", nil, "all")
+	require.NoError(t, err)
+	done := func(title string, arts []board.TaskArtifact) int64 {
+		task, err := e.bs.CreateTask(ctx, "team", title, "BODY-"+title, "medium", "lead", "worker")
+		require.NoError(t, err)
+		_, err = e.bs.ClaimTask(ctx, "team", "worker", task.ID)
+		require.NoError(t, err)
+		_, err = e.bs.CompleteTaskWithArtifacts(ctx, "team", task.ID, "lead", nil, "success", arts)
+		require.NoError(t, err)
+		return task.ID
+	}
+	plain := done("plain", nil)
+	evid := done("evid", []board.TaskArtifact{{Name: "r", Content: "x"}})
+	open, err := e.bs.CreateTask(ctx, "team", "open", "", "medium", "lead", "worker")
+	require.NoError(t, err)
+
+	get := func(path string) (int, map[string]any) {
+		resp, err := http.Get(e.srv.URL + path)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		var out map[string]any
+		_ = json.Unmarshal(b, &out)
+		return resp.StatusCode, out
+	}
+	rows := func(path string) map[int64]map[string]any {
+		code, out := get(path)
+		require.Equal(t, 200, code)
+		m := map[int64]map[string]any{}
+		for _, r := range out["tasks"].([]any) {
+			row := r.(map[string]any)
+			m[int64(row["id"].(float64))] = row
+		}
+		return m
+	}
+
+	// the plain list: whole rows with the new field on completed tasks, none on the open one
+	list := rows("/api/board/tasks")
+	assert.Equal(t, "unverified", list[plain]["verification"].(map[string]any)["state"])
+	assert.Equal(t, "evidence", list[evid]["verification"].(map[string]any)["state"])
+	assert.NotContains(t, list[open.ID], "verification")
+	assert.Equal(t, []any{}, list[plain]["verification"].(map[string]any)["by"])
+	assert.NotEmpty(t, list[plain]["verification"].(map[string]any)["at"])
+	assert.Contains(t, list[plain], "body", "whole rows are otherwise as before")
+	assert.Contains(t, list[plain], "workflow")
+
+	// task detail
+	code, detail := get("/api/board/team/tasks/" + fmt.Sprint(evid))
+	require.Equal(t, 200, code)
+	assert.Equal(t, "evidence", detail["verification"].(map[string]any)["state"])
+	code, detail = get("/api/board/team/tasks/" + fmt.Sprint(open.ID))
+	require.Equal(t, 200, code)
+	assert.NotContains(t, detail, "verification")
+
+	// the filter, alone and with the projection
+	assert.Equal(t, []int64{evid}, keys(rows("/api/board/tasks?verification=evidence")))
+	assert.Equal(t, []int64{plain}, keys(rows("/api/board/tasks?verification=unverified&fields=id,title")))
+	assert.Equal(t, []int64{plain, evid}, keys(rows("/api/board/tasks?verification=unverified,evidence")))
+	assert.Empty(t, keys(rows("/api/board/tasks?verification=verified")))
+	proj := rows("/api/board/tasks?fields=id,verification&sort=created_at&order=asc")
+	assert.Equal(t, "unverified", proj[plain]["verification"].(map[string]any)["state"])
+	assert.Nil(t, proj[open.ID]["verification"])
+	assert.Contains(t, proj[open.ID], "verification")
+
+	// unknown value: a 400 that names it
+	code, out := get("/api/board/tasks?verification=done")
+	assert.Equal(t, 400, code)
+	assert.Contains(t, fmt.Sprint(out["error"]), "unknown verification done")
+}
+
+func keys(m map[int64]map[string]any) []int64 {
+	var ids []int64
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
 }

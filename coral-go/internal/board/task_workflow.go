@@ -414,6 +414,7 @@ func finishWorkflow(t *Task, w TaskWorkflow) {
 		}
 	}
 	t.Workflow = w
+	t.Verification = verificationOf(t)
 }
 
 // dependencyInputRow is one upstream of a downstream task, for dependencyInputs.

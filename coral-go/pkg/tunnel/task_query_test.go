@@ -25,6 +25,8 @@ func TestTaskQueryRouteIsViewTier(t *testing.T) {
 		{"GET", "/api/board/tasks", "fields=summary", TierView},
 		{"GET", "/api/board/tasks", "board=p&priority=high&created_by=x&parked=true&created_since=2026-10-18T00:00:00Z&updated_since=2026-10-18T00:00:00Z", TierView},
 		{"GET", "/api/board/tasks", "sort=updated_at&order=asc&limit=50&cursor=abc", TierView},
+		{"GET", "/api/board/tasks", "verification=verified&fields=id,verification", TierView}, // #4563
+		{"GET", "/api/board/tasks", "verified=true", TierNever},
 		{"HEAD", "/api/board/tasks", "limit=5", TierView},
 		{"GET", "/api/board/tasks", "body=1", TierNever},
 		{"GET", "/api/board/tasks", "filter=status%3Dpending", TierNever},

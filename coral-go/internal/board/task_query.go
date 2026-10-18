@@ -35,7 +35,7 @@ var taskQueryColumns = map[string]string{
 // TaskQueryFieldNames lists every field a caller may name (besides the word summary), sorted for the docs and the 400 message.
 func TaskQueryFieldNames() []string {
 	return []string{"assigned_to", "board_id", "board_label", "body", "claimed_at", "completed_at", "completed_by", "completion_message",
-		"created_at", "created_by", "id", "parked_reason", "parked_until", "priority", "remind_at", "revision", "status", "title", "updated_at"}
+		"created_at", "created_by", "id", "parked_reason", "parked_until", "priority", "remind_at", "revision", "status", "title", "updated_at", "verification"}
 }
 
 var (
@@ -61,19 +61,20 @@ func taskQueryErr(format string, a ...any) error {
 // TaskQuery is a validated query. Build it with ParseTaskQuery.
 type TaskQuery struct {
 	// Fields is nil when the caller named none: the reply is then the whole task row, as the list has always been.
-	Fields       []string
-	Statuses     []string
-	AssignedTo   []string
-	Boards       []string
-	Priorities   []string
-	CreatedBy    []string
-	Parked       *bool
-	CreatedSince string
-	UpdatedSince string
-	SortUpdated  bool
-	Desc         bool
-	Limit        int
-	cursor       *queryTaskCursor
+	Fields        []string
+	Statuses      []string
+	AssignedTo    []string
+	Boards        []string
+	Priorities    []string
+	CreatedBy     []string
+	Verifications []string
+	Parked        *bool
+	CreatedSince  string
+	UpdatedSince  string
+	SortUpdated   bool
+	Desc          bool
+	Limit         int
+	cursor        *queryTaskCursor
 }
 
 type queryTaskCursor struct {
@@ -85,8 +86,8 @@ type queryTaskCursor struct {
 
 // TaskQueryParams are the raw values of a request, one slice per parameter, as the HTTP layer read them.
 type TaskQueryParams struct {
-	Fields, Status, AssignedTo, Board, Priority, CreatedBy         []string
-	Parked, CreatedSince, UpdatedSince, Sort, Order, Limit, Cursor []string
+	Fields, Status, AssignedTo, Board, Priority, CreatedBy, Verification []string
+	Parked, CreatedSince, UpdatedSince, Sort, Order, Limit, Cursor       []string
 }
 
 // splitMulti reads a multi-value parameter: repeated (status=a&status=b) or comma separated (status=a,b), or both.
@@ -182,7 +183,7 @@ func ParseTaskQuery(p TaskQueryParams) (*TaskQuery, error) {
 				}
 				continue
 			}
-			if _, ok := taskQueryColumns[n]; !ok && n != "board_label" {
+			if _, ok := taskQueryColumns[n]; !ok && n != "board_label" && n != "verification" {
 				bad = append(bad, n)
 				continue
 			}
@@ -197,6 +198,9 @@ func ParseTaskQuery(p TaskQueryParams) (*TaskQuery, error) {
 		return nil, err
 	}
 	if q.Priorities, err = oneOf("priority", p.Priority, taskPriorities); err != nil {
+		return nil, err
+	}
+	if q.Verifications, err = oneOf("verification", p.Verification, []string{VerificationVerified, VerificationEvidence, VerificationUnverified}); err != nil {
 		return nil, err
 	}
 	if q.AssignedTo, err = splitMulti("assigned_to", p.AssignedTo); err != nil {
@@ -330,11 +334,19 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 		sortExpr, sortName = updatedAtSQL, "updated_at"
 	}
 	var cols []string
+	wantVerification := false
 	for _, f := range q.Fields {
 		if f == "board_label" {
 			continue
 		}
+		if f == "verification" {
+			wantVerification = true
+			continue
+		}
 		cols = append(cols, taskQueryColumns[f]+` AS "`+f+`"`)
+	}
+	if wantVerification {
+		cols = append(cols, `status AS "_status"`, `completed_at AS "_completed"`)
 	}
 	cols = append(cols, `id AS "_id"`, `board_id AS "_board"`, sortExpr+` AS "_sort"`)
 	var where []string
@@ -353,6 +365,15 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 	in("assigned_to", q.AssignedTo)
 	in("board_id", q.Boards)
 	in("created_by", q.CreatedBy)
+	join := ""
+	if len(q.Verifications) > 0 {
+		join = " LEFT JOIN task_workflows w ON w.task_id = board_tasks.id"
+		var alts []string
+		for _, v := range q.Verifications {
+			alts = append(alts, verificationSQL[v])
+		}
+		where = append(where, "("+strings.Join(alts, " OR ")+")")
+	}
 	if q.Parked != nil {
 		if *q.Parked {
 			where = append(where, parkedSQL)
@@ -377,7 +398,7 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 		where = append(where, "("+sortExpr+" "+cmp+" ? OR ("+sortExpr+" = ? AND id "+cmp+" ?))")
 		args = append(args, q.cursor.Val, q.cursor.Val, q.cursor.ID)
 	}
-	stmt := "SELECT " + strings.Join(cols, ", ") + " FROM board_tasks"
+	stmt := "SELECT " + strings.Join(cols, ", ") + " FROM board_tasks" + join
 	if len(where) > 0 {
 		stmt += " WHERE " + strings.Join(where, " AND ")
 	}
@@ -391,6 +412,7 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 	defer rows.Close()
 	res := &TaskQueryResult{Tasks: []map[string]any{}}
 	var boards []string
+	var vTasks []Task
 	var last queryTaskCursor
 	more := false
 	for rows.Next() {
@@ -412,6 +434,16 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 		last = queryTaskCursor{Sort: sortName, Desc: q.Desc, Val: sortVal, ID: id}
 		board, _ := m["_board"].(string)
 		boards = append(boards, board)
+		if wantVerification {
+			t := Task{ID: id}
+			t.Status, _ = m["_status"].(string)
+			if c, ok := m["_completed"].(string); ok {
+				t.CompletedAt = &c
+			}
+			vTasks = append(vTasks, t)
+			delete(m, "_status")
+			delete(m, "_completed")
+		}
 		delete(m, "_id")
 		delete(m, "_board")
 		delete(m, "_sort")
@@ -429,6 +461,27 @@ func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult,
 				}
 			}
 			break
+		}
+	}
+	if wantVerification {
+		ids := make([]int64, len(vTasks))
+		for i := range vTasks {
+			ids[i] = vTasks[i].ID
+		}
+		data, err := s.loadWorkflowData(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for i, t := range vTasks {
+			// A task whose workflow cannot be read has no state, as in the whole rows.
+			var state any
+			if w, werr := decodeWorkflow(data[t.ID], true); werr == nil {
+				finishWorkflow(&t, w)
+				if t.Verification != nil {
+					state = t.Verification
+				}
+			}
+			res.Tasks[i]["verification"] = state
 		}
 	}
 	if more {

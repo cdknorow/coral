@@ -428,6 +428,16 @@ predecessor is already unclaimable. It is not a way to supersede pending work.
 Sibling retries remain separate attempts; neither automatically retires the other.
 There is no separate machine-readable “integrated” or “superseded” task status.
 
+## Is "done" verified?
+
+A completed task with outcome `success` has a `verification` object on task detail and in the task lists: `state` is
+`verified` (a reviewer other than the author approved it through the review flow, or its registered completion gates all
+passed for the accepted candidate revision), `evidence` (no independent check, but it has artifacts) or `unverified`;
+`by` names the approving reviewers and `gate:<type>` for each passed gate; `at` is when. The server computes it from the
+review and gate records: you cannot set it, the author approving their own work never counts, and nothing is blocked by it.
+`GET /api/board/tasks` can filter by it (`verification=verified|evidence|unverified`) and return it as a field; the
+contract is in board.md (Task query).
+
 ## Retries and evidence history
 
 Terminal results cannot be overwritten or reopened. Create a new task with

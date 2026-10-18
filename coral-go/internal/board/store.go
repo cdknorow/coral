@@ -85,6 +85,9 @@ type Task struct {
 	RemindAt  *string      `db:"remind_at" json:"remind_at,omitempty"`
 	BlockedBy []TaskDep    `db:"-" json:"blocked_by,omitempty"`
 	Workflow  TaskWorkflow `db:"-" json:"workflow"`
+	// Verification: whether a completed task's "done" is backed by an independent check (#4563); set when the workflow is
+	// attached, for a completed task with outcome success only.
+	Verification *Verification `db:"-" json:"verification,omitempty"`
 }
 
 type TaskDep struct {

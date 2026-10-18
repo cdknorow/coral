@@ -750,10 +750,11 @@ and the connector accepts only the parameters below.
 
 | Parameter | Values |
 |---|---|
-| `fields` | Which fields come back: comma list (or repeated) of `summary` and/or `id`, `revision`, `board_id`, `board_label`, `title`, `status`, `priority`, `created_by`, `assigned_to`, `completed_by`, `parked_reason`, `parked_until`, `remind_at`, `created_at`, `claimed_at`, `completed_at`, `updated_at`, `body`, `completion_message`. `summary` stands for `id`, `title`, `status`, `priority`, `assigned_to`, `board_id`, `board_label`, `parked_reason`, `parked_until`, `created_at`, `updated_at`: no long text. `body` and `completion_message` come back only when named. Without `fields` the reply carries the whole task rows as the plain list does. `board_label` is left out for a board that has no label. |
+| `fields` | Which fields come back: comma list (or repeated) of `summary` and/or `id`, `revision`, `board_id`, `board_label`, `title`, `status`, `priority`, `created_by`, `assigned_to`, `completed_by`, `parked_reason`, `parked_until`, `remind_at`, `created_at`, `claimed_at`, `completed_at`, `updated_at`, `verification`, `body`, `completion_message`. `summary` stands for `id`, `title`, `status`, `priority`, `assigned_to`, `board_id`, `board_label`, `parked_reason`, `parked_until`, `created_at`, `updated_at`: no long text. `body` and `completion_message` come back only when named. Without `fields` the reply carries the whole task rows as the plain list does. `board_label` is left out for a board that has no label. |
 | `status` | Multi: `pending`, `in_progress`, `completed`, `skipped`, `blocked`, `draft`, `review_pending` |
 | `assigned_to`, `board`, `created_by` | Multi: exact names (a board is its `board_id`) |
 | `priority` | Multi: `critical`, `high`, `medium`, `low` |
+| `verification` | Multi: `verified`, `evidence`, `unverified`: the state of a completed task (see Verification below); tasks that have none are never returned by it |
 | `parked` | `true`: parked now (a reason, and a park time not yet past or none); `false`: not parked |
 | `created_since`, `updated_since` | RFC 3339 time (an offset is read as that instant); tasks created or updated at or after it |
 | `sort` | `created_at` (default) or `updated_at` |
@@ -766,6 +767,25 @@ at most 50 values; the values of one parameter are alternatives (OR) and differe
 `unassigned` filter and no review-state filter yet. A task has no `updated_at` column: `updated_at` is the newest of
 `created_at`, `claimed_at`, `completed_at` and the task's last activity (a nudge, an amendment), so `updated_since` and
 `sort=updated_at` use that. Times are UTC text and compare as text.
+
+**Verification** (#4563). A completed task with outcome `success` carries `verification: {"state", "by", "at"}`, so "done" can be
+trusted at a glance. The server computes it from the review and gate records; an agent cannot set it, and it blocks nothing
+(it is a label). It is on every task row that lists whole rows (this route without `fields`, the board's task list, task
+detail), as the `verification` field of the query, and as the `verification` filter.
+
+| `state` | Meaning | `by` | `at` |
+|---|---|---|---|
+| `verified` | a reviewer other than the task's author approved it through the review flow (the final round was approved), or every completion gate registered on it passed for the accepted candidate revision | the approving reviewers' names, and `gate:<type>` for each passed gate | the newest approval or gate check |
+| `evidence` | no independent check, but the completion carries artifacts | `[]` | when it was completed |
+| `unverified` | neither | `[]` | when it was completed |
+
+The author approving their own work never counts (a reviewer is compared with the task's original author, ignoring case). A
+task whose gates were checked against another revision than the one accepted, or with a failed or missing gate result, is not
+verified by its gates. A failed or cancelled task, a task that is not completed, and a review task (the verdict record of
+someone else's task) have no `verification` (the field is absent from whole rows and `null` in a projection). There is no
+stored column: the state is computed from the stored workflow when a row is read, and the filter evaluates the same rules in
+SQL over it, so it is as fresh as the record; a very large board filtered by `verification` scans the workflow JSON of the
+tasks it considers.
 
 **Reply:** `{"tasks": [ ... ], "next_cursor": "..."}`. Each task holds only the fields asked for, with `null` for an empty
 one (whole rows as before). `next_cursor` is present only when there is another page; pass it back as `cursor`. Paging is by
