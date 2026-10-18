@@ -17,6 +17,12 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 // The token wait: generous, since a healthy launch writes it in well under a second.
 const TOKEN_DEADLINE_MS = 30000;
 
+// Stand-ins can overlap (terminal_switch launches two), and each one's cli_path_claude replaces the last. What to give back is the value from before the FIRST live one,
+// and only when the LAST one stops: restoring each stand-in's own "previous value" left the earlier stand-in's deleted script as the server's path, which a later suite on
+// the same server (settings_modal_trace) then showed. OURS is every script this process set, so a path someone else set is still never overwritten (#4354).
+const LIVE = new Set(), OURS = new Set();
+let ORIGINAL = '';
+
 // launchStandIn starts the stand-in. api(method, path, body) returns {status, data}, as the
 // suites' own JSON helpers do. It returns {sid, name, token, launch, ms, diag, stop}; token is
 // '' when it never came, and diag then explains why. Always call stop() (in a finally): it
@@ -39,7 +45,8 @@ async function launchStandIn(api, { workingDir = '/tmp', displayName = 'Stand-in
         `printf '%s' "$CORAL_SESSION_TOKEN" > '${tokenFile}.tmp' && mv '${tokenFile}.tmp' '${tokenFile}'`,
         'exec sleep 600', '',
     ].join('\n'), { mode: 0o755 });
-    const prevCLI = ((await api('GET', '/api/settings')).data?.settings || {}).cli_path_claude || '';
+    if (!LIVE.size) ORIGINAL = ((await api('GET', '/api/settings')).data?.settings || {}).cli_path_claude || '';
+    LIVE.add(cli); OURS.add(cli);
     await api('PUT', '/api/settings', { cli_path_claude: cli });
 
     let launch = null;
@@ -47,12 +54,13 @@ async function launchStandIn(api, { workingDir = '/tmp', displayName = 'Stand-in
         const d = launch && launch.data;
         if (d && d.session_id) await api('POST', `/api/sessions/live/${encodeURIComponent(d.session_name)}/kill`, { agent_type: 'claude', session_id: d.session_id }).catch(() => {});
         // Restore cli_path_claude only to undo OUR own change, and never write an empty value over a path
-        // someone else set (#4354): if cli_path_claude is still this stand-in's script, put back the value
-        // we replaced -- but only if that value was non-empty. If there was no previous value (prevCLI
-        // empty), or another client has changed cli_path_claude since (so it is no longer our script), we
-        // leave it alone rather than clearing it to empty, which used to wipe a path set elsewhere.
+        // someone else set (#4354): when the last live stand-in stops and cli_path_claude is still one of our
+        // scripts, put back the value from before the first one -- but only if that value was non-empty. If there
+        // was no previous value, or another client has changed cli_path_claude since (so it is no longer one of
+        // our scripts), we leave it alone rather than clearing it to empty, which used to wipe a path set elsewhere.
+        LIVE.delete(cli);
         const cur = (((await api('GET', '/api/settings').catch(() => ({}))).data || {}).settings || {}).cli_path_claude || '';
-        if (cur === cli && prevCLI) await api('PUT', '/api/settings', { cli_path_claude: prevCLI }).catch(() => {});
+        if (!LIVE.size && OURS.has(cur) && ORIGINAL) await api('PUT', '/api/settings', { cli_path_claude: ORIGINAL }).catch(() => {});
         fs.rmSync(dir, { recursive: true, force: true });
     };
 
