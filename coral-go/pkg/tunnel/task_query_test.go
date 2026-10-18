@@ -30,7 +30,9 @@ func TestTaskQueryRouteIsViewTier(t *testing.T) {
 		{"HEAD", "/api/board/tasks", "limit=5", TierView},
 		{"GET", "/api/board/tasks", "body=1", TierNever},
 		{"GET", "/api/board/tasks", "filter=status%3Dpending", TierNever},
-		{"GET", "/api/board/tasks", "q=select", TierNever},
+		{"GET", "/api/board/tasks", "q=select&status=pending&fields=id,title", TierView}, // #4745: q is read now
+		{"GET", "/api/board/tasks", "query=select", TierNever},
+		{"GET", "/api/board/tasks", "search=select", TierNever},
 		{"POST", "/api/board/tasks", "", TierNever},
 		{"PUT", "/api/board/tasks", "", TierNever},
 		{"GET", "/api/board/tasks/query", "", TierNever}, // there is no second route

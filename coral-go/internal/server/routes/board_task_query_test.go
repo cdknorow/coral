@@ -473,3 +473,96 @@ func TestTaskQueryTunneledNameFiltersRefuseSecrets(t *testing.T) {
 	assert.Equal(t, 200, code)
 	assert.Equal(t, []string{"secret owner"}, titles)
 }
+
+// #4745: q searches a task's title, body and completion message (a plain, case-insensitive substring), the reply has the total, and
+// through Coral Hub the match is made on what the viewer sees: a token cannot be searched for, and the marker that stands in for it can.
+func TestTaskQueryTextOverHTTP(t *testing.T) {
+	const tok = "ghp_aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"
+	e := newTQEnv(t)
+	e.seed()
+	e.add("alpha", "deploy notes", "the key is "+tok+" 100% sure", "low", "Operator", "", "created_at = '2026-10-16T00:00:00Z'")
+	total := func(q string) (int, []string, any) {
+		e.t.Helper()
+		code, out, body := e.get(q)
+		require.Equal(e.t, 200, code, q+" "+body)
+		var ts []string
+		for _, r := range out["tasks"].([]any) {
+			ts = append(ts, r.(map[string]any)["title"].(string))
+		}
+		return int(out["total"].(float64)), ts, out["next_cursor"]
+	}
+	// the body, the completion message and the title; any case; the whole row and the projection
+	n, ts, _ := total("q=body-c&fields=id,title")
+	assert.Equal(t, 1, n)
+	assert.Equal(t, []string{"c"}, ts)
+	n, ts, _ = total("q=done-C")
+	assert.Equal(t, 1, n)
+	assert.Equal(t, []string{"c"}, ts)
+	n, ts, _ = total("q=DEPLOY&fields=id,title")
+	assert.Equal(t, 1, n)
+	assert.Equal(t, []string{"deploy notes"}, ts)
+	// % and _ are ordinary characters, not patterns: each finds only the task whose text holds it (a LIKE "%" or "_" would find all)
+	n, ts, _ = total("q=" + url.QueryEscape("100%") + "&fields=id,title")
+	assert.Equal(t, []string{"deploy notes"}, ts)
+	n, ts, _ = total("q=" + url.QueryEscape("%") + "&fields=id,title")
+	assert.Equal(t, []string{"deploy notes"}, ts)
+	n, ts, _ = total("q=_&fields=id,title")
+	assert.Equal(t, []string{"deploy notes"}, ts, "the underscore in the token")
+	// with another filter, and paging: the total counts every match, a page is limit rows
+	n, ts, next := total("q=body&fields=id,title&limit=2&order=asc")
+	assert.Equal(t, 5, n)
+	assert.Equal(t, []string{"a", "b"}, ts)
+	require.NotNil(t, next)
+	n, ts, next = total("q=body&fields=id,title&limit=2&order=asc&cursor=" + next.(string))
+	assert.Equal(t, 5, n)
+	assert.Equal(t, []string{"c", "d"}, ts)
+	require.NotNil(t, next)
+	n, ts, next = total("q=body&fields=id,title&limit=2&order=asc&cursor=" + next.(string))
+	assert.Equal(t, []string{"e"}, ts)
+	assert.Nil(t, next)
+	n, ts, _ = total("q=body&status=completed&fields=id,title")
+	assert.Equal(t, 1, n)
+	// a reply with no q has a total too: the tasks its filters match
+	code, out, body := e.get("status=pending&fields=id,title&limit=1")
+	require.Equal(t, 200, code, body)
+	assert.Equal(t, float64(4), out["total"])
+	// a q the parser refuses is a 400 naming it
+	code, _, body = e.get("q=" + url.QueryEscape(strings.Repeat("x", 201)))
+	assert.Equal(t, 400, code)
+	assert.Contains(t, body, "q is at most 200 characters")
+
+	tunneled := func(query string) (int, string, []string) {
+		req, err := http.NewRequest("GET", e.srv.URL+"/api/board/tasks?"+query, nil)
+		require.NoError(t, err)
+		req.Header.Set(tunnel.ViaHeader, "1")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		var out struct {
+			Tasks []map[string]any `json:"tasks"`
+			Error string           `json:"error"`
+		}
+		_ = json.Unmarshal(b, &out)
+		var titles []string
+		for _, r := range out.Tasks {
+			titles = append(titles, r["title"].(string))
+		}
+		return resp.StatusCode, out.Error, titles
+	}
+	// through the hub: a q holding a secret is refused; the marker finds the task; text without a secret is as before
+	code2, msg, _ := tunneled("q=" + tok + "&fields=id,title")
+	assert.Equal(t, 400, code2)
+	assert.Contains(t, msg, "q can't contain a secret")
+	code2, _, titles := tunneled("q=redacted&fields=id,title")
+	assert.Equal(t, 200, code2)
+	assert.Equal(t, []string{"deploy notes"}, titles, "the viewer sees [redacted token] in the body")
+	code2, _, titles = tunneled("q=" + url.QueryEscape("100%") + "&fields=id,title")
+	assert.Equal(t, 200, code2)
+	assert.Equal(t, []string{"deploy notes"}, titles)
+	// a local caller searches the stored text, secret and all
+	n, ts, _ = total("q=" + tok + "&fields=id,title")
+	assert.Equal(t, []string{"deploy notes"}, ts)
+	n, _, _ = total("q=redacted&fields=id,title")
+	assert.Equal(t, 0, n, "the stored text has no marker")
+}

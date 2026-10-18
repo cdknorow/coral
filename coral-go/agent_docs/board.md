@@ -780,6 +780,7 @@ and the connector accepts only the parameters below.
 | `verification` | Multi: `verified`, `evidence`, `unverified`: the state of a completed task (see Verification below); tasks that have none are never returned by it |
 | `parked` | `true`: parked now (a reason, and a park time not yet past or none); `false`: not parked |
 | `created_since`, `updated_since` | RFC 3339 time (an offset is read as that instant); tasks created or updated at or after it |
+| `q` | Search text (#4745): a plain, case-insensitive substring of a task's title, body or completion message, at most 200 characters, no control characters, given once. `%` and `_` are ordinary characters (no pattern); whitespace around it is trimmed, and an empty `q` is no search. It combines with every other filter. Through Coral Hub it is matched on the text a viewer sees (a token in a body is not there to match, and the marker `[redacted token]` that stands in for it is), and a `q` holding a token, key or password is refused with a 400 |
 | `sort` | `created_at` (default) or `updated_at` |
 | `order` | `desc` (default, newest first) or `asc` |
 | `limit` | 1 to 500, default 100; 1 to 100 when the reply carries `body` or `completion_message` (named, or whole rows) |
@@ -812,8 +813,10 @@ stored column: the state is computed from the stored workflow when a row is read
 SQL over it, so it is as fresh as the record; a very large board filtered by `verification` scans the workflow JSON of the
 tasks it considers.
 
-**Reply:** `{"tasks": [ ... ], "next_cursor": "..."}`. Each task holds only the fields asked for, with `null` for an empty
-one (whole rows as before). `next_cursor` is present only when there is another page; pass it back as `cursor`. Paging is by
+**Reply:** `{"tasks": [ ... ], "total": N, "next_cursor": "..."}`. Each task holds only the fields asked for, with `null` for an empty
+one (whole rows as before). `total` is how many tasks the filters (and `q`) match, whatever the page and the cursor; with `q`
+the reply also has `"truncated": true` when the search stopped at its bound (50,000 tasks or 64 MiB of text read: the total and
+the pages are then those of what it read). `next_cursor` is present only when there is another page; pass it back as `cursor`. Paging is by
 key (the sort value, then the task id), so tasks created or finished meanwhile do not shift the next page, and ties on the
 sort time are broken by id.
 

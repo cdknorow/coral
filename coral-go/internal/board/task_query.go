@@ -77,7 +77,12 @@ type TaskQuery struct {
 	SortUpdated   bool
 	Desc          bool
 	Limit         int
-	cursor        *queryTaskCursor
+	// Text is q, lower-cased: a plain substring (never a pattern) of a task's title, body or completion message (#4745). Empty: no
+	// search. Shown, set by the caller and not by the parser, is what a viewer sees of a text: the match is made on it (nil: the text
+	// as stored), so a search through Coral Hub cannot tell a viewer what the redaction hides.
+	Text   string
+	Shown  func(string) string
+	cursor *queryTaskCursor
 }
 
 type queryTaskCursor struct {
@@ -91,6 +96,7 @@ type queryTaskCursor struct {
 type TaskQueryParams struct {
 	Fields, Status, AssignedTo, Board, Priority, CreatedBy, Verification []string
 	Parked, CreatedSince, UpdatedSince, Sort, Order, Limit, Cursor       []string
+	Q                                                                    []string
 }
 
 // splitMulti reads a multi-value parameter: repeated (status=a&status=b) or comma separated (status=a,b), or both.
@@ -202,6 +208,9 @@ func ParseTaskQuery(p TaskQueryParams) (*TaskQuery, error) {
 		return nil, err
 	}
 	if q.Limit, err = parseQueryLimit(p.Limit, q.Fields); err != nil {
+		return nil, err
+	}
+	if q.Text, err = parseQueryText(p.Q); err != nil {
 		return nil, err
 	}
 	if q.cursor, err = parseQueryCursor(p.Cursor, q.SortUpdated, q.Desc); err != nil {
@@ -360,16 +369,22 @@ func (c queryTaskCursor) encode() string {
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
-// TaskQueryResult is one page: the rows hold only the fields asked for.
+// TaskQueryResult is one page: the rows hold only the fields asked for. Total, with a search, is how many tasks match it (counted over
+// the tasks scanned: Truncated says the scan stopped at its bound, so the count and the pages stop there too).
 type TaskQueryResult struct {
 	Tasks      []map[string]any
 	NextCursor string
+	Total      int
+	Truncated  bool
 }
 
 func placeholders(n int) string { return strings.TrimSuffix(strings.Repeat("?,", n), ",") }
 
 // QueryTasks runs q. The statement text is built only from the constants above and "?" placeholders.
 func (s *Store) QueryTasks(ctx context.Context, q *TaskQuery) (*TaskQueryResult, error) {
+	if q.Text != "" {
+		return s.queryTasksText(ctx, q)
+	}
 	stmt, args, wantVerification := taskQueryStatement(q)
 	rows, err := s.reader().QueryxContext(ctx, stmt, args...)
 	if err != nil {
@@ -583,11 +598,21 @@ func (s *Store) addVerification(ctx context.Context, tasks []map[string]any, vTa
 // QueryTaskRows runs q for the whole task rows (q.Fields nil), as ListAllTasks returns them: the matching ids and the next cursor
 // come from the same query as the projections, the rows are then read in that order.
 func (s *Store) QueryTaskRows(ctx context.Context, q *TaskQuery) ([]Task, string, error) {
+	tasks, res, err := s.QueryTaskRowsResult(ctx, q)
+	if err != nil {
+		return nil, "", err
+	}
+	return tasks, res.NextCursor, nil
+}
+
+// QueryTaskRowsResult is QueryTaskRows with the page's whole result: the next cursor and, with a search, the total and whether the scan
+// stopped at its bound (#4745).
+func (s *Store) QueryTaskRowsResult(ctx context.Context, q *TaskQuery) ([]Task, *TaskQueryResult, error) {
 	idq := *q
 	idq.Fields = []string{"id"}
 	res, err := s.QueryTasks(ctx, &idq)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 	ids := make([]any, len(res.Tasks))
 	for i, m := range res.Tasks {
@@ -595,13 +620,13 @@ func (s *Store) QueryTaskRows(ctx context.Context, q *TaskQuery) ([]Task, string
 	}
 	tasks := []Task{}
 	if len(ids) == 0 {
-		return tasks, res.NextCursor, nil
+		return tasks, res, nil
 	}
 	var rows []Task
 	err = s.reader().SelectContext(ctx, &rows,
 		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE id IN (`+placeholders(len(ids))+`)`, ids...)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 	byID := make(map[int64]Task, len(rows))
 	for _, t := range rows {
@@ -613,5 +638,5 @@ func (s *Store) QueryTaskRows(ctx context.Context, q *TaskQuery) ([]Task, string
 		}
 	}
 	s.populateTaskDeps(ctx, tasks)
-	return tasks, res.NextCursor, nil
+	return tasks, res, nil
 }

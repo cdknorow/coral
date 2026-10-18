@@ -12,12 +12,16 @@ import (
 )
 
 var taskQueryParamNames = map[string]bool{"fields": true, "status": true, "assigned_to": true, "board": true, "priority": true,
-	"created_by": true, "verification": true, "parked": true, "created_since": true, "updated_since": true, "sort": true, "order": true, "limit": true, "cursor": true}
+	"created_by": true, "verification": true, "parked": true, "created_since": true, "updated_since": true, "sort": true, "order": true, "limit": true, "cursor": true, "q": true}
 
 // queryAllTasks is GET /api/board/tasks with a query (#4540), for clients such as Coral Hub that show their own filtered view:
 //
 //	?fields=a,b|summary&status=a&status=b&assigned_to=X&board=P&priority=high&created_by=X&verification=verified&parked=true
-//	&created_since=<RFC 3339>&updated_since=<RFC 3339>&sort=created_at|updated_at&order=asc|desc&limit=N&cursor=C
+//	&created_since=<RFC 3339>&updated_since=<RFC 3339>&q=<text>&sort=created_at|updated_at&order=asc|desc&limit=N&cursor=C
+//
+// q (#4745) is a plain case-insensitive substring of a task's title, body or completion message (% and _ are ordinary characters, no
+// pattern, at most 200 characters). The reply always has "total", the tasks the filters (and q) match; with q it also has "truncated"
+// when the search stopped at its bound (50,000 tasks or 64 MiB of text).
 //
 // It returns false, leaving the request to the plain list, when the query holds nothing but limit. Otherwise the reply is
 // {"tasks": [...], "next_cursor": "..."} (next_cursor only when there is another page): the whole task rows as the plain list
@@ -52,7 +56,7 @@ func (h *BoardHandler) queryAllTasks(w http.ResponseWriter, r *http.Request) boo
 	query, err := board.ParseTaskQuery(board.TaskQueryParams{
 		Fields: q["fields"], Status: q["status"], AssignedTo: q["assigned_to"], Board: q["board"], Priority: q["priority"],
 		CreatedBy: q["created_by"], Verification: q["verification"], Parked: q["parked"], CreatedSince: q["created_since"], UpdatedSince: q["updated_since"],
-		Sort: q["sort"], Order: q["order"], Limit: q["limit"], Cursor: q["cursor"],
+		Sort: q["sort"], Order: q["order"], Limit: q["limit"], Cursor: q["cursor"], Q: q["q"],
 	})
 	if err != nil {
 		if errors.Is(err, board.ErrTaskQuery) {
@@ -75,13 +79,25 @@ func (h *BoardHandler) queryAllTasks(w http.ResponseWriter, r *http.Request) boo
 			}
 		}
 	}
+	if cloud.Tunneled(r) && query.Text != "" {
+		// The same for q, and the match is made on what the viewer sees (the connector redacts the reply after this handler has matched,
+		// so matching the stored text would let q tell a viewer what the redaction hides, a prefix at a time).
+		if shownText(query.Text) != query.Text {
+			errBadRequest(w, "q can't contain a secret (a token, a key or a password): it would match what the redaction hides")
+			return true
+		}
+		query.Shown = shownText
+	}
 	out := map[string]any{}
+	var res *board.TaskQueryResult
 	if query.Fields == nil {
-		tasks, next, err := h.bs.QueryTaskRows(r.Context(), query)
+		tasks, rowsRes, err := h.bs.QueryTaskRowsResult(r.Context(), query)
 		if err != nil {
 			errInternalServer(w, err.Error())
 			return true
 		}
+		res = rowsRes
+		next := res.NextCursor
 		ids := make([]string, len(tasks))
 		for i := range tasks {
 			ids[i] = tasks[i].BoardID
@@ -95,7 +111,8 @@ func (h *BoardHandler) queryAllTasks(w http.ResponseWriter, r *http.Request) boo
 			out["next_cursor"] = next
 		}
 	} else {
-		res, err := h.bs.QueryTasks(r.Context(), query)
+		var err error
+		res, err = h.bs.QueryTasks(r.Context(), query)
 		if err != nil {
 			errInternalServer(w, err.Error())
 			return true
@@ -104,6 +121,14 @@ func (h *BoardHandler) queryAllTasks(w http.ResponseWriter, r *http.Request) boo
 		if res.NextCursor != "" {
 			out["next_cursor"] = res.NextCursor
 		}
+	}
+	if query.Text != "" {
+		out["total"] = res.Total
+		if res.Truncated {
+			out["truncated"] = true
+		}
+	} else if total, err := h.bs.CountTaskQuery(r.Context(), query); err == nil {
+		out["total"] = total
 	}
 	writeJSON(w, http.StatusOK, out)
 	return true
