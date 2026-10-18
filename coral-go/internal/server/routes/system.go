@@ -206,9 +206,51 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
-	// A setting is a string, a boolean or a number (Security's #4431 SHOULD 1). null is empty, as the
-	// request-pool sizes already took it: it was stored as the text "<nil>", which as a CLI path broke
-	// every launch. An array or an object is refused, with nothing saved.
+	// Every check comes before anything is saved, in this order: the first one a request fails is its answer.
+	if msg := normalizeSettingTypes(body); msg != "" {
+		errBadRequest(w, msg)
+		return
+	}
+	if msg := settingWithItsOwnRoute(body); msg != "" {
+		errBadRequest(w, msg)
+		return
+	}
+	// Every key must be one the registry knows, with a value it accepts (Security's #4431 SHOULD 3).
+	for _, check := range []func(map[string]any) error{
+		checkSettingKeys,
+		validateHubLimitSettings,  // the Coral Hub request pools' sizes (#3642): whole numbers in range, or empty for the default
+		validateAutoWakeSettings,  // the auto-wake setting and cap (#3636): a boolean, and a whole number from 1 to 50
+		validateAutoResumeSetting, // resume agents stopped by an API error (#3613): a boolean
+	} {
+		if err := check(body); err != nil {
+			errBadRequest(w, err.Error())
+			return
+		}
+	}
+	if msg := h.normalizeSettingValues(r.Context(), body); msg != "" {
+		errBadRequest(w, msg)
+		return
+	}
+	if msg := h.checkCLIPaths(r.Context(), body); msg != "" {
+		errBadRequest(w, msg)
+		return
+	}
+	values := settingStrings(body)
+	// One request's settings are written together (one transaction): a later PUT can never
+	// land between two of its keys and be half overwritten by the rest (#3547: the dashboard
+	// saved welcome_choice and welcome_pending, and a PUT in between lost its welcome_pending).
+	if err := h.saveSettings(r.Context(), values); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	applyLiveSettings(values)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// normalizeSettingTypes: a setting is a string, a boolean or a number (Security's #4431 SHOULD 1). null is empty, as
+// the request-pool sizes already took it: it was stored as the text "<nil>", which as a CLI path broke every launch.
+// A number is stored as a whole number with all its digits. An array or an object is refused, with nothing saved.
+func normalizeSettingTypes(body map[string]any) string {
 	for k, v := range body {
 		switch x := v.(type) {
 		case nil:
@@ -217,137 +259,143 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 			// A whole number, stored with all its digits: %v wrote 1e6 and over in exponent form, which the
 			// artifact store's cap then read as 0, no cap (Security's #4431 SHOULD 2).
 			if x != math.Trunc(x) || math.Abs(x) > 1<<53 {
-				errBadRequest(w, k+" must be a whole number")
-				return
+				return k + " must be a whole number"
 			}
 			body[k] = strconv.FormatInt(int64(x), 10)
 		case string, bool:
 		default:
-			errBadRequest(w, k+" must be a string, true or false, or a number")
-			return
+			return k + " must be a string, true or false, or a number"
 		}
 	}
+	return ""
+}
+
+// settingWithItsOwnRoute refuses a setting that only its own route writes, naming that route.
+func settingWithItsOwnRoute(body map[string]any) string {
 	// The terminal backend is written only by its own route, which needs a person (#3634).
 	for k := range body {
 		if isTerminalBackendKey(k) {
-			errBadRequest(w, "terminal_backend is set with Settings > Terminal backend (PUT /api/system/terminal-backend)")
-			return
+			return "terminal_backend is set with Settings > Terminal backend (PUT /api/system/terminal-backend)"
 		}
 	}
-	// cli_path_<type> (Settings > CLI Paths) is the program Coral runs for that agent
-	// type: only a known type, and only an absolute path to an executable file with no
-	// shell metacharacters (#3364). Checked before anything is saved; a value that is
-	// unchanged is not re-checked, so a CLI that was uninstalled since doesn't block
-	// saving other settings.
 	// The Hub-as-Operator opt-out has its own route, which logs every change (#3377, #3404).
 	for _, k := range []string{HubOperatorDisabledSetting, legacyHubOperatorSetting} {
 		if _, ok := body[k]; ok {
-			errBadRequest(w, k+" is set with PUT /api/system/hub-operator")
-			return
+			return k + " is set with PUT /api/system/hub-operator"
 		}
 	}
-	// Sign in with Coral Hub's settings have their own routes (#3966, Security condition 4):
-	// only a local Operator may change them, and turning it off ends Hub sessions.
 	for k := range body {
+		// Sign in with Coral Hub's settings have their own routes (#3966, Security condition 4):
+		// only a local Operator may change them, and turning it off ends Hub sessions.
 		if hubSigninSettingKey(k) {
-			errBadRequest(w, k+" is set in Settings > Browser sign-in (PUT /api/auth/hub-signin or /api/auth/hub-origins)")
-			return
+			return k + " is set in Settings > Browser sign-in (PUT /api/auth/hub-signin or /api/auth/hub-origins)"
 		}
 		// The Coral Hub link's trust settings have their own routes, which a Coral Hub sign-in
 		// can't reach (#3966 round 1): never through the generic PUT, for any caller.
 		if route, ok := hubTrustSettingRoutes[strings.ToLower(strings.TrimSpace(k))]; ok {
-			errBadRequest(w, k+" is set with "+route)
-			return
+			return k + " is set with " + route
 		}
 	}
 	// The identity mode is the Operator's switch, written only by its own route (#4255).
 	for k := range body {
 		if strings.EqualFold(strings.TrimSpace(k), IdentityActorSetting) {
-			errBadRequest(w, k+" is set with PUT /api/system/identity-actor")
-			return
+			return k + " is set with PUT /api/system/identity-actor"
 		}
 	}
 	// Run as a hub has its own route, on this computer only (#3460).
 	if _, ok := body[HubModeSetting]; ok {
-		errBadRequest(w, HubModeSetting+" is set with PUT /api/system/hub-mode")
-		return
+		return HubModeSetting + " is set with PUT /api/system/hub-mode"
 	}
-	// Every key must be one the registry knows, with a value it accepts (Security's #4431 SHOULD 3).
-	if err := checkSettingKeys(body); err != nil {
-		errBadRequest(w, err.Error())
-		return
-	}
-	// The Coral Hub request pools' sizes (#3642): whole numbers in range, or empty for the default.
-	if err := validateHubLimitSettings(body); err != nil {
-		errBadRequest(w, err.Error())
-		return
-	}
-	// The auto-wake setting and cap (#3636): a boolean, and a whole number from 1 to 50.
-	if err := validateAutoWakeSettings(body); err != nil {
-		errBadRequest(w, err.Error())
-		return
-	}
-	// Resume agents stopped by an API error (#3613): a boolean.
-	if err := validateAutoResumeSetting(body); err != nil {
-		errBadRequest(w, err.Error())
-		return
-	}
-	// agent_priority is "low" or "normal" (#3437); anything else was stored and silently
-	// taken as low (#3470). Checked before anything is saved; the stored value is normalised.
-	if v, ok := body[agentprio.SettingKey]; ok {
-		s, isString := v.(string)
-		lvl, valid := agentprio.Parse(s)
-		if !isString || !valid {
-			errBadRequest(w, agentprio.SettingKey+" must be \""+agentprio.Low+"\" or \""+agentprio.Normal+"\"")
-			return
-		}
-		body[agentprio.SettingKey] = lvl
-	}
-	// The artifact store's cap: a whole number of bytes, 0 for none.
-	if v, ok := body[ArtifactStoreMaxBytesSetting]; ok {
-		s, isString := v.(string) // a number is a string by now
-		n, valid := parseStoreCap(s)
-		if !isString || !valid {
-			errBadRequest(w, ArtifactStoreMaxBytesSetting+" must be a whole number of bytes (0 for no cap)")
-			return
-		}
-		body[ArtifactStoreMaxBytesSetting] = strconv.FormatInt(n, 10)
-	}
-	// The cap on received files (#4441): whole bytes, 0 for none; and the notice's acknowledgement, the cap it was shown for.
-	if v, ok := body[ReceivedArtifactsMaxBytesSetting]; ok {
+	return ""
+}
+
+// settingRule is one setting's check: its normalised value, or false with msg the reason. v is a string, bool or
+// whole-number string by now (normalizeSettingTypes).
+type settingRule struct {
+	key, msg string
+	norm     func(v any) (string, bool)
+}
+
+// capSetting: a whole number of bytes, 0 for none (and, unless emptyOK, not empty).
+func capSetting(emptyOK bool) func(v any) (string, bool) {
+	return func(v any) (string, bool) {
 		s, isString := v.(string)
 		n, valid := parseStoreCap(s)
-		if !isString || !valid || s == "" {
-			errBadRequest(w, ReceivedArtifactsMaxBytesSetting+" must be a whole number of bytes (0 for no cap)")
-			return
+		if !isString || !valid || (!emptyOK && s == "") {
+			return "", false
 		}
-		body[ReceivedArtifactsMaxBytesSetting] = strconv.FormatInt(n, 10)
+		return strconv.FormatInt(n, 10), true
 	}
-	if v, ok := body[ReceivedCapNoticeAckSetting]; ok {
-		s, isString := v.(string)
-		if n, err := strconv.ParseInt(s, 10, 64); !isString || err != nil || n < 0 {
-			errBadRequest(w, ReceivedCapNoticeAckSetting+" must be a whole number of bytes")
-			return
+}
+
+// boolRule: a boolean, normalised to "true"/"false".
+func boolRule(v any) (string, bool) {
+	on, valid := validBoolSetting(v)
+	return strconv.FormatBool(on), valid
+}
+
+// settingRulesBeforeRetention and settingRulesAfterRetention, in the order they are checked.
+var (
+	settingRulesBeforeRetention = []settingRule{
+		// agent_priority is "low" or "normal" (#3437); anything else was stored and silently taken as low (#3470).
+		{agentprio.SettingKey, agentprio.SettingKey + " must be \"" + agentprio.Low + "\" or \"" + agentprio.Normal + "\"", func(v any) (string, bool) {
+			s, isString := v.(string)
+			lvl, valid := agentprio.Parse(s)
+			return lvl, isString && valid
+		}},
+		// The artifact store's cap.
+		{ArtifactStoreMaxBytesSetting, ArtifactStoreMaxBytesSetting + " must be a whole number of bytes (0 for no cap)", capSetting(true)},
+		// The cap on received files (#4441); and the notice's acknowledgement, the cap it was shown for.
+		{ReceivedArtifactsMaxBytesSetting, ReceivedArtifactsMaxBytesSetting + " must be a whole number of bytes (0 for no cap)", capSetting(false)},
+		{ReceivedCapNoticeAckSetting, ReceivedCapNoticeAckSetting + " must be a whole number of bytes", func(v any) (string, bool) {
+			s, isString := v.(string)
+			n, err := strconv.ParseInt(s, 10, 64)
+			return s, isString && err == nil && n >= 0
+		}},
+	}
+	settingRulesAfterRetention = []settingRule{
+		{RetentionKindsSetting, RetentionKindsSetting + " must list diffs, objects, diff-objects or all", validRetentionKinds},
+		// require_auth_on_loopback (#3585). This route is Operator-only and not reachable through the Coral Hub
+		// (operatorOnlyRoutes), so the setting is too.
+		{auth.RequireAuthOnLoopbackSetting, auth.RequireAuthOnLoopbackSetting + " must be true or false", boolRule},
+		{background.GoalSettingKey, background.GoalSettingKey + " must be true or false", boolRule}, // auto_goals (#4204)
+	}
+)
+
+// applySettingRules checks and normalises the body's settings that have a rule, in the rules' order.
+func applySettingRules(body map[string]any, rules []settingRule) string {
+	for _, rule := range rules {
+		if v, ok := body[rule.key]; ok {
+			s, valid := rule.norm(v)
+			if !valid {
+				return rule.msg
+			}
+			body[rule.key] = s
 		}
 	}
-	// Artifact retention (#3554): whole days from 0 (off) to 3650, and a list of kinds. Its
-	// bookkeeping keys are Coral's own.
+	return ""
+}
+
+// normalizeSettingValues checks and normalises the settings with a value rule, artifact retention among them:
+// whole days from 0 (off) to 3650, and a list of kinds (#3554). Retention's bookkeeping keys are Coral's own; a
+// changed number of days starts its wait now, so Settings can offer the review at once (an acknowledgement has to
+// come after this moment to count).
+func (h *SystemHandler) normalizeSettingValues(ctx context.Context, body map[string]any) string {
+	if msg := applySettingRules(body, settingRulesBeforeRetention); msg != "" {
+		return msg
+	}
 	for _, k := range []string{retentionEnabledAtKey, retentionSeenDaysKey, RetentionAckAtKey, RetentionLastKey} {
 		if _, ok := body[k]; ok {
-			errBadRequest(w, k+" is set by Coral (acknowledge a dry run with POST /api/artifacts/retention/ack)")
-			return
+			return k + " is set by Coral (acknowledge a dry run with POST /api/artifacts/retention/ack)"
 		}
 	}
 	if v, ok := body[RetentionDaysSetting]; ok {
 		s, valid := validRetentionDays(v)
 		if !valid {
-			errBadRequest(w, RetentionDaysSetting+" must be a whole number of days from 0 (off) to 3650")
-			return
+			return RetentionDaysSetting + " must be a whole number of days from 0 (off) to 3650"
 		}
 		body[RetentionDaysSetting] = s
-		// A changed value starts its wait now, so Settings can offer the review at once (an
-		// acknowledgement has to come after this moment to count).
-		if cur, _ := h.ss.GetSettings(r.Context()); cur == nil || cur[RetentionDaysSetting] != s {
+		if cur, _ := h.ss.GetSettings(ctx); cur == nil || cur[RetentionDaysSetting] != s {
 			if s == "0" {
 				body[retentionEnabledAtKey], body[retentionSeenDaysKey] = "", ""
 			} else {
@@ -355,50 +403,28 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if v, ok := body[RetentionKindsSetting]; ok {
-		s, valid := validRetentionKinds(v)
-		if !valid {
-			errBadRequest(w, RetentionKindsSetting+" must list diffs, objects, diff-objects or all")
-			return
-		}
-		body[RetentionKindsSetting] = s
-	}
-	// require_auth_on_loopback (#3585): a boolean, normalised to "true"/"false". This route is
-	// Operator-only and not reachable through the Coral Hub (operatorOnlyRoutes), so the setting is too.
-	if v, ok := body[auth.RequireAuthOnLoopbackSetting]; ok {
-		on, valid := validBoolSetting(v)
-		if !valid {
-			errBadRequest(w, auth.RequireAuthOnLoopbackSetting+" must be true or false")
-			return
-		}
-		body[auth.RequireAuthOnLoopbackSetting] = strconv.FormatBool(on)
-	}
-	// auto_goals (#4204): a boolean, normalised to "true"/"false".
-	if v, ok := body[background.GoalSettingKey]; ok {
-		on, valid := validBoolSetting(v)
-		if !valid {
-			errBadRequest(w, background.GoalSettingKey+" must be true or false")
-			return
-		}
-		body[background.GoalSettingKey] = strconv.FormatBool(on)
-	}
+	return applySettingRules(body, settingRulesAfterRetention)
+}
+
+// checkCLIPaths: cli_path_<type> (Settings > CLI Paths) is the program Coral runs for that agent type: only a known
+// type, and only an absolute path to an executable file with no shell metacharacters (#3364). A value that is
+// unchanged is not re-checked, so a CLI that was uninstalled since doesn't block saving other settings.
+func (h *SystemHandler) checkCLIPaths(ctx context.Context, body map[string]any) string {
 	var current map[string]string
 	for k, v := range body {
 		agentType, isCLIPath := agent.IsCLIPathSetting(k)
 		if !isCLIPath {
 			continue
 		}
-		path, _ := v.(string)
-		if _, isString := v.(string); !isString && v != nil {
-			errBadRequest(w, k+" must be a string")
-			return
+		path, isString := v.(string)
+		if !isString && v != nil {
+			return k + " must be a string"
 		}
 		if !agent.KnownCLIAgentType(agentType) {
-			errBadRequest(w, "unknown agent type in "+k)
-			return
+			return "unknown agent type in " + k
 		}
 		if current == nil {
-			if current, _ = h.ss.GetSettings(r.Context()); current == nil {
+			if current, _ = h.ss.GetSettings(ctx); current == nil {
 				current = map[string]string{}
 			}
 		}
@@ -407,13 +433,16 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := agent.ValidateCLIPath(path); err != nil {
-			errBadRequest(w, k+": "+err.Error())
-			return
+			return k + ": " + err.Error()
 		}
 		body[k] = path
 	}
-	// Convert any value to string, matching Python's str() behavior.
-	// Python's str(True)="True", str(False)="False" — capitalize bools.
+	return ""
+}
+
+// settingStrings is each setting as stored: a boolean as Python's str() wrote it ("True", "False"), anything else
+// as its text.
+func settingStrings(body map[string]any) map[string]string {
 	values := make(map[string]string, len(body))
 	for k, v := range body {
 		switch val := v.(type) {
@@ -427,49 +456,45 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 			values[k] = fmt.Sprintf("%v", v)
 		}
 	}
-	// One request's settings are written together (one transaction): a later PUT can never
-	// land between two of its keys and be half overwritten by the rest (#3547: the dashboard
-	// saved welcome_choice and welcome_pending, and a PUT in between lost its welcome_pending).
-	tx, err := h.db.BeginTxx(r.Context(), nil)
+	return values
+}
+
+// saveSettings writes the settings in one transaction.
+func (h *SystemHandler) saveSettings(ctx context.Context, values map[string]string) error {
+	tx, err := h.db.BeginTxx(ctx, nil)
 	if err != nil {
-		errInternalServer(w, err.Error())
-		return
+		return err
 	}
 	defer tx.Rollback()
 	for k, s := range values {
-		if _, err := tx.ExecContext(r.Context(),
+		if _, err := tx.ExecContext(ctx,
 			"INSERT INTO user_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
 			k, s); err != nil {
-			errInternalServer(w, err.Error())
-			return
+			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	// Apply select settings live so new WebSocket attaches see the change
-	// without requiring a server restart.
+	return tx.Commit()
+}
+
+// applyLiveSettings applies the settings that take effect at once (new WebSocket attaches, agents started from now
+// on, the next request) without a server restart.
+func applyLiveSettings(values map[string]string) {
 	for k, s := range values {
-		if k == "terminal_replay_bytes" {
+		switch k {
+		case "terminal_replay_bytes":
 			if n, err := strconv.Atoi(s); err == nil {
 				ptymanager.SetReplayBytes(n)
 			}
-		}
-		if k == "telemetry_enabled" {
+		case "telemetry_enabled":
 			tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(s), "false"))
-		}
-		if k == agentprio.SettingKey {
+		case agentprio.SettingKey:
 			agentprio.SetSetting(s) // agents started from now on (#3437)
-		}
-		if k == inputlog.SettingKey {
+		case inputlog.SettingKey:
 			inputlog.SetSetting(config.Truthy(s))
-		}
-		if k == auth.RequireAuthOnLoopbackSetting {
+		case auth.RequireAuthOnLoopbackSetting:
 			auth.SetRequireAuthOnLoopback(config.Truthy(s)) // #3585: takes effect for the next request
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // DeleteDebugInputLog deletes the terminal input debug log and its rotated copy
