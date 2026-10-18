@@ -76,6 +76,9 @@ body.no-scrollbars {
     to { transform: rotate(360deg); }
 }
 
+/* Placeholders at AA (#4851): the browser's own #757575 is 4.1-4.2:1 on the panels and 3.8-3.9:1 on the board's post box, in either theme; the muted text token is 4.5:1 or more on every panel in both. */
+input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1; }
+
 /* ── Focus-visible outlines for accessibility ──────────────── */
 
 button:focus-visible,
