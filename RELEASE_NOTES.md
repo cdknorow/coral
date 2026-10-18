@@ -1,5 +1,39 @@
 # Release Notes
 
+## v1.4.85 — Save for later, a faster board, and agents kept to their own history
+
+### Changes
+
+- **Save for later:** bookmark any chat or board message, find it again in the new Saved tab of the right sidebar, and click it to jump back. Mark items Done or remove them. On a phone with large text the Saved entry moves into the settings menu, with its count. Agents and boards on other servers in hub mode can't be saved yet, and Coral Hub's own dashboard has no Save button yet; the roll-up across servers on Coral Hub is being agreed with coral-hub.
+- **A jump-to-latest arrow** appears above the chat input when you scroll up in an agent's Chat view, with a dot when new messages arrive.
+- **The message board stays fast on long boards:** each message is cleaned and rendered once, a poll appends only what is new, and the view keeps a window of about 300 messages ("Load earlier" brings back older ones). While you read higher up, an "N new messages" pill takes you down. Long sender names wrap on a phone, and an open board reflows at 200% text.
+- **Mentions are found through an index,** so reading a busy board (and the unread counts) stays quick however far back an agent's cursor is. The first start after upgrading indexes the existing board messages once.
+- **Dialogs are built when you first open them** (Settings, Launch, Job, Create task, Info, Default prompts, Custom view and the top-bar menu), so the dashboard starts lighter. On a phone the agent list is built once, tooltips load on first hover, and there is no welcome screen.
+
+### Security and privacy
+
+- **An agent's token can only search its own history:** another session's history answers 403, and history search with the API key or from a plain terminal answers 401.
+- **An agent's token is refused** the terminal stream (`/ws/terminal`), the auto-accept "disable all" switch, uploads and upload deletes, and the open-in-editor action. The signed `coral auto-accept off --all` command still works.
+- **In a release build, strict local auth can be turned off only with `--strict-local-auth=false`;** the environment variable is ignored. The docs now say so, and several other security claims in the docs were corrected (Security's audit): the team config's field is `capabilities` (`permissions` and `permissions_preset` were never read, so they restricted nothing), and pending received files can be removed by Prune and Automatic cleanup after the chosen age.
+- **Save for later is the Operator's own:** an agent's token is refused on every saved-message route (403), the snippet kept with an item is redacted when it is saved, and through Coral Hub the list is View and changes are Interact tier.
+- **Saved items find their message by a key made with a secret unique to this install** (`.message_key_secret` in the data folder), so the key can't be used to guess redacted text.
+- **Coral Hub's access modes are described as the route table enforces them,** in the dashboard and in the docs, and a test pins the two together.
+- **A message deleted on the server stays on your screen while you read higher up on the board** (or are selecting messages, or waiting on a search jump) until you scroll back to the bottom or reload. Only your own screen; the server no longer has it.
+
+### Fixes
+
+- **Switching from Chat to Terminal no longer shows a blank terminal:** it no longer waits on the terminal library, it repaints the screen, closes a stuck connection, and opens none while you are in Chat view. Retry after a failed load and the popout window attach again.
+- **The auto-accept "turned off" notice shows once per pause,** also across reloads.
+- **Browse through Coral Hub works past the home folder again** (folders show as `~` and `~/folder`, so your home path and account name stay off the Hub); it failed on the first folder click since v1.4.73.
+- **A confirmation gives focus back to the button that asked,** also when you cancel it or press Escape inside a dialog that stays open; a dialog opened from the top-bar menu returns focus to the menu button.
+- **On a phone, message buttons (Copy, Save) no longer overlap the next message.**
+- **"Load earlier" on the board keeps keyboard focus** across a poll, and tabbing onto it loads nothing.
+
+### Other changes
+
+- **The server's startup log names the dashboard build and the agent docs it serves** (a count and a hash), warns when no agent docs are embedded, and a test catches a stale copy of the agent docs.
+- **Tests and CI:** new and steadier browser and Go tests for all of the above (including a 250 ms Windows bound for one tunnel timing test and failure reports on two flaky suites).
+
 ## v1.4.84 — Kill keeps terminal logs, a limit on received files, and a stricter net for cross-Coral sends
 
 ### Changes
