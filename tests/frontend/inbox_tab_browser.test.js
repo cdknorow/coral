@@ -127,14 +127,20 @@ async function run() {
 
         console.log('7. A phone: one more entry in the view list');
         await open(390, 756);
+        await feed({ total: 4, waiting: 3 });
         await ev(`document.getElementById('nav-select').click(); true`);
         check('the list has Inbox after Servers', await waitFor(`!!document.querySelector('#nav-more-menu [data-arg="hub-inbox"]')`, 'the Inbox entry', { soft: true, timeout: 5000 }));
-        const items = await ev(`[...document.querySelectorAll('#nav-more-menu .nav-more-item')].map(e => e.lastElementChild.textContent.trim())`);
+        const items = await ev(`[...document.querySelectorAll('#nav-more-menu .nav-more-item')].map(e => e.children[1].textContent.trim())`);
         check('named Inbox, in order', items.indexOf('Inbox') === items.indexOf('Servers') + 1 && items.indexOf('Inbox') > -1, JSON.stringify(items));
+        const entry = await ev(`(() => { const e = document.querySelector('#nav-more-menu [data-arg="hub-inbox"]'); const b = e.querySelector('.nav-tab-badge'); return { count: b ? b.textContent : null, label: e.getAttribute('aria-label'), others: [...document.querySelectorAll('#nav-more-menu .nav-more-item')].filter(x => x !== e && x.querySelector('.nav-tab-badge')).length }; })()`);
+        check('the Inbox entry shows the waiting number and says it', entry.count === '3' && /3 waiting for input/.test(entry.label || '') && entry.others === 0, JSON.stringify(entry));
         await ev(`document.querySelector('#nav-more-menu [data-arg="hub-inbox"]').click(); true`);
         check('choosing it shows the view and the frame', await waitFor(`getComputedStyle(document.getElementById('inbox-view')).display !== 'none' && document.getElementById('inbox-frame').getAttribute('src') === '/inbox'`, 'the view', { soft: true, timeout: 6000 }));
         check('the view list names the current view', await waitFor(`/Inbox/.test(document.getElementById('nav-select-label').textContent)`, 'the label', { soft: true, timeout: 4000 }), await ev(`document.getElementById('nav-select-label').textContent.trim()`));
         check('nothing scrolls sideways', (await ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`)) <= 0);
+        await feed({ total: 4, waiting: 0 });
+        await ev(`document.getElementById('nav-select').click(); true`);
+        check('with none waiting the entry has no number and the plain name', await waitFor(`!!document.querySelector('#nav-more-menu [data-arg="hub-inbox"]') && !document.querySelector('#nav-more-menu [data-arg="hub-inbox"] .nav-tab-badge') && document.querySelector('#nav-more-menu [data-arg="hub-inbox"]').getAttribute('aria-label') === null`, 'the plain entry', { soft: true, timeout: 4000 }));
         console.log('8. A local Coral never shows the Inbox tab (last: the page is cached by then, so the boot flag is rewritten for it only)');
         cloud = false;
         await open(1280, 756);

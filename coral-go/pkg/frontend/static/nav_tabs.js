@@ -36,6 +36,15 @@ function makeItem(t) {
     const l = document.createElement('span');
     l.textContent = t.label;
     b.append(i, l);
+    // A tab with a count (the Inbox's waiting number) shows it in the list too, and the item says it (#4718).
+    const badge = t.el.querySelector('.nav-tab-badge');
+    if (badge && !badge.hidden && badge.textContent) {
+        const c = document.createElement('span');
+        c.className = 'nav-tab-badge nav-more-badge';
+        c.textContent = badge.textContent;
+        b.append(c);
+        b.setAttribute('aria-label', t.el.getAttribute('aria-label') || `${t.label}, ${badge.textContent}`);
+    }
     return b;
 }
 

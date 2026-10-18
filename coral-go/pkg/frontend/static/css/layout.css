@@ -78,6 +78,7 @@
     vertical-align: 1px;
 }
 .nav-tab-badge[hidden] { display: none; }
+.nav-more-item .nav-more-badge { margin-left: auto; }
 .top-nav-tab.nav-overflowed { display: none; }
 .nav-more-wrap { display: flex; flex: 0 0 auto; }
 /* The row is text only; More shows a small chevron. */
