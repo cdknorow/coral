@@ -48,6 +48,7 @@ type sessionCache struct {
 	toolUseNames map[string]string // tool_use_id → tool_name, at most toolNamesMax of them
 	toolSeen     map[string]uint32 // the chunk each tool name was first seen in (boundToolNames)
 	chunkSeq     uint32
+	ckpts        []checkpoint // where in the file the messages before the window can be re-read from (transcript_window.go)
 	// The transcript as last read: a different file, a shorter one, or other first bytes mean
 	// it was replaced or rewritten, and the messages are read again from the start (#3710).
 	info        os.FileInfo
@@ -220,6 +221,7 @@ func (r *SessionReader) readLocked(ctx context.Context, c *sessionCache, session
 		if err != nil {
 			return collected, c.total()
 		}
+		c.noteCheckpoint(p.last)
 		c.offset += int64(len(data))
 		parsed := p.parse(entries)
 		c.addMessages(parsed)

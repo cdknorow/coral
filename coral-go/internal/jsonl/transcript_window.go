@@ -7,6 +7,8 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 )
@@ -41,7 +43,7 @@ func (c *sessionCache) total() int { return c.base + len(c.messages) }
 // resetMessages forgets the parsed transcript: it is read again from the start.
 func (c *sessionCache) resetMessages() {
 	c.offset, c.base, c.messages, c.sizes, c.msgBytes = 0, 0, nil, nil, 0
-	c.toolUseNames, c.toolSeen, c.chunkSeq = make(map[string]string), nil, 0
+	c.toolUseNames, c.toolSeen, c.chunkSeq, c.ckpts = make(map[string]string), nil, 0, nil
 }
 
 // addMessages appends parsed messages and drops the oldest ones past the window's bounds, copying
@@ -212,6 +214,7 @@ type transcriptPart struct {
 	limit     int64            // the bytes of the file this view covers
 	count     int              // the number of messages in them
 	mem       []map[string]any // when set, the part is these messages, held in memory, not a file
+	ckpts     []checkpoint     // where in the file to start reading for a message (a file part)
 }
 
 // Slice is the messages numbered from..to-1 (clamped to 0..Total), in order. The part before
@@ -266,6 +269,11 @@ func (t *Transcript) Each(ctx context.Context, from, to int, fn func(index int, 
 // whose number (offset plus the position in the file) is in from..to-1. false: fn stopped it, or
 // the file could not be read.
 func streamPart(ctx context.Context, part transcriptPart, offset, from, to int, fn func(int, map[string]any) bool) bool {
+	release, ok := lockOldRead(ctx, part.path)
+	if !ok {
+		return false
+	}
+	defer release()
 	f, err := openTranscript(part.path, part.agentType)
 	if err != nil {
 		return false
@@ -275,7 +283,20 @@ func streamPart(ctx context.Context, part transcriptPart, offset, from, to int, 
 	var seen map[string]uint32
 	var seq uint32
 	var read int64
-	idx := offset
+	// Start at a checkpoint, not at the file's start: the last one at or before the first message wanted, and the one before
+	// it, so that the tool names a result looks up are read first (a result is rarely further from its call than that).
+	start := checkpoint{}
+	if i := sort.Search(len(part.ckpts), func(k int) bool { return part.ckpts[k].msgs > from-offset }) - 2; i >= 0 {
+		start = part.ckpts[i]
+	}
+	p.last = copyMessage(start.last)
+	read = start.offset
+	idx := offset + start.msgs
+	if read > 0 {
+		if _, err := f.Seek(read, io.SeekStart); err != nil {
+			return false
+		}
+	}
 	for read < part.limit && idx < to {
 		chunk, eof, err := nextChunk(io.LimitReader(f, part.limit-read))
 		if err != nil {
@@ -290,6 +311,7 @@ func streamPart(ctx context.Context, part transcriptPart, offset, from, to int, 
 			return false
 		}
 		read += int64(len(data))
+		oldReadBytes.Add(int64(len(data)))
 		for _, m := range p.parse(entries) {
 			if idx >= to {
 				return true
@@ -319,7 +341,7 @@ func (t *Transcript) All(ctx context.Context) []map[string]any { return t.Slice(
 func transcriptOf(c *sessionCache, agentType string) *Transcript {
 	t := &Transcript{Window: c.messages, Base: c.base, Total: c.total()}
 	if c.base > 0 {
-		t.parts = []transcriptPart{{path: c.path, agentType: agentType, limit: c.offset, count: c.base}}
+		t.parts = []transcriptPart{{path: c.path, agentType: agentType, limit: c.offset, count: c.base, ckpts: c.ckpts}}
 	}
 	return t
 }
@@ -332,4 +354,84 @@ func (t *Transcript) withAncestor(a *Transcript) *Transcript {
 		parts = append(parts, transcriptPart{count: len(a.Window), mem: a.Window})
 	}
 	return &Transcript{Window: t.Window, Base: a.Total + t.Base, Total: a.Total + t.Total, parts: append(parts, t.parts...)}
+}
+
+// A checkpoint is a place in a transcript file that a read of the older messages can start at: the number
+// of messages before it, its byte offset (a line start: where a chunk of the cache's own read began) and
+// the message just before it, which a Codex duplicate at the start of the chunk is merged into.
+type checkpoint struct {
+	msgs   int
+	offset int64
+	last   map[string]any
+}
+
+// checkpointSpacing is the bytes between checkpoints: half a chunk, so a read of an old page parses about
+// one chunk and not the file from its start (#4620's follow-up: Slice and Each read the whole prefix before).
+func checkpointSpacing() int64 { return readChunkMax / 2 }
+
+// noteCheckpoint records a checkpoint at the cache's current offset, the start of the chunk about to be
+// read, when the last one is a spacing behind. last is the newest message parsed so far.
+func (c *sessionCache) noteCheckpoint(last map[string]any) {
+	if c.offset == 0 {
+		return
+	}
+	if n := len(c.ckpts); n > 0 && c.offset-c.ckpts[n-1].offset < checkpointSpacing() {
+		return
+	}
+	c.ckpts = append(c.ckpts, checkpoint{msgs: c.total(), offset: c.offset, last: copyMessage(last)})
+}
+
+// copyMessage is a shallow copy: the merge of a Codex duplicate writes to the message it merges into, and the
+// checkpoint's must stay as it was when it was taken.
+func copyMessage(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// Reading the older part of a transcript is bounded to one reader per file at a time: others wait their turn
+// (or give up with their context), so a client asking for old pages in a loop costs one reader, not many.
+var oldReads struct {
+	sync.Mutex
+	held map[string]chan struct{}
+}
+
+// oldReadBytes, oldReadActive and oldReadPeak count what streamPart reads and how many run at once (tests).
+var oldReadBytes, oldReadActive, oldReadPeak atomic.Int64
+
+// lockOldRead waits for the file's turn; release gives it up. ok is false when ctx ended first.
+func lockOldRead(ctx context.Context, path string) (release func(), ok bool) {
+	for {
+		oldReads.Lock()
+		if oldReads.held == nil {
+			oldReads.held = map[string]chan struct{}{}
+		}
+		wait, busy := oldReads.held[path]
+		if !busy {
+			done := make(chan struct{})
+			oldReads.held[path] = done
+			oldReads.Unlock()
+			n := oldReadActive.Add(1)
+			for peak := oldReadPeak.Load(); n > peak && !oldReadPeak.CompareAndSwap(peak, n); peak = oldReadPeak.Load() {
+			}
+			return func() {
+				oldReadActive.Add(-1)
+				oldReads.Lock()
+				delete(oldReads.held, path)
+				oldReads.Unlock()
+				close(done)
+			}, true
+		}
+		oldReads.Unlock()
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			return nil, false
+		}
+	}
 }
