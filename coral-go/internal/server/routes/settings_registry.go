@@ -144,6 +144,7 @@ var settingRegistry = map[string]settingSpec{
 	"git_diff_mode":                   generic(enumSetting("branch_point", "previous_commit", "main_head")),
 	"git_poll_interval_s":             generic(intSetting(0, 86_400, false)),
 	agentprio.SettingKey:              generic(nil),
+	AgentLaunchLimitSetting:           generic(intSetting(0, 100_000, false)), // the live agents an agent token may add (#4602); 0 is none
 	"telemetry_enabled":               generic(boolSetting),
 	"board_auto_attach":               generic(boolSetting),
 	inputlog.SettingKey:               generic(boolSetting),

@@ -51,6 +51,7 @@ var settingRows = map[string]struct{ good, bad string }{
 	"uploads_max_mb":              {`"500"`, `10`},
 	"call_metrics_retention_days": {`14`, `91`},
 	"knowledge_timeout_s":         {`120`, `0`},
+	"agent_launch_limit":          {`"16"`, `-1`},
 	"default_prompt_orchestrator": {`"Lead the team."`, `["x"]`},
 	"default_prompt_worker":       {`""`, `{"a":1}`},
 	"team_reminder_orchestrator":  {`"Check the board."`, `false`},

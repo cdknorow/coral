@@ -78,6 +78,9 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "resume_session_id is not a valid resume id") // #3582: it goes into file paths
 		return
 	}
+	if h.refuseAgentLaunchOverLimit(w, r, 1) {
+		return
+	}
 	// Analytics: one requested/result pair per attempt, with controlled
 	// categories only (never error text, paths, names or prompts).
 	attempt := tracking.StartLaunch(tracking.KindAgent, tracking.ProviderFor(body.AgentType), h.launchBackendLabel(body.Backend), 1, body.ResumeSessionID != "")
@@ -237,6 +240,9 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	// this, #4602). The larger ceiling on live sessions an agent token started is a separate setting.
 	if len(body.Agents) > maxLaunchTeamAgents {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("a team can have at most %d agents per launch", maxLaunchTeamAgents), "code": "too_many_agents", "max": maxLaunchTeamAgents})
+		return
+	}
+	if h.refuseAgentLaunchOverLimit(w, r, len(body.Agents)) {
 		return
 	}
 	for _, a := range body.Agents {
