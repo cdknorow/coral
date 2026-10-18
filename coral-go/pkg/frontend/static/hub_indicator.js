@@ -11,11 +11,12 @@
  * Hidden when this Coral isn't enrolled (no hub configured, not enrolled, enrolling, or still
  * loading), on Coral Hub itself, in the pop-out, and whenever the status can't be read (only
  * the dashboard on this computer may read it). The tooltip and accessible name give the state,
- * the hub's host and when it connected; never a token, a code or an id. A click opens Settings
- * at its Coral Hub section. State: GET /api/cloud/status, polled (the feed doesn't carry it). */
+ * the hub's host and when it connected; never a token, a code or an id. A click opens the hub in a
+ * new tab when connected, and the Connect to Coral Hub screen when not (#4566; Settings holds the rest). State: GET /api/cloud/status, polled (the feed doesn't carry it). */
 
 import { isCloud } from './server_base.js';
 import { pollEvery } from './overload.js';
+import { importOnce } from './import_once.js';
 
 const STATUS_URL = '/api/cloud/status';
 const POLL_MS = 15000;
@@ -67,7 +68,14 @@ export function indicatorLabel(st, state, now = new Date(), locale) {
     return `Coral Hub: disconnected${host ? ` from ${host}` : ''} (${why})`;
 }
 
+/** What a click does, and so the start of the tooltip and name: 'Open Coral Hub' when connected, else 'Connect to Coral Hub'. The status follows in brackets. */
+export function indicatorTitle(st, state, now = new Date(), locale) {
+    const action = state === 'connected' ? 'Open Coral Hub' : 'Connect to Coral Hub';
+    return `${action} (${indicatorLabel(st, state, now, locale).replace(/^Coral Hub: /, '')})`;
+}
+
 let _btn = null;
+let _status = null;
 
 /** Hide the indicator, leaving no state, title or name behind (QA). */
 function hide(b) {
@@ -90,7 +98,7 @@ function button() {
     b.hidden = true;
     // A hub: one node joined to three.
     b.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="2"/><circle cx="8" cy="2.5" r="1.3"/><circle cx="2.8" cy="12" r="1.3"/><circle cx="13.2" cy="12" r="1.3"/><path d="M8 6V3.8M6.3 9.1 3.9 11.2M9.7 9.1l2.4 2.1"/></svg>';
-    b.addEventListener('click', openHubSettings);
+    b.addEventListener('click', openHub);
     bar.insertBefore(b, bar.firstChild);
     _btn = b;
     return b;
@@ -104,7 +112,8 @@ export function renderIndicator(st, now = new Date()) {
     if (!b) return;
     const state = indicatorState(st);
     if (!state) { hide(b); return; }
-    const label = indicatorLabel(st, state, now);
+    _status = st;
+    const label = indicatorTitle(st, state, now);
     b.dataset.state = state;
     b.title = label;
     b.setAttribute('aria-label', label);
@@ -122,14 +131,13 @@ export async function refresh() {
     } catch { /* offline: keep what is shown */ }
 }
 
-/** Open Settings at its Coral Hub section. */
- async function openHubSettings() {
-    try { await window.showSettingsModal?.('network'); } catch { /* the dialog shows its own errors */ }
-    const section = document.getElementById('settings-cloud');
-    const heading = section && section.previousElementSibling;
-    (heading || section)?.scrollIntoView({ block: 'start' });
-    const status = document.getElementById('settings-cloud-status');
-    if (status) { status.setAttribute('tabindex', '-1'); status.focus({ preventScroll: true }); }
+/** A click: the hub's own web address in a new tab when connected (http or https only, no way back to this page); the Connect to Coral Hub screen when not. */
+function openHub() {
+    if (indicatorState(_status) === 'connected' && hubHost(_status && _status.hub_url)) {
+        window.open(String(_status.hub_url), '_blank', 'noopener,noreferrer');
+        return;
+    }
+    importOnce('./editions.js').then(m => m.showHubSetup('connect')).catch(() => { /* the screen shows its own errors */ });
 }
 
 /** Start the indicator (the dashboard on this computer; not on Coral Hub or in the pop-out). */

@@ -2,7 +2,7 @@
 // shows its look and says it (tooltip and accessible name: the state, the hub's host, the time;
 // never a token, code or id); it's hidden when this Coral isn't enrolled, and when the status
 // can't be read (it then stops polling); the connecting pulse stops under prefers-reduced-motion;
-// a click opens Settings at its Coral Hub section; it fits at phone width.
+// a click opens the hub in a new tab when connected and the Connect to Coral Hub screen when not (#4566); it fits at phone width.
 // HUB_SHOTS=<dir> also saves a screenshot of each state, light and dark, for the operator.
 'use strict';
 
@@ -80,26 +80,26 @@ const STATES = {
         await until(`!!document.getElementById('hub-indicator') && document.getElementById('hub-indicator').dataset.state === 'connected'`, 'the indicator');
         let l = await look();
         check('connected: shown in the header, success colour (green)', l && !l.hidden && l.inBar && l.state === 'connected' && l.color === rgb(l.success), JSON.stringify(l));
-        check('its name: the state, the hub host and since when', l && /^Coral Hub: connected to app\.coralhub\.dev since /.test(l.aria) && l.title === l.aria, l && l.aria);
+        check('its name: the state, the hub host and since when', l && /^Open Coral Hub \(connected to app\.coralhub\.dev since .*\)$/.test(l.aria) && l.title === l.aria, l && l.aria);
         check('no id or code anywhere in the page', l && !l.dom);
 
         console.log('2. Each state');
         await show('connecting'); l = await look();
-        check('connecting: muted, pulsing', !l.hidden && l.state === 'connecting' && l.anim === 'hub-indicator-pulse' && l.aria === 'Coral Hub: connecting to app.coralhub.dev', JSON.stringify(l));
+        check('connecting: muted, pulsing', !l.hidden && l.state === 'connecting' && l.anim === 'hub-indicator-pulse' && l.aria === 'Connect to Coral Hub (connecting to app.coralhub.dev)', JSON.stringify(l));
         await show('retrying'); l = await look();
-        check('retrying: the same look, says reconnecting', !l.hidden && l.state === 'connecting' && l.aria === 'Coral Hub: reconnecting to app.coralhub.dev', JSON.stringify(l));
+        check('retrying: the same look, says reconnecting', !l.hidden && l.state === 'connecting' && l.aria === 'Connect to Coral Hub (reconnecting to app.coralhub.dev)', JSON.stringify(l));
         await show('revoked'); l = await look();
         check('enrolled but disconnected: warning tint and why', !l.hidden && l.state === 'disconnected' && l.color === rgb(l.warning) && /disconnected from app\.coralhub\.dev \(/.test(l.aria), JSON.stringify(l));
         const homeHub = `((document.querySelector('#editions-home [data-editions="home-hub"] .editions-home-copy') || {}).textContent || '').replace(/\\s+/g, ' ').trim()`;
         const offer = await ev(homeHub);
         await show('moved'); l = await look();
         check('enrolled with the old host (hub_moved): amber, saying where it moved and what to run', !l.hidden && l.state === 'disconnected' && l.color === rgb(l.warning)
-            && l.aria === 'Coral Hub moved to app.coralhub.dev: run coral cloud connect --force', JSON.stringify(l));
+            && l.aria === 'Connect to Coral Hub (Coral Hub moved to app.coralhub.dev: run coral cloud connect --force)', JSON.stringify(l));
         const movedHome = await ev(homeHub);
         check('the home section says to connect again, not the never-enrolled offer', /^Coral Hub moved Connect this server again at app\.coralhub\.dev: run coral cloud connect --force/.test(movedHome) && movedHome !== offer, movedHome);
         await show('movedFailed'); l = await look();
         check('after a failed attempt to enroll again (its own code): still amber, still "connect again"', !l.hidden && l.state === 'disconnected'
-            && l.aria === 'Coral Hub moved to app.coralhub.dev: run coral cloud connect --force' && (await ev(homeHub)) === movedHome, JSON.stringify(l));
+            && l.aria === 'Connect to Coral Hub (Coral Hub moved to app.coralhub.dev: run coral cloud connect --force)' && (await ev(homeHub)) === movedHome, JSON.stringify(l));
         await show('connected');
         check('and the offer comes back with any other status', (await ev(homeHub)) === offer, await ev(homeHub));
         for (const name of ['idle', 'enrolling', 'off']) {
@@ -113,15 +113,24 @@ const STATES = {
         check('no animation with prefers-reduced-motion', l.anim === 'none', l.anim);
         await Emulation.setEmulatedMedia({ features: [] });
 
-        console.log('4. A click opens Settings at the Coral Hub section');
+        console.log('4. A click: the hub in a new tab when connected, the Connect to Coral Hub screen when not');
+        await ev(`window.__opened = []; window.open = (...a) => { window.__opened.push(a); return null; }; true`);
         await show('connected');
         await ev(`document.getElementById('hub-indicator').click(); true`);
-        await until(`(() => { const m = document.getElementById('settings-modal'); return m && getComputedStyle(m).display !== 'none'; })()`, 'Settings');
-        await until(`document.activeElement && document.activeElement.id === 'settings-cloud-status'`, 'the Coral Hub section');
-        const opened = await ev(`(() => { const s = document.getElementById('settings-cloud'); const r = s.getBoundingClientRect();
-            return { modal: getComputedStyle(document.getElementById('settings-modal')).display !== 'none', focus: document.activeElement && document.activeElement.id, inView: r.top >= 0 && r.top < innerHeight }; })()`);
-        check('Settings opens with its Coral Hub section in view and focused', opened.modal && opened.focus === 'settings-cloud-status' && opened.inView, JSON.stringify(opened));
-        await ev(`window.hideSettingsModal && window.hideSettingsModal(); true`);
+        const tab = await ev(`window.__opened`);
+        check('connected: the hub opens in a new tab, with noopener', JSON.stringify(tab) === JSON.stringify([['https://app.coralhub.dev', '_blank', 'noopener,noreferrer']]), JSON.stringify(tab));
+        check('and Settings did not open', await ev(`!document.getElementById('settings-modal') || getComputedStyle(document.getElementById('settings-modal')).display === 'none'`));
+        const modalShown = () => ev(`(() => { const m = document.getElementById('editions-modal'); return !!m && getComputedStyle(m).display !== 'none'; })()`);
+        check('and the Connect screen did not open', !(await modalShown()));
+        for (const name of ['revoked', 'connecting']) {
+            await show(name);
+            await ev(`window.__opened.length = 0; document.getElementById('hub-indicator').click(); true`);
+            await until(`(() => { const m = document.getElementById('editions-modal'); return !!m && getComputedStyle(m).display !== 'none'; })()`, 'the Connect to Coral Hub screen');
+            const connect = await ev(`({ title: document.getElementById('editions-title').textContent, opened: window.__opened.length, tip: document.getElementById('hub-indicator').title.split(' (')[0] })`);
+            check(`${name}: the Connect to Coral Hub screen opens, no tab`, connect.title === 'Connect to Coral Hub' && connect.opened === 0 && connect.tip === 'Connect to Coral Hub', JSON.stringify(connect));
+            await ev(`document.getElementById('editions-modal').style.display = 'none'; true`);
+        }
+        await show('connected');
 
         console.log('5. Phone width');
         await Emulation.setDeviceMetricsOverride({ width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
