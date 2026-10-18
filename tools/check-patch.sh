@@ -68,8 +68,10 @@ vet_windows() { cd "$GO_DIR"; CGO_ENABLED=0 GOOS=windows go vet -tags fts5 ./...
 # package) run too; -count=1 so a cached pass can't hide a new failure. Each go test gets its own
 # short TMPDIR under WORK: an agent's own TMPDIR is often a long scratchpad path that breaks go
 # test (file name too long) and the tmux tests, as the gate's mktemp -d /tmp/x.XXXX per run avoids.
-test_default() { cd "$GO_DIR"; mkdir -p "$WORK/go1"; TMPDIR="$WORK/go1" go test -count=1 ./...; }
-test_dev() { cd "$GO_DIR"; mkdir -p "$WORK/go2"; TMPDIR="$WORK/go2" go test -count=1 -tags 'dev fts5' ./...; }
+# -timeout 30m: a package's default limit is 10 m, and internal/server/routes takes about that on a
+# loaded box (609 s on epoch at nice 10, v1.4.96), so the default would fail it with no test at fault.
+test_default() { cd "$GO_DIR"; mkdir -p "$WORK/go1"; TMPDIR="$WORK/go1" go test -count=1 -timeout 30m ./...; }
+test_dev() { cd "$GO_DIR"; mkdir -p "$WORK/go2"; TMPDIR="$WORK/go2" go test -count=1 -timeout 30m -tags 'dev fts5' ./...; }
 
 # The frontend node checks, lints and censuses the pre-push runs (npm run -s test:cloud): a Go-only
 # patch can still break them, because they read the pkg/frontend sources. Fail with a one-line hint
@@ -119,8 +121,8 @@ STEPS=(
   "go vet (default tags)|vet_default"
   "go vet (dev fts5 tags)|vet_dev"
   "go vet (GOOS=windows, fts5, CGO off)|vet_windows"
-  "go test -count=1 ./... (default tags)|test_default"
-  "go test -count=1 ./... (dev fts5 tags)|test_dev"
+  "go test -count=1 -timeout 30m ./... (default tags)|test_default"
+  "go test -count=1 -timeout 30m ./... (dev fts5 tags)|test_dev"
   "npm run test:cloud (frontend node checks)|test_cloud"
   "route-query table drift (gen_route_queries.py)|check_drift"
   "patch scan of origin/main..HEAD (personal data, binaries, invisibles, identity)|check_scan"

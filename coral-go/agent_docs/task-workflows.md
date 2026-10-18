@@ -325,7 +325,7 @@ route-query drift test actually run:
 - `gofmt -l` (any output fails);
 - `go vet` on both tag sets (default and `dev fts5`) and once for Windows
   (`GOOS=windows`, `-tags fts5`, CGO off), as the Windows CI vets it;
-- `go test -count=1 ./...` on both tag sets — the whole module runs, so the
+- `go test -count=1 -timeout 30m ./...` on both tag sets (the routes package alone can take about 10 minutes on a busy machine) — the whole module runs, so the
   `safego` goroutine census and the `pkg/tunnel` route-query drift test (both
   outside the package you touched) run too; each gets its own short `TMPDIR`;
 - `npm run test:cloud` in `tests/frontend` — the frontend node checks, lints and
