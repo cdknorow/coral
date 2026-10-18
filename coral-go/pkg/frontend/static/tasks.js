@@ -8,6 +8,7 @@ import { registerTaskView, redrawBoardTaskList, closeTaskDetailModal } from './t
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
 import { registerActions, idOf, tokenOf, textOf } from './actions.js';
 import { addPendingMessage } from './live_chat.js';
+import { verificationOf, VERIFY_STATES } from './task_verification.js';
 import { pathId, serverUrl, artifactPath, contextServer, keyLabel, boardKeyName, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
 import { platform } from './platform/detect.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
@@ -359,6 +360,22 @@ function _reviewRequested(t) {
 let _taskSortField = 'created_at';
 let _taskSortAsc = false; // default newest first
 let _hideCompleted = browserLocal.get('coral-hide-completed') === 'true'; // off by default, persisted
+// Which finished tasks the list shows by verification (#4564): all, or one state. Open tasks have none and always show.
+const VERIFY_FILTERS = ['all', ...VERIFY_STATES];
+const VERIFY_FILTER_LABEL = { all: 'All done', verified: 'Only verified', evidence: 'Only evidence attached', unverified: 'Only unverified' };
+let _verifyFilter = (() => { const v = browserLocal.get('coral-task-verify-filter'); return VERIFY_FILTERS.includes(v) ? v : 'all'; })();
+function _setVerifyFilter(v) {
+    if (!VERIFY_FILTERS.includes(v)) return;
+    _verifyFilter = v;
+    browserLocal.set('coral-task-verify-filter', v);
+    renderBoardTaskList();
+}
+/** The badge: the state in words (never colour alone), with who confirmed it as the tooltip and the accessible name. '' where there is nothing to say. */
+function _verifyBadge(t) {
+    const v = verificationOf(t, formatTaskDate);
+    if (!v) return '';
+    return `<span class="board-task-verify ${v.state}" role="img" tabindex="0" title="${escapeAttr(v.detail)}" aria-label="${escapeAttr(v.detail)}"><span class="material-icons" aria-hidden="true">${v.icon}</span>${escapeHtml(v.label)}</span>`;
+}
 
 function _toggleTaskSort(field) {
     if (_taskSortField === field) {
@@ -408,6 +425,7 @@ export function renderBoardTaskList() {
     const completedCount = boardDoneTotal + otherTasks.filter(isDone).length;
     const tasks = allTasks.filter(t => {
         if (_hideCompleted && (t.status === 'completed' || t.status === 'skipped')) return false;
+        if (_verifyFilter !== 'all' && t.status === 'completed' && t.verification?.state !== _verifyFilter) return false;
         return true;
     }).sort((a, b) => {
         let cmp = 0;
@@ -460,8 +478,11 @@ export function renderBoardTaskList() {
     // Render hide-done toggle in the section header
     const toggleContainer = document.getElementById('board-task-hide-toggle-container');
     if (toggleContainer) {
+        // The verification filter is there once a server has sent a verification state for a finished task (#4564).
+        const verifyFilter = boardTasks.some(t => t.status === 'completed' && t.verification?.state)
+            ? `<label class="board-task-verify-filter">Show <select class="board-task-verify-select" data-on-change="task-verify-filter" aria-label="Finished tasks by verification">${VERIFY_FILTERS.map(v => `<option value="${escapeAttr(v)}"${v === _verifyFilter ? ' selected' : ''}>${VERIFY_FILTER_LABEL[v]}</option>`).join('')}</select></label>` : '';
         morphHtml(toggleContainer, completedCount > 0
-            ? `<label class="board-task-hide-toggle"><input type="checkbox" ${_hideCompleted ? 'checked' : ''} data-on-change="task-hide-done"> Hide done (${completedCount})</label>`
+            ? `<label class="board-task-hide-toggle"><input type="checkbox" ${_hideCompleted ? 'checked' : ''} data-on-change="task-hide-done"> Hide done (${completedCount})</label>${verifyFilter}`
             : '');
     }
 
@@ -561,7 +582,7 @@ export function renderBoardTaskList() {
             <span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(t.priority || 'none')}">${t.priority ? (_priorityLabel[t.priority] || escapeHtml(t.priority)) : '\u2014'}</span>
             ${typeCell}
             <span class="board-task-assignee">${escapeHtml(assignee)}</span>
-            <span class="board-task-desc"${tooltip}>${subagentBadge}${claimedBadge}${blockedBadge}${title}</span>
+            <span class="board-task-desc"${tooltip}>${subagentBadge}${claimedBadge}${blockedBadge}${isSubagent || isAgent ? '' : _verifyBadge(t)}${title}</span>
             <span class="${costClass}">${costText}</span>
             <span class="board-task-time">${timeStr}</span>
         </div>`;
@@ -972,6 +993,7 @@ function _taskDetailHtml(task, liveCost) {
         <div class="task-detail-title">#${Number(task.id)} · ${escapeHtml(task.title)}</div>
         <div class="task-detail-meta">
             <span class="task-detail-meta-item"><span class="task-detail-meta-label">Lifecycle</span><span class="task-detail-status ${statusClass}">${statusLabel}</span></span>
+            ${_verifyBadge(task) ? `<span class="task-detail-meta-item"><span class="task-detail-meta-label">Verification</span>${_verifyBadge(task)}</span>` : ''}
             <span class="task-detail-meta-item"><span class="task-detail-meta-label">Priority</span><span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(task.priority || 'none')}">${task.priority ? (_priorityLabel[task.priority] || escapeHtml(task.priority)) : '\u2014'}</span></span>
             ${task.workflow?.outcome === 'failed' ? '<span class="task-detail-meta-item"><span class="task-detail-meta-label">Result</span><span class="task-detail-outcome-failed">Failed</span></span>' : ''}
         </div>`;
@@ -1594,6 +1616,7 @@ const depContainer = el => { const id = tokenOf(el.dataset.container); return id
 registerActions({
     'task-close': () => window.hideTaskDetailModal(),
     'task-hide-done': () => _toggleHideCompleted(),
+    'task-verify-filter': el => _setVerifyFilter(el.value),
     'task-sort': el => { if (TASK_SORTS.has(el.dataset.sort)) window.__coral._toggleTaskSort(el.dataset.sort); },
     'task-open': el => withId(el.dataset.taskId, id => (el.dataset.kind === 'agent' ? window.showAgentTaskDetailModal(id) : window.showTaskDetailModal(id))),
     'task-subagent-open': el => { const sid = textOf(el.dataset.subagentId); if (sid) showSubagentDetailModal(sid); },
