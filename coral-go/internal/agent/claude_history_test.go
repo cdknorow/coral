@@ -368,25 +368,39 @@ func TestClaudeHistoryCursorsAreBoundedByBytes(t *testing.T) {
 // weight() (the bytes bound) cannot see. Six cursors of one 8 MiB message each, search bodies dropped: only the summaries are left to hold memory.
 func TestClaudeCursorSummaryDoesNotPinTheWholeMessage(t *testing.T) {
 	const n, size = 6, 8 << 20
-	heap := func() uint64 {
+	heap := func() int64 {
 		runtime.GC()
 		runtime.GC()
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		return m.HeapAlloc
+		return int64(m.HeapAlloc)
 	}
-	base := heap()
-	cs := make([]*claudeCursor, n)
-	for i := range cs {
-		c := &claudeCursor{}
-		c.add([]byte(`{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"role":"assistant","content":"` + strings.Repeat("x", size) + `"}}`))
-		require.Len(t, c.summary, 200)
-		c.fts = FTSBodyBuilder{} // the search body is counted by weight(); what is left is what weight() cannot see
-		cs[i] = c
+	// What the six cursors keep, as the growth of the live heap. The heap is the process's, so another goroutine (an earlier test's worker
+	// finishing, the runtime's own) can move it between the two readings, even below the first (a uint64 difference then wrapped to a huge
+	// number: the windows-tests failure of v1.4.97's re-gate, #4890). So it is a signed difference, and the least of three tries: a slice
+	// that pins its message holds 48 MiB every time, noise does not hold it three times.
+	limit := int64(n * size / 4)
+	measure := func() int64 {
+		base := heap()
+		cs := make([]*claudeCursor, n)
+		for i := range cs {
+			c := &claudeCursor{}
+			c.add([]byte(`{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","message":{"role":"assistant","content":"` + strings.Repeat("x", size) + `"}}`))
+			require.Len(t, c.summary, 200)
+			c.fts = FTSBodyBuilder{} // the search body is counted by weight(); what is left is what weight() cannot see
+			cs[i] = c
+		}
+		held := heap() - base
+		runtime.KeepAlive(cs)
+		return held
 	}
-	held := heap() - base
-	runtime.KeepAlive(cs)
-	assert.Less(t, held, uint64(n*size/4), "the summaries hold %d MiB: each pins its whole %d MiB message", held>>20, size>>20)
+	best := int64(1) << 62
+	for try := 0; try < 3 && best >= limit; try++ {
+		if held := measure(); held < best {
+			best = held
+		}
+	}
+	assert.Less(t, best, limit, "the summaries hold %d MiB: each pins its whole %d MiB message", best>>20, size>>20)
 }
 
 // Even a bound smaller than one cursor keeps the cursor just used (never none): the next pass then reads the newest file's new bytes, not the
