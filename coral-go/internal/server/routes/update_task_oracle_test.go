@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -54,14 +55,31 @@ func TestUpdateTaskAgreesWithBefore4756(t *testing.T) {
 	prevEnforced := identityActorEnforced()
 	t.Cleanup(func() { setIdentityActorEnforced(prevEnforced) })
 	counts := map[string]int{}
-	for seed := int64(1); seed <= 60; seed++ {
-		t.Run(fmt.Sprint(seed), func(t *testing.T) { runUpdateTaskOracle(t, seed, counts) })
-	}
+	var countsMu sync.Mutex
+	// The 60 seeds share nothing but the process-wide enforce flag (updateOracleFlagMu holds it for one request on each side), so they run
+	// together; the parent test waits for them all before it checks the floors (#4852).
+	t.Run("seeds", func(t *testing.T) {
+		for seed := int64(1); seed <= 60; seed++ {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				mine := map[string]int{}
+				runUpdateTaskOracle(t, seed, mine)
+				countsMu.Lock()
+				for k, v := range mine {
+					counts[k] += v
+				}
+				countsMu.Unlock()
+			})
+		}
+	})
 	t.Logf("compared, per outcome: %v", counts)
 	for name, floor := range updateTaskOutcomes {
 		require.GreaterOrEqual(t, counts[name], floor, "%q went (almost) unexercised", name)
 	}
 }
+
+// updateOracleFlagMu serialises the one request per side that depends on the process-wide enforce flag.
+var updateOracleFlagMu sync.Mutex
 
 func runUpdateTaskOracle(t *testing.T, seed int64, counts map[string]int) {
 	ctx := context.Background()
@@ -194,12 +212,14 @@ func runUpdateTaskOracle(t *testing.T, seed int64, counts map[string]int) {
 		}
 		var results [2]result
 		for i, s := range sides {
-			setIdentityActorEnforced(enforced)
 			req := httptest.NewRequest(http.MethodPatch, "/api/board/p/tasks/"+id, bytes.NewReader(raw))
 			req = withActor(req, caller)
 			rec := httptest.NewRecorder()
+			updateOracleFlagMu.Lock() // the enforce flag is the process's: set, serve and let the background work finish under one hold
+			setIdentityActorEnforced(enforced)
 			s.mux.ServeHTTP(rec, req)
 			s.h.WaitBackground()
+			updateOracleFlagMu.Unlock()
 			tasks, err := s.h.bs.ListTasks(ctx, "p")
 			require.NoError(t, err)
 			tj, _ := json.Marshal(tasks)

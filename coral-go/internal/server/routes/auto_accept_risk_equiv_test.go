@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -163,11 +165,19 @@ func riskDirs(t testing.TB) (string, []string) {
 
 func agreeOn(t testing.TB, wd string, dirs []string, cmd string) {
 	t.Helper()
+	if msg := disagreeOn(wd, dirs, cmd); msg != "" {
+		t.Fatal(msg)
+	}
+}
+
+// disagreeOn says how the new and the old rule differ on a command, or "" when they agree (it touches no testing.T, so goroutines can call it).
+func disagreeOn(wd string, dirs []string, cmd string) string {
 	for _, dir := range dirs {
 		if got, want := shellRiskFrom(cmd, wd, dir), shellRiskFromBefore4599(cmd, wd, dir); got != want {
-			t.Fatalf("shellRiskFrom(%q, wd, %q) = %q; before #4599 it was %q", cmd, dir, got, want)
+			return fmt.Sprintf("shellRiskFrom(%q, wd, %q) = %q; before #4599 it was %q", cmd, dir, got, want)
 		}
 	}
+	return ""
 }
 
 // riskTestStrings: every string literal in this package's test files that call shellRisk (the commands of
@@ -236,23 +246,33 @@ func riskWords(wd string) []string {
 func TestShellRiskAgreesWithBefore4599OnRandomCommands(t *testing.T) {
 	wd, dirs := riskDirs(t)
 	words := riskWords(wd)
-	rng := rand.New(rand.NewSource(4599))
 	n := 200000
 	if testing.Short() {
 		n = 20000
 	}
-	for i := 0; i < n; i++ {
-		k := 1 + rng.Intn(9)
-		parts := make([]string, k)
-		for j := range parts {
-			parts[j] = words[rng.Intn(len(words))]
+	// 200,000 commands in 100 blocks of 2,000, each from its own seeded stream, on several goroutines: the same number of commands as one
+	// stream of them, a fraction of the time (#4852).
+	const blocks = 100
+	var once sync.Once
+	parallelFor(blocks, func(b int) bool {
+		rng := rand.New(rand.NewSource(4599 + int64(b)))
+		for i := 0; i < n/blocks; i++ {
+			k := 1 + rng.Intn(9)
+			parts := make([]string, k)
+			for j := range parts {
+				parts[j] = words[rng.Intn(len(words))]
+			}
+			sep := " "
+			if rng.Intn(4) == 0 {
+				sep = ""
+			}
+			if msg := disagreeOn(wd, dirs, strings.Join(parts, sep)); msg != "" {
+				once.Do(func() { t.Error(msg) })
+				return false
+			}
 		}
-		sep := " "
-		if rng.Intn(4) == 0 {
-			sep = ""
-		}
-		agreeOn(t, wd, dirs, strings.Join(parts, sep))
-	}
+		return true
+	})
 }
 
 func FuzzShellRiskAgreesWithBefore4599(f *testing.F) {
