@@ -71,6 +71,14 @@ async function run() {
         check('one socket is open', (await open()) === 1, String(await open()));
         check('the saved choice is still Chat', (await ev(`localStorage.getItem('coral-live-view-mode')`)) === 'chat');
 
+        // Chat from the Terminal view that Open terminal opened: the view is Chat and no socket stays attached (the one-time switch must not outlive a choice).
+        await ev(`document.getElementById('live-view-btn-chat').click(); true`);
+        check('the Chat toggle after Open terminal shows Chat', await until(`document.getElementById('capture-wrapper').classList.contains('chat-mode')`, 'Chat view'));
+        check('and no terminal socket stays attached', await until(`window.__ws.filter(w => w.events.includes('open') && !w.events.includes('close')).length === 0`, 'the socket closed'), String(await open()));
+        check('and the saved choice is Chat', (await ev(`localStorage.getItem('coral-live-view-mode')`)) === 'chat');
+        await ev(`document.querySelector('[data-on-click="terminal-view-open"]').click(); true`);
+        check('Open terminal works again after that', await until(`(() => (document.getElementById('terminal-statusbar') || { dataset: {} }).dataset.state === 'connected')()`, 'the bar says connected'), await bar());
+
         // Another agent starts from the saved choice again: Chat, no terminal socket.
         await select(b);
         await until(`!!document.querySelector('[data-on-click="terminal-view-open"]')`, "the other agent's card");
