@@ -12,11 +12,20 @@ import (
 
 var eventQueryParamNames = map[string]bool{"type": true, "q": true, "since": true, "until": true, "sort": true, "limit": true, "cursor": true, "session_id": true}
 
+// historyEventQueryParamNames is the same without session_id: the history route names its session in the path.
+var historyEventQueryParamNames = map[string]bool{"type": true, "q": true, "since": true, "until": true, "sort": true, "limit": true, "cursor": true}
+
 // queryEvents answers ListEvents when it is a search (#4745).
 func (h *SessionsHandler) queryEvents(w http.ResponseWriter, r *http.Request, name string, sessionID *string, vals map[string][]string) {
+	queryAgentEvents(w, r, h.ts, name, sessionID, vals, eventQueryParamNames)
+}
+
+// queryAgentEvents is the events search of the live route (an agent's events) and of the history route (a session's): the same
+// parameters, reply and Coral Hub rules (#4779).
+func queryAgentEvents(w http.ResponseWriter, r *http.Request, ts *store.TaskStore, name string, sessionID *string, vals map[string][]string, allowed map[string]bool) {
 	var unknown []string
 	for k := range vals {
-		if !eventQueryParamNames[k] {
+		if !allowed[k] {
 			unknown = append(unknown, k)
 		}
 	}
@@ -45,7 +54,7 @@ func (h *SessionsHandler) queryEvents(w http.ResponseWriter, r *http.Request, na
 		}
 		q.Shown = shownTextMemoized
 	}
-	res, err := h.ts.QueryAgentEvents(r.Context(), q)
+	res, err := ts.QueryAgentEvents(r.Context(), q)
 	if err != nil {
 		errInternalServer(w, "could not search the events")
 		return

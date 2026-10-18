@@ -403,10 +403,20 @@ func (h *HistoryHandler) GetSessionGit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"session_id": sid, "commits": emptyIfNil(snaps)})
 }
 
-// GetSessionEvents returns events for a historical session.
+// GetSessionEvents returns events for a historical session, newest first; with type, q, since, until, sort or cursor it is a search, with
+// the reply and rules of the live events route (total, next_cursor; a Coral Hub viewer matches on what it sees).
 // GET /api/sessions/history/{sessionID}/events
 func (h *HistoryHandler) GetSessionEvents(w http.ResponseWriter, r *http.Request) {
 	sid := chi.URLParam(r, "sessionID")
+	vals, perr := url.ParseQuery(r.URL.RawQuery)
+	if perr != nil {
+		errBadRequest(w, "the query string is not valid (no ';', and %-escapes must be two hex digits)")
+		return
+	}
+	if store.QueriesEvents(vals) { // type, q, since, until, sort or cursor: a search, as on the live route (#4779)
+		queryAgentEvents(w, r, h.ts, "", &sid, vals, historyEventQueryParamNames)
+		return
+	}
 	limit := clampLimit(queryInt(r, "limit", 200), 200, 200)
 	events, err := h.ts.ListAgentEvents(r.Context(), "", limit, &sid)
 	if err != nil {

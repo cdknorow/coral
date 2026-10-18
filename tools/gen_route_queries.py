@@ -40,6 +40,8 @@ EXTRA = {
     'GET /api/board/{}/messages/search': {'q', 'from', 'mentions', 'since', 'until', 'sort', 'limit', 'cursor'},
     # The agent events search (#4745): queryEvents reads these from a url.Values it parsed itself, which the scan above does not follow.
     'GET /api/sessions/live/{}/events': {'type', 'q', 'since', 'until', 'sort', 'cursor'},
+    # The same search on a session's history events (#4779): GetSessionEvents hands queryAgentEvents the url.Values it parsed.
+    'GET /api/sessions/history/{}/events': {'type', 'q', 'since', 'until', 'sort', 'cursor'},
     # The recorded hub UI sends limit with an agent's personal task list; SessionsHandler.ListTasks returns them all.
     'GET /api/sessions/live/{}/tasks': {'limit'},
     # file_explorer.js pages a directory listing with offset; the handler returns the first page regardless.

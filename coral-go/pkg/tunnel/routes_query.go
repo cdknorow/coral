@@ -32,7 +32,7 @@ var routeQueries = map[string]string{
 	"GET /api/sessions/history":                   "agent_name,date_from,date_to,fts_mode,max_duration_sec,min_duration_sec,page,page_size,q,source_types,tag_ids,tag_logic,type",
 	"GET /api/sessions/history/search":            "page,page_size,q,type",
 	"GET /api/sessions/history/{}":                "find_key,limit,offset",
-	"GET /api/sessions/history/{}/events":         "limit",
+	"GET /api/sessions/history/{}/events":         "cursor,limit,q,since,sort,type,until",
 	"GET /api/sessions/history/{}/git":            "limit",
 	"GET /api/sessions/live/{}":                   "agent_type,session_id",
 	"GET /api/sessions/live/{}/capture":           "agent_type,session_id",
