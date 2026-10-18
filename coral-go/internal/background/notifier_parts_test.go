@@ -32,6 +32,8 @@ func TestNudgeDue(t *testing.T) {
 		{"nudged moments ago, same batch", recent, true, worker, 2, 10, false},
 		{"nudged moments ago, a worker's batch grew: still one nudge per batch", recent, true, worker, 5, 12, false},
 		{"the reminder is due", old, true, worker, 2, 10, true},
+		{"exactly at the reminder window: due", notifyState{count: 2, latestID: 10, at: now.Add(-window)}, true, worker, 2, 10, true},
+		{"a second before the window: not yet", notifyState{count: 2, latestID: 10, at: now.Add(-window + time.Second)}, true, worker, 2, 10, false},
 		{"all-messages: a newer message is a new batch", recent, true, all, 2, 11, true},
 		{"all-messages: more unread is new activity", recent, true, all, 3, 10, true},
 		{"all-messages: the same batch", recent, true, all, 2, 10, false},
