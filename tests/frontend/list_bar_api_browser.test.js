@@ -51,6 +51,24 @@ const { connect } = require('./agent_view_harness');
         assert.equal(r.calls, 0, 'a search that was waiting is never sent');
         // A second dispose, and a closed menu after one, change nothing and throw nothing.
         await ev(`(() => { const bar = window.__LB.buildListBar(${spec('{}')}, () => {}); document.body.append(bar.node); bar.dispose(); bar.dispose(); return true; })()`);
+        // The status region keeps its flag until there is a count to say: a server-backed panel draws no count at first, and an answer slower than the settle (500 ms) must still be said.
+        console.log('3. The status region says the count that comes after a slow answer');
+        const said = await ev(`(async () => {
+            const wait = ms => new Promise(r => setTimeout(r, ms));
+            let bar = null; const f = { q: 'abc' };
+            bar = window.__LB.buildListBar(${spec('{}')}, next => { bar.set(next, { matched: 9, all: 9 }); bar.set(next, null); }); // the panel's draw after a change: the old list's count, then nothing while the answer is awaited
+            document.body.append(bar.node);
+            const q = bar.node.querySelector('.list-bar-search'); q.value = 'abc'; q.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(450); // sleep-ok: the search is sent 300 ms after the last key; there is no event for it
+            await wait(700); // sleep-ok: longer than the status region's 500 ms settle: the answer is slower than it
+            const early = bar.node.querySelector('.list-bar-live').textContent;
+            bar.set(f, { matched: 2, all: 5 });
+            await wait(700); // sleep-ok: the status region says a count after it has stayed the same for 500 ms
+            const late = bar.node.querySelector('.list-bar-live').textContent;
+            bar.dispose();
+            return { early, late };
+        })()`);
+        assert.deepEqual(said, { early: '', late: '2 of 5' }, 'a timer set by the old count says nothing once the count is gone, and the count that arrives later is said');
         console.log('PASS');
     } catch (e) {
         console.error(e && e.stack || e);
