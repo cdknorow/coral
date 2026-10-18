@@ -2185,16 +2185,28 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 
 // ListTasks returns all tasks for a project, ordered by priority then ID.
 func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
-	var tasks []Task
-	err := s.reader().SelectContext(ctx, &tasks,
-		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE board_id = ?
-		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
-		project)
-	if err != nil {
-		return nil, err
+	tasks, _, err := s.ListTasksCapped(ctx, project, 0)
+	return tasks, err
+}
+
+// ListTasksCapped is ListTasks limited to max rows (max <= 0: every row). more says there were rows past the cap, so a caller
+// that must bound a reply (the full=1 list a viewer or an agent can ask for, #4602) can say it was cut.
+func (s *Store) ListTasksCapped(ctx context.Context, project string, max int) (tasks []Task, more bool, err error) {
+	q := `SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, parked_reason, parked_until, remind_at FROM board_tasks WHERE board_id = ?
+		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`
+	args := []any{project}
+	if max > 0 {
+		q += " LIMIT ?"
+		args = append(args, max+1)
+	}
+	if err = s.reader().SelectContext(ctx, &tasks, q, args...); err != nil {
+		return nil, false, err
+	}
+	if max > 0 && len(tasks) > max {
+		tasks, more = tasks[:max], true
 	}
 	s.populateTaskDeps(ctx, tasks)
-	return tasks, nil
+	return tasks, more, nil
 }
 
 // ListOpenTasks returns the board's pending, in-progress, blocked and draft

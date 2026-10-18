@@ -1751,6 +1751,12 @@ func formatBlockerList(deps []board.TaskDep) string {
 	return strings.Join(parts, ", ")
 }
 
+// maxFullTaskRows caps GET /api/board/{project}/tasks?full=1, and maxAllTasksRows the plain GET /api/board/tasks (#4602).
+const (
+	maxFullTaskRows = 500
+	maxAllTasksRows = 500
+)
+
 // ListTasks returns a page of the board's task list (#3269).
 // GET /api/board/{project}/tasks?status=open|completed|all&limit=50&cursor=...
 //
@@ -1762,12 +1768,18 @@ func (h *BoardHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
 	q := r.URL.Query()
 	if q.Get("full") == "1" {
-		tasks, err := h.bs.ListTasks(r.Context(), project)
+		// Every task in full, but not without end: a viewer or an agent can ask for it (#4602). Past maxFullTaskRows the reply
+		// is cut and says so; the paged list (no full=1) reaches the rest.
+		tasks, more, err := h.bs.ListTasksCapped(r.Context(), project, maxFullTaskRows)
 		if err != nil {
 			errInternalServer(w, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"tasks": emptyIfNil(tasks)})
+		reply := map[string]any{"tasks": emptyIfNil(tasks)}
+		if more {
+			reply["truncated"] = true
+		}
+		writeJSON(w, http.StatusOK, reply)
 		return
 	}
 	query := board.TaskListQuery{Status: q.Get("status"), Cursor: q.Get("cursor")}
@@ -1801,10 +1813,8 @@ func (h *BoardHandler) ListAllTasks(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery != "" && h.queryAllTasks(w, r) {
 		return
 	}
-	limit := 100
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
-		limit = l
-	}
+	// At most 500 whole rows (#4602; the task query path caps at 500 too, and 100 with long text).
+	limit := clampLimit(queryInt(r, "limit", 100), 100, maxAllTasksRows)
 	tasks, err := h.bs.ListAllTasks(r.Context(), limit)
 	if err != nil {
 		errInternalServer(w, err.Error())

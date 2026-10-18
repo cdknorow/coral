@@ -1,0 +1,144 @@
+package routes
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// #4602: a list size a caller asks for is bounded. A huge ?limit used to be the whole list, or the whole transcript and a copy of it
+// in memory, for the Operator, an agent token and a viewer through Coral Hub alike.
+
+func TestCrossBoardTaskListIsCappedAt500(t *testing.T) {
+	e := newTQEnv(t)
+	for i := 0; i < 520; i++ {
+		e.add("alpha", fmt.Sprintf("task %03d", i), "body", "low", "Orchestrator", "", "")
+	}
+	for _, q := range []string{"limit=100000", "limit=501", "limit=-5", "limit=0"} {
+		resp, err := http.Get(e.srv.URL + "/api/board/tasks?" + q)
+		require.NoError(t, err)
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var out struct {
+			Tasks []map[string]any `json:"tasks"`
+		}
+		require.NoError(t, json.Unmarshal(b, &out), q)
+		want := 500
+		if q == "limit=-5" || q == "limit=0" {
+			want = 100 // a junk or non-positive value is the default
+		}
+		assert.Len(t, out.Tasks, want, q)
+	}
+}
+
+func TestBoardTaskListFullIsCappedAndSaysSo(t *testing.T) {
+	e := newTQEnv(t)
+	r := chi.NewRouter()
+	r.Get("/api/board/{project}/tasks", NewBoardHandler(e.bs).ListTasks)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	get := func(project string) (int, bool) {
+		resp, err := http.Get(srv.URL + "/api/board/" + project + "/tasks?full=1")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out struct {
+			Tasks     []map[string]any `json:"tasks"`
+			Truncated bool             `json:"truncated"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		return len(out.Tasks), out.Truncated
+	}
+	for i := 0; i < 500; i++ {
+		e.add("exact", fmt.Sprintf("t%d", i), "b", "low", "Orchestrator", "", "")
+	}
+	n, cut := get("exact")
+	assert.Equal(t, 500, n)
+	assert.False(t, cut, "exactly the cap is not a cut")
+	e.add("exact", "one more", "b", "low", "Orchestrator", "", "")
+	n, cut = get("exact")
+	assert.Equal(t, 500, n)
+	assert.True(t, cut, "past the cap the reply says it was cut")
+	e.add("small", "only", "b", "low", "Orchestrator", "", "")
+	n, cut = get("small")
+	assert.Equal(t, 1, n)
+	assert.False(t, cut)
+}
+
+func TestChatPageLimitIsCappedAt500(t *testing.T) {
+	server, _, _, _ := setupSessionsTestServer(t)
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+	sid := "00000000-0000-0000-0000-000000004602"
+	var b strings.Builder
+	for i := 0; i < 650; i++ {
+		line, _ := json.Marshal(map[string]any{"type": "user", "message": map[string]any{"content": fmt.Sprintf("message %d", i)}})
+		b.Write(line)
+		b.WriteString("\n")
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(projectDir, sid+".jsonl"), []byte(b.String()), 0644))
+	count := func(q string) int {
+		resp, err := http.Get(fmt.Sprintf("%s/api/sessions/live/claude-%s/chat?session_id=%s&after=0&%s", server.URL, sid, sid, q))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var body struct {
+			Messages []map[string]any `json:"messages"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		return len(body.Messages)
+	}
+	assert.Equal(t, 100, count(""), "the default page")
+	assert.Equal(t, 500, count("limit=100000"), "a huge limit is the cap, not the whole transcript")
+	assert.Equal(t, 500, count("limit=501"))
+	assert.Equal(t, 30, count("limit=30"))
+}
+
+func TestHistoryPageLimitIsCappedAt500(t *testing.T) {
+	_, h, ss, codexHome, _, _ := setupHistoryVerificationServer(t)
+	ctx := context.Background()
+	dayDir := filepath.Join(codexHome, "sessions", "2026", "10", "16")
+	require.NoError(t, os.MkdirAll(dayDir, 0755))
+	sid := "f6a7b8c9-d0e1-2345-f012-3456789a4602"
+	var b strings.Builder
+	b.WriteString(`{"timestamp":"2026-10-16T10:00:00.000Z","type":"session_meta","payload":{"id":"rollout-cap","cwd":"/repo"}}` + "\n")
+	fmt.Fprintf(&b, `{"timestamp":"2026-10-16T10:00:00.100Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Coral session metadata:\n%s %s\n"}]}}`+"\n", at.CoralSessionMarkerPrefix, sid)
+	for i := 0; i < 650; i++ {
+		fmt.Fprintf(&b, `{"timestamp":"2026-10-16T10:00:%02d.000Z","type":"event_msg","payload":{"type":"user_message","message":"message %d","images":[]}}`+"\n", i%60, i)
+	}
+	rollout := filepath.Join(dayDir, "rollout-cap.jsonl")
+	require.NoError(t, os.WriteFile(rollout, []byte(b.String()), 0644))
+	require.NoError(t, ss.UpsertSessionIndex(ctx, &store.SessionIndex{SessionID: sid, SourceType: "codex", SourceFile: rollout}))
+	r := chi.NewRouter()
+	r.Get("/api/sessions/history/{sessionID}", h.GetSessionDetail)
+	count := func(q string) (int, int) {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/sessions/history/"+sid+q, nil))
+		require.Equal(t, http.StatusOK, rec.Code, q)
+		var p struct {
+			Messages []map[string]any `json:"messages"`
+			Total    int              `json:"total"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &p))
+		return len(p.Messages), p.Total
+	}
+	n, total := count("?limit=100000")
+	assert.Equal(t, 500, n, "a huge limit is the cap")
+	assert.Equal(t, 650, total, "the total still says how many there are")
+	n, _ = count("?limit=40")
+	assert.Equal(t, 40, n)
+}

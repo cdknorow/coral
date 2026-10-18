@@ -482,6 +482,7 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 	// asks for pages; without a limit the whole transcript, as before.
 	total, start := len(messages), 0
 	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
+		limit = min(limit, 500) // a page is at most 500 messages (#4602)
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 		end := max(total-max(offset, 0), 0)
 		start = max(end-limit, 0)

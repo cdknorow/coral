@@ -118,11 +118,9 @@ func (h *BoardRemotesHandler) ProxyProjects(w http.ResponseWriter, r *http.Reque
 func (h *BoardRemotesHandler) ProxyMessages(w http.ResponseWriter, r *http.Request) {
 	remoteServer := chi.URLParam(r, "remoteServer")
 	project := urlParam(r, "project")
-	limit := r.URL.Query().Get("limit")
-	if limit == "" {
-		limit = "200"
-	}
-	path := fmt.Sprintf("/%s/messages/all?limit=%s", project, limit)
+	// A number from 1 to 500, formatted here: the caller's text never reaches the remote's query string (#4602).
+	limit := clampLimit(queryInt(r, "limit", 200), 200, 500)
+	path := fmt.Sprintf("/%s/messages/all?limit=%d", project, limit)
 	result, code, err := h.proxyGet(r.Context(), remoteServer, path)
 	if err != nil {
 		writeJSON(w, code, map[string]string{"error": err.Error()})

@@ -390,10 +390,8 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// first message returned. An empty transcript is a page too (start 0), and
 	// a bad before is refused whether or not there are messages.
 	if after == 0 {
-		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		if limit <= 0 {
-			limit = 100 // default page size
-		}
+		// 100 by default, never more than 500 a page (#4602: a huge limit was the whole transcript, and a copy of it).
+		limit := clampLimit(queryInt(r, "limit", 100), 100, 500)
 		end := len(messages)
 		if raw := r.URL.Query().Get("before"); raw != "" {
 			before, err := strconv.Atoi(raw)
