@@ -132,7 +132,7 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 	if os.Getenv("CORAL_DEBUG_PHASES") == "1" {
 		idx.logger.Info("indexer pass complete", "indexed", indexed, "scanners", len(idx.scanners), "sessions", len(allSessions), "duration_ms", time.Since(started).Milliseconds())
 	} else {
-		idx.logger.Info("indexer pass complete", "indexed", indexed)
+		idx.logger.Info("indexer pass complete", "indexed", indexed, "duration_ms", time.Since(started).Milliseconds())
 	}
 	return nil
 }
