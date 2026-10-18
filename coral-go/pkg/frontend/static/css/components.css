@@ -2241,6 +2241,10 @@ button.subscriber-history-link {
 .agent-persona-actions .btn:first-child {
     color: var(--accent);
 }
+/* Save Persona on hover: the accent text on the hover fill was 4.31:1 in the light theme; the other subtle buttons turn to the primary text colour (#4673). */
+.agent-persona-actions .btn:first-child:hover {
+    color: var(--text-primary);
+}
 
 .agent-persona-actions .btn:first-child:hover {
     background: rgba(var(--accent-rgb), 0.08);
@@ -2499,6 +2503,9 @@ button.subscriber-history-link {
     border-radius: 10px;
     background: rgba(0, 0, 0, 0.08);
 }
+
+/* The dark fill above darkens the light theme's panel, taking the labels in it (Agent Configuration, Flags, the optional notes) to 3.4 to 4.4:1: a light fill there (#4673). */
+[data-theme="light"] .team-advanced { background: rgba(255, 255, 255, 0.5); }
 
 .team-advanced summary {
     cursor: pointer;
