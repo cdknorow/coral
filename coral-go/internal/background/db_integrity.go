@@ -182,5 +182,12 @@ func DatabaseWarning() string {
 		fmt.Fprintf(&b, "Coral found damage in %s (%s).", n, integrity.problems[n])
 	}
 	b.WriteString(" Coral has not changed anything. Copy the data folder somewhere safe, then stop Coral and run \"coral db compact\": it rebuilds sessions.db after writing a backup of it, and stops without changing anything when the damage is too deep to copy. If it stops, or the damage is in messageboard.db, restore that file from a backup (sqlite3's .recover can save what is still readable). The details are in Coral's log (coral.log, or tray.log when the tray started Coral).")
+	for _, p := range integrity.problems {
+		if strings.Contains(p, "session_fts") {
+			// The search index is derived data: it is rebuilt from the text stored beside it, and compact would copy the damage.
+			b.WriteString(" If the damage is in the search index (session_fts), only past sessions' search is affected: stop Coral and run \"coral db rebuild-search\" instead, which backs up sessions.db, rebuilds the index and checks it; \"coral db compact\" does not fix it.")
+			break
+		}
+	}
 	return b.String()
 }

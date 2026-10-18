@@ -567,6 +567,24 @@ backup once Coral works as before. Measured on a 2 GB database: 15 s, 2.0 GB to
 
 `token_usage` (the cost ledger) is not trimmed: it holds every session's spend.
 
+### "Coral found damage in sessions.db (fts5: corruption found ...)"
+
+`session_fts` is the search index over the text of past sessions: FTS5 keeps the text in its own content table and builds the
+index from it, so the index is derived data and a damaged one only affects search. A minute after start Coral checks the
+databases; a problem is checked again with writes paused before it is shown (the indexer rewrites the search index at start, and
+a first check could misread it: a notice that came and went between starts, each time naming a different blob, was that).
+A notice that remains is real. `coral db compact` does not fix it (VACUUM copies the damaged index as it is). Stop Coral and run:
+
+```
+coral db rebuild-search     # or: coral db rebuild-search --home <data folder>
+```
+
+It refuses while a Coral server runs on that data folder, writes a backup `sessions.before-rebuild-search-<time>.db` next to
+the database, rebuilds the index from the stored text (about 3 s for 330 sessions on a 2 GB database), checks the result and
+says what it found. Nothing but the search index changes. If the search text itself is damaged, the command says so and gives
+the one command that drops the search table; Coral makes it again at the next start and fills it again from the transcripts
+that still exist.
+
 ## Platform
 
 ### Windows

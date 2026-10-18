@@ -169,3 +169,13 @@ func TestDBIntegrityDoesNotAlarmWhileTheIndexerWrites(t *testing.T) {
 		t.Skip("the read pool did not report the false damage in 40 tries")
 	}
 }
+
+// #4735: damage in the search index is pointed to `coral db rebuild-search` (compact would copy it); other damage is not.
+func TestDatabaseWarningPointsSearchIndexDamageToRebuildSearch(t *testing.T) {
+	resetIntegrity(t)
+	integrity.set("bad.db", `fts5: corruption found reading blob 1 from table "session_fts"`)
+	assert.Contains(t, DatabaseWarning(), "coral db rebuild-search")
+	assert.Contains(t, DatabaseWarning(), `"coral db compact" does not fix it`)
+	integrity.set("bad.db", "database disk image is malformed")
+	assert.NotContains(t, DatabaseWarning(), "rebuild-search")
+}
