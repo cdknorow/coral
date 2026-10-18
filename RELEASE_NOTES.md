@@ -1,5 +1,34 @@
 # Release Notes
 
+## v1.4.95 — Search everywhere, a faster Cost view, and pty restarts that keep the agent
+
+### Changes
+
+- **Search everywhere, on one shared bar:** Tasks (text, status, priority, agent, updated since, order), the message board (text, From, Mentions me, dates, matches marked and stepped through), the agent list (State, Board and Machine filters and a sort, plus Collapse all / Expand all for teams), Activity, Saved for later and Team Artifacts. A search the server cuts short says N+, and the count is announced to screen readers once it has settled.
+- **New server searches:** `q` on the task list and on Saved, a board message search (`GET /api/board/{project}/messages/search`), and event searches for live agents and past sessions (type, text, time range, order, paged). The message search takes a slot in Coral Hub's search pool.
+- **The Cost view is much faster with a long history:** it reads an hourly aggregate of token usage that is kept exact as new usage arrives.
+- **The search indexer does less work:** a cursor for every live agent (bounded by memory, not a count of 64), one scan per pass, and batched writes.
+- **Customize tabs lists only the tabs the row shows,** each with its icon.
+
+### Fixes
+
+- **A Chat message with an attached image is confirmed** when the agent takes it late or queues it behind its turn, instead of showing "the agent didn't confirm". A message to an agent in the middle of its turn counts as sent only when its input box is empty.
+- **Restarting or resuming a live agent on the pty backend works again:** it answered an error. The new terminal now starts before the old one ends, so a failed start leaves the agent running.
+- **History's date_to filter includes the whole day,** fractions of a second included, for boards and agent sessions.
+
+### Security and privacy
+
+- **Only you can send a UI request to an agent:** `POST /api/agent/ui-request` refuses an agent's token, which could have typed text into another agent as if you had asked.
+- **Coral Hub users with View access no longer see passwords in URLs:** a URL's password, and a user name that is itself a token, are masked in what the connector sends them.
+- **Searches through Coral Hub match only what the viewer can see:** they run on the redacted text, and a search for a token or key is refused.
+- **An agent's session name is checked for control characters,** like the other identity fields, on board and agent requests.
+
+### Other changes
+
+- **Simpler code, behaviour unchanged:** the terminal and live-feed WebSockets, the history list, Chat, the agent state derivation, the hub identity guard and task updates are split into named steps, each compared with the old code on random inputs.
+- **Docs:** `coral --version` is documented, the troubleshooting curl sends the API key, the guides no longer claim to describe v1.3.23, callouts render, and the privacy page links to the managed Coral Hub setup.
+- **Tests and CI:** terminal captures keep their exact bytes on Windows checkouts, slow browser tests wait for the layout instead of fixed sleeps (phone layout about 4 times faster), the route-query generator follows helper calls, and the gate's suite durations are refreshed.
+
 ## v1.4.94 — A Coral Hub Inbox tab, open work first in the task list, and a search index you can repair
 
 ### Changes
