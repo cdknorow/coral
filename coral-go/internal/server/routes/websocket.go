@@ -396,30 +396,9 @@ func (h *SessionsHandler) getActiveRuns(ctx context.Context) []map[string]any {
 // Replay for initial seed. Stream data is sent as binary WebSocket frames;
 // control messages (terminal_closed) remain JSON text frames.
 func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
-	// The terminal stream is the Operator's (#4512, Security's #4508 H2): an agent's session token reads and types
-	// into no terminal through it, whatever the identity middleware did before. No agent tool opens it.
-	if _, agent := VerifiedSession(r.Context()); agent {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden_for_agent",
-			"message": "An agent can't read or type into a terminal through the terminal stream: that is for the Operator (the dashboard)"})
+	name, agentType, sessionID, admitted := h.wsTerminalAdmit(w, r)
+	if !admitted {
 		return
-	}
-	name := chi.URLParam(r, "name")
-	agentType := r.URL.Query().Get("agent_type")
-	sessionID := r.URL.Query().Get("session_id")
-	if namesNoSession(name, sessionID) { // a bare name could attach to (and type into) another agent's terminal (#3211)
-		if conn, err := websocket.Accept(w, r, h.wsAcceptOptions(r)); err == nil {
-			conn.Close(websocket.StatusPolicyViolation, "session_id is required")
-		}
-		return
-	}
-	if shouldValidateExactTarget(agentType, sessionID) {
-		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, true); status != 0 {
-			conn, err := websocket.Accept(w, r, h.wsAcceptOptions(r))
-			if err == nil {
-				conn.Close(websocket.StatusPolicyViolation, message)
-			}
-			return
-		}
 	}
 
 	if debugEnabled() {
@@ -465,217 +444,307 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 
 	defer h.backend.Unsubscribe(name, subID)
 
-	// Send replay seed as a binary frame, prefixed with clear codes so
-	// reconnects don't stack duplicate scrollback. Also sent again to a viewer that fell
-	// behind (#4161); false when the write failed.
-	sendReplay := func() bool {
-		replay, err := h.backend.Replay(name)
-		if err != nil || len(replay) == 0 {
-			return true
-		}
-		clearPrefix := []byte("\x1b[2J\x1b[3J\x1b[H")
-		seed := make([]byte, len(clearPrefix)+len(replay))
-		copy(seed, clearPrefix)
-		copy(seed[len(clearPrefix):], replay)
-		return wsWrite(ctx, conn, websocket.MessageBinary, seed) == nil
-	}
-	sendReplay()
-	var resyncs resyncBudget
+	t := &terminalStream{h: h, ctx: ctx, conn: conn, name: name, agentType: agentType, sessionID: sessionID, subID: subID,
+		sizeCheck: make(chan int64, 1)}
+	t.sizer, _ = h.backend.(ptymanager.PaneSizer)
+	t.sendReplay()
 
 	// This server answers every terminal_input that carries an id (#3276): the client then
 	// settles a send on the answer instead of on a quiet window. Sent after the replay seed,
 	// which clients expect first.
 	wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_hello", "input_acks": true})
 
-	// The pane's real size (#3422): sent now and whenever it changes, whoever changed it
-	// (another dashboard, a phone, a tmux attach). A viewer that does not set the size
-	// renders at this one instead of wrapping the pane's lines at its own width.
-	// The first report is marked initial: it is written before any frame from the client is read,
-	// so it never answers the client's own resize. A resize that carries a seq is answered with
-	// the size the pane has after it (tmux may clamp), echoing the seq, so the client can tell an
-	// answer to its latest resize from a change made elsewhere.
-	sizer, _ := h.backend.(ptymanager.PaneSizer)
-	sizeCheck := make(chan int64, 1)
-	lastCols, lastRows := 0, 0
-	sendSize := func(seq int64, initial bool) {
-		if sizer == nil {
-			return
-		}
-		cols, rows, err := sizer.PaneSize(name)
-		if err != nil || (seq == 0 && cols == lastCols && rows == lastRows) {
-			return
-		}
-		lastCols, lastRows = cols, rows
-		frame := map[string]any{"type": "terminal_size", "cols": cols, "rows": rows}
-		if seq > 0 {
-			frame["seq"] = seq
-		}
-		if initial {
-			frame["initial"] = true
-		}
-		wsWriteJSON(ctx, conn, frame)
-	}
-	sendSize(0, true)
+	t.sendSize(0, true)
 	var sizeTick <-chan time.Time
-	if sizer != nil {
-		t := time.NewTicker(terminalSizeEvery)
-		defer t.Stop()
-		sizeTick = t.C
+	if t.sizer != nil {
+		tk := time.NewTicker(terminalSizeEvery)
+		defer tk.Stop()
+		sizeTick = tk.C
 	}
 
-	// Reader goroutine: receives terminal input from the client (JSON text frames)
-	var composing atomic.Int32 // composer_send deliveries under way on this socket
-	go func() {
-		defer safego.Recover("server/routes/websocket:787")
-		defer cancel()
-		for {
-			_, raw, err := conn.Read(ctx)
-			if err != nil {
-				return
+	go t.readFrames(cancel)
+	t.writeLoop(ch, sizeTick)
+}
+
+// wsTerminalAdmit checks a terminal stream request before its socket is kept: never an agent's session (the
+// stream is the Operator's, #4512, Security's #4508 H2), never a bare name (it could attach to and type into another
+// agent's terminal, #3211), and an exact target that is live. A refused request is answered here.
+func (h *SessionsHandler) wsTerminalAdmit(w http.ResponseWriter, r *http.Request) (name, agentType, sessionID string, ok bool) {
+	// The terminal stream is the Operator's (#4512, Security's #4508 H2): an agent's session token reads and types
+	// into no terminal through it, whatever the identity middleware did before. No agent tool opens it.
+	if _, agent := VerifiedSession(r.Context()); agent {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden_for_agent",
+			"message": "An agent can't read or type into a terminal through the terminal stream: that is for the Operator (the dashboard)"})
+		return "", "", "", false
+	}
+	name = chi.URLParam(r, "name")
+	agentType = r.URL.Query().Get("agent_type")
+	sessionID = r.URL.Query().Get("session_id")
+	if namesNoSession(name, sessionID) { // a bare name could attach to (and type into) another agent's terminal (#3211)
+		if conn, err := websocket.Accept(w, r, h.wsAcceptOptions(r)); err == nil {
+			conn.Close(websocket.StatusPolicyViolation, "session_id is required")
+		}
+		return "", "", "", false
+	}
+	if shouldValidateExactTarget(agentType, sessionID) {
+		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, true); status != 0 {
+			conn, err := websocket.Accept(w, r, h.wsAcceptOptions(r))
+			if err == nil {
+				conn.Close(websocket.StatusPolicyViolation, message)
 			}
-			var msg struct {
-				Type string `json:"type"`
-				Data string `json:"data"`
-				Cols int    `json:"cols"`
-				Rows int    `json:"rows"`
-				// Seq, on terminal_resize, is echoed on the terminal_size that answers it (#3422).
-				Seq int64 `json:"seq"`
-				// ID, on terminal_input, asks for an answer carrying it (#3276): a
-				// terminal_input_ack once the input is delivered, or the refusal with the id.
-				// Decoded leniently: a frame whose id is not an integer (or is null) is
-				// still typed, as before ids existed, and gets no answer.
-				RawID json.RawMessage `json:"id"`
-				ID    *int64          `json:"-"`
+			return "", "", "", false
+		}
+	}
+	return name, agentType, sessionID, true
+}
+
+// terminalStream is one open terminal stream: the socket, the terminal it shows, and the pane size and the
+// deliveries under way on it.
+type terminalStream struct {
+	h                          *SessionsHandler
+	ctx                        context.Context
+	conn                       *websocket.Conn
+	name, agentType, sessionID string
+	subID                      string
+	sizer                      ptymanager.PaneSizer
+	// sizeCheck carries a resize's seq to the writer, which answers it with the pane's size.
+	sizeCheck          chan int64
+	lastCols, lastRows int
+	composing          atomic.Int32 // composer_send deliveries under way on this socket
+	resyncs            resyncBudget
+}
+
+// sendReplay sends the replay seed as a binary frame, prefixed with clear codes so
+// reconnects don't stack duplicate scrollback. Also sent again to a viewer that fell
+// behind (#4161); false when the write failed.
+func (t *terminalStream) sendReplay() bool {
+	replay, err := t.h.backend.Replay(t.name)
+	if err != nil || len(replay) == 0 {
+		return true
+	}
+	clearPrefix := []byte("\x1b[2J\x1b[3J\x1b[H")
+	seed := make([]byte, len(clearPrefix)+len(replay))
+	copy(seed, clearPrefix)
+	copy(seed[len(clearPrefix):], replay)
+	return wsWrite(t.ctx, t.conn, websocket.MessageBinary, seed) == nil
+}
+
+// sendSize sends the pane's real size (#3422): at the start and whenever it changes, whoever changed it
+// (another dashboard, a phone, a tmux attach). A viewer that does not set the size
+// renders at this one instead of wrapping the pane's lines at its own width.
+// The first report is marked initial: it is written before any frame from the client is read,
+// so it never answers the client's own resize. A resize that carries a seq is answered with
+// the size the pane has after it (tmux may clamp), echoing the seq, so the client can tell an
+// answer to its latest resize from a change made elsewhere.
+func (t *terminalStream) sendSize(seq int64, initial bool) {
+	if t.sizer == nil {
+		return
+	}
+	cols, rows, err := t.sizer.PaneSize(t.name)
+	if err != nil || (seq == 0 && cols == t.lastCols && rows == t.lastRows) {
+		return
+	}
+	t.lastCols, t.lastRows = cols, rows
+	frame := map[string]any{"type": "terminal_size", "cols": cols, "rows": rows}
+	if seq > 0 {
+		frame["seq"] = seq
+	}
+	if initial {
+		frame["initial"] = true
+	}
+	wsWriteJSON(t.ctx, t.conn, frame)
+}
+
+// terminalFrame is a frame from the client (JSON text).
+type terminalFrame struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+	Cols int    `json:"cols"`
+	Rows int    `json:"rows"`
+	// Seq, on terminal_resize, is echoed on the terminal_size that answers it (#3422).
+	Seq int64 `json:"seq"`
+	// ID, on terminal_input, asks for an answer carrying it (#3276): a
+	// terminal_input_ack once the input is delivered, or the refusal with the id.
+	// Decoded leniently: a frame whose id is not an integer (or is null) is
+	// still typed, as before ids existed, and gets no answer.
+	RawID json.RawMessage `json:"id"`
+	ID    *int64          `json:"-"`
+}
+
+// parseTerminalFrame decodes a client frame; ok is false for one that isn't JSON (it is skipped).
+func parseTerminalFrame(raw []byte) (msg terminalFrame, ok bool) {
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		return msg, false
+	}
+	if len(msg.RawID) > 0 && string(bytes.TrimSpace(msg.RawID)) != "null" {
+		var id int64
+		if json.Unmarshal(msg.RawID, &id) == nil {
+			msg.ID = &id
+		}
+	}
+	return msg, true
+}
+
+// readFrames receives the client's frames until the socket closes, then cancels the stream.
+func (t *terminalStream) readFrames(cancel context.CancelFunc) {
+	defer safego.Recover("server/routes/websocket:787")
+	defer cancel()
+	for {
+		_, raw, err := t.conn.Read(t.ctx)
+		if err != nil {
+			return
+		}
+		if msg, ok := parseTerminalFrame(raw); ok {
+			t.handleFrame(msg)
+		}
+	}
+}
+
+// handleFrame types input, resizes the pane, or delivers a composer message, and answers as terminalReply says.
+func (t *terminalStream) handleFrame(msg terminalFrame) {
+	// Input or a resize for a terminal that is gone is not dropped silently: the
+	// client is told, like the 409 terminal_gone of POST /send and /keys (#3218).
+	var sendErr error
+	switch msg.Type {
+	case "composer_send":
+		t.composerSend(msg)
+		return
+	case "terminal_input":
+		if msg.Data != "" {
+			// A person's keystrokes: the PTY backend records them for the gate
+			// (no automated text joins a draft it can't read, #3482).
+			if hs, ok := t.h.backend.(ptymanager.HumanInputSender); ok {
+				sendErr = hs.SendHumanInput(t.name, []byte(msg.Data))
+			} else {
+				sendErr = t.h.backend.SendInput(t.name, []byte(msg.Data))
 			}
-			if err := json.Unmarshal(raw, &msg); err != nil {
-				continue
-			}
-			if len(msg.RawID) > 0 && string(bytes.TrimSpace(msg.RawID)) != "null" {
-				var id int64
-				if json.Unmarshal(msg.RawID, &id) == nil {
-					msg.ID = &id
-				}
-			}
-			// Input or a resize for a terminal that is gone is not dropped silently: the
-			// client is told, like the 409 terminal_gone of POST /send and /keys (#3218).
-			var sendErr error
-			switch msg.Type {
-			case "composer_send":
-				// A message from Chat's composer (#4587): typed and submitted with deliverHumanSend's care (it
-				// waits for a starting agent's input box and confirms the text left it), and answered by id only
-				// once it was submitted. In its own goroutine: it can wait seconds, and the terminal's own
-				// keystrokes and resizes go on meanwhile.
-				// At most composerSendsPerSocket of them under way per socket: over that, refused at once.
-				if msg.Data != "" && msg.ID != nil {
-					id := *msg.ID
-					if composing.Load() >= composerSendsPerSocket {
-						_, hs, _ := humanSendError(errSendBusy)
-						wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_input_failed", "error": hs["error"], "code": hs["code"], "not_sent": true, "id": id})
-						continue
-					}
-					composing.Add(1)
-					go func() {
-						defer safego.Recover("server/routes/websocket:composer_send")
-						defer composing.Add(-1)
-						err := h.deliverHumanSend(ctx, name, agentType, sessionID, msg.Data)
-						switch {
-						case err == nil:
-							wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_input_ack", "id": id})
-						case errors.Is(err, ptymanager.ErrTerminalGone):
-							wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": true, "id": id})
-						default:
-							out := map[string]any{"type": "terminal_input_failed", "error": "The message could not be sent to the agent's terminal.", "not_sent": true, "id": id}
-							if _, hs, ok := humanSendError(err); ok {
-								out["error"], out["code"], out["not_sent"] = hs["error"], hs["code"], hs["not_sent"]
-							}
-							wsWriteJSON(ctx, conn, out)
-						}
-					}()
-				}
-				continue
-			case "terminal_input":
-				if msg.Data != "" {
-					// A person's keystrokes: the PTY backend records them for the gate
-					// (no automated text joins a draft it can't read, #3482).
-					if hs, ok := h.backend.(ptymanager.HumanInputSender); ok {
-						sendErr = hs.SendHumanInput(name, []byte(msg.Data))
-					} else {
-						sendErr = h.backend.SendInput(name, []byte(msg.Data))
-					}
-				}
-			case "terminal_resize":
-				if msg.Cols >= minTerminalCols {
-					cols, rows := clampTerminalSize(msg.Cols, msg.Rows)
-					sendErr = h.backend.Resize(name, cols, rows)
-					// Answer with the size the pane now has (it may differ: tmux clamps). Only
-					// the latest resize needs its answer: an unread earlier one is replaced.
-					select {
-					case <-sizeCheck:
-					default:
-					}
-					sizeCheck <- msg.Seq
-				}
-			}
-			withID := func(frame map[string]any) map[string]any {
-				if msg.Type == "terminal_input" && msg.ID != nil {
-					frame["id"] = *msg.ID
-				}
-				return frame
-			}
-			switch {
-			case errors.Is(sendErr, ptymanager.ErrTerminalGone):
-				wsWriteJSON(ctx, conn, withID(map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": msg.Type == "terminal_input"}))
-			case msg.Type != "terminal_input" || msg.ID == nil:
-				// Resizes and input without an id get no answer (older clients).
-			case sendErr != nil:
-				wsWriteJSON(ctx, conn, withID(map[string]any{"type": "terminal_input_failed", "error": "The input could not be sent to the agent's terminal.", "not_sent": true}))
+		}
+	case "terminal_resize":
+		if msg.Cols >= minTerminalCols {
+			cols, rows := clampTerminalSize(msg.Cols, msg.Rows)
+			sendErr = t.h.backend.Resize(t.name, cols, rows)
+			// Answer with the size the pane now has (it may differ: tmux clamps). Only
+			// the latest resize needs its answer: an unread earlier one is replaced.
+			select {
+			case <-t.sizeCheck:
 			default:
-				wsWriteJSON(ctx, conn, withID(map[string]any{"type": "terminal_input_ack"}))
 			}
+			t.sizeCheck <- msg.Seq
+		}
+	}
+	if reply := terminalReply(msg.Type, msg.ID, sendErr); reply != nil {
+		wsWriteJSON(t.ctx, t.conn, reply)
+	}
+}
+
+// terminalReply is the answer to a terminal_input or terminal_resize frame, or nil for none: terminal_gone for a
+// terminal that is gone (not_sent for input), and for input that carries an id its ack or terminal_input_failed,
+// with the id. Resizes and input without an id get no other answer (older clients).
+func terminalReply(msgType string, id *int64, sendErr error) map[string]any {
+	withID := func(frame map[string]any) map[string]any {
+		if msgType == "terminal_input" && id != nil {
+			frame["id"] = *id
+		}
+		return frame
+	}
+	switch {
+	case errors.Is(sendErr, ptymanager.ErrTerminalGone):
+		return withID(map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": msgType == "terminal_input"})
+	case msgType != "terminal_input" || id == nil:
+		// Resizes and input without an id get no answer (older clients).
+		return nil
+	case sendErr != nil:
+		return withID(map[string]any{"type": "terminal_input_failed", "error": "The input could not be sent to the agent's terminal.", "not_sent": true})
+	}
+	return withID(map[string]any{"type": "terminal_input_ack"})
+}
+
+// composerSend delivers a message from Chat's composer (#4587): typed and submitted with deliverHumanSend's care (it
+// waits for a starting agent's input box and confirms the text left it), and answered by id only
+// once it was submitted. In its own goroutine: it can wait seconds, and the terminal's own
+// keystrokes and resizes go on meanwhile.
+// At most composerSendsPerSocket of them under way per socket: over that, refused at once.
+func (t *terminalStream) composerSend(msg terminalFrame) {
+	if msg.Data == "" || msg.ID == nil {
+		return
+	}
+	id := *msg.ID
+	if t.composing.Load() >= composerSendsPerSocket {
+		_, hs, _ := humanSendError(errSendBusy)
+		wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_input_failed", "error": hs["error"], "code": hs["code"], "not_sent": true, "id": id})
+		return
+	}
+	t.composing.Add(1)
+	go func() {
+		defer safego.Recover("server/routes/websocket:composer_send")
+		defer t.composing.Add(-1)
+		err := t.h.deliverHumanSend(t.ctx, t.name, t.agentType, t.sessionID, msg.Data)
+		switch {
+		case err == nil:
+			wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_input_ack", "id": id})
+		case errors.Is(err, ptymanager.ErrTerminalGone):
+			wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": true, "id": id})
+		default:
+			out := map[string]any{"type": "terminal_input_failed", "error": "The message could not be sent to the agent's terminal.", "not_sent": true, "id": id}
+			if _, hs, ok := humanSendError(err); ok {
+				out["error"], out["code"], out["not_sent"] = hs["error"], hs["code"], hs["not_sent"]
+			}
+			wsWriteJSON(t.ctx, t.conn, out)
 		}
 	}()
+}
 
-	// Writer loop: forward live output as binary WebSocket frames
+// writeLoop forwards the terminal's live output as binary frames, answers resizes with the pane's size, and ends the
+// stream when the socket or the terminal does.
+func (t *terminalStream) writeLoop(ch <-chan []byte, sizeTick <-chan time.Time) {
 	for {
 		select {
-		case <-ctx.Done():
-			conn.Close(websocket.StatusNormalClosure, "")
+		case <-t.ctx.Done():
+			t.conn.Close(websocket.StatusNormalClosure, "")
 			return
-		case seq := <-sizeCheck:
-			sendSize(seq, false)
+		case seq := <-t.sizeCheck:
+			t.sendSize(seq, false)
 		case <-sizeTick:
-			sendSize(0, false)
+			t.sendSize(0, false)
 		case data, ok := <-ch:
 			if !ok {
-				if lr, isLR := h.backend.(ptymanager.LagReporter); isLR && lr.Lagged(name, subID) {
-					// This viewer fell a whole buffer behind (#4161): start it again from a fresh
-					// replay rather than show the output with frames missing. One that keeps
-					// falling behind is closed; the dashboard reconnects after a pause.
-					if !resyncs.allow(time.Now()) {
-						conn.Close(websocket.StatusTryAgainLater, "the terminal's output is faster than this connection")
-						return
-					}
-					next, err := h.backend.Attach(name, subID)
-					if err != nil {
-						wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_closed"})
-						conn.Close(websocket.StatusNormalClosure, "session ended")
-						return
-					}
-					ch = next
-					if !sendReplay() {
-						return
-					}
-					continue
+				next, keepGoing := t.outputEnded()
+				if !keepGoing {
+					return
 				}
-				wsWriteJSON(ctx, conn, map[string]any{"type": "terminal_closed"})
-				conn.Close(websocket.StatusNormalClosure, "session ended")
-				return
+				ch = next
+				continue
 			}
-			if err := wsWrite(ctx, conn, websocket.MessageBinary, data); err != nil {
+			if err := wsWrite(t.ctx, t.conn, websocket.MessageBinary, data); err != nil {
 				return
 			}
 		}
 	}
+}
+
+// outputEnded handles the terminal's output channel closing: a viewer that fell a whole buffer behind (#4161) starts
+// again from a fresh replay rather than show the output with frames missing (one that keeps falling behind is closed;
+// the dashboard reconnects after a pause); otherwise the session ended. keepGoing is true with the new channel.
+func (t *terminalStream) outputEnded() (next <-chan []byte, keepGoing bool) {
+	if lr, isLR := t.h.backend.(ptymanager.LagReporter); isLR && lr.Lagged(t.name, t.subID) {
+		if !t.resyncs.allow(time.Now()) {
+			t.conn.Close(websocket.StatusTryAgainLater, "the terminal's output is faster than this connection")
+			return nil, false
+		}
+		next, err := t.h.backend.Attach(t.name, t.subID)
+		if err != nil {
+			wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_closed"})
+			t.conn.Close(websocket.StatusNormalClosure, "session ended")
+			return nil, false
+		}
+		if !t.sendReplay() {
+			return nil, false
+		}
+		return next, true
+	}
+	wsWriteJSON(t.ctx, t.conn, map[string]any{"type": "terminal_closed"})
+	t.conn.Close(websocket.StatusNormalClosure, "session ended")
+	return nil, false
 }
 
 // wsWriteTimeout bounds every write to a dashboard socket (#4161). A client that stops reading

@@ -38,7 +38,7 @@ var allowedSenders = map[string]string{
 	"internal/server/routes/auto_accept.go\tAutoAcceptor.check\tAutoAcceptSend": "auto-accept exemption",
 	"internal/server/routes/auto_accept.go\tAutoAcceptor.check\tSendRawInput":   "inside AutoAcceptSend",
 	// A person's input. /send and /keys gate any caller that isn't a person.
-	"internal/server/routes/websocket.go\tSessionsHandler.WSTerminal\tSendInput":           "human: terminal typing",
+	"internal/server/routes/websocket.go\tterminalStream.handleFrame\tSendInput":           "human: terminal typing",
 	"internal/server/routes/prompt_answer.go\tSessionsHandler.AnswerPrompt\tSendInput":     "human: picks an option",
 	"internal/server/routes/prompt_answer.go\tSessionsHandler.AnswerPrompt\tSendRawInput":  "human: picks an option",
 	"internal/server/routes/prompt_answer.go\tSessionsHandler.selectUnnumbered\tSendArrow": "human: picks an option (a menu without numbers, #4543)",

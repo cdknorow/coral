@@ -496,8 +496,11 @@ func TestWebSocketClientMessagesCarryNoIdentity(t *testing.T) {
 				switch x := n.(type) {
 				case *ast.CallExpr:
 					if se, ok := x.Fun.(*ast.SelectorExpr); ok && se.Sel.Name == "Read" {
-						if id, ok := se.X.(*ast.Ident); ok && id.Name == "conn" {
-							reads = true
+						switch c := se.X.(type) {
+						case *ast.Ident: // conn.Read
+							reads = reads || c.Name == "conn"
+						case *ast.SelectorExpr: // a stream's own connection: t.conn.Read
+							reads = reads || c.Sel.Name == "conn"
 						}
 					}
 				case *ast.StructType:
@@ -513,7 +516,17 @@ func TestWebSocketClientMessagesCarryNoIdentity(t *testing.T) {
 			}
 		}
 	}
-	assert.Equal(t, map[string]bool{"WSTerminal": true}, readers, "a new WebSocket handler reads client messages: classify what it may carry here")
+	assert.Equal(t, map[string]bool{"readFrames": true}, readers, "a new WebSocket handler reads client messages: classify what it may carry here")
+	// The terminal stream's reader decodes its frames into terminalFrame (parseTerminalFrame), declared outside the
+	// reader's body: its fields are checked here (#4713).
+	frame := src.named["terminalFrame"]
+	require.NotNil(t, frame, "the terminal stream's client frame type")
+	tags := map[string]int{}
+	src.tags(frame, tags, 0)
+	require.NotEmpty(t, tags)
+	for name := range tags {
+		assert.False(t, canon[name], "the terminal stream's client frame declares the identity field %q: no guard reads it", name)
+	}
 }
 
 // The census's two blind spots, closed (#4244 follow-up): a decode into a function parameter, and a
