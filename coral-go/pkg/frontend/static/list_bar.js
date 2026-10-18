@@ -148,7 +148,7 @@ export function buildListBar(spec, onChange) {
             const all = `${counts && counts.all}${counts && counts.truncated ? '+' : ''}`; // '+': older ones were not scanned
             const say = text => {
                 count.textContent = text;
-                if (!announce) return;
+                if (!announce || !text) return; // an empty text (no counts yet) is not a count to say
                 clearTimeout(liveTimer);
                 liveTimer = setTimeout(() => { announce = false; live.textContent = count.textContent; }, LIVE_SETTLE_MS);
             };

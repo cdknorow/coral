@@ -1,8 +1,10 @@
 /* Shared pieces of an Activity row: how long the activity took and what else is known about it */
 
-import { escapeHtml } from './utils.js';
+import { escapeHtml, escapeAttr } from './utils.js';
 import { formatDuration as fmtDuration } from './format.js';
 import { browserLocal } from './safe_storage.js';
+import { formatClockTime } from './format.js';
+import { getToolIcon } from './event_icons.js';
 
 /** 850 -> "850ms", 9100 -> "9.1s", 75000 -> "1m 15s", 3720000 -> "1h 2m". */
 export function formatDuration(ms) {
@@ -112,4 +114,19 @@ export function renderActivityChart(container, events, groups) {
         try { browserLocal.set(CHART_MODE_KEY, btn.dataset.chartMode); } catch {}
         renderActivityChart(container, events, groups);
     };
+}
+
+/** One row of the Activity list: the icon, the summary, how long it took and when (the live feed and a search draw the same). */
+export function eventRowHtml(ev) {
+    const icon = getToolIcon(ev.tool_name, ev.event_type);
+    const typeCls = (ev.event_type ? `event-type-${ev.event_type}` : '') + (eventFailed(ev) ? ' event-failed' : '');
+    const extra = eventDetailText(ev);
+    return `<div class="event-item ${typeCls}" data-tooltip="${escapeAttr(icon.title === ev.summary ? '' : escapeAttr(icon.title) + ': ')}${escapeAttr(ev.summary)}${escapeAttr(extra ? escapeAttr(' (' + extra + ')') : '')}">
+            <span class="event-icon ${icon.cls}">${icon.char}</span>
+            <span class="event-body">
+                <span class="event-summary">${escapeHtml(ev.summary)}</span>
+            </span>
+            ${durationChip(ev)}
+            <span class="event-time">${formatClockTime(ev.created_at)}</span>
+        </div>`;
 }

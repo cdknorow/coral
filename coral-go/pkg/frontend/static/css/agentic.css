@@ -337,6 +337,11 @@ body.panel-dragging .agentic-state {
     flex-wrap: wrap;
 }
 
+/* The Activity panel's search bar (#4785): the shared list bar above the events; the live feed's own filter hides while a search shows. */
+.event-search-bar { padding: 6px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.event-more { display: block; margin: 8px auto; min-height: 32px; }
+@media (pointer: coarse) { .event-more { min-height: 44px; } }
+
 .event-filter-char {
     font-family: 'Material Icons';
     font-size: var(--icon-inline-size);

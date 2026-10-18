@@ -9,10 +9,11 @@ import { startBoardTaskPoll, stopBoardTaskPoll } from './tasks.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { morphHtml } from './dom_morph.js';
 import { registerActions } from './actions.js';
-import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
+import { eventRowHtml, renderActivityChart } from './event_row.js';
+import { syncActivitySearch, loadMoreEvents } from './activity_search.js';
 import { serverFetch, serverForSession } from './server_base.js';
 import { formatClockTime } from './format.js';
-import { FILTER_GROUPS, getToolIcon, eventVisible, historyEventsView } from './event_icons.js';
+import { FILTER_GROUPS, eventVisible, historyEventsView } from './event_icons.js';
 import { openableTab } from './tab_customize.js';
 import { filterItemHtml, refillFilterList, syncFilterExpanded, wireFilterDropdown } from './filter_dropdown.js';
 import { browserLocal } from './safe_storage.js';
@@ -182,6 +183,9 @@ export function renderEventTimeline() {
     const container = document.getElementById('agentic-state-events');
     if (!container) return;
 
+    // A search of the agent's events (the bar above the list) shows its results in place of the live feed
+    if (syncActivitySearch(renderEventTimeline)) { renderLiveActivityChart(); return; }
+
     const events = state.currentAgentEvents || [];
 
     // Also update filter chips (counts may have changed)
@@ -199,19 +203,7 @@ export function renderEventTimeline() {
     }
 
     // Events come newest-first from API, display newest at top
-    morphHtml(container, visible.map(ev => {
-        const icon = getToolIcon(ev.tool_name, ev.event_type);
-        const typeCls = (ev.event_type ? `event-type-${ev.event_type}` : '') + (eventFailed(ev) ? ' event-failed' : '');
-        const extra = eventDetailText(ev);
-        return `<div class="event-item ${typeCls}" data-tooltip="${escapeAttr(icon.title === ev.summary ? '' : escapeAttr(icon.title) + ': ')}${escapeAttr(ev.summary)}${escapeAttr(extra ? escapeAttr(' (' + extra + ')') : '')}">
-            <span class="event-icon ${icon.cls}">${icon.char}</span>
-            <span class="event-body">
-                <span class="event-summary">${escapeHtml(ev.summary)}</span>
-            </span>
-            ${durationChip(ev)}
-            <span class="event-time">${formatClockTime(ev.created_at)}</span>
-        </div>`;
-    }).join(''));
+    morphHtml(container, visible.map(eventRowHtml).join(''));
 
     renderLiveActivityChart();
 }
@@ -361,6 +353,7 @@ export function restoreAgenticTabs() {
 // The activity filter's dropdown, for the live view and history alike (#3645): data-on-* names,
 // never code. mode is "live" or "history"; each toggle function checks the key itself.
 registerActions({
+    'activity-more': () => { loadMoreEvents(); },
     'filter-dropdown': el => { if (el.dataset.mode === 'live' || el.dataset.mode === 'history') toggleFilterDropdown(el.dataset.mode); },
     'filter-toggle': (el, event) => {
         event.stopPropagation();
