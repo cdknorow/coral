@@ -45,7 +45,8 @@ var sdTrust = func() string {
 	if err != nil {
 		panic(err)
 	}
-	return sgrSeq.ReplaceAllString(string(b), "")
+	// A Windows checkout writes the capture with CRLF line ends: a screen line is read without its \r, as on a terminal.
+	return sgrSeq.ReplaceAllString(strings.ReplaceAll(string(b), "\r\n", "\n"), "")
 }()
 
 func sdScreens() []string {

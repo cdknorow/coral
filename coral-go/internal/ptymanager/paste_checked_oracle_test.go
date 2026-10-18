@@ -52,7 +52,8 @@ var pcDialog = func() string {
 	if err != nil {
 		panic(err)
 	}
-	return sgrSeq.ReplaceAllString(string(b), "")
+	// A Windows checkout writes the capture with CRLF line ends: a screen line is read without its \r, as on a terminal.
+	return sgrSeq.ReplaceAllString(strings.ReplaceAll(string(b), "\r\n", "\n"), "")
 }()
 
 // pcDialogBox is the dialog capture's empty input box (Claude draws a no-break space after its ❯).
