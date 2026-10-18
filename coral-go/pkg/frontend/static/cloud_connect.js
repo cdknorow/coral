@@ -19,8 +19,8 @@ const STATUS_URL = '/api/cloud/status';
 const HUB_OPERATOR_URL = '/api/system/hub-operator';
  const MODE_HELP = {
     view: 'Read everything: every agent\'s terminal output and chat, all board chat on every team, files, tasks and boards. Nothing can be typed, changed or started from the web.',
-    interact: 'Also type into agents that are already running (send text, keys, answer prompts) and change tasks, notes and the board. Typing can run commands: an agent with shell tools acts on it. It can also change board settings, including turning on cross-team messaging.',
-    launch: 'Also start, wake and restart agents and browse folders to choose where. Launching runs code on this computer as you.',
+    interact: 'Also type into agents that are already running (send text, keys, answer prompts), post on boards, change tasks and notes, and rename or archive agents. Typing can run commands: an agent with shell tools acts on it. It can also change a team\'s working mode.',
+    launch: 'Also start, stop, sleep, wake and restart agents (one agent or a whole team), browse folders to choose where, pause boards, delete board messages and boards, and turn on auto-accept. Launching runs code on this computer as you.',
 };
 // Said when this page is not the dashboard on the computer running Coral (the cloud routes
 // answer 403): connecting has to happen there.

@@ -79,7 +79,10 @@ const HUB_PRELOAD = `(() => {
         }
     };
     const INTERACT_PANE = ['cmd-send', 'cmd-send-menu', 'cmd-raw-keys', 'cmd-macro'];
-    const INTERACT_ROW = ['agent-kill', 'agent-rename', 'agent-sleep'];
+    const INTERACT_ROW = ['agent-rename'];
+    // Since #4274 stopping and sleeping one agent need Launch (the route table; #4526 moved them here from Interact), and turning
+    // auto-accept on does too.
+    const LAUNCH_ROW = ['agent-restart', 'agent-kill', 'agent-sleep', 'agent-auto-accept'];
     const NEVER_ROW = ['agent-info', 'agent-move'];
     try {
         await Promise.all([Page.enable(), Network.enable()]);
@@ -96,13 +99,13 @@ const HUB_PRELOAD = `(() => {
 
         console.log('1. View: everything that needs Interact or Launch is dimmed with its reason');
         await waitFor(`!!document.querySelector('#command-toolbar [data-on-click=cmd-send].hub-blocked')`, 'Send dimmed at View', 6000);
-        await waitFor(`!!document.querySelector('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-kill].hub-blocked')`, 'Kill dimmed at View', 6000);
+        await waitFor(`!!document.querySelector('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-rename].hub-blocked')`, 'Rename dimmed at View', 6000);
         let s = await state();
         blockedAs(s.pane, INTERACT_PANE, true, 'Interact', 'View pane');
         blockedAs(s.row, INTERACT_ROW, true, 'Interact', 'View row');
-        blockedAs(s.row, ['agent-restart'], true, 'Launch', 'View row');
+        blockedAs(s.row, LAUNCH_ROW, true, 'Launch', 'View row');
         blockedAs(s.row, NEVER_ROW, false, '', 'View row (reads or rearranges)');
-        console.log(`   ✓ pane ${INTERACT_PANE.join(', ')}; row ${INTERACT_ROW.join(', ')} (Interact) and agent-restart (Launch); Session Info and Move not dimmed`);
+        console.log(`   ✓ pane ${INTERACT_PANE.join(', ')}; row ${INTERACT_ROW.join(', ')} (Interact) and ${LAUNCH_ROW.join(', ')} (Launch); Session Info and Move not dimmed`);
 
         console.log('2. Interact: only the Launch controls stay dimmed');
         await access('interact');
@@ -111,8 +114,8 @@ const HUB_PRELOAD = `(() => {
         s = await state();
         blockedAs(s.pane, INTERACT_PANE, false, '', 'Interact pane');
         blockedAs(s.row, INTERACT_ROW, false, '', 'Interact row');
-        blockedAs(s.row, ['agent-restart'], true, 'Launch', 'Interact row');
-        console.log('   ✓ Send, keys, macros, Kill, Rename, Sleep normal; Restart still says it needs Launch');
+        blockedAs(s.row, LAUNCH_ROW, true, 'Launch', 'Interact row');
+        console.log('   ✓ Send, keys, macros, Rename normal; Restart, Kill, Sleep and turning auto-accept on still say they need Launch');
 
         console.log('3. Launch: nothing is dimmed');
         await access('launch');
@@ -150,7 +153,7 @@ const HUB_PRELOAD = `(() => {
                 boardPanelPause: q('#qa-hub-controls [data-on-click=board-chat-pause]'), boardViewPause: q('[data-on-click=mb-pause]'), msgDelete: q('#qa-hub-controls [data-on-click=mb-msg-delete]'),
                 localTeamSleep: q('#qa-hub-controls [data-board="team-local"]'), agentSleep: q('#live-sessions-list [data-session-id="bc-awake-id"] [data-on-click=agent-sleep]') }; })()`);
         await ev(`window.__coral.toggleTopBarSettings(); window.__coral.closeTopBarSettings(); true`); // the menu (Sleep all) is built on first open (#4500)
-        const LAUNCH_ONLY = ['sleepAll', 'teamSleep', 'teamWake', 'boardPanelPause', 'boardViewPause', 'msgDelete'];
+        const LAUNCH_ONLY = ['sleepAll', 'teamSleep', 'teamWake', 'boardPanelPause', 'boardViewPause', 'msgDelete', 'agentSleep'];
         for (const mode of ['view', 'interact']) {
             await access(mode);
             await waitFor(`document.querySelector('[data-on-click="m-close-top-bar-settings-then-sleep-all-agents"]').classList.contains('hub-blocked')`, `Sleep all dimmed at ${mode}`, 8000);
@@ -158,13 +161,12 @@ const HUB_PRELOAD = `(() => {
             const h = await hubControls();
             blockedAs(h, LAUNCH_ONLY, true, 'Launch', `${mode}`);
             assert.equal(h.localTeamSleep.blocked, false, `${mode}: a team on the hub's own machine is not dimmed`);
-            assert.equal(h.agentSleep.blocked, mode === 'view', `${mode}: single-agent sleep ${mode === 'view' ? 'needs Interact, dimmed at View' : 'stays at Interact, normal'}`);
         }
         await access('launch');
         await marked();
         const hl = await hubControls();
-        for (const k of [...LAUNCH_ONLY, 'localTeamSleep', 'agentSleep']) assert.equal(hl[k].blocked, false, `launch: ${k} is not dimmed`);
-        console.log('   ✓ at View and Interact all six are dimmed with "needs Launch" (aria-disabled, still clickable); a local team is not; single-agent sleep dimmed at View only; at Launch none');
+        for (const k of [...LAUNCH_ONLY, 'localTeamSleep']) assert.equal(hl[k].blocked, false, `launch: ${k} is not dimmed`);
+        console.log('   ✓ at View and Interact all seven (single-agent sleep too, since #4274) are dimmed with "needs Launch" (aria-disabled, still clickable); a local team is not; at Launch none');
         await ev(`document.getElementById('qa-hub-controls')?.remove(); true`);
 
         console.log('5. A local dashboard is unchanged');

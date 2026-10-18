@@ -30,16 +30,21 @@ const { pathToFileURL } = require('url');
 
     for (const k of ['view', 'interact', 'launch']) assert.ok(m.MODE_INFO[k].text.length > 20);
     assert.match(m.MODE_INFO.interact.text, /run commands/);
-    assert.match(m.MODE_INFO.interact.text, /kill an agent/);
-    // A whole team and a board need Launch through the hub (#3433, #3443).
-    assert.doesNotMatch(m.MODE_INFO.interact.text, /delete boards|delete a board/);
-    assert.match(m.MODE_INFO.launch.text, /kill a whole team, delete a board/);
-    assert.match(m.MODE_INFO.interact.text, /board settings, including turning on cross-team messaging/);
+    // Stopping, sleeping and waking agents (one or a whole team) and deleting boards need Launch through the hub (#3433, #3443, #4274;
+    // #4526 fixed MODE_INFO, which still gave single-agent kill to Interact). TestDashboardModeTextMatchesTheRouteTable pins it to the route table.
+    assert.doesNotMatch(m.MODE_INFO.interact.text, /\bkill\b|\bstop\b|delete boards|delete a board/);
+    assert.match(m.MODE_INFO.launch.text, /start, stop, sleep, wake and restart agents \(one agent or a whole team\)/);
+    assert.match(m.MODE_INFO.launch.text, /delete board messages and boards/);
+    assert.match(m.MODE_INFO.interact.text, /working mode/);
+    // Cross-team messaging is a board setting (PUT .../settings), never reachable through the hub at any mode (QA on #4526).
+    for (const k of ['view', 'interact', 'launch']) assert.doesNotMatch(m.MODE_INFO[k].text, /cross-team/i);
     // cloud_connect.js keeps its own (module-local) Interact description for the machine's Cloud panel: keep it in step.
     const connect = require('fs').readFileSync(path.join(dir, 'cloud_connect.js'), 'utf8');
     const connectInteract = (connect.match(/^\s*interact: '(.*)',$/m) || [])[1] || '';
     assert.match(connectInteract, /run commands/);
-    assert.match(connectInteract, /board settings, including turning on cross-team messaging/);
+    assert.match(connectInteract, /working mode/);
+    assert.doesNotMatch(connectInteract, /cross-team/i);
+    assert.doesNotMatch(connectInteract, /\bkill\b|\bstop\b/);
     const cl = await import(pathToFileURL(path.join(dir, 'cloud.js')).href);
     for (const ok of ['/api/system/privacy', '/api/agent/ui', '/api/agent/ui/x']) assert.ok(cl.NO_HUB_ENDPOINT.test(ok), ok);
     for (const no of ['/api/themes/variables', '/api/themes', '/api/themes/Dark', '/api/settings', '/api/tags', '/api/views', '/api/servers', '/api/remote/x/api/license/status', '/api/sessions/live']) assert.ok(!cl.NO_HUB_ENDPOINT.test(no), no);

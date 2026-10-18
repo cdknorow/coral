@@ -1,7 +1,8 @@
 /* Controls the Coral Hub's access tier does not allow (#3769). Through the Hub a machine can be limited to View
  * or Interact: the server refuses what needs more, but a control that looks available and answers with a
- * "Blocked" toast only when clicked is misleading. Each control that needs Interact (send, keys, macros, Kill,
- * Rename, Sleep, Archive, ...) or Launch (Restart, Wake, and from #3942 Sleep all, a team's sleep, a board's pause and a board message's delete) is dimmed and gets the reason as its title when its
+ * "Blocked" toast only when clicked is misleading. Each control that needs Interact (send, keys, macros, Rename,
+ * Archive, turning auto-accept off) or Launch (Kill, Sleep, Wake and Restart of one agent since #4274; Sleep all and Wake all, a team's
+ * sleep, a board's pause and a board message's delete since #3942; turning auto-accept on) is dimmed and gets the reason as its title when its
  * agent's machine is below that tier. It stays clickable: the click still says why (hubBlocked, or the
  * hub's refusal). Which tier each needs follows the hub's route table (pkg/tunnel/routes.go).
  *
@@ -13,12 +14,17 @@ import { isCloud, sessionServer, splitKey } from './server_base.js';
 import { blockedReason } from './hub_access.js';
 import { pollEvery } from './overload.js';
 
+// Pinned to the route table (testdata/cloud_routes.golden) by TestDashboardModeTextMatchesTheRouteTable (#4526): since #4274
+// stopping, sleeping and waking one agent need Launch, as a team's or every agent's do.
 const INTERACT = new Set(['cmd-send', 'cmd-send-menu', 'cmd-send-team', 'send-menu-send', 'send-menu-team', 'send-menu-resend',
     'send-menu-protocol', 'cmd-quick', 'cmd-raw-keys', 'cmd-macro', 'macro-show', 'macro-delete', 'cmd-mode-toggle',
-    'agent-kill', 'agent-rename', 'agent-icon', 'agent-sleep', 'agent-archive', 'agent-auto-accept']);
-const LAUNCH = new Set(['agent-restart', 'agent-attach', 'm-close-top-bar-settings-then-sleep-all-agents', 'team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete']);
-// What #3942 moved to Launch through the Hub: sleeping a team or every agent, pausing a board and deleting a board message
-// (sleeping one agent stays at Interact). Team sleep and a board's pause and delete act on the machine that holds the board.
+    'agent-rename', 'agent-icon', 'agent-archive']);
+const LAUNCH = new Set(['agent-restart', 'agent-attach', 'agent-kill', 'agent-sleep', 'm-close-top-bar-settings-then-sleep-all-agents',
+    'm-close-top-bar-settings-then-wake-all-agents', 'team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete']);
+// Turning auto-accept on needs Launch, turning it off Interact: the menu item says which by aria-checked.
+const AUTO_ACCEPT = 'agent-auto-accept';
+// What #3942 moved to Launch through the Hub: sleeping a team or every agent, pausing a board and deleting a board message.
+// Team sleep and a board's pause and delete act on the machine that holds the board.
 const BOARD = new Set(['team-sleep', 'board-chat-pause', 'mb-pause', 'mb-msg-delete']);
 const SLEEP_ALL = 'm-close-top-bar-settings-then-sleep-all-agents';
 // The sleeping bar's buttons name their action in data-action.
@@ -28,6 +34,7 @@ export function tierOf(el) {
     if (el.closest('#sleeping-composer')) return BAR[el.dataset.action] || '';
     if (el.classList.contains('mobile-send-btn')) return 'interact';
     const a = el.dataset.onClick;
+    if (a === AUTO_ACCEPT) return el.getAttribute('aria-checked') === 'true' ? 'interact' : 'launch';
     return INTERACT.has(a) ? 'interact' : LAUNCH.has(a) ? 'launch' : '';
 }
 

@@ -131,8 +131,10 @@ export const MODES = ['view', 'interact', 'launch'];
 
 export const MODE_INFO = {
     view: { label: 'View', text: 'Read terminals, chats, files, tasks and boards. Nothing you do here changes anything on the machine.' },
-    interact: { label: 'Interact', text: 'Also type into agents, change tasks and boards, and stop work one agent at a time (kill an agent). Agents can run commands, so this can make the machine run code. It can also change board settings, including turning on cross-team messaging.' },
-    launch: { label: 'Launch', text: 'Also start new agents and teams, browse the machine\'s folders, and remove whole teams and boards (kill a whole team, delete a board).' },
+    // What each mode allows, as the route table has it (testdata/cloud_routes.golden, what the connector enforces): pinned by
+    // TestDashboardModeTextMatchesTheRouteTable (#4526; this said Interact could kill an agent long after #4274 made it Launch).
+    interact: { label: 'Interact', text: 'Also type into running agents, post on boards, change tasks and notes, and rename or archive agents. Agents can run commands, so this can make the machine run code. It can also change a team\'s working mode.' },
+    launch: { label: 'Launch', text: 'Also start, stop, sleep, wake and restart agents (one agent or a whole team), browse the machine\'s folders, pause boards, delete board messages and boards, and turn on auto-accept.' },
 };
 
 const rank = m => MODES.indexOf(m);
