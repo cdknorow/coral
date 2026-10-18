@@ -23,7 +23,7 @@ import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './hi
 import { loadHistoryChanges } from './history_changes.js';
 import { note, currentRoute } from './nav.js';
 import { liveRoute } from './routes.js';
-import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode, effectiveLiveViewMode } from './live_chat.js';
+import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode, effectiveLiveViewMode, clearViewOverride } from './live_chat.js';
 import { agentViewVisible, onAgentView } from './agent_view.js';
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs, fitTerminal } from './xterm_renderer.js';
@@ -354,6 +354,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
 
     // Reset live history and start capture/terminal FIRST (fastest path to visible output)
     resetLiveHistory();
+    clearViewOverride(); // an "Open terminal" was for the agent before (#4711)
     // Clear stale task state from previous session before starting refresh
     state.currentAgentTasks = [];
     state.currentBoardTasks = [];

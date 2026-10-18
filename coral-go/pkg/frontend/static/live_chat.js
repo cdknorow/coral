@@ -950,8 +950,13 @@ function hasTranscript(session) {
 
 /** The view the selected agent shows in the centre: "chat" or "terminal". A plain terminal has no transcript,
  *  so it is always the terminal; otherwise the persisted mode, or a one-off override. */
+// "Open terminal" on the needs-input card shows the terminal for this agent without changing the saved choice (#4711). The terminal
+// attaches only for a view that wants it (sessions.js asks effectiveLiveViewMode), so the view that is showing has to be what is asked:
+// until the next agent is selected, or a view is chosen with the toggle, the terminal is the view.
+let _terminalOverride = false;
+export function clearViewOverride() { _terminalOverride = false; }
 export function effectiveLiveViewMode(override) {
-    return hasTranscript(state.currentSession) ? (override || getLiveViewMode()) : "terminal";
+    return hasTranscript(state.currentSession) ? (override || (_terminalOverride ? "terminal" : getLiveViewMode())) : "terminal";
 }
 
 /** Apply the persisted mode (or a one-off override) to the DOM and start/stop the transcript poll. */
@@ -1100,6 +1105,7 @@ export function initCommandInputAutosize() {
 }
 
 export function setLiveViewMode(mode) {
+    _terminalOverride = false;
     try {
         browserLocal.set(VIEW_MODE_KEY, mode === "chat" ? "chat" : "terminal");
     } catch { /* storage unavailable — mode lasts for this page only */ }
@@ -1114,6 +1120,7 @@ export function setLiveViewMode(mode) {
 
 /** Show the terminal for this agent without changing the saved Chat/Terminal choice. */
 export function showTerminalView() {
+    _terminalOverride = true;
     applyLiveViewMode("terminal");
 }
 
