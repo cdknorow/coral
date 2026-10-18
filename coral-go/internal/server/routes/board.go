@@ -1610,6 +1610,10 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "title required")
 		return
 	}
+	if refuseTextTooLarge(w, "title_too_large", "a task title", len(body.Title), maxTaskTitleBytes) ||
+		refuseTextTooLarge(w, "body_too_large", "a task body", len(body.Body), maxTaskBodyBytes) {
+		return
+	}
 	var remindAt time.Time
 	if body.RemindAt != "" {
 		at, err := time.Parse(time.RFC3339, body.RemindAt)
@@ -1649,6 +1653,20 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.requireTaskPlanner(w, r, project, createdBy) {
 		return
+	}
+	// An agent token may have at most maxOpenTasksPerAgent open tasks it created on a board (#4602, M10); the Operator and
+	// Coral's own tasks are not counted.
+	if callerActor(r).Kind == ActorToken {
+		open, err := h.bs.CountOpenTasksCreatedBy(r.Context(), project, createdBy)
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		if open >= maxOpenTasksPerAgent {
+			msg := fmt.Sprintf("an agent can have at most %d open tasks it created on a board (it has %d): complete or cancel some first", maxOpenTasksPerAgent, open)
+			writeJSON(w, http.StatusConflict, map[string]any{"error": msg, "message": msg, "code": "too_many_open_tasks", "max": maxOpenTasksPerAgent, "not_saved": true})
+			return
+		}
 	}
 	if body.Priority == "" {
 		body.Priority = "medium"
@@ -1765,6 +1783,27 @@ func formatBlockerList(deps []board.TaskDep) string {
 		}
 	}
 	return strings.Join(parts, ", ")
+}
+
+// The sizes of the text a task and a wait may carry (#4602, M10): a task's title is typed into its assignee's terminal and
+// its body is read by every agent that opens it, so neither is allowed to be a document. A larger one is a 413 that says
+// so; nothing is stored.
+const (
+	maxTaskTitleBytes  = 512
+	maxTaskBodyBytes   = 256 << 10
+	maxWaitReasonBytes = 4 << 10
+	// maxOpenTasksPerAgent is how many open tasks one agent token may have created on a board.
+	maxOpenTasksPerAgent = 500
+)
+
+// refuseTextTooLarge answers 413 with code, and reports true, when got is over max bytes. what names the text ("a task title").
+func refuseTextTooLarge(w http.ResponseWriter, code, what string, got, max int) bool {
+	if got <= max {
+		return false
+	}
+	msg := fmt.Sprintf("%s is at most %d bytes (this one is %d): shorten it; long text belongs in an artifact (coral-agent artifact upload) with its link in the text", what, max, got)
+	writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": msg, "message": msg, "code": code, "max_bytes": max, "not_saved": true})
+	return true
 }
 
 // maxFullTaskRows caps GET /api/board/{project}/tasks?full=1, and maxAllTasksRows the plain GET /api/board/tasks (#4602).
@@ -2196,6 +2235,9 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw.SubscriberID = attrWho
+	if raw.Title != nil && refuseTextTooLarge(w, "title_too_large", "a task title", len(*raw.Title), maxTaskTitleBytes) {
+		return
+	}
 	if raw.Body != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "task body changes require the revisioned /amend endpoint with a reason and base_revision"})
 		return
@@ -2332,6 +2374,9 @@ func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.SubscriberID = attrWho
+	if text, ok := body.Changes["body"].(string); ok && refuseTextTooLarge(w, "body_too_large", "a task body", len(text), maxTaskBodyBytes) {
+		return
+	}
 	if !h.requireTaskPlanner(w, r, project, body.SubscriberID) {
 		return
 	}
@@ -2570,6 +2615,9 @@ func (h *BoardHandler) RegisterWait(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "subscriber_id required")
 		return
 	}
+	if refuseTextTooLarge(w, "reason_too_large", "a wait's reason", len(body.Reason), maxWaitReasonBytes) {
+		return
+	}
 	if body.WaitType == board.WaitOperator {
 		// A question for the Operator: the reason is the question. It is shown to the
 		// orchestrator only through teamhealth.ShownText, and is kept short here.
@@ -2600,6 +2648,11 @@ func (h *BoardHandler) RegisterWait(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	wait, err := h.bs.RegisterWait(r.Context(), project, body.SubscriberID, body.SessionName, body.WaitType, body.TargetID, body.Reason, timeout)
+	if errors.Is(err, board.ErrTooManyWaits) {
+		msg := err.Error()
+		writeJSON(w, http.StatusConflict, map[string]any{"error": msg, "message": msg, "code": "too_many_waits", "max": board.MaxActiveWaitsPerSubscriber, "not_saved": true})
+		return
+	}
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return

@@ -98,6 +98,14 @@ func (s *Store) ListOperatorQuestions(ctx context.Context, project string) ([]Re
 	return out, nil
 }
 
+// MaxActiveWaitsPerSubscriber is how many active waits one subscriber may have across all boards (#4602, M10). A subscriber
+// has one active wait per board (registering again replaces it), so this bounds the boards it can park on at once.
+// Resolved and cancelled waits are kept: nothing the user's boards recorded is deleted to make room.
+const MaxActiveWaitsPerSubscriber = 50
+
+// ErrTooManyWaits is a new wait past MaxActiveWaitsPerSubscriber.
+var ErrTooManyWaits = fmt.Errorf("a subscriber can have at most %d active waits (one per board): cancel one first", MaxActiveWaitsPerSubscriber)
+
 // RegisterWait creates or replaces an active registered wait for a subscriber on a project.
 func (s *Store) RegisterWait(ctx context.Context, project, subscriberID, sessionName, waitType, targetID, reason string, timeout time.Duration) (*RegisteredWait, error) {
 	if project == "" || subscriberID == "" {
@@ -125,6 +133,14 @@ func (s *Store) RegisterWait(ctx context.Context, project, subscriberID, session
 		nowStr, project, subscriberID)
 	if err != nil {
 		return nil, fmt.Errorf("cancel prior wait: %w", err)
+	}
+
+	var active int
+	if err := tx.GetContext(ctx, &active, "SELECT COUNT(*) FROM board_waits WHERE subscriber_id = ? AND status = 'active' AND expires_at > ?", subscriberID, nowStr); err != nil {
+		return nil, fmt.Errorf("count waits: %w", err)
+	}
+	if active >= MaxActiveWaitsPerSubscriber {
+		return nil, ErrTooManyWaits
 	}
 
 	res, err := tx.ExecContext(ctx, `

@@ -2245,6 +2245,13 @@ func taskPriorityRank(priority string) int {
 	return -1
 }
 
+// CountOpenTasksCreatedBy is how many open tasks (pending, in progress, blocked, draft, review pending) createdBy has created on a board.
+func (s *Store) CountOpenTasksCreatedBy(ctx context.Context, project, createdBy string) (int, error) {
+	var n int
+	err := s.reader().GetContext(ctx, &n, `SELECT COUNT(*) FROM board_tasks WHERE board_id = ? AND created_by = ? AND `+openTaskStatusSQL, project, createdBy)
+	return n, err
+}
+
 // ListOpenTasks returns the board's pending, in-progress, blocked and draft
 // tasks with their BlockedBy dependencies, but without workflow hydration
 // (Task.Workflow is left zero). It is the cheap read for frequently polled views

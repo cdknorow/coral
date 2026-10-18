@@ -2881,12 +2881,19 @@ func cmdWait() {
 		os.Exit(1)
 	}
 	if status != http.StatusCreated && status != http.StatusOK {
-		var errResp map[string]string
-		if json.Unmarshal(data, &errResp) == nil && errResp["error"] != "" {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", errResp["error"])
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
+		// map[string]any: a refusal's reply carries numbers and flags beside its words (the 413 and 409 of the bounds, #4646).
+		var errResp map[string]any
+		if json.Unmarshal(data, &errResp) == nil {
+			if text, _ := errResp["message"].(string); text != "" {
+				fmt.Fprintf(os.Stderr, "Error: %s\n", text)
+				os.Exit(1)
+			}
+			if text, _ := errResp["error"].(string); text != "" {
+				fmt.Fprintf(os.Stderr, "Error: %s\n", text)
+				os.Exit(1)
+			}
 		}
+		fmt.Fprintf(os.Stderr, "Error: HTTP %d: %s\n", status, string(data))
 		os.Exit(1)
 	}
 
