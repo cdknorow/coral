@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -362,6 +363,24 @@ func TestClaudeHistoryCursorsAreBoundedByBytes(t *testing.T) {
 	assert.Len(t, got, 40, "every transcript is still indexed")
 	assert.LessOrEqual(t, len(a.hist.cursors), 5)
 	assert.GreaterOrEqual(t, len(a.hist.cursors), 1)
+}
+
+// The summary is built by cursorSummary, and it must not share memory with the message it came from: the address of its first byte is
+// outside the message's bytes, for a short and a long message. No heap numbers (those are the whole process's, see the next test), so
+// the check is exact: a slice of the message (text[:200]) starts inside it and fails here every time.
+func TestCursorSummaryDoesNotShareMemoryWithTheMessage(t *testing.T) {
+	for _, size := range []int{300, 4096, 1 << 20} {
+		msg := strings.Repeat("y", size)
+		start := uintptr(unsafe.Pointer(unsafe.StringData(msg)))
+		got := cursorSummary(msg)
+		require.Len(t, got, 200)
+		p := uintptr(unsafe.Pointer(unsafe.StringData(got)))
+		assert.False(t, p >= start && p < start+uintptr(size), "a %d byte message: its summary starts inside the message's bytes (a slice, not a copy)", size)
+	}
+	short := strings.Repeat("z", 50)
+	got := cursorSummary(short)
+	assert.Equal(t, short, got)
+	assert.NotEqual(t, uintptr(unsafe.Pointer(unsafe.StringData(short))), uintptr(unsafe.Pointer(unsafe.StringData(got))), "a short message is copied too")
 }
 
 // A cursor's summary is a copy of the first 200 bytes of a message, not a slice of the message: a slice keeps the whole message in memory, which
