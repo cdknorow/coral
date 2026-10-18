@@ -2745,3 +2745,22 @@ button.team-artifact-name { cursor: pointer; }
 .changed-files-header > .changed-files-title { flex: 1 1 0; min-width: 0; flex-wrap: wrap; row-gap: 2px; }
 .diff-mode-select { max-width: 100%; }
 @media (pointer: coarse), (max-width: 767px) { .filter-dropdown-btn { min-height: var(--control-touch-height, 44px); } }
+
+/* ── The right sidebar on every page (#4539) ─────────────────
+   Each kind of page shows the tabs that list it in data-pages; the agent page keeps today's set (its data-scope rules above). */
+#agentic-state[data-page="agent"] #agentic-tab-subscribers,
+#agentic-state[data-page="board"] .agentic-tab[data-tab]:not([data-pages~="board"]),
+#agentic-state[data-page="chats"] .agentic-tab[data-tab]:not([data-pages~="chats"]),
+#agentic-state[data-page="other"] .agentic-tab[data-tab]:not([data-pages~="other"]) {
+    display: none !important;
+}
+#agentic-state[data-page="board"] .agentic-tab[data-pages~="board"],
+#agentic-state[data-page="chats"] .agentic-tab[data-pages~="chats"],
+#agentic-state[data-page="other"] .agentic-tab[data-pages~="other"] {
+    display: flex !important;
+}
+/* Customizing the tabs is the agent page's. */
+#agentic-state:not([data-page="agent"]) #agentic-tab-customize { display: none !important; }
+/* The sidebar is the whole height of the row; its tab strip and panels scroll inside it. */
+.main-row > .agentic-state { align-self: stretch; border-left: 1px solid var(--border); }
+.main-row > .task-bar-resize-handle { align-self: stretch; }

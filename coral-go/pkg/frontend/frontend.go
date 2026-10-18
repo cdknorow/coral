@@ -58,6 +58,7 @@ type PageData struct {
 var IndexTemplateFiles = []string{
 	"templates/index.html",
 	"templates/includes/sidebar.html",
+	"templates/includes/right_dock.html",
 	"templates/includes/modals.html",
 	"templates/includes/views/live_session.html",
 	"templates/includes/views/history_session.html",

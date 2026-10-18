@@ -1,5 +1,6 @@
 /* Optional, lazy team artifact source for the existing Files viewer. */
 import { state } from './state.js';
+import { boardOfPage } from './dock_page.js';
 import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.js';
 import { registerActions, idOf, textOf, tokenOf } from './actions.js';
 import { bindDownload } from './artifact_download.js';
@@ -91,6 +92,9 @@ function cancel(cache) { cache.controller?.abort(); ++cache.generation; cache.bu
 function clear(scope) { cancel(caches[scope]); caches[scope]=fresh(); }
 
 function currentTeam() {
+    // A board's page shows that board's artifacts (#4539).
+    const pageBoard = boardOfPage();
+    if (pageBoard) return pageBoard;
     // A selected team (team context) wins over the selected agent's team.
     if (state.selectedTeam) return state.selectedTeam;
     return state.currentSession?.type === 'live' ? sessionTeamKey(state.currentSession) || null : null;

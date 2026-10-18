@@ -2,6 +2,7 @@
 
 import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, getAgentColor, hexToRgba, showToast, externalMessageBadge, hubUserBadge, boardMessageDisplayText, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
 import { registerActions, idOf, textOf } from './actions.js';
+import { boardPageChanged } from './dock_page.js';
 import { state } from './state.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
@@ -173,6 +174,7 @@ onBoardLabelsChanged(() => {
 export function selectBoardProject(project, messageId = null) {
     setMoreOpen(false);
     currentProject = project;
+    state.boardPageProject = project; // the sidebar's Tasks and Team artifacts tabs read this board (#4539)
     clearNewPill();
     state.currentBoardServer = splitKey(project).server;
     pendingMessageId = messageId != null ? String(messageId) : null;
@@ -185,7 +187,6 @@ export function selectBoardProject(project, messageId = null) {
     document.getElementById('mb-project-list').style.display = 'none';
     const board = document.getElementById('mb-board');
     board.style.display = 'flex';
-    document.getElementById('mb-subscribers-panel').style.display = 'block';
     hideBoardSubscribers();
     document.getElementById('messageboard-view').classList.add('mb-has-board');
     const backBtn = document.getElementById('mb-back-btn');
@@ -221,11 +222,13 @@ export function selectBoardProject(project, messageId = null) {
     loadBoardSubscribers(project);
     loadBoardProjects();
     startBoardPoll();
+    boardPageChanged(); // the sidebar's tabs read the board again
 }
 
 export function showMessageBoardProjects() {
     setMoreOpen(false);
     currentProject = null;
+    state.boardPageProject = null;
     clearNewPill();
     stopBoardPoll();
     // Exit select mode if active
@@ -236,8 +239,9 @@ export function showMessageBoardProjects() {
 
     document.getElementById('mb-project-list').style.display = '';
     document.getElementById('mb-board').style.display = 'none';
-    document.getElementById('mb-subscribers-panel').style.display = 'none';
     hideBoardSubscribers();
+    for (const list of ['mb-subscribers-list', 'mb-subscribers-sheet-list']) { const el = document.getElementById(list); if (el) el.innerHTML = '<li class="mb-project-meta">Open a board to see who is subscribed.</li>'; }
+    boardPageChanged();
     document.getElementById('messageboard-view').classList.remove('mb-has-board');
     const backBtn2 = document.getElementById('mb-back-btn');
     if (backBtn2) backBtn2.style.display = 'none';

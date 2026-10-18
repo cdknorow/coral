@@ -73,6 +73,7 @@ const VIEWS = [
             const panel = document.getElementById('mb-subscribers-panel');
             const shown = el => el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0;
             const right = Math.min(innerWidth, document.documentElement.clientWidth, view.right);
+            const pageRight = Math.min(innerWidth, document.documentElement.clientWidth); // the Subscribers list is a tab of the right sidebar (#4539): its edge is the page's
             const pr = shown(panel) ? panel.getBoundingClientRect() : null;
             const labels = [...document.querySelectorAll('#mb-subscribers-list li *')].filter(e => e.children.length === 0 && e.textContent.trim());
             const clipped = labels.filter(e => e.scrollWidth > e.clientWidth + 0.5 || (pr && e.getBoundingClientRect().right > pr.right + 0.5))
@@ -83,8 +84,8 @@ const VIEWS = [
             return {
                 headingLeft: Math.round(h.left - view.left),
                 deleteRight: Math.round(right - del.right),
-                panelRight: pr ? Math.round(right - pr.right) : null,
-                panelText: pr ? Math.round(right - Math.max(...labels.map(e => e.getBoundingClientRect().right))) : null,
+                panelRight: pr ? Math.round(pageRight - pr.right) : null,
+                panelText: pr ? Math.round(pageRight - Math.max(...labels.map(e => e.getBoundingClientRect().right))) : null,
                 clipped, overflowing,
                 pageScroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                 messagesScroll: msgs.scrollWidth - msgs.clientWidth,
@@ -166,7 +167,7 @@ const VIEWS = [
                     const tag = `${phase} ${v.name} ${theme}`;
                     check(`${tag}: the heading's left gap is at least the page gutter (${v.gutter}px)`, m.headingLeft >= v.gutter, JSON.stringify(m.headingLeft));
                     check(`${tag}: Delete's right gap is at least the page gutter`, m.deleteRight >= v.gutter, JSON.stringify(m.deleteRight));
-                    if (m.panelRight !== null) check(`${tag}: the Subscribers column's right gap is at least the page gutter`, m.panelRight >= v.gutter && m.panelText >= v.gutter, JSON.stringify([m.panelRight, m.panelText]));
+                    if (m.panelRight !== null) check(`${tag}: the Subscribers list's right gap (the sidebar is flush with the page edge) is at least the page gutter`, m.panelText >= v.gutter, JSON.stringify([m.panelRight, m.panelText]));
                     check(`${tag}: no subscriber label is clipped`, m.clipped.length === 0, JSON.stringify(m.clipped));
                     check(`${tag}: nothing runs past the right edge, and no horizontal scroll`, m.overflowing.length === 0 && m.pageScroll <= 0 && m.messagesScroll <= 0, JSON.stringify(m));
                     if (v.name !== 'phone') {

@@ -252,12 +252,8 @@
         font-size: 0.875rem;
     }
 
-    /* Panel toggle: hide on mobile unless viewing an active live session */
+    /* Panel toggle: on every page, since the side panel is (#4539) */
     #panel-toggle-btn {
-        display: none !important;
-    }
-
-    body.live-session-active #panel-toggle-btn {
         display: flex !important;
     }
 
@@ -536,11 +532,7 @@
 
     /* Show Attach/Restart inside the overflow menu on mobile */
 
-    /* Message board adjustments: the Subscribers column is hidden; its button opens the same list
-       as a sheet (#3610). */
-    #mb-subscribers-panel {
-        display: none !important;
-    }
+    /* Message board adjustments: the Subscribers button opens the same list as a sheet (#3610); the side panel has it as a tab too (#4539). */
     #messageboard-view.mb-has-board .mb-subscribers-btn {
         display: inline-flex;
     }
@@ -1324,10 +1316,6 @@
         max-width: 85vw;
     }
 
-    /* Message board: adjust subscribers panel for tablet */
-    .mb-subscribers-panel {
-        width: 180px;
-    }
 }
 
 /* ── Pull-to-Refresh Indicator ────────────────────────────── */

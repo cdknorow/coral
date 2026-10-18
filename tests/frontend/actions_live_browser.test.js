@@ -124,11 +124,11 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('the Chat/Terminal toggle switches the view', JSON.stringify(Object.values(mode)) === JSON.stringify(['terminal', 'chat', 'terminal']), JSON.stringify(mode));
         // The side panel may start collapsed on a small runner (QA's run): open it first.
         await ev(`window.toggleAgenticPanel(true); true`);
-        await until(`[...document.querySelectorAll('#live-session-view [data-on-click="agentic-tab"]')].some(b => b.offsetParent !== null)`, 'the side panel open', 3000);
-        const tabs = await ev(`(() => { const out = {}; for (const b of document.querySelectorAll('#live-session-view [data-on-click="agentic-tab"]')) {
+        await until(`[...document.querySelectorAll('#agentic-state [data-on-click="agentic-tab"]')].some(b => b.offsetParent !== null)`, 'the side panel open', 3000);
+        const tabs = await ev(`(() => { const out = {}; for (const b of document.querySelectorAll('#agentic-state [data-on-click="agentic-tab"]')) {
             if (b.offsetParent === null) continue; b.click(); out[b.dataset.tab] = b.classList.contains('active') || b.getAttribute('aria-selected') === 'true'; } return out; })()`);
         check('each visible side panel tab opens and is marked active', Object.keys(tabs).length >= 3 && Object.values(tabs).every(Boolean), JSON.stringify(tabs));
-        const bogus = await ev(`(() => { const active = () => [...document.querySelectorAll('#live-session-view [data-on-click="agentic-tab"]')].filter(b => b.classList.contains('active')).map(b => b.dataset.tab).join(',');
+        const bogus = await ev(`(() => { const active = () => [...document.querySelectorAll('#agentic-state [data-on-click="agentic-tab"]')].filter(b => b.classList.contains('active')).map(b => b.dataset.tab).join(',');
             const before = active(); const b = document.createElement('button'); b.setAttribute('data-on-click', 'agentic-tab'); b.dataset.tab = 'nope'; document.body.appendChild(b); b.click(); b.remove(); return { before, after: active() }; })()`);
         check('an unknown side panel tab does nothing', bogus.before === bogus.after, JSON.stringify(bogus));
 

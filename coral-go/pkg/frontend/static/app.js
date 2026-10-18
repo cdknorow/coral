@@ -230,7 +230,7 @@ registerActions({
 // The live agent view's header, view toggle, side panel tabs and command row (#3645). Restart is
 // destructive (actions.js DESTRUCTIVE_ACTIONS: a popout hides it) and still asks first
 // (restartSession's own confirmation). A side panel tab must be one the panel has.
-const AGENTIC_TABS = new Set(['board', 'files', 'browse', 'artifacts', 'team-view', 'team-settings', 'team-artifacts', 'knowledge', 'tasks', 'notes', 'activity', 'agent-ui', 'saved']);
+const AGENTIC_TABS = new Set(['board', 'files', 'browse', 'artifacts', 'team-view', 'team-settings', 'team-artifacts', 'knowledge', 'tasks', 'notes', 'activity', 'agent-ui', 'saved', 'subscribers']);
 registerActions({
     'mobile-back': () => window.mobileBack(),
     'goal-refresh': () => window.refreshGoal(),

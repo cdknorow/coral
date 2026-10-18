@@ -56,7 +56,7 @@ const HEX = 'c'.repeat(64);
                 const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
                 const h = accent.replace('#', ''); const want = 'rgb(' + [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')';
                 const links = [...document.querySelectorAll('${POST} a')].map(a => ({ text: a.textContent, color: getComputedStyle(a).color }));
-                const sub = document.querySelector('.subscriber-history-link');
+                const sub = document.querySelector('#mb-subscribers-list .subscriber-history-link');
                 return { want, links, sub: sub && { tag: sub.tagName, href: sub.getAttribute('href'), color: getComputedStyle(sub).color } };
             })()`);
         };
@@ -69,7 +69,7 @@ const HEX = 'c'.repeat(64);
                 await Emulation.setDeviceMetricsOverride({ width: 1280, height: 720, deviceScaleFactor: 2, mobile: false });
                 await ev(`new Promise(r => setTimeout(() => r(true), 250))`); // sleep-ok: layout after the resize
                 const clip = await ev(`(() => { const a = document.querySelector('${POST}').closest('.mb-message') || document.querySelector('${POST}');
-                    const s = document.querySelector('.subscriber-history-link').closest('li') || document.querySelector('.subscriber-history-link');
+                    const s = document.querySelector('#mb-subscribers-list .subscriber-history-link').closest('li') || document.querySelector('#mb-subscribers-list .subscriber-history-link');
                     const r1 = a.getBoundingClientRect(), r2 = s.getBoundingClientRect();
                     const x = Math.max(0, Math.min(r1.left, r2.left) - 8), y = Math.max(0, Math.min(r1.top, r2.top) - 8);
                     return { x, y, width: Math.min(innerWidth - x, Math.max(r1.right, r2.right) - x + 8), height: Math.max(r1.bottom, r2.bottom) - y + 8, scale: 1 }; })()`);
@@ -79,7 +79,7 @@ const HEX = 'c'.repeat(64);
             }
         }
 
-        const sub = await ev(`(() => { const b = document.querySelector('.subscriber-history-link'); return { tag: b.tagName, type: b.getAttribute('type'), href: b.getAttribute('href') }; })()`);
+        const sub = await ev(`(() => { const b = document.querySelector('#mb-subscribers-list .subscriber-history-link'); return { tag: b.tagName, type: b.getAttribute('type'), href: b.getAttribute('href') }; })()`);
         check("the subscriber's name is a button, with no javascript: href", sub.tag === 'BUTTON' && sub.type === 'button' && sub.href === null, JSON.stringify(sub));
 
         const hover = await ev(`(() => { const a = document.querySelector('${POST} a'); const st = document.createElement('style');
@@ -87,7 +87,7 @@ const HEX = 'c'.repeat(64);
         check('post links are not underlined until hovered', hover === 'none', hover);
 
         const focus = await ev(`(() => { const out = {};
-            for (const [k, sel] of [['link', '${POST} a'], ['subscriber', '.subscriber-history-link']]) {
+            for (const [k, sel] of [['link', '${POST} a'], ['subscriber', '#mb-subscribers-list .subscriber-history-link']]) {
                 const el = document.querySelector(sel); el.focus({ focusVisible: true });
                 const cs = getComputedStyle(el); out[k] = { focused: document.activeElement === el, outline: cs.outlineStyle, width: cs.outlineWidth };
             } return out; })()`);

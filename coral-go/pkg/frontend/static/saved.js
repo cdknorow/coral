@@ -243,16 +243,9 @@ export function showSaved() {
     return showing;
 }
 
-/** The top bar's Saved button: the right sidebar open on its Saved tab (or the tab focused if it already is), the focus inside it. The sidebar belongs to the agent's
- *  page: from History, a board or the home screen an agent is selected first, so that there is a sidebar to show. */
+/** The top bar's Saved button: the right sidebar of the page on screen open on its Saved tab (or the tab focused if it already is), the focus inside it. Every page has the
+ *  sidebar and the tab (#4539), so nothing has to be selected first. */
 export async function openSaved() {
-    const inAgent = () => document.getElementById('live-session-view') && getComputedStyle($('live-session-view')).display !== 'none';
-    if (!inAgent()) {
-        const live = (state.liveSessions || []).filter(s => normServer(sessionServer(s)) === 'local');
-        const pick = live.find(s => !s.sleeping && !s.archived) || live[0];
-        if (!pick) { showToast('Saved opens beside an agent: start or select one first.', true); return; }
-        await window.selectLiveSession(pick.name, pick.agent_type, pick.session_id, normServer(sessionServer(pick)));
-    }
     dropJumpBar();
     const btn = $('agentic-tab-saved');
     btn?.classList.remove('tab-hidden'); // a tab the user hid is still what this button opens

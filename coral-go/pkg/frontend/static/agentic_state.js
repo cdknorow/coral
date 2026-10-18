@@ -4,7 +4,7 @@ import { refreshAgentUI } from './agent_ui.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { loadChangedFiles } from './changed_files.js';
-import { selectFilesSource } from './team_artifacts.js';
+import { selectFilesSource, syncFilesSourceTeam } from './team_artifacts.js';
 import { startBoardTaskPoll, stopBoardTaskPoll } from './tasks.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { morphHtml } from './dom_morph.js';
@@ -16,6 +16,7 @@ import { FILTER_GROUPS, getToolIcon, eventVisible, historyEventsView } from './e
 import { openableTab } from './tab_customize.js';
 import { filterItemHtml, refillFilterList, syncFilterExpanded, wireFilterDropdown } from './filter_dropdown.js';
 import { browserLocal } from './safe_storage.js';
+import { DEFAULT_TAB, dockKey, dockKind, onBoardPage, onDockPage, rememberedTab, tabShown } from './dock_page.js';
 
 // Hidden filters are persisted per-session in state
 // state.eventFiltersHidden = Set of filter keys that are hidden
@@ -279,7 +280,7 @@ export function hideFilterPopup() {
 }
 
 export function switchAgenticTab(tabName, blockId) {
-    tabName = openableTab(tabName); // a tab the user hid opens the always-shown one instead
+    if (dockKind() === 'agent') tabName = openableTab(tabName); // a tab the user hid opens the always-shown one instead (only the agent page's tabs can be hidden)
     // Scope tab/panel switching to the containing block
     const block = blockId
         ? document.getElementById(`agentic-block-${blockId}`)
@@ -300,7 +301,7 @@ export function switchAgenticTab(tabName, blockId) {
 
     // Persist tab choice per block (team-only tabs only exist while a team is selected)
     if (blockId && activeBtn?.dataset.scope !== 'team') {
-        browserLocal.set(`coral-agentic-tab-${blockId}`, tabName);
+        browserLocal.set(dockKey(`coral-agentic-tab-${blockId}`), tabName);
     }
 
     if (tabName === 'team-settings') window.renderTeamSettingsTab?.();
@@ -343,7 +344,7 @@ export function switchAgenticTab(tabName, blockId) {
 /** Restore persisted tab selection on page load. */
 export function restoreAgenticTabs() {
     // Only restore for the single unified top block
-    const saved = browserLocal.get('coral-agentic-tab-top');
+    const saved = rememberedTab();
     if (saved) {
         const tab = document.getElementById(`agentic-tab-${saved}`);
         if (tab && tab.style.display !== 'none') {
@@ -368,4 +369,22 @@ registerActions({
         if (el.dataset.mode === 'live') toggleAllEventFilters();
         else if (el.dataset.mode === 'history') window.toggleAllHistoryEventFilters();
     },
+});
+
+// The right sidebar is on every page (#4539): a page change opens the tab that kind of page last had, or its first one. On the agent page of a selected team the tab
+// that is open stays when it belongs there (a team's own tabs are not remembered).
+function showPageTab(kind) {
+    const active = document.querySelector('#agentic-block-top .agentic-tab.active');
+    if (kind === 'agent' && state.selectedTeam && tabShown(active)) return;
+    const remembered = rememberedTab(kind);
+    const tab = [remembered, DEFAULT_TAB[kind]].find(t => t && tabShown(document.getElementById(`agentic-tab-${t}`))) || DEFAULT_TAB[kind];
+    switchAgenticTab(tab, 'top');
+}
+onDockPage(showPageTab);
+// A board page that moved to another board: the Tasks and Team artifacts tabs read the board again.
+onBoardPage(() => {
+    if (dockKind() !== 'board') return;
+    syncFilesSourceTeam();
+    const active = document.querySelector('#agentic-block-top .agentic-tab.active');
+    if (active?.dataset.tab) switchAgenticTab(active.dataset.tab, 'top');
 });

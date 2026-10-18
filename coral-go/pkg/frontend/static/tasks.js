@@ -1,6 +1,7 @@
 /* Agent task bar — CRUD, rendering, drag reorder */
 
 import { state } from './state.js';
+import { boardOfPage } from './dock_page.js';
 import { morphHtml } from './dom_morph.js';
 import { closeOnBackdropAndEscape, releaseEscape } from './dialog_close.js';
 import { registerTaskView, redrawBoardTaskList, closeTaskDetailModal } from './task_hooks.js';
@@ -30,7 +31,7 @@ let _liveCosts = {};
 export function startBoardTaskPoll() {
     stopBoardTaskPoll();
     // Load agent tasks + board tasks immediately, then poll board tasks every 10s
-    if (!state.selectedTeam && state.currentSession && state.currentSession.type === 'live') {
+    if (!state.selectedTeam && !boardOfPage() && state.currentSession && state.currentSession.type === 'live') {
         loadAgentTasks(state.currentSession.name, state.currentSession.session_id);
     }
     // Subagents are loaded by the poll below, every tick: their status and
@@ -62,6 +63,13 @@ export function stopBoardTaskPoll() {
 }
 
 async function _pollBoardTasksOnce() {
+    // The board page's sidebar shows that board's tasks (#4539).
+    const pageBoard = boardOfPage();
+    if (pageBoard) {
+        await loadBoardTasks(pageBoard);
+        await _fetchLiveCosts(pageBoard);
+        return;
+    }
     // A selected team shows that team's board tasks, even with no agent selected.
     if (state.selectedTeam) {
         await loadBoardTasks(state.selectedTeam);
@@ -284,7 +292,7 @@ export async function loadBoardTasks(boardName) {
             try { machine = machineOf(new URL(refused.url).pathname); } catch { /* same server */ }
             afterPause(() => {
                 // Only for the board still shown, and only if no newer load has started.
-                if (seq === _boardTasksLoadSeq && (state.selectedTeam || _currentBoardKey()) === boardName) loadBoardTasks(boardName);
+                if (seq === _boardTasksLoadSeq && (boardOfPage() || state.selectedTeam || _currentBoardKey()) === boardName) loadBoardTasks(boardName);
             }, machine);
         }
         renderBoardTaskList();
@@ -378,7 +386,8 @@ export function renderBoardTaskList() {
     // Merge board tasks and agent tasks into a unified list
     const boardTasks = (state.currentBoardTasks || []).map(t => ({ ...t, _source: 'board' }));
     const agentDisplayName = state.currentSession ? (state.currentSession.display_name || state.currentSession.name) : '';
-    const agentTasks = (state.currentAgentTasks || []).map(t => ({
+    const onBoardPage = !!boardOfPage(); // a board's page has no agent: its tasks are the board's
+    const agentTasks = (onBoardPage ? [] : state.currentAgentTasks || []).map(t => ({
         ...t,
         _source: 'agent',
         // Normalize agent task fields to match board task shape
@@ -388,7 +397,7 @@ export function renderBoardTaskList() {
         created_at: t.created_at,
     }));
 
-    const subagentTasks = (state.currentSubagents || []).map(sa => subagentToTaskRow(sa, agentDisplayName));
+    const subagentTasks = (onBoardPage ? [] : state.currentSubagents || []).map(sa => subagentToTaskRow(sa, agentDisplayName));
 
     const allTasks = [...boardTasks, ...agentTasks, ...subagentTasks];
     const isDone = t => t.status === 'completed' || t.status === 'skipped';
@@ -425,7 +434,7 @@ export function renderBoardTaskList() {
         // Drop the previous agent's rows too; hiding alone leaves them in the DOM.
         const countEl = document.getElementById('task-bar-count');
         if (countEl && countEl.textContent !== '') countEl.textContent = '';
-        const live = state.selectedTeam || (state.currentSession && state.currentSession.type === 'live');
+        const live = state.selectedTeam || onBoardPage || (state.currentSession && state.currentSession.type === 'live');
         if (!live) {
             if (section) section.style.display = 'none';
             container.innerHTML = '';
@@ -439,7 +448,7 @@ export function renderBoardTaskList() {
         if (toggle && toggle.firstChild) toggle.innerHTML = '';
         morphHtml(container, _boardList.busy
             ? `<div class="board-task-empty board-task-busy" role="status">${escapeHtml(_boardList.busy)}</div>`
-            : state.selectedTeam
+            : state.selectedTeam || onBoardPage
                 ? '<div class="board-task-empty">No tasks yet. Use + Task to add one for this team.</div>'
                 : '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>');
         return;
@@ -802,7 +811,7 @@ async function _createSoloAgentTask(title, body, errEl) {
 // An agent that is not on a team board: tasks created for it are agent
 // tasks (its own list in Coral), not board tasks.
 function _isSoloAgent() {
-    if (state.selectedTeam) return false;
+    if (state.selectedTeam || boardOfPage()) return false;
     return !!state.currentSession && state.currentSession.type === 'live' && !state.currentSession.board_project;
 }
 
@@ -815,6 +824,8 @@ function _currentBoardKey() {
 }
 
 function _getBoardProject() {
+    const pageBoard = boardOfPage();
+    if (pageBoard) return pageBoard;
     if (state.selectedTeam) return state.selectedTeam;
     if (!state.currentSession) return null;
     return _currentBoardKey();

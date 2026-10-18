@@ -1,0 +1,156 @@
+{{ define "includes/right_dock.html" }}
+        <!-- The right sidebar (#4539): part of the app layout, so it is on every page. Each page picks its tabs (data-pages on a tab; app_dock.js sets data-page on #agentic-state). -->
+        <div class="task-bar-resize-handle" id="task-bar-resize-handle"></div>
+        <div class="agentic-state" id="agentic-state" data-page="agent">
+            <button class="agentic-collapse-btn" id="agentic-collapse-btn" title="Toggle panel" aria-label="Toggle agentic state panel">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M10 4l-4 4 4 4z"/></svg>
+            </button>
+            <!-- Top block: Files, Tasks, Stats, Transcript, Notes -->
+            <div class="agentic-block" id="agentic-block-top">
+                <div class="agentic-state-tabs" role="tablist" aria-label="Session panels" data-on-contextmenu="tabs-customize-menu">
+                    <!-- The board's own column, as a tab of its page (#4539): the list is filled by message_board.js -->
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="subscribers" data-where="top" data-pages="board" data-only-page="board" id="agentic-tab-subscribers" title="Subscribers: who is on this board" aria-label="Subscribers">
+                        <span class="material-icons" aria-hidden="true">group</span>
+                    </button>
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="board" data-where="top" id="agentic-tab-board" title="Board Chat — team message board" aria-label="Board Chat" style="display:none">
+                        <span class="material-icons" aria-hidden="true">forum</span>
+                    </button>
+                    <button class="agentic-tab active" data-on-click="agentic-tab" data-tab="files" data-where="top" data-scope="agent" id="agentic-tab-files" title="Files — changed files in this session" aria-label="Files">
+                        <span class="material-icons" aria-hidden="true">description</span>
+                        <span class="agentic-tab-count" id="files-bar-count"></span>
+                    </button>
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="browse" data-where="top" data-scope="agent" id="agentic-tab-browse" title="Browse — repository file tree" aria-label="Browse">
+                        <span class="material-icons" aria-hidden="true">folder_open</span>
+                    </button>
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="artifacts" data-where="top" data-scope="agent" id="agentic-tab-artifacts" title="Artifacts — this agent's artifacts" aria-label="Artifacts">
+                        <span class="material-icons" aria-hidden="true">inventory_2</span>
+                    </button>
+                    <button class="agentic-tab" data-scope="team" data-on-click="agentic-tab" data-tab="team-view" data-where="top" id="agentic-tab-team-view" title="Team View — agent availability and assigned work" aria-label="Team View">
+                        <span class="material-icons" aria-hidden="true">dashboard</span>
+                    </button>
+                    <button class="agentic-tab" data-scope="team" data-on-click="agentic-tab" data-tab="team-settings" data-where="top" id="agentic-tab-team-settings" title="Team Settings — workflow, working mode and prompts" aria-label="Team Settings">
+                        <span class="material-icons" aria-hidden="true">tune</span>
+                    </button>
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="team-artifacts" data-where="top" data-scope="team" data-pages="board" id="agentic-tab-team-artifacts" title="Team Artifacts — artifacts from the whole team" aria-label="Team Artifacts">
+                        <span class="material-icons" aria-hidden="true">groups</span>
+                    </button>
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="knowledge" data-where="top" data-scope="team" id="agentic-tab-knowledge" title="Team Knowledge — distilled team knowledge" aria-label="Team Knowledge">
+                        <span class="material-icons" aria-hidden="true">psychology</span>
+                    </button>
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="tasks" data-where="top" data-pages="board" id="agentic-tab-tasks" title="Tasks — agent task list and progress" aria-label="Tasks">
+                        <span class="material-icons" aria-hidden="true">checklist</span>
+                        <span class="agentic-tab-count" id="task-bar-count"></span>
+                    </button>
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="notes" data-where="top" id="agentic-tab-notes" title="Notes — agent notes and observations" aria-label="Notes">
+                        <span class="material-icons" aria-hidden="true">edit_note</span>
+                        <span class="agentic-tab-count" id="note-bar-count"></span>
+                    </button>
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="activity" data-where="top" data-scope="agent" id="agentic-tab-activity" title="Activity — tool use and event timeline" aria-label="Activity">
+                        <span class="material-icons" aria-hidden="true">timeline</span>
+                    </button>
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="agent-ui" data-where="top" data-scope="agent" id="agentic-tab-agent-ui" title="Agent UI" aria-label="Agent UI">
+                        <span class="material-icons" aria-hidden="true">widgets</span><span class="agentic-tab-count" id="agent-ui-count"></span>
+                    </button>
+                    <!-- Saved for later (#4510): the Operator's bookmarks, beside whatever the main view shows -->
+                    <button class="agentic-tab" data-on-click="agentic-tab" data-tab="saved" data-where="top" data-pages="board chats other" id="agentic-tab-saved" data-local-only title="Saved for later: messages you bookmarked" aria-label="Saved for later">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg><span class="agentic-tab-count" id="saved-tab-count"></span>
+                    </button>
+                    <!-- Custom view tabs (disabled for now) -->
+                    <span id="custom-view-tabs" style="display:none"></span>
+                    <button class="agentic-tab agentic-tab-customize" id="agentic-tab-customize" data-on-click="tabs-customize" aria-haspopup="dialog" aria-expanded="false" aria-controls="tab-customize" title="Customize tabs" aria-label="Customize tabs">
+                        <span class="material-icons" aria-hidden="true">tune</span>
+                    </button>
+                    <button class="agentic-tab agentic-tab-close" id="agentic-mobile-close-btn" data-on-click="agentic-panel-toggle" data-open="0" title="Close side panel" aria-label="Close side panel">
+                        <span class="material-icons" aria-hidden="true">close</span>
+                    </button>
+                </div>
+                <!-- Files tab -->
+                <div id="agentic-panel-files" class="agentic-panel active">
+                    <div class="changed-files-header" id="changed-files-header">
+                        <span class="changed-files-title" id="changed-files-title">0 files changed</span>
+                        <button class="refresh-files-btn" data-on-click="files-refresh" title="Refresh git diff" aria-label="Refresh file changes">&#x21bb;</button>
+                    </div>
+                    <div id="files-search-results" class="changed-files-list" style="display:none"></div>
+                    <div id="starred-files-list" class="changed-files-list" style="display:none"></div>
+                    <div class="changed-files-list" id="changed-files-list">
+                        <div class="file-empty">No changed files</div>
+                    </div>
+                </div>
+                <div id="agentic-panel-browse" class="agentic-panel">
+                    <div class="changed-files-header">
+                        <div class="files-search-row files-search-row-wrapper">
+                            <input type="search" id="files-search-input" class="files-search-input" placeholder="Search files..." autocomplete="off" aria-label="Search files">
+                            <div id="files-search-dropdown" class="file-mention-dropdown" style="display:none;bottom:auto;top:100%;margin-top:4px;margin-bottom:0;max-height:400px"></div>
+                        </div>
+                    </div>
+                    <div id="file-explorer-view" class="file-explorer-view"></div>
+                </div>
+                <div id="agentic-panel-team-view" class="agentic-panel"></div>
+                <div id="agentic-panel-team-settings" class="agentic-panel"></div>
+                <div id="agentic-panel-artifacts" class="agentic-panel"><div id="agentic-panel-artifacts-view" class="team-artifacts-view"></div><div id="agentic-panel-artifacts-live" class="team-artifacts-live" role="status" aria-live="polite"></div></div>
+                <div id="agentic-panel-team-artifacts" class="agentic-panel"><div id="agentic-panel-team-artifacts-view" class="team-artifacts-view"></div><div id="agentic-panel-team-artifacts-live" class="team-artifacts-live" role="status" aria-live="polite"></div></div>
+                <div id="agentic-panel-knowledge" class="agentic-panel"><div id="team-knowledge-view" class="team-knowledge-view"></div></div>
+                <!-- Tasks tab -->
+                <div id="agentic-panel-tasks" class="agentic-panel">
+                    <div id="board-tasks-section" class="board-tasks-section" style="display:none">
+                        <div class="board-tasks-header">
+                            <span>Board Tasks</span>
+                            <span id="board-task-hide-toggle-container"></span>
+                            <button class="btn btn-sm btn-create-task" data-on-click="task-create-show" title="Create Task">+ Task</button>
+                        </div>
+                        <div id="board-task-list" class="board-task-list"></div>
+                    </div>
+                    <div class="task-bar-list" id="task-bar-list" style="display:none">
+                    </div>
+                </div>
+                <!-- Notes tab -->
+                <div id="agentic-panel-notes" class="agentic-panel">
+                    <div id="note-md-rendered" class="note-md-rendered notes-rendered" role="button" tabindex="0" data-key-click aria-label="Edit notes">
+                        <div class="note-md-placeholder">Click to add notes...</div>
+                    </div>
+                    <textarea id="note-md-editor" class="note-md-editor" placeholder="Write notes in markdown..." style="display:none"></textarea>
+                </div>
+                <!-- Board chat panel -->
+                <div id="agentic-panel-board" class="agentic-panel"></div>
+                <!-- Activity panel (includes stats chart + event log) -->
+                <div id="agentic-panel-activity" class="agentic-panel">
+                    <div id="live-activity-chart" class="activity-chart"></div>
+                    <div class="event-filter-bar" id="event-filters"></div>
+                    <div class="agentic-events-body">
+                        <div id="agentic-state-events">
+                            <div class="event-empty">No activity yet</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Custom view panels inserted here dynamically -->
+                <div id="agentic-panel-agent-ui" class="agentic-panel"></div>
+                <div id="agentic-panel-subscribers" class="agentic-panel">
+                    <div id="mb-subscribers-panel" class="mb-subscribers-panel">
+                        <h3 class="mb-subscribers-title">Subscribers</h3>
+                        <ul id="mb-subscribers-list" class="mb-subscribers-list"></ul>
+                    </div>
+                </div>
+                <div id="agentic-panel-saved" class="agentic-panel saved-pane" data-local-only>
+                    <div class="saved-tabs" role="tablist" aria-label="Saved messages">
+                        <button type="button" class="saved-tab" role="tab" id="saved-tab-open" aria-selected="true" aria-controls="saved-panel">Open <span class="n" id="saved-count-open"></span></button>
+                        <button type="button" class="saved-tab" role="tab" id="saved-tab-done" aria-selected="false" aria-controls="saved-panel" tabindex="-1">Done <span class="n" id="saved-count-done"></span></button>
+                    </div>
+                    <div id="saved-panel" class="saved-panel" role="tabpanel" tabindex="-1" aria-labelledby="saved-tab-open">
+                        <ul id="saved-list" class="saved-list"></ul>
+                    </div>
+                    <div id="saved-status" class="saved-status" role="status" aria-live="polite"></div>
+                </div>
+                <div id="custom-view-panels"></div>
+            </div>
+            <!-- Preview pane (file viewer with tabs) — bottom of right sidebar -->
+            <div id="preview-pane-resize-handle" class="preview-pane-resize-handle" style="display:none"></div>
+            <div id="preview-pane" class="preview-pane" style="display:none">
+                <div class="preview-tabbar">
+                    <div class="preview-tabs" id="preview-tabs"></div>
+                    <button class="preview-dock-btn" id="preview-dock-btn" type="button"></button>
+                </div>
+                <div class="preview-toolbar" id="preview-toolbar"></div>
+                <div class="preview-body" id="preview-body"></div>
+            </div>
+        </div>
+{{ end }}

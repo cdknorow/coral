@@ -60,6 +60,7 @@ function save() {
 function available(ctx) {
     return tabButtons().filter(b => {
         const scope = b.dataset.scope || '';
+        if (b.dataset.onlyPage) return false; // a tab of another kind of page (Subscribers, on a board) is not the agent page's to order or hide (#4539)
         if (ctx === 'team' ? scope === 'agent' : scope === 'team') return false;
         if (b.dataset.tab === 'board') return ctx === 'agent' && b.style.display !== 'none'; // a team has its chat in the centre
         return true;

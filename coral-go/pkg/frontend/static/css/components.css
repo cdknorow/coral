@@ -3064,6 +3064,11 @@ button.subscriber-history-link {
     display: flex;
     gap: 4px;
     align-items: center;
+    /* With the right sidebar open (#4539) the board is narrower than it was: the actions wrap, right-aligned, inside the gutter. */
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+    max-width: 100%;
 }
 /* The board's More menu (#4538) is a phone's (mobile.css): on a wider screen its group is laid out inline, as before. */
 .mb-more, .mb-more-menu { display: contents; }
@@ -3423,11 +3428,8 @@ button.subscriber-history-link {
 }
 
 .mb-subscribers-panel {
-    flex: none;
-    width: 220px;
-    border-left: 1px solid var(--border);
-    padding-left: var(--space-xl);
-    overflow-y: auto;
+    /* A tab of the right sidebar (#4539): the sidebar draws its own edge and scrolls this panel. */
+    padding: var(--space-lg) 24px;
 }
 
 .mb-subscribers-title {
@@ -3953,7 +3955,7 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
 .mb-message-body img { max-width: 100%; height: auto; }
 
 /* Settings > Terminal backend (#3634) */
-.tb-row { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-lg) var(--space-xl); margin: var(--space-xs) 0 var(--space-md); background: var(--bg-primary); }
+.tb-row { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-lg) 24px; margin: var(--space-xs) 0 var(--space-md); background: var(--bg-primary); }
 .tb-head { display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-xs); }
 .tb-label { font-weight: 600; color: var(--text-primary); font-size: var(--fs-md); }
 .tb-now { margin-left: auto; font-size: var(--fs-sm); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); background: var(--bg-tertiary); }

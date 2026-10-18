@@ -177,9 +177,6 @@
 
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Mobile Agent List (shown on mobile instead of sidebar) -->
-            <div id="mobile-agent-list" class="mobile-agent-list"></div>
-
             <!-- #3751: this tab loaded before a server update (update_banner.js); an idle tab reloads by itself -->
             <div id="update-banner" class="leftover-tmux-banner update-banner" role="status" hidden>
                 <span class="material-icons" aria-hidden="true">system_update</span>
@@ -217,6 +214,12 @@
                     <div id="hooks-list" class="hooks-list"></div>
                 </div>
             </div>
+
+            <!-- The views and the right sidebar share a row (#4539): the sidebar is part of the app layout, not of the agent page. -->
+            <div class="main-row">
+            <div class="main-stage" id="main-stage">
+            <!-- Mobile Agent List (shown on mobile instead of sidebar) -->
+            <div id="mobile-agent-list" class="mobile-agent-list"></div>
 
             <div id="welcome-screen" class="welcome">
                 <!-- Built when the screen is first shown (utils.js showView; at once on a wide window): a phone shows the agent list instead and never builds it (#4497) -->
@@ -308,6 +311,9 @@
 
             {{ template "includes/views/docs.html" . }}
             {{ template "includes/views/servers.html" . }}
+            </div>
+{{ template "includes/right_dock.html" . }}
+            </div>
         </main>
     </div>
 

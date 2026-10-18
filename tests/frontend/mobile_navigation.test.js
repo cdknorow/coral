@@ -14,7 +14,7 @@ const BASE = require('./test_base').BASE;
         await Emulation.setDeviceMetricsOverride({ width, height: 740, deviceScaleFactor: 1, mobile: width <= 767 });
         await new Promise(r => setTimeout(r, 100));
     };
-    const visible = () => evaluate(`Array.from(document.querySelector('.main-content').children).filter(e => getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0).map(e => e.id)`);
+    const visible = () => evaluate(`Array.from(document.querySelector('.main-stage').children).filter(e => getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0).map(e => e.id)`);
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
         await size(390);

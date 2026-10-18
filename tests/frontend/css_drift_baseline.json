@@ -63,7 +63,7 @@
     "dark": {
       "fontSize": "13.3333px",
       "fontWeight": "400",
-      "color": "rgb(88, 166, 255)",
+      "color": "rgb(142, 142, 149)",
       "backgroundColor": "rgba(0, 0, 0, 0)",
       "paddingTop": "6px",
       "paddingRight": "6px",
@@ -77,7 +77,7 @@
     "light": {
       "fontSize": "13.3333px",
       "fontWeight": "400",
-      "color": "rgb(9, 105, 218)",
+      "color": "rgb(95, 103, 112)",
       "backgroundColor": "rgba(0, 0, 0, 0)",
       "paddingTop": "6px",
       "paddingRight": "6px",

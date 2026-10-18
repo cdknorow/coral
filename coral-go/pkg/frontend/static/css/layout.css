@@ -822,6 +822,30 @@ body.panel-dragging .sidebar {
     position: relative;
 }
 
+/* The views and the right sidebar share a row (#4539): the sidebar is part of the app layout, so it is on every page. */
+.main-row {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+}
+
+.main-stage {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+.main-stage > .session-view {
+    flex: 1 1 0;
+    min-height: 0;
+}
+
 /* ── Welcome Screen ────────────────────────────────────────── */
 
 .welcome {

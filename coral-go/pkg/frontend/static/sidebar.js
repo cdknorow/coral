@@ -3,6 +3,7 @@
 import { fitTerminal } from './xterm_renderer.js';
 import { makeDraggable, makeDelegatedDraggable } from './draggable.js';
 import { browserLocal } from './safe_storage.js';
+import { dockKey, dockOpenByDefault, onDockPage } from './dock_page.js';
 
 /* Layout persistence is scoped per entry mode: a narrow popout window must
    never overwrite the dashboard's saved panel sizes. */
@@ -33,8 +34,8 @@ export function initSidebarResize() {
 const AGENTIC_MIN_WIDTH = 280;
 const LEFT_COLUMN_MIN_WIDTH = 240;
 
-function maxAgenticWidth(liveBody) {
-    const measured = liveBody ? liveBody.getBoundingClientRect().width : 0;
+function maxAgenticWidth(row) {
+    const measured = row ? row.getBoundingClientRect().width : 0;
     const available = measured > 0 ? measured : window.innerWidth;
     return Math.max(AGENTIC_MIN_WIDTH, available - LEFT_COLUMN_MIN_WIDTH);
 }
@@ -42,17 +43,11 @@ function maxAgenticWidth(liveBody) {
 export function initTaskBarResize() {
     const handle = document.getElementById("task-bar-resize-handle");
     const taskBar = document.getElementById("agentic-state");
-    const liveBody = document.querySelector(".live-body");
+    const liveBody = document.querySelector(".main-row"); // the row the views and the sidebar share (#4539)
 
     if (!handle || !taskBar || !liveBody) return;
 
-    const saved = browserLocal.get(layoutKey('coral-taskbar-width'));
-    if (saved) {
-        const w = parseInt(saved, 10);
-        if (w >= AGENTIC_MIN_WIDTH) {
-            taskBar.style.width = Math.min(w, maxAgenticWidth(liveBody)) + "px";
-        }
-    }
+    applyDockWidth();
 
     makeDraggable(handle, {
         cursor: 'col-resize',
@@ -63,9 +58,18 @@ export function initTaskBarResize() {
         },
         onFlush: (v) => { taskBar.style.width = v + "px"; },
         onEnd: (v) => {
-            if (v != null) browserLocal.set(layoutKey('coral-taskbar-width'), Math.round(v));
+            if (v != null) browserLocal.set(dockKey('coral-taskbar-width'), Math.round(v));
         },
     });
+}
+
+/** The width this kind of page last had (the CSS width when it has none). */
+function applyDockWidth() {
+    const taskBar = document.getElementById("agentic-state");
+    if (!taskBar) return;
+    const saved = browserLocal.get(dockKey('coral-taskbar-width'));
+    const w = saved ? parseInt(saved, 10) : 0;
+    taskBar.style.width = w >= AGENTIC_MIN_WIDTH ? Math.min(w, maxAgenticWidth(document.querySelector(".main-row"))) + "px" : '';
 }
 
 /* Board chat input pane resize */
@@ -258,25 +262,40 @@ export function initAgenticPanelCollapse() {
     const panel = document.getElementById('agentic-state');
     if (!panel) return;
 
-    // Default to open unless user has explicitly closed it
-    const stored = browserLocal.get(layoutKey('coral-agentic-collapsed'));
-    const collapsed = stored === null ? false : stored === 'true';
-    if (collapsed) panel.classList.add('collapsed');
-
-    // Sync toggle button state
-    _syncPanelToggleBtn(!collapsed);
+    // Open or closed as this kind of page last had it (the agent page and a board open at first)
+    applyDockCollapsed();
 
     // Keep the old collapse button working too
     const btn = document.getElementById('agentic-collapse-btn');
     if (btn) {
         btn.addEventListener('click', () => {
             const isCollapsed = panel.classList.toggle('collapsed');
-            browserLocal.set(layoutKey('coral-agentic-collapsed'), isCollapsed);
+            browserLocal.set(dockKey('coral-agentic-collapsed'), isCollapsed);
             _syncPanelToggleBtn(!isCollapsed);
             fitTerminal();
         });
     }
 }
+
+/** Open or closed as the page on screen last had it. */
+function applyDockCollapsed() {
+    const panel = document.getElementById('agentic-state');
+    if (!panel) return;
+    const stored = browserLocal.get(dockKey('coral-agentic-collapsed'));
+    const collapsed = stored === null ? !dockOpenByDefault() : stored === 'true';
+    panel.classList.toggle('collapsed', collapsed);
+    _syncPanelToggleBtn(!collapsed);
+}
+
+// Each kind of page keeps its own open state and width (#4539): a page change restores them. A phone's overlay is not a page's state.
+onDockPage(kind => {
+    const panel = document.getElementById('agentic-state');
+    if (panel) panel.style.transition = 'none'; // a page's own state appears at once, it does not slide in from the last page's
+    applyDockWidth();
+    applyDockCollapsed();
+    if (panel) { void panel.offsetWidth; requestAnimationFrame(() => { panel.style.transition = ''; }); }
+    if (kind === 'agent') requestAnimationFrame(() => fitTerminal?.());
+});
 
 export function toggleAgenticPanel(forceState) {
     const panel = document.getElementById('agentic-state');
@@ -305,7 +324,7 @@ export function toggleAgenticPanel(forceState) {
     if (typeof forceState === 'boolean') {
         panel.classList.toggle('collapsed', isCollapsed);
     }
-    browserLocal.set(layoutKey('coral-agentic-collapsed'), isCollapsed);
+    browserLocal.set(dockKey('coral-agentic-collapsed'), isCollapsed);
     _syncPanelToggleBtn(!isCollapsed);
     // Fit terminal immediately and again after CSS transition completes
     fitTerminal();
@@ -314,6 +333,7 @@ export function toggleAgenticPanel(forceState) {
 }
 
  function _syncPanelToggleBtn(isOpen) {
+    document.body.dataset.dockOpen = isOpen ? '1' : '0'; // for the page's own layout (the board's toolbar makes room when the sidebar is open)
     const btn = document.getElementById('panel-toggle-btn');
     if (btn) btn.classList.toggle('active', isOpen);
     const popoutBtn = document.getElementById('popout-panel-toggle-btn');

@@ -3,6 +3,7 @@ import { importOnce } from './import_once.js';
 import { loadHighlight } from './vendor_loader.js';
 import { checkAgentView } from './agent_view.js';
 import { browserLocal } from './safe_storage.js';
+import { setDockPage } from './dock_page.js';
 /* Utility functions: HTML escaping and toast notifications */
 
 // Debug logging — enabled via ?debug=1 URL param or localStorage coral-debug=1
@@ -264,6 +265,7 @@ export function showView(activeId) {
     const layout = document.querySelector('.layout');
     if (layout) layout.classList.toggle('sidebar-hidden', FULL_WIDTH_VIEWS.has(activeId));
     document.body.classList.toggle('live-session-active', activeId === 'live-session-view');
+    setDockPage(activeId); // the right sidebar follows the kind of page: its tabs and its own open state (#4539)
     checkAgentView(); // the agent's pollers and terminal socket follow whether its page is on screen (#3719)
 }
 
