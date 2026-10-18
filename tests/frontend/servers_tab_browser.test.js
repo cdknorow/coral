@@ -417,7 +417,7 @@ const contrast = (a, b) => {
 
         console.log('7. Enroll page points new machines at Servers');
         const enroll = fs.readFileSync(path.join(__dirname, '../../coral-go/pkg/frontend/templates/cloud/enroll.html'), 'utf8');
-        assert.match(enroll, /New machines start in View: you can raise access later in <a href="\/servers">Servers<\/a>\./);
+        assert.match(enroll, /New machines start in View mode \(read-only\): you can raise access later in <a href="\/servers">Servers<\/a>\./);
         assert.match(enroll, /<a class="cloud-btn" href="\/servers">Open Servers<\/a>/);
         console.log('   ✓ review note + done-step Open Servers link to /servers');
 

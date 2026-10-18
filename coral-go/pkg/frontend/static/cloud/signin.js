@@ -30,7 +30,7 @@ const submit = document.getElementById('send');
             setStatus(status, 'Enter a valid email address.', 'error');
             submit.disabled = false;
         } else {
-            setStatus(status, 'Could not send the link. Try again.', 'error');
+            setStatus(status, 'Could not confirm that the sign-in link was sent. Check your inbox before trying again.', 'error');
             submit.disabled = false;
         }
     });

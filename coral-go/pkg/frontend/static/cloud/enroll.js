@@ -43,10 +43,10 @@ function fmtTime(ts) {
 
     async function preview(raw) {
         code = normalizeCode(raw);
-        if (!CODE_RE.test(code)) { setStatus(status, 'Enter the code shown on your Coral server (XXXX-XXXX).', 'error'); return; }
+        if (!CODE_RE.test(code)) { setStatus(status, 'Enter the code shown on your machine (XXXX-XXXX).', 'error'); return; }
         setStatus(status, 'Looking up…');
         const r = await postJSON('/api/enroll/preview', { user_code: code }, csrf);
-        if (r.status === 404) { setStatus(status, 'That code is not valid, has expired, or was already used. Start again on the Coral server.', 'error'); return; }
+        if (r.status === 404) { setStatus(status, 'That code is invalid, expired, or already used. Start again on your machine.', 'error'); return; }
         if (r.status === 429) { setStatus(status, 'Too many attempts. Wait a few minutes and try again.', 'error'); return; }
         if (!r.ok || !r.data || !r.data.nonce) { setStatus(status, 'Could not check the code. Try again.', 'error'); return; }
         const q = r.data.requester || {};
@@ -71,20 +71,20 @@ function fmtTime(ts) {
 
     $('approve').addEventListener('click', async () => {
         const label = $('label').value.trim();
-        if (!label) { setStatus(status, 'Give this server a name.', 'error'); return; }
+        if (!label) { setStatus(status, 'Enter a name for this machine.', 'error'); return; }
         $('approve').disabled = true;
         setStatus(status, 'Approving…');
         const r = await postJSON('/api/enroll/confirm', { user_code: code, label, nonce }, csrf);
         if (r.ok) {
             review.hidden = true; done.hidden = false; setStatus(status, '');
         } else if (r.status === 409) {
-            setStatus(status, 'You have reached the limit of connected servers. Revoke one first.', 'error'); $('approve').disabled = false;
+            setStatus(status, 'You have reached the limit of connected machines. Revoke one first.', 'error'); $('approve').disabled = false;
         } else if (r.status === 404) {
-            setStatus(status, 'That code is no longer valid. Start again on the Coral server.', 'error'); $('approve').disabled = false;
+            setStatus(status, 'That code is no longer valid. Start again on your machine.', 'error'); $('approve').disabled = false;
         } else if (r.status === 429) {
             setStatus(status, 'Too many attempts. Wait a few minutes and try again.', 'error'); $('approve').disabled = false;
         } else {
-            setStatus(status, 'Could not approve. Try again.', 'error'); $('approve').disabled = false;
+            setStatus(status, 'Could not confirm approval. Check whether the machine connected before trying again.', 'error'); $('approve').disabled = false;
         }
     });
 
