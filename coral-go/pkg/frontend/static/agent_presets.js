@@ -39,7 +39,7 @@ export const AGENT_PRESETS = [
     {
         name: "DevOps Engineer",
         prompt: "You are a DevOps engineer. Handle CI/CD, infrastructure, deployment, and monitoring. Coordinate with the team via the message board.",
-        capabilities: { allow: ['file_read', 'file_write', 'shell', 'git_write', 'shell'] },
+        capabilities: { allow: ['file_read', 'file_write', 'shell', 'git_write'] },
     },
     {
         name: "Security Reviewer",

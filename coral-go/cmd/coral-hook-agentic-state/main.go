@@ -4,14 +4,17 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cdknorow/coral/internal/hooks"
 	"github.com/cdknorow/coral/internal/transcriptlink"
@@ -223,11 +226,12 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 		return event
 	}
 
-	// SessionStart / /clear
+	// SessionStart / /clear: a turn boundary whatever started the session; its summary says what did, from
+	// the hook's source (Claude and Codex both send it; a fresh launch was shown as "/clear", #4545).
 	if hookType == "SessionStart" || d["_coral_session_clear"] != nil {
 		return map[string]any{
 			"event_type": "session_reset",
-			"summary":    "Session reset: /clear",
+			"summary":    sessionStartSummary(d),
 			"session_id": sessionID,
 		}
 	}
@@ -257,6 +261,19 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 		detail := makeToolDetail(tool, inp)
 		if resp := makeResponseDetail(d["tool_response"]); resp != nil {
 			detail = withDetail(detail, "response", resp)
+		}
+		// Codex's PostToolUse gives a shell command's output as a plain string, with no exit code: its
+		// transcript has it (#4545).
+		codexFailed := false
+		if _, isText := d["tool_response"].(string); isText && hookType == "PostToolUse" {
+			if code, status, ok := codexToolResult(hooks.StrVal(d, "transcript_path"), hooks.StrVal(d, "tool_use_id")); ok {
+				detail = withDetail(detail, "exit_code", code)
+				codexFailed = status == "failed" || code != 0
+			}
+		}
+		if codexFailed {
+			summary = "Failed: " + summary
+			detail = withDetail(detail, "failed", true)
 		}
 		// PostToolUseFailure: the tool errored or was interrupted.
 		if hookType == "PostToolUseFailure" || d["error"] != nil {
@@ -488,6 +505,92 @@ func makeResponseDetail(v any) map[string]any {
 		return nil
 	}
 	return out
+}
+
+// sessionStartSummary is a SessionStart's summary, from its source ("startup", "resume", "clear",
+// "compact", "fork"); Coral's own /clear marker, or no source at all, is a reset.
+func sessionStartSummary(d map[string]any) string {
+	if d["_coral_session_clear"] != nil {
+		return "Session reset: /clear"
+	}
+	switch hooks.StrVal(d, "source") {
+	case "startup":
+		return "Session started"
+	case "resume":
+		return "Session resumed"
+	case "compact":
+		return "Session compacted"
+	case "fork":
+		return "Session forked"
+	}
+	return "Session reset: /clear"
+}
+
+// codexToolResult is the exit code and status of a Codex tool call, from the item_completed record its
+// transcript (the rollout file Codex names in transcript_path) holds for the call. Codex writes that record
+// just before it runs PostToolUse, so a record not there yet is looked for again, briefly.
+var codexToolResult = func(path, callID string) (int, string, bool) {
+	if callID == "" || !strings.HasSuffix(path, ".jsonl") || !strings.HasPrefix(filepath.Base(path), "rollout-") {
+		return 0, "", false
+	}
+	for attempt := 0; attempt < 6; attempt++ {
+		if attempt > 0 {
+			time.Sleep(25 * time.Millisecond)
+		}
+		if code, status, ok := findCodexToolResult(path, callID); ok {
+			return code, status, true
+		}
+	}
+	return 0, "", false
+}
+
+// codexTranscriptTail: how much of the transcript's end is read for a call's record.
+const codexTranscriptTail = 256 << 10
+
+// findCodexToolResult reads the end of a Codex rollout file for the item_completed record of callID.
+func findCodexToolResult(path, callID string) (int, string, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, "", false
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		return 0, "", false
+	}
+	start := fi.Size() - codexTranscriptTail
+	if start < 0 {
+		start = 0
+	}
+	buf := make([]byte, fi.Size()-start)
+	if _, err := f.ReadAt(buf, start); err != nil && err != io.EOF {
+		return 0, "", false
+	}
+	quoted, _ := json.Marshal(callID)
+	lines := bytes.Split(buf, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := lines[i]
+		if !bytes.Contains(line, []byte(`"item_completed"`)) || !bytes.Contains(line, quoted) {
+			continue
+		}
+		var rec struct {
+			Payload struct {
+				Type string `json:"type"`
+				Item struct {
+					Type     string   `json:"type"`
+					ID       string   `json:"id"`
+					Status   string   `json:"status"`
+					ExitCode *float64 `json:"exit_code"`
+				} `json:"item"`
+			} `json:"payload"`
+		}
+		if json.Unmarshal(line, &rec) != nil || rec.Payload.Type != "item_completed" || rec.Payload.Item.ID != callID ||
+			rec.Payload.Item.Type != "CommandExecution" || rec.Payload.Item.ExitCode == nil {
+			continue
+		}
+		return int(*rec.Payload.Item.ExitCode), rec.Payload.Item.Status, true
+	}
+	return 0, "", false
 }
 
 // withDetail sets a key on a detail map that may still be nil (tools with no

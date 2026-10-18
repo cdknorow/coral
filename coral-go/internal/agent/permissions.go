@@ -228,28 +228,3 @@ func TranslateToAgyPermissions(caps *Capabilities) *AgyPermissions {
 	// Default
 	return &AgyPermissions{ApprovalMode: "default"}
 }
-
-// Preset permission profiles for built-in agent roles.
-var Presets = map[string]*Capabilities{
-	"lead_dev": {
-		Allow: []string{CapFileRead, CapFileWrite, CapShell, CapGitWrite, CapAgentSpawn},
-	},
-	"qa": {
-		Allow: []string{CapFileRead, CapShell},
-	},
-	"frontend_dev": {
-		Allow: []string{CapFileRead, CapFileWrite, "shell:npm *", "shell:npx *", CapWebAccess},
-	},
-	"orchestrator": {
-		Allow: []string{CapFileRead, CapFileWrite, CapShell, CapGitWrite, CapAgentSpawn, CapWebAccess, CapNotebook},
-	},
-	"devops": {
-		Allow: []string{CapFileRead, CapFileWrite, CapShell, CapGitWrite},
-	},
-	"read_only": {
-		Allow: []string{CapFileRead, CapWebAccess},
-	},
-	"full_access": {
-		Allow: []string{CapFileRead, CapFileWrite, CapShell, CapGitWrite, CapAgentSpawn, CapWebAccess, CapNotebook},
-	},
-}

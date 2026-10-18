@@ -1,0 +1,15 @@
+{
+ "session_id": "01a14d4e-1a66-7893-b33a-f0de799b1d64",
+ "turn_id": "01a14d4e-275e-7a70-9418-f3a9841b1fa2",
+ "transcript_path": "/tmp/q4545/codex/sessions/2026/10/17/rollout-2026-10-17T21-38-46-01a14d4e-1a66-7893-b33a-f0de799b1d64.jsonl",
+ "cwd": "/tmp/q4545/proj",
+ "hook_event_name": "PostToolUse",
+ "model": "gpt-test",
+ "permission_mode": "bypassPermissions",
+ "tool_name": "Bash",
+ "tool_input": {
+  "command": "printf approved-x; exit 1"
+ },
+ "tool_response": "approved-x",
+ "tool_use_id": "call_1"
+}

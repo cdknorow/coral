@@ -784,6 +784,41 @@ func TestAgy_WithCapabilities_AutoEdit(t *testing.T) {
 	}
 }
 
+// The capabilities decide the mode (#4545, Security's B): the launch dialog's default
+// --dangerously-skip-permissions (or --yolo, --mode) is dropped when they set one, as for Codex, and kept
+// when there are none.
+func TestAgy_CapabilitiesWinOverPermissionFlags(t *testing.T) {
+	a := &AgyAgent{}
+	readOnly := &Capabilities{Allow: []string{CapFileRead}}
+	for _, flags := range [][]string{
+		{"--dangerously-skip-permissions"}, {"--yolo"}, {"--mode", "accept-edits"}, {"--mode=accept-edits"},
+		{"--verbose", "--dangerously-skip-permissions", "--mode", "accept-edits"},
+	} {
+		cmd := buildLaunch(a, LaunchParams{Capabilities: readOnly, Flags: flags})
+		if !strings.Contains(cmd, "--mode plan") {
+			t.Errorf("%v: expected the capabilities' --mode plan, got %q", flags, cmd)
+		}
+		for _, lost := range []string{"--dangerously-skip-permissions", "accept-edits"} {
+			if strings.Contains(cmd, lost) {
+				t.Errorf("%v: a read_only agent launched with %s: %q", flags, lost, cmd)
+			}
+		}
+	}
+	cmd := buildLaunch(a, LaunchParams{Capabilities: readOnly, Flags: []string{"--verbose", "--yolo"}})
+	if !strings.Contains(cmd, "--verbose") {
+		t.Errorf("other flags are kept, got %q", cmd)
+	}
+	// Without capabilities the dialog's flag is the mode, once
+	cmd = buildLaunch(a, LaunchParams{Flags: []string{"--dangerously-skip-permissions"}, PermissionMode: "plan"})
+	if strings.Count(cmd, "--dangerously-skip-permissions") != 1 || strings.Contains(cmd, "--mode plan") {
+		t.Errorf("expected only the dialog's --dangerously-skip-permissions, got %q", cmd)
+	}
+	cmd = buildLaunch(a, LaunchParams{Flags: []string{"--mode", "plan"}})
+	if !strings.Contains(cmd, "--mode plan") {
+		t.Errorf("expected the dialog's --mode plan, got %q", cmd)
+	}
+}
+
 func TestAgy_WithCapabilities_Plan(t *testing.T) {
 	a := &AgyAgent{}
 	cmd := buildLaunch(a, LaunchParams{
@@ -1136,127 +1171,6 @@ func TestCapabilities_IsEmpty(t *testing.T) {
 	}
 	if (&Capabilities{Allow: []string{"x"}}).IsEmpty() {
 		t.Error("with Allow should not be empty")
-	}
-}
-
-// ── Presets Tests ───────────────────────────────────────────
-
-func TestPresets_Exist(t *testing.T) {
-	for _, name := range []string{"lead_dev", "qa", "frontend_dev", "orchestrator", "devops", "read_only", "full_access"} {
-		if _, ok := Presets[name]; !ok {
-			t.Errorf("missing preset %q", name)
-		}
-	}
-}
-
-func TestPresets_FullAccessHasAll(t *testing.T) {
-	fa := Presets["full_access"]
-	allowSet := map[string]bool{}
-	for _, a := range fa.Allow {
-		allowSet[a] = true
-	}
-	for _, cap := range []string{CapFileRead, CapFileWrite, CapShell, CapGitWrite, CapAgentSpawn, CapWebAccess, CapNotebook} {
-		if !allowSet[cap] {
-			t.Errorf("full_access missing %s", cap)
-		}
-	}
-}
-
-// translatePreset is the translation each agent's launch makes (TranslateTo<Agent>Permissions).
-func translatePreset(t *testing.T, agentType string, caps *Capabilities) any {
-	t.Helper()
-	switch agentType {
-	case "claude":
-		return TranslateToClaudePermissions(caps)
-	case "codex":
-		return TranslateToCodexPermissions(caps)
-	case "agy":
-		return TranslateToAgyPermissions(caps)
-	}
-	t.Fatalf("no translation for %q", agentType)
-	return nil
-}
-
-func TestPresetTranslations(t *testing.T) {
-	tests := []struct {
-		name      string
-		agentType string
-		preset    string
-		check     func(t *testing.T, got any)
-	}{
-		{
-			name:      "qa claude",
-			agentType: "claude",
-			preset:    "qa",
-			check: func(t *testing.T, got any) {
-				t.Helper()
-				perms, ok := got.(*ClaudePermissions)
-				if !ok || perms == nil {
-					t.Fatalf("expected *ClaudePermissions, got %T", got)
-				}
-				allowStr := strings.Join(perms.Allow, ",")
-				if !strings.Contains(allowStr, "Read") {
-					t.Fatalf("expected read tools, got %+v", perms.Allow)
-				}
-				if !strings.Contains(allowStr, "Bash") {
-					t.Fatalf("expected Bash in allow, got %+v", perms.Allow)
-				}
-				if len(perms.Deny) > 0 {
-					t.Fatalf("expected no deny list, got %+v", perms.Deny)
-				}
-			},
-		},
-		{
-			name:      "orchestrator codex",
-			agentType: "codex",
-			preset:    "orchestrator",
-			check: func(t *testing.T, got any) {
-				t.Helper()
-				perms, ok := got.(*CodexPermissions)
-				if !ok || perms == nil {
-					t.Fatalf("expected *CodexPermissions, got %T", got)
-				}
-				if !perms.BypassSandbox || !perms.Search {
-					t.Fatalf("unexpected codex perms: %+v", perms)
-				}
-			},
-		},
-		{
-			name:      "frontend agy",
-			agentType: "agy",
-			preset:    "frontend_dev",
-			check: func(t *testing.T, got any) {
-				t.Helper()
-				perms, ok := got.(*AgyPermissions)
-				if !ok || perms == nil {
-					t.Fatalf("expected *AgyPermissions, got %T", got)
-				}
-				if perms.ApprovalMode != "auto_edit" {
-					t.Fatalf("unexpected agy perms: %+v", perms)
-				}
-			},
-		},
-		{
-			name:      "full access codex",
-			agentType: "codex",
-			preset:    "full_access",
-			check: func(t *testing.T, got any) {
-				t.Helper()
-				perms, ok := got.(*CodexPermissions)
-				if !ok || perms == nil {
-					t.Fatalf("expected *CodexPermissions, got %T", got)
-				}
-				if !perms.BypassSandbox || !perms.Search {
-					t.Fatalf("unexpected codex perms: %+v", perms)
-				}
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.check(t, translatePreset(t, tt.agentType, Presets[tt.preset]))
-		})
 	}
 }
 

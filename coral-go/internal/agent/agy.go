@@ -319,8 +319,37 @@ func (a *AgyAgent) LaunchCommand(params LaunchParams) (string, error) {
 			slog.Warn("dropping unsupported flag for agy agent", "flag", flag)
 			continue
 		}
-		if flag == "--yolo" {
-			parts = append(parts, "--dangerously-skip-permissions")
+		// A capability set decides the mode, and a flag that would set another is dropped, as for Codex
+		// (#4545, Security's B): the launch dialog's default --dangerously-skip-permissions came after the
+		// capabilities' flags, so a read_only preset launched as "--dangerously-skip-permissions --mode plan".
+		if flag == "--yolo" || flag == "--dangerously-skip-permissions" {
+			if !permissionApplied {
+				parts = append(parts, "--dangerously-skip-permissions")
+				permissionApplied = true
+			} else {
+				slog.Info("dropping a permission flag for agy agent: its capabilities set the mode", "flag", flag)
+			}
+			continue
+		}
+		if flag == "--mode" {
+			if i+1 < len(params.Flags) {
+				i++
+				if !permissionApplied {
+					parts = append(parts, flag, params.Flags[i])
+					permissionApplied = true
+				} else {
+					slog.Info("dropping a permission flag for agy agent: its capabilities set the mode", "flag", flag)
+				}
+			}
+			continue
+		}
+		if strings.HasPrefix(flag, "--mode=") {
+			if !permissionApplied {
+				parts = append(parts, flag)
+				permissionApplied = true
+			} else {
+				slog.Info("dropping a permission flag for agy agent: its capabilities set the mode", "flag", flag)
+			}
 			continue
 		}
 		if flag == "--permission-mode" {
