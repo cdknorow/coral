@@ -26,6 +26,13 @@ export function escapeHtml(str) {
         .replace(/'/g, "&#39;");
 }
 
+// A tag's colour goes into a style attribute, where HTML escaping is not enough ("red;position:fixed;inset:0" is a valid
+// attribute value): only #rgb, #rrggbb and #rrggbbaa are used, anything else (a row stored before the server checked it, #4875) is the default.
+const _tagColorRe = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+export function tagColor(c) {
+    return typeof c === 'string' && _tagColorRe.test(c) ? c : '#58a6ff';
+}
+
 /** Escape for use as the value of an HTML attribute (data-*, title, value, id, ...). */
 export function escapeAttr(str) {
     return escapeHtml(str);

@@ -53,6 +53,7 @@ const HOOK = `(() => {
         const Q = String.fromCharCode(39);
         const pay = f => '</textarea></title></style></select></a></button><i data-pwn="' + f + '"></i>" data-pwn="' + f + '" x="' + Q + ' data-pwn=' + Q + f + Q + ' x=' + Q + '<img data-pwn="' + f + '" src=x>';
         const taint = (v, key) => {
+            if (typeof v === 'string' && key === 'color') return 'red;position:fixed;inset:0;z-index:99999;width:100vw;height:100vh;background:red'; // rows stored before the server checked a colour (#4875)
             if (typeof v === 'string') return SHOWN.test(key || '') && v.length < 6000 ? v + pay('T-' + key) : v;
             if (Array.isArray(v)) return v.map(x => taint(x, key));
             if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = taint(v[k], k); return o; }
@@ -125,7 +126,11 @@ const HOOK = `(() => {
         await plant('agent-event-type', 'POST', `/api/sessions/live/${encodeURIComponent(name)}/events`, { session_id: sid, event_type: P('event-type'), summary: 's' }, tok);
         await plant('agent-note', 'POST', `/api/sessions/live/${encodeURIComponent(name)}/notes`, { session_id: sid, content: P('agent-note') }, tok);
         await plant('personal-task', 'POST', '/api/agent/tasks', { title: P('personal-task-title'), body: P('personal-task-body') }, tok);
-        await plant('tag', 'POST', '/api/tags', { name: P('tag-name'), color: '#336699' });
+        const tag = await plant('tag', 'POST', '/api/tags', { name: P('tag-name'), color: '#336699' });
+        if (tag.data && tag.data.id) await plant('folder-tag', 'POST', `/api/folder-tags/${encodeURIComponent(path.basename(repo))}`, { tag_id: tag.data.id });
+        // #4875: a colour is stored only as #rgb, #rrggbb or #rrggbbaa (it goes into a style attribute); a CSS payload is a 400.
+        const cssRefused = (await plant('tag-colour-css', 'POST', '/api/tags', { name: 'css-colour', color: 'red;position:fixed;inset:0;z-index:99999' })).status;
+        const colourOk = (await plant('tag-colour-8hex', 'POST', '/api/tags', { name: 'ok-colour', color: '#12345678' })).status;
         await plant('artifact-name', 'POST', `/api/agent/artifacts?session_id=${sid}`, 'x', { 'X-Artifact-Name': 'a-' + P('artifact-name') + '.txt', ...tok, 'Content-Type': 'text/plain' }).catch(e => refused.push('artifact-name (client refused: ' + e.message.slice(0, 80) + ')'));
         // a markdown task and message through the personal list's other body
 
@@ -178,6 +183,7 @@ const HOOK = `(() => {
         const findings = [];
         const seen = new Set();
         const seenT = new Set();
+        let pillCount = 0, fallbackPills = 0;
         for (const path of visits) {
             const loaded = Page.loadEventFired();
             await Page.navigate({ url: BASE + path });
@@ -213,12 +219,20 @@ const HOOK = `(() => {
             const clicked = await crawl('T' + path);
             await snapT();
             const got = await ev(`({ sinks: (window.__pwnSinks || []).filter(s => !/\\/vendor\\//.test(s.stack)), dom: [...document.querySelectorAll('[data-pwn]')].map(e => ({ f: e.getAttribute('data-pwn'), tag: e.tagName, in: (e.parentElement && (e.parentElement.id || e.parentElement.className || e.parentElement.tagName)) + '' })) })`);
+            const pills = await ev(`[...document.querySelectorAll('.tag-pill, .sidebar-tag-pill, .folder-tag-full, .tag-dropdown-item')].map(e => { const r = e.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), pos: getComputedStyle(e).position, bg: getComputedStyle(e).backgroundColor }; })`);
+            pillCount += pills.length;
+            for (const q of pills) {
+                if (q.bg === 'rgb(255, 0, 0)' || q.pos === 'fixed') findings.push(`[tainted] ${path}: a tag pill took the CSS from its colour: ${q.w}x${q.h} position ${q.pos}, background ${q.bg}`);
+                if (q.bg === 'rgb(88, 166, 255)') fallbackPills++; // the default colour: what a colour that is not a hex colour shows as
+            }
             for (const s of got.sinks) findings.push(`[tainted] ${path}: raw ${s.field} in ${s.kind} <- ${s.stack}`);
             for (const d of got.dom) findings.push(`[tainted] ${path}: element [data-pwn=${d.f}] <${d.tag}> in ${String(d.in).slice(0, 60)}`);
             console.log(`tainted ${path}: ${clicked} click(s), ${got.sinks.length} raw sink(s), ${got.dom.length} injected element(s)`);
         }
         await ev(`localStorage.removeItem('__pwnTaint'); true`);
 
+        check('the server refuses a tag colour that is CSS (400) and keeps a #rrggbbaa one (200)', cssRefused === 400 && colourOk === 200, `${cssRefused} and ${colourOk}`);
+        check('phase 2 positive control: tag pills were on screen with the tainted (CSS) colour and showed the default colour instead', pillCount >= 3 && fallbackPills >= 3, pillCount + ' pill(s) measured, ' + fallbackPills + ' in the default colour');
         check('phase 2 positive control: tainted fields of many kinds reached the page (as text)', seenT.size >= 12, seenT.size + ' keys: ' + [...seenT].sort().join(', '));
         // positive control: the hook sees a raw sink
         await ev(`(() => { const d = document.createElement('div'); d.innerHTML = '<i data-pwn="control"></i>'; return true; })()`);

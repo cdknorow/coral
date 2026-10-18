@@ -1174,6 +1174,11 @@ func (h *SystemHandler) CreateTag(w http.ResponseWriter, r *http.Request) {
 	if body.Color == "" {
 		body.Color = "#58a6ff"
 	}
+	if !store.ValidTagColor(body.Color) {
+		// The dashboard puts a tag's colour into a style attribute: "red;position:fixed;inset:0" would restyle the page (#4875).
+		errBadRequest(w, "color must be #rgb, #rrggbb or #rrggbbaa")
+		return
+	}
 	result, err := h.db.ExecContext(r.Context(),
 		"INSERT INTO tags (name, color) VALUES (?, ?)", body.Name, body.Color)
 	if err != nil {

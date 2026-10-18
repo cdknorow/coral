@@ -317,10 +317,21 @@ func (s *SessionStore) ListTags(ctx context.Context) ([]Tag, error) {
 	return tags, err
 }
 
+// ErrTagColor is CreateTag's error for a colour that is not #rgb, #rrggbb or #rrggbbaa: the dashboard puts it into a style attribute (#4875).
+var ErrTagColor = errors.New("a tag colour is #rgb, #rrggbb or #rrggbbaa")
+
+var tagColorRe = regexp.MustCompile(`^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`)
+
+// ValidTagColor reports whether c is a colour a tag may have: #rgb, #rrggbb or #rrggbbaa.
+func ValidTagColor(c string) bool { return tagColorRe.MatchString(c) }
+
 // CreateTag creates a new tag.
 func (s *SessionStore) CreateTag(ctx context.Context, name, color string) (*Tag, error) {
 	if color == "" {
 		color = "#58a6ff"
+	}
+	if !ValidTagColor(color) {
+		return nil, ErrTagColor
 	}
 	result, err := s.db.ExecContext(ctx,
 		"INSERT INTO tags (name, color) VALUES (?, ?)", name, color)

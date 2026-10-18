@@ -198,12 +198,12 @@
 1	event_row.js	r.cls
 1	event_row.js	slow
 1	event_row.js	typeCls
-1	folder_tags.js	available.map(t => `<span class="tag-dropdown-item" style="background:${escapeHtml(t.color)}" data-on-click="f
+1	folder_tags.js	available.map(t => `<span class="tag-dropdown-item" style="background:${escapeAttr(tagColor(t.color))}" data-o
 1	folder_tags.js	availableHtml
 1	folder_tags.js	createHtml
 1	folder_tags.js	currentHtml
-1	folder_tags.js	currentTags.map(t => `<span class="tag-pill" style="background:${escapeHtml(t.color)}"> ${escapeHtml(t.name)} 
-1	folder_tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeHtml(t.color)}" title="${escapeHtml(t.
+1	folder_tags.js	currentTags.map(t => `<span class="tag-pill" style="background:${escapeAttr(tagColor(t.color))}"> ${escapeHtml
+1	folder_tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeAttr(tagColor(t.color))}" title="${esc
 1	history_tabs.js	icon
 1	history_tabs.js	statusClass
 1	live_chat.js	COPY_BUTTON
@@ -464,7 +464,7 @@
 1	subagents.js	warningClass
 1	tab_customize.js	iconHtml
 1	tab_customize.js	svg.outerHTML
-1	tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeHtml(t.color)}" title="${escapeHtml(t.
+1	tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeAttr(tagColor(t.color))}" title="${esc
 1	tasks.js	(input.artifacts || []).map(artifactHtml).join('')
 1	tasks.js	(review.artifacts || []).map(artifactHtml).join('')
 1	tasks.js	(workflow.gate_results || []).length ? `<div>Gate results: ${(workflow.gate_results || []).map(g => `<span cla

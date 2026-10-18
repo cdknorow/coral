@@ -1,7 +1,7 @@
 /* Folder-level tags: load, render, dropdown picker, add/remove */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, tagColor } from './utils.js';
 import { registerActions, idOf, textOf } from './actions.js';
 import { renderLiveSessions } from './render.js';
 import { loadAllTags } from './tags.js';
@@ -26,11 +26,11 @@ export function renderFolderTagPills(tags) {
     if (!tags || tags.length === 0) return "";
     if (tags.length <= 2) {
         return tags.map(t =>
-            `<span class="folder-tag-full" style="background:${escapeHtml(t.color)}">${escapeHtml(t.name)}</span>`
+            `<span class="folder-tag-full" style="background:${escapeAttr(tagColor(t.color))}">${escapeHtml(t.name)}</span>`
         ).join("");
     }
     return '<span class="sidebar-tag-pills">' +
-        tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeHtml(t.color)}" title="${escapeHtml(t.name)}"></span>`).join("") +
+        tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeAttr(tagColor(t.color))}" title="${escapeHtml(t.name)}"></span>`).join("") +
         '</span>';
 }
 
@@ -79,7 +79,7 @@ function _buildDropdownHtml(folderName, currentTags) {
     let currentHtml = "";
     if (currentTags.length > 0) {
         currentHtml = `<div class="folder-tag-current">${currentTags.map(t =>
-            `<span class="tag-pill" style="background:${escapeHtml(t.color)}">
+            `<span class="tag-pill" style="background:${escapeAttr(tagColor(t.color))}">
                 ${escapeHtml(t.name)}
                 <span class="tag-remove" data-on-click="folder-tag-remove" data-folder="${escapeAttr(folderName)}" data-tag-id="${Number(t.id)}">&times;</span>
             </span>`
@@ -94,7 +94,7 @@ function _buildDropdownHtml(folderName, currentTags) {
     let availableHtml = "";
     if (available.length > 0) {
         availableHtml = `<div class="tag-dropdown-list">${available.map(t =>
-            `<span class="tag-dropdown-item" style="background:${escapeHtml(t.color)}"
+            `<span class="tag-dropdown-item" style="background:${escapeAttr(tagColor(t.color))}"
                   data-on-click="folder-tag-add" data-folder="${escapeAttr(folderName)}" data-tag-id="${Number(t.id)}">
                 ${escapeHtml(t.name)}
             </span>`

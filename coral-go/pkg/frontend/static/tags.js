@@ -1,7 +1,7 @@
 /* Session tags: CRUD, tag pills, dropdown picker */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr } from './utils.js';
+import { escapeHtml, escapeAttr, tagColor } from './utils.js';
 import { registerActions, idOf, textOf } from './actions.js';
 import { showToast } from './utils.js';
 
@@ -43,7 +43,7 @@ export function renderSessionTags(tags) {
     }
 
     container.innerHTML = tags.map(tag =>
-        `<span class="tag-pill" style="background:${escapeHtml(tag.color)}">
+        `<span class="tag-pill" style="background:${escapeAttr(tagColor(tag.color))}">
             ${escapeHtml(tag.name)}
             <span class="tag-remove" data-on-click="session-tag-remove" data-name="${escapeAttr(state.currentSession.name)}" data-tag-id="${Number(tag.id)}">&times;</span>
         </span>`
@@ -74,7 +74,7 @@ function renderTagDropdownList() {
     }
 
     container.innerHTML = available.map(tag =>
-        `<span class="tag-dropdown-item" style="background:${escapeHtml(tag.color)}"
+        `<span class="tag-dropdown-item" style="background:${escapeAttr(tagColor(tag.color))}"
               data-on-click="session-tag-add" data-name="${escapeAttr(state.currentSession.name)}" data-tag-id="${Number(tag.id)}">
             ${escapeHtml(tag.name)}
         </span>`
@@ -159,7 +159,7 @@ export async function createTag() {
 export function renderSidebarTagDots(tags) {
     if (!tags || tags.length === 0) return "";
     return '<span class="sidebar-tag-pills">' +
-        tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeHtml(t.color)}" title="${escapeHtml(t.name)}"></span>`).join("") +
+        tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeAttr(tagColor(t.color))}" title="${escapeHtml(t.name)}"></span>`).join("") +
         '</span>';
 }
 
