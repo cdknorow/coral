@@ -36,6 +36,9 @@ const settingsDialog = await importOnce('./settings_dialog.js');
 const infoDialog = await importOnce('./info_dialog.js');
 const flagShortcuts = await importOnce('./flag_shortcuts.js');
 const cliDialogs = await importOnce('./cli_dialogs.js');
+const launchCore = await importOnce('./launch_core.js');
+const { _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, _withServerSettings, hideLaunchModal } = launchCore;
+export { _launchOn, hideLaunchModal };
 const { _checkPermissionFlag, _showCLINotFoundModal } = cliDialogs;
 const { _syncFlagButtons } = flagShortcuts;
 export const { toggleFlag } = flagShortcuts;
@@ -46,31 +49,6 @@ export { showSettingsModal };
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
 
-
-function _syncMobileLaunchSections(step) {
-    const isMobile = window.innerWidth <= 767;
-    const root = step ? document.getElementById(`launch-step-${step}`) : document.getElementById("launch-modal");
-    if (!root) return;
-    root.querySelectorAll(".mobile-launch-section").forEach(section => {
-        section.open = !isMobile;
-    });
-}
-
-function _showLaunchStep(step) {
-    document.getElementById("launch-step-chooser").style.display = step === "chooser" ? "flex" : "none";
-    document.getElementById("launch-step-agent").style.display = step === "agent" ? "flex" : "none";
-    document.getElementById("launch-step-terminal").style.display = step === "terminal" ? "flex" : "none";
-    document.getElementById("launch-step-team").style.display = step === "team" ? "flex" : "none";
-    // Widen the modal for multi-column layouts
-    const content = document.querySelector("#launch-modal .modal-content");
-    if (content) {
-        content.classList.toggle("modal-content-agent-wide", step === "agent");
-        content.classList.toggle("modal-content-extra-wide", step === "team");
-        content.classList.toggle("modal-content-wide", step !== "team" && step !== "agent");
-        content.classList.toggle("launch-choosing", step === "chooser"); // four choices in a row (#3630)
-    }
-    _syncMobileLaunchSections(step);
-}
 
 function _selectLaunchType(type) {
     if (type === "back") {
@@ -178,33 +156,6 @@ function _renderServerPicker(which) {
 const _LAUNCH_DIR_IDS = ['launch-dir', 'launch-terminal-dir', 'launch-team-dir'];
 const _LAUNCH_BROWSER_IDS = ['dir-browser', 'dir-browser-terminal', 'dir-browser-team'];
 
-/**
- * Point working-directory inputs at `server`. A path is only meaningful on the
- * machine it was typed for, so a remote never inherits the hub's directory:
- * the field becomes the remote's default_working_dir or empty (Browse starts at
- * the remote's home). Local restores the hub's default / coral root.
- */
-function _resetDirInputs(ids, server, settings, { switching = false } = {}) {
-    const remote = server !== LOCAL_SERVER;
-    for (const id of ids) {
-        const el = document.getElementById(id);
-        if (!el) continue;
-        clearFieldInvalid(el); // a reset value is not the rejected one
-        if (el.dataset.localPlaceholder === undefined) el.dataset.localPlaceholder = el.placeholder || '';
-        if (remote) {
-            el.value = settings.default_working_dir || '';
-            el.placeholder = `Path on ${serverLabel(server, state.servers)} (use Browse)`;
-            el.dataset.dirServer = server;
-        } else {
-            // A field last filled for a remote must not keep that remote's path.
-            const wasRemote = !!el.dataset.dirServer;
-            delete el.dataset.dirServer;
-            el.placeholder = el.dataset.localPlaceholder;
-            if (settings.default_working_dir) el.value = settings.default_working_dir;
-            else if (switching || wasRemote) el.value = el.dataset.coralRoot || '';
-        }
-    }
-}
 
 function _resetLaunchDirs(server, opts) {
     // The team dir is also filled by _initTeamForm; only touch it on a switch
@@ -279,12 +230,6 @@ setDirServerResolver(inputId => {
     return launch.server;
 });
 
-/** Toast and return true when `server` cannot be launched on. */
-function _launchBlocked(server) {
-    const why = launchBlockReason(server, isHub(), state.servers) || blockedReason(server, 'launch');
-    if (why) showToast(why, true);
-    return !!why;
-}
 
 // Through the Coral Hub a machine at View (or Interact) refuses a launch: say so when the form opens, with the launch buttons dimmed, instead of after it is filled in (#4586).
 // The buttons stay clickable; a click says the same reason in one toast (_launchBlocked).
@@ -301,74 +246,6 @@ function _syncLaunchAccess() {
 }
 document.addEventListener('coral:server-access-loaded', () => { if (document.getElementById('launch-modal')?.style.display === 'flex') _syncLaunchAccess(); });
 
-
-/**
- * Send a launch to `server` and surface the outcome. Returns the response data
- * on success, or null after showing the error. Never falls back to another
- * server.
- */
-export async function _launchOn(server, path, payload, agentType, { dirInput = null } = {}) { // exported for board_ids_browser
-    let res = await postLaunch(server, path, payload);
-    // A board of that name exists (#3536): the person chooses to join it or start another.
-    if (!res.ok && isBoardNameExists(res)) {
-        // The boards of that name are known now: the list can tell them apart (keyLabel's short id).
-        noteBoardLabels(res.data.candidates, 'board_id', server);
-        const pick = await chooseBoard(res.data, payload.board_name || '');
-        const retry = retryPayload(payload, pick);
-        if (!retry) return null; // cancelled: nothing launched
-        res = await postLaunch(server, path, retry);
-    }
-    if (res.ok && res.data && res.data.board_id) noteBoardLabels([res.data], 'board_id', server); // the board it joined or started
-    if (!res.ok) {
-        if (agentType && res.error.includes('not found') && res.error.includes('CLI')) _showCLINotFoundModal(agentType, server);
-        else showToast(res.error, true);
-        if (dirInput && res.data && res.data.field === 'working_dir') markFieldInvalid(dirInput, res.error);
-        return null;
-    }
-    return res.data;
-}
-
-/** Mark a form field the server rejected: aria-invalid, a red outline and the
- *  reason as its title, focused. Cleared by the next edit, typed or set by
- *  Browse ('change'), and when the dialog closes or its fields reset (#3152). */
- function markFieldInvalid(input, message) {
-    clearFieldInvalid(input);
-    const previousTitle = input.title;
-    input.setAttribute('aria-invalid', 'true');
-    input.classList.add('input-invalid');
-    input.title = message;
-    input.focus();
-    const clear = () => clearFieldInvalid(input);
-    input._clearInvalid = () => {
-        input.removeEventListener('input', clear);
-        input.removeEventListener('change', clear);
-        input.removeAttribute('aria-invalid');
-        input.classList.remove('input-invalid');
-        input.title = previousTitle;
-    };
-    input.addEventListener('input', clear);
-    input.addEventListener('change', clear);
-}
-
-/** Undo markFieldInvalid, if the field is marked. */
- function clearFieldInvalid(input) {
-    if (input && input._clearInvalid) {
-        const undo = input._clearInvalid;
-        input._clearInvalid = null;
-        undo();
-    }
-}
-
-/** Refresh the agent list after a launch; on a remote wait for the hub poller to see the new agent. */
-function _refreshAfterLaunch(server, target) {
-    if (normServer(server) === LOCAL_SERVER) return;
-    waitForLaunched(server, target, loadLiveSessions);
-}
-
-export function hideLaunchModal() {
-    document.getElementById("launch-modal").style.display = "none";
-    for (const id of ['launch-dir', 'launch-terminal-dir']) clearFieldInvalid(document.getElementById(id));
-}
 
 function _setTeamWizardError(message = '') {
     const errorEl = document.getElementById('team-wizard-error');
@@ -1042,16 +919,6 @@ export function showAddAgentToBoard(boardName, workDir) {
     _withServerSettings(server, open);
 }
 
-/** " on <server label>" for remotes, "" for local. */
-function _onServerSuffix(server) {
-    return normServer(server) === LOCAL_SERVER ? '' : ` on ${serverLabel(server, state.servers)}`;
-}
-
-/** Run `fn` once the target server's settings are available (immediately for local; on failure fn still runs with defaults). */
-function _withServerSettings(server, fn) {
-    if (normServer(server) === LOCAL_SERVER) { fn(); return; }
-    _loadServerSettings(server).catch(() => null).then(fn);
-}
 
 export function hideAddAgentBoardModal() {
     document.getElementById("add-agent-board-modal").style.display = "none";
