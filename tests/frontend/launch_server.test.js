@@ -44,13 +44,19 @@ const { pathToFileURL } = require('url');
         assert.strictEqual(m.noMachine([]), false, 'not known yet: nothing is claimed');
         state.serversKnown = true;
         assert.strictEqual(m.noMachine([]), true, 'known and none connected');
-        assert.strictEqual(m.noMachine([{ id: 'b', status: 'unreachable' }, { id: 'c', status: 'unauthorized' }]), true, 'every one unusable');
+        assert.strictEqual(m.noMachine([{ id: 'b', status: 'unreachable' }, { id: 'c', status: 'unauthorized' }]), false, 'machines that are all offline are not a first run');
+        assert.strictEqual(m.machineState([{ id: 'b', status: 'unreachable' }, { id: 'c', status: 'unauthorized' }]), 'offline');
+        assert.strictEqual(m.machineState([]), 'none'); assert.strictEqual(m.machineState(servers), 'ready');
+        assert.strictEqual(m.machineBlock([]), 'Connect a machine first'); assert.strictEqual(m.machineBlock([{ id: 'b', status: 'stale' }]), 'Your machines are offline'); assert.strictEqual(m.machineBlock(servers), '');
+        state.serversKnown = false;
+        assert.strictEqual(m.machineState([]), null, 'a list that has not loaded is never an empty account'); assert.strictEqual(m.machineBlock([]), '');
+        state.serversKnown = true;
         assert.strictEqual(m.noMachine(servers), false, 'one usable machine');
         assert.strictEqual(m.launchBlockReason('local', true, []), 'Connect a machine first');
         assert.strictEqual(m.CONNECT_FIRST, 'Connect a machine first');
         assert.match(m.launchBlockReason('local', true, servers), /no local agents/, 'machines exist: choose one');
         state.cloud = false;
-        assert.strictEqual(m.noMachine([]), false, 'a local Coral never says it');
+        assert.strictEqual(m.noMachine([]), false, 'a local Coral never says it'); assert.strictEqual(m.machineState([]), null);
         Object.assign(state, { cloud: was.cloud, serversKnown: was.known, servers: was.servers });
     }
 

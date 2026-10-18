@@ -21,8 +21,8 @@ import { liveListRendered } from './ready.js';
 import { morphHtml } from './dom_morph.js';
 import { isPinnedDir, emptyPins, notePinKeys, pinPathForKey, pinnedFolders } from './pinned_folders.js';
 import { LOCAL_SERVER } from './server_base.js';
-import { noMachine } from './launch_server.js';
-import { syncHubFirstRun } from './hub_first_run.js';
+import { machineState } from './launch_server.js';
+import { syncHubFirstRun, hubEmptyListHtml } from './hub_first_run.js';
 import { formatTokens } from './format.js';
 import { registerLiveListRenderer, redrawLiveList, liveListEl } from './list_hooks.js';
 import { _boardChatSelectAll, _boardChatSelectNone, _boardMentionInput, _boardMentionKey, _cancelBoardChatSelect, _exportBoardChatSelected, _insertBoardMention, _toggleBoardChatMsgSelect, _toggleBoardChatPause } from './board_chat.js';
@@ -916,9 +916,7 @@ function _renderLiveSessions(sessions) {
     if (!sessions.length && !archived.length && !pinsShown) {
         renderServerSwitcher();
         // Coral Hub with no machine connected: say what to do (the same list is the phone's Agents page), not just that there is nothing
-        list.innerHTML = !unfilteredCount && noMachine()
-            ? '<li class="empty-state hub-connect-empty"><span>No machine is connected yet.</span><button type="button" class="btn btn-primary btn-small" data-on-click="hub-connect-machine">Connect a machine</button></li>'
-            : `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
+        list.innerHTML = (!unfilteredCount && hubEmptyListHtml(machineState())) || `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
         return;
     }
 

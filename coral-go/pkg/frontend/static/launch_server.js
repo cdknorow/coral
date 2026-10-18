@@ -60,9 +60,25 @@ export function serverLabel(server, servers) {
 /** Why `server` cannot be launched on right now, or "" when it can. */
 export const CONNECT_FIRST = 'Connect a machine first';
 
-/** Coral Hub on its first run: the servers are known and not one is usable (none connected yet, or every one offline). Anything the hub would do on a machine has nowhere to go. */
+/** What the hub's owned-machine list says, once it has loaded (a list that has not loaded, or failed, is null: never read as an empty account):
+ *  'none' (no machine is connected, the first run), 'offline' (machines, but none can be used) or 'ready' (one can). Null off the hub. */
+export function machineState(servers = state.servers) {
+    if (state.cloud !== true || state.serversKnown !== true) return null;
+    const remotes = remoteServers(servers);
+    if (!remotes.length) return 'none';
+    return remotes.some(s => !UNUSABLE_STATUS_REASON[s.status]) ? 'ready' : 'offline';
+}
+
+/** Coral Hub on its first run: the list loaded and no machine is connected. Anything the hub would do on a machine has nowhere to go. */
 export function noMachine(servers = state.servers) {
-    return state.cloud === true && state.serversKnown === true && !remoteServers(servers).some(s => !UNUSABLE_STATUS_REASON[s.status]);
+    return machineState(servers) === 'none';
+}
+
+export const MACHINES_OFFLINE = 'Your machines are offline';
+/** What a machine-dependent action (Browse) says when there is nothing to run it on, or '' when there is. */
+export function machineBlock(servers = state.servers) {
+    const m = machineState(servers);
+    return m === 'none' ? CONNECT_FIRST : m === 'offline' ? MACHINES_OFFLINE : '';
 }
 
 export function launchBlockReason(server, hub, servers) {
