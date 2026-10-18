@@ -455,6 +455,154 @@ async function renderMessagesChunked(messages, target, agentType, stillWanted) {
     return true;
 }
 
+/** Shows the kept page of an agent seen a moment ago (built off screen in slices). True when the agent was switched while it was built: the refresh ends. */
+async function _showKeptPage(session, container, kept) {
+    // Built off screen in slices; a poll that comes while it builds returns at once (keptRenderGeneration).
+    const generation = historyGeneration;
+    keptRenderGeneration = generation;
+    const built = document.createElement("div");
+    let rebuilt = false;
+    try {
+        rebuilt = await renderMessagesChunked(kept.messages, built, session.agent_type, () => generation === historyGeneration);
+    } catch (e) {
+        // A failed build must not leave the chat blank or the guard set: forget the kept page, and the first page is
+        // loaded below as for an agent not seen before.
+        console.error("[coral] the kept chat page could not be rebuilt", e);
+        keptPages.delete(session.session_id);
+    } finally {
+        if (!rebuilt && keptRenderGeneration === generation) keptRenderGeneration = -1;
+    }
+    if (generation !== historyGeneration) return true; // the agent was switched while it built
+    if (rebuilt) {
+        container.innerHTML = "";
+        while (built.firstChild) container.appendChild(built.firstChild);
+        historyHasMore = kept.start > 0;
+        historyStart = kept.start;
+        historyMessageCount = kept.total;
+        _updateLoadMoreButton(container);
+        initialLoadDone = true;
+        if (state.autoScroll) container.scrollTop = container.scrollHeight;
+    }
+    return false;
+}
+
+/** What to ask for: the first page, or only what came after the last message held. */
+function _historyParams(session) {
+    const params = chatParams(session);
+
+    if (!initialLoadDone) {
+        // First load: fetch most recent messages with pagination
+        params.set("after", "0");
+        params.set("limit", String(FIRST_PAGE));
+        params.set("offset", "0");
+        params.set("trim", String(CHAT_TRIM));
+    } else {
+        // Subsequent polls: only fetch new messages
+        params.set("after", historyMessageCount);
+    }
+    return params;
+}
+
+/** The reply to the request: the first page of a deep-linked chat asked for at page load if it is the same request, else a new one. */
+async function _fetchHistoryPage(session, params, server, abortCtrl) {
+    // The first page of a deep-linked chat was asked for when the page loaded, before the list named the agent (chat_page.js): when it is the request
+    // this would make, take it over; if it failed or was refused, make the request as usual. Its abort is this load's: a switch cancels it too.
+    let resp = null;
+    const early = initialLoadDone ? null : takeChatPrefetch(session, params, { local: server === 'local', cloud: isCloud() });
+    if (early) {
+        abortCtrl.signal.addEventListener('abort', early.abort, { once: true });
+        try { resp = await early.promise; } catch { resp = null; }
+        if (resp && !resp.ok) resp = null; // a refusal (a 401 above all) is the real request's to meet, with the page's own handling
+    }
+    if (!resp) resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
+        signal: abortCtrl.signal,
+    });
+    return resp;
+}
+
+/** What the reply carries beyond the messages: the pending tool call, the options of an open prompt, a sign-in the CLI waits on. */
+function _noteReplyState(session, data) {
+    // What the server says about an open prompt rides on this reply (#3720): the pending tool call, and the options
+    // of a prompt that may be open on the terminal.
+    pendingToolBySession.set(session.session_id, data.pending || null);
+    const po = data.prompt_options;
+    if (po) promptOptionsBySession.set(session.session_id, { question: po.question || "", options: po.options || [], review: po.review || [] });
+    else promptOptionsBySession.delete(session.session_id);
+    // A sign-in the CLI waits on (#3830): the reply is fresher than the session row.
+    if (typeof data.needs_login === "boolean") loginBySession.set(session.session_id, data.needs_login ? { reason: String(data.login_reason || "") } : null);
+}
+
+/** The messages of the reply: the first page, or the new ones at the bottom, and what each says about the agent. */
+function _renderHistoryReply(container, session, data) {
+    if (data.messages && data.messages.length > 0) {
+        if (!initialLoadDone) {
+            container.innerHTML = "";
+            noteIndexes(data.messages, data.start);
+            // Initial load — render all and add "Load More" button if needed
+            for (const msg of data.messages) {
+                renderMessage(msg, container, session.agent_type);
+            }
+            historyHasMore = data.has_more || false;
+            historyStart = data.start;
+            _updateLoadMoreButton(container);
+            initialLoadDone = true;
+            keepFirstPage(session.session_id, data.messages, data.total, historyStart);
+        } else {
+            // Poll — append new messages at the bottom.
+            noteUnseenChat(data.messages); // read higher up: counted on the jump-to-latest button
+            for (const msg of data.messages) {
+                renderMessage(msg, container, session.agent_type);
+            }
+            keepMore(session.session_id, data.messages, data.total);
+        }
+        for (const msg of data.messages) {
+            if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) noteInterrupt(session.session_id, msg);
+            else if (msg.type === "user") rememberUserMessage(session.session_id, msg);
+            else noteAgentActivity(session.session_id, msg);
+        }
+        historyMessageCount = data.total;
+    } else if (!initialLoadDone) {
+        container.innerHTML = "";
+        historyHasMore = false;
+        initialLoadDone = true;
+        _updateLoadMoreButton(container);
+    }
+}
+
+/** After a reply: the usage notice, the kept page's age, the pending bubbles, the working row, the empty state and the scroll. */
+function _syncAfterHistory(container, session, data) {
+    syncUsageLimitNotice(container, data.limit_notice || '');
+    // The agent is still on screen: its kept page is as fresh as this reply, so the time limit counts from when it left.
+    const keptNow = keptPages.get(session.session_id);
+    if (keptNow) keptNow.at = Date.now();
+
+    // Pending first: it settles its place at the bottom, then the working row goes above it
+    syncPendingBubbles(container, session.session_id);
+    syncNeedsInputCard(container, session);
+    syncWorkingIndicator(container, session);
+    syncEmptyState(container);
+    if (state.autoScroll) {
+        container.scrollTop = container.scrollHeight;
+    }
+    syncJumpToLatest();
+}
+
+/** The first load failed: say so, with Retry. */
+function _showHistoryError(container) {
+    container.innerHTML = `<div class="chat-load-error" role="alert">
+                <span class="chat-error-message">Could not load this conversation. Reload the page to try again.</span>
+                <button type="button" class="btn btn-secondary btn-small chat-retry-btn">Retry</button>
+            </div>`;
+    const retryBtn = container.querySelector('.chat-retry-btn');
+    if (retryBtn) {
+        retryBtn.onclick = () => {
+            container.innerHTML = '<div class="loading-indicator" role="status">Loading conversation…</div>';
+            refreshInFlight = -1;
+            refreshLiveHistory();
+        };
+    }
+}
+
 export async function refreshLiveHistory() {
     if (!state.currentSession || state.currentSession.type !== "live") return;
     if (!platform.isNative && document.hidden) return;
@@ -469,34 +617,7 @@ export async function refreshLiveHistory() {
     // below (a poll from the page's end), not the first page again (#3726).
     if (!initialLoadDone && keptRenderGeneration !== historyGeneration) {
         const kept = freshKeptPage(session.session_id);
-        if (kept) {
-            // Built off screen in slices; a poll that comes while it builds returns at once (keptRenderGeneration).
-            const generation = historyGeneration;
-            keptRenderGeneration = generation;
-            const built = document.createElement("div");
-            let rebuilt = false;
-            try {
-                rebuilt = await renderMessagesChunked(kept.messages, built, session.agent_type, () => generation === historyGeneration);
-            } catch (e) {
-                // A failed build must not leave the chat blank or the guard set: forget the kept page, and the first page is
-                // loaded below as for an agent not seen before.
-                console.error("[coral] the kept chat page could not be rebuilt", e);
-                keptPages.delete(session.session_id);
-            } finally {
-                if (!rebuilt && keptRenderGeneration === generation) keptRenderGeneration = -1;
-            }
-            if (generation !== historyGeneration) return; // the agent was switched while it built
-            if (rebuilt) {
-                container.innerHTML = "";
-                while (built.firstChild) container.appendChild(built.firstChild);
-                historyHasMore = kept.start > 0;
-                historyStart = kept.start;
-                historyMessageCount = kept.total;
-                _updateLoadMoreButton(container);
-                initialLoadDone = true;
-                if (state.autoScroll) container.scrollTop = container.scrollHeight;
-            }
-        }
+        if (kept && await _showKeptPage(session, container, kept)) return;
     }
 
     // Show loading indicator on first load
@@ -504,18 +625,7 @@ export async function refreshLiveHistory() {
         container.innerHTML = '<div class="loading-indicator" role="status">Loading conversation…</div>';
     }
 
-    const params = chatParams(session);
-
-    if (!initialLoadDone) {
-        // First load: fetch most recent messages with pagination
-        params.set("after", "0");
-        params.set("limit", String(FIRST_PAGE));
-        params.set("offset", "0");
-        params.set("trim", String(CHAT_TRIM));
-    } else {
-        // Subsequent polls: only fetch new messages
-        params.set("after", historyMessageCount);
-    }
+    const params = _historyParams(session);
 
     if (refreshInFlight === historyGeneration) return;
     const generation = historyGeneration;
@@ -535,18 +645,7 @@ export async function refreshLiveHistory() {
     activeChatAbortController = abortCtrl;
 
     try {
-        // The first page of a deep-linked chat was asked for when the page loaded, before the list named the agent (chat_page.js): when it is the request
-        // this would make, take it over; if it failed or was refused, make the request as usual. Its abort is this load's: a switch cancels it too.
-        let resp = null;
-        const early = initialLoadDone ? null : takeChatPrefetch(session, params, { local: server === 'local', cloud: isCloud() });
-        if (early) {
-            abortCtrl.signal.addEventListener('abort', early.abort, { once: true });
-            try { resp = await early.promise; } catch { resp = null; }
-            if (resp && !resp.ok) resp = null; // a refusal (a 401 above all) is the real request's to meet, with the page's own handling
-        }
-        if (!resp) resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
-            signal: abortCtrl.signal,
-        });
+        const resp = await _fetchHistoryPage(session, params, server, abortCtrl);
         if (generation !== historyGeneration) return;
 
         // The first load refused as busy (#3430): not an error. Show that it is retrying, and retry
@@ -587,80 +686,17 @@ export async function refreshLiveHistory() {
             return;
         }
 
-        // What the server says about an open prompt rides on this reply (#3720): the pending tool call, and the options
-        // of a prompt that may be open on the terminal.
-        pendingToolBySession.set(session.session_id, data.pending || null);
-        const po = data.prompt_options;
-        if (po) promptOptionsBySession.set(session.session_id, { question: po.question || "", options: po.options || [], review: po.review || [] });
-        else promptOptionsBySession.delete(session.session_id);
-        // A sign-in the CLI waits on (#3830): the reply is fresher than the session row.
-        if (typeof data.needs_login === "boolean") loginBySession.set(session.session_id, data.needs_login ? { reason: String(data.login_reason || "") } : null);
+        _noteReplyState(session, data);
 
-        if (data.messages && data.messages.length > 0) {
-            if (!initialLoadDone) {
-                container.innerHTML = "";
-                noteIndexes(data.messages, data.start);
-                // Initial load — render all and add "Load More" button if needed
-                for (const msg of data.messages) {
-                    renderMessage(msg, container, session.agent_type);
-                }
-                historyHasMore = data.has_more || false;
-                historyStart = data.start;
-                _updateLoadMoreButton(container);
-                initialLoadDone = true;
-                keepFirstPage(session.session_id, data.messages, data.total, historyStart);
-            } else {
-                // Poll — append new messages at the bottom.
-                noteUnseenChat(data.messages); // read higher up: counted on the jump-to-latest button
-                for (const msg of data.messages) {
-                    renderMessage(msg, container, session.agent_type);
-                }
-                keepMore(session.session_id, data.messages, data.total);
-            }
-            for (const msg of data.messages) {
-                if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) noteInterrupt(session.session_id, msg);
-                else if (msg.type === "user") rememberUserMessage(session.session_id, msg);
-                else noteAgentActivity(session.session_id, msg);
-            }
-            historyMessageCount = data.total;
-        } else if (!initialLoadDone) {
-            container.innerHTML = "";
-            historyHasMore = false;
-            initialLoadDone = true;
-            _updateLoadMoreButton(container);
-        }
-        syncUsageLimitNotice(container, data.limit_notice || '');
-        // The agent is still on screen: its kept page is as fresh as this reply, so the time limit counts from when it left.
-        const keptNow = keptPages.get(session.session_id);
-        if (keptNow) keptNow.at = Date.now();
-
-        // Pending first: it settles its place at the bottom, then the working row goes above it
-        syncPendingBubbles(container, session.session_id);
-        syncNeedsInputCard(container, session);
-        syncWorkingIndicator(container, session);
-        syncEmptyState(container);
-        if (state.autoScroll) {
-            container.scrollTop = container.scrollHeight;
-        }
-        syncJumpToLatest();
+        _renderHistoryReply(container, session, data);
+        _syncAfterHistory(container, session, data);
     } catch (e) {
         if (e.name === 'AbortError') {
             return;
         }
         console.error("Failed to refresh live history:", e);
         if (generation === historyGeneration && !initialLoadDone) {
-            container.innerHTML = `<div class="chat-load-error" role="alert">
-                <span class="chat-error-message">Could not load this conversation. Reload the page to try again.</span>
-                <button type="button" class="btn btn-secondary btn-small chat-retry-btn">Retry</button>
-            </div>`;
-            const retryBtn = container.querySelector('.chat-retry-btn');
-            if (retryBtn) {
-                retryBtn.onclick = () => {
-                    container.innerHTML = '<div class="loading-indicator" role="status">Loading conversation…</div>';
-                    refreshInFlight = -1;
-                    refreshLiveHistory();
-                };
-            }
+            _showHistoryError(container);
         }
     } finally {
         if (activeChatAbortController === abortCtrl) {
