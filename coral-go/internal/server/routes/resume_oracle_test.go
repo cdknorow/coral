@@ -118,8 +118,10 @@ func (b *resumeBackend) Kill(name string) error {
 // oracleSettingsArg is a start command's --settings file.
 var oracleSettingsArg = regexp.MustCompile(`--settings ('[^']+'|\S+)`)
 
-// oracleTempName is a temporary file's random part in a start command (its prompt, settings or hooks files).
-var oracleTempName = regexp.MustCompile(`_[0-9]{6,}(\.[a-z]+)?\b`)
+// oracleTempName is a temporary file's random part in a start command (its prompt, settings or hooks files):
+// os.CreateTemp's random number, a uint32 in decimal of any length (a 5-digit one is 1 in 4300, so a run of
+// 600 resumes met one now and then and failed, #4809's flake).
+var oracleTempName = regexp.MustCompile(`_[0-9]+(\.[a-z]+)?\b`)
 
 // The Resume outcomes the oracle must reach, each counted from the condition happening, with a floor.
 var resumeOutcomes = map[string]int{
