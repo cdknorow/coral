@@ -76,7 +76,7 @@ async function run() {
         check('"alpha" finds its two tasks of the whole board (2 of 66), with a chip', s.titles.length === 2 && s.titles.every(t => /alpha/.test(t)) && s.chips.join() === 'Search: alpha', JSON.stringify([s.count, s.titles, s.chips]));
         check('a search has no Hide done and no Load more when everything is shown', !s.hide && s.more === null, JSON.stringify([s.hide, s.more]));
         await type('x-never');
-        await settle(`!!document.querySelector('#board-task-list .board-task-empty')`, 'the empty line');
+        await settle(`document.querySelector('#board-task-list .board-task-empty')?.textContent === 'No tasks match this search.' && document.querySelector('#board-task-bar .list-bar-count').textContent === '0 of 66'`, 'the empty line and its count (the "Searching tasks..." placeholder is a .board-task-empty too)');
         s = await snap();
         check('nothing matching says so (0 of 66) and the bar stays', s.empty === 'No tasks match this search.' && s.count === '0 of 66' && s.shown, JSON.stringify([s.empty, s.count]));
         await ev(`document.querySelector('#board-task-bar .list-bar-clear-q').click(); true`);
