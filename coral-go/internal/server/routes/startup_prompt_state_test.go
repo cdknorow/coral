@@ -171,3 +171,28 @@ func TestAnswerForgetsTheStartupReading(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.False(t, h.deriveSingleSessionState(ctx, sid, 0).NeedsInput, "no longer waiting, within the cache's TTL")
 }
+
+// The CLI's own signal comes first (#4543, the operator's rule): an agent whose events say it waits on a
+// plan is waiting on that, from the event, even with a startup menu's text on its screen, and the screen is
+// not read for a startup prompt.
+func TestStartupPromptSignalsComeFirst(t *testing.T) {
+	_, h, mock, ss := setupSessionsTestServer(t)
+	h.terminal = paneScreenTerminal{mock}
+	ctx := context.Background()
+	sid := "eeeeeeee-4543-4000-8000-000000000097"
+	name := naming.SessionName("claude", sid)
+	mock.addSession(name, "/tmp/project")
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "planning", WorkingDir: "/tmp/project"}))
+	detail, tool := `{"kind":"plan","tool_name":"ExitPlanMode"}`, "ExitPlanMode"
+	_, err := h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: name, SessionID: &sid, EventType: "permission_request",
+		ToolName: &tool, Summary: "Waiting for the user: plan (ExitPlanMode)", DetailJSON: &detail})
+	require.NoError(t, err)
+	mock.outputs[name] = claudeUnnumbered(t, "trust.txt")
+	st := h.deriveSingleSessionState(ctx, sid, 0)
+	assert.True(t, st.NeedsInput)
+	assert.Equal(t, "plan", st.WaitingKind, "the event says what the agent waits on")
+	h.startupScreens.mu.Lock()
+	_, read := h.startupScreens.m[promptReadKey(sid, name, "claude")]
+	h.startupScreens.mu.Unlock()
+	assert.False(t, read, "no startup screen read while the events tell (Claude's login check, #3830, is its own)")
+}
