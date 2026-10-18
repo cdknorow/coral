@@ -36,6 +36,18 @@ the first failed check.
    end check must be quiet in every job. A flaky or failed suite's first failing line is printed under its name in the
    summary.
 
+   After a green gate, refresh the suite durations the six parts are balanced by (#4605). The landed tree must be the
+   gated tree, so the refreshed file is the first commit of the next batch (one `tests: suite_durations.json from the
+   vX.Y.Z gate` commit, and only when the file changed), and that batch's gate runs with it:
+
+   ```bash
+   gh run download <cdp-gate run id> -D /tmp/gate-v1491
+   (cd tests/frontend && node update_suite_durations.mjs /tmp/gate-v1491/cdp-{0,1,2,3,4,5}-a*/results.json)
+   ```
+
+   `cdp-0` to `cdp-5` are the six parts (`cdp-6` the sequences and `cdp-7` the strict phase, which it ignores anyway).
+   Only passing first attempts count, and suites missing from the run keep their old value.
+
 4. **Notes and tag**:
    - Write the notes section in a file starting with `## vX.Y.Z — `, and add it on top of the gated head:
      `python3 tools/devops/insert-notes.py RELEASE_NOTES.md notes.md X.Y.Z`. Commit that file alone.
