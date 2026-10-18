@@ -6,7 +6,8 @@
 import { state } from './state.js';
 import { showToast } from './utils.js';
 import { sessionServer, normServer, serverFetch, identityKey, LOCAL_SERVER } from './server_base.js';
-import { savedChanged, setSavedCount, validSavedItem, savedShowing, syncSavedButton } from './saved_marks.js';
+import { savedChanged, setSavedCount, validSavedItem, savedShowing, syncSavedButton, currentScope } from './saved_marks.js';
+import { withScope, scopeHeading, scopeEmpty, ALL } from './saved_scope.js';
 import { effectiveLiveViewMode, setLiveViewMode, jumpToLiveMessage } from './live_chat.js';
 import { buildListBar } from './list_bar.js';
 import { importOnce } from './import_once.js';
@@ -23,6 +24,7 @@ const checks = new Map(); // item (uid) -> { state: 'live' | 'ended' | 'board' |
 let filters = { ...SAVED_EMPTY };
 let bar = null;
 let totals = { open: 0, done: 0 };
+let scope = ALL; // where the panel was opened from (#4792): the agent or the team on screen, or everything; the server matches it, and the counts are its own
 const convTitles = new Map(); // conversation reference -> its title, from every list read: the Conversation filter's options (they must outlast a filter that leaves one)
 /** An item's identity across servers: ids are each server's own. */
 const uid = it => `${it.server}:${it.id}`;
@@ -52,17 +54,27 @@ function ago(iso) {
 /** This server's saved messages, and in hub mode every online registered server's (#4551), newest saved first. This server failing is an error; a registered server
  *  that does not answer is a line saying so, and its items are left out. Each item is tagged with the server that has it. */
 async function load() {
-    const remotes = state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online') : [];
+    const here = currentScope();
+    if (here.key !== scope.key) { // another agent or team: its own conversations, and a conversation filter of the last one means nothing
+        scope = here;
+        convTitles.clear();
+        if (filters.conv) filters = { ...filters, conv: '' };
+    }
+    $('saved-scope').textContent = scopeHeading(scope);
+    // A scope belongs to one server: only that one is asked (this computer when it is the hub's own).
+    const remotes = scope.kind !== 'all' ? (normServer(scope.server) === LOCAL_SERVER ? [] : [{ id: scope.server, label: serverName(scope.server) }])
+        : state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online') : [];
     const read = async (server) => {
-        const r = await serverFetch(server, '/api/saved' + savedQuery(filters));
+        const r = await serverFetch(server, '/api/saved' + withScope(savedQuery(filters), scope));
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         return { server, d };
     };
-    const [local, ...others] = await Promise.all([read(LOCAL_SERVER), ...remotes.map(s => read(s.id).catch(() => ({ server: s.id, failed: true, label: s.label || s.id })))]);
-    const answered = [local, ...others.filter(o => !o.failed)];
+    const onlyRemote = scope.kind !== 'all' && normServer(scope.server) !== LOCAL_SERVER;
+    const [local, ...others] = await Promise.all([onlyRemote ? Promise.resolve(null) : read(LOCAL_SERVER), ...remotes.map(s => read(s.id).catch(() => ({ server: s.id, failed: true, label: s.label || s.id })))]);
+    const answered = [local, ...others.filter(o => !o.failed)].filter(Boolean);
     down = others.filter(o => o.failed).map(o => ({ id: o.server, label: o.label }));
-    multi = remotes.length > 0;
+    multi = scope.kind === 'all' && remotes.length > 0;
     // Only what a server sent in a usable shape is listed (an id goes into a URL: saved_marks.js validSavedItem).
     items = answered.flatMap(a => (Array.isArray(a.d.items) ? a.d.items : []).filter(validSavedItem).map(i => ({ ...i, server: a.server })))
         .sort((a, b) => (filters.sort === 'oldest' ? -1 : 1) * (b.saved_at || '').localeCompare(a.saved_at || ''));
@@ -197,7 +209,7 @@ function render() {
     if (!shown.length) {
         const li = document.createElement('li');
         li.className = 'saved-empty';
-        li.textContent = savedFiltered(filters) ? 'No saved messages match this search.' : tab === 'done' ? 'Nothing marked done.' : 'Nothing saved yet. Use the bookmark on a message to save it for later.';
+        li.textContent = savedFiltered(filters) ? 'No saved messages match this search.' : scopeEmpty(scope, tab);
         list.append(li);
     }
     for (const t of ['open', 'done']) {
@@ -294,6 +306,8 @@ let wired = false;
 function wire() {
     if (wired) return;
     wired = true;
+    // Another agent or team on screen while the list is open: the list is theirs.
+    document.addEventListener('coral:route-changed', () => { if (savedShowing() && currentScope().key !== scope.key) { checks.clear(); refresh(); } });
     for (const t of ['open', 'done']) $(`saved-tab-${t}`).addEventListener('click', () => { tab = t; render(); });
     // Arrow keys move between the two tabs.
     $('saved-tab-open').parentElement.addEventListener('keydown', (e) => {

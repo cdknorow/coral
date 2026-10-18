@@ -41,7 +41,7 @@ export function backIs(route) {
 export function go(route, { replace = false } = {}) {
     route = normalize(route) || { view: 'agents' };
     write(route, replace);
-    return show(route, { fromHistory: false });
+    return show(route, { fromHistory: false }).finally(routeChanged);
 }
 
 /** Record the route of a view that is already on screen (no show): a view the user opened by
@@ -49,12 +49,19 @@ export function go(route, { replace = false } = {}) {
  *  written before startNav(): the pop-out (/agent/<id>) never starts it, and its URL is its
  *  identity, so the views it shares with the dashboard can't rewrite it. */
 export function note(route, { replace = false } = {}) {
-    if (!started) return;
-    route = normalize(route);
-    if (!route) return;
-    const same = current && build(current) === build(route);
-    write(route, replace || same);
+    try {
+        if (!started) return;
+        route = normalize(route);
+        if (!route) return;
+        const same = current && build(current) === build(route);
+        write(route, replace || same);
+    } finally {
+        routeChanged(); // what is on screen changed whether or not a history entry was written (the pop-out writes none)
+    }
 }
+
+/** Tells the modules that follow what is on screen (the Saved list and its count are of the agent or team shown, #4792) that the route changed; they read the page's own state. */
+function routeChanged() { if (typeof document === 'undefined') return; const w = document.defaultView || window; document.dispatchEvent(new w.CustomEvent('coral:route-changed')); } // the page's own CustomEvent (a test document has its own)
 
 async function show(route, opts) {
     const fn = handlers.get(route.view);
@@ -96,7 +103,7 @@ export function startNav() {
         const r = parse(location.pathname, location.search) || { view: 'agents' };
         if (current && build(r) === build(current)) return;
         current = r;
-        show(r, { fromHistory: true });
+        show(r, { fromHistory: true }).finally(routeChanged);
     });
     show(route, { fromHistory: true, startup: true });
     return route;

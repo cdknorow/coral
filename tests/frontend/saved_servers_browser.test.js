@@ -123,6 +123,7 @@ const REMOTE = `(() => {
 
         console.log('3. The Saved tab merges both, each item naming its server; the count adds them');
         await ev(`window.__box.items.push({ id: 101, kind: 'board', ref: 'box-board', key: '7', agent_type: '', title: 'box-board', snippet: 'a board message on Box B', said_at: '', saved_at: new Date(Date.now() + 5000).toISOString(), done_at: null }); true`);
+        await ev(`window.selectLiveSession('', '', '', 'local'); true`); // home: the list is of the agent or team on screen (#4792), and the merge across servers is home's
         await openSaved();
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 3`, 'three items', 8000);
         const merged = await items();
@@ -162,7 +163,7 @@ const REMOTE = `(() => {
         assert.equal((await api('GET', '/api/saved')).body.items.length, 1, 'this server\'s item is still there');
 
         console.log('6. A jump opens the remote agent at the message, and a remote board by its server key');
-        await select('lc'); // away from the remote agent
+        await ev(`window.selectLiveSession('', '', '', 'local'); true`); // away from the remote agent, home: the merge across servers is home's (#4792)
         await openSaved();
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 2`, 'two items', 8000);
         await ev(`document.querySelector('#saved-list [data-id^="box-b:"] .saved-open').click(); true`);
@@ -192,6 +193,7 @@ const REMOTE = `(() => {
         assert.deepEqual(sent, [], 'no request carried a hostile id');
         await ev(`window.__box.items = window.__box.items.filter(i => i.id === 102 || i.id === 103 || i.id === 110); true`);
         // In a narrow panel the server name wraps under the title instead of being cut (and its full name is the tooltip).
+        await ev(`window.selectLiveSession('', '', '', 'local'); true`); // home: the server names are of the merged list (#4792)
         await ev(`document.getElementById('agentic-state').style.width = '300px'; true`);
         await refresh();
         await waitFor(`!!document.querySelector('#saved-list .server')`, 'a server label');

@@ -429,7 +429,7 @@ function renderBoardItem(item, prev) {
                 <span class="mb-agent-name">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
                 ${externalMessageBadge(m)}${hubUserBadge(m)}
                 <span class="mb-message-time">${formatTime(m.created_at)}</span>
-                ${BOARD_SAVE_BUTTON(currentProject || '', keyLabel(currentProject || ''), String(m.created_at || ''))}
+                ${BOARD_SAVE_BUTTON(currentProject || '', keyLabel(currentProject || ''), String(m.created_at || ''), String(m.job_title || m.subscriber_id || ''))}
                 <button class="mb-delete-msg-btn" data-on-click="mb-msg-delete" data-msg-id="${Number(m.id)}" title="Delete message">&times;</button>
             </div>
             <div class="mb-message-body">${renderBoardMessageBody(m)}</div>

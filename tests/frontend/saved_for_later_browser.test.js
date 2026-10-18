@@ -204,12 +204,13 @@ const hex = i => i.toString(16).padStart(20, '0');
         assert.equal(bl.items.length, 2); assert.equal(bl.items.find(i => i.key === String(keep.id)).snippet, 'the one to save');
         assert.equal((await api('DELETE', `/api/board/${BOARD}/messages/${drop.id}`)).status, 200, 'the message is deleted from the board');
         await select('sv-a'); // away from the board
+        await ev(`window.selectLiveSession('', '', '', 'local'); true`); // and home: the list is of the agent or team on screen (#4792), and this one reads all of them
         await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
-        await waitFor(`[...document.querySelectorAll('#saved-list .src')].filter(e => e.textContent.toLowerCase().includes('saved-4510-board')).length === 2`, 'the board items', 6000, `({ n: document.querySelectorAll('#saved-list .saved-item').length, srcs: [...document.querySelectorAll('#saved-list .src')].map(e => e.textContent), modal: getComputedStyle(document.getElementById('saved-modal')).display })`);
+        await waitFor(`[...document.querySelectorAll('#saved-list .src')].filter(e => e.textContent.toLowerCase().includes('saved-4510-board')).length === 2`, 'the board items', 6000, `({ n: document.querySelectorAll('#saved-list .saved-item').length, srcs: [...document.querySelectorAll('#saved-list .src')].map(e => e.textContent) })`);
         await waitFor(`!!document.querySelector('#saved-list .saved-item.gone .why:not([hidden])')`, 'the deleted board message to be found gone', 8000);
         assert.match(await ev(`document.querySelector('#saved-list .saved-item.gone .why').textContent`), /deleted from the board, or the board was/);
         await ev(`[...document.querySelectorAll('#saved-list .saved-item')].find(li => li.textContent.includes('the one to save')).querySelector('.saved-open').click(); true`);
-        await waitFor(`!!document.querySelector('#mb-messages [data-message-id="${keep.id}"].chat-search-target')`, 'the jump into the board', 10000, `({ modal: getComputedStyle(document.getElementById('saved-modal')).display, view: getComputedStyle(document.getElementById('messageboard-view')).display, rows: document.querySelectorAll('#mb-messages .mb-message').length, targets: document.querySelectorAll('.chat-search-target').length, tip: document.getElementById('saved-status').textContent, gone: [...document.querySelectorAll('.why:not([hidden])')].map(e => e.textContent) })`);
+        await waitFor(`!!document.querySelector('#mb-messages [data-message-id="${keep.id}"].chat-search-target')`, 'the jump into the board', 10000, `({ view: getComputedStyle(document.getElementById('messageboard-view')).display, rows: document.querySelectorAll('#mb-messages .mb-message').length, targets: document.querySelectorAll('.chat-search-target').length, tip: document.getElementById('saved-status').textContent, gone: [...document.querySelectorAll('.why:not([hidden])')].map(e => e.textContent) })`);
         assert.equal(await ev(`document.activeElement === document.querySelector('#mb-messages [data-message-id="${keep.id}"]')`), true, 'the focus is on the message');
         await waitFor(`!!document.getElementById('saved-jumpbar') && !!document.querySelector('#mb-messages .saved-jump')`, 'the jump bar and the Saved tag', 6000);
         assert.equal(await ev(`document.querySelector('#saved-jumpbar .btn').textContent`), 'Back to Saved');
@@ -242,6 +243,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         const e1 = await api('POST', '/api/saved', { kind: 'agent', ref: ENDED, key: hex(20), agent_type: 'claude', title: 'ended agent', snippet: 'ended message 20', said_at: '2026-10-16T10:00:20Z' });
         const e2 = await api('POST', '/api/saved', { kind: 'agent', ref: MISSING, key: hex(1), agent_type: 'claude', title: 'no transcript', snippet: 'a message of a transcript that is gone', said_at: '2026-10-16T10:00:01Z' });
         assert.equal(e1.status, 200); assert.equal(e2.status, 200);
+        await ev(`window.selectLiveSession('', '', '', 'local'); true`); // home: the list is of the agent or team on screen (#4792), and these are three agents'
         await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 4 && document.getElementById('saved-list').textContent.includes('transcript that is gone')`, 'the four items', 6000);
         await waitFor(`!!document.querySelector('#saved-list .saved-item.gone .why:not([hidden])')`, 'the missing transcript to be found gone', 8000);

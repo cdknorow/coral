@@ -18,6 +18,9 @@ import { renderLiveSessions, showBoardChatTab, hideBoardChatTab, getActiveBoardC
 import { note, currentRoute } from './nav.js';
 import { keyRoute, liveRoute } from './routes.js';
 
+/** The team on screen changed (entered or left, with or without a route): the Saved list and its count are of the agent or team shown (#4792). */
+function contextChanged() { const w = document.defaultView || window; document.dispatchEvent(new w.CustomEvent('coral:route-changed')); }
+
  function getSelectedTeam() {
     return state.selectedTeam || null;
 }
@@ -111,6 +114,7 @@ export async function enterTeamContext(team, opts = {}) {
     syncFilesSourceTeam();
     window.switchAgenticTab?.(tab, 'top');
     refreshSessionList();
+    contextChanged();
     return true;
 }
 
@@ -141,6 +145,7 @@ export async function exitTeamContext({ goBack = true, force = false } = {}) {
         const s = state.currentSession;
         note(s?.type === 'live' && s.session_id ? liveRoute(s.server, s.session_id) : { view: 'agents' });
     }
+    contextChanged();
     return true;
 }
 

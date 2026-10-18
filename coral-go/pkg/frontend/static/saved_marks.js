@@ -6,11 +6,13 @@ import { importOnce } from './import_once.js';
 import { showToast, escapeAttr } from './utils.js';
 import { isCloud, sessionServer, normServer, splitKey, serverFetch, LOCAL_SERVER } from './server_base.js';
 import { onBuilt } from './lazy_dom.js';
+import { dockKind, boardOfPage } from './dock_page.js';
+import { scopeOf, withScope, ALL } from './saved_scope.js';
 
 // The bookmark is an inline SVG (the shape the Team Artifacts' Keep button uses), filled when saved: the Material Icons subset has no bookmark.
 const BOOKMARK_SVG = '<svg class="bm" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>';
 export const SAVE_BUTTON = `<button type="button" class="chat-save-btn" title="Save for later" aria-label="Save for later" aria-pressed="false">${BOOKMARK_SVG}</button>`;
-export const BOARD_SAVE_BUTTON = (ref, title, said) => `<button type="button" class="mb-save-btn" data-conv-ref="${escapeAttr(ref)}" data-conv-title="${escapeAttr(title)}" data-said="${escapeAttr(said)}" title="Save for later" aria-label="Save for later" aria-pressed="false">${BOOKMARK_SVG}</button>`;
+export const BOARD_SAVE_BUTTON = (ref, title, said, author = '') => `<button type="button" class="mb-save-btn" data-conv-ref="${escapeAttr(ref)}" data-conv-title="${escapeAttr(title)}" data-said="${escapeAttr(said)}" data-author="${escapeAttr(author)}" title="Save for later" aria-label="Save for later" aria-pressed="false">${BOOKMARK_SVG}</button>`;
 
 // The conversation a message button belongs to: {kind, ref, server, agentType, title}, or null where there is nothing to save to. ref is the id or name the server
 // that has the conversation knows it by (a board's bare name, not the hub's server/name key); server is that server ("local" for this one).
@@ -18,13 +20,13 @@ function conversationOf(btn) {
     if (btn.classList.contains('mb-save-btn')) {
         const { server, name } = splitKey(btn.dataset.convRef || '');
         if (!name) return null;
-        return { kind: 'board', ref: name, server: normServer(server), agentType: '', title: btn.dataset.convTitle || name };
+        return { kind: 'board', ref: name, server: normServer(server), agentType: '', title: btn.dataset.convTitle || name, team: name, author: btn.dataset.author || '' };
     }
     const s = state.currentSession;
     if (!s) return null;
-    if (s.type === 'history') return s.name ? { kind: 'agent', ref: s.name, server: LOCAL_SERVER, agentType: s.agent_type || '', title: s.display_name || s.name } : null;
+    if (s.type === 'history') return s.name ? { kind: 'agent', ref: s.name, server: LOCAL_SERVER, agentType: s.agent_type || '', title: s.display_name || s.name, team: '', author: '' } : null;
     if (s.type !== 'live' || !s.session_id) return null;
-    return { kind: 'agent', ref: s.session_id, server: normServer(sessionServer(s)), agentType: s.agent_type || '', title: s.display_name || s.name || s.session_id };
+    return { kind: 'agent', ref: s.session_id, server: normServer(sessionServer(s)), agentType: s.agent_type || '', title: s.display_name || s.name || s.session_id, team: s.board_project ? splitKey(s.board_project).name : '', author: '' };
 }
 
 /** A bookmark a server sent is used only if its id is a positive safe integer (it goes into a URL: /api/saved/<id>) and its key has the shape its kind has. A registered server
@@ -155,22 +157,37 @@ export function setSavedCount(n) {
     const tc = document.getElementById('saved-tab-count');
     if (tc) tc.textContent = n > 0 ? (n > 99 ? '99+' : String(n)) : '';
 }
+/** The scope of the page on screen: the agent or the team its Saved list and count are of, or everything (saved_scope.js). */
+export function currentScope() {
+    const key = k => (k ? splitKey(k) : null);
+    const s = state.currentSession;
+    const dock = dockKind();
+    const session = s && (s.type === 'live' || s.type === 'history')
+        ? { type: s.type, name: s.name, display_name: s.display_name, session_id: s.session_id, server: s.type === 'live' ? normServer(sessionServer(s)) : LOCAL_SERVER, board: s.board_project ? splitKey(s.board_project) : null, job_title: s.board_job_title || '' }
+        : null;
+    return scopeOf({ dock, team: key(state.selectedTeam), boardPage: key(boardOfPage()), session }) || ALL;
+}
+let countScopeKey = ''; // the scope the count on screen is of
 function refreshSavedCount() {
     clearTimeout(countTimer);
     countTimer = setTimeout(() => {
         if (isCloud()) return;
         // This server's open items and every online registered server's, in hub mode (a server that does not answer counts none).
-        const servers = [LOCAL_SERVER, ...(state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online').map(s => s.id) : [])];
-        Promise.all(servers.map(id => serverFetch(id, '/api/saved?limit=0').then(r => (r.ok ? r.json() : null)).then(d => (d && d.open) || 0).catch(() => 0)))
+        // A page of an agent or a team counts that scope's open items, on the server it belongs to (#4792).
+        const scope = currentScope();
+        countScopeKey = scope.key;
+        const servers = scope.kind !== 'all' ? [scope.server] : [LOCAL_SERVER, ...(state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online').map(s => s.id) : [])];
+        Promise.all(servers.map(id => serverFetch(id, '/api/saved' + withScope('?limit=0', scope)).then(r => (r.ok ? r.json() : null)).then(d => (d && d.open) || 0).catch(() => 0)))
             .then(counts => setSavedCount(counts.reduce((a, b) => a + b, 0)));
     }, 50);
 }
 document.addEventListener('coral:saved-changed', refreshSavedCount);
+document.addEventListener('coral:route-changed', () => { if (currentScope().key !== countScopeKey) refreshSavedCount(); }); // another agent or team on screen: its own count
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', refreshSavedCount); else refreshSavedCount();
 
 function postBody(c, key, btn) {
     const text = btn.closest('.mb-message')?.querySelector('.mb-message-body')?.innerText || btn.closest('.chat-bubble')?.querySelector('.message-text')?.innerText || '';
-    return { kind: c.kind, ref: c.ref, key, agent_type: c.agentType, title: c.title, snippet: text.slice(0, 1000), said_at: btn.dataset.said || btn.closest('[data-said]')?.dataset.said || '' };
+    return { kind: c.kind, ref: c.ref, key, agent_type: c.agentType, title: c.title, snippet: text.slice(0, 1000), said_at: btn.dataset.said || btn.closest('[data-said]')?.dataset.said || '', team: c.team || '', author: c.author || '' };
 }
 
 async function save(c, key, body) {
@@ -191,7 +208,7 @@ document.addEventListener('click', async (e) => {
     if (!c || !key) return;
     const entry = await setFor(c);
     const have = entry.items.get(key);
-    const body = have ? { kind: have.kind, ref: have.ref, key: have.key, agent_type: have.agent_type, title: have.title, snippet: have.snippet, said_at: have.said_at } : postBody(c, key, btn);
+    const body = have ? { kind: have.kind, ref: have.ref, key: have.key, agent_type: have.agent_type, title: have.title, snippet: have.snippet, said_at: have.said_at, team: have.team || '', author: have.author || '' } : postBody(c, key, btn);
     btn.disabled = true;
     try {
         if (have) {

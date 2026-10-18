@@ -1081,6 +1081,9 @@
         background: var(--bg-secondary);
     }
 
+    /* In a team's page the team chat (z-index 30, over the agent's chat) covered this overlay, so no tab of the side panel could be seen or touched on a phone: while the overlay is open the chat goes beneath it (#4792). */
+    body:has(.agentic-state.mobile-panel-overlay) .team-center-view { z-index: 18; }
+
     .agentic-state.mobile-panel-overlay .agentic-block {
         flex: 1;
         display: flex;
