@@ -16,7 +16,19 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     const { Page, Runtime, Fetch, Emulation } = client;
     const ev = async x => { const r = await Runtime.evaluate({ expression: x, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails)); return r.result.value; };
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: layout settles after a font-size change; there is no completion event
-    const waitFor = async (expr, what, ms = 6000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await ev(expr)) return; await sleep(20); } throw new Error('timed out waiting for ' + what); };
+    // A poll that lands while the page is navigating (a redirect, a reload) is refused by Chrome ("Inspected target navigated or closed"): that is the page changing under the wait, not a
+    // failure, so the wait looks again on the new document and gives up only at its own deadline (the create-page flake on a loaded machine, #4858).
+    const NAVIGATING = /Inspected target navigated or closed|Execution context was destroyed|Cannot find context with specified id/;
+    const waitFor = async (expr, what, ms = 6000) => {
+        const end = Date.now() + ms;
+        while (Date.now() < end) {
+            let ok = false;
+            try { ok = await ev(expr); } catch (e) { if (!NAVIGATING.test(String((e && e.message) || e))) throw e; }
+            if (ok) return;
+            await sleep(20);
+        }
+        throw new Error('timed out waiting for ' + what);
+    };
     // The focus lands when the page script has run, a moment after the load event: wait for it (bounded) instead of reading it once, which lost the race on a slower runner.
     const focusOn = async (id, what) => { try { await waitFor(`document.activeElement && document.activeElement.id === ${JSON.stringify(id)}`, what, 4000); } catch (e) { assert.equal(await ev(`document.activeElement ? document.activeElement.id : ''`), id, what); } };
     const ok = name => console.log(`   ✓ ${name}`);

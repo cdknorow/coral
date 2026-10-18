@@ -14,7 +14,19 @@ const GOLD = n => fs.readFileSync(path.join(__dirname, '../../coral-go/internal/
     const { Page, Runtime, Fetch, Emulation } = client;
     const ev = async x => { const r = await Runtime.evaluate({ expression: x, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: settle
-    const waitFor = async (expr, what, ms = 6000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await ev(expr)) return; await sleep(20); } throw new Error('timed out waiting for ' + what); };
+    // A poll that lands while the page is navigating (a redirect, a reload) is refused by Chrome ("Inspected target navigated or closed"): that is the page changing under the wait, not a
+    // failure, so the wait looks again on the new document and gives up only at its own deadline (the create-page flake on a loaded machine, #4858).
+    const NAVIGATING = /Inspected target navigated or closed|Execution context was destroyed|Cannot find context with specified id/;
+    const waitFor = async (expr, what, ms = 6000) => {
+        const end = Date.now() + ms;
+        while (Date.now() < end) {
+            let ok = false;
+            try { ok = await ev(expr); } catch (e) { if (!NAVIGATING.test(String((e && e.message) || e))) throw e; }
+            if (ok) return;
+            await sleep(20);
+        }
+        throw new Error('timed out waiting for ' + what);
+    };
     // The redirect under test is a navigation to return_to, so the wait is for the address, not for the stub's body: the stub answers /zz-done, but in cdp-gate 39053381027 the
     // browser's navigation to it was answered by the real server (it is in the navigation log and not in the served one) and a wait for the stub's #done timed out on a page that
     // was at /zz-done, complete.
