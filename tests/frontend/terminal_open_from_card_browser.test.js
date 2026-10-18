@@ -83,7 +83,11 @@ async function run() {
         // Another agent starts from the saved choice again: Chat, no terminal socket.
         await select(b);
         await until(`!!document.querySelector('[data-on-click="terminal-view-open"]')`, "the other agent's card");
-        check('the next agent is in Chat view with no socket', (await open()) === 0 && (await ev(`document.getElementById('capture-wrapper').classList.contains('chat-mode')`)), String(await open()));
+        // Switching agents closes the previous agent's terminal socket (selectLiveSession -> _leaveCurrentAgent ->
+        // disconnectTerminalWs -> ws.close()), but the WebSocket 'close' event this test records fires a tick later,
+        // so wait for it rather than reading the count immediately (#4866, the #3719 contract still holds: a leaked
+        // socket would never close and this wait would time out).
+        check('the next agent is in Chat view with no socket', await until(`window.__ws.filter(w => w.events.includes('open') && !w.events.includes('close')).length === 0`, "the previous agent's terminal socket closed on switch") && (await ev(`document.getElementById('capture-wrapper').classList.contains('chat-mode')`)), String(await open()));
 
         // The toggle does the same for an agent that needs input, and saves the choice.
         await ev(`document.getElementById('live-view-btn-terminal').click(); true`);
