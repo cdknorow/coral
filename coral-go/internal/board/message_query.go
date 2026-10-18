@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/querypage"
 )
 
 // The board message search (#4745): GET /api/board/{project}/messages/search. Like the Team Artifacts query it takes q, since, until,
@@ -250,21 +252,19 @@ func (s *Store) QueryMessages(ctx context.Context, q *MessageQuery) (*MessageQue
 	}
 	defer rows.Close()
 
-	// after: the message comes after the cursor in the query's order.
-	after := func(id int64) bool { return false }
+	pg := &querypage.Pager[Message]{Limit: q.Limit}
 	if q.cursor != nil {
 		cur := q.cursor.ID
-		after = func(id int64) bool {
+		pg.Prev = q.cursor.Prev
+		pg.After = func(m Message) bool { // the message comes after the cursor in the query's order
 			if q.Oldest {
-				return id > cur
+				return m.ID > cur
 			}
-			return id < cur
+			return m.ID < cur
 		}
+		pg.AtCursor = func(m Message) bool { return m.ID == cur }
 	}
-	prevPage := q.cursor != nil && q.cursor.Prev
 	res := &MessageQueryResult{}
-	var page []Message // next: the first Limit matches after the cursor; prev: the last Limit matches before it (a ring)
-	var before, afterPage int
 	scannedRows, scannedBytes := 0, 0
 	for rows.Next() {
 		var m Message
@@ -276,44 +276,23 @@ func (s *Store) QueryMessages(ctx context.Context, q *MessageQuery) (*MessageQue
 			break
 		}
 		scannedBytes += len(m.Content)
-		if !q.matches(m, mentionID, mentionTitle, numbered) {
-			continue
-		}
-		res.Total++
-		isAfter := after(m.ID)
-		switch {
-		case q.cursor == nil || (!prevPage && isAfter):
-			if len(page) < q.Limit {
-				page = append(page, m)
-			} else {
-				afterPage++
-			}
-		case !prevPage: // next page: a match at or before the cursor
-			before++
-		case isAfter || m.ID == q.cursor.ID: // prev page: the cursor's own place and what follows it
-			afterPage++
-		default: // prev page: a match before the cursor: keep the last Limit
-			if len(page) == q.Limit {
-				page = page[1:]
-				before++
-			}
-			page = append(page, m)
+		if q.matches(m, mentionID, mentionTitle, numbered) {
+			pg.Add(m)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	res.Messages = page
+	res.Total = pg.Total
+	res.Messages = pg.Page
 	if res.Messages == nil {
 		res.Messages = []Message{}
 	}
-	if len(page) > 0 {
-		if afterPage > 0 {
-			res.NextCursor = messageCursor{Finger: q.finger, ID: page[len(page)-1].ID}.encode()
-		}
-		if before > 0 {
-			res.PrevCursor = messageCursor{Finger: q.finger, ID: page[0].ID, Prev: true}.encode()
-		}
+	if pg.HasNext() {
+		res.NextCursor = messageCursor{Finger: q.finger, ID: pg.Page[len(pg.Page)-1].ID}.encode()
+	}
+	if pg.HasPrev() {
+		res.PrevCursor = messageCursor{Finger: q.finger, ID: pg.Page[0].ID, Prev: true}.encode()
 	}
 	return res, nil
 }
