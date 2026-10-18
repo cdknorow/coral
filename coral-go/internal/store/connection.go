@@ -173,6 +173,14 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 	// archived agent without clearing the flag; restore the invariant on open.
 	d.ExecContext(ctx, `UPDATE live_sessions SET is_archived = 0 WHERE is_archived = 1 AND is_sleeping = 0`)
 
+	// A tag's colour is #rgb, #rrggbb or #rrggbbaa (#4875): a row stored before that was checked is given the default colour, so that no client of
+	// the API (the dashboard checks on read; Coral Hub's own pages may not) gets a colour that is CSS. Only the colour value changes.
+	if n, err := d.ResetInvalidTagColors(ctx); err != nil {
+		slog.Warn("could not check the tag colours", "error", err)
+	} else if n > 0 {
+		slog.Warn("tag colours that were not hex colours were reset to the default", "tags", n)
+	}
+
 	// Indexes on migrated columns cannot live in schemaSQL: on an older
 	// database the column does not exist yet when schemaSQL runs.
 	d.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_agent_events_ref

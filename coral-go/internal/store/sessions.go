@@ -328,7 +328,7 @@ func ValidTagColor(c string) bool { return tagColorRe.MatchString(c) }
 // CreateTag creates a new tag.
 func (s *SessionStore) CreateTag(ctx context.Context, name, color string) (*Tag, error) {
 	if color == "" {
-		color = "#58a6ff"
+		color = DefaultTagColor
 	}
 	if !ValidTagColor(color) {
 		return nil, ErrTagColor
