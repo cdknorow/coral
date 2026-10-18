@@ -5,9 +5,10 @@ import (
 	"math"
 	"net/http"
 	"regexp"
-	"strconv"
 	"sync"
 	"time"
+
+	"github.com/cdknorow/coral/internal/httputil"
 )
 
 // A shared write budget per agent session (#4602, the Orchestrator's decision 3): the routes through which an agent token can add rows,
@@ -104,13 +105,11 @@ func AgentWriteLimit() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if owner, ok := VerifiedSession(r.Context()); ok && owner.SessionID != "" && limitedAgentWrite(r) {
 				if ok, wait := l.take(owner.SessionID); !ok {
-					secs := int(math.Ceil(wait.Seconds()))
-					w.Header().Set("Retry-After", strconv.Itoa(max(secs, 1)))
-					writeJSON(w, http.StatusTooManyRequests, map[string]any{
-						"error":    fmt.Sprintf("This agent is writing faster than %d a minute: slow down and retry in %d s.", int(agentWritePerSecond*60), max(secs, 1)),
-						"code":     "rate_limited",
-						"not_sent": true,
-					})
+					secs := max(int(math.Ceil(wait.Seconds())), 1)
+					msg := fmt.Sprintf("This agent is writing faster than %d a minute: slow down and retry in %d s.", int(agentWritePerSecond*60), secs)
+					// A limit on this sender's writes, not a busy server (httputil.ActionLimitHeader: the dashboard's overload logic and the
+					// Hub treat an unmarked 429 as Coral being overloaded), with "message" for coral-board, which prints it before the code.
+					httputil.WriteActionLimitBody(w, secs, map[string]any{"error": msg, "message": msg, "code": "rate_limited", "not_sent": true})
 					return
 				}
 			}

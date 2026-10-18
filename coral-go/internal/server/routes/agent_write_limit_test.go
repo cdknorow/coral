@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -73,6 +75,11 @@ func TestAgentWriteLimitMiddleware(t *testing.T) {
 		if rec.Code == http.StatusTooManyRequests {
 			assert.NotEmpty(t, rec.Header().Get("Retry-After"))
 			assert.Contains(t, rec.Body.String(), `"code":"rate_limited"`)
+			assert.Equal(t, "action", rec.Header().Get(httputil.ActionLimitHeader), "marked as a limit on this sender, not an overloaded server")
+			var reply map[string]any
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &reply))
+			assert.NotEmpty(t, reply["message"], "coral-board prints the message before the code")
+			assert.Equal(t, reply["error"], reply["message"])
 		}
 		return rec.Code
 	}

@@ -36,9 +36,31 @@ func (d *deadlineWriter) WriteHeader(code int) {
 	d.ResponseWriter.WriteHeader(code)
 }
 
+// writeChunk is the most bytes written between two arming of the deadline: the limit is for each chunk, so a reply written in one
+// Write call (a changes.diff, a media preview, a JSON body for a client that does not take gzip) to a client that reads steadily is
+// never cut for taking longer than the deadline in all, while one that stops reading is cut after one chunk's deadline.
+const writeChunk = 64 << 10
+
 func (d *deadlineWriter) Write(p []byte) (int, error) {
-	d.arm()
-	return d.ResponseWriter.Write(p)
+	if len(p) == 0 {
+		d.arm()
+		return d.ResponseWriter.Write(p)
+	}
+	written := 0
+	for len(p) > 0 {
+		chunk := p
+		if len(chunk) > writeChunk {
+			chunk = chunk[:writeChunk]
+		}
+		d.arm()
+		n, err := d.ResponseWriter.Write(chunk)
+		written += n
+		if err != nil {
+			return written, err
+		}
+		p = p[n:]
+	}
+	return written, nil
 }
 
 func (d *deadlineWriter) Flush() {
