@@ -86,9 +86,9 @@ func historyListOracleServer(t *testing.T, seed bool) *httptest.Server {
 				require.NoError(t, ss.AddSessionTag(ctx, sid, t2.ID))
 			}
 		}
-		for i, project := range []string{"team-alpha", "deploy-crew", "quiet", "long-board", "tie-board", "tie-board-z"} {
+		for i, project := range []string{"team-alpha", "deploy-crew", "quiet", "long-board", "tie-board", "tie-board-z", "late-board"} {
 			n := i % 3
-			if project == "long-board" {
+			if project == "long-board" || project == "late-board" {
 				n = 1 // two messages: its first and its last are different ones (with one, the later stamp below would be both)
 			}
 			for k := 0; k <= n; k++ {
@@ -99,7 +99,8 @@ func historyListOracleServer(t *testing.T, seed bool) *httptest.Server {
 			}
 		}
 		// long-board ran for a month (its first message a month before its last: a date_from between them keeps it);
-		// tie-board's last message is the same instant as an agent session's last, written +00:00 against Z.
+		// tie-board's last message is the same instant as an agent session's last, written +00:00 against Z;
+		// late-board began half a second before midnight on 2026-10-05 (a date_to of that day keeps it: #4779).
 		raw, err := sqlx.Open("sqlite", boardPath+"?_pragma=busy_timeout(10000)")
 		require.NoError(t, err)
 		defer raw.Close()
@@ -107,6 +108,7 @@ func historyListOracleServer(t *testing.T, seed bool) *httptest.Server {
 			{"long-board", "ASC", "2026-09-10T08:00:00Z"}, {"long-board", "DESC", "2026-10-12T09:00:00Z"},
 			{"tie-board", "ASC", "2026-10-14T08:00:00Z"}, {"tie-board", "DESC", "2026-10-15T12:00:00+00:00"},
 			{"tie-board-z", "ASC", "2026-10-16T08:00:00Z"}, {"tie-board-z", "DESC", "2026-10-16T12:00:00Z"},
+			{"late-board", "ASC", "2026-10-05T23:59:59.500Z"}, {"late-board", "DESC", "2026-10-06T10:00:00Z"},
 		} {
 			_, err := raw.ExecContext(ctx, "UPDATE board_messages SET created_at = ? WHERE id = (SELECT id FROM board_messages WHERE project = ? ORDER BY id "+u.order+" LIMIT 1)", u.at, u.project)
 			require.NoError(t, err)
@@ -201,6 +203,9 @@ func TestListSessionsAgreesWithBefore4713(t *testing.T) {
 					}
 				}
 			}
+			if ids["board:late-board"] && q.Get("date_to") == "2026-10-05" {
+				kinds["a board begun at 23:59:59.5 on the date_to day"]++
+			}
 			if ids["board:tie-board"] && ids["0000aaaa-4713-4000-8000-00000000aaaa"] {
 				kinds["the same instant as Z and +00:00 on one page"]++
 			}
@@ -211,7 +216,8 @@ func TestListSessionsAgreesWithBefore4713(t *testing.T) {
 	}
 	t.Logf("compared, per kind: %v", kinds)
 	for _, k := range []string{"cold start", "rows (all)", "rows (agent)", "rows (group)", "empty page (all)", "empty page (agent)", "empty page (group)",
-		"merged agent and group rows", "a page of more", "a board spanning date_from", "the same instant as Z and +00:00 on one page", "the same instant as +00:00 and Z on one page"} {
+		"merged agent and group rows", "a page of more", "a board spanning date_from", "the same instant as Z and +00:00 on one page", "the same instant as +00:00 and Z on one page",
+		"a board begun at 23:59:59.5 on the date_to day"} {
 		assert.GreaterOrEqual(t, kinds[k], 10, "%q went (almost) unexercised", k)
 	}
 }
@@ -377,10 +383,10 @@ func (h *HistoryHandler) listSessionsBefore4713(w http.ResponseWriter, r *http.R
 				projects = filtered
 			}
 			if dateTo != "" {
-				cutoff := dateTo + "T23:59:59"
+				cutoff := dateTo + "~" // #4779: the whole day, fractions of a second included (the fix the handler took after the split)
 				filtered := projects[:0]
 				for _, p := range projects {
-					if p.FirstMessageAt != nil && *p.FirstMessageAt <= cutoff {
+					if p.FirstMessageAt != nil && *p.FirstMessageAt < cutoff {
 						filtered = append(filtered, p)
 					}
 				}
