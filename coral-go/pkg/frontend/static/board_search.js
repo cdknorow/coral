@@ -48,6 +48,7 @@ export function highlightBoard(container) {
     const ids = new Set(_list.ids.map(String));
     const current = _index >= 0 ? String(_list.ids[_index]) : null;
     const re = _filters.q ? new RegExp(escapeRegex(_filters.q), 'gi') : null;
+    const has = _filters.q ? new RegExp(escapeRegex(_filters.q), 'i') : null; // to test a text node: a global expression keeps its place from one test() to the next, and skips the next node's first match
     for (const row of container.querySelectorAll(':scope > .mb-message[data-message-id]')) {
         const id = row.dataset.messageId;
         if (!ids.has(id)) continue;
@@ -57,7 +58,7 @@ export function highlightBoard(container) {
         if (!body) continue;
         const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
         const nodes = [];
-        for (let n = walker.nextNode(); n; n = walker.nextNode()) if (re.test(n.nodeValue)) nodes.push(n);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) if (has.test(n.nodeValue)) nodes.push(n);
         for (const node of nodes) {
             const frag = document.createDocumentFragment();
             let last = 0;
