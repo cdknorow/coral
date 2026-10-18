@@ -957,7 +957,8 @@ function _openTaskDetailModal(modal) {
     closeOnBackdropAndEscape(modal, hideTaskDetailModal);
 }
 
-function _taskDetailHtml(task, liveCost) {
+/** The top of the task detail: its title, lifecycle, priority, result and verification line. */
+function _taskDetailHeadHtml(task) {
     const statusLabel = task.workflow?.outcome === 'failed' ? 'Finished' : task.status === 'completed' ? 'Finished'
         : task.status === 'review_pending' ? 'Open · Review pending (slot released)'
         : task.workflow?.completion_review && task.status === 'in_progress' ? 'Open · Completion review requested (slot occupied)'
@@ -974,13 +975,6 @@ function _taskDetailHtml(task, liveCost) {
         : 'task-detail-status-pending';
     const priorityClass = 'board-task-priority-' + (task.priority || 'medium');
 
-    const assignee = task.assigned_to || '\u2014';
-    const createdBy = task.created_by || '\u2014';
-    const createdAt = task.created_at ? formatTaskDate(task.created_at) : '\u2014';
-    const claimedAt = task.claimed_at ? formatTaskDate(task.claimed_at) : null;
-    const completedAt = task.completed_at ? formatTaskDate(task.completed_at) : null;
-    const completedBy = task.completed_by || null;
-
     let html = `
         <div class="task-detail-title">#${Number(task.id)} · ${escapeHtml(task.title)}</div>
         <div class="task-detail-meta">
@@ -988,7 +982,12 @@ function _taskDetailHtml(task, liveCost) {
             <span class="task-detail-meta-item"><span class="task-detail-meta-label">Priority</span><span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(task.priority || 'none')}">${task.priority ? (_priorityLabel[task.priority] || escapeHtml(task.priority)) : '\u2014'}</span></span>
             ${task.workflow?.outcome === 'failed' ? '<span class="task-detail-meta-item"><span class="task-detail-meta-label">Result</span><span class="task-detail-outcome-failed">Failed</span></span>' : ''}
         </div>${_verifyLine(task)}`;
+    return html;
+}
 
+/** The instruction revision and what changed since the task was created; nothing for a task never amended. */
+function _taskRevisionHtml(task) {
+    let html = '';
     const revision = Number(task.revision || 1);
     const amendments = task.workflow?.amendments || [];
     const preview = value => {
@@ -1007,14 +1006,12 @@ function _taskDetailHtml(task, liveCost) {
             return `<div class="task-amendment-entry"><strong>Revision ${Number(amendment.revision)}</strong> · ${escapeHtml(amendment.actor || 'Planner')} · ${escapeHtml(amendment.created_at || '')}<br><span>${escapeHtml(amendment.reason || '')}</span>${fields}</div>`;
         }).join('')}</details>` : ''}
     </div>`;
+    return html;
+}
 
-    if (task.body) {
-        html += `<div class="task-detail-section">
-            <div class="task-detail-label">Description</div>
-            <div class="task-detail-body">${escapeHtml(task.body)}</div>
-        </div>`;
-    }
-
+/** The task's workflow: its gates, inputs, completion candidate and artifacts. */
+function _taskWorkflowHtml(task) {
+    let html = '';
     const workflow = task.workflow;
     if (workflow) {
         const artifactHtml = a => {
@@ -1045,6 +1042,18 @@ function _taskDetailHtml(task, liveCost) {
         }
         if (workflow.artifacts?.length) html += `<div class="task-detail-section"><div class="task-detail-label">Completion artifacts</div>${workflow.artifacts.map(artifactHtml).join('')}</div>`;
     }
+    return html;
+}
+
+/** Who the task is assigned to, who made and finished it, and when. */
+function _taskFieldsHtml(task) {
+    let html = '';
+    const assignee = task.assigned_to || '\u2014';
+    const createdBy = task.created_by || '\u2014';
+    const createdAt = task.created_at ? formatTaskDate(task.created_at) : '\u2014';
+    const claimedAt = task.claimed_at ? formatTaskDate(task.claimed_at) : null;
+    const completedAt = task.completed_at ? formatTaskDate(task.completed_at) : null;
+    const completedBy = task.completed_by || null;
 
     html += `<div class="task-detail-fields">
         <div class="task-detail-field">
@@ -1093,7 +1102,12 @@ function _taskDetailHtml(task, liveCost) {
     }
 
     html += `</div>`;
+    return html;
+}
 
+/** The tasks this one waits for, each with its status. */
+function _taskBlockedByHtml(task) {
+    let html = '';
     // Blocked by dependencies
     if (task.blocked_by && task.blocked_by.length > 0) {
         const boardProject = _getBoardProject();
@@ -1127,7 +1141,12 @@ function _taskDetailHtml(task, liveCost) {
             <div class="task-deps-list">${depsHtml}</div>
         </div>`;
     }
+    return html;
+}
 
+/** The cost and token breakdown of a task that has cost data. */
+function _taskCostHtml(task) {
+    let html = '';
     // Cost & token breakdown for completed tasks with cost data
     if (task.cost_usd != null) {
         const warningClass = task.cost_usd >= 1.0 ? ' board-task-cost-warning' : '';
@@ -1154,6 +1173,12 @@ function _taskDetailHtml(task, liveCost) {
             </div>
         </div>`;
     }
+    return html;
+}
+
+/** The running cost of a task in progress. */
+function _taskLiveCostHtml(liveCost) {
+    let html = '';
     // Live cost for in-progress tasks
     if (liveCost) {
         const lc = liveCost;
@@ -1185,6 +1210,25 @@ function _taskDetailHtml(task, liveCost) {
             </div>
         </div>`;
     }
+    return html;
+}
+
+function _taskDetailHtml(task, liveCost) {
+    let html = _taskDetailHeadHtml(task);
+    html += _taskRevisionHtml(task);
+
+    if (task.body) {
+        html += `<div class="task-detail-section">
+            <div class="task-detail-label">Description</div>
+            <div class="task-detail-body">${escapeHtml(task.body)}</div>
+        </div>`;
+    }
+
+    html += _taskWorkflowHtml(task);
+    html += _taskFieldsHtml(task);
+    html += _taskBlockedByHtml(task);
+    html += _taskCostHtml(task);
+    html += _taskLiveCostHtml(liveCost);
     return html;
 }
 
