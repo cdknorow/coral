@@ -173,6 +173,7 @@ var routeTable = cat(
 		"/api/board/{project}",
 		"/api/board/{project}/messages",
 		"/api/board/{project}/messages/all",
+		"/api/board/{project}/messages/search",
 		"/api/board/{project}/subscribers",
 		"/api/board/{project}/paused",
 		"/api/board/{project}/settings",

@@ -618,6 +618,7 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 	r.Post("/api/board/{project}/messages", boardHandler.PostMessage)
 	r.Get("/api/board/{project}/messages", boardHandler.ReadMessages)
 	r.Get("/api/board/{project}/messages/all", boardHandler.ListAllMessages)
+	r.Get("/api/board/{project}/messages/search", boardHandler.SearchMessages)
 	r.Post("/api/board/{project}/messages/mark-read", boardHandler.MarkRead)
 	r.Get("/api/board/{project}/messages/check", boardHandler.CheckUnread)
 	r.Delete("/api/board/{project}/messages/{messageID}", boardHandler.DeleteMessage)

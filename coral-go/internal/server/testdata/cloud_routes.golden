@@ -57,6 +57,7 @@ GET /api/board/{project}/groups/{groupID}/members never
 GET /api/board/{project}/messages view
 GET /api/board/{project}/messages/all view
 GET /api/board/{project}/messages/check never
+GET /api/board/{project}/messages/search view
 GET /api/board/{project}/paused view
 GET /api/board/{project}/peek never
 GET /api/board/{project}/relay-targets never

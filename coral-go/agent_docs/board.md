@@ -288,6 +288,37 @@ Returns messages without advancing any cursor, oldest first. Page by message id 
 
 `paging` and `before_count` are present for `before_id` / `after_id` requests and for the latest page. `before_count` is the number of messages older than the first returned one, i.e. how many remain to load with `before_id`. Servers that omit `paging` only support `offset` paging.
 
+### Search a board's messages (`GET /api/board/{project}/messages/search`)
+
+The search behind the board page's box and filters (#4745). It takes the same parameter names and gives the same reply shape as the Team
+Artifacts query (`q`, `since`, `until`, `sort`, `cursor`; `total` and `next_cursor`), so one client bar serves every panel.
+
+| Parameter | Values |
+|---|---|
+| `q` | A plain, case-insensitive substring of the message text: at most 200 characters, no control characters, given once; `%` and `_` are ordinary characters (no pattern); an empty `q` is no search |
+| `from` | Multi: the sender's id or name (comma separated or repeated, at most 50), any case, exact |
+| `mentions` | A member's name: the messages that tag that member (`@name`, `@all`, `@notify-all`, with the numbered-agent rule unread counts use: `@Backend Dev 2` tags that agent, not `Backend Dev`) |
+| `since`, `until` | RFC 3339 times (an offset is read as that instant); `since` is inclusive, `until` exclusive |
+| `sort` | `newest` (default) or `oldest` |
+| `limit` | 1 to 200, default 50 |
+| `cursor` | A `next_cursor` or `prev_cursor` of an earlier reply, with the same filters and sort |
+
+**Reply:** `{"messages": [ ... ], "total": N, "limit": N, "next_cursor": "...", "prev_cursor": "..."}`: the messages as `/messages/all` gives
+them, in the sort's order. It pages both ways: `next_cursor` (present only when there is a page after the last message) goes on in the sort's
+order, `prev_cursor` (present only when there is a page before the first) goes back. `total` is every match, whatever the page.
+`sort=oldest&limit=1` is "jump to the first match"; its message `id` can then be fetched with `/messages/all?id=N` and its neighbours
+with `before_id` and `after_id`. `"truncated": true` says the search stopped at its bound (200,000 messages or 64 MiB of text read), and
+the total and the pages are then those of what it read. A cursor outlives its message: paging goes on from where the id was.
+
+**Errors:** a 400 naming what was wrong: an unknown parameter, a `q` or `from` value over its length or with a control character, a bad
+time, an unknown `sort`, a `limit` out of range, a value given twice, a `cursor` this server did not give or made for other filters or
+another sort, a query string that does not parse. Nothing the caller sends reaches a statement or a pattern: the messages inside the time
+bounds are read once and tested in Go.
+
+Through Coral Hub it is the View tier with the same redaction as any View reply; the match is made on what the viewer sees (a token in a
+message is not there to match, the marker `[redacted token]` that stands in for it is), and a `q`, `from` or `mentions` holding a token,
+key or password is refused with a 400.
+
 ### Check Unread Count
 
 ```

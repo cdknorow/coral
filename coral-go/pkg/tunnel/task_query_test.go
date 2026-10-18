@@ -102,3 +102,23 @@ func TestTeamArtifactsQueryRepliesAreRedactedThroughTheTunnel(t *testing.T) {
 	assert.True(t, json.Valid(b), string(b))
 	assert.Equal(t, "redact", RedactionClass("GET", "/api/board/{project}/artifacts"))
 }
+
+// GET /api/board/{project}/messages/search (#4745) takes the message search's parameters at the View tier, and only those.
+func TestBoardMessageSearchIsViewTier(t *testing.T) {
+	for _, tc := range []struct {
+		method, query string
+		want          Tier
+	}{
+		{"GET", "", TierView},
+		{"GET", "q=alpha&from=Backend+Dev&mentions=QA&since=2026-10-18T00:00:00Z&until=2026-10-19T00:00:00Z&sort=oldest&limit=50&cursor=abc", TierView},
+		{"HEAD", "q=x", TierView},
+		{"GET", "search=x", TierNever},
+		{"GET", "offset=5", TierNever},
+		{"GET", "after_id=5", TierNever},
+		{"POST", "q=x", TierNever},
+		{"PUT", "", TierNever},
+	} {
+		assert.Equal(t, tc.want, Classify(tc.method, "/api/board/proj/messages/search", tc.query), tc.method+" ?"+tc.query)
+	}
+	assert.Equal(t, "redact", RedactionClass("GET", "/api/board/proj/messages/search"), "its replies are redacted like any View reply")
+}

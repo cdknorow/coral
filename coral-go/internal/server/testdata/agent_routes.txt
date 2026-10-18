@@ -65,6 +65,7 @@ c GET /api/board/{project}/groups/{groupID}/members
 a GET /api/board/{project}/messages
 a GET /api/board/{project}/messages/all
 a GET /api/board/{project}/messages/check
+c GET /api/board/{project}/messages/search
 c GET /api/board/{project}/paused
 a GET /api/board/{project}/peek
 a GET /api/board/{project}/relay-targets

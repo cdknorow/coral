@@ -33,6 +33,7 @@ GET /api/board/{project}/groups/{groupID}/members | board-claims
 GET /api/board/{project}/messages | board-claims
 GET /api/board/{project}/messages/all | board-claims
 GET /api/board/{project}/messages/check | board-claims
+GET /api/board/{project}/messages/search | board-claims
 GET /api/board/{project}/paused | board-claims
 GET /api/board/{project}/peek | board-claims
 GET /api/board/{project}/relay-targets | board-claims

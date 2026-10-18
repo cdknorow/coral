@@ -9,6 +9,7 @@ GET /api/board/{project} redact
 GET /api/board/{project}/artifacts redact
 GET /api/board/{project}/messages redact
 GET /api/board/{project}/messages/all redact
+GET /api/board/{project}/messages/search redact
 GET /api/board/{project}/paused redact
 GET /api/board/{project}/settings redact
 GET /api/board/{project}/status redact
