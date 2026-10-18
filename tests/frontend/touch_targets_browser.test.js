@@ -187,13 +187,13 @@ const UNDERSIZED = `(() => {
             const where = await ev(`({ path: location.pathname, mode: (document.getElementById('coral-boot') || {}).textContent, cloud: document.body.classList.contains('cloud-mode'), btn: !!document.querySelector('.cloud-account-btn') })`);
             assert.ok(where.btn, 'the hub account button is shown: ' + JSON.stringify(where));
             await ev(`document.querySelector('.cloud-account-btn').click()`);
-            await waitFor(`[...document.querySelectorAll('#cloud-account-menu .overflow-menu-item')].filter(e => e.getBoundingClientRect().height).length >= 2`, 'the account dropdown', { soft: true });
+            await waitFor(`[...document.querySelectorAll('#cloud-account-menu .overflow-menu-item')].filter(e => e.getBoundingClientRect().height).length >= 4`, 'the account dropdown', { soft: true });
             const accountRows = await menuRows('#cloud-account-menu .overflow-menu-item');
-            assert.equal(accountRows.length, 2, 'the account dropdown shows Servers and Sign out: ' + JSON.stringify(accountRows));
+            assert.equal(accountRows.length, 4, 'the account dropdown shows Servers, Account, Saved for later and Sign out: ' + JSON.stringify(accountRows));
             for (const [w, h] of accountRows) assert.ok(w >= 44 && h >= 44, `account dropdown row ${w}x${h} under 44px`);
             const accountSmall = await ev(`(() => { const m = document.getElementById('cloud-account-menu'); const out = []; for (const el of m.querySelectorAll('button, a[href]')) { const r = el.getBoundingClientRect(); if (r.width && r.height && (r.width < 44 || r.height < 44)) out.push(Math.round(r.width) + 'x' + Math.round(r.height) + ' ' + el.textContent.trim()); } return out; })()`);
             assert.deepEqual(accountSmall, [], 'account dropdown: every control is at least 44x44');
-            console.log('PASS phone 390 coarse: account dropdown rows (Servers, Sign out) at least 44px');
+            console.log('PASS phone 390 coarse: account dropdown rows (Servers, Account, Saved for later, Sign out) at least 44px');
         } finally {
             await Fetch.disable();
             await Network.setBypassServiceWorker({ bypass: false });
