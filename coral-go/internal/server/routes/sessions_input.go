@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -111,8 +112,8 @@ func (h *SessionsHandler) Resize(w http.ResponseWriter, r *http.Request) {
 		AgentType string `json:"agent_type"`
 		SessionID string `json:"session_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Columns < 10 {
-		errBadRequest(w, "columns must be >= 10")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Columns < minTerminalCols || body.Columns > maxTerminalCols {
+		errBadRequest(w, fmt.Sprintf("columns must be from %d to %d", minTerminalCols, maxTerminalCols))
 		return
 	}
 	// As for Send: a resize always names its exact target (#3211).

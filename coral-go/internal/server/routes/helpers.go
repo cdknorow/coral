@@ -239,3 +239,20 @@ func DebugRequestLogger(next http.Handler) http.Handler {
 		}
 	})
 }
+
+// The sizes a terminal may be asked to take (#4602). The Operator, or a Hub user at Interact, could ask for 65535 columns (the
+// websocket path wrapped through uint16), and every viewer's replay and screen read then grows with it.
+const (
+	minTerminalCols, maxTerminalCols = 10, 1000
+	maxTerminalRows                  = 300
+	defaultTerminalRows              = 50
+)
+
+// clampTerminalSize is a requested cols x rows as a size the backend takes: columns at most maxTerminalCols, rows from 1 to
+// maxTerminalRows (none or a negative value is the default of 50, never a wrapped uint16).
+func clampTerminalSize(cols, rows int) (uint16, uint16) {
+	if rows < 1 {
+		rows = defaultTerminalRows
+	}
+	return uint16(max(minTerminalCols, min(cols, maxTerminalCols))), uint16(min(rows, maxTerminalRows))
+}

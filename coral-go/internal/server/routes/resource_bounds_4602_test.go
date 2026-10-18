@@ -142,3 +142,40 @@ func TestHistoryPageLimitIsCappedAt500(t *testing.T) {
 	n, _ = count("?limit=40")
 	assert.Equal(t, 40, n)
 }
+
+func TestClampTerminalSize(t *testing.T) {
+	for _, c := range []struct{ cols, rows, wantCols, wantRows int }{
+		{120, 40, 120, 40},
+		{120, 0, 120, 50},        // no rows: the default
+		{120, -1, 120, 50},       // negative rows: the default, never a wrapped uint16
+		{5000, 99999, 1000, 300}, // both over: the caps
+		{65535, 65535, 1000, 300},
+		{70000, 70000, 1000, 300}, // past uint16: no wrap to a small number
+		{1000, 300, 1000, 300},
+		{1001, 301, 1000, 300},
+		{9, 24, 10, 24}, // under the minimum (the callers refuse this first)
+	} {
+		cols, rows := clampTerminalSize(c.cols, c.rows)
+		assert.EqualValues(t, c.wantCols, cols, "cols %d", c.cols)
+		assert.EqualValues(t, c.wantRows, rows, "rows %d", c.rows)
+	}
+}
+
+func TestResizeRouteRefusesAnAbsurdWidth(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-000000004603"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "repo", WorkingDir: "/tmp/test"}))
+	terminal.addSession("claude-"+sid, "/tmp/test")
+	post := func(cols int) int {
+		body := strings.NewReader(fmt.Sprintf(`{"columns": %d, "agent_type": "claude", "session_id": "%s"}`, cols, sid))
+		resp, err := http.Post(server.URL+"/api/sessions/live/claude-"+sid+"/resize", "application/json", body)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	assert.Equal(t, http.StatusOK, post(120))
+	assert.Equal(t, http.StatusOK, post(1000))
+	assert.Equal(t, http.StatusBadRequest, post(1001))
+	assert.Equal(t, http.StatusBadRequest, post(65535))
+	assert.Equal(t, http.StatusBadRequest, post(9))
+}

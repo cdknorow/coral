@@ -509,3 +509,29 @@ func minInt(a, b int) int {
 	}
 	return b
 }
+
+// #4602: a terminal_resize asks for at most 1000 columns and 300 rows; a larger request is that size, not 65535 (or a value wrapped
+// through uint16 into something small).
+func TestWSTerminal_ResizeIsCapped(t *testing.T) {
+	backend, client := newTerminalTestTmuxBackend(t)
+	server := setupTerminalTestServer(t, backend)
+	tmuxName := spawnTestSession(t, backend, "resize-cap-agent", "bbbbbbbb-4602-2222-3333-444444444444", "sleep 120")
+	time.Sleep(500 * time.Millisecond)
+	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
+	defer cancel()
+	readOneBinaryFrame(t, ctx, conn)
+	for _, c := range []struct {
+		cols, rows int
+		want       string
+	}{
+		{5000, 99999, "1000x300"},
+		{70000, 70000, "1000x300"}, // would wrap to a small number through uint16
+		{120, 40, "120x40"},
+	} {
+		sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_resize", "cols": c.cols, "rows": c.rows})
+		time.Sleep(500 * time.Millisecond)
+		size, err := client.DisplayMessage(context.Background(), tmuxName, "#{window_width}x#{window_height}")
+		require.NoError(t, err)
+		assert.Equal(t, c.want, strings.TrimSpace(size), "cols %d rows %d", c.cols, c.rows)
+	}
+}

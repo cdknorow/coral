@@ -884,12 +884,9 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			case "terminal_resize":
-				if msg.Cols >= 10 {
-					rows := uint16(msg.Rows)
-					if rows == 0 {
-						rows = 50
-					}
-					sendErr = h.backend.Resize(name, uint16(msg.Cols), rows)
+				if msg.Cols >= minTerminalCols {
+					cols, rows := clampTerminalSize(msg.Cols, msg.Rows)
+					sendErr = h.backend.Resize(name, cols, rows)
 					// Answer with the size the pane now has (it may differ: tmux clamps). Only
 					// the latest resize needs its answer: an unread earlier one is replaced.
 					select {
