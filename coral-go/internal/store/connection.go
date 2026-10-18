@@ -195,6 +195,9 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 	if err := d.ensureTokenUsageRollup(ctx); err != nil {
 		return err
 	}
+	if err := d.ensureTokenUsageHourAgg(ctx); err != nil {
+		return err
+	}
 
 	// Fix double-encoded detail_json rows in agent_events (one-time fixup).
 	// Prior to the fix, makeToolDetail returned a JSON string which was then

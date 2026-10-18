@@ -88,6 +88,12 @@ type AgentUsageSummary struct {
 // avoid double-counting tokens.
 const sourceDedup = `(COALESCE(source,'jsonl') = 'jsonl' OR session_id NOT IN (SELECT DISTINCT session_id FROM token_usage_all WHERE source = 'jsonl'))`
 
+// usageDedup is sourceDedup over usageRelation's rows (source is already COALESCEd there), with the sessions that have a jsonl row read from
+// token_usage_rollup (one row per session and source) rather than from a scan of every usage row. alias is "" or "t.".
+func usageDedup(alias string) string {
+	return `(` + alias + `source = 'jsonl' OR ` + alias + `session_id NOT IN (SELECT session_id FROM token_usage_rollup WHERE source = 'jsonl'))`
+}
+
 // TurnCost represents a single turn's cost data for charting.
 type TurnCost struct {
 	CostUSD    float64 `db:"cost_usd" json:"cost_usd"`
@@ -266,6 +272,7 @@ func (s *TokenUsageStore) GetBoardUsage(ctx context.Context, boardName string) (
 // GetUsageSummary returns totals grouped by agent_type since a given time.
 func (s *TokenUsageStore) GetUsageSummary(ctx context.Context, since string) ([]UsageSummary, error) {
 	var summaries []UsageSummary
+	rel, args := usageRelation(ctx, s.db.Reader(), since)
 	query := `SELECT agent_type,
 	          COALESCE(SUM(input_tokens), 0) as input_tokens,
 	          COALESCE(SUM(output_tokens), 0) as output_tokens,
@@ -274,12 +281,7 @@ func (s *TokenUsageStore) GetUsageSummary(ctx context.Context, since string) ([]
 	          COALESCE(SUM(total_tokens), 0) as total_tokens,
 	          COALESCE(SUM(cost_usd), 0) as cost_usd,
 	          COUNT(DISTINCT session_id) as num_sessions
-	   FROM token_usage_all WHERE ` + sourceDedup + ` AND 1=1`
-	var args []interface{}
-	if since != "" {
-		query += " AND recorded_at >= ?"
-		args = append(args, since)
-	}
+	   FROM ` + rel + ` u WHERE ` + usageDedup("u.")
 	query += ` GROUP BY agent_type`
 	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
@@ -291,6 +293,7 @@ func (s *TokenUsageStore) GetUsageSummary(ctx context.Context, since string) ([]
 // model is one bucket with model "".
 func (s *TokenUsageStore) GetUsageSummaryByModel(ctx context.Context, since string) ([]ModelUsageSummary, error) {
 	summaries := []ModelUsageSummary{}
+	rel, args := usageRelation(ctx, s.db.Reader(), since)
 	query := `SELECT agent_type, COALESCE(model, '') as model,
 	          COALESCE(SUM(input_tokens), 0) as input_tokens,
 	          COALESCE(SUM(output_tokens), 0) as output_tokens,
@@ -299,12 +302,7 @@ func (s *TokenUsageStore) GetUsageSummaryByModel(ctx context.Context, since stri
 	          COALESCE(SUM(total_tokens), 0) as total_tokens,
 	          COALESCE(SUM(cost_usd), 0) as cost_usd,
 	          COUNT(DISTINCT session_id) as num_sessions
-	   FROM token_usage_all WHERE ` + sourceDedup
-	var args []interface{}
-	if since != "" {
-		query += " AND recorded_at >= ?"
-		args = append(args, since)
-	}
+	   FROM ` + rel + ` u WHERE ` + usageDedup("u.")
 	query += ` GROUP BY agent_type, COALESCE(model, '') ORDER BY cost_usd DESC, agent_type, model`
 	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
@@ -313,6 +311,7 @@ func (s *TokenUsageStore) GetUsageSummaryByModel(ctx context.Context, since stri
 // GetUsageSummaryByAgent returns per-agent (session) usage aggregates since a given time.
 func (s *TokenUsageStore) GetUsageSummaryByAgent(ctx context.Context, since string) ([]AgentUsageSummary, error) {
 	var summaries []AgentUsageSummary
+	rel, args := usageRelation(ctx, s.db.Reader(), since)
 	// Prefer the session's current display name so renames show; unnamed
 	// agents come back empty and the UI labels them "Agent". The folder is
 	// reported separately so those rows can still be told apart.
@@ -328,18 +327,13 @@ func (s *TokenUsageStore) GetUsageSummaryByAgent(ctx context.Context, since stri
 	          COALESCE(SUM(t.total_tokens), 0) as total_tokens,
 	          COALESCE(SUM(t.cost_usd), 0) as cost_usd,
 	          SUM(t.n_rows) as num_records,
-	          MIN(t.recorded_at) as first_seen,
-	          MAX(t.recorded_at) as last_seen,
+	          MIN(t.min_at) as first_seen,
+	          MAX(t.max_at) as last_seen,
 	          ls.created_at as launched_at,
 	          ls.stopped_at as stopped_at
-	   FROM token_usage_all t
+	   FROM ` + rel + ` t
 	   LEFT JOIN live_sessions ls ON ls.session_id = t.session_id
-	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage_all WHERE source = 'jsonl')) AND 1=1`
-	var args []interface{}
-	if since != "" {
-		query += " AND t.recorded_at >= ?"
-		args = append(args, since)
-	}
+	   WHERE ` + usageDedup("t.")
 	query += ` GROUP BY t.session_id ORDER BY cost_usd DESC`
 	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
 	return summaries, err
@@ -501,6 +495,14 @@ func (s *TokenUsageStore) GetUsageTimeSeries(ctx context.Context, since string, 
 		bucketExpr = `strftime('%Y-%m-%dT%H:00:00Z', recorded_at)`
 	}
 
+	// 5-minute buckets need the rows themselves; the hour and day buckets are made from the hourly aggregate.
+	var rel string
+	var args []interface{}
+	if interval == "5m" {
+		rel, args = `(SELECT `+usageCols+`, n_rows, recorded_at FROM token_usage_all`+sinceWhere(since)+`)`, sinceArgs(since)
+	} else {
+		rel, args = usageRelation(ctx, s.db.Reader(), since)
+	}
 	query := `SELECT ` + bucketExpr + ` as bucket,
 	          COALESCE(SUM(cost_usd), 0) as cost_usd,
 	          COALESCE(SUM(input_tokens), 0) as input_tokens,
@@ -508,13 +510,7 @@ func (s *TokenUsageStore) GetUsageTimeSeries(ctx context.Context, since string, 
 	          COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
 	          COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
 	          SUM(n_rows) as num_requests
-	   FROM token_usage_all WHERE ` + sourceDedup + ` AND 1=1`
-
-	var args []interface{}
-	if since != "" {
-		query += " AND recorded_at >= ?"
-		args = append(args, since)
-	}
+	   FROM ` + rel + ` u WHERE ` + usageDedup("u.")
 	query += ` GROUP BY bucket ORDER BY bucket ASC`
 
 	var buckets []TimeSeriesBucket
@@ -555,6 +551,7 @@ type BranchUsageSummary struct {
 // at least one git snapshot are included. Each session is attributed to
 // its most recent branch.
 func (s *TokenUsageStore) GetUsageSummaryByBranch(ctx context.Context, since string, branch string) ([]BranchUsageSummary, error) {
+	rel, args := usageRelation(ctx, s.db.Reader(), since)
 	query := `SELECT gs.branch,
 	          COALESCE(MAX(gs.pr_number), 0) as pr_number,
 	          COALESCE(MAX(gs.remote_url), '') as remote_url,
@@ -566,7 +563,7 @@ func (s *TokenUsageStore) GetUsageSummaryByBranch(ctx context.Context, since str
 	          COALESCE(SUM(t.total_tokens), 0) as total_tokens,
 	          COALESCE(SUM(t.cost_usd), 0) as cost_usd,
 	          COUNT(DISTINCT t.session_id) as num_agents
-	   FROM token_usage_all t
+	   FROM ` + rel + ` t
 	   INNER JOIN (
 	       SELECT session_id, branch, COALESCE(pr_number, 0) as pr_number, COALESCE(remote_url, '') as remote_url
 	       FROM git_snapshots
@@ -577,12 +574,7 @@ func (s *TokenUsageStore) GetUsageSummaryByBranch(ctx context.Context, since str
 	           GROUP BY session_id
 	       )
 	   ) gs ON t.session_id = gs.session_id
-	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage_all WHERE source = 'jsonl')) AND 1=1`
-	var args []interface{}
-	if since != "" {
-		query += " AND t.recorded_at >= ?"
-		args = append(args, since)
-	}
+	   WHERE ` + usageDedup("t.")
 	if branch != "" {
 		query += " AND gs.branch = ?"
 		args = append(args, branch)
@@ -595,6 +587,7 @@ func (s *TokenUsageStore) GetUsageSummaryByBranch(ctx context.Context, since str
 
 // GetUsageSummaryByBoard returns per-board (team) usage aggregates since a given time.
 func (s *TokenUsageStore) GetUsageSummaryByBoard(ctx context.Context, since string) ([]BoardUsageSummary, error) {
+	rel, args := usageRelation(ctx, s.db.Reader(), since)
 	query := `SELECT COALESCE(NULLIF(t.board_name, ''), ls.board_name, '') as board_name,
 	          COALESCE(SUM(t.input_tokens), 0) as input_tokens,
 	          COALESCE(SUM(t.output_tokens), 0) as output_tokens,
@@ -603,13 +596,8 @@ func (s *TokenUsageStore) GetUsageSummaryByBoard(ctx context.Context, since stri
 	          COALESCE(SUM(t.total_tokens), 0) as total_tokens,
 	          COALESCE(SUM(t.cost_usd), 0) as cost_usd,
 	          COUNT(DISTINCT t.session_id) as num_agents
-	   FROM token_usage_all t LEFT JOIN live_sessions ls ON ls.session_id = t.session_id
-	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage_all WHERE source = 'jsonl')) AND 1=1`
-	var args []interface{}
-	if since != "" {
-		query += " AND t.recorded_at >= ?"
-		args = append(args, since)
-	}
+	   FROM ` + rel + ` t LEFT JOIN live_sessions ls ON ls.session_id = t.session_id
+	   WHERE ` + usageDedup("t.")
 	query += ` GROUP BY COALESCE(NULLIF(t.board_name, ''), ls.board_name, '') ORDER BY cost_usd DESC`
 	var summaries []BoardUsageSummary
 	err := s.db.Reader().SelectContext(ctx, &summaries, query, args...)
@@ -618,3 +606,17 @@ func (s *TokenUsageStore) GetUsageSummaryByBoard(ctx context.Context, since stri
 
 // tokenUsageNow stamps a usage report that has no timestamp of its own (a var for tests).
 var tokenUsageNow = NowUTC
+
+func sinceWhere(since string) string {
+	if since == "" {
+		return ""
+	}
+	return " WHERE recorded_at >= ?"
+}
+
+func sinceArgs(since string) []interface{} {
+	if since == "" {
+		return nil
+	}
+	return []interface{}{since}
+}

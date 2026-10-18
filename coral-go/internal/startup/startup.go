@@ -1098,6 +1098,9 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Raw token usage older than 30 days becomes hourly rows; totals stay the same (#4163).
 	tokenRetention := background.NewTokenUsageRetention(db)
 	safeGo(ctx, "token_usage_retention", func() { tokenRetention.Run(ctx) })
+	// The Cost view's hourly aggregate of token usage, recomputed for the hours that changed (#4752).
+	tokenHourAgg := background.NewTokenUsageHourAgg(db)
+	safeGo(ctx, "token_usage_hour_agg", func() { tokenHourAgg.Run(ctx) })
 
 	// PRAGMA optimize on both databases, a little after startup and every few hours (#4142).
 	optimizeTargets := map[string]background.Optimizer{"sessions.db": db}
