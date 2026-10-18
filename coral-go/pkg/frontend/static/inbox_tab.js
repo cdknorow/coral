@@ -37,8 +37,17 @@ export function updateInboxTab() {
 
 /** Called by switchNavTab('hub-inbox'): the page is loaded the first time the tab is shown, and kept after. */
 export function showInboxTabContent() {
-    const frame = document.getElementById('inbox-frame');
-    if (frame && !frame.getAttribute('src')) frame.setAttribute('src', INBOX_URL);
+    const view = document.getElementById('inbox-view');
+    if (!view || document.getElementById('inbox-frame')) return;
+    // Made here, not in the page: a page that never shows the tab (a local Coral, a hub visit that stays on Agents) carries no empty frame.
+    const frame = document.createElement('iframe');
+    frame.id = 'inbox-frame';
+    frame.className = 'inbox-frame';
+    frame.title = 'Inbox';
+    frame.setAttribute('referrerpolicy', 'no-referrer');
+    frame.setAttribute('allow', ''); // no camera, microphone, geolocation or other powerful features
+    frame.setAttribute('src', INBOX_URL);
+    view.append(frame);
 }
 
 updateInboxTab();

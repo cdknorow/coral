@@ -48,7 +48,12 @@ const BASE = require('./test_base').BASE;
     // through CDP, in the frame itself (in the page's frame tree, or a frame target of its own).
     let inFrame;
     const { frameTree } = await Page.getFrameTree();
-    const child = (frameTree.childFrames || []).map(c => c.frame).find(f => f.url.startsWith('about:'));
+    // The preview's frame by its owner (the iframe in #preview-body), not by being the first about: frame: other parts of the page may hold frames too.
+    await client.DOM.enable();
+    const doc = await client.DOM.getDocument({ depth: -1 });
+    const owner = await client.DOM.querySelector({ nodeId: doc.root.nodeId, selector: '#preview-body iframe' });
+    const ownerFrameId = owner.nodeId ? (await client.DOM.describeNode({ nodeId: owner.nodeId })).node.frameId : null;
+    const child = (frameTree.childFrames || []).map(c => c.frame).find(f => f.id === ownerFrameId);
     if (child) {
       const { executionContextId } = await Page.createIsolatedWorld({ frameId: child.id, worldName: 'q3593' });
       inFrame = async expression => {

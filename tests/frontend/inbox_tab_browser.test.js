@@ -103,7 +103,7 @@ async function run() {
         await ev(`document.documentElement.removeAttribute('data-theme'); true`);
 
         console.log('4. Opening the tab loads the page from the constant address, once');
-        check('before it is opened the frame has no address and the page was not asked for', (await ev(`document.getElementById('inbox-frame').getAttribute('src')`)) === null && inboxHits === 0);
+        check('before it is opened there is no frame at all (no page carries an empty one) and the page was not asked for', (await ev(`document.getElementById('inbox-frame')`)) === null && (await ev(`document.querySelectorAll('iframe').length`)) === 0 && inboxHits === 0, String(await ev(`document.querySelectorAll('iframe').length`)));
         const pathBefore = await ev(`location.pathname + location.search + location.hash`);
         await ev(`document.getElementById('nav-tab-hub-inbox').click(); true`);
         check('the view is shown', await waitFor(`getComputedStyle(document.getElementById('inbox-view')).display !== 'none'`, 'the inbox view', { soft: true, timeout: 6000 }));
@@ -126,7 +126,7 @@ async function run() {
         const own = fs.readFileSync(path.join(SW, 'inbox_tab.js'), 'utf8');
         check('inbox_tab.js has no postMessage and no message listener', !/postMessage|addEventListener\(\s*['"]message['"]|onmessage|contentWindow/.test(own));
         const tpl = fs.readFileSync(path.join(__dirname, '..', '..', 'coral-go', 'pkg', 'frontend', 'templates', 'includes', 'views', 'inbox.html'), 'utf8');
-        check('the frame is declared with no src in the template', /<iframe[^>]*id="inbox-frame"/.test(tpl) && !/<iframe[^>]*\ssrc=/.test(tpl) && /referrerpolicy="no-referrer"/.test(tpl));
+        check('the template has no iframe, and the frame is made in code with the attributes above', !/<iframe/.test(tpl) && /createElement\('iframe'\)/.test(own) && /setAttribute\('allow', ''\)/.test(own));
 
         console.log('6. The dashboard\'s CSP leaves a same-origin frame allowed');
         const fs_ = /(?:^|;)\s*frame-src\s+([^;]*)/.exec(csp);
@@ -155,7 +155,7 @@ async function run() {
         await open(1280, 756);
         check('the tab is hidden', (await visible('nav-tab-hub-inbox')) === false);
         check('and is not in the list of views', !(await ev(`[...document.querySelectorAll('.top-nav-tabs > .top-nav-tab[data-arg]')].some(el => el.dataset.arg === 'hub-inbox' && !el.hidden)`)));
-        check('the frame has no address', (await ev(`document.getElementById('inbox-frame').getAttribute('src')`)) === null);
+        check('there is no frame on a local Coral', (await ev(`document.getElementById('inbox-frame')`)) === null && (await ev(`document.querySelectorAll('iframe').length`)) === 0);
         await feed({ total: 3, waiting: 2 });
         check('a feed with agents waiting does not show a badge there', (await badge()).hidden === true);
         check('and the hub page was not asked for by the local page', inboxHits === 2, String(inboxHits));

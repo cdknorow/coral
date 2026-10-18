@@ -42,13 +42,14 @@ assert.deepEqual(srcdocFound, SRCDOC, `frames given a document with srcdoc: ${JS
 const TEMPLATES = path.join(STATIC, '..', 'templates');
 const withIframe = [];
 (function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/<iframe/i.test(fs.readFileSync(p, 'utf8').replace(/<!--[\s\S]*?-->/g, ''))) withIframe.push(path.relative(TEMPLATES, p)); } })(TEMPLATES);
-assert.deepEqual(withIframe.sort(), ['includes/views/inbox.html'], `templates with an iframe: ${withIframe}; a new one needs a look from Security and a line in this test`);
+assert.deepEqual(withIframe.sort(), [], `templates with an iframe: ${withIframe}; a new one needs a look from Security and a line in this test (the Inbox frame is made by inbox_tab.js when the tab is first shown, so no page carries an empty one)`);
 // The Inbox frame: the address is a constant in inbox_tab.js and is not in the template.
 const inbox = fs.readFileSync(path.join(STATIC, 'inbox_tab.js'), 'utf8');
 assert.match(inbox, /const INBOX_URL = '\/inbox';/);
 assert.equal((inbox.match(/setAttribute\('src', /g) || []).length, 1);
 assert.match(inbox, /setAttribute\('src', INBOX_URL\)/);
-const tpl = fs.readFileSync(path.join(STATIC, '..', 'templates', 'includes', 'views', 'inbox.html'), 'utf8');
-assert.match(tpl, /<iframe[^>]*id="inbox-frame"[^>]*referrerpolicy="no-referrer"[^>]*allow=""/);
-assert.ok(!/<iframe[^>]*\ssrc=/.test(tpl));
+assert.match(inbox, /createElement\('iframe'\)/);
+assert.match(inbox, /frame\.setAttribute\('referrerpolicy', 'no-referrer'\)/);
+assert.match(inbox, /frame\.setAttribute\('allow', ''\)/);
+assert.ok(!/sandbox/.test(inbox.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')), 'the Inbox frame is the hub\'s own page, no sandbox attribute is set');
 console.log('PASS iframe_src_census: ' + Object.keys(found).join(', '));
