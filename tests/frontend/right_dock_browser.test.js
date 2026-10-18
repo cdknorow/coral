@@ -81,7 +81,7 @@ const BASE = require('./test_base').BASE;
         const mid = (rows.messages || rows).find(m => m.content === 'a board message to save').id;
         await ev(`document.querySelector('#mb-messages [data-message-id="${mid}"] .mb-save-btn').click(); true`);
         await waitFor(`document.querySelector('#mb-messages [data-message-id="${mid}"] .mb-save-btn').getAttribute('aria-pressed') === 'true'`, 'saved', 6000);
-        await ev(`document.getElementById('saved-btn').click(); true`);
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); return true; })()`); // the board's own Saved tab (the top bar's bookmark is the Inbox's, #4905)
         await waitFor(`document.getElementById('agentic-panel-saved').classList.contains('active') && document.querySelectorAll('#saved-list .saved-item').length === 1`, 'the saved item in the board\'s sidebar', 8000);
         d = await dock();
         assert.deepEqual({ page: d.page, open: d.open, active: d.active }, { page: 'board', open: true, active: 'saved' });
@@ -159,6 +159,8 @@ const BASE = require('./test_base').BASE;
         for (const [name, go, page, tabs] of [
             ['the board', `window.selectBoardProject(${JSON.stringify(BOARD)})`, 'board', ['subscribers', 'team-artifacts', 'tasks', 'saved']],
         ]) {
+            await ev(`switchNavTab('agents'); true`); // the Inbox (where Back to Saved left the page) is left the way a person leaves it
+            await waitFor(`!document.getElementById('nav-tab-hub-inbox').classList.contains('active')`, 'the Inbox left');
             await ev(`${go}; true`);
             await waitFor(`document.getElementById('agentic-state').dataset.page === '${page}'`, name);
             assert.equal(await ev(`getComputedStyle(document.getElementById('panel-toggle-btn')).display !== 'none'`), true, `the side panel button is on ${name}`);
@@ -205,6 +207,7 @@ const BASE = require('./test_base').BASE;
         await ev(`window.toggleAgenticPanel(true); true`);
         await waitFor(`document.getElementById('agentic-state').getBoundingClientRect().width > 300`, 'the sidebar open');
         const press = k => ev(`(() => { const e = document.activeElement; e.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, bubbles: true, cancelable: true })); return document.activeElement.dataset.tab || document.activeElement.id; })()`);
+        await waitFor(`getComputedStyle(document.getElementById('agentic-tab-saved')).display !== 'none'`, 'the board\'s Saved tab shown (the scope follows the page)', 4000);
         await ev(`document.getElementById('agentic-tab-subscribers').focus(); true`);
         assert.equal(await press('ArrowRight'), 'team-artifacts');
         assert.equal(await press('End'), 'saved');

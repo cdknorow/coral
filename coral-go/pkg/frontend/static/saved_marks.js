@@ -124,7 +124,7 @@ export function savedShowing() {
 export function syncSavedButton() {
     const b = document.getElementById('saved-btn');
     if (!b) return;
-    const on = savedShowing() ? 'true' : 'false';
+    const on = savedViewShowing() ? 'true' : 'false'; // the top bar's button is the Inbox's: the right sidebar's Saved tab is the dock's own, with its own close
     if (b.getAttribute('aria-pressed') !== on) b.setAttribute('aria-pressed', on);
 }
 document.addEventListener('coral:dock-changed', syncSavedButton);
@@ -159,11 +159,18 @@ export function setSavedCount(n) {
     document.querySelectorAll('#saved-btn .saved-count, .saved-menu-item .saved-count').forEach(paintCount);
     b.setAttribute('aria-label', n > 0 ? `Saved for later, ${n} open` : 'Saved for later');
     b.classList.toggle('on', n > 0);
+}
+/** The number on the dock's Saved tab: the open items of the page's own scope (an agent or a team), where the button in the top bar counts everything. */
+export function setScopedCount(n) {
     const tc = document.getElementById('saved-tab-count');
     if (tc) tc.textContent = n > 0 ? (n > 99 ? '99+' : String(n)) : '';
 }
 /** The scope of the page on screen: the agent or the team its Saved list and count are of, or everything (saved_scope.js). */
+let wantAll = false;
+/** The Inbox is being opened (the top bar's button): its Saved list is everything's even before the nav tab's switch has finished. */
+export function wantAllScope(on) { wantAll = !!on; }
 export function currentScope() {
+    if (wantAll || savedViewShowing()) return ALL; // the Inbox page is the all scope whatever agent or team is behind it (#4905)
     const key = k => (k ? splitKey(k) : null);
     const s = state.currentSession;
     const dock = dockKind();
@@ -180,12 +187,14 @@ function refreshSavedCount() {
     clearTimeout(countTimer);
     countTimer = setTimeout(async () => {
         if (isCloud()) return;
-        // This server's open items and every online registered server's, in hub mode (a server that does not answer counts none); a page of an agent or a team counts that scope's open items,
-        // on the server it belongs to (#4792).
+        // The top bar's number is everything, on every page (#4905): this server's open items and every online registered server's, in hub mode (a server that does not answer counts none).
+        const everywhere = [LOCAL_SERVER, ...(state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online').map(s => s.id) : [])];
+        // The dock's Saved tab counts the page's own scope (an agent or a team), on the server it belongs to (#4792).
         const scope = currentScope();
         countScopeKey = scope.key;
-        const servers = scope.kind !== 'all' ? [scope.server] : [LOCAL_SERVER, ...(state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online').map(s => s.id) : [])];
-        setSavedCount(await openOf(servers, scope));
+        const [all, own] = await Promise.all([openOf(everywhere, ALL), scope.kind === 'all' ? Promise.resolve(0) : openOf([scope.server], scope)]);
+        setSavedCount(all);
+        setScopedCount(scope.kind === 'all' ? all : own); // (everything's scope has no Saved tab in the dock; its count is the same number)
     }, 50);
 }
 document.addEventListener('coral:saved-changed', refreshSavedCount);

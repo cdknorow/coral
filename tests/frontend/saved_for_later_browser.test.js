@@ -116,7 +116,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         await waitFor(`${C}.querySelector('[data-msg-key="${hex(OLD)}"] .chat-save-btn').getAttribute('aria-pressed') === 'true'`, 'the old message saved', 6000);
         list = await saved();
         assert.equal(list.items.length, 2); assert.equal(list.items[0].key, hex(OLD), 'newest saved first');
-        await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); return true; })()`); // the page's own Saved tab; the top bar's bookmark is the Inbox's (#4905)
         await waitFor(`${TAB_OPEN} && document.querySelectorAll('#saved-list .saved-item').length === 2`, 'the Saved tab with two items', 6000);
         await waitFor(`document.getElementById('agentic-panel-saved').contains(document.activeElement)`, 'the focus to move into the Saved tab', 6000);
         const dlg = await ev(`(() => { const items = [...document.querySelectorAll('#saved-list .saved-item')]; return { first: items[0].querySelector('.snip').textContent, title: items[0].querySelector('.src').textContent, kind: items[0].querySelector('.kind').textContent, meta: items[0].querySelector('.meta').textContent,
@@ -138,7 +138,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         console.log('5. Click an item: the agent opens, pages up to the message, which is marked and has the focus');
         await select('sv-a'); // the newest page again: the old message is not on screen
         await waitFor(`!${C}.querySelector('[data-msg-key="${hex(OLD)}"]')`, 'the old message to be off screen', 6000);
-        await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); return true; })()`); // the page's own Saved tab; the top bar's bookmark is the Inbox's (#4905)
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 2`, 'the Saved tab', 6000);
         await ev(`[...document.querySelectorAll('#saved-list .saved-item')].find(li => li.querySelector('.snip').textContent && li.dataset.id === "local:" + ${list.items[0].id}).querySelector('.saved-open').click(); true`);
         await waitFor(`!!${C}.querySelector('[data-msg-key="${hex(OLD)}"].chat-search-target')`, 'the jump to the old message', 12000);
@@ -156,7 +156,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         console.log('6. A message that is gone: said so on the item, the snippet kept, Remove removes it');
         const gone = await api('POST', '/api/saved', { kind: 'agent', ref: list.items[0].ref, key: hex(9999), agent_type: 'claude', title: 'sv-a', snippet: 'A message the transcript no longer has', said_at: '2026-10-17T08:00:00Z' });
         assert.equal(gone.status, 200);
-        await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); return true; })()`); // the page's own Saved tab; the top bar's bookmark is the Inbox's (#4905)
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 3`, 'three items', 6000);
         await waitFor(`!!document.querySelector('#saved-list .saved-item.gone .why:not([hidden])')`, 'the gone message to be found when the list opens', 8000);
         const g = await ev(`(() => { const li = document.querySelector('#saved-list .saved-item.gone'); return { text: li.querySelector('.why').textContent, chip: li.querySelector('.kind').textContent, actions: [...li.querySelectorAll('.acts .btn')].map(b => b.lastChild.textContent.trim()), snippet: li.querySelector('.snip').textContent, open: document.getElementById('agentic-panel-saved').classList.contains('active') }; })()`);
@@ -166,7 +166,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 2`, 'the gone item removed', 6000);
         console.log('   ✓');
 
-        console.log('7. The tab works with the keyboard: Enter on its tab shows it; the top bar button opens the sidebar on it with the focus inside');
+        console.log('7. The tab works with the keyboard: Enter on its tab shows it; the top bar button opens the Inbox with the focus inside; the link in the toast opens the sidebar on it');
         await ev(`document.getElementById('agentic-tab-files').click(); true`);
         await waitFor(`!document.getElementById('agentic-panel-saved').classList.contains('active')`, 'another tab to be shown', 4000);
         await ev(`document.getElementById('agentic-tab-saved').focus(); true`);
@@ -175,10 +175,15 @@ const hex = i => i.toString(16).padStart(20, '0');
         assert.equal(await ev(`document.activeElement.id`), 'agentic-tab-saved', 'the focus stays on the tab, as with every tab');
         assert.equal(await ev(`document.getElementById('agentic-tab-saved').getAttribute('aria-label')`), 'Saved for later');
         await ev(`document.getElementById('agentic-tab-files').click(); true`);
-        await ev(`document.getElementById('agentic-state').classList.add('collapsed'); true`); // the sidebar closed
-        await ev(`document.getElementById('agentic-tab-saved').classList.add('tab-hidden'); true`); // and the user hid the Saved tab: the button still opens it
+        // The top bar's bookmark is the Inbox's, from an agent's page too (#4905): Enter on it opens the page with the focus inside, and pressing it again goes back to the agent.
         await ev(`document.getElementById('saved-btn').focus(); true`);
         await key('Enter', 'Enter', 13);
+        await waitFor(`document.getElementById('saved-view').getClientRects().length > 0 && document.getElementById('saved-view').contains(document.activeElement)`, 'the Inbox at Saved with the focus inside it', 6000);
+        await ev(`document.getElementById('saved-btn').click(); true`); // pressed again: back to the agent
+        await waitFor(`document.getElementById('saved-view').getClientRects().length === 0`, 'the Inbox left', 6000);
+        await ev(`document.getElementById('agentic-state').classList.add('collapsed'); true`); // the sidebar closed
+        await ev(`document.getElementById('agentic-tab-saved').classList.add('tab-hidden'); true`); // and the user hid the Saved tab: the toast's link and Back to Saved still open it
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); return true; })()`);
         await waitFor(`${TAB_OPEN} && document.getElementById('agentic-panel-saved').contains(document.activeElement)`, 'the sidebar open on Saved with the focus inside it', 6000);
         assert.equal(await ev(`document.querySelector('#agentic-tab-saved .agentic-tab-count').textContent`), '2', 'the count is on the tab too');
         console.log('   ✓');
@@ -205,7 +210,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         assert.equal((await api('DELETE', `/api/board/${BOARD}/messages/${drop.id}`)).status, 200, 'the message is deleted from the board');
         await select('sv-a'); // away from the board
         await ev(`window.selectLiveSession('', '', '', 'local'); true`); // and home: the list is of the agent or team on screen (#4792), and this one reads all of them
-        await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); return true; })()`); // the page's own Saved tab; the top bar's bookmark is the Inbox's (#4905)
         await waitFor(`[...document.querySelectorAll('#saved-list .src')].filter(e => e.textContent.toLowerCase().includes('saved-4510-board')).length === 2`, 'the board items', 6000, `({ n: document.querySelectorAll('#saved-list .saved-item').length, srcs: [...document.querySelectorAll('#saved-list .src')].map(e => e.textContent) })`);
         await waitFor(`!!document.querySelector('#saved-list .saved-item.gone .why:not([hidden])')`, 'the deleted board message to be found gone', 8000);
         assert.match(await ev(`document.querySelector('#saved-list .saved-item.gone .why').textContent`), /deleted from the board, or the board was/);
@@ -244,7 +249,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         const e2 = await api('POST', '/api/saved', { kind: 'agent', ref: MISSING, key: hex(1), agent_type: 'claude', title: 'no transcript', snippet: 'a message of a transcript that is gone', said_at: '2026-10-16T10:00:01Z' });
         assert.equal(e1.status, 200); assert.equal(e2.status, 200);
         await ev(`window.selectLiveSession('', '', '', 'local'); true`); // home: the list is of the agent or team on screen (#4792), and these are three agents'
-        await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); return true; })()`); // the page's own Saved tab; the top bar's bookmark is the Inbox's (#4905)
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 4 && document.getElementById('saved-list').textContent.includes('transcript that is gone')`, 'the four items', 6000);
         await waitFor(`!!document.querySelector('#saved-list .saved-item.gone .why:not([hidden])')`, 'the missing transcript to be found gone', 8000);
         assert.match(await ev(`document.querySelector('#saved-list .saved-item.gone .why').textContent`), /transcript is gone/);
@@ -274,7 +279,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         assert.ok(tbtn.shown && tbtn.w >= 44 && tbtn.h >= 44 && tbtn.page, 'the top bar button is there, 44 px, and the page does not scroll sideways: ' + JSON.stringify(tbtn));
         assert.equal(tbtn.count, '2'); assert.equal(tbtn.name, 'Saved for later, 2 open');
         await select('sv-a');
-        await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
+        await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); return true; })()`); // the page's own Saved tab; the top bar's bookmark is the Inbox's (#4905)
         await waitFor(`document.getElementById('agentic-state').classList.contains('mobile-panel-overlay') && ${TAB_OPEN} && document.querySelectorAll('#saved-list .saved-item').length === 2`, 'the side panel overlay open on Saved on the phone', 8000);
         const ph = await ev(`(() => { const vw = document.documentElement.clientWidth; const m = document.getElementById('agentic-state').getBoundingClientRect();
             const small = []; for (const e of document.querySelectorAll('#agentic-panel-saved button')) { const r = e.getBoundingClientRect(); if (r.width && (r.height < 43.5 || r.width < 43.5)) small.push((e.className || e.id) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)); }
@@ -308,7 +313,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         const mi = await ev(`(() => { const e = document.querySelector('.saved-menu-item'); const r = e.getBoundingClientRect(); return { shown: getComputedStyle(e).display !== 'none' && r.width > 0, h: Math.round(r.height), count: e.querySelector('.saved-count').textContent, text: e.textContent.trim().replace(/\\s+/g, ' ') }; })()`);
         assert.ok(mi.shown && mi.h >= 43 && mi.count === '2' && /^Saved for later/.test(mi.text), 'the menu entry has the count and is a 44 px target: ' + JSON.stringify(mi));
         await ev(`document.querySelector('.saved-menu-item').click(); true`);
-        await waitFor(`document.getElementById('agentic-state').classList.contains('mobile-panel-overlay') && ${TAB_OPEN}`, 'the menu entry to open the Saved tab', 8000);
+        await waitFor(`document.getElementById('saved-view').getClientRects().length > 0 && document.getElementById('saved-view').contains(document.getElementById('saved-ui'))`, 'the menu entry to open the Inbox at Saved (everything\'s, as the top bar button does)', 8000);
         await shot('saved-menu-phone-200');
         await ev(`document.documentElement.style.fontSize = ''; true`);
         await waitFor(`!document.body.classList.contains('saved-in-menu')`, 'the top bar button to come back at normal text', 6000);

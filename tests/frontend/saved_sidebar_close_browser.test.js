@@ -33,6 +33,8 @@ async function run() {
     const open = () => ev(`(() => { const d = document.getElementById('agentic-state'); return window.innerWidth <= 767 ? d.classList.contains('mobile-panel-overlay') : !d.classList.contains('collapsed'); })()`);
     const state = () => ev(`(() => ({ saved: document.getElementById('agentic-tab-saved').classList.contains('active'), tab: (document.querySelector('#agentic-block-top .agentic-tab.active') || {}).dataset.tab, pressed: document.getElementById('saved-btn').getAttribute('aria-pressed'), panelBtn: document.getElementById('panel-toggle-btn').getAttribute('aria-pressed'), focus: document.activeElement && (document.activeElement.id || document.activeElement.tagName) }))()`);
     const clickSaved = () => ev(`document.getElementById('saved-btn').click(); true`);
+    // On an agent's page the top bar's bookmark is the Inbox's (#4905); the sidebar's own Saved tab, scoped to the page, is opened and closed by what the toast's link and the tab use.
+    const clickDockSaved = () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved({ toggle: true }); return true; })()`);
     const esc = () => Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }).then(() => Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }));
     const closed = async what => check(what, await until(`(() => { const d = document.getElementById('agentic-state'); return window.innerWidth <= 767 ? !d.classList.contains('mobile-panel-overlay') : d.classList.contains('collapsed'); })()`, what));
     const opened = async what => check(what, await until(`(() => { const d = document.getElementById('agentic-state'); const o = window.innerWidth <= 767 ? d.classList.contains('mobile-panel-overlay') : !d.classList.contains('collapsed'); return o && document.getElementById('agentic-tab-saved').classList.contains('active'); })()`, what));
@@ -70,22 +72,22 @@ async function run() {
         // The agent's dock open on Files: Saved shows, and closing gives Files back with the dock still open.
         await ev(`window.toggleAgenticPanel(true); window.switchAgenticTab('files', 'top'); true`);
         await until(`(document.querySelector('#agentic-block-top .agentic-tab.active') || {}).dataset && document.querySelector('#agentic-block-top .agentic-tab.active').dataset.tab === 'files'`, 'Files active');
-        await clickSaved(); await opened('the bookmark shows Saved in the agent\'s open dock');
-        await clickSaved();
+        await clickDockSaved(); await opened('the bookmark shows Saved in the agent\'s open dock');
+        await clickDockSaved();
         check('the bookmark again gives the agent\'s tab back and leaves the dock open', await until(`(() => { const d = document.getElementById('agentic-state'); return !d.classList.contains('collapsed') && document.querySelector('#agentic-block-top .agentic-tab.active').dataset.tab === 'files'; })()`, 'Files back'), JSON.stringify(await state()));
         check('the bookmark is not pressed', (await state()).pressed === 'false');
         // The dock shut: Saved opens it, the X shuts it again.
         await ev(`window.toggleAgenticPanel(false); true`); await closed('the agent\'s dock shut');
-        await clickSaved(); await opened('the bookmark opens it on Saved');
+        await clickDockSaved(); await opened('the bookmark opens it on Saved');
         await ev(`document.getElementById('saved-close').click(); true`); await closed('the X shuts it again (it was shut before)');
-        await clickSaved(); await opened('opened'); await esc(); await closed('Escape shuts it again');
+        await clickDockSaved(); await opened('opened'); await esc(); await closed('Escape shuts it again');
 
         console.log('A coarse pointer wider than a phone (a touch tablet)');
         await Emulation.setDeviceMetricsOverride({ width: 1024, height: 768, deviceScaleFactor: 2, mobile: false });
         await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 }); // the page reads (pointer: coarse)
         await Page.navigate({ url: BASE + '/' }); await coralReady();
         await goAgent();
-        await clickSaved(); await opened('opened on the tablet');
+        await clickDockSaved(); await opened('opened on the tablet');
         check('the X is a 44px target on a coarse pointer', await ev(`(() => { const r = document.getElementById('saved-close').getBoundingClientRect(); return getComputedStyle(document.getElementById('saved-close')).display !== 'none' && r.width >= 44 && r.height >= 44; })()`), JSON.stringify(await ev(`(() => { const r = document.getElementById('saved-close').getBoundingClientRect(); return [r.width, r.height]; })()`)));
         await ev(`document.getElementById('saved-close').click(); true`); await closed('and it closes');
         await Emulation.setTouchEmulationEnabled({ enabled: false });
@@ -93,12 +95,12 @@ async function run() {
         console.log('A phone');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 800, deviceScaleFactor: 2, mobile: true });
         await Page.navigate({ url: BASE + '/' }); await coralReady();
-        await clickSaved(); check('on a phone home the bookmark opens the full-screen page, not the overlay', await until(`document.getElementById('saved-view').getClientRects().length > 0 && !document.getElementById('agentic-state').classList.contains('mobile-panel-overlay')`, 'the page'));
-        await clickSaved(); check('and again leaves it', await until(`document.getElementById('saved-view').getClientRects().length === 0`, 'left'));
+        await clickDockSaved(); check('on a phone home the bookmark opens the full-screen page, not the overlay', await until(`document.getElementById('saved-view').getClientRects().length > 0 && !document.getElementById('agentic-state').classList.contains('mobile-panel-overlay')`, 'the page'));
+        await clickDockSaved(); check('and again leaves it', await until(`document.getElementById('saved-view').getClientRects().length === 0`, 'left'));
         await goAgent();
-        await clickSaved(); await opened('on an agent the bookmark opens the overlay');
+        await clickDockSaved(); await opened('on an agent the bookmark opens the overlay');
         check('the phone has its own close button and not the desktop X', await ev(`getComputedStyle(document.getElementById('agentic-mobile-close-btn')).display !== 'none' && getComputedStyle(document.getElementById('saved-close')).display === 'none'`));
-        await clickSaved(); await closed('the bookmark again closes the overlay');
+        await clickDockSaved(); await closed('the bookmark again closes the overlay');
     } finally {
         for (const s of launched) await httpJson('POST', '/api/sessions/live/' + encodeURIComponent(s.session_name) + '/kill', { session_id: s.session_id, agent_type: 'terminal' }).catch(() => {});
         await client.close();

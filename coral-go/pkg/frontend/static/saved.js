@@ -6,7 +6,7 @@
 import { state } from './state.js';
 import { showToast } from './utils.js';
 import { sessionServer, normServer, serverFetch, identityKey, LOCAL_SERVER } from './server_base.js';
-import { savedChanged, setSavedCount, validSavedItem, savedShowing, savedViewShowing, syncSavedButton, currentScope } from './saved_marks.js';
+import { savedChanged, setSavedCount, setScopedCount, wantAllScope, validSavedItem, savedShowing, savedViewShowing, syncSavedButton, currentScope } from './saved_marks.js';
 import { withScope, scopeHeading, scopeEmpty, ALL } from './saved_scope.js';
 import { effectiveLiveViewMode, setLiveViewMode, jumpToLiveMessage } from './live_chat.js';
 import { buildListBar } from './list_bar.js';
@@ -83,7 +83,7 @@ async function load() {
     $('saved-count-open').textContent = open ? `(${open})` : '';
     $('saved-count-done').textContent = done ? `(${done})` : '';
     totals = { open, done };
-    setSavedCount(open);
+    if (scope.kind === 'all') { setSavedCount(open); setScopedCount(open); } else setScopedCount(open); // the top bar's number is everything's: an agent's or team's list moves only its own tab's
 }
 
 /** The name of a server for people: its label, else its id; "This computer" for the hub itself. */
@@ -365,8 +365,9 @@ async function openSavedView({ toggle = false } = {}) {
     }
     dropJumpBar();
     _prevTab = activeNavTab() === 'hub-inbox' ? _prevTab : activeNavTab();
+    wantAllScope(true); // the Inbox is everything's, whatever agent or team is behind it
     window.switchNavTab?.('hub-inbox');
-    await showSavedView();
+    try { await showSavedView(); } finally { wantAllScope(false); }
     $('saved-view')?.scrollIntoView({ block: 'start' }); // the Inbox at its Saved part
     ($('saved-list').querySelector('.btn') || $('saved-tab-open')).focus();
 }
@@ -392,7 +393,11 @@ export function closeSaved({ focus = true } = {}) {
     return true;
 }
 
-/** The top bar's Saved button: the right sidebar of the page on screen open on its Saved tab (or the tab focused if it already is), the focus inside it. Every page has the
+/** The top bar's Saved button (#4905): always the Inbox at its Saved part, everything's list and number, on every page: an agent's, a team's, home. A second press (or Escape) goes back to the page it
+ *  was opened from. The right sidebar's Saved tab, scoped to the page, is the dock's own. */
+export function openSavedAll({ toggle = false } = {}) { return openSavedView({ toggle }); }
+
+/** The right sidebar's Saved tab: the right sidebar of the page on screen open on its Saved tab (or the tab focused if it already is), the focus inside it. Every page has the
  *  sidebar and the tab (#4539), so nothing has to be selected first. */
 export async function openSaved({ toggle = false } = {}) {
     if (currentScope().kind === 'all') return openSavedView({ toggle }); // never an all-scope list in the right sidebar (#4811)

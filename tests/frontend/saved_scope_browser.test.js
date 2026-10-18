@@ -74,7 +74,9 @@ const hex = i => i.toString(16).padStart(20, '0');
             await settle(`(window.__qaState && window.__qaState.liveSessions || []).length === 3`, 'three agents in the live list');
         };
         const openSaved = () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); return true; })()`);
-        const select = id => ev(`window.selectLiveSession(${JSON.stringify(id.name)}, 'claude', ${JSON.stringify(id.sid)}, 'local'); true`);
+        // A person chooses an agent from the agent list, so the Agents tab is on screen (the Inbox page, where home's list was read, is left first).
+        const toAgents = async () => { if (await ev(`!!document.getElementById('nav-tab-hub-inbox')?.classList.contains('active')`)) { await ev(`window.switchNavTab('agents'); true`); await settle(`!document.getElementById('nav-tab-hub-inbox').classList.contains('active')`, 'the Agents tab'); } };
+        const select = async id => { await toAgents(); return ev(`window.selectLiveSession(${JSON.stringify(id.name)}, 'claude', ${JSON.stringify(id.sid)}, 'local'); true`); };
         const QA_A = { name: 'QA Alpha', sid: 'qa-a-id' }, FE_A = { name: 'FE Alpha', sid: 'fe-a-id' }, QA_B = { name: 'QA Beta', sid: 'qa-b-id' };
 
         for (const [dev, w, mobile] of [['desktop', 1280, false], ['phone', 390, true]]) {
@@ -113,6 +115,7 @@ const hex = i => i.toString(16).padStart(20, '0');
             await ev(`document.querySelector('#saved-bar .list-bar-clear-q').click(); true`);
 
             // a team
+            await toAgents();
             await ev(`window.enterTeamContext('team-a', { tab: 'team-view' }); true`);
             await openSaved(); // the team page opens on its own tab: the Saved tab is shown beside it // on a phone the panel is an overlay that gives way when another page is chosen: it is opened again
             await rowsAre('Saved: team-a', ['fe-a chat', 'qa-a chat', 'team-a board, by the Orchestrator', 'team-a board, by the QA Engineer'], ['(4)', '(1)'], `${dev}: team-a: its board's messages and its agents' chats, nothing of team-b`);
@@ -127,7 +130,7 @@ const hex = i => i.toString(16).padStart(20, '0');
             await openSaved();
             await rowsAre('Saved: QA Beta', ['qa-b chat', 'team-b board, by the QA Engineer'], ['(2)', ''], `${dev}: leaving the team, the agent underneath is the scope again`);
             await ev(`window.selectLiveSession('', '', '', 'local'); true`).catch(() => {});
-            if (mobile) await openSaved(); // on a phone the panel is an overlay that gives way when another page is chosen: it is opened again
+            await openSaved(); // nothing is chosen, so the scope is everything's and the list is the Inbox's: the bookmark opens it
             await rowsAre('Saved: all', ['fe-a chat', 'qa-a chat', 'qa-b chat', 'team-a board, by the Orchestrator', 'team-a board, by the QA Engineer', 'team-b board, by the QA Engineer'], ['(6)', '(1)'], `${dev}: home again shows everything`);
         }
 
