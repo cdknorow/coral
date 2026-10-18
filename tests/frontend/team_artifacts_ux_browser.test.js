@@ -67,22 +67,22 @@ const HEX = c => c.repeat(64);
 
         console.log('3. Delete by keyboard: the focus goes to the next row, the previous one, then Refresh');
         const focusDelete = async i => ev(`document.querySelectorAll('tr.team-artifact-row')[${i}].querySelector('.team-artifact-delete').focus(); true`);
-        const deleteWithKeys = async () => { await press('Enter', 'Enter', 13); await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirmation', 8000); for (let i = 0; i < 4 && (await ev(`document.activeElement && document.activeElement.id`)) !== 'confirm-modal-yes'; i++) await press('Tab', 'Tab', 9); assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'confirm-modal-yes', 'Tab reaches Yes'); await press('Enter', 'Enter', 13); };
+        const deleteWithKeys = async () => { await press('Enter', 'Enter', 13); await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirmation', 8000); await waitFor(`!!document.activeElement && !!document.activeElement.closest('#confirm-modal') && document.activeElement.id !== 'confirm-modal-yes'`, 'the focus to land on Cancel (the dialog focuses it a frame after it opens: a Tab pressed before that and the late focus could leave Enter on Cancel)', 4000); for (let i = 0; i < 4 && (await ev(`document.activeElement && document.activeElement.id`)) !== 'confirm-modal-yes'; i++) await press('Tab', 'Tab', 9); assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'confirm-modal-yes', 'Tab reaches Yes'); await press('Enter', 'Enter', 13); };
         await focusDelete(1);
         await deleteWithKeys();
-        await waitFor(`window.__deletes.length === 1 && document.querySelectorAll('tr.team-artifact-row').length === 2`, 'the middle row to go', 8000);
+        await waitFor(`window.__deletes.length === 1 && document.querySelectorAll('tr.team-artifact-row').length === 2`, 'the middle row to go', 8000, `({ deletes: window.__deletes.length, rows: document.querySelectorAll('tr.team-artifact-row').length, confirm: getComputedStyle(document.getElementById('confirm-modal')).display, active: document.activeElement && (document.activeElement.id || document.activeElement.className), lists: window.__lists, toast: [...document.querySelectorAll('.toast')].map(t => t.textContent.trim().slice(0, 60)) })`);
         let a = await active();
         assert.equal(a.body, undefined, 'the focus is not on the page: ' + JSON.stringify(a)); assert.equal(a.row, 1, 'it is on the row that took the deleted one\'s place'); assert.equal(a.inModal, false);
         assert.match(await ev(`document.querySelector('#agentic-panel-team-artifacts-live').textContent`), /^Deleted report-1\.txt\.$/, 'the live region says it');
         assert.equal(await ev(`document.querySelector('.team-artifacts-notice') && document.querySelector('.team-artifacts-notice').getAttribute('aria-hidden')`), 'true', 'the visible line is not read twice');
         await focusDelete(1); // the last row
         await deleteWithKeys();
-        await waitFor(`window.__deletes.length === 2 && document.querySelectorAll('tr.team-artifact-row').length === 1`, 'the last row to go', 8000);
+        await waitFor(`window.__deletes.length === 2 && document.querySelectorAll('tr.team-artifact-row').length === 1`, 'the last row to go', 8000, `({ deletes: window.__deletes.length, rows: document.querySelectorAll('tr.team-artifact-row').length, confirm: getComputedStyle(document.getElementById('confirm-modal')).display, active: document.activeElement && (document.activeElement.id || document.activeElement.className), lists: window.__lists, toast: [...document.querySelectorAll('.toast')].map(t => t.textContent.trim().slice(0, 60)) })`);
         a = await active();
         assert.equal(a.body, undefined, JSON.stringify(a)); assert.equal(a.row, 0, 'the row before it when the last one went');
         await focusDelete(0);
         await deleteWithKeys();
-        await waitFor(`window.__deletes.length === 3 && document.querySelectorAll('tr.team-artifact-row').length === 0`, 'the only row to go', 8000);
+        await waitFor(`window.__deletes.length === 3 && document.querySelectorAll('tr.team-artifact-row').length === 0`, 'the only row to go', 8000, `({ deletes: window.__deletes.length, rows: document.querySelectorAll('tr.team-artifact-row').length, confirm: getComputedStyle(document.getElementById('confirm-modal')).display, active: document.activeElement && (document.activeElement.id || document.activeElement.className), lists: window.__lists, toast: [...document.querySelectorAll('.toast')].map(t => t.textContent.trim().slice(0, 60)) })`);
         a = await active();
         assert.equal(a.body, undefined, JSON.stringify(a)); assert.equal(a.label, 'Refresh', 'Refresh when nothing is left');
         assert.equal(await ev(`!!document.querySelector('.team-artifacts-list')`), false, 'an empty list is its line, with no table header over nothing');
