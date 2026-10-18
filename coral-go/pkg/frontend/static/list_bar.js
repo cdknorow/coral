@@ -92,7 +92,10 @@ export function buildListBar(spec, onChange) {
     if (noSearch) node.classList.add('list-bar-nosearch');
     node.append(...(noSearch ? [] : [searchRow]), ...(controls.children.length ? [controls] : []), ...(hasFilters ? [menu] : []), chipList, live);
 
-    const apply = next => { f = clean(next); announce = true; onChange({ ...f }); };
+    // Whatever a panel's model does with a text, the bar sends it trimmed: a tab or a space pasted at either end is a request the server refuses (#4806), and no panel can forget it.
+    const textKeys = ['q', ...spec.fields.filter(x => x.type === 'text').map(x => x.key)];
+    const trimmed = o => { const t = { ...o }; for (const k of textKeys) if (typeof t[k] === 'string') t[k] = t[k].trim(); return t; };
+    const apply = next => { f = clean(trimmed(next)); announce = true; onChange({ ...f }); };
     const later = next => { clearTimeout(timer); timer = setTimeout(() => apply(next), DEBOUNCE_MS); };
     const closeMenu = (focus) => { if (menu.hidden) return; menu.hidden = true; filterBtn.setAttribute('aria-expanded', 'false'); if (focus) filterBtn.focus(); };
 
