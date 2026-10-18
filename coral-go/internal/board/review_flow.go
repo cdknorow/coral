@@ -276,38 +276,16 @@ func (s *Store) reviewVerdict(ctx context.Context, project string, id int64, act
 	if err != nil {
 		return nil, err
 	}
-	n := len(w.ReviewRounds)
-	switch {
-	case n > 0 && w.ReviewRounds[n-1].Result == "rejected" && status != "review_pending" && status != "completed":
-		return nil, fmt.Errorf("task #%d is back with %s (rejected in round %d): give your verdict when it is resubmitted, and your review task reopens", id, w.OriginalAuthor, w.ReviewRounds[n-1].Round)
-	case status != "review_pending" || n == 0 || w.ReviewRounds[n-1].Result != "":
-		return nil, fmt.Errorf("task #%d has no open review", id)
-	}
-	round := &w.ReviewRounds[n-1]
-	if reviewed != 0 && reviewed != round.Round {
-		return nil, fmt.Errorf("you reviewed round %d of task #%d, but it was resubmitted and is at round %d: read it again (coral-board task detail %d) and give your verdict with --round %d", reviewed, id, round.Round, id, round.Round)
-	}
-	var me *ReviewerState
-	for i := range round.Reviewers {
-		if round.Reviewers[i].Reviewer == actor {
-			me = &round.Reviewers[i]
-		}
-	}
-	if me == nil {
-		return nil, fmt.Errorf("only the reviewers task #%d was given to can approve or reject it", id)
-	}
-	if me.State != "pending" {
-		return nil, fmt.Errorf("you already %s task #%d in round %d", me.State, id, round.Round)
-	}
-	// The verdict goes on the reviewer's own open review task, claimed or not (#3787: any time
-	// the task is in review).
-	var rtStatus string
-	var rtAssignee sql.NullString
-	if err := tx.QueryRowxContext(ctx, "SELECT status, assigned_to FROM board_tasks WHERE id=? AND board_id=?", me.ReviewTaskID, project).Scan(&rtStatus, &rtAssignee); err != nil {
+	if err := checkOpenReview(id, status, w); err != nil {
 		return nil, err
 	}
-	if (rtStatus != "in_progress" && rtStatus != "pending") || rtAssignee.String != actor {
-		return nil, fmt.Errorf("your review task #%d for #%d is not open", me.ReviewTaskID, id)
+	round := &w.ReviewRounds[len(w.ReviewRounds)-1]
+	me, err := roundReviewer(id, round, actor, reviewed)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkReviewTaskOpen(ctx, tx, project, id, me.ReviewTaskID, actor); err != nil {
+		return nil, err
 	}
 	now := nowUTC()
 	outcome, verdict := "success", "approved"
@@ -326,28 +304,8 @@ func (s *Store) reviewVerdict(ctx context.Context, project string, id int64, act
 	orchAssignee := ""
 	_ = tx.GetContext(ctx, &orchAssignee, "SELECT COALESCE(assigned_to,'') FROM board_tasks WHERE id=?", id)
 	v.Orchestrator = orchAssignee
-	if !approve {
-		// The round ends; the other reviewers stay on the task (#3787): their review tasks stay
-		// open and reopen for the next round when the author resubmits.
-		round.Result = "rejected"
-		// Back to its author, pending, with a fresh candidate to come.
-		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='pending', assigned_to=?, claimed_at=NULL WHERE id=? AND board_id=?", ptr.NullIfEmpty(w.OriginalAuthor), id, project); err != nil {
-			return nil, err
-		}
-		w.CompletionReview = nil
-		v.Rejected = true
-	} else {
-		all := true
-		for _, r := range round.Reviewers {
-			all = all && r.State == "approved"
-		}
-		if all {
-			round.Result = "approved"
-			v.Complete = true
-			for _, r := range round.Reviewers {
-				v.Approvers = append(v.Approvers, r.Reviewer)
-			}
-		}
+	if err := concludeRound(ctx, tx, project, id, &w, round, approve, v); err != nil {
+		return nil, err
 	}
 	if err := saveWorkflow(ctx, tx, id, w); err != nil {
 		return nil, err
@@ -360,6 +318,82 @@ func (s *Store) reviewVerdict(ctx context.Context, project string, id int64, act
 	}
 	v.ReviewTask, err = s.GetTask(ctx, project, me.ReviewTaskID)
 	return v, err
+}
+
+// checkOpenReview: a verdict needs the task in review, with an open round. A task whose last round was rejected
+// and is back with its author says so: the verdict waits for the resubmission, and the review task reopens then.
+func checkOpenReview(id int64, status string, w TaskWorkflow) error {
+	n := len(w.ReviewRounds)
+	switch {
+	case n > 0 && w.ReviewRounds[n-1].Result == "rejected" && status != "review_pending" && status != "completed":
+		return fmt.Errorf("task #%d is back with %s (rejected in round %d): give your verdict when it is resubmitted, and your review task reopens", id, w.OriginalAuthor, w.ReviewRounds[n-1].Round)
+	case status != "review_pending" || n == 0 || w.ReviewRounds[n-1].Result != "":
+		return fmt.Errorf("task #%d has no open review", id)
+	}
+	return nil
+}
+
+// roundReviewer is actor's place among the round's reviewers. A verdict on an earlier round (reviewed, when not 0:
+// the task was resubmitted since) is refused (#3787), and so is one from someone the task was not given to, or a
+// second verdict in the round.
+func roundReviewer(id int64, round *ReviewRound, actor string, reviewed int) (*ReviewerState, error) {
+	if reviewed != 0 && reviewed != round.Round {
+		return nil, fmt.Errorf("you reviewed round %d of task #%d, but it was resubmitted and is at round %d: read it again (coral-board task detail %d) and give your verdict with --round %d", reviewed, id, round.Round, id, round.Round)
+	}
+	var me *ReviewerState
+	for i := range round.Reviewers {
+		if round.Reviewers[i].Reviewer == actor {
+			me = &round.Reviewers[i]
+		}
+	}
+	if me == nil {
+		return nil, fmt.Errorf("only the reviewers task #%d was given to can approve or reject it", id)
+	}
+	if me.State != "pending" {
+		return nil, fmt.Errorf("you already %s task #%d in round %d", me.State, id, round.Round)
+	}
+	return me, nil
+}
+
+// checkReviewTaskOpen: the verdict goes on the reviewer's own open review task, claimed or not (#3787: any time the
+// task is in review).
+func checkReviewTaskOpen(ctx context.Context, tx *sqlx.Tx, project string, id, reviewTaskID int64, actor string) error {
+	var rtStatus string
+	var rtAssignee sql.NullString
+	if err := tx.QueryRowxContext(ctx, "SELECT status, assigned_to FROM board_tasks WHERE id=? AND board_id=?", reviewTaskID, project).Scan(&rtStatus, &rtAssignee); err != nil {
+		return err
+	}
+	if (rtStatus != "in_progress" && rtStatus != "pending") || rtAssignee.String != actor {
+		return fmt.Errorf("your review task #%d for #%d is not open", reviewTaskID, id)
+	}
+	return nil
+}
+
+// concludeRound records what the verdict does to the round. A rejection ends it: the task goes back to its author,
+// pending, with a fresh candidate to come, and the other reviewers stay on it (#3787: their review tasks stay open
+// and reopen for the next round). An approval completes the round when every reviewer has approved: v.Complete,
+// with the approvers in the order they were named.
+func concludeRound(ctx context.Context, tx *sqlx.Tx, project string, id int64, w *TaskWorkflow, round *ReviewRound, approve bool, v *ReviewVerdict) error {
+	if !approve {
+		round.Result = "rejected"
+		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='pending', assigned_to=?, claimed_at=NULL WHERE id=? AND board_id=?", ptr.NullIfEmpty(w.OriginalAuthor), id, project); err != nil {
+			return err
+		}
+		w.CompletionReview = nil
+		v.Rejected = true
+		return nil
+	}
+	for _, r := range round.Reviewers {
+		if r.State != "approved" {
+			return nil
+		}
+	}
+	round.Result = "approved"
+	v.Complete = true
+	for _, r := range round.Reviewers {
+		v.Approvers = append(v.Approvers, r.Reviewer)
+	}
+	return nil
 }
 
 // finishReviewTask completes a review task (the reviewer's verdict), freeing their slot.
