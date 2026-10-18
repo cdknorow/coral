@@ -65,7 +65,7 @@ export function toParams(f, { me = '', limit = 50, cursor = '' } = {}) {
 }
 
 /** The words of the results line: where the current match is among all of them ("3 of 74 matches"), or that there are none. */
-export function resultsText(index, total) {
+export function resultsText(index, total, truncated = false) {
     if (!total) return 'No messages match';
-    return `${index + 1} of ${total} match${total === 1 ? '' : 'es'}`;
+    return `${index + 1} of ${total}${truncated ? '+' : ''} match${total === 1 && !truncated ? '' : 'es'}`; // '+': the search hit the server's bound, there may be more
 }

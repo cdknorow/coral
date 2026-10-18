@@ -25,7 +25,7 @@ const SPEC = {
 const PAGE = 50;
 let _bar = null, _host = null, _results = null, _status = null, _hooks = null;
 let _project = null, _filters = { ...EMPTY };
-let _list = { ids: [], total: 0, cursor: '', busy: false, error: '' }; // the matches, newest first
+let _list = { ids: [], total: 0, cursor: '', busy: false, error: '', truncated: false }; // the matches, newest first
 let _index = -1; // the match on screen
 let _seq = 0;
 
@@ -74,7 +74,7 @@ function status() {
     if (!isFiltered(_filters)) { _status.hidden = true; return; }
     _status.hidden = false;
     const busy = _list.busy && !_list.ids.length;
-    _results.textContent = _list.error || (busy ? 'Searching…' : resultsText(Math.max(_index, 0), _list.total));
+    _results.textContent = _list.error || (busy ? 'Searching…' : resultsText(Math.max(_index, 0), _list.total, _list.truncated));
     const none = !_list.ids.length;
     for (const b of _status.querySelectorAll('button[data-step]')) b.disabled = none || (b.dataset.step === 'older' ? _index >= _list.total - 1 : _index <= 0);
 }
@@ -100,7 +100,7 @@ async function run(next) {
     try {
         const d = await query({});
         if (seq !== _seq) return;
-        _list = { ids: (d.messages || []).map(m => m.id), total: d.total ?? (d.messages || []).length, cursor: d.next_cursor || '', busy: false, error: '' };
+        _list = { ids: (d.messages || []).map(m => m.id), total: d.total ?? (d.messages || []).length, cursor: d.next_cursor || '', busy: false, error: '', truncated: !!d.truncated };
         _index = _list.ids.length ? 0 : -1;
     } catch (e) {
         if (seq !== _seq) return;

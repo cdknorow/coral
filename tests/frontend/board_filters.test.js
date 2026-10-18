@@ -44,5 +44,7 @@ const { pathToFileURL } = require('node:url');
     assert.equal(m.resultsText(2, 3), '3 of 3 matches');
     assert.equal(m.resultsText(0, 1), '1 of 1 match');
     assert.equal(m.resultsText(0, 0), 'No messages match');
+    assert.equal(m.resultsText(0, 500, true), '1 of 500+ matches', 'a search the server cut says N+');
+    assert.equal(m.resultsText(2, 1, true), '3 of 1+ matches');
     console.log('board_filters: ok');
 })().catch(e => { console.error(e); process.exit(1); });
