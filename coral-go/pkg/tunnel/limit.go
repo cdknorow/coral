@@ -128,7 +128,7 @@ func (c requestClass) String() string {
 
 var (
 	longRoute   = regexp.MustCompile(`^/api/board/[^/]+/(waits/poll|peek)$`)
-	searchRoute = regexp.MustCompile(`^(/api/sessions/history/search|/api/sessions/live/[^/]+/(history/search|search-files)|/api/board/[^/]+/messages/all|/api/token-usage(/.*)?)$`)
+	searchRoute = regexp.MustCompile(`^(/api/sessions/history/search|/api/sessions/live/[^/]+/(history/search|search-files)|/api/board/[^/]+/messages/(all|search)|/api/token-usage(/.*)?)$`)
 )
 
 // classify puts a stream in its pool: every WebSocket and the board's long polls are long-lived,

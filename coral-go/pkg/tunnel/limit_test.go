@@ -203,6 +203,7 @@ func TestClassify(t *testing.T) {
 		"/api/sessions/live/claude-x/history/search": classSearch,
 		"/api/sessions/live/claude-x/search-files":   classSearch,
 		"/api/board/p/messages/all":                  classSearch,
+		"/api/board/p/messages/search":               classSearch, // scans up to 200,000 messages through the redactor (#4745)
 		"/api/token-usage":                           classSearch,
 		"/api/token-usage/by-team":                   classSearch,
 		"/api/board/p/messages":                      classGeneral,
