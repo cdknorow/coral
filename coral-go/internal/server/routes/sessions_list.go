@@ -79,72 +79,137 @@ func (h *SessionsHandler) liveSessionRows(r *http.Request, trace *phaseTrace, fu
 		slog.Warn("failed to list live session metadata", "error", err)
 		return nil, errListMetadata
 	}
-	liveSleeping := make(map[string]bool)
-	liveArchived := make(map[string]bool)
 	autoAcceptStates, err := h.ss.GetAutoAcceptStates(ctx)
 	if err != nil {
 		slog.Warn("failed to read auto-accept states", "error", err)
 	}
-	for _, session := range allLive {
-		liveSleeping[session.SessionID] = session.IsSleeping == 1
-		liveArchived[session.SessionID] = session.IsArchived == 1
-	}
+	lv := newLiveIndex(allLive)
 	// A sleeping row can briefly outlive its terminal during shutdown. Use
 	// the stored placeholder below instead of scanning that terminal's files.
 	awakeAgents := agents[:0]
 	for _, agent := range agents {
-		if !liveSleeping[agent.SessionID] {
+		if !lv.sleeping[agent.SessionID] {
 			awakeAgents = append(awakeAgents, agent)
 		}
 	}
 	agents = awakeAgents
 
-	// Batch fetch enrichment data
+	d, err := h.readListData(ctx, trace, agents, lv)
+	if err != nil {
+		return nil, err
+	}
+	trace.begin("db_live_session_extras")
+	trace.endPool("db_live_session_extras", h.db)
+
+	var sessions []map[string]any
+	liveSIDs := make(map[string]bool) // track session IDs already in results
+	// Keep the response path bounded for large teams: cold log enrichment is
+	// warmed asynchronously and appears on the next sidebar refresh.
+	largeList := !full && len(agents) > 8
+	trace.begin("state_transcript_enrichment")
+	for _, agent := range agents {
+		entry := h.agentRow(trace, agent, lv, d, autoAcceptStates, largeList)
+		if agent.SessionID != "" {
+			liveSIDs[agent.SessionID] = true
+		}
+		sessions = append(sessions, entry)
+	}
+	trace.end("state_transcript_enrichment", "rows", len(sessions), "large_list", largeList)
+
+	sessions = append(sessions, h.sleepingRows(allLive, liveSIDs)...)
+	h.addBoardLabels(r.Context(), sessions)
+	return archivedLast(sessions), nil
+}
+
+// liveExtra is what a live session's row adds from its stored metadata.
+type liveExtra struct {
+	Prompt        *string
+	Model         *string
+	Observed      *string
+	Capabilities  *string
+	ContextWindow int
+}
+
+// liveIndex is the stored live sessions by session id: asleep, archived, launched when, the board (fallback for
+// agents not yet subscribed: board name and display name) and the extra fields.
+type liveIndex struct {
+	sleeping, archived map[string]bool
+	createdAt          map[string]string
+	boardNames         map[string][2]string
+	extras             map[string]liveExtra
+}
+
+// newLiveIndex indexes the authoritative snapshot of the live sessions (a second, ignored query failure used to
+// erase team names and other identity metadata).
+func newLiveIndex(allLive []store.LiveSession) liveIndex {
+	lv := liveIndex{sleeping: map[string]bool{}, archived: map[string]bool{}, createdAt: map[string]string{},
+		boardNames: map[string][2]string{}, extras: map[string]liveExtra{}}
+	for _, session := range allLive {
+		lv.sleeping[session.SessionID] = session.IsSleeping == 1
+		lv.archived[session.SessionID] = session.IsArchived == 1
+		// Launch times, used to bound how long after launch a stalled start is
+		// reported. See agentNeverStarted.
+		lv.createdAt[session.SessionID] = session.CreatedAt
+		if session.BoardName != nil {
+			lv.boardNames[session.SessionID] = [2]string{*session.BoardName, ptr.Value(session.DisplayName)}
+		}
+		lv.extras[session.SessionID] = liveExtra{
+			Prompt: session.Prompt, Model: session.Model, Observed: session.ObservedModel, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
+		}
+	}
+	return lv
+}
+
+// listData is the batch-read enrichment for the awake agents' rows (never nil maps).
+type listData struct {
+	displayNames, icons, nameColors, latestGoals map[string]string
+	gitState                                     map[string]*store.GitSnapshot
+	fileCounts                                   map[string]int
+	latestEvents                                 map[string][2]string
+	stateEvents                                  map[string][]store.AgentEvent
+	tokenUsage                                   map[string]*store.TokenUsage
+	latestTurnCtx                                map[string]int
+	boardSubs                                    map[string]*board.Subscriber
+	unread                                       map[string]int
+}
+
+// readListData runs the enrichment reads for agents. They don't depend on each other: they run concurrently, a few
+// at a time, on the read pools (#3461). Run one after another they summed every connection wait, and under write
+// load the live list's p95 reached ~1 s. Identities or subscriptions that can't be read are a listUnavailable; the
+// rest are left empty.
+func (h *SessionsHandler) readListData(ctx context.Context, trace *phaseTrace, agents []AgentInfo, lv liveIndex) (*listData, error) {
 	sessionIDs := make([]string, 0, len(agents))
 	sessionNames := make([]string, 0, len(agents))
 	sessionAgents := make(map[string]string, len(agents))
 	for _, a := range agents {
-		if a.SessionID != "" && !liveSleeping[a.SessionID] {
+		if a.SessionID != "" && !lv.sleeping[a.SessionID] {
 			sessionIDs = append(sessionIDs, a.SessionID)
 			sessionNames = append(sessionNames, a.TmuxSession)
 			sessionAgents[a.SessionID] = a.AgentName
 		}
 	}
-	// The enrichment reads don't depend on each other: they run concurrently, a few at
-	// a time, on the read pools (#3461). Run one after another they summed every
-	// connection wait, and under write load the live list's p95 reached ~1 s.
 	trace.begin("db_reads")
-	var (
-		displayNames, icons, nameColors, latestGoals map[string]string
-		displayErr, subsErr, goalsErr, unreadErr     error
-		gitState                                     map[string]*store.GitSnapshot
-		fileCounts                                   map[string]int
-		latestEvents                                 map[string][2]string
-		stateEvents                                  map[string][]store.AgentEvent
-		tokenUsageMap                                map[string]*store.TokenUsage
-		latestTurnCtx                                map[string]int
-		boardSubs                                    map[string]*board.Subscriber
-		allUnread                                    map[string]int
-	)
+	var d listData
+	var displayErr, subsErr, goalsErr, unreadErr error
 	reads := []func(){
-		func() { displayNames, displayErr = h.ss.GetDisplayNames(ctx, sessionIDs) },
-		func() { icons, _ = h.ss.GetIcons(ctx, sessionIDs) },
-		func() { nameColors, _ = h.ss.GetNameColors(ctx, sessionIDs) },
-		func() { gitState, _ = h.gs.GetLiveGitState(ctx, sessionAgents) },
-		func() { fileCounts, _ = h.ts.GetEditedFileCounts(ctx, sessionIDs) },
-		func() { latestEvents, _ = h.ts.GetLatestEventTypes(ctx, sessionIDs) },
-		func() { stateEvents, _ = h.ts.GetSessionStateEvents(ctx, sessionIDs) },
-		func() { latestGoals, goalsErr = h.ts.GetLatestGoals(ctx, sessionIDs) },
+		func() { d.displayNames, displayErr = h.ss.GetDisplayNames(ctx, sessionIDs) },
+		func() { d.icons, _ = h.ss.GetIcons(ctx, sessionIDs) },
+		func() { d.nameColors, _ = h.ss.GetNameColors(ctx, sessionIDs) },
+		func() { d.gitState, _ = h.gs.GetLiveGitState(ctx, sessionAgents) },
+		func() { d.fileCounts, _ = h.ts.GetEditedFileCounts(ctx, sessionIDs) },
+		func() { d.latestEvents, _ = h.ts.GetLatestEventTypes(ctx, sessionIDs) },
+		func() { d.stateEvents, _ = h.ts.GetSessionStateEvents(ctx, sessionIDs) },
+		func() { d.latestGoals, goalsErr = h.ts.GetLatestGoals(ctx, sessionIDs) },
 	}
 	if h.tokenStore != nil && len(sessionIDs) > 0 {
 		reads = append(reads,
-			func() { tokenUsageMap, _ = h.tokenStore.GetLatestUsageBySessionIDs(ctx, sessionIDs) },
-			func() { latestTurnCtx, _ = h.tokenStore.GetLatestTurnContextBySessionIDs(ctx, sessionIDs) })
+			func() { d.tokenUsage, _ = h.tokenStore.GetLatestUsageBySessionIDs(ctx, sessionIDs) },
+			func() { d.latestTurnCtx, _ = h.tokenStore.GetLatestTurnContextBySessionIDs(ctx, sessionIDs) })
 	}
 	if h.bs != nil {
 		reads = append(reads,
-			func() { boardSubs, subsErr = h.bs.GetAllSubscriptions(ctx) },
-			func() { allUnread, unreadErr = h.bs.GetUnreadCountsForSessions(ctx, sessionNames) })
+			func() { d.boardSubs, subsErr = h.bs.GetAllSubscriptions(ctx) },
+			func() { d.unread, unreadErr = h.bs.GetUnreadCountsForSessions(ctx, sessionNames) })
 	}
 	runBounded(listReadConcurrency, reads)
 	trace.endPool("db_reads", h.db, "reads", len(reads))
@@ -162,234 +227,188 @@ func (h *SessionsHandler) liveSessionRows(r *http.Request, trace *phaseTrace, fu
 	if unreadErr != nil {
 		slog.Warn("failed to get board unread counts", "error", unreadErr)
 	}
-	if icons == nil {
-		icons = map[string]string{}
-	}
-	if gitState == nil {
-		gitState = map[string]*store.GitSnapshot{}
-	}
-	if fileCounts == nil {
-		fileCounts = map[string]int{}
-	}
-	if latestEvents == nil {
-		latestEvents = map[string][2]string{}
-	}
-	if stateEvents == nil {
-		stateEvents = map[string][]store.AgentEvent{}
-	}
-	// Launch times, used to bound how long after launch a stalled start is
-	// reported. See agentNeverStarted.
-	createdAtMap := map[string]string{}
-	for _, ls := range allLive {
-		createdAtMap[ls.SessionID] = ls.CreatedAt
-	}
-	if tokenUsageMap == nil {
-		tokenUsageMap = map[string]*store.TokenUsage{}
-	}
-	if latestTurnCtx == nil {
-		latestTurnCtx = map[string]int{}
-	}
-	if latestGoals == nil {
-		latestGoals = map[string]string{}
-	}
-	if boardSubs == nil {
-		boardSubs = map[string]*board.Subscriber{}
-	}
-	if allUnread == nil {
-		allUnread = map[string]int{}
-	}
+	d.icons = orEmpty(d.icons)
+	d.gitState = orEmpty(d.gitState)
+	d.fileCounts = orEmpty(d.fileCounts)
+	d.latestEvents = orEmpty(d.latestEvents)
+	d.stateEvents = orEmpty(d.stateEvents)
+	d.tokenUsage = orEmpty(d.tokenUsage)
+	d.latestTurnCtx = orEmpty(d.latestTurnCtx)
+	d.latestGoals = orEmpty(d.latestGoals)
+	d.boardSubs = orEmpty(d.boardSubs)
+	d.unread = orEmpty(d.unread)
+	return &d, nil
+}
 
-	// Fallback: board_name from live_sessions DB for agents not yet subscribed
-	liveBoardNames := make(map[string][2]string) // session_id -> [board_name, display_name]
-	type liveExtra struct {
-		Prompt        *string
-		Model         *string
-		Observed      *string
-		Capabilities  *string
-		ContextWindow int
+// orEmpty is m, or an empty map for nil.
+func orEmpty[K comparable, V any](m map[K]V) map[K]V {
+	if m == nil {
+		return map[K]V{}
 	}
-	liveExtras := make(map[string]liveExtra) // session_id -> extra fields
-	trace.begin("db_live_session_extras")
-	// Use the authoritative snapshot already read above. A second, ignored
-	// query failure used to erase team names and other identity metadata.
-	for _, session := range allLive {
-		if session.BoardName != nil {
-			liveBoardNames[session.SessionID] = [2]string{*session.BoardName, ptr.Value(session.DisplayName)}
-		}
-		liveExtras[session.SessionID] = liveExtra{
-			Prompt: session.Prompt, Model: session.Model, Observed: session.ObservedModel, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
-		}
-	}
-	trace.endPool("db_live_session_extras", h.db)
+	return m
+}
 
-	var sessions []map[string]any
-	liveSIDs := make(map[string]bool) // track session IDs already in results
-	// Keep the response path bounded for large teams: cold log enrichment is
-	// warmed asynchronously and appears on the next sidebar refresh.
-	largeList := !full && len(agents) > 8
-	trace.begin("state_transcript_enrichment")
-	for _, agent := range agents {
-		agentStarted := time.Now()
-		var logInfo map[string]any
-		sleeping := liveSleeping[agent.SessionID]
-		logReady := true
-		if sleeping {
+// agentRow is one awake agent's row: its log status (left to the background for a cold row of a large list), its
+// state from events and transcript, git, board, goal, identity, model, tokens and context.
+func (h *SessionsHandler) agentRow(trace *phaseTrace, agent AgentInfo, lv liveIndex, d *listData, autoAcceptStates map[string]store.AutoAcceptState, largeList bool) map[string]any {
+	agentStarted := time.Now()
+	var logInfo map[string]any
+	sleeping := lv.sleeping[agent.SessionID]
+	logReady := true
+	if sleeping {
+		logInfo = getLogStatus("")
+	} else if largeList {
+		var ready bool
+		logInfo, ready = h.readyLogStatus(agent.LogPath)
+		if !ready {
+			logReady = false
+			h.warmLogStatus(agent.LogPath)
 			logInfo = getLogStatus("")
-		} else if largeList {
-			var ready bool
-			logInfo, ready = h.readyLogStatus(agent.LogPath)
-			if !ready {
-				logReady = false
-				h.warmLogStatus(agent.LogPath)
-				logInfo = getLogStatus("")
-			}
-		} else {
-			logInfo = h.cachedLogStatus(agent.LogPath)
 		}
-		trace.agentDetail("log_status", agent.SessionID, time.Since(agentStarted))
-		if largeList && !sleeping {
-			h.warmTranscript(agent)
-		}
-		skipExpensive := sleeping || largeList && (!logReady || !h.transcriptReady(agent.SessionID))
-
-		staleness := logInfo["staleness_seconds"]
-
-		sid := agent.SessionID
-
-		git := lookupGitState(gitState, sid, agent.AgentName)
-
-		// Resolve changed file count (from Write/Edit tool events)
-		fc := 0
-		if sid != "" {
-			if c, ok := fileCounts[sid]; ok {
-				fc = c
-			}
-		}
-
-		// Resolve latest event type for waiting/working detection
-		var latestEv string
-		if sid != "" {
-			if ev, ok := latestEvents[sid]; ok {
-				latestEv = ev[0]
-			}
-		}
-		staleF, _ := staleness.(float64)
-		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
-		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: liveSleeping[sid], Archived: liveArchived[sid]}
-		for _, ev := range stateEvents[sid] {
-			stateInput.Events = append(stateInput.Events, ev.StateEvent())
-		}
-		transcriptStarted := time.Now()
-		if !skipExpensive {
-			h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, agent.TmuxSession, sid, agent.WorkingDir)
-		}
-		trace.agentDetail("transcript_state", sid, time.Since(transcriptStarted))
-		state := DeriveSessionState(stateInput)
-
-		// The goal line is the newest goal event (the goal generator or an
-		// operator edit).
-		summary := latestGoals[sid]
-
-		// Board unread
-		tmuxName := agent.TmuxSession
-		boardSub := boardSubs[tmuxName]
-		boardUnread := 0
-		if boardSub != nil {
-			boardUnread = allUnread[tmuxName]
-		}
-
-		branchVal, repoNameVal, worktreeVal := gitListFields(git)
-
-		statusVal, summaryVal, displayVal, iconVal := listTextFields(logInfo, summary, displayNames, icons, sid)
-
-		firstPrompt := h.jsonl.CachedFirstUserPrompt(sid)
-		if !skipExpensive {
-			promptStarted := time.Now()
-			firstPrompt = h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType)
-			trace.agentDetail("first_prompt", sid, time.Since(promptStarted))
-		}
-		entry := map[string]any{
-			"name":                  agent.AgentName,
-			"agent_type":            agent.AgentType,
-			"session_id":            sid,
-			"tmux_session":          agent.TmuxSession,
-			"status":                statusVal,
-			"summary":               summaryVal,
-			"staleness_seconds":     listStaleness(staleness),
-			"working_directory":     agent.WorkingDir,
-			"display_name":          displayVal,
-			"icon":                  iconVal,
-			"name_color":            ptr.NullIfEmpty(nameColors[sid]),
-			"branch":                branchVal,
-			"repo_name":             repoNameVal,
-			"git_state":             worktreeVal,
-			"waiting_for_input":     state.NeedsInput,
-			"needs_login":           state.NeedsLogin,
-			"awaiting_user":         state.AwaitingUser,
-			"not_started":           state.NotStarted,
-			"done":                  state.Done,
-			"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
-			"waiting_summary":       nilIf(!state.NeedsInput, state.WaitingSummary),
-			"waiting_kind":          nilIf(!state.NeedsInput || state.WaitingKind == "", state.WaitingKind),
-			"working":               state.Working,
-			"stuck":                 state.Stuck,
-			"changed_file_count":    fc,
-			"commands":              map[string]string{"compress": "/compact", "clear": "/clear"},
-			"board_project":         boardProject(boardSubs, liveBoardNames, tmuxName, sid),
-			"board_job_title":       boardJobTitle(boardSubs, liveBoardNames, tmuxName, sid),
-			"board_unread":          boardUnread,
-			"held_inputs":           ptymanager.HeldCount(tmuxName), // automated sends the gate holds (#3578)
-			"board_is_orchestrator": boardSubscriberFlag(boardSub),
-			"log_path":              agent.LogPath,
-			"sleeping":              liveSleeping[sid],
-			"archived":              liveArchived[sid],
-			"first_prompt":          firstPrompt,
-			"enrichment_pending":    skipExpensive && !sleeping,
-		}
-		// Always present (false/""/null too): the dashboard merges entries, so
-		// an omitted false would leave the AUTO chip on after it was turned off.
-		for k, v := range autoAcceptFields(agent.AgentType, autoAcceptStates[sid]) {
-			entry[k] = v
-		}
-		// Include prompt, model, and capabilities from live_sessions DB
-		var observedModel *string
-		if extra, ok := liveExtras[sid]; ok {
-			observedModel = extra.Observed
-			if extra.Prompt != nil {
-				entry["prompt"] = *extra.Prompt
-			}
-			if extra.Model != nil && *extra.Model != "" {
-				entry["model"] = *extra.Model
-			}
-			addCapabilities(entry, extra.Capabilities)
-		}
-		h.addTranscriptModel(entry, sid, observedModel)
-
-		// Include token usage data if available
-		if usage, ok := tokenUsageMap[sid]; ok {
-			entry["token_input"] = usage.InputTokens
-			entry["token_output"] = usage.OutputTokens
-			entry["token_cache_read"] = usage.CacheReadTokens
-			entry["token_cache_write"] = usage.CacheWriteTokens
-			entry["token_cost_usd"] = usage.CostUSD
-		}
-
-		// Context window usage: latest turn's input_tokens / context_window.
-		// Explicit nulls clear stale values in clients that spread-merge updates.
-		var contextModel *string
-		if extra, ok := liveExtras[sid]; ok {
-			contextModel = extra.Model
-		}
-		addContextUsage(entry, contextModel, latestTurnCtx[sid])
-
-		if sid != "" {
-			liveSIDs[sid] = true
-		}
-		sessions = append(sessions, entry)
+	} else {
+		logInfo = h.cachedLogStatus(agent.LogPath)
 	}
-	trace.end("state_transcript_enrichment", "rows", len(sessions), "large_list", largeList)
+	trace.agentDetail("log_status", agent.SessionID, time.Since(agentStarted))
+	if largeList && !sleeping {
+		h.warmTranscript(agent)
+	}
+	skipExpensive := sleeping || largeList && (!logReady || !h.transcriptReady(agent.SessionID))
 
-	// Add placeholder entries for sleeping sessions without active tmux
+	staleness := logInfo["staleness_seconds"]
+
+	sid := agent.SessionID
+
+	git := lookupGitState(d.gitState, sid, agent.AgentName)
+
+	// Resolve changed file count (from Write/Edit tool events)
+	fc := 0
+	if sid != "" {
+		if c, ok := d.fileCounts[sid]; ok {
+			fc = c
+		}
+	}
+
+	// Resolve latest event type for waiting/working detection
+	var latestEv string
+	if sid != "" {
+		if ev, ok := d.latestEvents[sid]; ok {
+			latestEv = ev[0]
+		}
+	}
+	staleF, _ := staleness.(float64)
+	notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(lv.createdAt[sid]))
+	stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: lv.sleeping[sid], Archived: lv.archived[sid]}
+	for _, ev := range d.stateEvents[sid] {
+		stateInput.Events = append(stateInput.Events, ev.StateEvent())
+	}
+	transcriptStarted := time.Now()
+	if !skipExpensive {
+		h.applyTranscriptState(&stateInput, d.stateEvents[sid], agent.AgentType, agent.TmuxSession, sid, agent.WorkingDir)
+	}
+	trace.agentDetail("transcript_state", sid, time.Since(transcriptStarted))
+	state := DeriveSessionState(stateInput)
+
+	// The goal line is the newest goal event (the goal generator or an
+	// operator edit).
+	summary := d.latestGoals[sid]
+
+	// Board unread
+	tmuxName := agent.TmuxSession
+	boardSub := d.boardSubs[tmuxName]
+	boardUnread := 0
+	if boardSub != nil {
+		boardUnread = d.unread[tmuxName]
+	}
+
+	branchVal, repoNameVal, worktreeVal := gitListFields(git)
+
+	statusVal, summaryVal, displayVal, iconVal := listTextFields(logInfo, summary, d.displayNames, d.icons, sid)
+
+	firstPrompt := h.jsonl.CachedFirstUserPrompt(sid)
+	if !skipExpensive {
+		promptStarted := time.Now()
+		firstPrompt = h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType)
+		trace.agentDetail("first_prompt", sid, time.Since(promptStarted))
+	}
+	entry := map[string]any{
+		"name":                  agent.AgentName,
+		"agent_type":            agent.AgentType,
+		"session_id":            sid,
+		"tmux_session":          agent.TmuxSession,
+		"status":                statusVal,
+		"summary":               summaryVal,
+		"staleness_seconds":     listStaleness(staleness),
+		"working_directory":     agent.WorkingDir,
+		"display_name":          displayVal,
+		"icon":                  iconVal,
+		"name_color":            ptr.NullIfEmpty(d.nameColors[sid]),
+		"branch":                branchVal,
+		"repo_name":             repoNameVal,
+		"git_state":             worktreeVal,
+		"waiting_for_input":     state.NeedsInput,
+		"needs_login":           state.NeedsLogin,
+		"awaiting_user":         state.AwaitingUser,
+		"not_started":           state.NotStarted,
+		"done":                  state.Done,
+		"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
+		"waiting_summary":       nilIf(!state.NeedsInput, state.WaitingSummary),
+		"waiting_kind":          nilIf(!state.NeedsInput || state.WaitingKind == "", state.WaitingKind),
+		"working":               state.Working,
+		"stuck":                 state.Stuck,
+		"changed_file_count":    fc,
+		"commands":              map[string]string{"compress": "/compact", "clear": "/clear"},
+		"board_project":         boardProject(d.boardSubs, lv.boardNames, tmuxName, sid),
+		"board_job_title":       boardJobTitle(d.boardSubs, lv.boardNames, tmuxName, sid),
+		"board_unread":          boardUnread,
+		"held_inputs":           ptymanager.HeldCount(tmuxName), // automated sends the gate holds (#3578)
+		"board_is_orchestrator": boardSubscriberFlag(boardSub),
+		"log_path":              agent.LogPath,
+		"sleeping":              lv.sleeping[sid],
+		"archived":              lv.archived[sid],
+		"first_prompt":          firstPrompt,
+		"enrichment_pending":    skipExpensive && !sleeping,
+	}
+	// Always present (false/""/null too): the dashboard merges entries, so
+	// an omitted false would leave the AUTO chip on after it was turned off.
+	for k, v := range autoAcceptFields(agent.AgentType, autoAcceptStates[sid]) {
+		entry[k] = v
+	}
+	// Include prompt, model, and capabilities from live_sessions DB
+	var observedModel *string
+	if extra, ok := lv.extras[sid]; ok {
+		observedModel = extra.Observed
+		if extra.Prompt != nil {
+			entry["prompt"] = *extra.Prompt
+		}
+		if extra.Model != nil && *extra.Model != "" {
+			entry["model"] = *extra.Model
+		}
+		addCapabilities(entry, extra.Capabilities)
+	}
+	h.addTranscriptModel(entry, sid, observedModel)
+
+	// Include token usage data if available
+	if usage, ok := d.tokenUsage[sid]; ok {
+		entry["token_input"] = usage.InputTokens
+		entry["token_output"] = usage.OutputTokens
+		entry["token_cache_read"] = usage.CacheReadTokens
+		entry["token_cache_write"] = usage.CacheWriteTokens
+		entry["token_cost_usd"] = usage.CostUSD
+	}
+
+	// Context window usage: latest turn's input_tokens / context_window.
+	// Explicit nulls clear stale values in clients that spread-merge updates.
+	var contextModel *string
+	if extra, ok := lv.extras[sid]; ok {
+		contextModel = extra.Model
+	}
+	addContextUsage(entry, contextModel, d.latestTurnCtx[sid])
+	return entry
+}
+
+// sleepingRows are placeholder rows for sleeping sessions without an active terminal (not already in liveSIDs).
+func (h *SessionsHandler) sleepingRows(allLive []store.LiveSession, liveSIDs map[string]bool) []map[string]any {
+	var sessions []map[string]any
 	for _, ls := range allLive {
 		if ls.IsSleeping != 1 || liveSIDs[ls.SessionID] {
 			continue
@@ -401,7 +420,7 @@ func (h *SessionsHandler) liveSessionRows(r *http.Request, trace *phaseTrace, fu
 		if ls.DisplayName != nil {
 			dn = *ls.DisplayName
 		}
-		sessions = append(sessions, map[string]any{
+		entry := map[string]any{
 			"name":                  ls.AgentName,
 			"agent_type":            ls.AgentType,
 			"session_id":            ls.SessionID,
@@ -434,9 +453,8 @@ func (h *SessionsHandler) liveSessionRows(r *http.Request, trace *phaseTrace, fu
 			"archived":              ls.IsArchived == 1,
 			"sleep_reason":          sleepReason(ls),
 			"first_prompt":          h.sleepingFirstPrompt(ls),
-		})
+		}
 		// Include prompt, model, and capabilities for sleeping sessions too
-		entry := sessions[len(sessions)-1]
 		addContextUsage(entry, nil, 0)
 		if ls.Prompt != nil {
 			entry["prompt"] = *ls.Prompt
@@ -451,10 +469,9 @@ func (h *SessionsHandler) liveSessionRows(r *http.Request, trace *phaseTrace, fu
 		for k, v := range autoAcceptFields(ls.AgentType, store.AutoAcceptState{}) {
 			entry[k] = v // asleep: always off
 		}
+		sessions = append(sessions, entry)
 	}
-
-	h.addBoardLabels(r.Context(), sessions)
-	return archivedLast(sessions), nil
+	return sessions
 }
 
 // ResolveSession returns the authoritative routing and identity metadata for a
