@@ -5,6 +5,7 @@
 //
 // Drives Chrome over CDP through agent_view_harness.js; run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
@@ -73,6 +74,13 @@ const REMOTE = `(() => {
             return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
         };
     })()`;
+    const shot = async (name) => {
+        if (!process.env.CORAL_SCREENSHOT_DIR) return;
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
+        await sleep(350); // sleep-ok: the sidebar's tab strip fades; a picture mid-fade shows two tabs lit
+        fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR, { recursive: true });
+        fs.writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'));
+    };
     const items = () => ev(`[...document.querySelectorAll('#saved-list .saved-item')].map(li => ({ id: li.dataset.id, src: li.querySelector('.src').textContent, server: (li.querySelector('.server') || {}).textContent || null, kind: li.querySelector('.kind').textContent, hasOpen: !!li.querySelector('.saved-open') }))`);
     const openSaved = async () => {
         await ev(`document.getElementById('saved-btn').click(); true`);
@@ -122,6 +130,7 @@ const REMOTE = `(() => {
         assert.equal(merged[0].src, 'box-board', 'newest saved first: the board item saved last');
         assert.equal(await ev(`document.querySelector('#saved-btn .saved-count').textContent`), '3', 'the top bar counts both servers');
         assert.equal(await ev(`document.getElementById('saved-count-open').textContent`), '(3)');
+        await shot('saved-servers-merged');
 
         console.log('4. A server that does not answer is one line, not an error; this server\'s items stay');
         await ev(`window.__box.up = false; true`);
@@ -131,6 +140,7 @@ const REMOTE = `(() => {
         assert.ok(note.includes('Box B') && /did not answer/.test(note), note);
         assert.equal(await ev(`document.querySelectorAll('#saved-list .saved-item').length`), 1, 'only this server\'s item');
         assert.equal(await ev(`document.querySelector('.toast.error, .toast-error') ? 1 : 0`), 0, 'no error toast');
+        await shot('saved-servers-down');
         await ev(`window.__box.up = true; true`);
         await refresh();
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 3 && !document.querySelector('#saved-list .saved-note')`, 'back to three', 6000);
@@ -167,6 +177,29 @@ const REMOTE = `(() => {
         await ev(`document.querySelector('#saved-list [data-id="box-b:102"] .saved-open').click(); true`);
         await waitFor(`window.__opened !== null`, 'the board opened', 6000);
         assert.deepEqual(await ev(`window.__opened`), ['@box-b/box-board', 9]);
+
+        console.log('6b. A registered server is another machine: a bookmark with a hostile or malformed id is never listed and never becomes part of a request');
+        await ev(`window.__fetched = []; (() => { const prev = window.fetch; window.fetch = (u, o) => { window.__fetched.push(String(u)); return prev(u, o); }; })();
+            for (const id of ['../../../../servers/x', '%2e%2e/%2e%2e/%2e%2e/%2e%2e/servers/x', -5, 1.5, 0, '12', null]) window.__box.items.push({ id, kind: 'board', ref: 'evil-board', key: '5', agent_type: '', title: 'evil', snippet: 'hostile ' + String(id), said_at: '', saved_at: new Date().toISOString(), done_at: null });
+            window.__box.items.push({ id: 110, kind: 'board', ref: 'fine-board', key: '5', agent_type: '', title: 'fine', snippet: 'a usable item', said_at: '', saved_at: new Date().toISOString(), done_at: null }); true`);
+        await refresh();
+        await waitFor(`!!document.querySelector('#saved-list [data-id="box-b:110"]')`, 'the usable item', 6000);
+        const listed = await ev(`[...document.querySelectorAll('#saved-list .saved-item')].map(li => li.querySelector('.snip').textContent)`);
+        assert.ok(!listed.some(t => t.startsWith('hostile')), 'no hostile item is listed: ' + JSON.stringify(listed));
+        await ev(`document.querySelector('#saved-list [data-id="box-b:110"] .saved-done').click(); true`);
+        await waitFor(`window.__box.items.find(i => i.id === 110).done_at !== null`, 'Done on the usable item', 6000);
+        const sent = await ev(`window.__fetched.filter(u => /\\.\\.|%2e|%252e|\\/servers\\//i.test(u))`);
+        assert.deepEqual(sent, [], 'no request carried a hostile id');
+        await ev(`window.__box.items = window.__box.items.filter(i => i.id === 102 || i.id === 103 || i.id === 110); true`);
+        // In a narrow panel the server name wraps under the title instead of being cut (and its full name is the tooltip).
+        await ev(`document.getElementById('agentic-state').style.width = '300px'; true`);
+        await refresh();
+        await waitFor(`!!document.querySelector('#saved-list .server')`, 'a server label');
+        const narrow = await ev(`(() => { const li = document.querySelector('#saved-list [data-id^="box-b:"]'); const s = li.querySelector('.server'), t = li.querySelector('.src'); const r = li.getBoundingClientRect();
+            return { title: s.title, text: s.textContent, under: s.getBoundingClientRect().top >= t.getBoundingClientRect().bottom - 1, inside: s.getBoundingClientRect().right <= r.right + 1 && t.getBoundingClientRect().right <= r.right + 1, clipped: s.scrollWidth > s.clientWidth + 1 }; })()`);
+        assert.deepEqual({ title: narrow.title === narrow.text && !!narrow.text, under: narrow.under, inside: narrow.inside, clipped: narrow.clipped }, { title: true, under: true, inside: true, clipped: false }, JSON.stringify(narrow));
+        await shot('saved-servers-narrow');
+        await ev(`document.getElementById('agentic-state').style.width = ''; true`);
 
         console.log('7. A deleted message on a remote board is Gone; an ended agent on a remote server is kept and says it cannot be opened from here');
         await ev(`window.__box.boardGone.add('9'); window.__box.items.push({ id: 103, kind: 'agent', ref: 'ended-b', key: '${hex(3)}', agent_type: 'claude', title: 'old agent', snippet: 'from an agent that ended', said_at: '', saved_at: new Date().toISOString(), done_at: null }); true`);

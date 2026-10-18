@@ -94,14 +94,14 @@ async function saveContent(content) {
 
     try {
         if (_noteId != null) {
-            await serverFetch(server, `/api/sessions/live/${agentName}/notes/${_noteId}`, {
+            await serverFetch(server, `/api/sessions/live/${encodeURIComponent(agentName)}/notes/${_noteId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content }),
             });
         } else {
             const sid = state.currentSession.session_id;
-            const resp = await serverFetch(server, `/api/sessions/live/${agentName}/notes`, {
+            const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(agentName)}/notes`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content, session_id: sid }),

@@ -4139,7 +4139,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 
 /* Saved for later (#4510): the right sidebar's Saved tab, its list, the top bar's button with its count, and the jump. Theme tokens only. */
 .saved-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.saved-pane { min-width: 0; }
+.saved-pane { min-width: 0; container-type: inline-size; }
 .saved-tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--border); flex: none; }
 .saved-tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 8px 10px; cursor: pointer; min-height: 36px; }
 .saved-tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--accent); }
@@ -4154,6 +4154,12 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .saved-item .kind { font-size: 0.6875rem; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 9px; padding: 0 7px; line-height: 17px; flex: none; }
 .saved-item .kind.gone { color: var(--warning); border-color: var(--warning); }
 .saved-item .server { font-size: 0.6875rem; color: var(--text-muted); line-height: 17px; flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; }
+/* In a narrow panel (a phone's overlay, a narrowed sidebar, large text) the name and the server wrap under the title instead of being cut (UX, #4551). */
+@container (max-width: 480px) {
+    .saved-item .top { flex-wrap: wrap; row-gap: 2px; }
+    .saved-item .src { white-space: normal; overflow-wrap: anywhere; flex: 1 1 8em; }
+    .saved-item .server { flex: 1 0 100%; max-width: 100%; margin-left: 0; white-space: normal; overflow-wrap: anywhere; }
+}
 /* A registered server that did not answer (hub mode): one line, not an error (#4551). */
 .saved-note { font-size: 0.75rem; color: var(--warning); border: 1px solid var(--warning); border-radius: var(--radius-md); padding: 6px 10px; }
 .saved-item .snip { margin: 6px 0 4px; font-size: 0.8125rem; line-height: 1.45; color: var(--text-primary); display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }

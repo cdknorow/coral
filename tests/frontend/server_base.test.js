@@ -19,6 +19,33 @@ const { pathToFileURL } = require('url');
     assert.strictEqual(m.serverUrl('/api/x', 'ws1'), '/api/remote/ws1/api/x');
     assert.strictEqual(m.serverUrl('/api/x'), '/api/x');
 
+    // A request for a registered server stays inside its proxy (#4551, Security): a value from that machine (an id, a name, a path) cannot walk it out to the hub's own routes.
+    {
+        const sent = [];
+        globalThis.fetch = (u) => { sent.push(String(u)); return Promise.resolve({ ok: true }); };
+        const hostile = ['/api/saved/../../../../servers/x', '/api/saved/%2e%2e/%2e%2e/%2e%2e/%2e%2e/servers/x', '/api/saved/%2E%2E/%2E%2E/%2E%2E/servers/x', '/api/saved/..%2f..%2f..%2fservers/x',
+            '/api/saved/%252e%252e%252f%252e%252e%252f%252e%252e%252fservers', '/api/saved/..\\..\\..\\servers', '/api/saved/%2e%2e%5c%2e%2e%5c%2e%2e%5cservers', 'api/no-leading-slash', '/api/saved/%zz'];
+        for (const srv of ['ws1', 'a b']) {
+            for (const h of hostile) {
+                assert.throws(() => m.serverUrl(h, srv), /refused a request that would leave the proxy|refused/, `serverUrl refuses ${h} for ${srv}`);
+                await assert.rejects(m.serverFetch(srv, h), /refused/, `serverFetch refuses ${h} for ${srv}`);
+            }
+        }
+        assert.deepStrictEqual(sent, [], 'nothing was sent');
+        const fine = ['/api/x', '/api/saved/12', '/api/board/a%2Fb/messages?limit=1&q=../..', '/api/sessions/live/n..x/chat?after=0', '/api/artifacts/abc?v=2', '/api/board/.hidden/messages', '/api/files/a%20b/c.txt'];
+        for (const f of fine) {
+            assert.strictEqual(m.serverUrl(f, 'ws1'), '/api/remote/ws1' + f, `serverUrl passes ${f}`);
+            await m.serverFetch('ws1', f);
+        }
+        assert.deepStrictEqual(sent, fine.map(f => '/api/remote/ws1' + f), 'ordinary URLs are sent as built');
+        // This server is not behind the proxy: its URLs are not checked here.
+        assert.strictEqual(m.serverUrl('/api/saved/../x', 'local'), '/api/saved/../x');
+        // The boards' and teams' helpers go through the same check.
+        assert.throws(() => m.boardFetch('@ws1/b', '/../../../../../servers/x'), /refused/);
+        assert.throws(() => m.teamFetch('@ws1/b', () => '/api/teams/../../../servers'), /refused/);
+        delete globalThis.fetch;
+    }
+
     // Identity: local keys stay bare (legacy storage keeps working); remote keys never collide.
     assert.strictEqual(m.identityKey('local', 'a'), 'a');
     assert.strictEqual(m.identityKey(undefined, 'a'), 'a');

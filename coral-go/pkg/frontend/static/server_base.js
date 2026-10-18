@@ -52,12 +52,47 @@ export function artifactPath(digest) {
  *  CLOUD_NEVER is never sent through /api/remote: it is pointed at a path the hub 404s. */
 export function serverUrl(url, server) {
     if (isCloud() && !isLocalServer(server) && CLOUD_NEVER.test(url) && !CLOUD_ALLOWED.test(url)) return '/api/cloud-unavailable';
-    return serverBase(server) + url;
+    const full = serverBase(server) + url;
+    if (!isLocalServer(server)) assertInProxy(full, serverBase(server));
+    return full;
 }
 
-/** fetch() against `server`. Same contract as fetch (returns the Response). */
+/** Resolve dot segments in a path the way a server routes it (backslashes count as slashes). */
+function resolveDots(path) {
+    const out = [];
+    for (const seg of path.replace(/\\/g, '/').split('/').slice(1)) {
+        if (seg === '.') continue;
+        if (seg === '..') { out.pop(); continue; }
+        out.push(seg);
+    }
+    return '/' + out.join('/');
+}
+
+/** A request for a registered server must stay inside its proxy: its path, with dot segments resolved and percent-escapes decoded (up to three layers, so
+ *  %252e%252e is seen too), still starts with /api/remote/<server>/. A value that came from another machine (an id, a name, a path) must never walk a hub request out of
+ *  the proxy to the hub's own routes (/api/servers/..., /api/settings/...): this is the last check, whatever built the URL (Security, #4551). Throws when it does not. */
+export function assertInProxy(full, base) {
+    const raw = String(full);
+    const refuse = why => { throw new Error(`refused a request that would leave the proxy of ${base || 'a server'} (${why})`); };
+    if (!raw.startsWith(base + '/')) refuse('not under the proxy');
+    let path = raw.split(/[?#]/)[0];
+    let root = base;
+    for (let layer = 0; layer < 4; layer++) {
+        if (!resolveDots(path).startsWith(root + '/')) refuse('dot segments leave it');
+        let nextPath, nextRoot;
+        try { nextPath = decodeURIComponent(path); nextRoot = decodeURIComponent(root); } catch { refuse('a bad percent escape'); }
+        if (nextPath === path) return full;
+        path = nextPath;
+        root = nextRoot;
+    }
+    refuse('too many layers of escaping');
+}
+
+/** fetch() against `server`. Same contract as fetch (returns the Response); a URL that would leave the proxy is refused, as a rejected promise. */
 export function serverFetch(server, url, options) {
-    return fetch(serverUrl(url, server), options);
+    let target;
+    try { target = serverUrl(url, server); } catch (e) { return Promise.reject(e); }
+    return fetch(target, options);
 }
 
 /** The server a session/agent object belongs to ("local" when untagged). */

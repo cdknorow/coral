@@ -27,6 +27,16 @@ export function conversationOf(btn) {
     return { kind: 'agent', ref: s.session_id, server: normServer(sessionServer(s)), agentType: s.agent_type || '', title: s.display_name || s.name || s.session_id };
 }
 
+/** A bookmark a server sent is used only if its id is a positive safe integer (it goes into a URL: /api/saved/<id>) and its key has the shape its kind has. A registered server
+ *  is another machine: a hostile id such as "../../../servers/x" must never become part of a request (Security, #4551). Anything else is dropped. */
+export function validSavedItem(i) {
+    if (!i || !Number.isSafeInteger(i.id) || i.id <= 0) return false;
+    if (typeof i.ref !== 'string' || !i.ref || i.ref.length > 200) return false;
+    if (i.kind === 'agent') return typeof i.key === 'string' && /^[0-9a-f]{20}$/.test(i.key);
+    if (i.kind === 'board') return typeof i.key === 'string' && /^[1-9][0-9]{0,15}$/.test(i.key);
+    return false;
+}
+
 // `${kind}:${ref}` -> { items: Map(key -> bookmark), loaded: Promise }, kept while the conversation is on screen and refreshed when the list changes.
 const sets = new Map();
 const setKey = c => `${c.server}|${c.kind}:${c.ref}`;
@@ -40,7 +50,7 @@ function setFor(c) {
     }
     if (!e.loaded) {
         e.loaded = serverFetch(c.server, `/api/saved?kind=${encodeURIComponent(c.kind)}&conv=${encodeURIComponent(c.ref)}`).then(r => (r.ok ? r.json() : { items: [] }))
-            .then(d => { e.items = new Map((d.items || []).map(i => [i.key, i])); return e; })
+            .then(d => { e.items = new Map((d.items || []).filter(validSavedItem).map(i => [i.key, i])); return e; })
             .catch(() => { e.loaded = null; return e; });
     }
     return e.loaded; // resolves to the entry once the conversation's bookmarks are read
@@ -134,6 +144,7 @@ async function save(c, key, body) {
     const r = await serverFetch(c.server, '/api/saved', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const out = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(out.error || `HTTP ${r.status}`);
+    if (!validSavedItem(out)) throw new Error('the server sent a bookmark this dashboard cannot use');
     (await setFor(c)).items.set(key, out);
     return out;
 }

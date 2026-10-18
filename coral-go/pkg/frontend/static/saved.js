@@ -6,7 +6,7 @@
 import { state } from './state.js';
 import { showToast } from './utils.js';
 import { sessionServer, normServer, serverFetch, identityKey, LOCAL_SERVER } from './server_base.js';
-import { savedChanged, setSavedCount } from './saved_marks.js';
+import { savedChanged, setSavedCount, validSavedItem } from './saved_marks.js';
 import { effectiveLiveViewMode, setLiveViewMode, jumpToLiveMessage } from './live_chat.js';
 
 const $ = id => document.getElementById(id);
@@ -54,7 +54,8 @@ async function load() {
     const answered = [local, ...others.filter(o => !o.failed)];
     down = others.filter(o => o.failed).map(o => ({ id: o.server, label: o.label }));
     multi = remotes.length > 0;
-    items = answered.flatMap(a => (a.d.items || []).map(i => ({ ...i, server: a.server })))
+    // Only what a server sent in a usable shape is listed (an id goes into a URL: saved_marks.js validSavedItem).
+    items = answered.flatMap(a => (Array.isArray(a.d.items) ? a.d.items : []).filter(validSavedItem).map(i => ({ ...i, server: a.server })))
         .sort((a, b) => (b.saved_at || '').localeCompare(a.saved_at || ''));
     const open = answered.reduce((n, a) => n + (a.d.open || 0), 0), done = answered.reduce((n, a) => n + (a.d.done || 0), 0);
     $('saved-count-open').textContent = open ? `(${open})` : '';
@@ -117,7 +118,7 @@ function itemNode(it) {
     const src = document.createElement('span'); src.className = 'src'; src.textContent = srcLabel(it); src.title = srcLabel(it);
     const kind = document.createElement('span'); kind.className = `kind ${chip.cls}`.trim(); kind.textContent = chip.text;
     top.append(ic, src, kind);
-    if (multi) { const sv = document.createElement('span'); sv.className = 'server'; sv.textContent = serverName(it.server); top.append(sv); }
+    if (multi) { const sv = document.createElement('span'); sv.className = 'server'; sv.textContent = serverName(it.server); sv.title = sv.textContent; top.append(sv); }
     const snip = document.createElement('p'); snip.className = 'snip'; snip.textContent = it.snippet || '(no text)';
     li.append(top, snip);
     const why = document.createElement('p'); why.className = 'why'; why.setAttribute('role', 'status'); why.hidden = !(gone || noopen);
