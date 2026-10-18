@@ -198,11 +198,16 @@ export function rememberFocus(parent) {
     const key = focusKey(a, parent);
     const same = e => focusKey(e, parent) === key;
     const nth = [...parent.querySelectorAll(a.tagName)].filter(same).indexOf(a);
+    // A text field being typed in keeps what was typed and the caret: a redraw must not empty the box under the user's hands.
+    const typing = (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && /^(text|search|email|url|tel|password|number)?$/.test(a.type))) && a.value
+        ? { value: a.value, start: a.selectionStart, end: a.selectionEnd } : null;
     return () => {
         if (a.isConnected) return;
         const twins = [...parent.querySelectorAll(a.tagName)].filter(same);
         const again = twins[Math.min(Math.max(nth, 0), twins.length - 1)];
-        if (again) again.focus({ preventScroll: true });
+        if (!again) return;
+        if (typing && !again.value) { again.value = typing.value; try { again.setSelectionRange(typing.start, typing.end); } catch { /* a type with no caret */ } }
+        again.focus({ preventScroll: true });
     };
 }
 

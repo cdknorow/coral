@@ -69,9 +69,44 @@ const BASE = require('./test_base').BASE;
         assert.ok(r.outside, 'focus outside the redrawn list is not moved');
         console.log('  ok');
 
-        console.log('A real key press on the restored team button opens the team view');
+        console.log('The real Servers list (hub) and the real Cloud servers list keep focus on a control outside a row, and the code being typed');
+        const real = await ev(`(async () => {
+            const realFetch = window.fetch; let remote = [{ id: 'm1', label: 'machine-1', url: 'http://10.0.0.11:8420', status: 'online', agent_count: 0 }];
+            let cloud = [{ id: 'c1', label: 'laptop', online: true, allow_launch: false, last_seen: new Date().toISOString() }];
+            window.__setServers = (r, c) => { remote = r; cloud = c; };
+            window.fetch = (url, opts) => { const u = String(url); if (u === '/api/servers' && (!opts || !opts.method || opts.method === 'GET')) return Promise.resolve(new Response(JSON.stringify(window.__cloudShape ? { servers: cloud } : remote), { status: 200, headers: { 'Content-Type': 'application/json' } })); return realFetch(url, opts); };
+            const out = {};
+            const hub = await import(${S}+'servers.js'), cl = await import(${S}+'cloud_servers.js');
+            const host = document.createElement('div'); host.id = 'fs-servers'; document.body.appendChild(host);
+            await hub.renderServersInto(host);
+            const add = host.querySelector('[data-action="add"]'); out.hasAdd = !!add; if (add) add.focus();
+            window.__setServers(remote.concat([{ id: 'm2', label: 'machine-2', url: 'http://10.0.0.12:8420', status: 'offline', agent_count: 0 }]), cloud);
+            await hub.renderServersInto(host);   // the periodic refresh's path: the whole list is redrawn
+            out.hubKept = document.activeElement?.dataset?.action === 'add' && host.contains(document.activeElement);
+            hub.hideServersModal(); host.remove();
+            window.__cloudShape = true;
+            const host2 = document.createElement('div'); host2.id = 'fs-cloud'; document.body.appendChild(host2);
+            await cl.renderCloudServersInto(host2);
+            const code = host2.querySelector('input.cloud-code'); out.hasCode = !!code;
+            if (code) { code.focus(); code.value = 'AB12'; code.setSelectionRange(2, 3); }
+            window.__setServers(remote, cloud.concat([{ id: 'c2', label: 'desktop', online: false, allow_launch: false, last_seen: new Date().toISOString() }]));
+            await cl.renderCloudServersInto(host2);
+            const again = document.activeElement; out.cloudKept = !!again && again.classList.contains('cloud-code') && host2.contains(again); out.typed = again && again.value; out.caret = again && [again.selectionStart, again.selectionEnd];
+            cl.hideCloudServers(); host2.remove(); window.fetch = realFetch;
+            return out; })()`);
+        assert.ok(real.hasAdd && real.hubKept, `Servers: focus stays on Add server after the list is redrawn: ${JSON.stringify(real)}`);
+        assert.ok(real.hasCode && real.cloudKept, `Cloud servers: focus stays on the enrollment code box: ${JSON.stringify(real)}`);
+        assert.equal(real.typed, 'AB12', 'and the code typed in it is still there');
+        assert.deepEqual(real.caret, [2, 3], 'with the caret where it was');
+        console.log('  ok');
+
+        console.log('A real Enter on the restored team button opens the team view');
         await ev(`window.__state.selectedTeam = null; window.__render.renderLiveSessions(window.__sess); document.querySelector('.team-open-btn').focus(); window.__state.selectedTeam = 'alpha'; window.__render.renderLiveSessions(window.__sess); window.__state.selectedTeam = null; window.__render.renderLiveSessions(window.__sess); true`);
-        assert.ok(await ev(`document.activeElement?.classList.contains('team-open-btn')`), 'focus still on the team button after two redraws');
+        assert.ok(await ev(`document.activeElement?.classList.contains('team-open-btn')`), 'focus still on the team button after the redraws');
+        // The key goes to whatever has focus: a keyDown with the character, as a native button activates on it.
+        await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: '\r' });
+        await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+        await waitFor(`window.__state.selectedTeam === 'alpha'`, 'the team view opened by Enter');
         console.log('PASS focus survives a background refresh');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
