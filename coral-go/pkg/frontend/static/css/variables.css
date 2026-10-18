@@ -10,6 +10,9 @@
 
 :root,
 [data-theme="dark"] {
+    /* The browser's own controls (the date picker's calendar icon, an unticked checkbox, a select's list, the scrollbars) take the theme: with no colour-scheme they are drawn for a light page (#4851) */
+    color-scheme: dark;
+
     /* Surface / Background — deep warm black */
     --bg-primary:   #111114;
     --bg-secondary: #18181c;
@@ -207,6 +210,8 @@
 /* ── Light Theme ───────────────────────────────────────────── */
 
 [data-theme="light"] {
+    color-scheme: light;
+
     /* Surface / Background — warm off-white, not pure white */
     --bg-primary:   #f4f5f7;
     --bg-secondary: #ecedf0;
