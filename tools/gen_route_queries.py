@@ -55,6 +55,8 @@ EXTRA = {
 # the agents' own history options and two the hub's tools stopped using. Remove a name here, with the reason, only when the
 # hub needs it.
 DROP = {
+    # The check by path runs a binary the caller names: the Operator's, on this computer only (the handler refuses a tunneled one, and the table does not carry it either).
+    'GET /api/system/cli-check': {'binary'},
     # An agent's own history search (coral-agent): another session, its ancestors, the excerpt size.
     'GET /api/sessions/live/{}/history/search': {'target_session_id', 'include_ancestors', 'max_excerpt_chars'},
     'GET /api/sessions/live/{}/history/context': {'target_session_id'},
@@ -72,6 +74,9 @@ ENUM = {
     'GET /ws/coral': {'feed': ['hub'], 'diff': ['fields']},
     # The artifact link form (#3168): only v=2 passes; any other value or a second v is refused.
     'GET /api/artifacts/{}': {'v': ['2']},
+    # The prerequisite check (#4579, Launch tier): type is one of the agent types the handler knows (an UNKNOWN type answers found:true, so
+    # it must never pass), source only the recheck word. A Go test keeps the types equal to agent.agentCLIs.
+    'GET /api/system/cli-check': {'type': ['claude', 'agy', 'antigravity', 'gemini', 'codex', 'pi'], 'source': ['cli_recheck']},
 }
 
 src = {f: open(f, encoding='utf-8').read() for f in glob.glob(ROOT + '/routes/*.go') if not f.endswith('_test.go')}

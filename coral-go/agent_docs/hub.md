@@ -182,4 +182,4 @@ An agent or team is identified by `(server, name)`. In the UI a remote key is `@
 
 ## Launching
 
-Send `POST /api/remote/{server}/api/sessions/launch` or `/launch-team` to start an agent or team on a remote. Paths in the body (such as `working_dir`) are interpreted on that remote. Use `/api/remote/{server}/api/filesystem/list` to browse the remote's folders.
+Send `POST /api/remote/{server}/api/sessions/launch` or `/launch-team` to start an agent or team on a remote. Paths in the body (such as `working_dir`) are interpreted on that remote. Use `/api/remote/{server}/api/filesystem/list` to browse the remote's folders. The New Agent dialog's prerequisite check goes through `/api/remote/{server}/api/system/cli-check?type=<agent type>` (Launch tier; the reply has no path, see [CLI Check](settings-system.md#cli-check)).

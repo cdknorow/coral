@@ -329,6 +329,10 @@ var routeTable = cat(
 		"/api/workflows/by-name/{name}/trigger",
 	),
 	rules(http.MethodGet, TierLaunch, "/api/filesystem/list", "/api/filesystem/is-git"),
+	// The prerequisite check for Coral Hub's New Agent dialog (#4579): it RUNS "<cli> --version" on the computer, so it is Launch,
+	// never View. Only type (an exact agent type) and source (cli_recheck) may pass (routes_query.go); binary, which would name a
+	// program to run, is not in the table, and the handler refuses it through the tunnel as well. The reply carries no path.
+	rules(http.MethodGet, TierLaunch, "/api/system/cli-check"),
 	// Which agents run an older hook set: for the Operator who would resume them (#3665).
 	rules(http.MethodGet, TierLaunch, "/api/system/hooks-status"),
 	// Pinning a folder to the Agents list names a folder to launch into (#3630): Launch, like

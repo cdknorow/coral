@@ -825,14 +825,14 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 			}
 			if p := agent.ResolveCLIPath(settings, agentType); p != "" {
 				if _, err := cliLookPath(p); err != nil {
-					writeJSON(w, http.StatusOK, map[string]any{
+					writeJSON(w, http.StatusOK, hubCLIReply(r, map[string]any{
 						"found":      false,
 						"status":     tracking.PrereqMissing,
 						"binary":     p,
 						"agent_type": agentType,
 						"configured": true,
 						"message":    "the CLI path set in Settings > CLI Paths can't be run: fix it or clear it to use the one on PATH",
-					})
+					}))
 					return
 				}
 				binaryPath = p
@@ -873,7 +873,7 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 			if trackable {
 				tracking.TrackPrerequisite(tool, tracking.PrereqMissing, source)
 			}
-			writeJSON(w, http.StatusOK, result)
+			writeJSON(w, http.StatusOK, hubCLIReply(r, result))
 			return
 		}
 	}
@@ -892,14 +892,36 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 		tracking.TrackPrerequisite(tool, status, source)
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(w, http.StatusOK, hubCLIReply(r, map[string]any{
 		"found":      true,
 		"status":     status,
 		"probe":      probe,
 		"path":       resolvedPath,
 		"version":    version,
 		"agent_type": agentType,
-	})
+	}))
+}
+
+// hubCLIReply shapes a prerequisite-check answer for the caller (#4579). Through Coral Hub nothing in it names this computer's
+// account: the resolved path is left out (the Hub needs found, status and probe), a configured path that cannot be run is shown as the
+// CLI's own name (the message already says "the CLI path set in Settings"), and the version is only the version number, not the
+// CLI's whole first line, which a wrapper script can fill with anything. A local caller's answer is unchanged.
+func hubCLIReply(r *http.Request, m map[string]any) map[string]any {
+	if !cloud.Tunneled(r) {
+		return m
+	}
+	delete(m, "path")
+	if info := agent.GetCLIInfo(r.URL.Query().Get("type")); info != nil {
+		if _, ok := m["binary"]; ok {
+			m["binary"] = info.Binary
+		}
+	} else {
+		delete(m, "binary")
+	}
+	if v, ok := m["version"].(string); ok {
+		m["version"] = agent.VersionNumber(v)
+	}
+	return m
 }
 
 // Seams for the CLI and tmux prerequisite checks; tests replace them so no real

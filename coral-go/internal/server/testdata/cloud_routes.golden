@@ -135,7 +135,7 @@ GET /api/system/artifact-store never
 GET /api/system/artifact-store/kept never
 GET /api/system/auth-status never
 GET /api/system/auto-wake never
-GET /api/system/cli-check never
+GET /api/system/cli-check launch
 GET /api/system/database-security never
 GET /api/system/editors never
 GET /api/system/hooks-status launch

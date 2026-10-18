@@ -14,6 +14,9 @@ import (
 // "codex-cli 0.155.1", "1.3.5".
 var cliVersionRe = regexp.MustCompile(`\d+\.\d+\.\d+[0-9A-Za-z.+-]*`)
 
+// VersionNumber is the version in a CLI's --version output ("2.1.300 (Claude Code)" gives "2.1.300"), or "" when there is none.
+func VersionNumber(output string) string { return cliVersionRe.FindString(output) }
+
 // cliVersions caches each CLI path's version with the binary's modification time and size,
 // so an update of the CLI is noticed and an unchanged one is asked only once. One entry per
 // path: an update replaces it, so the cache doesn't grow with every version ever seen (#4057).
