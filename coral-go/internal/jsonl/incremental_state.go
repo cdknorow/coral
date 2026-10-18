@@ -18,6 +18,7 @@ type transcriptReadState struct {
 	head        string
 	offset      int64
 	partial     []byte
+	from        int64 // where the first read of this file began: 0 for a whole read, else a tail's start (scanTranscriptAppendTail)
 }
 
 func sameTranscriptSnapshot(previous, current os.FileInfo) bool {
@@ -37,6 +38,15 @@ func transcriptReplaced(previous, current os.FileInfo, oldHead, head string) boo
 }
 
 func scanTranscriptAppend(path string, state *transcriptReadState, reset func(), consume func([]byte)) {
+	scanTranscriptAppendTail(path, state, reset, consume, 0)
+}
+
+// scanTranscriptAppendTail is scanTranscriptAppend with one difference for a file not read before (or one that was replaced): with
+// tail > 0 and a longer file it reads only the last tail bytes, from the first record that begins after their start. The reader then
+// holds the file's state as of its end, and the next call reads what was appended, as ever. A reader whose state is the latest value of
+// each field (the newest record that has it) gets the same answer from a long enough tail as from the whole file, and says whether
+// it did (state.from is 0 when the whole file was read).
+func scanTranscriptAppendTail(path string, state *transcriptReadState, reset func(), consume func([]byte), tail int64) {
 	info, err := os.Stat(path)
 	if err != nil {
 		*state = transcriptReadState{}
@@ -56,9 +66,13 @@ func scanTranscriptAppend(path string, state *transcriptReadState, reset func(),
 		return
 	}
 	head := transcriptHead(f)
+	skipFirst := false
 	if !state.initialized || transcriptReplaced(state.info, info, state.head, head) {
 		*state = transcriptReadState{initialized: true}
 		reset()
+		if tail > 0 && info.Size() > tail {
+			state.offset, state.from, skipFirst = info.Size()-tail, info.Size()-tail, true
+		}
 	}
 	if _, err := f.Seek(state.offset, io.SeekStart); err != nil {
 		return
@@ -68,6 +82,9 @@ func scanTranscriptAppend(path string, state *transcriptReadState, reset func(),
 	for {
 		line, readErr := reader.ReadBytes('\n')
 		state.offset += int64(len(line))
+		if skipFirst {
+			skipFirst, line = false, nil // the tail began inside a record: what is left of it is not one
+		}
 		if len(state.partial) > 0 {
 			line = append(state.partial, line...)
 			state.partial = nil

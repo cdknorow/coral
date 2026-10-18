@@ -53,10 +53,11 @@ func (r *SessionReader) scanClaudeTranscript(sessionID, workingDir string) claud
 	if c.path == "" {
 		return claudeTurnCache{}
 	}
-	scanTranscriptAppend(c.path, &c.claudeState.transcriptReadState, func() {
+	reset := func() {
 		c.claudeState.event, c.claudeState.at, c.claudeState.version, c.claudeState.model = "", time.Time{}, "", ""
 		c.claudeState.apiErr = ClaudeAPIError{}
-	}, func(line []byte) {
+	}
+	consume := func(line []byte) {
 		if v := claudeLineVersion(line); v != "" {
 			c.claudeState.version = v
 		}
@@ -65,7 +66,26 @@ func (r *SessionReader) scanClaudeTranscript(sessionID, workingDir string) claud
 		}
 		updateClaudeTurnState(&c.claudeState, line)
 		updateClaudeAPIError(&c.claudeState.apiErr, line)
-	})
+	}
+	// Every field is the newest value in the file, so a transcript not read before is read from its end, in longer and longer
+	// tails, until the turn end, the version and the model each have a value (a model comes from an assistant record, so the API
+	// error, the latest user or assistant record's, is the file's too): the same state as the whole file gives, without decoding
+	// tens of megabytes at the first board status (#4788). A file that lacks a field is read whole, as before. Once read, the file
+	// is followed by what is appended.
+	for i := 0; ; i++ {
+		s := &c.claudeState
+		first := !s.initialized
+		var tail int64
+		if first && i < len(claudeTailWindows) {
+			tail = claudeTailWindows[i]
+		}
+		scanTranscriptAppendTail(c.path, &s.transcriptReadState, reset, consume, tail)
+		if !first || tail == 0 || !s.initialized || s.from == 0 || (s.event != "" && s.version != "" && s.model != "") {
+			break
+		}
+		s.transcriptReadState = transcriptReadState{} // the tail missed something an older record may hold
+		reset()
+	}
 	return c.claudeState
 }
 
@@ -184,6 +204,9 @@ var (
 
 // updateClaudeAPIError keeps the latest user or assistant message's API error: an error line
 // sets it, any other message clears it (the user sent something, or a turn ran since).
+// claudeTailWindows are the tail lengths of the first read of a Claude transcript, shortest first (a var for the tests).
+var claudeTailWindows = []int64{256 << 10, 1 << 20, 4 << 20, 16 << 20}
+
 func updateClaudeAPIError(e *ClaudeAPIError, line []byte) {
 	if !bytes.Contains(line, claudeUserType) && !bytes.Contains(line, claudeAssistantType) {
 		return // cheap filter: system, summary and progress lines are neither
