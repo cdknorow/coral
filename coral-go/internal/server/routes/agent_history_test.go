@@ -106,7 +106,7 @@ func TestAgentHistorySearch_FactsAndSemantics(t *testing.T) {
 	env := setupAgentHistoryTestEnv(t)
 	ctx := context.Background()
 
-	sessID := "live-claude-sess-001"
+	sessID := "00000000-0000-4000-8000-000000000001"
 	workDir := filepath.Join(env.claudeHome, "my-project")
 	require.NoError(t, os.MkdirAll(workDir, 0755))
 
@@ -184,9 +184,9 @@ func TestAgentHistorySearch_ResumedLineage(t *testing.T) {
 	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 
-	s0ID := "lineage-sess-s0"
-	s1ID := "lineage-sess-s1"
-	s2ID := "lineage-sess-s2" // live session
+	s0ID := "00000000-0000-4000-8000-0000000000a0"
+	s1ID := "00000000-0000-4000-8000-0000000000a1"
+	s2ID := "00000000-0000-4000-8000-0000000000a2" // live session
 
 	// S0 transcript (ancestor)
 	s0File := filepath.Join(projDir, s0ID+".jsonl")
@@ -275,8 +275,8 @@ func TestAgentHistorySearch_AuthorizationTrustBoundary(t *testing.T) {
 	workDir := filepath.Join(env.claudeHome, "auth-project")
 	require.NoError(t, os.MkdirAll(workDir, 0755))
 
-	sessAlice := "sess-alice"
-	sessBob := "sess-bob"
+	sessAlice := "00000000-0000-4000-8000-0000000000b1"
+	sessBob := "00000000-0000-4000-8000-0000000000b2"
 
 	require.NoError(t, env.ss.RegisterLiveSession(ctx, &store.LiveSession{
 		SessionID:  sessAlice,
@@ -401,8 +401,8 @@ func TestAgentHistorySearch_LiveAppendedAndUnavailableSources(t *testing.T) {
 	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 
-	liveSessID := "live-append-sess"
-	ancestorSessID := "missing-ancestor-sess"
+	liveSessID := "00000000-0000-4000-8000-0000000000c1"
+	ancestorSessID := "00000000-0000-4000-8000-0000000000c2"
 
 	// Live transcript
 	liveFile := filepath.Join(projDir, liveSessID+".jsonl")
@@ -467,7 +467,7 @@ func TestAgentHistoryContextEndpoint(t *testing.T) {
 	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 
-	sessID := "context-sess-001"
+	sessID := "00000000-0000-4000-8000-0000000000d1"
 	sessFile := filepath.Join(projDir, sessID+".jsonl")
 
 	transcriptData := `{"type":"user","timestamp":"2026-09-30T10:00:00Z","message":{"content":"Turn 0 user"}}` + "\n" +
@@ -523,7 +523,7 @@ func TestAgentHistorySearch_ConcurrentRequests(t *testing.T) {
 	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 
-	sessID := "conc-sess-001"
+	sessID := "00000000-0000-4000-8000-0000000000e1"
 	sessFile := filepath.Join(projDir, sessID+".jsonl")
 
 	transcriptData := `{"type":"user","timestamp":"2026-09-30T10:00:00Z","message":{"content":"Running concurrent stress check."}}` + "\n" +

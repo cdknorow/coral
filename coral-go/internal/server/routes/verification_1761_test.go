@@ -127,7 +127,7 @@ func TestTask1761_HistoryResumeDetailAndResumeInfo(t *testing.T) {
 	// ~/.claude/projects/-repo-project/coral-claude-003.jsonl
 	claudeProjectDir := filepath.Join(claudeHome, "-repo-project")
 	require.NoError(t, os.MkdirAll(claudeProjectDir, 0755))
-	claudeID := "coral-claude-003"
+	claudeID := "00000000-0000-4000-8000-0000000000f3"
 	claudeFile := filepath.Join(claudeProjectDir, claudeID+".jsonl")
 	claudeContent := `{"type":"user","message":{"content":"Hello from Claude"}}` + "\n" +
 		`{"type":"assistant","message":{"content":"Hello, how can I help?"}}` + "\n"
@@ -244,7 +244,7 @@ func TestTask1761_HistoryResumeDetailAndResumeInfo(t *testing.T) {
 	// Verify Live Session Precedence
 	// -------------------------------------------------------------
 	t.Run("Live session precedence overrides historical metadata when session is active", func(t *testing.T) {
-		liveID := "active-session-live"
+		liveID := "00000000-0000-4000-8000-0000000000f4"
 		require.NoError(t, ss.UpsertSessionIndex(ctx, &store.SessionIndex{
 			SessionID:  liveID,
 			SourceType: "codex",
@@ -281,7 +281,7 @@ func TestTask1761_IsolationAndPoisonedCache(t *testing.T) {
 	dayDir := filepath.Join(codexHome, "sessions", "2026", "09", "30")
 	require.NoError(t, os.MkdirAll(dayDir, 0755))
 
-	sessAID := "session-alpha"
+	sessAID := "00000000-0000-4000-8000-0000000000f5"
 	rolloutA := filepath.Join(dayDir, "rollout-2026-09-30T10-00-00-"+sessAID+".jsonl")
 	contentA := fmt.Sprintf(
 		`{"timestamp":"2026-09-30T10:00:00.000Z","type":"session_meta","payload":{"id":"rollout-alpha","cwd":"%s"}}`+"\n"+
@@ -291,7 +291,7 @@ func TestTask1761_IsolationAndPoisonedCache(t *testing.T) {
 	)
 	require.NoError(t, os.WriteFile(rolloutA, []byte(contentA), 0644))
 
-	sessBID := "session-beta"
+	sessBID := "00000000-0000-4000-8000-0000000000f6"
 	rolloutB := filepath.Join(dayDir, "rollout-2026-09-30T11-00-00-"+sessBID+".jsonl")
 	contentB := fmt.Sprintf(
 		`{"timestamp":"2026-09-30T11:00:00.000Z","type":"session_meta","payload":{"id":"rollout-beta","cwd":"%s"}}`+"\n"+
@@ -340,7 +340,7 @@ func TestTask1761_IsolationAndPoisonedCache(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, respMissing.StatusCode)
 
 	// Verify missing source file for an indexed session returns 404 rather than 500 or panic
-	missingSessionID := "session-missing-source"
+	missingSessionID := "00000000-0000-4000-8000-0000000000f7"
 	require.NoError(t, ss.UpsertSessionIndex(ctx, &store.SessionIndex{
 		SessionID:  missingSessionID,
 		SourceType: "codex",

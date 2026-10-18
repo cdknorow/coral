@@ -30,7 +30,7 @@ func TestRetainDropsEndedSessions(t *testing.T) {
 	}
 	r := NewSessionReader()
 	for i := 0; i < 5; i++ {
-		id := fmt.Sprintf("s-%d", i)
+		id := fmt.Sprintf("00000000-0000-4000-8000-%012d", i)
 		writeClaudeTranscript(t, proj, id, 3)
 		if _, n := r.ReadNewMessages(id, "", "claude"); n != 6 {
 			t.Fatalf("%s: read %d messages, want 6", id, n)
@@ -42,7 +42,7 @@ func TestRetainDropsEndedSessions(t *testing.T) {
 		t.Fatalf("cached sessions = %d, want 6", got)
 	}
 
-	live := map[string]bool{"s-1": true, "s-3": true}
+	live := map[string]bool{"00000000-0000-4000-8000-000000000001": true, "00000000-0000-4000-8000-000000000003": true}
 	if dropped := r.Retain(func(id string) bool { return live[id] }); dropped != 4 {
 		t.Fatalf("dropped %d, want 4", dropped)
 	}
@@ -50,11 +50,11 @@ func TestRetainDropsEndedSessions(t *testing.T) {
 		t.Fatalf("cached sessions after Retain = %d, want 2", got)
 	}
 	// A kept session keeps its offset: no messages are re-read.
-	if msgs, n := r.ReadNewMessages("s-1", "", "claude"); len(msgs) != 0 || n != 6 {
+	if msgs, n := r.ReadNewMessages("00000000-0000-4000-8000-000000000001", "", "claude"); len(msgs) != 0 || n != 6 {
 		t.Fatalf("kept session re-read: %d new of %d", len(msgs), n)
 	}
 	// A dropped session that is read again is re-parsed in full.
-	if msgs, n := r.ReadNewMessages("s-0", "", "claude"); len(msgs) != 6 || n != 6 {
+	if msgs, n := r.ReadNewMessages("00000000-0000-4000-8000-000000000000", "", "claude"); len(msgs) != 6 || n != 6 {
 		t.Fatalf("dropped session: %d new of %d, want 6 of 6", len(msgs), n)
 	}
 }

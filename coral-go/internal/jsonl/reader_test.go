@@ -54,7 +54,7 @@ func TestResolveCodexTranscriptByMarkerUsesTrustedDeveloperMetadata(t *testing.T
 func TestReadNewMessages_Claude(t *testing.T) {
 	// Create a temp JSONL file
 	dir := t.TempDir()
-	sessionID := "test-session-123"
+	sessionID := "00000000-0000-4000-8000-000000001231"
 
 	// Set CLAUDE_PROJECTS_DIR so the reader can find the file
 	projectDir := filepath.Join(dir, "test-project")
@@ -137,7 +137,7 @@ func TestReadNewMessages_Claude(t *testing.T) {
 
 func TestReadNewMessages_ToolResult(t *testing.T) {
 	dir := t.TempDir()
-	sessionID := "test-tool-result"
+	sessionID := "00000000-0000-4000-8000-000000001232"
 	projectDir := filepath.Join(dir, "test-project")
 	os.MkdirAll(projectDir, 0755)
 	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
@@ -458,7 +458,7 @@ func TestCodexFunctionCall_CompositeAndQuestionSummaries(t *testing.T) {
 
 func TestReadNewMessages_CurrentCodexResponseItems(t *testing.T) {
 	dir := t.TempDir()
-	sessionID := "019f-current-codex"
+	sessionID := "00000000-0000-4000-8000-000000001233"
 	codexHome := filepath.Join(dir, ".codex")
 	sessionDir := filepath.Join(codexHome, "sessions", "2026", "09", "21")
 	if err := os.MkdirAll(sessionDir, 0755); err != nil {
@@ -545,7 +545,7 @@ func TestClearSession(t *testing.T) {
 
 func TestReadNewMessages_SkipsMetaUserText(t *testing.T) {
 	dir := t.TempDir()
-	sessionID := "meta-session"
+	sessionID := "00000000-0000-4000-8000-000000001234"
 	projectDir := filepath.Join(dir, "project")
 	if err := os.MkdirAll(projectDir, 0755); err != nil {
 		t.Fatal(err)
@@ -620,7 +620,7 @@ func TestParseClaudeEntry_QueuedCommand(t *testing.T) {
 
 func TestFirstUserPrompt(t *testing.T) {
 	dir := t.TempDir()
-	sessionID := "first-prompt-session"
+	sessionID := "00000000-0000-4000-8000-000000001235"
 	projectDir := filepath.Join(dir, "project")
 	if err := os.MkdirAll(projectDir, 0755); err != nil {
 		t.Fatal(err)
@@ -667,7 +667,7 @@ func TestFirstUserPrompt_TerminalSkipsTranscriptLookup(t *testing.T) {
 
 func TestFirstUserPrompt_IncrementalAndClear(t *testing.T) {
 	dir := t.TempDir()
-	sessionID := "incremental-first-prompt"
+	sessionID := "00000000-0000-4000-8000-000000001236"
 	projectDir := filepath.Join(dir, "project")
 	if err := os.MkdirAll(projectDir, 0755); err != nil {
 		t.Fatal(err)

@@ -17,7 +17,7 @@ import (
 // character at the cut, and a partial last line still being written.
 func TestChatReplyFromHostileTranscriptParses(t *testing.T) {
 	dir := t.TempDir()
-	sessionID := "chat-fixture-3694"
+	sessionID := "00000000-0000-4000-8000-000000003694"
 	projectDir := filepath.Join(dir, "proj")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)

@@ -3,6 +3,7 @@ package transcriptlink
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,10 +11,16 @@ import (
 	"regexp"
 	"strings"
 
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/safefs"
 )
 
 var uuid = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// IsSessionID reports whether id is a lowercase UUID: the only form a Coral session id takes.
+// A resolver that globs or joins an id into a path checks it first, so "", "*", "?", "[a-z]" or
+// a part of an id never matches (or names) another session's transcript (#4590).
+func IsSessionID(id string) bool { return uuid.MatchString(id) }
 
 type CodexLink struct {
 	ThreadID string `json:"thread_id"`
@@ -165,6 +172,14 @@ func BindCodex(sessionID, threadID string) error {
 	if path == "" {
 		return fmt.Errorf("no verified Codex transcript for thread %s", threadID)
 	}
+	// A session that already has a link to a live rollout keeps it unless the new rollout is
+	// marked as this session's own: another Codex's hook (a Codex started from this one's shell)
+	// must not take the link over (#4590). A first bind, or one over a vanished rollout, needs no marker.
+	if old := Codex(sessionID); old.ThreadID != "" && old.ThreadID != threadID && old.Path != "" {
+		if _, err := os.Stat(old.Path); err == nil && rolloutMarker(path) != sessionID {
+			return fmt.Errorf("session %s keeps its link to thread %s: the rollout of thread %s is not marked as this session's", sessionID, old.ThreadID, threadID)
+		}
+	}
 	dir := filepath.Join(codexHome(), "coral-session-links")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
@@ -183,4 +198,43 @@ func BindCodex(sessionID, threadID string) error {
 		return err
 	}
 	return os.Rename(f.Name(), filepath.Join(dir, sessionID+".json"))
+}
+
+// markerScanBytes caps how much of a rollout's head rolloutMarker reads: the marker is in the
+// developer instructions Codex records at the start of a session.
+const markerScanBytes = 1 << 20
+
+var markerID = regexp.MustCompile(regexp.QuoteMeta(at.CoralSessionMarkerPrefix) + `\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
+
+// rolloutMarker is the Coral session id in the first developer message of the rollout at path
+// (opened through the sessions root, like every rollout read), or "" when it has none.
+func rolloutMarker(path string) string {
+	f, err := OpenRollout(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64<<10), markerScanBytes)
+	for read := 0; sc.Scan() && read < markerScanBytes; {
+		line := sc.Bytes()
+		read += len(line) + 1
+		if !bytes.Contains(line, []byte(at.CoralSessionMarkerPrefix)) {
+			continue
+		}
+		var e struct {
+			Type    string `json:"type"`
+			Payload struct {
+				Type string `json:"type"`
+				Role string `json:"role"`
+			} `json:"payload"`
+		}
+		if json.Unmarshal(line, &e) != nil || e.Type != "response_item" || e.Payload.Type != "message" || e.Payload.Role != "developer" {
+			continue // a marker quoted in a user or assistant message names nothing
+		}
+		if m := markerID.FindSubmatch(line); m != nil {
+			return string(m[1])
+		}
+	}
+	return ""
 }

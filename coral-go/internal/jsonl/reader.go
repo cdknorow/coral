@@ -471,6 +471,9 @@ func resolveTranscriptPathMode(sessionID, workingDirectory, agentType string, st
 }
 
 func resolveClaudeTranscript(sessionID, workingDirectory string) string {
+	if !transcriptlink.IsSessionID(sessionID) {
+		return ""
+	}
 	home, _ := os.UserHomeDir()
 	basePath := os.Getenv("CLAUDE_PROJECTS_DIR")
 	if basePath == "" {
@@ -512,6 +515,9 @@ func resolveAgyTranscriptStrict(sessionID string, workingDirectory ...string) st
 }
 
 func resolveAgyTranscriptMode(sessionID string, strictLive bool, workingDirectory ...string) string {
+	if !safefs.IsSafeID(sessionID) { // joined into paths below; native history passes conversation ids
+		return ""
+	}
 	home, _ := os.UserHomeDir()
 	basePath := os.Getenv("ANTIGRAVITY_DATA_DIR")
 	if basePath == "" {
@@ -676,6 +682,9 @@ func openTranscriptFile(path string) (*os.File, error) {
 func CodexTranscriptPath(sessionID string) string { return resolveCodexTranscript(sessionID) }
 
 func resolveCodexTranscript(sessionID string) string {
+	if !transcriptlink.IsSessionID(sessionID) {
+		return ""
+	}
 	if link := transcriptlink.Codex(sessionID); link.Path != "" {
 		return link.Path
 	}

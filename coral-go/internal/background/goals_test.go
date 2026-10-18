@@ -177,7 +177,7 @@ func (f *goalFixture) latest(t *testing.T) (string, string) {
 }
 
 func TestGoalGenerator_StoresAShortGoalOncePerChange(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g001", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a001", AgentType: "claude", AgentName: "coral-go"})
 
 	f.poll()
 	goal, source := f.latest(t)
@@ -205,7 +205,7 @@ func TestGoalGenerator_StoresAShortGoalOncePerChange(t *testing.T) {
 }
 
 func TestGoalGenerator_NeverReplacesTheOperatorsGoal(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g002", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a002", AgentType: "claude", AgentName: "coral-go"})
 	detail, _ := json.Marshal(map[string]string{"source": GoalSourceUser})
 	d := string(detail)
 	sid := f.sid
@@ -223,7 +223,7 @@ func TestGoalGenerator_NeverReplacesTheOperatorsGoal(t *testing.T) {
 }
 
 func TestGoalGenerator_WaitsForTheAgentsFirstAnswer(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g003", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a003", AgentType: "claude", AgentName: "coral-go"})
 	require.NoError(t, os.WriteFile(f.path, []byte(`{"type":"user","message":{"role":"user","content":"hello"},"timestamp":"2026-09-21T11:00:00Z"}`+"\n"), 0o644))
 
 	f.poll()
@@ -238,9 +238,9 @@ func TestGoalGenerator_SkipsTerminalsSleepersAndWhenOff(t *testing.T) {
 		ls   store.LiveSession
 		off  bool
 	}{
-		{"terminal", store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g004", AgentType: "terminal", AgentName: "coral-go"}, false},
-		{"sleeping", store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g005", AgentType: "claude", AgentName: "coral-go", IsSleeping: 1}, false},
-		{"setting off", store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g006", AgentType: "claude", AgentName: "coral-go"}, true},
+		{"terminal", store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a004", AgentType: "terminal", AgentName: "coral-go"}, false},
+		{"sleeping", store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a005", AgentType: "claude", AgentName: "coral-go", IsSleeping: 1}, false},
+		{"setting off", store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a006", AgentType: "claude", AgentName: "coral-go"}, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newGoalFixture(t, c.ls)
@@ -254,7 +254,7 @@ func TestGoalGenerator_SkipsTerminalsSleepersAndWhenOff(t *testing.T) {
 }
 
 func TestGoalGenerator_BacksOffAfterAFailure(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g007", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a007", AgentType: "claude", AgentName: "coral-go"})
 	f.reply = "   " // unusable answer counts as a failure
 
 	f.poll()
@@ -279,7 +279,7 @@ func outcomes(rows []store.GoalGeneration) []string {
 }
 
 func TestGoalGenerator_RecordsEveryAttemptWithTriggerOutcomeAndCost(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g010", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a010", AgentType: "claude", AgentName: "coral-go"})
 
 	advance := f.fakeClock(t)
 	f.poll()                 // first -> stored
@@ -301,7 +301,7 @@ func TestGoalGenerator_RecordsEveryAttemptWithTriggerOutcomeAndCost(t *testing.T
 }
 
 func TestGoalGenerator_RecordsTheOperatorsGoalAndAMissingCLIOnce(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g011", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a011", AgentType: "claude", AgentName: "coral-go"})
 	f.gen.resolveCLI = func(map[string]string) string { return "" }
 	advance := f.fakeClock(t)
 
@@ -322,7 +322,7 @@ func TestGoalGenerator_RecordsTheOperatorsGoalAndAMissingCLIOnce(t *testing.T) {
 }
 
 func TestGoalGenerator_StatusReportsLiveState(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g012", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a012", AgentType: "claude", AgentName: "coral-go"})
 	f.reply = ""
 	f.poll()
 	st := f.gen.Status(f.ctx)
@@ -348,7 +348,7 @@ func TestParseGoalCLIOutput(t *testing.T) {
 }
 
 func TestGoalGenerator_SendsTheLatestRequestAndReplyEvenBehindLargeToolOutput(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g013", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a013", AgentType: "claude", AgentName: "coral-go"})
 	f.poll()
 	assert.Contains(t, f.prompt, "LATEST USER REQUEST:\nMake the sidebar goal line quieter")
 	assert.Contains(t, f.prompt, "AGENT'S LATEST REPLY:\nUpdating session.css.")
@@ -394,7 +394,7 @@ func (f *goalFixture) fakeClock(t *testing.T) func(d time.Duration) {
 // A goal names the user's task: the agent's further replies do not change it, so after the
 // first goal the CLI runs again only for a new request, and not within 30 minutes (#4204).
 func TestGoalGenerator_RunsAgainOnlyForANewRequestAfterTheMinInterval(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g014", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a014", AgentType: "claude", AgentName: "coral-go"})
 	advance := f.fakeClock(t)
 	f.poll()
 	require.Equal(t, int32(1), f.calls.Load())
@@ -423,7 +423,7 @@ func TestGoalGenerator_RunsAgainOnlyForANewRequestAfterTheMinInterval(t *testing
 // After a restart (an upgrade), an agent whose requests are those its stored goal was made
 // from is not asked again, and the stored goal's time starts its 30 minutes (#4204).
 func TestGoalGenerator_ARestartKeepsAGoalMadeFromTheSameRequests(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g015", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a015", AgentType: "claude", AgentName: "coral-go"})
 	f.poll()
 	require.Equal(t, int32(1), f.calls.Load())
 
@@ -448,7 +448,7 @@ func TestGoalGenerator_ARestartKeepsAGoalMadeFromTheSameRequests(t *testing.T) {
 // The operator's refresh runs the CLI at once, but at most once a minute per session: a second
 // click inside the minute adds nothing to the goal already pending or just made (#4204).
 func TestGoalGenerator_AtMostOneManualRunAMinute(t *testing.T) {
-	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g016", AgentType: "claude", AgentName: "coral-go"})
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000a016", AgentType: "claude", AgentName: "coral-go"})
 	advance := f.fakeClock(t)
 	f.poll()
 	require.Equal(t, int32(1), f.calls.Load())
@@ -467,7 +467,7 @@ func TestGoalGenerator_AtMostOneManualRunAMinute(t *testing.T) {
 	f.poll()
 	assert.Equal(t, int32(3), f.calls.Load(), "a click a minute after the last one runs")
 
-	other := "00000000-0000-0000-0000-00000000g017"
+	other := "00000000-0000-0000-0000-00000000a017"
 	f.gen.RequestGoal(other)
 	f.gen.mu.Lock()
 	assert.True(t, f.gen.states[other].force, "the floor is per session")

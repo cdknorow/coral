@@ -612,6 +612,9 @@ func extractPiUsage(path string) *piUsageData {
 // With --session-dir, Pi stores sessions under ~/.coral/pi-sessions/<session-id>/.
 // Falls back to searching Pi's default session directory.
 func resolvePiSessionPath(sessionID string) string {
+	if !transcriptlink.IsSessionID(sessionID) { // joined into a path and matched in file names
+		return ""
+	}
 	home, _ := os.UserHomeDir()
 
 	// Strategy 1: Check Coral-managed pi-sessions dir

@@ -73,3 +73,16 @@ func TestFindCodexRollout_NoLinkNoMarkerFindsNothingEvenInTheSameFolderAndTime(t
 		WorkingDir: "/repo", CreatedAt: "2026-10-18T09:00:00Z"})
 	assert.Empty(t, got)
 }
+
+// #4590: an empty or wildcard id would match any Pi session file ("" is contained in every name).
+func TestResolvePiSessionPath_RefusesAnIdThatIsNotAUUID(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PI_CODING_AGENT_DIR", dir)
+	t.Setenv("CORAL_DATA_DIR", filepath.Join(dir, "coral"))
+	real := "1f2e3d4c-5b6a-4978-8a9b-0c1d2e3f4a5b"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "2026-10-18_"+real+".jsonl"), []byte("{}\n"), 0o600))
+	require.NotEmpty(t, resolvePiSessionPath(real), "control")
+	for _, bad := range []string{"", "*", "?", "[a-z]", real[:12]} {
+		assert.Empty(t, resolvePiSessionPath(bad), "%q", bad)
+	}
+}
