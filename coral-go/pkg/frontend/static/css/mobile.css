@@ -1133,7 +1133,7 @@
     }
 
     .agentic-state.mobile-panel-overlay .agentic-tab.active {
-        color: var(--accent);
+        color: #fff; /* was var(--accent) on var(--accent-dim): 1.8:1 in the dark theme, 1.5:1 in the light one, so the open tab's icon was all but invisible on a phone (#4851) */
         background: var(--accent-dim);
     }
 
