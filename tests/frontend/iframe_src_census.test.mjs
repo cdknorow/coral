@@ -28,6 +28,21 @@ for (const f of fs.readdirSync(STATIC).filter(n => n.endsWith('.js'))) {
     if (n) found[f] = n;
 }
 assert.deepEqual(found, ALLOWED, `the dashboard's iframe addresses: ${JSON.stringify(found)}; a new one needs a look from Security and a line in this test`);
+// A frame can also get its whole document from data with srcdoc (always inside a sandbox and a CSP meta of its own: sandbox_frame.js,
+// panel_sandbox.js and view_sandbox.js explain why), or be built in an HTML string. Both are counted here too, so a new one needs a look.
+const SRCDOC = { 'artifact_preview.js': 1, 'custom_views.js': 1, 'preview_pane.js': 1 };
+const srcdocFound = {};
+for (const f of fs.readdirSync(STATIC).filter(n => n.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(STATIC, f), 'utf8');
+    const n = (src.match(/\.srcdoc\s*=/g) || []).length;
+    if (n) srcdocFound[f] = n;
+    assert.ok(!/<iframe/i.test(src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')), `${f} builds an iframe in an HTML string: give it a look from Security and a line in this test`);
+}
+assert.deepEqual(srcdocFound, SRCDOC, `frames given a document with srcdoc: ${JSON.stringify(srcdocFound)}; a new one needs a look from Security and a line in this test`);
+const TEMPLATES = path.join(STATIC, '..', 'templates');
+const withIframe = [];
+(function walk(d) { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/<iframe/i.test(fs.readFileSync(p, 'utf8').replace(/<!--[\s\S]*?-->/g, ''))) withIframe.push(path.relative(TEMPLATES, p)); } })(TEMPLATES);
+assert.deepEqual(withIframe.sort(), ['includes/views/inbox.html'], `templates with an iframe: ${withIframe}; a new one needs a look from Security and a line in this test`);
 // The Inbox frame: the address is a constant in inbox_tab.js and is not in the template.
 const inbox = fs.readFileSync(path.join(STATIC, 'inbox_tab.js'), 'utf8');
 assert.match(inbox, /const INBOX_URL = '\/inbox';/);
