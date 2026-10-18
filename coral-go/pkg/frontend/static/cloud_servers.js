@@ -347,7 +347,7 @@ function render() {
         : h('p', { className: 'servers-empty', text: loadError ? '' : 'No servers connected yet.' });
     // replaceChildren() would render a null as the text "null": leave it out.
     host.replaceChildren(...[
-        h('p', { className: 'servers-intro', text: 'Servers connected to your account. Each one connects out to this hub; no inbound port is needed. New machines start in View.' }),
+        h('p', { className: 'servers-intro', text: 'Machines connected to your account. Each one connects out to this hub; no inbound port is needed. New machines start in View.' }),
         loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
         list,
         enrollBlock()].filter(Boolean));
