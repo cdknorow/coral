@@ -67,9 +67,10 @@ export function buildListBar(spec, onChange) {
     const controls = make('div', 'list-bar-controls');
     const filterBtn = make('button', 'list-bar-filter-btn', 'Filters'); filterBtn.type = 'button';
     filterBtn.setAttribute('aria-haspopup', 'true'); filterBtn.setAttribute('aria-expanded', 'false'); filterBtn.setAttribute('aria-controls', `${p}-menu`);
-    const sort = selectField(`${p}-sort`, 'Sort', spec.sorts.values, spec.sorts.labels);
-    sort.wrap.classList.add('list-bar-sort'); sort.input.setAttribute('aria-label', spec.sorts.aria);
-    controls.append(filterBtn, sort.wrap);
+    // A panel with one fixed order (the board's messages: the page is the order) has no sort: spec.sorts is null.
+    const sort = spec.sorts ? selectField(`${p}-sort`, 'Sort', spec.sorts.values, spec.sorts.labels) : null;
+    if (sort) { sort.wrap.classList.add('list-bar-sort'); sort.input.setAttribute('aria-label', spec.sorts.aria); }
+    controls.append(...(sort ? [filterBtn, sort.wrap] : [filterBtn]));
 
     const menu = make('div', 'list-bar-menu'); menu.id = `${p}-menu`; menu.hidden = true; menu.setAttribute('role', 'group'); menu.setAttribute('aria-label', 'Filters');
     const fields = spec.fields.map(buildField);
@@ -100,12 +101,14 @@ export function buildListBar(spec, onChange) {
         else if (fld.spec.type === 'check') fld.input.addEventListener('change', () => apply({ ...f, [key]: fld.input.checked }));
         else fld.input.addEventListener('change', () => apply({ ...f, [key]: fld.input.value }));
     }
-    sort.input.addEventListener('change', () => apply({ ...f, sort: sort.input.value }));
+    if (sort) sort.input.addEventListener('change', () => apply({ ...f, sort: sort.input.value }));
     const everything = () => { clearTimeout(timer); apply({ ...EMPTY, sort: f.sort }); };
     clearAll.addEventListener('click', () => { everything(); q.focus(); });
 
     return {
         node,
+        /** The row of the Filters button (and Sort): a panel puts its own buttons beside them. */
+        controls,
         /** Show these filters and counts ({shown, matched, all}); a field the person is typing in is left as typed. */
         set(next, counts) {
             f = clean(next);
@@ -117,7 +120,7 @@ export function buildListBar(spec, onChange) {
                 else if (fld.spec.type === 'check') fld.input.checked = f[key];
                 else fld.input.value = f[key];
             }
-            sort.input.value = f.sort;
+            if (sort) sort.input.value = f.sort;
             const list = chips(f);
             chipList.replaceChildren(...list.map(c => {
                 const li = make('li'); const b = make('button', 'list-bar-chip'); b.type = 'button';
