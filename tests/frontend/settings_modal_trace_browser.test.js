@@ -94,7 +94,7 @@ const SCEN = [
             })()`);
             void out;
             const snap = await ev(SNAP);
-            trace[name] = JSON.parse(JSON.stringify(snap).replace(/[^"\s|,]*coral-cdp-[A-Za-z0-9]+/g, '<run folder>')); // the run's own temporary folder is in some placeholders
+            trace[name] = JSON.parse(JSON.stringify(snap).replace(/[^"\s|,]*coral-cdp-[A-Za-z0-9]+(\/shard\d+(-\d+)?)?/g, '<run folder>')); // the run's own temporary folder is in some placeholders, with the shard's folder under it (shard1, or shard1-1 once a shard was replaced) when a path runs through it
         };
         for (const [name, settings, answers, group, local] of SCEN) await run(name, settings, answers, group, local);
         cloud = true;

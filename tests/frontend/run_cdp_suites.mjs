@@ -49,6 +49,12 @@
 // Emulation.setCPUThrottlingRate, without retries, and prints each suite's pass count (e.g. 2/3) so the
 // flaky list is measurable. Exit status 1 unless every suite passed every run.
 //
+// Shared server state (#4830): the suites of a shard share one Coral server, so a setting or a saved item one leaves is read by the next (show_session_server left False by server_switcher
+// changed live_list_golden; terminal_switch's stand-ins left a deleted script as cli_path_claude, which settings_modal_trace showed). Before and after each suite attempt the runner takes
+// helpers/server_state.mjs's snapshot of the shared state (user_settings and the global tables), prints "LEAK  <suite>: ..." for anything that changed, and PUTS THE SETTINGS BACK (the
+// server reads them from its database on every request). --no-restore only reports. --isolate gives every suite a fresh server, Chrome and data dir (nothing can leak, a few seconds
+// slower per suite). --fail-on-leak makes a leak exit 5. --shuffle SEED runs the suites in a seeded random order instead of longest first, to expose order dependence.
+//
 // results.json (path printed at the end) has every suite with its status and every attempt (with the
 // log of the Coral server it ran against); a failed attempt keeps its complete output, untruncated.
 //
@@ -85,6 +91,7 @@ import { fileURLToPath } from 'node:url';
 import { classifySuites, problems } from './suites.mjs';
 import { loadDurations, orderLongestFirst, partsByDuration } from './suite_order.mjs';
 import { failingOutput } from './failing_output.mjs';
+import { snapshot as serverSnapshot, diff as serverDiff, restoreSettings } from './helpers/server_state.mjs';
 
 // Linux: the run goes in a private network namespace with only loopback (#3466). Chrome cancels
 // every request in flight, even to 127.0.0.1, when the host's addresses change (ERR_NETWORK_CHANGED;
@@ -137,6 +144,11 @@ const partM = /^(\d+)\/(\d+)$/.exec(partArg);
 if (partArg && !(partM && +partM[1] >= 1 && +partM[1] <= +partM[2])) { console.error('--part must be K/N with 1 <= K <= N'); process.exit(2); }
 const part = partM ? { k: +partM[1], n: +partM[2] } : null;
 const resultsOut = arg('--results-out', '');
+const isolate = flag('--isolate');
+const restoreState = !flag('--no-restore');
+const failOnLeak = flag('--fail-on-leak');
+const shuffleSeed = arg('--shuffle', '');
+if (flag('--shuffle') && !/^\d+$/.test(shuffleSeed)) { console.error('--shuffle takes a number (the seed)'); process.exit(2); }
 const SEQUENCES = [
   ['terminal_pane_size_browser.test.js', 'terminal_scroll.test.js'],
 ];
@@ -511,6 +523,11 @@ let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : [...suites.cdp, .
 // --part K/N: the parts have about equal recorded time, not every Nth name (#4605: by name, the six CI parts ran 152 to 272 s of suites).
 if (part) tests = partsByDuration(tests, suiteDurations, part.n)[part.k - 1];
 tests = orderLongestFirst(tests, suiteDurations);
+if (shuffleSeed) { // mulberry32: the same seed gives the same order, so a failure that shows up in one order can be run again
+  let a = Number(shuffleSeed) >>> 0; const rnd = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  for (let i = tests.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [tests[i], tests[j]] = [tests[j], tests[i]]; }
+  console.log(`order: shuffled with seed ${shuffleSeed}`);
+}
 if (Object.keys(suiteDurations).length) console.log(`queue: longest first (${tests.filter(t => typeof suiteDurations[t] === 'number').length} of ${tests.length} suites have a recorded duration in suite_durations.json)`);
 // The strict phase's results are named 'strict: <suite>' (the default-mode run of a suite is separate).
 let phase = strictOnly ? 'strict: ' : '';
@@ -581,6 +598,8 @@ async function runAttempt(t, shard) {
       return { status: 'fail', code: 'sign-in', secs: '0.0', shard: shard.n, log: shard.log, out: `[runner] strict shard: could not sign the browser in: ${e.message}` };
     }
   }
+  let before = null;
+  try { before = serverSnapshot(shard.data); } catch (e) { console.log(`  [runner] could not read the shard's shared state before ${t}: ${e.message.split('\n')[0]}`); }
   const started = Date.now();
   return await new Promise(resolve => {
     // helpers/keep_page_visible.js keeps each suite's pages visible (a hidden page runs no animation frames, #3707).
@@ -600,7 +619,16 @@ async function runAttempt(t, shard) {
       killTree(p); untrack(p);
       for (const end = Date.now() + 2000; !closed && Date.now() < end; await sleep(50)) { /* drain */ }
       const status = timedOut ? 'timeout' : code === 0 ? 'pass' : 'fail';
-      resolve({ status, code: timedOut ? 'timeout' : code, secs, shard: shard.n, log: shard.log, out: timedOut ? `${out}\n[runner] TIMEOUT: killed after ${timeoutS}s` : out });
+      // What the suite left in the server's shared state (#4830): reported, and the settings put back so the next suite starts from what this one found.
+      let leaks = [], restored = 0;
+      if (before) {
+        try {
+          const after = serverSnapshot(shard.data);
+          leaks = serverDiff(before, after);
+          if (leaks.length && restoreState) restored = restoreSettings(shard.data, before, after);
+        } catch (e) { leaks = [`could not read the shared state after the suite: ${e.message.split('\n')[0]}`]; }
+      }
+      resolve({ status, code: timedOut ? 'timeout' : code, secs, shard: shard.n, log: shard.log, leaks, restored, out: timedOut ? `${out}\n[runner] TIMEOUT: killed after ${timeoutS}s` : out });
     });
   });
 }
@@ -635,6 +663,7 @@ async function tryShard(i, force) {
 
 const lastLines = (s, n) => s.trim().split('\n').slice(-n).join('\n');
 const results = []; // one entry per suite per run
+const leakReport = []; // the suites that left the shared server state changed (#4830)
 async function runOnce(run) {
   let next = 0;
   const label = runs > 1 ? `  [run ${run}/${runs}]` : '';
@@ -642,7 +671,7 @@ async function runOnce(run) {
     while (next < tests.length) {
       const t = tests[next++];
       const attempts = [];
-      const first = await tryShard(i, false);
+      const first = await tryShard(i, isolate ? 'a fresh server for each suite (--isolate)' : false);
       let shard = first.shard;
       if (!shard) attempts.push({ status: 'fail', code: 'shard', secs: '0.0', shard: shardsUp[i] ? shardsUp[i].n : i + 1, log: '', out: first.error });
       for (let a = 0; shard && a <= retries; a++) {
@@ -670,10 +699,13 @@ async function runOnce(run) {
         attempts: attempts.map(x => ({ status: x.status, code: x.code, secs: x.secs, shard: x.shard, coralLog: x.log, ...(x.status !== 'pass' ? { output: x.out } : {}) })),
       };
       if (shards > 1) res.shard = final.shard;
+      const leaked = attempts.flatMap(x => x.leaks || []);
+      if (leaked.length) { res.leaks = leaked; leakReport.push({ test: phase + t, leaks: [...new Set(leaked)], restored: attempts.reduce((n, x) => n + (x.restored || 0), 0) }); }
       if (status !== 'pass') res.output = attempts.filter(x => x.status !== 'pass').map(x => x.out).join('\n\n----- next attempt -----\n\n');
       results.push(res);
       const word = { pass: 'PASS', flaky: 'FLAKY', fail: 'FAIL', timeout: 'TIMEOUT' }[status];
       console.log(`${word.padEnd(7)} ${phase}${t}  (${final.secs}s${attempts.length > 1 ? `, ${attempts.length} attempts` : ''})${shards > 1 ? `  [shard ${final.shard}]` : ''}${label}${status === 'fail' ? `  exit=${final.code}` : ''}`);
+      if (leaked.length) console.log(`LEAK    ${phase}${t}: ${[...new Set(leaked)].join('; ')}${restoreState && !isolate ? ` (settings put back: ${attempts.reduce((n, x) => n + (x.restored || 0), 0)} row(s))` : ''}`);
       // CDP_FULL=1 prints a failing attempt's whole output. The default shows its last 30 lines, plus every
       // [FAIL] line above them, so no failing check leaves the console (#3609); results.json has it in full.
       for (const x of attempts.filter(x => x.status !== 'pass')) {
@@ -750,6 +782,11 @@ if (stress) {
   if (flaky.length) console.log(`FLAKY: ${flaky.join(', ')}`);
   if (failed.length) console.log(`FAILED: ${failed.join(', ')}`);
   exitCode = failed.length ? 1 : flaky.length ? (allowFlaky ? 0 : 3) : 0;
+}
+if (leakReport.length) {
+  console.log(`\nSHARED SERVER STATE: ${leakReport.length} suite(s) left it changed${isolate ? ' (each suite had its own server: nothing carried over)' : restoreState ? ' (their settings were put back; other tables only reported)' : ''}:`);
+  for (const l of leakReport) console.log(`  ${l.test}: ${l.leaks.join('; ')}`);
+  if (failOnLeak && !exitCode) exitCode = 5;
 }
 // Nothing this run started may outlive it (#3550): stop the shards, then look for tmux servers whose
 // socket is under the run's folder. Any found are listed, killed (by the PID just read, whose command
