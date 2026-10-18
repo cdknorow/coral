@@ -302,7 +302,7 @@ export async function openSaved({ toggle = false } = {}) {
     if (toggle && savedShowing()) { closeSaved(); return; } // the top bar's button is a toggle: pressed, it closes the sidebar (#4742); the jump bar's Back to Saved and the toast's link only open
     dropJumpBar();
     // What the sidebar was before, so closing leaves an agent's own dock as it was: open on its tab, or shut.
-    _before = { open: dockOpen(), tab: document.querySelector('#agentic-block-top .agentic-tab.active')?.dataset.tab || '' };
+    if (!savedShowing()) _before = { open: dockOpen(), tab: document.querySelector('#agentic-block-top .agentic-tab.active')?.dataset.tab || '' }; // opening it again (the toast's link) keeps what the dock was before the first open
     const btn = $('agentic-tab-saved');
     btn?.classList.remove('tab-hidden'); // a tab the user hid is still what this button opens
     window.toggleAgenticPanel?.(true);
