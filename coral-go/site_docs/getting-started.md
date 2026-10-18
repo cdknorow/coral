@@ -89,9 +89,51 @@ coral --home /tmp/coral-two --port 8452 --no-browser
 
 A non-default data directory no longer reads the default tmux socket, so it does not list the first instance's agents. Set `CORAL_TMUX_FALLBACK=1` only if you want the old merged view.
 
+## Inbox: what needs you
+
+The **Inbox** tab, in the top bar of every Coral (on a phone, in the view dropdown), is one page for what is waiting on you. It has two parts:
+
+- **Needs you**: the agents that are waiting for input, each one a button that opens that agent. The number on the tab is how many are waiting.
+- **Saved for later**: the messages you bookmarked (below), with an **Open** and a **Done** list.
+
+On a Coral running as a hub over several servers, Saved for later shows every online server's items together, each naming its server. Through Coral Hub the Inbox tab is the hub's own Inbox page. The bookmark in the top bar (it shows how many are open) opens the Inbox at Saved for later when you are not looking at an agent or a team. **Escape**, a second press of the bookmark, or your browser's Back button leaves it.
+
 ## Save a message for later
 
-Hover a message in an agent's Chat view (or a board message) and use its bookmark button, **Save for later**, to add it to your **Saved** list; a toast offers **View saved** (and **Undo** when you remove one). **Saved** is a tab of the right sidebar, which every page has (an agent's page keeps its tabs, a board has Subscribers, Team artifacts, Tasks and Saved, and Chats has Saved), and the bookmark in the top bar (it shows how many are open) opens the sidebar on it, so the list stays in view while you read something else. Each kind of page remembers whether its sidebar is open, how wide it is and its last tab (a board starts with it open only in a window wide enough to leave its messages room). It has an **Open** and a **Done** list, newest saved first, each item showing where the message was said, a short snippet, and when it was said and saved. **Open chat**, **Open board** or **Open in Chats** (for an agent that has ended) takes you back to that point of the conversation: Coral loads older messages until it finds the message, outlines it, tags it **Saved** and puts the focus on it, with a bar above to go **Back to Saved**. The page you land on shows its sidebar as you last left it, so the bar's **Back to Saved**, or the top bar's button, brings the list back beside it. If the message is gone (the transcript no longer has it, or it was deleted from the board), the item is marked **Gone**, keeps its snippet, and can only be removed. The list is yours alone: agents cannot add to it, and the snippet is cleaned of tokens when it is saved. It lives on this computer in `sessions.db`; on a Coral running as a hub over registered servers, their agents' and boards' messages have the button too, each bookmark is kept on the server that has the conversation, and the Saved tab shows every online server's items together (each naming its server; a server that does not answer is one line). Coral Hub's own dashboard does not have the button yet.
+Hover a message in an agent's Chat view (or a board message) and use its bookmark button, **Save for later**. A toast offers **View saved** (and **Undo** when you remove one). The list follows the page you are on:
+
+| Where you are | Saved shows |
+|---|---|
+| An agent's page | That agent's bookmarks: its chat, and the board messages it wrote on its team's board. It is a **Saved** tab in the right-hand sidebar. |
+| A team's page (opened from the agent list, or its board) | The team's bookmarks: its board's messages and its agents' chats. |
+| Home, Chats, Workflows, Jobs, Analytics, Docs, Servers | Everything, in the Inbox. |
+
+A heading says which ("Saved: QA Engineer", "Saved: my-team", "Saved: all"), and the **Open** and **Done** numbers, the tab's number and the top bar's number are all of that page. Each item shows where the message was said, a short snippet, and when it was said and saved. Newest saved is first; you can search and sort them (see the next section).
+
+On an item:
+
+- **Open chat**, **Open board** or **Open in Chats** (for an agent that has ended) takes you back to that point of the conversation: Coral loads older messages until it finds the message, outlines it and tags it **Saved**, with a bar above to go **Back to Saved**.
+- **Done** moves it to the **Done** list (**Reopen** brings it back). **Remove** deletes the bookmark.
+
+If the message is gone (the transcript no longer has it, or it was deleted from the board), the item is marked **Gone**, keeps its snippet, and can only be removed. The list is yours alone: agents cannot add to it, and the snippet is cleaned of tokens when it is saved. It lives on this computer in `sessions.db`; on a hub over registered servers each bookmark is kept on the server that has the conversation. Coral Hub's own dashboard does not have the button yet.
+
+## Search and filter a list
+
+The lists in the dashboard share one bar: a search box with a count beside it, a **Filters** button (it shows how many filters are on), a **Sort** menu where the list has one, and a chip for each filter that is on. The server does the searching, so it covers the whole list, not just what is on screen. Text is a plain, case-insensitive match (`%` and `_` are ordinary characters).
+
+| List | The search box matches | Filters | Sort |
+|---|---|---|---|
+| Agents | an agent's name, display name, auto name or job title (the search box above the list) | State (needs input, working, idle, asleep), Board, Machine | List order, Name, Recent activity, Cost |
+| Tasks | a task's title, body or completion message | Status, Priority, Agent, Updated since | Open first, Newest, Oldest, Recently updated |
+| Board | a message's text | From, Mentions me, Since, Until | (in order; **First** and **Latest** jump, the arrows step through matches) |
+| Team Artifacts | the name, the task title, who produced or sent it, the board it came from or went to, and the media type | Type (image, PDF, text, other), Origin (shared here, received, unlisted), Uploaded by, Kept only, From, Until | Newest, Oldest, Name, Size |
+| Activity and History events | an event's summary or tool name (not its detail) | Type, From, Until, and which groups of events to show | Newest first, Oldest first |
+| Saved for later | a bookmark's title or snippet | Type (agent chat or board message), conversation | Newest saved, Oldest saved |
+| Servers | a server's name or address (the box appears from six servers up) | | |
+
+- **The count** reads "12 agents" with no filter and "3 of 12" with one. A **+** after the total ("3 of 200,000+") means the search stopped at its limit and older items were not scanned; narrow it with a filter or a date. Activity searches show **Load more** for the next page.
+- **Chips**: each filter that is on shows as a chip. Click a chip to remove that filter. With two or more on, a **Clear all** chip appears; **Clear all** is also at the bottom of the Filters menu.
+- The screen reader hears the count after you stop typing, not on every key.
 
 ## Desktop alerts
 
