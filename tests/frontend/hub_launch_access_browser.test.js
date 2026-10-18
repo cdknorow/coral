@@ -47,9 +47,11 @@ const BASE = require('./test_base').BASE;
 
         console.log('1. A machine at View: the dialog says so as it opens, the launch buttons are dimmed');
         await open(); await openLaunch();
-        await waitFor(`!document.getElementById('launch-access-note').hidden && /Blocked/.test(document.getElementById('launch-access-note').textContent)`, 'the note', { timeout: 8000 });
+        // The note, its words and the dimming all follow the access answer, which arrives after the dialog opens: wait for each, never read them at once (it failed a gate under load).
+        await waitFor(`!document.getElementById('launch-access-note').hidden && /Box B needs Launch/.test(document.getElementById('launch-access-note').textContent)`, 'the note says Box B needs Launch', { timeout: 15000 });
         assert.match(await ev(`document.getElementById('launch-access-note').textContent`), /Box B needs Launch/);
         await ev(`window._selectLaunchType('agent'); true`);
+        await waitFor(`document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`, 'the launch button dimmed', { timeout: 15000 });
         assert.equal(await ev(`document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`), true);
         assert.equal(await ev(`document.querySelectorAll('.toast').length`), 0, 'nothing was toasted yet');
 
