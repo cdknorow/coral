@@ -385,11 +385,8 @@ func (h *SystemHandler) normalizeSettingValues(ctx context.Context, body map[str
 	if msg := applySettingRules(body, settingRulesBeforeRetention); msg != "" {
 		return msg
 	}
-	for _, k := range []string{retentionEnabledAtKey, retentionSeenDaysKey, RetentionAckAtKey, RetentionLastKey} {
-		if _, ok := body[k]; ok {
-			return k + " is set by Coral (acknowledge a dry run with POST /api/artifacts/retention/ack)"
-		}
-	}
+	// Retention's bookkeeping keys (retentionEnabledAtKey, retentionSeenDaysKey, RetentionAckAtKey, RetentionLastKey) are Coral's own and are
+	// refused by checkSettingKeys before this runs, so a body that reaches here never holds one; this function only adds the first two below.
 	if v, ok := body[RetentionDaysSetting]; ok {
 		s, valid := validRetentionDays(v)
 		if !valid {

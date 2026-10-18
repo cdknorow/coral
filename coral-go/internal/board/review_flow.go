@@ -178,6 +178,8 @@ func (s *Store) DelegateReview(ctx context.Context, project string, id int64, ac
 		if err != nil {
 			return nil, nil, err
 		}
+		// GetProjectSubscription selects only is_active = 1 rows, so IsActive == 0 cannot be true here today: the check mirrors that SQL filter
+		// and keeps the rule if the lookup ever returns inactive rows.
 		if sub == nil || sub.IsActive == 0 {
 			return nil, nil, fmt.Errorf("%s is not on this board", r)
 		}

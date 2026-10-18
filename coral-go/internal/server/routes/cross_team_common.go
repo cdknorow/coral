@@ -42,6 +42,8 @@ func (h *BoardHandler) checkCrossTeamSender(ctx context.Context, board, subscrib
 	if err != nil {
 		return "", "", senderAllowed, err
 	}
+	// GetProjectSubscription selects only is_active = 1 rows, so IsActive == 0 cannot be true here today: the check mirrors that SQL filter
+	// and keeps the rule if the lookup ever returns inactive rows.
 	if sub == nil || sub.IsActive == 0 || !strings.EqualFold(strings.TrimSpace(sub.JobTitle), crossTeamSenderRole) {
 		return "", "", senderNotOrchestrator, nil
 	}

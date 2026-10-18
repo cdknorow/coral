@@ -32,6 +32,8 @@ func (s *Store) RequireTaskReviewer(ctx context.Context, project, actor string) 
 	if err != nil {
 		return err
 	}
+	// GetProjectSubscription selects only is_active = 1 rows, so IsActive == 0 cannot be true here today: the check mirrors that SQL filter
+	// and keeps the rule if the lookup ever returns inactive rows.
 	if sub == nil || sub.IsActive == 0 || (sub.CanPeek == 0 && !strings.EqualFold(strings.TrimSpace(sub.JobTitle), "Orchestrator")) {
 		return fmt.Errorf("an active registered orchestrator is required")
 	}
