@@ -38,7 +38,10 @@ async function run() {
     const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
     const { waitFor } = require('./helpers/wait').bind(ev);
     const settle = (cond, label) => waitFor(cond, label, { timeout: 10000 });
-    const snap = () => ev(`(() => { const c = document.getElementById('mb-messages'); const cur = c.querySelector(':scope > .mb-message-current'); const bar = document.getElementById('mb-tools'); const st = bar.querySelector('.mb-search-status');
+    // The mark is scrolled into view a moment after it is marked (and later on a loaded runner): a read waits, up to 3 s, for the current match to be in view, so a check of "visible" does not race the scroll.
+    const IN_VIEW = `(() => { const c = document.getElementById('mb-messages'); const cur = c && c.querySelector(':scope > .mb-message-current'); if (!cur) return true; const a = cur.getBoundingClientRect(), b = c.getBoundingClientRect(); return a.top >= b.top - 2 && a.bottom <= b.bottom + 2; })()`;
+    const snap = async () => { await waitFor(IN_VIEW, 'the current match in view', { timeout: 3000 }).catch(() => {}); return snap0(); };
+    const snap0 = () => ev(`(() => { const c = document.getElementById('mb-messages'); const cur = c.querySelector(':scope > .mb-message-current'); const bar = document.getElementById('mb-tools'); const st = bar.querySelector('.mb-search-status');
         const rows = [...c.querySelectorAll(':scope > .mb-message')]; const ids = rows.map(r => r.dataset.messageId);
         return { controls: [...bar.querySelectorAll('.list-bar-controls button')].map(b => b.textContent.trim().replace(/\\s*\\(\\d+\\)$/, '')), results: st && !st.hidden ? bar.querySelector('.mb-search-results').textContent : null, chips: [...bar.querySelectorAll('.list-bar-chip-text')].map(e => e.textContent),
             rows: rows.length, unique: new Set(ids).size === ids.length, marks: c.querySelectorAll('mark.mb-hit').length, matchRows: c.querySelectorAll('.mb-message-match, .mb-message-current').length, current: cur && Number(cur.dataset.messageId),
