@@ -2,10 +2,13 @@ package background
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -20,226 +23,272 @@ import (
 )
 
 // runProject was split for #4599 (second ranking, item 4). The health rules nudge agents and escalate to the
-// orchestrator, so the old function is kept below (verbatim but for its name) and the two run the same random teams
-// on two boards built step by step the same way: every nudge (agent, key, text, in order), the board's health lines,
-// every claim and status counter and the open escalations must stay the same.
+// orchestrator, so the old function is kept below (verbatim but for its name). Before every step board A's
+// database is copied to B (the same bytes, the database's own timestamps included); the old rules run on A and the
+// new on B with the same settings, agents, hook signals, held dialogs and clock; every nudge (agent, key, text, in
+// order) and every row of the two databases afterwards must be equal. A floor per rule fails the test if a rule
+// went unexercised: claim nudge, status nudge, claim escalation, status escalation, mention re-nudge, held-dialog
+// notice, and a claim nudge a wait held back.
 
-var healthOracleTotals struct{ nudges, status, failed, lines, counters int }
+// healthKinds counts what the runs covered, per rule.
+var healthKinds map[string]int
 
 func TestRunProjectAgreesWithBefore4599(t *testing.T) {
-	healthOracleTotals.nudges, healthOracleTotals.status, healthOracleTotals.failed, healthOracleTotals.lines, healthOracleTotals.counters = 0, 0, 0, 0, 0
-	for seed := int64(1); seed <= 80; seed++ {
+	healthKinds = map[string]int{}
+	for seed := int64(1); seed <= 120; seed++ {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) { runHealthOracle(t, seed) })
 	}
-	t.Logf("compared: %d nudges (%d status, %d failed deliveries), %d board lines, %d counter entries", healthOracleTotals.nudges, healthOracleTotals.status, healthOracleTotals.failed, healthOracleTotals.lines, healthOracleTotals.counters)
-	require.Greater(t, healthOracleTotals.status, 30)
-	require.Greater(t, healthOracleTotals.nudges, 100)
-	require.Greater(t, healthOracleTotals.failed, 5)
-	require.Greater(t, healthOracleTotals.lines, 50)
-	require.Greater(t, healthOracleTotals.counters, 10)
+	t.Logf("compared, per rule: %v", healthKinds)
+	for kind, floor := range map[string]int{
+		"claim nudge": 50, "status nudge": 50, "claim escalation": 20, "status escalation": 20,
+		"mention renudge": 20, "held notice": 20, "claim held back by a wait": 20, "failed delivery": 20, "budget line": 5,
+	} {
+		require.GreaterOrEqual(t, healthKinds[kind], floor, "the %s rule went (almost) unexercised", kind)
+	}
 }
 
-// healthSide is one of the two: its board, its rules and what it delivered.
-type healthSide struct {
-	bs     *board.Store
-	h      *HealthNudges
-	sent   []string
-	failed int
-	step   int
-	tries  map[string]int
+func copyHealthBoard(t *testing.T, from, to string) {
+	for _, suffix := range []string{"-wal", "-shm"} {
+		os.Remove(to + suffix)
+	}
+	src, err := os.Open(from)
+	require.NoError(t, err)
+	defer src.Close()
+	dst, err := os.Create(to)
+	require.NoError(t, err)
+	_, err = io.Copy(dst, src)
+	require.NoError(t, err)
+	require.NoError(t, dst.Close())
+}
+
+// dumpHealthBoard is every row of every table as text, sorted, without created_at: the rules stamp their board
+// lines with the database's clock, which differs between the two runs by the time between them.
+func dumpHealthBoard(t *testing.T, path string) []string {
+	db, err := sql.Open("sqlite", path+"?_pragma=query_only(1)")
+	require.NoError(t, err)
+	defer db.Close()
+	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+	require.NoError(t, err)
+	var tables []string
+	for rows.Next() {
+		var n string
+		require.NoError(t, rows.Scan(&n))
+		tables = append(tables, n)
+	}
+	rows.Close()
+	var out []string
+	for _, tbl := range tables {
+		r, err := db.Query(fmt.Sprintf("SELECT * FROM %q", tbl))
+		require.NoError(t, err)
+		cols, _ := r.Columns()
+		for r.Next() {
+			vals := make([]any, len(cols))
+			ptrs := make([]any, len(cols))
+			for i := range vals {
+				ptrs[i] = &vals[i]
+			}
+			require.NoError(t, r.Scan(ptrs...))
+			var b strings.Builder
+			b.WriteString(tbl)
+			for i, v := range vals {
+				if cols[i] == "created_at" {
+					continue
+				}
+				if bs, ok := v.([]byte); ok {
+					v = string(bs)
+				}
+				fmt.Fprintf(&b, " %s=%v", cols[i], v)
+			}
+			out = append(out, b.String())
+		}
+		r.Close()
+	}
+	sort.Strings(out)
+	return out
 }
 
 func runHealthOracle(t *testing.T, seed int64) {
 	ctx := context.Background()
 	rng := rand.New(rand.NewSource(seed))
-	// A day ahead of the database's own clock, which stamps the tasks' activity: their activity is then in the past
-	// and the status rule acts.
-	now := time.Now().UTC().Truncate(time.Second).Add(24 * time.Hour)
-	agents := []AgentInfo{}
-	signals := map[string]agentSignal{}
-	known := map[string]bool{}
-	mk := func() *healthSide {
-		bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
-		require.NoError(t, err)
-		t.Cleanup(func() { bs.Close() })
-		s := &healthSide{bs: bs, tries: map[string]int{}}
-		s.h = &HealthNudges{
-			store:    bs,
-			discover: func(context.Context) ([]AgentInfo, error) { return agents, nil },
-			signal: func(_ context.Context, id string) (agentSignal, bool) {
-				return signals[id], known[id]
-			},
-			deliver: func(_ context.Context, a AgentInfo, key, text string) error {
-				k := a.DisplayName + "|" + key + "|" + text
-				s.tries[k]++
-				s.sent = append(s.sent, k)
-				h := fnv.New32a()
-				fmt.Fprintf(h, "%d|%s|%d", s.step, k, s.tries[k])
-				if h.Sum32()%6 == 0 {
-					s.failed++
-					return errors.New("not delivered")
-				}
-				return nil
-			},
-			now:         func() time.Time { return now },
-			heldDialogs: func() map[string]time.Time { return nil },
-		}
-		return s
-	}
+	dir := t.TempDir()
+	pathA, pathB := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
+	bs, err := board.NewStoreWithKey(pathA, "")
+	require.NoError(t, err)
 	budget := []int{3, 20}[rng.Intn(2)]
-	oldS, newS := mk(), mk()
-	oldS.h.TeamBudget, newS.h.TeamBudget = budget, budget
-	sides := []*healthSide{oldS, newS}
-	both := func(f func(bs *board.Store) error) {
-		for _, s := range sides {
-			require.NoError(t, f(s.bs))
-		}
-	}
 
 	names := []string{"Orchestrator"}
 	for i := 0; i < 2+rng.Intn(4); i++ {
 		names = append(names, fmt.Sprintf("Dev %d", i))
 	}
-	sids := map[string]string{}
-	for i, name := range names {
-		sid := fmt.Sprintf("%08d-1111-1111-1111-111111111111", i)
-		sids[name] = sid
-		title := name
-		both(func(bs *board.Store) error {
-			_, err := bs.Subscribe(ctx, "team", name, title, naming.SessionName("claude", sid), nil, "all")
-			return err
-		})
+	sid := func(name string) string {
+		return fmt.Sprintf("%08d-1111-1111-1111-111111111111", len(name)*31+int(name[len(name)-1]))
 	}
+	session := func(name string) string { return naming.SessionName("claude", sid(name)) }
+	for _, name := range names {
+		_, err := bs.Subscribe(ctx, "team", name, name, session(name), nil, "all")
+		require.NoError(t, err)
+	}
+	// The clock: the database's own now, plus an offset that grows by minutes each step, so the posts and task
+	// activity it stamps fall inside and then past the rules' windows (an hour for mentions).
+	offset := time.Duration(0)
+	signals := map[string]agentSignal{}
+	known := map[string]bool{}
+	held := map[string]time.Time{}
 	var taskIDs []int64
 	for step := 0; step < 16; step++ {
-		// Who runs, and what their hooks say.
-		agents = agents[:0]
+		offset += time.Duration(2+rng.Intn(9)) * time.Minute
+		now := time.Now().UTC().Truncate(time.Second).Add(offset)
+		hs := board.DefaultHealthSettings()
+		hs.MentionRenudge.On = rng.Intn(5) != 0
+		hs.HeldNotice.On = rng.Intn(5) != 0
+		hs.ClaimNudge.AfterMin = []int{5, 10}[rng.Intn(2)]
+		hs.ClaimNudge.Nudges = 1 + rng.Intn(2)
+		hs.StatusNudge.AfterMin = []int{5, 20}[rng.Intn(2)]
+		hs.StatusNudge.EscalateAfterMin = []int{5, 10}[rng.Intn(2)]
+		hs.MentionRenudge.AfterMin = []int{5, 10}[rng.Intn(2)]
+		hs.HeldNotice.AfterMin = []int{5, 10}[rng.Intn(2)]
+
+		bySession := map[string]AgentInfo{}
 		for _, name := range names {
-			sid := sids[name]
 			if rng.Intn(6) != 0 {
-				agents = append(agents, AgentInfo{AgentType: "claude", SessionID: sid, DisplayName: name})
+				bySession[session(name)] = AgentInfo{AgentType: "claude", SessionID: sid(name), DisplayName: name}
 			}
-			known[sid] = rng.Intn(5) != 0
-			signals[sid] = agentSignal{
+			known[sid(name)] = rng.Intn(5) != 0
+			signals[sid(name)] = agentSignal{
 				InTurn: rng.Intn(4) == 0, NeedsInput: rng.Intn(8) == 0,
 				Since:     now.Add(-time.Duration(rng.Intn(40)) * time.Minute),
-				LastEvent: now.Add(-time.Duration([]int{0, 1, rng.Intn(60), rng.Intn(60)}[rng.Intn(4)]) * time.Minute), // often just now: activity
+				LastEvent: now.Add(-time.Duration([]int{0, 1, rng.Intn(60), rng.Intn(90)}[rng.Intn(4)]) * time.Minute),
+			}
+			// A dialog holding this agent's automated messages: since a few minutes ago, or released.
+			if _, ok := held[session(name)]; ok && rng.Intn(3) == 0 {
+				delete(held, session(name))
+			} else if !ok && rng.Intn(5) == 0 {
+				held[session(name)] = now.Add(-time.Duration(rng.Intn(30)) * time.Minute)
 			}
 		}
-		// New work, and some of it claimed.
 		for k := rng.Intn(3); k > 0; k-- {
 			assignee := names[1+rng.Intn(len(names)-1)]
 			if rng.Intn(5) == 0 {
 				assignee = ""
-			}
-			if assignee != "" && rng.Intn(4) == 0 {
+			} else if rng.Intn(4) == 0 {
 				assignee = "  " + strings.ToUpper(assignee) // the same member, spelled another way (board.SameIdentity)
 			}
-			prio := []string{"high", "medium", "low"}[rng.Intn(3)]
-			var id int64
-			for _, s := range sides {
-				task, err := s.bs.CreateTask(ctx, "team", "work", "", prio, "Operator", assignee)
-				require.NoError(t, err)
-				id = task.ID
-			}
-			taskIDs = append(taskIDs, id)
+			task, err := bs.CreateTask(ctx, "team", "work", "", []string{"high", "medium", "low"}[rng.Intn(3)], "Operator", assignee)
+			require.NoError(t, err)
+			taskIDs = append(taskIDs, task.ID)
 		}
-		// Work moves: claimed (mostly by its assignee), finished, cancelled or reassigned; each may be refused, the
-		// same way on both boards.
 		for k := rng.Intn(3); k > 0 && len(taskIDs) > 0; k-- {
 			id := taskIDs[rng.Intn(len(taskIDs))]
-			var assignee string
-			if task, err := oldS.bs.GetTask(ctx, "team", id); err == nil && task != nil && task.AssignedTo != nil {
-				assignee = *task.AssignedTo
+			task, err := bs.GetTask(ctx, "team", id)
+			if err != nil || task == nil {
+				continue
 			}
-			who := names[1+rng.Intn(len(names)-1)]
-			op := rng.Intn(6)
-			for _, s := range sides {
-				switch {
-				case op <= 2 && assignee != "":
-					s.bs.ClaimTask(ctx, "team", assignee, id)
-				case op == 3:
-					s.bs.CompleteTask(ctx, "team", id, assignee, nil)
-				case op == 4:
-					s.bs.CancelTask(ctx, "team", id, "Operator", nil)
-				default:
-					s.bs.ReassignTask(ctx, "team", id, who)
-				}
+			switch op := rng.Intn(6); {
+			case op <= 2 && task.AssignedTo != nil:
+				bs.ClaimTask(ctx, "team", strings.TrimSpace(*task.AssignedTo), id)
+			case op == 3 && task.AssignedTo != nil:
+				bs.CompleteTask(ctx, "team", id, strings.TrimSpace(*task.AssignedTo), nil)
+			case op == 4:
+				bs.CancelTask(ctx, "team", id, "Operator", nil)
+			default:
+				bs.ReassignTask(ctx, "team", id, names[1+rng.Intn(len(names)-1)])
 			}
 		}
-		// A teammate mentions the orchestrator.
+		// A member waits on someone (some waits short enough to expire).
 		if rng.Intn(3) == 0 {
+			who := names[1+rng.Intn(len(names)-1)]
+			bs.RegisterWait(ctx, "team", who, session(who), "message", "Orchestrator", "", []time.Duration{2 * time.Minute, time.Hour}[rng.Intn(2)])
+		}
+		// A teammate mentions the orchestrator; the orchestrator may read or answer it before it is due.
+		if rng.Intn(2) == 0 {
 			from := names[1+rng.Intn(len(names)-1)]
-			both(func(bs *board.Store) error {
-				_, err := bs.PostMessage(ctx, "team", from, "@Orchestrator a question", nil)
-				return err
-			})
+			_, err := bs.PostMessage(ctx, "team", from, "@Orchestrator a question about my task", nil)
+			require.NoError(t, err)
 		}
-		now = now.Add(time.Duration(1+rng.Intn(15)) * time.Minute)
-
-		for i, s := range sides {
-			s.step, s.sent, s.tries, s.failed = step, nil, map[string]int{}, 0
-			bySession := map[string]AgentInfo{}
-			for _, a := range agents {
-				bySession[naming.SessionName(a.AgentType, a.SessionID)] = a
+		switch rng.Intn(6) {
+		case 0:
+			bs.ReadMessages(ctx, "team", "Orchestrator", 100)
+		case 1:
+			bs.PostMessage(ctx, "team", "Orchestrator", "on it", nil)
+		}
+		// Claims a wait holds back: a running, known, idle member with assigned work and nothing in progress.
+		waits, _ := bs.ListActiveWaits(ctx, "team")
+		tasks, _ := bs.ListOpenTasks(ctx, "team")
+		for _, w := range waits {
+			sig := signals[sid(w.SubscriberID)]
+			mine, pending := agentTasks(tasks, w.SubscriberID, now)
+			if _, live := bySession[session(w.SubscriberID)]; live && known[sid(w.SubscriberID)] && !sig.InTurn && !sig.NeedsInput &&
+				len(mine) == 0 && len(pending) > 0 && now.Sub(sig.Since) >= time.Duration(hs.ClaimNudge.AfterMin)*time.Minute {
+				healthKinds["claim held back by a wait"]++
 			}
-			hs := s.bs.GetHealthSettings(ctx, "team")
+		}
+
+		// The same bytes on both sides.
+		require.NoError(t, bs.Close())
+		copyHealthBoard(t, pathA, pathB)
+		var sent [2][]string
+		var failed [2]int
+		for i, p := range []string{pathA, pathB} {
+			store, err := board.NewStoreWithKey(p, "")
+			require.NoError(t, err)
+			tries := map[string]int{}
+			h := &HealthNudges{
+				store:       store,
+				signal:      func(_ context.Context, id string) (agentSignal, bool) { return signals[id], known[id] },
+				now:         func() time.Time { return now },
+				heldDialogs: func() map[string]time.Time { return held },
+				TeamBudget:  budget,
+				deliver: func(_ context.Context, a AgentInfo, key, text string) error {
+					k := a.DisplayName + "|" + key + "|" + text
+					tries[k]++
+					sent[i] = append(sent[i], k)
+					hh := fnv.New32a()
+					fmt.Fprintf(hh, "%d|%s|%d", step, k, tries[k])
+					if hh.Sum32()%6 == 0 {
+						failed[i]++
+						return errors.New("not delivered")
+					}
+					return nil
+				},
+			}
 			if i == 0 {
-				s.h.runProjectBefore4599(ctx, "team", bySession, hs)
+				h.runProjectBefore4599(ctx, "team", bySession, hs)
 			} else {
-				s.h.runProject(ctx, "team", bySession, hs)
+				h.runProject(ctx, "team", bySession, hs)
 			}
+			require.NoError(t, store.Close())
 		}
-		require.Equal(t, oldS.sent, newS.sent, "step %d: the nudges", step)
-		require.Equal(t, healthLines(t, oldS.bs), healthLines(t, newS.bs), "step %d: the board lines", step)
-		require.Equal(t, healthCounters(t, oldS.bs, names, taskIDs), healthCounters(t, newS.bs, names, taskIDs), "step %d: the counters", step)
-		healthOracleTotals.nudges += len(newS.sent)
-		for _, k := range newS.sent {
-			if strings.Contains(k, "health-status:") {
-				healthOracleTotals.status++
-			}
-		}
-		require.Equal(t, oldS.failed, newS.failed, "step %d: the failed deliveries", step)
-		healthOracleTotals.failed += newS.failed
-		healthOracleTotals.counters += len(healthCounters(t, newS.bs, names, taskIDs))
-	}
-	healthOracleTotals.lines += len(healthLines(t, newS.bs))
-}
-
-func healthLines(t *testing.T, bs *board.Store) []string {
-	msgs, err := bs.ListMessages(context.Background(), "team", 1000, 0, 0)
-	require.NoError(t, err)
-	var out []string
-	for _, m := range msgs {
-		if strings.Contains(m.Content, "[Coral health") {
-			out = append(out, m.Content)
-		}
-	}
-	return out
-}
-
-// healthCounters: every non-zero claim and status counter, and the open escalations.
-func healthCounters(t *testing.T, bs *board.Store, names []string, taskIDs []int64) []string {
-	ctx := context.Background()
-	var out []string
-	for _, name := range names {
-		for _, id := range taskIDs {
-			for _, rule := range []string{ruleClaimNudge, ruleStatusNudge} {
-				c, err := bs.GetHealthCounter(ctx, "team", rule, name, fmt.Sprint(id))
-				require.NoError(t, err)
-				if c != (board.HealthCounter{}) {
-					out = append(out, fmt.Sprintf("%s %s #%d %+v", rule, name, id, c))
+		require.Equal(t, sent[0], sent[1], "step %d: the nudges", step)
+		require.Equal(t, failed[0], failed[1], "step %d: the failed deliveries", step)
+		before := dumpHealthBoard(t, pathA)
+		require.Equal(t, before, dumpHealthBoard(t, pathB), "step %d: the databases after the run", step)
+		for _, k := range sent[1] {
+			for kind, key := range map[string]string{"claim nudge": "|health-claim:", "status nudge": "|health-status:", "mention renudge": "|health-mention:"} {
+				if strings.Contains(k, key) {
+					healthKinds[kind]++
 				}
 			}
 		}
+		healthKinds["failed delivery"] += failed[1]
+
+		bs, err = board.NewStoreWithKey(pathA, "")
+		require.NoError(t, err)
 	}
-	esc, err := bs.HealthEscalations(ctx, "team")
+	msgs, err := bs.ListMessages(ctx, "team", 1000, 0, 0)
 	require.NoError(t, err)
-	for _, e := range esc {
-		out = append(out, fmt.Sprintf("escalation %+v", e))
+	for _, m := range msgs {
+		c := m.Content
+		switch {
+		case strings.Contains(c, "escalated to the orchestrator:"):
+			healthKinds["claim escalation"] += strings.Count(c, "has not claimed")
+			healthKinds["status escalation"] += strings.Count(c, "silent on #")
+		case strings.Contains(c, "waiting at a dialog"):
+			healthKinds["held notice"]++
+		case strings.Contains(c, "[Coral health actions paused]"):
+			healthKinds["budget line"]++
+		}
 	}
-	sort.Strings(out)
-	return out
+	require.NoError(t, bs.Close())
 }
 
 // runProjectBefore4599 is runProject as it was before #4599 (second ranking, item 4).
