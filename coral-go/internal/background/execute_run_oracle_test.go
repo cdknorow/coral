@@ -24,17 +24,18 @@ var runStamp = regexp.MustCompile(`\d{4}-\d\d-\d\dT[0-9:.]+(Z|[+-]\d\d:\d\d)?`)
 
 // The outcomes the executeRun oracle must reach, each counted from the finished run, with a floor.
 var executeRunOutcomes = map[string]int{
-	"steps that don't parse":             5,
-	"a default agent that doesn't parse": 5,
-	"completed":                          40,
-	"a step failed, the rest skipped":    30,
-	"a step failed and the run went on":  20,
-	"an unknown step type":               10,
-	"retired connections":                10,
-	"StepComplete hooks fired":           10,
-	"StepFailed hooks fired":             10,
-	"files a step made, listed":          30,
-	"the run's time limit, killed":       3,
+	"steps that don't parse":                  5,
+	"a default agent that doesn't parse":      5,
+	"completed":                               40,
+	"a step failed, the rest skipped":         30,
+	"a step failed and the run went on":       20,
+	"an unknown step type":                    10,
+	"retired connections":                     10,
+	"StepComplete hooks fired":                10,
+	"StepFailed hooks fired":                  10,
+	"files a step made, listed":               30,
+	"the run's time limit, killed":            3,
+	"a step's folder taken, the rest skipped": 5,
 }
 
 // #4845 (executeRun): WorkflowRunner.executeRun split into parseRunDefinition, startRun, endCancelledRun, runStep and
@@ -62,18 +63,19 @@ func TestExecuteRunAgreesWithBefore4845(t *testing.T) {
 		sides[i] = side{NewWorkflowRunner(wfStore, &AgentLauncher{runtime: rt}, rt, nil, nil, dataDir, "localhost", 8420), wfStore, dataDir, repo}
 	}
 	commands := []string{"echo hi > out.txt", "exit 1", "echo step $CORAL_WORKFLOW_STEP of $CORAL_WORKFLOW_NAME > step.txt", "true", "printf data > a.txt; mkdir sub; printf x > sub/b.txt",
-		"echo to stderr >&2; exit 3", "echo $CORAL_WORKFLOW_RUN_ID > run.txt"}
+		"echo to stderr >&2; exit 3", "echo $CORAL_WORKFLOW_RUN_ID > run.txt",
+		`mkdir "$CORAL_WORKFLOW_RUN_DIR/step_$((CORAL_WORKFLOW_STEP+1))"`} // takes the next step's folder: that step fails before it runs
 	hook := func(event string) json.RawMessage {
 		b, _ := json.Marshal(map[string]any{event: []any{map[string]any{"hooks": []any{map[string]any{"type": "command",
 			"command": "echo " + event + " $CORAL_STEP_STATUS >> \"$CORAL_WORKFLOW_RUN_DIR/hooks.log\""}}}}})
 		return b
 	}
 	counts := map[string]int{}
-	for seed := int64(1); seed <= 200; seed++ {
+	for seed := int64(1); seed <= 260; seed++ {
 		rng := rand.New(rand.NewSource(seed))
 		var steps []StepDef
 		for k := 1 + rng.Intn(4); k > 0; k-- {
-			st := StepDef{Name: fmt.Sprintf("s%d", k), Type: "shell", Command: commands[rng.Intn(len(commands))], ContinueOnFailure: rng.Intn(3) == 0}
+			st := StepDef{Name: fmt.Sprintf("s%d", k), Type: "shell", Command: commands[rng.Intn(len(commands))], ContinueOnFailure: rng.Intn(2) == 0}
 			switch rng.Intn(12) {
 			case 0:
 				st.Type = "dance"
@@ -82,7 +84,7 @@ func TestExecuteRunAgreesWithBefore4845(t *testing.T) {
 			case 2, 3:
 				event := []string{"StepComplete", "StepFailed"}[rng.Intn(2)]
 				st.Hooks = hook(event)
-				if event == "StepFailed" && rng.Intn(2) == 0 {
+				if event == "StepFailed" {
 					st.Command = "exit 1" // so the hook it names fires
 				}
 			}
@@ -156,6 +158,9 @@ func TestExecuteRunAgreesWithBefore4845(t *testing.T) {
 		}
 		if has(`"status":"failed"`) && has("status=completed") {
 			counts["a step failed and the run went on"]++
+		}
+		if has("already exists or can't be made") && has(`"status":"skipped"`) {
+			counts["a step's folder taken, the rest skipped"]++
 		}
 		if has("unknown step type") {
 			counts["an unknown step type"]++

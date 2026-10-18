@@ -397,12 +397,22 @@ func (wr *WorkflowRunner) endCancelledRun(ctx context.Context, runID int64, i in
 	wr.store.SetRunStatus(context.Background(), runID, "killed", errMsg)
 }
 
-// failRemaining fails step i with the steps after it skipped, records them, and fails the run with errMsg.
-func (wr *WorkflowRunner) failRemaining(runID int64, i int, results []StepResult, errMsg string) {
+// failRemaining ends the run at failed step i: the steps after it skipped, the results recorded, and the run failed
+// with errMsg. unlessKilled keeps a run KillRun already marked killed as it is (its step failed because of the kill).
+func (wr *WorkflowRunner) failRemaining(runID int64, i int, results []StepResult, errMsg string, unlessKilled bool) {
 	for j := i + 1; j < len(results); j++ {
 		results[j].Status = "skipped"
 	}
 	wr.persistResults(context.Background(), runID, i, results)
+	if unlessKilled {
+		killed := wr.isRunKilled(runID)
+		if afterKillCheck != nil {
+			afterKillCheck(runID)
+		}
+		if killed {
+			return
+		}
+	}
 	wr.store.SetRunStatus(context.Background(), runID, "failed", &errMsg)
 }
 
@@ -416,7 +426,7 @@ func (wr *WorkflowRunner) runStep(ctx context.Context, runID int64, workflow *st
 	if serr != nil {
 		results[i].Status = "failed"
 		results[i].OutputTail = serr.Error()
-		wr.failRemaining(runID, i, results, fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, serr))
+		wr.failRemaining(runID, i, results, fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, serr), false)
 		return false
 	}
 	env := wr.buildStepEnv(workflow, runID, rf.dir, i, stepDir, len(steps), steps)
@@ -469,19 +479,7 @@ func (wr *WorkflowRunner) runStep(ctx context.Context, runID int64, workflow *st
 		wr.persistResults(ctx, runID, i, results)
 		return true
 	}
-	for j := i + 1; j < len(results); j++ {
-		results[j].Status = "skipped"
-	}
-	wr.persistResults(context.Background(), runID, i, results)
-	// Only set failed if not already killed by KillRun
-	killed := wr.isRunKilled(runID)
-	if afterKillCheck != nil {
-		afterKillCheck(runID)
-	}
-	if !killed {
-		errMsg := fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, stepErr)
-		wr.store.SetRunStatus(context.Background(), runID, "failed", &errMsg)
-	}
+	wr.failRemaining(runID, i, results, fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, stepErr), true)
 	return false
 }
 
