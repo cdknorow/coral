@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cloud"
 )
 
 var taskQueryParamNames = map[string]bool{"fields": true, "status": true, "assigned_to": true, "board": true, "priority": true,
@@ -60,6 +61,19 @@ func (h *BoardHandler) queryAllTasks(w http.ResponseWriter, r *http.Request) boo
 		}
 		errInternalServer(w, err.Error())
 		return true
+	}
+	// Through Coral Hub the reply is redacted after the filter has matched, so an exact match on a name a token makes up would confirm a
+	// guess of that token. A filter value the redactor would change cannot match anything the viewer can see: refuse it (a value
+	// without a secret in it matches only names without one).
+	if cloud.Tunneled(r) {
+		for name, vals := range map[string][]string{"assigned_to": query.AssignedTo, "created_by": query.CreatedBy, "board": query.Boards} {
+			for _, v := range vals {
+				if shownText(v) != v {
+					errBadRequest(w, name+" can't contain a secret (a token, a key or a password): it would match what the redaction hides")
+					return true
+				}
+			}
+		}
 	}
 	out := map[string]any{}
 	if query.Fields == nil {

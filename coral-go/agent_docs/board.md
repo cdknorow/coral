@@ -762,6 +762,8 @@ and the connector accepts only the parameters below.
 | `limit` | 1 to 500, default 100; 1 to 100 when the reply carries `body` or `completion_message` (named, or whole rows) |
 | `cursor` | The `next_cursor` of the previous page, with the same filters, sort and order |
 
+Through Coral Hub the reply is redacted after the filters have matched, so a filter value that the redaction would change (one holding a token, key or password) is refused with a 400 for `assigned_to`, `created_by` and `board`: an exact match on such a name would confirm a guess of the secret, and a value without a secret can only match names without one. A computer's own dashboard is not restricted.
+
 Multi-value parameters take comma-separated or repeated values (`status=pending,blocked` or `status=pending&status=blocked`),
 at most 50 values; the values of one parameter are alternatives (OR) and different parameters combine with AND. There is no
 `unassigned` filter and no review-state filter yet. A task has no `updated_at` column: `updated_at` is the newest of

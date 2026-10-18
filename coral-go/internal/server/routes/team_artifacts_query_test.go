@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -22,6 +23,8 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 type taEnv struct {
@@ -371,3 +374,160 @@ func TestTeamArtifactsQuerySearchesTheDisplayedName(t *testing.T) {
 }
 
 var _ = context.Background
+
+// Through Coral Hub the reply is redacted after the handler matched, so a query that matched on the raw text would tell a viewer what the
+// redaction hides, a prefix at a time (Security's #4572 MUST). Tunneled, q, by, board and the name sort see what the viewer sees, and a
+// cursor carries no text (an external link's id holds the link).
+func TestTeamArtifactsQueryCannotSeeBehindTheRedaction(t *testing.T) {
+	const tokA = "ghp_aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"
+	const tokB = "ghp_zZ3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"
+	e := newTAEnv(t)
+	// names and a task title that hold a token; a sender and a board that are one; an external link with a token in its address
+	e.upload(sessAlice, "notes "+tokA+".txt", "token a", "text/plain", "2026-10-10T10:00:00Z")
+	e.upload(sessAlice, "notes "+tokB+".txt", "token b", "text/plain", "2026-10-11T10:00:00Z")
+	completeWithArtifacts(t, e.h, "alpha", "deploy "+tokA, []board.TaskArtifact{{Name: "link-with-secret", URI: "https://example.com/dl?token=" + tokA}})
+	recvID := storeTyped(t, e.coralDir, "from a secret board", "from-secret.txt", "text/plain")
+	require.NoError(t, e.h.writeCrossTeamRecord("received", crossTeamArtifactRecord{ID: recvID, Name: "from-secret.txt", MediaType: "text/plain", Size: 5,
+		Board: "alpha", OtherBoard: tokA, Server: "local", By: tokB, At: "2026-10-12T10:00:00Z"}))
+
+	tunneled := func(query string) (int, taReply, string) {
+		req, err := http.NewRequest("GET", e.srv.URL+"/api/board/alpha/artifacts"+query, nil)
+		require.NoError(t, err)
+		req.Header.Set(tunnel.ViaHeader, "1")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		var r taReply
+		_ = json.Unmarshal(b, &r)
+		return resp.StatusCode, r, string(b)
+	}
+	total := func(query string) int {
+		t.Helper()
+		code, r, body := tunneled(query)
+		require.Equal(t, 200, code, query+" "+body)
+		return *r.Total
+	}
+
+	// The shown name has no token in it, and a prefix of the token finds nothing, however close it is: the oracle sees only what the viewer sees.
+	_, r, _ := tunneled("?q=" + url.QueryEscape("notes [redacted") + "&sort=oldest&origin=upload")
+	require.Equal(t, 2, len(r.Artifacts))
+	for _, a := range r.Artifacts {
+		assert.NotContains(t, a.Name, "ghp_")
+		assert.Equal(t, "notes [redacted token].txt", a.Name)
+	}
+	for _, probe := range []string{"ghp_", "ghp_aB3dE5", "ghp_aB3dE6", "ghp_zZ", tokA, tokB, "aB3dE5"} {
+		assert.Equal(t, 0, total("?q="+url.QueryEscape(probe)), "q="+probe)
+	}
+	assert.Equal(t, 3, total("?q=notes&origin=upload"), "the part of a name that is not secret still matches (the fixture's Zeta notes too)")
+	assert.Equal(t, 2, total("?q="+url.QueryEscape("[redacted token]")+"&origin=upload"), "what the viewer sees can be searched")
+	// the task title, the sender and the other board, the same way
+	assert.Equal(t, 0, total("?q="+url.QueryEscape(tokA[:10])))
+	assert.Equal(t, 0, total("?by="+url.QueryEscape(tokB)))
+	assert.Equal(t, 0, total("?by="+url.QueryEscape(tokB[:12])))
+	assert.Equal(t, 0, total("?board="+url.QueryEscape(tokA)))
+	assert.Equal(t, 1, total("?by="+url.QueryEscape("[redacted token]")), "the sender as shown")
+	// the same probes without the tunnel, for contrast: a local caller keeps raw matching
+	assert.ElementsMatch(t, []string{"notes " + tokA + ".txt", "link-with-secret", "from-secret.txt"}, e.names("?q="+url.QueryEscape("ghp_aB3dE5")), "raw: the name, the task title and the other board all hold the token")
+	assert.Equal(t, 1, len(e.names("?by="+url.QueryEscape(tokB))))
+
+	// the name sort orders what is shown: two names that differ only inside the token are equal, so the order is the plain one (newest first),
+	// where a local caller gets the raw order (tokA < tokB)
+	_, sorted, _ := tunneled("?sort=name&origin=upload&q=" + url.QueryEscape("notes [redacted"))
+	require.Len(t, sorted.Artifacts, 2)
+	assert.Equal(t, "2026-10-11T10:00:00Z", sorted.Artifacts[0].CreatedAt, "tied shown names: newest first, which says nothing of the token")
+	local := e.names("?sort=name&origin=upload&q=" + url.QueryEscape("notes ghp_"))
+	assert.Equal(t, []string{"notes " + tokA + ".txt", "notes " + tokB + ".txt"}, local)
+
+	// no cursor holds text: not a name, not a link (its id is "uri:<link>"), not a token
+	for _, sortBy := range []string{"newest", "oldest", "name", "size"} {
+		cursor := ""
+		for pages := 0; pages < 30; pages++ {
+			qs := "?sort=" + sortBy + "&limit=1"
+			if cursor != "" {
+				qs += "&cursor=" + url.QueryEscape(cursor)
+			}
+			code, page, body := tunneled(qs)
+			require.Equal(t, 200, code, body)
+			_ = body
+			if page.NextCursor == "" {
+				break
+			}
+			raw, err := base64.RawURLEncoding.DecodeString(page.NextCursor)
+			require.NoError(t, err)
+			for _, banned := range []string{"ghp_", "https://", "uri:", "deploy", tokA[:8], tokB[:8]} { // (a name as shown, "notes [redacted token].txt", is what the viewer sees anyway)
+				assert.NotContains(t, string(raw), banned, "cursor "+sortBy)
+			}
+			cursor = page.NextCursor
+		}
+	}
+	// all is the whole list, whatever q is
+	_, withQ, _ := tunneled("?q=" + url.QueryEscape("ghp_aB3dE5"))
+	_, noQ, _ := tunneled("?q=" + url.QueryEscape("notes"))
+	assert.Equal(t, *withQ.All, *noQ.All)
+}
+
+// A digest-named upload takes its name from its sidecar, which is read after the first redaction: that name is matched as shown too.
+func TestTeamArtifactsQueryRedactsTheSidecarName(t *testing.T) {
+	const tok = "ghp_aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"
+	e := newTAEnv(t)
+	id := storeTyped(t, e.coralDir, "a digest named upload", "sidecar "+tok+".md", "text/markdown")
+	dir := uploadsDir(e.coralDir, sessAlice)
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: id, MediaType: "text/markdown", Size: 5, Digest: "sha256:" + id}, "2026-10-13T10:00:00Z"})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
+	req := func(query string) taReply {
+		r, err := http.NewRequest("GET", e.srv.URL+"/api/board/alpha/artifacts"+query, nil)
+		require.NoError(t, err)
+		r.Header.Set(tunnel.ViaHeader, "1")
+		resp, err := http.DefaultClient.Do(r)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out taReply
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		return out
+	}
+	assert.Equal(t, 0, *req("?q=" + url.QueryEscape("sidecar ghp_aB3")).Total)
+	hit := req("?q=sidecar")
+	require.Equal(t, 1, *hit.Total)
+	assert.Equal(t, "sidecar [redacted token].md", hit.Artifacts[0].Name)
+	assert.Equal(t, []string{"sidecar " + tok + ".md"}, e.names("?q="+url.QueryEscape("sidecar ghp_aB3")), "locally the raw name matches")
+}
+
+// A text the redactor cannot check is hidden from the match, never matched raw.
+func TestTeamArtifactsQueryTunneledMatchFailsClosed(t *testing.T) {
+	e := newTAEnv(t)
+	prev := shownRedactor
+	shownRedactor = func() redact.Redactor { return redact.Refuse }
+	t.Cleanup(func() { shownRedactor = prev })
+	r, err := http.NewRequest("GET", e.srv.URL+"/api/board/alpha/artifacts?q=zeta", nil)
+	require.NoError(t, err)
+	r.Header.Set(tunnel.ViaHeader, "1")
+	resp, err := http.DefaultClient.Do(r)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var out taReply
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	assert.Equal(t, 0, *out.Total, "nothing is matched on text that could not be checked")
+	assert.Equal(t, 13, *out.All)
+	// a local caller is not affected
+	assert.Equal(t, []string{"Zeta notes.txt"}, e.names("?q=zeta"))
+}
+
+// A cursor carries a name only when the sort is by name (a local cursor holds no text it does not need).
+func TestTeamArtifactsQueryCursorCarriesNoNeedlessText(t *testing.T) {
+	e := newTAEnv(t)
+	for _, sortBy := range []string{"newest", "oldest", "size"} {
+		_, r, _ := e.get("?sort=" + sortBy + "&limit=1")
+		require.NotEmpty(t, r.NextCursor)
+		raw, err := base64.RawURLEncoding.DecodeString(r.NextCursor)
+		require.NoError(t, err)
+		var c teamArtifactCursor
+		require.NoError(t, json.Unmarshal(raw, &c))
+		assert.Empty(t, c.Name, sortBy)
+	}
+	_, r, _ := e.get("?sort=name&limit=1")
+	raw, _ := base64.RawURLEncoding.DecodeString(r.NextCursor)
+	var c teamArtifactCursor
+	require.NoError(t, json.Unmarshal(raw, &c))
+	assert.NotEmpty(t, c.Name)
+}

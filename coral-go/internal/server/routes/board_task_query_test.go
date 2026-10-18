@@ -20,6 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 type tqEnv struct {
@@ -424,4 +425,51 @@ func keys(m map[int64]map[string]any) []int64 {
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	return ids
+}
+
+// Through Coral Hub the reply is redacted after the filter has matched, so an exact filter on a name a token makes up would confirm a
+// guess of the token. A filter value the redactor would change is refused when tunneled (it can match nothing a viewer can see); a value
+// without a secret matches as before, and a local caller is not restricted (#4572 round 2: the same class, #4540's name filters).
+func TestTaskQueryTunneledNameFiltersRefuseSecrets(t *testing.T) {
+	const tok = "ghp_aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"
+	e := newTQEnv(t)
+	e.seed()
+	e.add("alpha", "secret owner", "", "high", tok, tok, "")
+	get := func(query string, tunneled bool) (int, []string) {
+		req, err := http.NewRequest("GET", e.srv.URL+"/api/board/tasks?"+query, nil)
+		require.NoError(t, err)
+		if tunneled {
+			req.Header.Set(tunnel.ViaHeader, "1")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		var out struct {
+			Tasks []map[string]any `json:"tasks"`
+			Error string           `json:"error"`
+		}
+		_ = json.Unmarshal(b, &out)
+		var titles []string
+		for _, r := range out.Tasks {
+			titles = append(titles, r["title"].(string))
+		}
+		if resp.StatusCode != 200 {
+			return resp.StatusCode, []string{out.Error}
+		}
+		return resp.StatusCode, titles
+	}
+	for _, q := range []string{"assigned_to=" + tok, "created_by=" + tok, "board=" + tok, "assigned_to=Operator," + tok, "created_by=" + url.QueryEscape("x "+tok+" y")} {
+		code, msg := get(q+"&fields=id,title", true)
+		assert.Equal(t, 400, code, q)
+		assert.Contains(t, msg[0], "can't contain a secret", q)
+	}
+	// a value with no secret in it is matched as before, tunneled or not
+	code, titles := get("assigned_to=Operator&fields=id,title", true)
+	assert.Equal(t, 200, code)
+	assert.ElementsMatch(t, []string{"c", "a"}, titles)
+	// a local caller may filter by any name
+	code, titles = get("assigned_to="+tok+"&fields=id,title", false)
+	assert.Equal(t, 200, code)
+	assert.Equal(t, []string{"secret owner"}, titles)
 }

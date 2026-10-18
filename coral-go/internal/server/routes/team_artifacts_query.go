@@ -12,6 +12,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/secrets"
 )
 
 // The Team Artifacts list's query (#4572): search, filters, sort, cursor paging and a total, on the existing list route. The rows
@@ -402,6 +405,41 @@ func finishTeamArtifactName(it *teamArtifact) {
 	}
 }
 
+// shownRedactor is the redactor the connector uses (a variable so a test can make it fail).
+var shownRedactor = secrets.Redactor
+
+// shownText is what a viewer through Coral Hub sees of s: the connector's own rules (secrets.Redactor) applied. A text that cannot be
+// checked is treated as hidden, never matched raw.
+func shownText(s string) string {
+	if s == "" {
+		return s
+	}
+	out, err := shownRedactor().Text([]byte(s))
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// redactItemForTunnel replaces every text a query matches, sorts or pages by with what the Hub viewer sees. Through Coral Hub the
+// reply is redacted AFTER the handler has matched, so matching on the raw text would let q, by, board and the name sort tell a
+// viewer what the redaction hides (a prefix at a time); matching on the shown text tells them nothing more than the reply does.
+func redactItemForTunnel(it *teamArtifact) {
+	it.Name, it.TaskTitle, it.MediaType = shownText(it.Name), shownText(it.TaskTitle), shownText(it.MediaType)
+	it.SentBy, it.SharedTo, it.ReceivedFrom, it.FromBoard = shownText(it.SentBy), shownText(it.SharedTo), shownText(it.ReceivedFrom), shownText(it.FromBoard)
+	if it.ProducedBy != nil {
+		p := shownText(*it.ProducedBy)
+		it.ProducedBy = &p
+	}
+	if len(it.AlsoReceivedFrom) > 0 {
+		also := make([]string, len(it.AlsoReceivedFrom))
+		for i, a := range it.AlsoReceivedFrom {
+			also[i] = shownText(a)
+		}
+		it.AlsoReceivedFrom = also
+	}
+}
+
 type artifactSortKey struct {
 	At     string
 	Name   string
@@ -417,7 +455,9 @@ func keyOf(it teamArtifact) artifactSortKey {
 	if it.Size != nil {
 		size = *it.Size
 	}
-	return artifactSortKey{At: it.CreatedAt, Name: strings.ToLower(it.Name), Size: size, TaskID: it.TaskID, Source: it.Source, Index: it.index, ID: it.ID}
+	// The id is a tie-break only, and an external link's id is "uri:<the link>", which can hold a secret: the key (and so the cursor) holds its hash.
+	sum := sha256.Sum256([]byte(it.ID))
+	return artifactSortKey{At: it.CreatedAt, Name: strings.ToLower(it.Name), Size: size, TaskID: it.TaskID, Source: it.Source, Index: it.index, ID: hex.EncodeToString(sum[:])}
 }
 
 // newestAfter: a comes after b in the plain list's order (newest first; ties by task id, source, position, then id, so it is total).
@@ -464,6 +504,12 @@ func (h *BoardHandler) queryTeamArtifacts(w http.ResponseWriter, r *http.Request
 		}
 	}
 	dir := h.artifactObjectDir()
+	tunneled := cloud.Tunneled(r)
+	if tunneled {
+		for i := range items {
+			redactItemForTunnel(&items[i])
+		}
+	}
 	var set []teamArtifact
 	for _, it := range items {
 		if q.cheapMatch(it, kept) {
@@ -476,6 +522,9 @@ func (h *BoardHandler) queryTeamArtifacts(w http.ResponseWriter, r *http.Request
 		for i := range set {
 			enrichTeamArtifact(&set[i], dir)
 			finishTeamArtifactName(&set[i])
+			if tunneled {
+				redactItemForTunnel(&set[i]) // the sidecar's name and type are new text
+			}
 		}
 		var out []teamArtifact
 		for _, it := range set {
@@ -505,6 +554,9 @@ func (h *BoardHandler) queryTeamArtifacts(w http.ResponseWriter, r *http.Request
 		for i := range page {
 			enrichTeamArtifact(&page[i], dir)
 			finishTeamArtifactName(&page[i])
+			if tunneled {
+				redactItemForTunnel(&page[i])
+			}
 		}
 	}
 	if page == nil {
@@ -516,6 +568,9 @@ func (h *BoardHandler) queryTeamArtifacts(w http.ResponseWriter, r *http.Request
 	}
 	if hasMore && len(page) > 0 {
 		k := keyOf(page[len(page)-1])
+		if q.sortName != "name" {
+			k.Name = "" // only the name sort compares names: a cursor carries no text it does not need
+		}
 		resp["next_cursor"] = teamArtifactCursor{Sort: q.sortName, Finger: q.finger, At: k.At, Name: k.Name, Size: k.Size, TaskID: k.TaskID, Source: k.Source, Index: k.Index, ID: k.ID}.encode()
 	}
 	if sessionFilter != "" {
