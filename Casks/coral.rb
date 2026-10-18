@@ -1,6 +1,6 @@
 cask "coral" do
-  version "1.4.88"
-  sha256 "da264ee9aeaeaccf2dd9757ffb42d8f5e7bc118bf313565786576b5c11880956"
+  version "1.4.89"
+  sha256 "06b789be796c3a5545636bbd28b5bd86cb86647fc2a5b98c9b5dc95ad20df1f8"
 
   url "https://github.com/cdknorow/coral/releases/download/v#{version}/Coral.v#{version}.dmg"
   name "Coral"
