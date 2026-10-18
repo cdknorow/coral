@@ -392,33 +392,8 @@ function _toggleHideCompleted() {
 // Expose globally
 (window.__coral ||= {})._toggleTaskSort = _toggleTaskSort;
 
-export function renderBoardTaskList() {
-    const container = document.getElementById('board-task-list');
-    if (!container) return;
-
-    // Merge board tasks and agent tasks into a unified list
-    const boardTasks = (state.currentBoardTasks || []).map(t => ({ ...t, _source: 'board' }));
-    const agentDisplayName = state.currentSession ? (state.currentSession.display_name || state.currentSession.name) : '';
-    const onBoardPage = !!boardOfPage(); // a board's page has no agent: its tasks are the board's
-    const agentTasks = (onBoardPage ? [] : state.currentAgentTasks || []).map(t => ({
-        ...t,
-        _source: 'agent',
-        // Normalize agent task fields to match board task shape
-        status: _agentTaskStatus(t),
-        priority: t.priority || null,
-        assigned_to: t.display_name || t.agent_name || agentDisplayName || null,
-        created_at: t.created_at,
-    }));
-
-    const subagentTasks = (onBoardPage ? [] : state.currentSubagents || []).map(sa => subagentToTaskRow(sa, agentDisplayName));
-
-    const allTasks = [...boardTasks, ...agentTasks, ...subagentTasks];
-    const isDone = t => t.status === 'completed' || t.status === 'skipped';
-    const otherTasks = [...agentTasks, ...subagentTasks];
-    // The board's done tasks are counted by the server: only a page of them is loaded (#3269).
-    const boardDoneLoaded = boardTasks.filter(isDone).length;
-    const boardDoneTotal = _boardList.totalCompleted ?? boardDoneLoaded;
-    const completedCount = boardDoneTotal + otherTasks.filter(isDone).length;
+/** The tasks to show: done ones dropped when hidden, in the chosen sort order. */
+function _filterAndSortTasks(allTasks) {
     const tasks = allTasks.filter(t => {
         if (_hideCompleted && (t.status === 'completed' || t.status === 'skipped')) return false;
         return true;
@@ -441,35 +416,36 @@ export function renderBoardTaskList() {
         }
         return _taskSortAsc ? cmp : -cmp;
     });
-    const section = document.getElementById('board-tasks-section');
+    return tasks;
+}
 
-    if (allTasks.length === 0) {
-        // Drop the previous agent's rows too; hiding alone leaves them in the DOM.
-        const countEl = document.getElementById('task-bar-count');
-        if (countEl && countEl.textContent !== '') countEl.textContent = '';
-        const live = state.selectedTeam || onBoardPage || (state.currentSession && state.currentSession.type === 'live');
-        if (!live) {
-            if (section) section.style.display = 'none';
-            container.innerHTML = '';
-            return;
-        }
-        // A live agent always gets the section, so "+ Task" is reachable
-        if (section) section.style.display = '';
-        const headerLabel = section ? section.querySelector('.board-tasks-header > span:first-child') : null;
-        if (headerLabel && headerLabel.textContent !== 'Tasks') headerLabel.textContent = 'Tasks';
-        const toggle = document.getElementById('board-task-hide-toggle-container');
-        if (toggle && toggle.firstChild) toggle.innerHTML = '';
-        morphHtml(container, _boardList.busy
-            ? `<div class="board-task-empty board-task-busy" role="status">${escapeHtml(_boardList.busy)}</div>`
-            : state.selectedTeam || onBoardPage
-                ? '<div class="board-task-empty">No tasks yet. Use + Task to add one for this team.</div>'
-                : '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>');
+/** Nothing to show: hide the section, or say so for a live agent or a team (and a busy board). */
+function _renderEmptyTaskList(container, section, onBoardPage) {
+    // Drop the previous agent's rows too; hiding alone leaves them in the DOM.
+    const countEl = document.getElementById('task-bar-count');
+    if (countEl && countEl.textContent !== '') countEl.textContent = '';
+    const live = state.selectedTeam || onBoardPage || (state.currentSession && state.currentSession.type === 'live');
+    if (!live) {
+        if (section) section.style.display = 'none';
+        container.innerHTML = '';
         return;
     }
+    // A live agent always gets the section, so "+ Task" is reachable
     if (section) section.style.display = '';
+    const headerLabel = section ? section.querySelector('.board-tasks-header > span:first-child') : null;
+    if (headerLabel && headerLabel.textContent !== 'Tasks') headerLabel.textContent = 'Tasks';
+    const toggle = document.getElementById('board-task-hide-toggle-container');
+    if (toggle && toggle.firstChild) toggle.innerHTML = '';
+    morphHtml(container, _boardList.busy
+        ? `<div class="board-task-empty board-task-busy" role="status">${escapeHtml(_boardList.busy)}</div>`
+        : state.selectedTeam || onBoardPage
+            ? '<div class="board-task-empty">No tasks yet. Use + Task to add one for this team.</div>'
+            : '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>');
+    return;
+}
 
-    const arrow = (field) => _taskSortField === field ? (_taskSortAsc ? ' ▲' : ' ▼') : '';
-
+/** The hide-done toggle and the section label in the header. */
+function _renderTaskListChrome(section, completedCount) {
     // Render hide-done toggle in the section header
     const toggleContainer = document.getElementById('board-task-hide-toggle-container');
     if (toggleContainer) {
@@ -481,6 +457,11 @@ export function renderBoardTaskList() {
     // Update section header to "Tasks" instead of "Board Tasks"
     const headerLabel = section ? section.querySelector('.board-tasks-header > span:first-child') : null;
     if (headerLabel && headerLabel.textContent !== 'Tasks') headerLabel.textContent = 'Tasks';
+}
+
+/** The table header, with the sort arrow on the column in use. */
+function _taskListHeaderHtml() {
+    const arrow = (field) => _taskSortField === field ? (_taskSortAsc ? ' ▲' : ' ▼') : '';
 
     const header = `
         <div class="board-task-item board-task-header">
@@ -493,7 +474,64 @@ export function renderBoardTaskList() {
             <span class="board-task-cost board-task-sort" role="button" tabindex="0" data-key-click data-on-click="task-sort" data-sort="cost">Cost${arrow('cost')}</span>
             <span class="board-task-time board-task-sort" role="button" tabindex="0" data-key-click data-on-click="task-sort" data-sort="created_at">Created${arrow('created_at')}</span>
         </div>`;
+    return header;
+}
 
+/** A row's status icon and label. */
+function _taskStatusIconHtml(t) {
+    const statusWrap = (className, detail, icon, label) =>
+        `<span class="board-task-status-wrap ${className}" title="${escapeAttr(detail)}" aria-label="${escapeAttr(detail)}" role="img" tabindex="0">${icon}<span class="board-task-status-label">${label}</span></span>`;
+    const activelyClaimed = t.status === 'in_progress' && Boolean(t.claimed_at);
+    const workingDetail = activelyClaimed ? 'Claimed · Working' : 'Open · Working';
+    const statusIcon = (t.outcome || t.workflow?.outcome) === 'failed'
+        ? statusWrap('completed', 'Finished', '<span class="material-icons board-task-status-icon completed" aria-hidden="true">check_circle</span>', 'Finished')
+        : t.status === 'completed'
+        ? statusWrap('completed', 'Finished', '<span class="material-icons board-task-status-icon completed" aria-hidden="true">check_circle</span>', 'Finished')
+        : t.status === 'review_pending'
+        ? statusWrap('blocked', 'Open · Review pending', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', '<b>Review</b>')
+        : _reviewRequested(t) && t.status === 'in_progress'
+        ? statusWrap('blocked', 'Open · Review requested', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', 'Open <b>· Review requested</b>')
+        : t.status === 'in_progress'
+        ? statusWrap('in-progress', workingDetail, '<span class="task-spinner" aria-hidden="true"></span>', activelyClaimed ? 'Claimed' : 'Open')
+        : t.status === 'skipped'
+        ? statusWrap('cancelled', 'Cancelled', '<span class="material-icons board-task-status-icon cancelled" aria-hidden="true">cancel</span>', 'Cancelled')
+        : t.status === 'blocked'
+        ? statusWrap('blocked', 'Blocked: waiting for prerequisites', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">hourglass_empty</span>', 'Blocked')
+        : t.status === 'draft'
+        ? statusWrap('pending', 'Open · Draft', '<span class="material-icons board-task-status-icon draft" aria-hidden="true">edit_note</span>', 'Open <b>· Draft</b>')
+        : statusWrap('pending', 'Open', '<span class="material-icons board-task-status-icon pending" aria-hidden="true">radio_button_unchecked</span>', 'Open');
+    return statusIcon;
+}
+
+/** A row's cost text and class: a subagent's spend as it runs, an agent's or a finished task's, or a running task's live cost. */
+function _taskRowCost(t, isAgent, isSubagent) {
+    let costText = '';
+    let costClass = 'board-task-cost';
+    if (isSubagent) {
+        // Spend is known while the subagent is still running, so show it
+        // live rather than waiting for completion like a board task.
+        if (t.cost_usd > 0) {
+            costText = (t.status === 'in_progress' ? '~' : '') + _formatCost(t.cost_usd, false);
+            if (t.status === 'in_progress') costClass += ' board-task-cost-live';
+            if (t.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
+        }
+    } else if (isAgent && t.cost_usd > 0) {
+        costText = _formatCost(t.cost_usd, false);
+        if (t.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
+    } else if ((t.status === 'completed' || t.status === 'skipped') && t.cost_usd != null) {
+        costText = _formatCost(t.cost_usd, false);
+        if (t.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
+    } else if (t.status === 'in_progress' && _liveCosts[t.id]) {
+        const lc = _liveCosts[t.id];
+        costText = '~' + _formatCost(lc.cost_usd, false);
+        costClass += ' board-task-cost-live';
+        if (lc.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
+    }
+    return { costText, costClass };
+}
+
+/** The rows of the table. */
+function _taskRowsHtml(tasks) {
     const rows = tasks.map(t => {
         const isAgent = t._source === 'agent';
         const isSubagent = t._source === 'subagent';
@@ -509,49 +547,8 @@ export function renderBoardTaskList() {
         const tooltip = isSubagent ? ` title="${escapeAttr(_subagentTooltip(t))}"`
             : (t.body || t.body_preview) ? ` title="${escapeAttr(t.body || t.body_preview)}"` : '';
         const timeStr = _formatTaskTime(t.created_at);
-        const statusWrap = (className, detail, icon, label) =>
-            `<span class="board-task-status-wrap ${className}" title="${escapeAttr(detail)}" aria-label="${escapeAttr(detail)}" role="img" tabindex="0">${icon}<span class="board-task-status-label">${label}</span></span>`;
-        const activelyClaimed = t.status === 'in_progress' && Boolean(t.claimed_at);
-        const workingDetail = activelyClaimed ? 'Claimed · Working' : 'Open · Working';
-        const statusIcon = (t.outcome || t.workflow?.outcome) === 'failed'
-            ? statusWrap('completed', 'Finished', '<span class="material-icons board-task-status-icon completed" aria-hidden="true">check_circle</span>', 'Finished')
-            : t.status === 'completed'
-            ? statusWrap('completed', 'Finished', '<span class="material-icons board-task-status-icon completed" aria-hidden="true">check_circle</span>', 'Finished')
-            : t.status === 'review_pending'
-            ? statusWrap('blocked', 'Open · Review pending', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', '<b>Review</b>')
-            : _reviewRequested(t) && t.status === 'in_progress'
-            ? statusWrap('blocked', 'Open · Review requested', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', 'Open <b>· Review requested</b>')
-            : t.status === 'in_progress'
-            ? statusWrap('in-progress', workingDetail, '<span class="task-spinner" aria-hidden="true"></span>', activelyClaimed ? 'Claimed' : 'Open')
-            : t.status === 'skipped'
-            ? statusWrap('cancelled', 'Cancelled', '<span class="material-icons board-task-status-icon cancelled" aria-hidden="true">cancel</span>', 'Cancelled')
-            : t.status === 'blocked'
-            ? statusWrap('blocked', 'Blocked: waiting for prerequisites', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">hourglass_empty</span>', 'Blocked')
-            : t.status === 'draft'
-            ? statusWrap('pending', 'Open · Draft', '<span class="material-icons board-task-status-icon draft" aria-hidden="true">edit_note</span>', 'Open <b>· Draft</b>')
-            : statusWrap('pending', 'Open', '<span class="material-icons board-task-status-icon pending" aria-hidden="true">radio_button_unchecked</span>', 'Open');
-        let costText = '';
-        let costClass = 'board-task-cost';
-        if (isSubagent) {
-            // Spend is known while the subagent is still running, so show it
-            // live rather than waiting for completion like a board task.
-            if (t.cost_usd > 0) {
-                costText = (t.status === 'in_progress' ? '~' : '') + _formatCost(t.cost_usd, false);
-                if (t.status === 'in_progress') costClass += ' board-task-cost-live';
-                if (t.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
-            }
-        } else if (isAgent && t.cost_usd > 0) {
-            costText = _formatCost(t.cost_usd, false);
-            if (t.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
-        } else if ((t.status === 'completed' || t.status === 'skipped') && t.cost_usd != null) {
-            costText = _formatCost(t.cost_usd, false);
-            if (t.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
-        } else if (t.status === 'in_progress' && _liveCosts[t.id]) {
-            const lc = _liveCosts[t.id];
-            costText = '~' + _formatCost(lc.cost_usd, false);
-            costClass += ' board-task-cost-live';
-            if (lc.cost_usd >= 1.0) costClass += ' board-task-cost-warning';
-        }
+        const statusIcon = _taskStatusIconHtml(t);
+        const { costText, costClass } = _taskRowCost(t, isAgent, isSubagent);
         // The subagent id stays in its data-subagent-id attribute; the action reads it from there.
         const clickHandler = isSubagent ? ` role="button" tabindex="0" data-key-click data-on-click="task-subagent-open" style="cursor:pointer"`
             : isAgent ? ` role="button" tabindex="0" data-key-click data-on-click="task-open" data-kind="agent" data-task-id="${Number(t.id)}" style="cursor:pointer"`
@@ -579,16 +576,21 @@ export function renderBoardTaskList() {
             <span class="board-task-time">${timeStr}</span>
         </div>`;
     }).join('');
+    return rows;
+}
 
+/** The "Load more done tasks" button while older done tasks are not loaded. */
+function _taskLoadMoreHtml(boardDoneTotal, boardDoneLoaded) {
     // Older done tasks come a page at a time (#3269).
     const notLoaded = Math.max(0, boardDoneTotal - boardDoneLoaded);
     const more = _boardList.nextCursor && !_hideCompleted
         ? `<div class="board-task-more"><button type="button" class="btn board-task-load-more" data-on-click="task-load-more">Load more done tasks${notLoaded ? ` (${notLoaded} not shown)` : ''}</button></div>`
         : '';
-    // Unchanged rows keep their nodes: the list was rebuilt on every poll, a layout each time (#3881).
-    morphHtml(container, header + rows + more);
+    return more;
+}
 
-    // Update task count badge: done / all; the board's numbers are the server's totals.
+/** The badge: done / all, from the server's totals for the board. */
+function _updateTaskCount(boardTasks, otherTasks, completedCount) {
     const countEl = document.getElementById('task-bar-count');
     if (countEl) {
         const boardTotal = _boardList.totalOpen !== null && _boardList.totalCompleted !== null
@@ -597,6 +599,58 @@ export function renderBoardTaskList() {
         const countText = total > 0 ? `${completedCount}/${total}` : '';
         if (countEl.textContent !== countText) countEl.textContent = countText; // same text: no new text node, no layout
     }
+}
+
+export function renderBoardTaskList() {
+    const container = document.getElementById('board-task-list');
+    if (!container) return;
+
+    // Merge board tasks and agent tasks into a unified list
+    const boardTasks = (state.currentBoardTasks || []).map(t => ({ ...t, _source: 'board' }));
+    const agentDisplayName = state.currentSession ? (state.currentSession.display_name || state.currentSession.name) : '';
+    const onBoardPage = !!boardOfPage(); // a board's page has no agent: its tasks are the board's
+    const agentTasks = (onBoardPage ? [] : state.currentAgentTasks || []).map(t => ({
+        ...t,
+        _source: 'agent',
+        // Normalize agent task fields to match board task shape
+        status: _agentTaskStatus(t),
+        priority: t.priority || null,
+        assigned_to: t.display_name || t.agent_name || agentDisplayName || null,
+        created_at: t.created_at,
+    }));
+
+    const subagentTasks = (onBoardPage ? [] : state.currentSubagents || []).map(sa => subagentToTaskRow(sa, agentDisplayName));
+
+    const allTasks = [...boardTasks, ...agentTasks, ...subagentTasks];
+    const isDone = t => t.status === 'completed' || t.status === 'skipped';
+    const otherTasks = [...agentTasks, ...subagentTasks];
+    // The board's done tasks are counted by the server: only a page of them is loaded (#3269).
+    const boardDoneLoaded = boardTasks.filter(isDone).length;
+    const boardDoneTotal = _boardList.totalCompleted ?? boardDoneLoaded;
+    const completedCount = boardDoneTotal + otherTasks.filter(isDone).length;
+    const tasks = _filterAndSortTasks(allTasks);
+    const section = document.getElementById('board-tasks-section');
+
+    if (allTasks.length === 0) {
+        _renderEmptyTaskList(container, section, onBoardPage);
+        return;
+    }
+    if (section) section.style.display = '';
+
+    // Render hide-done toggle in the section header
+    _renderTaskListChrome(section, completedCount);
+
+    const header = _taskListHeaderHtml();
+
+    const rows = _taskRowsHtml(tasks);
+
+    // Older done tasks come a page at a time (#3269).
+    const more = _taskLoadMoreHtml(boardDoneTotal, boardDoneLoaded);
+    // Unchanged rows keep their nodes: the list was rebuilt on every poll, a layout each time (#3881).
+    morphHtml(container, header + rows + more);
+
+    // Update task count badge: done / all; the board's numbers are the server's totals.
+    _updateTaskCount(boardTasks, otherTasks, completedCount);
 }
 
 /* ── Dependency Picker ─────────────────────────────────── */
