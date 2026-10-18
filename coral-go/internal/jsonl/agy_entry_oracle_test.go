@@ -95,7 +95,7 @@ func randomAgyEntry(rng *rand.Rand) map[string]any {
 		}
 	case 6, 7:
 		e["type"] = "GENERIC"
-		e["content"] = []string{"output line", "", "   ", strings.Repeat("x", 3000)}[rng.Intn(4)]
+		e["content"] = []string{"output line", "", "   ", strings.Repeat("x", 3000), strings.Repeat("z", 10050)}[rng.Intn(5)] // the last over truncateContent's 10000
 		if rng.Intn(4) == 0 {
 			e["status"] = "ERROR"
 		}
@@ -137,6 +137,9 @@ func agyKinds(entry map[string]any, msgs []map[string]any) []string {
 	for _, m := range msgs {
 		kinds = append(kinds, "message "+fmt.Sprint(m["type"]))
 		if m["type"] == "tool_result" {
+			if c, _ := m["content"].(string); strings.HasSuffix(c, "(truncated)") {
+				kinds = append(kinds, "tool result truncated")
+			}
 			if m["is_error"] == true {
 				kinds = append(kinds, "tool error")
 			}
@@ -215,7 +218,7 @@ func TestParseAgyEntryAgreesWithBefore4713(t *testing.T) {
 		"summary: the arguments", "summary: the description", "summary from run_command", "summary from replace_file_content",
 		"summary from write_to_file", "summary from view_file", "summary from read_url_content", "summary from search_web",
 		"summary from a subagent tool", "summary from another tool's arguments", "summary from ask_question",
-		"system-injected input dropped", "written content truncated"} {
+		"system-injected input dropped", "written content truncated", "tool result truncated"} {
 		assert.GreaterOrEqual(t, kinds[k], 30, "%q went (almost) unexercised", k)
 	}
 }
