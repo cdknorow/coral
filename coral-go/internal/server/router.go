@@ -41,9 +41,10 @@ type routeHandlers struct {
 // useMiddleware: the middleware chain, in order: recovery, headers, the Hub guard, CORS, auth and the identity checks.
 func (s *Server) useMiddleware(r *chi.Mux) {
 	// Middleware
-	r.Use(recoverer)        // logs through coral.log's redaction (#3763)
-	r.Use(routes.BodyLimit) // every request body capped (#3998)
-	r.Use(httputil.GzipAPI) // /api/ JSON over 1 KB, gzipped for a client that accepts it (#3724)
+	r.Use(recoverer)            // logs through coral.log's redaction (#3763)
+	r.Use(routes.BodyLimit)     // every request body capped (#3998)
+	r.Use(routes.WriteDeadline) // a reply to a client that never reads it is cut after 60 s, per write (#4602)
+	r.Use(httputil.GzipAPI)     // /api/ JSON over 1 KB, gzipped for a client that accepts it (#3724)
 	r.Use(noStoreAPI)
 	r.Use(s.buildHeader)
 
