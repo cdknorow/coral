@@ -41,8 +41,13 @@ type sessionCache struct {
 	pathVerified bool
 	lastResolved time.Time
 	offset       int64
-	messages     []map[string]any
-	toolUseNames map[string]string // tool_use_id → tool_name
+	base         int               // the number of messages before messages[0] that were read and let go (#4620)
+	messages     []map[string]any  // the newest messages: at most windowMaxMessages or windowMaxBytes of them
+	sizes        []int             // approxSize of each message in messages
+	msgBytes     int               // their sum
+	toolUseNames map[string]string // tool_use_id → tool_name, at most toolNamesMax of them
+	toolSeen     map[string]uint32 // the chunk each tool name was first seen in (boundToolNames)
+	chunkSeq     uint32
 	// The transcript as last read: a different file, a shorter one, or other first bytes mean
 	// it was replaced or rewritten, and the messages are read again from the start (#3710).
 	info        os.FileInfo
@@ -142,6 +147,14 @@ func (r *SessionReader) readNewMessages(sessionID, workingDirectory, agentType s
 }
 
 func (r *SessionReader) readNewMessagesLocked(ctx context.Context, c *sessionCache, sessionID, workingDirectory, agentType string, strictLive bool) ([]map[string]any, int) {
+	return r.readLocked(ctx, c, sessionID, workingDirectory, agentType, strictLive, true)
+}
+
+// readLocked reads what the transcript has gained since the last read into the cache, a chunk of
+// at most readChunkMax at a time (#4620), and returns the messages it parsed when collect is set
+// (a caller of ReadNewMessages wants them; the live chat reads the cache's window instead) and the
+// number of messages read in all.
+func (r *SessionReader) readLocked(ctx context.Context, c *sessionCache, sessionID, workingDirectory, agentType string, strictLive, collect bool) ([]map[string]any, int) {
 	if agentType == at.Codex {
 		refreshCodexLink(c, sessionID)
 	}
@@ -159,9 +172,7 @@ func (r *SessionReader) readNewMessagesLocked(ctx context.Context, c *sessionCac
 	if strictLive && isAgyAgentType(agentType) && !c.pathVerified {
 		if agyTranscriptCoralSessionID(c.path) != sessionID {
 			c.path = ""
-			c.offset = 0
-			c.messages = nil
-			c.toolUseNames = make(map[string]string)
+			c.resetMessages()
 			c.path = resolveTranscriptPathMode(sessionID, workingDirectory, agentType, true)
 			if c.path == "" {
 				return nil, 0
@@ -173,93 +184,74 @@ func (r *SessionReader) readNewMessagesLocked(ctx context.Context, c *sessionCac
 	// Read new data from file
 	f, err := openTranscript(c.path, agentType)
 	if err != nil {
-		return nil, len(c.messages)
+		return nil, c.total()
 	}
 	defer f.Close()
 	if info, err := f.Stat(); err == nil {
 		head := transcriptHead(f)
 		if transcriptReplaced(c.info, info, c.head, head) {
-			c.offset, c.messages, c.toolUseNames = 0, nil, make(map[string]string)
+			c.resetMessages()
 		}
 		c.info, c.head = info, head
 	}
 
 	if _, err := f.Seek(c.offset, io.SeekStart); err != nil {
-		return nil, len(c.messages)
+		return nil, c.total()
 	}
-	newData, err := io.ReadAll(f)
-	if err != nil {
-		return nil, len(c.messages)
+	// Each chunk is decoded in parallel (the cost of a long transcript read cold, after a restart
+	// or an eviction), at most two such decodes at once in the process (#3715); turning entries
+	// into messages stays in order, since a tool result is named from the tool call before it
+	// (#3710). A wait that ctx ends consumes nothing of its chunk: the next read starts there.
+	p := &entryParser{agentType: agentType, names: c.toolUseNames}
+	if n := len(c.messages); n > 0 {
+		p.last = c.messages[n-1]
 	}
-
-	// Only consume complete lines. A line caught mid-write stays unread until
-	// its newline arrives; consuming it would drop the message for good. A last
-	// line with no newline is taken only when it is already valid JSON.
-	if end := bytes.LastIndexByte(newData, '\n'); end < 0 {
-		if !json.Valid(bytes.TrimSpace(newData)) {
-			newData = nil
+	var collected []map[string]any
+	for {
+		chunk, eof, err := nextChunk(f)
+		if err != nil {
+			return collected, c.total()
 		}
-	} else if tail := newData[end+1:]; len(bytes.TrimSpace(tail)) > 0 && !json.Valid(bytes.TrimSpace(tail)) {
-		newData = newData[:end+1]
-	}
-	if len(newData) == 0 {
-		return nil, len(c.messages)
-	}
-
-	// Parse new lines: decoding the JSON is the cost of a large read (a long transcript read cold,
-	// after a restart or an eviction), so it runs in parallel, at most two such decodes at once
-	// in the process (#3715); turning entries into messages stays in order, since a tool result is
-	// named from the tool call before it (#3710). A wait that ctx ends consumes nothing: the next
-	// read starts from the same offset.
-	entries, err := decodeLimited(ctx, newData)
-	if err != nil {
-		return nil, len(c.messages)
-	}
-	c.offset += int64(len(newData))
-	var newMessages []map[string]any
-	for _, entry := range entries {
-		if entry == nil {
-			continue
+		data := completeLines(chunk, eof)
+		if len(data) == 0 {
+			break
 		}
-		parsed := parseTranscriptEntry(entry, c.toolUseNames, agentType)
-		for _, message := range parsed {
-			var previous map[string]any
-			if len(newMessages) > 0 {
-				previous = newMessages[len(newMessages)-1]
-			} else if len(c.messages) > 0 {
-				previous = c.messages[len(c.messages)-1]
-			}
-			if agentType == at.Codex && mergeDuplicateCodexMessage(previous, message) {
-				continue
-			}
-			newMessages = append(newMessages, message)
+		entries, err := decodeLimited(ctx, data)
+		if err != nil {
+			return collected, c.total()
+		}
+		c.offset += int64(len(data))
+		parsed := p.parse(entries)
+		c.addMessages(parsed)
+		c.boundToolNames()
+		if collect {
+			collected = append(collected, parsed...)
+		}
+		if eof {
+			break
+		}
+		if _, err := f.Seek(c.offset, io.SeekStart); err != nil { // past the partial line the chunk ended in
+			return collected, c.total()
 		}
 	}
-
-	c.messages = append(c.messages, newMessages...)
-	return newMessages, len(c.messages)
+	return collected, c.total()
 }
 
-// ReadAllMessagesContext reads any new data from the file and returns ALL accumulated messages
-// (not just the new ones), for a client that needs the full conversation history (e.g.
-// after=0). Its wait for a large decode's turn ends with ctx (then the messages already cached
-// are returned).
+// ReadAllMessagesContext reads any new data from the file and returns ALL the messages (not just
+// the new ones), for a client that needs the full conversation history. The messages before the
+// session's window are read from the file again, one chunk at a time, into the returned list
+// (#4620): a caller that can work from the window should use ReadTranscriptContext. Its wait for a
+// large decode's turn ends with ctx (then the messages already cached are returned).
 func (r *SessionReader) ReadAllMessagesContext(ctx context.Context, sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
-	c := r.getOrCreateSessionCache(sessionID)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	r.readNewMessagesLocked(ctx, c, sessionID, workingDirectory, agentType, false)
-	return c.messages, len(c.messages)
+	t := r.ReadTranscriptContext(ctx, sessionID, workingDirectory, agentType)
+	return t.All(ctx), t.Total
 }
 
 // ReadAllMessagesForLiveContext is ReadAllMessagesContext's strict counterpart used by the live
 // chat API. Its wait for a large decode's turn ends with ctx.
 func (r *SessionReader) ReadAllMessagesForLiveContext(ctx context.Context, sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
-	c := r.getOrCreateSessionCache(sessionID)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	r.readNewMessagesLocked(ctx, c, sessionID, workingDirectory, agentType, true)
-	return c.messages, len(c.messages)
+	t := r.ReadTranscriptForLiveContext(ctx, sessionID, workingDirectory, agentType)
+	return t.All(ctx), t.Total
 }
 
 // ReadAllMessagesForLiveWithLineageContext reads the exact live transcript and, when it has an
@@ -269,21 +261,45 @@ func (r *SessionReader) ReadAllMessagesForLiveContext(ctx context.Context, sessi
 // never falls back to newest-workspace or arbitrary transcript discovery. ctx bounds the decode
 // wait.
 func (r *SessionReader) ReadAllMessagesForLiveWithLineageContext(ctx context.Context, sessionID, workingDirectory, agentType string, ancestorIDs ...string) ([]map[string]any, int) {
-	current, _ := r.ReadAllMessagesForLiveContext(ctx, sessionID, workingDirectory, agentType)
+	t := r.ReadTranscriptForLiveWithLineageContext(ctx, sessionID, workingDirectory, agentType, ancestorIDs...)
+	return t.All(ctx), t.Total
+}
+
+// ReadTranscriptContext reads any new data from the file and returns the session's transcript as
+// the reader holds it: its newest messages, and the count of all of them (Transcript). Its wait for
+// a large decode's turn ends with ctx (then what is cached is returned).
+func (r *SessionReader) ReadTranscriptContext(ctx context.Context, sessionID, workingDirectory, agentType string) *Transcript {
+	return r.readTranscript(ctx, sessionID, workingDirectory, agentType, false)
+}
+
+// ReadTranscriptForLiveContext is ReadTranscriptContext's strict counterpart for the live chat.
+func (r *SessionReader) ReadTranscriptForLiveContext(ctx context.Context, sessionID, workingDirectory, agentType string) *Transcript {
+	return r.readTranscript(ctx, sessionID, workingDirectory, agentType, true)
+}
+
+func (r *SessionReader) readTranscript(ctx context.Context, sessionID, workingDirectory, agentType string, strictLive bool) *Transcript {
+	c := r.getOrCreateSessionCache(sessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r.readLocked(ctx, c, sessionID, workingDirectory, agentType, strictLive, false)
+	return transcriptOf(c, agentType)
+}
+
+// ReadTranscriptForLiveWithLineageContext is ReadAllMessagesForLiveWithLineageContext for a
+// Transcript: the first ancestor with messages comes before the session's own in its numbering.
+func (r *SessionReader) ReadTranscriptForLiveWithLineageContext(ctx context.Context, sessionID, workingDirectory, agentType string, ancestorIDs ...string) *Transcript {
+	current := r.ReadTranscriptForLiveContext(ctx, sessionID, workingDirectory, agentType)
 	for _, ancestorID := range ancestorIDs {
 		if ancestorID == "" || ancestorID == sessionID {
 			continue
 		}
-		ancestor, _ := r.ReadAllMessagesForLiveContext(ctx, ancestorID, workingDirectory, agentType)
-		if len(ancestor) == 0 {
+		ancestor := r.ReadTranscriptForLiveContext(ctx, ancestorID, workingDirectory, agentType)
+		if ancestor.Total == 0 {
 			continue
 		}
-		merged := make([]map[string]any, 0, len(ancestor)+len(current))
-		merged = append(merged, ancestor...)
-		merged = append(merged, current...)
-		return merged, len(merged)
+		return current.withAncestor(ancestor)
 	}
-	return current, len(current)
+	return current
 }
 
 // FirstUserPrompt returns the earliest non-empty user message in a session.
@@ -728,9 +744,7 @@ func refreshCodexLink(c *sessionCache, sessionID string) {
 		return
 	}
 	c.path = link.Path
-	c.offset = 0
-	c.messages = nil
-	c.toolUseNames = make(map[string]string)
+	c.resetMessages()
 	c.codexState = codexTurnCache{}
 }
 

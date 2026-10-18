@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -14,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/safefs"
 )
 
@@ -157,7 +159,40 @@ func findKey(secret []byte, messages []map[string]any, key string) int {
 }
 
 // writeKeyLookup answers ?find_key=<key> (Save for Later, #4510): whether the transcript still has that message and where, as {found, index, total}.
-func writeKeyLookup(w http.ResponseWriter, secret []byte, messages []map[string]any, key string) {
-	idx := findKey(secret, messages, key)
-	writeJSON(w, http.StatusOK, map[string]any{"found": idx >= 0, "index": max(idx, 0), "total": len(messages)})
+// The window's messages are searched from the end; when it is not there and the transcript has messages before the window, those are read from the file and the
+// last match among them is the answer (#4620), the same message the scan over the whole transcript found.
+func writeKeyLookup(w http.ResponseWriter, ctx context.Context, secret []byte, tv *jsonl.Transcript, key string) {
+	idx := findKey(secret, tv.Window, key)
+	if idx >= 0 {
+		idx += tv.Base
+	} else if tv.Base > 0 {
+		tv.Each(ctx, 0, tv.Base, func(i int, m map[string]any) bool {
+			if hmac.Equal([]byte(messageKey(secret, m)), []byte(key)) {
+				idx = i
+			}
+			return true
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"found": idx >= 0, "index": max(idx, 0), "total": tv.Total})
+}
+
+// chatSlice is the messages numbered from..to-1 in the whole transcript: those before the window read from the file, the rest from marked, the window's
+// messages as markCoralDeliveries returned them.
+func chatSlice(ctx context.Context, tv *jsonl.Transcript, marked []map[string]any, from, to int) []map[string]any {
+	from, to = max(from, 0), min(to, tv.Total)
+	if from >= to {
+		return nil
+	}
+	var out []map[string]any
+	if from < tv.Base {
+		out = tv.Slice(ctx, from, min(to, tv.Base))
+	}
+	if to > tv.Base {
+		win := marked[max(from, tv.Base)-tv.Base : to-tv.Base]
+		if out == nil {
+			return win
+		}
+		out = append(out, win...)
+	}
+	return out
 }

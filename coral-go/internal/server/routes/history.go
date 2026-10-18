@@ -472,7 +472,7 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 	}
 
 	if key := r.URL.Query().Get("find_key"); key != "" {
-		writeKeyLookup(w, messageKeySecretFor(h.cfg), messages, key) // Save for Later: is that message still in the transcript, and where (#4510)
+		writeKeyLookup(w, r.Context(), messageKeySecretFor(h.cfg), &jsonl.Transcript{Window: messages, Total: len(messages)}, key) // Save for Later: is that message still in the transcript, and where (#4510)
 		return
 	}
 

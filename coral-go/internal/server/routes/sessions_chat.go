@@ -15,6 +15,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -340,18 +341,21 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// Live requests carry an exact session ID. Antigravity's native
 	// conversation IDs can also be UUIDs, so strict marker validation belongs
 	// only on this explicit live-session path, not generic history browsing.
-	var messages []map[string]any
-	var total int
+	// The reader keeps a session's newest messages (its window) and counts the rest: every index
+	// here is the message's number in the whole transcript, and a page that reaches before the
+	// window is read from the file (#4620).
+	var tv *jsonl.Transcript
 	trace.begin("transcript_read")
 	if sessionID != "" {
 		if resumeFromID != "" {
-			messages, total = h.jsonl.ReadAllMessagesForLiveWithLineageContext(r.Context(), id, workingDir, agentType, resumeFromID)
+			tv = h.jsonl.ReadTranscriptForLiveWithLineageContext(r.Context(), id, workingDir, agentType, resumeFromID)
 		} else {
-			messages, total = h.jsonl.ReadAllMessagesForLiveContext(r.Context(), id, workingDir, agentType)
+			tv = h.jsonl.ReadTranscriptForLiveContext(r.Context(), id, workingDir, agentType)
 		}
 	} else {
-		messages, total = h.jsonl.ReadAllMessagesContext(r.Context(), id, workingDir, agentType)
+		tv = h.jsonl.ReadTranscriptContext(r.Context(), id, workingDir, agentType)
 	}
+	messages, total := tv.Window, tv.Total
 	trace.end("transcript_read", "messages", total)
 	trace.begin("log_status")
 	// Reuse the bounded log-status cache used by the live-session list. Chat
@@ -371,13 +375,13 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		limitNotice = h.usageLimitText(agentType, sessionID, workingDir, h.cachedLogStatus(h.findLogPath(agentType, sessionID)))
 	}
 	trace.end("log_status")
-	messages = markCoralDeliveries(messages, agentType, sessionID, name) // the whole transcript: a delivery is used by one turn (#4306)
+	messages = markCoralDeliveries(messages, agentType, sessionID, name) // the window: a delivery is used by one turn (#4306)
 	if key := r.URL.Query().Get("find_key"); key != "" {
-		writeKeyLookup(w, messageKeySecretFor(h.cfg), messages, key) // Save for Later: is that message still in the transcript, and where (#4510)
+		writeKeyLookup(w, r.Context(), messageKeySecretFor(h.cfg), tv, key) // Save for Later: is that message still in the transcript, and where (#4510)
 		return
 	}
 	if after > 0 {
-		messages = messages[min(after, len(messages)):]
+		messages = chatSlice(r.Context(), tv, messages, after, total)
 	}
 	messages = emptyIfNil(messages)
 
@@ -392,7 +396,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	if after == 0 {
 		// 100 by default, never more than 500 a page (#4602: a huge limit was the whole transcript, and a copy of it).
 		limit := clampLimit(queryInt(r, "limit", 100), 100, 500)
-		end := len(messages)
+		end := total
 		if raw := r.URL.Query().Get("before"); raw != "" {
 			before, err := strconv.Atoi(raw)
 			if err != nil || before < 0 {
@@ -406,7 +410,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			end = max(end-max(offset, 0), 0)
 		}
 		start := max(end-limit, 0)
-		page := withKeys(messageKeySecretFor(h.cfg), messages[start:end]) // each message's stable key, for Save for Later (#4510)
+		page := withKeys(messageKeySecretFor(h.cfg), chatSlice(r.Context(), tv, messages, start, end)) // each message's stable key, for Save for Later (#4510)
 		if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
 			page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
 		}
