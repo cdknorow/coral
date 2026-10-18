@@ -76,7 +76,7 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
 
         // The count is plain text; a hidden status region says it only after the person changed a filter, and not again when the list changes under them (agents coming and going).
         assert.equal(await ev(`document.querySelector('#agent-list-bar .list-bar-count').getAttribute('role')`), null, 'the count is not a live region');
-        assert.equal(await ev(`document.querySelector('#agent-list-bar .list-bar-live').textContent`), `${byState('asleep').length} of 30 agents`, 'the region said the count after the last filter change');
+        await waitFor(`document.querySelector('#agent-list-bar .list-bar-live').textContent === ${JSON.stringify(`${byState('asleep').length} of 30 agents`)}`, 'the region says the count after the last filter change', { timeout: 4000 });
         await ev(`window.__live = 0; new MutationObserver(m => { window.__live += m.length; }).observe(document.querySelector('#agent-list-bar .list-bar-live'), { childList: true, characterData: true, subtree: true });
             window.__T.render.flushLiveSessionsRender(); window.__T.render.renderLiveSessions(window.__T.state.liveSessions); true`);
         await settle();

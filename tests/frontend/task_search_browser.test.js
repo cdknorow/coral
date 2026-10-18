@@ -71,6 +71,7 @@ async function run() {
         // ── A search asks the whole board ──
         await type('alpha');
         await settle(`document.querySelector('#board-task-bar .list-bar-count').textContent === '2 of 66'`, 'the count of the search');
+        await settle(`document.querySelector('#board-task-bar .list-bar-live').textContent === '2 of 66'`, 'the status region says the settled count, not the 0 drawn before the answer');
         s = await snap();
         check('"alpha" finds its two tasks of the whole board (2 of 66), with a chip', s.titles.length === 2 && s.titles.every(t => /alpha/.test(t)) && s.chips.join() === 'Search: alpha', JSON.stringify([s.count, s.titles, s.chips]));
         check('a search has no Hide done and no Load more when everything is shown', !s.hide && s.more === null, JSON.stringify([s.hide, s.more]));

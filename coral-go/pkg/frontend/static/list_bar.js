@@ -4,6 +4,7 @@
  * own *_filters.js, which is pure). The classes are list-bar-* (agentic.css, touch.css); the ids come from the spec so two bars never share one. */
 
 const DEBOUNCE_MS = 300;
+const LIVE_SETTLE_MS = 500; // how long the count must stay as it is before it is announced
 
 function make(tag, className, text) {
     const n = document.createElement(tag);
@@ -68,6 +69,7 @@ export function buildListBar(spec, onChange) {
     // only after the person changed the search or a filter (apply), which is when they want to hear how many are left.
     const live = make('span', 'list-bar-live'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite');
     let announce = false;
+    let liveTimer = 0; // the announcement waits for the count to settle: a server-backed panel draws the old count first and the answer's a moment later
     if (noSearch) searchRow.hidden = true; else searchRow.append(wrap, count);
 
     const controls = make('div', 'list-bar-controls');
@@ -144,7 +146,12 @@ export function buildListBar(spec, onChange) {
             chipList.hidden = !list.length;
             filterBtn.textContent = isFiltered(f) ? `Filters (${list.filter(c => c.key !== 'q').length})` : 'Filters';
             const all = `${counts && counts.all}${counts && counts.truncated ? '+' : ''}`; // '+': older ones were not scanned
-            const say = text => { count.textContent = text; if (announce) { announce = false; live.textContent = text; } };
+            const say = text => {
+                count.textContent = text;
+                if (!announce) return;
+                clearTimeout(liveTimer);
+                liveTimer = setTimeout(() => { announce = false; live.textContent = count.textContent; }, LIVE_SETTLE_MS);
+            };
             if (counts && counts.text != null) { say(counts.text); return; } // a panel that words its own count (the agent list's: its search text narrows it too)
             say(!counts ? '' : isFiltered(f) ? `${counts.matched} of ${all}` : `${all} ${counts.all === 1 && !counts.truncated ? spec.noun : (spec.plural || spec.noun + 's')}`);
         },
@@ -163,6 +170,6 @@ export function buildListBar(spec, onChange) {
         closeMenu,
         focusSearch,
         /** A bar that is replaced (a panel rebuilt for another board) lets go of the page's click listener and any search still waiting. */
-        dispose() { document.removeEventListener('click', outside); clearTimeout(timer); node.remove(); },
+        dispose() { document.removeEventListener('click', outside); clearTimeout(timer); clearTimeout(liveTimer); node.remove(); },
     };
 }
