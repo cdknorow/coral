@@ -55,13 +55,15 @@ assert.ok(NEVER.test('/api/system/api-key') && NEVER.test('/api/settings'));
     const urls = [];
     globalThis.fetch = w.fetch = async (u) => { urls.push(String(u)); return { ok: true, status: 200, json: async () => ({}), text: async () => '' }; };
     // Every route the review lists is refused at the routing helper, for any server id.
-    for (const p of ['/api/system/editors', '/api/system/cli-check?type=claude', '/api/system/api-key', '/api/settings', '/api/settings/prompt-inspection?board=x',
+    for (const p of ['/api/system/editors', '/api/system/cli-check?binary=/bin/sh&type=claude', '/api/system/api-key', '/api/settings', '/api/settings/prompt-inspection?board=x',
         '/api/webhooks', '/api/webhooks/1/test', '/api/servers', '/api/servers/abc/test']) {
         const u = base.serverUrl(p, 'srv-1');
         assert.ok(!u.startsWith('/api/remote/'), `${p} would be sent to a connector: ${u}`);
         await base.serverFetch('srv-1', p);
         assert.ok(!urls[urls.length - 1].includes('/api/remote/'), `serverFetch sent ${p} through /api/remote`);
     }
+    // The one /api/system route the hub exposes (Launch tier, #4607): the CLI check by agent type, never with a binary path (cli_check_cloud.test.js has the whole matrix).
+    assert.ok(base.serverUrl('/api/system/cli-check?type=claude&source=cli_recheck', 'srv-1').startsWith('/api/remote/srv-1/'), 'the CLI check by type reaches the machine');
     assert.ok(base.serverUrl('/api/sessions/x/send', 'srv-1').startsWith('/api/remote/srv-1/'), 'normal routes still go to the server');
     // And at run time: the routing helper only prefixes what it is given; never for local routes.
     assert.strictEqual(base.serverUrl('/api/system/status', 'local'), '/api/system/status');

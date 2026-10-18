@@ -41,6 +41,19 @@ const CLOUD_NEVER = /^\/api\/(system|settings|webhooks|servers)(\/|\?|$)/;
 /** The one machine-settings route the hub does expose: the changed-files comparison base (Interact tier, three validated values). */
 const CLOUD_ALLOWED = /^\/api\/settings\/git-diff-mode$/;
 
+/** The one /api/system route the hub exposes (Launch tier): the New Agent dialog's CLI check. The tunnel's allowlist is `type` (one of these agent types) and `source=cli_recheck`
+ *  (pkg/tunnel/routes_query.go, GET /api/system/cli-check), and never a `binary` path; anything else is refused here too, so the UI does not send what the hub would drop. */
+const CLI_CHECK_TYPES = ['claude', 'agy', 'antigravity', 'gemini', 'codex', 'pi'];
+export function cloudCliCheckAllowed(url) {
+    let u;
+    try { u = new URL(String(url), 'http://x.invalid'); } catch { return false; }
+    if (u.origin !== 'http://x.invalid' || u.pathname !== '/api/system/cli-check' || u.hash) return false;
+    const keys = [...u.searchParams.keys()];
+    if (new Set(keys).size !== keys.length || keys.some(k => k !== 'type' && k !== 'source')) return false;
+    if (!CLI_CHECK_TYPES.includes(u.searchParams.get('type'))) return false;
+    return !u.searchParams.has('source') || u.searchParams.get('source') === 'cli_recheck';
+}
+
 /** The dashboard's link to a Coral-managed artifact. The `?v=2` form (v1.4.12) is new on purpose:
  *  before 1.4.12 the bare /api/artifacts/<digest> was served inline without a sandbox and cached
  *  for a year, so a link made now never matches such a cache entry. The server accepts both forms. */
@@ -51,7 +64,7 @@ export function artifactPath(digest) {
 /** Prefix an absolute-path API url ("/api/...") for `server`. In cloud mode a route from
  *  CLOUD_NEVER is never sent through /api/remote: it is pointed at a path the hub 404s. */
 export function serverUrl(url, server) {
-    if (isCloud() && !isLocalServer(server) && CLOUD_NEVER.test(url) && !CLOUD_ALLOWED.test(url)) return '/api/cloud-unavailable';
+    if (isCloud() && !isLocalServer(server) && CLOUD_NEVER.test(url) && !CLOUD_ALLOWED.test(url) && !cloudCliCheckAllowed(url)) return '/api/cloud-unavailable';
     const full = serverBase(server) + url;
     if (!isLocalServer(server)) assertInProxy(full, serverBase(server));
     return full;

@@ -54,6 +54,8 @@ export async function checkAgentCLI(type, element, {force = false, command = '',
     renderCLI(element, `Checking ${type} CLI…`, recheck, {pending:true});
     try {
         const response = await serverFetch(server, `/api/system/cli-check?type=${encodeURIComponent(type)}${force ? '&source=cli_recheck' : ''}`, {signal:controller.signal,cache:force?'no-store':'default'});
+        // Through the Coral Hub the check is a Launch-tier request (it runs the CLI's --version on that computer).
+        if (response.status === 403) throw new Error('Needs Launch access on this machine.');
         if (!response.ok) throw new Error(`Could not check ${type} CLI (HTTP ${response.status}).`);
         const data = await response.json();
         if (!data || typeof data.found !== 'boolean' || (data.agent_type && data.agent_type !== type)) throw new Error(`Could not check ${type} CLI: unexpected response.`);
