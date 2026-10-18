@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -220,4 +221,18 @@ func TestRunWithAWorktreeThatCannotBeMadeFailsBeforeLaunching(t *testing.T) {
 	require.NotNil(t, r.ErrorMsg)
 	assert.Contains(t, *r.ErrorMsg, "git worktree add failed")
 	assert.False(t, launched)
+}
+
+// A job that keeps its worktree (create on, cleanup off) finds it, and its run branch, still there after the run.
+func TestRunWorktreeIsKeptWhenTheJobKeepsIt(t *testing.T) {
+	e := newExitEnv(t, "exit-keep")
+	repo := exitGitRepo(t)
+	e.launch(t, func(context.Context) error { return nil })
+	e.s.launchAndWatch(e.runID, store.ScheduledJob{AgentType: "claude"}, runConfig{repoPath: repo, createWorktree: true, cleanupWorktree: false})
+	require.Equal(t, "completed", e.run(t).Status)
+	_, err := os.Stat(e.dir)
+	require.NoError(t, err, "the worktree is kept")
+	out, err := exec.Command("git", "-C", repo, "branch", "--list", fmt.Sprintf("coral/job-run-%d", e.runID)).Output()
+	require.NoError(t, err)
+	require.Contains(t, string(out), fmt.Sprintf("coral/job-run-%d", e.runID), "and its branch")
 }
