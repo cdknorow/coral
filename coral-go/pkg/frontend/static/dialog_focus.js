@@ -54,7 +54,8 @@ export function attachDialogFocus(dialog) {
         // The dialog fills itself in as it opens: focus once its controls are laid out.
         requestAnimationFrame(() => {
             if (!isShown(dialog) || dialog.contains(document.activeElement)) return;
-            const first = focusables(dialog)[0];
+            const pref = dialog.querySelector('[data-initial-focus]'); // a dialog may name where focus starts (Settings: its open group's tab)
+            const first = visible(pref) ? pref : focusables(dialog)[0];
             if (first) first.focus();
         });
     };

@@ -576,16 +576,22 @@
     <!-- Settings Modal -->
     <template data-lazy="settings-modal">
     <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" style="display:none">
-        <div class="modal-content modal-content-wide settings-modal-content">
+        <div class="modal-content settings-modal-content">
             <div class="modal-header">
                 <h3 id="settings-title">Settings</h3>
             </div>
             <div class="modal-body settings-modal-body">
-                <button class="btn btn-primary settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator">
-                    <span class="material-icons icon-inline" aria-hidden="true">palette</span>
-                    Customize Theme
-                </button>
-                <dl class="info-grid settings-grid">
+                <div class="settings-shell">
+                    <nav class="settings-nav" aria-label="Settings groups">
+                        <div class="settings-group-pick"><select id="settings-group-select" class="settings-select" aria-label="Settings group"></select></div>
+                        <div class="settings-tabs" id="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="Settings groups"></div>
+                    </nav>
+                    <div class="settings-panes">
+                    <section class="settings-pane" id="settings-pane-general" data-group="general" data-icon="tune" data-title="General" role="tabpanel" aria-labelledby="settings-tab-general" tabindex="-1">
+                        <h4 class="settings-pane-title">General</h4>
+                        <p class="settings-pane-sub">Look and feel, and what the sidebar shows.</p>
+                        <dl class="info-grid settings-grid">
+                <div class="settings-row">
                 <dt id="settings-theme-label">Theme</dt>
                 <dd>
                     <select aria-labelledby="settings-theme-label" id="settings-theme" class="settings-select">
@@ -594,10 +600,14 @@
                         <option value="system">System</option>
                     </select>
                 </dd>
+                </div>
+                <div class="settings-row">
                 <dt id="settings-renderer-select-label">Default Render Engine</dt>
                 <dd>
                     <select aria-labelledby="settings-renderer-select-label" id="settings-renderer-select" class="settings-select"></select>
                 </dd>
+                </div>
+                <div class="settings-row">
                 <dt id="settings-agent-type-label">Default Agent Type</dt>
                 <dd>
                     <select aria-labelledby="settings-agent-type-label" id="settings-agent-type" class="settings-select">
@@ -607,24 +617,58 @@
                         <option value="pi">Pi</option>
                     </select>
                 </dd>
-                <!-- Settings > Terminal backend (#3634): filled by terminal_backend.js; never shown through Coral Hub. -->
-                <div class="tb-row" id="settings-terminal-backend" role="group" aria-labelledby="tb-label" hidden>
-                    <div class="tb-head"><span class="tb-label" id="tb-label">Terminal backend</span><span class="tb-now" id="tb-now"></span></div>
-                    <div id="tb-choice">
-                        <p class="tb-sub">Where Coral keeps its agents' terminals. A change applies when Coral restarts.</p>
-                        <label class="tb-opt"><input type="radio" name="terminal-backend" value="tmux" id="tb-opt-tmux"><span><span class="tb-t">tmux: agents keep running <span class="tb-default">(default)</span></span><span class="tb-d">Agents keep running when Coral restarts, upgrades or crashes, and Coral picks them up again afterwards. Coral keeps its terminals in a tmux server whose socket sits in your Coral data folder. Any agent, and any other program running as you, can find that socket and read or type into other agents' terminals. Choose this if you restart or upgrade Coral often.</span></span></label>
-                        <label class="tb-opt"><input type="radio" name="terminal-backend" value="pty" id="tb-opt-pty"><span><span class="tb-t">pty: better isolation between agents</span><span class="tb-d">Coral holds each terminal itself, so there is no shared socket for an agent to use against another agent. The price: agents end whenever Coral restarts, upgrades or crashes (Coral puts them to sleep first when it stops cleanly, and marks them asleep at the next start after a crash). When Coral starts again it wakes them one at a time (not if Coral has restarted several times in a row; up to the number set below; more after you confirm; you can turn this off), and they resume their conversation, but a tool that was running is not continued.</span></span></label>
-                        <p class="tb-note" id="tb-note"></p>
-                        <p class="tb-pending" id="tb-pending" role="status" hidden></p>
-                    </div>
-                    <!-- #3636: on pty, wake the agents that were running when Coral stopped -->
-                    <div class="tb-autowake" id="tb-autowake" hidden>
-                        <label class="tb-autowake-on"><input type="checkbox" id="tb-autowake-on"> Wake agents that were running when Coral stopped</label>
-                        <label class="tb-autowake-cap">Wake up to <input type="number" id="tb-autowake-cap" min="1" max="50" step="1" inputmode="numeric"> without asking</label>
-                        <p class="tb-note">Coral wakes them one at a time when it starts, and they resume their conversation with the permissions they ran with, including an agent that bypassed permissions. More than this many: Coral asks first. Agents you put to sleep stay asleep.</p>
-                    </div>
-                    <p class="tb-fixed" id="tb-fixed" hidden>This Coral runs agents in its own terminals (pty), the only backend here (no tmux on this system). Agents end when Coral restarts or upgrades; when it starts again Coral wakes them (up to the number set below; more after you confirm; you can turn this off), and they resume their conversation.</p>
                 </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-group-by-team">Group agents by board or team</label>
+                    <span class="toggle-desc">Keeps related agents grouped together in the sidebar</span>
+                </dt>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-group-by-team" data-on-change="m-toggle-group-by-team"></label></dd>
+                </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-show-summary">Show a summary under each agent</label>
+                    <span class="toggle-desc">The goal line beneath an agent's name in the sidebar (off by default)</span>
+                </dt>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-show-summary" data-on-change="m-toggle-session-summary"></label></dd>
+                </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-show-scrollbars">Show Scrollbars</label>
+                    <span class="toggle-desc">Show scrollbars in terminal and chat views</span>
+                </dt>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-show-scrollbars" checked></label></dd>
+                </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-check-updates">Check for Updates</label>
+                    <span class="toggle-desc">Notify when a new version of Coral is available</span>
+                </dt>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-check-updates"></label></dd>
+                </div>
+                        </dl>
+                        <button class="btn btn-primary settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator">
+                            <span class="material-icons icon-inline" aria-hidden="true">palette</span>
+                            Customize Theme
+                        </button>
+                        <!-- This machine's health from the feed (#3446); a hub-served page has no machine of its own -->
+                        <div class="settings-section settings-machine-health" data-local-only>
+                            <div id="machine-health-local"></div>
+                        </div>
+                        
+                        <!-- About: the version (Coral has no paid licence, #3221) -->
+                        <div class="settings-section settings-about-section" id="about-section">
+                            <h4 class="settings-about-title">About</h4>
+                            <div id="app-version-label" class="settings-version-label"></div>
+                            <button type="button" class="btn btn-small settings-editions-btn" data-editions="open">Connect to Coral Hub…</button>
+                        </div>
+                        <div id="tier-branding-label" class="tier-branding" style="display:none"></div>
+                    </section>
+                    <section class="settings-pane" id="settings-pane-agents" data-group="agents" data-icon="smart_toy" data-title="Agents" role="tabpanel" aria-labelledby="settings-tab-agents" tabindex="-1" hidden>
+                        <h4 class="settings-pane-title">Agents</h4>
+                        <p class="settings-pane-sub">Defaults for new agents.</p>
+                        <dl class="info-grid settings-grid">
+                <div class="settings-row">
                 <dt id="settings-permission-mode-label">Default Permission Mode</dt>
                 <dd>
                     <select aria-labelledby="settings-permission-mode-label" id="settings-permission-mode" class="settings-select" data-on-change="m-perm-mode-describe">
@@ -637,37 +681,69 @@
                     </select>
                     <span class="settings-hint perm-mode-desc">Everything except protected paths — isolated containers and VMs only</span>
                 </dd>
+                </div>
+                <div class="settings-row">
                 <dt>Default Working Directory</dt>
                 <dd>
                     <input type="text" id="settings-working-dir" class="settings-input" aria-label="Default working directory" data-coral-root="{{ .CoralRoot }}" placeholder="{{ .CoralRoot }}">
                 </dd>
-                <dt>API Key</dt>
-                <dd>
-                    <div class="settings-api-key-row">
-                        <input type="password" id="settings-api-key" class="settings-input settings-mono-input" readonly autocomplete="off" placeholder="Loading..." aria-label="API key">
-                        <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-show" aria-pressed="false" hidden>Show</button>
-                        <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-copy" disabled>Copy</button>
-                        <button class="btn btn-small" type="button" data-on-click="m-show-mobile-connect-modal" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:0.875rem;vertical-align:middle" aria-hidden="true">qr_code_2</span> Mobile QR</button>
+                </div>
+                <div class="settings-row settings-row-wide">
+                <dt>CLI Paths</dt>
+                <dd class="settings-cli-paths">
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Claude</span>
+                        <input type="text" id="settings-cli-path-claude" class="settings-input settings-mono-input" placeholder="claude">
+                        <span id="cli-result-claude" class="cli-verify-result"></span>
+                    </label>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Codex</span>
+                        <input type="text" id="settings-cli-path-codex" class="settings-input settings-mono-input" placeholder="codex">
+                        <span id="cli-result-codex" class="cli-verify-result"></span>
+                    </label>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Antigravity</span>
+                        <input type="text" id="settings-cli-path-agy" class="settings-input settings-mono-input" placeholder="agy">
+                        <span id="cli-result-agy" class="cli-verify-result"></span>
+                    </label>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Pi</span>
+                        <input type="text" id="settings-cli-path-pi" class="settings-input settings-mono-input" placeholder="pi">
+                        <span id="cli-result-pi" class="cli-verify-result"></span>
+                    </label>
+                    <div class="settings-cli-actions">
+                        <button class="btn btn-small" data-on-click="m-verify-all-c-l-is" id="verify-all-btn">Verify All</button>
                     </div>
-                    <span class="settings-hint">Used for remote/mobile access. Keep secret.</span>
+                    <span class="settings-hint">Full path to agent CLI binary. Leave empty to use default from PATH.</span>
                 </dd>
-                <!-- Settings > Browser sign-in (#3948): filled by security_settings.js; never shown through Coral Hub. -->
-                <div class="tb-row sec-row" id="settings-security" role="group" hidden></div>
-                <dt class="toggle-dt">
-                    <label for="settings-telemetry-enabled">Usage analytics</label>
-                    <span class="toggle-desc">Allow anonymous product usage analytics. This applies immediately.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-telemetry-enabled" aria-describedby="settings-telemetry-help"></label>
-                    <span id="settings-telemetry-help" class="settings-hint">No prompts, transcripts, or secrets are sent.</span>
+                </div>
+                <div class="settings-row settings-row-wide">
+                <dt>Default Models</dt>
+                <dd class="settings-cli-paths">
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Claude</span>
+                        <input type="text" id="settings-default-model-claude" class="settings-input settings-mono-input" list="settings-models-claude" placeholder="Leave blank for none" autocomplete="off">
+                        <datalist id="settings-models-claude"></datalist>
+                    </label>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Codex</span>
+                        <input type="text" id="settings-default-model-codex" class="settings-input settings-mono-input" list="settings-models-codex" placeholder="Leave blank for none" autocomplete="off">
+                        <datalist id="settings-models-codex"></datalist>
+                    </label>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Antigravity</span>
+                        <input type="text" id="settings-default-model-agy" class="settings-input settings-mono-input" list="settings-models-agy" placeholder="Leave blank for none" autocomplete="off">
+                        <datalist id="settings-models-agy"></datalist>
+                    </label>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Pi</span>
+                        <input type="text" id="settings-default-model-pi" class="settings-input settings-mono-input" list="settings-models-pi" placeholder="Leave blank for none" autocomplete="off">
+                        <datalist id="settings-models-pi"></datalist>
+                    </label>
+                    <span id="settings-default-models-notice" class="settings-hint">Used when launching an agent without a model specified. Pick from the dropdown or type any model id.</span>
                 </dd>
-                <dt class="toggle-dt">
-                    <label for="settings-board-auto-attach">Attach files agents link on the board</label>
-                    <span class="toggle-desc">Off by default. When on, an agent's own board post that links a local image (png, jpg, gif, webp) or Markdown file changed in the last day has it stored as an artifact, so the team and Coral Hub can open it. When off, links stay as written and agents upload with coral-agent artifact upload.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-board-auto-attach"></label>
-                </dd>
+                </div>
+                <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-auto-resume">Resume agents stopped by an API error</label>
                     <span class="toggle-desc">Off by default. When an agent's CLI stops on a rate limit, an overload or another API error, Coral wakes it again after about 2, then 5, then 15 minutes, and stops trying after the third. Waking the agent yourself starts the count again.</span>
@@ -675,6 +751,8 @@
                 <dd>
                     <label class="check-hit"><input type="checkbox" id="settings-auto-resume"></label>
                 </dd>
+                </div>
+                <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-auto-goals">Name each agent's goal</label>
                     <span class="toggle-desc">On by default. Coral asks Claude Code's smallest model (Haiku) for a short goal line for each agent, from your requests only: once when the agent first answers, then for a new request at most every 30 minutes. Each one is a short call made with your Claude Code account (about 1,300 input tokens). When off, the goal shows your first prompt.</span>
@@ -682,6 +760,188 @@
                 <dd>
                     <label class="check-hit"><input type="checkbox" id="settings-auto-goals"></label>
                 </dd>
+                </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-agent-low-priority">Run agents at lower priority</label>
+                    <span class="toggle-desc">On by default. Agents and everything they start (builds, test runs) run below Coral itself (nice +10 on Mac and Linux, below normal on Windows), so the dashboard, Coral Hub and your own apps stay quick while agents use every CPU. It changes scheduling only, never what an agent may do. Applies to agents started after the change.</span>
+                </dt>
+                <dd>
+                    <label class="check-hit"><input type="checkbox" id="settings-agent-low-priority"></label>
+                </dd>
+                </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-board-auto-attach">Attach files agents link on the board</label>
+                    <span class="toggle-desc">Off by default. When on, an agent's own board post that links a local image (png, jpg, gif, webp) or Markdown file changed in the last day has it stored as an artifact, so the team and Coral Hub can open it. When off, links stay as written and agents upload with coral-agent artifact upload.</span>
+                </dt>
+                <dd>
+                    <label class="check-hit"><input type="checkbox" id="settings-board-auto-attach"></label>
+                </dd>
+                </div>
+                        </dl>
+                        <button class="btn btn-primary settings-prompts-btn" data-on-click="m-hide-settings-modal-then-show-default-prompts-modal">
+                            <span style="font-size:1rem;vertical-align:middle;margin-right:6px">✏️</span>
+                            Edit Default Prompts
+                        </button>
+                    </section>
+                    <section class="settings-pane" id="settings-pane-terminal" data-group="terminal" data-icon="terminal" data-title="Terminal" role="tabpanel" aria-labelledby="settings-tab-terminal" tabindex="-1" hidden>
+                        <h4 class="settings-pane-title">Terminal</h4>
+                        <p class="settings-pane-sub">How the terminal view looks and behaves.</p>
+                        <dl class="info-grid settings-grid">
+                <div class="settings-row">
+                <dt id="settings-terminal-font-size-label">Terminal Font Size</dt>
+                <dd>
+                    <select aria-labelledby="settings-terminal-font-size-label" id="settings-terminal-font-size" class="settings-select">
+                        <option value="10">10px</option>
+                        <option value="11">11px</option>
+                        <option value="12">12px</option>
+                        <option value="13" selected>13px</option>
+                        <option value="14">14px</option>
+                        <option value="16">16px</option>
+                        <option value="18">18px</option>
+                    </select>
+                </dd>
+                </div>
+                <div class="settings-row">
+                <dt id="settings-terminal-scrollback-label">Terminal Scrollback</dt>
+                <dd>
+                    <select aria-labelledby="settings-terminal-scrollback-label" id="settings-terminal-scrollback" class="settings-select">
+                        <option value="1000">1,000 lines</option>
+                        <option value="5000">5,000 lines</option>
+                        <option value="10000">10,000 lines</option>
+                        <option value="20000" selected>20,000 lines</option>
+                        <option value="50000">50,000 lines</option>
+                        <option value="100000">Unlimited (100k)</option>
+                    </select>
+                </dd>
+                </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-fit-pane-width">Fit Pane Width</label>
+                    <span class="toggle-desc">Auto-resize tmux pane to match browser width</span>
+                </dt>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-fit-pane-width"></label></dd>
+                </div>
+            <!-- Settings > Terminal backend (#3634): filled by terminal_backend.js; never shown through Coral Hub. -->
+            <div class="tb-row" id="settings-terminal-backend" role="group" aria-labelledby="tb-label" hidden>
+                <div class="tb-head"><span class="tb-label" id="tb-label">Terminal backend</span><span class="tb-now" id="tb-now"></span></div>
+                <div id="tb-choice">
+                    <p class="tb-sub">Where Coral keeps its agents' terminals. A change applies when Coral restarts.</p>
+                    <label class="tb-opt"><input type="radio" name="terminal-backend" value="tmux" id="tb-opt-tmux"><span><span class="tb-t">tmux: agents keep running <span class="tb-default">(default)</span></span><span class="tb-d">Agents keep running when Coral restarts, upgrades or crashes, and Coral picks them up again afterwards. Coral keeps its terminals in a tmux server whose socket sits in your Coral data folder. Any agent, and any other program running as you, can find that socket and read or type into other agents' terminals. Choose this if you restart or upgrade Coral often.</span></span></label>
+                    <label class="tb-opt"><input type="radio" name="terminal-backend" value="pty" id="tb-opt-pty"><span><span class="tb-t">pty: better isolation between agents</span><span class="tb-d">Coral holds each terminal itself, so there is no shared socket for an agent to use against another agent. The price: agents end whenever Coral restarts, upgrades or crashes (Coral puts them to sleep first when it stops cleanly, and marks them asleep at the next start after a crash). When Coral starts again it wakes them one at a time (not if Coral has restarted several times in a row; up to the number set below; more after you confirm; you can turn this off), and they resume their conversation, but a tool that was running is not continued.</span></span></label>
+                    <p class="tb-note" id="tb-note"></p>
+                    <p class="tb-pending" id="tb-pending" role="status" hidden></p>
+                </div>
+                <!-- #3636: on pty, wake the agents that were running when Coral stopped -->
+                <div class="tb-autowake" id="tb-autowake" hidden>
+                    <label class="tb-autowake-on"><input type="checkbox" id="tb-autowake-on"> Wake agents that were running when Coral stopped</label>
+                    <label class="tb-autowake-cap">Wake up to <input type="number" id="tb-autowake-cap" min="1" max="50" step="1" inputmode="numeric"> without asking</label>
+                    <p class="tb-note">Coral wakes them one at a time when it starts, and they resume their conversation with the permissions they ran with, including an agent that bypassed permissions. More than this many: Coral asks first. Agents you put to sleep stay asleep.</p>
+                </div>
+                <p class="tb-fixed" id="tb-fixed" hidden>This Coral runs agents in its own terminals (pty), the only backend here (no tmux on this system). Agents end when Coral restarts or upgrades; when it starts again Coral wakes them (up to the number set below; more after you confirm; you can turn this off), and they resume their conversation.</p>
+            </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-debug-input-log">Log terminal input (debug)</label>
+                    <span class="toggle-desc">Record everything Coral sends to agent terminals, for troubleshooting. Off by default; applies immediately.</span>
+                </dt>
+                <dd>
+                    <label class="check-hit"><input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-status"></label>
+                    <div id="settings-debug-input-log-status" class="settings-hint" role="status" hidden></div>
+                    <button class="btn btn-small" type="button" id="settings-debug-input-log-delete" hidden>Delete the log</button>
+                </dd>
+                </div>
+                        </dl>
+                    </section>
+                    <section class="settings-pane" id="settings-pane-notifications" data-group="notifications" data-icon="notifications" data-title="Notifications" role="tabpanel" aria-labelledby="settings-tab-notifications" tabindex="-1" hidden>
+                        <h4 class="settings-pane-title">Notifications</h4>
+                        <p class="settings-pane-sub">Alerts when an agent needs you.</p>
+                        <dl class="info-grid settings-grid">
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-notify-needs-input">Notifications</label>
+                    <span class="toggle-desc">Show toast when an agent needs input</span>
+                </dt>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-notify-needs-input"></label></dd>
+                </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-desktop-notify">Desktop alerts</label>
+                    <span class="toggle-desc">This browser only: alert while this tab is in the background. Shows the agent and server names (your OS may keep them in its notification history), never agent output. May duplicate a local alert.</span>
+                </dt>
+                <dd><label class="check-hit"><input type="checkbox" id="settings-desktop-notify"></label></dd>
+                </div>
+                        </dl>
+                    </section>
+                    <section class="settings-pane" id="settings-pane-files" data-group="files" data-icon="account_tree" data-title="Files and Git" role="tabpanel" aria-labelledby="settings-tab-files" tabindex="-1" hidden>
+                        <h4 class="settings-pane-title">Files and Git</h4>
+                        <p class="settings-pane-sub">Search and changed-file tracking.</p>
+                        <dl class="info-grid settings-grid">
+                <div class="settings-row">
+                <dt>
+                    <label for="settings-file-search-mode">File Search Mode</label>
+                    <span class="toggle-desc">How @ mentions and file browser search for files</span>
+                </dt>
+                <dd>
+                    <select id="settings-file-search-mode" class="settings-select">
+                        <option value="directory">Directory Browsing</option>
+                        <option value="fuzzy">Fuzzy Matching</option>
+                    </select>
+                </dd>
+                </div>
+                <div class="settings-row">
+                <dt>
+                    <label for="settings-file-search-limit">File Search Limit</label>
+                    <span class="toggle-desc">Max number of files returned in search results</span>
+                </dt>
+                <dd>
+                    <select id="settings-file-search-limit" class="settings-select">
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="500" selected>500</option>
+                        <option value="1000">1,000</option>
+                    </select>
+                </dd>
+                </div>
+                <div class="settings-row">
+                <dt>
+                    <label for="settings-git-diff-mode">Git Diff Mode</label>
+                    <span class="toggle-desc">What to compare changed files against</span>
+                </dt>
+                <dd>
+                    <select id="settings-git-diff-mode" class="settings-select">
+                        <option value="branch_point">Branch Point (merge-base)</option>
+                        <option value="previous_commit">Previous Commit (HEAD~1)</option>
+                        <option value="main_head">Main Branch (vs main)</option>
+                    </select>
+                </dd>
+                </div>
+                <div class="settings-row">
+                <dt>
+                    <label for="settings-git-poll-interval">Git Scan Interval</label>
+                    <span class="toggle-desc">How often Coral rescans git for changed files. Scanning a large repository is slow — stretch this out, or turn it off and use the refresh button.</span>
+                </dt>
+                <dd>
+                    <select id="settings-git-poll-interval" class="settings-select">
+                        <option value="30">Every 30 seconds</option>
+                        <option value="60">Every minute</option>
+                        <option value="120">Every 2 minutes</option>
+                        <option value="300">Every 5 minutes</option>
+                        <option value="600">Every 10 minutes</option>
+                        <option value="1800">Every 30 minutes</option>
+                        <option value="0">Off &mdash; refresh manually</option>
+                    </select>
+                </dd>
+                </div>
+                        </dl>
+                    </section>
+                    <section class="settings-pane" id="settings-pane-cleanup" data-group="cleanup" data-icon="inventory_2" data-title="Storage and cleanup" role="tabpanel" aria-labelledby="settings-tab-cleanup" tabindex="-1" hidden>
+                        <h4 class="settings-pane-title">Storage and cleanup</h4>
+                        <p class="settings-pane-sub">Disk space Coral uses, and how to free it.</p>
+                        <dl class="info-grid settings-grid">
+                <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-artifact-store-max">Artifact store limit (GiB)</label>
                     <span class="toggle-desc">The most space stored artifacts may take. Above it, agents' new uploads are refused until you delete some (Team Artifacts &gt; Delete). 0 means no limit. Saved task and session diffs aren't counted.</span>
@@ -691,6 +951,8 @@
                     <div id="settings-artifact-store-size" class="settings-hint" role="status">Loading…</div>
                     <div id="settings-storage-detail" class="settings-hint"></div>
                 </dd>
+                </div>
+                <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-received-max">Received files limit (GiB)</label>
                     <span class="toggle-desc">The most space files sent to this computer by other teams and Corals may take. Above it, new received files are refused; nothing is deleted, and your agents' own uploads are not affected. The default is 2; 0 means no limit.</span>
@@ -702,6 +964,8 @@
                         <button class="btn btn-small" type="button" id="settings-received-unlisted-delete">Delete unlisted files</button>
                     </div>
                 </dd>
+                </div>
+                <div class="settings-row settings-row-wide">
                 <dt class="toggle-dt">
                     <label for="settings-prune-days">Free space</label>
                     <span class="toggle-desc">Shrink rewrites saved diffs of finished tasks without secrets, dot-files, binaries and big files (the code changes stay). Prune deletes saved diffs of finished tasks and stopped sessions, and artifacts nothing links, older than the days you choose. Kept artifacts and anything still linked are never touched. Each shows what it would do first.</span>
@@ -719,6 +983,8 @@
                     </div>
                     <div id="settings-storage-result" class="settings-hint" role="status"></div>
                 </dd>
+                </div>
+                <div class="settings-row settings-row-wide">
                 <dt class="toggle-dt">
                     <label for="settings-retention-days">Automatic cleanup (days)</label>
                     <span class="toggle-desc">Prune what is older than this every hour. 0 means off (the default). After you turn it on, nothing is removed until you review what it would do, or 24 hours later; each run frees at most 2 GiB.</span>
@@ -733,6 +999,8 @@
                     <div id="settings-retention-status" class="settings-hint" role="status"></div>
                     <button class="btn btn-small" type="button" id="settings-retention-review" hidden>Review and start…</button>
                 </dd>
+                </div>
+                <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-terminal-logs-delete">Terminal logs</label>
                     <span class="toggle-desc">Each agent's terminal output is kept in the logs folder of Coral's data folder, and stays after the agent is killed. You can delete the logs of agents that have ended; the log of a live, sleeping or archived agent is never touched.</span>
@@ -741,15 +1009,14 @@
                     <div id="settings-terminal-logs-status" class="settings-hint" role="status">Loading…</div>
                     <button class="btn btn-small" type="button" id="settings-terminal-logs-delete" hidden>Delete terminal logs of ended agents</button>
                 </dd>
-                <dt class="toggle-dt">
-                    <label for="settings-debug-input-log">Log terminal input (debug)</label>
-                    <span class="toggle-desc">Record everything Coral sends to agent terminals, for troubleshooting. Off by default; applies immediately.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-status"></label>
-                    <div id="settings-debug-input-log-status" class="settings-hint" role="status" hidden></div>
-                    <button class="btn btn-small" type="button" id="settings-debug-input-log-delete" hidden>Delete the log</button>
-                </dd>
+                </div>
+                        </dl>
+                    </section>
+                    <section class="settings-pane" id="settings-pane-network" data-group="network" data-icon="hub" data-title="Network and Hub" role="tabpanel" aria-labelledby="settings-tab-network" tabindex="-1" hidden>
+                        <h4 class="settings-pane-title">Network and Hub</h4>
+                        <p class="settings-pane-sub">Who can reach this Coral, and linking servers.</p>
+                        <dl class="info-grid settings-grid">
+                <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-remote-access-enabled">Remote access</label>
                     <span class="toggle-desc">Allow connections from other devices. Plain HTTP (unencrypted) unless Coral was started with --tls-cert and --tls-key.</span>
@@ -758,6 +1025,8 @@
                     <label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status"></label>
                     <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
                 </dd>
+                </div>
+                <div class="settings-row settings-row-wide">
                 <dt>Coral Hub</dt>
                 <dd id="settings-cloud">
                     <div id="settings-cloud-status" data-cloud="status" class="settings-hint" role="status" aria-live="polite">Loading…</div>
@@ -802,8 +1071,40 @@
                             <div id="settings-cloud-hub-operator-msg" data-cloud="hub-operator-msg" class="settings-hint settings-error" role="alert" hidden></div>
                         </div>
                     </div>
-                    <div class="settings-hint">The hub can read everything you view through it. This is a ceiling: the mode actually in effect is the lower of this setting and the one chosen on the hub, and only you can change this one, here. Interact lets a hub user type into running agents, which can run commands; Launch also lets them start, stop, sleep, wake and restart agents. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
+                    <div class="settings-hint" data-info>The hub can read everything you view through it. This is a ceiling: the mode actually in effect is the lower of this setting and the one chosen on the hub, and only you can change this one, here. Interact lets a hub user type into running agents, which can run commands; Launch also lets them start, stop, sleep, wake and restart agents. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
                 </dd>
+                </div>
+                <div class="settings-row settings-row-wide">
+                <!-- Run as a hub (#3460, hub_mode_setting.js): saved at once, applied at the next start -->
+                <dt id="settings-hub-mode-label">Run as a hub</dt>
+                <dd id="settings-hub-mode">
+                    <label class="settings-hub-mode-toggle"><input type="checkbox" id="settings-hub-mode-enabled" aria-describedby="settings-hub-mode-desc settings-hub-mode-status"> Run this Coral as a hub</label>
+                    <div id="settings-hub-mode-desc" class="settings-hint" data-info>Manage and view your other Coral servers from this one, in a Servers tab. It uses this Coral's own address, port and sign-in: the API key from other computers, and Remote Access above for who can reach it. Nothing new listens. Turning it off keeps the servers you added.</div>
+                    <div id="settings-hub-mode-status" class="settings-hint" role="status" aria-live="polite"></div>
+                    <button type="button" class="btn btn-small" id="settings-hub-mode-restart" hidden>Restart Coral</button>
+                </dd>
+                </div>
+                        </dl>
+                    </section>
+                    <section class="settings-pane" id="settings-pane-security" data-group="security" data-icon="lock" data-title="Security and privacy" role="tabpanel" aria-labelledby="settings-tab-security" tabindex="-1" hidden>
+                        <h4 class="settings-pane-title">Security and privacy</h4>
+                        <p class="settings-pane-sub">Keys, encryption and what is shared.</p>
+                        <dl class="info-grid settings-grid">
+                <div class="settings-row settings-row-wide">
+                <dt>API Key</dt>
+                <dd>
+                    <div class="settings-api-key-row">
+                        <input type="password" id="settings-api-key" class="settings-input settings-mono-input" readonly autocomplete="off" placeholder="Loading..." aria-label="API key">
+                        <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-show" aria-pressed="false" hidden>Show</button>
+                        <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-copy" disabled>Copy</button>
+                        <button class="btn btn-small" type="button" data-on-click="m-show-mobile-connect-modal" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:0.875rem;vertical-align:middle" aria-hidden="true">qr_code_2</span> Mobile QR</button>
+                    </div>
+                    <span class="settings-hint">Used for remote/mobile access. Keep secret.</span>
+                </dd>
+                </div>
+            <!-- Settings > Browser sign-in (#3948): filled by security_settings.js; never shown through Coral Hub. -->
+            <div class="tb-row sec-row" id="settings-security" role="group" hidden></div>
+                <div class="settings-row">
                 <dt id="settings-database-encryption-label">Database encryption</dt>
                 <dd>
                     <select aria-labelledby="settings-database-encryption-label" id="settings-database-encryption" class="settings-select" aria-describedby="settings-database-encryption-status">
@@ -812,209 +1113,23 @@
                         <option value="password">Password at startup</option>
                     </select>
                     <div id="settings-database-encryption-status" class="settings-hint" role="status">Loading encryption status…</div>
-                    <div class="settings-hint settings-database-encryption-warning">Applies after restart. Coral never stores a database password in browser storage, URLs, logs, or ordinary settings.</div>
+                    <div class="settings-hint settings-database-encryption-warning" data-info>Applies after restart. Coral never stores a database password in browser storage, URLs, logs, or ordinary settings.</div>
                 </dd>
-                <dt>CLI Paths</dt>
-                <dd class="settings-cli-paths">
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Claude</span>
-                        <input type="text" id="settings-cli-path-claude" class="settings-input settings-mono-input" placeholder="claude">
-                        <span id="cli-result-claude" class="cli-verify-result"></span>
-                    </label>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Codex</span>
-                        <input type="text" id="settings-cli-path-codex" class="settings-input settings-mono-input" placeholder="codex">
-                        <span id="cli-result-codex" class="cli-verify-result"></span>
-                    </label>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Antigravity</span>
-                        <input type="text" id="settings-cli-path-agy" class="settings-input settings-mono-input" placeholder="agy">
-                        <span id="cli-result-agy" class="cli-verify-result"></span>
-                    </label>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Pi</span>
-                        <input type="text" id="settings-cli-path-pi" class="settings-input settings-mono-input" placeholder="pi">
-                        <span id="cli-result-pi" class="cli-verify-result"></span>
-                    </label>
-                    <div class="settings-cli-actions">
-                        <button class="btn btn-small" data-on-click="m-verify-all-c-l-is" id="verify-all-btn">Verify All</button>
+                </div>
+                <div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="settings-telemetry-enabled">Usage analytics</label>
+                    <span class="toggle-desc">Allow anonymous product usage analytics. This applies immediately.</span>
+                </dt>
+                <dd>
+                    <label class="check-hit"><input type="checkbox" id="settings-telemetry-enabled" aria-describedby="settings-telemetry-help"></label>
+                    <span id="settings-telemetry-help" class="settings-hint">No prompts, transcripts, or secrets are sent.</span>
+                </dd>
+                </div>
+                        </dl>
+                    </section>
                     </div>
-                    <span class="settings-hint">Full path to agent CLI binary. Leave empty to use default from PATH.</span>
-                </dd>
-                <dt>Default Models</dt>
-                <dd class="settings-cli-paths">
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Claude</span>
-                        <input type="text" id="settings-default-model-claude" class="settings-input settings-mono-input" list="settings-models-claude" placeholder="Leave blank for none" autocomplete="off">
-                        <datalist id="settings-models-claude"></datalist>
-                    </label>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Codex</span>
-                        <input type="text" id="settings-default-model-codex" class="settings-input settings-mono-input" list="settings-models-codex" placeholder="Leave blank for none" autocomplete="off">
-                        <datalist id="settings-models-codex"></datalist>
-                    </label>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Antigravity</span>
-                        <input type="text" id="settings-default-model-agy" class="settings-input settings-mono-input" list="settings-models-agy" placeholder="Leave blank for none" autocomplete="off">
-                        <datalist id="settings-models-agy"></datalist>
-                    </label>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Pi</span>
-                        <input type="text" id="settings-default-model-pi" class="settings-input settings-mono-input" list="settings-models-pi" placeholder="Leave blank for none" autocomplete="off">
-                        <datalist id="settings-models-pi"></datalist>
-                    </label>
-                    <span id="settings-default-models-notice" class="settings-hint">Used when launching an agent without a model specified. Pick from the dropdown or type any model id.</span>
-                </dd>
-                <dt>Group by Team</dt>
-                <dd>
-                    <label class="settings-toggle">
-                        <input type="checkbox" id="settings-group-by-team" data-on-change="m-toggle-group-by-team">
-                        <span>
-                            <strong>Group agents by board/team</strong>
-                            <span class="toggle-desc">Keeps related agents grouped together in the sidebar</span>
-                        </span>
-                    </label>
-                </dd>
-                <dt>Agent Summaries</dt>
-                <dd>
-                    <label class="settings-toggle">
-                        <input type="checkbox" id="settings-show-summary" data-on-change="m-toggle-session-summary">
-                        <span>
-                            <strong>Show summary under each agent</strong>
-                            <span class="toggle-desc">The goal line beneath an agent's name in the sidebar (off by default)</span>
-                        </span>
-                    </label>
-                </dd>
-                <dt id="settings-terminal-font-size-label">Terminal Font Size</dt>
-                <dd>
-                    <select aria-labelledby="settings-terminal-font-size-label" id="settings-terminal-font-size" class="settings-select">
-                        <option value="10">10px</option>
-                        <option value="11">11px</option>
-                        <option value="12">12px</option>
-                        <option value="13" selected>13px</option>
-                        <option value="14">14px</option>
-                        <option value="16">16px</option>
-                        <option value="18">18px</option>
-                    </select>
-                </dd>
-                <dt id="settings-terminal-scrollback-label">Terminal Scrollback</dt>
-                <dd>
-                    <select aria-labelledby="settings-terminal-scrollback-label" id="settings-terminal-scrollback" class="settings-select">
-                        <option value="1000">1,000 lines</option>
-                        <option value="5000">5,000 lines</option>
-                        <option value="10000">10,000 lines</option>
-                        <option value="20000" selected>20,000 lines</option>
-                        <option value="50000">50,000 lines</option>
-                        <option value="100000">Unlimited (100k)</option>
-                    </select>
-                </dd>
-                <dt class="toggle-dt">
-                    <label for="settings-fit-pane-width">Fit Pane Width</label>
-                    <span class="toggle-desc">Auto-resize tmux pane to match browser width</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-fit-pane-width"></label></dd>
-                <dt class="toggle-dt">
-                    <label for="settings-notify-needs-input">Notifications</label>
-                    <span class="toggle-desc">Show toast when an agent needs input</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-notify-needs-input"></label></dd>
-                <dt class="toggle-dt">
-                    <label for="settings-desktop-notify">Desktop alerts</label>
-                    <span class="toggle-desc">This browser only: alert while this tab is in the background. Shows the agent and server names (your OS may keep them in its notification history), never agent output. May duplicate a local alert.</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-desktop-notify"></label></dd>
-                <dt class="toggle-dt">
-                    <label for="settings-check-updates">Check for Updates</label>
-                    <span class="toggle-desc">Notify when a new version of Coral is available</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-check-updates"></label></dd>
-                <dt class="toggle-dt">
-                    <label for="settings-show-scrollbars">Show Scrollbars</label>
-                    <span class="toggle-desc">Show scrollbars in terminal and chat views</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-show-scrollbars" checked></label></dd>
-                <dt>
-                    <label for="settings-file-search-mode">File Search Mode</label>
-                    <span class="toggle-desc">How @ mentions and file browser search for files</span>
-                </dt>
-                <dd>
-                    <select id="settings-file-search-mode" class="settings-select">
-                        <option value="directory">Directory Browsing</option>
-                        <option value="fuzzy">Fuzzy Matching</option>
-                    </select>
-                </dd>
-                <!-- Run as a hub (#3460, hub_mode_setting.js): saved at once, applied at the next start -->
-                <dt id="settings-hub-mode-label">Run as a hub</dt>
-                <dd id="settings-hub-mode">
-                    <label class="settings-hub-mode-toggle"><input type="checkbox" id="settings-hub-mode-enabled" aria-describedby="settings-hub-mode-desc settings-hub-mode-status"> Run this Coral as a hub</label>
-                    <div id="settings-hub-mode-desc" class="settings-hint">Manage and view your other Coral servers from this one, in a Servers tab. It uses this Coral's own address, port and sign-in: the API key from other computers, and Remote Access above for who can reach it. Nothing new listens. Turning it off keeps the servers you added.</div>
-                    <div id="settings-hub-mode-status" class="settings-hint" role="status" aria-live="polite"></div>
-                    <button type="button" class="btn btn-small" id="settings-hub-mode-restart" hidden>Restart Coral</button>
-                </dd>
-                <dt>
-                    <label for="settings-file-search-limit">File Search Limit</label>
-                    <span class="toggle-desc">Max number of files returned in search results</span>
-                </dt>
-                <dd>
-                    <select id="settings-file-search-limit" class="settings-select">
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                        <option value="200">200</option>
-                        <option value="500" selected>500</option>
-                        <option value="1000">1,000</option>
-                    </select>
-                </dd>
-                <dt>
-                    <label for="settings-git-diff-mode">Git Diff Mode</label>
-                    <span class="toggle-desc">What to compare changed files against</span>
-                </dt>
-                <dd>
-                    <select id="settings-git-diff-mode" class="settings-select">
-                        <option value="branch_point">Branch Point (merge-base)</option>
-                        <option value="previous_commit">Previous Commit (HEAD~1)</option>
-                        <option value="main_head">Main Branch (vs main)</option>
-                    </select>
-                </dd>
-                <dt>
-                    <label for="settings-git-poll-interval">Git Scan Interval</label>
-                    <span class="toggle-desc">How often Coral rescans git for changed files. Scanning a large repository is slow — stretch this out, or turn it off and use the refresh button.</span>
-                </dt>
-                <dd>
-                    <select id="settings-git-poll-interval" class="settings-select">
-                        <option value="30">Every 30 seconds</option>
-                        <option value="60">Every minute</option>
-                        <option value="120">Every 2 minutes</option>
-                        <option value="300">Every 5 minutes</option>
-                        <option value="600">Every 10 minutes</option>
-                        <option value="1800">Every 30 minutes</option>
-                        <option value="0">Off &mdash; refresh manually</option>
-                    </select>
-                </dd>
-                <dt class="toggle-dt">
-                    <label for="settings-agent-low-priority">Run agents at lower priority</label>
-                    <span class="toggle-desc">On by default. Agents and everything they start (builds, test runs) run below Coral itself (nice +10 on Mac and Linux, below normal on Windows), so the dashboard, Coral Hub and your own apps stay quick while agents use every CPU. It changes scheduling only, never what an agent may do. Applies to agents started after the change.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-agent-low-priority"></label>
-                </dd>
-                </dl>
-                <button class="btn btn-primary settings-prompts-btn" data-on-click="m-hide-settings-modal-then-show-default-prompts-modal">
-                    <span style="font-size:1rem;vertical-align:middle;margin-right:6px">✏️</span>
-                    Edit Default Prompts
-                </button>
-
-                <!-- This machine's health from the feed (#3446); a hub-served page has no machine of its own -->
-                <div class="settings-section settings-machine-health" data-local-only>
-                    <div id="machine-health-local"></div>
                 </div>
-
-                <!-- About: the version (Coral has no paid licence, #3221) -->
-                <div class="settings-section settings-about-section" id="about-section">
-                    <h4 class="settings-about-title">About</h4>
-                    <div id="app-version-label" class="settings-version-label"></div>
-                    <button type="button" class="btn btn-small settings-editions-btn" data-editions="open">Connect to Coral Hub…</button>
-                </div>
-                <div id="tier-branding-label" class="tier-branding" style="display:none"></div>
             </div>
             <div class="modal-actions modal-footer">
                 <button class="btn" data-on-click="m-hide-settings-modal">Cancel</button>

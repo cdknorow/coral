@@ -28,6 +28,7 @@ import { pollEvery } from './overload.js';
 import { attachDialogFocus } from './dialog_focus.js';
 import { browserLocal } from './safe_storage.js';
 import { ensureBuilt, onBuilt } from './lazy_dom.js';
+import { openSettingsGroup } from './settings_nav.js';
 
 // The Launch, Info and Settings dialogs are built from their templates when this module loads, which is their first use
 // (#4500): everything below finds them in the page. Settings' load-time writers (settings_core.js and others) find nothing
@@ -2585,7 +2586,7 @@ function refreshCLIPathFields() {
     }).catch(() => { /* the dialog keeps what it opened with */ });
 }
 
-export async function showSettingsModal() {
+export async function showSettingsModal(group) {
     // Focus moves in on open, Tab stays inside, and focus comes back on close (accessibility pass).
     attachDialogFocus(document.getElementById('settings-modal'));
 
@@ -2827,6 +2828,7 @@ export async function showSettingsModal() {
 
     if (isCloud()) applyCloudSettingsDialog();
 
+    openSettingsGroup(typeof group === 'string' ? group : undefined); // the group last used here, or the one asked for
     document.getElementById("settings-modal").style.display = "flex";
 }
 

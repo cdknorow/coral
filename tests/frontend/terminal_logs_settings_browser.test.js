@@ -31,7 +31,7 @@ const MIB = 1024 ** 2;
             return true; })()`);
         const openSettings = async () => {
             await waitFor(`(window.hideSettingsModal(), (!document.getElementById('settings-modal') || getComputedStyle(document.getElementById('settings-modal')).display === 'none'))`, 'Settings to close', 6000);
-            await ev(`window.showSettingsModal(); true`);
+            await ev(`window.showSettingsModal('cleanup'); true`);
             await waitFor(`!!document.getElementById('settings-terminal-logs-status') && !/Loading/.test(document.getElementById('settings-terminal-logs-status').textContent)`, 'the terminal logs line', 8000);
         };
         const state = () => ev(`(() => { const b = document.getElementById('settings-terminal-logs-delete'); return { text: (document.getElementById('settings-terminal-logs-status')?.textContent ?? ''), role: document.getElementById('settings-terminal-logs-status').getAttribute('role'), hidden: b.hidden, button: b.textContent, label: (document.querySelector('label[for=settings-terminal-logs-delete]') || {}).textContent }; })()`);

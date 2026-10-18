@@ -5,6 +5,7 @@
 // Drives Chrome over CDP through agent_view_harness.js against an isolated dev server; run_cdp_suites.mjs finds it by name.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { acrossGroups } = require('./helpers/settings_groups');
 
 const BASE = require('./test_base').BASE;
 
@@ -24,7 +25,7 @@ const CHECKBOXES = `(() => [...document.querySelectorAll('#settings-modal input[
         await Page.navigate({ url: BASE }); await Page.loadEventFired(); await install();
         await require('./helpers/wait').bind(ev).coralReady('startup', 'settings');
         await ev(`(async () => { await window.showSettingsModal(); return true; })()`);
-        const boxes = await ev(CHECKBOXES);
+        const boxes = await acrossGroups(ev, CHECKBOXES);
         assert.ok(boxes.length >= 12, `the Settings checkboxes are found (${boxes.length})`);
         const small = boxes.filter(b => b.w < 44 || b.h < 44);
         assert.deepEqual(small, [], 'no checkbox target under 44 px: ' + JSON.stringify(small));
@@ -33,7 +34,7 @@ const CHECKBOXES = `(() => [...document.querySelectorAll('#settings-modal input[
         console.log('2. A tap beside the box, inside its label, toggles it');
         const toggled = await ev(`(() => { const out = [];
             for (const id of ['settings-telemetry-enabled', 'settings-auto-resume', 'settings-show-scrollbars', 'settings-agent-low-priority']) {
-                const el = document.getElementById(id); const label = el.closest('label'); label.scrollIntoView({ block: 'center', behavior: 'instant' });
+                const el = document.getElementById(id); document.getElementById('settings-tab-' + el.closest('.settings-pane').dataset.group).click(); const label = el.closest('label'); label.scrollIntoView({ block: 'center', behavior: 'instant' });
                 const r = label.getBoundingClientRect(); const b = el.getBoundingClientRect();
                 // The point in the label's far corner, outside the 13 px box (which sits at its left).
                 const x = r.right - 3, y = r.bottom - 3; const hit = document.elementFromPoint(x, y);
@@ -49,11 +50,12 @@ const CHECKBOXES = `(() => [...document.querySelectorAll('#settings-modal input[
         await Page.navigate({ url: BASE }); await Page.loadEventFired(); await install();
         await require('./helpers/wait').bind(ev).coralReady('startup', 'settings');
         await ev(`(async () => { await window.showSettingsModal(); return true; })()`);
-        const desk = (await ev(CHECKBOXES)).filter(b => b.label);
+        const desk = (await acrossGroups(ev, CHECKBOXES)).filter(b => b.label);
         const wide = desk.filter(b => b.w > 30 || b.h > 30).map(b => `${b.id} ${b.w}x${b.h}`);
         // Labels with text of their own (a switch row, the cloud switches) are wider by design: only the bare wrappers are checked.
-        const wrappers = await ev(`[...document.querySelectorAll('#settings-modal .check-hit')].map(l => { const r = l.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; }).filter(r => r.w > 0)`);
-        assert.ok(wrappers.length >= 8 && wrappers.every(r => r.w <= 30 && r.h <= 30), `the wrappers hug the box with a mouse: ${JSON.stringify(wrappers)}`);
+        const wrappers = await acrossGroups(ev, `[...document.querySelectorAll('#settings-modal .check-hit')].map(l => { const r = l.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; }).filter(r => r.w > 0)`);
+        // The box is a switch (2.5rem x 1.4rem, #4566): the wrapper hugs it.
+        assert.ok(wrappers.length >= 8 && wrappers.every(r => r.w <= 44 && r.h <= 30), `the wrappers hug the switch with a mouse: ${JSON.stringify(wrappers)}`);
         void wide;
         console.log(`   ✓ ${wrappers.length} wrappers at ${wrappers[0].w} x ${wrappers[0].h}`);
 

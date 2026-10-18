@@ -40,11 +40,11 @@ const GIB = 1024 ** 3;
         const line = () => ev(`(document.getElementById('settings-artifact-store-size')?.textContent ?? '')`);
 
         console.log('1. A failed or slow load leaves the fields empty and off, and Save writes neither limit');
-        await ev(`window.showSettingsModal(); true`);
+        await ev(`window.showSettingsModal('cleanup'); true`);
         await waitFor(`/Artifacts: 4\\.0 GiB in 120 files/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the store line', 8000);
         assert.equal(await ev(`document.getElementById('settings-artifact-store-max').value`), '10', 'the limit is shown');
         await close();
-        await ev(`window.__hold = true; window.showSettingsModal(); true`);
+        await ev(`window.__hold = true; window.showSettingsModal('cleanup'); true`);
         await waitFor(`!!window.__release`, 'the slow load', 8000);
         let f = await ev(`(() => { const i = document.getElementById('settings-artifact-store-max'), r = document.getElementById('settings-received-max'); return { line: (document.getElementById('settings-artifact-store-size')?.textContent ?? ''), rline: (document.getElementById('settings-received-size')?.textContent ?? ''), v: i.value, loaded: i.dataset.loaded || '', dis: i.disabled, rv: r.value, rloaded: r.dataset.loaded || '', rdis: r.disabled }; })()`);
         assert.equal(f.line, 'Loading…', 'the line says it is loading, not what it showed last time'); assert.equal(f.rline, 'Loading…');
@@ -55,7 +55,7 @@ const GIB = 1024 ** 3;
         await ev(`window.__hold = null; window.__release && window.__release(); true`);
         await waitFor(`/Artifacts: 4\\.0 GiB/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the late answer', 8000);
         await close();
-        await ev(`window.__down = true; window.showSettingsModal(); true`);
+        await ev(`window.__down = true; window.showSettingsModal('cleanup'); true`);
         await waitFor(`/Couldn't read the store's size, so the limit is not shown\\./.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the error', 8000);
         f = await ev(`(() => { const i = document.getElementById('settings-artifact-store-max'), r = document.getElementById('settings-received-max'); return { v: i.value, loaded: i.dataset.loaded || '', dis: i.disabled, rv: r.value, rdis: r.disabled, rline: (document.getElementById('settings-received-size')?.textContent ?? '') }; })()`);
         assert.equal(f.v, '', 'not the 10 of the last open'); assert.equal(f.loaded, ''); assert.equal(f.dis, true); assert.equal(f.rv, ''); assert.equal(f.rdis, true);
@@ -67,7 +67,7 @@ const GIB = 1024 ** 3;
         const look = await ev(`(() => { const c = getComputedStyle(document.getElementById('settings-artifact-store-max')); return { opacity: Number(c.opacity), cursor: c.cursor }; })()`);
         assert.ok(look.opacity < 1 && look.cursor === 'not-allowed', 'a disabled limit field looks off: ' + JSON.stringify(look));
         await close();
-        await ev(`window.__down = false; window.__hold = true; window.__holdFail = true; window.__release = null; window.showSettingsModal(); true`);
+        await ev(`window.__down = false; window.__hold = true; window.__holdFail = true; window.__release = null; window.showSettingsModal('cleanup'); true`);
         await waitFor(`!!window.__release`, 'the slow load that will fail', 8000);
         await ev(`(() => { const i = document.getElementById('settings-artifact-store-max'); i.disabled = false; i.value = '5'; true; })()`);
         await ev(`window.__hold = null; window.__release(); true`);
@@ -77,7 +77,7 @@ const GIB = 1024 ** 3;
         await ev(`window.__down = false; true`);
 
         console.log('2. The artifact store line: three states, "1 file"');
-        const open = async body => { await close(); await ev(`window.__store = ${JSON.stringify(body)}; window.showSettingsModal(); true`); await waitFor(`/Artifacts: /.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the line', 8000); await sleep(300); // sleep-ok: the dialog finishes laying out
+        const open = async body => { await close(); await ev(`window.__store = ${JSON.stringify(body)}; window.showSettingsModal('cleanup'); true`); await waitFor(`/Artifacts: /.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the line', 8000); await sleep(300); // sleep-ok: the dialog finishes laying out
             return ev(`(() => { const o = document.getElementById('settings-artifact-store-size'); const span = o.querySelector('span'); return { text: o.textContent, warn: span && span.dataset.state || '', color: getComputedStyle(span).color, other: getComputedStyle(o).color, lines: o.querySelectorAll('br').length + 1 }; })()`); };
         const calm = await open(storeBody({ bytes: 3 * GIB, objects: 5, max: 10 * GIB, diffs: 1 }));
         assert.equal(calm.text.split('Saved task diffs')[0], 'Artifacts: 3.0 GiB in 5 files (limit 10.0 GiB)'); assert.equal(calm.warn, ''); assert.match(calm.text, /Saved task diffs: 2 KiB in 1 file \(not limited\)/, '"1 file", not "1 files"');

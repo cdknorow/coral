@@ -124,7 +124,7 @@ export async function refresh() {
 
 /** Open Settings at its Coral Hub section. */
  async function openHubSettings() {
-    try { await window.showSettingsModal?.(); } catch { /* the dialog shows its own errors */ }
+    try { await window.showSettingsModal?.('network'); } catch { /* the dialog shows its own errors */ }
     const section = document.getElementById('settings-cloud');
     const heading = section && section.previousElementSibling;
     (heading || section)?.scrollIntoView({ block: 'start' });

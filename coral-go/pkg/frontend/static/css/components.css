@@ -4205,3 +4205,74 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .acf-cli-warning .cli-install-link, .acf-cli-warning .cli-install-note { margin: 6px 0 0; }
 .acf-cli-warning .cli-install-link a { display: block; color: var(--accent); overflow-wrap: anywhere; }
 .acf-cli-warning .cli-install-note { color: var(--text-secondary); font-size: 0.75rem; line-height: 1.5; }
+/* ── Settings: a wide dialog with its groups down the left (#4566) ──────────────────────────────────────────────────────────
+   The dialog is 65rem wide (92vw at most). Under 60rem of its own width (a phone, a small window, or large text) the group list is a
+   selector at the top and the rows stack; the sizes are rem, so large text takes the narrow layout by itself. Every explanation sits
+   behind an (i) button (settings_nav.js). */
+.settings-modal-content { width: min(65rem, 92vw); max-width: none; height: min(46rem, 90vh); container: settings / inline-size; }
+.modal-content:has(.settings-shell) .settings-modal-body { padding: 0; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: row; gap: 0; }
+.settings-shell { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.settings-nav { width: 13.5rem; flex: none; border-right: 1px solid var(--border); padding: .6rem; overflow-y: auto; background: var(--bg-tertiary); }
+.settings-nav .settings-group-pick { display: none; }
+.info-grid.settings-grid .settings-row > dt, .settings-row > dt label { font-size: .875rem; font-weight: 600; }
+.settings-row .settings-controls-row select, .settings-row .settings-controls-row input { width: auto; }
+.settings-row .settings-controls-row .settings-inline input { width: 4.5em; }
+.settings-tabs { display: flex; flex-direction: column; gap: 2px; }
+.settings-tab { display: flex; align-items: center; gap: .6rem; width: 100%; text-align: left; background: none; border: 0; border-radius: var(--radius-md); color: var(--text-secondary); font: inherit; font-size: .875rem; padding: .5rem .7rem; min-height: 2.25rem; cursor: pointer; }
+.settings-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.settings-tab[aria-selected="true"] { background: var(--bg-hover); color: var(--text-primary); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+.settings-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.settings-tab[hidden] { display: none; }
+.settings-tab .material-icons { font-size: 1.125rem; flex: none; }
+.settings-panes { flex: 1; min-width: 0; overflow: auto; padding: 1.1rem 1.6rem 1.5rem; container: settingspane / inline-size; }
+.settings-pane[hidden] { display: none; }
+.settings-pane:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-md); }
+.settings-pane-title { margin: 0 0 .15rem; font-size: 1.0625rem; }
+.settings-pane-sub { margin: 0 0 .8rem; color: var(--text-secondary); font-size: .8125rem; }
+.settings-modal-body .settings-grid { display: block; }
+.settings-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 22rem); gap: .4rem 1.5rem; align-items: start; padding: .7rem 0; border-top: 1px solid var(--border); }
+.settings-row[hidden] { display: none; }
+.settings-row-wide { grid-template-columns: minmax(0, 1fr); }
+.info-grid.settings-grid .settings-row > dt, .info-grid.settings-grid .settings-row > dt.toggle-dt { display: flex; align-self: start; flex-direction: row; flex-wrap: wrap; align-items: center; gap: .1rem .4rem; padding-top: .35rem; min-width: 0; color: var(--text-primary); }
+.settings-row > dt label { cursor: default; color: var(--text-primary); }
+.settings-row > dd { min-width: 0; margin: 0; }
+.settings-row > dd:has(> .check-hit) { align-items: flex-end; }
+.settings-row > dd:has(> .check-hit) .settings-hint { align-self: stretch; text-align: right; }
+.settings-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
+.settings-info-btn .material-icons { font-size: 1rem; }
+.settings-info-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.settings-info-btn[aria-expanded="true"] { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
+.settings-info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-info-text { grid-column: 1 / -1; background: var(--bg-elevated, var(--bg-tertiary)); border: 1px solid var(--border); border-radius: var(--radius-md); padding: .6rem .8rem; color: var(--text-secondary); font-size: .8125rem; line-height: 1.5; max-width: 46rem; }
+.settings-info-text[hidden] { display: none; }
+.settings-info-text > * + * { margin-top: .4rem; }
+.settings-pane > .settings-theme-btn, .settings-pane > .settings-prompts-btn { margin-top: 1rem; }
+/* The on/off boxes are switches; they stay native checkboxes (the keyboard, the screen reader and the touch target are unchanged). */
+#settings-modal .settings-row .check-hit input[type="checkbox"],
+#settings-modal .settings-hub-mode-toggle > input[type="checkbox"] { appearance: none; -webkit-appearance: none; position: relative; width: 2.5rem; height: 1.4rem; margin: 0; flex: none; border-radius: 1rem; border: 1px solid var(--border); background: var(--bg-hover); cursor: pointer; }
+#settings-modal .settings-row .check-hit input[type="checkbox"]::before,
+#settings-modal .settings-hub-mode-toggle > input[type="checkbox"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.4rem - 8px); height: calc(1.4rem - 8px); border-radius: 50%; background: var(--text-secondary); transition: transform .12s; }
+#settings-modal .settings-row .check-hit input[type="checkbox"]:checked,
+#settings-modal .settings-hub-mode-toggle > input[type="checkbox"]:checked { background: var(--accent-dim); border-color: var(--accent-dim); }
+#settings-modal .settings-row .check-hit input[type="checkbox"]:checked::before,
+#settings-modal .settings-hub-mode-toggle > input[type="checkbox"]:checked::before { background: #fff; transform: translateX(1.1rem); }
+#settings-modal .settings-row .check-hit input[type="checkbox"]:focus-visible,
+#settings-modal .settings-hub-mode-toggle > input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#settings-modal .settings-row .check-hit input[type="checkbox"]:disabled,
+#settings-modal .settings-hub-mode-toggle > input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) { #settings-modal .settings-row .check-hit input[type="checkbox"]::before { transition: none; } }
+@container settingspane (max-width: 40rem) {
+    .settings-row { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
+    .settings-row:has(> dd > .check-hit) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+    .settings-row:has(> dd > .check-hit) .settings-hint { grid-column: 1 / -1; }
+}
+@container settings (max-width: 60rem) {
+    .settings-nav { width: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--border); padding: .6rem 1rem; overflow: visible; }
+    .settings-shell { flex-direction: column; }
+    .settings-tabs { display: none; }
+    .settings-nav .settings-group-pick { display: block; }
+    .settings-group-pick select { width: 100%; min-height: 44px; }
+    .settings-panes { padding: .8rem 1rem 1.2rem; }
+    .settings-info-btn { width: 44px; height: 44px; border-radius: var(--radius-md); }
+    .settings-modal-body select, .settings-modal-body input[type="text"], .settings-modal-body input[type="number"], .settings-modal-body input[type="password"], .settings-modal-body .btn { min-height: 44px; }
+}

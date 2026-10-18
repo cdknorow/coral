@@ -28,7 +28,7 @@ const BASE = require('./test_base').BASE;
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
         const loaded = Page.loadEventFired();
         await Page.navigate({ url: BASE + '/' }); await loaded; await coralReady();
-        await ev(`window.showSettingsModal(); true`);
+        await ev(`window.showSettingsModal('agents'); true`);
         await waitFor(shown('settings-modal'), 'Settings');
         await waitFor(`!!${ASKER}`, 'a button inside Settings');
 
@@ -61,7 +61,7 @@ const BASE = require('./test_base').BASE;
         await waitFor(`!${shown('confirm-modal')} && document.activeElement && document.activeElement.id === 'qa-asker'`, 'focus back on the page button');
 
         console.log('Settings opening Default prompts: focus is not pulled behind the new dialog');
-        await ev(`window.showSettingsModal(); true`);
+        await ev(`window.showSettingsModal('agents'); true`);
         await waitFor(shown('settings-modal'), 'Settings again');
         await ev(`${ASKER}.focus(); ${ASKER}.click(); true`); // hides Settings, opens Default prompts
         await waitFor(shown('default-prompts-modal'), 'Default prompts');

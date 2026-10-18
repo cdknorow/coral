@@ -4,6 +4,8 @@
  * an allowlist of keys on PUT /api/settings and refuses the WHOLE request if one other key is present, so the UI sends
  * only these keys, and the settings dialog shows only the controls that map to them. Machine settings (working
  * directory, remote access, API key, CLI paths, telemetry, ...) are set on the machine in Coral. */
+import { refreshSettingsGroups } from './settings_nav.js';
+
 /** The keys the hub stores per user (keep in step with internal/usersettings allowedSettings). */
 export const HUB_SETTING_KEYS = new Set([
     'theme', 'custom_theme', 'default_agent_type', 'default_permission_mode', 'default_renderer', 'git_diff_mode',
@@ -38,24 +40,21 @@ const SHOWN_CONTROLS = new Set([
     'settings-file-search-limit',
 ]);
 
-/** Hide every row of the Settings dialog that is not a per-user hub setting, and say where the rest lives. */
+/** Hide every row of the Settings dialog that is not a per-user hub setting, and say where the rest lives. A group left with no row leaves the group list. */
 export function applyCloudSettingsDialog() {
-    const grid = document.querySelector('#settings-modal .settings-grid');
-    if (!grid || grid.dataset.cloud === '1') return;
-    grid.dataset.cloud = '1';
-    // A row is a <dt> and the <dd>s that follow it.
-    const rows = [];
-    for (const el of Array.from(grid.children)) {
-        if (el.tagName === 'DT') rows.push([el]); else if (rows.length) rows[rows.length - 1].push(el);
-    }
-    for (const row of rows) {
-        const ids = row.flatMap(el => Array.from(el.querySelectorAll('[id]')).map(c => c.id));
-        if (!ids.some(id => SHOWN_CONTROLS.has(id))) for (const el of row) el.hidden = true;
+    const modal = document.getElementById('settings-modal');
+    const shell = modal && modal.querySelector('.settings-shell');
+    if (!shell || shell.dataset.cloud === '1') return;
+    shell.dataset.cloud = '1';
+    for (const row of modal.querySelectorAll('.settings-row')) {
+        const ids = Array.from(row.querySelectorAll('[id]')).map(c => c.id);
+        if (!ids.some(id => SHOWN_CONTROLS.has(id))) row.hidden = true;
     }
     const about = document.getElementById('about-section');
     if (about) about.hidden = true;
     const note = document.createElement('p');
     note.className = 'settings-hint settings-cloud-note';
     note.textContent = ('Settings for this account are saved on the hub. Machine settings (working directory, remote access, API key, CLI paths, telemetry) are set on the machine in Coral.');
-    grid.before(note);
+    shell.before(note);
+    refreshSettingsGroups();
 }

@@ -2,6 +2,7 @@
 // full-width field with the tick centred in it (it sat detached from its label on a phone); (2) the Database encryption select shows
 // its whole selected option; (3) a Servers row says what to do once, with the raw error behind Details. Run against an isolated dev server.
 const assert = require('node:assert/strict');
+const { acrossGroups } = require('./helpers/settings_groups');
 const { connect } = require('./agent_view_harness');
 
 (async () => {
@@ -28,9 +29,11 @@ const { connect } = require('./agent_view_harness');
             await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`);
             await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`, 'settings');
             await sleep(500); // sleep-ok: the dialog's rows fill from several answers; there is no single completion event
-            const boxes = await ev(`[...document.querySelectorAll('#settings-modal .info-grid dd input[type="checkbox"]')].filter(i => i.getClientRects().length).map(i => { const dd = i.closest('dd').getBoundingClientRect(), r = i.getBoundingClientRect(); return { id: i.id, w: Math.round(r.width), offset: Math.round(r.left - dd.left) }; })`);
+            const boxes = await acrossGroups(ev, `[...document.querySelectorAll('#settings-modal .info-grid dd input[type="checkbox"]')].filter(i => i.getClientRects().length).map(i => { const dd = i.closest('dd').getBoundingClientRect(), r = i.getBoundingClientRect(); return { id: i.id, w: Math.round(r.width), offset: Math.round(r.left - dd.left) }; })`);
             assert.ok(boxes.length >= 3, dev + ': the dialog has checkbox rows to check (' + boxes.length + ')');
-            assert.deepEqual(boxes.filter(b => b.w > 30 || b.offset > 6), [], dev + ': every checkbox is a small box at the left of its column: ' + JSON.stringify(boxes.filter(b => b.w > 30 || b.offset > 6)));
+            // A checkbox is a box (a 2.5rem switch since #4566), never the full-width field of #3981.
+            assert.deepEqual(boxes.filter(b => b.w > 44), [], dev + ': every checkbox is a small switch, not a full-width box: ' + JSON.stringify(boxes.filter(b => b.w > 44)));
+            await ev(`document.getElementById('settings-tab-security')?.click(); document.getElementById('settings-group-select') && true`);
             const sel = await ev(`(() => { const s = document.getElementById('settings-database-encryption'); const c = document.createElement('canvas').getContext('2d'); const cs = getComputedStyle(s); c.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily; const text = s.options[s.selectedIndex].text; return { text, need: Math.ceil(c.measureText(text).width) + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 22, have: Math.floor(s.getBoundingClientRect().width) }; })()`);
             assert.ok(sel.need <= sel.have, `${dev}: the Database encryption select shows "${sel.text}" whole (needs ${sel.need} px, has ${sel.have})`);
             assert.equal(sel.text, 'Off (plaintext database)');

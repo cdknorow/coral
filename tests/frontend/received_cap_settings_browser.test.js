@@ -38,7 +38,7 @@ const GIB = 1024 ** 3;
         const lastPut = () => ev(`window.__puts[window.__puts.length - 1] || null`);
 
         console.log('1. The row: the total, the limit, a labelled field');
-        await ev(`window.showSettingsModal(); true`);
+        await ev(`window.showSettingsModal('cleanup'); true`);
         await waitFor(`/Received: /.test((document.getElementById('settings-received-size') || {}).textContent || '')`, 'the received line', 8000);
         const row = await ev(`(() => { const i = document.getElementById('settings-received-max'); const d = document.getElementById(i.getAttribute('aria-describedby')); const l = document.querySelector('label[for=settings-received-max]');
             return { value: i.value, loaded: i.dataset.loaded, text: d.textContent, label: l && l.textContent.trim(), type: i.type, min: i.min }; })()`);
@@ -51,7 +51,7 @@ const GIB = 1024 ** 3;
         console.log('1b. The line says how full it is: nothing special below 80%, a warning at the limit that new files are refused');
         const reopenWith = async status => {
             await waitFor(`(window.hideSettingsModal(), getComputedStyle(document.getElementById('settings-modal')).display === 'none')`, 'Settings to close', 6000);
-            await ev(`window.__status = ${JSON.stringify(status)}; window.showSettingsModal(); true`);
+            await ev(`window.__status = ${JSON.stringify(status)}; window.showSettingsModal('cleanup'); true`);
             await waitFor(`/Received: /.test(document.getElementById('settings-received-size').textContent) && document.getElementById('settings-received-max').dataset.loaded === '1'`, 'the line', 8000);
             await sleep(300); // sleep-ok: the rest of the dialog finishes laying out
             return ev(`({ text: document.getElementById('settings-received-size').textContent, state: document.getElementById('settings-received-size').dataset.state || '', color: getComputedStyle(document.getElementById('settings-received-size')).color })`);
@@ -79,7 +79,7 @@ const GIB = 1024 ** 3;
         await ev(`document.getElementById('settings-received-max').value = ''; document.getElementById('settings-artifact-store-max').value = ''; window.__puts.length = 0; true`);
         await save();
         assert.ok(!(await ev(`window.__puts.some(b => 'received_artifacts_max_bytes' in b || 'artifact_store_max_bytes' in b)`)), 'an emptied GiB field saves nothing');
-        await ev(`window.hideSettingsModal(); window.__status = { ...window.__status, max_bytes: 0 }; window.showSettingsModal(); true`);
+        await ev(`window.hideSettingsModal(); window.__status = { ...window.__status, max_bytes: 0 }; window.showSettingsModal('cleanup'); true`);
         await waitFor(`/no limit/.test((document.getElementById('settings-received-size') || {}).textContent || '')`, 'the no-limit line', 8000);
         assert.equal(await ev(`document.getElementById('settings-received-max').value`), '0');
         await ev(`window.hideSettingsModal(); window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 3, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false }; true`);
@@ -90,7 +90,7 @@ const GIB = 1024 ** 3;
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`); // the saves above left their own
         const TOAST = /Files from other teams take 1\.7 GiB of the 2\.0 GiB limit\. Above it, new ones are refused\. Raise it in Settings > Storage\./;
         // With Settings open the line says it: remembered, no toast.
-        await ev(`window.__puts.length = 0; window.__status = { ...window.__status, bytes: ${Math.round(1.7 * GIB)}, notice: true }; window.showSettingsModal(); true`);
+        await ev(`window.__puts.length = 0; window.__status = { ...window.__status, bytes: ${Math.round(1.7 * GIB)}, notice: true }; window.showSettingsModal('cleanup'); true`);
         await waitFor(`/Received: /.test(document.getElementById('settings-received-size').textContent)`, 'Settings open', 8000);
         await waitFor(`window.__puts.some(b => 'received_cap_notice_ack' in b)`, 'the notice remembered while Settings is open', 8000);
         await sleep(400); // sleep-ok: shows that no toast follows (no condition to wait for)
@@ -111,7 +111,7 @@ const GIB = 1024 ** 3;
         console.log('4. Received files no board lists: listed, and deleted only after a confirmation, by the exact digests');
         // More than the 50 the server names: the line counts all of them, says that the button takes the oldest 50, and the button names 50.
         const many = Array.from({ length: 50 }, (_, i) => ({ id: i.toString(16).padStart(64, '0'), size: 1000000, at: '2026-10-17T09:00:00Z', source: 'src' }));
-        await ev(`window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 120, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false, unlisted: { count: 120, bytes: 120000000, items: ${JSON.stringify(many)} } }; document.querySelectorAll('.toast').forEach(t => t.remove()); window.showSettingsModal(); true`);
+        await ev(`window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 120, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false, unlisted: { count: 120, bytes: 120000000, items: ${JSON.stringify(many)} } }; document.querySelectorAll('.toast').forEach(t => t.remove()); window.showSettingsModal('cleanup'); true`);
         await waitFor(`!document.getElementById('settings-received-unlisted').hidden`, 'the unlisted button with more than 50', 8000);
         const over = await ev(`({ text: document.getElementById('settings-received-size').textContent, button: document.getElementById('settings-received-unlisted-delete').textContent })`);
         assert.match(over.text, /Not listed on any board: 120 files, 0\.1 GiB\./, 'the line counts all of them');
@@ -119,7 +119,7 @@ const GIB = 1024 ** 3;
         assert.equal(over.button, 'Delete 50 unlisted files (48 MiB)', 'the button names the 50 it deletes');
         await waitFor(`(window.hideSettingsModal(), getComputedStyle(document.getElementById('settings-modal')).display === 'none')`, 'Settings to close', 6000);
         const ids = ['a', 'b', 'c'].map(c => c.repeat(64));
-        await ev(`window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 3, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false, unlisted: { count: 3, bytes: 3000000, items: ${JSON.stringify(ids.map(id => ({ id, size: 1000000, at: '2026-10-17T09:00:00Z', source: 'src' })))} } }; window.__deletes.length = 0; document.querySelectorAll('.toast').forEach(t => t.remove()); window.showSettingsModal(); true`);
+        await ev(`window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 3, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false, unlisted: { count: 3, bytes: 3000000, items: ${JSON.stringify(ids.map(id => ({ id, size: 1000000, at: '2026-10-17T09:00:00Z', source: 'src' })))} } }; window.__deletes.length = 0; document.querySelectorAll('.toast').forEach(t => t.remove()); window.showSettingsModal('cleanup'); true`);
         await waitFor(`!document.getElementById('settings-received-unlisted').hidden`, 'the unlisted line', 8000);
         const un = await ev(`(() => { const b = document.getElementById('settings-received-unlisted-delete'); const region = document.getElementById('settings-received-size');
             return { text: region.textContent, role: region.getAttribute('role'), described: document.getElementById('settings-received-max').getAttribute('aria-describedby'), button: b.textContent, disabled: b.disabled, buttonInRegion: region.contains(b) }; })()`);
@@ -152,7 +152,7 @@ const GIB = 1024 ** 3;
         console.log('5. A phone at 200% text: the label, the field and its line stay inside the dialog');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
         await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 });
-        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); document.documentElement.style.fontSize = '32px'; window.__status = { ...window.__status, bytes: ${Math.round(1.7 * GIB)}, notice: false, unlisted: { count: 3, bytes: 3000000, items: ${JSON.stringify(ids.map(id => ({ id, size: 1000000, at: '2026-10-17T09:00:00Z', source: 'src' })))} } }; window.showSettingsModal(); true`);
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); document.documentElement.style.fontSize = '32px'; window.__status = { ...window.__status, bytes: ${Math.round(1.7 * GIB)}, notice: false, unlisted: { count: 3, bytes: 3000000, items: ${JSON.stringify(ids.map(id => ({ id, size: 1000000, at: '2026-10-17T09:00:00Z', source: 'src' })))} } }; window.showSettingsModal('cleanup'); true`);
         await waitFor(`/Received: /.test((document.getElementById('settings-received-size') || {}).textContent || '')`, 'the received line on a phone', 8000);
         await sleep(400); // sleep-ok: the font-size layout settles
         await showRow(); await sleep(300); // sleep-ok: the scroll settles

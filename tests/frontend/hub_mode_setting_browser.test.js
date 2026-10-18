@@ -28,7 +28,7 @@ const BASE = require('./test_base').BASE;
             status: st.textContent, restart: !btn.hidden, shown: !!dd && !dd.hidden && dd.offsetParent !== null };
     })()`);
     const openSettings = async () => {
-        await ev(`(async () => { await showSettingsModal(); return true; })()`);
+        await ev(`(async () => { await showSettingsModal('network'); return true; })()`);
         await waitFor(`(document.getElementById('settings-hub-mode-status') || {}).textContent !== ''`, 'the hub mode status', 8000);
     };
 

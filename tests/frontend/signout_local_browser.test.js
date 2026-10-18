@@ -39,7 +39,7 @@ const BASE = require('./test_base').BASE;
         sessionStorage.setItem('coral-panel-request:agent-1', JSON.stringify({ draft: 'a panel request typed but not sent' }));
         sessionStorage.setItem('some-other-key', 'kept');
         const sec = await import(S + 'security_settings.js');
-        await window.showSettingsModal();
+        await window.showSettingsModal('security');
         await sec.loadSecurityRow();
         return true;
     })()`;

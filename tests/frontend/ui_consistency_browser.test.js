@@ -83,7 +83,7 @@ const fixtures = async () => {
             window.switchAgenticTab(name==='agent-ui'?'agent-ui':'tasks','top');
             if(name==='agent-ui')await mods.agent_ui.refreshAgentUI();
             if(name==='tasks')mods.tasks.showTaskDetailModal(2505);
-            if(name==='settings')await mods.modals.showSettingsModal();
+            if(name==='settings')await mods.modals.showSettingsModal('agents');
             if(name==='team-settings')mods.team_working_mode.showTeamWorkingMode('coral-task-workflows');
             if(name==='agent-ui'&&innerWidth<768)window.toggleAgenticPanel(true);
         } else if(name==='workflows'){mods.workflows.showWorkflowsTab();await new Promise(r=>setTimeout(r,30));await mods.workflows.selectWorkflow(1)}
@@ -188,8 +188,8 @@ const fixtures = async () => {
             await ev(`document.getElementById('motion-probe').remove();uiView('settings')`);await wait();
             // 200% browser zoom has half the CSS viewport at the same pixel size.
             await c.Emulation.setDeviceMetricsOverride({width:720,height:480,deviceScaleFactor:2,mobile:false});
-            // Zoom must keep a scrolling form and its actions in the dialog.
-            assert.ok(await ev(`{const b=document.querySelector('#settings-modal .modal-body');b.scrollHeight>b.clientHeight}`));
+            // Zoom must keep a scrolling form (the open group's pane) and its actions in the dialog.
+            assert.ok(await ev(`{const b=document.querySelector('#settings-modal .settings-panes');b.scrollHeight>b.clientHeight}`));
             assert.ok(await ev(`Array.from(document.querySelectorAll('#settings-modal .modal-footer button')).every(b=>{const r=b.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight})`),'settings actions remain visible in a 200%-equivalent viewport');
             await c.Emulation.setDeviceMetricsOverride({width:1440,height:960,deviceScaleFactor:1,mobile:false});
         }

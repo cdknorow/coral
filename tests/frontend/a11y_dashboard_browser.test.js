@@ -229,6 +229,15 @@ const contrast = (a, b) => {
                     await ev(`(() => { for (const el of document.querySelectorAll('.agentic-tab-count')) if (!el.textContent) el.textContent = '3'; return true; })()`);
                     const bad = await ev(CONTRAST);
                     assert.deepEqual(bad, [], `${name} / ${theme} / ${dev}: text and icons reach contrast: ${bad.join('; ')}`);
+                    if (name === 'settings') {
+                        // Settings shows one group at a time (#4566): every other group, with its first (i) text open, is measured too.
+                        for (const g of ['agents', 'terminal', 'notifications', 'files', 'cleanup', 'network', 'security']) {
+                            await ev(`document.getElementById('settings-tab-${g}')?.click(); document.querySelector('#settings-pane-${g} .settings-info-btn')?.click(); true`);
+                            const badGroup = await ev(CONTRAST);
+                            assert.deepEqual(badGroup, [], `settings ${g} / ${theme} / ${dev}: text and icons reach contrast: ${badGroup.join('; ')}`);
+                        }
+                        await ev(`document.getElementById('settings-tab-general')?.click(); true`);
+                    }
                     const forced = await forcedStates();
                     forcedFound.push(...forced.bad.map(b => `${name} / ${theme} / ${dev}: ${b}`));
                     forcedCount += forced.n;
