@@ -73,7 +73,7 @@ var allowedSenders = map[string]string{
 	"internal/ptymanager/prompt_screen.go\tTmuxSessionTerminal.SendEnter\tSendRawKeys":                               "primitive",
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendEnter\tSendRawKeys":                                        "primitive",
 	// #3457: automated text as a bracketed paste.
-	"internal/ptymanager/automated_input.go\tinputGate.pasteChecked\tSendPrompt":           "gate (the paste, Enter only after the re-check)",
+	"internal/ptymanager/automated_input.go\tinputGate.pasteAndEnter\tSendPrompt":          "gate (the paste, Enter only after the re-check)",
 	"internal/ptymanager/paste_check.go\tinputGate.enterAndConfirm\tSendEnter":             "gate (a held paste's Enter, once its text is in the box and no prompt is open; confirmed, #4104)",
 	"internal/ptymanager/paste_check.go\tinputGate.submitLeftover\tSendEnter":              "gate (the Enter of Coral's own earlier paste left in the box, an exact match; never a person's draft, #4104)",
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendPrompt\tSendPrompt":              "primitive",
