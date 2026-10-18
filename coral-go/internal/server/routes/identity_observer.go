@@ -387,6 +387,11 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/sessions/live/{name}/open-in-editor": "open a file in the Operator's editor",
 	"GET /api/system/terminal-logs":                 "see the terminal logs",
 	"POST /api/system/terminal-logs/delete-ended":   "delete the terminal logs of ended agents",
+	// #4780 (Security's identity read): the dashboard's request for an Agent UI panel types its text, as the
+	// user's request, into the live agent named by session_id: any agent, of any team. No agent tool calls it
+	// (grep of coral-board, coral-agent, the hooks and the mock agent), and with an agent's token it was a way
+	// to put text in front of another agent that send and keys (above) refuse.
+	"POST /api/agent/ui-request": "send an Agent UI request to an agent",
 	// #3513 (Security's #3509 finding 3): the API key is the Operator's credential (with it an
 	// agent drops its token and is the Operator, settings included), and deleting a board
 	// deletes the team's whole history.
