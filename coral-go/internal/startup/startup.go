@@ -474,13 +474,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if tlsConfig != nil {
 		handler = requireTLSFromNetwork(handler)
 	}
-	httpServer := &http.Server{
-		Handler:           handler,
-		ReadTimeout:       15 * time.Second,
-		ReadHeaderTimeout: 10 * time.Second, // Prevents slowloris attacks
-		WriteTimeout:      0,                // Disabled for WebSocket/SSE
-		IdleTimeout:       60 * time.Second,
-	}
+	httpServer := newHTTPServer(handler)
 
 	// Start all background services
 	workflows := startBackgroundServices(ctx, db, cfg, srv, agentRT)
@@ -1198,4 +1192,20 @@ func ResolveBackend(flagValue, saved, goos string) (backend string, forced bool)
 		return saved, false
 	}
 	return "tmux", false
+}
+
+// maxRequestHeaderBytes caps one request's headers (Go's default is 1 MiB per connection; the tunnel allows 64 KiB in all). Past it the
+// server answers 431 before any handler runs (#4602).
+const maxRequestHeaderBytes = 64 << 10
+
+// newHTTPServer is the main listener's server: the timeouts and limits every connection gets.
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second, // Prevents slowloris attacks
+		WriteTimeout:      0,                // Disabled for WebSocket/SSE
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    maxRequestHeaderBytes,
+	}
 }
