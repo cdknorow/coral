@@ -2339,8 +2339,11 @@ body.panel-dragging .agentic-state {
 .list-bar-filter-btn[aria-expanded="true"] { background: var(--bg-hover); }
 .list-bar-sort, .list-bar-field { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); }
 .list-bar-sort { margin-left: auto; }
-.list-bar-menu { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 8px; box-shadow: var(--shadow-lg); }
+.list-bar-menu { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 10px; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 8px; box-shadow: var(--shadow-lg); }
 .list-bar-menu[hidden] { display: none; }
+/* Each field is a line of its own; the tool-group boxes of the events panels (list-bar-group, #4798) go two to a line. */
+.list-bar-menu > * { flex: 0 0 100%; box-sizing: border-box; }
+.list-bar-menu > .list-bar-group { flex: 0 0 calc(50% - 4px); min-width: 0; }
 .list-bar-menu .list-bar-field { justify-content: space-between; flex-wrap: wrap; }
 .list-bar-menu .list-bar-field > :last-child { min-width: 0; flex: 1 1 8em; max-width: 100%; box-sizing: border-box; } /* wraps under its label when the text is large or the panel narrow */
 .list-bar-kept { justify-content: flex-start; cursor: pointer; }

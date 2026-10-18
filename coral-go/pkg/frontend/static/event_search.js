@@ -37,7 +37,7 @@ export function createEventSearch(cfg) {
             { type: 'date', key: 'from', id: `${cfg.idp}-from`, label: 'From' },
             { type: 'date', key: 'to', id: `${cfg.idp}-to`, label: 'Until' },
             // the tool groups, one checkbox each (checked: that kind of event shows)
-            ...FILTER_GROUPS.map(g => ({ type: 'check', key: groupField(g.key), id: `${cfg.idp}-g-${g.key}`, label: `Show ${g.title}`, wrapClass: 'list-bar-field list-bar-kept' })),
+            ...FILTER_GROUPS.map(g => ({ type: 'check', key: groupField(g.key), id: `${cfg.idp}-g-${g.key}`, label: `Show ${g.title}`, wrapClass: 'list-bar-field list-bar-kept list-bar-group' })),
         ],
         model: { EMPTY, clean, chips, isFiltered, without },
     };

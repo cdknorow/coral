@@ -131,6 +131,10 @@ async function run() {
         console.log('The tool groups are in the same Filters menu and narrow the rows loaded, with or without a search');
         await clearAll(); await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 50`, 'the feed');
         check('the menu has a Show box for each tool group, all ticked', (await ev(`document.querySelectorAll('#event-search-bar .list-bar-kept input:checked').length`)) === 15);
+        await ev(`document.querySelector('#event-search-bar .list-bar-filter-btn').click(); true`);
+        const lay = await ev(`(() => { const r = id => document.getElementById(id).closest('label').getBoundingClientRect(), t = r('ev-type'), a = r('ev-g-read'), b = r('ev-g-write'), c = r('ev-g-edit'); return { typeFull: t.width > a.width * 1.8, pair: Math.abs(a.top - b.top) < 2 && b.left > a.left, next: c.top > a.top + 10, half: a.width > 40 && a.width < t.width * 0.6 }; })()`);
+        check('the Show boxes go two to a line (the other fields a line each)', lay.typeFull && lay.pair && lay.next && lay.half, JSON.stringify(lay));
+        await ev(`document.querySelector('#event-search-bar .list-bar-filter-btn').click(); true`);
         await ev(`window.__evReqs = 0; const r0 = window.fetch; window.__r0 = r0; window.fetch = (u, o) => { if (/\\/events\\?/.test(String(u))) window.__evReqs++; return r0(u, o); }; true`);
         await ev(`document.getElementById('ev-g-read').click(); true`);
         await settle(`document.querySelectorAll('#agentic-state-events .event-item').length === 20`, 'the feed without Read');
