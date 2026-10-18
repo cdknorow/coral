@@ -392,6 +392,13 @@ var operatorOnlyRoutes = map[string]string{
 	// (grep of coral-board, coral-agent, the hooks and the mock agent), and with an agent's token it was a way
 	// to put text in front of another agent that send and keys (above) refuse.
 	"POST /api/agent/ui-request": "send an Agent UI request to an agent",
+	// #4835 (Security's sweep of attribution fields a client sets and others see as fact): the display name, icon and colour of any
+	// session were set by any caller that named its session_id, an agent's token included, so an agent could rename another agent's
+	// tile (or dress itself as the Orchestrator). Only the dashboard calls them (grep of coral-board, coral-agent, the hooks and the
+	// mock agent).
+	"PUT /api/sessions/live/{name}/display-name": "rename an agent",
+	"PUT /api/sessions/live/{name}/icon":         "change an agent's icon",
+	"PUT /api/sessions/live/{name}/name-color":   "change an agent's name colour",
 	// #3513 (Security's #3509 finding 3): the API key is the Operator's credential (with it an
 	// agent drops its token and is the Operator, settings included), and deleting a board
 	// deletes the team's whole history.

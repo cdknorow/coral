@@ -178,7 +178,7 @@ PUT /api/board/{project}/settings | board-claims +token-session | operator-only
 PUT /api/board/{project}/working-mode | board-claims | operator-only
 PUT /api/board/{project}/working-mode/presets/{presetID} | board-claims | operator-only
 PUT /api/sessions/history/{sessionID}/notes | unbound | operator-only
-PUT /api/sessions/live/{name}/display-name | unbound
+PUT /api/sessions/live/{name}/display-name | unbound | operator-only
 PUT /api/sessions/live/{name}/file-content | unbound | operator-only
-PUT /api/sessions/live/{name}/icon | unbound
-PUT /api/sessions/live/{name}/name-color | unbound
+PUT /api/sessions/live/{name}/icon | unbound | operator-only
+PUT /api/sessions/live/{name}/name-color | unbound | operator-only

@@ -351,10 +351,10 @@ b PUT /api/system/identity-actor
 b PUT /api/remote/{server}/*
 b PUT /api/scheduled/jobs/{jobID}
 b PUT /api/sessions/history/{sessionID}/notes
-c PUT /api/sessions/live/{name}/display-name
+b PUT /api/sessions/live/{name}/display-name
 b PUT /api/sessions/live/{name}/file-content
-c PUT /api/sessions/live/{name}/icon
-c PUT /api/sessions/live/{name}/name-color
+b PUT /api/sessions/live/{name}/icon
+b PUT /api/sessions/live/{name}/name-color
 b PUT /api/settings
 b PUT /api/settings/git-diff-mode
 b PUT /api/system/database-security
