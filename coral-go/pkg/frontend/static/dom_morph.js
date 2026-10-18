@@ -197,7 +197,8 @@ export function rememberFocus(parent) {
     if (!a || a === document.body || a === parent || !parent.contains(a)) return () => {};
     const key = focusKey(a, parent);
     const same = e => focusKey(e, parent) === key;
-    const nth = [...parent.querySelectorAll(a.tagName)].filter(same).indexOf(a);
+    const likeA = [...parent.querySelectorAll(a.tagName)].filter(same);
+    const nth = likeA.indexOf(a), matches = likeA.length;
     // A text field being typed in keeps what was typed and the caret: a redraw must not empty the box under the user's hands.
     const typing = (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && /^(text|search|email|url|tel|password|number)?$/.test(a.type))) && a.value
         ? { value: a.value, start: a.selectionStart, end: a.selectionEnd } : null;
@@ -206,7 +207,9 @@ export function rememberFocus(parent) {
         const twins = [...parent.querySelectorAll(a.tagName)].filter(same);
         const again = twins[Math.min(Math.max(nth, 0), twins.length - 1)];
         if (!again) return;
-        if (typing && !again.value) { again.value = typing.value; try { again.setSelectionRange(typing.start, typing.end); } catch { /* a type with no caret */ } }
+        // Only where the match is certain: the one control with that key before and after (with twins, a row inserted above would put the text in another row's box), of the same kind (a
+        // password must never land in a text box the redraw built under the same id).
+        if (typing && matches === 1 && twins.length === 1 && again.tagName === a.tagName && again.type === a.type && !again.value) { again.value = typing.value; try { again.setSelectionRange(typing.start, typing.end); } catch { /* a type with no caret */ } }
         again.focus({ preventScroll: true });
     };
 }

@@ -27,14 +27,21 @@ const BASE = require('./test_base').BASE;
             window.__state = state; window.__render = render;
             window.__sess = [{ session_id: 'fs-1', name: 'fs-1', agent_type: 'claude', board_project: 'alpha', display_name: 'Alpha agent', working_directory: '/tmp/alpha' }];
             render.renderLiveSessions(window.__sess); return true; })()`);
-        await ev(`(() => { const b = document.querySelector('.team-open-btn'); b.focus(); window.__btn = b; return document.activeElement === b; })()`);
+        // One synchronous step (the page's own live-list refresh cannot come between the focus and the redraw and take the button away first).
         // Something about the header changes (it is the selected team), so the button's own markup changes and its node is replaced.
-        await ev(`window.__state.selectedTeam = 'alpha'; window.__render.renderLiveSessions(window.__sess); true`);
-        const after = await ev(`(() => { const a = document.activeElement; return { replaced: window.__btn !== document.querySelector('.team-open-btn'), connected: window.__btn.isConnected, onBtn: !!a && a.classList.contains('team-open-btn') && a.dataset.board === 'alpha', tag: a && a.tagName }; })()`);
-        assert.ok(after.onBtn, `focus is on the team button after the redraw: ${JSON.stringify(after)}`);
-        // A second redraw with the agent list itself changing (a new agent in the team) keeps it too.
-        await ev(`window.__sess = window.__sess.concat([{ session_id: 'fs-2', name: 'fs-2', agent_type: 'claude', board_project: 'alpha', display_name: 'Second', working_directory: '/tmp/alpha' }]); window.__render.renderLiveSessions(window.__sess); true`);
-        assert.ok(await ev(`document.activeElement?.classList.contains('team-open-btn')`), 'focus is on the team button after the team gained an agent');
+        const after = await ev(`(() => {
+            window.__state.selectedTeam = null; window.__state.liveSessions = window.__sess; window.__render.renderLiveSessions(window.__sess); // the page's own refresh may have replaced the list since the last step
+            const b = document.querySelector('.team-open-btn'); b.focus();
+            window.__state.selectedTeam = 'alpha'; window.__render.renderLiveSessions(window.__sess);
+            const a = document.activeElement;
+            const first = { replaced: b !== document.querySelector('.team-open-btn'), connected: b.isConnected, onBtn: !!a && a.classList.contains('team-open-btn') && a.dataset.board === 'alpha', tag: a && a.tagName };
+            // A second redraw with the agent list itself changing (a new agent in the team) keeps it too.
+            window.__sess = window.__sess.concat([{ session_id: 'fs-2', name: 'fs-2', agent_type: 'claude', board_project: 'alpha', display_name: 'Second', working_directory: '/tmp/alpha' }]);
+            window.__render.renderLiveSessions(window.__sess);
+            return { first, second: !!document.activeElement && document.activeElement.classList.contains('team-open-btn') }; })()`);
+        assert.ok(after.first.replaced, `the redraw replaced the button's node (the case under test): ${JSON.stringify(after)}`);
+        assert.ok(after.first.onBtn, `focus is on the team button after the redraw: ${JSON.stringify(after)}`);
+        assert.ok(after.second, 'focus is on the team button after the team gained an agent');
         console.log('  ok');
 
         console.log('Lists drawn through morphHtml and through innerHTML keep focus on the same control');
@@ -100,13 +107,44 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(real.caret, [2, 3], 'with the caret where it was');
         console.log('  ok');
 
+        console.log('A typed value goes only to the one control it came from, and never between kinds of field');
+        const probe = await ev(`(async () => {
+            const { rememberFocus } = await import(${S}+'dom_morph.js');
+            const host = document.createElement('div'); document.body.appendChild(host);
+            const out = {};
+            const rows = names => '<ul>' + names.map(n => '<li><span>' + n + '</span><input type="text" class="note"></li>').join('') + '</ul>';
+            // twins: a row is inserted above the focused one; the text must not move into another row's box
+            host.innerHTML = rows(['A', 'B']); const second = host.querySelectorAll('input')[1]; second.focus(); second.value = 'typed in B';
+            const back = rememberFocus(host); host.innerHTML = rows(['NEW', 'A', 'B']); back();
+            out.twins = [...host.querySelectorAll('input')].map(i => i.value);
+            // a password redrawn as a text box under the same id and data-*
+            host.innerHTML = '<input type="password" id="k" data-f="key">'; const pw = host.querySelector('input'); pw.focus(); pw.value = 's3cret';
+            const back2 = rememberFocus(host); host.innerHTML = '<input type="text" id="k" data-f="key">'; back2();
+            out.password = host.querySelector('input').value;
+            // the one box with that key, redrawn as the same kind: it keeps what was typed
+            host.innerHTML = '<input type="text" id="code">'; const one = host.querySelector('input'); one.focus(); one.value = 'AB12';
+            const back3 = rememberFocus(host); host.innerHTML = '<input type="text" id="code">'; back3();
+            out.single = host.querySelector('input').value;
+            host.remove(); return out; })()`);
+        assert.deepEqual(probe.twins, ['', '', ''], `a row inserted above must leave every box empty: ${JSON.stringify(probe)}`);
+        assert.equal(probe.password, '', 'a password is never copied into a text box');
+        assert.equal(probe.single, 'AB12', 'a single box of the same kind keeps its text');
+        console.log('  ok');
+
         console.log('A real Enter on the restored team button opens the team view');
-        await ev(`window.__state.selectedTeam = null; window.__render.renderLiveSessions(window.__sess); document.querySelector('.team-open-btn').focus(); window.__state.selectedTeam = 'alpha'; window.__render.renderLiveSessions(window.__sess); window.__state.selectedTeam = null; window.__render.renderLiveSessions(window.__sess); true`);
-        assert.ok(await ev(`document.activeElement?.classList.contains('team-open-btn')`), 'focus still on the team button after the redraws');
-        // The key goes to whatever has focus: a keyDown with the character, as a native button activates on it.
-        await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: '\r' });
-        await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
-        await waitFor(`window.__state.selectedTeam === 'alpha'`, 'the team view opened by Enter');
+        // The page's own live-list refresh can replace the list between two steps; each attempt sets the list up and focuses the button in one step, then sends the key at once.
+        let opened = false;
+        for (let attempt = 0; attempt < 5 && !opened; attempt++) {
+            const ready = await ev(`(() => { const st = window.__state; st.selectedTeam = null; st.liveSessions = window.__sess; window.__render.renderLiveSessions(window.__sess);
+                document.querySelector('.team-open-btn').focus(); st.selectedTeam = 'alpha'; window.__render.renderLiveSessions(window.__sess); st.selectedTeam = null; window.__render.renderLiveSessions(window.__sess);
+                return !!document.activeElement && document.activeElement.classList.contains('team-open-btn'); })()`);
+            assert.ok(ready, 'focus is still on the team button after the redraws');
+            // The key goes to whatever has focus: a keyDown with the character, as a native button activates on it.
+            await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: '\r' });
+            await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+            try { await waitFor(`window.__state.selectedTeam === 'alpha'`, 'the team view opened by Enter', { timeout: 2000 }); opened = true; } catch { /* the list was refreshed between the focus and the key: try again */ }
+        }
+        assert.ok(opened, 'a real Enter on the restored team button opened the team view');
         console.log('PASS focus survives a background refresh');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
