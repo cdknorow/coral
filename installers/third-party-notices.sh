@@ -27,8 +27,14 @@ export GOPROXY=off GOFLAGS=-mod=readonly
 
 sha256check() { if command -v sha256sum >/dev/null 2>&1; then sha256sum -c --quiet "$@"; else shasum -a 256 -c --quiet "$@"; fi; }
 
+# Seconds per phase, printed at the end: the Windows release job spends about two minutes here while the same
+# script on the same runner image takes seconds (#4605), so the line shows where that time goes.
+t0=$SECONDS; times=""
+lap() { times="$times${times:+, }$1 $((SECONDS - t0))s"; t0=$SECONDS; }
+
 # 1. The module cache is what go.sum pins.
 (cd "$root/coral-go" && go mod verify) || { echo "third-party-notices: go mod verify failed" >&2; exit 1; }
+lap verify
 
 # 2. The modules the binaries link: "dep path version" lines, or the "=>" replacement that follows one.
 mods=$(for b in "$@"; do
@@ -38,6 +44,7 @@ mods=$(for b in "$@"; do
     $1 == "=>"  { p = $2 "@" $3 }
     END         { if (p != "") print p }'
 done | LC_ALL=C sort -u)
+lap binaries
 n=$(printf '%s\n' "$mods" | grep -c . || true)
 [ "$n" -gt 0 ] || { echo "third-party-notices: no modules found in the binaries" >&2; exit 1; }
 
@@ -59,20 +66,36 @@ idx="$out/THIRD_PARTY_NOTICES.md"
   echo "|---|---|---|"
 } > "$idx"
 
+# Every module's cache folder from one `go mod download -json` call, as "module@version<TAB>dir" lines: a
+# call per module costs about 1.4 s each on the Windows runner (80 modules, 2 minutes of every release, #4605).
+# Git Bash on Windows: the module cache path comes back as C:\...; use its /c/... form.
+winpath=0; command -v cygpath >/dev/null 2>&1 && winpath=1
+# shellcheck disable=SC2086 # $mods is one module@version per line, none with spaces
+dirs=$(cd "$root/coral-go" && { go mod download -json $mods 2>/dev/null || true; } | awk -v win="$winpath" '
+  function val(line) { sub(/^[^:]*: "/, "", line); sub(/",?[[:space:]]*$/, "", line); return line }
+  /^[[:space:]]*"Path": /    { p = val($0) }
+  /^[[:space:]]*"Version": / { v = val($0) }
+  /^[[:space:]]*"Dir": /     { d = val($0); gsub(/\\\\/, "/", d)
+                               if (win && d ~ /^[A-Za-z]:\//) d = "/" tolower(substr(d, 1, 1)) substr(d, 3)
+                               print p "@" v "\t" d }')
+lap lookup
+
 missing=0
+shopt -s nocasematch
 while IFS= read -r mv; do
   [ -n "$mv" ] || continue
   m=${mv%@*}; v=${mv##*@}
-  dir=$(cd "$root/coral-go" && go mod download -json "$mv" 2>/dev/null | sed -n 's/^[[:space:]]*"Dir": "\(.*\)",*$/\1/p' | sed 's/\\\\/\\/g')
-  # Git Bash on Windows: the module cache path comes back as C:\...; use its /c/... form.
-  if [ -n "$dir" ] && command -v cygpath >/dev/null 2>&1; then dir=$(cygpath -u "$dir"); fi
+  dir=""
+  while IFS=$'\t' read -r k kd; do [ "$k" = "$mv" ] && { dir=$kd; break; }; done <<DIRS
+$dirs
+DIRS
   if [ -z "$dir" ] || [ ! -d "$dir" ]; then echo "third-party-notices: $mv is not in the module cache" >&2; missing=1; continue; fi
   dest="$out/go/$m@$v"; mkdir -p "$dest"
   files=""; has_license=0
   for f in "$dir"/*; do
     [ -f "$f" ] || continue
-    base=$(basename "$f")
-    case "$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')" in
+    base=${f##*/}
+    case "$base" in
       license|license.*|licence|licence.*|license-*|copying|copying.*|unlicense|unlicense.*) has_license=1 ;;
       notice|notice.*|patents|patents.*) ;;
       *) continue ;;
@@ -84,6 +107,8 @@ while IFS= read -r mv; do
 done <<EOF
 $mods
 EOF
+shopt -u nocasematch
+lap modules
 [ $missing -eq 0 ] || { echo "third-party-notices: FAILED (see above)" >&2; exit 1; }
 
 # 3. The vendored dashboard libraries and fonts, checked against the recorded sha256 first.
@@ -121,4 +146,5 @@ cp "$lic/HASHICORP-MPL-2.0.txt" "$out/HASHICORP-MPL-2.0.txt"
 cp "$lic/UNICODE-LICENSE-V3.txt" "$out/UNICODE-LICENSE-V3.txt"
 cp "$root/LICENSE" "$out/Coral-LICENSE.txt"
 
-echo "third-party-notices: $n Go modules, $(($(wc -l < "$lic/vendor/INDEX.tsv") - 1)) vendor components -> $out"
+lap vendor
+echo "third-party-notices: $n Go modules, $(($(wc -l < "$lic/vendor/INDEX.tsv") - 1)) vendor components -> $out ($times)"
