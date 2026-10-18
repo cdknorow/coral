@@ -16,6 +16,8 @@ import { _agentTaskStatus, _formatCost, _formatTaskTime, _formatTokenCount, _pri
 import { _claimedFor, _subagentTooltip, clearOpenSubagent, loadSubagents, showSubagentDetailModal, subagentToTaskRow } from './subagents.js';
 import { browserLocal } from './safe_storage.js';
 import { ensureBuilt } from './lazy_dom.js';
+import { buildTaskBar } from './task_bar.js';
+import { EMPTY as TASK_EMPTY, isQuery, isFiltered as taskFiltered, phases as taskPhases, toParams as taskParams, loadFilters as loadTaskFilters, saveFilters as saveTaskFilters } from './task_filters.js';
 export { clearOpenSubagent, loadSubagents } from './subagents.js';
 
 // ── Board task polling ───────────────────────────────────────────────
@@ -264,6 +266,12 @@ function _setBoardTasks() {
 }
 
 export async function loadBoardTasks(boardName) {
+    _syncTaskFiltersBoard(boardName);
+    await _loadBoardTasksDefault(boardName);
+    if (_queryActive()) await _loadFilteredTasks(boardName, { refresh: true });
+}
+
+async function _loadBoardTasksDefault(boardName) {
     const seq = ++_boardTasksLoadSeq;
     if (!boardName) {
         _boardList = _emptyBoardList(null);
@@ -319,8 +327,113 @@ export async function loadBoardTasks(boardName) {
     renderBoardTaskList();
 }
 
-/** "Load more": the next page of done tasks. */
+// ── Search and filters (#4744) ───────────────────────────────────────────
+// With a search, a filter or an order the default list does not have, the board's tasks come from the task query (GET /api/board/tasks, the server matches every task of the board, #4745),
+// as pages with a total. Without them nothing here runs and the list is the paged default above. "Open first" has no server sort: it is the open tasks, then the done ones (two phases).
+const _emptyFiltered = board => ({ board, rows: [], phase: 0, cursor: '', total: null, doneTotal: 0, truncated: false, busy: false, error: '' });
+let _filteredList = _emptyFiltered(null);
+let _taskFilters = { ...TASK_EMPTY };
+let _taskFiltersBoard = null;
+let _taskBar = null;
+let _filteredSeq = 0;
+const _queryActive = () => isQuery(_taskFilters) && !!_boardList.board;
+
+/** A board change: its own saved filters, a fresh bar (the old one lets go of the page's click listener). */
+function _syncTaskFiltersBoard(boardName) {
+    if (boardName === _taskFiltersBoard) return;
+    _taskFiltersBoard = boardName;
+    _taskFilters = loadTaskFilters(boardName, browserLocal);
+    _filteredList = _emptyFiltered(boardName);
+    _filteredSeq++;
+    if (_taskBar) { _taskBar.dispose(); _taskBar = null; }
+}
+
+async function _taskQueryFetch(boardKey, pairs) {
+    const { server, name } = splitKey(boardKey);
+    const qs = new URLSearchParams(pairs.map(([k, v]) => [k, k === 'board' ? name : v])).toString();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), boardTaskFetchHooks.timeoutMs);
+    try {
+        const r = await fetch(serverUrl(`/api/board/tasks?${qs}`, server), { signal: ctrl.signal });
+        if (!r.ok) { const err = new Error(`task search failed: ${r.status}`); err.resp = r; throw err; }
+        return await r.json();
+    } finally { clearTimeout(timer); }
+}
+
+/** Fetch the filtered list's first page (or the next one: `append`), from the phase and cursor it is at. A poll (`refresh`) keeps a list the person paged further. */
+async function _loadFilteredTasks(boardName, { append = false, refresh = false } = {}) {
+    const f = _taskFilters;
+    const ph = taskPhases(f);
+    const L = _filteredList.board === boardName ? _filteredList : (_filteredList = _emptyFiltered(boardName));
+    if (refresh && L.rows.length > BOARD_TASK_PAGE) return; // paged further than the first page: a poll leaves it
+    const seq = ++_filteredSeq;
+    L.busy = true; L.error = '';
+    if (!append && !refresh) renderBoardTaskList();
+    try {
+        let rows, cursor, total, doneTotal = L.doneTotal, truncated = false, phase = L.phase;
+        if (append) {
+            const statuses = ph ? ph[phase] : null;
+            if (ph && phase === 0 && !L.cursor) phase = 1;
+            const pairs = taskParams(f, boardName, { statuses: ph ? ph[phase] : null });
+            if (phase === L.phase && L.cursor) pairs.push(['cursor', L.cursor]);
+            const data = await _taskQueryFetch(boardName, pairs);
+            if (seq !== _filteredSeq || _taskFilters !== f) return;
+            const seen = new Set(L.rows.map(t => t.id));
+            rows = [...L.rows, ...(data.tasks || []).filter(t => !seen.has(t.id))];
+            cursor = data.next_cursor || ''; total = L.total; truncated = L.truncated || !!data.truncated; void statuses;
+        } else if (ph) {
+            const [open, done] = await Promise.all([
+                _taskQueryFetch(boardName, taskParams(f, boardName, { statuses: ph[0] })),
+                _taskQueryFetch(boardName, taskParams(f, boardName, { statuses: ph[1], limit: 1 })),
+            ]);
+            if (seq !== _filteredSeq || _taskFilters !== f) return;
+            rows = open.tasks || []; cursor = open.next_cursor || ''; phase = 0;
+            doneTotal = done.total ?? 0; total = (open.total ?? rows.length) + doneTotal; truncated = !!(open.truncated || done.truncated);
+        } else {
+            const data = await _taskQueryFetch(boardName, taskParams(f, boardName));
+            if (seq !== _filteredSeq || _taskFilters !== f) return;
+            rows = data.tasks || []; cursor = data.next_cursor || ''; total = data.total ?? rows.length; truncated = !!data.truncated; phase = 0;
+        }
+        Object.assign(L, { rows, cursor, total, doneTotal, truncated, phase });
+    } catch (e) {
+        if (seq !== _filteredSeq || _taskFilters !== f) return;
+        L.error = e && e.resp && e.resp.status === 400 ? 'This search can not be run. Change it and try again.' : 'Could not search the tasks. Try again.';
+        if (append) showToast(L.error, true);
+    } finally {
+        if (seq === _filteredSeq) { L.busy = false; renderBoardTaskList(); }
+    }
+}
+
+/** Is there another page of the filtered list (the open phase ending hands over to the done phase). */
+function _filteredHasMore() {
+    const L = _filteredList;
+    if (L.cursor) return true;
+    return !!taskPhases(_taskFilters) && L.phase === 0 && L.doneTotal > 0;
+}
+
+/** The bar's choice: kept for the board, and the list is asked again (or the default list is back). */
+function _setTaskFilters(next) {
+    _taskFilters = next;
+    saveTaskFilters(_taskFiltersBoard, next, browserLocal);
+    _filteredList = _emptyFiltered(_taskFiltersBoard);
+    _filteredSeq++;
+    if (_queryActive()) _loadFilteredTasks(_taskFiltersBoard); else renderBoardTaskList();
+}
+
+/** The bar in its place above the list, shown for a board's tasks, told the filters and the counts. */
+function _syncTaskBar(show, counts) {
+    const host = document.getElementById('board-task-bar');
+    if (!host) return;
+    if (!show) { if (_taskBar && _taskBar.node.parentElement === host) _taskBar.node.remove(); return; }
+    if (!_taskBar) _taskBar = buildTaskBar(_setTaskFilters);
+    if (_taskBar.node.parentElement !== host) host.append(_taskBar.node);
+    _taskBar.names([...new Set((state.currentBoardTasks || []).map(t => t.assigned_to).filter(n => typeof n === 'string' && n))].sort().slice(0, 50));
+    _taskBar.set(_taskFilters, counts);
+}
+
+/** "Load more": the next page of done tasks (or of the filtered list). */
 export async function loadMoreBoardTasks() {
+    if (_queryActive()) { if (_filteredHasMore() && !_filteredList.busy) await _loadFilteredTasks(_boardList.board, { append: true }); return; }
     const board = _boardList.board;
     const cursor = _boardList.nextCursor;
     if (!board || !cursor) return;
@@ -402,10 +515,11 @@ function _toggleHideCompleted() {
 (window.__coral ||= {})._toggleTaskSort = _toggleTaskSort;
 
 /** The tasks to show: done ones dropped when hidden, in the chosen sort order. */
-function _filterAndSortTasks(allTasks) {
+function _filterAndSortTasks(allTasks, querying = false) {
     const isDone = t => t.status === 'completed' || t.status === 'skipped';
+    if (querying && !_taskSortExplicit) return allTasks; // the server's order (a search is not cut by Hide done)
     const tasks = allTasks.filter(t => {
-        if (_hideCompleted && (t.status === 'completed' || t.status === 'skipped')) return false;
+        if (!querying && _hideCompleted && (t.status === 'completed' || t.status === 'skipped')) return false;
         return true;
     }).sort((a, b) => {
         let cmp = 0;
@@ -428,7 +542,7 @@ function _filterAndSortTasks(allTasks) {
     });
     // The default order puts open and active work first, then the finished tasks, newest first inside each part (a stable split): with a thousand
     // recent finished tasks the first rows were all Finished (#4716). A column the person chose sorts the whole list as it always did.
-    if (!_taskSortExplicit) return [...tasks.filter(t => !isDone(t)), ...tasks.filter(isDone)];
+    if (!_taskSortExplicit && !querying) return [...tasks.filter(t => !isDone(t)), ...tasks.filter(isDone)];
     return tasks;
 }
 
@@ -458,11 +572,11 @@ function _renderEmptyTaskList(container, section, onBoardPage) {
 }
 
 /** The hide-done toggle and the section label in the header. */
-function _renderTaskListChrome(section, completedCount) {
-    // Render hide-done toggle in the section header
+function _renderTaskListChrome(section, completedCount, querying = false) {
+    // Render hide-done toggle in the section header (not during a search: the status filter says what to show)
     const toggleContainer = document.getElementById('board-task-hide-toggle-container');
     if (toggleContainer) {
-        morphHtml(toggleContainer, completedCount > 0
+        morphHtml(toggleContainer, completedCount > 0 && !querying
             ? `<label class="board-task-hide-toggle"><input type="checkbox" ${_hideCompleted ? 'checked' : ''} data-on-change="task-hide-done"> Hide done (${completedCount})</label>`
             : '');
     }
@@ -592,6 +706,13 @@ function _taskRowsHtml(tasks) {
     return rows;
 }
 
+/** The "Load more" button of a filtered list: the next page of what matches. */
+function _filteredMoreHtml() {
+    if (!_filteredHasMore()) return '';
+    const left = _filteredList.total !== null ? Math.max(0, _filteredList.total - _filteredList.rows.length) : 0;
+    return `<div class="board-task-more"><button type="button" class="btn board-task-load-more" data-on-click="task-load-more"${_filteredList.busy ? ' aria-busy="true"' : ''}>Load more tasks${left ? ` (${left} not shown)` : ''}</button></div>`;
+}
+
 /** The "Load more done tasks" button while older done tasks are not loaded. */
 function _taskLoadMoreHtml(boardDoneTotal, boardDoneLoaded) {
     // Older done tasks come a page at a time (#3269).
@@ -619,7 +740,8 @@ export function renderBoardTaskList() {
     if (!container) return;
 
     // Merge board tasks and agent tasks into a unified list
-    const boardTasks = (state.currentBoardTasks || []).map(t => ({ ...t, _source: 'board' }));
+    const querying = _queryActive();
+    const boardTasks = (querying ? _filteredList.rows : state.currentBoardTasks || []).map(t => ({ ...t, _source: 'board' }));
     const agentDisplayName = state.currentSession ? (state.currentSession.display_name || state.currentSession.name) : '';
     const onBoardPage = !!boardOfPage(); // a board's page has no agent: its tasks are the board's
     const agentTasks = (onBoardPage ? [] : state.currentAgentTasks || []).map(t => ({
@@ -634,31 +756,45 @@ export function renderBoardTaskList() {
 
     const subagentTasks = (onBoardPage ? [] : state.currentSubagents || []).map(sa => subagentToTaskRow(sa, agentDisplayName));
 
-    const allTasks = [...boardTasks, ...agentTasks, ...subagentTasks];
+    const allTasks = querying ? boardTasks : [...boardTasks, ...agentTasks, ...subagentTasks]; // a search is about the board's tasks
     const isDone = t => t.status === 'completed' || t.status === 'skipped';
-    const otherTasks = [...agentTasks, ...subagentTasks];
+    const otherTasks = querying ? [] : [...agentTasks, ...subagentTasks];
     // The board's done tasks are counted by the server: only a page of them is loaded (#3269).
     const boardDoneLoaded = boardTasks.filter(isDone).length;
     const boardDoneTotal = _boardList.totalCompleted ?? boardDoneLoaded;
     const completedCount = boardDoneTotal + otherTasks.filter(isDone).length;
-    const tasks = _filterAndSortTasks(allTasks);
+    const tasks = _filterAndSortTasks(allTasks, querying);
     const section = document.getElementById('board-tasks-section');
+    const hasBoard = !!_boardList.board; // the bar belongs to the board whose tasks are listed
+    // The bar's counts: what matches of what the board has (the server's totals); with nothing narrowing it, the board's own total.
+    const boardAll = _boardList.totalOpen !== null && _boardList.totalCompleted !== null ? _boardList.totalOpen + _boardList.totalCompleted : boardTasks.length;
+    const barCounts = querying ? { matched: _filteredList.total ?? boardTasks.length, all: Math.max(boardAll, _filteredList.total ?? 0), truncated: _filteredList.truncated } : { matched: boardAll, all: boardAll };
 
+    if (querying && allTasks.length === 0 && section) {
+        // Nothing matches (or the search is still on its way): the bar stays, so the search can be changed.
+        section.style.display = '';
+        _renderTaskListChrome(section, 0, true);
+        _syncTaskBar(true, barCounts);
+        morphHtml(container, `<div class="board-task-empty" role="status">${escapeHtml(_filteredList.error || (_filteredList.busy ? 'Searching tasks…' : 'No tasks match this search.'))}</div>`);
+        return;
+    }
     if (allTasks.length === 0) {
+        _syncTaskBar(false);
         _renderEmptyTaskList(container, section, onBoardPage);
         return;
     }
     if (section) section.style.display = '';
 
     // Render hide-done toggle in the section header
-    _renderTaskListChrome(section, completedCount);
+    _renderTaskListChrome(section, completedCount, querying);
+    _syncTaskBar(hasBoard, barCounts);
 
     const header = _taskListHeaderHtml();
 
     const rows = _taskRowsHtml(tasks);
 
     // Older done tasks come a page at a time (#3269).
-    const more = _taskLoadMoreHtml(boardDoneTotal, boardDoneLoaded);
+    const more = querying ? _filteredMoreHtml() : _taskLoadMoreHtml(boardDoneTotal, boardDoneLoaded);
     // Unchanged rows keep their nodes: the list was rebuilt on every poll, a layout each time (#3881).
     morphHtml(container, header + rows + more);
 

@@ -2813,3 +2813,6 @@ button.team-artifact-name { cursor: pointer; }
 .main-row > .agentic-state { align-self: stretch; border-left: 1px solid var(--border); }
 .main-row > .agentic-state.collapsed { border-left: none; } /* shut, it leaves no line behind */
 .main-row > .task-bar-resize-handle { align-self: stretch; }
+
+/* The Tasks panel's search bar (#4744): the shared list bar above the table; nothing while it is not shown. */
+.board-task-bar:empty { display: none; }
