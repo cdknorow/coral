@@ -1,5 +1,25 @@
 # Release Notes
 
+## v1.4.86 — The right sidebar on every page, Save for later across servers, and no PATH CLI in place of a configured one
+
+### Changes
+
+- **The right sidebar is on every page,** with tabs for the kind of page: an agent keeps its tabs; a board has Subscribers, Team artifacts, Tasks and Saved; Chats and the other pages have Saved. Open or closed, its width and the last tab are remembered per kind of page. A board opens its sidebar only in a wide window (about 1300 px and up); on a phone the top-bar button opens the side panel on every page. Left, Right, Home and End move along the tab strip.
+- **A board's toolbar fits on one row:** on a phone, and on a desktop with the sidebar open, Select, Export, Pause and Delete move into a More menu (Delete last and red; a paused board's Resume in the warning colour).
+- **Save for later across servers in a local hub:** messages of a registered server's agents and boards can be saved; each bookmark is kept on that server, the Saved tab lists every online server's items with the server named, and Open, Done and Remove go to the right server. A server that does not answer is one line in the list. An agent that has ended on a registered server can't be opened from the hub yet; its item says so and can be marked done or removed.
+- **GET /api/board/tasks takes filters, sort, cursor paging and a choice of fields** (for Coral Hub). With no parameters, or only `limit`, the reply is unchanged; an unknown parameter is now a 400.
+
+### Security and privacy
+
+- **Coral never runs the CLI on PATH in place of the one set in Settings > CLI Paths:** the prerequisite check the dashboard makes on every page load ran the CLI on PATH when the settings could not be read or the configured path could not be resolved at that moment; it now answers that it cannot use the configured CLI (or 503 when settings can't be read), never PATH. The theme generator now uses the configured CLI too. A test fails if any code looks up or runs an agent CLI by its bare name.
+- **Browse and file reads refuse many more credential locations under the home folder,** and Coral's own data folder: cloud and deployment CLIs' folders, password managers and mail, macOS Containers, Preferences and Accounts, and on Windows the app-data folders that hold credentials and browser profiles (never all of `AppData\Local`, so the temp folder and ordinary projects stay reachable).
+- **The saved-message routes also accept an authenticated API key as the Operator** (what a local hub uses to reach a registered server); an agent's token is still refused.
+- **A local hub's requests to a registered server can't leave that server's proxy path,** whatever ids or names the server sends (dot segments, escapes and control characters are refused), and ids that go into request paths must be plain numbers.
+
+### Other changes
+
+- **Tests and CI:** new browser and Go tests for all of the above.
+
 ## v1.4.85 — Save for later, a faster board, and agents kept to their own history
 
 ### Changes
