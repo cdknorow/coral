@@ -55,6 +55,8 @@ export function buildListBar(spec, onChange) {
     const node = make('div', 'list-bar-bar');
     node.setAttribute('role', 'search'); node.setAttribute('aria-label', spec.label);
 
+    // A panel that has a search box of its own (the agent list's) gives spec.noSearch: the bar then has the filters, the sort, the count and the chips, and no search row (its q is not the bar's).
+    const noSearch = !!spec.noSearch;
     const searchRow = make('div', 'list-bar-search-row');
     const wrap = make('div', 'list-bar-search-wrap');
     const q = make('input', 'list-bar-search'); q.type = 'search'; q.id = `${p}-search`; q.placeholder = spec.placeholder; q.maxLength = 200; q.autocomplete = 'off'; q.spellcheck = false;
@@ -62,7 +64,7 @@ export function buildListBar(spec, onChange) {
     const clearQ = make('button', 'list-bar-clear-q', '×'); clearQ.type = 'button'; clearQ.setAttribute('aria-label', 'Clear search'); clearQ.hidden = true;
     wrap.append(q, clearQ);
     const count = make('span', 'list-bar-count'); count.setAttribute('role', 'status'); count.setAttribute('aria-live', 'polite');
-    searchRow.append(wrap, count);
+    if (noSearch) searchRow.hidden = true; else searchRow.append(wrap, count);
 
     const controls = make('div', 'list-bar-controls');
     const filterBtn = make('button', 'list-bar-filter-btn', 'Filters'); filterBtn.type = 'button';
@@ -71,6 +73,7 @@ export function buildListBar(spec, onChange) {
     const sort = spec.sorts ? selectField(`${p}-sort`, 'Sort', spec.sorts.values, spec.sorts.labels) : null;
     if (sort) { sort.wrap.classList.add('list-bar-sort'); sort.input.setAttribute('aria-label', spec.sorts.aria); }
     controls.append(...(sort ? [filterBtn, sort.wrap] : [filterBtn]));
+    if (noSearch) controls.append(count);
 
     const menu = make('div', 'list-bar-menu'); menu.id = `${p}-menu`; menu.hidden = true; menu.setAttribute('role', 'group'); menu.setAttribute('aria-label', 'Filters');
     const fields = spec.fields.map(buildField);
@@ -78,15 +81,18 @@ export function buildListBar(spec, onChange) {
     menu.append(...fields.map(x => x.wrap), clearAll);
 
     const chipList = make('ul', 'list-bar-chips'); chipList.setAttribute('aria-label', 'Active filters'); chipList.hidden = true;
-    node.append(searchRow, controls, menu, chipList);
+    if (noSearch) node.classList.add('list-bar-nosearch');
+    node.append(...(noSearch ? [] : [searchRow]), controls, menu, chipList);
 
     const apply = next => { f = clean(next); onChange({ ...f }); };
     const later = next => { clearTimeout(timer); timer = setTimeout(() => apply(next), DEBOUNCE_MS); };
     const closeMenu = (focus) => { if (menu.hidden) return; menu.hidden = true; filterBtn.setAttribute('aria-expanded', 'false'); if (focus) filterBtn.focus(); };
 
-    q.addEventListener('input', () => { clearQ.hidden = !q.value; later({ ...f, q: q.value }); });
-    q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); apply({ ...f, q: q.value }); } });
-    clearQ.addEventListener('click', () => { clearTimeout(timer); q.value = ''; clearQ.hidden = true; apply({ ...f, q: '' }); q.focus(); });
+    if (!noSearch) {
+        q.addEventListener('input', () => { clearQ.hidden = !q.value; later({ ...f, q: q.value }); });
+        q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); apply({ ...f, q: q.value }); } });
+        clearQ.addEventListener('click', () => { clearTimeout(timer); q.value = ''; clearQ.hidden = true; apply({ ...f, q: '' }); q.focus(); });
+    }
     filterBtn.addEventListener('click', () => {
         const open = menu.hidden;
         menu.hidden = !open; filterBtn.setAttribute('aria-expanded', String(open));
@@ -103,7 +109,8 @@ export function buildListBar(spec, onChange) {
     }
     if (sort) sort.input.addEventListener('change', () => apply({ ...f, sort: sort.input.value }));
     const everything = () => { clearTimeout(timer); apply({ ...EMPTY, sort: f.sort }); };
-    clearAll.addEventListener('click', () => { everything(); q.focus(); });
+    const focusSearch = () => { if (noSearch) filterBtn.focus(); else q.focus(); };
+    clearAll.addEventListener('click', () => { everything(); focusSearch(); });
 
     return {
         node,
@@ -113,7 +120,7 @@ export function buildListBar(spec, onChange) {
         set(next, counts) {
             f = clean(next);
             const put = (el, v) => { if (el.value !== v && document.activeElement !== el) el.value = v; };
-            put(q, f.q); clearQ.hidden = !q.value;
+            if (!noSearch) { put(q, f.q); clearQ.hidden = !q.value; }
             for (const fld of fields) {
                 const key = fld.spec.key;
                 if (fld.spec.type === 'text') put(fld.input, f[key]);
@@ -126,19 +133,30 @@ export function buildListBar(spec, onChange) {
                 const li = make('li'); const b = make('button', 'list-bar-chip'); b.type = 'button';
                 b.append(make('span', 'list-bar-chip-text', c.label), make('span', 'list-bar-chip-x', '×'));
                 b.setAttribute('aria-label', `Remove filter: ${c.label}`);
-                b.addEventListener('click', () => { clearTimeout(timer); apply(without(f, c.key)); q.focus(); });
+                b.addEventListener('click', () => { clearTimeout(timer); apply(without(f, c.key)); focusSearch(); });
                 li.append(b); return li;
             }));
-            if (list.length > 1) { const li = make('li'); const b = make('button', 'list-bar-chip list-bar-chip-all', 'Clear all'); b.type = 'button'; b.addEventListener('click', () => { everything(); q.focus(); }); li.append(b); chipList.append(li); }
+            if (list.length > 1) { const li = make('li'); const b = make('button', 'list-bar-chip list-bar-chip-all', 'Clear all'); b.type = 'button'; b.addEventListener('click', () => { everything(); focusSearch(); }); li.append(b); chipList.append(li); }
             chipList.hidden = !list.length;
             filterBtn.textContent = isFiltered(f) ? `Filters (${list.filter(c => c.key !== 'q').length})` : 'Filters';
             const all = `${counts && counts.all}${counts && counts.truncated ? '+' : ''}`; // '+': older ones were not scanned
+            if (counts && counts.text != null) { count.textContent = counts.text; return; } // a panel that words its own count (the agent list's: its search text narrows it too)
             count.textContent = !counts ? '' : isFiltered(f) ? `${counts.matched} of ${all}` : `${all} ${counts.all === 1 && !counts.truncated ? spec.noun : (spec.plural || spec.noun + 's')}`;
         },
         /** The names seen in the list, offered in the text field that has a datalist (typed text still works). */
         names(list) { const fld = fields.find(x => x.list); if (fld) fld.list.replaceChildren(...list.map(n => new Option(n))); },
+        /** A select field's options, when they change with the list (the boards or machines there are now): the value is kept if it is still one of them. */
+        setOptions(key, values, labels) {
+            const fld = fields.find(x => x.spec.key === key); if (!fld || fld.spec.type !== 'select') return;
+            const cur = fld.input.value;
+            const any = fld.spec.any ? [new Option(fld.spec.any, '')] : [];
+            fld.input.replaceChildren(...any, ...values.map(v => new Option(labels[v] || v, v)));
+            fld.input.value = values.includes(cur) ? cur : '';
+        },
+        /** Show or hide a field of the Filters menu (the Machine field, where there is only one machine). */
+        showField(key, visible) { const fld = fields.find(x => x.spec.key === key); if (fld) fld.wrap.hidden = !visible; },
         closeMenu,
-        focusSearch() { q.focus(); },
+        focusSearch,
         /** A bar that is replaced (a panel rebuilt for another board) lets go of the page's click listener and any search still waiting. */
         dispose() { document.removeEventListener('click', outside); clearTimeout(timer); node.remove(); },
     };

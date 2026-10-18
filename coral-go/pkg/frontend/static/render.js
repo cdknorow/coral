@@ -32,7 +32,9 @@ import { _getGroupOrder, _sortByOrder, _sortGroups } from './list_order.js';
 import { _isServerCollapsed, _openServerDetails, renderServerSwitcher } from './server_rows.js';
 import { kebabId, _attachDragListeners, _renderAgentListWithSubgroups, _renderArchivedSection, _renderSessionItem, _within, applySessionSummaryPref, isGroupedByServer, isServerShownOnRows, isSessionSummaryShown } from './session_rows.js';
 import { showConfirmModal } from './confirm_dialog.js';
-import { getAgentFilter, setAgentFilter } from './agent_filter.js';
+import { getAgentFilter, setAgentFilter, getListFilters } from './agent_filter.js';
+import { matches as _matchesListFilters, isFiltered as _listFiltered } from './agent_list_filters.js';
+import { FILTER_CTX, syncAgentListBars } from './agent_list_bar.js';
 import { _collapseAttrs, _isGroupCollapsed } from './group_collapse.js';
 import { browserLocal } from './safe_storage.js';
 export { groupHeaderKey, toggleGroupCollapse } from './group_collapse.js';
@@ -249,7 +251,7 @@ export function copyFolderPath(path) {
 // workflow group. A search narrows the group as it does in the list.
 function _groupMembers(groupName) {
     const byTeam = browserLocal.get('coral-group-by-team') !== 'false';
-    const shown = state.liveSessions.filter(s => !s.archived && !s.board_project && (!getAgentFilter() || _agentMatches(s, getAgentFilter())));
+    const shown = state.liveSessions.filter(s => !s.archived && !s.board_project && _passesFilters(s));
     if (groupName.startsWith('wf:')) {
         const wf = groupName.slice(3);
         return byTeam ? shown.filter(s => s.workflow_name === wf) : [];
@@ -800,6 +802,13 @@ let _filteredMatches = [];
 // While the list is filtered, an empty pinned folder shows only when its name matches.
 function _pinMatchesFilter(p) {
     return !getAgentFilter() || getAgentFilter().split(/\s+/).every(term => String(p.name || '').toLowerCase().includes(term));
+}
+
+/** The list's search text and the list bar's State, Board and Machine filters (#4744), as one test. */
+function _passesFilters(s) {
+    if (getAgentFilter() && !_agentMatches(s, getAgentFilter())) return false;
+    const f = getListFilters();
+    return !_listFiltered(f) || _matchesListFilters(s, f, FILTER_CTX);
 }
 
 function _agentMatches(s, q) {
@@ -1394,8 +1403,10 @@ function _renderLiveSessions(sessions) {
 
     applySessionSummaryPref();
     const unfilteredCount = sessions.length;
-    if (getAgentFilter()) sessions = sessions.filter(s => _agentMatches(s, getAgentFilter()));
+    const everyAgent = sessions;
+    if (getAgentFilter() || _listFiltered(getListFilters())) sessions = sessions.filter(_passesFilters);
     _filteredMatches = sessions;
+    syncAgentListBars(everyAgent, sessions.length); // the list bar's options, filters and count (agent_list_bar.js)
     // Archived agents leave the main list, its groups and counts; they are
     // listed in their own section at the bottom.
     const archived = sessions.filter(s => s.archived);

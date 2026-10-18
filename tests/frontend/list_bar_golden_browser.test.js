@@ -45,10 +45,10 @@ const sha = t => require('node:crypto').createHash('sha256').update(t).digest('h
         await rec('typing in the search (not yet sent)', async () => { await type('#ta-search', 'abc'); });
         await rec('after the pause the search is sent', async () => { await wait(450); }); // sleep-ok: the search is sent 300 ms after the last key; there is no event for it
         await rec('Enter sends at once', async () => { await type('#ta-search', 'd'); await key('Enter', 13); });
-        await rec('the search cleared by its x', () => ev(`document.querySelector('.list-bar-clear-q').click(); true`));
-        await rec('a chip removed', async () => { await ev(`window.__bar.set({ q: 'x', kind: 'pdf', sort: 'newest' }, { matched: 1, all: 5 }); document.querySelector('.list-bar-chip').click(); true`); });
-        await rec('Clear all by its chip', async () => { await ev(`window.__bar.set({ q: 'x', kind: 'pdf', by: 'Dev', sort: 'name' }, { matched: 1, all: 5 }); document.querySelector('.list-bar-chip-all').click(); true`); });
-        await rec('Clear all in the menu keeps the sort', async () => { await ev(`window.__bar.set({ kind: 'pdf', sort: 'size' }, { matched: 1, all: 5 }); window.__bar.node.querySelector('.list-bar-filter-btn').click(); document.querySelector('.list-bar-clear-all').click(); true`); });
+        await rec('the search cleared by its x', () => ev(`window.__bar.node.querySelector('.list-bar-clear-q').click(); true`));
+        await rec('a chip removed', async () => { await ev(`window.__bar.set({ q: 'x', kind: 'pdf', sort: 'newest' }, { matched: 1, all: 5 }); window.__bar.node.querySelector('.list-bar-chip').click(); true`); });
+        await rec('Clear all by its chip', async () => { await ev(`window.__bar.set({ q: 'x', kind: 'pdf', by: 'Dev', sort: 'name' }, { matched: 1, all: 5 }); window.__bar.node.querySelector('.list-bar-chip-all').click(); true`); });
+        await rec('Clear all in the menu keeps the sort', async () => { await ev(`window.__bar.set({ kind: 'pdf', sort: 'size' }, { matched: 1, all: 5 }); window.__bar.node.querySelector('.list-bar-filter-btn').click(); window.__bar.node.querySelector('.list-bar-clear-all').click(); true`); });
         await rec('a click outside closes the open menu', async () => { await ev(`window.__bar.node.querySelector('.list-bar-filter-btn').click(); document.body.click(); true`); });
         await rec('a bad value is cleaned', () => ev(`window.__bar.set({ q: 'a\\u0000b', kind: 'weird', from: '2026-13-45', sort: 'nope' }, { matched: 1, all: 1 }); true`));
         await rec('a field being typed in is left as typed', async () => { await ev(`document.getElementById('ta-search').focus(); document.getElementById('ta-search').value = 'half'; window.__bar.set({ q: '', sort: 'newest' }, null); true`); });

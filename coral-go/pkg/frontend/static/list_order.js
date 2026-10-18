@@ -1,6 +1,7 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
 import { redrawLiveList, liveListEl } from './list_hooks.js';
 import { state } from './state.js';
+import { getListComparator } from './agent_filter.js';
 
 /** The board whose chat the panel currently shows (or null). */
    // older messages not loaded yet
@@ -21,6 +22,8 @@ function _getSessionOrder() {
 }
 
 export function _sortByOrder(sessions) {
+    const cmp = getListComparator(); // a sort chosen on the list bar orders the rows; with none, the order they were dragged to
+    if (cmp) return [...sessions].sort(cmp);
     const order = _getSessionOrder();
     if (!order.length) return sessions;
     const posMap = {};

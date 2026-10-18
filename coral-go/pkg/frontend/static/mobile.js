@@ -111,6 +111,9 @@ function _listHeader(agentList) {
             </div>
         `;
     agentList.prepend(header);
+    // The list's filters and sort (agent_list_bar.js, #4744), under the header's own controls.
+    const bar = document.createElement('div'); bar.className = 'agent-list-bar'; bar.id = 'mobile-agent-list-bar'; bar.hidden = true;
+    header.after(bar);
     return header;
 }
 

@@ -2578,6 +2578,13 @@ body.panel-dragging .agentic-state {
 
 /* The Team Artifacts search, filter menu, sort and chips (#4573). The search is on its own row; the filters are a menu; at a narrow width (a phone, 200% text) everything wraps. */
 .list-bar-bar { padding: 4px 12px 8px; display: flex; flex-direction: column; gap: 8px; position: relative; }
+
+/* The agent list's bar (agent_list_bar.js, #4744): under the list's search box, in the sidebar and on the phone's Agents page; touch targets are 44px there. */
+.agent-list-bar { flex: none; }
+.agent-list-bar .list-bar-nosearch { padding-top: 0; }
+@media (max-width: 767px), (pointer: coarse) {
+    .agent-list-bar .list-bar-filter-btn, .agent-list-bar .list-bar-select, .agent-list-bar .list-bar-chip, .agent-list-bar .list-bar-clear-all, .agent-list-bar .list-bar-menu input, .agent-list-bar .list-bar-menu select { min-height: var(--control-touch-height, 44px); }
+}
 .list-bar-search-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .list-bar-search-wrap { position: relative; flex: 1 1 12em; min-width: 0; }
 .list-bar-search { width: 100%; box-sizing: border-box; padding: 6px 28px 6px 8px; font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; }
