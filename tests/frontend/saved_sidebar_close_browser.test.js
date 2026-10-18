@@ -61,6 +61,8 @@ async function run() {
         console.log('Escape is left alone where something else has it');
         await clickSaved(); await opened('opened');
         await ev(`const i = document.createElement('input'); i.id = 'qa-field'; document.body.appendChild(i); i.focus(); true`);
+        await Page.bringToFront();
+        check('the field has the focus', await until(`(() => { const i = document.getElementById('qa-field'); i.focus(); return document.activeElement === i; })()`, 'the field focused'));
         await esc(); await new Promise(r => setTimeout(r, 300)); // sleep-ok: proves a negative, a close would come at once
         check('Escape in a text field does not close the sidebar', await open());
         await ev(`document.getElementById('qa-field').remove(); document.getElementById('saved-close').click(); true`); await closed('closed');
@@ -84,6 +86,15 @@ async function run() {
         await clickSaved(); await opened('the bookmark opens it on Saved');
         await ev(`document.getElementById('saved-close').click(); true`); await closed('the X shuts it again (it was shut before)');
         await clickSaved(); await opened('opened'); await esc(); await closed('Escape shuts it again');
+
+        console.log('A coarse pointer wider than a phone (a touch tablet)');
+        await Emulation.setDeviceMetricsOverride({ width: 1024, height: 768, deviceScaleFactor: 2, mobile: false });
+        await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 }); // the page reads (pointer: coarse)
+        await Page.navigate({ url: BASE + '/' }); await coralReady();
+        await clickSaved(); await opened('opened on the tablet');
+        check('the X is a 44px target on a coarse pointer', await ev(`(() => { const r = document.getElementById('saved-close').getBoundingClientRect(); return getComputedStyle(document.getElementById('saved-close')).display !== 'none' && r.width >= 44 && r.height >= 44; })()`), JSON.stringify(await ev(`(() => { const r = document.getElementById('saved-close').getBoundingClientRect(); return [r.width, r.height]; })()`)));
+        await ev(`document.getElementById('saved-close').click(); true`); await closed('and it closes');
+        await Emulation.setTouchEmulationEnabled({ enabled: false });
 
         console.log('A phone');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 800, deviceScaleFactor: 2, mobile: true });

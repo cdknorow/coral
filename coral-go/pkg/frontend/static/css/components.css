@@ -4122,6 +4122,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .saved-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .saved-close .material-icons { font-size: 1.125rem; }
 @media (max-width: 767px) { .saved-close { display: none; } }
+@media (pointer: coarse) { .saved-close { width: 44px; height: 44px; } } /* a touch tablet wider than a phone: a 44px target */
 .saved-tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-secondary); font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 8px 10px; cursor: pointer; min-height: 36px; }
 .saved-tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--accent); }
 .saved-tab .n { color: var(--text-muted); font-weight: 500; margin-left: 4px; }
