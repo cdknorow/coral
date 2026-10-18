@@ -65,7 +65,7 @@ const SUBAGENTS = [{ id: 'a1', description: 'Search the repo', subagent_type: 'E
         for (const f of ['id', 'priority', 'type', 'assignee', 'created_at', 'cost']) for (const again of [0, 1]) {
             await ev(`window.__coral._toggleTaskSort(${JSON.stringify(f)}); true`); await record(`sorted by ${f}${again ? ' again' : ''}`);
         }
-        await ev(`window.__coral._toggleTaskSort('created_at'); window.__coral._toggleTaskSort('created_at'); true`);
+        await ev(`window.__coral._toggleTaskSort('cost'); true`); await record('the third click on the column gives the default order back');
         await ev(`document.querySelector('.board-task-hide-toggle input').click(); true`); await record('done hidden');
         await ev(`document.querySelector('.board-task-hide-toggle input').click(); true`); await record('done shown again');
         await show('a paged board', { tasks: BOARD.slice(0, 9), page: { next_cursor: 'c1', total_open: 7, total_completed: 60 } });

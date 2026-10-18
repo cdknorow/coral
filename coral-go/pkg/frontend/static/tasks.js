@@ -358,6 +358,7 @@ function _reviewRequested(t) {
 
 // Current sort and filter state for task list
 let _taskSortField = 'created_at';
+let _taskSortClicks = 0; // clicks on the chosen column in a row
 let _taskSortExplicit = false; // a column was chosen: until then open work comes before done work (#4716)
 let _taskSortAsc = false; // default newest first
 let _hideCompleted = browserLocal.get('coral-hide-completed') === 'true'; // off by default, persisted
@@ -375,12 +376,18 @@ function _verifyLine(t) {
 }
 
 function _toggleTaskSort(field) {
-    _taskSortExplicit = true;
-    if (_taskSortField === field) {
-        _taskSortAsc = !_taskSortAsc;
+    // A column's clicks: the first chooses it, the second turns it round, the third gives the default order back (open work first, #4737).
+    if (_taskSortExplicit && _taskSortField === field) {
+        if (++_taskSortClicks >= 3) {
+            _taskSortExplicit = false; _taskSortField = 'created_at'; _taskSortAsc = false; _taskSortClicks = 0;
+        } else {
+            _taskSortAsc = !_taskSortAsc;
+        }
     } else {
+        _taskSortExplicit = true;
         _taskSortField = field;
         _taskSortAsc = field === 'priority'; // priority defaults asc (critical first)
+        _taskSortClicks = 1;
     }
     renderBoardTaskList();
 }
@@ -467,7 +474,7 @@ function _renderTaskListChrome(section, completedCount) {
 
 /** The table header, with the sort arrow on the column in use. */
 function _taskListHeaderHtml() {
-    const arrow = (field) => _taskSortField === field ? (_taskSortAsc ? ' ▲' : ' ▼') : '';
+    const arrow = (field) => _taskSortExplicit && _taskSortField === field ? (_taskSortAsc ? ' ▲' : ' ▼') : ''; // the default order shows no arrow (#4737)
 
     const header = `
         <div class="board-task-item board-task-header">

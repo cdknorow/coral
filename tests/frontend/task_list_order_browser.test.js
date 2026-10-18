@@ -46,15 +46,33 @@ const open = [
         assert.ok(got.slice(5).every(id => id >= 100), 'then only finished ones');
         console.log('  ok');
 
-        console.log('A column the person chose sorts the whole list: Created ascending puts the oldest first, open and done mixed by date');
-        await ev(`window.__coral._toggleTaskSort('created_at'); true`);
-        const asc = await ids();
-        const wantAsc = [...open, ...done].sort((a, b) => a.created_at.localeCompare(b.created_at)).map(t => t.id);
-        assert.deepEqual(asc, wantAsc);
+        console.log('The default order shows no sort arrow; a column\'s third click gives the default back and clears the arrow');
+        const arrows = () => ev(`[...document.querySelectorAll('#board-task-list .board-task-header .board-task-sort')].map(e => e.dataset.sort + ':' + (/[▲▼]/.exec(e.textContent) || [''])[0]).filter(x => !x.endsWith(':'))`);
+        assert.deepEqual(await arrows(), [], 'the default order has no arrow');
+        const click = f => ev(`document.querySelector('#board-task-list .board-task-header [data-sort="${f}"]').click(); true`);
+        await click('created_at'); assert.deepEqual(await arrows(), ['created_at:▼', 'created_at:▼'], 'first click: newest first, arrow down (the Task and Created labels share the key)');
+        assert.deepEqual(await ids(), [...open, ...done].sort(byNewest).map(t => t.id), 'a chosen Created is the plain date order');
+        await click('created_at'); assert.deepEqual((await arrows())[0], 'created_at:▲', 'second click turns it round');
+        await click('created_at');
+        assert.deepEqual(await arrows(), [], 'third click: the arrow is gone');
+        assert.deepEqual(await ids(), want, 'and the order is the default again: open first, then done');
+        await click('priority'); assert.deepEqual(await arrows(), ['priority:▲'], 'Priority starts ascending');
+        await click('assignee'); assert.deepEqual(await arrows(), ['assignee:▼'], 'another column starts its own count');
+        await click('assignee'); await click('priority');
+        assert.deepEqual(await arrows(), ['priority:▲'], 'a click on another column chooses it, it does not reset');
+        await click('priority'); await click('priority');
+        assert.deepEqual(await arrows(), [], 'three clicks on a column in a row, from any state, give the default back');
+        assert.deepEqual(await ids(), want);
+        console.log('  ok');
+
+        console.log('A column the person chose sorts the whole list: Created is the plain date order, open and done mixed by date');
         await ev(`window.__coral._toggleTaskSort('created_at'); true`);
         const desc = await ids();
         assert.deepEqual(desc, [...open, ...done].sort(byNewest).map(t => t.id), 'Created descending, chosen, is the plain date order: finished tasks are among the open ones');
         assert.notDeepEqual(desc, want, 'the chosen order is not the default partition');
+        await ev(`window.__coral._toggleTaskSort('created_at'); true`);
+        const asc = await ids();
+        assert.deepEqual(asc, [...open, ...done].sort((a, b) => a.created_at.localeCompare(b.created_at)).map(t => t.id), 'turned round: the oldest first');
         await ev(`window.__coral._toggleTaskSort('id'); true`);
         assert.deepEqual((await ids()).slice(0, 3), [139, 138, 137], 'by id, newest column choice: the largest id first');
         console.log('  ok');
