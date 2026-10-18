@@ -48,7 +48,7 @@ async function run() {
       avatar: !!q('.agent-avatar'), ctxBar: !!q('.session-context-bar'), dirChip: !!q('.agent-dir-chip'), inlineStatus: !!q('.session-inline-status'), activity: !!q('.session-activity-text'),
       dot: !!q('.session-dot'), identity: (q('.session-label')||{}).textContent, identityTitle: q('.session-label') ? q('.session-label').getAttribute('title') : null,
       pills: Array.from(li.querySelectorAll('.session-attention-pill, .session-ctx-pill')).map(p => p.textContent.trim()), goal: q('.session-goal') ? q('.session-goal').textContent.replace(/\\s+/g,' ').trim() : null, goalTitle: q('.session-goal') ? q('.session-goal').getAttribute('title') : null,
-      kebabFirst: (() => { const m = q('.sidebar-kebab-menu'); const f = m ? Array.from(m.children).find(c => c.matches('.overflow-menu-item')) : null; return f ? f.textContent.trim() : null; })(),
+      kebabFirst: (() => { window.closeSidebarKebabs(); const kb = q('.sidebar-kebab-btn'); if (kb) window.toggleSidebarKebab(kb); /* a row's menu is drawn when it opens (#4611) */ const m = q('.sidebar-kebab-menu'); const f = m ? Array.from(m.children).find(c => c.matches('.overflow-menu-item')) : null; const t = f ? f.textContent.trim() : null; window.closeSidebarKebabs(); return t; })(),
       padding: cs(li).padding, hasUuidText: li.textContent.includes(li.dataset.sessionId) }; })`);
   try {
     await boot(1440, 900, false);
@@ -172,7 +172,7 @@ async function run() {
     await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
     await until(`/Auto Bot|Renamed Bot/.test(document.getElementById('session-name').textContent)`, 'the phone row selected');
     check('14 cloned phone row: Enter selects (delegated handler survives cloneNode)', await ev(`/Auto Bot|Renamed Bot/.test(document.getElementById('session-name').textContent)`));
-    check('14 cloned phone row: kebab first item is Open Agent Tab', await ev(`(() => { const m = document.querySelector('#mobile-session-list [data-session-id="${B}"] .sidebar-kebab-menu'); const f = m ? Array.from(m.children).find(c => c.matches('.overflow-menu-item')) : null; return f ? f.textContent.trim() : null; })()`) === 'Open Agent Tab');
+    check('14 cloned phone row: kebab first item is Open Agent Tab', await ev(`(() => { window.closeSidebarKebabs(); const kb = document.querySelector('#mobile-session-list [data-session-id="${B}"] .sidebar-kebab-btn'); if (kb) window.toggleSidebarKebab(kb); const m = document.querySelector('#mobile-session-list [data-session-id="${B}"] .sidebar-kebab-menu'); const f = m ? Array.from(m.children).find(c => c.matches('.overflow-menu-item')) : null; const t = f ? f.textContent.trim() : null; window.closeSidebarKebabs(); return t; })()`) === 'Open Agent Tab');
   } finally { await client.close(); }
   const f = results.filter(v => v === 'FAIL').length; console.log(`\n${results.length - f}/${results.length} checks passed`); process.exit(f ? 1 : 0);
 }
