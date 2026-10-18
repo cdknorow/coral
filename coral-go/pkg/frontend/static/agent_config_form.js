@@ -7,6 +7,7 @@ const { _checkAgentCLI } = await importOnce('./cli_check.js');
 const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
 const { modelPickerHtml, loadModelPicker, wireModelPicker, syncModelPicker } = await importOnce('./model_picker.js');
 const { _renderPresetButtons } = await importOnce('./persona_store.js');
+const { presetEnforcement } = await importOnce('./preset_enforcement.js');
 import { escapeHtml, escapeAttr } from './utils.js';
 
 // ── Permissions Editor ─────────────────────────────────────────────────
@@ -18,6 +19,11 @@ const CAPABILITY_LABELS = {
     git_write: 'Git Write',
     agent_spawn: 'Spawn Agents',
     notebook: 'Notebooks',
+};
+// What a capability does beyond its name, per CLI (#4545, Security's D: for Codex, Git Write is what turns
+// off its sandbox).
+const CAPABILITY_TITLES = {
+    git_write: 'Claude: pre-approves git push, commit, branch, merge and rebase. Codex: with Shell, Read Files and Write Files, it runs without a sandbox.',
 };
 
 export function _togglePermissions(containerId) {
@@ -41,7 +47,8 @@ function _renderPermChips(containerId, type, capabilities) {
     for (const cap of ALL_CAPABILITIES) {
         const isActive = baseCaps.includes(cap);
         const cls = `perm-chip${isActive ? ' active' : ''}`;
-        html += `<button class="${escapeAttr(cls)}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" data-on-click="perm-chip-toggle">${CAPABILITY_LABELS[cap] || cap}</button>`;
+        const title = CAPABILITY_TITLES[cap] ? ` title="${escapeAttr(CAPABILITY_TITLES[cap])}"` : '';
+        html += `<button class="${escapeAttr(cls)}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" data-on-click="perm-chip-toggle"${title}>${CAPABILITY_LABELS[cap] || cap}</button>`;
     }
     container.innerHTML = html;
 
@@ -57,6 +64,7 @@ function _renderPermChips(containerId, type, capabilities) {
 }
 
 export function _togglePermChip(btn) {
+    if (btn.disabled) return;
     btn.classList.toggle('active');
     // Toggle shell patterns visibility
     const cap = btn.dataset.cap;
@@ -67,6 +75,36 @@ export function _togglePermChip(btn) {
             shellSection.style.display = btn.classList.contains('active') ? '' : 'none';
         }
     }
+    _syncEnforcement(btn.closest('[data-acf-uid]'));
+}
+
+// _syncEnforcement says under Permissions what the chosen agent CLI enforces for these permissions
+// (#4545, Security's #4550): Codex keeps only a sandbox and an approval mode and Antigravity only a mode, so
+// for them a new Deny entry can't be added (an existing one can be removed: it still changes the mode, shown
+// in the line) and shell patterns are marked as not enforced. Coral adds no permission layer of its own.
+function _syncEnforcement(container) {
+    if (!container) return;
+    const uid = container.dataset.acfUid;
+    const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
+    const permMode = container.querySelector('.acf-permission-mode')?.value
+        || _settingsFor(_acfServer(container)).default_permission_mode || 'bypassPermissions';
+    const e = presetEnforcement(agentType, _getPermissions(`${uid}-perms`) || {}, permMode);
+    // The form's own line, and any line elsewhere that mirrors it (the Launch dialog shows it under the
+    // persona, while this form is folded away).
+    const lines = [container.querySelector('.acf-perms-enforced'),
+        ...(container.id ? document.querySelectorAll(`[data-acf-enforced-for="${CSS.escape(container.id)}"]`) : [])];
+    for (const line of lines) {
+        if (!line) continue;
+        line.textContent = e.text;
+        line.hidden = !e.text;
+    }
+    for (const chip of container.querySelectorAll(`#${CSS.escape(uid)}-perms-deny .perm-chip`)) {
+        chip.disabled = !e.denyEnforced && !chip.classList.contains('active');
+    }
+    const denyNote = container.querySelector('.perms-deny-note');
+    if (denyNote) denyNote.textContent = e.denyEnforced ? '' : 'Not enforced by this agent';
+    const patternsNote = container.querySelector('.perms-patterns-note');
+    if (patternsNote) patternsNote.textContent = e.patternsEnforced ? '' : 'Not enforced by this agent';
 }
 
 function _getPermissions(editorId) {
@@ -205,17 +243,18 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                 <svg class="permissions-chevron" width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
                 Permissions <span class="acf-perms-summary" style="color:var(--text-muted);font-weight:normal;font-size:0.6875rem">(${escapeHtml(permsSummary)})</span>
             </button>
+            <p class="settings-hint acf-perms-enforced" aria-live="polite" hidden></p>
             <div id="${escapeAttr(uid)}-perms" class="permissions-editor" style="display:none">
                 <div class="perms-group">
                     <label class="perms-label">Allow:</label>
                     <div id="${escapeAttr(uid)}-perms-allow" class="perms-chips"></div>
                 </div>
                 <div class="perms-group">
-                    <label class="perms-label">Deny:</label>
+                    <label class="perms-label">Deny: <span class="perms-deny-note settings-hint"></span></label>
                     <div id="${escapeAttr(uid)}-perms-deny" class="perms-chips"></div>
                 </div>
                 <div class="perms-shell-patterns" style="display:none">
-                    <label class="perms-label">Shell patterns <span style="color:var(--text-muted);font-weight:normal">(comma-separated)</span>:</label>
+                    <label class="perms-label">Shell patterns <span style="color:var(--text-muted);font-weight:normal">(comma-separated)</span>: <span class="perms-patterns-note settings-hint"></span></label>
                     <input type="text" class="perms-shell-input" placeholder="e.g. git *, npm *, npx *">
                 </div>
             </div>
@@ -232,6 +271,9 @@ export function renderAgentConfigForm(containerId, opts = {}) {
 
     // Initialize permissions chips
     _setPermissions(`${uid}-perms`, caps);
+    _syncEnforcement(container);
+    container.querySelector('.acf-permission-mode')?.addEventListener('change', () => _syncEnforcement(container));
+    container.querySelector('.perms-shell-input')?.addEventListener('input', () => _syncEnforcement(container));
 
     // Render presets if enabled — pass containerId so the preset handler knows which ACF to update
     if (showPreset) {
@@ -269,6 +311,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
         if (flagsEl) flagsEl.value = _stripPermFlags(_normalizePermFlagsForAgent(flagsEl.value, agentType, permMode));
         _syncACFAutoPermissions(container);
         _syncACFModelField(container);
+        _syncEnforcement(container);
     });
 }
 
@@ -392,6 +435,7 @@ export function setAgentConfig(containerId, values) {
     }
 
     if (uid) _setPermissions(`${uid}-perms`, v.capabilities || null);
+    _syncEnforcement(container);
 
     // Re-sync Model combo and prerequisite warning after a preset/type change.
     _syncACFModelField(container);

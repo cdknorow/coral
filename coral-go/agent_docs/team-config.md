@@ -89,17 +89,38 @@ The field name is `capabilities` (an object with `allow` and `deny` lists). An u
 | `agent_spawn` | Spawn sub-agents |
 | `notebook` | Edit Jupyter notebooks |
 
-All agents automatically receive `Bash(coral-board *)` permission for message board communication.
+Coral grants no permission on its own. The dashboard's presets that use the message board list `shell:coral-board *`, which only Claude enforces (see below).
 
-### Agent-Native Translation
+### What each CLI enforces
 
-Capabilities are translated to each CLI's native permission format at launch:
+Capabilities are translated to each CLI's own permissions at launch, and that is all the enforcement there is: Coral adds no permission layer. What each CLI keeps:
 
-| agent_type | Translation |
-|------------|-------------|
-| `claude` | Mapped to Claude Code tool permissions (e.g. `file_read` -> `Read`, `Glob`, `Grep`) |
-| `codex` | Mapped to sandbox_mode, approval_policy flags |
-| `agy` | Mapped to `--mode` and `--dangerously-skip-permissions` flags |
+| agent_type | What is enforced |
+|------------|------------------|
+| `claude` | `allow` becomes pre-approvals and `deny` becomes deny rules in Claude Code's settings (`file_read` -> `Read`, `Glob`, `Grep`; `shell:npm *` -> `Bash(npm *)`). A tool that isn't allowed still runs after Claude asks, and in Bypass Permissions mode (the dashboard's default) nothing asks, so `allow` restricts nothing; only `deny` blocks. `git_write`'s git patterns don't limit git while `shell` is allowed, and they match command prefixes only. |
+| `codex` | Only a sandbox (`read-only`, `workspace-write`, or none) and whether it asks (`on-request`: the model decides, and sandboxed commands run without asking; `never`). Shell patterns and `deny` entries aren't enforced; a `deny` entry only changes the mode. `shell`, `file_read`, `file_write` and `git_write` together run Codex without a sandbox. |
+| `agy`, `gemini` | Only a mode (`--mode plan`, `--mode accept-edits`, or `--dangerously-skip-permissions`). Shell patterns and `deny` entries aren't enforced; a `deny` entry only changes the mode, and with `shell` it gives `--mode accept-edits`, which approves edits without asking. (`gemini` launches the `agy` binary.) |
+
+When capabilities set a mode, they win over the launch dialog's permission flag for Codex and Antigravity.
+
+The dashboard's built-in presets get these flags (from `agent_presets.js`, pinned by `internal/agent/testdata/preset_enforcement.golden`):
+
+| Preset | Codex | Antigravity |
+|--------|-------|-------------|
+| Lead Developer | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| QA Engineer | `--sandbox workspace-write -a never` | `--dangerously-skip-permissions` |
+| Orchestrator | `--dangerously-bypass-approvals-and-sandbox --search` | `--dangerously-skip-permissions` |
+| Frontend Dev | `--sandbox workspace-write -a on-request --search` | `--mode accept-edits` |
+| Backend Dev | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| DevOps Engineer | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` |
+| Security Reviewer | `--sandbox read-only -a on-request --search` | `--mode plan` |
+| Technical Writer | `--sandbox workspace-write -a on-request` | `--mode accept-edits` |
+| Content Writer | `--sandbox workspace-write -a on-request --search` | `--mode accept-edits` |
+| SEO Strategist | `--sandbox read-only -a on-request --search` | `--mode plan` |
+| Design Director | `--sandbox workspace-write -a on-request --search` | `--mode accept-edits` |
+| Research Analyst | `--sandbox read-only -a on-request --search` | `--mode plan` |
+| Writer & Editor | `--sandbox workspace-write -a on-request` | `--mode accept-edits` |
+| Scheduler & Planner | `--sandbox workspace-write -a on-request` | `--mode accept-edits` |
 
 ## Hooks
 

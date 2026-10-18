@@ -1064,14 +1064,14 @@ func TestTranslateToCodexPermissions_ShellWithDenyNotFullAuto(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil")
 	}
-	if result.FullAuto || result.SandboxMode != "workspace-write" || result.ApprovalPolicy != "untrusted" {
+	if result.FullAuto || result.SandboxMode != "workspace-write" || result.ApprovalPolicy != "on-request" {
 		t.Errorf("unexpected: %+v", result)
 	}
 }
 
 func TestTranslateToCodexPermissions_ReadOnly(t *testing.T) {
 	result := TranslateToCodexPermissions(&Capabilities{Allow: []string{CapFileRead}})
-	if result == nil || result.SandboxMode != "read-only" || result.ApprovalPolicy != "untrusted" {
+	if result == nil || result.SandboxMode != "read-only" || result.ApprovalPolicy != "on-request" {
 		t.Errorf("unexpected: %+v", result)
 	}
 }
@@ -1100,7 +1100,7 @@ func TestTranslateToCodexPermissions_WebOnlyIsReadOnly(t *testing.T) {
 	if !result.Search {
 		t.Error("expected Search=true")
 	}
-	if result.SandboxMode != "read-only" || result.ApprovalPolicy != "untrusted" {
+	if result.SandboxMode != "read-only" || result.ApprovalPolicy != "on-request" {
 		t.Errorf("unexpected: %+v", result)
 	}
 }

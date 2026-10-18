@@ -163,3 +163,41 @@ func TestPresetEnforcementMatchesTheAudit(t *testing.T) {
 		}
 	}
 }
+
+// team-config.md's preset table names, for each built-in preset, the flags the real Codex and Antigravity
+// launch commands carry (#4545): each row's flags are in the command that preset launches, and every preset
+// has a row.
+func TestTeamConfigDocPresetTableMatchesTheLaunch(t *testing.T) {
+	doc, err := os.ReadFile("../../agent_docs/team-config.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rowRe := regexp.MustCompile("(?m)^\\| ([^|`]+?) \\| `([^`]+)` \\| `([^`]+)` \\|$")
+	rows := map[string][2]string{}
+	for _, m := range rowRe.FindAllStringSubmatch(string(doc), -1) {
+		rows[m[1]] = [2]string{m[2], m[3]}
+	}
+	for _, p := range readUIPresets(t) {
+		if p.Fixed {
+			continue
+		}
+		row, ok := rows[p.Name]
+		if !ok {
+			t.Errorf("team-config.md has no row for the %q preset", p.Name)
+			continue
+		}
+		codex := buildLaunch(&CodexAgent{}, LaunchParams{Capabilities: p.Caps})
+		agy := buildLaunch(&AgyAgent{}, LaunchParams{Capabilities: p.Caps})
+		if !strings.Contains(codex, " "+row[0]) {
+			t.Errorf("%s: the doc says Codex gets %q; its launch is %q", p.Name, row[0], codex)
+		}
+		if !strings.Contains(agy, " "+row[1]) {
+			t.Errorf("%s: the doc says Antigravity gets %q; its launch is %q", p.Name, row[1], agy)
+		}
+		for _, other := range []string{"--dangerously-bypass-approvals-and-sandbox", "--search"} {
+			if strings.Contains(codex, other) != strings.Contains(row[0], other) {
+				t.Errorf("%s: %s differs between the doc and Codex's launch %q", p.Name, other, codex)
+			}
+		}
+	}
+}

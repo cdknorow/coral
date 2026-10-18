@@ -108,7 +108,7 @@ type CodexPermissions struct {
 	FullAuto       bool   `json:"full_auto,omitempty"`
 	BypassSandbox  bool   `json:"bypass_sandbox,omitempty"`
 	SandboxMode    string `json:"sandbox_mode,omitempty"`    // "read-only", "workspace-write", "danger-full-access"
-	ApprovalPolicy string `json:"approval_policy,omitempty"` // "untrusted", "on-request", "never"
+	ApprovalPolicy string `json:"approval_policy,omitempty"` // "on-request" or "never" (the only two Codex 0.155 takes)
 	Search         bool   `json:"search,omitempty"`
 }
 
@@ -147,37 +147,38 @@ func TranslateToCodexPermissions(caps *Capabilities) *CodexPermissions {
 		return perms
 	}
 
-	// Shell with deny list → workspace-write but untrusted approval
+	// Shell with deny list → workspace-write, on-request (Codex 0.155 has only on-request and never; on-request
+	// lets sandboxed commands run without asking, #4545 E)
 	if allowSet[CapShell] && hasDeny {
 		perms.SandboxMode = "workspace-write"
-		perms.ApprovalPolicy = "untrusted"
+		perms.ApprovalPolicy = "on-request"
 		return perms
 	}
 
-	// file_read + file_write → workspace-write, untrusted
+	// file_read + file_write → workspace-write, on-request
 	if allowSet[CapFileRead] && allowSet[CapFileWrite] {
 		perms.SandboxMode = "workspace-write"
-		perms.ApprovalPolicy = "untrusted"
+		perms.ApprovalPolicy = "on-request"
 		return perms
 	}
 
-	// file_read only → read-only, untrusted
+	// file_read only → read-only, on-request
 	if allowSet[CapFileRead] {
 		perms.SandboxMode = "read-only"
-		perms.ApprovalPolicy = "untrusted"
+		perms.ApprovalPolicy = "on-request"
 		return perms
 	}
 
 	// Search-only or other non-write capabilities should stay read-only.
 	if allowSet[CapWebAccess] {
 		perms.SandboxMode = "read-only"
-		perms.ApprovalPolicy = "untrusted"
+		perms.ApprovalPolicy = "on-request"
 		return perms
 	}
 
-	// Default: workspace-write with untrusted
+	// Default: workspace-write, on-request
 	perms.SandboxMode = "workspace-write"
-	perms.ApprovalPolicy = "untrusted"
+	perms.ApprovalPolicy = "on-request"
 	return perms
 }
 
