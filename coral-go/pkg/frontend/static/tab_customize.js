@@ -62,6 +62,7 @@ function available(ctx) {
         const scope = b.dataset.scope || '';
         if (b.dataset.onlyPage) return false; // a tab of another kind of page (Subscribers, on a board) is not the agent page's to order or hide (#4539)
         if (ctx === 'team' ? scope === 'agent' : scope === 'team') return false;
+        if (b.hasAttribute('data-local-only') && document.body.classList.contains('cloud-mode')) return false; // hidden by the hosted hub's stylesheet (Saved): a row for it would tick a tab that never appears (#4741)
         if (b.dataset.tab === 'board') return ctx === 'agent' && b.style.display !== 'none'; // a team has its chat in the centre
         return true;
     });
@@ -122,14 +123,16 @@ function rowsHTML(ctx) {
     return ids.map((id, i) => {
         const b = document.getElementById(`agentic-tab-${id}`);
         const name = b.getAttribute('aria-label') || id;
-        const icon = b.querySelector('.material-icons')?.textContent || '';
+        const glyph = b.querySelector('.material-icons')?.textContent || '';
+        const svg = glyph ? null : b.querySelector('svg'); // Saved draws its bookmark as an inline SVG, not a font glyph
+        const iconHtml = glyph ? `<span class="material-icons tc-icon" aria-hidden="true">${escapeHtml(glyph)}</span>` : svg ? `<span class="tc-icon tc-icon-svg" aria-hidden="true">${svg.outerHTML}</span>` : '';
         const isLocked = id === locked;
         const on = isLocked || !hidden.has(id);
         return `<li class="tc-row" draggable="true" data-tab="${escapeAttr(id)}">
             <span class="material-icons tc-grip" aria-hidden="true">drag_indicator</span>
             <label class="tc-label"><input type="checkbox" class="tc-check" data-tab="${escapeAttr(id)}"${on ? ' checked' : ''}${isLocked ? ' disabled' : ''}
                 aria-label="Show ${escapeAttr(name)}${isLocked ? ' (always shown)' : ''}">
-                <span class="material-icons tc-icon" aria-hidden="true">${escapeHtml(icon)}</span><span class="tc-name">${escapeHtml(name)}</span></label>
+                ${iconHtml}<span class="tc-name">${escapeHtml(name)}</span></label>
             ${isLocked ? '<span class="material-icons tc-lock" aria-hidden="true" title="Always shown">lock</span>' : ''}
             <span class="tc-sp"></span>
             <button type="button" class="tc-move" data-tab="${escapeAttr(id)}" data-dir="-1" aria-label="Move ${escapeAttr(name)} up"${i === 0 ? ' aria-disabled="true"' : ''}><span class="material-icons" aria-hidden="true">keyboard_arrow_up</span></button>
