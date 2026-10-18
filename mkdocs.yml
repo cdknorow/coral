@@ -53,6 +53,10 @@ plugins:
         api/jobs.md: reference.md
         api/webhooks.md: reference.md
 
+# The !!! note and !!! warning callouts in the guides (multi-server-hub.md).
+markdown_extensions:
+  - admonition
+
 nav:
   - Home: index.md
   - Getting started: getting-started.md

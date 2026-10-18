@@ -27,7 +27,7 @@ These guides cover the current **Go application**, including the macOS, Linux an
 
 ## Platform and release information
 
-The regular release provides a universal macOS app and a Linux amd64 archive. macOS bundles include tmux starting with **v1.3.23**. Remote access is off by default and requires explicit enablement and a restart.
+Each release provides a universal macOS app, Linux archives for x86-64 and ARM64, and a Windows installer and portable ZIP. macOS bundles include tmux starting with **v1.3.23**. Remote access is off by default and requires explicit enablement and a restart.
 
 See [release notes](https://github.com/cdknorow/coral/releases) for changes and package verification. The macOS app targets macOS 13 or later; a deployment target check is not a claim that every older host configuration has been tested.
 

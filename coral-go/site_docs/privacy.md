@@ -8,7 +8,7 @@ This page describes what Coral sends and stores. It does not promise that Coral 
 - **Usage analytics** (below), unless disabled.
 - **Update check.** Coral looks up the latest release version from GitHub at startup and logs a notice. Development and beta builds, and builds without a release version, skip it.
 - **Remote access**, if you enable it, accepts connections from your network. It is off by default. See [Remote access](remote-access.md).
-- **Coral Hub**, if you connect to it, carries dashboard access to this Coral over a tunnel. Connecting is off until you set it up, and what travels over it is redacted on this computer first — except artifacts, which are served as stored, byte for byte. A file you send to another Coral through the hub is likewise sent as stored, after it is scanned for secrets on this computer and the send is refused if one is found. See [Multi-server hub](multi-server-hub.md).
+- **Coral Hub**, if you connect to it, carries dashboard access to this Coral over a tunnel. Connecting is off until you set it up, and what travels over it is redacted on this computer first — except artifacts, which are served as stored, byte for byte. A file you send to another Coral through the hub is likewise sent as stored, after it is scanned for secrets on this computer and the send is refused if one is found. See [Connecting a server to Coral Hub](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/hub.md#connecting-a-server-to-coral-hub). The [multi-server hub](multi-server-hub.md) is a different setup: a hub you run yourself.
 
 ## Usage analytics
 
@@ -39,5 +39,6 @@ Coral stores sessions, history and the message board in SQLite databases under `
 ## Related
 
 - [Remote access](remote-access.md)
-- [Multi-server hub](multi-server-hub.md)
+- [Multi-server hub](multi-server-hub.md) (self-hosted)
+- [Connecting a server to Coral Hub](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/hub.md#connecting-a-server-to-coral-hub) (hosted)
 - [Privacy controls](https://github.com/cdknorow/coral/blob/main/PRIVACY_CONTROLS.md) for the settings API.

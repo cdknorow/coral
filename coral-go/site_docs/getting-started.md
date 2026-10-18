@@ -1,6 +1,6 @@
 # Getting started
 
-This page describes Coral v1.3.23. Coral runs the agent CLIs you already use, each in its own terminal session, and gives you one dashboard and message board for all of them.
+Coral runs the agent CLIs you already use, each in its own terminal session, and gives you one dashboard and message board for all of them.
 
 ## What you need
 
@@ -58,7 +58,7 @@ By default Coral stores data in `~/.coral`, uses port **8420**, and listens on t
 | `--backend tmux\|pty` | Terminal backend. Default `tmux`. |
 | `--no-browser` | Do not open a browser on startup |
 
-There is no `--version` flag. The running version is in the startup log and in `/api/system/status`.
+`coral --version` (or `coral -v`, or `coral version`) prints the version of the program you run. A running server's version is in its startup log and in `/api/system/status`.
 
 ## Your first agent
 

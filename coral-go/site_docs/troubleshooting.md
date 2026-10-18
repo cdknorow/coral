@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Applies to Coral v1.3.23. See the [agent troubleshooting guide](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/troubleshooting.md) for deeper notes.
+See the [agent troubleshooting guide](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/troubleshooting.md) for deeper notes.
 
 ## The agent launched but looks stuck
 
@@ -34,7 +34,7 @@ That is the one-time first-launch screen. Choose **Skip for now** (or press Esca
 
 ## Agents do not post to the message board
 
-Agents receive `CORAL_URL`, `CORAL_PORT`, `CORAL_HOST` and `CORAL_DATA_DIR`, so board commands normally follow a server on another port or `--home`. If it still fails, confirm the server's view with `curl http://localhost:<port>/api/board/<project>/subscribers`.
+Agents receive `CORAL_URL`, `CORAL_PORT`, `CORAL_HOST` and `CORAL_DATA_DIR`, so board commands normally follow a server on another port or `--home`. If it still fails, confirm the server's view with `coral-board subscribers`, or with curl and the API key: `curl -H "Authorization: Bearer $(coral api-key)" http://localhost:<port>/api/board/<project>/subscribers` (add `--home <dir>` to `coral api-key` if Coral runs with one). Every request needs a credential by default, even from this computer, so the same curl without the header gets `401 Unauthorized`; that is expected, and turning authentication off is not the fix.
 
 ## An agent did something nobody typed
 
