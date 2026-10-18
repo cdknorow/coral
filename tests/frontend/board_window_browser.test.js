@@ -211,6 +211,16 @@ function page(q) {
         await ev(`(async () => { ${MB}.cancelSelectMode(); return true; })()`);
         await toBottom();
 
+        console.log('"Load earlier" draws only the page it adds: the rows shown keep their nodes, and the result is the same as a whole render (#4638)');
+        await ev(`${ROWS}.forEach(r => { r.__old = true; }); true`);
+        const rowsBefore = await ev(`${ROWS}.length`), shownBefore = await shown();
+        await ev(`${C}.querySelector('.mb-load-earlier button').click(); true`);
+        await waitFor(`Number(${C}.querySelector('.mb-message-count').textContent.match(/Showing (\\d+)/)[1]) >= ${shownBefore + 50}`, 'the earlier page, from the button');
+        const drawn = await ev(`({ n: ${ROWS}.length, kept: ${ROWS}.filter(r => r.__old).length, firstOld: ${ROWS}.findIndex(r => r.__old) })`);
+        assert.equal(drawn.kept, rowsBefore, 'every row shown keeps its node: the board was not drawn again');
+        assert.ok(drawn.n > rowsBefore && drawn.firstOld === drawn.n - rowsBefore, `the new rows are above the old ones (${JSON.stringify(drawn)})`);
+        assert.equal(await ev(rowsHtml), await wholeRender(), 'the same as a whole render, grouping of the first old row included');
+
         console.log('A search jump to an old message, and a poll after it');
         await ev(`(async () => { ${MB}.selectBoardProject(${JSON.stringify(B)}, 200); return true; })()`);
         await waitFor(`${C}.querySelector('.chat-search-target[data-message-id="200"]')`, 'the jump to message 200', { timeout: 30000 });

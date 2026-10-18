@@ -352,9 +352,10 @@ async function loadEarlierMessages() {
     }
     // A trim or a reload while it was out moved the oldest message loaded: this page would leave a gap.
     if (currentProject !== project || !_allMessages.length || _allMessages[0].id !== firstId) return;
+    const had = _allMessages.length;
     _allMessages = mergeMessages(result.messages, _allMessages);
     _loadedOffset = result.beforeCount;
-    renderMessages(_allMessages, { keepAnchor: true });
+    renderMessages(_allMessages, { keepAnchor: true, prepended: _allMessages.length - had });
 }
 (window.__coral ||= {}).loadEarlierMessages = loadEarlierMessages;
 
@@ -443,7 +444,31 @@ function rowFirstId(row) {
     return Number(row.classList.contains('mb-queue-run') ? row.dataset.queueRun : row.dataset.messageId);
 }
 
-function renderMessages(messages, { keepAnchor = false } = {}) {
+// "Load earlier" (and a search jump's older pages) draws only the rows the page adds, in one batch above the rows shown (#4638): every older page used to
+// draw the whole board again, which cost more with each page (a board of 700 took over a second in UX's run). The rows shown stay as they are, with the focus
+// and what the reader opened; the first of them follows the new rows' last for grouping. Returns false (and the caller draws it all) when the rows shown are not
+// the loaded messages after the page, in select mode, or when a task-queue run could join across the page's edge.
+function prependEarlier(container, count) {
+    const first = container.querySelector(ROW);
+    if (!first || _selectMode || first.classList.contains('mb-queue-run') || container.querySelector(':scope > .empty-state, :scope > .loading-indicator')) return false;
+    if (!_allMessages[count] || _allMessages[count].id !== rowFirstId(first)) return false;
+    const items = groupTaskQueueRuns(_allMessages.slice(0, count + 1), true); // with the first message shown, to see what it would join
+    const tail = items[items.length - 1];
+    if (tail.kind !== 'msg' || tail.m.id !== _allMessages[count].id) return false;
+    const fresh = items.slice(0, -1);
+    const tmp = document.createElement('template');
+    tmp.innerHTML = fresh.map((item, i) => renderBoardItem(item, i > 0 ? fresh[i - 1] : null)).join('');
+    const added = [...tmp.content.children];
+    const prev = fresh[fresh.length - 1];
+    const grouped = !!prev && prev.kind === 'msg' && (prev.m.job_title || 'Unknown') === (tail.m.job_title || 'Unknown');
+    first.className = first.className.replace(/mb-message-(first|grouped)/, grouped ? 'mb-message-grouped' : 'mb-message-first'); // in place: the same class order as a whole render
+    first.before(tmp.content);
+    for (const el of added) resolveBoardArtifacts(el, state.currentBoardServer);
+    updateBoardHeader(container);
+    return true;
+}
+
+function renderMessages(messages, { keepAnchor = false, prepended = 0 } = {}) {
     const container = document.getElementById('mb-messages');
     wireBoardScroll(container);
     if (!messages.length) {
@@ -458,9 +483,11 @@ function renderMessages(messages, { keepAnchor = false } = {}) {
     const earlierFocused = !!document.activeElement?.closest?.('#mb-messages > .mb-load-earlier');
 
     // Runs of task-queue lines are one collapsed row (#3343), except in select mode.
-    const items = groupTaskQueueRuns(messages, !_selectMode);
-    container.innerHTML = boardHeaderHtml(messages) + items.map((item, i) => renderBoardItem(item, i > 0 ? items[i - 1] : null)).join('');
-    resolveBoardArtifacts(container, state.currentBoardServer);
+    if (!(prepended > 0 && prependEarlier(container, prepended))) {
+        const items = groupTaskQueueRuns(messages, !_selectMode);
+        container.innerHTML = boardHeaderHtml(messages) + items.map((item, i) => renderBoardItem(item, i > 0 ? items[i - 1] : null)).join('');
+        resolveBoardArtifacts(container, state.currentBoardServer);
+    }
     if (earlierFocused) {
         // The button again, or with every message loaded the count line, so focus doesn't drop to the page.
         const next = container.querySelector(':scope > .mb-load-earlier button');
@@ -564,6 +591,9 @@ function trimBoardWindow(container) {
     if (_selectMode || pendingMessageId || _allMessages.length <= BOARD_KEEP + PAGE_SIZE) return;
     const drop = _allMessages.length - BOARD_KEEP;
     const firstKept = _allMessages[drop].id;
+    // The message a search or Save for Later jump just landed on is kept: the jump's smooth scroll may not have left the bottom yet when a poll comes.
+    const target = container.querySelector(':scope .chat-search-target');
+    if (target && Number(target.dataset.messageId) < firstKept) return;
     _allMessages = _allMessages.slice(drop);
     _loadedOffset += drop;
     for (const row of container.querySelectorAll(ROW)) {
