@@ -252,6 +252,7 @@ type restartPlan struct {
 	pane         *ptymanager.PaneInfo
 	workdir      string
 	usePTY       bool
+	resuming     bool // a Resume, which takes the same steps (#4809)
 
 	newSessionID, newSessionName, newLogPath string
 
@@ -543,7 +544,7 @@ func (h *SessionsHandler) restartTerminal(ctx context.Context, p *restartPlan) (
 				// spawn that fails leaves the agent running. One whose process exited since it was found is ended.
 				if err := h.backend.Kill(p.pane.SessionName); err != nil && !errors.Is(err, ptymanager.ErrTerminalGone) {
 					h.backend.Kill(p.newSessionName)
-					return "", fail(fmt.Sprintf("pty restart failed: %v", err))
+					return "", fail(fmt.Sprintf("pty %s failed: %v", p.verb(), err))
 				}
 			}
 		} else {
@@ -564,7 +565,7 @@ func (h *SessionsHandler) restartTerminal(ctx context.Context, p *restartPlan) (
 			return "", fail(err.Error())
 		}
 		target = fmt.Sprintf("%s:0.0", p.newSessionName)
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(paneRespawnSettle)
 		// Clear scrollback, create log, setup pipe-pane
 		h.terminal.ClearHistory(ctx, target)
 		ptymanager.ResetAgentLog(p.newLogPath) // 0600, never through a link (#3601, W17)
@@ -576,6 +577,17 @@ func (h *SessionsHandler) restartTerminal(ctx context.Context, p *restartPlan) (
 	}
 	return target, nil
 }
+
+// verb is what the plan does, for its messages.
+func (p *restartPlan) verb() string {
+	if p.resuming {
+		return "resume"
+	}
+	return "restart"
+}
+
+// paneRespawnSettle is how long a respawned pane is given before its history is cleared and its log started.
+var paneRespawnSettle = 500 * time.Millisecond
 
 func (p *restartPlan) folderName() string { return filepath.Base(strings.TrimRight(p.workdir, "/")) }
 
@@ -595,7 +607,7 @@ func (h *SessionsHandler) restartLaunch(ctx context.Context, p *restartPlan, tar
 	if cmd == "" {
 		return nil
 	}
-	log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
+	log.Printf("[launch] %s session=%s cmd=%s", p.verb(), target, cmd)
 	where, what := target, "launch command failed"
 	if p.usePTY {
 		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(p.newSessionName, 5*time.Second) {
@@ -670,41 +682,71 @@ func (h *SessionsHandler) restartRecord(ctx context.Context, p *restartPlan) {
 	}
 }
 
-// Resume restarts with --resume to continue a historical session.
+// Resume restarts with --resume to continue a historical session: worked out first (resumeResolve, resumeCommand),
+// so a resume that can't be done fails with the old agent still running; then Restart's own steps for the terminal,
+// the board subscription and the start command (#4809: the #4767 fix had to be made in both copies); then the store.
 // POST /api/sessions/live/{name}/resume
 func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
 	name := chi.URLParam(r, "name")
-	var body struct {
-		SessionID        string `json:"session_id"`
-		AgentType        string `json:"agent_type"`
-		CurrentSessionID string `json:"current_session_id"`
-	}
+	var body resumeRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.SessionID == "" {
 		errBadRequest(w, "session_id is required")
 		return
 	}
+	ctx := r.Context()
+	p, fail := h.resumeResolve(ctx, name, &body)
+	if fail != nil {
+		fail(w)
+		return
+	}
+	slog.Info("resuming agent", "agent_name", name, "session_id", body.SessionID, "agent_type", p.agentType)
+	agentImpl := agent.GetAgent(p.agentType)
+	agent.TryPrepareResume(agentImpl, body.SessionID, p.workdir)
+	cmd, fail := h.resumeCommand(ctx, p, agentImpl, body.SessionID)
+	if fail != nil {
+		fail(w)
+		return
+	}
+	target, fail := h.restartTerminal(ctx, p)
+	if fail != nil {
+		fail(w)
+		return
+	}
+	if fail := h.restartLaunch(ctx, p, target, cmd); fail != nil {
+		fail(w)
+		return
+	}
+	h.resumeRecord(ctx, p, body.SessionID)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "session_id": p.newSessionID, "session_name": p.newSessionName,
+	})
+}
 
+// resumeRequest is a Resume request: the conversation to resume, and the live session it replaces.
+type resumeRequest struct {
+	SessionID        string `json:"session_id"`
+	AgentType        string `json:"agent_type"`
+	CurrentSessionID string `json:"current_session_id"`
+}
+
+// resumeResolve works out the resume as a restart plan: the type (never a terminal, and one that can resume), the
+// live session it replaces (refused when unknown, no longer live or archived), its terminal or, when that is gone,
+// its working directory (never another agent's pane, #3213), its stored settings and its board subscription.
+func (h *SessionsHandler) resumeResolve(ctx context.Context, name string, body *resumeRequest) (*restartPlan, answer) {
 	agentType := body.AgentType
 	if agentType == "" {
 		agentType = at.Claude
 	}
 	if agentType == at.Terminal { // a plain shell has no conversation to resume (and no agent CLI to type)
-		errBadRequest(w, "Resume not supported for terminal")
-		return
+		return nil, func(w http.ResponseWriter) { errBadRequest(w, "Resume not supported for terminal") }
 	}
 	if !agent.IsResumeID(agentType, body.SessionID) {
-		errBadRequest(w, "session_id is not a valid resume id") // #3582: it goes into file paths
-		return
+		return nil, func(w http.ResponseWriter) { errBadRequest(w, "session_id is not a valid resume id") } // #3582: it goes into file paths
 	}
-	agentImpl := agent.GetAgent(agentType)
-	if !agentImpl.SupportsResume() {
-		errBadRequest(w, fmt.Sprintf("Resume not supported for %s", agentType))
-		return
+	if !agent.GetAgent(agentType).SupportsResume() {
+		return nil, func(w http.ResponseWriter) { errBadRequest(w, fmt.Sprintf("Resume not supported for %s", agentType)) }
 	}
-
-	ctx := r.Context()
-
 	targetSID := body.CurrentSessionID
 	if targetSID == "" {
 		if _, sid := logparse.ParseSessionName(name); sid != "" {
@@ -713,220 +755,130 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 			targetSID = name
 		}
 	}
-
 	if namesNoSession(name, targetSID) {
-		writeSessionIDRequired(w)
-		return
+		return nil, writeSessionIDRequired
 	}
-
 	ls, err := h.ss.GetLiveSession(ctx, targetSID)
-	if err != nil {
+	switch {
+	case err != nil:
 		slog.Warn("failed to validate live session metadata", "session_id", targetSID, "error", err)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": "Agent metadata is temporarily unavailable; try again.",
-			"code":  "agent_metadata_unavailable",
-		})
-		return
+		return nil, func(w http.ResponseWriter) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent metadata is temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
+		}
+	case ls == nil:
+		return nil, func(w http.ResponseWriter) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "live session not found", "code": "session_not_found"})
+		}
+	case ls.Status != "active" || ls.StoppedAt != nil:
+		return nil, func(w http.ResponseWriter) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "session is not live", "code": "session_not_live"})
+		}
+	case ls.IsArchived == 1:
+		return nil, func(w http.ResponseWriter) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "session is archived", "code": "session_archived"})
+		}
 	}
-	if ls == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{
-			"error": "live session not found",
-			"code":  "session_not_found",
-		})
-		return
-	}
-	if ls.Status != "active" || ls.StoppedAt != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "session is not live",
-			"code":  "session_not_live",
-		})
-		return
-	}
-	if ls.IsArchived == 1 {
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "session is archived",
-			"code":  "session_archived",
-		})
-		return
-	}
-
 	body.CurrentSessionID = targetSID
 
-	// The agent's own terminal, or (#3213) when it is gone a fresh one in the agent's
-	// working directory: never another agent's pane.
-	var workdir string
+	p := &restartPlan{req: restartRequest{SessionID: targetSID, AgentType: agentType}, agentType: agentType, stored: ls, resuming: true}
 	pane, _ := h.terminal.FindSession(ctx, name, agentType, targetSID)
-	if pane == nil {
-		if ls.WorkingDir != "" {
-			workdir = ls.WorkingDir
-		} else {
-			writeTerminalError(w, ptymanager.ErrTerminalGone)
-			return
+	switch {
+	case pane != nil:
+		p.pane, p.workdir = pane, pane.CurrentPath
+	case ls.WorkingDir != "":
+		p.fresh, p.workdir = ls, ls.WorkingDir
+	default:
+		return nil, func(w http.ResponseWriter) { writeTerminalError(w, ptymanager.ErrTerminalGone) }
+	}
+	p.usePTY = h.restartsOnPTY(ls)
+	p.newSessionID = generateUUID()
+	p.newSessionName = naming.SessionName(agentType, p.newSessionID)
+	p.newLogPath = naming.LogFile(h.cfg.LogDir, agentType, p.newSessionID)
+	p.prompt, p.board, p.boardServer = ptr.Value(ls.Prompt), ptr.Value(ls.BoardName), ptr.Value(ls.BoardServer)
+	p.displayName, p.boardType, p.tools = ptr.Value(ls.DisplayName), ptr.Value(ls.BoardType), store.UnmarshalFlags(ls.Tools)
+	// The agent's board subscription (job title, receive mode, peek), carried to the new session as restart does
+	// (#3216); a resume that can't read it goes on without (it then joins its board after the launch).
+	if h.bs != nil {
+		storedAgentType := agentType
+		if ls.AgentType != "" {
+			storedAgentType = ls.AgentType
 		}
-	} else {
-		workdir = pane.CurrentPath
+		p.subscription, _ = h.bs.GetSubscriptionBySessionName(ctx, naming.SessionName(storedAgentType, targetSID))
 	}
+	return p, nil
+}
 
-	slog.Info("resuming agent", "agent_name", name, "session_id", body.SessionID, "agent_type", agentType)
-
-	// Prepare resume files
-	agent.TryPrepareResume(agentImpl, body.SessionID, workdir)
-
-	newSessionID := generateUUID()
-	newSessionName := naming.SessionName(agentType, newSessionID)
-	newLogPath := naming.LogFile(h.cfg.LogDir, agentType, newSessionID)
-
-	// Load stored fields from current session
-	storedPrompt := ptr.Value(ls.Prompt)
-	storedSleeping := ls.IsSleeping == 1
-	storedAgentType := agentType
-	if ls.AgentType != "" {
-		storedAgentType = ls.AgentType
-	}
-	storedBoard := ptr.Value(ls.BoardName)
-	storedBoardServer := ptr.Value(ls.BoardServer)
-	storedDisplayName := ptr.Value(ls.DisplayName)
-	storedBoardType := ptr.Value(ls.BoardType)
-	storedTools := store.UnmarshalFlags(ls.Tools)
-
-	role := naming.SubscriberID(storedDisplayName, agentType)
-
+// resumeCommand builds the resume's start command, before the terminal is touched: when it can't be built
+// (#3601 W12), the resume fails with the old agent still running.
+func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, agentImpl agent.Agent, resumeID string) (string, answer) {
 	userSettings, serr := h.launchSettings(ctx)
 	if serr != nil { // never resume the agent on the CLI found on PATH (#4350)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
-		return
+		return "", func(w http.ResponseWriter) {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
+		}
 	}
-
-	// The launch command is built before the terminal is touched: when it can't be built
-	// (#3601 W12), the resume fails with the old agent still running.
 	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
-		SessionID:       newSessionID,
-		SessionName:     newSessionName,
+		SessionID:       p.newSessionID,
+		SessionName:     p.newSessionName,
 		ProtocolPath:    h.protocolPath(),
-		ResumeSessionID: body.SessionID,
-		WorkingDir:      workdir,
-		CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI Paths (#3205)
-		BoardName:       storedBoard,
-		BoardLabel:      h.boardLabel(storedBoard),
-		Role:            role,
-		Prompt:          storedPrompt,
+		ResumeSessionID: resumeID,
+		WorkingDir:      p.workdir,
+		CLIPath:         agent.ResolveCLIPath(userSettings, p.agentType), // Settings > CLI Paths (#3205)
+		BoardName:       p.board,
+		BoardLabel:      h.boardLabel(p.board),
+		Role:            naming.SubscriberID(p.displayName, p.agentType),
+		Prompt:          p.prompt,
 		PromptOverrides: promptOverrides(userSettings),
-		BoardType:       storedBoardType,
-		Tools:           storedTools,
+		BoardType:       p.boardType,
+		Tools:           p.tools,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
 	})
 	if err != nil {
-		errInternalServer(w, err.Error())
-		return
+		return "", func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
 	}
+	return cmd, nil
+}
 
-	target := fmt.Sprintf("%s:0.0", newSessionName)
-	switch {
-	case h.restartsOnPTY(ls):
-		// On pty, as Restart (#4767): a new pty terminal under the new name, then a live one ended (pty has no rename,
-		// and no pty session is named "<name>:0.0" or "<name>.0"); the start command goes to the session by name.
-		if err := h.backend.Spawn(newSessionName, agentType, workdir, newSessionID, "", 200, 50); err != nil {
-			errInternalServer(w, fmt.Sprintf("pty spawn failed: %v", err))
-			return
-		}
-		if pane != nil { // ended once its replacement runs: a spawn that fails leaves the agent running
-			if err := h.backend.Kill(pane.SessionName); err != nil && !errors.Is(err, ptymanager.ErrTerminalGone) {
-				h.backend.Kill(newSessionName)
-				errInternalServer(w, fmt.Sprintf("pty resume failed: %v", err))
-				return
-			}
-		}
-		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
-			log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", newSessionName)
-		}
-		target = newSessionName
-	case pane == nil:
-		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
-		if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-		target = newSessionName + ".0"
-		h.terminal.StartLogging(ctx, newSessionName, newLogPath)
-	default:
-		h.terminal.StopLogging(ctx, pane.Target)
-		h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath)
-		h.terminal.RenameSession(ctx, pane.SessionName, newSessionName)
-		time.Sleep(500 * time.Millisecond)
-		h.terminal.ClearHistory(ctx, target)
-		ptymanager.ResetAgentLog(newLogPath) // 0600, never through a link (#3601, W17)
-		h.terminal.StartLogging(ctx, target, newLogPath)
-	}
-	// The agent's board subscription (job title, receive mode, peek), carried to the new session
-	// as restart does (#3216), before the process starts (see Restart: its first request carries
-	// the new token and needs the new name on the board).
-	var resumeSubscription *board.Subscriber
-	if h.bs != nil && body.CurrentSessionID != "" {
-		resumeSubscription, _ = h.bs.GetSubscriptionBySessionName(ctx, naming.SessionName(storedAgentType, body.CurrentSessionID))
-	}
-	if sub := resumeSubscription; sub != nil {
-		// As Restart does: an agent resumed without its board is worse than a resume that failed.
-		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
-			sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
-	}
-	if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
-		h.putSubscriptionBack(ctx, resumeSubscription)
-		errInternalServer(w, err.Error())
-		return
-	}
-
-	// Capture shell PID
+// resumeRecord replaces the old session with the resumed one in the store: its working directory, the conversation
+// it resumes, its prompt and board; its name and tags carried forward, as a restart's (#3216); awake (#3273).
+func (h *SessionsHandler) resumeRecord(ctx context.Context, p *restartPlan, resumeID string) {
 	var resumePID int
 	if tmuxTerm, ok := h.terminal.(*ptymanager.TmuxSessionTerminal); ok {
-		if pid, err := tmuxTerm.Client().GetPanePID(ctx, newSessionName); err == nil {
+		if pid, err := tmuxTerm.Client().GetPanePID(ctx, p.newSessionName); err == nil {
 			resumePID = pid
 		}
 	}
-
-	h.chatMeta.forget(body.CurrentSessionID, newSessionID)
-	h.ss.ReplaceLiveSession(ctx, body.CurrentSessionID, &store.LiveSession{
-		SessionID:    newSessionID,
-		AgentType:    agentType,
-		AgentName:    filepath.Base(strings.TrimRight(workdir, "/")),
-		WorkingDir:   workdir,
-		ResumeFromID: ptr.NonEmpty(body.SessionID),
-		Prompt:       ptr.NonEmpty(storedPrompt),
-		BoardName:    ptr.NonEmpty(storedBoard),
-		BoardServer:  ptr.NonEmpty(storedBoardServer),
-		BoardType:    ptr.NonEmpty(storedBoardType),
+	oldID := p.req.SessionID
+	h.chatMeta.forget(oldID, p.newSessionID)
+	h.ss.ReplaceLiveSession(ctx, oldID, &store.LiveSession{
+		SessionID:    p.newSessionID,
+		AgentType:    p.agentType,
+		AgentName:    p.folderName(),
+		WorkingDir:   p.workdir,
+		ResumeFromID: ptr.NonEmpty(resumeID),
+		Prompt:       ptr.NonEmpty(p.prompt),
+		BoardName:    ptr.NonEmpty(p.board),
+		BoardServer:  ptr.NonEmpty(p.boardServer),
+		BoardType:    ptr.NonEmpty(p.boardType),
 		PID:          resumePID,
 	})
-	h.noteLaunchedHooks(ctx, newSessionID, agentType) // #3665
-
-	// The agent keeps its name and tags, like a restart (#3216).
-	if body.CurrentSessionID != "" {
-		h.ss.MigrateDisplayName(ctx, body.CurrentSessionID, newSessionID)
-		h.ss.MigrateSessionTags(ctx, body.CurrentSessionID, newSessionID)
+	h.noteLaunchedHooks(ctx, p.newSessionID, p.agentType) // #3665
+	h.ss.MigrateDisplayName(ctx, oldID, p.newSessionID)
+	h.ss.MigrateSessionTags(ctx, oldID, p.newSessionID)
+	// The new row inherits the sleeping flag; the resumed agent is running now, as after a restart. Left asleep,
+	// team wake and the board notifier skipped it until the server restarted (#3273).
+	h.ss.SetSessionSleeping(ctx, p.newSessionID, false)
+	if p.stored.IsSleeping == 1 && p.board != "" && h.boardHandler != nil {
+		h.boardHandler.SetPaused(p.board, false)
 	}
-	// The new row inherits the sleeping flag; the resumed agent is running now, as
-	// after a restart. Left asleep, team wake and the board notifier skipped it
-	// until the server restarted (#3273).
-	h.ss.SetSessionSleeping(ctx, newSessionID, false)
-	if storedSleeping && storedBoard != "" && h.boardHandler != nil {
-		h.boardHandler.SetPaused(storedBoard, false)
-	}
-
-	// Re-subscribed above, before the launch (subscriber_id, the role, is stable, so the cursor
+	// Re-subscribed in restartLaunch, before the launch (subscriber_id, the role, is stable, so the cursor
 	// persists); a resume with no subscription joins its board now.
-	if resumeSubscription == nil && storedBoard != "" {
-		h.setupBoardAndPrompt(newSessionID, newSessionName, agentType, storedBoard, storedDisplayName)
+	if p.subscription == nil && p.board != "" {
+		h.setupBoardAndPrompt(p.newSessionID, p.newSessionName, p.agentType, p.board, p.displayName)
 	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok": true, "session_id": newSessionID, "session_name": newSessionName,
-	})
 }
 
 // Attach opens a native terminal attached to the tmux session.

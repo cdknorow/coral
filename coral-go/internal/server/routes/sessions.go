@@ -609,7 +609,8 @@ func (h *SessionsHandler) findLogPath(agentType, sessionID string) string {
 // Kept as a short name since it's called 220+ times across route handlers.
 var writeJSON = httputil.WriteJSON
 
-func generateUUID() string {
+// generateUUID is a new session's id (random; tests that compare two runs give both the same ids).
+var generateUUID = func() string {
 	b := make([]byte, 16)
 	crand.Read(b)
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
