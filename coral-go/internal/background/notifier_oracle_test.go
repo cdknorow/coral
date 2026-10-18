@@ -60,28 +60,38 @@ func TestRunPassAgreesWithBefore4599(t *testing.T) {
 	old := deliverNudgeFn
 	t.Cleanup(func() { deliverNudgeFn = old })
 	oracleTotals.nudges, oracleTotals.resends, oracleTotals.health, oracleTotals.mentions = 0, 0, 0, 0
-	for seed := int64(1); seed <= 150; seed++ {
+	for seed := int64(1); seed <= 300; seed++ {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) { runNotifierOracle(t, seed) })
 	}
 	t.Logf("compared: %d nudge attempts, %d resends after a failure, %d health nudges, %d mentions", oracleTotals.nudges, oracleTotals.resends, oracleTotals.health, oracleTotals.mentions)
-	require.Greater(t, oracleTotals.nudges, 200)
-	require.Greater(t, oracleTotals.resends, 5)
-	require.Greater(t, oracleTotals.health, 5)
-	require.Greater(t, oracleTotals.mentions, 20)
+	require.Greater(t, oracleTotals.nudges, 1000)
+	require.Greater(t, oracleTotals.resends, 20)
+	require.Greater(t, oracleTotals.health, 50)
+	require.Greater(t, oracleTotals.mentions, 200)
 }
 
 func runNotifierOracle(t *testing.T, seed int64) {
 	ctx := context.Background()
 	rng := rand.New(rand.NewSource(seed))
 	bs := testBoardStore(t)
-	projects := []string{"p0", "p1", "p2"}[:1+rng.Intn(3)]
+	projects := []string{"p0", "p1", "p2", "p3"}[:1+rng.Intn(4)]
 	titles := []string{"Orchestrator", "Developer", "QA", "Developer"}
 	type member struct {
 		id, title, project, sid string
 	}
 	var members []member
-	for i := 0; i < 2+rng.Intn(6); i++ {
-		m := member{id: fmt.Sprintf("A%d", i), title: titles[rng.Intn(len(titles))], project: projects[rng.Intn(len(projects))], sid: fmt.Sprintf("s%d", i)}
+	// Zero to eight subscribers per board (at least one in all, to post).
+	var seats []string
+	for _, p := range projects {
+		for k := rng.Intn(9); k > 0; k-- {
+			seats = append(seats, p)
+		}
+	}
+	if len(seats) == 0 {
+		seats = []string{projects[0]}
+	}
+	for i, project := range seats {
+		m := member{id: fmt.Sprintf("A%d", i), title: titles[rng.Intn(len(titles))], project: project, sid: fmt.Sprintf("s%d", i)}
 		var origin *string
 		if rng.Intn(7) == 0 {
 			r := "remote"
