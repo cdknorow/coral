@@ -68,7 +68,8 @@
     padding: 0 6px;
     min-width: 16px;
     border-radius: 8px;
-    background: var(--rail-badge-unread);
+    /* 11px text: the unread red alone is 3.9:1 with white in the dark theme, so it is darkened here (5.5:1 dark, higher in light). */
+    background: color-mix(in srgb, var(--rail-badge-unread) 82%, #000);
     color: var(--rail-badge-text);
     font-size: var(--fs-sm);
     font-weight: 700;
