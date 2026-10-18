@@ -148,6 +148,22 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		_, enters := term.counts()
 		assert.Equal(t, humanSendExtraEnters, enters, "Enter pressed again a bounded number of times")
 	})
+	t.Run("a command stuck in the box is not 'sent' because the agent recorded some other event, and nothing is typed after it", func(t *testing.T) {
+		h := setup(t, "codex", true)
+		term := h.term
+		term.show(codexReady(t, ""))
+		// The text lands and stays (its Enters do nothing) while the agent, busy with its own work, records a tool_use.
+		term.onType = func(text string) { term.show(codexReady(t, text)); h.event("tool_use") }
+		rec := h.send("/compact")
+		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		assert.Equal(t, "not_submitted", code(rec), "an event is not evidence for a command that is still in the box")
+		term.onType = func(text string) { h.submit() }
+		rec = h.send("hello after")
+		assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		assert.Equal(t, "box_not_empty", code(rec), "refused untyped, not typed after the stuck command")
+		typed, _ := term.counts()
+		assert.Equal(t, []string{"/compact"}, typed, "only the command was ever typed")
+	})
 	t.Run("codex: the same message sent again while it sits in the box: Enter, not a second copy", func(t *testing.T) {
 		h := setup(t, "codex", true)
 		term := h.term

@@ -239,14 +239,14 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 		if h.promptSubmittedAfter(ctx, sessionID, base) {
 			return nil
 		}
-		if command && h.eventAfter(ctx, sessionID, base, func(string) bool { return true }) {
-			return nil // the agent did something since: the command ran (a /clear's SessionStart)
-		}
 		screen, ok := h.humanScreen(ctx, name, agentType, sessionID)
 		if !ok {
 			return nil // the screen can no longer be read: as for a terminal that never could
 		}
 		if !ptymanager.TextInInputBox(screen, text) {
+			if command && h.eventAfter(ctx, sessionID, base, func(string) bool { return true }) {
+				return nil // out of the box, and the agent did something since: the command ran (a /clear's SessionStart)
+			}
 			if seen {
 				return nil // it was in the box and has left it: submitted (or queued behind the agent's work)
 			}
