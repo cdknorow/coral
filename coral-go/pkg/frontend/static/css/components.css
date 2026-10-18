@@ -4114,7 +4114,32 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 
 /* Saved for later (#4510): the right sidebar's Saved tab, its list, the top bar's button with its count, and the jump. Theme tokens only. */
 .saved-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.saved-pane { min-width: 0; container-type: inline-size; }
+.saved-pane { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; container-type: inline-size; }
+/* The dashboard's own Inbox (#4811), on every Coral but the hub's frame: Needs you, then Saved for later (the one Saved list, moved in by saved.js). The page scrolls as one. */
+.inbox-local { box-sizing: border-box; width: 100%; max-width: 880px; margin: 0 auto; align-self: flex-start; padding: var(--space-lg, 16px); display: flex; flex-direction: column; gap: var(--space-xl, 24px); }
+.inbox-local[hidden] { display: none; }
+.inbox-section-title { margin: 0 0 8px; font-size: 1.125rem; font-weight: 600; color: var(--text-primary); }
+.inbox-section-title .n { color: var(--text-muted); font-weight: 500; margin-left: 4px; }
+.inbox-needs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.inbox-needs-item { width: 100%; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; text-align: left; font: inherit; font-size: 0.875rem; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: 10px; padding: 10px 12px; min-height: 44px; cursor: pointer; }
+.inbox-needs-item:hover { background: var(--bg-tertiary); }
+.inbox-needs-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.inbox-needs-name { font-weight: 700; overflow-wrap: anywhere; }
+.inbox-needs-why { color: var(--warning); font-size: 0.8125rem; }
+.inbox-needs-team { color: var(--text-muted); font-size: 0.8125rem; margin-left: auto; }
+.inbox-needs-empty { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
+.inbox-needs-empty[hidden] { display: none; }
+/* Saved inside the Inbox flows with the page: no scroll of its own, no sidebar X, a title like Needs you's. */
+.saved-view > .saved-pane { display: block; }
+.saved-view .saved-panel { overflow: visible; }
+.saved-view .saved-close { display: none; } /* the page is left by another tab (or Escape): no sidebar to shut */
+.saved-view .saved-scope { font-size: 1.125rem; padding-left: 0; padding-right: 0; }
+.saved-view .saved-tabs { padding-left: 0; padding-right: 0; }
+.saved-view .saved-list { padding-left: 0; padding-right: 0; }
+/* The right sidebar has a Saved tab only where the list is of an agent or a team: never an everything list there (#4811). A page with no other tab loses the sidebar. */
+body[data-saved-scope="all"] #agentic-state #agentic-tab-saved { display: none !important; } /* an id more than the page kinds' own tab rules above */
+body[data-saved-scope="all"] #agentic-state[data-page="other"], body[data-saved-scope="all"] #agentic-state[data-page="chats"] { display: none !important; }
+body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[data-saved-scope="all"][data-dock-page="chats"] #panel-toggle-btn { display: none !important; }
 /* Which scope the list shows (#4792): "Saved: QA Engineer", "Saved: coral-go-team" or "Saved: all". */
 .saved-scope { margin: 0; padding: 10px 12px 2px; font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saved-tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--border); flex: none; align-items: center; }

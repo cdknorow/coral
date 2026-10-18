@@ -6,7 +6,7 @@ import { importOnce } from './import_once.js';
 import { showToast, escapeAttr } from './utils.js';
 import { isCloud, sessionServer, normServer, splitKey, serverFetch, LOCAL_SERVER } from './server_base.js';
 import { onBuilt } from './lazy_dom.js';
-import { dockKind, boardOfPage } from './dock_page.js';
+import { dockKind, boardOfPage, onDockPage } from './dock_page.js';
 import { scopeOf, withScope, ALL } from './saved_scope.js';
 
 // The bookmark is an inline SVG (the shape the Team Artifacts' Keep button uses), filled when saved: the Material Icons subset has no bookmark.
@@ -110,7 +110,12 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 
 // The sidebar showing the Saved tab (#4742): open (a phone: the overlay) with the Saved tab the active one. The top bar's Saved button is pressed then,
 // and clicking it again, Escape in the sidebar, or the X in its header close it.
+/** Is the dashboard's own Inbox (the nav tab, with Saved for later in it) on screen? Where the hub serves the dashboard the Inbox is the hub's frame, with no Saved. */
+export const savedViewShowing = () => !isCloud() && !!document.getElementById('nav-tab-hub-inbox')?.classList.contains('active');
+/** Is Saved on screen, as the right sidebar's tab or as the full-screen page? (the top bar button's pressed state) */
 export function savedShowing() {
+    if (savedViewShowing()) return true;
+    if (currentScope().kind === 'all') return false; // the sidebar has no Saved tab for everything, hidden or not (#4811)
     const dock = document.getElementById('agentic-state');
     if (!dock) return false;
     const open = window.innerWidth <= 767 ? dock.classList.contains('mobile-panel-overlay') : !dock.classList.contains('collapsed');
@@ -127,7 +132,7 @@ document.addEventListener('coral:dock-changed', syncSavedButton);
 function watchDock() {
     syncSavedButton();
     const opts = { attributes: true, attributeFilter: ['class'] };
-    for (const id of ['agentic-state', 'agentic-tab-saved']) { const el = document.getElementById(id); if (el) new MutationObserver(syncSavedButton).observe(el, opts); }
+    for (const id of ['agentic-state', 'agentic-tab-saved', 'nav-tab-hub-inbox']) { const el = document.getElementById(id); if (el) new MutationObserver(syncSavedButton).observe(el, opts); }
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchDock); else watchDock();
 window.addEventListener('resize', syncSavedButton); // a phone's overlay and a desktop's collapsed dock are the same sidebar at another width
@@ -136,7 +141,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || e.defaultPrevented || !savedShowing()) return;
     const t = e.target instanceof Element ? e.target : document.body;
     if (t.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], .modal')) return;
-    if (!(t === document.body || t.closest('#agentic-state') || t.id === 'saved-btn')) return;
+    if (!(t === document.body || t.closest('#agentic-state, #inbox-view') || t.id === 'saved-btn')) return;
     e.preventDefault();
     importOnce('./saved.js').then(m => m.closeSaved()).catch(() => {});
 });
@@ -168,21 +173,25 @@ export function currentScope() {
     return scopeOf({ dock, team: key(state.selectedTeam), boardPage: key(boardOfPage()), session }) || ALL;
 }
 let countScopeKey = ''; // the scope the count on screen is of
+const openOf = (servers, scope) => Promise.all(servers.map(id => serverFetch(id, '/api/saved' + withScope('?limit=0', scope)).then(r => (r.ok ? r.json() : null)).then(d => (d && d.open) || 0).catch(() => 0))).then(c => c.reduce((a, b) => a + b, 0));
+/** The scope's kind on the body: the right sidebar has a Saved tab only for an agent's or a team's page (the CSS follows it), the Inbox's Saved list is everything's. */
+function syncScopeAttr() { const k = currentScope().kind; if (document.body.getAttribute('data-saved-scope') !== k) document.body.setAttribute('data-saved-scope', k); }
 function refreshSavedCount() {
     clearTimeout(countTimer);
-    countTimer = setTimeout(() => {
+    countTimer = setTimeout(async () => {
         if (isCloud()) return;
-        // This server's open items and every online registered server's, in hub mode (a server that does not answer counts none).
-        // A page of an agent or a team counts that scope's open items, on the server it belongs to (#4792).
+        // This server's open items and every online registered server's, in hub mode (a server that does not answer counts none); a page of an agent or a team counts that scope's open items,
+        // on the server it belongs to (#4792).
         const scope = currentScope();
         countScopeKey = scope.key;
         const servers = scope.kind !== 'all' ? [scope.server] : [LOCAL_SERVER, ...(state.hub ? (state.servers || []).filter(s => s && s.id && s.id !== LOCAL_SERVER && s.status === 'online').map(s => s.id) : [])];
-        Promise.all(servers.map(id => serverFetch(id, '/api/saved' + withScope('?limit=0', scope)).then(r => (r.ok ? r.json() : null)).then(d => (d && d.open) || 0).catch(() => 0)))
-            .then(counts => setSavedCount(counts.reduce((a, b) => a + b, 0)));
+        setSavedCount(await openOf(servers, scope));
     }, 50);
 }
 document.addEventListener('coral:saved-changed', refreshSavedCount);
-document.addEventListener('coral:route-changed', () => { if (currentScope().key !== countScopeKey) refreshSavedCount(); }); // another agent or team on screen: its own count
+document.addEventListener('coral:route-changed', () => { syncScopeAttr(); if (currentScope().key !== countScopeKey) refreshSavedCount(); }); // another agent or team on screen: its own count
+onDockPage(syncScopeAttr); // another kind of page: the sidebar's Saved tab and the sidebar itself follow the scope
+syncScopeAttr();
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', refreshSavedCount); else refreshSavedCount();
 
 function postBody(c, key, btn) {

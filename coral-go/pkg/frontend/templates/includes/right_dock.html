@@ -131,7 +131,9 @@
                         <ul id="mb-subscribers-list" class="mb-subscribers-list"></ul>
                     </div>
                 </div>
-                <div id="agentic-panel-saved" class="agentic-panel saved-pane" data-local-only>
+                <div id="agentic-panel-saved" class="agentic-panel" data-local-only>
+                  <!-- The one Saved list (#4811): saved.js keeps it here for an agent's or a team's page, and moves it into #saved-view for the full-screen Saved page. -->
+                  <div id="saved-ui" class="saved-pane">
                     <h2 class="saved-scope" id="saved-scope">Saved: all</h2>
                     <div class="saved-tabs" role="tablist" aria-label="Saved messages">
                         <button type="button" class="saved-tab" role="tab" id="saved-tab-open" aria-selected="true" aria-controls="saved-panel">Open <span class="n" id="saved-count-open"></span></button>
@@ -143,6 +145,7 @@
                         <ul id="saved-list" class="saved-list"></ul>
                     </div>
                     <div id="saved-status" class="saved-status" role="status" aria-live="polite"></div>
+                  </div>
                 </div>
                 <div id="custom-view-panels"></div>
             </div>

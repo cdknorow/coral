@@ -83,10 +83,11 @@ const REMOTE = `(() => {
     };
     const items = () => ev(`[...document.querySelectorAll('#saved-list .saved-item')].map(li => ({ id: li.dataset.id, src: li.querySelector('.src').textContent, server: (li.querySelector('.server') || {}).textContent || null, kind: li.querySelector('.kind').textContent, hasOpen: !!li.querySelector('.saved-open') }))`);
     const openSaved = async () => {
-        await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`);
-        await waitFor(`document.getElementById('agentic-panel-saved').classList.contains('active') && document.querySelectorAll('#saved-list .saved-item, #saved-list .saved-note, #saved-list .saved-empty').length > 0`, 'the Saved list', 8000);
+        if (await ev(`document.getElementById('nav-tab-hub-inbox').classList.contains('active')`)) { await ev(`window.switchNavTab('agents'); true`); await waitFor(`document.querySelector('.top-nav-tab.active').dataset.arg === 'agents'`, 'the page left', 4000); }
+        await ev(`(() => { const b = document.getElementById('saved-btn'); if (b.getAttribute('aria-pressed') === 'true') b.click(); b.click(); })(); true`); // the page is left first when it is the one showing (the bookmark would close it)
+        await waitFor(`document.getElementById('saved-ui').getClientRects().length > 0 && document.querySelectorAll('#saved-list .saved-item, #saved-list .saved-note, #saved-list .saved-empty').length > 0`, 'the Saved list', 8000, `({ nav: document.querySelector('.top-nav-tab.active') && document.querySelector('.top-nav-tab.active').dataset.arg, uiIn: document.getElementById('saved-ui').parentElement.id, view: getComputedStyle(document.getElementById('saved-view')).display, rects: document.getElementById('saved-ui').getClientRects().length, items: document.querySelectorAll('#saved-list > li').length, scope: document.body.getAttribute('data-saved-scope'), heading: document.getElementById('saved-scope').textContent })`);
     };
-    const refresh = async () => { await ev(`import((window.__coralStatic || '/static/') + 'saved.js').then(m => m.showSaved()).then(() => true)`); await sleep(300); }; // sleep-ok: item checks draw their chips as each answer arrives
+    const refresh = async () => { await ev(`import((window.__coralStatic || '/static/') + 'saved.js').then(m => (document.getElementById('saved-view').contains(document.getElementById('saved-ui')) ? m.showSavedView() : m.showSaved())).then(() => true)`); await sleep(300); }; // sleep-ok: item checks draw their chips as each answer arrives (the refresh reads the page on home, the sidebar's tab for an agent)
 
     try {
         await Page.enable();

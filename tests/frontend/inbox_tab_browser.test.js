@@ -1,5 +1,5 @@
 // The Inbox tab (#4718): a hub-only main tab that shows the hub's /inbox page in a frame, with the number of agents waiting for input as its badge.
-//   - A local Coral never shows it (not in the row, not in the phone's list, no frame address); where the hub serves the dashboard it sits right
+//   - A local Coral shows its own Inbox in the same tab (#4811: Needs you and Saved for later, no frame, inbox_local_browser); where the hub serves the dashboard it is this page's frame, right
 //     after Servers and before Docs.
 //   - The badge is the number of agents the feed says wait for input (99+ past 99), nothing when none do, and it follows the next feed message; the
 //     tab's name says the number.
@@ -150,14 +150,16 @@ async function run() {
         await feed({ total: 4, waiting: 0 });
         await ev(`document.getElementById('nav-select').click(); true`);
         check('with none waiting the entry has no number and the plain name', await waitFor(`!!document.querySelector('#nav-more-menu [data-arg="hub-inbox"]') && !document.querySelector('#nav-more-menu [data-arg="hub-inbox"] .nav-tab-badge') && document.querySelector('#nav-more-menu [data-arg="hub-inbox"]').getAttribute('aria-label') === null`, 'the plain entry', { soft: true, timeout: 4000 }));
-        console.log('8. A local Coral never shows the Inbox tab (last: the page is cached by then, so the boot flag is rewritten for it only)');
+        console.log('8. A local Coral shows its own Inbox (#4811), never the hub frame (last: the page is cached by then, so the boot flag is rewritten for it only)');
         cloud = false;
         await open(1280, 756);
-        check('the tab is hidden', (await visible('nav-tab-hub-inbox')) === false);
-        check('and is not in the list of views', !(await ev(`[...document.querySelectorAll('.top-nav-tabs > .top-nav-tab[data-arg]')].some(el => el.dataset.arg === 'hub-inbox' && !el.hidden)`)));
+        check('the tab is shown', (await visible('nav-tab-hub-inbox')) === true);
+        check('and is in the list of views, right after Agents', (await ev(`[...document.querySelectorAll('.top-nav-tabs > .top-nav-tab[data-arg]')].filter(el => !el.hidden && el.style.display !== 'none').map(el => el.dataset.arg).slice(0, 2).join()`)) === 'agents,hub-inbox');
         check('there is no frame on a local Coral', (await ev(`document.getElementById('inbox-frame')`)) === null && (await ev(`document.querySelectorAll('iframe').length`)) === 0);
+        await ev(`document.getElementById('nav-tab-hub-inbox').click(); true`);
+        check('opening it shows the dashboard\'s own Inbox (Needs you, Saved for later), still no frame', await waitFor(`document.getElementById('inbox-local') && !document.getElementById('inbox-local').hidden && !!document.getElementById('saved-view') && document.getElementById('saved-view').contains(document.getElementById('saved-ui'))`, 'the local Inbox', { soft: true, timeout: 6000 }) && (await ev(`document.querySelectorAll('iframe').length`)) === 0);
         await feed({ total: 3, waiting: 2 });
-        check('a feed with agents waiting does not show a badge there', (await badge()).hidden === true);
+        check('a feed with agents waiting shows the badge there (2), as on the hub', await waitFor(`document.getElementById('nav-tab-hub-inbox-badge').textContent === '2' && !document.getElementById('nav-tab-hub-inbox-badge').hidden`, 'the badge', { soft: true, timeout: 6000 }));
         check('and the hub page was not asked for by the local page', inboxHits === 2, String(inboxHits));
 
     } finally { await client.close(); }

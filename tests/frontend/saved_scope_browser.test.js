@@ -19,7 +19,7 @@ const hex = i => i.toString(16).padStart(20, '0');
     const api = (method, path, body) => ev(`fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, headers: { 'Content-Type': 'application/json' }, body: ${body ? JSON.stringify(JSON.stringify(body)) : 'undefined'} }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }))`);
     const settle = (cond, label) => waitFor(cond, label, 8000);
     // the sidebar slides open: a picture is taken once it has its width, with the Saved tab showing
-    const shotSaved = async name => { await settle(`document.getElementById('agentic-state').getBoundingClientRect().width >= Math.min(300, innerWidth - 40) && !!document.querySelector('#agentic-panel-saved') && (() => { const h = document.getElementById('saved-scope').getBoundingClientRect(), li = document.querySelector('#saved-list > li'); return h.width > 0 && h.top >= 0 && h.top < innerHeight / 2 && !!li && li.getBoundingClientRect().top < innerHeight; })()`, 'the Saved sidebar open and in view'); await waitFor(`true`, 'a frame', 2000); await shot(name); };
+    const shotSaved = async name => { await settle(`(() => { const ui = document.getElementById('saved-ui'); if (!ui || !ui.getClientRects().length) return false; const dock = document.getElementById('agentic-state'); if (dock && dock.contains(ui) && dock.getBoundingClientRect().width < Math.min(300, innerWidth - 40)) return false; const h = document.getElementById('saved-scope').getBoundingClientRect(), li = document.querySelector('#saved-list > li'); return h.width > 0 && h.top >= 0 && h.top < innerHeight / 2 && !!li && li.getBoundingClientRect().top < innerHeight; })()`, 'the Saved list on screen (the page on home, the sidebar for an agent or a team)'); await waitFor(`true`, 'a frame', 2000); await shot(name); };
     // what is on top at the middle of the heading is the Saved panel's own (a team's chat once covered the side panel on a phone)
     const onTop = () => ev(`(() => { const h = document.getElementById('saved-scope').getBoundingClientRect(); const e = document.elementFromPoint(h.left + Math.min(h.width, 40) / 2, h.top + h.height / 2); return !!e && !!e.closest('#agentic-panel-saved'); })()`);
     const snap = () => ev(`(() => ({
@@ -47,15 +47,17 @@ const hex = i => i.toString(16).padStart(20, '0');
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
         for (const it of (await api('GET', '/api/saved')).body.items) await api('DELETE', `/api/saved/${it.id}`);
+        // A board bookmark's author is what the board says wrote the message (#4816), so these are real board messages, written by those names.
+        const boardMsg = async (team, from, content) => { const r = await api('POST', `/api/board/${team}/messages`, { subscriber_id: from, content }); assert.ok(r.status < 300, JSON.stringify(r)); return String(r.body.id); };
         const add = async body => { const r = await api('POST', '/api/saved', { agent_type: 'claude', said_at: '2026-10-17T08:00:00Z', ...body }); assert.equal(r.status, 200, JSON.stringify(r)); return r.body; };
         // agents: qa-a (QA Engineer on team-a), fe-a (Frontend Dev on team-a), qa-b (QA Engineer on team-b)
         const done = await add({ kind: 'agent', ref: 'qa-a-id', key: hex(2), title: 'QA Alpha', snippet: 'qa-a chat, done', team: 'team-a' });
         await add({ kind: 'agent', ref: 'qa-a-id', key: hex(1), title: 'QA Alpha', snippet: 'qa-a chat', team: 'team-a' });
         await add({ kind: 'agent', ref: 'fe-a-id', key: hex(3), title: 'FE Alpha', snippet: 'fe-a chat', team: 'team-a' });
         await add({ kind: 'agent', ref: 'qa-b-id', key: hex(4), title: 'QA Beta', snippet: 'qa-b chat', team: 'team-b' });
-        await add({ kind: 'board', ref: 'team-a', key: '11', title: 'team-a', snippet: 'team-a board, by the QA Engineer', author: 'QA Engineer' });
-        await add({ kind: 'board', ref: 'team-a', key: '12', title: 'team-a', snippet: 'team-a board, by the Orchestrator', author: 'Orchestrator' });
-        await add({ kind: 'board', ref: 'team-b', key: '13', title: 'team-b', snippet: 'team-b board, by the QA Engineer', author: 'QA Engineer' });
+        await add({ kind: 'board', ref: 'team-a', key: await boardMsg('team-a', 'QA Engineer', 'by the QA Engineer'), title: 'team-a', snippet: 'team-a board, by the QA Engineer', author: 'QA Engineer' });
+        await add({ kind: 'board', ref: 'team-a', key: await boardMsg('team-a', 'Orchestrator', 'by the Orchestrator'), title: 'team-a', snippet: 'team-a board, by the Orchestrator', author: 'Orchestrator' });
+        await add({ kind: 'board', ref: 'team-b', key: await boardMsg('team-b', 'QA Engineer', 'by the QA Engineer, team-b'), title: 'team-b', snippet: 'team-b board, by the QA Engineer', author: 'QA Engineer' });
         assert.equal((await api('PATCH', `/api/saved/${done.id}`, { done: true })).status, 200);
 
         const open = async (w, mobile) => {

@@ -24,7 +24,7 @@ const BASE = require('./test_base').BASE;
         await Page.loadEventFired();
         await install();
         await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('nv-a', 'A', 3, { sleeping: false }); true`);
-        if (extraTabs) await ev(`document.getElementById('nav-tab-servers').hidden = false; const b = document.getElementById('nav-tab-board'); b.style.display = ''; true`);
+        if (extraTabs) await ev(`document.getElementById('nav-tab-servers').hidden = false; if (${extraTabs !== 'servers'}) { const b = document.getElementById('nav-tab-board'); b.style.display = ''; } true`); // 'servers': a hub, on no board page
         // Large text (a browser zoom or a bigger font setting) is what makes eight tabs too wide for 768 px.
         if (bigText) await ev(`const st = document.createElement('style'); st.textContent = '.top-nav-tab { font-size: 19px !important; }'; document.head.appendChild(st); window.dispatchEvent(new Event('resize')); true`);
         await waitFor(`!!document.querySelector('.top-nav-tab.active')`, 'the nav', 8000);
@@ -76,7 +76,7 @@ const BASE = require('./test_base').BASE;
 
         console.log('1. 1440, 1024, 900 and 768 px: today\'s plain tabs, spaced, one row, clear of the buttons');
         for (const w of [1440, 1024, 900, 768]) {
-            await open(w, 860, { extraTabs: w === 768 });
+            await open(w, 860, { extraTabs: w === 768 ? 'servers' : false }); // eight tabs at 768: with the Inbox (#4811) on every Coral the board's ninth no longer fits beside them (section 2 covers a full row)
             await checkRow(`${w}px`);
             await checkLook(`${w}px`);
             const r = await reachable();
@@ -84,7 +84,7 @@ const BASE = require('./test_base').BASE;
             assert.equal(await ev(`getComputedStyle(document.getElementById('nav-select')).display`), 'none', `${w}px: no phone dropdown`);
             assert.equal(await ev(`!!document.getElementById('bottom-nav')`), false, `${w}px: no bottom bar exists`);
         }
-        console.log('   ✓ 24 px gaps, no wrap or touching, underline only, all tabs in the row (768 with Servers and Board too)');
+        console.log('   ✓ 24 px gaps, no wrap or touching, underline only, all tabs in the row (768 with Servers too)');
 
         console.log('2. 768 px with large text: the last tabs go under More, the active tab stays');
         await open(768, 800, { extraTabs: true, bigText: true });
@@ -121,7 +121,7 @@ const BASE = require('./test_base').BASE;
         await waitFor(`!document.getElementById('nav-more-menu').hidden`, 'the list', 3000);
         assert.equal(await ev(`document.getElementById('nav-select').getAttribute('aria-expanded')`), 'true');
         const items = await ev(`[...document.querySelectorAll('#nav-more-menu .nav-more-item')].map(n => [n.dataset.arg, Math.round(n.getBoundingClientRect().height), n.classList.contains('active'), n.getAttribute('aria-current')])`);
-        assert.deepEqual(items.map(i => i[0]), ['agents', 'history', 'workflows', 'jobs', 'tokens', 'docs'], 'every view is listed');
+        assert.deepEqual(items.map(i => i[0]), ['agents', 'hub-inbox', 'history', 'workflows', 'jobs', 'tokens', 'docs'], 'every view is listed');
         assert.ok(items.every(i => i[1] >= 44), 'every item is at least 44 px tall');
         assert.deepEqual(items.filter(i => i[2]).map(i => i[0]), ['agents'], 'the current view is marked');
         const box = await ev(`(() => { const m = document.getElementById('nav-more-menu').getBoundingClientRect(), b = document.getElementById('nav-select').getBoundingClientRect(); return { top: m.top, bottom: m.bottom, left: m.left, right: m.right, btnBottom: b.bottom, h: innerHeight }; })()`);

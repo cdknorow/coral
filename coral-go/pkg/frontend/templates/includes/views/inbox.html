@@ -1,4 +1,13 @@
 {{ define "includes/views/inbox.html" }}
-<!-- Inbox tab (#4718): the Coral Hub's /inbox page in a frame. The frame is made by inbox_tab.js the first time the tab is shown (so no page carries an empty one; the tab is hub only). -->
-<div id="inbox-view" class="inbox-view" role="region" aria-label="Inbox" style="display:none"></div>
+<!-- Inbox tab (#4718, #4811). Where the hub serves the dashboard it is the hub's /inbox page in a frame, made by inbox_tab.js the first time the tab is shown (so no page carries an empty one). On every other Coral the dashboard builds its own: Needs you (the agents waiting for input) and Saved for later (saved.js moves the one Saved list into #saved-view). -->
+<div id="inbox-view" class="inbox-view" role="region" aria-label="Inbox" style="display:none">
+    <div id="inbox-local" class="inbox-local" hidden>
+        <section id="inbox-needs" class="inbox-needs" aria-labelledby="inbox-needs-title">
+            <h2 id="inbox-needs-title" class="inbox-section-title">Needs you <span class="n" id="inbox-needs-count"></span></h2>
+            <ul id="inbox-needs-list" class="inbox-needs-list"></ul>
+            <p id="inbox-needs-empty" class="inbox-needs-empty">Nothing is waiting for you.</p>
+        </section>
+        <section id="saved-view" class="saved-view" aria-label="Saved for later"></section>
+    </div>
+</div>
 {{ end }}

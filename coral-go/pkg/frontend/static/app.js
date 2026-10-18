@@ -443,6 +443,8 @@ function switchNavTab(tab, opts = {}) {
     // Clean up any active cost dashboard timer when leaving tokens tab
     stopCostDashboard();
     if (tab !== 'servers') importOnce('./servers_tab.js').then(m => m.leaveServersTab());
+    // Leaving the Inbox: the one Saved list goes back to the right sidebar (#4811). Loaded only if the list is in the page, not on every tab switch.
+    if (tab !== 'hub-inbox' && document.getElementById('saved-view')?.contains(document.getElementById('saved-ui'))) importOnce('./saved.js').then(m => m.leaveSavedView());
     // The URL follows the tab (#3532): a tab the user chose is a history entry. Servers writes its
     // own (it can carry a server); the board tab names no board, so it keeps the URL.
     const TAB_ROUTE = { agents: 'agents', history: 'chats', workflows: 'workflows', jobs: 'jobs', tokens: 'analytics', docs: 'docs' };
@@ -491,7 +493,7 @@ function switchNavTab(tab, opts = {}) {
         if (!opts.fromHistory) note(opts.focusId ? { view: 'servers', id: opts.focusId } : { view: 'servers' });
         importOnce('./servers_tab.js').then(m => m.showServersTabContent(opts.focusId));
     } else if (tab === 'hub-inbox') {
-        // The hub's /inbox page in a frame; the tab writes no address of its own (the page is the hub's, not a dashboard route).
+        // The hub's /inbox page in a frame where the hub serves the dashboard, the dashboard's own Inbox (Needs you, Saved for later) on every other Coral (#4811); the tab writes no address of its own.
         showView('inbox-view');
         importOnce('./inbox_tab.js').then(m => m.showInboxTabContent());
     } else if (tab === 'tokens') {

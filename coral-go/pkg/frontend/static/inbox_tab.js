@@ -1,10 +1,13 @@
-/* Inbox tab (#4718): the Coral Hub's /inbox page (what needs the Operator, what was saved) inside the dashboard. It exists only where the
- * hub serves the dashboard: the tab is hidden everywhere else, like the Servers tab's hub-only case. The tab carries a badge with the number
- * of agents waiting for input, counted from the list the dashboard already holds (no request of its own).
- * The frame's address is the constant below: never built from a URL, a hash or a message, and nothing is posted to or read from the frame. */
+/* Inbox tab (#4718, #4811): on every Coral. Where the hub serves the dashboard it is the Coral Hub's /inbox page (what needs the Operator, what was saved) inside the dashboard, in a
+ * frame whose address is the constant below: never built from a URL, a hash or a message, and nothing is posted to or read from the frame. On every other Coral the dashboard builds its own Inbox,
+ * in the hub's /inbox order: Needs you (the agents waiting for input, from the live list the dashboard already holds, each opening that agent) and Saved for later (saved.js moves the one
+ * Saved list in; the top bar's bookmark opens the Inbox at it where the scope is all). The tab carries a badge with the number of agents waiting for input, counted from that list (no
+ * request of its own). */
 
 import { state } from './state.js';
-import { isCloud } from './server_base.js';
+import { isCloud, sessionServer, splitKey } from './server_base.js';
+import { importOnce } from './import_once.js';
+import { resolveSessionIdentity, sessionStateInfo } from './session_state.js';
 
 const INBOX_URL = '/inbox';
 
@@ -13,19 +16,14 @@ export function waitingCount() {
     return (state.liveSessions || []).filter(s => s && s.waiting_for_input).length;
 }
 
-/** Show or hide the tab with where the hub serves the dashboard, and keep its badge in step. Safe to call often (after each list update). */
+/** Keep the tab's badge (and, where the dashboard builds its own Inbox, the Needs you list) in step with the live list. Safe to call often (after each list update). */
 export function updateInboxTab() {
     const tab = document.getElementById('nav-tab-hub-inbox');
     if (!tab) return;
-    const show = isCloud();
-    if (tab.hidden === show) {
-        tab.hidden = !show;
-        // Leaving a tab that no longer applies.
-        if (!show && tab.classList.contains('active') && window.switchNavTab) window.switchNavTab('agents');
-    }
+    if (tab.hidden) tab.hidden = false; // the Inbox is on every Coral
     const badge = document.getElementById('nav-tab-hub-inbox-badge');
     if (!badge) return;
-    const n = show ? waitingCount() : 0;
+    const n = waitingCount();
     const text = n > 99 ? '99+' : n > 0 ? String(n) : '';
     // Only what changed is written: nav_tabs.js redraws the row on any change to it, and this runs for every message of the feed (setting hidden to
     // the value it has is still a change to a MutationObserver).
@@ -33,13 +31,56 @@ export function updateInboxTab() {
     if (badge.hidden !== (n === 0)) badge.hidden = n === 0;
     const label = n > 0 ? `Inbox, ${n} waiting for input` : null;
     if (tab.getAttribute('aria-label') !== label) { if (label) tab.setAttribute('aria-label', label); else tab.removeAttribute('aria-label'); }
+    renderNeedsYou();
 }
 
-/** Called by switchNavTab('hub-inbox'): the page is loaded the first time the tab is shown, and kept after. */
+let _needsKey = null;
+/** The Needs you list of the dashboard's own Inbox: the agents waiting for input, each a button that opens that agent. Drawn only while that Inbox is on screen, and only when the list changed. */
+function renderNeedsYou(force = false) {
+    const local = document.getElementById('inbox-local');
+    const list = document.getElementById('inbox-needs-list');
+    if (!local || local.hidden || !list) return;
+    const rows = (state.liveSessions || []).filter(s => s && s.waiting_for_input);
+    const key = JSON.stringify(rows.map(s => [sessionServer(s), s.session_id, s.name, s.display_name, s.waiting_kind, s.board_project]));
+    if (!force && key === _needsKey) return;
+    _needsKey = key;
+    const count = document.getElementById('inbox-needs-count');
+    if (count) count.textContent = rows.length ? `(${rows.length})` : '';
+    const empty = document.getElementById('inbox-needs-empty');
+    if (empty) empty.hidden = rows.length > 0;
+    // Built with the DOM: no text from an agent is ever read as markup.
+    list.replaceChildren(...rows.map(s => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'inbox-needs-item';
+        b.dataset.sessionId = String(s.session_id || '');
+        const name = document.createElement('span'); name.className = 'inbox-needs-name'; name.textContent = resolveSessionIdentity(s);
+        const why = document.createElement('span'); why.className = 'inbox-needs-why'; why.textContent = sessionStateInfo(s).label;
+        b.append(name, why);
+        if (s.board_project) { const t = document.createElement('span'); t.className = 'inbox-needs-team'; t.textContent = splitKey(s.board_project).name; b.append(t); }
+        b.addEventListener('click', () => {
+            window.switchNavTab?.('agents');
+            window.selectLiveSession?.(s.name, s.agent_type, s.session_id, sessionServer(s));
+        });
+        li.append(b);
+        return li;
+    }));
+}
+
+/** Called by switchNavTab('hub-inbox'): where the hub serves the dashboard the page is loaded the first time the tab is shown, and kept after; elsewhere the dashboard's own Inbox is drawn. */
 export function showInboxTabContent() {
     const view = document.getElementById('inbox-view');
-    if (!view || document.getElementById('inbox-frame')) return;
-    // Made here, not in the page: a page that never shows the tab (a local Coral, a hub visit that stays on Agents) carries no empty frame.
+    if (!view) return;
+    if (!isCloud()) {
+        const local = document.getElementById('inbox-local');
+        if (local) local.hidden = false;
+        renderNeedsYou(true);
+        importOnce('./saved.js').then(m => m.showSavedView()).catch(() => {});
+        return;
+    }
+    if (document.getElementById('inbox-frame')) return;
+    // Made here, not in the page: a page that never shows the tab (a hub visit that stays on Agents) carries no empty frame.
     const frame = document.createElement('iframe');
     frame.id = 'inbox-frame';
     frame.className = 'inbox-frame';

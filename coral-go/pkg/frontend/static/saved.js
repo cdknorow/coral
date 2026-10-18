@@ -6,7 +6,7 @@
 import { state } from './state.js';
 import { showToast } from './utils.js';
 import { sessionServer, normServer, serverFetch, identityKey, LOCAL_SERVER } from './server_base.js';
-import { savedChanged, setSavedCount, validSavedItem, savedShowing, syncSavedButton, currentScope } from './saved_marks.js';
+import { savedChanged, setSavedCount, validSavedItem, savedShowing, savedViewShowing, syncSavedButton, currentScope } from './saved_marks.js';
 import { withScope, scopeHeading, scopeEmpty, ALL } from './saved_scope.js';
 import { effectiveLiveViewMode, setLiveViewMode, jumpToLiveMessage } from './live_chat.js';
 import { buildListBar } from './list_bar.js';
@@ -323,11 +323,52 @@ function wire() {
 let showing = null;
 export function showSaved() {
     if (showing) return showing; // the tab's switch and the top bar's button can both ask at once
+    placeUi('sidebar'); // the right sidebar's Saved tab: the one list is there (it may have been the full-screen page's)
     wire();
     checks.clear();
     status('');
     showing = refresh().finally(() => { showing = null; });
     return showing;
+}
+
+// ── Where the one list is shown (#4811) ──────────────────────────────
+// The list (#saved-ui) is a single component: it lives in the right sidebar's Saved tab (an agent's or a team's page keeps that, scoped), and is moved into the full-screen
+// Saved page (#saved-view) while that is shown, for the scope "all". It is never shown in both.
+function placeUi(where) {
+    const ui = $('saved-ui'), host = $(where === 'view' ? 'saved-view' : 'agentic-panel-saved');
+    if (ui && host && ui.parentElement !== host) host.append(ui);
+}
+
+let _prevTab = 'agents'; // the nav tab the full-screen page was opened from: Escape and the top bar's button return there
+const activeNavTab = () => document.querySelector('.top-nav-tab.active')?.dataset.arg || 'agents';
+
+/** The dashboard's own Inbox was shown (switchNavTab('hub-inbox')): the Saved list is moved into it and read. */
+let viewLoad = null;
+export function showSavedView() {
+    if (viewLoad) return viewLoad; // the nav tab's switch and the top bar's button can both ask at once
+    placeUi('view');
+    wire();
+    checks.clear();
+    status('');
+    viewLoad = refresh().finally(() => { viewLoad = null; });
+    return viewLoad;
+}
+/** Left the full-screen page: the list goes back to the right sidebar. */
+export function leaveSavedView() { placeUi('sidebar'); }
+
+/** The Inbox at its Saved part: from the top bar's button on any page where the scope is all. A press while it shows goes back to where it was opened from. */
+async function openSavedView({ toggle = false } = {}) {
+    if (savedViewShowing()) {
+        if (toggle) { closeSaved(); return; }
+        $('saved-list').querySelector('.btn')?.focus();
+        return;
+    }
+    dropJumpBar();
+    _prevTab = activeNavTab() === 'hub-inbox' ? _prevTab : activeNavTab();
+    window.switchNavTab?.('hub-inbox');
+    await showSavedView();
+    $('saved-view')?.scrollIntoView({ block: 'start' }); // the Inbox at its Saved part
+    ($('saved-list').querySelector('.btn') || $('saved-tab-open')).focus();
 }
 
 let _before = null; // {open, tab}: the dock as it was when the Saved button opened it
@@ -337,6 +378,11 @@ function dockOpen() {
 }
 /** Close the sidebar the Saved button opened: the tab the agent's dock had is shown again if it was open, the sidebar is shut if it was not. The focus goes back to the button. */
 export function closeSaved({ focus = true } = {}) {
+    if (savedViewShowing()) { // the full-screen page: back to the page it was opened from
+        window.switchNavTab?.(_prevTab && _prevTab !== 'hub-inbox' ? _prevTab : 'agents');
+        if (focus) $('saved-btn')?.focus();
+        return true;
+    }
     if (!savedShowing()) return false;
     const before = _before; _before = null;
     if (before && before.open && before.tab && before.tab !== 'saved') window.switchAgenticTab?.(before.tab, 'top');
@@ -349,6 +395,7 @@ export function closeSaved({ focus = true } = {}) {
 /** The top bar's Saved button: the right sidebar of the page on screen open on its Saved tab (or the tab focused if it already is), the focus inside it. Every page has the
  *  sidebar and the tab (#4539), so nothing has to be selected first. */
 export async function openSaved({ toggle = false } = {}) {
+    if (currentScope().kind === 'all') return openSavedView({ toggle }); // never an all-scope list in the right sidebar (#4811)
     if (toggle && savedShowing()) { closeSaved(); return; } // the top bar's button is a toggle: pressed, it closes the sidebar (#4742); the jump bar's Back to Saved and the toast's link only open
     dropJumpBar();
     // What the sidebar was before, so closing leaves an agent's own dock as it was: open on its tab, or shut.
@@ -367,6 +414,7 @@ export async function openSaved({ toggle = false } = {}) {
 // ── The jump ──────────────────────────────────────────────────────────
 
 /** A slim bar above the conversation after a jump: where you are, and a way back to the list. */
+let _jumpFrom = 'sidebar'; // where the last jump started: the full-screen page ('view') or the right sidebar's list
 function dropJumpBar() { document.getElementById('saved-jumpbar')?.remove(); }
 function showJumpBar(container) {
     dropJumpBar();
@@ -377,7 +425,7 @@ function showJumpBar(container) {
     bar.setAttribute('role', 'status');
     const t = document.createElement('span'); t.textContent = 'Jumped to a saved message.';
     const back = document.createElement('button'); back.type = 'button'; back.className = 'btn btn-small'; back.textContent = 'Back to Saved';
-    back.addEventListener('click', () => { dropJumpBar(); openSaved(); });
+    back.addEventListener('click', () => { dropJumpBar(); if (_jumpFrom === 'view') openSavedView(); else openSaved(); }); // back to the list the jump started from
     const x = document.createElement('button'); x.type = 'button'; x.className = 'btn btn-small'; x.setAttribute('aria-label', 'Dismiss'); x.textContent = '×';
     x.addEventListener('click', dropJumpBar);
     bar.append(t, back, x);
@@ -406,11 +454,14 @@ export async function openSavedLink(it) {
 }
 
 async function openItem(it, li) {
+    _jumpFrom = savedViewShowing() ? 'view' : 'sidebar';
     try {
         const found = await probe(it);
         if (found && found.state === 'gone') { checks.set(uid(it), found); swap(it); $('saved-list').querySelector(`[data-id="${uid(it)}"] .saved-remove`)?.focus(); return; }
+        const leave = tab => { if (savedViewShowing()) window.switchNavTab?.(tab); }; // from the full-screen page: the tab of where the item is, so the page is left (and the list goes back to the sidebar)
         if (it.kind === 'board') {
             closeOverlay();
+            leave('board');
             window.selectBoardProject(identityKey(it.server, it.ref), Number(it.key));
             // the board marks and focuses the message when it is drawn; the tag and the bar follow
             for (let i = 0; i < 100; i++) {
@@ -424,6 +475,7 @@ async function openItem(it, li) {
         const index = found ? found.index : 0;
         closeOverlay();
         if (live) {
+            leave('agents');
             await window.selectLiveSession(live.name, live.agent_type, live.session_id, normServer(sessionServer(live)));
             if (effectiveLiveViewMode() !== 'chat') setLiveViewMode('chat');
             if (!(await jumpToLiveMessage(it.key, index))) { showToast('That message could not be found any more', true); return; }
@@ -431,6 +483,7 @@ async function openItem(it, li) {
             if (t) tagTarget(t);
             showJumpBar($('live-history-messages'));
         } else {
+            leave('history');
             await window.selectHistorySession(it.ref, { message_index: index });
             for (let i = 0; i < 100; i++) {
                 const t = document.querySelector(`#history-messages [data-msg-key="${CSS.escape(it.key)}"]`);

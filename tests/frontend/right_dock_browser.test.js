@@ -1,5 +1,5 @@
 // The right sidebar on every page (#4539): it is part of the app layout, not of the agent page. Each kind of page picks its tabs (the agent page keeps today's set; a board has
-// Subscribers, Team artifacts, Tasks and Saved; Chats and every other page have Saved) and keeps its own open or closed state, width and last tab, so a jump from Saved to a
+// Subscribers, Team artifacts, Tasks and Saved; Chats and every other page have none: Saved for everything is its own full-screen page, #4811) and keeps its own open or closed state, width and last tab, so a jump from Saved to a
 // board message or a chat leaves each page's sidebar as the person had it. On a phone the top bar's button opens the side panel overlay on every page.
 //
 // Drives Chrome over CDP through agent_view_harness.js; run_cdp_suites.mjs finds CDP suites by that name. The bookmarks, the board and its tasks are the real isolated server's.
@@ -22,7 +22,7 @@ const BASE = require('./test_base').BASE;
     // The tabs the sidebar shows (in the order shown), which one is active, whether it is open, how wide it is, and which panel is visible.
     const dock = () => ev(`(() => { const d = document.getElementById('agentic-state'); const r = d.getBoundingClientRect(); const shown = e => getComputedStyle(e).display !== 'none';
         const act = d.querySelector('#agentic-block-top .agentic-tab.active');
-        return { page: d.dataset.page, open: !d.classList.contains('collapsed') && r.width > 100, w: Math.round(r.width), tabs: [...d.querySelectorAll('.agentic-tab[data-tab]')].filter(shown).map(b => b.dataset.tab), active: act ? act.dataset.tab : null,
+        return { scope: document.body.getAttribute('data-saved-scope'), page: d.dataset.page, open: !d.classList.contains('collapsed') && r.width > 100, w: Math.round(r.width), tabs: [...d.querySelectorAll('.agentic-tab[data-tab]')].filter(shown).map(b => b.dataset.tab), active: act ? act.dataset.tab : null,
             panel: [...d.querySelectorAll('.agentic-panel.active')].filter(shown).map(p => p.id.replace('agentic-panel-', '')) }; })()`);
     const BOARD = 'dock-4539-board';
     const toggle = () => ev(`document.getElementById('panel-toggle-btn').click(); true`);
@@ -87,19 +87,26 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual({ page: d.page, open: d.open, active: d.active }, { page: 'board', open: true, active: 'saved' });
         await shot('dock-board-saved');
 
-        console.log('6. Chats: only Saved, closed at first; the top bar button opens it on Saved');
+        console.log('6. Chats (no chat open) and the other pages: no sidebar at all; Saved for everything is its own page, which the top bar bookmark opens');
         await ev(`switchNavTab('history'); true`);
         await waitFor(`getComputedStyle(document.getElementById('chats-empty-view')).display !== 'none'`, 'Chats');
         d = await dock();
-        assert.deepEqual({ page: d.page, open: d.open, tabs: d.tabs }, { page: 'chats', open: false, tabs: ['saved'] }, JSON.stringify(d));
+        assert.equal(d.page, 'chats');
+        assert.deepEqual(d.tabs, [], 'no tab on Chats: ' + JSON.stringify(d));
+        assert.equal(await ev(`getComputedStyle(document.getElementById('agentic-state')).display`), 'none', 'the sidebar is not shown on Chats');
+        assert.equal(await ev(`getComputedStyle(document.getElementById('panel-toggle-btn')).display`), 'none', 'and its button is not either');
         await ev(`document.getElementById('saved-btn').click(); true`);
-        await waitFor(`document.getElementById('agentic-panel-saved').classList.contains('active') && !document.getElementById('agentic-state').classList.contains('collapsed') && document.getElementById('agentic-state').getBoundingClientRect().width > 300`, 'Saved open in Chats (the sidebar slides open over 0.2 s)', 8000);
-        d = await dock();
-        assert.deepEqual({ page: d.page, open: d.open, active: d.active, panel: d.panel }, { page: 'chats', open: true, active: 'saved', panel: ['saved'] });
-        await shot('dock-chats-saved');
+        await waitFor(`document.getElementById('saved-view').getClientRects().length > 0 && document.getElementById('saved-view').contains(document.getElementById('saved-ui')) && document.querySelectorAll('#saved-list .saved-item').length === 1`, 'the Saved page', 8000);
+        assert.equal(await ev(`getComputedStyle(document.getElementById('agentic-state')).display`), 'none', 'the page has no sidebar beside it');
+        await shot('saved-page-from-chats');
+        await ev(`switchNavTab('history'); true`);
 
-        console.log('6b. A shut sidebar whose tab is Saved reads nothing; opening it with the panel button reads the list');
-        await toggle(); // close it (Chats)
+        console.log('6b. A shut sidebar whose tab is Saved reads nothing; opening it with the panel button reads the list (on a board: its Saved is the board\'s)');
+        await ev(`window.selectBoardProject(${JSON.stringify(BOARD)}); true`);
+        await waitFor(`document.getElementById('agentic-state').dataset.page === 'board' && document.querySelectorAll('#mb-messages .mb-message').length === 1`, 'the board', 8000);
+        await ev(`window.toggleAgenticPanel(true); document.getElementById('agentic-tab-saved').click(); true`);
+        await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 1 && document.getElementById('agentic-panel-saved').classList.contains('active')`, 'the board\'s Saved', 8000);
+        await toggle(); // close it
         await waitFor(`document.getElementById('agentic-state').classList.contains('collapsed')`, 'closed');
         await ev(`document.getElementById('saved-list').replaceChildren(); true`);
         await toggle(); // open it with the panel button, not the Saved button
@@ -112,9 +119,6 @@ const BASE = require('./test_base').BASE;
         assert.ok(d.open && d.active === 'saved', 'the board kept its last tab, Saved: ' + JSON.stringify(d));
         await toggle();
         assert.equal((await dock()).open, false, 'closed on the board');
-        await ev(`switchNavTab('history'); true`);
-        await waitFor(`document.getElementById('agentic-state').dataset.page === 'chats'`, 'Chats again');
-        assert.equal((await dock()).open, true, 'Chats stayed open');
         await select('dk-a');
         await waitFor(`document.getElementById('agentic-state').dataset.page === 'agent'`, 'the agent page again');
         d = await dock();
@@ -138,24 +142,22 @@ const BASE = require('./test_base').BASE;
         await ev(`document.getElementById('agentic-tab-subscribers').click(); true`);
         await ev(`switchNavTab('history'); true`);
         await waitFor(`document.getElementById('agentic-state').dataset.page === 'chats'`, 'Chats');
-        await ev(`document.getElementById('saved-btn').click(); true`);
-        await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 1`, 'the item', 8000);
+        await ev(`document.getElementById('saved-btn').click(); true`); // from Chats: the Saved page
+        await waitFor(`document.getElementById('saved-view').getClientRects().length > 0 && document.querySelectorAll('#saved-list .saved-item').length === 1`, 'the item', 8000);
         await ev(`document.querySelector('#saved-list .saved-item .btn-primary, #saved-list .saved-item .saved-open').click(); true`);
         await waitFor(`document.getElementById('agentic-state').dataset.page === 'board' && !!document.querySelector('#mb-messages .chat-search-target')`, 'the jump to the board message', 10000);
         d = await dock();
         assert.deepEqual({ open: d.open, active: d.active }, { open: true, active: 'subscribers' }, 'the board\'s sidebar is as the person left it: ' + JSON.stringify(d));
         await waitFor(`!!document.getElementById('saved-jumpbar')`, 'the jump bar', 4000);
         await ev(`document.querySelector('#saved-jumpbar .btn').click(); true`);
-        await waitFor(`document.getElementById('agentic-panel-saved').classList.contains('active')`, 'Back to Saved', 6000);
-        assert.equal((await dock()).active, 'saved');
+        await waitFor(`document.getElementById('saved-view').getClientRects().length > 0 && document.getElementById('saved-view').contains(document.getElementById('saved-ui'))`, 'Back to Saved: the page it started from', 6000);
 
-        console.log('10. A phone: the top bar button opens the side panel overlay on the board and in Chats, with that page\'s tabs, and X closes it');
+        console.log('10. A phone: the top bar button opens the side panel overlay on the board and in Chats, with that page\'s tabs, and X closes it; Chats has none');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
         await Emulation.setTouchEmulationEnabled({ enabled: true });
         await sleep(400); // sleep-ok: the layout settles over frames after a viewport change; there is no completion event
         for (const [name, go, page, tabs] of [
             ['the board', `window.selectBoardProject(${JSON.stringify(BOARD)})`, 'board', ['subscribers', 'team-artifacts', 'tasks', 'saved']],
-            ['Chats', `switchNavTab('history')`, 'chats', ['saved']],
         ]) {
             await ev(`${go}; true`);
             await waitFor(`document.getElementById('agentic-state').dataset.page === '${page}'`, name);
@@ -169,6 +171,9 @@ const BASE = require('./test_base').BASE;
             await ev(`document.getElementById('agentic-mobile-close-btn').click(); true`);
             await waitFor(`!document.getElementById('agentic-state').classList.contains('mobile-panel-overlay')`, `the overlay closed on ${name}`);
         }
+        await ev(`switchNavTab('history'); true`);
+        await waitFor(`document.getElementById('agentic-state').dataset.page === 'chats'`, 'Chats on the phone');
+        assert.equal(await ev(`getComputedStyle(document.getElementById('panel-toggle-btn')).display`), 'none', 'Chats has no side panel to open: Saved for everything is its own page');
         await Emulation.setTouchEmulationEnabled({ enabled: false });
 
         console.log('11. A desktop board with the sidebar open uses the toolbar\'s More menu (Lead\'s #4538); closed, the buttons are inline');
