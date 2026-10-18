@@ -165,16 +165,7 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	project := urlParam(r, "project")
-	var body struct {
-		SubscriberID string `json:"subscriber_id"`
-		SessionName  string `json:"session_name"`
-		Content      string `json:"content"`
-		ToAddress    string `json:"to_address"`
-		ReplyTo      int64  `json:"reply_to"`
-		MessageID    string `json:"message_id"`
-		// Attach are coral://artifacts links sent as files with the message (cross-team artifacts, C2).
-		Attach []string `json:"attach"`
-	}
+	var body relayRequest
 	if err := decodeJSON(r, &body); err != nil {
 		relayError(w, http.StatusBadRequest, "bad_request", "invalid JSON", 0)
 		return
@@ -191,21 +182,8 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	}
 	body.Content = strings.TrimSpace(unescapeLineBreaks(body.Content))
 	body.ToAddress = strings.TrimSpace(body.ToAddress)
-	switch {
-	case body.Content == "" || body.SubscriberID == "":
-		relayError(w, http.StatusBadRequest, "bad_request", "subscriber_id and content are required", 0)
-		return
-	case len(body.Content) > maxRelayedContent:
-		relayError(w, http.StatusRequestEntityTooLarge, "too_large", fmt.Sprintf("content must be at most %d bytes", maxRelayedContent), 0)
-		return
-	case strings.Count(body.ToAddress, "/") >= 2:
-		relayError(w, http.StatusBadRequest, "bad_address", "an address is <server>/<team>; addressing an agent isn't supported", 0)
-		return
-	case !relayAddressRe.MatchString(body.ToAddress):
-		relayError(w, http.StatusBadRequest, "bad_address", "an address is <server>/<team>, e.g. homelab/qa (see coral-board targets)", 0)
-		return
-	case body.MessageID != "" && !relayIDRe.MatchString(body.MessageID):
-		relayError(w, http.StatusBadRequest, "bad_request", "malformed message_id", 0)
+	if refused := body.refusal(); refused != nil {
+		refused(w)
 		return
 	}
 	ctx := r.Context()
@@ -224,23 +202,10 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 		relayError(w, http.StatusUnprocessableEntity, "message_unchecked", "the message could not be checked for secrets in time, so it was not sent; send a shorter message", 0)
 		return
 	}
-	// A reply to a message relayed from another Coral counts one more hop.
-	hops := 0
-	if body.ReplyTo > 0 {
-		o, ok, err := h.bs.RelayedOrigin(ctx, project, body.ReplyTo)
-		if err != nil {
-			errInternalServer(w, err.Error())
-			return
-		}
-		if !ok {
-			relayError(w, http.StatusBadRequest, "bad_request", fmt.Sprintf("message %d on %q is not a message from another Coral", body.ReplyTo, project), 0)
-			return
-		}
-		hops = o.Hops + 1
-		if hops > maxRelayHops {
-			relayError(w, http.StatusBadRequest, "too_many_hops", fmt.Sprintf("a relayed reply chain is limited to %d hops", maxRelayHops), 0)
-			return
-		}
+	hops, refused := h.relayHops(ctx, project, body.ReplyTo)
+	if refused != nil {
+		refused(w)
+		return
 	}
 	relay := h.relaySender()
 	if relay == nil {
@@ -251,19 +216,9 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	if messageID == "" {
 		messageID = uuid.NewString()
 	}
-	// Files first, checked and held before anything is sent (a refusal here sends nothing), their links
-	// appended to the text; the message goes only after every file is with Coral Hub.
-	var prepared *attachPrepared
-	if len(body.Attach) > 0 {
-		var ok bool
-		if prepared, ok = h.prepareRelayAttachments(w, r, project, body.SubscriberID, body.SessionName, body.Attach); !ok {
-			return
-		}
-		body.Content += attachmentLines(prepared.atts)
-		if len(body.Content) > maxRelayedContent {
-			relayError(w, http.StatusRequestEntityTooLarge, "too_large", fmt.Sprintf("content and the attachment links must be at most %d bytes", maxRelayedContent), 0)
-			return
-		}
+	prepared, ok := h.relayAttachments(w, r, project, &body)
+	if !ok {
+		return
 	}
 	payload, err := json.Marshal(map[string]any{
 		"message_id": messageID,
@@ -278,19 +233,104 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 		errInternalServer(w, err.Error())
 		return
 	}
-	// The sender's quota counts only requests that reach Coral Hub: a send that couldn't
-	// (not linked, or the relay not offered) gets its token back.
-	quotaKey := "relay-out\x00" + project + "\x00" + body.SubscriberID + "\x00" + body.ToAddress
-	if secs, limited := h.crossTeamWait(quotaKey); limited {
-		relayError(w, http.StatusTooManyRequests, "rate_limited", fmt.Sprintf("retry in %ds", secs), secs)
+	ans, ok := h.sendRelay(w, ctx, relay, project, &body, prepared, messageID, payload)
+	if !ok {
 		return
 	}
+	h.relayDelivered(w, ctx, project, &body, role, hops, messageID, ans, prepared)
+}
+
+// relayRequest is a PostRelayMessage request.
+type relayRequest struct {
+	SubscriberID string `json:"subscriber_id"`
+	SessionName  string `json:"session_name"`
+	Content      string `json:"content"`
+	ToAddress    string `json:"to_address"`
+	ReplyTo      int64  `json:"reply_to"`
+	MessageID    string `json:"message_id"`
+	// Attach are coral://artifacts links sent as files with the message (cross-team artifacts, C2).
+	Attach []string `json:"attach"`
+}
+
+// refusal refuses a request with no sender or text, text over the limit, an address that isn't <server>/<team>,
+// or a malformed message_id.
+func (b *relayRequest) refusal() answer {
+	refuse := func(status int, code, msg string) answer {
+		return func(w http.ResponseWriter) { relayError(w, status, code, msg, 0) }
+	}
+	switch {
+	case b.Content == "" || b.SubscriberID == "":
+		return refuse(http.StatusBadRequest, "bad_request", "subscriber_id and content are required")
+	case len(b.Content) > maxRelayedContent:
+		return refuse(http.StatusRequestEntityTooLarge, "too_large", fmt.Sprintf("content must be at most %d bytes", maxRelayedContent))
+	case strings.Count(b.ToAddress, "/") >= 2:
+		return refuse(http.StatusBadRequest, "bad_address", "an address is <server>/<team>; addressing an agent isn't supported")
+	case !relayAddressRe.MatchString(b.ToAddress):
+		return refuse(http.StatusBadRequest, "bad_address", "an address is <server>/<team>, e.g. homelab/qa (see coral-board targets)")
+	case b.MessageID != "" && !relayIDRe.MatchString(b.MessageID):
+		return refuse(http.StatusBadRequest, "bad_request", "malformed message_id")
+	}
+	return nil
+}
+
+// relayHops is the message's hop count: a reply to a message relayed from another Coral counts one more hop
+// than it (refused past maxRelayHops, or when it doesn't reply to such a message).
+func (h *BoardHandler) relayHops(ctx context.Context, project string, replyTo int64) (int, answer) {
+	if replyTo <= 0 {
+		return 0, nil
+	}
+	o, ok, err := h.bs.RelayedOrigin(ctx, project, replyTo)
+	if err != nil {
+		return 0, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
+	}
+	if !ok {
+		return 0, func(w http.ResponseWriter) {
+			relayError(w, http.StatusBadRequest, "bad_request", fmt.Sprintf("message %d on %q is not a message from another Coral", replyTo, project), 0)
+		}
+	}
+	hops := o.Hops + 1
+	if hops > maxRelayHops {
+		return 0, func(w http.ResponseWriter) {
+			relayError(w, http.StatusBadRequest, "too_many_hops", fmt.Sprintf("a relayed reply chain is limited to %d hops", maxRelayHops), 0)
+		}
+	}
+	return hops, nil
+}
+
+// relayAttachments checks and holds the message's files before anything is sent (a refusal here sends nothing),
+// and appends their links to its text.
+func (h *BoardHandler) relayAttachments(w http.ResponseWriter, r *http.Request, project string, b *relayRequest) (*attachPrepared, bool) {
+	if len(b.Attach) == 0 {
+		return nil, true
+	}
+	prepared, ok := h.prepareRelayAttachments(w, r, project, b.SubscriberID, b.SessionName, b.Attach)
+	if !ok {
+		return nil, false
+	}
+	b.Content += attachmentLines(prepared.atts)
+	if len(b.Content) > maxRelayedContent {
+		relayError(w, http.StatusRequestEntityTooLarge, "too_large", fmt.Sprintf("content and the attachment links must be at most %d bytes", maxRelayedContent), 0)
+		return nil, false
+	}
+	return prepared, true
+}
+
+// sendRelay sends the files, then the message, to Coral Hub, within the sender's quota, and returns Coral Hub's
+// answer when it took the message.
+func (h *BoardHandler) sendRelay(w http.ResponseWriter, ctx context.Context, relay RelaySender, project string, b *relayRequest, prepared *attachPrepared, messageID string, payload []byte) (hubAnswer, bool) {
+	// The sender's quota counts only requests that reach Coral Hub: a send that couldn't
+	// (not linked, or the relay not offered) gets its token back.
+	quotaKey := "relay-out\x00" + project + "\x00" + b.SubscriberID + "\x00" + b.ToAddress
+	if secs, limited := h.crossTeamWait(quotaKey); limited {
+		relayError(w, http.StatusTooManyRequests, "rate_limited", fmt.Sprintf("retry in %ds", secs), secs)
+		return hubAnswer{}, false
+	}
 	if prepared != nil {
-		if ok, refund := h.sendRelayAttachments(w, ctx, prepared, messageID, body.ToAddress, project); !ok {
+		if ok, refund := h.sendRelayAttachments(w, ctx, prepared, messageID, b.ToAddress, project); !ok {
 			if refund {
 				h.crossTeam.refund(quotaKey)
 			}
-			return
+			return hubAnswer{}, false
 		}
 	}
 	resp, err := relay(ctx, tunnel.RelayMessagePath, payload)
@@ -299,7 +339,7 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 			h.crossTeam.refund(quotaKey)
 		}
 		relayUnavailable(w, err)
-		return
+		return hubAnswer{}, false
 	}
 	var ans hubAnswer
 	_ = json.Unmarshal(resp.Body, &ans)
@@ -316,8 +356,14 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 			status = http.StatusBadGateway
 		}
 		relayError(w, status, code, "Coral Hub refused the message; retry with the same message_id if it is temporary", resp.RetryAfter)
-		return
+		return hubAnswer{}, false
 	}
+	return ans, true
+}
+
+// relayDelivered stores the sent message's copy on this board (a duplicate keeps the copy its first attempt
+// stored) and its shared files, and answers.
+func (h *BoardHandler) relayDelivered(w http.ResponseWriter, ctx context.Context, project string, b *relayRequest, role string, hops int, messageID string, ans hubAnswer, prepared *attachPrepared) {
 	var target int64
 	if n, err := strconv.ParseInt(strings.Trim(string(ans.TargetMessageID), `"`), 10, 64); err == nil {
 		target = n
@@ -333,12 +379,12 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	server, team, _ := strings.Cut(body.ToAddress, "/")
+	server, team, _ := strings.Cut(b.ToAddress, "/")
 	mirror, err := h.bs.PostRelayMirror(ctx, board.MessageOrigin{
-		ServerID: store.LocalServerID, Board: project, Sender: body.SubscriberID, SenderRole: role,
+		ServerID: store.LocalServerID, Board: project, Sender: b.SubscriberID, SenderRole: role,
 		TargetServerID: server, TargetBoard: team, TargetMessageID: target,
 		RelayMessageID: messageID, Hops: hops,
-	}, body.Content)
+	}, b.Content)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -349,7 +395,7 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	out := map[string]any{"ok": true, "duplicate": ans.Duplicate, "message_id": messageID, "target_message_id": target, "mirror": mirror}
 	if prepared != nil {
 		// The shared rows only now: the hub has the files and the message.
-		h.recordSharedAttachments(prepared.atts, project, server, team, body.SubscriberID, mirror.ID, time.Now().UTC().Format(time.RFC3339))
+		h.recordSharedAttachments(prepared.atts, project, server, team, b.SubscriberID, mirror.ID, time.Now().UTC().Format(time.RFC3339))
 		var ids []string
 		for _, a := range prepared.atts {
 			ids = append(ids, "coral://artifacts/"+a.ID)
