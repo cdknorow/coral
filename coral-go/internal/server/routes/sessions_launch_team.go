@@ -125,7 +125,10 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		refuse(tracking.FailInvalidRequest, msg)
 		return
 	}
-	ctx := r.Context()
+	// From here a worktree, a team record and terminals are made: the team launches to its end whatever the request does, with a bound that grows with
+	// the team (#5213).
+	ctx, cancel := lifecycleCtxN(r.Context(), len(body.Agents))
+	defer cancel()
 	workingDir, worktreePath, msg := h.createTeamWorktree(ctx, body)
 	if msg != "" {
 		refuse(tracking.FailWorktreeFailed, msg)

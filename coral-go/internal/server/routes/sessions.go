@@ -144,6 +144,8 @@ type SessionsHandler struct {
 	// is still loaded from the database and is never taken from the client.
 	resumeMu    sync.Mutex
 	resumeCache map[string]string
+	// restarting: the sessions with a restart or resume running (beginRestart, #5213).
+	restarting sync.Map
 	// chatMeta caches the live-session record a chat request needs (#3438).
 	chatMeta    *chatMetaCache
 	resumeKnown map[string]bool

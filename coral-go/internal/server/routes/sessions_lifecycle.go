@@ -211,7 +211,29 @@ var lifecycleTimeout = 2 * time.Minute
 // the dashboard is still waiting. A request that is dropped there (a reload, a tab change) used to leave the agent in neither state: the old one
 // ended, the new one never started, a bare shell. Detached from the request, with its own bound, it is the old agent or the new one, never between.
 func lifecycleCtx(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), lifecycleTimeout)
+	return lifecycleCtxN(ctx, 0)
+}
+
+// lifecyclePerSession is what each session of a wake of many, or a team launch, adds to the bound (a var for the tests).
+var lifecyclePerSession = 5 * time.Second
+
+// lifecycleCtxN is lifecycleCtx for an action that works on n sessions one after the other: the bound grows with n, so the last of a large team is not cut off.
+func lifecycleCtxN(ctx context.Context, n int) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), lifecycleTimeout+time.Duration(n)*lifecyclePerSession)
+}
+
+// beginRestart takes the session's turn (h.restarting: the sessions with a restart or resume running now, by name) and says whether it was free; the caller
+// ends it with the returned func. A second request for one of them (a double click, a client that retries while the first still runs, now that the first
+// no longer ends with its request) is refused, so one agent starts, not two (#5213).
+func (h *SessionsHandler) beginRestart(name string) (end func(), ok bool) {
+	if _, busy := h.restarting.LoadOrStore(name, struct{}{}); busy {
+		return nil, false
+	}
+	return func() { h.restarting.Delete(name) }, true
+}
+
+func refuseRestartBusy(w http.ResponseWriter) {
+	writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": "this agent is already being restarted; wait for it to finish", "in_progress": true})
 }
 
 // afterTeamSlot runs f once d has passed (tests replace it).
@@ -294,6 +316,12 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		writeSessionIDRequired(w)
 		return
 	}
+	end, free := h.beginRestart(name)
+	if !free {
+		refuseRestartBusy(w)
+		return
+	}
+	defer end()
 	ctx := r.Context()
 	plan, fail := h.restartResolve(ctx, name, req)
 	if fail != nil {
@@ -779,6 +807,12 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "session_id is required")
 		return
 	}
+	end, free := h.beginRestart(name)
+	if !free {
+		refuseRestartBusy(w)
+		return
+	}
+	defer end()
 	ctx := r.Context()
 	p, fail := h.resumeResolve(ctx, name, &body)
 	if fail != nil {

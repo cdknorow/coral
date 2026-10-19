@@ -107,10 +107,18 @@ func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
 	boardName := urlParam(r, "boardName")
 	ctx, cancel := lifecycleCtx(r.Context()) // a team wake runs to its end whatever the request does (#5171)
-	defer cancel()
+	defer func() { cancel() }()
 
 	// Find sleeping sessions on this board and relaunch
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
+	sleepingHere := 0
+	for _, ls := range allLive {
+		if ls.IsSleeping == 1 && ls.IsArchived != 1 && ls.BoardName != nil && *ls.BoardName == boardName {
+			sleepingHere++
+		}
+	}
+	cancel()
+	ctx, cancel = lifecycleCtxN(r.Context(), sleepingHere) // the bound grows with the team (#5213)
 
 	relaunched := 0
 	for _, ls := range allLive {
@@ -527,7 +535,7 @@ func (h *SessionsHandler) SleepAll(w http.ResponseWriter, r *http.Request) {
 func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS()                         // the feed shows the change now, not on the next tick
 	ctx, cancel := lifecycleCtx(r.Context()) // a wake of all runs to its end whatever the request does (#5171)
-	defer cancel()
+	defer func() { cancel() }()
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
 
 	var sleeping []store.LiveSession
@@ -536,6 +544,8 @@ func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
 			sleeping = append(sleeping, ls)
 		}
 	}
+	cancel()
+	ctx, cancel = lifecycleCtxN(r.Context(), len(sleeping)) // 2 minutes and 5 s a session: the last of many is not cut off (#5213)
 	if len(sleeping) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sessions_relaunched": 0})
 		return

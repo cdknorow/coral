@@ -133,3 +133,12 @@ func TestLifecycleHandlersRunOnLifecycleCtx(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(b), "h.launchSession(bgCtx,")
 }
+
+// dropAt2 gives req the route parameters a handler reads (no cancellation).
+func dropAt2(req *http.Request, params map[string]string) *http.Request {
+	rc := chi.NewRouteContext()
+	for k, v := range params {
+		rc.URLParams.Add(k, v)
+	}
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rc))
+}

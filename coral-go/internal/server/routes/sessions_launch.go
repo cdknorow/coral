@@ -140,7 +140,10 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	if effectiveModel != "" {
 		launchFlags = append(append([]string{}, body.Flags...), "--model", effectiveModel)
 	}
-	result, err := h.launchSession(r.Context(), launchSpec{
+	// Everything before this could be refused with nothing made; from here the terminal is made and the agent started whatever the request does (#5213).
+	lctx, cancel := lifecycleCtx(r.Context())
+	defer cancel()
+	result, err := h.launchSession(lctx, launchSpec{
 		WorkDir: body.WorkingDir, AgentType: body.AgentType, DisplayName: body.DisplayName, ResumeSessionID: body.ResumeSessionID,
 		Flags: launchFlags, Prompt: body.Prompt, BoardName: body.BoardName, BoardServer: body.BoardServer, Backend: body.Backend,
 		BoardType: body.BoardType, Model: effectiveModel, Thinking: effectiveThinking, Capabilities: body.Capabilities, Tools: body.Tools, Hooks: body.Hooks,
