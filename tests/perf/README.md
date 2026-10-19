@@ -71,3 +71,14 @@ role (two open chats on the largest transcripts, one on the busy board, the rest
 writes the p50/p95/p99 per request, the RSS and goroutine series (a point every 30 s) and the CPU, heap, allocs, mutex and
 block profiles. `RESTART_END=1` times a second start on the finished data. SQLite lock waits: `lock-errors.txt` counts
 `database is locked` lines, and a separate short run with `CORAL_DEBUG_PHASES=1` logs the pool wait counters.
+
+## The server-performance run (#5023)
+
+`AGENTS=40 TEAM_SIZE=8 TABS=4 TAB_ROLES=list,chat,board,list TRANSCRIPT_TURNS=300 WARMUP=60 CPU=300 LOAD=700 POST_RATE=2
+PERF_RUN=1 bash tests/perf/scale.sh` (epoch only): 40 mock agents in five teams of 8 writing transcripts, four tabs, a busy
+board. `TEAM_SIZE` is the agents per team (25 by default). With `LOAD=700` the CPU profile covers seconds 200 to 500, after the
+first scan of the seeded transcripts; with `LOAD=330` it starts at second 15 and holds that scan. `allocs-window-top.txt` is
+what was allocated during the CPU profile (`allocs-start.pprof` and `allocs-end.pprof`, diffed with `-base`), not since the
+start, so the steady state is not hidden under the first scan. `load.json` has `slow`: every request of 0.5 s or more with its
+start in seconds from the load's start, to line a stall up with `server.log`. A stall on a loaded epoch is the machine's:
+`machine.txt` has its load average, and a stall seen once at a load of 12 did not come back at a load of 1.

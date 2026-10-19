@@ -17,7 +17,7 @@
 # a second start on the finished data. The 20,000-message run: AGENTS=250 TABS=5 TAB_ROLES=chat,chat,board,list,list
 # BOARD_MSGS=20000 BOARD_TASKS=3000 TRANSCRIPT_TURNS=300 LOAD=1800.
 #
-# Env: PERF_RUN=1 (required), AGENTS (25), TABS (3), LOAD (120 s), WARMUP (60 s), CPU (30 s),
+# Env: PERF_RUN=1 (required), AGENTS (25), TEAM_SIZE (25; agents per team, 8 makes 40 agents five teams), TABS (3), LOAD (120 s), WARMUP (60 s), CPU (30 s),
 # POST_RATE (board posts per second, 2), BOARD_MSGS (0), BOARD_TASKS (0), TRANSCRIPT_TURNS (0), TAB_ROLES, RESTART_END (0),
 # GO, REPO, PORT (8497), PPROF (8498), OUT, KEEP_TEST_DATA.
 set -u
@@ -139,7 +139,8 @@ if [[ "$BOARD_MSGS" -gt 0 || "$BOARD_TASKS" -gt 0 ]]; then
   api PUT /api/settings -d "{\"cli_path_claude\": \"$WORK/bin/mock-agent\"}" >/dev/null
 fi
 
-TEAMS=$(( (AGENTS + 24) / 25 )); per=$(( (AGENTS + TEAMS - 1) / TEAMS )); n=0
+TEAM_SIZE="${TEAM_SIZE:-25}"
+TEAMS=$(( (AGENTS + TEAM_SIZE - 1) / TEAM_SIZE )); per=$(( (AGENTS + TEAMS - 1) / TEAMS )); n=0
 log "launching $AGENTS mock agents in $TEAMS team(s)"
 T_LAUNCH=$(date +%s)
 for t in $(seq "$TEAMS"); do
@@ -166,7 +167,7 @@ echo "$live" > "$OUT/live-count.txt"
 echo "load average at the start: $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null || uptime)" > "$OUT/machine.txt"
 
 log "load: $TABS tabs, posts $POST_RATE/s, ${LOAD}s; CPU profile ${CPU}s from the middle"
-( sleep $(( LOAD / 2 - CPU / 2 )); curl -s -m $((CPU + 30)) "http://127.0.0.1:$PPROF/debug/pprof/profile?seconds=$CPU" -o "$OUT/cpu.pprof" ) &
+( sleep $(( LOAD / 2 - CPU / 2 )); curl -s -m 60 "http://127.0.0.1:$PPROF/debug/pprof/allocs" -o "$OUT/allocs-start.pprof"; curl -s -m $((CPU + 30)) "http://127.0.0.1:$PPROF/debug/pprof/profile?seconds=$CPU" -o "$OUT/cpu.pprof"; curl -s -m 60 "http://127.0.0.1:$PPROF/debug/pprof/allocs" -o "$OUT/allocs-end.pprof" ) &
 CPUJOB=$!
 printf '%s\n' "$KEY" > "$WORK/key.txt"; chmod 600 "$WORK/key.txt"
 BIG_FILE="$OUT/transcripts.json"; [[ -s "$BIG_FILE" ]] || BIG_FILE=""
@@ -181,6 +182,8 @@ for kind in cpu mutex block; do
 done
 "$GO" tool pprof -top -nodecount=30 "$WORK/bin/coral" "$OUT/cpu.pprof" > "$OUT/cpu-flat.txt" 2>&1
 "$GO" tool pprof -top -sample_index=alloc_space -nodecount=30 "$WORK/bin/coral" "$OUT/allocs.pprof" > "$OUT/allocs-top.txt" 2>&1
+# #5023: what was allocated while the CPU profile ran (the steady state), not since the start (the first scan of every transcript)
+"$GO" tool pprof -top -cum -sample_index=alloc_space -nodecount=40 -base "$OUT/allocs-start.pprof" "$WORK/bin/coral" "$OUT/allocs-end.pprof" > "$OUT/allocs-window-top.txt" 2>&1
 "$GO" tool pprof -top -nodecount=20 "$WORK/bin/coral" "$OUT/heap.pprof" > "$OUT/heap-top.txt" 2>&1
 # The Cost view's requests once each on the idle-again server, for the last day, week and all time (#4669).
 for hrs in 24 168 0; do

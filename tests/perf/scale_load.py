@@ -23,6 +23,9 @@ KEY = open(KEYFILE).read().strip()
 host = urllib.parse.urlparse(BASE).hostname or "127.0.0.1"
 port = urllib.parse.urlparse(BASE).port or 80
 H = {"Origin": BASE, "Referer": BASE + "/", "Sec-Fetch-Site": "same-origin", "Authorization": "Bearer " + KEY}
+T0 = time.time()
+SLOW = 0.5   # seconds: a request this slow is listed in "slow" with its start (seconds into the run)
+slow = []
 lat = collections.defaultdict(list)   # name -> [seconds]
 errs = collections.Counter()
 nbytes = collections.Counter()
@@ -45,6 +48,7 @@ def call(method, path, body=None, name=None):
     dt = time.time() - t
     with lock:
         lat[name].append(dt); nbytes[name] += len(b)
+        if dt >= SLOW: slow.append((round(t - T0, 3), name, round(dt, 3)))  # #5023: when a stall happened, to line up with the server's log and profiles
         if not ok: errs[name] += 1
     return b if ok else None
 
@@ -232,6 +236,7 @@ if board and POST_RATE > 0:
 time.sleep(DUR)
 stop.set(); time.sleep(2.5); th.join(5)
 res = {"agents": len(sessions), "tabs": NTABS, "seconds": DUR, "board": board, "requests": {}, "ws": {}, "process": {}}
+res["slow"] = sorted(slow)
 for k, v in sorted(lat.items()):
     res["requests"][k] = {"n": len(v), "p50_ms": pct(v, 50) * 1000, "p95_ms": pct(v, 95) * 1000, "p99_ms": pct(v, 99) * 1000,
                           "max_ms": max(v) * 1000, "kb_per_req": nbytes[k] / max(1, len(v)) / 1024, "errors": errs[k]}
