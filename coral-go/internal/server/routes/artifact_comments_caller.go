@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/cdknorow/coral/internal/cloud"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -32,7 +33,7 @@ type commentOwnerIdentity func(r *http.Request) (issuer, subject, name string)
 
 // ArtifactCommentsOwnerIDSetting holds the random id of this install's owner, the subject the owner's comments are stored under (Coral's own bookkeeping; no client writes it). It is never the
 // operating-system user name: that name must not reach a Coral Hub viewer or an agent, and an account renamed on the computer must not lose its own edit rights.
-const ArtifactCommentsOwnerIDSetting = "artifact_comments_owner_id"
+const ArtifactCommentsOwnerIDSetting = setreg.ArtifactCommentsOwnerID
 
 // ownerIdentity names the owner: the hook's answer when the server set one (the account this Coral is signed in to Coral Hub with, once that is turned on), else issuer "local" with this install's
 // random owner id, READ ONLY: a request that only reads must not write a row, so until the id exists the subject is empty (nothing is the owner's yet, so mine is false everywhere).
@@ -61,7 +62,7 @@ func (h *SessionsHandler) commentOwnerID(ctx context.Context, create bool) strin
 	if err != nil {
 		return ""
 	}
-	if v := st[ArtifactCommentsOwnerIDSetting]; len(v) == 32 {
+	if v := setreg.Raw(st, ArtifactCommentsOwnerIDSetting); len(v) == 32 {
 		return v
 	}
 	if !create {

@@ -21,6 +21,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/secrets"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -29,7 +30,7 @@ import (
 
 // ArtifactCommentsHubWriteSetting turns on commenting by Coral Hub viewers (off: they read). Until coral-hub settles a stable subject for its users (#5176) this stays off and the tunnel does
 // not list the write routes.
-const ArtifactCommentsHubWriteSetting = "artifact_comments_hub_write"
+const ArtifactCommentsHubWriteSetting = setreg.ArtifactCommentsHubWrite
 
 const (
 	maxCommentQuote   = 2 << 10 // bytes of the selected text
@@ -259,15 +260,7 @@ func (h *SessionsHandler) hubWriteOn(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	return settingTrue(st[ArtifactCommentsHubWriteSetting])
-}
-
-func settingTrue(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "1", "true", "yes", "on":
-		return true
-	}
-	return false
+	return setreg.Bool(st, ArtifactCommentsHubWriteSetting)
 }
 
 // dropArtifactComments removes an artifact's comments and its lock when the artifact itself is deleted or pruned: a comment belongs to that exact artifact and has nothing to point at without it.
