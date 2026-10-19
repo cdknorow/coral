@@ -55,8 +55,6 @@
     --accent-color:   var(--accent);
     --border-color:   var(--border);
     --error-color:    var(--error);
-    --status-error:   var(--error);
-    --status-warning: var(--warning);
     --fg:             var(--text-primary);
     --fg-muted:       var(--text-muted);
     --working:     #61afef;
@@ -122,12 +120,10 @@
     --space-2xl: 24px;
 
     /* Design Tokens — Border Radius Scale */
-    --radius-xs:  2px;
     --radius-sm:  4px;
     --radius-md:  6px;
     --radius-lg:  8px;
     --radius-xl:  12px;
-    --radius-2xl: 16px;
 
     /* Design Tokens — Font Size Scale */
     /* In rem, equal to the old pixel sizes at the default 16 px root: text follows a larger default font size or text zoom (#4086). */
@@ -166,8 +162,6 @@
 
     /* Chat / markdown specifics */
     --code-inline-bg:  rgba(255, 255, 255, 0.07);
-    --code-block-bg:   rgba(0, 0, 0, 0.3);
-    --table-header-bg: rgba(0, 0, 0, 0.2);
 
     /* Capture blocks */
     --capture-text-bg:   rgba(140, 140, 148, 0.06);
@@ -209,7 +203,6 @@
     --mb-text-bright: #f0f0f0;
     --mb-heading:     #79c0ff;
     --mb-code-bg:     #111114;
-    --board-msg-bg:   transparent;
 }
 
 /* ── Light Theme ───────────────────────────────────────────── */
@@ -321,8 +314,6 @@
 
     /* Chat / markdown specifics */
     --code-inline-bg:  rgba(31, 35, 40, 0.07);
-    --code-block-bg:   #e2e4e8;
-    --table-header-bg: #e2e4e8;
 
     /* Capture blocks */
     --capture-text-bg:   rgba(89, 99, 110, 0.06);
@@ -364,5 +355,4 @@
     --mb-text-bright: #1a1a1a;
     --mb-heading:     #2e7d9c;
     --mb-code-bg:     #e8e8e8;
-    --board-msg-bg:   transparent;
 }

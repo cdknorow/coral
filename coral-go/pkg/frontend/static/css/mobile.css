@@ -1000,18 +1000,6 @@
         display: none !important;
     }
 
-    /* Agentic state tabs: scrollable on mobile (when visible) */
-    .agentic-state-tabs {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        flex-wrap: nowrap;
-        scrollbar-width: none;
-    }
-
-    .agentic-state-tabs::-webkit-scrollbar {
-        display: none;
-    }
-
     .agentic-tab {
         flex: 0 0 auto;
         padding: 8px 10px;

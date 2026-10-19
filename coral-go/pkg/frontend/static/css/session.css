@@ -570,10 +570,6 @@
     display: none;
 }
 
-.session-compact {
-    /* Same as regular agent rows — no size reduction */
-}
-
 /* ── Grouped Sessions ──────────────────────────────────────── */
 
 .session-group-header {
