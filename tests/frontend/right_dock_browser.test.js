@@ -24,7 +24,7 @@ const BASE = require('./test_base').BASE;
         const act = d.querySelector('#agentic-block-top .agentic-tab.active');
         return { scope: document.body.getAttribute('data-saved-scope'), page: d.dataset.page, open: !d.classList.contains('collapsed') && r.width > 100, w: Math.round(r.width), tabs: [...d.querySelectorAll('.agentic-tab[data-tab]')].filter(shown).map(b => b.dataset.tab), active: act ? act.dataset.tab : null,
             panel: [...d.querySelectorAll('.agentic-panel.active')].filter(shown).map(p => p.id.replace('agentic-panel-', '')) }; })()`);
-    const BOARD = 'dock-4539-board';
+    const BOARD = 'dock-4539-' + Date.now().toString(36); // its own board per run: a crash before the finally cannot leave one for the next run on the same server (#4916)
     const toggle = () => ev(`document.getElementById('panel-toggle-btn').click(); true`);
 
     try {
@@ -230,6 +230,7 @@ const BASE = require('./test_base').BASE;
         console.log('   ✓');
     } finally {
         await require('./helpers/saved_cleanup').clearSaved(api).catch(() => {}); // the bookmarks this suite saved are taken off again (#4916)
+        await api('DELETE', `/api/board/${BOARD}`).catch(() => {}); // and the board it made
         await client.close();
     }
 })().catch(e => { console.error(e); process.exit(1); });

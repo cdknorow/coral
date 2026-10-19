@@ -4,7 +4,7 @@
 //   finally { await clearSaved(api).catch(() => {}); await client.close(); }   // api(method, path, body) -> { status, body }: the suite's own page-side request helper
 'use strict';
 
-/** Delete every saved message through the suite's request helper (the page's fetch: the Operator's cookie; an agent's token is refused on /api/saved). Returns how many were removed. */
+/** Delete EVERY saved message on the server, not only the suite's own: these suites already do that at their start, which is fine on the isolated shard each runs on. Through the suite's request helper (the page's fetch: the Operator's cookie; an agent's token is refused on /api/saved). Returns how many were removed. */
 async function clearSaved(api) {
     const items = ((await api('GET', '/api/saved?state=all&limit=1000')).body || {}).items || [];
     for (const it of items) await api('DELETE', `/api/saved/${it.id}`);
