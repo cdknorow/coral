@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 
 (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
@@ -353,6 +354,7 @@ const BASE = require('./test_base').BASE;
 
         console.log('ALL REAL LANDING AND NAVIGATION ASSERTIONS PASSED');
     } finally {
+        await removeBoards(ev, ['core-infra']);
         await client.close();
     }
 })();

@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 
 (async () => {
     const { client, Page, ev, waitFor, PRELOAD, install } = await connect();
@@ -32,6 +33,7 @@ const BASE = require('./test_base').BASE;
 
         console.log('\nAll export-note checks passed');
     } finally {
+        await removeBoards(ev, ['qa-export-board']);
         await client.close();
     }
 })().catch(err => {

@@ -10,6 +10,7 @@ const { nextFrame } = require('./helpers/wait');
 const BASE = require('./test_base').BASE;
 
 const PANELS = require('./helpers/list_bars_panels');
+const { removeBoards } = require('./helpers/board_cleanup');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -46,6 +47,7 @@ const PANELS = require('./helpers/list_bars_panels');
         results.push(false);
     } finally {
         for (const f of (ctx0.cleanup || [])) { try { await f(); } catch (_) {} }
+        await removeBoards(ev, ['th-a', 'th-b', ctx0.TBOARD, ctx0.BBOARD]); // the panels' boards (saved: th-a, th-b; tasks and board: themes-t-, themes-b-)
         try { await client.close(); } catch (_) {}
     }
     const failed = results.filter(r => !r).length;
