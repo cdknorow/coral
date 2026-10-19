@@ -506,11 +506,13 @@
 .model-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .model-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-chip[data-state="requested"] .model-chip-text { font-style: italic; }
-.model-chip[data-state="pending"] { color: var(--accent); border-color: var(--accent); }
-.model-chip[data-state="failed"] { color: var(--danger, #e5484d); border-color: var(--danger, #e5484d); }
+.model-chip[data-state="pending"] { color: var(--text-primary); border-color: var(--accent); } /* the accent is the border: as text it is 4.1:1 on the chip in the light theme (#5042) */
+.model-chip[data-state="failed"] { color: var(--error-text, #e5484d); border-color: var(--danger, #e5484d); }
 .model-chip-caret { font-size: 1rem; }
 .model-chip-note { font-size: 0.75rem; color: var(--text-muted); }
-.model-chip-note[data-state="failed"] { color: var(--danger, #e5484d); }
+/* Empty, the note takes no room but stays in the accessibility tree: a live region that is display:none when its text arrives is not announced (#5042). */
+.model-chip-note:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.model-chip-note[data-state="failed"] { color: var(--error-text, #e5484d); }
 .model-chip-menu { position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 30; min-width: 260px; max-width: min(92vw, 360px); max-height: 50vh; overflow-y: auto; padding: 6px;
     background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
 .model-chip-menu[hidden] { display: none; }
@@ -518,7 +520,8 @@
 .model-chip-how { text-transform: none; letter-spacing: 0; margin-left: 6px; color: var(--accent); }
 .model-chip-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 36px; padding: 6px 8px; border: 0; border-radius: 6px;
     background: transparent; color: var(--text-primary); font: inherit; font-size: 0.8125rem; text-align: left; cursor: pointer; }
-.model-chip-item:hover, .model-chip-item:focus-visible { background: var(--bg-tertiary); outline: none; }
+.model-chip-item:hover, .model-chip-item:focus-visible { background: var(--bg-tertiary); }
+.model-chip-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; } /* a tint alone is not a focus indicator (#5042) */
 .model-chip-item.checked { font-weight: 600; }
 .model-chip-item .material-icons { font-size: 1rem; }
 .model-chip-empty { padding: 10px; font-size: 0.8125rem; color: var(--text-muted); }

@@ -156,13 +156,16 @@ function _hasActiveFilter(table, field) {
 // Sort header with optional filter icon
 function _sortHeader(table, field, label, extraClass, filterable, valueExtractor) {
     const cls = extraClass ? `${extraClass} cost-th-sort` : 'cost-th-sort';
-    const arrow = _sortArrow(table, field);
+    const state = _sortState[table];
+    const ariaSort = state.field === field ? (state.asc ? 'ascending' : 'descending') : 'none';
+    // The label is a button, so the keyboard reaches the sort (a bare <th> with a click handler is not focusable), and aria-sort says which column the rows are in the order of (#5042).
+    const arrow = state.field === field ? `<span aria-hidden="true">${_sortArrow(table, field)}</span>` : '';
     let filterIcon = '';
     if (filterable) {
         const active = _hasActiveFilter(table, field) ? ' cost-filter-active' : '';
-        filterIcon = `<span class="cost-col-filter${escapeAttr(active)}" data-on-click="cost-filter" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}" title="Filter"><span class="material-icons" style="font-size:0.8125rem" aria-hidden="true">filter_list</span></span>`;
+        filterIcon = `<button type="button" class="cost-col-filter${escapeAttr(active)}" data-on-click="cost-filter" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}" title="Filter" aria-label="Filter ${escapeAttr(label)}"><span class="material-icons" style="font-size:0.8125rem" aria-hidden="true">filter_list</span></button>`;
     }
-    return `<th class="${escapeAttr(cls)}" data-on-click="cost-sort" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}">${label}${arrow}${filterIcon}</th>`;
+    return `<th class="${escapeAttr(cls)}" aria-sort="${escapeAttr(ariaSort)}" data-on-click="cost-sort" data-table="${escapeAttr(table)}" data-field="${escapeAttr(field)}"><button type="button" class="cost-sort-btn">${label}${arrow}</button>${filterIcon}</th>`;
 }
 
 // Open/close the column filter dropdown

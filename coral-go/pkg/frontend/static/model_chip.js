@@ -8,7 +8,7 @@ import { serverFetch } from './server_base.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { importOnce } from './import_once.js';
 import { modelLabel, readModelsCache, writeModelsCache } from './model_labels.js';
-import { setText, setHidden, setTitle, setData } from './dom_write.js';
+import { setText, setHidden, setTitle, setData, setAttr } from './dom_write.js';
 
 /** The agent types whose CLI takes /model and /effort in a running session (the server's liveSwitchTypes). */
 const LIVE_SWITCH_TYPES = new Set(['claude']);
@@ -57,8 +57,8 @@ export function updateModelChip(session, server) {
     setText(text, v.text);                     // plain text, never markup (a failure message is the CLI's own output)
     setData(chip, 'state', v.state);
     setTitle(chip, v.state === 'requested' ? v.note : '');
-    setText(note, v.note);
-    setHidden(note, !v.note);
+    setAttr(chip, 'aria-label', `Model and thinking level: ${v.text}`); // the name holds what the chip shows (label in name), not a fixed phrase that hides it
+    setText(note, v.note); // the live region stays in the page, empty and out of the way (css), so a note that appears is announced
     setData(note, 'state', v.state);
     if (_open) _renderMenu();
 }
@@ -131,6 +131,11 @@ async function _openMenu() {
     if (_open) { _renderMenu(); const first = menu.querySelector('.model-chip-item'); if (first) first.focus(); }
 }
 
+function menuHasFocus() {
+    const { menu } = parts();
+    return !!menu && menu.contains(document.activeElement);
+}
+
 function _closeMenu() {
     const { chip, menu } = parts();
     _open = false;
@@ -143,7 +148,9 @@ function _closeMenu() {
 async function _apply(change) {
     const s = _cur && _cur.session;
     if (!s) return;
+    const fromMenu = menuHasFocus();
     _closeMenu();
+    if (fromMenu) parts().chip?.focus(); // the item that had the keyboard is gone with the menu: focus goes back to the chip
     const name = s.name;
     if (!LIVE_SWITCH_TYPES.has(s.agent_type)) { _viaRestart(change); return; }
     const body = { session_id: s.session_id, agent_type: s.agent_type };
@@ -201,11 +208,13 @@ export function wireModelChip() {
     document.addEventListener('keydown', e => {
         if (!_open) return;
         if (e.key === 'Escape') { _closeMenu(); chip.focus(); return; }
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (e.key === 'Tab' && menu.contains(document.activeElement)) { _closeMenu(); return; } // the menu is not a place to tab through: it closes and focus goes on from where it was
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
             const items = [...menu.querySelectorAll('.model-chip-item')];
             if (!items.length) return;
             const i = items.indexOf(document.activeElement);
-            items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+            const to = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+            items[to].focus();
             e.preventDefault();
         }
     });

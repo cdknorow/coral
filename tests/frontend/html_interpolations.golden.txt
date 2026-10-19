@@ -91,6 +91,7 @@
 2	cost_dashboard.js	_formatCost(t.cost_usd || 0)
 1	cost_dashboard.js	_formatDate(r.started_at)
 1	cost_dashboard.js	_formatLatency(r.latency_ms)
+1	cost_dashboard.js	_sortArrow(table, field)
 1	cost_dashboard.js	_sortHeader('agent', 'agent_name', 'Agent', '', true)
 1	cost_dashboard.js	_sortHeader('agent', 'board_name', 'Team', '', true)
 1	cost_dashboard.js	_sortHeader('agent', 'cache_read_tokens', 'Cache Read', 'cost-col-right')
