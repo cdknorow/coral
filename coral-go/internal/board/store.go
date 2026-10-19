@@ -2097,7 +2097,8 @@ func (s *Store) SearchMessages(ctx context.Context, query string) ([]string, err
 // DeleteProject deletes a board entirely, in one transaction (#4966): its messages, subscribers, groups, reminders and waits, its tasks with everything
 // that hangs off them (amendments, workflow data, dependency rules, ready notices, and the dependency links to and from them: a task on another
 // board that was blocked by one of these is no longer blocked), its presets, working mode, settings (the pause, the health check, cross-team),
-// health records and Hub operator records, and its row in the boards table. A board made again under the same name starts empty.
+// health counters and items, and its row in the boards table. Two audit trails stay: hub_operator_actions (the Hub's record of what its operators did) and
+// health_actions (what Coral's health rules did): a record of what happened is not part of the board. A board made again under the same name starts empty.
 func (s *Store) DeleteProject(ctx context.Context, project string) error {
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -2125,10 +2126,8 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 		{"DELETE FROM board_groups WHERE project = ?", 1},
 		{"DELETE FROM board_waits WHERE project = ?", 1},
 		{"DELETE FROM board_settings WHERE project = ?", 1},
-		{"DELETE FROM health_actions WHERE project = ?", 1},
 		{"DELETE FROM health_counters WHERE project = ?", 1},
 		{"DELETE FROM health_items WHERE project = ?", 1},
-		{"DELETE FROM hub_operator_actions WHERE project = ?", 1},
 		{"DELETE FROM boards WHERE id = ?", 1},
 	} {
 		args := make([]any, q.args)

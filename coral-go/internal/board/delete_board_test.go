@@ -13,9 +13,11 @@ import (
 var boardOwnedRows = []struct{ table, col string }{
 	{"board_subscribers", "project"}, {"board_messages", "project"}, {"board_reminders", "project"}, {"board_groups", "project"},
 	{"board_tasks", "board_id"}, {"board_settings", "project"}, {"board_waits", "project"}, {"board_working_modes", "board_id"},
-	{"board_workflow_presets", "board_id"}, {"health_actions", "project"}, {"health_counters", "project"}, {"health_items", "project"},
-	{"hub_operator_actions", "project"}, {"boards", "id"},
+	{"board_workflow_presets", "board_id"}, {"health_counters", "project"}, {"health_items", "project"}, {"boards", "id"},
 }
+
+// Audit trails: what the Hub's operators did and what the health rules did are a record of what happened, not part of the board, so they stay.
+var auditRows = []struct{ table, col string }{{"hub_operator_actions", "project"}, {"health_actions", "project"}}
 
 // Rows that hang off a board's tasks, found through the task ids.
 var taskOwnedRows = []struct{ table, sel string }{
@@ -106,7 +108,17 @@ func TestDeleteProjectTakesTheWholeBoard(t *testing.T) {
 		keepBefore[r.table] = countRows(t, s, r.table, r.sel, "keep")
 	}
 
+	auditBefore := map[string]int{}
+	for _, r := range auditRows {
+		auditBefore[r.table] = countRows(t, s, r.table, r.col+" = ?", "gone")
+		require.Greater(t, auditBefore[r.table], 0, "the fixture put a row in %s", r.table)
+	}
+
 	require.NoError(t, s.DeleteProject(ctx, "gone"))
+
+	for _, r := range auditRows {
+		assert.Equal(t, auditBefore[r.table], countRows(t, s, r.table, r.col+" = ?", "gone"), "%s: the audit trail of the deleted board stays", r.table)
+	}
 
 	for _, r := range boardOwnedRows {
 		assert.Equal(t, 0, countRows(t, s, r.table, r.col+" = ?", "gone"), "%s: nothing of the deleted board is left", r.table)

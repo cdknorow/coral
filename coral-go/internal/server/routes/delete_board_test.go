@@ -23,6 +23,9 @@ func TestDeleteBoardRemovesItsTasks(t *testing.T) {
 		_, err = h.bs.CreateTask(ctx, p, "work", "", "high", "Boss")
 		require.NoError(t, err)
 	}
+	h.mu.Lock()
+	h.paused["doomed"] = true
+	h.mu.Unlock()
 	req := httptest.NewRequest(http.MethodDelete, "/api/board/doomed", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("project", "doomed")
@@ -36,6 +39,10 @@ func TestDeleteBoardRemovesItsTasks(t *testing.T) {
 	assert.Empty(t, gone, "the deleted board's tasks are gone")
 	count, _ := h.bs.CountMessages(ctx, "doomed")
 	assert.Equal(t, 0, count)
+	h.mu.Lock()
+	_, stillPaused := h.paused["doomed"]
+	h.mu.Unlock()
+	assert.False(t, stillPaused, "the in-memory pause goes once the board is deleted")
 	kept, err := h.bs.ListTasks(ctx, "kept")
 	require.NoError(t, err)
 	assert.Len(t, kept, 1, "the other board keeps its task")

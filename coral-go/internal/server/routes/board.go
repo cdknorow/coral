@@ -1452,13 +1452,14 @@ func (h *BoardHandler) GetPaused(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/board/{project}
 func (h *BoardHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
-	h.mu.Lock()
-	delete(h.paused, project)
-	h.mu.Unlock()
 	if err := h.bs.DeleteProject(r.Context(), project); err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
+	// The in-memory pause goes only once the board is gone: a delete that failed leaves the board as it was, paused or not.
+	h.mu.Lock()
+	delete(h.paused, project)
+	h.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
