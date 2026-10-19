@@ -170,6 +170,11 @@ const BASE = require('./test_base').BASE;
                 await waitFor(`${BTN}.getAttribute('aria-label') === 'Jump to latest, 2 new messages'`, `${v.name}: the count 2`);
                 await ev(`${BTN}.click(); true`);
                 await waitFor(`${BTN}.hidden && (() => { const c = ${C}; return c.scrollHeight - c.scrollTop - c.clientHeight < 50; })()`, `${v.name}: a click jumps`, 4000);
+                // Hidden and within 50 px is the smooth scroll still on its way: the jump's watch has not pinned yet, and a scroll-up
+                // now can be undone by the animation's last frames and the pin (autoScroll back on, so the next replies are not
+                // counted). Wait for the jump to arrive and the watch's frame to run, as the release cases above do.
+                await waitFor(`(() => { const c = ${C}; return c.scrollHeight - c.scrollTop - c.clientHeight < 2; })()`, `${v.name}: the jump arrived`, 4000);
+                await ev(framesJs(2));
                 await scrollTo(`c.scrollHeight - c.clientHeight * 2.5`);
                 await add(2);
                 await waitFor(`${BTN}.getAttribute('aria-label') === 'Jump to latest, 2 new messages'`, `${v.name}: the count 2 again`);
