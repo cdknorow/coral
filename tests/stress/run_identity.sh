@@ -31,6 +31,7 @@
 # --cloud-url off; it and its tmux server are stopped by PID / their own socket.
 #
 set -euo pipefail
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 STRICT=0
 [[ "${1:-}" == "--strict" || "${IDENTITY_STRICT:-0}" == 1 ]] && STRICT=1
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).

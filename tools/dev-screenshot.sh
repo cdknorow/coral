@@ -6,6 +6,7 @@
 # data dir, waits for health, opens the browser, and takes a screenshot.
 
 set -euo pipefail
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CORAL_DIR="$SCRIPT_DIR/../coral-go"

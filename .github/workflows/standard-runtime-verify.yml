@@ -8,6 +8,7 @@ on:
         default: v1.3.19
 permissions:
   contents: read
+  actions: read  # the release run's artifacts (#4936)
 env:
   CORAL_TELEMETRY_DISABLED: "1"
 jobs:
@@ -30,7 +31,10 @@ jobs:
         with:
           go-version: "1.26.9"
           cache: false
-      - name: Download and verify published package digest
+      # The package comes from the release run's artifact, not the published release, so this check doesn't
+      # count as a download (#4936). Its sha256 must equal the published asset's digest (release metadata,
+      # not a download), so it is the published package byte for byte.
+      - name: Get the package from the release run and verify the published digest
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
@@ -39,7 +43,9 @@ jobs:
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           mkdir -p verify/package
-          gh release download "$RELEASE_TAG" --pattern "coral-linux-${ARCH}-${RELEASE_TAG#v}.tar.gz" --dir verify
+          RUN=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release.yml --branch "$RELEASE_TAG" --event push --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          [ -n "$RUN" ] || { echo "::error::no successful release.yml run for $RELEASE_TAG (its artifacts may have expired)"; exit 1; }
+          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" -n "coral-linux-${ARCH}" -D verify
           gh release view "$RELEASE_TAG" --json assets > verify/assets.json
           python3 - <<'PYCODE'
           import hashlib, json, os, pathlib

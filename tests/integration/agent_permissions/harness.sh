@@ -14,6 +14,7 @@
 #   finish                  — print summary and exit
 
 set -euo pipefail
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"

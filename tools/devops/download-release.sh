@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# dl_release.sh TAG DIR: download every asset of TAG into DIR, retrying each until its sha256 equals GitHub's digest
+# download-release.sh TAG DIR: download every asset of TAG into DIR, retrying each until its sha256 equals GitHub's digest.
+# Every file it fetches counts as a download of the release, so the release flow no longer uses it (finish-release.sh
+# checks the release run's artifacts instead, #4936). Use it only to re-check exactly what a user downloads.
 set -o pipefail
 TAG=$1; DIR=$2; mkdir -p "$DIR"; cd "$(git rev-parse --show-toplevel)" || exit 1
 gh api repos/cdknorow/coral/releases/tags/$TAG -q '.assets[]|"\(.name) \(.digest)"' > "$DIR/.digests" || exit 1

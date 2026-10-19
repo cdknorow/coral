@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# tools/devops/cask.sh VER: one "cask: Coral VER" commit on main (#4605). The DMG's sha256 comes from the release's
-# SHA256SUMS.txt and is compared with the Homebrew tap's (the release workflow updates the tap). The commit is made in a
+# tools/devops/cask.sh VER: one "cask: Coral VER" commit on main (#4605). The DMG's sha256 is GitHub's digest of the
+# published DMG and is compared with the Homebrew tap's (the release workflow updates the tap). The commit is made in a
 # throwaway worktree on origin/main and pushed; the shared checkout's Casks/coral.rb is synced only if nobody edited it.
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 V=${1:?usage: cask.sh VER}
 cd "$MAIN_TREE"; git fetch -q origin
 BASE=$(git rev-parse origin/main); [ "$(git rev-parse main)" = "$BASE" ] || die "local main differs from origin/main"
-SHA=$(gh release download "v$V" -p SHA256SUMS.txt -O - | awk -v f="Coral.v$V.dmg" '$2==f{print $1}')
-[ ${#SHA} = 64 ] || die "no DMG sha256 in v$V's SHA256SUMS.txt"
+# GitHub's own digest of the published DMG (release metadata): no download, so it adds nothing to the counts (#4936).
+SHA=$(gh api "repos/cdknorow/coral/releases/tags/v$V" -q ".assets[] | select(.name == \"Coral.v$V.dmg\") | .digest" | sed 's/^sha256://')
+[[ "$SHA" =~ ^[0-9a-f]{64}$ ]] || die "no sha256 digest for Coral.v$V.dmg in v$V's release"
 TAP=$(gh api repos/cdknorow/homebrew-coral/contents/Casks/coral.rb -q .content | base64 -d | awk -F'"' '/^  sha256 /{print $2}')
 [ "$TAP" = "$SHA" ] && echo "tap matches $SHA" || echo "NOTE: the tap's sha256 $TAP differs from the release's $SHA"
 W=$(mktemp -d /tmp/cask.XXXX)/wt

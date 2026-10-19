@@ -18,6 +18,7 @@
 #   FILESN, NMSG, NEVENT, TABS, WARMUP_S, CPU_S, LOAD_S, STRACE_S, STRACE_SETTLE_S.
 # The script re-execs itself under `nice -n 10` (one documented command, nice +10).
 set -u
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 
 # Linux (epoch) only, opt-in: it seeds a large dataset, starts real tmux sessions, runs pprof
 # and strace, so it must never run on the operator's Mac or in the normal suite.

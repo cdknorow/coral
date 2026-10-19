@@ -22,6 +22,7 @@
 # GO, REPO, PORT (8497), PPROF (8498), OUT, KEEP_TEST_DATA.
 set -u
 set -o pipefail
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 if [[ "${PERF_RUN:-}" != "1" ]]; then echo "[scale] opt-in: set PERF_RUN=1" >&2; exit 2; fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="${REPO:-$(cd "$HERE/../.." && pwd)}"

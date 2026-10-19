@@ -9,8 +9,11 @@
 #   1. release     the release exists, is published, and is a prerelease exactly when the tag's tier
 #                  says so (tests/release/resolve_release.sh); every expected asset is there
 #   2. notes       the release body starts with this version's whole section of RELEASE_NOTES.md at the tag
-#   3. sha256      every asset is downloaded into a fresh folder; SHA256SUMS.txt matches each package,
-#                  and lists every package (so nothing goes unchecked)
+#   3. sha256      every asset is taken from the release run's artifacts (release.yml at the tag) into a fresh
+#                  folder, so our own check doesn't count as a download (#4936; --published downloads them from
+#                  the release instead); each file's sha256 equals the published asset's digest (release
+#                  metadata, not a download), so these are the published files byte for byte; SHA256SUMS.txt
+#                  matches each package, and lists every package (so nothing goes unchecked)
 #   4. attest      gh attestation verify for each package and for SHA256SUMS.txt, bound to release.yml at this tag
 #   5. cosign      cosign verify-blob of every .sigstore.json bundle, when cosign is installed (a
 #                  plain SKIP, not a pass, when it is not)
@@ -21,20 +24,25 @@
 #   8. build       each program's version, build tags and target, from the binary's own build info,
 #                  against the tag (go version -m, else strings)
 # Exit status 0 only when no row is a FAIL. A SKIP does not fail the run but is printed in the table:
-# read it. Everything is downloaded into a new folder under $TMPDIR (removed at the end unless --keep).
+# read it. Everything goes into a new folder under $TMPDIR (removed at the end unless --keep).
 #
 # Needs: gh (logged in), jq, tar, unzip, shasum or sha256sum. Optional: cosign, go, hdiutil.
 # Options: --repo OWNER/NAME (default cdknorow/coral), --prev TAG (default: the release before this one
 # of the same kind), --no-prev, --keep, --out DIR (use an empty folder you name; implies --keep),
-# --local DIR (check assets already in DIR instead of downloading: for a re-check, or to see a tampered copy fail).
+# --local DIR (check assets already in DIR instead of downloading: for a re-check, or to see a tampered copy fail),
+# --published (download the assets from the published release, as a user would: each counts as a download; use it
+# when the release run's artifacts have expired or you can't read the repo's Actions).
 set -u
 set -o pipefail
+# The release's own programs are run below: our checks send no usage events (#4936).
+export CORAL_TELEMETRY_DISABLED=1
 
 usage() { sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 2; }
-TAG=""; REPO="cdknorow/coral"; PREV=""; NOPREV=0; KEEP=0; OUT=""; LOCAL=""
+TAG=""; REPO="cdknorow/coral"; PREV=""; NOPREV=0; KEEP=0; OUT=""; LOCAL=""; PUBLISHED=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) REPO="${2:?}"; shift 2 ;;
+    --published) PUBLISHED=1; shift ;;
     --prev) PREV="${2:?}"; shift 2 ;;
     --no-prev) NOPREV=1; shift ;;
     --keep) KEEP=1; shift ;;
@@ -92,6 +100,26 @@ cleanup() {
 trap cleanup EXIT
 DL="$WORK/assets"; mkdir -p "$DL"
 
+# run_artifacts TAG DIR NAME...: move the named artifacts of TAG's release run (release.yml, pushed by the tag)
+# into DIR, trying each up to three times; sets LAST_RUN. Fails when there is no such run or an artifact is not
+# there (artifacts expire), with the reason in $WORK/run.err.
+run_artifacts() {
+  local tag="$1" dir="$2" run a got t; shift 2
+  run="$(gh run list --repo "$REPO" --workflow release.yml --branch "$tag" --event push --status success --limit 1 \
+    --json databaseId -q '.[0].databaseId' 2>/dev/null)"
+  [ -n "$run" ] || { echo "no successful release.yml run for $tag" >"$WORK/run.err"; return 1; }
+  for a in "$@"; do
+    got=0
+    for _ in 1 2 3; do
+      t="$(mktemp -d "$WORK/art.XXXXXX")" || return 1
+      if gh run download "$run" --repo "$REPO" -n "$a" -D "$t" 2>"$WORK/run.err"; then got=1; break; fi
+    done
+    [ "$got" = 1 ] || return 1
+    find "$t" -type f -exec mv {} "$dir/" \;
+  done
+  LAST_RUN="$run"
+}
+
 # ---- 1. the release ----
 meta="$(gh release view "$TAG" --repo "$REPO" --json tagName,isDraft,isPrerelease,body,assets,publishedAt 2>&1)" || {
   fail release "$TAG" "gh release view failed: $(head -c 200 <<<"$meta")"; meta=""; }
@@ -143,13 +171,27 @@ if [ -n "$meta" ]; then
   if [ -n "$LOCAL" ]; then
     DL="$(cd "$LOCAL" && pwd)"
     pass download "local folder" "$DL ($(ls "$DL" | wc -l | tr -d ' ') files, not downloaded)"
+  elif [ "$PUBLISHED" = 1 ]; then
+    echo "  downloading every asset to $DL ..." >&2
+    if gh release download "$TAG" --repo "$REPO" --dir "$DL" 2>"$WORK/dl.err"; then
+      pass download "all assets" "$(ls "$DL" | wc -l | tr -d ' ') files, downloaded from the release (--published)"
+    else
+      fail download "all assets" "$(head -c 200 "$WORK/dl.err")"
+    fi
   else
-  echo "  downloading every asset to $DL ..." >&2
-  if gh release download "$TAG" --repo "$REPO" --dir "$DL" 2>"$WORK/dl.err"; then
-    pass download "all assets" "$(ls "$DL" | wc -l | tr -d ' ') files"
-  else
-    fail download "all assets" "$(head -c 200 "$WORK/dl.err")"
-  fi
+    echo "  taking every asset from the release run's artifacts into $DL ..." >&2
+    if run_artifacts "$TAG" "$DL" coral-linux-amd64 coral-linux-arm64 coral-windows-msi coral-windows-portable coral-macos-dmg; then
+      if run_artifacts "$TAG" "$DL" release-sums; then
+        pass download "release run $LAST_RUN" "$(ls "$DL" | wc -l | tr -d ' ') files from its artifacts, none from the release"
+      # a run from before #4936 has no release-sums artifact: only the small sums and bundles come from the release
+      elif gh release download "$TAG" --repo "$REPO" --dir "$DL" -p 'SHA256SUMS.txt' -p '*.sigstore.json' 2>"$WORK/dl.err"; then
+        pass download "release run $LAST_RUN" "packages from its artifacts; SHA256SUMS.txt and the bundles from the release (no release-sums artifact)"
+      else
+        fail download "SHA256SUMS.txt and the bundles" "$(head -c 200 "$WORK/dl.err")"
+      fi
+    else
+      fail download "release run artifacts" "$(head -c 160 "$WORK/run.err") (expired? --published downloads from the release)"
+    fi
   fi
 fi
 cd "$DL" 2>/dev/null || { echo "verify-release: cannot enter $DL" >&2; exit 2; }
@@ -157,6 +199,18 @@ packages=()
 for f in *; do
   case "$f" in *.sigstore.json|SHA256SUMS.txt|'*') ;; *) [ -f "$f" ] && packages+=("$f") ;; esac
 done
+
+# ---- the published digests: the files checked here are the published ones, byte for byte ----
+if [ -n "$meta" ]; then
+  while IFS=$'\t' read -r name digest; do
+    [ -n "$name" ] || continue
+    if [ ! -f "$name" ]; then fail published "$name" "a published asset, missing from the files checked"; continue; fi
+    if [ -z "$digest" ]; then skip published "$name" "GitHub gives no digest for it"; continue; fi
+    got="$(SHA "$name")"
+    [ "$got" = "${digest#sha256:}" ] && pass published "$name" "same bytes as the published asset" \
+      || fail published "$name" "got ${got:0:12}..., the published asset is ${digest:7:12}..."
+  done < <(jq -r '.assets[] | [.name, (.digest // "")] | @tsv' <<<"$meta")
+fi
 
 # ---- 3. SHA256SUMS ----
 if [ -f SHA256SUMS.txt ]; then
@@ -281,8 +335,13 @@ if [ "$NOPREV" = 0 ] && [ -n "$meta" ]; then
   if [ -n "$PREV" ]; then
     mkdir -p "$PREVDIR"
     pv="${PREV#v}"
-    gh release download "$PREV" --repo "$REPO" --dir "$PREVDIR" --pattern "coral-linux-*-$pv.tar.gz" --pattern "Coral-$pv-x64-portable.zip" 2>/dev/null \
-      || skip contents "previous release $PREV" "could not be downloaded; entry counts not compared"
+    if [ "$PUBLISHED" = 1 ]; then
+      gh release download "$PREV" --repo "$REPO" --dir "$PREVDIR" --pattern "coral-linux-*-$pv.tar.gz" --pattern "Coral-$pv-x64-portable.zip" 2>/dev/null \
+        || skip contents "previous release $PREV" "could not be downloaded; entry counts not compared"
+    else
+      run_artifacts "$PREV" "$PREVDIR" coral-linux-amd64 coral-linux-arm64 coral-windows-portable \
+        || skip contents "previous release $PREV" "its release run's artifacts are gone (expired?); entry counts not compared (--published downloads them)"
+    fi
   else
     skip contents "previous release" "none found of the same kind; entry counts not compared (use --prev)"
   fi

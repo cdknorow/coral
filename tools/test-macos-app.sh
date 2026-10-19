@@ -11,6 +11,7 @@
 # Exit codes: 0 = pass, 1 = fail
 
 set -euo pipefail
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 
 # ── Phase 1: Setup ──────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

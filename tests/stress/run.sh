@@ -4,6 +4,7 @@
 # Tests task creation, claiming, completion, and listing.
 #
 set -euo pipefail
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
 

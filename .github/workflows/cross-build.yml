@@ -22,6 +22,10 @@ on:
 permissions:
   contents: read
 
+# CI sends no usage events. Its builds carry no PostHog key, and this keeps it so if one ever does (#4936).
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
 jobs:
   linux-windows:
     runs-on: ubuntu-24.04

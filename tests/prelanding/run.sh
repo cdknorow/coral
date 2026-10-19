@@ -31,6 +31,7 @@
 # Exit status: 0 when every step passed, 1 when any failed or the run timed out, 2 when the request
 # was refused or another check is running.
 set -uo pipefail
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 umask 022
 
 here=$(cd "$(dirname "$0")" && pwd)

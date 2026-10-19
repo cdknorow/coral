@@ -14,6 +14,7 @@
 # IDLE (1: the mock agents do nothing after one turn), TEAMS (3).
 set -u
 set -o pipefail
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 if [[ "${PERF_RUN:-}" != "1" ]]; then echo "[perf] opt-in: set PERF_RUN=1" >&2; exit 2; fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="${REPO:-$(cd "$HERE/../.." && pwd)}"

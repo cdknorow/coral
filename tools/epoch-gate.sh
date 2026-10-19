@@ -33,6 +33,7 @@ umask 022
 N=${EPOCH_ROOT:?}
 export PATH=$N/coralgo-tools/node/bin:${GO_BIN:-$HOME/go-install/go/bin}:$PATH GOCACHE=$N/coralgo-cache/gocache GOMODCACHE=$N/coralgo-cache/gomodcache npm_config_cache=$N/coralgo-cache/npm TMPDIR=$N/coralgo-tmp GOMAXPROCS=8 GOFLAGS=-p=8
 unset CORAL_CLOUD_URL CORAL_DIR CORAL_DATA_DIR CORAL_URL TMUX
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 cd $N/$D/coral-go
 echo "gofmt-all:[$("$(go env GOROOT)/bin/gofmt" -l .)] (gofmt of $(go version))"
 ts(){ echo "[$(date -u +%H:%M:%S)] $*"; }

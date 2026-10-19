@@ -9,6 +9,7 @@
 # Usage: run_all.sh   (see tests/latency/README.md)
 # Env overrides: GO, REPO, WORK, PORT, N, NSESS, NBIG, BIGMB, FILESN, HOG
 set -u
+export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 
 # Linux (epoch) only, and opt-in (Security on #3740): this seeds a large dataset, starts real tmux
 # sessions and runs a CPU hog, so it must never run on the operator's Mac or in the normal suite.
