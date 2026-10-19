@@ -1,5 +1,24 @@
 # Release Notes
 
+## v1.4.104 — Choose a thinking level, switch model and level from the chat bar, and a quicker dashboard
+
+### Changes
+
+- **Per-agent thinking level (reasoning effort):** the Launch, Restart and team-agent forms have a Thinking select beside the Model (Default first, narrowed to the levels the chosen model takes), and Settings has a default for it. Claude takes low, medium, high, xhigh and max (passed to the CLI as `--effort`); other agent types are added as each is checked. A restart keeps the agent's level unless you change it, and a resume and a team reset start agents with the level they had.
+- **A chip by the composer says which model and thinking level the agent runs, and switches them:** on Claude, choosing another model or level types the CLI's own `/model` or `/effort` once the agent is between turns (mid-turn it says "Switches after this reply"), and the chip changes only when the transcript confirms it; if the CLI refuses, the chip shows the CLI's own message. For a CLI with no live switch it says "Apply with restart" and opens the Restart dialog with the choice filled in. The switch is Operator-only (`POST /api/sessions/live/{name}/model`; an agent token gets 403).
+- **Rows and the info panel show the level the agent really ran at,** as its own transcript records it (Claude's and Codex's), next to the level it was started with.
+- **Cost by thinking level:** the Cost view has a By Thinking Level table, with a "Not reported" bucket for calls whose level was not recorded (CLIs that write none, and everything before this release).
+- **The dashboard is quicker:** switching between agents redraws the two rows that change instead of the whole list (the switch median went from 38 to 24 ms at a 4x slowdown), and first load no longer has a startup task over 50 ms (the longest was 55 to 69 ms at 4x).
+
+### Fixes
+
+- **Selecting the agent that is already selected keeps its highlight** (it used to remove it).
+
+### Other changes
+
+- **Internals:** `internal/board/store.go`, `routes/board.go`, `render.js` and `tasks.js` are split into cohesive files, moves only; the dashboard's Display menu, summary line and group toggle are found inside the list's headers instead of by page-wide selectors; the block-code marker comes from `crypto.getRandomValues`.
+- **Tests and CI:** the Linux go test of both tag sets now also runs on GitHub (`go-tests.yml`, about 6 minutes, with the routes and tunnel packages in shards of their own) and the epoch gate script ships `.github`, no longer starts the gate under `nohup` and runs `go test` with the telemetry opt-out unset; the slowest background and routes tests run their seeds in parallel; eight browser suites wait for their layout to settle instead of a guessed time; four known timing flakes (inputlog, the tunnel throughput floor, hub_launch_access, team_health_settings) and the SIGHUP kill tests are made deterministic; `tools/test-macos-app.sh` runs in a throwaway data folder and HOME and stops only what it started; `tools/devops/after-release.sh` chains the release wait, the verification and the cask.
+
 ## v1.4.103 — Dialogs rebuilt in the Settings layout, a compact agent-list header, and a team health monitor that starts off
 
 ### Security
