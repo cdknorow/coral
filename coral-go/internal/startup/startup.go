@@ -478,7 +478,9 @@ func openDatabases(ctx context.Context, cfg *config.Config, boardPath, dbKey str
 	openDone()
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to open board database: %w", err)
+		// Keep this fatal (#4924): starting over a damaged board would create a fresh one and lose its
+		// history, so refuse and tell the user where the file is and what they can do about it.
+		return nil, fmt.Errorf("the board database could not be opened: %w\nCoral will not start over a damaged board. Move %s aside (rename it, e.g. to messageboard.db.bak) to start with a fresh board, or restore it from a backup", err, boardPath)
 	}
 	boardProbe.Close()
 	return db, nil

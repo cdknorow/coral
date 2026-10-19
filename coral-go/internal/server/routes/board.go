@@ -260,6 +260,9 @@ func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) 
 
 // RestoreSubscriberReminders reloads durable reminders after a server restart.
 func (h *BoardHandler) RestoreSubscriberReminders(ctx context.Context) error {
+	if h.bs == nil {
+		return nil // a board that could not be opened is left out (#4924); nothing to restore
+	}
 	rows, err := h.bs.ListSubscriberReminders(ctx)
 	if err != nil {
 		return err
