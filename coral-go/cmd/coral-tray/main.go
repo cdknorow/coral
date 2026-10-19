@@ -16,6 +16,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -432,9 +433,15 @@ func killAllAgents(baseURL, dataDir string) int {
 			"agent_type": s["agent_type"],
 		}
 		data, _ := json.Marshal(payload)
-		req, _ := http.NewRequest("POST",
-			fmt.Sprintf("%s/api/sessions/live/%s/kill", baseURL, name),
+		// The name is a folder name the agent works in: escaped, so a space, "?", "#", "%" or "/" in it names this session and no other route, and a request
+		// that cannot be built skips that agent instead of panicking the Shutdown action before it stops the server (#5094).
+		req, err := http.NewRequest("POST",
+			fmt.Sprintf("%s/api/sessions/live/%s/kill", baseURL, url.PathEscape(name)),
 			strings.NewReader(string(data)))
+		if err != nil {
+			log.Printf("[shutdown] not killing an agent whose name makes no request: %v", err)
+			continue
+		}
 		req.Header.Set("Content-Type", "application/json")
 		if r, err := client.Do(req); err == nil {
 			r.Body.Close()
