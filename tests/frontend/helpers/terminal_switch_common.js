@@ -40,6 +40,7 @@ module.exports = parts => (async () => {
     };
     const { coralReady } = require('./wait').bind(ev);
     const standIns = [];
+    const guard = await require('./settings_guard').guardSettings(); // cli_path_claude and the rest are put back whatever path the suite ends on (#4849)
     // Pixels, not just the buffer: the canvas renderer can leave the screen blank while the buffer holds the text.
     const INK = `(() => { let n = 0; for (const c of document.querySelectorAll('#xterm-container canvas')) { if (!c.width || !c.height) continue; const g = c.getContext('2d'); if (!g) continue;
         const d = g.getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; } return n; })()`;
@@ -68,8 +69,8 @@ module.exports = parts => (async () => {
     try {
         for (const name of ['Switch A', 'Switch B']) {
             const si = await launchStandIn(httpJson, { displayName: name });
+            standIns.push(si); // before the check: a stand-in that never got a session has still pointed cli_path_claude at its script, and only its stop() puts that back
             if (!si.sid) throw new Error('no stand-in agent: ' + si.diag);
-            standIns.push(si);
         }
         await Page.enable();
         await Network.enable();
@@ -158,7 +159,8 @@ module.exports = parts => (async () => {
         check('the next switch to Terminal attaches and shows text', after >= 0 && after <= 2000, `${Math.round(after)} ms`);
         }
     } finally {
-        for (const si of standIns) await si.stop();
+        for (const si of standIns) await si.stop().catch(e => console.error('stand-in stop: ' + (e && e.message)));
+        await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));
         await client.close();
     }
     if (process.env.CORAL_REPORT_FILE) require('node:fs').writeFileSync(process.env.CORAL_REPORT_FILE, lines.join('\n') + '\n');
