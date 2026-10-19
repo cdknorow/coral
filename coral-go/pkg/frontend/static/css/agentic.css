@@ -2573,6 +2573,8 @@ button.team-artifact-name { cursor: pointer; }
 .list-bar-menu-inline .list-bar-clear-all { align-self: flex-start; }
 .list-bar-menu-inline .list-bar-clear-all[hidden] { display: none; }
 .list-bar-menu-inline > .list-bar-count { flex: none; }
-.list-bar-menu-inline .list-bar-field { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); align-items: center; gap: 8px; }
-.list-bar-menu-inline .list-bar-field > :last-child { flex: none; width: 100%; }
+/* The label beside its select while there is room, above it when the panel is narrow (a narrow sidebar, large text): the select wraps under the label instead of clipping its text. */
+.list-bar-menu-inline .list-bar-field { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.list-bar-menu-inline .list-bar-field > .list-bar-field-label { flex: 0 0 4.5rem; }
+.list-bar-menu-inline .list-bar-field > :last-child:not(.list-bar-field-label) { flex: 1 1 9rem; min-width: 0; width: auto; }
 .list-bar-menu-inline > .list-bar-count { padding-left: 2px; }

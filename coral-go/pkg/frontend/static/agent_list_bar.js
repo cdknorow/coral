@@ -73,7 +73,10 @@ export function syncAgentListBars(sessions, matched) {
             }
         }
     }
-    for (const b of document.querySelectorAll('[data-display-badge]')) { b.textContent = parts.length ? String(parts.length) : ''; b.hidden = !parts.length; }
+    for (const b of document.querySelectorAll('[data-display-badge]')) {
+        b.dataset.count = parts.length ? String(parts.length) : ''; b.hidden = !parts.length; // a dot: the count is data (and in the button's name), not text a contrast check would measure
+        const btn = b.closest('[data-display-button]'); if (btn) btn.setAttribute('aria-label', parts.length ? `Display options, ${parts.length} on` : 'Display options');
+    }
     syncDisplayPanels();
     for (const [id, idp] of HOSTS) {
         const host = document.getElementById(id);

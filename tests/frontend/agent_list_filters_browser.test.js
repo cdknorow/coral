@@ -24,7 +24,8 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
-    const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(`${d}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); };
+    // (the fixture's needs-input toast would cover the header, so a shot removes it first)
+    const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; await ev(`document.querySelectorAll('.notification-toast, .toast').forEach(e => e.remove()); true`); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(`${d}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); };
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         const open = async (w, mobile, hub) => {
@@ -50,7 +51,7 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         // The filters the summary line names (what is on, without the sort and the count in brackets).
         const chips = async (which = 'desktop') => (await ev(`document.querySelector('${header(which)} [data-agent-list-summary]').dataset.text`)).replace(/ \(.*\)$/, '').split(' · ').filter(x => x && !x.startsWith('Sort: '));
         const summaryText = (which = 'desktop') => ev(`document.querySelector('${header(which)} [data-agent-list-summary]').dataset.text`);
-        const badge = (which = 'desktop') => ev(`(() => { const b = document.querySelector('${header(which)} [data-display-badge]'); return b.hidden ? '' : b.textContent; })()`);
+        const badge = (which = 'desktop') => ev(`(() => { const b = document.querySelector('${header(which)} [data-display-badge]'); return b.hidden ? '' : b.dataset.count; })()`);
         const panelOpen = (which = 'desktop') => ev(`document.querySelector('${header(which)} [data-display-button]').getAttribute('aria-expanded') === 'true' && !document.querySelector('${header(which)} [data-display-panel]').hidden`);
         const toggleBtn = (which = 'desktop') => ev(`document.querySelector('${header(which)} [data-display-button]').click(); true`);
         const summaryShown = (which = 'desktop') => ev(`(() => { const e = document.querySelector('${header(which)} [data-agent-list-summary]'); return !e.hidden && e.getClientRects().length > 0; })()`);
@@ -203,8 +204,29 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         await shot('agent-list-filters-open-phone');
         await toggleBtn('phone'); assert.equal(await summaryShown('phone'), true, 'shut: the summary line'); await shot('agent-list-filters-closed-phone');
         assert.equal(await ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`) <= 0, true, 'nothing scrolls sideways on the phone');
+        const clearBox = await ev(`(() => { const r = document.querySelector('.mobile-list-header .agent-list-summary-clear').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })()`);
+        assert.ok(clearBox[0] >= 44 && clearBox[1] >= 44, 'the summary line\'s Clear is a 44 x 44 target on the phone: ' + clearBox);
         await ev(`document.querySelector('.mobile-list-header .agent-list-summary-clear').click(); true`);
         assert.equal(await count(), '30 agents'); assert.equal(await summaryShown('phone'), false);
+        console.log('11. Large text (200%) in the sidebar: the count dot stays off the icon, the summary wraps, each select sits under its label');
+        await open(1440, false, false);
+        await ev(`(() => { const st = document.createElement('style'); st.textContent = 'html{font-size:200% !important}'; document.head.appendChild(st); })()`);
+        await ev(`for (const [k, v] of Object.entries(${JSON.stringify(sleepKeys)})) localStorage.setItem(k, v); window.__T.render.flushLiveSessionsRender(); window.__T.render.renderLiveSessions(window.__T.state.liveSessions); true`);
+        await waitFor(`!!document.querySelector('#agent-list-bar #al-state')`, 'the bar at 200%', { timeout: 8000 });
+        await set('#al-state', 'needs_input'); await set('#al-board', 'team-a');
+        const big = await ev(`(() => { const r = e => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+            const btn = document.querySelector('.sidebar-header [data-display-button]'); const icon = btn.querySelector('.material-icons'); const dot = btn.querySelector('[data-display-badge]');
+            const a = r(icon), d = r(dot); const ow = Math.max(0, Math.min(a.r, d.r) - Math.max(a.l, d.l)), oh = Math.max(0, Math.min(a.b, d.b) - Math.max(a.t, d.t));
+            const sum = document.querySelector('.sidebar-header .agent-list-summary-text');
+            return { dotShown: !dot.hidden && d.r > d.l, overlap: Math.round(ow * oh) / Math.round((a.r - a.l) * (a.b - a.t)), sumCut: sum.scrollWidth > sum.clientWidth + 1, sumText: sum.textContent, sumLines: Math.round(sum.getBoundingClientRect().height / parseFloat(getComputedStyle(sum).lineHeight || 16)) }; })()`);
+        assert.ok(big.dotShown, 'the count dot is shown'); assert.ok(big.overlap < 0.15, 'and does not cover the icon: ' + big.overlap);
+        assert.equal(big.sumCut, false, 'the summary is not cut off: ' + big.sumText); assert.ok(big.sumText.includes('Needs input') && big.sumText.includes('Board: team-a'), 'it names every filter: ' + big.sumText);
+        await toggleBtn();
+        const stacked = await ev(`(() => [...document.querySelectorAll('#agent-list-bar .list-bar-field')].filter(f => f.getClientRects().length).map(f => { const l = f.querySelector('.list-bar-field-label').getBoundingClientRect(), s = f.querySelector('select').getBoundingClientRect(), p = document.querySelector('.sidebar-header [data-display-panel]').getBoundingClientRect();
+            return { under: s.top >= l.bottom - 1, wide: s.width, inside: s.left >= p.left - 1 && s.right <= p.right + 1 }; }))()`);
+        assert.ok(stacked.length >= 3 && stacked.every(x => x.under && x.inside && x.wide >= 150), 'each select is under its label, whole and wide enough to read: ' + JSON.stringify(stacked));
+        await shot('agent-list-filters-open-200');
+        await toggleBtn(); await shot('agent-list-filters-closed-200');
         console.log('PASS agent list filters');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
