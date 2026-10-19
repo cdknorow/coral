@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // A workflow run's folder (#3587). Every step gets the run folder's path in its
@@ -308,6 +309,7 @@ func newStepStream(sf stepFiles, name string) (*stepStream, error) {
 	}
 	st := &stepStream{name: name, pw: pw, capw: &cappedWriter{w: f, left: stepOutputCap}, done: make(chan struct{})}
 	go func() {
+		defer safego.Recover("background/workflow_runfolder:step stream copier")
 		// The file is closed here, at the end of the stream, not by the step: a process the step left running still writes to it.
 		defer close(st.done)
 		defer f.Close()
