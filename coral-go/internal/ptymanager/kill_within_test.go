@@ -2,6 +2,8 @@ package ptymanager
 
 import (
 	"os/exec"
+	"os/signal"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -55,8 +57,19 @@ func TestKillWithinDoesNotWaitForAProcessThatExitsOnSIGTERM(t *testing.T) {
 // #4984: closing a terminal sends SIGHUP, and an interactive shell exits on it though it ignores SIGTERM, so ending a terminal agent no longer waits
 // the whole 5 s grace for a SIGKILL. A process that ignores SIGTERM but not SIGHUP (an interactive shell's own stance) ends at once; one that
 // ignores both is still force-killed after the grace.
+// skipIfHangupIgnored: a process that starts with SIGHUP ignored (a test run under nohup, or from a detached script) passes that to every child
+// it starts, and a shell cannot undo it; a SIGHUP then ends nothing and the kill waits its grace, as it did before #4984. That is the
+// environment, not the code (it made both tests below fail on every run of a nohup'd epoch job, #4979).
+func skipIfHangupIgnored(t *testing.T) {
+	t.Helper()
+	if signal.Ignored(syscall.SIGHUP) {
+		t.Skip("SIGHUP is ignored in this process (started under nohup?): the children inherit that, so a hangup cannot end them")
+	}
+}
+
 func TestKillEndsAProcessThatIgnoresSIGTERMButNotSIGHUPAtOnce(t *testing.T) {
 	canFork(t)
+	skipIfHangupIgnored(t)
 	b := NewPTYBackend()
 	t.Cleanup(func() { b.Close() })
 	const name = "claude-00000000-0000-4000-8000-000000004984"
@@ -78,6 +91,7 @@ func TestKillEndsAProcessThatIgnoresSIGTERMButNotSIGHUPAtOnce(t *testing.T) {
 
 func TestKillEndsAnInteractiveShellWithinASecond(t *testing.T) {
 	canFork(t)
+	skipIfHangupIgnored(t)
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("no bash")
 	}
