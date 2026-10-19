@@ -16,8 +16,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// withState installs a fixed signal state for every session and restores the gate.
-func withState(t *testing.T, st AgentState, ok bool) *AgentState {
+// withState installs a fixed signal state for every session and restores the gate. It returns the function that changes the state
+// while the gate runs: the gate's goroutine reads the state under the same lock, so a test never writes it bare (#5064: the race
+// detector caught `*st = ...` against the read).
+func withState(t *testing.T, st AgentState, ok bool) (set func(AgentState)) {
 	t.Helper()
 	cur := st
 	var mu sync.Mutex
@@ -27,7 +29,11 @@ func withState(t *testing.T, st AgentState, ok bool) *AgentState {
 		return cur, ok
 	})
 	t.Cleanup(func() { SetStateFunc(nil) })
-	return &cur
+	return func(next AgentState) {
+		mu.Lock()
+		defer mu.Unlock()
+		cur = next
+	}
 }
 
 // The signal rule (design 2.1/2.2), decided against a screen. Each case is what the
@@ -105,8 +111,7 @@ func TestShadowModeLogsBothDecisions(t *testing.T) {
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(syncWriter{w: &buf, mu: &mu}, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
-	st := withState(t, AgentState{State: StateInTurn, LastEvent: time.Now(), CLIVersion: "2.1.300"}, true)
-	_ = st
+	withState(t, AgentState{State: StateInTurn, LastEvent: time.Now(), CLIVersion: "2.1.300"}, true)
 
 	a := &fakeAgent{screen: idleInputBox}
 	d, err := DeliverAutomated(context.Background(), a.input("claude-shadow", "k", "nudge", false))

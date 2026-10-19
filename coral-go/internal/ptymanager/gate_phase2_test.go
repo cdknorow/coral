@@ -29,8 +29,7 @@ func TestPhase2HoldsRoutineSendsForTheTurn(t *testing.T) {
 	fastGate(t)
 	phase2(t, true)
 	ctx := context.Background()
-	st := withState(t, AgentState{State: StateInTurn, Since: time.Now(), LastEvent: time.Now()}, true)
-	_ = st
+	setState := withState(t, AgentState{State: StateInTurn, Since: time.Now(), LastEvent: time.Now()}, true)
 
 	a := &fakeAgent{screen: idleInputBox}
 	d, err := DeliverAutomated(ctx, a.input("claude-p2-routine", "board-unread:team", "You have 1 unread message", false))
@@ -57,7 +56,7 @@ func TestPhase2HoldsRoutineSendsForTheTurn(t *testing.T) {
 	DropHeld("claude-p2-menu", "test done")
 
 	// The turn ends: the held nudge goes, once.
-	*st = AgentState{State: StateIdle, Since: time.Now(), LastEvent: time.Now(), LastStop: time.Now()}
+	setState(AgentState{State: StateIdle, Since: time.Now(), LastEvent: time.Now(), LastStop: time.Now()})
 	require.Eventually(t, func() bool { return len(a.sent()) == 1 }, 3*time.Second, 10*time.Millisecond)
 	time.Sleep(100 * time.Millisecond) // sleep-ok: a second loop pass must not send it again
 	assert.Equal(t, []string{"You have 1 unread message"}, a.sent())
