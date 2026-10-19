@@ -65,11 +65,12 @@ func TestALongWrappedPasteIsOurs(t *testing.T) {
 // gate's check before the Enter, as tmux's does. With echo set it behaves like a working agent:
 // a paste shows in the (empty) box, and its Enter empties the box again.
 type stuckTerm struct {
-	mu     sync.Mutex
-	screen string
-	echo   bool
-	pasted []string
-	enters int
+	mu       sync.Mutex
+	screen   string
+	echo     bool
+	pasted   []string
+	enters   int
+	onScreen func() // called, with no lock held, at each read of the screen (tests sample the gate while it is looking)
 }
 
 func (s *stuckTerm) set(screen string, echo bool) {
@@ -79,8 +80,12 @@ func (s *stuckTerm) set(screen string, echo bool) {
 }
 func (s *stuckTerm) AgentScreen(context.Context, string, string, string) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.screen, nil
+	screen, on := s.screen, s.onScreen
+	s.mu.Unlock()
+	if on != nil {
+		on()
+	}
+	return screen, nil
 }
 func (s *stuckTerm) RenderedScreen() bool { return true }
 func (s *stuckTerm) SendPrompt(ctx context.Context, _, text, _, _ string) error {
@@ -217,4 +222,88 @@ func TestAStuckPasteNeverEntersSomeoneElsesText(t *testing.T) {
 	assert.Contains(t, gave.list()[0], "holds text Coral can't place")
 	_, enters := term.got()
 	assert.Zero(t, enters, "a person's text is never submitted")
+}
+
+// #5205: a held send is counted as held for as long as it is held, also while the retry loop has it off the queue to try it again (it is taken off before
+// it is typed, so that it is typed once). TestAMentionDoesNotWaitBehindAStuckPaste read 0 there now and then (1 run in 300) and the sessions list showed
+// no held input for the length of each retry. The count is read at every look the gate takes at the screen, which is when a retry is in flight.
+func TestAHeldSendIsCountedWhileTheLoopRetriesIt(t *testing.T) {
+	gave := stuckGate(t, time.Hour, time.Hour)
+	name := "claude-held-inflight"
+	term := &stuckTerm{screen: noBox}
+	t.Cleanup(func() { DropHeld(name, "test done"); waitGateIdle(t) })
+
+	d, err := DeliverAutomated(context.Background(), pasteSend(term, name, "You have 1 unread message on the message board.", "board nudge", false))
+	require.NoError(t, err)
+	require.Equal(t, Held, d)
+
+	var mu sync.Mutex
+	var counts []int
+	term.mu.Lock()
+	term.onScreen = func() {
+		n := HeldCount(name)
+		mu.Lock()
+		counts = append(counts, n)
+		mu.Unlock()
+	}
+	term.mu.Unlock()
+	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(counts) >= 12 }, 5*time.Second, 5*time.Millisecond, "the loop looks at the screen again and again")
+	term.mu.Lock()
+	term.onScreen = nil
+	term.mu.Unlock()
+
+	mu.Lock()
+	defer mu.Unlock()
+	for i, n := range counts {
+		assert.Equal(t, 1, n, "the send is held at look %d of %d, whether or not the loop has it off the queue", i+1, len(counts))
+	}
+	assert.Empty(t, gave.list())
+}
+
+// A DropHeld while the loop has the send off the queue for a retry leaves nothing counted: the attempt in flight goes with the rest.
+func TestADropWhileTheLoopRetriesASendLeavesNothingCounted(t *testing.T) {
+	stuckGate(t, time.Hour, time.Hour)
+	name := "claude-held-inflight-drop"
+	term := &stuckTerm{screen: noBox}
+	t.Cleanup(func() { DropHeld(name, "test done"); waitGateIdle(t) })
+	d, err := DeliverAutomated(context.Background(), pasteSend(term, name, "You have 1 unread message on the message board.", "board nudge", false))
+	require.NoError(t, err)
+	require.Equal(t, Held, d)
+
+	var once sync.Once
+	afterDrop := make(chan int, 1)
+	term.mu.Lock()
+	term.onScreen = func() {
+		gate.mu.Lock()
+		inFlight := gate.inflight[name] != nil // the look the retry takes while it has the send off the queue
+		gate.mu.Unlock()
+		if !inFlight {
+			return
+		}
+		once.Do(func() {
+			DropHeld(name, "test")
+			afterDrop <- HeldCount(name)
+		})
+	}
+	term.mu.Unlock()
+	select {
+	case n := <-afterDrop:
+		assert.Zero(t, n, "dropped: nothing is held, nothing is in flight")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the loop never looked at the screen")
+	}
+	term.mu.Lock()
+	term.onScreen = nil
+	term.mu.Unlock()
+}
+
+// waitGateIdle waits for the gate's retry loop to end after the last held send was dropped. These tests leave the loop in the middle of a retry (that is
+// where they look), and a loop still running when the next test sets the paste timings reads them while they are written (the race detector's report).
+func waitGateIdle(t *testing.T) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		gate.mu.Lock()
+		defer gate.mu.Unlock()
+		return !gate.running
+	}, 5*time.Second, 5*time.Millisecond, "the gate's loop ends once nothing is held")
 }

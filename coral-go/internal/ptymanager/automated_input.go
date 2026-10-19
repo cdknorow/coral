@@ -164,9 +164,13 @@ type heldInput struct {
 }
 
 type inputGate struct {
-	mu      sync.Mutex
-	held    map[string][]*heldInput // by session name, oldest first
-	running bool
+	mu   sync.Mutex
+	held map[string][]*heldInput // by session name, oldest first
+	// inflight: the send flushQueue took off held (it is removed before it is typed, so that it is typed once) and is trying now, per session. It is
+	// still counted as held (HeldCount) until it is sent, held again or dropped: without it a session's held count read 0 for the length of every
+	// retry (up to pasteVerifyWait), and the sessions list showed no held input (#5205).
+	inflight map[string]*heldInput
+	running  bool
 	// The retry loop stops on request (StopGate: Coral's shutdown, and the tests, which must not
 	// leave it sleeping): stop wakes a sleeping loop, stopping makes any loop that starts or wakes
 	// meanwhile end at once, and loops counts the running loops so a stop can wait for them.

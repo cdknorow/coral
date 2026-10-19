@@ -162,6 +162,10 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 		// Remove it before typing, so it is typed once even if Send fails.
 		if cur := g.held[name]; len(cur) > 0 && cur[0] == h {
 			g.held[name] = cur[1:]
+			if g.inflight == nil {
+				g.inflight = map[string]*heldInput{}
+			}
+			g.inflight[name] = h
 		} else {
 			g.mu.Unlock()
 			continue // replaced meanwhile: look again
@@ -173,7 +177,13 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 			send.urgent = send.urgent || behind.in.Mention
 		}
 		g.mu.Unlock()
-		if enterHeld, err := g.sendChecked(ctx, send); enterHeld {
+		enterHeld, err := g.sendChecked(ctx, send)
+		g.mu.Lock()
+		if g.inflight[name] == h { // not already replaced by the send's own hold
+			delete(g.inflight, name)
+		}
+		g.mu.Unlock()
+		if enterHeld {
 			return true
 		} else if errors.Is(err, ErrTeamBusy) {
 			// Not now (#3613): back at the front, for the loop's next pass.
@@ -373,6 +383,7 @@ func DropHeld(name, why string) {
 	gate.mu.Lock()
 	n := len(gate.held[name])
 	delete(gate.held, name)
+	delete(gate.inflight, name) // an attempt in flight is abandoned with it (its gen is stale)
 	gate.gens[name]++
 	gate.shadowForgetSessionLocked(name)
 	delete(gate.delivered, name)

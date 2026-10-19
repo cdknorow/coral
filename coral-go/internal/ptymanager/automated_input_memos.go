@@ -49,11 +49,15 @@ func forgetSessionMemos(name string) {
 	}
 }
 
-// HeldCount is the number of sends held for a session (tests and diagnostics).
+// HeldCount is the number of sends held for a session, the one the retry loop is trying now included (the sessions list, tests and diagnostics).
 func HeldCount(name string) int {
 	gate.mu.Lock()
 	defer gate.mu.Unlock()
-	return len(gate.held[name])
+	n := len(gate.held[name])
+	if gate.inflight[name] != nil {
+		n++
+	}
+	return n
 }
 
 // deliveredKeysPerSession bounds LastDelivered's record for one session.

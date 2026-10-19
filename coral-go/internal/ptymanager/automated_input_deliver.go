@@ -364,6 +364,7 @@ func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted bool, kind s
 	again := in.heldWhy == why
 	in.heldWhy = why
 	g.held[in.Name] = append([]*heldInput{{in: in, heldAt: heldAt, why: why, kind: kind, reported: in.heldReported, reportedPrompt: in.heldReportedPrompt}}, g.held[in.Name]...)
+	delete(g.inflight, in.Name) // held again: it is counted there, not twice
 	g.noteDialogLocked(in.Name, kind)
 	start := !g.running
 	g.running = true
@@ -400,6 +401,7 @@ func (g *inputGate) holdEnter(in AutomatedInput, kind string) {
 	}
 	enter.heldSince, enter.heldReported, enter.heldReportedPrompt = heldAt, in.heldReported, in.heldReportedPrompt
 	g.held[in.Name] = append([]*heldInput{{in: enter, heldAt: heldAt, why: "a prompt opened before its Enter", kind: kind, reported: in.heldReported, reportedPrompt: in.heldReportedPrompt}}, g.held[in.Name]...)
+	delete(g.inflight, in.Name) // held again: it is counted there, not twice
 	start := !g.running
 	g.running = true
 	g.mu.Unlock()
