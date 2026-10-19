@@ -25,7 +25,10 @@ import (
 // wsListMaxAge bounds how old a shared part may be. It is well under the 5s
 // tick and the 1s remote-change debounce, so a client never sees data older
 // than it would have built itself on a slightly earlier tick.
-const wsListMaxAge = 750 * time.Millisecond
+//
+// It is a var only so a test can shorten it with a matching poll interval and check the same sharing in a fraction of the time (#4914); the
+// server never changes it.
+var wsListMaxAge = 750 * time.Millisecond
 
 // wsListBuildTimeout bounds a shared build, which no longer runs under any one
 // client's request context.

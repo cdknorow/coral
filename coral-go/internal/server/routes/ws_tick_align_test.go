@@ -26,7 +26,12 @@ func TestWSCoral_ConnectionsShareTicks(t *testing.T) {
 	wsLocalBuildHook = func() { builds.Add(1) }
 	t.Cleanup(func() { wsLocalBuildHook = nil })
 	server, handler := setupTestServer(t)
-	const interval = 2 * time.Second // over wsListMaxAge, so each tick builds once
+	// A short shared-build age and an interval over it: the same sharing is checked in 2 s instead of 9 (#4914). The server's own age is
+	// 750 ms; the property (one build per tick for any number of connections, ticks on the wall clock) does not depend on its value.
+	defaultAge := wsListMaxAge
+	wsListMaxAge = 150 * time.Millisecond
+	t.Cleanup(func() { wsListMaxAge = defaultAge })
+	const interval = 400 * time.Millisecond // over wsListMaxAge, so each tick builds once
 	handler.cfg.WSPollInterval = interval
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

@@ -30,7 +30,7 @@ const testWSPoll = 100 * time.Millisecond
 // testWSQuietWindow is how long a test watches for messages that must not
 // come. Ticks reuse one shared build for up to wsListMaxAge, so the window
 // spans that plus several ticks: it always contains real rebuilds.
-const testWSQuietWindow = wsListMaxAge + 3*testWSPoll
+var testWSQuietWindow = wsListMaxAge + 3*testWSPoll // wsListMaxAge as the server has it (tests that shorten it restore it)
 
 func setupTestServer(t *testing.T) (*httptest.Server, *SessionsHandler) {
 	t.Helper()
