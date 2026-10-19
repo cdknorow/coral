@@ -540,6 +540,10 @@ func (s *Server) staticBase() string {
 //   - frame-src 'self' http: https: : the dashboard's own frames (agent panels, previews, views, the hub Inbox) are same-origin
 //     or srcdoc; the Linked preview (artifact_preview.js) frames an artifact's http(s) address in an empty sandbox, so a
 //     frame to a page on another site is the one cross-origin load the dashboard makes on purpose.
+//   - Known gap: Chromium applies no directive to <link rel=prefetch>, so a prefetch request is not stopped by this policy (measured
+//     under the enforced policy in tests/frontend/dashboard_csp_browser.test.js, which therefore does not assert it). It needs an
+//     injected <link> element, which the sanitizers strip; the other loads (fetch, XHR, sockets, stylesheets, fonts, workers,
+//     objects, frames) are held.
 const dashboardCSPBase = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
 	"font-src 'self' data:; form-action 'self'; media-src 'self' blob: data:; img-src 'self' data: blob:; " +
 	"frame-src 'self' http: https:; worker-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'"
