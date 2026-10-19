@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -257,4 +258,70 @@ func TestResolveForAnAgentTokenReducesOtherBoards(t *testing.T) {
 	assert.Equal(t, other, got["session_id"], "the roster fields stay")
 	assert.Equal(t, "team-y", got["board_project"])
 	assert.Equal(t, "other", got["name"])
+}
+
+// On a hub, an agent's token sees none of the remote machines (#5099, with #5041): no remote row and no server list, from the live list and from /ws/coral,
+// while the Operator (no token) still gets both.
+func TestAgentTokenSeesNoRemoteMachinesOnAHub(t *testing.T) {
+	server, h := setupTestServer(t)
+	registerRosterSessions(t, h.ss)
+	src := &fakeSource{}
+	h.SetRemoteAgents(src)
+	src.set(background.RemoteSnapshot{
+		Servers:  []background.RemoteServerStatus{{ID: "a", Label: "Machine A", Status: "online"}},
+		Sessions: []map[string]any{{"name": "far", "session_id": "ra-1", "server": "a", "status": "Idle", "prompt": "REMOTE-PROMPT"}},
+	})
+	const me = "aaaaaaaa-5041-4000-8000-00000000000a"
+
+	list := func(agent bool) string {
+		req := httptest.NewRequest(http.MethodGet, "/api/sessions/live", nil)
+		if agent {
+			req = req.WithContext(context.WithValue(req.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: me, SessionName: "claude-" + me}))
+		}
+		rec := httptest.NewRecorder()
+		h.List(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		return rec.Body.String()
+	}
+	op, ag := list(false), list(true)
+	assert.Contains(t, op, "REMOTE-PROMPT", "the Operator sees the remote machine's rows")
+	assert.Contains(t, op, "Machine A")
+	assert.NotContains(t, ag, "REMOTE-PROMPT")
+	assert.NotContains(t, ag, "Machine A")
+	assert.NotContains(t, ag, "ra-1")
+	assert.Contains(t, ag, "PROMPT-me", "its own board's rows are still there")
+
+	// The feed: a hub's first message to an agent's token has the local rows only and no servers.
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if sid := req.Header.Get("X-Test-Agent"); sid != "" {
+				req = req.WithContext(context.WithValue(req.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: sid, SessionName: "claude-" + sid}))
+			}
+			next.ServeHTTP(w, req)
+		})
+	})
+	r.Get("/ws/coral", h.WSCoral)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+	_ = server
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	first := func(agent string) string {
+		var opts *websocket.DialOptions
+		if agent != "" {
+			opts = &websocket.DialOptions{HTTPHeader: http.Header{"X-Test-Agent": {agent}}}
+		}
+		conn, _, err := websocket.Dial(ctx, "ws"+srv.URL[4:]+"/ws/coral", opts)
+		require.NoError(t, err)
+		defer conn.CloseNow()
+		_, data, err := conn.Read(ctx)
+		require.NoError(t, err)
+		return string(data)
+	}
+	assert.Contains(t, first(""), "REMOTE-PROMPT")
+	agentFeed := first(me)
+	assert.NotContains(t, agentFeed, "REMOTE-PROMPT")
+	assert.NotContains(t, agentFeed, "Machine A")
+	assert.NotContains(t, agentFeed, "ra-1")
 }

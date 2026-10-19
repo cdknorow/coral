@@ -686,11 +686,30 @@ func parseLiveList(body []byte) ([]map[string]any, error) {
 	return filterLocalOnly(list), nil
 }
 
+// maxRemoteSessions is how many sessions the hub keeps for one remote machine, from its list or its feed (#5099). A machine that is not the Operator's own
+// (a compromised one, a hub registered as a machine) could otherwise grow the hub's memory without bound with sessions that never end.
+const maxRemoteSessions = 5000
+
+// addFeedSession records one session of a remote's feed under its key, in arrival order, unless it is a new one past the cap. It reports whether it was kept.
+func addFeedSession(feed map[string]map[string]any, order *[]string, k string, s map[string]any) bool {
+	if _, exists := feed[k]; !exists {
+		if len(feed) >= maxRemoteSessions {
+			return false
+		}
+		*order = append(*order, k)
+	}
+	feed[k] = s
+	return true
+}
+
 func filterLocalOnly(in []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(in))
 	for _, s := range in {
 		if sv, _ := s["server"].(string); sv != "" && sv != "local" {
 			continue
+		}
+		if len(out) >= maxRemoteSessions {
+			break
 		}
 		out = append(out, s)
 	}
@@ -980,8 +999,7 @@ func (h *RemoteAgentHub) runFeed(ctx context.Context, id string) {
 			order = order[:0]
 			for _, s := range filterLocalOnly(msg.Sessions) {
 				if k := FeedKey(s); k != "" {
-					feed[k] = s
-					order = append(order, k)
+					addFeedSession(feed, &order, k, s)
 				}
 			}
 		case "coral_diff":
@@ -990,10 +1008,7 @@ func (h *RemoteAgentHub) runFeed(ctx context.Context, id string) {
 				if k == "" {
 					continue
 				}
-				if _, exists := feed[k]; !exists {
-					order = append(order, k)
-				}
-				feed[k] = s
+				addFeedSession(feed, &order, k, s)
 			}
 			for _, k := range msg.Removed {
 				delete(feed, k)
