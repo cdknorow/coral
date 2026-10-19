@@ -47,7 +47,9 @@ func setupAgyTestRig(t *testing.T) *agyTestRig {
 		require.NoError(t, os.WriteFile(filepath.Join(binDir, "agy.bat"), []byte("@exit /b 0\r\n"), 0o755))
 	}
 
-	// Ensure PATH has fakeAgy prepended and strips any real agy executable from host PATH (#4354)
+	// Ensure PATH has fakeAgy prepended and strips any real agy executable from host PATH (#4354).
+	// Note: stripping a host PATH directory that contains agy can remove other tools installed
+	// alongside it for the test, which is intentional to prevent tests from reaching host CLIs.
 	var cleanPath []string
 	cleanPath = append(cleanPath, binDir)
 	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
@@ -1134,4 +1136,40 @@ func TestPinnedLaunchPermissionMode_FailClosed_CorruptValues(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(resetRec.Body.Bytes(), &resetRes))
 	assert.Empty(t, resetRes.Agents, "agent with corrupt permission mode must be skipped during team reset")
+}
+
+func TestPinnedLaunchPermissionMode_UnknownModeDoesNotMakeAgentUnrestartable(t *testing.T) {
+	rig := setupAgyTestRig(t)
+
+	// Launch with an unknown permission mode string (--permission-mode=somethingnew)
+	body, _ := json.Marshal(map[string]any{
+		"agent_type":  at.Agy,
+		"working_dir": rig.workdir,
+		"flags":       []string{"--permission-mode=somethingnew"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	rig.router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var launchRes map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &launchRes))
+	sid := launchRes["session_id"].(string)
+	name := launchRes["session_name"].(string)
+
+	// Check DB row: unknown mode was NOT stored (legacy fallback, nil)
+	ls, err := rig.ss.GetLiveSession(context.Background(), sid)
+	require.NoError(t, err)
+	assert.Nil(t, ls.PermissionMode, "unknown permission mode must not be stored on live_sessions row")
+
+	// Restart must succeed (fallback to legacy flags/default instead of failing closed)
+	require.NoError(t, rig.term.CreateSession(context.Background(), name, rig.workdir))
+	restartBody, _ := json.Marshal(map[string]any{
+		"session_id": sid,
+		"agent_type": at.Agy,
+	})
+	restartReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/restart", bytes.NewReader(restartBody))
+	restartRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(restartRec, restartReq)
+	require.Equal(t, http.StatusOK, restartRec.Code, restartRec.Body.String())
 }

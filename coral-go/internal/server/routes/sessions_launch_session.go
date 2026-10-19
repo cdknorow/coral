@@ -183,25 +183,30 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 	// Register in DB
 	h.chatMeta.forget(sessionID, sessionName, folderName)
 	h.ss.RegisterLiveSession(ctx, &store.LiveSession{
-		SessionID:      sessionID,
-		AgentType:      agentType,
-		AgentName:      folderName,
-		WorkingDir:     absDir,
-		DisplayName:    ptr.NonEmpty(displayName),
-		ResumeFromID:   ptr.NonEmpty(spec.ResumeSessionID),
-		Flags:          store.MarshalFlags(spec.Flags),
-		Prompt:         ptr.NonEmpty(spec.Prompt),
-		BoardName:      ptr.NonEmpty(spec.BoardName),
-		BoardServer:    ptr.NonEmpty(spec.BoardServer),
-		Backend:        ptr.NonEmpty(backend),
-		BoardType:      ptr.NonEmpty(spec.BoardType),
-		Capabilities:   store.MarshalCapabilities(spec.Capabilities),
-		Model:          ptr.NonEmpty(spec.Model),
-		Thinking:       ptr.NonEmpty(spec.Thinking),
-		ContextWindow:  proxy.LookupContextWindow(spec.Model),
-		Tools:          store.MarshalCapabilities(spec.Tools),
-		PID:            shellPID,
-		PermissionMode: ptr.NonEmpty(launchParams.PermissionMode),
+		SessionID:     sessionID,
+		AgentType:     agentType,
+		AgentName:     folderName,
+		WorkingDir:    absDir,
+		DisplayName:   ptr.NonEmpty(displayName),
+		ResumeFromID:  ptr.NonEmpty(spec.ResumeSessionID),
+		Flags:         store.MarshalFlags(spec.Flags),
+		Prompt:        ptr.NonEmpty(spec.Prompt),
+		BoardName:     ptr.NonEmpty(spec.BoardName),
+		BoardServer:   ptr.NonEmpty(spec.BoardServer),
+		Backend:       ptr.NonEmpty(backend),
+		BoardType:     ptr.NonEmpty(spec.BoardType),
+		Capabilities:  store.MarshalCapabilities(spec.Capabilities),
+		Model:         ptr.NonEmpty(spec.Model),
+		Thinking:      ptr.NonEmpty(spec.Thinking),
+		ContextWindow: proxy.LookupContextWindow(spec.Model),
+		Tools:         store.MarshalCapabilities(spec.Tools),
+		PID:           shellPID,
+		PermissionMode: func() *string {
+			if launchParams.PermissionMode != "" && agent.ValidPermissionMode(launchParams.PermissionMode) {
+				return &launchParams.PermissionMode
+			}
+			return nil
+		}(),
 	})
 	h.noteLaunchedHooks(ctx, sessionID, agentType) // #3665
 	if !isTerminal {
