@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -292,9 +293,9 @@ func TestHubSigninStartRefused(t *testing.T) {
 func TestHubSigninStartLimits(t *testing.T) {
 	g := newHubRig(t)
 	for i := 0; i < hubFlowsMax; i++ {
-		require.Equal(t, http.StatusSeeOther, g.start("10.0.0.5").Code)
+		require.Equal(t, http.StatusSeeOther, g.start(fmt.Sprintf("10.0.0.%d", 50+i)).Code)
 	}
-	assert.Equal(t, http.StatusTooManyRequests, g.start("10.0.0.6").Code, "five young flows are never evicted")
+	assert.Equal(t, http.StatusTooManyRequests, g.start("10.0.0.6").Code, "five young flows of other clients are never evicted")
 	g.now = g.now.Add(hubFlowYoungest + time.Second)
 	assert.Equal(t, http.StatusSeeOther, g.start("10.0.0.6").Code, "an old one makes room")
 	// Per address: ten a minute.
@@ -719,4 +720,52 @@ func TestHubOriginsListsLoopback(t *testing.T) {
 	require.Equal(t, 200, w.Code, w.Body.String())
 	assert.Equal(t, []any{"https://coral.example"}, out["origins"])
 	assert.Equal(t, []any{"http://localhost:8420"}, out["loopback"])
+}
+
+// #4977: one client cannot hold every place. Its third start replaces its own oldest flow, so five starts a minute from one address (or one IPv6 /64)
+// no longer keep everyone else's sign-in refused.
+func TestHubSigninOneClientCannotFillTheFlows(t *testing.T) {
+	g := newHubRig(t)
+	for i := 0; i < 20; i++ {
+		g.hs.starts, g.hs.startsAll = map[string][]time.Time{}, nil // the rate limits are not under test here
+		require.Equal(t, http.StatusSeeOther, g.start("10.0.0.5").Code, i)
+		g.hs.mu.Lock()
+		held := 0
+		for _, f := range g.hs.flows {
+			if f.addr == "10.0.0.5" {
+				held++
+			}
+		}
+		g.hs.mu.Unlock()
+		assert.LessOrEqual(t, held, hubFlowsPerAddr, "start %d", i)
+	}
+	assert.Equal(t, http.StatusSeeOther, g.start("10.0.0.6").Code, "another person can still start a sign-in")
+	// an IPv6 client counts by its /64
+	g2 := newHubRig(t)
+	for i := 0; i < 6; i++ {
+		g2.hs.starts = map[string][]time.Time{}
+		g2.hs.startsAll = nil
+		require.Equal(t, http.StatusSeeOther, g2.start(fmt.Sprintf("[2001:db8:1:2::%x]", i+1)).Code, i)
+	}
+	g2.hs.mu.Lock()
+	assert.Len(t, g2.hs.flows, hubFlowsPerAddr, "one /64 holds at most its share")
+	g2.hs.mu.Unlock()
+}
+
+// #4977: a Hub session's sensitive read is named from the routed path: an encoded slash in a name stays one segment, so the read is still recorded.
+func TestHubSensitiveReadIsNamedFromTheRoutedPath(t *testing.T) {
+	assert.Equal(t, "/api/sessions/live/{name}/file-content", hubSensitiveRead("GET", "/api/sessions/live/a%2Fb/file-content"))
+	assert.Equal(t, "", hubSensitiveRead("GET", "/api/sessions/live/a/b/file-content"), "the decoded spelling has an extra segment and names no such route")
+
+	// through the guard: the read of a name with an encoded slash is recorded, and an encoded spelling of a denied route stays denied
+	g := newHubRig(t)
+	hub := g.signIn(t)
+	guard := g.hs.HubSessionGuard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	w := httptest.NewRecorder()
+	guard.ServeHTTP(w, g.req("GET", "/api/sessions/live/a%2Fb/file-content", "", "10.0.0.5", hub))
+	assert.Equal(t, 200, w.Code)
+	assert.Contains(t, g.recorded(), "Coral Hub: Ann GET /api/sessions/live/{name}/file-content", "the read is in the Operator-actions log")
+	w = httptest.NewRecorder()
+	guard.ServeHTTP(w, g.req("GET", "/api/auth%2Fsessions", "", "10.0.0.5", hub))
+	assert.Equal(t, http.StatusForbidden, w.Code, "the deny list reads the decoded path: a superset, so an encoded spelling cannot slip past it")
 }

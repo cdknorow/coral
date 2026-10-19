@@ -79,7 +79,8 @@ type HubSettings interface {
 const (
 	hubFlowTTL       = 5 * time.Minute
 	hubFlowsMax      = 5
-	hubFlowYoungest  = time.Minute // an open flow younger than this is never dropped for a new one
+	hubFlowYoungest  = time.Minute // an open flow younger than this is never dropped for a new one from ANOTHER client
+	hubFlowsPerAddr  = 2           // open flows one client (an IPv4 address, an IPv6 /64) holds: its next start replaces its oldest
 	hubStartsPerAddr = 10          // per minute
 	hubStartsGlobal  = 30          // per minute
 	hubCheckEvery    = 60 * time.Second
@@ -97,6 +98,7 @@ const (
 type hubFlow struct {
 	stateHash, cookieHash [32]byte
 	verifier, origin      string
+	addr                  string // the client that started it (rateKey)
 	created               time.Time
 	used                  bool
 }
@@ -323,6 +325,7 @@ func hubBack(w http.ResponseWriter, r *http.Request, why string) {
 // takeStart applies the start limits (per address and global, a minute each) and makes room
 // for a flow: the oldest open flow is dropped only when it is at least a minute old.
 func (h *HubSignin) takeStart(addr string) bool {
+	addr = rateKey(addr)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	now := h.now()
@@ -346,6 +349,22 @@ func (h *HubSignin) takeStart(addr string) bool {
 		return false
 	}
 	h.dropExpiredLocked(now)
+	// One client cannot hold every place: with hubFlowsPerAddr flows open, its next start replaces its own oldest, young or not (#4977: five starts
+	// a minute from one address kept every other person's sign-in refused).
+	mine := 0
+	for _, f := range h.flows {
+		if f.addr == addr {
+			mine++
+		}
+	}
+	for i := 0; mine >= hubFlowsPerAddr && i < len(h.flows); {
+		if h.flows[i].addr == addr {
+			h.flows = append(h.flows[:i], h.flows[i+1:]...)
+			mine--
+			continue
+		}
+		i++
+	}
 	if len(h.flows) >= hubFlowsMax {
 		if now.Sub(h.flows[0].created) < hubFlowYoungest {
 			return false
@@ -424,7 +443,7 @@ func (h *HubSignin) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.mu.Lock()
-	h.flows = append(h.flows, &hubFlow{stateHash: stateHash, cookieHash: cookieHash, verifier: verifier, origin: origin, created: h.now()})
+	h.flows = append(h.flows, &hubFlow{stateHash: stateHash, cookieHash: cookieHash, verifier: verifier, origin: origin, addr: rateKey(clientIP(r)), created: h.now()})
 	h.mu.Unlock()
 	h.setFlowCookie(w, r, cookie, int(hubFlowTTL.Seconds()))
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -599,7 +618,12 @@ func (h *HubSignin) HubSessionGuard(next http.Handler) http.Handler {
 		case r.Method != http.MethodGet && r.Method != http.MethodHead || strings.HasPrefix(r.URL.Path, "/ws/"):
 			h.onAction(r.Context(), s.Label, r.Method, r.URL.Path, rec.code())
 		default:
-			if route := hubSensitiveRead(r.Method, r.URL.Path); route != "" && h.readToRecord(s.IDHash, route) {
+			// The read is named from the path chi routes on (an encoded slash stays inside a name), not the decoded one (#4977).
+			routed := r.URL.RawPath
+			if routed == "" {
+				routed = r.URL.Path
+			}
+			if route := hubSensitiveRead(r.Method, routed); route != "" && h.readToRecord(s.IDHash, route) {
 				h.onAction(r.Context(), s.Label, r.Method, route, rec.code()) // the pattern: one line per route a minute
 			}
 		}
