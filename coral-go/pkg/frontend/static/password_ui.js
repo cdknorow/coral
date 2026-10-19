@@ -4,6 +4,7 @@
  * /api/auth/password/set. A password is any non-empty text (password_rules.js); nothing here ever trims, rejects or logs one. */
 
 import { showToast } from './utils.js';
+import { postJson } from './api.js';
 import { importOnce } from './import_once.js';
 import { pollEvery } from './overload.js';
 import { browserLocal } from './safe_storage.js';
@@ -13,16 +14,8 @@ const { passwordProblem, strengthOf } = await importOnce('./password_rules.js');
 
 const NOT_NOW_KEY = 'coral-password-not-now';
 
-/** POST JSON to a same-origin route. Resolves {ok, status, data}; data is the parsed body or {} (never throws for HTTP errors). */
-export function postJson(url, body) { return sendJson('POST', url, body); }
-
-/** The same for any method (PUT and DELETE for the Hub sign-in settings, #3966); a DELETE sends no body. */
-export async function sendJson(method, url, body) {
-    const resp = await fetch(url, { method, headers: method === 'DELETE' ? {} : { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: method === 'DELETE' ? undefined : JSON.stringify(body || {}) });
-    let data = {};
-    try { data = await resp.json(); } catch { /* an empty or non-JSON body */ }
-    return { ok: resp.ok, status: resp.status, data: data || {}, retryAfter: resp.headers.get('Retry-After') };
-}
+// sendJson and postJson live in api.js now (a startup module); they are re-exported here for the modules that destructure them from this one.
+export { sendJson, postJson } from './api.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 

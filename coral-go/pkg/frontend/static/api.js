@@ -73,6 +73,36 @@ async function httpError(resp) {
     return error;
 }
 
+/** Send JSON to a same-origin route and read the answer without throwing for an HTTP refusal (#3948, moved here from password_ui.js so a startup module can use it). Resolves
+ *  {ok, status, data, retryAfter}; data is the parsed body or {}. A DELETE sends no body. */
+export async function sendJson(method, url, body) {
+    const resp = await fetch(url, { method, headers: method === 'DELETE' ? {} : { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: method === 'DELETE' ? undefined : JSON.stringify(body || {}) });
+    let data = {};
+    try { data = await resp.json(); } catch { /* an empty or non-JSON body */ }
+    return { ok: resp.ok, status: resp.status, data: data || {}, retryAfter: resp.headers.get('Retry-After') };
+}
+
+export function postJson(url, body) { return sendJson('POST', url, body); }
+
+/** Request a same-origin JSON route and return its answer, or throw. The error is the server's own reason ({"error": "..."}) or "HTTP <status>", with .status and .data
+ *  on it, so a caller that treats one status specially (a 409) reads e.status. A body, when there is one, is sent as JSON; an empty answer is {}. Unlike sendJson it throws
+ *  for a refusal, and unlike apiFetch it names the status the way the settings dialogs always did. */
+export async function requestJson(method, url, body) {
+    const init = { method };
+    if (body !== undefined) { init.headers = { 'Content-Type': 'application/json' }; init.body = JSON.stringify(body); }
+    const resp = await fetch(url, init);
+    const text = await resp.text().catch(() => '');
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (e) { if (resp.ok) throw e; }
+    if (!resp.ok) {
+        const error = new Error((data && typeof data.error === 'string' && data.error) || `HTTP ${resp.status}`);
+        error.status = resp.status;
+        error.data = data || {};
+        throw error;
+    }
+    return data;
+}
+
 /** apiFetch for a polled GET that is often unchanged (#3439): sends the last answer's validator
  *  and reuses that answer on a 304 (fetchValidated). Errors as apiFetch. */
  async function apiFetchValidated(url) {

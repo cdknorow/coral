@@ -9,6 +9,7 @@ import { getTerminal } from './xterm_renderer.js';
 import { desktopNotifySupported, desktopNotifyEnabled, enableDesktopNotify, disableDesktopNotify } from './desktop_notify.js';
 import { applyCloudSettingsDialog, filterSettingsPayload } from './cloud_settings.js';
 import { isCloud } from './server_base.js';
+import { requestJson } from './api.js';
 import { NOTHING_TO_SAVE } from './settings_diff.js';
 import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 import { attachDialogFocus } from './dialog_focus.js';
@@ -76,9 +77,7 @@ function renderDatabaseEncryptionStatus(status, loadError = false) {
 
 async function loadDatabaseEncryptionStatus() {
     try {
-        const resp = await fetch('/api/system/database-security');
-        if (!resp.ok) throw new Error(`database security ${resp.status}`);
-        const status = await resp.json();
+        const status = await requestJson('GET', '/api/system/database-security');
         renderDatabaseEncryptionStatus(status);
         return status;
     } catch (_) {
@@ -148,9 +147,7 @@ async function loadArtifactStoreSize({ fresh = false } = {}) {
         const ub = document.getElementById('settings-received-unlisted'); if (ub) ub.hidden = true;
     }
     try {
-        const r = await fetch('/api/system/artifact-store');
-        if (!r.ok) throw new Error(String(r.status));
-        const d = await r.json();
+        const d = await requestJson('GET', '/api/system/artifact-store');
         input.value = d.max_bytes > 0 ? String(Math.round(d.max_bytes / GIB)) : '0';
         input.dataset.loaded = '1'; // only a limit read from Coral is saved back
         input.disabled = false;
@@ -194,9 +191,7 @@ async function loadTerminalLogs() {
     const button = document.getElementById('settings-terminal-logs-delete');
     if (!out || !button) return;
     try {
-        const r = await fetch('/api/system/terminal-logs');
-        if (!r.ok) throw new Error(String(r.status));
-        const d = await r.json();
+        const d = await requestJson('GET', '/api/system/terminal-logs');
         const n = Number(d.ended?.count) || 0;
         _endedLogs = { count: n, bytes: Number(d.ended?.bytes) || 0 };
         const files = `${Number(d.files).toLocaleString()} terminal log${d.files === 1 ? '' : 's'}`;
@@ -221,18 +216,12 @@ function confirmDeleteEndedLogs() {
         `Delete ${n.toLocaleString()} terminal log${n === 1 ? '' : 's'} of ended agents (${_gib(shown.bytes)})? What ${n === 1 ? 'that agent\'s terminal' : 'those agents\' terminals'} showed can't be recovered. The logs of live, sleeping and archived agents are kept.`,
         async () => {
             try {
-                const r = await fetch('/api/system/terminal-logs/delete-ended', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(shown) });
-                const d = await r.json().catch(() => ({}));
-                if (r.status === 409) {
-                    showToast('The logs of ended agents changed since you looked, so nothing was deleted. Look at the new numbers and try again.', true, 8000);
-                } else if (!r.ok) {
-                    throw new Error(d.error || `HTTP ${r.status}`);
-                } else {
-                    const left = (d.failed || []).length;
-                    showToast(`Deleted ${Number(d.deleted || 0).toLocaleString()} terminal log${d.deleted === 1 ? '' : 's'}, ${_gib(d.bytes)} freed.${left ? ` ${left} could not be deleted or are not ended any more.` : ''}`, false, 8000);
-                }
+                const d = await requestJson('POST', '/api/system/terminal-logs/delete-ended', shown);
+                const left = (d.failed || []).length;
+                showToast(`Deleted ${Number(d.deleted || 0).toLocaleString()} terminal log${d.deleted === 1 ? '' : 's'}, ${_gib(d.bytes)} freed.${left ? ` ${left} could not be deleted or are not ended any more.` : ''}`, false, 8000);
             } catch (e) {
-                showToast(`Couldn't delete the terminal logs: ${e.message}`, true);
+                if (e.status === 409) showToast('The logs of ended agents changed since you looked, so nothing was deleted. Look at the new numbers and try again.', true, 8000);
+                else showToast(`Couldn't delete the terminal logs: ${e.message}`, true);
             }
             loadTerminalLogs();
         });
@@ -253,9 +242,7 @@ async function loadStorageDetail() {
     const kind = document.getElementById('settings-retention-kind');
     if (!out || !days) return;
     try {
-        const r = await fetch('/api/system/artifact-store?detail=1');
-        if (!r.ok) throw new Error(String(r.status));
-        const d = (await r.json()).detail;
+        const d = (await requestJson('GET', '/api/system/artifact-store?detail=1')).detail;
         if (!d) throw new Error('no detail');
         const age = (k) => ['<1d', '1-7d', '7-30d', '>30d'].map(b => `${b} ${_gib(d.by_age?.[k]?.[b]?.bytes || 0)}`).join(' · ');
         const lines = [
@@ -304,10 +291,7 @@ function retentionSettings() {
 }
 
 async function pruneRequest(body) {
-    const r = await fetch('/api/artifacts/prune', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-    return d;
+    return requestJson('POST', '/api/artifacts/prune', body);
 }
 
 // The page's own words for what a prune removes, never the server's kind names (#4469, UX's #4456 SHOULD 11).
@@ -381,8 +365,9 @@ function wireStorageActions() {
         window.showConfirmModal?.('Start automatic cleanup',
             `Its first run would remove ${s.n ? `${s.text}, about ${_gib(dry.freed)}` : 'nothing right now'} (at most 2 GiB a run), then check every hour. Start it?`,
             async () => {
-                const r = await fetch('/api/artifacts/retention/ack', { method: 'POST' });
-                if (!r.ok) {
+                let acked = true;
+                try { await requestJson('POST', '/api/artifacts/retention/ack'); } catch { acked = false; }
+                if (!acked) {
                     status.dataset.state = 'error';
                     status.textContent = "Couldn't start it: save the setting first.";
                     return;
@@ -453,9 +438,7 @@ function confirmDeleteUnlisted() {
         async () => {
             let d;
             try {
-                const r = await fetch('/api/artifacts/received/unlisted/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
-                d = await r.json().catch(() => ({}));
-                if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+                d = await requestJson('POST', '/api/artifacts/received/unlisted/delete', { ids });
             } catch (e) {
                 showToast(`Couldn't delete the received files: ${e.message}`, true);
                 return;
