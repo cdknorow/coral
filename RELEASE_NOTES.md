@@ -1,5 +1,26 @@
 # Release Notes
 
+## v1.4.106 — Chat shows thumbnails of images, a full Content-Security-Policy on the dashboard, and an update check that stays on one host
+
+### Security
+
+- **The dashboard page has a full Content-Security-Policy:** `default-src 'self'`, with `connect-src` limited to the page's own origin (and its own `ws://` and `wss://` origin), `font-src 'self' data:`, `worker-src 'self'`, `frame-src 'self' http: https:` (the Linked preview's frame is the one cross-origin load the dashboard makes on purpose) and `style-src 'self' 'unsafe-inline'` (about 330 style attributes, and the HTML previews' frames inherit the policy). It was found by running the whole browser suite once with the policy report-only and once enforced.
+- **The update check follows redirects only on the same host and never from https to http:** it used a client that followed up to 10 redirects anywhere; it now allows the same host and scheme and at most 5 hops (GitHub's answer for a renamed repository stays on `api.github.com`). Coral still never downloads or runs an update.
+- **The tray runs only the `coral-app` installed beside it:** it used to fall back to a `PATH` search for a program to run; if the app is not next to the tray it now says to reinstall.
+- **A long quoted credential with escapes is dropped to its closing quote:** an escaped quote inside an over-long quoted value no longer ends the drop (and a long backslash run is redacted in linear time).
+- **The session scope judges a shared folder name by its exact session:** an agent's own display name or title no longer opens another board's folder name, and a tmux-style name's session id is parsed out of it.
+
+### Changes
+
+- **Chat image chips show a thumbnail for images uploaded through Coral** (pasted Claude and Codex images get thumbnails in the next release): a fixed 48 px preview, loaded lazily as the chips come near the screen and hidden on any failure. It comes from `GET /api/upload/{name}`, a local-only Operator route (an agent's token is refused; not served through Coral Hub; the type is what the bytes are: PNG, JPEG, GIF or WebP, never SVG; `nosniff`, `private, no-cache`, and a name over 255 bytes is a 400).
+- **Light-theme dialog fields and the team card look right:** the launch and agent-config fields were filled with black at 18% and the team card with black at 8%, both written for the dark panels, which read as a grey wash on light; two tokens (`--field-fill`, `--inset-fill`) keep the dark values and give light the page's own field colour and a faint inset. On a phone the model chip has 8 px below it instead of sitting on the screen's bottom edge.
+
+### Other changes
+
+- **The agent list does less work per message:** a feed message writes only what changed (a write of the same value is still a mutation), and `escapeHtml` skips strings with nothing to escape (DOM mutation records outside the chat in a feed burst at 4x CPU went from 2913 to 464).
+- **Internals:** the test-only window functions and exports moved to `test_hooks.js` behind `window.__coralTest`; the hooks are installed only in a dev build started with `CORAL_TEST_HOOKS=1`, and a release build never has them.
+- **Tests and CI:** tests for 20 security decisions no test covered (25 mutants killed): foreign-origin password and Hub-link writes, over-long passwords, the upload and saved-message caps and others; `tools/verify-release.sh` checks that the tap's cask carries the DMG's sha256 from `SHA256SUMS.txt`; the devops README makes the GitHub `go-tests` the Linux go test proof (about 6 minutes, in agreement with the epoch host twice) and the epoch run the fallback.
+
 ## v1.4.105 — An agent's token sees only its own session and board, a redactor leak closed, and WebSocket limits
 
 ### Security
