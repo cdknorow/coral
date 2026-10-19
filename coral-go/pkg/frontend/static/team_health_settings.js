@@ -57,9 +57,12 @@ function healthPanelHTML(h, members) {
           <label class="health-wide-select">Send it to<select name="recipient">${options.join('')}</select></label></div>
         <label class="health-rule-head"><input type="checkbox" name="all_clear"${h.all_clear ? ' checked' : ''} aria-labelledby="hc-clear-t" aria-describedby="hc-clear-w"><span><span id="hc-clear-t">Also post one short line when nothing needs attention</span><br><span class="health-why" id="hc-clear-w">So a quiet team is not mistaken for a stopped check. Off: say nothing when all is well.</span></span></label>
       </fieldset>
+      <fieldset class="team-settings-section"><legend>Reviews</legend>
+        <p class="working-mode-hint">Works whether or not the health check above is on.</p>
+        ${rule('auto_delegate', 'Hand reviews to the default reviewers', 'When a task is submitted for review and nobody is assigned, Coral delegates it. On unless you turn it off here.', !!h.auto_delegate.on, '', reviewers)}
+      </fieldset>
       <fieldset class="team-settings-section"><legend>Automatic rules</legend>
-        <p class="working-mode-hint">Coral acts on these by itself between checks. Each can be turned off.</p>
-        ${rule('auto_delegate', 'Hand reviews to the default reviewers', 'When a task is submitted for review and nobody is assigned, Coral delegates it.', !!h.auto_delegate.on, '', reviewers)}
+        <p class="working-mode-hint">Coral acts on these by itself between checks, and only while the health check is on. Each can be turned off.</p>
         ${rule('claim_nudge', 'Nudge an idle agent to claim its work', 'An agent that is idle with ready work gets a reminder; past the count, the orchestrator is told.', !!h.claim_nudge.on,
             knob('claim_nudge_after_min', 'After', h.claim_nudge.after_min, MIN_LO, MIN_HI, 'minutes idle') + knob('claim_nudge_nudges', 'Nudges before telling the orchestrator', h.claim_nudge.nudges, N_LO, N_HI, 'nudges'))}
         ${rule('status_nudge', 'Ask a quiet agent for a status', 'An agent that has done nothing for a while is asked where it stands; if it stays quiet, the orchestrator is told.', !!h.status_nudge.on,

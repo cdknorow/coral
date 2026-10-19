@@ -97,7 +97,6 @@ func TestAutoDelegationIgnoresNamesAnAgentGave(t *testing.T) {
 	assert.Empty(t, reviewersOf(t, h, "agentmade", amended.ID), "an agent's amendment: the names don't count")
 
 	hs := board.DefaultHealthSettings()
-	hs.On = true // off for a new team (#4962)
 	hs.DefaultReviewers = []string{"worker", "Security Reviewer"}
 	_, err = h.bs.UpdateBoardSettings(ctx, "agentmade", board.BoardSettingsUpdate{Health: &hs})
 	require.NoError(t, err)
@@ -116,7 +115,6 @@ func TestAutoDelegationCanBeTurnedOff(t *testing.T) {
 	ctx := context.Background()
 	submit(t, base, first.ID) // frees the worker's slot
 	hs := board.DefaultHealthSettings()
-	hs.On = true // off for a new team (#4962)
 	hs.AutoDelegate.On = false
 	_, err := h.bs.UpdateBoardSettings(ctx, "off", board.BoardSettingsUpdate{Health: &hs})
 	require.NoError(t, err)
@@ -126,6 +124,43 @@ func TestAutoDelegationCanBeTurnedOff(t *testing.T) {
 	require.NoError(t, err)
 	submit(t, base, task.ID)
 	assert.Empty(t, reviewersOf(t, h, "off", task.ID))
+}
+
+// #4962, the operator: handing reviews to the default reviewers is its own setting, independent of the health check. The check is off for
+// a new team, and the delegation still works; turned off by its own switch it stops, whether the check is on or off.
+func TestAutoDelegationIsIndependentOfTheHealthCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		checkOn       bool
+		autoDelegate  bool
+		wantDelegated bool
+	}{
+		{"check off, delegation on (the default)", false, true, true},
+		{"check on, delegation on", true, true, true},
+		{"check on, delegation off", true, false, false},
+		{"check off, delegation off", false, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, h, first := reviewTeam(t, "indep", true)
+			ctx := context.Background()
+			submit(t, base, first.ID)
+			hs := board.DefaultHealthSettings()
+			hs.On = tc.checkOn
+			hs.AutoDelegate.On = tc.autoDelegate
+			_, err := h.bs.UpdateBoardSettings(ctx, "indep", board.BoardSettingsUpdate{Health: &hs})
+			require.NoError(t, err)
+			task, err := h.bs.CreateTask(ctx, "indep", "work", "Reviewers: QA Engineer", "high", "lead", "worker")
+			require.NoError(t, err)
+			_, err = h.bs.ClaimTask(ctx, "indep", "worker", task.ID)
+			require.NoError(t, err)
+			submit(t, base, task.ID)
+			if tc.wantDelegated {
+				assert.Equal(t, []string{"QA Engineer"}, reviewersOf(t, h, "indep", task.ID))
+			} else {
+				assert.Empty(t, reviewersOf(t, h, "indep", task.ID))
+			}
+		})
+	}
 }
 
 // #4175, Security's caveat on #4176 rule 13: how the creator's and each amendment's names were

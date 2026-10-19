@@ -32,7 +32,8 @@ var healthNow = time.Now
 // autoDelegateReview delegates task id, just handed to orch for review, and reports whether it
 // did. When it didn't, the orchestrator is told as before.
 func (h *BoardHandler) autoDelegateReview(ctx context.Context, project string, id int64, orch string) bool {
-	if hs := h.bs.GetHealthSettings(ctx, project); !hs.On || !hs.AutoDelegate.On {
+	// Its own switch (default on), independent of the health check: a team with the check off still has its reviews handed out (#4962).
+	if !h.bs.GetHealthSettings(ctx, project).AutoDelegate.On {
 		return false
 	}
 	task, err := h.bs.GetTask(ctx, project, id)

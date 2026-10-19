@@ -702,9 +702,18 @@
 .group-name-line {
     display: flex;
     align-items: center;
+    min-width: 0;
     gap: 4px;
     color: var(--text-primary);
     font-weight: 600;
+}
+
+/* A team's name stays on one line and ends in an ellipsis when the sidebar is narrow (the dock open, a phone); the whole name is its title (#4962). */
+.group-name-line .group-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .group-kebab .sidebar-kebab-btn {
