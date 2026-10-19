@@ -525,7 +525,7 @@ export function keepFragmentsInside(root) {
  */
 // The marker a fenced block of a known language carries from marked to the sanitizer: unguessable per page load, so text an agent wrote cannot ask for
 // highlighting by naming the class itself (it passes DOMPurify's code-class rule, which allows language-*).
-const HL_NONCE = Math.random().toString(36).slice(2, 10);
+const HL_NONCE = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join(''); // from the browser's CSPRNG (Security's INFO on #4985), not Math.random
 const HL_MARK = `--h${HL_NONCE}`;
 const HL_CLASS = new RegExp(`^language-(.+)${HL_MARK}$`);
 

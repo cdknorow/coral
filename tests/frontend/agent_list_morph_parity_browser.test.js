@@ -65,15 +65,18 @@ async function session(noMorph) {
         assert.equal(await ev(`(async () => (await import((window.__coralStatic || '/static/') + 'dom_morph.js')).morphDisabled())()`), noMorph, `kill switch ${noMorph ? 'on' : 'off'}`);
         await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
 
-        const step = async (label, action) => {
+        // ignoreActive: a switch moves the highlight on two rows without drawing the list (#4990), so until the next render the markup the last render wrote differs from the page in
+        // those two rows' class and aria-current and nothing else; the step after it (a render) must be exactly equal again.
+        const step = async (label, action, { ignoreActive = false } = {}) => {
             if (action) await ev(action);
             await nextFrame();
             steps.push({ label, ...(await ev(`(async () => {
                 const list = (document.getElementById('live-sessions-list') || document.getElementById('mobile-session-list'));
                 const r = await import((window.__coralStatic || '/static/') + 'render.js');
                 const fresh = document.createElement('div'); fresh.innerHTML = r.lastLiveListHtml();
+                const strip = h => h.replace(/\\sactive(?=["\\s])/g, '').replace(/ aria-current="true"/g, '');
                 return {
-                    equalsFresh: list.innerHTML === fresh.innerHTML,
+                    equalsFresh: ${ignoreActive} ? strip(list.innerHTML) === strip(fresh.innerHTML) : list.innerHTML === fresh.innerHTML,
                     visible: [...list.querySelectorAll('.session-group-item')].filter(e => e.offsetParent).map(e => e.dataset.sessionId),
                     active: list.querySelector('.session-group-item.active')?.dataset.sessionId || null,
                     // Filled only at phone width (syncMobileAgentList); compared in the phone steps below.
@@ -91,7 +94,7 @@ async function session(noMorph) {
         await step('expand it again', click('#live-sessions-list [data-on-click="group-collapse"]'));
         await step('expand sleeping', click('#live-sessions-list [data-on-click="group-sleeping-expand"]'));
         await step('open archived', click('#live-sessions-list [data-on-click="archived-toggle"]'));
-        await step('select sid-12', `window.selectLiveSession('team-b', 'claude', 'sid-12'); true`);
+        await step('select sid-12', `window.selectLiveSession('team-b', 'claude', 'sid-12'); true`, { ignoreActive: true });
         await step('Move Down sid-12', `window.moveSessionDown('sid-12'); true`);
         for (let k = 0; k < 6; k++) await step('feed tick ' + k, tick('sid-' + k, { summary: `tick ${k} <b>&"'`, working: k % 2 === 0 }));
         // A real HTML5 drag: sid-1 dropped on the lower half of sid-6.

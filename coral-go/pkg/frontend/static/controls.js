@@ -1072,7 +1072,33 @@ function clearAttachments(session = state.currentSession) {
     }
 }
 
+/** Moves the highlight between live agents by touching the two rows that change (the one that was active, the one that is now), not by drawing every row again
+ *  (#4990: a switch cost a full list render, about 10 ms at 4x and the browser's style and layout for every row). A row's markup depends on the selection in
+ *  two ways only, its `active` class and aria-current, and the collapsed rail's tile has the same class, so those are what move. False when it cannot be
+ *  done here (a team or a history entry is selected, or the new agent has no row yet): the list is then drawn as before. */
+function moveActiveRow() {
+    const cur = state.currentSession;
+    if (state.selectedTeam || !cur || cur.type !== "live" || !cur.session_id) return false;
+    const list = document.getElementById("live-sessions-list") || document.getElementById("mobile-session-list");
+    const sid = cur.session_id;
+    const next = list && list.querySelector(`li.session-group-item[data-session-id="${CSS.escape(sid)}"]`);
+    if (!next) return false;
+    for (const li of document.querySelectorAll(".session-list li.active")) {
+        if (li === next) continue;
+        li.classList.remove("active");
+        li.removeAttribute("aria-current");
+    }
+    if (!next.classList.contains("active")) { next.classList.add("active"); next.setAttribute("aria-current", "true"); }
+    for (const tile of document.querySelectorAll("#sidebar-rail .sidebar-rail-item")) tile.classList.toggle("active", tile.dataset.sessionId === sid);
+    return true;
+}
+
 export function updateSidebarActive() {
+    if (moveActiveRow()) {
+        // a history entry that was highlighted is not any more
+        document.querySelectorAll("#history-sessions-list li.active").forEach(li => li.classList.remove("active"));
+        return;
+    }
     document.querySelectorAll(".session-list li").forEach(li => li.classList.remove("active"));
     if (state.liveSessions.length) renderLiveSessions(state.liveSessions);
 

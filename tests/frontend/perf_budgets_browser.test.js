@@ -40,12 +40,12 @@ const { framesJs } = require('./helpers/wait');
         const scrolled = await taken();
         assert.ok(!scrolled.some(s => s.includes('chat-file-menu')), 'a scroll does not look for the file menu in every node: ' + [...new Set(scrolled)].join(' | '));
 
-        console.log("3. A render of the agent list does not look up the Display menu's boxes over the whole document");
+        console.log('3. A render of the agent list does not look up the Display menu, its summary line or the group toggle over the whole document');
         await taken();
         await ev(`(async () => { const T = window.T; for (let i = 0; i < 10; i++) { const e = window.__m.entry(window.__m.agents['perf-a-id']); e.summary = 'step ' + i; T.ws.handleCoralMessage({ type: 'coral_diff', changed: [e], removed: [] }); await new Promise(r => setTimeout(r, 30)); } return true; })()`);
         await waitFor(`true`, 'a frame');
         const rendered = await taken();
-        assert.ok(!rendered.some(s => /data-display-(input|row|button)/.test(s)), 'syncDisplayMenu looks inside the two headers only: ' + [...new Set(rendered)].join(' | '));
+        assert.ok(!rendered.some(s => /data-(display-(input|row|button|panel)|agent-list-summary|display-badge|group-toggle)|session-group-header/.test(s)), 'a render looks up the Display menu, its summary line and the group toggle inside the headers and the list, never over the whole document: ' + [...new Set(rendered)].join(' | '));
 
         console.log('4. Markdown: a coloured block is not walked span by span by the sanitizer');
         const m = await ev(`(async () => {
@@ -59,6 +59,25 @@ const { framesJs } = require('./helpers/wait');
         })()`);
         assert.equal(m.coloured, 1, 'the block is coloured'); assert.ok(m.spans > 100, 'with many spans: ' + m.spans);
         assert.ok(m.visited < 30, `the sanitizer visits the plain block's few nodes, not its ${m.spans} spans: ${m.visited}`);
-        console.log('PASS perf budgets: no page-wide lookups per key, scroll or render; the sanitizer skips coloured spans');
+        console.log('5. An agent switch touches the two rows whose highlight changes and draws no other');
+        await ev(`(() => { const b = window.__m.add('perf-b', 'Q', 0, { sleeping: false, session_id: 'perf-b-id' }); b.msgs = [{ type: 'user', content: 'hi', key: 'b1' }, { type: 'assistant', text: 'hello', key: 'b2' }];
+            window.T.ws.handleCoralMessage({ type: 'coral_update', servers: [], sessions: Object.values(window.__m.agents).map(x => window.__m.entry(x)) }); return true; })()`);
+        await waitFor(`!!document.querySelector('#live-sessions-list li[data-session-id="perf-b-id"]')`, 'the second agent in the list');
+        await ev(`window.selectLiveSession('perf-a', 'claude', 'perf-a-id', 'local'); true`);
+        await waitFor(`document.querySelector('#live-sessions-list li.active')?.dataset.sessionId === 'perf-a-id'`, 'the first agent highlighted');
+        await waitFor(`!!document.querySelector('#live-history-messages .chat-bubble')`, 'its chat');
+        const sw = await ev(`(async () => { const list = document.getElementById('live-sessions-list'); const touched = new Set(); let childList = 0;
+            const mo = new MutationObserver(rs => { for (const r of rs) { if (r.type === 'childList') childList++; else { const li = r.target.closest && r.target.closest('li'); if (li) touched.add(li.dataset.sessionId + ':' + r.attributeName); } } });
+            mo.observe(list, { attributes: true, childList: true, subtree: true });
+            window.selectLiveSession('perf-b', 'claude', 'perf-b-id', 'local');
+            await new Promise(r => window.addEventListener('coral:agent-view-ready', e => { if (e.detail.name === 'perf-b') r(); }));
+            await ${framesJs(3)}; mo.takeRecords().length; mo.disconnect();
+            return { rows: [...new Set([...touched].map(x => x.split(':')[0]))].sort(), attrs: [...touched].sort(), childList, active: [...document.querySelectorAll('#live-sessions-list li.active')].map(li => li.dataset.sessionId) }; })()`);
+        assert.deepEqual(sw.rows, ['perf-a-id', 'perf-b-id'], 'only the row that was active and the row that is now: ' + JSON.stringify(sw));
+        assert.equal(sw.childList, 0, 'no row was replaced or added: ' + JSON.stringify(sw));
+        assert.deepEqual(sw.active, ['perf-b-id'], 'the new agent is the highlighted one, and the only one');
+        assert.equal(await ev(`document.querySelector('#live-sessions-list li.active').getAttribute('aria-current')`), 'true', 'and says so to a screen reader');
+        assert.equal(await ev(`document.querySelectorAll('#live-sessions-list li[aria-current]').length`), 1, 'no other row says so');
+        console.log('PASS perf budgets: no page-wide lookups per key, scroll or render; the sanitizer skips coloured spans; a switch touches two rows');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });
