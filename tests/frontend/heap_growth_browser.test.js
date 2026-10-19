@@ -20,8 +20,6 @@ async function httpJson(method, path, body) {
 }
 
 (async () => {
-    const { client, Page, Emulation, ev, waitFor, PRELOAD, install, select } = await connect();
-    const { HeapProfiler, Performance } = client;
     const standIns = [];
     // A step that never finishes ends the suite naming itself, not at the runner's 180 s timeout with no output (#5107: the gate's runs hung 4 times in 20 with nothing to say where).
     let stepName = 'start', stepSince = Date.now();
@@ -30,12 +28,13 @@ async function httpJson(method, path, body) {
     const STEP_MS = Number(process.env.HEAP_STEP_MS || 45000);
     // Is the page running script (a loop in the app) or not (stuck in the browser)? A pause request interrupts a running script; a page that is not running one never pauses.
     const diagnose = async () => {
+        if (!conn) return 'the page had not connected yet: the stall is in starting Chrome or the CDP socket';
         try {
             // A plain evaluation answers when the page's main thread is free, whatever its pending promises wait for.
-            const probe = await Promise.race([client.Runtime.evaluate({ expression: `JSON.stringify({ visibility: document.visibilityState, focus: document.hasFocus(), terminal: !!document.querySelector('#xterm-container canvas'), view: document.body.className.slice(0, 80) })`, returnByValue: true }).then(r => r.result.value), bound(3000).then(() => 'the page did not answer a plain evaluation in 3 s: its main thread is blocked')]);
-            const paused = new Promise(r => client.Debugger.paused(r));
-            await Promise.race([client.Debugger.enable(), bound(2000)]);
-            await Promise.race([client.Debugger.pause(), bound(1000)]);
+            const probe = await Promise.race([conn.Runtime.evaluate({ expression: `JSON.stringify({ visibility: document.visibilityState, focus: document.hasFocus(), terminal: !!document.querySelector('#xterm-container canvas'), view: document.body.className.slice(0, 80) })`, returnByValue: true }).then(r => r.result.value), bound(3000).then(() => 'the page did not answer a plain evaluation in 3 s: its main thread is blocked')]);
+            const paused = new Promise(r => conn.Debugger.paused(r));
+            await Promise.race([conn.Debugger.enable(), bound(2000)]);
+            await Promise.race([conn.Debugger.pause(), bound(1000)]);
             const e = await Promise.race([paused, bound(3000).then(() => null)]);
             return `probe: ${probe}; ` + (e ? 'the page is running script, paused in: ' + e.callFrames.slice(0, 8).map(f => `${f.functionName || '(anon)'} ${String(f.url).split('/').pop()}:${f.location.lineNumber + 1}`).join(' < ') : 'the page did not pause: it is not running script');
         } catch (e) { return 'no diagnosis: ' + e.message; }
@@ -58,6 +57,12 @@ async function httpJson(method, path, body) {
         process.exit(1);
     }, 1000).unref();
     const boardName = process.env.HEAP_BOARD || 'hg-board-' + Date.now().toString(36); // removed again in the finally (the gate fails a suite that leaves a board)
+    // Everything above runs before the page connects, so a stall in connecting (Chrome or the CDP socket) is named too (#5189).
+    mark('connecting to Chrome');
+    let conn = null; // set once connected; the diagnosis needs it
+    const { client, Page, Emulation, ev, waitFor, PRELOAD, install, select } = await connect();
+    const { HeapProfiler, Performance } = client;
+    conn = client; mark('start');
     const CYCLES = Number(process.env.HEAP_CYCLES || 60), WARM = Math.min(25, Math.floor(CYCLES / 3)); // the terminals' xterms and the board are built on first use
     const AGENTS = 20;
     const metrics = async () => {
