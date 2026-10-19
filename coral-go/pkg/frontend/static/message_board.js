@@ -900,7 +900,7 @@ export function deleteMessageBoardProject() {
     if (blocked) { showToast(blocked, true); return; }
     if (!currentProject) return;
     const project = currentProject;
-    window.showConfirmModal('Delete Board', `Delete project "${keyLabel(project)}" and all its messages?`, async () => {
+    window.showConfirmModal('Delete Board', `Delete board "${keyLabel(project)}" with all its messages and tasks? This cannot be undone.`, async () => {
         try {
             await boardFetch(project, ``, { method: 'DELETE' });
             showMessageBoardProjects();

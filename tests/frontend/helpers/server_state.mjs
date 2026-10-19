@@ -58,11 +58,11 @@ function boardCounts(db) {
   return out;
 }
 
-/** What `after` has that `before` did not: the agents (by session id), teams (by name) and message boards (by name) a suite left behind. A board counts while it has messages or subscribers, which DELETE /api/board/{name}
- *  removes; its tasks stay (the API cannot delete a task), so a board with only tasks is not the runner's to remove and not a failure to clean. */
+/** What `after` has that `before` did not: the agents (by session id), teams (by name) and message boards (by name) a suite left behind. A board counts while anything of it is there: messages, subscribers, tasks or its row in
+ *  the boards table (DELETE /api/board/{name} removes all of them since #4966, so a suite can always take its own board away). */
 export function leftovers(before, after) {
   const had = new Set((before.sessions || []).map(x => x.id)), hadTeams = new Set(before.teams || []);
-  return { sessions: (after.sessions || []).filter(x => !had.has(x.id)), teams: (after.teams || []).filter(t => !hadTeams.has(t)), boards: Object.keys(after.boards || {}).filter(b => !(b in (before.boards || {})) && (after.boards[b].messages || after.boards[b].subscribers)).sort() };
+  return { sessions: (after.sessions || []).filter(x => !had.has(x.id)), teams: (after.teams || []).filter(t => !hadTeams.has(t)), boards: Object.keys(after.boards || {}).filter(b => !(b in (before.boards || {})) && true).sort() };
 }
 
 /** Stop what a suite left running and remove its teams, through the server's own API (never by name or pattern: an agent is stopped by its session id, which the kill route takes in its body;
@@ -127,8 +127,8 @@ export function rowLeaks(before, after) {
     if (!a) continue;
     for (const f of ['messages', 'tasks', 'subscribers']) if (b[f] > a[f]) out.push({ table: `board ${name} ${f}`, was: a[f], now: b[f], kind: 'added' });
   }
-  // A board the suite made and left with messages or subscribers (#4959): the suite removes its own board in a finally (helpers/board_cleanup.js). The runner still removes it, by name, so the next suite does not read it.
-  for (const name of leftovers(before, after).boards) out.push({ table: `board ${name}`, was: 0, now: after.boards[name].messages + after.boards[name].subscribers, kind: 'added' });
+  // A board the suite made and left, with anything on it or just its row (#4959, #4966): the suite removes its own board in a finally (helpers/board_cleanup.js). The runner still removes it, by name, so the next suite does not read it.
+  for (const name of leftovers(before, after).boards) out.push({ table: `board ${name}`, was: 0, now: after.boards[name].messages + after.boards[name].subscribers + after.boards[name].tasks, kind: 'added' });
   return out;
 }
 

@@ -1448,14 +1448,17 @@ func (h *BoardHandler) GetPaused(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"paused": h.isPaused(project)})
 }
 
-// DeleteBoard deletes a board and all its messages.
+// DeleteBoard deletes a board and everything on it: its messages, tasks, members and settings (Store.DeleteProject, one transaction).
 // DELETE /api/board/{project}
 func (h *BoardHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
 	h.mu.Lock()
 	delete(h.paused, project)
 	h.mu.Unlock()
-	h.bs.DeleteProject(r.Context(), project)
+	if err := h.bs.DeleteProject(r.Context(), project); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

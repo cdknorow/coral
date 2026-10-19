@@ -70,9 +70,11 @@ try {
   assert.deepEqual(diff(bb1, bb2), ['board new-board added (1 message(s), 1 task(s), 1 subscriber(s))', 'board old-board: messages 1 -> 2']);
   assert.deepEqual(leftovers(bb1, bb2).boards, ['new-board'], 'a board that was not there is the suite\'s');
   bsql("INSERT INTO board_tasks (board_id, title) VALUES ('tasks-only', 't');");
-  assert.deepEqual(leftovers(bb1, snapshot(dir)).boards, ['new-board'], 'a board with only tasks is not listed: DELETE /api/board removes messages and subscribers, and the API has no way to delete a task');
-  assert.deepEqual(rowLeaks(bb1, bb2), [{ table: 'board old-board messages', was: 1, now: 2, kind: 'added' }, { table: 'board new-board', was: 0, now: 2, kind: 'added' }], 'more messages on an old board are a leak, and so is a new board left with messages or subscribers (#4959; the runner still removes it by name)');
-  assert.deepEqual(rowLeaks(bb1, snapshot(dir)).map(r => r.table), ['board old-board messages', 'board new-board'], 'a board with only tasks is not one: the suite cannot remove tasks through the API');
+  assert.deepEqual(leftovers(bb1, snapshot(dir)).boards, ['new-board', 'tasks-only'], 'a board with only tasks is listed too: DELETE /api/board removes its tasks and its row since #4966');
+  assert.deepEqual(rowLeaks(bb1, bb2), [{ table: 'board old-board messages', was: 1, now: 2, kind: 'added' }, { table: 'board new-board', was: 0, now: 3, kind: 'added' }], 'more messages on an old board are a leak, and so is a new board left with anything on it (#4959; the runner still removes it by name)');
+  assert.deepEqual(rowLeaks(bb1, snapshot(dir)).map(r => r.table), ['board old-board messages', 'board new-board', 'board tasks-only'], 'and so is one that is only tasks, or only its row (#4966)');
+  bsql("INSERT INTO boards VALUES ('row-only', 'row');");
+  assert.ok(leftovers(bb1, snapshot(dir)).boards.includes('row-only'), 'a board that is only its row in the boards table');
   const bcalls = [];
   const bres = await cleanup('http://x', 'KEY', leftovers(bb1, bb2), async (url, o) => { bcalls.push([o.method, url]); return { ok: true }; });
   assert.deepEqual(bcalls, [['DELETE', 'http://x/api/board/new-board']]);

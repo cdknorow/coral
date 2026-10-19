@@ -2094,7 +2094,10 @@ func (s *Store) SearchMessages(ctx context.Context, query string) ([]string, err
 	return projects, nil
 }
 
-// DeleteProject removes all messages and subscribers for a project.
+// DeleteProject deletes a board entirely, in one transaction (#4966): its messages, subscribers, groups, reminders and waits, its tasks with everything
+// that hangs off them (amendments, workflow data, dependency rules, ready notices, and the dependency links to and from them: a task on another
+// board that was blocked by one of these is no longer blocked), its presets, working mode, settings (the pause, the health check, cross-team),
+// health records and Hub operator records, and its row in the boards table. A board made again under the same name starts empty.
 func (s *Store) DeleteProject(ctx context.Context, project string) error {
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -2103,20 +2106,38 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 	defer tx.Rollback()
 	s.unreadCounts.invalidate()
 	forgetMentionTokens(ctx, tx, "project = ?", project)
-	if _, err := tx.ExecContext(ctx, "DELETE FROM board_messages WHERE project = ?", project); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM board_subscribers WHERE project = ?", project); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM board_workflow_presets WHERE board_id = ?", project); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM board_working_modes WHERE board_id = ?", project); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM board_groups WHERE project = ?", project); err != nil {
-		return err
+	const mine = `(SELECT id FROM board_tasks WHERE board_id = ?)`
+	for _, q := range []struct {
+		sql  string
+		args int // how many times the project is bound
+	}{
+		{"DELETE FROM task_amendments WHERE task_id IN " + mine, 1},
+		{"DELETE FROM task_dependencies WHERE task_id IN " + mine + " OR blocked_by_task_id IN " + mine, 2},
+		{"DELETE FROM task_workflows WHERE task_id IN " + mine, 1},
+		{"DELETE FROM task_dependency_rules WHERE task_id IN " + mine + " OR upstream_id IN " + mine, 2},
+		{"DELETE FROM task_ready_notifications WHERE task_id IN " + mine, 1},
+		{"DELETE FROM board_tasks WHERE board_id = ?", 1},
+		{"DELETE FROM board_messages WHERE project = ?", 1},
+		{"DELETE FROM board_subscribers WHERE project = ?", 1},
+		{"DELETE FROM board_reminders WHERE project = ?", 1},
+		{"DELETE FROM board_workflow_presets WHERE board_id = ?", 1},
+		{"DELETE FROM board_working_modes WHERE board_id = ?", 1},
+		{"DELETE FROM board_groups WHERE project = ?", 1},
+		{"DELETE FROM board_waits WHERE project = ?", 1},
+		{"DELETE FROM board_settings WHERE project = ?", 1},
+		{"DELETE FROM health_actions WHERE project = ?", 1},
+		{"DELETE FROM health_counters WHERE project = ?", 1},
+		{"DELETE FROM health_items WHERE project = ?", 1},
+		{"DELETE FROM hub_operator_actions WHERE project = ?", 1},
+		{"DELETE FROM boards WHERE id = ?", 1},
+	} {
+		args := make([]any, q.args)
+		for i := range args {
+			args[i] = project
+		}
+		if _, err := tx.ExecContext(ctx, q.sql, args...); err != nil {
+			return err
+		}
 	}
 	err = tx.Commit()
 	s.unreadCounts.invalidate()
