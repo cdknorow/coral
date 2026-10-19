@@ -15,7 +15,7 @@ import (
 func TestEntropyTableInTheDocsIsTheLibrarys(t *testing.T) {
 	doc, err := os.ReadFile("../../../agent_docs/redaction.md")
 	require.NoError(t, err)
-	text := string(doc)
+	text := strings.ReplaceAll(string(doc), "\r\n", "\n") // a Windows checkout has CRLF
 	start := strings.Index(text, "<!-- entropy-table:start -->")
 	end := strings.Index(text, "<!-- entropy-table:end -->")
 	require.True(t, start >= 0 && end > start, "the table's markers")
