@@ -7,6 +7,8 @@ const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 
 const ORIGIN = new URL(BASE).origin;
+// the only props each event may carry: a new prop (a session id, a name, text) fails here until it is reviewed and added
+const ALLOWED_PROPS = { dashboard_ready: ['page_id'], dashboard_active_day: [], dashboard_failed: ['code'], prompt_submit_requested: ['source'] };
 
 (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
@@ -20,6 +22,7 @@ const ORIGIN = new URL(BASE).origin;
     try {
         await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
         Network.requestWillBeSent(e => { requests.push({ url: e.request.url, method: e.request.method, body: e.request.postData || '', type: e.type }); });
+        Network.webSocketCreated(e => { requests.push({ url: e.url, method: 'WS', body: '', type: 'WebSocket' }); }); // a socket is not a requestWillBeSent
         await Emulation.setDeviceMetricsOverride({ width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
         // before any page script: sessions can be made to fail (a dashboard_failed), and fetch, sendBeacon and XHR are recorded as a second view
         await Page.addScriptToEvaluateOnNewDocument({ source: `(() => {
@@ -55,9 +58,9 @@ const ORIGIN = new URL(BASE).origin;
             check(`${name}: the events seen are ${wanted.join(', ')}`, wanted.every(e => events.has(e)), [...events].join(', '));
             check(`${name}: every request that carries an event is a POST to /api/tracking/event on this origin`, sentEvents.every(s => s[0] === 'fetch' && s[2] === 'POST' && new URL(s[1], BASE).pathname === '/api/tracking/event' && new URL(s[1], BASE).origin === ORIGIN)
                 && run.net.filter(r => isEvent(r.body)).every(r => r.method === 'POST' && new URL(r.url).pathname === '/api/tracking/event' && new URL(r.url).origin === ORIGIN), JSON.stringify(sentEvents.map(s => s.slice(0, 3))));
-            check(`${name}: no request goes to another host`, run.net.every(r => /^(data|blob):/.test(r.url) || new URL(r.url).origin === ORIGIN), JSON.stringify([...new Set(run.net.map(r => { try { return new URL(r.url).origin; } catch { return r.url.slice(0, 20); } }))]));
+            check(`${name}: no request goes to another host`, run.net.every(r => /^(data|blob):/.test(r.url) || (r.type === 'WebSocket' ? new URL(r.url).host === new URL(ORIGIN).host : new URL(r.url).origin === ORIGIN)), JSON.stringify([...new Set(run.net.map(r => { try { return new URL(r.url).origin; } catch { return r.url.slice(0, 20); } }))]));
             check(`${name}: no beacon and no XHR`, !run.sent.some(s => s[0] === 'beacon' || s[0] === 'xhr'));
-            check(`${name}: the events carry only bounded props (no text, no session id)`, sentEvents.every(s => { const b = JSON.parse(s[3]); return Object.keys(b).sort().join() === 'event,props' && Object.values(b.props || {}).every(v => typeof v === 'string' ? v.length <= 64 : typeof v === 'number' || typeof v === 'boolean'); }), JSON.stringify(sentEvents.map(s => JSON.parse(s[3]))));
+            check(`${name}: the events carry only bounded props (only the reviewed prop names, no text, no session id)`, sentEvents.every(s => { const b = JSON.parse(s[3]); return Object.keys(b).sort().join() === 'event,props' && Object.keys(b.props || {}).every(k => (ALLOWED_PROPS[b.event] || []).includes(k)) && Object.values(b.props || {}).every(v => typeof v === 'string' ? v.length <= 64 : typeof v === 'number' || typeof v === 'boolean'); }), JSON.stringify(sentEvents.map(s => JSON.parse(s[3]))));
         }
     } catch (e) { console.error(e && e.stack || e); results.push(false); }
     finally { try { await client.close(); } catch (_) {} }
