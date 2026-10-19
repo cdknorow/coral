@@ -2,7 +2,7 @@
 
 import { state, sessionKey } from './state.js';
 import { serverFetch, currentServer } from './server_base.js';
-import { createMentionList, findTriggerStart, highlightRuns } from './mention_list.js';
+import { createMentionList, findTriggerStart, highlightRuns, isMentionListOpen } from './mention_list.js';
 
 // results, selection and the position of the '@' live on the shared list (mention_list.js).
 const list = createMentionList({ dropdown: 'file-mention-dropdown', item: 'file-mention-item' }, {
@@ -166,9 +166,8 @@ export function fuzzyFilter(files, query) {
 }
 
 async function onInput(e) {
-    // Skip if command mention dropdown is active (mutual exclusion)
-    const cmdDropdown = document.querySelector(".command-mention-dropdown");
-    if (cmdDropdown && cmdDropdown.style.display !== "none") return;
+    // Skip if command mention dropdown is active (mutual exclusion). Asked of the list, not of the page: a selector over every node ran on each keystroke (#4985).
+    if (isMentionListOpen('command-mention-dropdown')) return;
 
     const input = e.target;
     const text = input.value;

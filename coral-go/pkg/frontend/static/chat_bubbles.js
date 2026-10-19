@@ -257,8 +257,12 @@ async function openRefInEditor(ref, editor) {
     }
 }
 
+// The open file menu (at most one): looked up by reference, not by a selector over the whole page on every key and every scroll of anything (#4985).
+let openFileMenu = null;
 function closeFileRefMenu() {
-    document.querySelectorAll(".chat-file-menu").forEach(m => m.remove());
+    if (!openFileMenu) return;
+    openFileMenu.remove();
+    openFileMenu = null;
 }
 
 // The file options menu, anchored under the clicked reference. The path is
@@ -291,6 +295,7 @@ async function showFileRefMenu(el) {
         ${editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${Number(i)}"><span class="material-icons" aria-hidden="true">open_in_new</span>Open in ${escapeHtml(ed.name)}</button>`).join("")}`}
         <button type="button" role="menuitem" data-action="copy"><span class="material-icons" aria-hidden="true">content_copy</span>${artifactRef ? 'Copy artifact URI' : 'Copy path'}</button>`;
     document.body.appendChild(menu);
+    openFileMenu = menu;
 
     const r = el.getBoundingClientRect();
     const w = menu.offsetWidth, h = menu.offsetHeight;
@@ -323,8 +328,8 @@ document.addEventListener("click", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-    const menu = document.querySelector(".chat-file-menu");
-    if (!menu) return;
+    const menu = openFileMenu;
+    if (!menu || !menu.isConnected) return;
     if (e.key === "Escape") {
         closeFileRefMenu();
     } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {

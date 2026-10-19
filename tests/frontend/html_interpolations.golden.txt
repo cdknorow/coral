@@ -589,10 +589,10 @@
 1	update_check.js	downloadBtn
 1	update_check.js	items.join("")
 1	update_check.js	notesHtml
+1	utils.js	HL_MARK
 1	utils.js	agentLabel
 1	utils.js	detail
 1	utils.js	detailHtml
-1	utils.js	html
 2	utils.js	icon
 1	utils.js	linkHtml
 1	view_sandbox.js	JSON.stringify(ctx).replace(/</g, '\\u003c')

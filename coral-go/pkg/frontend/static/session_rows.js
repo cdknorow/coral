@@ -418,14 +418,18 @@ onBuilt('settings-modal', () => applySessionSummaryPref()); // its Show summarie
 }
 
 /** Sync the ≡ display menu's checkboxes and which options it offers: the sidebar's, and the phone's copy in the agent list
- *  header (#3991, the sidebar is hidden below 768 px). Both are found by data attributes, so each can appear once. */
+ *  header (#3991, the sidebar is hidden below 768 px). Both are found by data attributes, so each can appear once. It runs on every render of the
+ *  list, so it looks only inside the two headers that hold the menu: an attribute selector over the whole document walked every node of the
+ *  page (and of a long chat) each time (#4985). */
  export function syncDisplayMenu() {
     const n = serversShown().length;
     const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer() };
     const offered = { summary: true, server: n >= 1, group: n >= 2 };
-    for (const input of document.querySelectorAll('[data-display-input]')) input.checked = checked[input.dataset.displayInput] === true;
-    for (const row of document.querySelectorAll('[data-display-row]')) row.hidden = !offered[row.dataset.displayRow];
-    for (const btn of document.querySelectorAll('[data-display-button]')) btn.classList.toggle('active', checked.summary || (n >= 1 && checked.server));
+    for (const header of [...document.getElementsByClassName('sidebar-header'), ...document.getElementsByClassName('mobile-list-header')]) {
+        for (const input of header.querySelectorAll('[data-display-input]')) input.checked = checked[input.dataset.displayInput] === true;
+        for (const row of header.querySelectorAll('[data-display-row]')) row.hidden = !offered[row.dataset.displayRow];
+        for (const btn of header.querySelectorAll('[data-display-button]')) btn.classList.toggle('active', checked.summary || (n >= 1 && checked.server));
+    }
     syncDisplayPanels(); // the phone's header is built later than the sidebar's: it takes the stored open or shut state here
 }
 

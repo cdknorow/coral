@@ -523,6 +523,26 @@ export function keepFragmentsInside(root) {
  * Sanitize untrusted HTML. Fails CLOSED: if DOMPurify did not load, the markup is shown as
  * text instead of being inserted as HTML (it used to fall back to the raw string).
  */
+// The marker a fenced block of a known language carries from marked to the sanitizer: unguessable per page load, so text an agent wrote cannot ask for
+// highlighting by naming the class itself (it passes DOMPurify's code-class rule, which allows language-*).
+const HL_NONCE = Math.random().toString(36).slice(2, 10);
+const HL_MARK = `--h${HL_NONCE}`;
+const HL_CLASS = new RegExp(`^language-(.+)${HL_MARK}$`);
+
+/** Colours the fenced blocks marked for it, on the sanitized fragment: highlight.js's output is escaped text and spans of its own, so it is
+ *  safe to put in after DOMPurify has looked at the block's text. The result is what highlighting before sanitizing gave. */
+function highlightMarked(frag) {
+    if (typeof hljs === 'undefined') return;
+    for (const code of frag.querySelectorAll('pre > code[class]')) {
+        const m = HL_CLASS.exec(code.getAttribute('class'));
+        if (!m) continue;
+        const language = m[1];
+        if (!hljs.getLanguage(language)) { code.className = `language-${language}`; continue; }
+        code.className = `hljs language-${language}`;
+        code.innerHTML = hljs.highlight(code.textContent, { language, ignoreIllegals: true }).value;
+    }
+}
+
 export function sanitizeHtml(html, config, opts) {
     if (typeof DOMPurify === 'undefined') return escapeHtml(html);
     installSanitizerHooks();
@@ -530,6 +550,7 @@ export function sanitizeHtml(html, config, opts) {
     const linkMode = opts && (opts.links || (opts.strictLinks && 'file'));
     const knowledgeLinks = !!(opts && opts.knowledgeLinks);
     const frag = DOMPurify.sanitize(html, { ...contentConfig(config, knowledgeLinks), RETURN_DOM_FRAGMENT: true });
+    highlightMarked(frag);
     scrubContent(frag, linkMode, knowledgeLinks);
     unblockAsLinks(frag);
     if (linkMode && LINK_MODES.has(linkMode)) applyLinkPolicy(frag, linkMode, knowledgeLinks);
@@ -589,8 +610,9 @@ function _renderMarkdownUncached(content, options, links) {
                         code({ text, lang }) {
                             const language = (lang || '').trim().split(/\s+/)[0];
                             if (!language || !hljs.getLanguage(language)) return false;
-                            const html = hljs.highlight(text, { language, ignoreIllegals: true }).value;
-                            return `<pre><code class="hljs language-${escapeAttr(language)}">${html}</code></pre>\n`;
+                            // The block goes to the sanitizer as plain text with a marker class, and is coloured once it is clean (highlightMarked in
+                            // sanitizeHtml): the coloured spans made DOMPurify walk several times the nodes (#4985).
+                            return `<pre><code class="language-${escapeAttr(language)}${HL_MARK}">${escapeHtml(text)}</code></pre>\n`;
                         },
                     },
                 });

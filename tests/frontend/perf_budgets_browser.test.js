@@ -1,0 +1,64 @@
+// Dashboard speed budgets (#4985): the work a keystroke, a scroll, a feed message and a chat page are not allowed to repeat. Counted, not timed, so they hold on any machine:
+//  - a keystroke in the composer, a scroll of the chat, and a render of the agent list make NO selector call over the whole document (they walked every node of the page and of a long chat
+//    each time: the chat's file-menu check on every key and every scroll of anything, the @file list asking whether the /command list was open, the Display menu looking up its boxes);
+//  - a fenced block of a known language is coloured after DOMPurify has seen its text, so the sanitizer visits the few nodes of the plain block, not every coloured span;
+//  - and the HTML that comes out is the same (markdown_render_golden_browser pins that).
+// Drives Chrome over CDP through agent_view_harness.js against the isolated dev server.
+const assert = require('node:assert/strict');
+const { connect } = require('./agent_view_harness');
+const BASE = require('./test_base').BASE;
+const { framesJs } = require('./helpers/wait');
+
+(async () => {
+    const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
+    const { Input } = client;
+    try {
+        await Page.enable();
+        await Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+        await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + `;localStorage.setItem('coral-live-view-mode', 'chat');` });
+        await Page.navigate({ url: BASE }); await Page.loadEventFired(); await install();
+        await ev(`window.__coralReady.startup('liveList', 'settings')`);
+        // a chat with a few hundred messages on screen, so the page has something to walk
+        await ev(`(() => { const a = window.__m.add('perf-a', 'P', 0, { sleeping: false, session_id: 'perf-a-id' }); const m = []; for (let i = 0; i < 400; i++) { m.push({ type: 'user', content: 'question ' + i, key: 'u' + i }); m.push({ type: 'assistant', text: 'answer ' + i + ' with **bold** and \`code\`', key: 'a' + i }); } a.msgs = m;
+            window.selectLiveSession('perf-a', 'claude', 'perf-a-id', 'local'); return true; })()`);
+        await waitFor(`!!document.getElementById('command-input') && !document.getElementById('command-input').disabled && document.querySelectorAll('#live-history-messages .chat-bubble').length > 20`, 'the chat and its composer', 10000);
+        // count the selector calls made on the document itself (an element's own, narrow lookups are fine)
+        await ev(`(() => { window.__docSel = []; for (const k of ['querySelector', 'querySelectorAll']) { const orig = Document.prototype[k]; Document.prototype[k] = function (s) { window.__docSel.push(String(s)); return orig.apply(this, arguments); }; } return true; })()`);
+        const taken = () => ev(`window.__docSel.splice(0)`);
+        
+        console.log('1. Typing: no selector over the whole document per keystroke');
+        await ev(`document.getElementById('command-input').focus(); true`); await taken();
+        for (const ch of 'hello there, a few words to type') { await Input.dispatchKeyEvent({ type: 'keyDown', key: ch, text: ch }); await Input.dispatchKeyEvent({ type: 'keyUp', key: ch }); }
+        const typed = await taken();
+        const walkers = typed.filter(s => !/^#[\w-]+$/.test(s));
+        assert.ok(walkers.length <= 32, `at most one page-wide lookup per keystroke (32 keys): ${walkers.length}: ${[...new Set(walkers)].join(' | ')}`);
+        assert.ok(!typed.some(s => s.includes('chat-file-menu') || s.includes('command-mention-dropdown')), 'neither the file menu nor the /command list is looked up by selector: ' + [...new Set(typed)].join(' | '));
+
+        console.log('2. Scrolling the chat: no selector over the whole document per scroll event');
+        await taken();
+        await ev(`(async () => { const c = document.getElementById('live-history-messages'); for (let i = 0; i < 20; i++) { c.scrollTop = c.scrollTop + (i % 2 ? 300 : -250); c.dispatchEvent(new Event('scroll')); document.dispatchEvent(new Event('scroll')); await ${framesJs(1)}; } return true; })()`);
+        const scrolled = await taken();
+        assert.ok(!scrolled.some(s => s.includes('chat-file-menu')), 'a scroll does not look for the file menu in every node: ' + [...new Set(scrolled)].join(' | '));
+
+        console.log("3. A render of the agent list does not look up the Display menu's boxes over the whole document");
+        await taken();
+        await ev(`(async () => { const T = window.T; for (let i = 0; i < 10; i++) { const e = window.__m.entry(window.__m.agents['perf-a-id']); e.summary = 'step ' + i; T.ws.handleCoralMessage({ type: 'coral_diff', changed: [e], removed: [] }); await new Promise(r => setTimeout(r, 30)); } return true; })()`);
+        await waitFor(`true`, 'a frame');
+        const rendered = await taken();
+        assert.ok(!rendered.some(s => /data-display-(input|row|button)/.test(s)), 'syncDisplayMenu looks inside the two headers only: ' + [...new Set(rendered)].join(' | '));
+
+        console.log('4. Markdown: a coloured block is not walked span by span by the sanitizer');
+        const m = await ev(`(async () => {
+            const st = window.__coralStatic || '/static/'; const v = await import(st + 'vendor_loader.js'); await v.loadHighlight(); const u = await import(st + 'utils.js');
+            let visited = 0; DOMPurify.addHook('uponSanitizeElement', () => { visited++; });
+            const code = Array.from({ length: 40 }, (_, i) => '\\tif err := step' + i + '(ctx, "name", ' + i + '); err != nil { return fmt.Errorf("step ' + i + ': %w", err) }').join('\\n');
+            const html = u.renderMarkdown('Fix:\\n\\n\`\`\`go\\nfunc run(ctx context.Context) error {\\n' + code + '\\n}\\n\`\`\`\\n\\ndone ' + Math.random(), undefined, 'chat');
+            DOMPurify.removeHook('uponSanitizeElement');
+            const box = document.createElement('div'); box.innerHTML = html;
+            return { visited, spans: box.querySelectorAll('span').length, coloured: box.querySelectorAll('code.hljs').length };
+        })()`);
+        assert.equal(m.coloured, 1, 'the block is coloured'); assert.ok(m.spans > 100, 'with many spans: ' + m.spans);
+        assert.ok(m.visited < 30, `the sanitizer visits the plain block's few nodes, not its ${m.spans} spans: ${m.visited}`);
+        console.log('PASS perf budgets: no page-wide lookups per key, scroll or render; the sanitizer skips coloured spans');
+    } finally { await client.close(); }
+})().catch(e => { console.error(e); process.exit(1); });

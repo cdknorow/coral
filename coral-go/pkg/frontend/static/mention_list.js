@@ -39,6 +39,12 @@ function appendParts(parent, parts) {
     }
 }
 
+// Every list made, by its dropdown's class: one list can ask whether another is open (the @file list yields to the /command list) without a
+// selector over the whole page on every keystroke (#4985).
+const lists = new Map();
+/** Whether the list whose dropdown has this class is open. */
+export function isMentionListOpen(dropdownClass) { return !!lists.get(dropdownClass)?.visible(); }
+
 /** A mention list. `classes` names its CSS: { dropdown, item } (written out by each owner, so the class names stay greppable and the
  *  unused-CSS lint sees them). Fields the owner
  *  reads and sets: results (what the rows stand for), selected (the row index), start (where the mention begins in the text).
@@ -139,5 +145,6 @@ export function createMentionList(classes, opts) {
             }
         },
     };
+    lists.set(classes.dropdown, list);
     return list;
 }
