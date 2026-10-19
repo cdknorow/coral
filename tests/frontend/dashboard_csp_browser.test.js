@@ -9,9 +9,14 @@
 //     sanitizer), a form posting elsewhere and a script from elsewhere all fail to reach the
 //     counting server; an inline handler and an inline script put into the page don't run (the
 //     CSP reports them), while a control naming a data-on-* action still works;
-//  4. a notification's web link shows its host next to the label, and "not encrypted" for http.
-// A positive control (an XHR from the page to the counting server) must arrive, or zero hits would
-// prove nothing.
+//  4. a notification's web link shows its host next to the label, and "not encrypted" for http;
+//  5. every other kind of load is held to this server too (#5009): fetch, XHR, WebSocket, EventSource, a beacon, a stylesheet
+//     link, an @import, a font, a worker, an object and a data: frame all fail to reach the counting server and
+//     are reported under their directive; inline style (an attribute, a <style> element, a CSSOM write) still applies, since the
+//     markup and the HTML previews' srcdoc frames need it. The one cross-origin load the dashboard makes on purpose, the Linked preview's http(s) frame, still
+//     arrives (frame-src).
+// A positive control must arrive, or zero hits would prove nothing: the counting server is asked from a tab with no policy
+// (the page itself can no longer reach it: connect-src is this server).
 'use strict';
 
 const http = require('http');
@@ -53,16 +58,26 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await loaded;
         await coralReady();
         await waitFor(`typeof DOMPurify !== 'undefined' && typeof marked !== 'undefined'`, 'the sanitizer and marked');
-        check("the dashboard's CSP has no 'unsafe-inline' or 'unsafe-eval'", !/unsafe-inline|unsafe-eval/.test(csp), csp);
-        for (const d of ["script-src 'self';", "form-action 'self'", "media-src 'self' blob: data:",
+        check("the dashboard's CSP has no 'unsafe-eval', and 'unsafe-inline' only in style-src", !/unsafe-eval/.test(csp)
+            && csp.split(';').map(d => d.trim()).filter(d => /unsafe-inline/.test(d)).every(d => d.startsWith('style-src ')), csp);
+        const pageHost = new URL(BASE).host;
+        for (const d of ["default-src 'self';", "script-src 'self';", "style-src 'self' 'unsafe-inline';", "font-src 'self' data:",
+            `connect-src 'self' ws://${pageHost} wss://${pageHost};`, "frame-src 'self' http: https:", "worker-src 'self'",
+            "form-action 'self'", "media-src 'self' blob: data:",
             "img-src 'self' data: blob:", "base-uri 'self'", "object-src 'none'", "frame-ancestors 'self'"]) {
             check(`the dashboard's CSP has ${d}`, csp.includes(d), csp);
         }
 
-        // Positive control: the page itself can reach the counting server.
-        await ev(`new Promise(res => { const x = new XMLHttpRequest(); x.onloadend = res; x.open('GET', ${JSON.stringify(SINK + '/control')}); x.send(); })`);
-        const controlSeen = hits.some(h => h.endsWith(' /control'));
-        check('positive control: the counting server sees a request from the page', controlSeen, JSON.stringify(hits));
+        // Positive control: the browser can reach the counting server. Not from the dashboard page: its connect-src is this server (#5009),
+        // so the control is asked from a fresh tab that has no policy.
+        const port = Number(process.env.CDP_PORT || 9222);
+        const tab = await CDP.New({ port, url: 'about:blank' });
+        const other = await CDP({ port, target: tab });
+        try {
+            await other.Runtime.enable();
+            await other.Runtime.evaluate({ expression: `fetch(${JSON.stringify(SINK + '/control')}, { mode: 'no-cors' }).then(() => 1, () => 0)`, awaitPromise: true });
+        } finally { await other.close(); await CDP.Close({ port, id: tab.id }); }
+        check('positive control: the counting server sees a request from a page with no policy', hits.some(h => h.endsWith(' /control')), JSON.stringify(hits));
         hits.length = 0;
 
         // ── 2. media in agent content, through every renderer ──────────────────
@@ -154,6 +169,47 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         check('an inline handler and an inline script put into the page do not run', inline.inlineRan === 0, JSON.stringify(inline));
         check('the CSP reports script-src for each', inline.seen.filter(v => /^script-src/.test(v)).length >= 2, JSON.stringify(inline.seen));
         check('a control naming a data-on-* action still works', inline.actionRan === 1, JSON.stringify(inline));
+
+        // ── 5. every other kind of load is held to this server (#5009) ─────────
+        hits.length = 0;
+        const loads = await ev(`new Promise(resolve => {
+            const seen = []; const onV = e => seen.push(e.violatedDirective + ' ' + e.blockedURI);
+            document.addEventListener('securitypolicyviolation', onV);
+            const host = document.createElement('div'); host.id = 'csp-loads-test'; document.body.appendChild(host);
+            const note = [];
+            const tryIt = (name, fn) => { try { const r = fn(); if (r && r.catch) r.catch(() => {}); } catch (e) { note.push(name + ' threw ' + e.name); } };
+            tryIt('fetch', () => fetch('${SINK}/fetch', { mode: 'no-cors' }));
+            tryIt('xhr', () => { const x = new XMLHttpRequest(); x.open('GET', '${SINK}/xhr'); x.send(); });
+            tryIt('websocket', () => { const w = new WebSocket('ws://' + new URL('${SINK}').host + '/ws'); w.onerror = () => {}; });
+            tryIt('eventsource', () => { const es = new EventSource('${SINK}/es'); es.onerror = () => es.close(); });
+            tryIt('beacon', () => navigator.sendBeacon('${SINK}/beacon', 'x'));
+            tryIt('stylesheet', () => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = '${SINK}/style.css'; host.appendChild(l); });
+            tryIt('import', () => { const st = document.createElement('style'); st.textContent = '@import url(${SINK}/imported.css);'; host.appendChild(st); });
+            tryIt('font', () => new FontFace('qa-csp', 'url(${SINK}/font.woff2)').load());
+            tryIt('worker', () => { const w = new Worker(URL.createObjectURL(new Blob(['postMessage(1)']))); w.onerror = e => e.preventDefault && e.preventDefault(); }); // a worker script from another origin throws before the CSP is asked; a blob: one is what worker-src 'self' refuses
+            tryIt('object', () => { const o = document.createElement('object'); o.data = '${SINK}/object.bin'; host.appendChild(o); });
+            tryIt('embed', () => { const o = document.createElement('embed'); o.src = '${SINK}/embed.bin'; host.appendChild(o); });
+            tryIt('data frame', () => { const f = document.createElement('iframe'); f.src = 'data:text/html,<p>x</p>'; host.appendChild(f); });
+            tryIt('linked preview frame', () => { const f = document.createElement('iframe'); f.setAttribute('sandbox', ''); f.src = '${SINK}/frame'; host.appendChild(f); });
+            // inline style still applies: an attribute, a <style> element and a CSSOM write
+            const el = document.createElement('div'); el.id = 'qa-style-probe'; el.setAttribute('style', 'margin-top: 7px'); host.appendChild(el);
+            const st = document.createElement('style'); st.textContent = '#qa-style-probe { padding-top: 9px; }'; host.appendChild(st);
+            const cs = getComputedStyle(el);
+            const attrApplies = cs.marginTop === '7px', elementApplies = cs.paddingTop === '9px';
+            el.style.paddingBottom = '5px'; const cssomApplies = getComputedStyle(el).paddingBottom === '5px';
+            setTimeout(() => { document.removeEventListener('securitypolicyviolation', onV); host.remove();
+                resolve({ seen, note, attrApplies, elementApplies, cssomApplies }); }, 2000); // sleep-ok: proves a negative, the loads get this long to reach out
+        })`);
+        const frameArrived = hits.filter(h => h.endsWith(' /frame'));
+        const others = hits.filter(h => !h.endsWith(' /frame'));
+        check('fetch, XHR, WebSocket, EventSource, a beacon, a stylesheet, an @import, a font, a worker, an object and an embed reach nothing', others.length === 0, JSON.stringify(others));
+        check('the Linked preview\'s frame to another origin still loads (frame-src names http and https)', frameArrived.length >= 1, JSON.stringify(hits));
+        for (const [d, why] of [['connect-src', 'fetch, XHR, WebSocket, EventSource, beacon'], ['style-src-elem', 'the stylesheet link and the @import'],
+            ['font-src', 'the font'], ['worker-src', 'the worker'], ['object-src', 'the object and embed'], ['frame-src', 'the data: frame']]) {
+            check(`the CSP reports ${d} for ${why}`, loads.seen.some(v => v.startsWith(d + ' ')), JSON.stringify(loads.seen));
+        }
+        check('the five connect-src loads are each reported', loads.seen.filter(v => v.startsWith('connect-src ')).length >= 5, JSON.stringify(loads.seen));
+        check('a style attribute, an inline <style> element and a CSSOM write still apply', loads.attrApplies && loads.elementApplies && loads.cssomApplies, JSON.stringify(loads));
 
         // ── 4. a notification's web link shows its host ─────────────────────────
         const notes = await ev(`${U}.then(u => {

@@ -106,22 +106,29 @@ func TestBoardAutoAttachEndToEnd(t *testing.T) {
 	assert.Equal(t, "done: ![run](shot.png)", post("done: ![run](shot.png)", asAgent, "Dev"), "a JSON false (stored as False) is off too")
 }
 
-// #3515, #3623, #3645: the dashboard and the agent pop-out send the CSP (scripts, media and images
-// from this server only and no inline script or handler, forms post only here, no <base> or
-// plugins, framed only by Coral itself).
+// #3515, #3623, #3645, #5009: the dashboard and the agent pop-out send the CSP (scripts, media, images,
+// fonts, connections and workers from this server only and no inline script or handler, forms post only
+// here, no <base> or plugins, framed only by Coral itself).
 func TestDashboardPagesSendTheCSP(t *testing.T) {
 	_, ts, _ := strictServer(t, false)
+	host := strings.TrimPrefix(ts.URL, "http://")
 	for _, path := range []string{"/", "/agent/eeeeeeee-3515-0000-0000-00000000000e"} {
 		resp, err := http.Get(ts.URL + path)
 		require.NoError(t, err)
 		resp.Body.Close()
 		csp := resp.Header.Get("Content-Security-Policy")
-		for _, d := range []string{"script-src 'self';", "form-action 'self'", "media-src 'self' blob: data:",
-			"img-src 'self' data: blob:", "base-uri 'self'", "object-src 'none'", "frame-ancestors 'self'"} {
+		for _, d := range []string{"default-src 'self';", "script-src 'self';", "form-action 'self'", "media-src 'self' blob: data:",
+			"img-src 'self' data: blob:", "font-src 'self' data:", "frame-src 'self' http: https:", "worker-src 'self'",
+			"connect-src 'self' ws://" + host + " wss://" + host + ";",
+			"base-uri 'self'", "object-src 'none'", "frame-ancestors 'self'"} {
 			assert.Contains(t, csp, d, path)
 		}
-		// No inline script or handler runs on the dashboard (#3645 stage 2).
-		assert.NotContains(t, csp, "unsafe-inline", path)
+		// No inline script or handler runs on the dashboard (#3645 stage 2): inline is for style only.
+		for name, value := range cspDirectives(csp) {
+			if name != "style-src" {
+				assert.NotContains(t, value, "unsafe-inline", path+" "+name)
+			}
+		}
 		assert.NotContains(t, csp, "unsafe-eval", path)
 	}
 }

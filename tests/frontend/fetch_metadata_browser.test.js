@@ -29,7 +29,8 @@ const BASE = require('./test_base').BASE;
 
     // Another origin on the same machine (localhost <-> 127.0.0.1) must read as cross-site, never same-origin.
     const u = new URL(BASE); const other = `${u.protocol}//${u.hostname === 'localhost' ? '127.0.0.1' : 'localhost'}:${u.port}`;
-    await Page.navigate({ url: other + '/' }); await Page.loadEventFired(); await wait(1000);
+    // A document of the other origin that carries no policy: the dashboard page there would hold fetch to its own origin (connect-src, #5009), and this asks the server, not the page.
+    await Page.navigate({ url: other + '/api/health?doc' }); await Page.loadEventFired(); await wait(1000);
     const cross = `${BASE}/api/health?cross`;
     await Runtime.evaluate({ expression: `fetch(${JSON.stringify(cross)}, {mode:'no-cors'}).then(() => 1).catch(() => 0)`, awaitPromise: true });
     await wait(800);

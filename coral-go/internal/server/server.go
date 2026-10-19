@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -505,7 +506,7 @@ func (s *Server) staticBase() string {
 	return "/static/b/" + s.staticVersion + "/"
 }
 
-// dashboardCSP for the dashboard pages (#3515):
+// dashboardCSPBase and dashboardCSPFor are the policy of the dashboard pages (#3515, #5009):
 //   - img-src: images only from this server, data: and blob:. A remote image in an agent's
 //     post or chat is never fetched (the sanitizer already turns it into a link; this is the
 //     second layer). Nothing on these pages needs a remote image (avatars are emoji; icons
@@ -524,12 +525,41 @@ func (s *Server) staticBase() string {
 //   - media-src 'self' blob: data: (Security's SHOULD on #3622): audio and video only from this
 //     server, so remote media can't be fetched from the page (agent content can't carry media
 //     tags at all; this is the second layer).
-const dashboardCSP = "script-src 'self'; form-action 'self'; media-src 'self' blob: data:; " +
-	"img-src 'self' data: blob:; base-uri 'self'; object-src 'none'; frame-ancestors 'self'"
+//   - default-src 'self' (#5009): every kind of load not named below (fetch, XHR, EventSource, workers, manifest,
+//     prefetch) goes only to this server.
+//   - connect-src 'self' plus this page's own ws:// and wss:// origin: the live-update and terminal sockets. 'self'
+//     covers them in current Chromium and Safari; the explicit origin is for engines that do not match a socket to 'self'.
+//     The origin is the Host the page was requested with, and only when it is a plain host[:port].
+//   - style-src 'self' 'unsafe-inline': stylesheets from this server, and inline style, which is still needed for two things: some
+//     330 style attributes (the markup and the JS templates build them), and the HTML previews (artifact_preview.js, preview_pane.js),
+//     which are srcdoc frames: a srcdoc frame inherits this policy on top of its own, so an artifact's own <style> is refused if
+//     this one refuses inline style. Inline style cannot run script, and with every other kind of load held to this server (the
+//     rest of this policy) it has nowhere to send anything. Dropping it means moving those attributes to classes and serving the
+//     previews as documents of their own.
+//   - font-src 'self' data: and worker-src 'self' (the service worker): fonts and workers from this server only.
+//   - frame-src 'self' http: https: : the dashboard's own frames (agent panels, previews, views, the hub Inbox) are same-origin
+//     or srcdoc; the Linked preview (artifact_preview.js) frames an artifact's http(s) address in an empty sandbox, so a
+//     frame to a page on another site is the one cross-origin load the dashboard makes on purpose.
+const dashboardCSPBase = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+	"font-src 'self' data:; form-action 'self'; media-src 'self' blob: data:; img-src 'self' data: blob:; " +
+	"frame-src 'self' http: https:; worker-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'"
+
+// plainHost matches a Host header that can go into a source list as it is: letters, digits, '.', '-', and one optional
+// ":port", or a bracketed IPv6 literal. Anything else (a space, ';', ',' or a quote) leaves the explicit socket origin out.
+var plainHost = regexp.MustCompile(`^([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?$`)
+
+// dashboardCSPFor is the dashboard's policy for a page requested with this Host: connect-src is this server and its sockets.
+func dashboardCSPFor(host string) string {
+	connect := "connect-src 'self'"
+	if plainHost.MatchString(host) {
+		connect += " ws://" + host + " wss://" + host
+	}
+	return connect + "; " + dashboardCSPBase
+}
 
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", dashboardCSP)
+	w.Header().Set("Content-Security-Policy", dashboardCSPFor(r.Host))
 	// Team, board and session names are in the page path now (#3532): a link out of the
 	// dashboard never carries them in Referer.
 	w.Header().Set("Referrer-Policy", "same-origin")
@@ -572,7 +602,7 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", dashboardCSP)
+	w.Header().Set("Content-Security-Policy", dashboardCSPFor(r.Host))
 	w.Header().Set("Referrer-Policy", "same-origin") // as the dashboard shell (#3532)
 	if s.indexTmpl == nil {
 		w.Write([]byte(`<!DOCTYPE html><html><body>Template not loaded</body></html>`))

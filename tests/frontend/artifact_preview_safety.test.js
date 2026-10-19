@@ -105,12 +105,17 @@ const BASE = require('./test_base').BASE;
     const sinkUrl = 'http://127.0.0.1:' + sink.address().port;
     let iso;
     try {
+      // Positive control: the counting server really does see a request from the browser. Not from the dashboard page, whose connect-src is this server
+      // (#5009): from a fresh tab that has no policy. A cross-origin GET is still sent; only its answer is withheld.
+      const port = Number(process.env.CDP_PORT || 9222);
+      const tab = await CDP.New({ port, url: 'about:blank' });
+      const other = await CDP({ port, target: tab });
+      try {
+        await other.Runtime.enable();
+        await other.Runtime.evaluate({ expression: `fetch(${JSON.stringify(sinkUrl + '/control')}, { mode: 'no-cors' }).then(() => 1, () => 0)`, awaitPromise: true });
+      } finally { await other.close(); await CDP.Close({ port, id: tab.id }); }
       iso = await ev(`(async()=>{
         const wait=ms=>new Promise(r=>setTimeout(r,ms)); const sink=${JSON.stringify(sinkUrl)};
-        // Positive control: the counting server really does see a request the page itself makes.
-        // An XHR, not an image (the dashboard's CSP, img-src 'self' data: blob:, blocks remote images: #3515)
-        // and not fetch (earlier sections stub it). A cross-origin GET is still sent; only its answer is withheld.
-        await new Promise(res=>{const x=new XMLHttpRequest();x.onloadend=res;x.open('GET',sink+'/control');x.send();});
         window.__closePreview(); window.__messages=0; window.__canary='intact';
         window.addEventListener('message',()=>{window.__messages++});
         const hostileHtml='<h1>probe</h1>'
@@ -134,7 +139,7 @@ const BASE = require('./test_base').BASE;
     // Collected and reported together so each property shows up on its own when it is the one that breaks.
     const isoProblems = [];
     const controlSeen = hits.some(h => h.endsWith(' /control'));
-    if (!controlSeen) isoProblems.push('positive control failed: the counting server saw no request from the page itself, so zero hits would prove nothing');
+    if (!controlSeen) isoProblems.push('positive control failed: the counting server saw no request from the browser, so zero hits would prove nothing');
     for (let i = hits.length - 1; i >= 0; i--) if (hits[i].endsWith(' /control')) hits.splice(i, 1);
     if (!iso.hasFrame) isoProblems.push('no iframe rendered for the probe');
     if (iso.referrer !== 'no-referrer') isoProblems.push('iframe referrerPolicy is ' + JSON.stringify(iso.referrer) + ', want "no-referrer"');
