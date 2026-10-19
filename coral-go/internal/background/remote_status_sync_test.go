@@ -123,24 +123,100 @@ func TestHub_ProxyFailureReprobesAtOnce(t *testing.T) {
 	assert.Greater(t, after, before, "the worker probed the remote again")
 }
 
-// A burst of proxied failures does not become a burst of probes.
+// manualClock is the hub's clock for a test: time moves only when the test advances it, so a burst is spaced
+// by what the test says, not by how fast the machine runs.
+type manualClock struct {
+	mu      sync.Mutex
+	t       time.Time
+	waiters []*clockWaiter
+}
+
+type clockWaiter struct {
+	at time.Time
+	ch chan struct{}
+}
+
+func newManualClock() *manualClock { return &manualClock{t: time.Unix(1_700_000_000, 0)} }
+
+func (c *manualClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+// Sleep blocks until the clock reaches now+d (or ctx ends); a duration that has already passed returns at once.
+func (c *manualClock) Sleep(ctx context.Context, d time.Duration) bool {
+	c.mu.Lock()
+	if d <= 0 {
+		c.mu.Unlock()
+		return ctx.Err() == nil
+	}
+	w := &clockWaiter{at: c.t.Add(d), ch: make(chan struct{})}
+	c.waiters = append(c.waiters, w)
+	c.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-w.ch:
+		return true
+	}
+}
+
+// Sleepers is how many callers are blocked in Sleep.
+func (c *manualClock) Sleepers() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.waiters)
+}
+
+// Advance moves the clock and releases every sleeper whose time has come.
+func (c *manualClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+	kept := c.waiters[:0]
+	for _, w := range c.waiters {
+		if !c.t.Before(w.at) {
+			close(w.ch)
+		} else {
+			kept = append(kept, w)
+		}
+	}
+	c.waiters = kept
+}
+
+// A burst of proxied failures does not become a burst of probes: with the clock held still, the worker
+// waits out MinBackoff after its last probe whatever the number of failures, and one probe follows when the
+// clock reaches it (a manual clock, so the burst's length and the machine's speed cannot change the count).
 func TestHub_ProxyFailureBurstIsCoalesced(t *testing.T) {
 	a := newFakeRemote(t, sess("one", "a-1"))
 	a.noFeed = true
 	reg := newRowRegistry()
 	reg.put("a", a.URL)
 	h := syncHub(reg, 5*time.Second)
-	h.cfg.MinBackoff = 200 * time.Millisecond
+	const minBackoff = 200 * time.Millisecond
+	h.cfg.MinBackoff = minBackoff
+	clock := newManualClock()
+	h.now, h.sleep = clock.Now, clock.Sleep
 	startHub(t, h)
 	require.Eventually(t, onlineEverywhere(h, reg, "a"), 3*time.Second, 10*time.Millisecond)
 	before, _ := a.counts()
+
 	for i := 0; i < 50; i++ {
 		h.ReportFailure(context.Background(), "a", store.RemoteStatusUnreachable, "connect failed")
-		time.Sleep(10 * time.Millisecond) // sleep-ok: spaces a burst of failures over 0.5 s
 	}
-	require.Eventually(t, onlineEverywhere(h, reg, "a"), 2*time.Second, 10*time.Millisecond)
+	// The worker took the first wake and is holding off until MinBackoff has passed on the clock.
+	require.Eventually(t, func() bool { return clock.Sleepers() == 1 }, 3*time.Second, time.Millisecond, "the worker waits out MinBackoff")
+	afterBurst, _ := a.counts()
+	assert.Equal(t, before, afterBurst, "no probe while MinBackoff has not passed, however many failures")
+
+	// MinBackoff passes: exactly one probe for the whole burst (the 49 other wakes were coalesced into one).
+	clock.Advance(minBackoff)
+	require.Eventually(t, func() bool { n, _ := a.counts(); return n == before+1 }, 3*time.Second, time.Millisecond, "one probe once MinBackoff passed")
+	require.Eventually(t, onlineEverywhere(h, reg, "a"), 3*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return clock.Sleepers() == 1 }, 3*time.Second, time.Millisecond, "the coalesced wake holds off again, it does not probe at once")
 	after, _ := a.counts()
-	assert.LessOrEqual(t, after-before, 5, "probes stay MinBackoff apart (%d probes for 50 failures in 0.5 s)", after-before)
+	assert.Equal(t, before+1, after, "50 failures made one probe, then waited MinBackoff again (%d probes)", after-before)
 }
 
 // Another writer (Test, or a proxy without the hub) leaves a different status

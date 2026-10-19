@@ -235,11 +235,12 @@ func TestALateSubmitIsNotPastedAgain(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, Held, d)
 	term.set(func(d *dialogTerm) { d.submitted, d.box = append(d.submitted, d.box), "" }) // it went through after all
-	time.Sleep(150 * time.Millisecond)
+	// The held send is released on its retry: wait for that event (the record leaves the held set), not a fixed
+	// time, so a slow machine cannot read the state before the retry ran. A second paste would come before the release.
+	waitFor(t, "the held send released on its retry", func() bool { return HeldCount(name) == 0 })
 	pasted, submitted, _, _, _ := term.state()
 	assert.Len(t, pasted, 1, "never pasted again")
 	assert.Len(t, submitted, 1)
-	assert.Zero(t, HeldCount(name))
 }
 
 // Coral's own earlier paste left in the box (its Enter went to the dialog) is Coral's, not a

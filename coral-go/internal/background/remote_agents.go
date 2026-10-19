@@ -215,6 +215,9 @@ type RemoteAgentHub struct {
 	resolver proxy.Resolver
 	cfg      RemoteAgentHubConfig
 	logger   *slog.Logger
+	// now and sleep are the clock the probe spacing reads; tests replace them to drive a burst without real time (#4958).
+	now   func() time.Time
+	sleep func(ctx context.Context, d time.Duration) bool
 
 	mu      sync.Mutex
 	remotes map[string]*remoteState
@@ -234,6 +237,8 @@ func NewRemoteAgentHub(reg RemoteRegistry, resolver proxy.Resolver, cfg RemoteAg
 	return &RemoteAgentHub{
 		reg: reg, resolver: resolver, cfg: cfg,
 		logger:  slog.Default().With("service", "remote_agents"),
+		now:     time.Now,
+		sleep:   SleepCtx,
 		remotes: map[string]*remoteState{},
 		subs:    map[int]chan struct{}{},
 	}
@@ -453,7 +458,7 @@ func (h *RemoteAgentHub) pollLoop(ctx context.Context, id string) {
 	wake := st.wake
 	backoff := h.cfg.MinBackoff
 	for {
-		probed := time.Now()
+		probed := h.now()
 		var sessions []map[string]any
 		var err error
 		feedFresh := h.feedCarriesList(id)
@@ -512,7 +517,7 @@ func (h *RemoteAgentHub) waitOrWake(ctx context.Context, wake <-chan struct{}, d
 	case <-t.C:
 		return true
 	case <-wake:
-		return SleepCtx(ctx, h.cfg.MinBackoff-time.Since(probed))
+		return h.sleep(ctx, h.cfg.MinBackoff-h.now().Sub(probed))
 	}
 }
 

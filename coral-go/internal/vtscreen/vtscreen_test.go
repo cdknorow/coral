@@ -78,34 +78,43 @@ func TestRenderHostileSequences(t *testing.T) {
 }
 
 // An input made only of the most expensive sequences stops at the work budget: a whole screen cleared, or
-// scrolled, for every few bytes of MaxInput renders in well under a second.
-// Render caps its input and bounds its per-sequence work, so its time is linear in MaxInput whatever
-// the sequence; a regression to super-linear work (say a scroll that shifts the whole grid once per
-// newline) would be orders of magnitude slower. An absolute wall-clock bound flakes on a loaded gate,
-// so we measure each sequence against a plainly linear baseline (MaxInput printable bytes) in the same
-// process: CPU contention inflates both and cancels in the ratio, while a quadratic blow-up would be
-// thousands× the baseline, far past the loose factor below (#4909, was a 1 s bound).
+// scrolled, for every few bytes of MaxInput is cut off once Budget cell operations are spent.
+// Render caps its input and counts every cell it writes, clears or scrolls against Budget, so the work of
+// any input is bounded by that count whatever the sequence; a regression to super-linear work (a scroll
+// that shifts the whole grid once per newline without paying for it) shows as work that is not counted
+// against the budget, and a regression that counts too little shows as an input that is never cut off.
+// The test reads the budget a render consumed instead of timing it, so it does not depend on CPU speed or
+// on the gate's load (#4958; it was a wall-clock ratio against a linear baseline, #4909).
 func TestRenderWorkIsBounded(t *testing.T) {
-	best := func(input []byte) time.Duration {
-		d := time.Hour
-		for i := 0; i < 5; i++ {
-			start := time.Now()
-			Render(input, MaxCols, MaxRows)
-			if e := time.Since(start); e < d {
-				d = e
-			}
+	// work plays input through a full-size screen and returns the budget it consumed.
+	work := func(input []byte) int {
+		if len(input) > MaxInput {
+			input = input[len(input)-MaxInput:]
 		}
-		return d
+		s := newTerm(MaxCols, MaxRows)
+		s.write(input)
+		return Budget - s.budget
 	}
-	baseline := best([]byte(strings.Repeat("a", MaxInput)))
-	const factor = 150 // a bounded sequence stays within a constant of the linear baseline (newline, a scroll, is ~43× on Windows CI vs ~12× on Mac/Linux); a quadratic one is ~10^5×, so it still fails by orders of magnitude (#4909 windows-tests)
+
+	// The linear baseline: each printable byte costs one cell operation, and each full row it wraps past the
+	// bottom scrolls once more for a row's cells, so plain text costs under twice its length.
+	plain := work([]byte(strings.Repeat("a", MaxInput)))
+	assert.GreaterOrEqual(t, plain, MaxInput, "printable text costs an operation a byte")
+	assert.Less(t, plain, 2*MaxInput, "plain text costs a constant a byte, scrolling included")
+
+	// No sequence may spend more than the budget plus the sequence that crosses it (at most a whole screen).
+	const overshoot = MaxCols * MaxRows
 	for _, seq := range []string{"\x1b[2J", "\x1b[J", "\n", "\x1b[200S", "\x1b[?1049h\x1b[?1049l", "\x1bc"} {
 		input := []byte(strings.Repeat(seq, MaxInput/len(seq)+1))
-		d := best(input)
-		t.Logf("%q: %v (%.1f× the %v baseline)", seq, d, float64(d)/float64(baseline), baseline)
-		if d > time.Duration(factor)*baseline {
-			t.Errorf("an input of %q took %v, over %d× the %v baseline (work not bounded?)", seq, d, factor, baseline)
-		}
+		got := work(input)
+		t.Logf("%q: %d of %d", seq, got, Budget)
+		assert.LessOrEqual(t, got, Budget+overshoot, "an input of %q spent more than the budget (work not counted or not bounded)", seq)
+	}
+
+	// The two that redraw or scroll the whole screen are stopped BY the budget: a full input would cost far more.
+	for _, seq := range []string{"\x1b[2J", "\n"} {
+		input := []byte(strings.Repeat(seq, MaxInput/len(seq)+1))
+		assert.GreaterOrEqual(t, work(input), Budget, "an input of %q is cut off by the budget, not run to its end", seq)
 	}
 }
 
