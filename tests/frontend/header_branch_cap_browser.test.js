@@ -97,6 +97,19 @@ const SHORT = 'fix/header';
             await ev(`document.querySelector('#terminal-header-branch .terminal-branch-text').click(); true`);
             await ev(`document.body.click(); true`);
             check(`${dev}: a tap elsewhere closes it`, (await pop()).content === 'none');
+            if (mobile) {
+                // real touch taps (not .click()): a tap leaves :hover on the text, which used to keep the box open when the second tap closed it (#5154)
+                const tap = async (x, y) => { await Input.dispatchTouchEvent({ type: 'touchStart', touchPoints: [{ x, y }] }); await Input.dispatchTouchEvent({ type: 'touchEnd', touchPoints: [] }); await sleep(250); }; // sleep-ok: the synthesized mouse and click events after a touch
+                const at = await geo();
+                const hoverable = await ev(`matchMedia('(hover: hover)').matches`);
+                await tap(at.x, at.y);
+                check(`${dev}: a touch tap opens the whole name (this window reports hover: ${hoverable})`, (await pop()).content === JSON.stringify(LONG), (await pop()).content.slice(0, 20));
+                await tap(at.x, at.y);
+                check(`${dev}: a second touch tap on the name closes it, though the tap left :hover on it`, (await pop()).content === 'none', (await pop()).content.slice(0, 20));
+                await tap(at.x, at.y);
+                await tap(w / 2, 600);
+                check(`${dev}: a touch tap elsewhere closes it`, (await pop()).content === 'none', (await pop()).content.slice(0, 20));
+            }
             // a short branch is not cut
             if (!mobile) {
                 await ev(`T.render.updateSessionBranch(${JSON.stringify(SHORT)}, '', {}); true`); await sleep(200); // sleep-ok: a layout or colour transition settling; there is no event for it

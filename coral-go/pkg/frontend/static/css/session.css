@@ -1775,9 +1775,8 @@
 .terminal-branch-text:focus-visible, .title-branch .branch-text:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .terminal-header { position: relative; }
 .title-branch { position: relative; }
-.terminal-branch:has(> .terminal-branch-text:is(:hover, :focus-visible, .is-open))::after,
-.title-branch:has(> .branch-text:is(:hover, :focus-visible, .is-open))::after {
-    content: attr(data-full);
+.terminal-branch::after,
+.title-branch::after {
     position: absolute;
     top: calc(100% + 2px);
     z-index: 40;
@@ -1795,8 +1794,16 @@
     overflow-wrap: anywhere;
     pointer-events: none;
 }
-.terminal-branch:has(> .terminal-branch-text:is(:hover, :focus-visible, .is-open))::after { right: 6px; top: 100%; max-width: calc(100% - 12px); }
-.title-branch:has(> .branch-text:is(:hover, :focus-visible, .is-open))::after { left: 0; max-width: min(36rem, calc(100vw - 2rem)); }
+.terminal-branch::after { right: 6px; top: 100%; max-width: calc(100% - 12px); }
+.title-branch::after { left: 0; max-width: min(36rem, calc(100vw - 2rem)); }
+/* Shown (a box exists only while it has content) on keyboard focus and when tapped open; hover only where there is a pointer that hovers: on a phone a tap leaves :hover stuck
+   on the text, which kept the box open when the second tap closed it (#5154). */
+.terminal-branch:has(> .terminal-branch-text:is(:focus-visible, .is-open))::after,
+.title-branch:has(> .branch-text:is(:focus-visible, .is-open))::after { content: attr(data-full); }
+@media (hover: hover) {
+    .terminal-branch:has(> .terminal-branch-text:hover)::after,
+    .title-branch:has(> .branch-text:hover)::after { content: attr(data-full); }
+}
 
 /* ── Multi-server hub: server badges, strip, stale agents ──────────────
    Only rendered when hub mode is on and remotes are registered. */
