@@ -127,7 +127,10 @@ func cmdPost() {
 		message = stdinTextOrExit("message")
 	} else {
 		message = strings.Join(msgParts, " ")
-		warnShellSyntax(os.Stderr, message)
+		if err := checkShellSyntax(os.Stderr, "post", message); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	}
 
 	// Prepend @mentions if --to was provided

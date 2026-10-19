@@ -85,6 +85,42 @@ func flagText(v, what string) string {
 	return v
 }
 
+// startsCommandSubstitution reports whether trimmed text starts with an unexpanded
+// shell command substitution ($(...) or `...`).
+func startsCommandSubstitution(text string) bool {
+	s := strings.TrimSpace(text)
+	// Strip any leading @mention(s), e.g. "@Orchestrator $(cat file)"
+	for strings.HasPrefix(s, "@") {
+		idx := strings.IndexAny(s, " \t\n")
+		if idx == -1 {
+			break
+		}
+		s = strings.TrimSpace(s[idx:])
+	}
+	if strings.HasPrefix(s, "$(") && strings.Contains(s, ")") {
+		return true
+	}
+	if strings.HasPrefix(s, "`") && !strings.HasPrefix(s, "```") && strings.Contains(s[1:], "`") {
+		return true
+	}
+	return false
+}
+
+// checkShellSyntax verifies that text given as arguments does not start with an unexpanded
+// shell command substitution ($(...) or `...`). If it does, it returns an error refusing the message
+// and showing the right form. For messages that merely contain shell syntax, it prints a warning to w.
+func checkShellSyntax(w io.Writer, cmdName, text string) error {
+	if startsCommandSubstitution(text) {
+		cmdExample := "coral-board " + cmdName
+		if cmdName == "send" {
+			cmdExample = "coral-board send --board <target>"
+		}
+		return fmt.Errorf("error: refusing message with literal unexpanded command substitution.\nIf you intended the shell to run the command, use double quotes instead of single quotes:\n  %s \"$(cat file)\"\nOr pass '-' to provide the message via stdin:\n  %s - <<'EOF'", cmdExample, cmdExample)
+	}
+	warnShellSyntax(w, text)
+	return nil
+}
+
 // warnShellSyntax notes, on stderr, text given as arguments that still holds a command
 // substitution or a backtick: the shell ran nothing (single quotes, or an escape), and the text
 // goes out as written. Only a warning: posts quote shell syntax on purpose too.

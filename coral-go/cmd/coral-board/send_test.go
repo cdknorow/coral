@@ -204,3 +204,23 @@ func TestRunSendAddressAttach(t *testing.T) {
 		t.Fatalf("not yours: %v", err)
 	}
 }
+
+// #5197: send refuses messages that are or start with an unexpanded $(...) or backtick command.
+func TestSendRefusesUnexpandedCommandSubstitution(t *testing.T) {
+	id := sendIdentity{Board: "alpha", SubscriberID: "Orchestrator", SessionName: "s"}
+	for _, text := range []string{
+		"$(cat /tmp/x.txt)",
+		"$(cat /tmp/x.txt) extra notes",
+		"`cat /tmp/x.txt`",
+		"`cat /tmp/x.txt` extra notes",
+	} {
+		var out bytes.Buffer
+		err := runSend([]string{"--board", "beta", text}, id, &out)
+		if err == nil || !strings.Contains(err.Error(), "refusing message with literal unexpanded command substitution") {
+			t.Fatalf("text %q: want refusal error, got: %v", text, err)
+		}
+		if !strings.Contains(err.Error(), `coral-board send --board <target> "$(cat file)"`) {
+			t.Fatalf("text %q: want right form hint, got: %v", text, err)
+		}
+	}
+}

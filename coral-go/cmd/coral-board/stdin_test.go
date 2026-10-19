@@ -122,20 +122,78 @@ func TestReadStdinTextRefusals(t *testing.T) {
 	}
 }
 
-// Text given as arguments that still holds $( or a backtick goes out as written, with a note on
-// stderr; ordinary text gets none.
-func TestArgumentTextWithShellSyntaxIsNoted(t *testing.T) {
-	srv := newRecordingServer(t)
-	res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), "post", "$(cat /tmp/x.txt)")
-	if res.code != 0 || !strings.Contains(res.stderr, "sent as written") {
-		t.Errorf("exit %d, stderr %q; want a note", res.code, res.stderr)
+// #5197: Messages that are a single $(...) or backtick expression, or start with one,
+// are refused (exit non-zero, nothing sent), with an error showing the right form.
+func TestPostRefusesUnexpandedCommandSubstitution(t *testing.T) {
+	cases := [][]string{
+		{"$(cat /tmp/x.txt)"},
+		{"  $(cat /tmp/x.txt)  "},
+		{"$(cat /tmp/x.txt) and extra notes"},
+		{"`cat /tmp/x.txt`"},
+		{"  `cat /tmp/x.txt`  "},
+		{"`cat /tmp/x.txt` and extra notes"},
+		{"--to", "Lead", "$(cat /tmp/x.txt)"},
+		{"@Lead $(cat /tmp/x.txt)"},
+		{"@Lead @QA `cat /tmp/x.txt`"},
 	}
-	if got := postedContent(t, srv); got != "$(cat /tmp/x.txt)" {
-		t.Errorf("posted %q", got)
+	for _, args := range cases {
+		srv := newRecordingServer(t)
+		runArgs := append([]string{"post"}, args...)
+		res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), runArgs...)
+		if res.code == 0 {
+			t.Errorf("args %v: exit code 0, want non-zero refusal", args)
+		}
+		if !strings.Contains(res.stderr, "refusing message with literal unexpanded command substitution") {
+			t.Errorf("args %v: stderr %q; want refusal message", args, res.stderr)
+		}
+		if !strings.Contains(res.stderr, `coral-board post "$(cat file)"`) {
+			t.Errorf("args %v: stderr %q; want double quote suggestion", args, res.stderr)
+		}
+		if !strings.Contains(res.stderr, "coral-board post - <<'EOF'") {
+			t.Errorf("args %v: stderr %q; want stdin heredoc suggestion", args, res.stderr)
+		}
+		if len(srv.requests()) != 0 {
+			t.Errorf("args %v: refused command still made server requests: %v", args, srv.requests())
+		}
 	}
+}
+
+// Messages that merely contain $(...) or backticks (do not start with one) go out as written,
+// with a warning note on stderr. Ordinary text and markdown fences get no warning.
+func TestPostAllowsMessagesMerelyContainingShellSyntax(t *testing.T) {
+	for _, content := range []string{
+		"The result is $(cat /tmp/x.txt)",
+		"Here is `cat /tmp/x.txt` output",
+		"@Lead the result is $(cat /tmp/x.txt)",
+	} {
+		srv := newRecordingServer(t)
+		res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), "post", content)
+		if res.code != 0 {
+			t.Errorf("content %q: exit %d, stderr %q; want success", content, res.code, res.stderr)
+		}
+		if !strings.Contains(res.stderr, "sent as written") {
+			t.Errorf("content %q: stderr %q; want warning note", content, res.stderr)
+		}
+		if got := postedContent(t, srv); got != content {
+			t.Errorf("posted %q, want %q", got, content)
+		}
+	}
+
+	// Ordinary text: no note
 	var b bytes.Buffer
 	warnShellSyntax(&b, "plain text, a - dash and 100$")
 	if b.Len() != 0 {
 		t.Errorf("ordinary text noted: %q", b.String())
+	}
+
+	// Markdown fence: not refused
+	srv := newRecordingServer(t)
+	fence := "```go\npackage main\n```"
+	res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), "post", fence)
+	if res.code != 0 {
+		t.Errorf("markdown fence: exit %d, stderr %q; want success", res.code, res.stderr)
+	}
+	if got := postedContent(t, srv); got != fence {
+		t.Errorf("posted %q, want %q", got, fence)
 	}
 }

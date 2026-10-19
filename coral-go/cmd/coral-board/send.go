@@ -81,7 +81,9 @@ func runSend(args []string, id sendIdentity, out io.Writer) error {
 		message = text
 	} else {
 		message = strings.TrimSpace(strings.Join(msgParts, " "))
-		warnShellSyntax(os.Stderr, message)
+		if err := checkShellSyntax(os.Stderr, "send", message); err != nil {
+			return err
+		}
 	}
 	if address != "" {
 		if target != "" || to != "" {
