@@ -5,7 +5,6 @@ import { formatTokens, formatCost } from './format.js';
 import { getCachedAgentAvailability } from './team_availability.js';
 import { isGoneAsleep } from './terminal_gone.js';
 import { keyLabel, sessionTeamKey } from './server_base.js';
-import { state } from './state.js';
 
 /* ── Session identity ───────────────────────────────────────────────── */
 const GOAL_LINE_MAX = 140;

@@ -9,10 +9,8 @@
  *   revealField(el)                 open the section holding el, if it sits in a sectioned dialog (a field about to be focused)
  *   markSectionError(shell, id, on) mark a section in the list as holding a problem, or clear it
  *   refreshSectionErrors(shell)     mark every section that holds a field flagged aria-invalid
- *   focusFirstInvalid(shell)        open the first section with a flagged field and focus the field
  *
  * Keys in the list: arrows (and Home, End) move and open; the panes are tab panels, so Tab goes from the list into the open pane. */
-const FOCUSABLE = 'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])';
 let seq = 0;
 
 const panesOf = shell => [...shell.querySelectorAll('.settings-pane[data-section]')];
@@ -84,9 +82,6 @@ export function showSection(shell, id, { focus = false } = {}) {
     return pane.dataset.section;
 }
 
-/** The section currently open, or null. */
-export function openSection(shell) { return panesOf(shell).find(p => !p.hidden)?.dataset.section || null; }
-
 /** Opens the section that holds `el` (no-op outside a sectioned dialog, or when it is already open). */
 export function revealField(el) {
     const pane = el?.closest?.('.settings-pane[data-section]');
@@ -109,14 +104,6 @@ export function markSectionError(shell, id, on) {
 export function refreshSectionErrors(shell) {
     if (!shell._sdUid) return;
     for (const p of panesOf(shell)) markSectionError(shell, p.dataset.section, !!p.querySelector('[aria-invalid="true"]'));
-}
-
-export function focusFirstInvalid(shell) {
-    const bad = shell.querySelector('.settings-pane [aria-invalid="true"]');
-    if (!bad) return false;
-    revealField(bad);
-    bad.focus();
-    return true;
 }
 
 // A field flagged (aria-invalid) or cleared anywhere in a sectioned dialog marks its section in the list.
