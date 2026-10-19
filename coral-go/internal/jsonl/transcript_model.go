@@ -34,36 +34,62 @@ func CleanModelID(m string) string { return cleanModelID(m) }
 
 // claudeLineModel is an assistant entry's message.model, or "".
 func claudeLineModel(line []byte) string {
+	m, _ := claudeLineModelEffort(line)
+	return m
+}
+
+// claudeLineModelEffort is an assistant entry's message.model and its top-level effort (the thinking level the turn ran at:
+// "low", "medium", "high", ...; null or missing is ""), or "", "" for any other line (#4969).
+func claudeLineModelEffort(line []byte) (model, effort string) {
 	if !bytes.Contains(line, modelKey) || !bytes.Contains(line, assistantType) {
-		return ""
+		return "", ""
 	}
 	var rec struct {
 		Type    string `json:"type"`
+		Effort  string `json:"effort"`
 		Message struct {
 			Model string `json:"model"`
 		} `json:"message"`
 	}
 	if json.Unmarshal(line, &rec) != nil || rec.Type != "assistant" {
-		return ""
+		return "", ""
 	}
-	return cleanModelID(rec.Message.Model)
+	return cleanModelID(rec.Message.Model), cleanEffort(rec.Effort)
 }
 
 // codexLineModel is a turn_context entry's payload.model, or "".
 func codexLineModel(line []byte) string {
+	m, _ := codexLineModelEffort(line)
+	return m
+}
+
+// codexLineModelEffort is a turn_context entry's payload.model and payload.effort, or "", "".
+func codexLineModelEffort(line []byte) (model, effort string) {
 	if !bytes.Contains(line, turnContextType) || !bytes.Contains(line, modelKey) {
-		return ""
+		return "", ""
 	}
 	var rec struct {
 		Type    string `json:"type"`
 		Payload struct {
-			Model string `json:"model"`
+			Model  string `json:"model"`
+			Effort string `json:"effort"`
 		} `json:"payload"`
 	}
 	if json.Unmarshal(line, &rec) != nil || rec.Type != "turn_context" {
+		return "", ""
+	}
+	return cleanModelID(rec.Payload.Model), cleanEffort(rec.Payload.Effort)
+}
+
+var effortR = regexp.MustCompile(`^[a-z]{2,8}$`)
+
+// cleanEffort keeps a thinking level that looks like one ("low", "xhigh", "max"), else "".
+func cleanEffort(e string) string {
+	e = strings.TrimSpace(e)
+	if !effortR.MatchString(e) {
 		return ""
 	}
-	return cleanModelID(rec.Payload.Model)
+	return e
 }
 
 // TranscriptModel is the model a session's transcript last recorded, from what the turn
@@ -83,4 +109,25 @@ func (r *SessionReader) TranscriptModel(sessionID string) string {
 		return c.claudeState.model
 	}
 	return c.codexState.model
+}
+
+// TranscriptThinking is the thinking level the session's newest turn ran at, as its transcript records it (#4969): Claude's
+// top-level effort on an assistant entry, Codex's turn_context effort. Like TranscriptModel it reads nothing itself. "" when none
+// was recorded (the CLI does not write one, or the turn has not been read yet): the caller shows no level, never a guess.
+func (r *SessionReader) TranscriptThinking(sessionID string) string {
+	r.mu.Lock()
+	c := r.cache[sessionID]
+	r.mu.Unlock()
+	if c == nil {
+		return ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.claudeState.model != "" {
+		return c.claudeState.effort
+	}
+	if c.codexState.model != "" {
+		return c.codexState.effort
+	}
+	return ""
 }

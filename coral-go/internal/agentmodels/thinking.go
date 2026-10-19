@@ -11,8 +11,14 @@ var thinkingLevels = map[string][]string{
 	"claude": {"low", "medium", "high", "xhigh", "max"},
 }
 
-// ThinkingLevels returns the levels Coral passes to agentType's CLI, nil when that type has none yet.
-func ThinkingLevels(agentType string) []string { return thinkingLevels[agentType] }
+// ThinkingLevels returns the levels Coral passes to agentType's CLI, nil when that type has none yet. The slice is a copy: a caller that changes it (a sort, an append) cannot change what the server accepts.
+func ThinkingLevels(agentType string) []string {
+	l := thinkingLevels[agentType]
+	if l == nil {
+		return nil
+	}
+	return append([]string(nil), l...)
+}
 
 // ValidThinking reports whether level is one Coral passes to agentType's CLI. "" (the CLI's own default) is valid for every type.
 func ValidThinking(agentType, level string) bool {

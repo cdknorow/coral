@@ -464,6 +464,11 @@ func (h *SessionsHandler) addTranscriptModel(entry map[string]any, sessionID str
 	if h.jsonl != nil {
 		m = h.jsonl.TranscriptModel(sessionID)
 	}
+	if h.jsonl != nil {
+		if t := h.jsonl.TranscriptThinking(sessionID); t != "" {
+			entry["thinking_actual"] = t // the level the newest turn ran at, as the CLI's own transcript records it (#4969)
+		}
+	}
 	if m != "" {
 		entry["model"], entry["model_source"] = m, "transcript"
 	} else if o := ptr.Value(observed); o != "" {
@@ -512,6 +517,9 @@ func (h *SessionsHandler) Info(w http.ResponseWriter, r *http.Request) {
 			result["log_path"] = logPath
 			if ls.Model != nil && *ls.Model != "" {
 				result["model"] = *ls.Model
+			}
+			if ls.Thinking != nil && *ls.Thinking != "" {
+				result["thinking"] = *ls.Thinking
 			}
 			observed = ls.ObservedModel
 		}

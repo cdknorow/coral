@@ -291,6 +291,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
 
     // Initialize permissions chips
     _setPermissions(`${uid}-perms`, caps);
+    setThinking(container, v.thinking); // a form opened for a running agent shows the level it started with (#4969)
     _syncEnforcement(container);
     container.querySelector('.acf-permission-mode')?.addEventListener('change', () => _syncEnforcement(container));
     container.querySelector('.perms-shell-input')?.addEventListener('input', () => _syncEnforcement(container));

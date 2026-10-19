@@ -9,6 +9,12 @@ import (
 func TestThinkingLevelsAndArgs(t *testing.T) {
 	assert.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, ThinkingLevels("claude"))
 	assert.Nil(t, ThinkingLevels("codex"), "a type with no documented flag takes no level yet")
+	got := ThinkingLevels("claude")
+	got[0], got[len(got)-1] = "bogus", "bogus"
+	got = append(got, "extra")
+	assert.True(t, ValidThinking("claude", "low"), "what a caller does to the returned slice does not change what is accepted")
+	assert.False(t, ValidThinking("claude", "bogus"))
+	assert.Equal(t, []string{"low", "medium", "high", "xhigh", "max"}, ThinkingLevels("claude"))
 	for _, l := range []string{"", "low", "medium", "high", "xhigh", "max"} {
 		assert.True(t, ValidThinking("claude", l), l)
 	}

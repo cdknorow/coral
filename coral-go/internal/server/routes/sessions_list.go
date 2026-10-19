@@ -199,6 +199,7 @@ func (h *SessionsHandler) liveSessionRows(r *http.Request, trace *phaseTrace, fu
 type liveExtra struct {
 	Prompt        *string
 	Model         *string
+	Thinking      *string
 	Observed      *string
 	Capabilities  *string
 	ContextWindow int
@@ -228,7 +229,7 @@ func newLiveIndex(allLive []store.LiveSession) liveIndex {
 			lv.boardNames[session.SessionID] = [2]string{*session.BoardName, ptr.Value(session.DisplayName)}
 		}
 		lv.extras[session.SessionID] = liveExtra{
-			Prompt: session.Prompt, Model: session.Model, Observed: session.ObservedModel, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
+			Prompt: session.Prompt, Model: session.Model, Thinking: session.Thinking, Observed: session.ObservedModel, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
 		}
 	}
 	return lv
@@ -457,6 +458,9 @@ func (h *SessionsHandler) agentRow(trace *phaseTrace, agent AgentInfo, lv liveIn
 		if extra.Model != nil && *extra.Model != "" {
 			entry["model"] = *extra.Model
 		}
+		if extra.Thinking != nil && *extra.Thinking != "" {
+			entry["thinking"] = *extra.Thinking // the level it was started with (#4969)
+		}
 		addCapabilities(entry, extra.Capabilities)
 	}
 	h.addTranscriptModel(entry, sid, observedModel)
@@ -535,6 +539,9 @@ func (h *SessionsHandler) sleepingRows(allLive []store.LiveSession, liveSIDs map
 		}
 		if ls.Model != nil && *ls.Model != "" {
 			entry["model"] = *ls.Model
+		}
+		if ls.Thinking != nil && *ls.Thinking != "" {
+			entry["thinking"] = *ls.Thinking
 		}
 		if o := ptr.Value(ls.ObservedModel); o != "" {
 			entry["model"], entry["model_source"] = o, "hook"

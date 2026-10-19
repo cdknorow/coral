@@ -363,6 +363,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 	type liveExtra struct {
 		Prompt        *string
 		Model         *string
+		Thinking      *string
 		Observed      *string
 		Capabilities  *string
 		ContextWindow int
@@ -376,7 +377,7 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 			liveBoardNames[session.SessionID] = [2]string{*session.BoardName, ptr.Value(session.DisplayName)}
 		}
 		liveExtras[session.SessionID] = liveExtra{
-			Prompt: session.Prompt, Model: session.Model, Observed: session.ObservedModel, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
+			Prompt: session.Prompt, Model: session.Model, Thinking: session.Thinking, Observed: session.ObservedModel, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
 		}
 	}
 	trace.endPool("db_live_session_extras", h.db)
@@ -520,6 +521,9 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 			if extra.Model != nil && *extra.Model != "" {
 				entry["model"] = *extra.Model
 			}
+			if extra.Thinking != nil && *extra.Thinking != "" {
+				entry["thinking"] = *extra.Thinking
+			}
 			addCapabilities(entry, extra.Capabilities)
 		}
 		h.addTranscriptModel(entry, sid, observedModel)
@@ -602,6 +606,9 @@ func (h *SessionsHandler) liveSessionRowsBefore4713(r *http.Request, trace *phas
 		}
 		if ls.Model != nil && *ls.Model != "" {
 			entry["model"] = *ls.Model
+		}
+		if ls.Thinking != nil && *ls.Thinking != "" {
+			entry["thinking"] = *ls.Thinking
 		}
 		if o := ptr.Value(ls.ObservedModel); o != "" {
 			entry["model"], entry["model_source"] = o, "hook"

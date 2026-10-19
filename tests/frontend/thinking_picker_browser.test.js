@@ -115,6 +115,13 @@ const { connect } = require('./agent_view_harness');
         assert.equal(body.thinking, 'high');
         body = await restartPayload('');
         assert.equal(body.thinking, '', 'Default clears it');
+        // An agent that was started with a level shows it on the restart form, and the restart keeps it.
+        await ev(`T.state.currentSession.thinking = 'max'; true`);
+        await ev(`window.__restarts.length = 0; (async () => { await window.restartSession(); return true; })()`);
+        await waitFor(`!!document.querySelector('#restart-acf .acf-thinking') && document.querySelector('#restart-acf .acf-thinking').value === 'max'`, 'the restart form to show the level it started with', 5000);
+        await ev(`(() => { window.confirmRestart(); return true; })()`);
+        await waitFor(`window.__restarts.length === 1`, 'the restart request', 5000);
+        assert.equal((await ev(`window.__restarts[0]`)).thinking, 'max', 'the level it started with is kept');
         console.log('   ✓');
 
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

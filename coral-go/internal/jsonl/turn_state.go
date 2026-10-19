@@ -32,10 +32,10 @@ func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string
 // and size checks reset the tracker when a rollout is replaced or truncated.
 func readCodexTurnEventIncremental(path string, state *codexTurnCache) (string, time.Time) {
 	scanTranscriptAppend(path, &state.transcriptReadState, func() {
-		state.event, state.at, state.active, state.model = "", time.Time{}, false, ""
+		state.event, state.at, state.active, state.model, state.effort = "", time.Time{}, false, "", ""
 	}, func(line []byte) {
-		if m := codexLineModel(line); m != "" {
-			state.model = m
+		if m, e := codexLineModelEffort(line); m != "" {
+			state.model, state.effort = m, e
 		}
 		updateCodexTurnState(state, line)
 	})
