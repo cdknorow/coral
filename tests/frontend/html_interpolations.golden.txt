@@ -56,6 +56,7 @@
 1	chat_bubbles.js	editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${Number(i)}">
 2	chat_bubbles.js	line > 0 ? ` (line ${line})` : ""
 1	chat_search.js	highlightExcerpt(hit.excerpt, hit.match_offsets)
+2	chat_thumbs.js	SIZE
 3	cli_dialogs.js	name
 1	cli_dialogs.js	where
 1	commits.js	agent
@@ -268,6 +269,7 @@
 1	live_chat.js	renderMarkdown(msg.text, undefined, 'chat')
 1	live_chat.js	renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')
 1	live_chat.js	renderPatchLines(tool.patch)
+1	live_chat.js	thumbHtml(a.file)
 1	live_chat.js	trim
 1	live_jobs.js	clickable
 1	live_jobs.js	dotClass

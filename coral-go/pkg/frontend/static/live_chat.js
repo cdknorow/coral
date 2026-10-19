@@ -22,6 +22,7 @@ import { CHAT_TRIM, FIRST_PAGE, takeChatPrefetch } from './chat_page.js';
 import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 import { INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, isCoralNudge, normalizeNudgeText, noteAgentActivity, noteInterrupt, rememberUserMessage, syncPendingBubbles, syncWorkingIndicator } from './pending_messages.js';
 import { browserLocal } from './safe_storage.js';
+import { thumbHtml, wireThumbs } from './chat_thumbs.js';
 export { addPendingMessage, confirmPendingMessage, loadPendingFromStorage, removePendingMessage } from './pending_messages.js';
 export { linkifyRefs } from './chat_bubbles.js';
 
@@ -341,10 +342,10 @@ function isCoralDelivery(msg) {
 }
 
 // A pasted image in a user turn (Codex records it as a name like "[Image #1]" and the saved file's base name): a chip with
-// the name, and the file name when there is one. The image itself is not served, so the chip is not a link (#4940).
+// the name, and the file name when there is one. The chip is not a link; a file that is an upload on the agent's server shows a thumbnail (chat_thumbs.js, #5028).
 function attachmentChips(attachments) {
     const chips = (Array.isArray(attachments) ? attachments : []).filter(a => a && a.name).map(a =>
-        `<span class="chat-attachment-chip">${escapeHtml(a.name)}${a.file ? ` <span class="chat-attachment-file">${escapeHtml(a.file)}</span>` : ""}</span>`);
+        `<span class="chat-attachment-chip">${escapeHtml(a.name)}${a.file ? ` <span class="chat-attachment-file">${escapeHtml(a.file)}</span>` : ""}</span>${thumbHtml(a.file)}`);
     return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
 }
 
@@ -359,6 +360,7 @@ function renderOneMessage(msg, container, agentType) {
         const bubble = makeBubble("chat-bubble human",
             `<div class="role-label">You</div><div class="message-text">${renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')}</div>${attachmentChips(msg.attachments)}${msg.key ? SAVE_BUTTON : ""}`);
         if (msg.key) { bubble.dataset.msgKey = msg.key; bubble.dataset.said = msg.timestamp || ""; } // Save for Later finds the message again by this (#4510)
+        wireThumbs(bubble);
         appendContent(container, bubble);
     } else if (msg.type === "assistant") {
         if (msg.text) {

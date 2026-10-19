@@ -49,7 +49,7 @@ const { connect } = require('./agent_view_harness');
             assert.deepEqual(two.chips.map(c => c.text), ['[Image #1] a.png', '[Image #2]'], `${w}: two chips; a missing file shows the name alone`);
             assert.equal(two.text.trim(), 'why is this red', `${w}: the typed text is kept`);
             assert.equal(esc.chips.length, 1, `${w}: attachment names are escaped`);
-            assert.ok(!esc.html.includes('<img') && !esc.html.includes('<i>'), `${w}: no markup from an attachment: ${esc.html}`);
+            assert.ok(!esc.html.includes('<img src=x') && !esc.html.includes('<i>'), `${w}: no markup from an attachment (the thumbnail's own <img> is the only one): ${esc.html}`);
             assert.equal(plain.chips.length, 0, `${w}: a message without attachments has no chips`);
             for (const b of [one, two, esc]) {
                 assert.ok(b.chips.every(c => c.right <= b.bubbleRight + 1), `${w}: chips stay inside the bubble`);
@@ -57,6 +57,29 @@ const { connect } = require('./agent_view_harness');
             }
             assert.ok(!one.scroll, `${w}: no horizontal scroll`);
         }
+        // A thumbnail (#5028): the chip's file is an upload on the server, so GET /api/upload/{name} serves it and the chip shows it, fixed in size; a file that is not an
+        // upload stays a name. A click opens the image in the Preview pane. The upload is made as the dashboard makes one (POST /api/upload).
+        await open(1280, 800, false);
+        const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+        const name = await ev(`(async () => { const bytes = Uint8Array.from(atob(${JSON.stringify(png)}), c => c.charCodeAt(0)); const f = new FormData();
+            f.append('file', new Blob([bytes], { type: 'image/png' }), 'chipshot.png'); const r = await fetch('/api/upload', { method: 'POST', body: f });
+            return r.ok ? (await r.json()).path.split('/').pop() : 'upload failed ' + r.status; })()`);
+        assert.ok(/chipshot\.png$/.test(name), 'the test upload: ' + name);
+        await render([{ type: 'user', content: 'look', attachments: [{ name: '[Image #1]', file: name }, { name: '[Image #2]', file: 'not-an-upload.png' }] }]);
+        const thumbs = () => ev(`[...document.querySelectorAll('#chip-box .chat-attachment-thumb')].map(b => { const r = b.getBoundingClientRect(); const i = b.querySelector('img');
+            return { hidden: b.hidden, w: Math.round(r.width), h: Math.round(r.height), alt: i.alt, src: i.getAttribute('src') || '', loaded: i.complete && i.naturalWidth > 0 }; })`);
+        for (let k = 0; k < 100 && !(await thumbs())[0].loaded; k++) await ev(`new Promise(r => setTimeout(r, 50))`); // sleep-ok: the lazy fetch has no completion event of its own
+        const [shown, absent] = await thumbs();
+        assert.ok(!shown.hidden && shown.loaded, 'an upload shows its thumbnail: ' + JSON.stringify(shown));
+        assert.deepEqual([shown.w, shown.h], [48, 48], 'fixed size');
+        assert.equal(shown.alt, name, 'alt text is the file name');
+        assert.ok(shown.src.startsWith('blob:') || shown.src.startsWith('/api/upload/'), 'from the upload route: ' + shown.src);
+        assert.ok(absent.hidden && !absent.src, 'a file that is not an upload stays a name: ' + JSON.stringify(absent));
+        await ev(`document.querySelector('#chip-box .chat-attachment-thumb:not([hidden])').click(); true`);
+        await ev(`new Promise(r => setTimeout(r, 300))`); // sleep-ok: the Preview pane draws over a frame or two
+        const tab = await ev(`(() => { const t = document.querySelector('.preview-tab.active .preview-tab-name'); return { name: t && t.textContent, image: !!document.querySelector('#preview-pane-body .image-pane img, .image-panes img') }; })()`);
+        assert.equal(tab.name, name, 'the click opens the image in the Preview pane: ' + JSON.stringify(tab));
+        assert.ok(tab.image, 'with the image shown');
         // 200% text on a phone.
         await ev(`document.documentElement.style.fontSize = '32px'`);
         await render(msgs);

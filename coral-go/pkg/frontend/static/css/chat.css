@@ -1579,3 +1579,32 @@
 @media (hover: none) {
     .chat-bubble .chat-save-btn, .chat-bubble.assistant .chat-copy-btn { opacity: 1; }
 }
+
+/* A thumbnail on an image chip (#5028): fixed size, shown once the image has loaded. */
+.chat-attachment-thumb {
+    flex: 0 0 auto;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    cursor: pointer;
+}
+
+.chat-attachment-thumb[hidden] {
+    display: none;
+}
+
+.chat-attachment-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.chat-attachment-thumb:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}

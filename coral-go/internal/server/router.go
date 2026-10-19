@@ -547,6 +547,7 @@ func (s *Server) registerSystem(r *chi.Mux, h *routeHandlers) {
 
 	// Uploads
 	r.Post("/api/upload", routes.UploadFile)
+	r.Get("/api/upload/{name}", routes.GetUpload) // an uploaded image, for the chat chips (#5028)
 	r.Delete("/api/upload/{name}", routes.DeleteUpload)
 
 	sessHandler.RegisterAgentUI(r)

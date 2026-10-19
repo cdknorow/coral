@@ -398,6 +398,7 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/auto-accept/disable-all":             "turn off auto-accept for every agent",
 	"POST /api/upload":                              "upload a file from the dashboard",
 	"DELETE /api/upload/{name}":                     "remove an uploaded file",
+	"GET /api/upload/{name}":                        "read an uploaded file", // #5028
 	"POST /api/sessions/live/{name}/open-in-editor": "open a file in the Operator's editor",
 	"GET /api/system/terminal-logs":                 "see the terminal logs",
 	"POST /api/system/terminal-logs/delete-ended":   "delete the terminal logs of ended agents",

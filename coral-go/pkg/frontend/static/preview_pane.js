@@ -26,6 +26,7 @@ const ICON_MAP = {
 
 function _fileIcon(tab) {
     if (tab.kind === 'artifact') return '❖';
+    if (tab.kind === 'chat-image') return '▣';
     return ICON_MAP[getLangFromPath(tab.filepath)] || '◻';
 }
 
@@ -36,6 +37,7 @@ function _fileName(filepath) {
 
 function _tabTitle(tab) {
     if (tab.kind === 'artifact') return tab.title || tab.options.filename || 'Artifact';
+    if (tab.kind === 'chat-image') return tab.filepath; // the upload's file name
     return _fileName(tab.filepath);
 }
 
@@ -350,6 +352,11 @@ function _renderToolbar(tab) {
         return;
     }
 
+    if (tab.kind === 'chat-image') { // an image the chat showed (#5028): its name, nothing to edit or star
+        bar.innerHTML = `<span class="preview-toolbar-path" title="${escapeAttr(tab.filepath)}">${escapeHtml(tab.filepath)}</span>`;
+        return;
+    }
+
     const starred = isFileStarred(tab.filepath);
     const binary = isImagePath(tab.filepath) || isMediaPath(tab.filepath);
     const buttons = [
@@ -430,6 +437,14 @@ export function openPreviewTab(filepath, line, opts = {}) {
         _addTab(tab);
     }
     if (tab.mode === 'diff' && !tab.canDiff) tab.mode = 'preview';
+    _activate(tab);
+}
+
+/** Open an uploaded image (a chat chip's thumbnail was clicked, #5028) in a tab: `name` is the upload's file name, `server` the one it is on. */
+export function openUploadTab(name, server) {
+    if (!name) return;
+    let tab = _tabs.find(t => t.kind === 'chat-image' && t.filepath === name && t.server === server);
+    if (tab) _pin(tab); else { tab = _newTab({ kind: 'chat-image', filepath: name, server }); _addTab(tab); }
     _activate(tab);
 }
 
@@ -556,6 +571,13 @@ async function _render(tab) {
             openEntry: (entry) => openArtifactTab(entry.uri, { filename: entry.name, mediaType: entry.media_type }),
             setMeta: ({ title }) => { tab.title = title; _renderTabs(); },
         });
+        return;
+    }
+
+    if (tab.kind === 'chat-image') {
+        const url = serverUrl('/api/upload/' + encodeURIComponent(tab.filepath), tab.server);
+        const missing = 'Image not found';
+        renderImagePanes(body, [isCloud() ? { load: () => fetchImageSrc(url, { name: tab.filepath }), missing } : { url, missing }]);
         return;
     }
 

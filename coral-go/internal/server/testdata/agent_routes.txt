@@ -181,6 +181,7 @@ c GET /api/templates/commands/{category}/{name}
 c GET /api/themes
 c GET /api/themes/variables
 c GET /api/themes/{name}
+b GET /api/upload/{name}
 c GET /api/token-usage
 c GET /api/token-usage/by-branch
 c GET /api/token-usage/by-team

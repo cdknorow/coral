@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/uploads"
 )
 
@@ -155,6 +158,95 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		"filename": orDefault(filename, safeName),
 		"size":     len(content),
 	})
+}
+
+// thumbnailTypes are the image types GET /api/upload/{name} serves, by what the bytes are (net/http's sniff of the first 512 bytes), never by the
+// name or the extension. SVG (text/xml or text/plain to the sniffer), BMP and TIFF are not here: the chip's thumbnail is a PNG, JPEG, GIF or WebP.
+var thumbnailTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
+
+// GetUpload serves one uploaded image to the dashboard's chat chips (#5028). GET /api/upload/{name}
+//
+// name is the file's base name, as the last element of the upload's path: no separator, no "..", no device name, never a
+// symlink or a folder (safefs.Root resolves it inside the uploads folder and opens it without following a link). Anything that is
+// not an upload by that rule is 400; a missing file is 404; any other failure to open it is refused, not served. The type is what
+// the bytes are, from the allow-list above (415 otherwise); the reply is nosniff, inline with a plain file name, sandboxed, capped
+// at the upload size, and cacheable by the browser that asked (the name is random, the file never changes).
+func GetUpload(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if strings.Contains(name, "%") { // chi hands the segment as it came on the wire: a browser percent-encodes a name with a space-free but non-ASCII letter
+		decoded, err := url.PathUnescape(name)
+		if err != nil {
+			errBadRequest(w, "not an upload name")
+			return
+		}
+		name = decoded // once: the checks below run on the decoded name, so an encoded separator or dot segment is refused as the plain one is
+	}
+	if name == "" || name != filepath.Base(name) || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") || strings.HasPrefix(name, ".") || safefs.CheckName(name) != nil {
+		errBadRequest(w, "not an upload name")
+		return
+	}
+	root, err := safefs.OpenRoot(uploadDir)
+	if err != nil {
+		if errors.Is(err, safefs.ErrRootGone) {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such upload"})
+			return
+		}
+		errInternalServer(w, "Failed to open the uploads folder")
+		return
+	}
+	defer root.Close()
+	f, fi, err := root.Open(name)
+	if err != nil {
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such upload"})
+		case errors.Is(err, safefs.ErrNotRegular), errors.Is(err, safefs.ErrReservedName):
+			errBadRequest(w, "not an upload name")
+		default:
+			errInternalServer(w, "Failed to open the upload") // fail closed: nothing is served on an error that is not "not found"
+		}
+		return
+	}
+	defer f.Close()
+	if fi.Size() > maxFileSize {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "the upload is too large to show"})
+		return
+	}
+	head := make([]byte, 512)
+	n, err := io.ReadFull(f, head)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		errInternalServer(w, "Failed to read the upload")
+		return
+	}
+	ct := http.DetectContentType(head[:n])
+	if !thumbnailTypes[ct] {
+		writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "not a PNG, JPEG, GIF or WebP image"})
+		return
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		errInternalServer(w, "Failed to read the upload")
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", ct)
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	h.Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": safeDownloadName(name)}))
+	h.Set("Cache-Control", "private, max-age=86400, immutable")
+	h.Set("Content-Length", fmt.Sprint(fi.Size()))
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, io.LimitReader(f, fi.Size()))
+}
+
+// safeDownloadName keeps letters, digits, '.', '_' and '-' of a file name: what goes into Content-Disposition is never a header or a path.
+func safeDownloadName(name string) string {
+	b := []byte(name)
+	for i, c := range b {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == '-') {
+			b[i] = '_'
+		}
+	}
+	return string(b)
 }
 
 // DeleteUpload removes one upload by its file name (#3364).

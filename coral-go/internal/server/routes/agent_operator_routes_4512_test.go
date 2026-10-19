@@ -27,6 +27,7 @@ var formerlyOpenOperatorRoutes = []string{
 	"POST /api/auto-accept/disable-all",
 	"POST /api/upload",
 	"DELETE /api/upload/{name}",
+	"GET /api/upload/{name}", // #5028: an agent token reads no upload either
 	"POST /api/sessions/live/{name}/open-in-editor",
 }
 

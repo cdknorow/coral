@@ -177,6 +177,7 @@ GET /api/token-usage/by-team view
 GET /api/token-usage/session/{sessionID}/turns view
 GET /api/token-usage/summary view
 GET /api/token-usage/timeseries view
+GET /api/upload/{name} view
 GET /api/views view
 GET /api/views/{id} view
 GET /api/workflows view
