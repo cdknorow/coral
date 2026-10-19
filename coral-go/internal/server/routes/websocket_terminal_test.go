@@ -550,8 +550,8 @@ func TestWSTerminal_ResizeIsCapped(t *testing.T) {
 		want       string
 	}{
 		{5000, 99999, "1000x300"},
-		{70000, 70000, "1000x300"}, // would wrap to a small number through uint16
 		{120, 40, "120x40"},
+		{70000, 70000, "1000x300"}, // would wrap to a small number through uint16; after 120x40, so waiting for 1000x300 waits for this resize
 	} {
 		sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_resize", "cols": c.cols, "rows": c.rows})
 		waitForSize(t, client, tmuxName, c.want)
