@@ -35,6 +35,20 @@ const (
 	Timeout = 5 * time.Second
 )
 
+// client asks the release feed. A redirect (GitHub answers one for a renamed repository) is followed only on the same host and never from https
+// to http, so a feed that answers "go there" cannot send the check to another server or onto a plain connection (#5025). It is its own client:
+// the check does not depend on http.DefaultClient, which any code in the process can change.
+var client = &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	if len(via) >= 5 {
+		return errors.New("updatecheck: too many redirects")
+	}
+	first := via[0].URL
+	if req.URL.Host != first.Host || req.URL.Scheme != first.Scheme {
+		return fmt.Errorf("updatecheck: the release feed redirected to another host or scheme (%s)", req.URL.Redacted())
+	}
+	return nil
+}}
+
 // tagShape is a release tag: v, three numbers, an optional prerelease of letters, digits and dots.
 var tagShape = regexp.MustCompile(`^v?(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:-([0-9A-Za-z.]{1,40}))?$`)
 
@@ -53,7 +67,7 @@ func Latest(ctx context.Context, apiURL string) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}

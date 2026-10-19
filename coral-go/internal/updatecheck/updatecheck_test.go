@@ -86,7 +86,7 @@ func TestAvailable(t *testing.T) {
 }
 
 // #4133: the update check reads a public endpoint and never carries a credential from the
-// environment, not to the feed and not to wherever it redirects.
+// environment, not to the feed and not to wherever it redirects (and since #5025 it redirects nowhere off the host).
 func TestLatestSendsNoCredential(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "FAKE-TOKEN-FOR-TEST")
 	t.Setenv("GH_TOKEN", "FAKE-TOKEN-FOR-TEST")
@@ -101,10 +101,11 @@ func TestLatestSendsNoCredential(t *testing.T) {
 		http.Redirect(w, r, target.URL, http.StatusFound)
 	}))
 	defer feed.Close()
+	// Since #5025 a redirect to another host is not followed at all, so the credential cannot reach it even by a bug: only the feed is asked.
 	v, err := Latest(context.Background(), feed.URL)
-	require.NoError(t, err)
-	assert.Equal(t, "9.9.9", v)
-	require.Len(t, seen, 2, "the feed and the redirect target both answered")
+	require.Error(t, err)
+	assert.Empty(t, v)
+	require.Len(t, seen, 1, "the feed answered; the redirect target was never asked")
 	for i, h := range seen {
 		assert.Empty(t, h.Get("Authorization"), "request %d carries no Authorization", i)
 		for k, vals := range h {
@@ -113,4 +114,48 @@ func TestLatestSendsNoCredential(t *testing.T) {
 			}
 		}
 	}
+}
+
+// #5025: a redirect from the feed is followed on the same host (GitHub's answer for a renamed repository) and nowhere else.
+func TestLatestFollowsOnlySameHostRedirects(t *testing.T) {
+	ctx := context.Background()
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(tag("v9.9.9"))) // what a hostile feed would like the check to read
+	}))
+	t.Cleanup(other.Close)
+	var self string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/same":
+			http.Redirect(w, r, self+"/final", http.StatusMovedPermanently)
+		case "/final":
+			w.Write([]byte(tag("v1.4.53")))
+		case "/away":
+			http.Redirect(w, r, other.URL, http.StatusFound)
+		case "/loop":
+			http.Redirect(w, r, self+"/loop", http.StatusFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	self = srv.URL
+
+	v, err := Latest(ctx, self+"/same")
+	require.NoError(t, err)
+	assert.Equal(t, "1.4.53", v, "a redirect on the same host is followed")
+
+	v, err = Latest(ctx, self+"/away")
+	require.Error(t, err, "a redirect to another host is refused")
+	assert.Empty(t, v)
+	assert.Contains(t, err.Error(), "another host or scheme")
+
+	_, err = Latest(ctx, self+"/loop")
+	require.Error(t, err, "a redirect loop ends")
+
+	// https to http on the same host is a downgrade
+	tls := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://"+r.Host+"/x", http.StatusFound)
+	}))
+	t.Cleanup(tls.Close)
+	_, err = Latest(ctx, tls.URL) // the test server's certificate is not trusted by the check: it fails before any redirect, which is also a refusal
+	require.Error(t, err)
 }
