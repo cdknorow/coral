@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/internal/secrets"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/redact"
 )
@@ -548,21 +548,13 @@ const (
 
 	// KnowledgeTimeoutSettingKey is the user setting for the per-call
 	// timeout in seconds. Minimum 30s.
-	KnowledgeTimeoutSettingKey = "knowledge_timeout_s"
+	KnowledgeTimeoutSettingKey = setreg.KnowledgeTimeoutS
 )
 
 // knowledgeCallTimeoutFromSettings resolves the per-call timeout from user
 // settings. Falls back to the default when unset or invalid.
 func knowledgeCallTimeoutFromSettings(settings map[string]string) time.Duration {
-	raw := strings.TrimSpace(settings[KnowledgeTimeoutSettingKey])
-	if raw == "" {
-		return defaultKnowledgeCallTimeout
-	}
-	secs, err := strconv.Atoi(raw)
-	if err != nil || secs < 30 {
-		return defaultKnowledgeCallTimeout
-	}
-	return time.Duration(secs) * time.Second
+	return time.Duration(setreg.Int(settings, KnowledgeTimeoutSettingKey)) * time.Second
 }
 
 // checkClaudeCLI verifies the Claude CLI is installed and can run

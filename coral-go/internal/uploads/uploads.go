@@ -5,24 +5,18 @@ package uploads
 
 import (
 	"errors"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
 
-// Settings and their defaults.
+// The settings (their defaults and limits are declared in internal/settings).
 const (
-	RetentionSetting     = "uploads_retention_days"
-	DefaultRetentionDays = 30
-	MaxRetentionDays     = 365
-
-	MaxMBSetting = "uploads_max_mb"
-	DefaultMaxMB = 1024
-	MinMaxMB     = 50
-	MaxMaxMB     = 100 * 1024
+	RetentionSetting = setreg.UploadsRetentionDays
+	MaxMBSetting     = setreg.UploadsMaxMB
 )
 
 // MinAge is how old an upload must be before the size cap may evict it: an agent
@@ -38,20 +32,12 @@ var ErrBadName = errors.New("not an upload name")
 
 // RetentionDays reads uploads_retention_days: 1 to 365, default 30.
 func RetentionDays(settings map[string]string) int {
-	return intSetting(settings, RetentionSetting, DefaultRetentionDays, 1, MaxRetentionDays)
+	return int(setreg.Int(settings, RetentionSetting))
 }
 
 // MaxBytes reads uploads_max_mb: 50 MB to 100 GB, default 1 GB.
 func MaxBytes(settings map[string]string) int64 {
-	return int64(intSetting(settings, MaxMBSetting, DefaultMaxMB, MinMaxMB, MaxMaxMB)) << 20
-}
-
-func intSetting(settings map[string]string, key string, def, lo, hi int) int {
-	n, err := strconv.Atoi(strings.TrimSpace(settings[key]))
-	if err != nil {
-		return def
-	}
-	return min(max(n, lo), hi)
+	return setreg.Int(settings, MaxMBSetting) << 20
 }
 
 type entry struct {

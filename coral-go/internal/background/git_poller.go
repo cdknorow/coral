@@ -15,6 +15,7 @@ import (
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/safefs"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -25,21 +26,13 @@ const MinGitPollInterval = 15 * time.Second
 
 // GitPollIntervalSettingKey is the user setting for the poll cadence, in
 // seconds; "0" turns polling off.
-const GitPollIntervalSettingKey = "git_poll_interval_s"
+const GitPollIntervalSettingKey = setreg.GitPollIntervalS
 
 // GitPollInterval resolves the configured git poll cadence from settings. An
 // unset or unparseable value falls back to defaultSeconds; 0 or less means
 // polling is off.
 func GitPollInterval(settings map[string]string, defaultSeconds int) time.Duration {
-	raw := strings.TrimSpace(settings[GitPollIntervalSettingKey])
-	if raw == "" {
-		return time.Duration(defaultSeconds) * time.Second
-	}
-	secs, err := strconv.Atoi(raw)
-	if err != nil {
-		return time.Duration(defaultSeconds) * time.Second
-	}
-	return time.Duration(secs) * time.Second
+	return time.Duration(setreg.IntOr(settings, GitPollIntervalSettingKey, int64(defaultSeconds))) * time.Second
 }
 
 // pausedRecheck is how often a paused poller re-reads its interval, so turning

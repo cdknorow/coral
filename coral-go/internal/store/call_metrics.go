@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 
 	"github.com/cdknorow/coral/internal/safego"
+	setreg "github.com/cdknorow/coral/internal/settings"
 )
 
 type CallMetric struct {
@@ -351,26 +350,14 @@ func (s *DB) CallMetricSummary(ctx context.Context, since time.Time) ([]CallMetr
 // (the call_metrics_retention_days setting); the summary never reads further
 // back than that.
 const (
-	CallMetricsRetentionSetting     = "call_metrics_retention_days"
+	CallMetricsRetentionSetting     = setreg.CallMetricsRetentionDay
 	CallMetricsRetentionDefaultDays = 14
-	callMetricsRetentionMinDays     = 1
-	callMetricsRetentionMaxDays     = 90
 )
 
 // CallMetricsRetentionDays reads the retention setting: the default when it is
 // missing or not a number, clamped to 1-90 days.
 func CallMetricsRetentionDays(settings map[string]string) int {
-	n, err := strconv.Atoi(strings.TrimSpace(settings[CallMetricsRetentionSetting]))
-	if err != nil {
-		return CallMetricsRetentionDefaultDays
-	}
-	if n < callMetricsRetentionMinDays {
-		return callMetricsRetentionMinDays
-	}
-	if n > callMetricsRetentionMaxDays {
-		return callMetricsRetentionMaxDays
-	}
-	return n
+	return int(setreg.Int(settings, CallMetricsRetentionSetting))
 }
 
 // PruneCallMetrics deletes at most batch call metrics recorded before cutoff,

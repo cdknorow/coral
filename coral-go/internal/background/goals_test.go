@@ -371,9 +371,10 @@ func TestGoalGenerator_SendsTheLatestRequestAndReplyEvenBehindLargeToolOutput(t 
 }
 
 // PUT /api/settings stores a JSON false as "False": auto_goals off in any case turns the
-// generator off; anything else (missing, "true", "True") leaves it on (#3825 G).
+// generator off, and so do 0, no and off (the words every boolean setting reads, #5147: "0" used to leave it on);
+// anything else (missing, "true", "True", text that is no boolean) leaves it on (#3825 G).
 func TestGoalsDisabledAnyCase(t *testing.T) {
-	for v, want := range map[string]bool{"false": true, "False": true, " FALSE ": true, "": false, "true": false, "True": false, "0": false} {
+	for v, want := range map[string]bool{"false": true, "False": true, " FALSE ": true, "": false, "true": false, "True": false, "0": true, "no": true, " Off ": true, "maybe": false} {
 		assert.Equal(t, want, GoalsDisabled(map[string]string{GoalSettingKey: v}), "%q", v)
 	}
 	assert.False(t, GoalsDisabled(map[string]string{}), "missing: on")

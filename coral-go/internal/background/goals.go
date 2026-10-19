@@ -19,6 +19,7 @@ import (
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/safego"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -34,11 +35,11 @@ const (
 
 // GoalSettingKey disables the generator when set to "false" (any case: PUT /api/settings
 // stores a JSON false as "False").
-const GoalSettingKey = "auto_goals"
+const GoalSettingKey = setreg.AutoGoals
 
 // GoalsDisabled reports whether the auto_goals setting turns the generator off.
 func GoalsDisabled(settings map[string]string) bool {
-	return strings.EqualFold(strings.TrimSpace(settings[GoalSettingKey]), "false")
+	return !setreg.Bool(settings, GoalSettingKey)
 }
 
 const (
