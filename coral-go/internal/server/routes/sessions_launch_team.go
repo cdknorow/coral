@@ -335,7 +335,12 @@ func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamR
 	effectiveModel := defaultModelFromSettings(userSettings, agentType, def.Model)
 	agentFlags := def.Flags
 	if len(agentFlags) == 0 {
-		agentFlags = stripAgentPermissionFlags(body.Flags)
+		permMode := agent.PermissionModeFromFlags(body.Flags)
+		cleanFlags := stripAgentPermissionFlags(body.Flags)
+		if def.Capabilities.IsEmpty() && permMode != "" && permMode != "default" {
+			cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(agentType, permMode)...)
+		}
+		agentFlags = cleanFlags
 	}
 	if effectiveModel != "" && !agentmodels.ValidModelValue(effectiveModel) {
 		// Only a saved default can get here (each member's own model was checked above).

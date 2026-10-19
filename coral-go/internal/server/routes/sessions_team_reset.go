@@ -132,7 +132,10 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		var caps *agent.Capabilities
 		if cfg.Capabilities != nil && *cfg.Capabilities != "" {
 			caps = &agent.Capabilities{}
-			json.Unmarshal([]byte(*cfg.Capabilities), caps)
+			if err := json.Unmarshal([]byte(*cfg.Capabilities), caps); err != nil {
+				log.Printf("[reset-team] error unmarshaling capabilities for agent %s: %v", displayName, err)
+				continue
+			}
 		}
 		// Add model flag if stored
 		if modelStr != "" {

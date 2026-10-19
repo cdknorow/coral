@@ -267,6 +267,7 @@ type restartPlan struct {
 	caps                                                      *agent.Capabilities
 	capsJSON, toolsJSON                                       *string
 	tools                                                     []string
+	permMode                                                  string
 }
 
 // Restart restarts the agent session: worked out first (restartResolve, restartSettings, restartCommand), so
@@ -327,6 +328,14 @@ func (h *SessionsHandler) restartResolve(ctx context.Context, name string, req r
 				}
 			}
 			p.stored = ls
+			if ls.Capabilities != nil && *ls.Capabilities != "" {
+				p.caps = &agent.Capabilities{}
+				if err := json.Unmarshal([]byte(*ls.Capabilities), p.caps); err != nil {
+					return nil, func(w http.ResponseWriter) {
+						errInternalServer(w, fmt.Sprintf("corrupt stored capabilities: %v", err))
+					}
+				}
+			}
 			// Restart requests from older clients may omit agent_type. Keep the
 			// persisted provider instead of silently switching Codex to Claude.
 			if p.agentType == "" && ls.AgentType != "" {
@@ -446,10 +455,7 @@ func (p *restartPlan) restartSettings() {
 		p.capsJSON = ls.Capabilities
 		p.toolsJSON = ls.Tools
 		p.tools = store.UnmarshalFlags(ls.Tools)
-		if ls.Capabilities != nil && *ls.Capabilities != "" {
-			p.caps = &agent.Capabilities{}
-			json.Unmarshal([]byte(*ls.Capabilities), p.caps)
-		}
+		// p.caps was validated and unmarshaled in restartResolve
 	}
 	if p.subscription != nil {
 		p.board = p.subscription.Project
@@ -481,7 +487,15 @@ func (p *restartPlan) restartSettings() {
 	if p.thinkingFlag {
 		storedFlags = agentmodels.StripThinkingFlags(storedFlags)
 	}
-	p.flags = append(restartFlags(storedFlags, p.model, p.req.ExtraFlags), agentmodels.ThinkingArgs(p.agentType, p.thinking)...)
+	allStored := append(append([]string{}, storedFlags...), strings.Fields(p.req.ExtraFlags)...)
+	if perm := agent.PermissionModeFromFlags(allStored); perm != "" {
+		p.permMode = perm
+	}
+	cleanFlags := restartFlags(storedFlags, p.model, p.req.ExtraFlags)
+	if p.caps.IsEmpty() && p.permMode != "" && p.permMode != "default" {
+		cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(p.agentType, p.permMode)...)
+	}
+	p.flags = append(cleanFlags, agentmodels.ThinkingArgs(p.agentType, p.thinking)...)
 }
 
 // restartFlags is a restarted agent's CLI flags: the stored ones without permission flags (its capabilities are
@@ -504,7 +518,8 @@ func restartFlags(stored []string, model, extra string) []string {
 	if model != "" {
 		flags = append(flags, "--model", model)
 	}
-	return append(flags, strings.Fields(extra)...)
+	cleanExtra := stripAgentPermissionFlags(strings.Fields(extra))
+	return append(flags, cleanExtra...)
 }
 
 // restartCommand builds the agent's start command, before anything is touched: when it can't be built (its prompt
@@ -523,6 +538,10 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
 		}
 	}
+	permMode := p.permMode
+	if permMode == "" {
+		permMode = userSettings["default_permission_mode"]
+	}
 	cmd, err := launchCommand(agent.GetAgent(p.agentType), agent.LaunchParams{
 		SessionID:       p.newSessionID,
 		SessionName:     p.newSessionName,
@@ -538,7 +557,7 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 		BoardType:       p.boardType,
 		Capabilities:    p.caps,
 		Tools:           p.tools,
-		PermissionMode:  userSettings["default_permission_mode"],
+		PermissionMode:  permMode,
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
@@ -833,9 +852,30 @@ func (h *SessionsHandler) resumeResolve(ctx context.Context, name string, body *
 	p.newLogPath = naming.LogFile(h.cfg.LogDir, agentType, p.newSessionID)
 	p.prompt, p.board, p.boardServer = ptr.Value(ls.Prompt), ptr.Value(ls.BoardName), ptr.Value(ls.BoardServer)
 	p.displayName, p.boardType, p.tools = ptr.Value(ls.DisplayName), ptr.Value(ls.BoardType), store.UnmarshalFlags(ls.Tools)
+	if ls.Capabilities != nil && *ls.Capabilities != "" {
+		p.caps = &agent.Capabilities{}
+		if err := json.Unmarshal([]byte(*ls.Capabilities), p.caps); err != nil {
+			return nil, func(w http.ResponseWriter) {
+				errInternalServer(w, fmt.Sprintf("corrupt stored capabilities: %v", err))
+			}
+		}
+		p.capsJSON = ls.Capabilities
+	}
+	if ls.Model != nil {
+		p.model = *ls.Model
+	}
+	p.contextWindow = ls.ContextWindow
+	storedFlags := store.UnmarshalFlags(ls.Flags)
+	p.permMode = agent.PermissionModeFromFlags(storedFlags)
+	cleanFlags := stripAgentPermissionFlags(storedFlags)
+	cleanFlags = agentmodels.StripThinkingFlags(cleanFlags)
+	if p.caps.IsEmpty() && p.permMode != "" && p.permMode != "default" {
+		cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(agentType, p.permMode)...)
+	}
 	if t := ptr.Value(ls.Thinking); agentmodels.ValidThinking(agentType, t) { // the resumed agent keeps its level (a resume starts with no other stored flag)
 		p.thinking = t
 	}
+	p.flags = append(cleanFlags, agentmodels.ThinkingArgs(agentType, p.thinking)...)
 	// The agent's board subscription (job title, receive mode, peek), carried to the new session as restart does
 	// (#3216); a resume that can't read it goes on without (it then joins its board after the launch).
 	if h.bs != nil {
@@ -857,12 +897,16 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
 		}
 	}
+	permMode := p.permMode
+	if permMode == "" {
+		permMode = userSettings["default_permission_mode"]
+	}
 	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
 		SessionID:       p.newSessionID,
 		SessionName:     p.newSessionName,
 		ProtocolPath:    h.protocolPath(),
 		ResumeSessionID: resumeID,
-		Flags:           agentmodels.ThinkingArgs(p.agentType, p.thinking),
+		Flags:           p.flags,
 		WorkingDir:      p.workdir,
 		CLIPath:         agent.ResolveCLIPath(userSettings, p.agentType), // Settings > CLI Paths (#3205)
 		BoardName:       p.board,
@@ -871,8 +915,9 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 		Prompt:          p.prompt,
 		PromptOverrides: promptOverrides(userSettings),
 		BoardType:       p.boardType,
+		Capabilities:    p.caps,
 		Tools:           p.tools,
-		PermissionMode:  userSettings["default_permission_mode"],
+		PermissionMode:  permMode,
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
@@ -895,17 +940,22 @@ func (h *SessionsHandler) resumeRecord(ctx context.Context, p *restartPlan, resu
 	oldID := p.req.SessionID
 	h.chatMeta.forget(oldID, p.newSessionID)
 	h.ss.ReplaceLiveSession(ctx, oldID, &store.LiveSession{
-		SessionID:    p.newSessionID,
-		AgentType:    p.agentType,
-		AgentName:    p.folderName(),
-		WorkingDir:   p.workdir,
-		ResumeFromID: ptr.NonEmpty(resumeID),
-		Prompt:       ptr.NonEmpty(p.prompt),
-		BoardName:    ptr.NonEmpty(p.board),
-		BoardServer:  ptr.NonEmpty(p.boardServer),
-		BoardType:    ptr.NonEmpty(p.boardType),
-		Thinking:     &p.thinking,
-		PID:          resumePID,
+		SessionID:     p.newSessionID,
+		AgentType:     p.agentType,
+		AgentName:     p.folderName(),
+		WorkingDir:    p.workdir,
+		ResumeFromID:  ptr.NonEmpty(resumeID),
+		Prompt:        ptr.NonEmpty(p.prompt),
+		BoardName:     ptr.NonEmpty(p.board),
+		BoardServer:   ptr.NonEmpty(p.boardServer),
+		BoardType:     ptr.NonEmpty(p.boardType),
+		Thinking:      &p.thinking,
+		PID:           resumePID,
+		Flags:         store.MarshalFlags(p.flags),
+		Capabilities:  p.capsJSON,
+		Model:         ptr.NonEmpty(p.model),
+		ContextWindow: p.contextWindow,
+		Tools:         store.MarshalCapabilities(p.tools),
 	})
 	h.noteLaunchedHooks(ctx, p.newSessionID, p.agentType) // #3665
 	h.ss.MigrateDisplayName(ctx, oldID, p.newSessionID)

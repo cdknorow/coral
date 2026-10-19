@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -208,6 +209,23 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		role = ls.AgentType
 	}
 
+	var caps *agent.Capabilities
+	if ls.Capabilities != nil && *ls.Capabilities != "" {
+		caps = &agent.Capabilities{}
+		if err := json.Unmarshal([]byte(*ls.Capabilities), caps); err != nil {
+			return fmt.Errorf("corrupt stored capabilities: %w", err)
+		}
+	}
+	permMode := agent.PermissionModeFromFlags(flags)
+	if permMode == "" {
+		permMode = userSettings["default_permission_mode"]
+	}
+	if caps.IsEmpty() && permMode != "" && permMode != "default" {
+		if agent.PermissionModeFromFlags(flags) == "" {
+			flags = append(flags, agent.PermissionFlagsForAgent(ls.AgentType, permMode)...)
+		}
+	}
+
 	launchParams := agent.LaunchParams{
 		SessionID:       ls.SessionID,
 		SessionName:     sessionName,
@@ -221,10 +239,10 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		Prompt:          prompt,
 		PromptOverrides: promptOverrides(userSettings),
 		BoardType:       boardType,
-		Capabilities:    nil,
+		Capabilities:    caps,
 		Tools:           store.UnmarshalFlags(ls.Tools),
 		CLIPath:         cliPath,
-		PermissionMode:  userSettings["default_permission_mode"],
+		PermissionMode:  permMode,
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,

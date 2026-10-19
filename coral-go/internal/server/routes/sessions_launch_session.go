@@ -130,10 +130,15 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 		Tools:           spec.Tools,
 		Hooks:           spec.Hooks,
 		CLIPath:         cliPath,
-		PermissionMode:  userSettings["default_permission_mode"],
-		CoralDir:        h.cfg.CoralDir(),
-		CoralHost:       h.cfg.AgentHost(),
-		CoralPort:       h.cfg.Port,
+		PermissionMode: func() string {
+			if m := agent.PermissionModeFromFlags(spec.Flags); m != "" {
+				return m
+			}
+			return userSettings["default_permission_mode"]
+		}(),
+		CoralDir:  h.cfg.CoralDir(),
+		CoralHost: h.cfg.AgentHost(),
+		CoralPort: h.cfg.Port,
 	}
 	if cliPath != "" {
 		log.Printf("[launch] using custom CLI path: %s", cliPath)

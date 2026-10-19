@@ -2,6 +2,8 @@ package agent
 
 import (
 	"strings"
+
+	at "github.com/cdknorow/coral/internal/agenttypes"
 )
 
 // Capability represents a Coral-level permission capability.
@@ -228,4 +230,81 @@ func TranslateToAgyPermissions(caps *Capabilities) *AgyPermissions {
 
 	// Default
 	return &AgyPermissions{ApprovalMode: "default"}
+}
+
+// PermissionModeFromFlags extracts generic permission mode ("bypassPermissions", "plan", "acceptEdits", "auto", "dontAsk")
+// from CLI flags if present.
+func PermissionModeFromFlags(flags []string) string {
+	for i := 0; i < len(flags); i++ {
+		f := flags[i]
+		switch {
+		case f == "--dangerously-skip-permissions" || f == "--yolo" || f == "--dangerously-bypass-approvals-and-sandbox":
+			return "bypassPermissions"
+		case f == "--full-auto":
+			return "auto"
+		case f == "--permission-mode":
+			if i+1 < len(flags) {
+				return flags[i+1]
+			}
+		case strings.HasPrefix(f, "--permission-mode="):
+			return strings.TrimPrefix(f, "--permission-mode=")
+		case f == "--mode":
+			if i+1 < len(flags) {
+				switch flags[i+1] {
+				case "plan":
+					return "plan"
+				case "accept-edits":
+					return "acceptEdits"
+				}
+			}
+		case strings.HasPrefix(f, "--mode="):
+			switch strings.TrimPrefix(f, "--mode=") {
+			case "plan":
+				return "plan"
+			case "accept-edits":
+				return "acceptEdits"
+			}
+		}
+	}
+	return ""
+}
+
+// PermissionFlagsForAgent returns the CLI flags representing the permission mode for a given agent type.
+func PermissionFlagsForAgent(agentType, mode string) []string {
+	if mode == "" || mode == "default" || agentType == at.Pi || agentType == at.Terminal {
+		return nil
+	}
+	switch agentType {
+	case at.Claude:
+		return []string{"--permission-mode", mode}
+	case at.Agy, "antigravity", "gemini":
+		switch mode {
+		case "plan":
+			return []string{"--mode", "plan"}
+		case "acceptEdits":
+			return []string{"--mode", "accept-edits"}
+		case "bypassPermissions":
+			return []string{"--dangerously-skip-permissions"}
+		default:
+			return nil
+		}
+	case at.Codex:
+		switch mode {
+		case "bypassPermissions":
+			return []string{"--dangerously-bypass-approvals-and-sandbox"}
+		case "plan":
+			return []string{"--sandbox", "read-only", "-a", "on-request"}
+		case "acceptEdits":
+			return []string{"--sandbox", "workspace-write", "-a", "on-request"}
+		case "auto", "dontAsk":
+			return []string{"--sandbox", "workspace-write", "-a", "never"}
+		default:
+			return []string{"--sandbox", "workspace-write", "-a", "on-request"}
+		}
+	default:
+		if mode == "bypassPermissions" {
+			return []string{"--dangerously-skip-permissions"}
+		}
+		return nil
+	}
 }

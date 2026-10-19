@@ -152,6 +152,7 @@ func stripAgentPermissionFlags(flags []string) []string {
 		"--dangerously-bypass-approvals-and-sandbox": true,
 		"--sandbox": true, "--search": true,
 		"--approval-mode": true, "--permission-mode": true, "--yolo": true,
+		"--mode": true,
 	}
 
 	var cleanFlags []string
@@ -161,12 +162,12 @@ func stripAgentPermissionFlags(flags []string) []string {
 			skipNext = false
 			continue
 		}
-		if strings.HasPrefix(f, "--permission-mode=") {
+		if strings.HasPrefix(f, "--permission-mode=") || strings.HasPrefix(f, "--mode=") || strings.HasPrefix(f, "--sandbox=") || strings.HasPrefix(f, "--approval-mode=") {
 			continue
 		}
 		if agentPermFlags[f] {
-			// Some flags take a value argument (e.g. --sandbox workspace-write, -a untrusted).
-			if f == "--sandbox" || f == "--approval-mode" || f == "--permission-mode" || f == "-a" {
+			// Some flags take a value argument (e.g. --sandbox workspace-write, -a untrusted, --mode plan).
+			if f == "--sandbox" || f == "--approval-mode" || f == "--permission-mode" || f == "-a" || f == "--mode" {
 				skipNext = true
 			}
 			continue
