@@ -45,6 +45,9 @@ the first failed check.
    (cd tests/frontend && node update_suite_durations.mjs /tmp/gate-v1491/cdp-{0,1,2,3,4,5}-a*/results.json)
    ```
 
+   Do this after every release gate: it had not been run since v1.4.94, and by v1.4.101 the six parts took 233 to 369 s
+   instead of about equal times (#4956). The parts are only as even as these numbers are fresh.
+
    `cdp-0` to `cdp-5` are the six parts (`cdp-6` the sequences and `cdp-7` the strict phase, which it ignores anyway).
    Only passing first attempts count, and suites missing from the run keep their old value.
 
