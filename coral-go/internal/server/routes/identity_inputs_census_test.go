@@ -344,6 +344,7 @@ var queryIdentityReads = map[string]string{
 	"sessions_files_content.go session_id": queryLookup,
 	"sessions_files_resolve.go session_id": queryLookup,
 	"sessions_files_search.go session_id":  queryLookup,
+	"agent_session_scope.go session_id":    queryLookup, // the session a live route is about: checked against the token's own session, lineage and board (#5013)
 }
 
 // identityQueryReads finds where the source reads one of the identity keys from the query string:

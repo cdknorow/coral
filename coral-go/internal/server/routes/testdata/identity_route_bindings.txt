@@ -25,7 +25,7 @@ GET /api/board/remotes/proxy/{remoteServer}/projects | board-unchecked | operato
 GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/all | board-unchecked | operator-only
 GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/check | board-unchecked | operator-only
 GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers | board-unchecked | operator-only
-GET /api/board/tasks | board-unchecked
+GET /api/board/tasks | board-unchecked | operator-only
 GET /api/board/{project} | board-claims
 GET /api/board/{project}/artifacts | board-claims
 GET /api/board/{project}/groups | board-claims
@@ -50,8 +50,8 @@ GET /api/board/{project}/waits/poll | board-claims
 GET /api/board/{project}/working-mode | board-claims
 GET /api/board/{project}/working-mode/presets | board-claims
 GET /api/session-artifacts | token-session
-GET /api/sessions/history | unbound
-GET /api/sessions/history/search | unbound
+GET /api/sessions/history | unbound | operator-only
+GET /api/sessions/history/search | unbound | operator-only
 GET /api/sessions/history/{sessionID} | unbound
 GET /api/sessions/history/{sessionID}/agent-notes | unbound
 GET /api/sessions/history/{sessionID}/events | unbound

@@ -220,6 +220,20 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 					return
 				}
 			}
+			// One session's data is that session's, and its board's (#5013): an agent reads itself and the sessions on its own board.
+			if key, scoped := scopedSessionKey(r); scoped {
+				may, err := o.agentMaySeeSession(r.Context(), r, owner, key)
+				if err != nil {
+					o.logOnce("session-scope:"+owner.SessionName, "[identity] session lookup failed, request refused", "session", owner.SessionName, "request", r.Method+" "+r.URL.Path, "error", err)
+					o.refuse(w, http.StatusServiceUnavailable, "identity_unavailable", "Coral couldn't check which sessions this agent may read just now; try again")
+					return
+				}
+				if !may {
+					o.refuse(w, http.StatusForbidden, "forbidden_other_session",
+						"An agent can read its own session and the sessions on its own board, not another's: that is for the Operator (the dashboard, or the command line outside an agent)")
+					return
+				}
+			}
 			// A presented token decides who the caller is on the board, in every mode
 			// (#3495): an agent can't post or act as another subscriber or as the Operator,
 			// nor act on a board its session isn't subscribed on (#3869: an agent read other
@@ -474,37 +488,45 @@ var operatorOnlyRoutes = map[string]string{
 	"PUT /api/board/{project}/working-mode/presets/{presetID}":         "change a working-mode preset",
 	"POST /api/board/{project}/working-mode/presets/{presetID}/reset":  "reset a working-mode preset",
 	"PUT /api/teams/detail/{name}/knowledge/{agentName}":               "change a team's knowledge",
-	"POST /api/teams/detail/{name}/resurrect":                          "bring a team back",
-	"DELETE /api/teams/detail/{name}":                                  "delete a team",
-	"POST /api/teams/generate":                                         "generate a team",
-	"PUT /api/settings/git-diff-mode":                                  "change the diff mode",
-	"POST /api/pinned-folders":                                         "pin a folder (the file browser's bounds)",
-	"DELETE /api/pinned-folders":                                       "unpin a folder",
-	"GET /api/saved":                                                   "see the saved messages",
-	"POST /api/saved":                                                  "save a message",
-	"PATCH /api/saved/{id}":                                            "change a saved message",
-	"DELETE /api/saved/{id}":                                           "remove a saved message",
-	"POST /api/themes/import":                                          "import a theme",
-	"POST /api/themes/generate":                                        "generate a theme",
-	"PUT /api/themes/{name}":                                           "change a theme",
-	"DELETE /api/themes/{name}":                                        "delete a theme",
-	"POST /api/views":                                                  "add a custom view",
-	"PUT /api/views/{id}":                                              "change a custom view",
-	"DELETE /api/views/{id}":                                           "delete a custom view",
-	"POST /api/indexer/refresh":                                        "re-index the session history",
-	"POST /api/sessions/history/{sessionID}/resummarize":               "summarise a session again",
-	"PUT /api/sessions/history/{sessionID}/notes":                      "change a session's notes",
-	"POST /api/tags":                                                   "add a tag",
-	"DELETE /api/tags/{tagID}":                                         "delete a tag",
-	"POST /api/folder-tags/{folderName}":                               "tag a folder",
-	"DELETE /api/folder-tags/{folderName}/{tagID}":                     "untag a folder",
-	"POST /api/sessions/history/{sessionID}/tags":                      "tag a session",
-	"DELETE /api/sessions/history/{sessionID}/tags/{tagID}":            "untag a session",
-	"POST /api/tracking/event":                                         "send a usage event",
-	"POST /api/system/telemetry/acknowledge":                           "acknowledge the telemetry notice",
-	"POST /api/system/auto-wake/dismiss":                               "dismiss the auto-wake notice",
-	"POST /api/cloud/cli-hello":                                        "start a command-line signature",
-	"POST /api/scheduled/validate-cron":                                "check a schedule",
+	// Reads across every session, board and team (#5013): an agent reads its own session and board (agentSessionRoutes, checkBoard), and its own
+	// history through /api/agent/history; none of these is called by an agent tool.
+	"GET /api/sessions/history":                             "list every session's history",
+	"GET /api/sessions/history/search":                      "search every session's history",
+	"GET /api/system/identity-report":                       "read the identity report (every session's calls and mismatches)",
+	"GET /api/board/tasks":                                  "list the tasks of every board",
+	"GET /api/teams/detail/{name}/knowledge":                "read a team's knowledge",
+	"GET /api/teams/detail/{name}/knowledge/{agentName}":    "read an agent's knowledge",
+	"POST /api/teams/detail/{name}/resurrect":               "bring a team back",
+	"DELETE /api/teams/detail/{name}":                       "delete a team",
+	"POST /api/teams/generate":                              "generate a team",
+	"PUT /api/settings/git-diff-mode":                       "change the diff mode",
+	"POST /api/pinned-folders":                              "pin a folder (the file browser's bounds)",
+	"DELETE /api/pinned-folders":                            "unpin a folder",
+	"GET /api/saved":                                        "see the saved messages",
+	"POST /api/saved":                                       "save a message",
+	"PATCH /api/saved/{id}":                                 "change a saved message",
+	"DELETE /api/saved/{id}":                                "remove a saved message",
+	"POST /api/themes/import":                               "import a theme",
+	"POST /api/themes/generate":                             "generate a theme",
+	"PUT /api/themes/{name}":                                "change a theme",
+	"DELETE /api/themes/{name}":                             "delete a theme",
+	"POST /api/views":                                       "add a custom view",
+	"PUT /api/views/{id}":                                   "change a custom view",
+	"DELETE /api/views/{id}":                                "delete a custom view",
+	"POST /api/indexer/refresh":                             "re-index the session history",
+	"POST /api/sessions/history/{sessionID}/resummarize":    "summarise a session again",
+	"PUT /api/sessions/history/{sessionID}/notes":           "change a session's notes",
+	"POST /api/tags":                                        "add a tag",
+	"DELETE /api/tags/{tagID}":                              "delete a tag",
+	"POST /api/folder-tags/{folderName}":                    "tag a folder",
+	"DELETE /api/folder-tags/{folderName}/{tagID}":          "untag a folder",
+	"POST /api/sessions/history/{sessionID}/tags":           "tag a session",
+	"DELETE /api/sessions/history/{sessionID}/tags/{tagID}": "untag a session",
+	"POST /api/tracking/event":                              "send a usage event",
+	"POST /api/system/telemetry/acknowledge":                "acknowledge the telemetry notice",
+	"POST /api/system/auto-wake/dismiss":                    "dismiss the auto-wake notice",
+	"POST /api/cloud/cli-hello":                             "start a command-line signature",
+	"POST /api/scheduled/validate-cron":                     "check a schedule",
 	// #3929 (the Orchestrator's call on Backend's question): on a hub, an agent's token never acts
 	// on another server through the hub proxy, as it never acts on another team's board.
 	"CONNECT /api/remote/{server}/*": "act on another server through the hub",
@@ -598,6 +620,7 @@ func ValidateGuardedRoutes(routes chi.Routes, hubMode bool) error {
 			}
 		}
 	}
+
 	if len(missing) > 0 {
 		sort.Strings(missing)
 		return fmt.Errorf("identity guard: no such route for %s", strings.Join(missing, ", "))
@@ -1129,4 +1152,27 @@ func (o *IdentityObserver) AgentOperatorAction(r *http.Request, action string) b
 // an active Orchestrator of the board it sends from, in its own session).
 func acrossBoards(method, tail string) bool {
 	return method == http.MethodPost && (tail == "subscribe" || tail == "external-messages")
+}
+
+// ValidateAgentSessionRoutes checks every entry of agentSessionRoutes against the router: one the router doesn't serve under exactly that
+// method and pattern would be silently unenforced (the server refuses to start on one, as for the guard tables, #5013).
+func ValidateAgentSessionRoutes(routes chi.Routes) error {
+	served := map[string]bool{}
+	if err := chi.Walk(routes, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		served[method+" "+route] = true
+		return nil
+	}); err != nil {
+		return err
+	}
+	var missing []string
+	for key := range agentSessionRoutes {
+		if !served[key] {
+			missing = append(missing, key)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("agent session scope: no such route for %s", strings.Join(missing, ", "))
+	}
+	return nil
 }

@@ -437,6 +437,9 @@ func (s *Server) buildRouter() chi.Router {
 	if err := routes.ValidateGuardedRoutes(r, s.cfg.HubMode); err != nil {
 		panic(err) // an Operator-only route the guard could never match (#3670)
 	}
+	if err := routes.ValidateAgentSessionRoutes(r); err != nil {
+		panic(err) // a per-session read the agent scope could never match (#5013)
+	}
 	return r
 }
 

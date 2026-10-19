@@ -57,7 +57,7 @@ b GET /api/board/remotes/proxy/{remoteServer}/projects
 b GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/all
 b GET /api/board/remotes/proxy/{remoteServer}/{project}/messages/check
 b GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers
-c GET /api/board/tasks
+b GET /api/board/tasks
 c GET /api/board/{project}
 a GET /api/board/{project}/artifacts
 c GET /api/board/{project}/groups
@@ -98,8 +98,8 @@ c GET /api/scheduled/jobs/{jobID}/runs
 c GET /api/scheduled/runs/recent
 b GET /api/servers
 c GET /api/session-artifacts
-c GET /api/sessions/history
-c GET /api/sessions/history/search
+b GET /api/sessions/history
+b GET /api/sessions/history/search
 c GET /api/sessions/history/{sessionID}
 c GET /api/sessions/history/{sessionID}/agent-notes
 c GET /api/sessions/history/{sessionID}/events
@@ -152,7 +152,7 @@ c GET /api/system/editors
 b GET /api/system/hooks-status
 c GET /api/system/hub-mode
 c GET /api/system/hub-operator
-c GET /api/system/identity-report
+b GET /api/system/identity-report
 c GET /api/system/network-info
 c GET /api/system/privacy
 c GET /api/system/qr
@@ -169,8 +169,8 @@ c GET /api/teams/all
 c GET /api/teams/detail/{name}
 c GET /api/teams/detail/{name}/availability
 c GET /api/teams/detail/{name}/distill-knowledge
-c GET /api/teams/detail/{name}/knowledge
-c GET /api/teams/detail/{name}/knowledge/{agentName}
+b GET /api/teams/detail/{name}/knowledge
+b GET /api/teams/detail/{name}/knowledge/{agentName}
 c GET /api/teams/generate/{jobId}
 c GET /api/templates/agents
 c GET /api/templates/agents/{category}
