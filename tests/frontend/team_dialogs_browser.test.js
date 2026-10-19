@@ -40,7 +40,11 @@ const BASE = require('./test_base').BASE;
         await openTeam();
         const first = await teamRows();
         assert.ok(first.length >= 1, 'default agents: ' + JSON.stringify(first));
-        assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'team-board-name');
+        // #4950: the team form is a sectioned dialog that opens on Members; the name is in Board & workspace, which Launch Team opens when the name is missing.
+        assert.equal(await ev(`document.querySelector('#launch-step-team .settings-tabs [aria-selected=true] .settings-tab-name').textContent`), 'Members');
+        await ev(`document.getElementById('team-board-name').value = ''; document.querySelector('#launch-step-team [data-on-click="m-launch-team"]').click(); true`);
+        await waitFor(`document.activeElement && document.activeElement.id === 'team-board-name'`, 'Launch Team without a name opens Board & workspace with the name focused');
+        assert.equal(await ev(`document.querySelector('#launch-step-team .settings-tabs [aria-selected=true] .settings-tab-name').textContent`), 'Board & workspace');
         assert.deepEqual(await hint(), ['This will also be the message board name.', false]);
         await ev(`{ const i = document.getElementById('team-board-name'); i.value = 'taken'; i.dispatchEvent(new Event('input', { bubbles: true })); } true`);
         await waitFor(`window._validateTeamName() && /exists/.test(document.getElementById('team-board-name-hint').textContent)`, 'the existing-board hint');

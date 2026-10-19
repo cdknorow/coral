@@ -15,7 +15,8 @@ const { _syncACFModelField, getAgentConfig, renderAgentConfigForm } = await impo
 const { _checkPermissionFlag } = await importOnce('./cli_dialogs.js');
 const { _checkTeamGitDir, _initTeamForm, _loadExistingTeamBoards } = await importOnce('./team_dialogs.js');
 const { _initAgentPresets } = await importOnce('./persona_io.js');
-const { _launchBlocked, _launchOn, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, hideLaunchModal } = await importOnce('./launch_core.js');
+const { markFieldInvalid, _launchBlocked, _launchOn, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, hideLaunchModal } = await importOnce('./launch_core.js');
+const { initSectionDialog, showSection } = await importOnce('./section_dialog.js');
 
 function _selectLaunchType(type) {
     if (type === "back") {
@@ -32,10 +33,15 @@ function _selectLaunchType(type) {
         renderAgentConfigForm('launch-agent-acf', {
             showPreset: false,
             showName: false,
+            sections: true, // New Agent is a sectioned dialog (#4950): Workspace, then the form's own sections, the board in Advanced
+            adopt: { advanced: 'launch-advanced-extra' },
             value: { agentType: _settingsFor(_effectiveServer(launch.server)).default_agent_type || 'claude' },
         });
+        document.getElementById('launch-dir')?.focus(); // the one thing most launches need: the folder
     } else if (type === "team") {
         _initTeamForm();
+        const shell = document.querySelector('#launch-step-team .settings-shell');
+        if (shell) { initSectionDialog(shell); showSection(shell, 'members', { focus: true }); } // always opens on Members, the keyboard in the list
     } else {
         document.getElementById("launch-terminal-name").focus();
     }
@@ -234,6 +240,7 @@ export async function launchSession() {
 
     if (!dir) {
         showToast("Working directory is required", true);
+        markFieldInvalid(document.getElementById(launch.mode === "terminal" ? "launch-terminal-dir" : "launch-dir"), "Working directory is required");
         return;
     }
 
@@ -272,7 +279,7 @@ export async function launchSession() {
                 const boardName = document.getElementById("launch-board-name").value.trim();
                 if (boardName) {
                     const problem = boardNameProblem(boardName);
-                    if (problem) { showToast(problem, true); return; }
+                    if (problem) { showToast(problem, true); markFieldInvalid(document.getElementById("launch-board-name"), problem); return; }
                     payload.board_name = boardName;
                 }
             } else {

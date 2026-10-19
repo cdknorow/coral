@@ -9,6 +9,7 @@ import { chooseBoard, retryPayload, isBoardNameExists } from './board_choice.js'
 import { serverLabel, launchBlockReason, postLaunch, waitForLaunched } from './launch_server.js';
 const { _loadServerSettings } = await importOnce('./launch_models.js');
 const { _showCLINotFoundModal } = await importOnce('./cli_dialogs.js');
+const { revealField } = await importOnce('./section_dialog.js');
 
 function _syncMobileLaunchSections(step) {
     const isMobile = window.innerWidth <= 767;
@@ -27,9 +28,11 @@ function _showLaunchStep(step) {
     // Widen the modal for multi-column layouts
     const content = document.querySelector("#launch-modal .modal-content");
     if (content) {
-        content.classList.toggle("modal-content-agent-wide", step === "agent");
-        content.classList.toggle("modal-content-extra-wide", step === "team");
-        content.classList.toggle("modal-content-wide", step !== "team" && step !== "agent");
+        // New Agent and Agent Team are sectioned dialogs (#4950, section_dialog.js): the Settings shell's size; the chooser and the terminal form keep the narrow one.
+        const sectioned = step === "agent" || step === "team";
+        content.classList.toggle("settings-modal-content", sectioned);
+        content.classList.toggle("sd-modal-content", sectioned);
+        content.classList.toggle("modal-content-wide", !sectioned);
         content.classList.toggle("launch-choosing", step === "chooser"); // four choices in a row (#3630)
     }
     _syncMobileLaunchSections(step);
@@ -105,6 +108,7 @@ export async function _launchOn(server, path, payload, agentType, { dirInput = n
     input.setAttribute('aria-invalid', 'true');
     input.classList.add('input-invalid');
     input.title = message;
+    revealField(input); // a field in a section that is not open: its section opens first, so the focus lands
     input.focus();
     const clear = () => clearFieldInvalid(input);
     input._clearInvalid = () => {
@@ -149,4 +153,4 @@ function _withServerSettings(server, fn) {
     _loadServerSettings(server).catch(() => null).then(fn);
 }
 
-export { _launchBlocked, _onServerSuffix, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, _withServerSettings };
+export { markFieldInvalid, _launchBlocked, _onServerSuffix, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, _withServerSettings };

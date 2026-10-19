@@ -592,6 +592,7 @@ async function showRestartModal() {
         window.renderAgentConfigForm('restart-acf', {
             showPreset: false,
             showName: false,
+            sections: true,
             value: {
                 agentType: s.agent_type || 'claude',
                 model: s.model || '',

@@ -8,6 +8,7 @@ const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
 const { modelPickerHtml, loadModelPicker, wireModelPicker, syncModelPicker } = await importOnce('./model_picker.js');
 const { _renderPresetButtons } = await importOnce('./persona_store.js');
 const { presetEnforcement } = await importOnce('./preset_enforcement.js');
+const { initSectionDialog } = await importOnce('./section_dialog.js');
 import { escapeHtml, escapeAttr } from './utils.js';
 
 // ── Permissions Editor ─────────────────────────────────────────────────
@@ -213,9 +214,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
             </label>`;
     }
 
-    container.innerHTML = `
-        ${presetHTML}
-        ${nameHTML}
+    const topHTML = `
         <div class="acf-top-row">
             <label>Agent Type:
                 <select class="acf-agent-type">
@@ -232,18 +231,10 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                 <datalist id="acf-models-${escapeAttr(uid)}"></datalist>
             </label>
         </div>
-        <div class="acf-cli-warning" style="display:none;margin:8px 0" role="status"></div>
-        <label>Behavior Prompt:
-            <textarea class="acf-prompt" rows="4" placeholder="Describe the agent's role and behavior...">${escapeHtml(promptVal)}</textarea>
-        </label>
-        ${autoPermissionsHTML}
-        <div class="permissions-section">
-            <button type="button" class="permissions-toggle-btn" data-on-click="perms-toggle" data-target="${escapeAttr(uid + '-perms')}">
-                <svg class="permissions-chevron" width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
-                Permissions <span class="acf-perms-summary" style="color:var(--text-muted);font-weight:normal;font-size:0.6875rem">(${escapeHtml(permsSummary)})</span>
-            </button>
+        <div class="acf-cli-warning" style="display:none;margin:8px 0" role="status"></div>`;
+    const permEditorHTML = (open) => `
             <p class="settings-hint acf-perms-enforced" aria-live="polite" hidden></p>
-            <div id="${escapeAttr(uid)}-perms" class="permissions-editor" style="display:none">
+            <div id="${escapeAttr(uid)}-perms" class="permissions-editor"${open ? '' : ' style="display:none"'}>
                 <div class="perms-group">
                     <label class="perms-label">Allow:</label>
                     <div id="${escapeAttr(uid)}-perms-allow" class="perms-chips"></div>
@@ -256,13 +247,42 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                     <label class="perms-label">Shell patterns <span style="color:var(--text-muted);font-weight:normal">(comma-separated)</span>: <span class="perms-patterns-note settings-hint"></span></label>
                     <input type="text" class="perms-shell-input" placeholder="e.g. git *, npm *, npx *">
                 </div>
-            </div>
+            </div>`;
+    const flagsInput = `<input type="text" class="acf-flags" placeholder="e.g. --verbose" value="${escapeAttr(_stripPermFlags(flagsVal))}">`;
+    if (opts.sections) {
+        // The sectioned dialogs (#4950, section_dialog.js): one pane per group of fields, every field the same element with the same class as in the one-form layout.
+        const pane = (id, title, icon, desc, body) => `<section class="settings-pane" data-section="${escapeAttr(id)}" data-title="${escapeAttr(title)}" data-icon="${escapeAttr(icon)}" data-desc="${escapeAttr(desc)}" hidden>${body}</section>`;
+        // Whatever the dialog asked to sit in a pane (opts.adopt: { paneId: element id }) is parked beside the container while the panes are rebuilt.
+        const adopted = Object.entries(opts.adopt || {}).map(([paneId, id]) => [paneId, document.getElementById(id)]).filter(([, el]) => el);
+        for (const [, el] of adopted) container.after(el);
+        container.innerHTML = [
+            (showPreset || showName) ? pane('role', 'Role', 'badge', 'Who this agent is on the team.', `${presetHTML}${nameHTML}`) : '',
+            pane('agent', 'Agent', 'smart_toy', 'Which CLI and model it runs.', topHTML),
+            pane('prompt', 'Prompt', 'description', 'What the agent is told about its role. Edit it here.', `<textarea class="acf-prompt" rows="14" aria-label="Behavior prompt" placeholder="Describe the agent's role and behavior...">${escapeHtml(promptVal)}</textarea>`),
+            pane('permissions', 'Permissions', 'lock', 'What the agent may do without asking.', `${autoPermissionsHTML}${permEditorHTML(true)}`),
+            pane('advanced', 'Advanced', 'tune', opts.adopt?.advanced ? 'Message board and extra flags passed to the CLI.' : 'Extra flags passed to the CLI.', `<label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:${flagsInput}</label>`),
+        ].join('');
+        for (const [paneId, el] of adopted) container.querySelector(`[data-section="${CSS.escape(paneId)}"]`)?.prepend(el);
+    } else container.innerHTML = `
+        ${presetHTML}
+        ${nameHTML}
+        ${topHTML}
+        <label>Behavior Prompt:
+            <textarea class="acf-prompt" rows="4" placeholder="Describe the agent's role and behavior...">${escapeHtml(promptVal)}</textarea>
+        </label>
+        ${autoPermissionsHTML}
+        <div class="permissions-section">
+            <button type="button" class="permissions-toggle-btn" data-on-click="perms-toggle" data-target="${escapeAttr(uid + '-perms')}">
+                <svg class="permissions-chevron" width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
+                Permissions <span class="acf-perms-summary" style="color:var(--text-muted);font-weight:normal;font-size:0.6875rem">(${escapeHtml(permsSummary)})</span>
+            </button>
+            ${permEditorHTML(false)}
         </div>
         <details class="team-advanced acf-flags-details">
             <summary>Flags</summary>
             <div class="team-advanced-body">
                 <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
-                    <input type="text" class="acf-flags" placeholder="e.g. --verbose" value="${escapeAttr(_stripPermFlags(flagsVal))}">
+                    ${flagsInput}
                 </label>
             </div>
         </details>
@@ -312,6 +332,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
         _syncACFModelField(container);
         _syncEnforcement(container);
     });
+    if (opts.sections) { const shell = container.closest('.settings-shell'); if (shell) initSectionDialog(shell); } // the panes are in: build the section list
 }
 
 // _syncACFModelField reconciles the Model input with the currently selected

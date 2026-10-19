@@ -13,7 +13,8 @@ const { AGENT_PRESETS } = await importOnce('./agent_presets.js');
 const { _getPermissionFlagsForAgentMode, _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 const { _findPersona, _getSavedTeamTemplates, _upsertSavedTeamTemplates } = await importOnce('./persona_store.js');
 const { getAgentConfig, renderAgentConfigForm, setAgentConfig } = await importOnce('./agent_config_form.js');
-const { _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, hideLaunchModal } = await importOnce('./launch_core.js');
+const { markFieldInvalid, _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, hideLaunchModal } = await importOnce('./launch_core.js');
+const { showSection } = await importOnce('./section_dialog.js');
 const { _syncFlagButtons } = await importOnce('./flag_shortcuts.js');
 const { showSettingsModal } = await importOnce('./settings_dialog.js');
 
@@ -369,7 +370,7 @@ function showTeamAgentModal(row = null) {
         : 'Configure a team member, then add it to the team draft.';
 
     const acfValue = row?.dataset.acfId ? getAgentConfig(row.dataset.acfId) : _defaultTeamAgentModalConfig();
-    renderAgentConfigForm('team-agent-modal-acf', { showPreset: true, showName: true, showAutoPermissions: true, value: acfValue });
+    renderAgentConfigForm('team-agent-modal-acf', { showPreset: true, showName: true, showAutoPermissions: true, sections: true, value: acfValue });
     modal.style.display = 'flex';
 }
 window.showTeamAgentModal = showTeamAgentModal;
@@ -385,6 +386,7 @@ function saveTeamAgentFromModal() {
     const config = getAgentConfig('team-agent-modal-acf');
     if (!config.name) {
         showToast('Agent name is required', true);
+        markFieldInvalid(document.querySelector('#team-agent-modal-acf .acf-name'), 'Agent name is required');
         return;
     }
 
@@ -515,7 +517,7 @@ async function _initTeamForm() {
     }
     launch.skipDefaultTeamAgents = false;
 
-    document.getElementById("team-board-name").focus();
+    // (no focus into the team name here: it sits in Board & workspace, which is not the section the dialog opens on, and focusing it would scroll that pane; section_dialog.js puts the keyboard in the list)
     _validateTeamName();
 }
 
@@ -877,15 +879,17 @@ function _validateTeamName() {
     const hint = document.getElementById("team-board-name-hint");
     if (!input || !hint) return true;
     const value = input.value.trim();
+    input.removeAttribute("aria-invalid");
     if (!value) {
         hint.textContent = "This will also be the message board name.";
         hint.classList.remove("error");
         return false;
     }
-    const problem = boardNameProblem(value);
+    const problem = boardNameProblem(value); // a bad name is flagged (aria-invalid) below, which marks its section in the list while the person is elsewhere
     if (problem) {
         hint.textContent = problem;
         hint.classList.add("error");
+        input.setAttribute("aria-invalid", "true");
         return false;
     }
     // A name in use is allowed (#3536): launching asks whether to join that board or start another.
@@ -904,16 +908,20 @@ async function launchTeam() {
     const boardName = document.getElementById("team-board-name").value.trim();
     if (!boardName) {
         showToast("Team name is required", true);
+        markFieldInvalid(document.getElementById("team-board-name"), "Team name is required");
         return;
     }
     if (!_validateTeamName()) {
-        showToast(boardNameProblem(boardName) || "Team name must be unique", true);
+        const problem = boardNameProblem(boardName) || "Team name must be unique";
+        showToast(problem, true);
+        markFieldInvalid(document.getElementById("team-board-name"), problem);
         return;
     }
 
     const workingDir = document.getElementById("launch-team-dir").value.trim();
     if (!workingDir) {
         showToast("Working directory is required", true);
+        markFieldInvalid(document.getElementById("launch-team-dir"), "Working directory is required");
         return;
     }
 
@@ -927,8 +935,10 @@ async function launchTeam() {
 
     // Collect agent definitions
     const rows = document.querySelectorAll("#team-agents-list .team-agent-row");
+    const members = () => { const shell = document.querySelector('#launch-step-team .settings-shell'); if (shell) showSection(shell, 'members'); }; // the problem is in Members: open it
     if (rows.length === 0) {
         showToast("Add at least one agent", true);
+        members();
         return;
     }
 
@@ -938,6 +948,7 @@ async function launchTeam() {
         const config = acfId ? getAgentConfig(acfId) : {};
         if (!config.name) {
             showToast("Each agent needs a name", true);
+            members();
             return;
         }
         const agent = { name: config.name, prompt: config.prompt };

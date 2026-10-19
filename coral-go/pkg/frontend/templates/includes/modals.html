@@ -84,10 +84,21 @@
 
             <!-- Step 2a: Agent form -->
             <div id="launch-step-agent" class="launch-modal-step" style="display:none">
-                <h3>
-                    <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back">&larr;</button>
-                    Launch AI Agent
-                </h3>
+                <div class="sd-step-header">
+                    <h3 id="launch-agent-title">
+                        <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back" aria-label="Back to the choices">&larr;</button>
+                        New Agent
+                    </h3>
+                    <p class="sd-sub">Pick a folder and launch. Everything else has a default.</p>
+                </div>
+                <div class="settings-modal-body">
+                    <div class="settings-shell">
+                        <nav class="settings-nav" aria-label="New agent sections">
+                            <div class="settings-group-pick"><select class="settings-select" aria-label="New agent section"></select></div>
+                            <div class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="New agent sections"></div>
+                        </nav>
+                        <div class="settings-panes">
+                        <section class="settings-pane" data-section="workspace" data-title="Workspace" data-icon="folder_open" data-desc="Where the agent works, and who it is." hidden>
                 <label>Working Directory:
                     <div class="dir-input-row">
                         <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
@@ -110,20 +121,14 @@
                     <div id="agent-preset-selector" class="agent-preset-selector"></div>
                 </label>
                 <p class="settings-hint" data-acf-enforced-for="launch-agent-acf" aria-live="polite" hidden></p>
-                <details class="team-advanced">
-                    <summary>Agent Configuration</summary>
-                    <div class="team-advanced-body">
-                        <div id="launch-agent-acf"></div>
-                        <div class="import-export-row agent-persona-actions" style="margin-top:8px">
+                        <div class="import-export-row agent-persona-actions">
                             <button class="btn btn-small btn-subtle" id="agent-save-persona-btn" data-on-click="m-save-current-persona" title="Save as reusable persona">Save Persona</button>
                             <button class="btn btn-small btn-subtle" data-on-click="m-export-personas" title="Export saved personas">Export</button>
                             <button class="btn btn-small btn-subtle" data-on-click="m-import-personas" title="Import personas from file">Import</button>
                         </div>
-                    </div>
-                </details>
-                <details class="team-advanced">
-                    <summary>Advanced</summary>
-                    <div class="team-advanced-body">
+                        </section>
+                        <div id="launch-agent-acf" class="sd-acf"></div>
+                        <div id="launch-advanced-extra" class="sd-extra">
                         <label>Message Board <span class="text-muted-sm">(optional)</span>:
                             <select id="launch-board-select" data-on-change="m-on-agent-board-change">
                                 <option value="">None</option>
@@ -146,8 +151,10 @@
                                 <option value="pty">PTY</option>
                             </select>
                         </label>
+                        </div>
+                        </div>
                     </div>
-                </details>
+                </div>
                 <div class="modal-actions">
                     <button class="btn" data-on-click="m-hide-launch-modal">Cancel</button>
                     <button class="btn btn-primary" data-on-click="m-launch-session">Launch</button>
@@ -192,19 +199,21 @@
 
             <!-- Step 2c: Agent Team form -->
             <div id="launch-step-team" class="launch-modal-step" style="display:none">
-                <h3>
-                    <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back">&larr;</button>
-                    Launch Agent Team
-                </h3>
-                <div class="team-columns">
-                    <div class="team-col-left">
-                        <details class="team-launch-card mobile-launch-section" open>
-                            <summary>Team Composition</summary>
-                            <div class="mobile-launch-section-body">
-                                <div class="team-launch-card-header">
-                                    <h4>Team Composition</h4>
-                                    <p>Choose a template or assemble the team agent by agent.</p>
-                                </div>
+                <div class="sd-step-header">
+                    <h3 id="launch-team-title">
+                        <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back" aria-label="Back to the choices">&larr;</button>
+                        Launch Agent Team
+                    </h3>
+                    <p class="sd-sub">Agents launch together on one shared message board.</p>
+                </div>
+                <div class="settings-modal-body">
+                    <div class="settings-shell">
+                        <nav class="settings-nav" aria-label="Team sections">
+                            <div class="settings-group-pick"><select class="settings-select" aria-label="Team section"></select></div>
+                            <div class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="Team sections"></div>
+                        </nav>
+                        <div class="settings-panes">
+                        <section class="settings-pane" data-section="members" data-title="Members" data-icon="group" data-desc="Choose a template or build the team agent by agent." hidden>
                                 <div class="team-agents-container">
                                     <label class="team-template-dropdown-label">Agent Team Templates:
                                         <select id="team-template-selector" data-on-change="m-load-team-template-from-select">
@@ -228,15 +237,9 @@
                                         <button class="btn btn-primary team-add-agent-btn team-add-agent-btn-full" data-on-click="m-show-team-agent-modal">+ Add Agent</button>
                                     </div>
                                 </div>
-                            </div>
-                        </details>
-                    </div>
-                    <div class="team-col-right">
-                        <section class="team-launch-card team-launch-setup">
-                            <div class="team-launch-card-header">
-                                <h4>Launch Setup</h4>
-                                <p>Name the board, pick the workspace, and tune team defaults.</p>
-                            </div>
+
+                        </section>
+                        <section class="settings-pane" data-section="board" data-title="Board &amp; workspace" data-icon="forum" data-desc="Name the board and pick the folder the team works in." hidden>
                             <label>Team Name:
                                 <input type="text" id="team-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" data-on-input="m-validate-team-name">
                             </label>
@@ -270,14 +273,14 @@
                                     </label>
                                 </div>
                             </div>
-                            <details class="team-advanced">
-                                <summary>Advanced</summary>
-                                <div class="team-advanced-body">
                                     <div>
                                         <label>Remote Server <span class="text-muted-sm">(optional)</span>:
                                             <input type="text" id="team-board-server" placeholder="e.g. http://remote-machine:8420">
                                         </label>
                                     </div>
+
+                        </section>
+                        <section class="settings-pane" data-section="defaults" data-title="Defaults" data-icon="tune" data-desc="Used by members that do not set their own." hidden>
                                     <div class="team-launch-type-row">
                                         <label>Agent Type:
                                             <select id="team-agent-type">
@@ -305,9 +308,9 @@
                                         </select>
                                         <span class="settings-hint perm-mode-desc">Everything except protected paths — isolated containers and VMs only</span>
                                     </label>
-                                </div>
-                            </details>
+
                         </section>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-actions">
@@ -347,13 +350,19 @@
     </div>
 
     <div id="team-agent-modal" class="modal" role="dialog" aria-labelledby="team-agent-modal-title" aria-modal="true" style="display:none">
-        <div class="modal-content modal-content-wide">
+        <div class="modal-content settings-modal-content sd-modal-content">
             <div class="modal-header">
                 <h3 id="team-agent-modal-title">Add Team Agent</h3>
+                <p id="team-agent-modal-subtitle" class="sd-sub">Configure a team member, then add it to the team draft.</p>
             </div>
-            <div class="modal-body">
-                <p id="team-agent-modal-subtitle" class="team-agent-modal-subtitle">Configure a team member, then add it to the team draft.</p>
-                <div id="team-agent-modal-acf"></div>
+            <div class="modal-body settings-modal-body">
+                <div class="settings-shell">
+                    <nav class="settings-nav" aria-label="Agent sections">
+                        <div class="settings-group-pick"><select class="settings-select" aria-label="Agent section"></select></div>
+                        <div class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="Agent sections"></div>
+                    </nav>
+                    <div id="team-agent-modal-acf" class="settings-panes"></div>
+                </div>
             </div>
             <div class="modal-actions modal-footer">
                 <button class="btn" data-on-click="m-hide-team-agent-modal">Cancel</button>
@@ -476,13 +485,19 @@
 
     <!-- Restart Modal -->
     <div id="restart-modal" class="modal" role="dialog" aria-labelledby="restart-title" aria-modal="true" style="display:none">
-        <div class="modal-content modal-content-wide">
+        <div class="modal-content settings-modal-content sd-modal-content">
             <div class="modal-header">
                 <h3 id="restart-title">Restart Session</h3>
+                <p id="restart-modal-name" class="sd-sub"></p>
             </div>
-            <div class="modal-body">
-                <p id="restart-modal-name" style="color:var(--text-secondary);font-size:0.8125rem;margin-bottom:12px"></p>
-                <div id="restart-acf"></div>
+            <div class="modal-body settings-modal-body">
+                <div class="settings-shell">
+                    <nav class="settings-nav" aria-label="Restart sections">
+                        <div class="settings-group-pick"><select class="settings-select" aria-label="Restart section"></select></div>
+                        <div class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="Restart sections"></div>
+                    </nav>
+                    <div id="restart-acf" class="settings-panes"></div>
+                </div>
             </div>
             <div class="modal-actions modal-footer">
                 <button class="btn" data-on-click="m-hide-restart-modal">Cancel</button>

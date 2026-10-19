@@ -740,10 +740,6 @@
         content: "-";
     }
 
-    .mobile-launch-section-body {
-        padding: 0 14px 14px;
-    }
-
     .mobile-launch-section .team-agents-container {
         border: none;
         background: transparent;
@@ -753,30 +749,6 @@
     .agent-persona-actions,
     .acf-top-row {
         grid-template-columns: 1fr;
-    }
-
-    .team-launch-card {
-        background: var(--bg-tertiary);
-        box-shadow: none;
-    }
-
-    .team-launch-card summary {
-        display: block;
-    }
-
-    .team-launch-card .mobile-launch-section-body {
-        padding: 0 14px 14px;
-    }
-
-    /* Team columns stack vertically on mobile */
-    .team-columns {
-        grid-template-columns: 1fr !important;
-    }
-
-    .team-col-left,
-    .team-col-right {
-        width: 100% !important;
-        min-width: 0 !important;
     }
 
     /* Toolbar wrapping */

@@ -682,10 +682,6 @@ button.subscriber-history-link {
     width: 520px;
 }
 
-.modal-content-agent-wide {
-    width: 640px;
-}
-
 .modal-content-extra-wide {
     width: 820px;
 }
@@ -2326,60 +2322,6 @@ button.subscriber-history-link {
 
 /* Locked preset fields */
 
-.team-columns {
-    display: grid;
-    grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 0.9fr);
-    gap: 18px;
-    align-items: start;
-    margin-bottom: 12px;
-}
-
-.team-col-left,
-.team-col-right {
-    min-width: 0;
-}
-
-.team-launch-card {
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent), var(--bg-tertiary);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-}
-
-.team-launch-card:not(details) {
-    padding: 14px;
-}
-
-.team-launch-card[open] {
-    overflow: hidden;
-}
-
-.team-launch-card summary {
-    display: none;
-}
-
-.team-launch-card .mobile-launch-section-body {
-    padding: 14px;
-}
-
-.team-launch-card-header {
-    margin-bottom: 12px;
-}
-
-.team-launch-card-header h4 {
-    margin: 0;
-    font-size: 0.875rem;
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.team-launch-card-header p {
-    margin: 6px 0 0;
-    font-size: 0.75rem;
-    line-height: 1.35;
-    color: var(--text-muted);
-}
-
 .team-agents-container {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -2561,29 +2503,10 @@ button.subscriber-history-link {
     display: none;
 }
 
-.mobile-launch-section-body {
-    min-width: 0;
-}
-
 .team-agents-scroll {
     max-height: 360px;
     overflow-y: auto;
     padding-right: 4px;
-}
-
-.team-launch-setup input,
-.team-launch-setup select,
-#launch-team-dir,
-#team-board-name,
-#team-board-server {
-    background: rgba(0, 0, 0, 0.18);
-}
-
-.team-agent-modal-subtitle {
-    margin: 0 0 12px;
-    font-size: 0.8125rem;
-    line-height: 1.45;
-    color: var(--text-secondary);
 }
 
 .team-wizard-subtitle {
@@ -4274,6 +4197,41 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
     .settings-row { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
     .settings-row:has(> dd > .check-hit) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
     .settings-row:has(> dd > .check-hit) .settings-hint { grid-column: 1 / -1; }
+}
+/* The sectioned dialogs (#4950: Restart, New Agent, Agent Team, the team's agent dialog) are the Settings shell in a smaller dialog: the same list, panes, heading and footer. They switch to the selector at the top
+   under 40rem of their own width (Settings does at 60rem, as it is wider). One more thing the shell has here: a sub-line in the header, and a dot on a section that holds a problem. */
+.sd-modal-content { container: sd / inline-size; width: min(56rem, 94vw); height: min(36rem, 92vh); }
+.modal-header .sd-sub { margin: .15rem 0 0; color: var(--text-secondary); font-size: .8125rem; font-weight: 400; }
+.sd-modal-content .modal-footer { flex: none; }
+/* In the launch dialog the sectioned steps sit inside the dialog's own box: it has no padding then, the step's header and footer are full width, the fixed footer is always in view. */
+.modal-content.sd-modal-content:has(.launch-modal-step) { padding: 0; overflow: hidden; }
+.sd-modal-content > .launch-access-note, .sd-modal-content > .launch-server-row { margin: 0; padding: 12px 24px 0; }
+.sd-modal-content .launch-modal-step { overflow: hidden; }
+.sd-step-header { flex: none; padding: 24px 24px 12px; border-bottom: 1px solid var(--border); }
+.sd-step-header h3 { margin: 0; }
+.sd-step-header .sd-sub { margin: .15rem 0 0; color: var(--text-secondary); font-size: .8125rem; }
+.sd-modal-content .launch-modal-step > .modal-actions { position: static; flex: none; margin: 0; padding: 16px 24px; border-top: 1px solid var(--border); background: none; }
+.sd-acf { display: contents; }
+.sd-modal-content .agent-persona-actions .btn-subtle { color: var(--text-primary); } /* 4.5:1 on the light panel (the accent blue was 4.44) */
+.sd-extra:empty { display: none; }
+.settings-tab .sd-dot { margin-left: auto; width: .5rem; height: .5rem; flex: none; border-radius: 50%; background: var(--danger, #f85149); }
+.settings-tab .sd-dot[hidden] { display: none; }
+.sd-modal-content .settings-pane label { display: block; margin-bottom: .9rem; }
+.sd-modal-content .settings-pane :is(input[type="text"], select, textarea) { max-width: 38rem; width: 100%; box-sizing: border-box; }
+.sd-modal-content .settings-pane textarea.acf-prompt { max-width: none; min-height: 16rem; resize: vertical; font-family: var(--font-mono, monospace); font-size: .8125rem; }
+@container sd (max-width: 40rem) {
+    .sd-modal-content .settings-nav { width: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--border); padding: .6rem 1rem; overflow: visible; }
+    .sd-modal-content .settings-shell { flex-direction: column; }
+    .sd-modal-content .settings-tabs { display: none; }
+    .sd-modal-content .settings-nav .settings-group-pick { display: block; }
+    .sd-modal-content .settings-group-pick select { width: 100%; max-width: none; min-height: 44px; }
+    .sd-modal-content .settings-panes { padding: .8rem 1rem 1.2rem; }
+    .sd-modal-content .settings-pane :is(select, input[type="text"], textarea, .btn, .perm-chip) { min-height: 44px; }
+    .sd-modal-content .modal-footer .btn { min-height: 44px; }
+    .sd-modal-content .modal-header .sd-sub, .sd-step-header .sd-sub { display: none; }
+    .sd-step-header { padding: 16px 16px 10px; }
+    .sd-modal-content .launch-modal-step > .modal-actions { padding: 12px 16px; }
+    .sd-modal-content .launch-modal-step > .modal-actions .btn { min-height: 44px; }
 }
 @container settings (max-width: 60rem) {
     .settings-nav { width: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--border); padding: .6rem 1rem; overflow: visible; }
