@@ -45,8 +45,8 @@ var relayArtifactOutcomes = map[string]int{
 // body, the capability off, sizes out of range, a cancelled context) the old call and the new one end the same: the
 // same answer, the same kind of error (the length and range errors word for word), and the hub received the same.
 func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
-	oldIdle := artifactIdleFor
-	t.Cleanup(func() { artifactIdleFor = oldIdle })
+	oldIdle := artifactNow().idleFor
+	setArtifactTimings(t, func(*artifactTimings) {}) // puts the timings back after the test, whatever a scenario sets
 	type hubMode struct {
 		kind   string // "all", "early", "half", "slow"
 		status int
@@ -92,7 +92,7 @@ func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
 		case "slow":
 			record(req.Body, req.ContentLength+1)
 			select {
-			case <-time.After(3 * artifactIdleFor):
+			case <-time.After(3 * artifactNow().idleFor):
 			case <-ctx.Done():
 			}
 			return resp
@@ -138,7 +138,7 @@ func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
 		if m.status == 429 {
 			m.retry = 1 + rng.Intn(3)
 		}
-		artifactIdleFor = oldIdle
+		setArtifactIdle(oldIdle)
 		bodyKind := "exact"
 		client := cs
 		cancelled := false
@@ -152,7 +152,8 @@ func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
 		case 4, 5:
 			bodyKind = "long"
 		case 6:
-			bodyKind, artifactIdleFor = "block", 300*time.Millisecond
+			bodyKind = "block"
+			setArtifactIdle(300 * time.Millisecond)
 		case 7:
 			m.kind = "early"
 		case 11:
@@ -161,11 +162,13 @@ func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
 			m.kind = "bad"
 		case 13:
 			// a body that gives each chunk 100 ms apart: progress keeps a 300 ms idle time from firing
-			bodyKind, artifactIdleFor, n = "trickle", 300*time.Millisecond, 4*64<<10
+			bodyKind, n = "trickle", 4*64<<10
+			setArtifactIdle(300 * time.Millisecond)
 		case 8:
 			m.kind, n = "half", 200<<10
 		case 9:
-			m.kind, artifactIdleFor = "slow", 200*time.Millisecond
+			m.kind = "slow"
+			setArtifactIdle(200 * time.Millisecond)
 		case 10:
 			cancelled = true
 		}
@@ -310,7 +313,8 @@ func (c *ClientSession) relayArtifactBefore4857(ctx context.Context, n int64, bo
 	if !c.CanRelayArtifact() {
 		return RelayResponse{}, ErrRelayArtifactUnsupported
 	}
-	idleFor, totalFor, lane := artifactIdleFor, artifactTotalFor, artifactLane // read once: the vars are for tests
+	tm := artifactNow() // read once: tests change them
+	idleFor, totalFor, lane := tm.idleFor, tm.totalFor, tm.lane
 	ctx, cancel := context.WithTimeout(ctx, totalFor)
 	defer cancel()
 	st, err := c.ys.OpenStream()
@@ -325,7 +329,7 @@ func (c *ClientSession) relayArtifactBefore4857(ctx context.Context, n int64, bo
 	}
 
 	// Idle watchdog: progress (a chunk read from the body and written) pushes it back; none for
-	// artifactIdleFor closes the stream and ends the call, also when it is the BODY that went quiet
+	// the idle time closes the stream and ends the call, also when it is the BODY that went quiet
 	// (a read that never returns is abandoned, not waited for).
 	var progress atomic.Int64
 	progress.Store(time.Now().UnixNano())

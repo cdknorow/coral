@@ -264,9 +264,7 @@ func TestRelayArtifactTrailingByteIsDetected(t *testing.T) {
 // A request is aborted on both streams when there is no progress for the idle time: a SENDER that goes quiet,
 // and a HOOK that stops reading (a stalled target it is writing to).
 func TestRelayArtifactIdleDeadline(t *testing.T) {
-	old := artifactIdleFor
-	artifactIdleFor = 300 * time.Millisecond
-	t.Cleanup(func() { artifactIdleFor = old })
+	setArtifactTimings(t, func(c *artifactTimings) { c.idleFor = 300 * time.Millisecond })
 
 	t.Run("sender goes quiet", func(t *testing.T) {
 		hookErr := make(chan error, 1)
@@ -319,9 +317,7 @@ func TestRelayArtifactIdleDeadline(t *testing.T) {
 
 // 120 s in all (shortened here): a sender that keeps trickling still ends at the total.
 func TestRelayArtifactTotalDeadline(t *testing.T) {
-	oldT, oldI := artifactTotalFor, artifactIdleFor
-	artifactTotalFor, artifactIdleFor = 600*time.Millisecond, 2*time.Second
-	t.Cleanup(func() { artifactTotalFor, artifactIdleFor = oldT, oldI })
+	setArtifactTimings(t, func(c *artifactTimings) { c.totalFor, c.idleFor = 600*time.Millisecond, 2*time.Second })
 	h := artifactHub(t, SessionConfig{}, func(ctx context.Context, s *Session, req RelayArtifactRequest) RelayResponse {
 		_, _ = io.Copy(io.Discard, req.Body)
 		return RelayResponse{Status: 200, Body: okBody()}
@@ -477,7 +473,7 @@ func TestInboundLane(t *testing.T) {
 	for _, p := range []string{RelayMessagePath, RelayTargetsPath, signinPathPrefix + SigninCheck, signinPathPrefix + SigninBegin} {
 		assert.Equal(t, laneInteractive, inboundLane(p), p)
 	}
-	assert.Equal(t, laneBulk, artifactLane, "the artifact request's lane is bulk by default")
+	assert.Equal(t, laneBulk, artifactNow().lane, "the artifact request's lane is bulk by default")
 }
 
 // A message path and the artifact path never mix: the message kinds do not accept the artifact path, and a
@@ -491,9 +487,7 @@ func TestRelayMessageKindsDoNotAcceptTheArtifactPath(t *testing.T) {
 // A body that delivers its n bytes and then blocks (the check for a byte past n) ends at the idle deadline, not
 // never: Security proved the call used to hang past both deadlines (#4378 follow-up).
 func TestRelayArtifactBodyThatBlocksAfterNBytesEndsAtIdle(t *testing.T) {
-	old := artifactIdleFor
-	artifactIdleFor = 300 * time.Millisecond
-	t.Cleanup(func() { artifactIdleFor = old })
+	setArtifactTimings(t, func(c *artifactTimings) { c.idleFor = 300 * time.Millisecond })
 	h := artifactHub(t, SessionConfig{}, func(ctx context.Context, s *Session, req RelayArtifactRequest) RelayResponse {
 		_, _ = io.Copy(io.Discard, req.Body)
 		return RelayResponse{Status: 200, Body: okBody()}
@@ -538,9 +532,7 @@ func TestRelayArtifactEarlyRefusalReachesTheSender(t *testing.T) {
 // After the last byte the hub may be waiting on its target for longer than the idle time: the idle deadline is
 // about the body's bytes, and the answer still arrives (the total bounds the wait), on both sides.
 func TestRelayArtifactSlowAnswerAfterTheBodyIsNotIdle(t *testing.T) {
-	old := artifactIdleFor
-	artifactIdleFor = 200 * time.Millisecond
-	t.Cleanup(func() { artifactIdleFor = old })
+	setArtifactTimings(t, func(c *artifactTimings) { c.idleFor = 200 * time.Millisecond })
 	h := artifactHub(t, SessionConfig{}, func(ctx context.Context, s *Session, req RelayArtifactRequest) RelayResponse {
 		_, _ = io.Copy(io.Discard, req.Body)
 		select {

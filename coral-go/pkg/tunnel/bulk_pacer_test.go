@@ -73,7 +73,7 @@ func TestBulkControllerCutsOncePerRoundTripAndKeepsAFloor(t *testing.T) {
 // The floor lets an 8 MiB file finish inside half of the connector's artifact limit (coral-hub's fail-safe 3).
 func TestBulkFloorFitsTheConnectorsLimit(t *testing.T) {
 	seconds := float64(RelayDefaultArtifact) / bulkMinRate
-	assert.LessOrEqual(t, seconds, artifactTotalFor.Seconds()/2, "an 8 MiB file at the floor takes %.0f s of the connector's %v", seconds, artifactTotalFor)
+	assert.LessOrEqual(t, seconds, artifactNow().totalFor.Seconds()/2, "an 8 MiB file at the floor takes %.0f s of the connector's %v", seconds, artifactNow().totalFor)
 	assert.LessOrEqual(t, float64(bulkMinRate), float64(bulkStartRate), "the floor is not above where a push starts")
 	assert.EqualValues(t, bulkMinRate, bulkSafeRate, "the fixed fail-safe rate is the floor")
 }

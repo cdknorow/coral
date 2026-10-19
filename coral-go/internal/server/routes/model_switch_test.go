@@ -60,9 +60,7 @@ func newSwitchRig(t *testing.T, agentType string) *switchRig {
 	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
 	server, h, term, ss := setupSessionsTestServer(t)
 	stubCLIPaths(t, ss)
-	old := switchTiming
-	switchTiming.poll, switchTiming.idleWait, switchTiming.modelConfirm, switchTiming.levelConfirm = 5*time.Millisecond, 400*time.Millisecond, 400*time.Millisecond, 600*time.Millisecond
-	t.Cleanup(func() { switchTiming = old })
+	setSwitchTiming(t, switchTimings{poll: 5 * time.Millisecond, idleWait: 400 * time.Millisecond, modelConfirm: 400 * time.Millisecond, levelConfirm: 600 * time.Millisecond})
 	rig := &switchRig{server: &testServer{URL: server.URL}, sid: "abcdef01-2222-3333-4444-555555555555", ss: ss, h: h, term: term}
 	rig.name = agentType + "-" + rig.sid
 	work := t.TempDir()
@@ -390,4 +388,13 @@ func TestSwitchWaitsForTheReplyToEnd(t *testing.T) {
 		assert.Contains(t, sw.Message, "kept working")
 		assert.Empty(t, r.typed())
 	})
+}
+
+// setSwitchTiming sets the switch's waits for one test and puts them back after it. A switch started by an earlier test can still be
+// reading them, so they are an atomic pointer (#5148).
+func setSwitchTiming(t testing.TB, v switchTimings) {
+	t.Helper()
+	old := switchTiming.Load()
+	switchTiming.Store(&v)
+	t.Cleanup(func() { switchTiming.Store(old) })
 }

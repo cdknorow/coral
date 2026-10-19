@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -92,10 +93,18 @@ func (t *modelSwitchTracker) update(sessionID string, f func(*modelSwitch)) {
 	}
 }
 
-// switchTiming are the waits of a switch; tests shorten them.
-var switchTiming = struct {
+// switchTimings are the waits of a switch; tests shorten them. A switch runs in a goroutine that can outlive the test that started it
+// while the next test sets its own waits, so they are held behind an atomic pointer and each function reads them once (#5148: the race
+// detector caught a bare variable).
+type switchTimings struct {
 	poll, idleWait, modelConfirm, levelConfirm time.Duration
-}{poll: 500 * time.Millisecond, idleWait: 10 * time.Minute, modelConfirm: 30 * time.Second, levelConfirm: 30 * time.Minute}
+}
+
+var switchTiming atomic.Pointer[switchTimings]
+
+func init() {
+	switchTiming.Store(&switchTimings{poll: 500 * time.Millisecond, idleWait: 10 * time.Minute, modelConfirm: 30 * time.Second, levelConfirm: 30 * time.Minute})
+}
 
 // modelSwitchRequest is the switch's body: a model, a thinking level, or both. "thinking": "" asks for the CLI's own default
 // (/effort auto).
@@ -189,11 +198,12 @@ var errorOutputR = regexp.MustCompile(`(?i)\b(unknown|invalid|not found|not avai
 
 // runModelSwitch waits for the agent to be between turns, types the commands and watches the transcript for their result.
 func (h *SessionsHandler) runModelSwitch(name, agentType, sessionID, workDir string, setModel bool, model string, setLevel bool, level string) {
-	ctx, cancel := context.WithTimeout(context.Background(), switchTiming.idleWait+switchTiming.modelConfirm+switchTiming.levelConfirm+time.Minute)
+	tm := switchTiming.Load()
+	ctx, cancel := context.WithTimeout(context.Background(), tm.idleWait+tm.modelConfirm+tm.levelConfirm+time.Minute)
 	defer cancel()
 
 	// A turn in progress: the change applies after the reply, never in the middle of it.
-	idleBy := time.Now().Add(switchTiming.idleWait)
+	idleBy := time.Now().Add(tm.idleWait)
 	for {
 		if _, busy := h.latestEvent(ctx, sessionID); !busy {
 			break
@@ -202,7 +212,7 @@ func (h *SessionsHandler) runModelSwitch(name, agentType, sessionID, workDir str
 			h.switchFail(sessionID, "The agent kept working, so the change was not made.")
 			return
 		}
-		if sleepCtx(ctx, switchTiming.poll) != nil {
+		if sleepCtx(ctx, tm.poll) != nil {
 			h.switchFail(sessionID, "The change was cancelled.")
 			return
 		}
@@ -246,7 +256,8 @@ func (h *SessionsHandler) runModelSwitch(name, agentType, sessionID, workDir str
 // (a picker choice, a command the operator typed meanwhile) and any other output are a failed switch, with that text, so the stored
 // model never changes to one the agent is not running. It returns "" on success, else the reason.
 func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir, model string, since time.Time) string {
-	deadline := time.Now().Add(switchTiming.modelConfirm)
+	tm := switchTiming.Load()
+	deadline := time.Now().Add(tm.modelConfirm)
 	for {
 		var cmds []jsonl.LocalCommand
 		if h.jsonl != nil {
@@ -267,7 +278,7 @@ func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir, 
 		if time.Now().After(deadline) {
 			return "Claude Code did not confirm the model change."
 		}
-		if sleepCtx(ctx, switchTiming.poll) != nil {
+		if sleepCtx(ctx, tm.poll) != nil {
 			return "The change was cancelled."
 		}
 	}
@@ -287,7 +298,8 @@ func shownArgs(args string) string {
 // entry, so a level is confirmed by the next reply (the "confirms after the next reply" the chip says). A refusal Claude Code
 // prints for /effort ends it at once. "" (the CLI's own default) has no level to compare, so it is confirmed by the /effort entry.
 func (h *SessionsHandler) confirmLevel(ctx context.Context, sessionID, workDir, level string, since time.Time) string {
-	deadline := time.Now().Add(switchTiming.levelConfirm)
+	tm := switchTiming.Load()
+	deadline := time.Now().Add(tm.levelConfirm)
 	for {
 		if h.jsonl != nil {
 			for _, c := range h.jsonl.ReadClaudeLocalCommands(sessionID, workDir, since) {
@@ -309,7 +321,7 @@ func (h *SessionsHandler) confirmLevel(ctx context.Context, sessionID, workDir, 
 		if time.Now().After(deadline) {
 			return "The agent has not replied since, so the level is not confirmed yet."
 		}
-		if sleepCtx(ctx, switchTiming.poll) != nil {
+		if sleepCtx(ctx, tm.poll) != nil {
 			return "The change was cancelled."
 		}
 	}

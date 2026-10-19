@@ -289,7 +289,7 @@ func (c *ClientSession) callInbound(ctx context.Context, k *inboundKind, path st
 // artifact path, the interactive one for everything else.
 func inboundLane(path string) int {
 	if path == RelayArtifactPath {
-		return artifactLane
+		return artifactNow().lane
 	}
 	return laneInteractive
 }

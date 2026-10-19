@@ -60,14 +60,22 @@ const (
 	artifactChunk = 64 << 10
 )
 
-var (
-	// artifactIdleFor and artifactTotalFor are the deadlines (vars for tests).
-	artifactIdleFor  = artifactIdle
-	artifactTotalFor = artifactTotal
-	// artifactLane is the uplink lane an artifact request is written on (a var so a test can show the
-	// lane is what keeps interactive traffic fast).
-	artifactLane = laneBulk
-)
+// artifactTimings are the deadlines of an artifact request and the uplink lane it is written on. Tests change them (a var, so a test can
+// also show the lane is what keeps interactive traffic fast), while a request started by an earlier test can still be running and
+// reading them: they are held behind an atomic pointer and read once per request (#5148: the race detector caught a bare variable).
+type artifactTimings struct {
+	idleFor, totalFor time.Duration
+	lane              int
+}
+
+var artifactCfg atomic.Pointer[artifactTimings]
+
+func init() {
+	artifactCfg.Store(&artifactTimings{idleFor: artifactIdle, totalFor: artifactTotal, lane: laneBulk})
+}
+
+// artifactNow is the timings a request that starts now runs with.
+func artifactNow() artifactTimings { return *artifactCfg.Load() }
 
 // ErrRelayArtifactUnsupported: the hub didn't advertise artifact streams for this tunnel (an older hub,
 // the artifact relay off for the account, or no link for this server).
@@ -125,7 +133,8 @@ func (c *ClientSession) RelayArtifact(ctx context.Context, n int64, body io.Read
 	if !c.CanRelayArtifact() {
 		return RelayResponse{}, ErrRelayArtifactUnsupported
 	}
-	idleFor, totalFor, lane := artifactIdleFor, artifactTotalFor, artifactLane // read once: the vars are for tests
+	tm := artifactNow() // read once: tests change them
+	idleFor, totalFor, lane := tm.idleFor, tm.totalFor, tm.lane
 	ctx, cancel := context.WithTimeout(ctx, totalFor)
 	defer cancel()
 	st, err := c.ys.OpenStream()
@@ -334,7 +343,7 @@ func sendArtifactBody(ctx context.Context, w io.Writer, st io.Closer, rd artifac
 
 // artifactIdleReader gives the body of a streamed request to the hub's hook: at most n bytes, each Read
 // under its own idle deadline, and every Read (the call and its return) counted as activity: the
-// serveArtifact watchdog aborts the request when there is none for artifactIdleFor, which is a
+// serveArtifact watchdog aborts the request when there is none for the idle time, which is a
 // SENDER that went quiet or a HOOK that stopped reading (a stalled target it is writing to).
 type artifactIdleReader struct {
 	st          io.Reader
@@ -398,7 +407,8 @@ func (s *Session) serveArtifact(st io.ReadWriteCloser, h Header, setDeadline fun
 		return
 	}
 	defer s.artifactInflight.Add(-1)
-	idleFor, totalFor := artifactIdleFor, artifactTotalFor // read once: the vars are for tests
+	tm := artifactNow() // read once: tests change them
+	idleFor, totalFor := tm.idleFor, tm.totalFor
 	ctx, cancel := context.WithTimeout(context.Background(), totalFor)
 	defer cancel()
 	stop := context.AfterFunc(ctx, func() { _ = st.Close() })
