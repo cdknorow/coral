@@ -1,5 +1,15 @@
 # Release Notes
 
+## v1.4.117 — Team settings opens on the phone, and an optional agent type line in the agent list
+
+### Fixes
+
+- **Team settings opens from the team's menu on the phone:** the side panel opened over the team page but stayed shut, so the settings were drawn at no size behind the chat. They now open on screen.
+
+### Changes
+
+- **A "Show agent type" option in the agent list's Display panel (sidebar and phone), off by default.** The second line under an agent's name ("Claude · Opus 5.5") is hidden as the dashboard starts; tick Show agent type next to Show branches to bring it back. The choice is kept per browser, shown in the Display summary and count as "Agent type shown" when on, and cleared by Clear.
+
 ## v1.4.116 — The team health switch moves to Settings, and "off" means off for telemetry and the health monitor
 
 ### Security
