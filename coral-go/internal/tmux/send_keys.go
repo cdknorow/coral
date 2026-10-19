@@ -108,6 +108,14 @@ func (c *Client) typeToTarget(ctx context.Context, target, command string, launc
 			return err
 		}
 	}
+	// A launch command that is not submitted must not stay typed in the shell: the next text typed into the pane (a board nudge) would be
+	// appended to it, and run (#5171). abandon, once the line is typed, clears it (best effort, whatever became of the request) and removes the script.
+	abandon := func() {
+		if launch {
+			clearInputLine(c, target)
+		}
+		cleanup()
+	}
 	var sendErr error
 	// A long single line is pasted too (not an argument of send-keys): text for an agent has no
 	// length limit, and a launch command that became a short ". path" line is under it anyway.
@@ -120,7 +128,7 @@ func (c *Client) typeToTarget(ctx context.Context, target, command string, launc
 	}
 	if sendErr != nil {
 		// No Enter after a failed send: it would submit whatever was already in the agent's
-		// input instead of this text (#3690).
+		// input instead of this text (#3690). Nothing was typed, so nothing is cleared.
 		cleanup()
 		// Coalesced like the exec failure it follows (Security's #4112 note): one line, then a
 		// count every few minutes, for a send failing again and again on one pane.
@@ -138,15 +146,33 @@ func (c *Client) typeToTarget(ctx context.Context, target, command string, launc
 	time.Sleep(sendKeysSettle)
 
 	if !enterAllowed(ctx) {
-		cleanup()
+		abandon()
 		return ErrEnterWithheld
 	}
 
-	if _, err := c.run(ctx, "send-keys", "-t", target, "Enter"); err != nil {
-		cleanup()
+	// The line is typed: a launch command's Enter finishes whatever became of the request (its context ended, the client went away), as the
+	// PTY path's does, or the shell is left with a typed line and no script (#5171).
+	enterCtx := ctx
+	if launch {
+		var cancel context.CancelFunc
+		enterCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), launchEnterTimeout)
+		defer cancel()
+	}
+	if _, err := c.run(enterCtx, "send-keys", "-t", target, "Enter"); err != nil {
+		abandon()
 		return fmt.Errorf("send Enter failed: %w", err)
 	}
 	return nil
+}
+
+// launchEnterTimeout bounds the Enter of a launch command typed into a shell, which no request context can cut short.
+const launchEnterTimeout = 5 * time.Second
+
+// clearInputLine empties the shell's input line on target (Ctrl-U kills the line in bash, zsh and fish), best effort, on a context of its own.
+func clearInputLine(c *Client, target string) {
+	ctx, cancel := context.WithTimeout(context.Background(), launchEnterTimeout)
+	defer cancel()
+	_, _ = c.run(ctx, "send-keys", "-t", target, "C-u")
 }
 
 // pasteToTarget loads text into a tmux buffer and pastes it into the target pane.

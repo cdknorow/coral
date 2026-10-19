@@ -138,3 +138,16 @@ func TestShellIdleSharesOneProcessSnapshot(t *testing.T) {
 	_, _, err := ShellIdle(1 << 30)
 	assert.ErrorContains(t, err, "no such process")
 }
+
+// #5171, #5170: a shell started since the shared process snapshot (a restart's new terminal) is looked up again, not reported as unknown (which
+// counted as a running agent and let automated text be typed into a bare shell).
+func TestShellIdleLooksAgainForAShellThatStartedAfterTheSnapshot(t *testing.T) {
+	skipWithoutUnixTmux(t)
+	procTableMu.Lock()
+	procTableLast = &procTable{byPID: map[int]procEntry{}, children: map[int][]int{}, at: time.Now().Add(-500 * time.Millisecond)}
+	procTableMu.Unlock()
+	_, _, err := ShellIdle(os.Getpid())
+	require.NoError(t, err, "the process is real: a snapshot without it is stale")
+	_, _, err = ShellIdle(1 << 30)
+	assert.ErrorContains(t, err, "no such process", "a pid that does not exist still does not")
+}

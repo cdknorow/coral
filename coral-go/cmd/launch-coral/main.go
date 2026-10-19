@@ -235,7 +235,9 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 		tc.SetPaneTitle(ctx, sessionName+".0", fmt.Sprintf("%s — %s", folderName, agentType))
 
 		// Send the launch command
-		tc.SendKeysToTarget(ctx, sessionName+".0", launchCmd)
+		if err := tc.SendKeysToTarget(ctx, sessionName+".0", launchCmd); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: the start command could not be typed into %s: %v\n", sessionName, err) // the terminal stays at its shell (#5171)
+		}
 
 		// Open a terminal window attached to this session
 		if !isSSH() {

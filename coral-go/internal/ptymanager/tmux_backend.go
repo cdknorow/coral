@@ -84,7 +84,9 @@ func (b *TmuxBackend) Spawn(name, agentType, workDir, sessionID, command string,
 
 	// Launch the agent command
 	if command != "" {
-		b.client.SendKeysToTarget(ctx, tmuxName+".0", command)
+		if err := b.client.SendKeysToTarget(ctx, tmuxName+".0", command); err != nil {
+			log.Printf("[launch] %s: the start command could not be typed into its terminal: %v", name, err) // the terminal stays at its shell (#5171)
+		}
 	}
 
 	// Track session
@@ -170,7 +172,9 @@ func (b *TmuxBackend) Restart(name, command string) error {
 	b.client.PipePane(ctx, pane.Target, sess.logPath)
 
 	if command != "" {
-		b.client.SendKeysToTarget(ctx, pane.Target, command)
+		if err := b.client.SendKeysToTarget(ctx, pane.Target, command); err != nil {
+			log.Printf("[launch] %s: the start command could not be typed into its restarted terminal: %v", name, err) // the terminal stays at its shell (#5171)
+		}
 	}
 
 	return nil

@@ -46,6 +46,14 @@ func ShellIdle(pid int) (idle bool, shell string, err error) {
 		return false, "", fmt.Errorf("read process %d: %w", pid, err)
 	}
 	p, ok := procs.byPID[pid]
+	if !ok && time.Since(procs.at) > 20*time.Millisecond { // (a snapshot taken by this call is as fresh as it gets)
+		// A shell started since the snapshot (a restart's new terminal) is not in it: look again, now, before an unknown shell counts as a running
+		// agent and automated text is typed into a bare shell (#5171, #5170).
+		if procs, err = readProcTableFresh(); err != nil {
+			return false, "", fmt.Errorf("read process %d: %w", pid, err)
+		}
+		p, ok = procs.byPID[pid]
+	}
 	if !ok {
 		return false, "", fmt.Errorf("read process %d: no such process", pid)
 	}
@@ -93,10 +101,15 @@ var (
 // block every caller for good (#3999, the #3994 audit finding 4).
 var psTimeout = 5 * time.Second
 
-func readProcTable() (*procTable, error) {
+func readProcTable() (*procTable, error) { return readProcTableMaxAge(procTableTTL) }
+
+// readProcTableFresh is a snapshot taken now.
+func readProcTableFresh() (*procTable, error) { return readProcTableMaxAge(0) }
+
+func readProcTableMaxAge(maxAge time.Duration) (*procTable, error) {
 	procTableMu.Lock()
 	defer procTableMu.Unlock()
-	if t := procTableLast; t != nil && time.Since(t.at) < procTableTTL {
+	if t := procTableLast; t != nil && maxAge > 0 && time.Since(t.at) < maxAge {
 		return t, nil
 	}
 	procTableRuns.Add(1)
