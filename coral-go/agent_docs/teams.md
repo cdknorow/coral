@@ -461,28 +461,25 @@ detail/current for the actual stored instructions of a particular task.
 
 ### Board health monitor setting
 
-The **Global settings** section of Team settings exposes **Run global board
-health monitor**. Unlike the working-mode
-fields above, this is the **global** `board_health_monitor` user setting, stored
-through `GET /api/settings` and `PUT /api/settings` as the strings `"true"` or
-`"false"`. It is not a per-team convention and is not snapshotted into tasks.
-The default is off (absent or not `"true"`). Saving it from one team's dialog
-changes the global value visible from other teams' dialogs.
+Two switches decide whether a team gets health checks, and they are not the same thing:
 
-The server reads this switch at startup. A changed value takes effect on the
-next server start; it does not start or stop the background monitor immediately.
-When enabled at startup, Coral does two things on each board (#4175):
+- **A team's own health check** is **off by default** (`health.on`, the team's settings, `GET` and `PUT /api/board/{project}/settings`). Turn it on in Team settings, on the **Health check** tab, or with **Team health monitor** in the Agent Team dialog. The agent list shows an icon beside the team's info button, dimmed while it is off and accent while it is on (`team_health_on` on the team's rows). It uses tokens each time it sends. The tab also sets how often (5 to 1440 minutes, 10 by default), who receives the check (the orchestrator by default) and each automatic rule. See [Using the Dashboard](using-the-dashboard.md#turn-on-the-team-health-monitor).
+- **The global monitor**: **Run global board health monitor** in the **Global settings** section of Team settings is the global `board_health_monitor` user setting, stored through `GET /api/settings` and `PUT /api/settings` as the strings `"true"` or `"false"`. It is **on** unless it is `"false"` (absent counts as on), and it is not a per-team convention or snapshotted into tasks. Saving it from one team's dialog changes the global value visible from other teams' dialogs. It is read when the server starts: a changed value takes effect on the next start. Off, no team gets any of what follows.
+
+When the global monitor runs, Coral does two things on each board (#4175), each only as the team's own settings allow:
 
 - **It acts on the mechanical items itself**, recording each as a short `[Coral health]` line
   from Coral Task Queue (never agent activity, never unread):
-  - it delegates a task's review to the reviewers it names when it enters review;
-  - it nudges an idle agent to claim the work assigned to it, then escalates after two nudges;
-  - it asks an agent whose task shows no activity for 20 minutes for a one-line status, then
-    escalates if it stays silent 10 more minutes.
+  - it delegates a task's review to the reviewers it names when it enters review (a rule that works
+    whether or not the team's check is on);
+  - while the team's check is on, it nudges an idle agent to claim the work assigned to it, then
+    escalates after two nudges;
+  - while the team's check is on, it asks an agent whose task shows no activity for 20 minutes for
+    a one-line status, then escalates if it stays silent 10 more minutes.
 
   Each nudge goes through the typing gate. Coral's own automatic actions are limited to 20
   per board per hour.
-- **Every 10 minutes it types the orchestrator's check** into the orchestrator's terminal,
+- **For a team whose check is on, every 10 minutes** (the team's interval) **it types the orchestrator's check** into the recipient's terminal,
   through the same gate. The check is never posted to the board, and is at most 4 KB. It lists
   only what needs the orchestrator's judgment, ranked, each with evidence and a suggestion:
   - what Coral escalated;

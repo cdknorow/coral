@@ -356,6 +356,12 @@ export function artifactRefHex(url) {
     return m ? m[1].toLowerCase() : '';
 }
 
+// A Docs page may show its own screenshots (#5038): ![alt](docs-img/<name>.png) names a file in static/docs-img, which renderDocsMarkdown turns into this server's own
+// versioned URL for it. That exact shape (a lower-case name, .png, no query or fragment, under this server's /static) is the one image source besides an artifact, data: or blob: that
+// survives; it is a file embedded in Coral itself, never one an author names.
+const DOC_IMAGE = /^docs-img\/([a-z0-9][a-z0-9-]*\.png)$/;
+const DOC_IMAGE_SRC = /^\/static\/(?:(?:b|bb)\/[A-Za-z0-9_-]+\/)?docs-img\/[a-z0-9][a-z0-9-]*\.png$/;
+
 // Images in agent, board and chat content never load from elsewhere (#3515): a remote image
 // in a post is a tracking or exfiltration beacon the moment the post is shown. An <img> keeps
 // its source only for a Coral artifact (pointed at this server's /api/artifacts) or a data:
@@ -372,7 +378,7 @@ function installSanitizerHooks() {
             if (hex) {
                 node.setAttribute('src', `/api/artifacts/${hex}?v=2`);
                 node.setAttribute('data-artifact', hex);
-            } else if (!/^(?:data:image\/|blob:)/i.test(src)) {
+            } else if (!/^(?:data:image\/|blob:)/i.test(src) && !DOC_IMAGE_SRC.test(src)) {
                 node.removeAttribute('src');
                 node.setAttribute('data-blocked-src', src);
             }
@@ -659,6 +665,11 @@ export function renderDocsMarkdown(md) {
         _docsMarked = new marked.Marked({ gfm: true });
         _docsMarked.use({
             walkTokens(token) {
+                if (token.type === 'image') {
+                    const img = DOC_IMAGE.exec(token.href || '');
+                    if (img) token.href = new URL(`./docs-img/${img[1]}`, import.meta.url).pathname; // inherits a versioned static prefix, as cm_util.js's stylesheet does
+                    return;
+                }
                 if (token.type !== 'link') return;
                 const m = DOC_LINK.exec(token.href || '');
                 if (m) token.href = `/docs/${m[1]}`;

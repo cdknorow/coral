@@ -124,6 +124,20 @@ func TestStaticImagesAreReferenced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The Docs pages (coral-go/agent_docs) name their screenshots in static/docs-img (#5038). The copy `make` syncs into static/agent_docs is not in a clean checkout, so the
+	// sources are read here.
+	docs, err := filepath.Glob(filepath.Join(moduleRoot, "agent_docs", "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range docs {
+		b, err := os.ReadFile(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		corpus.Write(b)
+		corpus.WriteByte('\n')
+	}
 	if len(images) == 0 {
 		t.Fatal("found no images in the static tree; the walk is wrong")
 	}

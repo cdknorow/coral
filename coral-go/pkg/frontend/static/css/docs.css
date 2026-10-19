@@ -51,6 +51,16 @@
     margin: 16px 0 4px;
 }
 
+/* A screenshot in a page (#5038): as wide as the page allows, never wider. */
+.docs-content img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 12px 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
 .docs-content p {
     margin: 8px 0;
     line-height: 1.6;

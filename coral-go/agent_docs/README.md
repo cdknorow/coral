@@ -15,6 +15,7 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 ### Getting Started
 - [Quickstart](quickstart.md) — Install, launch your first agent, and get a committed change
 - [Worked Demos](worked-demos.md) — Three multi-agent scenarios run end to end, with real output
+- [Using the Dashboard](using-the-dashboard.md) — Task-oriented: model and thinking level and the chat-bar chip, Cost by thinking level, the team health monitor, the agent list's Display panel, the sectioned dialogs, image thumbnails
 - [Troubleshooting](troubleshooting.md) — Observed failure modes and their causes, profiling, isolated test servers
 
 ### Automation
