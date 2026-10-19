@@ -107,3 +107,22 @@ func TestAgentWriteLimitMiddleware(t *testing.T) {
 	}
 	assert.Greater(t, served, 3*agentWriteBurst)
 }
+
+// #4964: chi routes on the raw path, so a board name with an encoded slash reaches the messages handler while its decoded path has an extra
+// segment. Those requests draw from the same budget (they were once counted by neither spelling's decoded form).
+func TestAgentWriteLimitCountsAnEncodedSlashInTheBoardName(t *testing.T) {
+	h := AgentWriteLimit()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	do := func(path string) int {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		req = req.WithContext(context.WithValue(req.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: "22222222-2222-4222-8222-222222222222"}))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for i := 0; i < agentWriteBurst; i++ {
+		require.Equal(t, http.StatusNoContent, do("/api/board/a%2Fb/messages"), "inside the burst")
+	}
+	assert.Equal(t, http.StatusTooManyRequests, do("/api/board/a%2fb/messages"), "an encoded slash (either case) is counted like any board post")
+	assert.Equal(t, http.StatusTooManyRequests, do("/api/board/plain/messages"), "and it was the same budget")
+	assert.True(t, limitedAgentWrite(httptest.NewRequest(http.MethodPost, "/api/board/a%2Fb/tasks", nil)))
+}

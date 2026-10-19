@@ -43,7 +43,7 @@ func bodyLimitFor(r *http.Request) int64 {
 	if len(bodyLimits) > 0 {
 		if rc := chi.RouteContext(r.Context()); rc != nil && rc.Routes != nil {
 			tctx := chi.NewRouteContext()
-			if rc.Routes.Match(tctx, r.Method, r.URL.Path) {
+			if rc.Routes.Match(tctx, r.Method, routedPath(r)) {
 				if n, ok := bodyLimits[r.Method+" "+tctx.RoutePattern()]; ok {
 					return n
 				}

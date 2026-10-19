@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -338,8 +339,22 @@ func (ks *KeyStore) ValidateKey(key string) bool {
 	return subtle.ConstantTimeCompare([]byte(key), []byte(ks.key)) == 1
 }
 
+// rateKey is the address a failed-key count is kept under: an IPv4 address as it is, an IPv6 one as its /64. A network is handed a whole /64, so
+// counting each address would give a client 2^64 budgets (and let it fill the map's 10,000 places with its own addresses) (#4964).
+func rateKey(ip string) string {
+	if i := strings.IndexByte(ip, '%'); i >= 0 { // a zone ("fe80::1%en0") is not part of the address
+		ip = ip[:i]
+	}
+	a, err := netip.ParseAddr(ip)
+	if err != nil || a.Is4() || a.Is4In6() {
+		return ip
+	}
+	return netip.PrefixFrom(a, 64).Masked().String()
+}
+
 // CheckRateLimit returns true if the IP is within rate limits.
 func (ks *KeyStore) CheckRateLimit(ip string) bool {
+	ip = rateKey(ip)
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
@@ -377,6 +392,7 @@ func (ks *KeyStore) CheckRateLimit(ip string) bool {
 // RateLimited reports whether ip has already used up its failed-attempt budget
 // in the current window. It does not count anything itself.
 func (ks *KeyStore) RateLimited(ip string) bool {
+	ip = rateKey(ip)
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 	e, ok := ks.rateMap[ip]

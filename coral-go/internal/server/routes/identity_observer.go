@@ -633,7 +633,7 @@ func guardedRoute(r *http.Request) (route string, only, ok bool) {
 		return "", false, false
 	}
 	tctx := chi.NewRouteContext()
-	if !rc.Routes.Match(tctx, r.Method, r.URL.Path) {
+	if !rc.Routes.Match(tctx, r.Method, routedPath(r)) {
 		return "", false, false
 	}
 	route = tctx.RoutePattern()

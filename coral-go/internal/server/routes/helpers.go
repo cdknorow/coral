@@ -33,6 +33,16 @@ func urlParam(r *http.Request, key string) string {
 	return v
 }
 
+// routedPath is the path chi routes r on: the raw path when the request has one (chi's own rule), else the decoded one. The route lookups the gates make
+// before routing must use it: urlParam decodes a parameter after chi has matched it, so "/api/sessions/live/a%2Fb/display-name" runs the handler of
+// "/api/sessions/live/{name}/display-name" with the name "a/b", while the decoded path has an extra segment and matches no route (#4964).
+func routedPath(r *http.Request) string {
+	if r.URL.RawPath != "" {
+		return r.URL.RawPath
+	}
+	return r.URL.Path
+}
+
 // decodeJSON decodes JSON from the request body into v.
 func decodeJSON(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)

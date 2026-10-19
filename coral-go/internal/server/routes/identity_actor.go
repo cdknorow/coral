@@ -192,7 +192,7 @@ func routeOf(r *http.Request) string {
 		route = rc.RoutePattern()
 		if route == "" && rc.Routes != nil {
 			// Refused before routing (strict mode): ask the router which route it was.
-			if tctx := chi.NewRouteContext(); rc.Routes.Match(tctx, r.Method, r.URL.Path) {
+			if tctx := chi.NewRouteContext(); rc.Routes.Match(tctx, r.Method, routedPath(r)) {
 				route = tctx.RoutePattern()
 			}
 		}

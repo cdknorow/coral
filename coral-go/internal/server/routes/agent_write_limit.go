@@ -118,9 +118,12 @@ func AgentWriteLimit() func(http.Handler) http.Handler {
 	}
 }
 
+// limitedAgentWrite says whether the request is one of the budgeted writes. The path is matched in both spellings: chi routes on the RAW path
+// when the request has one, so "/api/board/a%2Fb/messages" reaches the messages handler (project "a%2Fb") although its decoded path
+// "/api/board/a/b/messages" has one more segment than the pattern: matching only the decoded path would let such a request past the budget.
 func limitedAgentWrite(r *http.Request) bool {
 	for _, rt := range agentWriteRoutes {
-		if r.Method == rt.method && rt.path.MatchString(r.URL.Path) {
+		if r.Method == rt.method && (rt.path.MatchString(r.URL.Path) || rt.path.MatchString(r.URL.EscapedPath())) {
 			return true
 		}
 	}
