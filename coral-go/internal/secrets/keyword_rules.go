@@ -98,8 +98,9 @@ var keywordRules = []keywordRule{
 	{re: regexp.MustCompile(`(?i)(authorization)(["']?\s*[:=]\s*["']?)(?:bearer|token)\s+([A-Za-z0-9._~+/=-]{12,})`), kind: kindAuth},
 }
 
-// keywordSpans finds the values the keyword rules redact.
-func keywordSpans(text string) []redact.Span {
+// keywordSpansIn runs every keyword rule over text, all of it: keywordSpans (keyword_gate.go) runs them only where a name could be, and
+// the test holds the two equal.
+func keywordSpansIn(text string) []redact.Span {
 	var out []redact.Span
 	for _, r := range keywordRules {
 		for _, m := range r.re.FindAllStringSubmatchIndex(text, -1) {
