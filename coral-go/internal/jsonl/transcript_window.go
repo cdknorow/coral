@@ -73,10 +73,12 @@ func (c *sessionCache) addMessages(msgs []map[string]any) {
 // boundToolNames caps the tool-name map: when it holds more than toolNamesMax names, the ones
 // first seen in the oldest chunks go (agy's "__last_*" bookkeeping stays).
 func (c *sessionCache) boundToolNames() {
-	c.toolSeen, c.chunkSeq = boundNames(c.toolUseNames, c.toolSeen, c.chunkSeq)
+	c.toolSeen, c.chunkSeq = boundNames(c.toolUseNames, c.toolSeen, c.chunkSeq, c.pending.noteDropped(c.toolUseNames))
 }
 
-func boundNames(names map[string]string, seen map[string]uint32, seq uint32) (map[string]uint32, uint32) {
+// boundNames drops the oldest names past toolNamesMax; onDrop, when given, is called with each id just before it goes
+// (the checkpoints' pending calls take a call the bound would drop before any checkpoint has seen it).
+func boundNames(names map[string]string, seen map[string]uint32, seq uint32, onDrop func(id string)) (map[string]uint32, uint32) {
 	seq++
 	if seen == nil {
 		seen = make(map[string]uint32, len(names))
@@ -101,6 +103,9 @@ func boundNames(names map[string]string, seen map[string]uint32, seq uint32) (ma
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].s < list[j].s })
 	for _, e := range list[:max(0, len(names)-toolNamesMax)] {
+		if onDrop != nil {
+			onDrop(e.k)
+		}
 		delete(names, e.k)
 		delete(seen, e.k)
 	}
@@ -208,11 +213,8 @@ func readUpTo(r io.Reader, limit int64) ([]byte, error) {
 	switch v := r.(type) {
 	case *io.LimitedReader:
 		hint = v.N
-		if f, ok := v.R.(*os.File); ok {
-			hint = min(hint, remaining(f))
-		}
-	case *os.File:
-		hint = remaining(v)
+	case interface{ sizeHint() int64 }:
+		hint = v.sizeHint()
 	}
 	buf := make([]byte, 0, min(max(hint, 0), limit)+1) // a byte more, so that the read that finds the end needs no growth
 	for int64(len(buf)) < limit {
@@ -231,18 +233,15 @@ func readUpTo(r io.Reader, limit int64) ([]byte, error) {
 	return buf, nil
 }
 
-// remaining is the bytes of f from its read position to its end, 0 when that can't be told.
-func remaining(f *os.File) int64 {
-	st, err := f.Stat()
-	if err != nil {
-		return 0
-	}
-	pos, err := f.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return 0
-	}
-	return max(st.Size()-pos, 0)
+// sizedFile is a file read from its position, with the bytes it is believed to hold from there (the size its reader
+// already has from a stat): readUpTo makes its buffer that size, with no stat of its own. A poll of a transcript that
+// gained a few lines is a handful of system calls, and two more were a third of it.
+type sizedFile struct {
+	*os.File
+	left int64
 }
+
+func (f sizedFile) sizeHint() int64 { return f.left }
 
 // Transcript is a session's transcript as the reader holds it: the newest messages (Window, whose
 // first message is number Base, counting from 0) of Total. The messages before the window are read
@@ -377,7 +376,7 @@ func streamPart(ctx context.Context, part transcriptPart, offset, from, to int, 
 			}
 			idx++
 		}
-		seen, seq = boundNames(p.names, seen, seq)
+		seen, seq = boundNames(p.names, seen, seq, nil)
 		if eof {
 			return true
 		}
@@ -443,7 +442,7 @@ func (c *sessionCache) noteCheckpoint(offset int64, last map[string]any) {
 	if n := len(c.ckpts); n > 0 && offset-c.ckpts[n-1].offset < checkpointSpacing() {
 		return
 	}
-	c.ckpts = append(c.ckpts, checkpoint{msgs: c.total(), offset: offset, last: copyMessage(last), pending: c.pending.snapshot()})
+	c.ckpts = append(c.ckpts, checkpoint{msgs: c.total(), offset: offset, last: copyMessage(last), pending: c.pending.snapshot(c.toolUseNames)})
 }
 
 // copyMessage is a shallow copy: the merge of a Codex duplicate writes to the message it merges into, and the

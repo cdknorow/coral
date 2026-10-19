@@ -124,7 +124,7 @@ func TestReadUpToAllocatesTheChunkOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "f.jsonl")
 	require.NoError(t, os.WriteFile(path, data, 0o600))
 	for name, read := range map[string]func(*os.File) io.Reader{
-		"file":       func(f *os.File) io.Reader { return f },
+		"sized-file": func(f *os.File) io.Reader { return sizedFile{f, int64(len(data))} },
 		"limit-file": func(f *os.File) io.Reader { return io.LimitReader(f, int64(len(data))) },
 	} {
 		f, err := os.Open(path)

@@ -14,11 +14,15 @@ const pendingCallsMax = 64
 // by the checkpoint and seed the page's names; a call that has had its result is kept only while
 // there is room, newest first, since a second result for it (a Codex output and its event) is named
 // the same. Entries starting "__" (the last call of an Antigravity reply) are always carried.
+//
+// A parse only notes the results it returned (noteResults: a poll of a transcript that gained a few lines
+// does nothing else); the calls are read from toolUseNames when a checkpoint is taken (snapshot), once
+// a megabyte of transcript, not on every poll.
 type pendingCalls struct {
-	calls map[string]pendingCall
-	known map[string]struct{} // the names seen so far, to tell a call new to toolUseNames
-	gen   uint32              // counts the parses (the order of the calls within one is not kept)
-	last  map[string]string   // the "__" entries
+	calls    map[string]pendingCall
+	known    map[string]struct{} // the names already taken into calls, to tell a call new to toolUseNames
+	answered map[string]struct{} // the results since the last snapshot
+	gen      uint32              // counts the snapshots (the order of the calls within one is not kept)
 }
 
 type pendingCall struct {
@@ -27,18 +31,36 @@ type pendingCall struct {
 	resolved bool
 }
 
-// observe notes the calls a parse added to names and the results it returned.
-func (p *pendingCalls) observe(names map[string]string, parsed []map[string]any) {
+// noteResults notes the tool results among the messages a parse returned.
+func (p *pendingCalls) noteResults(parsed []map[string]any) {
+	for _, m := range parsed {
+		if m["type"] != "tool_result" {
+			continue
+		}
+		if id, _ := m["tool_use_id"].(string); id != "" {
+			if p.answered == nil {
+				p.answered = map[string]struct{}{}
+			}
+			p.answered[id] = struct{}{}
+		}
+	}
+}
+
+// snapshot takes the calls names holds that are new, marks those answered since the last snapshot, keeps the
+// bound, and returns what a checkpoint carries: the calls, and the "__" entries of names as they stand. nil
+// when there are none.
+func (p *pendingCalls) snapshot(names map[string]string) map[string]string {
 	if p.calls == nil {
 		p.calls, p.known = map[string]pendingCall{}, map[string]struct{}{}
 	}
 	p.gen++
+	var last map[string]string
 	for k, v := range names {
 		if strings.HasPrefix(k, "__") {
-			if p.last == nil {
-				p.last = map[string]string{}
+			if last == nil {
+				last = map[string]string{}
 			}
-			p.last[k] = v
+			last[k] = v
 			continue
 		}
 		if _, ok := p.known[k]; !ok {
@@ -46,17 +68,13 @@ func (p *pendingCalls) observe(names map[string]string, parsed []map[string]any)
 			p.calls[k] = pendingCall{name: v, gen: p.gen}
 		}
 	}
-	for _, m := range parsed {
-		if m["type"] != "tool_result" {
-			continue
-		}
-		if id, _ := m["tool_use_id"].(string); id != "" {
-			if c, ok := p.calls[id]; ok {
-				c.resolved = true
-				p.calls[id] = c
-			}
+	for id := range p.answered {
+		if c, ok := p.calls[id]; ok {
+			c.resolved = true
+			p.calls[id] = c
 		}
 	}
+	clear(p.answered)
 	if len(p.calls) > pendingCallsMax {
 		p.trim()
 	}
@@ -68,6 +86,33 @@ func (p *pendingCalls) observe(names map[string]string, parsed []map[string]any)
 		for k := range p.calls {
 			p.known[k] = struct{}{}
 		}
+	}
+	if len(p.calls) == 0 && len(last) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(p.calls)+len(last))
+	for id, c := range p.calls {
+		out[id] = c.name
+	}
+	for k, v := range last {
+		out[k] = v
+	}
+	return out
+}
+
+// noteDropped is the hook boundNames calls with each name it is about to drop: a call the snapshots have not seen yet
+// (it came after the last checkpoint of its chunk) is taken now, from names, as new to the next snapshot, so the bound on
+// the names cannot lose a call a checkpoint should carry. It costs what is dropped, nothing for a poll that drops none.
+func (p *pendingCalls) noteDropped(names map[string]string) func(id string) {
+	return func(id string) {
+		if _, ok := p.known[id]; ok {
+			return
+		}
+		if p.calls == nil {
+			p.calls, p.known = map[string]pendingCall{}, map[string]struct{}{}
+		}
+		p.known[id] = struct{}{}
+		p.calls[id] = pendingCall{name: names[id], gen: p.gen + 1}
 	}
 }
 
@@ -94,19 +139,4 @@ func (p *pendingCalls) trim() {
 	for _, e := range list[pendingCallsMax:] {
 		delete(p.calls, e.id)
 	}
-}
-
-// snapshot is the names a checkpoint carries: nil when there are none.
-func (p *pendingCalls) snapshot() map[string]string {
-	if len(p.calls) == 0 && len(p.last) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(p.calls)+len(p.last))
-	for id, c := range p.calls {
-		out[id] = c.name
-	}
-	for k, v := range p.last {
-		out[k] = v
-	}
-	return out
 }

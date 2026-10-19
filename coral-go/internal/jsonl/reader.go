@@ -179,7 +179,9 @@ func (r *SessionReader) readLocked(ctx context.Context, c *sessionCache, session
 		return nil, c.total()
 	}
 	defer f.Close()
+	size := int64(0) // the file's size when it was read, the hint for the buffer of its chunks
 	if info, err := f.Stat(); err == nil {
+		size = info.Size()
 		head := transcriptHead(f)
 		if transcriptReplaced(c.info, info, c.head, head) {
 			c.resetMessages()
@@ -200,7 +202,7 @@ func (r *SessionReader) readLocked(ctx context.Context, c *sessionCache, session
 	}
 	var collected []map[string]any
 	for {
-		chunk, eof, err := nextChunk(f, readChunkMax)
+		chunk, eof, err := nextChunk(sizedFile{f, size - c.offset}, readChunkMax)
 		if err != nil {
 			return collected, c.total()
 		}
@@ -223,7 +225,7 @@ func (r *SessionReader) readLocked(ctx context.Context, c *sessionCache, session
 			}
 			c.noteCheckpoint(start+int64(from), p.last)
 			parsed := p.parse(entries[lo:hi])
-			c.pending.observe(c.toolUseNames, parsed)
+			c.pending.noteResults(parsed)
 			c.addMessages(parsed)
 			if collect {
 				collected = append(collected, parsed...)

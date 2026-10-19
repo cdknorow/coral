@@ -248,7 +248,7 @@ func TestBoundNamesDropsTheOldestChunksFirstAndKeepsAgyBookkeeping(t *testing.T)
 		for i := 0; i < 3; i++ {
 			names[fmt.Sprintf("id_%d_%d", chunk, i)] = "Bash"
 		}
-		seen, seq = boundNames(names, seen, seq)
+		seen, seq = boundNames(names, seen, seq, nil)
 	}
 	// 12 ids were added; the cap is 6 names in all (the bookkeeping keys count): the two newest chunks
 	// stay (6 ids), the bookkeeping stays, and the oldest chunks' ids are gone.
