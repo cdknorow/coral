@@ -11,7 +11,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     const { Input } = client;
     const TEAM = 'phone-set-' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
-    const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a touch's click and the panel's slide settle over frames; there is no completion event
+    const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a touch's click and the panel's slide settle over frames; there is no completion event
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -37,7 +37,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         const tap = async sel => {
             const r = await rect(sel); assert.ok(r && r.w > 0 && r.h > 0, `${sel} is on screen to tap: ` + JSON.stringify(r));
             const x = (Math.max(r.l, 0) + Math.min(r.r, 390)) / 2, y = (r.t + r.b) / 2;
-            await Input.dispatchTouchEvent({ type: 'touchStart', touchPoints: [{ x, y }] }); await Input.dispatchTouchEvent({ type: 'touchEnd', touchPoints: [] }); await sleep(400);
+            await Input.dispatchTouchEvent({ type: 'touchStart', touchPoints: [{ x, y }] }); await Input.dispatchTouchEvent({ type: 'touchEnd', touchPoints: [] }); await settle(400);
         };
         const HEADER = '#mobile-session-list .board-card-header';
         const open = async () => {
@@ -51,7 +51,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         const insideScreen = (r, what) => assert.ok(r && r.w > 0 && r.h > 0 && r.l >= 0 && r.r <= 390.5 && r.t >= 0 && r.b <= 844.5, `${what} is on the screen: ` + JSON.stringify(r));
         const reach = async theme => {
             await waitFor(`!!document.querySelector('#team-settings-workspace [data-settings-tab=health]')`, 'the Health check tab', 15000);
-            await sleep(300);
+            await settle(300);
             insideScreen(await rect('#team-settings-workspace'), `${theme}: the Team settings page`);
             const tabs = await ev(`[...document.querySelectorAll('#team-settings-workspace [data-settings-tab]')].map(t => { const r = t.getBoundingClientRect(); return { id: t.dataset.settingsTab, text: t.textContent.trim(), h: r.height, w: r.width }; })`);
             for (const want of ['workflow', 'prompts', 'health']) assert.ok(tabs.some(t => t.id === want), `a ${want} tab: ` + JSON.stringify(tabs));
