@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.4.101 — The Preview pane resizes again, can be maximised, and the servers pill is gone
+
+### Fixes
+
+- **The Preview pane can always be resized:** its drag limit subtracted the side panel's width twice, so on an ordinary window the pane was stuck at its narrowest; dragging now goes as far as the room allows, a saved width is held to the room when the window shrinks, a corrupted saved width no longer opens the pane over Chat, and a width saved on a bigger display no longer squeezes Chat out on a smaller one; the handle can also be resized with the keyboard. Every way of opening the pane (a markdown or image artifact, a code or image file from the Files tab) keeps Chat visible.
+
+### Changes
+
+- **Maximise the Preview pane:** a toggle in the pane's header makes it cover Chat and fill the centre; the same button or Escape restores it.
+- **The servers pill beside the agent list's search is removed,** with its dropdown. The Display menu stays, and the agent list's Filters still filter by machine. A server that needs an update is shown in its group header's details and in the Servers tab.
+
+### Other changes
+
+- **Tests and CI:** the render-time test's bound is loosened to clear Windows' slower newline handling while still failing an unbounded render.
+
 ## v1.4.100 — The Inbox speaks up, a clearer message for a damaged board, and steadier tests
 
 ### Changes
