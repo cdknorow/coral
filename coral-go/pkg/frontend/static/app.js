@@ -3,6 +3,7 @@ import { importOnce } from './import_once.js';
 import { startChatPrefetch } from './chat_page.js';
 import './hub_blocked_controls.js'; // dims controls the Hub tier does not allow (#3769)
 // Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
+// Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
 import './session_rows.js';
 import './nav_tabs.js'; // the tab row, its More menu and the phone's view dropdown (#3816)
 import { initPrerequisiteChecks } from './prerequisites.js';
@@ -16,10 +17,8 @@ import { enterTeamContext, exitTeamContext, renderTeamSettingsTab } from './team
 
 import { state } from './state.js';
 import './local_store.js';
-import { loadLiveSessions, loadHistorySessionsPaged } from './api.js';
-import { filterState, deserializeFromUrl, serializeToUrl, urlSearchFor,
-         hasActiveFilters, countActiveFilters, resetFilters }
-    from './search_filters.js';
+import { loadLiveSessions } from './api.js';
+import { deserializeFromUrl, urlSearchFor } from './search_filters.js';
 import { connectCoralWs } from './websocket.js';
 import { addMacro, hideMacroModal, restartSession, hideRestartModal, confirmRestart, editGoal, refreshGoal, requestGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon } from './sessions.js';
@@ -36,7 +35,7 @@ import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecen
 import { switchJobsSubtab, toggleAgenticPanel, toggleSidebarRail } from './sidebar.js';
 import { connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
 import { saveNotes, generateSummary, toggleNotesEdit, cancelNotesEdit, switchHistoryTab } from './notes.js';
-import { addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag, loadAllTags } from './tags.js';
+import { addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag } from './tags.js';
 import { loadMoreBoardTasks, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
 import { openFilePreview, openFileEdit, refreshChangedFiles, copyFilePath } from './changed_files.js';
 import './file_mention.js';
@@ -49,7 +48,7 @@ import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS, parse as parseRoute } fro
 import { initPopout, applyPopoutBodyClass, popoutRetry } from './popout.js';
 import { setLiveViewMode, showTerminalView } from './live_chat.js';
 import { switchAgenticTab } from './agentic_state.js';
-import { copyBranchName, escapeHtml, showView, showToast, viewChanges, buildWelcome } from './utils.js';
+import { copyBranchName, showView, showToast, viewChanges, buildWelcome } from './utils.js';
 import './preview_pane.js';
 import { initScheduler, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
 import { initLiveJobs, selectLiveJobRun } from './live_jobs.js';
@@ -74,7 +73,7 @@ import { toggleAllGroups } from './group_collapse.js'; // the list header's one 
 import { toggleDisplayPanel, displayPanelKey } from './display_panel.js'; // the Display expander
 import { registerActions, tokenOf } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
 import { markReady } from './ready.js';
-import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadChatSearch, loadModals, loadResumeDialog, loadDefaultPromptsDialog } from './lazy_panels.js';
+import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadModals, loadResumeDialog, loadDefaultPromptsDialog } from './lazy_panels.js';
 
 // Panels off the landing view load on first use (#3083 phase 2, lazy_panels.js).
 const {
@@ -282,7 +281,6 @@ registerActions({
 // Runs on every tab switch: there is nothing to stop until the dashboard has loaded.
 const stopCostDashboard = () => { loadCostDashboard.module?.stopCostDashboard(); };
 const { showDocsTab, selectDoc } = lazyFns(loadDocs, ['showDocsTab', 'selectDoc']);
-const { searchChats } = lazyFns(loadChatSearch, ['searchChats']);
 const { showThemeConfigurator, hideThemeConfigurator } = lazyFns(loadThemeConfig, ['showThemeConfigurator', 'hideThemeConfigurator']);
 // The dialogs (#3140): their window functions are stubs until one opens.
 const {
@@ -306,7 +304,9 @@ import { installTestHooks } from './test_hooks.js';
 import { _handleTeamFolderImport, _importTeamFromFolder } from './team_folder_import.js';
 import { closeSidebarKebabs, closeTopBarSettings, toggleSidebarKebab, toggleTopBarSettings } from './sidebar_menus.js';
 import { _startListLoadSettled, pollStartupStatus } from './startup_status.js';
-import { initLocalStore, initPanels, initPlatform, installUnauthorizedRedirect, wireComposer, wirePaneScroll, wireWindowEvents, yieldToMain } from './app_wiring.js'; // the suites' surface, installed only when the page's boot data asks for it (#5015)
+import { getHistoryPage, setHistoryPage } from './history_state.js';
+import { initLocalStore, initPanels, initPlatform, installUnauthorizedRedirect, wireComposer, wirePaneScroll, wireWindowEvents, yieldToMain } from './app_wiring.js';
+import { loadHistoryFiltered, loadHistoryPage, populateHfTagSelect, syncFilterDomToState, wireHistoryFilters } from './history_filters.js'; // the suites' surface, installed only when the page's boot data asks for it (#5015)
 
 installTestHooks();
 
@@ -606,113 +606,12 @@ document.addEventListener('click', (e) => {
 });
 
 // ── History search/filter/pagination state ───────────────────────────────
-let historyPage = 1;  // page number only; all other filter state lives in filterState
 
-function loadHistoryPage(page) {
-    historyPage = page;
-    loadHistoryFiltered();
-}
 
-function loadHistoryFiltered() {
-    serializeToUrl(historyPage);
-    const loaded = filterState.q ? searchChats(filterState.q, historyPage) : loadHistorySessionsPaged(historyPage, 50);
-    updateFilterBadge();
-    return loaded;
-}
 
-async function populateHfTagSelect() {
-    const tags = await loadAllTags();
-    const sel = document.getElementById('hf-tag-add');
-    if (!sel || !tags) return;
-    sel.innerHTML = '<option value="">+ tag</option>';
-    for (const tag of tags) {
-        const opt = document.createElement('option');
-        opt.value = tag.id;
-        opt.textContent = tag.name;
-        sel.appendChild(opt);
-    }
-}
 
-function renderFilterTagPills() {
-    const container = document.getElementById('hf-tag-pills');
-    if (!container) return;
-    const sel = document.getElementById('hf-tag-add');
-    const tagMap = {};
-    if (sel) {
-        for (const opt of sel.options) {
-            if (opt.value) tagMap[parseInt(opt.value)] = opt.textContent;
-        }
-    }
-    container.innerHTML = filterState.tagIds.map(id => {
-        const name = tagMap[id] || `Tag ${id}`;
-        return `<span class="hf-tag-pill" data-tag-id="${Number(id)}">
-            ${escapeHtml(name)}
-            <span class="hf-tag-remove">&times;</span>
-        </span>`;
-    }).join('');
 
-    container.querySelectorAll('.hf-tag-remove').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const tagId = parseInt(e.target.closest('[data-tag-id]').dataset.tagId);
-            filterState.tagIds = filterState.tagIds.filter(id => id !== tagId);
-            renderFilterTagPills();
-            const logicRow = document.getElementById('hf-tag-logic-row');
-            if (logicRow) logicRow.style.display = filterState.tagIds.length > 1 ? '' : 'none';
-            historyPage = 1;
-            loadHistoryFiltered();
-        });
-    });
-}
 
-function updateFilterBadge() {
-    const badge = document.getElementById('hf-active-count');
-    if (!badge) return;
-    const n = countActiveFilters();
-    badge.textContent = String(n);
-    badge.style.display = n > 0 ? '' : 'none';
-}
-
-function syncFilterDomToState() {
-    const searchInput = document.getElementById('history-search');
-    if (searchInput) searchInput.value = filterState.q;
-
-    const dateFrom = document.getElementById('hf-date-from');
-    if (dateFrom) dateFrom.value = filterState.dateFrom;
-    const dateTo = document.getElementById('hf-date-to');
-    if (dateTo) dateTo.value = filterState.dateTo;
-
-    const durMin = document.getElementById('hf-dur-min');
-    if (durMin && filterState.minDurationSec != null)
-        durMin.value = String(Math.round(filterState.minDurationSec / 60));
-    const durMax = document.getElementById('hf-dur-max');
-    if (durMax && filterState.maxDurationSec != null)
-        durMax.value = String(Math.round(filterState.maxDurationSec / 60));
-
-    document.querySelectorAll('[data-chat-type]').forEach(b => {
-        b.classList.toggle('active', b.dataset.chatType === (filterState.chatType || 'all'));
-    });
-    document.querySelectorAll('[data-source]').forEach(b => {
-        if (b.dataset.source === 'all')
-            b.classList.toggle('active', filterState.sourceTypes.length === 0);
-        else
-            b.classList.toggle('active', filterState.sourceTypes.includes(b.dataset.source));
-    });
-    document.querySelectorAll('[data-logic]').forEach(b =>
-        b.classList.toggle('active', b.dataset.logic === filterState.tagLogic));
-    document.querySelectorAll('[data-mode]').forEach(b =>
-        b.classList.toggle('active', b.dataset.mode === filterState.ftsMode));
-
-    if (hasActiveFilters()) {
-        const panel = document.getElementById('hf-advanced');
-        if (panel) panel.style.display = '';
-    }
-
-    const ftsModeRow = document.getElementById('hf-fts-mode-row');
-    if (ftsModeRow) ftsModeRow.style.display = filterState.q ? '' : 'none';
-
-    renderFilterTagPills();
-    updateFilterBadge();
-}
 
 
 
@@ -739,7 +638,7 @@ const liveListReady = new Promise(r => { _liveListLoaded = r; });
 
 /** The Chats list's query for its current filters and page (no "?"). */
 function currentChatsQuery() {
-    return urlSearchFor(historyPage, '').replace(/^\?/, '');
+    return urlSearchFor(getHistoryPage(), '').replace(/^\?/, '');
 }
 
 function registerRouteHandlers() {
@@ -782,7 +681,7 @@ function registerRouteHandlers() {
         }
         // The list: its filters are the URL's (startup already read them).
         if (!opts.startup) {
-            historyPage = deserializeFromUrl().page;
+            setHistoryPage(deserializeFromUrl().page);
             syncFilterDomToState();
         }
         if (state.currentSession && state.currentSession.type === 'history') state.currentSession = null; // Back closed the chat
@@ -888,7 +787,7 @@ startChatPrefetch({ cloud: isCloud() });
 function loadInitialData(popout) {
     // Restore filter state from URL query params before first load
     const restored = deserializeFromUrl();
-    historyPage = restored.page;
+    setHistoryPage(restored.page);
 
     // The hash the page was opened with: a deep link to restore. A hash the user
     // sets while the list loads (e.g. opening Servers) is not restored again,
@@ -920,162 +819,6 @@ function loadInitialData(popout) {
     initMobile();
 }
 
-/** The history filters: the search box, the advanced panel, the mode, source and chat-type buttons, tags, dates, durations and Clear. */
-function wireHistoryFilters() {
-    // ── Filter event wiring ─────────────────────────────────────────────
-
-    // Search bar with debounce
-    const searchInput = document.getElementById('history-search');
-    if (searchInput) {
-        let debounceTimer;
-        searchInput.addEventListener('input', () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                filterState.q = searchInput.value.trim();
-                historyPage = 1;
-                const ftsModeRow = document.getElementById('hf-fts-mode-row');
-                if (ftsModeRow)
-                    ftsModeRow.style.display = filterState.q ? '' : 'none';
-                loadHistoryFiltered();
-            }, 300);
-        });
-    }
-
-    // Advanced panel toggle
-    const advToggle = document.getElementById('hf-adv-toggle');
-    if (advToggle) {
-        advToggle.addEventListener('click', () => {
-            const panel = document.getElementById('hf-advanced');
-            if (panel) panel.style.display = panel.style.display === 'none' ? '' : 'none';
-        });
-    }
-
-    // FTS mode buttons
-    document.querySelectorAll('[data-mode]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            filterState.ftsMode = btn.dataset.mode;
-            document.querySelectorAll('[data-mode]')
-                .forEach(b => b.classList.toggle('active', b.dataset.mode === filterState.ftsMode));
-            historyPage = 1;
-            loadHistoryFiltered();
-        });
-    });
-
-    // Source toggle buttons
-    document.querySelectorAll('[data-source]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const source = btn.dataset.source;
-            if (source === 'all') {
-                filterState.sourceTypes = [];
-            } else {
-                const idx = filterState.sourceTypes.indexOf(source);
-                if (idx >= 0) filterState.sourceTypes.splice(idx, 1);
-                else filterState.sourceTypes.push(source);
-            }
-            document.querySelectorAll('[data-source]').forEach(b => {
-                if (b.dataset.source === 'all')
-                    b.classList.toggle('active', filterState.sourceTypes.length === 0);
-                else
-                    b.classList.toggle('active', filterState.sourceTypes.includes(b.dataset.source));
-            });
-            historyPage = 1;
-            loadHistoryFiltered();
-        });
-    });
-
-    // Chat type toggle buttons
-    document.querySelectorAll('[data-chat-type]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            filterState.chatType = btn.dataset.chatType;
-            document.querySelectorAll('[data-chat-type]').forEach(b => {
-                b.classList.toggle('active', b.dataset.chatType === filterState.chatType);
-            });
-            historyPage = 1;
-            loadHistoryFiltered();
-        });
-    });
-
-    // Tag add select
-    const tagAddSel = document.getElementById('hf-tag-add');
-    if (tagAddSel) {
-        tagAddSel.addEventListener('change', () => {
-            const id = parseInt(tagAddSel.value);
-            if (!id || filterState.tagIds.includes(id)) return;
-            filterState.tagIds.push(id);
-            tagAddSel.value = '';
-            renderFilterTagPills();
-            const logicRow = document.getElementById('hf-tag-logic-row');
-            if (logicRow) logicRow.style.display = filterState.tagIds.length > 1 ? '' : 'none';
-            historyPage = 1;
-            loadHistoryFiltered();
-        });
-    }
-
-    // Tag logic buttons
-    document.querySelectorAll('[data-logic]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            filterState.tagLogic = btn.dataset.logic;
-            document.querySelectorAll('[data-logic]')
-                .forEach(b => b.classList.toggle('active', b.dataset.logic === filterState.tagLogic));
-            historyPage = 1;
-            loadHistoryFiltered();
-        });
-    });
-
-    // Date filters
-    const dateFrom = document.getElementById('hf-date-from');
-    const dateTo = document.getElementById('hf-date-to');
-    if (dateFrom) dateFrom.addEventListener('change', () => {
-        filterState.dateFrom = dateFrom.value || '';
-        historyPage = 1;
-        loadHistoryFiltered();
-    });
-    if (dateTo) dateTo.addEventListener('change', () => {
-        filterState.dateTo = dateTo.value || '';
-        historyPage = 1;
-        loadHistoryFiltered();
-    });
-
-    // Duration filters
-    const durMin = document.getElementById('hf-dur-min');
-    const durMax = document.getElementById('hf-dur-max');
-    if (durMin) durMin.addEventListener('change', () => {
-        const val = parseFloat(durMin.value);
-        filterState.minDurationSec = isNaN(val) ? null : Math.round(val * 60);
-        historyPage = 1;
-        loadHistoryFiltered();
-    });
-    if (durMax) durMax.addEventListener('change', () => {
-        const val = parseFloat(durMax.value);
-        filterState.maxDurationSec = isNaN(val) ? null : Math.round(val * 60);
-        historyPage = 1;
-        loadHistoryFiltered();
-    });
-
-    // Clear all filters button
-    const clearBtn = document.querySelector('.hf-clear-btn');
-    if (clearBtn) {
-        clearBtn.addEventListener('click', () => {
-            resetFilters();
-            if (searchInput) searchInput.value = '';
-            if (dateFrom) dateFrom.value = '';
-            if (dateTo) dateTo.value = '';
-            if (durMin) durMin.value = '';
-            if (durMax) durMax.value = '';
-            document.querySelectorAll('[data-chat-type]')
-                .forEach(b => b.classList.toggle('active', b.dataset.chatType === 'all'));
-            document.querySelectorAll('[data-source]')
-                .forEach(b => b.classList.toggle('active', b.dataset.source === 'all'));
-            document.querySelectorAll('[data-logic]')
-                .forEach(b => b.classList.toggle('active', b.dataset.logic === 'AND'));
-            document.querySelectorAll('[data-mode]')
-                .forEach(b => b.classList.toggle('active', b.dataset.mode === 'or'));
-            renderFilterTagPills();
-            historyPage = 1;
-            loadHistoryFiltered();
-        });
-    }
-}
 
 
 
