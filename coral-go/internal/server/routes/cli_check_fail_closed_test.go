@@ -118,7 +118,7 @@ func TestThemeCLIHonoursConfiguredPaths(t *testing.T) {
 // exec.LookPath in a handler is how a configured path got swapped for the CLI on PATH (#4354: the prerequisite check and the
 // theme generator did). The two that remain are the launch pre-check, which resolves the configured path first, and the test seam.
 func TestHandlersDoNotLookUpAgentCLIsOnPathThemselves(t *testing.T) {
-	allowed := map[string]int{"sessions_launch.go": 1, "system.go": 1}
+	allowed := map[string]int{"sessions_launch_session.go": 1, "system_cli_check.go": 1}
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
 	for _, f := range files {
