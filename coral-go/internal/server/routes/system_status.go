@@ -1,0 +1,132 @@
+// Server status, the tmux checks and the defaults the dashboard asks for (moved out of system.go, #5003; no behaviour change).
+
+package routes
+
+import (
+	"net/http"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/cdknorow/coral/internal/tracking"
+)
+
+const defaultTmuxCacheTTL = 30 * time.Second
+
+// wantsFreshStatus reports an explicit re-check: ?recheck=1, or a request that
+// asks to bypass caches (fetch cache:"no-store" sends Cache-Control: no-cache).
+func wantsFreshStatus(r *http.Request) bool {
+	if v := r.URL.Query().Get("recheck"); v == "1" || v == "true" {
+		return true
+	}
+	cc := strings.ToLower(r.Header.Get("Cache-Control"))
+	return strings.Contains(cc, "no-cache") || strings.Contains(cc, "no-store")
+}
+
+// discoverTmux finds tmux for the status endpoint. This is discovery only (the
+// file exists and is executable); it does not run tmux, so it says nothing
+// about whether the executable works.
+func (h *SystemHandler) discoverTmux(fresh bool) (string, bool) {
+	ttl := h.tmuxCacheTTL
+	if ttl == 0 {
+		ttl = defaultTmuxCacheTTL
+	}
+	h.tmuxMu.Lock()
+	defer h.tmuxMu.Unlock()
+	if !fresh && !h.tmuxAt.IsZero() && time.Since(h.tmuxAt) < ttl {
+		return h.tmuxPath, h.tmuxFound
+	}
+	h.tmuxPath, h.tmuxFound = tmuxProbe()
+	h.tmuxAt = time.Now()
+	return h.tmuxPath, h.tmuxFound
+}
+
+// GetDefaultPrompts returns the hardcoded default prompt templates.
+// GET /api/settings/default-prompts
+func (h *SystemHandler) GetDefaultPrompts(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"default_prompt_orchestrator":        agent.DefaultOrchestratorActionPrompt,
+		"default_prompt_worker":              agent.DefaultWorkerActionPrompt,
+		"default_system_prompt_orchestrator": agent.DefaultOrchestratorSystemPrompt,
+		"default_system_prompt_worker":       agent.DefaultWorkerSystemPrompt,
+		"team_reminder_orchestrator":         "Remember to coordinate with your team and check the message board for updates",
+		"team_reminder_worker":               "Remember to work with your team",
+	})
+}
+
+// GetAgentModels returns the canonical per-agent-type model list used to
+// populate the Model dropdown in the UI. The frontend still accepts free-form
+// model strings — this list is only the curated suggestions.
+// GET /api/agent-models
+func (h *SystemHandler) GetAgentModels(w http.ResponseWriter, r *http.Request) {
+	out := make(map[string][]string, len(agenttypes.AgentTypeModels))
+	for k, v := range agenttypes.AgentTypeModels {
+		if v == nil {
+			out[k] = []string{}
+		} else {
+			out[k] = v
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// Status returns server status.
+// GET /api/system/status
+func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
+	tmuxPath, tmuxAvailable := h.discoverTmux(wantsFreshStatus(r))
+	// Analytics: observe tmux availability (deduplicated per run, so frequent
+	// status polling sends at most one event per result).
+	tmuxStatus := tracking.PrereqMissing
+	if tmuxAvailable {
+		tmuxStatus = tracking.PrereqAvailable
+	}
+	tracking.TrackPrerequisite(tracking.ToolTmux, tmuxStatus, tracking.SourceSystemStatus)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"startup_complete":  true,
+		"version":           config.Version,
+		"tier_name":         config.TierName,
+		"tmux_available":    tmuxAvailable,
+		"tmux_status":       tmuxStatus,
+		"tmux_server_issue": tmuxServerIssue(),
+		"effective_backend": h.effectiveBackend(),
+		// tmux_required: agents cannot be launched without tmux on this server
+		// (it runs the tmux backend). false on the PTY backend.
+		"tmux_required":        h.effectiveBackend() == "tmux",
+		"tmux_path":            tmuxPath,
+		"tmux_install_command": tmuxInstallCommand(),
+		// A data folder other people on this computer can read (Windows; #3637): shown on the
+		// dashboard's first page, not only in the log. "" when there is nothing to say.
+		"security_warning": dataDirWarning(h.cfg.CoralDir()),
+		// Damage the integrity check found a minute after start (#4157); "" when none.
+		"database_warning": background.DatabaseWarning(),
+	})
+}
+
+// dataDirWarning is config.DataDirWarning (a variable so a test can stand in for a Windows
+// folder with a broad access list).
+var dataDirWarning = config.DataDirWarning
+
+// tmuxInstallCommand returns the platform-appropriate install command for tmux.
+func tmuxInstallCommand() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "brew install tmux"
+	case "linux":
+		return "sudo apt install tmux  (or your distro's package manager)"
+	default:
+		return "install tmux for your platform"
+	}
+}
+
+// tmuxServerIssue is non-empty when the running tmux server cannot be talked
+// to by this Coral's tmux (a client/server version mismatch). Coral never
+// stops the old server; the message says how to recover.
+func tmuxServerIssue() string {
+	msg, _ := tmux.IncompatibleServer()
+	return msg
+}

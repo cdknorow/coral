@@ -1,0 +1,419 @@
+// Launching a team (moved out of sessions_launch.go, #5003; no behaviour change).
+
+package routes
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentmodels"
+	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/tracking"
+)
+
+// launchTeamAgent is one member of a team launch.
+type launchTeamAgent struct {
+	Name         string                 `json:"name"`
+	Prompt       string                 `json:"prompt"`
+	Capabilities *agent.Capabilities    `json:"capabilities"`
+	AgentType    string                 `json:"agent_type"`
+	Model        string                 `json:"model"`
+	Thinking     string                 `json:"thinking"` // #4969
+	Flags        []string               `json:"flags"`
+	Tools        []string               `json:"tools"`
+	MCPServers   json.RawMessage        `json:"mcpServers"` // refused: not supported (#3644)
+	Hooks        map[string]interface{} `json:"hooks"`
+	Knowledge    string                 `json:"knowledge"`
+}
+
+// launchTeamRequest is a team launch's body.
+type launchTeamRequest struct {
+	BoardName          string            `json:"board_name"`
+	BoardID            string            `json:"board_id"`  // relaunch on this board (#3536)
+	NewBoard           bool              `json:"new_board"` // create another board even if the name exists
+	WorkingDir         string            `json:"working_dir"`
+	AgentType          string            `json:"agent_type"`
+	Flags              []string          `json:"flags"`
+	BoardServer        string            `json:"board_server"`
+	Backend            string            `json:"backend"`
+	BoardType          string            `json:"board_type"`
+	Worktree           bool              `json:"worktree"`
+	BaseBranch         string            `json:"base_branch"`
+	Agents             []launchTeamAgent `json:"agents"`
+	TeamKnowledgeIndex string            `json:"team_knowledge_index"`
+	// HealthMonitor true turns the team's health check on (#4962). The check is off for a new team; false or absent leaves the team's
+	// setting as it is, so a relaunch never turns off a check the operator turned on.
+	HealthMonitor *bool `json:"health_monitor"`
+	WorkingMode   *struct {
+		Mode               string `json:"mode"`
+		DependencyGuidance bool   `json:"dependency_guidance"`
+		CustomInstructions string `json:"custom_instructions"`
+	} `json:"working_mode"`
+	WorkflowPresets []struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		Instructions string `json:"instructions"`
+		Builtin      bool   `json:"builtin"`
+	} `json:"workflow_presets"`
+}
+
+// LaunchTeam launches multiple agents on a shared message board: the board decided and the request checked
+// before anything is written, then the template's knowledge, working mode and presets restored, the worktree
+// and the team record made, and each named member launched (one member's failure is its entry's error).
+// POST /api/sessions/launch-team
+func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
+	var body launchTeamRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	// A team is a handful of agents; a launch-team that names hundreds would start that many CLI processes (an agent token may call
+	// this, #4602). The larger ceiling on live sessions an agent token started is a separate setting.
+	if len(body.Agents) > maxLaunchTeamAgents {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("a team can have at most %d agents per launch", maxLaunchTeamAgents), "code": "too_many_agents", "max": maxLaunchTeamAgents})
+		return
+	}
+	if h.refuseAgentLaunchOverLimit(w, r, len(body.Agents)) {
+		return
+	}
+	for _, a := range body.Agents {
+		if mcpGiven(a.MCPServers) {
+			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, errMCPNotSupported))
+			return
+		}
+	}
+	// Which board the team joins or starts (#3536), decided before anything is written
+	// (knowledge files, working mode, presets, worktrees, the teams row). From here on
+	// body.BoardName is the board's id.
+	// The base branch reaches git: never an option, and checked before anything is created
+	// (#3601, weak site W24).
+	if body.Worktree && body.BaseBranch != "" {
+		if err := gitutil.ValidRef(body.BaseBranch); err != nil {
+			errBadRequest(w, "base_branch: "+err.Error())
+			return
+		}
+	}
+	if body.BoardName != "" || body.BoardID != "" {
+		key, ok := h.launchBoard(w, r, body.BoardID, body.BoardName, body.NewBoard)
+		if !ok {
+			return
+		}
+		body.BoardName = key
+	}
+	h.restoreTeamTemplate(r.Context(), &body)
+
+	memberTypes, skippedMembers := teamMemberTypes(body)
+	attempt := tracking.StartLaunch(tracking.KindTeam, tracking.TeamProvider(memberTypes), h.launchBackendLabel(body.Backend), len(body.Agents), false)
+	refuse := func(category, msg string) {
+		attempt.Finish(tracking.OutcomeFailure, category, 0, len(body.Agents))
+		errBadRequest(w, msg)
+	}
+	if msg := checkTeamRequest(body); msg != "" {
+		refuse(tracking.FailInvalidRequest, msg)
+		return
+	}
+	ctx := r.Context()
+	workingDir, worktreePath, msg := h.createTeamWorktree(ctx, body)
+	if msg != "" {
+		refuse(tracking.FailWorktreeFailed, msg)
+		return
+	}
+	teamID := h.createTeamRecord(ctx, body, workingDir, worktreePath)
+
+	// Load settings once so we can fall back to per-type default_model_<type>. A read that fails
+	// stops the team before any agent starts: the loop below would otherwise start its agents
+	// without the configured CLI path (#4350).
+	userSettings, err := h.launchSettings(ctx)
+	if err != nil {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailSpawnFailed, 0, len(body.Agents))
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		return
+	}
+	// An agent never starts a less-restricted agent (#4032): the team's own flags and each
+	// member's choices are limited, except a member that is exactly an entry of a team template
+	// the Operator saved (saved_team_templates, which an agent's token can't write).
+	fromAgent := agentCaller(r)
+	if fromAgent {
+		body.Flags = keepAgentLaunchFlags(body.Flags)
+	}
+	var launched []map[string]any
+	firstFailure := ""
+	for _, agentDef := range body.Agents {
+		if agentDef.Name == "" {
+			continue
+		}
+		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef) {
+			agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks = limitAgentLaunch("launch-team", agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks)
+		}
+		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID)
+		if category != "" && firstFailure == "" {
+			firstFailure = category
+		}
+		launched = append(launched, entry)
+	}
+
+	resp := map[string]any{"ok": true, "board": body.BoardName, "board_id": body.BoardName, "board_label": h.boardLabel(body.BoardName), "agents": launched}
+	if teamID > 0 {
+		resp["team_id"] = teamID
+	}
+	finishTeamLaunch(attempt, launched, skippedMembers, firstFailure, len(body.Agents))
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// restoreTeamTemplate writes what a team template brings besides its members: the members' knowledge files and the
+// team's knowledge index, its working mode and its workflow presets. A failure is logged; the launch goes on.
+func (h *SessionsHandler) restoreTeamTemplate(ctx context.Context, body *launchTeamRequest) {
+	if body.BoardName != "" {
+		coralDir := h.cfg.CoralDir()
+		hasKnowledge := false
+		for _, a := range body.Agents {
+			if a.Knowledge != "" {
+				if _, err := background.WriteKnowledgeFile(coralDir, body.BoardName, a.Name, a.Knowledge); err != nil {
+					log.Printf("[launch-team] knowledge for agent %q of team %s not restored: %v", a.Name, body.BoardName, err)
+				}
+				hasKnowledge = true
+			}
+		}
+		if body.TeamKnowledgeIndex != "" {
+			if err := background.WriteKnowledgeIndex(coralDir, body.BoardName, body.TeamKnowledgeIndex); err != nil {
+				log.Printf("[launch-team] knowledge index of team %s not restored: %v", body.BoardName, err)
+			}
+			hasKnowledge = true
+		}
+		if hasKnowledge {
+			log.Printf("[launch-team] restored %d agent knowledge files for team %s", len(body.Agents), body.BoardName)
+		}
+	}
+	if body.WorkingMode != nil && h.bs != nil {
+		wm := board.WorkingMode{
+			Mode:               body.WorkingMode.Mode,
+			DependencyGuidance: body.WorkingMode.DependencyGuidance,
+			CustomInstructions: body.WorkingMode.CustomInstructions,
+		}
+		if _, err := h.bs.SetWorkingMode(ctx, body.BoardName, wm); err != nil {
+			log.Printf("[launch-team] failed to restore working mode for team %s: %v", body.BoardName, err)
+		} else {
+			log.Printf("[launch-team] restored working mode %q for team %s", wm.Mode, body.BoardName)
+		}
+	}
+	if body.HealthMonitor != nil && *body.HealthMonitor && h.bs != nil {
+		if err := h.bs.SetHealthOn(ctx, body.BoardName, true); err != nil {
+			log.Printf("[launch-team] failed to turn on the health check for team %s: %v", body.BoardName, err)
+		}
+	}
+	if len(body.WorkflowPresets) > 0 && h.bs != nil {
+		for _, p := range body.WorkflowPresets {
+			h.bs.SaveWorkflowPreset(ctx, body.BoardName, p.ID, p.Name, p.Instructions, !p.Builtin)
+		}
+		log.Printf("[launch-team] restored %d workflow presets for team %s", len(body.WorkflowPresets), body.BoardName)
+	}
+}
+
+// teamMemberTypes is the effective provider of each member that will launch (its own type, else the team's; the
+// Claude fallback is launchSession's), for the team's analytics label ("mixed" only when those truly differ), and
+// how many unnamed members the launch skips.
+func teamMemberTypes(body launchTeamRequest) (types []string, skipped int) {
+	for _, a := range body.Agents {
+		if a.Name == "" {
+			skipped++ // the launch loop skips unnamed members
+			continue
+		}
+		t := body.AgentType
+		if a.AgentType != "" {
+			t = a.AgentType
+		}
+		types = append(types, t)
+	}
+	return types, skipped
+}
+
+// checkTeamRequest is why a team launch is refused before anything starts ("" when it isn't): the board, the
+// folder and the members required, and the team's type and every member's type and model valid. A team that
+// failed halfway would leave live agents behind.
+func checkTeamRequest(body launchTeamRequest) string {
+	if body.BoardName == "" || body.WorkingDir == "" || len(body.Agents) == 0 {
+		return "board_name, working_dir, and agents required"
+	}
+	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		return err.Error()
+	}
+	for _, a := range body.Agents {
+		if err := agent.ValidateAgentType(a.AgentType); err != nil {
+			return fmt.Sprintf("agent %q: %s", a.Name, err)
+		}
+		if a.Model != "" && !agentmodels.ValidModelValue(a.Model) {
+			return fmt.Sprintf("agent %q: %s", a.Name, errInvalidModel)
+		}
+		memberType := a.AgentType
+		if memberType == "" {
+			memberType = body.AgentType
+		}
+		if memberType == "" {
+			memberType = at.Claude
+		}
+		if t := strings.TrimSpace(a.Thinking); t != "" && !agentmodels.ValidThinking(memberType, t) {
+			return fmt.Sprintf("agent %q: %s", a.Name, errInvalidThinking(memberType))
+		}
+	}
+	return ""
+}
+
+// createTeamWorktree makes the team's git worktree when it asks for one (branch coral-team/<board> from its base
+// branch, main by default; the branch reused when a previous run left it), and returns the folder its agents start
+// in, the worktree ("" for none), or why it failed.
+func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTeamRequest) (workingDir, worktreePath, failure string) {
+	if !body.Worktree || body.WorkingDir == "" {
+		return body.WorkingDir, "", ""
+	}
+	branch := body.BaseBranch
+	if branch == "" {
+		branch = "main"
+	}
+	worktreeDir := filepath.Join(h.cfg.CoralDir(), "worktrees")
+	os.MkdirAll(worktreeDir, 0755)
+	worktreePath = filepath.Join(worktreeDir, body.BoardName)
+	worktreeBranch := fmt.Sprintf("coral-team/%s", body.BoardName)
+	cmd := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "-b", worktreeBranch, "--", worktreePath, branch)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Branch may already exist from a previous run — try without -b
+		cmd2 := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "--", worktreePath, worktreeBranch)
+		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
+			return "", "", fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2))
+		}
+	}
+	log.Printf("[launch-team] created worktree at %s (branch %s from %s)", worktreePath, worktreeBranch, branch)
+	return worktreePath, worktreePath, ""
+}
+
+// createTeamRecord stores the team (its request, its folder, whether that is a worktree) and returns its id, 0
+// when there is no team store or the record could not be made.
+func (h *SessionsHandler) createTeamRecord(ctx context.Context, body launchTeamRequest, workingDir, worktreePath string) int64 {
+	if h.teamStore == nil {
+		return 0
+	}
+	configJSON, _ := json.Marshal(body)
+	isWorktree := 0
+	if worktreePath != "" {
+		isWorktree = 1
+	}
+	team, err := h.teamStore.CreateTeam(ctx, &store.Team{
+		Name:       body.BoardName,
+		ConfigJSON: string(configJSON),
+		Status:     "running",
+		WorkingDir: workingDir,
+		IsWorktree: isWorktree,
+	})
+	if err != nil {
+		log.Printf("[launch-team] failed to create team record: %v", err)
+		return 0
+	}
+	return team.ID
+}
+
+// launchTeamMember launches one named member: its type and model over the team's (the model else the Settings
+// default for its type), its own flags or the team's (without their permission flags: launchSession derives those),
+// the team's distilled knowledge in its prompt. It returns the member's entry for the reply ({name, error} when it
+// failed) and, for a launch that failed, its analytics category.
+func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamRequest, def launchTeamAgent, userSettings map[string]string, workingDir, worktreePath string, teamID int64) (map[string]any, string) {
+	agentType := body.AgentType
+	if def.AgentType != "" {
+		agentType = def.AgentType
+	}
+	effectiveModel := defaultModelFromSettings(userSettings, agentType, def.Model)
+	agentFlags := def.Flags
+	if len(agentFlags) == 0 {
+		agentFlags = stripAgentPermissionFlags(body.Flags)
+	}
+	if effectiveModel != "" && !agentmodels.ValidModelValue(effectiveModel) {
+		// Only a saved default can get here (each member's own model was checked above).
+		return map[string]any{"name": def.Name, "error": "the default model in Settings: " + errInvalidModel}, ""
+	}
+	if effectiveModel != "" {
+		agentFlags = append(agentFlags, "--model", effectiveModel)
+	}
+	effectiveThinking := defaultThinkingFromSettings(userSettings, agentType, def.Thinking)
+	result, err := h.launchSession(ctx, launchSpec{
+		WorkDir: workingDir, AgentType: agentType, DisplayName: def.Name, Flags: agentFlags,
+		Prompt:    InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), body.BoardName, def.Name, def.Prompt),
+		BoardName: body.BoardName, BoardServer: body.BoardServer, Backend: body.Backend, BoardType: body.BoardType,
+		Model: effectiveModel, Thinking: effectiveThinking, Capabilities: def.Capabilities, Tools: def.Tools, Hooks: def.Hooks,
+	})
+	if err != nil {
+		log.Printf("[launch-team] failed to launch agent %s: %v", def.Name, err)
+		return map[string]any{"name": def.Name, "error": err.Error()}, classifyLaunchError(err)
+	}
+	sessionID := result["session_id"].(string)
+	if worktreePath != "" {
+		h.ss.UpdateWorktreeInfo(ctx, sessionID, worktreePath, body.WorkingDir)
+	}
+	if teamID > 0 && h.teamStore != nil {
+		agentConfigJSON, _ := json.Marshal(def)
+		h.teamStore.CreateTeamMember(ctx, &store.TeamMember{
+			TeamID:          teamID,
+			AgentName:       def.Name,
+			AgentConfigJSON: string(agentConfigJSON),
+			SessionID:       &sessionID,
+			Status:          "active",
+		})
+		h.ss.SetTeamID(ctx, sessionID, teamID)
+	}
+	// Board subscription handled by setupBoardAndPrompt (prompt passed as CLI arg)
+	if body.BoardName != "" {
+		h.setupBoardAndPrompt(sessionID, result["session_name"].(string), agentType, body.BoardName, launchedName(result, def.Name))
+	}
+	entry := map[string]any{"name": launchedName(result, def.Name), "session_id": sessionID, "session_name": result["session_name"]}
+	if worktreePath != "" {
+		entry["worktree_path"] = worktreePath
+	}
+	return entry, ""
+}
+
+// finishTeamLaunch records the team launch's outcome. launched holds both started members and {name, error}
+// failures, so each kind is counted separately: only started members are real launches. Unnamed members were
+// never launched: they count as failed (not started), with a fixed category, so requested == started + failed.
+func finishTeamLaunch(attempt *tracking.Attempt, launched []map[string]any, skipped int, firstFailure string, requested int) {
+	started, failed := 0, 0
+	for _, m := range launched {
+		if _, bad := m["error"]; bad {
+			failed++
+		} else {
+			started++
+		}
+	}
+	failed += skipped
+	if skipped > 0 && firstFailure == "" {
+		firstFailure = tracking.FailInvalidRequest
+	}
+	switch {
+	case failed == 0 && started > 0:
+		attempt.Finish(tracking.OutcomeSuccess, "", started, 0)
+	case started == 0:
+		attempt.Finish(tracking.OutcomeFailure, firstFailure, 0, failed)
+	default:
+		attempt.Finish(tracking.OutcomePartial, firstFailure, started, failed)
+	}
+	if started > 0 {
+		counts := map[string]string{
+			"agent_count": strconv.Itoa(started), "requested_agents": strconv.Itoa(requested),
+			"started_agents": strconv.Itoa(started), "failed_agents": strconv.Itoa(failed),
+		}
+		tracking.TrackEvent(tracking.EventTeamLaunched, counts)
+		tracking.TrackOnce(tracking.EventFirstTeamLaunched, map[string]string{"agent_count": strconv.Itoa(started)})
+	}
+}
+
+// maxLaunchTeamAgents is the most agents one launch-team request may start (#4602).
+const maxLaunchTeamAgents = 32
