@@ -8,16 +8,23 @@ import { registerTaskView } from './task_hooks.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { registerActions, idOf, withId, tokenOf, textOf } from './actions.js';
 import { addPendingMessage } from './live_chat.js';
-import { verificationOf } from './task_verification.js';
-import { pathId, serverUrl, artifactPath, contextServer, keyLabel, boardKeyName, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
+// Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
+import './task_verification.js';
+import { pathId, serverUrl, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, isCloud, fetchValidated } from './server_base.js';
 import { platform } from './platform/detect.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
-import { _agentTaskStatus, _formatCost, _formatTaskTime, _formatTokenCount, _priorityLabel, _priorityOrder, formatTaskDate } from './task_format.js';
+import { _agentTaskStatus, _formatCost, _formatTaskTime, _priorityLabel, _priorityOrder, formatTaskDate } from './task_format.js';
 import { _claimedFor, _subagentTooltip, clearOpenSubagent, loadSubagents, showSubagentDetailModal, subagentToTaskRow } from './subagents.js';
 import { browserLocal } from './safe_storage.js';
 import { ensureBuilt } from './lazy_dom.js';
 import { buildTaskBar } from './task_bar.js';
 import { EMPTY as TASK_EMPTY, isQuery, phases as taskPhases, toParams as taskParams, loadFilters as loadTaskFilters, saveFilters as saveTaskFilters } from './task_filters.js';
+import { _currentBoardKey, _getBoardProject, _isSoloAgent } from './task_board_context.js';
+import { _verifyMark } from './task_verify_marks.js';
+import { _getSelectedDeps, _renderDepPicker, _updateDepTags } from './task_dep_picker.js';
+import { _taskDetailHtml } from './task_detail_html.js';
+import { _taskRequiredOutputs } from './task_reminders.js';
+export { nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './task_reminders.js';
 export { clearOpenSubagent, loadSubagents } from './subagents.js';
 
 // ── Board task polling ───────────────────────────────────────────────
@@ -381,20 +388,7 @@ let _taskSortField = 'created_at';
 let _taskSortClicks = 0; // clicks on the chosen column in a row
 let _taskSortExplicit = false; // a column was chosen: until then open work comes before done work (#4716)
 let _taskSortAsc = false; // default newest first
-let _hideCompleted = browserLocal.get('coral-hide-completed') === 'true'; // off by default, persisted
-/** A finished task's verification (#4564), quietly: in the list a small muted icon after the title only for Evidence attached, its words only in the tooltip and the accessible name; a
- *  verified or an unverified task shows nothing. '' where there is nothing to say. */
-function _verifyMark(t) {
-    const v = verificationOf(t, formatTaskDate);
-    if (!v || !v.mark) return '';
-    return `<span class="board-task-verify-mark ${v.state}" role="img" tabindex="0" title="${escapeAttr(v.detail)}" aria-label="${escapeAttr(v.detail)}"><span class="material-icons" aria-hidden="true">${v.icon}</span></span>`;
-}
-/** The task detail's one plain muted line: who verified it, or that evidence is attached; nothing for an unverified task. */
-function _verifyLine(t) {
-    const v = verificationOf(t, formatTaskDate);
-    return v && v.line ? `<div class="task-detail-verification">${escapeHtml(v.line)}</div>` : '';
-}
-
+let _hideCompleted = browserLocal.get('coral-hide-completed') === 'true'; 
 function _toggleTaskSort(field) {
     // A column's clicks: the first chooses it, the second turns it round, the third gives the default order back (open work first, #4737).
     if (_taskSortExplicit && _taskSortField === field) {
@@ -711,52 +705,9 @@ export function renderBoardTaskList() {
 
 /* ── Dependency Picker ─────────────────────────────────── */
 
-function _renderDepPicker(containerId, selectedIds = [], excludeTaskId = null) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    const tasks = (state.currentBoardTasks || []).filter(t =>
-        t.id !== excludeTaskId
-    );
-    const selected = new Set(selectedIds.map(Number));
 
-    let html = `<div class="dep-picker-selected" id="${escapeAttr(containerId)}-tags"></div>`;
-    html += `<div class="dep-picker-toggle"><a class="dep-picker-add-link" data-on-click="dep-picker-toggle" data-container="${escapeAttr(containerId)}">+ Add dependency</a></div>`;
-    html += `<div class="dep-picker-list" id="${escapeAttr(containerId)}-list" style="display:none">`;
-    if (tasks.length === 0) {
-        html += `<div class="dep-picker-empty">No eligible tasks</div>`;
-    } else {
-        tasks.forEach(t => {
-            const checked = selected.has(t.id) ? ' checked' : '';
-            html += `<label class="dep-picker-item"><input type="checkbox" value="${Number(t.id)}"${checked} data-on-change="dep-picker-change" data-container="${escapeAttr(containerId)}"> #${t.id} — ${escapeHtml(t.title || '')}</label>`;
-        });
-    }
-    html += `</div>`;
-    container.innerHTML = html;
-    _updateDepTags(containerId);
-}
+;
 
-function _updateDepTags(containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    const tagsEl = document.getElementById(`${containerId}-tags`);
-    if (!tagsEl) return;
-    const checked = container.querySelectorAll('input[type="checkbox"]:checked');
-    if (checked.length === 0) {
-        tagsEl.innerHTML = '';
-        return;
-    }
-    const tags = Array.from(checked).map(cb => {
-        const label = cb.parentElement.textContent.trim();
-        return `<span class="dep-tag">${escapeHtml(label)} <a data-on-click="dep-tag-remove" data-container="${escapeAttr(containerId)}" data-task-id="${Number(cb.value)}">&times;</a></span>`;
-    }).join('');
-    tagsEl.innerHTML = tags;
-};
-
-function _getSelectedDeps(containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return [];
-    return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(cb => parseInt(cb.value));
-}
 
 /* ── Create Task Modal ─────────────────────────────────── */
 
@@ -931,28 +882,8 @@ async function _createSoloAgentTask(title, body, errEl) {
     }
 }
 
-// An agent that is not on a team board: tasks created for it are agent
-// tasks (its own list in Coral), not board tasks.
-function _isSoloAgent() {
-    if (state.selectedTeam || boardOfPage()) return false;
-    return !!state.currentSession && state.currentSession.type === 'live' && !state.currentSession.board_project;
-}
 
-// Team key (server + board) of the selected agent; a solo agent uses its own name as the board.
-function _currentBoardKey() {
-    const cs = state.currentSession;
-    if (!cs) return null;
-    const board = cs.board_project || cs.name;
-    return board ? identityKey(sessionServer(cs), board) : null;
-}
 
-function _getBoardProject() {
-    const pageBoard = boardOfPage();
-    if (pageBoard) return pageBoard;
-    if (state.selectedTeam) return state.selectedTeam;
-    if (!state.currentSession) return null;
-    return _currentBoardKey();
-}
 
 /* ── Task Detail Modal ─────────────────────────────────── */
 
@@ -1067,280 +998,13 @@ function _openTaskDetailModal(modal) {
     closeOnBackdropAndEscape(modal, hideTaskDetailModal);
 }
 
-/** The top of the task detail: its title, lifecycle, priority, result and verification line. */
-function _taskDetailHeadHtml(task) {
-    const statusLabel = task.workflow?.outcome === 'failed' ? 'Finished' : task.status === 'completed' ? 'Finished'
-        : task.status === 'review_pending' ? 'Open · Review pending (slot released)'
-        : task.workflow?.completion_review && task.status === 'in_progress' ? 'Open · Completion review requested (slot occupied)'
-        : task.status === 'in_progress' ? 'Open · In Progress'
-        : task.status === 'skipped' ? 'Cancelled'
-        : task.status === 'blocked' ? 'Blocked'
-        : task.status === 'draft' ? 'Open · Draft'
-        : 'Open';
-    const statusClass = task.status === 'completed' ? 'task-detail-status-completed'
-        : task.status === 'in_progress' ? 'task-detail-status-inprogress'
-        : task.status === 'skipped' ? 'task-detail-status-cancelled'
-        : task.status === 'blocked' ? 'task-detail-status-blocked'
-        : task.status === 'draft' ? 'task-detail-status-draft'
-        : 'task-detail-status-pending';
-    const priorityClass = 'board-task-priority-' + (task.priority || 'medium');
 
-    let html = `
-        <div class="task-detail-title">#${Number(task.id)} · ${escapeHtml(task.title)}</div>
-        <div class="task-detail-meta">
-            <span class="task-detail-meta-item"><span class="task-detail-meta-label">Lifecycle</span><span class="task-detail-status ${statusClass}">${statusLabel}</span></span>
-            <span class="task-detail-meta-item"><span class="task-detail-meta-label">Priority</span><span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(task.priority || 'none')}">${task.priority ? (_priorityLabel[task.priority] || escapeHtml(task.priority)) : '\u2014'}</span></span>
-            ${task.workflow?.outcome === 'failed' ? '<span class="task-detail-meta-item"><span class="task-detail-meta-label">Result</span><span class="task-detail-outcome-failed">Failed</span></span>' : ''}
-        </div>${_verifyLine(task)}`;
-    return html;
-}
 
-/** The instruction revision and what changed since the task was created; nothing for a task never amended. */
-function _taskRevisionHtml(task) {
-    let html = '';
-    const revision = Number(task.revision || 1);
-    const amendments = task.workflow?.amendments || [];
-    const preview = value => {
-        const text = String(value || '').replace(/\s+/g, ' ').trim();
-        return text.length > 180 ? `${text.slice(0, 177)}…` : text || '(empty)';
-    };
-    // Revisions only matter once the instructions have changed; a new task has nothing to show.
-    if (revision > 1 || amendments.length) html += `<div class="task-detail-section task-detail-revision" data-task-revision="${Number(revision)}">
-        <div class="task-detail-label">Instruction revision</div>
-        <div class="task-detail-body">Current revision <strong>${revision}</strong>${amendments.length ? ` · ${amendments.length} amendment${amendments.length === 1 ? '' : 's'}` : ''}</div>
-        ${amendments.length ? `<details class="task-amendment-history"><summary>Changed since task creation</summary>${amendments.map(amendment => {
-            const previous = amendment.previous_snapshot || {};
-            const effective = amendment.effective_snapshot || {};
-            const changes = amendment.changes || {};
-            const fields = Object.keys(changes).map(field => `<div><strong>${escapeHtml(field === 'workflow_instructions' ? 'Instructions' : 'Description')}</strong>: ${escapeHtml(preview(previous[field]))} → ${escapeHtml(preview(effective[field] ?? changes[field]))}</div>`).join('');
-            return `<div class="task-amendment-entry"><strong>Revision ${Number(amendment.revision)}</strong> · ${escapeHtml(amendment.actor || 'Planner')} · ${escapeHtml(amendment.created_at || '')}<br><span>${escapeHtml(amendment.reason || '')}</span>${fields}</div>`;
-        }).join('')}</details>` : ''}
-    </div>`;
-    return html;
-}
 
-/** The task's workflow: its gates, inputs, completion candidate and artifacts. */
-function _taskWorkflowHtml(task) {
-    let html = '';
-    const workflow = task.workflow;
-    if (workflow) {
-        const artifactHtml = a => {
-            const uri = String(a.uri || '');
-            const coralMatch = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(uri);
-            const href = coralMatch ? serverUrl(artifactPath(coralMatch[1]), contextServer()) : uri;
-            const uriDisplay = (/^https?:\/\//i.test(uri) || coralMatch)
-                ? `<a href="${escapeAttr(coralMatch ? '#' : escapeAttr(href))}" data-artifact-uri="${escapeAttr(uri)}"${coralMatch ? ' data-on-click="task-artifact-open"' : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(uri)}</a>`
-                : escapeHtml(uri);
-            return `<div class="task-detail-body"><strong>${escapeHtml(a.name)}</strong>${a.revision ? ` · ${escapeHtml(a.revision)}` : ''}${a.digest ? ` · ${escapeHtml(a.digest)}` : ''}${uri ? `<div>${uriDisplay}</div>` : ''}${a.content ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(a.content)}</pre>` : ''}</div>`;
-        };
-        html += `<details class="task-detail-section"><summary>Workflow${workflow.name ? `: ${escapeHtml(workflow.name)}` : ''}${workflow.stage ? ` · ${escapeHtml(workflow.stage)}` : ''}</summary>
-            <div class="task-detail-body">${escapeHtml(workflow.instructions || '')}</div>
-            <div>Required outputs: ${escapeHtml((workflow.required_outputs || []).join(', ') || 'None')}</div>
-            <div>Completion gates: ${(workflow.completion_gates || []).length ? `<em>experimental, disabled by default (inactive unless the server enables them)</em> — ` : ''}${escapeHtml((workflow.completion_gates || []).map(g => `${g.name || g.type}${g.check_id ? ` [${g.check_id}]` : ''} (${g.artifact || 'server check'})`).join(', ') || 'None')}</div>
-            ${workflow.candidate_revision ? `<div>Candidate revision: <code>${escapeHtml(workflow.candidate_revision)}</code></div>` : ''}
-            ${(workflow.gate_results || []).length ? `<div>Gate results: ${(workflow.gate_results || []).map(g => `<span class="task-gate-result ${g.passed ? 'passed' : 'failed'}">${escapeHtml(g.name || g.type)}: ${escapeHtml(g.details || (g.passed ? 'passed' : 'failed'))}</span>`).join(' · ')}</div>` : ''}
-            ${workflow.parent_task_id ? `<div>Parent task #${Number(workflow.parent_task_id)}</div>` : ''}
-            ${workflow.retry_of ? `<div>Retry of task #${Number(workflow.retry_of)}</div>` : ''}</details>`;
-        for (const input of workflow.inputs || []) html += `<details class="task-detail-section"><summary>Input from ${escapeHtml(input.board_id)} #${Number(input.task_id)} (${escapeHtml(input.outcome)})</summary>${(input.artifacts || []).map(artifactHtml).join('')}</details>`;
-        if (workflow.completion_review) {
-            const review = workflow.completion_review;
-            html += `<div class="task-detail-section"><div class="task-detail-label">Completion candidate · not an accepted result</div>
-                <div class="task-detail-body">Submitted by ${escapeHtml(review.submitted_by)} · ${escapeHtml(review.submitted_at)}<br>
-                Proposed outcome: ${escapeHtml(review.proposed_outcome)}<br>${escapeHtml(review.reason)}<br>${escapeHtml(review.message || '')}</div>
-                ${(review.artifacts || []).map(artifactHtml).join('')}
-                ${review.released_by ? `<div>Slot released by ${escapeHtml(review.released_by)} · ${escapeHtml(review.released_at)}: ${escapeHtml(review.release_reason)}</div>` : '<div>The worker slot is still occupied. An orchestrator can release it with coral-board task release-review.</div>'}</div>`;
-        }
-        if (workflow.artifacts?.length) html += `<div class="task-detail-section"><div class="task-detail-label">Completion artifacts</div>${workflow.artifacts.map(artifactHtml).join('')}</div>`;
-    }
-    return html;
-}
 
-/** Who the task is assigned to, who made and finished it, and when. */
-function _taskFieldsHtml(task) {
-    let html = '';
-    const assignee = task.assigned_to || '\u2014';
-    const createdBy = task.created_by || '\u2014';
-    const createdAt = task.created_at ? formatTaskDate(task.created_at) : '\u2014';
-    const claimedAt = task.claimed_at ? formatTaskDate(task.claimed_at) : null;
-    const completedAt = task.completed_at ? formatTaskDate(task.completed_at) : null;
-    const completedBy = task.completed_by || null;
 
-    html += `<div class="task-detail-fields">
-        <div class="task-detail-field">
-            <span class="task-detail-label">Assigned To</span>
-            <span class="task-detail-value">${escapeHtml(assignee)}</span>
-        </div>
-        <div class="task-detail-field">
-            <span class="task-detail-label">Created By</span>
-            <span class="task-detail-value">${escapeHtml(createdBy)}</span>
-        </div>
-        <div class="task-detail-field">
-            <span class="task-detail-label">Created</span>
-            <span class="task-detail-value">${createdAt}</span>
-        </div>`;
 
-    if (claimedAt) {
-        const claimedFor = _claimedFor(task);
-        html += `<div class="task-detail-field">
-            <span class="task-detail-label">Claimed</span>
-            <span class="task-detail-value">${claimedAt}${claimedFor ? ` <span class="task-detail-claimed-for">(${claimedFor} ago)</span>` : ''}</span>
-        </div>`;
-    }
-    if (completedAt) {
-        html += `<div class="task-detail-field">
-            <span class="task-detail-label">${task.status === 'skipped' ? 'Cancelled' : 'Completed'}</span>
-            <span class="task-detail-value">${completedAt}</span>
-        </div>`;
-    }
-    if (completedBy) {
-        html += `<div class="task-detail-field">
-            <span class="task-detail-label">${task.status === 'skipped' ? 'Cancelled By' : 'Completed By'}</span>
-            <span class="task-detail-value">${escapeHtml(completedBy)}</span>
-        </div>`;
-    }
-    if (task.completion_message) {
-        html += `<div class="task-detail-field task-detail-field-wide">
-            <span class="task-detail-label">Message</span>
-            <span class="task-detail-value">${escapeHtml(task.completion_message)}</span>
-        </div>`;
-    }
-    if (task.workflow?.outcome === 'failed' && !task.completion_message) {
-        html += `<div class="task-detail-field task-detail-field-wide task-detail-failure-reason">
-            <span class="task-detail-label">Result details</span>
-            <span class="task-detail-value">No failure reason was provided.</span>
-        </div>`;
-    }
 
-    html += `</div>`;
-    return html;
-}
-
-/** The tasks this one waits for, each with its status. */
-function _taskBlockedByHtml(task) {
-    let html = '';
-    // Blocked by dependencies
-    if (task.blocked_by && task.blocked_by.length > 0) {
-        const boardProject = _getBoardProject();
-        const depsHtml = task.blocked_by.map(dep => {
-            const depStatusClass = dep.satisfied === false ? 'task-dep-status-blocked'
-                : dep.status === 'completed' ? 'task-dep-status-completed'
-                : dep.status === 'in_progress' ? 'task-dep-status-inprogress'
-                : dep.status === 'skipped' ? 'task-dep-status-cancelled'
-                : dep.status === 'blocked' ? 'task-dep-status-blocked'
-                : dep.status === 'draft' ? 'task-dep-status-draft'
-                : 'task-dep-status-pending';
-            const depStatusLabel = dep.satisfied === false ? 'unmet'
-                : dep.status === 'completed' ? 'completed'
-                : dep.status === 'in_progress' ? 'in progress'
-                : dep.status === 'skipped' ? 'cancelled'
-                : dep.status === 'blocked' ? 'blocked'
-                : dep.status === 'draft' ? 'draft'
-                : 'pending';
-            const isCrossBoard = task._source !== 'agent' && dep.board_id && dep.board_id !== boardKeyName(boardProject); // keys, not labels
-            const boardPrefix = isCrossBoard ? `${escapeHtml(dep.board_label || keyLabel(identityKey(splitKey(boardProject).server, dep.board_id)))} ` : '';
-            const depTitle = dep.title ? ` — ${escapeHtml(dep.title)}` : '';
-            const clickable = !isCrossBoard ? ` data-on-click="task-open" data-kind="${escapeAttr(task._source === 'agent' ? 'agent' : 'board')}" data-task-id="${Number(dep.task_id)}" style="cursor:pointer"` : '';
-            return `<div class="task-dep-item">
-                <span class="task-dep-status ${depStatusClass}">${depStatusLabel}</span>
-                <a class="task-dep-link"${clickable}>${boardPrefix}#${dep.task_id}${depTitle}</a>
-                <span>${escapeHtml(dep.condition || 'success')}${dep.required_artifacts?.length ? ` · requires ${escapeHtml(dep.required_artifacts.join(', '))}` : ''}${dep.blocked_reason ? ` · ${escapeHtml(dep.blocked_reason)}` : ''}</span>
-            </div>`;
-        }).join('');
-        html += `<div class="task-detail-section">
-            <div class="task-detail-label">Blocked By</div>
-            <div class="task-deps-list">${depsHtml}</div>
-        </div>`;
-    }
-    return html;
-}
-
-/** The cost and token breakdown of a task that has cost data. */
-function _taskCostHtml(task) {
-    let html = '';
-    // Cost & token breakdown for completed tasks with cost data
-    if (task.cost_usd != null) {
-        const warningClass = task.cost_usd >= 1.0 ? ' board-task-cost-warning' : '';
-        html += `<div class="task-detail-section">
-            <div class="task-detail-label">Cost</div>
-            <div class="task-detail-cost-summary${warningClass}">${_formatCost(task.cost_usd, true)}</div>
-            <div class="task-detail-tokens">
-                <div class="task-detail-token-item">
-                    <span class="task-detail-token-label">Input</span>
-                    <span class="task-detail-token-value">${_formatTokenCount(task.input_tokens)}</span>
-                </div>
-                <div class="task-detail-token-item">
-                    <span class="task-detail-token-label">Output</span>
-                    <span class="task-detail-token-value">${_formatTokenCount(task.output_tokens)}</span>
-                </div>
-                <div class="task-detail-token-item">
-                    <span class="task-detail-token-label">Cache Read</span>
-                    <span class="task-detail-token-value">${_formatTokenCount(task.cache_read_tokens)}</span>
-                </div>
-                <div class="task-detail-token-item">
-                    <span class="task-detail-token-label">Cache Write</span>
-                    <span class="task-detail-token-value">${_formatTokenCount(task.cache_write_tokens)}</span>
-                </div>
-            </div>
-        </div>`;
-    }
-    return html;
-}
-
-/** The running cost of a task in progress. */
-function _taskLiveCostHtml(liveCost) {
-    let html = '';
-    // Live cost for in-progress tasks
-    if (liveCost) {
-        const lc = liveCost;
-        const warningClass = lc.cost_usd >= 1.0 ? ' board-task-cost-warning' : '';
-        html += `<div class="task-detail-section">
-            <div class="task-detail-label">Running Cost</div>
-            <div class="task-detail-cost-summary board-task-cost-live${warningClass}">~${_formatCost(lc.cost_usd, true)}</div>
-            <div class="task-detail-tokens">
-                <div class="task-detail-token-item">
-                    <span class="task-detail-token-label">Input</span>
-                    <span class="task-detail-token-value">${_formatTokenCount(lc.input_tokens)}</span>
-                </div>
-                <div class="task-detail-token-item">
-                    <span class="task-detail-token-label">Output</span>
-                    <span class="task-detail-token-value">${_formatTokenCount(lc.output_tokens)}</span>
-                </div>
-                <div class="task-detail-token-item">
-                    <span class="task-detail-token-label">Cache Read</span>
-                    <span class="task-detail-token-value">${_formatTokenCount(lc.cache_read_tokens)}</span>
-                </div>
-                <div class="task-detail-token-item">
-                    <span class="task-detail-token-label">Cache Write</span>
-                    <span class="task-detail-token-value">${_formatTokenCount(lc.cache_write_tokens)}</span>
-                </div>
-            </div>
-            <div class="task-detail-token-item" style="margin-top:4px;opacity:0.6">
-                <span class="task-detail-token-label">Requests</span>
-                <span class="task-detail-token-value">${lc.request_count}</span>
-            </div>
-        </div>`;
-    }
-    return html;
-}
-
-function _taskDetailHtml(task, liveCost) {
-    let html = _taskDetailHeadHtml(task);
-    html += _taskRevisionHtml(task);
-
-    if (task.body) {
-        html += `<div class="task-detail-section">
-            <div class="task-detail-label">Description</div>
-            <div class="task-detail-body">${escapeHtml(task.body)}</div>
-        </div>`;
-    }
-
-    html += _taskWorkflowHtml(task);
-    html += _taskFieldsHtml(task);
-    html += _taskBlockedByHtml(task);
-    html += _taskCostHtml(task);
-    html += _taskLiveCostHtml(liveCost);
-    return html;
-}
 
 let _editOriginalTask = null;
 let _editBoardProject = null;
@@ -1525,11 +1189,6 @@ export function cancelTaskEdit() {
     }
 }
 
-function _taskRequiredOutputs(task) {
-    const outputs = task?.workflow?.required_outputs || task?.required_outputs || [];
-    const list = Array.isArray(outputs) ? outputs : [outputs];
-    return list.map(output => typeof output === 'string' ? output : output?.name).filter(Boolean);
-}
 
 export function completeBoardTask(taskId, personal = false) {
     const footer = document.getElementById('task-detail-modal-footer');
@@ -1635,48 +1294,8 @@ export async function _doCompleteTask(taskId, personal = false) {
     }
 }
 
-// Resend the task's nudge to its assignee (a nudge typed while the agent was
-// busy, e.g. compacting, can be lost).
-export async function nudgeBoardTask(taskId) {
-    const boardProject = _getBoardProject();
-    if (!boardProject) return;
-    try {
-        const resp = await boardFetch(boardProject, `/tasks/${pathId(taskId)}/nudge?subscriber_id=Operator`, { method: 'POST' });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-        showToast(`Nudged ${data.assignee || 'the assignee'}`);
-    } catch (e) {
-        showToast(e.message || 'Failed to nudge', true);
-    }
-}
 
-export async function remindBoardTask(taskId) {
-    const boardProject = _getBoardProject();
-    if (!boardProject) return;
-    const minutes = Number(window.prompt('Send a reminder every how many minutes?', '5'));
-    if (!Number.isFinite(minutes) || minutes <= 0) return;
-    const intervalSeconds = Math.round(minutes * 60);
-    if (intervalSeconds < 30 || intervalSeconds > 86400) {
-        showToast('Reminder interval must be between 0.5 minutes and 24 hours', true);
-        return;
-    }
-    try {
-        const resp = await boardFetch(boardProject, `/tasks/${pathId(taskId)}/reminder`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ interval_seconds: intervalSeconds, subscriber_id: 'Operator' }),
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-        showToast(`Periodic reminders started for ${data.assignee || 'the assignee'}`);
-    } catch (e) { showToast(e.message || 'Failed to start reminders', true); }
-}
 
-export async function stopBoardTaskReminder(taskId) {
-    const boardProject = _getBoardProject();
-    if (!boardProject) return;
-    await boardFetch(boardProject, `/tasks/${pathId(taskId)}/reminder?subscriber_id=Operator`, { method: 'DELETE' });
-    showToast('Periodic reminders stopped');
-}
 
 export function cancelBoardTask(taskId) {
     const footer = document.getElementById('task-detail-modal-footer');

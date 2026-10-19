@@ -208,8 +208,45 @@
 1	folder_tags.js	currentHtml
 1	folder_tags.js	currentTags.map(t => `<span class="tag-pill" style="background:${escapeAttr(tagColor(t.color))}"> ${escapeHtml
 1	folder_tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeAttr(tagColor(t.color))}" title="${esc
+2	group_cards.js	FOLDER_GROUP_ICON
+2	group_cards.js	_collapseAttrs(boardCollapsed)
+2	group_cards.js	_collapseAttrs(collapsed)
+1	group_cards.js	_collapseAttrs(wfCollapsed)
+2	group_cards.js	_pinMenuItem(groupName, groupDirRaw)
+2	group_cards.js	_rowNameWithServer(boardName)
+2	group_cards.js	_rowNameWithServer(groupName)
+2	group_cards.js	accentStyle
+2	group_cards.js	bKebab
+2	group_cards.js	boardLink
+2	group_cards.js	boardSleepIcon
+2	group_cards.js	copyBtn
+2	group_cards.js	countBadge
+2	group_cards.js	distillChip(boardName)
+2	group_cards.js	groupKebab
+2	group_cards.js	killAllItem(boardName)
+2	group_cards.js	sleepLabel
+1	group_cards.js	sleepingClass
+2	group_cards.js	tagDots
+2	group_cards.js	teamHealthBtn(boardName, boardSessions)
+1	group_cards.js	wfKebab
+1	group_cards.js	wfRunId ? ' · Run #' + wfRunId : ''
+1	group_cards.js	wfSubline
+1	history_list.js	bottomMeta
+1	history_list.js	bottomMeta ? `<div class="session-row-bottom">${bottomMeta}</div>` : ""
+1	history_list.js	durTag
+1	history_list.js	page
+1	history_list.js	tagDots
+2	history_list.js	timeTag
+2	history_list.js	total
+1	history_list.js	totalPages
+1	history_list.js	typeTag
 1	history_tabs.js	icon
 1	history_tabs.js	statusClass
+1	list_card_parts.js	PIN_ICON
+2	list_card_parts.js	icon
+1	list_card_parts.js	name
+1	list_card_parts.js	prefix
+1	list_card_parts.js	st.cls
 1	live_chat.js	COPY_BUTTON
 1	live_chat.js	attachmentChips(msg.attachments)
 2	live_chat.js	bodyHtml
@@ -278,63 +315,7 @@
 1	preview_pane.js	preview
 1	preview_pane.js	renderMarkdownStrict(content)
 1	preview_pane.js	safe
-2	render.js	FOLDER_GROUP_ICON
-1	render.js	PIN_ICON
-1	render.js	_RAIL_ICONS[g.kind]
-2	render.js	_collapseAttrs(boardCollapsed)
-2	render.js	_collapseAttrs(collapsed)
-1	render.js	_collapseAttrs(wfCollapsed)
-1	render.js	_formatCost(a.total_cost_usd || 0)
-1	render.js	_formatCost(totalCost)
-2	render.js	_pinMenuItem(groupName, groupDirRaw)
-1	render.js	_railRoleIcon(s)
-2	render.js	_rowNameWithServer(boardName)
-2	render.js	_rowNameWithServer(groupName)
-2	render.js	accentStyle
-2	render.js	bKebab
-1	render.js	badge
-1	render.js	bg
-2	render.js	boardLink
-2	render.js	boardSleepIcon
-1	render.js	bottomMeta
-1	render.js	bottomMeta ? `<div class="session-row-bottom">${bottomMeta}</div>` : ""
-2	render.js	copyBtn
-2	render.js	countBadge
-2	render.js	distillChip(boardName)
-1	render.js	dot
-1	render.js	durTag
-1	render.js	executionTimeRow
-1	render.js	formatDuration(usageData.totals.execution_time_sec)
-1	render.js	formatTokens(a.total_cache_read_tokens || 0)
-1	render.js	formatTokens(a.total_cache_write_tokens || 0)
-1	render.js	formatTokens(a.total_input_tokens || 0)
-1	render.js	formatTokens(a.total_output_tokens || 0)
-1	render.js	formatTokens(totalCacheR)
-1	render.js	formatTokens(totalCacheW)
-1	render.js	formatTokens(totalIn)
-1	render.js	formatTokens(totalOut)
-1	render.js	g.kind
-2	render.js	groupKebab
-3	render.js	icon
-2	render.js	killAllItem(boardName)
-1	render.js	name
-1	render.js	page
-1	render.js	prefix
-2	render.js	sleepLabel
-1	render.js	sleepingClass
-1	render.js	st.cls
-1	render.js	style
-3	render.js	tagDots
-2	render.js	teamHealthBtn(boardName, boardSessions)
-2	render.js	timeTag
-2	render.js	total
-1	render.js	totalPages
-1	render.js	totalReqs
-1	render.js	typeTag
-1	render.js	unread > 9 ? '9+' : unread
-1	render.js	wfKebab
-1	render.js	wfRunId ? ' · Run #' + wfRunId : ''
-1	render.js	wfSubline
+1	prompt_modals.js	bg
 1	sandbox_frame.js	DOC_CSP
 1	sandbox_frame.js	content
 2	saved_marks.js	BOOKMARK_SVG
@@ -440,6 +421,14 @@
 1	sessions.js	filtered.map(e => `<button class="emoji-picker-btn" data-emoji="${escapeAttr(e)}">${e}</button>`).join("")
 1	settings_dialog.js	label
 1	settings_nav.js	p.dataset.icon
+1	sidebar_rail.js	_RAIL_ICONS[g.kind]
+1	sidebar_rail.js	_railRoleIcon(s)
+1	sidebar_rail.js	badge
+1	sidebar_rail.js	dot
+1	sidebar_rail.js	g.kind
+1	sidebar_rail.js	icon
+1	sidebar_rail.js	style
+1	sidebar_rail.js	unread > 9 ? '9+' : unread
 1	subagents.js	_formatCost(sa.cost_usd || 0, true)
 1	subagents.js	_formatTokenCount(n || 0)
 1	subagents.js	extraClass
@@ -464,23 +453,50 @@
 1	tab_customize.js	iconHtml
 1	tab_customize.js	svg.outerHTML
 1	tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeAttr(tagColor(t.color))}" title="${esc
-1	tasks.js	(input.artifacts || []).map(artifactHtml).join('')
-1	tasks.js	(review.artifacts || []).map(artifactHtml).join('')
-1	tasks.js	(workflow.gate_results || []).length ? `<div>Gate results: ${(workflow.gate_results || []).map(g => `<span cla
-1	tasks.js	(workflow.gate_results || []).map(g => `<span class="task-gate-result ${g.passed ? 'passed' : 'failed'}">${esc
-1	tasks.js	_formatCost(lc.cost_usd, true)
-1	tasks.js	_formatCost(task.cost_usd, true)
-1	tasks.js	_formatTokenCount(lc.cache_read_tokens)
-1	tasks.js	_formatTokenCount(lc.cache_write_tokens)
-1	tasks.js	_formatTokenCount(lc.input_tokens)
-1	tasks.js	_formatTokenCount(lc.output_tokens)
-1	tasks.js	_formatTokenCount(task.cache_read_tokens)
-1	tasks.js	_formatTokenCount(task.cache_write_tokens)
-1	tasks.js	_formatTokenCount(task.input_tokens)
-1	tasks.js	_formatTokenCount(task.output_tokens)
-1	tasks.js	_verifyLine(task)
-1	tasks.js	amendments.length ? `<details class="task-amendment-history"><summary>Changed since task creation</summary>${a
-1	tasks.js	amendments.map(amendment => { const previous = amendment.previous_snapshot || {}; const effective = amendment.
+1	task_dep_picker.js	checked
+1	task_dep_picker.js	t.id
+1	task_detail_html.js	(input.artifacts || []).map(artifactHtml).join('')
+1	task_detail_html.js	(review.artifacts || []).map(artifactHtml).join('')
+1	task_detail_html.js	(workflow.gate_results || []).length ? `<div>Gate results: ${(workflow.gate_results || []).map(g => `<span cla
+1	task_detail_html.js	(workflow.gate_results || []).map(g => `<span class="task-gate-result ${g.passed ? 'passed' : 'failed'}">${esc
+1	task_detail_html.js	_formatCost(lc.cost_usd, true)
+1	task_detail_html.js	_formatCost(task.cost_usd, true)
+1	task_detail_html.js	_formatTokenCount(lc.cache_read_tokens)
+1	task_detail_html.js	_formatTokenCount(lc.cache_write_tokens)
+1	task_detail_html.js	_formatTokenCount(lc.input_tokens)
+1	task_detail_html.js	_formatTokenCount(lc.output_tokens)
+1	task_detail_html.js	_formatTokenCount(task.cache_read_tokens)
+1	task_detail_html.js	_formatTokenCount(task.cache_write_tokens)
+1	task_detail_html.js	_formatTokenCount(task.input_tokens)
+1	task_detail_html.js	_formatTokenCount(task.output_tokens)
+1	task_detail_html.js	_verifyLine(task)
+1	task_detail_html.js	amendments.length ? `<details class="task-amendment-history"><summary>Changed since task creation</summary>${a
+1	task_detail_html.js	amendments.map(amendment => { const previous = amendment.previous_snapshot || {}; const effective = amendment.
+1	task_detail_html.js	boardPrefix
+1	task_detail_html.js	claimedAt
+1	task_detail_html.js	claimedFor
+1	task_detail_html.js	claimedFor ? ` <span class="task-detail-claimed-for">(${claimedFor} ago)</span>` : ''
+1	task_detail_html.js	clickable
+1	task_detail_html.js	completedAt
+1	task_detail_html.js	createdAt
+1	task_detail_html.js	dep.task_id
+1	task_detail_html.js	depStatusClass
+1	task_detail_html.js	depStatusLabel
+1	task_detail_html.js	depTitle
+1	task_detail_html.js	depsHtml
+1	task_detail_html.js	fields
+1	task_detail_html.js	lc.request_count
+1	task_detail_html.js	priorityClass
+1	task_detail_html.js	revision
+1	task_detail_html.js	statusClass
+1	task_detail_html.js	statusLabel
+1	task_detail_html.js	task.priority ? (_priorityLabel[task.priority] || escapeHtml(task.priority)) : '\u2014'
+1	task_detail_html.js	uri ? `<div>${uriDisplay}</div>` : ''
+1	task_detail_html.js	uriDisplay
+2	task_detail_html.js	warningClass
+1	task_detail_html.js	workflow.artifacts.map(artifactHtml).join('')
+1	task_verify_marks.js	v.icon
+1	task_verify_marks.js	v.state
 1	tasks.js	arrow('assignee')
 1	tasks.js	arrow('cost')
 2	tasks.js	arrow('created_at')
@@ -489,56 +505,33 @@
 1	tasks.js	arrow('type')
 1	tasks.js	assigneeOptions
 1	tasks.js	blockedBadge
-1	tasks.js	boardPrefix
-1	tasks.js	checked
-1	tasks.js	claimedAt
 1	tasks.js	claimedBadge
-2	tasks.js	claimedFor
-1	tasks.js	claimedFor ? ` <span class="task-detail-claimed-for">(${claimedFor} ago)</span>` : ''
+1	tasks.js	claimedFor
 1	tasks.js	className
 1	tasks.js	clickHandler
-1	tasks.js	clickable
-1	tasks.js	completedAt
 1	tasks.js	completedCount
 1	tasks.js	costClass
 1	tasks.js	costText
-1	tasks.js	createdAt
-1	tasks.js	dep.task_id
-1	tasks.js	depStatusClass
-1	tasks.js	depStatusLabel
-1	tasks.js	depTitle
-1	tasks.js	depsHtml
-1	tasks.js	fields
 1	tasks.js	icon
 1	tasks.js	isSubagent || isAgent ? '' : _verifyMark(t)
 1	tasks.js	label
-1	tasks.js	lc.request_count
 1	tasks.js	left ? ` (${left} not shown)` : ''
 1	tasks.js	notLoaded ? ` (${notLoaded} not shown)` : ''
 1	tasks.js	p
-2	tasks.js	priorityClass
+1	tasks.js	priorityClass
 1	tasks.js	priorityOptions
 1	tasks.js	requiredLabel
 1	tasks.js	requiredOutputs.map(output => `<li>${escapeHtml(output)}</li>`).join('')
-2	tasks.js	revision
-2	tasks.js	statusClass
+1	tasks.js	revision
+1	tasks.js	statusClass
 1	tasks.js	statusIcon
-1	tasks.js	statusLabel
 1	tasks.js	subagentBadge
-1	tasks.js	t.id
 1	tasks.js	t.priority ? (_priorityLabel[t.priority] || escapeHtml(t.priority)) : '\u2014'
-1	tasks.js	task.priority ? (_priorityLabel[task.priority] || escapeHtml(task.priority)) : '\u2014'
 1	tasks.js	taskIdLabel
 1	tasks.js	timeStr
 1	tasks.js	title
 1	tasks.js	tooltip
 1	tasks.js	typeCell
-1	tasks.js	uri ? `<div>${uriDisplay}</div>` : ''
-1	tasks.js	uriDisplay
-1	tasks.js	v.icon
-1	tasks.js	v.state
-2	tasks.js	warningClass
-1	tasks.js	workflow.artifacts.map(artifactHtml).join('')
 1	team_artifacts.js	_SPIN
 1	team_artifacts.js	agent
 1	team_artifacts.js	html
@@ -586,6 +579,19 @@
 1	theme_config.js	groups
 1	theme_config.js	rows
 1	theme_config.js	themeOptions
+1	token_usage_ui.js	_formatCost(a.total_cost_usd || 0)
+1	token_usage_ui.js	_formatCost(totalCost)
+1	token_usage_ui.js	executionTimeRow
+1	token_usage_ui.js	formatDuration(usageData.totals.execution_time_sec)
+1	token_usage_ui.js	formatTokens(a.total_cache_read_tokens || 0)
+1	token_usage_ui.js	formatTokens(a.total_cache_write_tokens || 0)
+1	token_usage_ui.js	formatTokens(a.total_input_tokens || 0)
+1	token_usage_ui.js	formatTokens(a.total_output_tokens || 0)
+1	token_usage_ui.js	formatTokens(totalCacheR)
+1	token_usage_ui.js	formatTokens(totalCacheW)
+1	token_usage_ui.js	formatTokens(totalIn)
+1	token_usage_ui.js	formatTokens(totalOut)
+1	token_usage_ui.js	totalReqs
 1	update_check.js	downloadBtn
 1	update_check.js	items.join("")
 1	update_check.js	notesHtml
