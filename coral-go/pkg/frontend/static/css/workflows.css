@@ -637,7 +637,7 @@
 
 .wf-input {
     background: var(--bg-tertiary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: var(--radius-md);
     padding: 8px 10px;
     font-size: var(--fs-md);
@@ -679,7 +679,7 @@
 .wf-step-editor-top select,
 .wf-step-editor-top input {
     background: var(--bg-secondary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 4px;
     padding: 4px 6px;
     font-size: var(--fs-md);
@@ -706,7 +706,7 @@
 .wf-step-editor-body textarea {
     width: 100%;
     background: var(--bg-secondary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 4px;
     padding: 6px 8px;
     font-size: 0.75rem;

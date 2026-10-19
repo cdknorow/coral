@@ -163,7 +163,7 @@
     top: 8px;
     right: 8px;
     background: var(--bg-hover);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     color: var(--text-secondary);
     padding: 2px 8px;
     border-radius: 4px;
@@ -532,7 +532,7 @@
     margin-bottom: 12px;
     background: var(--bg-secondary);
     color: var(--text-muted);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     cursor: pointer;
     font-size: 0.75rem; /* rem, not 12px: it grows with the text size (#4327) */
@@ -558,7 +558,7 @@
 
 .live-view-toggle {
     display: flex;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     overflow: hidden;
     margin-right: 4px;
@@ -1182,7 +1182,7 @@
     gap: 9px;
     text-align: left;
     padding: 8px 12px;
-    border: 1px solid var(--border-light);
+    border: 1px solid var(--control-border);
     border-radius: 8px;
     background: var(--bg-tertiary);
     color: var(--text-primary);
@@ -1249,7 +1249,7 @@
     flex: 1;
     min-width: 0;
     padding: 7px 10px;
-    border: 1px solid var(--border-light);
+    border: 1px solid var(--control-border);
     border-radius: 8px;
     background: var(--bg-primary);
     color: var(--text-primary);
@@ -1444,7 +1444,7 @@
     width: 28px;
     height: 26px;
     padding: 0;
-    border: 1px solid var(--border-light, var(--border));
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
@@ -1512,7 +1512,7 @@
     width: 200px;
     padding: 3px 6px;
     background: var(--bg-primary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 5px;
     color: var(--text-primary);
     font: inherit;

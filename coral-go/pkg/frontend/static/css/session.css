@@ -1819,7 +1819,7 @@
 .team-availability-dialog h2, .team-availability-dialog header p { margin: 0 0 var(--space-sm); }
 .team-availability-dialog h2 { font-size: var(--fs-xl); }
 .team-availability-dialog header p { font-size: var(--fs-base); color: var(--text-secondary); }
-.team-availability-dialog button { min-height: var(--control-compact-height); font: 500 var(--fs-md)/1.4 var(--font-sans); cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; }
+.team-availability-dialog button { min-height: var(--control-compact-height); font: 500 var(--fs-md)/1.4 var(--font-sans); cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--control-border); border-radius: 6px; padding: 7px 12px; }
 .team-availability-dialog button:disabled { opacity: .5; }
 .availability-toolbar { margin: 18px 0; font-size: 0.8125rem; }
 .availability-summary { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -1846,7 +1846,7 @@
 .working-mode-form { display: grid; gap: 16px; overflow: auto; min-height: 0; padding: 2px 4px 2px 0; }
 .working-mode-form[hidden] { display: none; }
 .working-mode-form label { display: block; font: 500 var(--fs-md)/1.4 var(--font-sans); }
-.working-mode-form select, .working-mode-form textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.working-mode-form select, .working-mode-form textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .working-mode-form p { font-size: 0.8125rem; color: var(--text-secondary); margin: 0; }
 .team-settings-section { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 0; display: grid; gap: 12px; }
 .team-settings-section legend { font-size: var(--fs-md); font-weight: 600; color: var(--text-primary); padding: 0 4px; }
@@ -1864,7 +1864,7 @@
 .team-settings-panel[hidden] { display: none; }
 .team-settings-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
 .workflow-preset-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.working-mode-form input[name="preset_name"] { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.working-mode-form input[name="preset_name"] { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .prompt-inspection-content { display: grid; gap: 10px; }
 .prompt-inspection-card { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-tertiary); }
 .prompt-inspection-card h4 { margin: 0 0 6px; font-size: 0.875rem; }
@@ -1891,7 +1891,7 @@
 .working-mode-form label.health-knob { display: flex; flex-direction: column; gap: 3px; font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
 .health-knob-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .health-limits { font-weight: 400; font-size: 0.75rem; color: var(--text-secondary); }
-.health-form input[type="number"], .health-form input[type="text"] { box-sizing: border-box; min-height: var(--control-height, 32px); background: var(--bg-tertiary, var(--bg-primary)); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; }
+.health-form input[type="number"], .health-form input[type="text"] { box-sizing: border-box; min-height: var(--control-height, 32px); background: var(--bg-tertiary, var(--bg-primary)); color: var(--text-primary); border: 1px solid var(--control-border); border-radius: 6px; padding: 4px 8px; font: inherit; }
 .health-form input[type="number"] { width: 7em; max-width: 100%; } /* (not min(7em, 100%): a percentage width collapses the shrink-wrapped box and drops the unit under the input) */
 .health-knob.health-wide, .health-knobs .health-wide { flex: 1 1 100%; }
 .health-form input[type="text"] { width: 100%; }

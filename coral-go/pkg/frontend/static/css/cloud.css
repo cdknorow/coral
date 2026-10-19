@@ -16,9 +16,9 @@ body.cloud-mode [data-local-only] { display: none !important; }
 .cloud-card p { margin: 0 0 14px; line-height: 1.5; opacity: .85; }
 .cloud-card label { display: block; font-size: 0.8125rem; margin: 12px 0 4px; }
 .cloud-card input[type=email], .cloud-card input[type=text] { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px;
-    border: 1px solid var(--border, #2a3140); background: var(--bg-primary, #0a0e14); color: inherit; font-size: 0.9375rem; }
+    border: 1px solid var(--control-border, var(--border, #2a3140)); background: var(--bg-primary, #0a0e14); color: inherit; font-size: 0.9375rem; }
 .cloud-card input.cloud-code { font-family: ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; font-size: 1.125rem; text-align: center; }
-.cloud-btn { display: inline-block; width: 100%; box-sizing: border-box; margin-top: 14px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border, #2a3140);
+.cloud-btn { display: inline-block; width: 100%; box-sizing: border-box; margin-top: 14px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--control-border, var(--border, #2a3140));
     background: var(--bg-tertiary, #1c2330); color: inherit; font-size: 0.875rem; cursor: pointer; text-align: center; text-decoration: none; }
 .cloud-btn.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
 .cloud-btn.danger { background: #b62324; border-color: #b62324; color: #fff; }
@@ -57,7 +57,7 @@ body.cloud-mode [data-local-only] { display: none !important; }
 .cs-actions .btn { min-width: 64px; }
 .cloud-sub { font-size: 0.8125rem; margin: 14px 0 4px; opacity: .8; font-weight: 600; }
 .cloud-note { font-weight: 400; opacity: .7; }
-.cs-launch select { margin-left: 4px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border, #2a3140); background: var(--bg-primary, #0a0e14); color: inherit; }
+.cs-launch select { margin-left: 4px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--control-border, var(--border, #2a3140)); background: var(--bg-primary, #0a0e14); color: inherit; }
 
 body.cloud-mode .settings-modal-body [hidden], body.cloud-mode #about-section[hidden] { display: none !important; }
 body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }

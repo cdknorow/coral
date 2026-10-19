@@ -258,7 +258,7 @@ body.panel-dragging .sidebar {
     box-sizing: border-box;
     padding: 0 10px 0 30px;
     background: var(--bg-primary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 8px;
     color: var(--text-primary);
     font: inherit;
@@ -590,7 +590,7 @@ body.panel-dragging .sidebar {
     width: 100%;
     padding: 5px 10px;
     background: var(--bg-primary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 8px;
     color: var(--text-primary);
     font-size: 0.75rem;
@@ -669,7 +669,7 @@ body.panel-dragging .sidebar {
 .hf-toggle {
     padding: 2px 8px;
     font-size: var(--fs-md);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 3px;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
@@ -719,7 +719,7 @@ body.panel-dragging .sidebar {
     max-width: 90px;
     padding: 2px 4px;
     background: var(--bg-tertiary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 4px;
     color: var(--text-secondary);
     font-size: var(--fs-md);
@@ -751,7 +751,7 @@ body.panel-dragging .sidebar {
     width: 50px;
     padding: 3px 5px;
     background: var(--bg-tertiary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 4px;
     color: var(--text-primary);
     font-size: var(--fs-md);

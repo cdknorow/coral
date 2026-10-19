@@ -483,7 +483,7 @@ body.panel-dragging .agentic-state {
     font-size: 0.625rem;
     line-height: 16px;
     padding: 0 8px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 9px;
     background: transparent;
     color: var(--text-muted);
@@ -495,7 +495,7 @@ body.panel-dragging .agentic-state {
 .activity-chart-mode button.active {
     background: var(--bg-tertiary);
     color: var(--text-primary);
-    border-color: var(--border-light, var(--border));
+    border-color: var(--control-border);
 }
 .activity-chart-empty {
     font-size: 0.6875rem;
@@ -782,7 +782,7 @@ body.panel-dragging .agentic-state {
     margin-left: auto;
     cursor: pointer;
     background: transparent;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 4px;
     color: var(--text-muted);
 }
@@ -1565,7 +1565,7 @@ body.panel-dragging .agentic-state {
     flex: 1;
     padding: 5px 10px;
     font-size: var(--fs-md);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     background: var(--bg-tertiary);
     color: var(--text-primary);
@@ -1645,7 +1645,7 @@ body.panel-dragging .agentic-state {
 
 .diff-mode-select {
     background: var(--bg-tertiary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 3px;
     color: var(--text-muted);
     font-size: 0.625rem;
@@ -1720,7 +1720,7 @@ body.panel-dragging .agentic-state {
     padding: 2px 6px;
     font-size: var(--fs-md);
     font-weight: 600;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: var(--radius-md);
     cursor: pointer;
     background: var(--bg-tertiary);
@@ -2092,7 +2092,7 @@ body.panel-dragging .agentic-state {
 
 .agentic-tab-add {
     opacity: 0.5;
-    border: 1px dashed var(--border);
+    border: 1px dashed var(--control-border);
     border-radius: 4px;
 }
 
@@ -2243,7 +2243,7 @@ body.panel-dragging .agentic-state {
 .agent-ui-card strong { overflow-wrap:anywhere; min-width:0; }
 .agent-ui-event-count { display:inline-block; margin-left:6px; padding:2px 6px; color:var(--text-secondary); background:var(--bg-secondary); border:1px solid var(--border); border-radius:999px; font-size:0.6875rem; font-weight:400; white-space:nowrap; }
 .agent-ui-authored { display:inline-block; margin-left:6px; padding:2px 6px; color:var(--warning, #b45309); border:1px solid currentColor; border-radius:999px; font-size:0.6875rem; font-weight:400; white-space:nowrap; }
-.agent-ui-card button, #agent-ui-expanded > button { padding:6px 10px; cursor:pointer; font:inherit; font-size: var(--fs-md); color:var(--text-primary); background:var(--bg-secondary); border:1px solid var(--border); border-radius: var(--radius-md); flex-shrink:0;
+.agent-ui-card button, #agent-ui-expanded > button { padding:6px 10px; cursor:pointer; font:inherit; font-size: var(--fs-md); color:var(--text-primary); background:var(--bg-secondary); border:1px solid var(--control-border); border-radius: var(--radius-md); flex-shrink:0;
     min-height: var(--control-compact-height);
 }
 .agent-ui-card button:hover, #agent-ui-expanded > button:hover { background:var(--bg-hover); }
@@ -2256,7 +2256,7 @@ body.panel-dragging .agentic-state {
 #agent-ui-expanded::backdrop { background:#0009; }
 #agent-ui-expanded .agent-ui-expanded-bar { display:flex; align-items:center; gap:8px; }
 #agent-ui-expanded .agent-ui-expanded-bar h2 { flex:1; min-width:0; margin:0; font-size: var(--fs-md); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-#agent-ui-expanded .agent-ui-expanded-close { width:44px; height:44px; padding:0; display:inline-flex; align-items:center; justify-content:center; flex:none; cursor:pointer; color:var(--text-primary); background:var(--bg-secondary); border:1px solid var(--border); border-radius: var(--radius-md); }
+#agent-ui-expanded .agent-ui-expanded-close { width:44px; height:44px; padding:0; display:inline-flex; align-items:center; justify-content:center; flex:none; cursor:pointer; color:var(--text-primary); background:var(--bg-secondary); border:1px solid var(--control-border); border-radius: var(--radius-md); }
 #agent-ui-expanded .agent-ui-expanded-close:hover { background:var(--bg-hover); }
 #agent-ui-expanded .agent-ui-expanded-close:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 
@@ -2328,13 +2328,13 @@ body.panel-dragging .agentic-state {
 }
 .list-bar-search-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .list-bar-search-wrap { position: relative; flex: 1 1 12em; min-width: 0; }
-.list-bar-search { width: 100%; box-sizing: border-box; padding: 6px 28px 6px 8px; font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; }
+.list-bar-search { width: 100%; box-sizing: border-box; padding: 6px 28px 6px 8px; font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--control-border); border-radius: 6px; }
 .list-bar-search::-webkit-search-cancel-button { display: none; }
 .list-bar-clear-q { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; padding: 0; border: 0; background: none; color: var(--text-secondary); font-size: 1.125rem; line-height: 1; cursor: pointer; border-radius: 4px; }
 .list-bar-count { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
 .list-bar-live { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .list-bar-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.list-bar-filter-btn, .list-bar-clear-all, .list-bar-select, .list-bar-by, .list-bar-field input[type="date"] { font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.list-bar-filter-btn, .list-bar-clear-all, .list-bar-select, .list-bar-by, .list-bar-field input[type="date"] { font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--control-border); border-radius: 6px; padding: 4px 8px; }
 .list-bar-filter-btn, .list-bar-clear-all { cursor: pointer; }
 .list-bar-filter-btn[aria-expanded="true"] { background: var(--bg-hover); }
 .list-bar-sort, .list-bar-field { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); }
@@ -2349,7 +2349,7 @@ body.panel-dragging .agentic-state {
 .list-bar-kept { justify-content: flex-start; cursor: pointer; }
 .list-bar-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .list-bar-chips[hidden] { display: none; }
-.list-bar-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; font-size: 0.75rem; color: var(--text-primary); background: var(--bg-hover); border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
+.list-bar-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; font-size: 0.75rem; color: var(--text-primary); background: var(--bg-hover); border: 1px solid var(--control-border); border-radius: 999px; cursor: pointer; }
 .list-bar-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-bar-chip-x { color: var(--text-primary); } /* 4.4:1 in the light theme with the secondary text colour on the chip's fill (#4851) */
 .list-bar-chip-all { background: none; }

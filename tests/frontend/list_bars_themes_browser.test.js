@@ -36,7 +36,7 @@ const PANELS = require('./helpers/list_bars_panels');
                     await shot(`bars-${p.key}-${theme}-${w}`);
                 } catch (e) { check(`${tag}: shown`, false, String(e.message || e).slice(0, 300)); continue; }
                 all.push({ tag, ...r });
-                check(`${tag}: ${r.checked} checks, contrast (${r.borders.length} control borders under 3:1, reported apart)`, r.fails.length === 0, r.fails.length ? JSON.stringify(r.fails) : undefined);
+                check(`${tag}: ${r.checked} checks, contrast (control borders 3:1: ${r.borders.length} under)`, r.fails.length === 0 && r.borders.length === 0, r.fails.length || r.borders.length ? JSON.stringify([...r.fails, ...r.borders.map(b => ({ ...b, what: 'control border' }))]) : undefined); // a control's border is part of the audit (#4877): it was reported apart while every input shared one 1.3:1 colour
             }
         }
         for (const it of ((await ev(`fetch('/api/saved').then(r => r.json())`)).items || [])) await ev(`fetch('/api/saved/${it.id}', { method: 'DELETE' }).then(() => true)`); // the bookmarks the Inbox panel seeded

@@ -8,7 +8,7 @@
 .btn {
     padding: var(--space-md) var(--space-lg);
     border-radius: var(--radius-md);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     background: var(--bg-tertiary);
     color: var(--text-primary);
     font-size: var(--fs-md);
@@ -45,7 +45,7 @@
 }
 
 .btn-warning {
-    border-color: var(--border);
+    border-color: var(--control-border);
     color: var(--text-secondary);
     background: var(--bg-tertiary);
 }
@@ -57,7 +57,7 @@
 }
 
 .btn-danger {
-    border-color: var(--border);
+    border-color: var(--control-border);
     color: var(--text-secondary);
     background: var(--bg-tertiary);
 }
@@ -505,7 +505,7 @@ button.subscriber-history-link {
 
 /* Keyboard-key style buttons */
 .btn-nav {
-    border: 1px solid var(--border-light);
+    border: 1px solid var(--control-border);
     border-bottom: 2px solid var(--border-light);
     background: var(--bg-tertiary);
     color: var(--text-secondary);
@@ -741,7 +741,7 @@ button.subscriber-history-link {
     margin-top: 4px;
     padding: 8px 12px;
     background: var(--bg-primary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: var(--radius-md);
     color: var(--text-primary);
     font-size: var(--fs-md);
@@ -1066,7 +1066,7 @@ button.subscriber-history-link {
 
 .copy-btn {
     background: var(--bg-tertiary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     color: var(--text-secondary);
     padding: 2px 8px;
     border-radius: 4px;
@@ -1473,7 +1473,7 @@ button.subscriber-history-link {
     flex: 1;
     padding: 6px 10px;
     background: var(--bg-tertiary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     color: var(--text-primary);
     font-size: 0.8125rem;
@@ -1487,7 +1487,7 @@ button.subscriber-history-link {
 .emoji-picker-clear {
     padding: 4px 10px;
     background: none;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     color: var(--text-muted);
     font-size: 0.6875rem;
@@ -1651,7 +1651,7 @@ button.subscriber-history-link {
     flex: 1;
     padding: 4px 8px;
     background: var(--bg-primary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 4px;
     color: var(--text-primary);
     font-size: 0.75rem;
@@ -1665,7 +1665,7 @@ button.subscriber-history-link {
 .tag-dropdown-create input[type="color"] {
     width: 28px;
     height: 28px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 4px;
     background: none;
     cursor: pointer;
@@ -1758,7 +1758,7 @@ button.subscriber-history-link {
     padding: 3px 8px;
     border-radius: 4px;
     color: var(--text-secondary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     background: var(--bg-secondary);
     cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -2224,7 +2224,7 @@ button.subscriber-history-link {
     padding: 4px 10px;
     border-radius: 999px;
     background: transparent;
-    border-color: var(--border);
+    border-color: var(--control-border);
     color: var(--text-muted);
 }
 
@@ -2291,7 +2291,7 @@ button.subscriber-history-link {
 .acf-auto-permissions-toggle {
     margin: 10px 0 6px;
     padding: 12px 14px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 10px;
     background: var(--bg-secondary);
 }
@@ -2402,7 +2402,7 @@ button.subscriber-history-link {
     padding: 4px 10px;
     border-radius: 999px;
     background: transparent;
-    border-color: var(--border);
+    border-color: var(--control-border);
     color: var(--text-muted);
 }
 
@@ -2779,7 +2779,7 @@ button.subscriber-history-link {
 
 .btn-subtle {
     background: var(--bg-tertiary);
-    border: 1px solid var(--border-light, var(--border));
+    border: 1px solid var(--control-border);
     color: var(--text-secondary);
     font-size: var(--fs-md);
     font-weight: 500;
@@ -2840,7 +2840,7 @@ button.subscriber-history-link {
     flex: 1;
     padding: 6px 10px;
     background: var(--bg-tertiary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 6px;
     color: var(--text-primary);
     font-size: 0.8125rem;
@@ -3039,7 +3039,7 @@ button.subscriber-history-link {
     font-weight: 500;
     color: var(--text-secondary);
     background: var(--bg-tertiary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: all 0.15s;
@@ -3121,7 +3121,7 @@ button.subscriber-history-link {
     padding: 3px 8px;
     border-radius: 4px;
     color: var(--text-secondary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     background: var(--bg-secondary);
     cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
@@ -3251,7 +3251,7 @@ button.subscriber-history-link {
     font-size: 0.6875rem;
     font-family: var(--font-mono);
     background: var(--bg-primary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 4px;
     color: var(--text-primary);
     outline: none;
@@ -3365,7 +3365,7 @@ button.subscriber-history-link {
 .mb-post-input {
     flex: 1;
     padding: 10px 14px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 8px;
     background: var(--bg-secondary);
     color: var(--text-primary);
@@ -3697,7 +3697,7 @@ button.subscriber-history-link {
 .servers-form label { display: block; font-size: var(--fs-md); color: var(--text-secondary); margin-bottom: var(--space-lg); font-weight: 500; min-width: 0; }
 .servers-form input:not([type="checkbox"]):not([type="radio"]) {
     display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin-top: var(--space-xs); padding: 8px 12px; min-height: var(--control-height);
-    background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary);
+    background: var(--bg-primary); border: 1px solid var(--control-border); border-radius: var(--radius-md); color: var(--text-primary);
     font-size: var(--fs-md); font-family: var(--font-sans); outline: none;
 }
 .servers-form input:not([type="checkbox"]):not([type="radio"]):focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent); }
@@ -3770,14 +3770,14 @@ dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 1rem; }
 .auto-accept-confirm-enable:hover { filter: brightness(1.08); }
 #stop-all-auto-accept[hidden] { display: none; }
 .auto-accept-confirm-duration { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; color: var(--text-secondary); }
-.auto-accept-confirm-duration select { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; }
+.auto-accept-confirm-duration select { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--control-border); border-radius: 6px; padding: 4px 8px; font: inherit; }
 .settings-cloud-auto-accept { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 #settings-cloud-auto-accept-row[hidden] { display: none; }
 #settings-cloud-hub-operator-row[hidden], #settings-cloud-hub-operator-msg[hidden] { display: none; }
 .settings-cloud-hub-operator { margin-top: 8px; }
 .settings-cloud-hub-operator .settings-error { color: var(--error, #e5534b); }
 /* The popout's switch while auto-accept is off (#3182): an outlined, quiet header button. */
-button.auto-accept-header-off { display: inline-flex; align-items: center; margin: 0 4px 0 0; padding: 0 6px; border-radius: 4px; font: inherit; font-size: 0.6875rem; line-height: 18px; background: none; color: var(--text-secondary); border: 1px solid var(--border); cursor: pointer; }
+button.auto-accept-header-off { display: inline-flex; align-items: center; margin: 0 4px 0 0; padding: 0 6px; border-radius: 4px; font: inherit; font-size: 0.6875rem; line-height: 18px; background: none; color: var(--text-secondary); border: 1px solid var(--control-border); cursor: pointer; }
 button.auto-accept-header-off:hover { color: var(--text-primary); border-color: rgba(var(--warning-rgb), 0.6); }
 button.auto-accept-header-off:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
@@ -3982,7 +3982,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .pw-label { display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-primary); }
 .pw-input-row { display: block; position: relative; }
 .pw-input { width: 100%; box-sizing: border-box; padding: 9px 64px 9px 11px; font-size: 0.875rem; border-radius: 8px;
-    border: 1px solid var(--border-light); background: var(--bg-primary); color: var(--text-primary); }
+    border: 1px solid var(--control-border); background: var(--bg-primary); color: var(--text-primary); }
 .pw-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 [data-theme="light"] .pw-toggle { color: var(--accent-dim); }   /* AA on the light card (#4023) */
 .pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--accent);
@@ -4036,7 +4036,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .acf-model-refresh {
     flex: none; display: inline-flex; align-items: center; justify-content: center;
     width: 30px; height: 30px; padding: 0;
-    border: 1px solid var(--border); border-radius: var(--radius-md);
+    border: 1px solid var(--control-border); border-radius: var(--radius-md);
     background: none; color: var(--text-secondary); cursor: pointer;
 }
 .acf-model-refresh .material-icons { font-size: 1rem; }
@@ -4059,7 +4059,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .inbox-section-title { margin: 0 0 8px; font-size: 1.125rem; font-weight: 600; color: var(--text-primary); }
 .inbox-section-title .n { color: var(--text-muted); font-weight: 500; margin-left: 4px; }
 .inbox-needs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.inbox-needs-item { width: 100%; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; text-align: left; font: inherit; font-size: 0.875rem; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: 10px; padding: 10px 12px; min-height: 44px; cursor: pointer; }
+.inbox-needs-item { width: 100%; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; text-align: left; font: inherit; font-size: 0.875rem; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--control-border); border-left: 3px solid var(--warning); border-radius: 10px; padding: 10px 12px; min-height: 44px; cursor: pointer; }
 .inbox-needs-item:hover { background: var(--bg-tertiary); }
 .inbox-needs-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .inbox-needs-name { font-weight: 700; overflow-wrap: anywhere; }
@@ -4185,7 +4185,7 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .settings-row > dd { min-width: 0; margin: 0; }
 .settings-row > dd:has(> .check-hit) { align-items: flex-end; }
 .settings-row > dd:has(> .check-hit) .settings-hint { align-self: stretch; text-align: right; }
-.settings-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
+.settings-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--control-border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
 .settings-info-btn .material-icons { font-size: 1rem; }
 .settings-info-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .settings-info-btn[aria-expanded="true"] { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
@@ -4196,7 +4196,7 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .settings-pane > .settings-theme-btn, .settings-pane > .settings-prompts-btn { margin-top: 1rem; }
 /* The on/off boxes are switches; they stay native checkboxes (the keyboard, the screen reader and the touch target are unchanged). */
 #settings-modal .settings-row .check-hit input[type="checkbox"],
-#settings-modal .settings-hub-mode-toggle > input[type="checkbox"] { appearance: none; -webkit-appearance: none; position: relative; width: 2.5rem; height: 1.4rem; margin: 0; flex: none; border-radius: 1rem; border: 1px solid var(--border); background: var(--bg-hover); cursor: pointer; }
+#settings-modal .settings-hub-mode-toggle > input[type="checkbox"] { appearance: none; -webkit-appearance: none; position: relative; width: 2.5rem; height: 1.4rem; margin: 0; flex: none; border-radius: 1rem; border: 1px solid var(--control-border); background: var(--bg-hover); cursor: pointer; }
 #settings-modal .settings-row .check-hit input[type="checkbox"]::before,
 #settings-modal .settings-hub-mode-toggle > input[type="checkbox"]::before { content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.4rem - 8px); height: calc(1.4rem - 8px); border-radius: 50%; background: var(--text-secondary); transition: transform .12s; }
 #settings-modal .settings-row .check-hit input[type="checkbox"]:checked,

@@ -88,7 +88,7 @@
     width: 28px;
     height: 28px;
     padding: 0;
-    border: 1px solid var(--border);
+    border: 1px solid var(--control-border);
     border-radius: 4px;
     background: none;
     cursor: pointer;

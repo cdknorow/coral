@@ -262,5 +262,33 @@ for (const tab of ['files', 'tasks', 'saved', 'activity']) {
     });
 }
 
+// ── The dialogs with the most controls (#4877): Settings, the Launch dialog's agent form and Restart, in the open dialog's own box ──
+const modalShown = (ctx, id) => ctx.settle(`!!document.getElementById('${id}') && getComputedStyle(document.getElementById('${id}')).display !== 'none'`, `the ${id} dialog`);
+PANELS.push({
+    key: 'dialog-settings',
+    async show(ctx) {
+        await fresh(ctx);
+        await ctx.ev(`window.showSettingsModal(); true`);
+        await modalShown(ctx, 'settings-modal');
+        return { roots: ['#settings-modal .modal-content'] };
+    },
+}, {
+    key: 'dialog-launch',
+    async show(ctx) {
+        await fresh(ctx);
+        await ctx.ev(`window.showLaunchModal(); window._selectLaunchType('agent'); true`);
+        await ctx.settle(`!!document.querySelector('#launch-agent-acf .acf-agent-type')`, 'the agent form');
+        return { roots: ['#launch-modal .modal-content'] };
+    },
+}, {
+    key: 'dialog-restart',
+    async show(ctx) {
+        await fresh(ctx);
+        await ctx.ev(`T.state.currentSession = { name: 'ag', display_name: 'Agent', session_id: 'sid-r', type: 'live', agent_type: 'claude', model: '', prompt: 'x', capabilities: null }; window.restartSession(); true`);
+        await ctx.settle(`!!document.querySelector('#restart-acf .acf-agent-type')`, 'the restart form');
+        return { roots: ['#restart-modal .modal-content'] };
+    },
+});
+
 module.exports = PANELS;
 module.exports.helpers = { fresh, api, pick, typeInto, openMenu, dockOpen, mockAgents, launchStandIn };
