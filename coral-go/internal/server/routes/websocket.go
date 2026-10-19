@@ -230,6 +230,9 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("ws/coral build session list failed", "error", err)
 			continue
 		}
+		if owner, agent := VerifiedSession(r.Context()); agent {
+			tick = scopeTickForAgent(tick, owner.SessionID) // as the HTTP list: other boards' rows keep the roster only (#5041)
+		}
 		// Notifications this connection has not seen yet (every dashboard
 		// gets each one).
 		var pending []Notification

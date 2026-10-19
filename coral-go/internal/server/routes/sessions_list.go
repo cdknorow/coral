@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
@@ -41,8 +42,17 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.orderLiveRows(r.Context(), sessions)
+	// An agent's token sees the roster of other boards' sessions, not what they work on (#5041), and nothing of the registered remote servers.
+	owner, isAgent := VerifiedSession(r.Context())
+	if isAgent {
+		sessions = scopeRowsForAgent(sessions, owner.SessionID)
+	}
 	// Polled by every open dashboard: an unchanged list is a 304 with no body (#3439).
 	if snap := h.remoteSnapshot(); snap.Configured() {
+		if isAgent {
+			httputil.WriteJSONValidated(w, r, http.StatusOK, map[string]any{"sessions": mergeRemote(sessions, background.RemoteSnapshot{}), "servers": []any{}})
+			return
+		}
 		httputil.WriteJSONValidated(w, r, http.StatusOK, map[string]any{
 			"sessions": mergeRemote(sessions, snap), // each remote sorts its own rows
 			"servers":  snap.Servers,
