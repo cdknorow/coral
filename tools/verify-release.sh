@@ -15,6 +15,9 @@
 #                  metadata, not a download), so these are the published files byte for byte; SHA256SUMS.txt
 #                  matches each package, and lists every package (so nothing goes unchecked)
 #   4. attest      gh attestation verify for each package and for SHA256SUMS.txt, bound to release.yml at this tag
+#   3b. cask       the tap's Casks/coral.rb (written by the release's update-tap job) is at this version with the DMG's sha256 from
+#                  SHA256SUMS.txt; the repo's own cask is checked only once it is at this version. Authenticode is a Windows
+#                  signature and is not checked on macOS (the DMG gets spctl, stapler and codesign).
 #   5. cosign      cosign verify-blob of every .sigstore.json bundle, when cosign is installed (a
 #                  plain SKIP, not a pass, when it is not)
 #   6. dmg         hdiutil verify of the DMG (macOS hosts only); spctl, stapler on the DMG and app, codesign,
@@ -227,6 +230,24 @@ if [ -f SHA256SUMS.txt ]; then
   done
 else
   fail sha256 "SHA256SUMS.txt" "missing"
+fi
+
+# ---- 3b. the Homebrew cask: the sha256 users install with is the one SHA256SUMS.txt lists (#4997, Security's INFO) ----
+# The release workflow's update-tap job writes the tap's Casks/coral.rb before this runs, so it is checked here; the repo's own
+# Casks/coral.rb is made after verification (tools/devops/cask.sh), so it is checked only when it is already at this version.
+# Authenticode is not checked on macOS (it is a Windows signature): the DMG is checked below with spctl, stapler and codesign.
+if [ -f SHA256SUMS.txt ]; then
+  dmg_sum="$(awk '$2 ~ /\.dmg$/ {print $1; exit}' SHA256SUMS.txt)"
+  for spec in "tap:cdknorow/homebrew-coral" "repo:$REPO"; do
+    which_="${spec%%:*}"; cask_repo="${spec#*:}"
+    cask="$(gh api "repos/$cask_repo/contents/Casks/coral.rb" -q .content 2>/dev/null | base64 -d 2>/dev/null || true)"
+    if [ -z "$cask" ]; then skip cask "$which_ Casks/coral.rb" "could not be read ($cask_repo)"; continue; fi
+    cask_ver="$(awk -F'"' '/^  version /{print $2; exit}' <<<"$cask")"; cask_sum="$(awk -F'"' '/^  sha256 /{print $2; exit}' <<<"$cask")"
+    if [ "$cask_ver" != "$want_ver" ]; then
+      if [ "$which_" = repo ]; then skip cask "$which_ Casks/coral.rb" "at $cask_ver: it is made after verification (tools/devops/cask.sh)"; else fail cask "$which_ Casks/coral.rb" "at version ${cask_ver:-none}, expected $want_ver"; fi
+    elif [ -n "$dmg_sum" ] && [ "$cask_sum" = "$dmg_sum" ]; then pass cask "$which_ Casks/coral.rb" "sha256 equals the DMG's line in SHA256SUMS.txt (${cask_sum:0:12}...)"
+    else fail cask "$which_ Casks/coral.rb" "sha256 ${cask_sum:0:12}... is not the DMG's line in SHA256SUMS.txt (${dmg_sum:0:12}...)"; fi
+  done
 fi
 
 # ---- 4. GitHub attestations ----

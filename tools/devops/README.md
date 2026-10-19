@@ -22,10 +22,11 @@ the first failed check.
    - gofmt with the module's own toolchain;
    - build, plus vet with the default tags, `dev fts5` and `GOOS=windows`;
    - the route regenerators, which must leave no diff;
-   - `go test ./...` on both tag sets;
+   - `go test ./...` on both tag sets (a light check on the Mac; the proof is the gate's go-tests, below);
    - `test:cloud`.
 
-3. **Gate**: push the worktree to `ci/<version>` (that starts `cdp-gate` and `gofmt`), then dispatch `windows-tests` on it:
+3. **Gate**: push the worktree to `ci/<version>` (that starts `cdp-gate`, `go-tests`, `go-race` and `gofmt`), then dispatch
+   `windows-tests` on it:
 
    ```bash
    git -C /tmp/wt-v1491 push origin HEAD:refs/heads/ci/v1491
@@ -35,6 +36,16 @@ the first failed check.
    The gate is green only when all eight cdp-gate jobs are green and the summary's first line says `green:`. The #4354
    end check must be quiet in every job. A flaky or failed suite's first failing line is printed under its name in the
    summary.
+
+   **The Linux go test is `go-tests`** (GitHub, both tag sets, `internal/server/routes` and `pkg/tunnel` in shards of their
+   own, about 6 minutes): since v1.4.106 it is the proof, where `tools/epoch-gate.sh` on the shared test host took about 60
+   minutes of wall time on loaded days. It agreed with epoch twice (v1.4.104: routes rerun, v1.4.105: both tag sets in 19
+   minutes). The epoch run is the fallback, for when GitHub is unavailable or a result needs a second machine:
+   `EPOCH_HOST=epoch EPOCH_ROOT=/home/cknorow EPOCH_GO_ONLY=1 tools/epoch-gate.sh vNNN` from a clean worktree (go-only: epoch
+   has no node or Chrome). `go-race` runs the race detector on the five high-risk packages per `ci/` push and on every
+   package nightly. A FLAKY suite fails the gate: run it 10 times with no retries on the candidate and on `main`
+   (`gh workflow run cdp-gate.yml --ref <ref> -f suites=<name> -f runs=10`); the same failure rate on both is a pre-existing
+   flake, overridden and reported.
 
    After a green gate, refresh the suite durations the six parts are balanced by (#4605). The landed tree must be the
    gated tree, so the refreshed file is the first commit of the next batch (one `tests: suite_durations.json from the
@@ -59,12 +70,14 @@ the first failed check.
      checkout's files with their modes, and stops if anyone else edited one of them.
    - Then `git tag vX.Y.Z <notes commit>` and push the tag. The release workflow builds, signs and publishes.
 
-5. **Finish**: after the release workflow succeeds, run `tools/devops/finish-release.sh X.Y.Z`. It:
+5. **Finish**: `tools/devops/after-release.sh X.Y.Z` waits for the release run, runs `finish-release.sh` and stops before
+   the cask (re-read the board, then pass `--cask`, or run `cask.sh` yourself). `finish-release.sh X.Y.Z` itself:
    - sets the release body from the tag's notes;
    - starts the runtime check;
    - runs `tools/verify-release.sh`, which takes every file from the release run's artifacts and checks each against
-     GitHub's digest of the published asset, so it verifies the published files without downloading them. It needs
-     cosign on PATH.
+     GitHub's digest of the published asset, so it verifies the published files without downloading them. It also checks
+     that the tap's `Casks/coral.rb` carries the DMG's sha256 from `SHA256SUMS.txt` (and the repo's own, once it is at this
+     version). It needs cosign on PATH.
 
    Edit the body only after verify-release has passed, since its notes row compares the body with the tag's notes.
 
