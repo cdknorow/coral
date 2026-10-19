@@ -17,3 +17,6 @@ func init() {
 		posthogURL = url
 	}
 }
+
+// SinkAvailable is true in a dev build: CORAL_TELEMETRY_TEST_SINK can point delivery at a local capture endpoint (tests only).
+func SinkAvailable() bool { return true }

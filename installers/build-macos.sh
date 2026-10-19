@@ -32,10 +32,14 @@ diff -qr "$CORAL_TMUX_ARM64_PAYLOAD/licenses" "$CORAL_TMUX_X86_64_PAYLOAD/licens
 
 echo "==> Building coral-go for macOS (universal) v${VERSION}"
 
-# Build ldflags — always strip symbols; inject PostHog key and version for all builds
-LDFLAGS="-s -w"
-POSTHOG_KEY="${CORAL_POSTHOG_KEY:-phc_qXGp75qwDNcETkBDDsptPuP8qAV4nNQPDmTdAC8K9h2}"
-LDFLAGS="$LDFLAGS -X github.com/cdknorow/coral/internal/config.PostHogKey=$POSTHOG_KEY -X github.com/cdknorow/coral/internal/config.Version=$VERSION"
+# Build ldflags — always strip symbols and inject the version. A local build has NO analytics key unless CORAL_POSTHOG_KEY is set (#5184: the script used to
+# embed the project's key for every tier, dev builds too, so a build made here sent usage events); the release workflow injects its own key from a secret.
+LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.Version=$VERSION"
+if [ -n "${CORAL_POSTHOG_KEY:-}" ]; then
+    LDFLAGS="$LDFLAGS -X github.com/cdknorow/coral/internal/config.PostHogKey=$CORAL_POSTHOG_KEY"
+else
+    echo "==> No CORAL_POSTHOG_KEY: this build sends no usage analytics"
+fi
 
 # Build tags — select tier via CORAL_TIER env var
 BUILD_TAGS="fts5"

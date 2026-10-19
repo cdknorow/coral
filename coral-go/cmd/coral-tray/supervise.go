@@ -34,6 +34,10 @@ const (
 const (
 	childSaysReady        = "coral-child ready"
 	childSaysNeedPassword = "coral-child need-password"
+	// childSaysTelemetry is followed by on or off before the ready line (#5184): the server applied the saved Usage analytics setting (fail closed) and
+	// the environment's opt-out, and the tray, which never reads the setting itself, sends its own events only when it hears "on".
+	childSaysTelemetryOn  = "coral-child telemetry on"
+	childSaysTelemetryOff = "coral-child telemetry off"
 )
 
 type exitKind int
@@ -123,6 +127,8 @@ type supervisor struct {
 	// when the server ran inside the tray.
 	password func() (string, error)
 	onState  func(serverState, string) // called on every change, with the reason
+	// onTelemetry hears whether the server's Usage analytics are on, once per start, before ready (#5184). Never called when the child says nothing.
+	onTelemetry func(on bool)
 
 	mu       sync.Mutex
 	cmd      *exec.Cmd
@@ -187,6 +193,10 @@ func (s *supervisor) start() (ready <-chan struct{}, err error) {
 				}
 				s.mu.Unlock()
 				s.onState(stateRunning, "")
+			case childSaysTelemetryOn, childSaysTelemetryOff:
+				if s.onTelemetry != nil {
+					s.onTelemetry(strings.TrimSpace(sc.Text()) == childSaysTelemetryOn)
+				}
 			case childSaysNeedPassword:
 				if pw, ok := s.cachedPassword(); ok {
 					io.WriteString(in, pw+"\n")

@@ -53,6 +53,17 @@ func TestHelperChild(t *testing.T) {
 		serve()
 	case "serve":
 		serve()
+	case "telemetry-on", "telemetry-off", "telemetry-on-then-off": // the line startup's applied setting becomes (#5184)
+		if mode == "telemetry-off" || (mode == "telemetry-on-then-off" && n == 2) {
+			fmt.Println(childSaysTelemetryOff)
+		} else {
+			fmt.Println(childSaysTelemetryOn)
+		}
+		if mode == "telemetry-on-then-off" && n == 1 {
+			fmt.Println(childSaysReady)
+			os.Exit(childExitRestart)
+		}
+		serve()
 	case "stops-itself":
 		fmt.Println(childSaysReady)
 		os.Exit(0)

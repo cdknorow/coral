@@ -85,6 +85,10 @@ func TelemetryEnvDisabled() bool {
 	return false
 }
 
+// TelemetryOn reports whether this process may send telemetry now: the saved setting (SetTelemetryEnabled) and the environment's opt-out (#5184:
+// the tray's server child reports it to the tray, which sends nothing of its own until the child says on).
+func TelemetryOn() bool { return telemetryEnabled() }
+
 // telemetryEnabled is checked before every send and before every retry, so an
 // opt-out takes effect immediately and queued work is dropped, never replayed.
 func telemetryEnabled() bool { return !telemetryDisabled.Load() && !TelemetryEnvDisabled() }

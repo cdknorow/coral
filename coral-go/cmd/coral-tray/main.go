@@ -240,8 +240,14 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		log.Printf("Failed to start: cannot find this program: %v", err)
 		return
 	}
+	// Anonymous install/upgrade tracking (#5184): the tray never reads the Usage analytics setting (the server child applies it, fail closed), so
+	// its own tracking starts OFF and turns on only when the child reports on, once; nothing is sent before that.
+	tracking.SetTelemetryEnabled(false)
+	tracking.SetEntrypoint("coral-tray")
+	tracking.SetCoralDir(dataDir)
 	sup := newSupervisor(exe, append([]string{"--server-child", "--port", strconv.Itoa(port), "--backend", backendType}, hostArgs(host)...), log.Writer())
 	sup.password = nativeDatabasePassword
+	sup.onTelemetry = trayTelemetry(tracking.TrackInstallAsync)
 	status := &trayStatus{}
 	sup.onState = status.set
 	ready, err := sup.start()
@@ -313,11 +319,6 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 
 	// Kill an orphaned coral-app from an earlier run of this Coral (this data folder only)
 	killOrphanedCoralApp(cfg.CoralDir())
-
-	// Anonymous install/upgrade tracking (non-blocking)
-	tracking.SetEntrypoint("coral-tray")
-	tracking.SetCoralDir(dataDir)
-	tracking.TrackInstallAsync()
 
 	// Run systray (blocks until quit)
 	systray.Run(func() {

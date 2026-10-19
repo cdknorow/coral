@@ -6,7 +6,7 @@ Set `CORAL_TELEMETRY_DISABLED=1` before starting Coral to suppress analytics reg
 
 ## Events
 
-The runtime disclosure is generated from `internal/tracking/events.go`. New funnel events use schema version 2.
+The runtime disclosure is generated from `internal/tracking/events.go`. New funnel events use schema version 3.
 
 | Event | Meaning | Additional properties |
 |---|---|---|
@@ -47,7 +47,7 @@ These observations identify missing prerequisites and later availability. Coral 
 
 ## Properties and identifiers
 
-Every event carries `version`, `edition`, `os`, `arch`, `schema_version`, `run_id`, and `entrypoint`. The process run ID is random and changes on restart. Entrypoint is a controlled value distinguishing the server, tray, launcher, or unknown entrypoint. Launch attempt IDs correlate requests and outcomes; dashboard page IDs distinguish page loads. These are analytics IDs, not agent session IDs, task IDs, or board identifiers.
+Every event carries `version`, `edition`, `os`, `arch`, `platform` (the operating system family: `darwin`, `windows`, `linux`, or `wsl2` when Linux runs under WSL2), `schema_version`, `run_id`, and `entrypoint`. The process run ID is random and changes on restart. Entrypoint is a controlled value distinguishing the server, tray, launcher, or unknown entrypoint. Launch attempt IDs correlate requests and outcomes; dashboard page IDs distinguish page loads. These are analytics IDs, not agent session IDs, task IDs, or board identifiers.
 
 ### Test sink
 

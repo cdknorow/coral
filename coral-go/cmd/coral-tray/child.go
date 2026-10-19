@@ -17,6 +17,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/safego"
 	"github.com/cdknorow/coral/internal/startup"
+	"github.com/cdknorow/coral/internal/tracking"
 )
 
 // runServerChild is the server half of the tray (#4163): coral-tray --server-child runs
@@ -95,6 +96,11 @@ func runServerChild(host string, port int, backendType string) {
 	if err != nil {
 		log.Printf("Failed to start: %v", err)
 		os.Exit(childExitStartFailed)
+	}
+	if tracking.TelemetryOn() { // the setting startup applied (fail closed) and the environment's opt-out
+		fmt.Println(childSaysTelemetryOn)
+	} else {
+		fmt.Println(childSaysTelemetryOff)
 	}
 	fmt.Println(childSaysReady)
 
