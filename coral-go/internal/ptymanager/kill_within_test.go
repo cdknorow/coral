@@ -1,6 +1,7 @@
 package ptymanager
 
 import (
+	"os/exec"
 	"testing"
 	"time"
 )
@@ -48,5 +49,50 @@ func TestKillWithinDoesNotWaitForAProcessThatExitsOnSIGTERM(t *testing.T) {
 	}
 	if err := b.KillWithin(name, time.Second); err == nil {
 		t.Fatal("a session that is gone is an error, as for Kill")
+	}
+}
+
+// #4984: closing a terminal sends SIGHUP, and an interactive shell exits on it though it ignores SIGTERM, so ending a terminal agent no longer waits
+// the whole 5 s grace for a SIGKILL. A process that ignores SIGTERM but not SIGHUP (an interactive shell's own stance) ends at once; one that
+// ignores both is still force-killed after the grace.
+func TestKillEndsAProcessThatIgnoresSIGTERMButNotSIGHUPAtOnce(t *testing.T) {
+	canFork(t)
+	b := NewPTYBackend()
+	t.Cleanup(func() { b.Close() })
+	const name = "claude-00000000-0000-4000-8000-000000004984"
+	if err := b.Spawn(name, "claude", t.TempDir(), "00000000-0000-4000-8000-000000004984", "trap '' TERM; exec sleep 600", 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond) // the trap and the exec are done
+	start := time.Now()
+	if err := b.Kill(name); err != nil { // the full 5 s grace is on offer
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("a process that ignores SIGTERM but not SIGHUP ends at once, took %v", took)
+	}
+	if b.IsRunning(name) {
+		t.Fatal("the session is gone")
+	}
+}
+
+func TestKillEndsAnInteractiveShellWithinASecond(t *testing.T) {
+	canFork(t)
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("no bash")
+	}
+	b := NewPTYBackend()
+	t.Cleanup(func() { b.Close() })
+	const name = "claude-00000000-0000-4000-8000-000000004985"
+	if err := b.Spawn(name, "terminal", t.TempDir(), "00000000-0000-4000-8000-000000004985", "bash --norc --noprofile -i", 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond) // the prompt is up
+	start := time.Now()
+	if err := b.Kill(name); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("an interactive shell ends within a second of Kill, took %v", took)
 	}
 }

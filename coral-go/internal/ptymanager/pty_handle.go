@@ -12,7 +12,7 @@ type ptyProcess interface {
 	// Resize changes the terminal dimensions.
 	Resize(cols, rows uint16) error
 
-	// Terminate sends a graceful stop signal (SIGTERM on Unix, TerminateProcess on Windows).
+	// Terminate sends a graceful stop signal (SIGHUP then SIGTERM on Unix, TerminateProcess on Windows).
 	Terminate() error
 
 	// ForceKill forcefully kills the process tree (SIGKILL on Unix, job object on Windows).

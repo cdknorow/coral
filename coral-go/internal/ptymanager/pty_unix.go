@@ -71,14 +71,19 @@ func (p *unixPTY) Resize(cols, rows uint16) error {
 	return pty.Setsize(p.ptyFile, &pty.Winsize{Rows: rows, Cols: cols})
 }
 
+// Terminate is what closing a terminal does, then the polite stop: SIGHUP to the process group, then SIGTERM. An interactive shell ignores SIGTERM
+// but exits on SIGHUP, so a terminal agent's kill waited the whole grace (5 s) for nothing (#4984); an agent that handles SIGTERM still gets it at
+// once. The caller force-kills after its grace.
 func (p *unixPTY) Terminate() error {
 	if p.cmd.Process == nil {
 		return nil
 	}
 	pgid, err := syscall.Getpgid(p.cmd.Process.Pid)
 	if err == nil && pgid > 0 {
+		_ = syscall.Kill(-pgid, syscall.SIGHUP)
 		return syscall.Kill(-pgid, syscall.SIGTERM)
 	}
+	_ = p.cmd.Process.Signal(syscall.SIGHUP)
 	return p.cmd.Process.Signal(syscall.SIGTERM)
 }
 
