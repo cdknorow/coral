@@ -1,5 +1,22 @@
 # Release Notes
 
+## v1.4.119 — The artifact preview can take the whole screen on a phone
+
+### Fixes
+
+- **In the light theme, table row lines and hover highlights were invisible and error and warning text too pale:** they now use the theme's own colours (the six CSS variables nothing declared are declared, or replaced by the token that exists).
+
+### Changes
+
+- **On a phone the artifact preview can take the whole screen:** it sat in the bottom 280 px of the side panel with no way to enlarge it. The tab bar's 44 px toggle now shows on a phone and makes the preview a full-screen layer inside the safe-area insets, with a Back button, Escape, and the phone's back gesture to leave it, returning to the sheet with focus on the toggle. The desktop is unchanged.
+- **Dead CSS is removed** (six unused custom properties, a repeated rule, an overridden display, an empty rule); computed styles do not change.
+- **Settings dialog requests share one helper (`requestJson`) and the placeholder lines in the cost tables and message board one `emptyState` helper;** the same messages and markup as before.
+
+### Tests
+
+- Browser suites for the full-screen preview, the shared helpers, long scrolled row and team menus, and a dashboard probe for 10, 50 and 150 agents (opt-in); new census checks for undeclared CSS variables and for new `style.display` show/hide writes.
+- The local-navigation suite no longer fails about 1 run in 10 (it read the panel's frame after the dashboard's guard had already removed it); a test and a line in the board agent docs say that a verdict or a plain assigned task needs no claim while the agent holds another task.
+
 ## v1.4.118 — A calmer dashboard: no expanding rings, and nothing animates with reduced motion
 
 ### Changes
