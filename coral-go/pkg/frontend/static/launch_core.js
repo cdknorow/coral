@@ -30,7 +30,6 @@ function _showLaunchStep(step) {
     if (content) {
         // New Agent and Agent Team are sectioned dialogs (#4950, section_dialog.js): the Settings shell's size; the chooser and the terminal form keep the narrow one.
         const sectioned = step === "agent" || step === "team";
-        content.classList.toggle("settings-modal-content", sectioned);
         content.classList.toggle("sd-modal-content", sectioned);
         content.classList.toggle("modal-content-wide", !sectioned);
         content.classList.toggle("launch-choosing", step === "chooser"); // four choices in a row (#3630)

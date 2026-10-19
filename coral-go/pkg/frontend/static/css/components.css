@@ -4200,7 +4200,7 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 }
 /* The sectioned dialogs (#4950: Restart, New Agent, Agent Team, the team's agent dialog) are the Settings shell in a smaller dialog: the same list, panes, heading and footer. They switch to the selector at the top
    under 40rem of their own width (Settings does at 60rem, as it is wider). One more thing the shell has here: a sub-line in the header, and a dot on a section that holds a problem. */
-.sd-modal-content { container: sd / inline-size; width: min(56rem, 94vw); height: min(36rem, 92vh); }
+.sd-modal-content { container: sd / inline-size; width: min(56rem, 94vw); max-width: none; height: min(36rem, 92vh); } /* (not .settings-modal-content: the Settings dialog is the one element with that class, and code and tests find it by it) */
 .modal-header .sd-sub { margin: .15rem 0 0; color: var(--text-secondary); font-size: .8125rem; font-weight: 400; }
 .sd-modal-content .modal-footer { flex: none; }
 /* In the launch dialog the sectioned steps sit inside the dialog's own box: it has no padding then, the step's header and footer are full width, the fixed footer is always in view. */
