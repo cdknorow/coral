@@ -914,6 +914,9 @@ func (r *Writer) process(data []byte, final bool) (out []byte, consumed int) {
 			i = start + n
 			if long {
 				r.inToken = rule.class // the rest of the run is dropped as it arrives
+				if rule.toQuote && openingQuote(data, start+valueAt) != nil {
+					r.inToken = notQuoteEnd // a quoted value's rest runs to its quote, spaces and all (as when it is held: #5002)
+				}
 			}
 		}
 	}

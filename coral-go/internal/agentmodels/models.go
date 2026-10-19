@@ -60,7 +60,7 @@ func clean(in []Model) []Model {
 		seen[m.Value] = true
 		m.DisplayName = plainText(m.DisplayName, maxDisplayName)
 		if m.DisplayName == "" {
-			m.DisplayName = m.Value
+			m.DisplayName = plainText(m.Value, maxDisplayName) // a model id can be longer than a name may be (#5002)
 		}
 		m.Description = plainText(m.Description, maxDescription)
 		var efforts []string
@@ -88,7 +88,7 @@ func plainText(s string, n int) string {
 	}, s)
 	s = strings.Join(strings.Fields(s), " ")
 	if r := []rune(s); len(r) > n {
-		s = string(r[:n])
+		s = strings.TrimSpace(string(r[:n])) // a cut right after a space leaves no trailing one (#5002)
 	}
 	return s
 }

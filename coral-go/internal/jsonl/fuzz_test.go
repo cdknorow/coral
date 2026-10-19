@@ -112,3 +112,55 @@ func FuzzParseTranscript(f *testing.F) {
 		}
 	})
 }
+
+// FuzzTranscriptCursor (#5002): a transcript is read as it grows, in pieces cut wherever the writer's writes and the scans fell. Whatever
+// the bytes and wherever they are cut, the lines the cursor delivers are the file, once, in order: their concatenation is a prefix of the
+// file that holds every newline-terminated line (a last line without its newline may still be held), and appending never makes it start over.
+func FuzzTranscriptCursor(f *testing.F) {
+	f.Add([]byte("{\"a\":1}\n{\"b\":2}\n{\"c\":3}"), uint16(5), uint16(12))
+	f.Add([]byte("\n\n\n"), uint16(1), uint16(2))
+	f.Add([]byte("no newline at all"), uint16(3), uint16(9))
+	f.Add([]byte("{\"d\":\n4}\n"), uint16(6), uint16(7))
+	f.Add(bytes.Repeat([]byte("x"), 70<<10), uint16(100), uint16(40000))
+	f.Fuzz(func(t *testing.T, data []byte, c1, c2 uint16) {
+		if len(data) > 256<<10 {
+			t.Skip()
+		}
+		a, b := int(c1)%(len(data)+1), int(c2)%(len(data)+1)
+		if a > b {
+			a, b = b, a
+		}
+		path := filepath.Join(t.TempDir(), "t.jsonl")
+		if err := os.WriteFile(path, data[:a], 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var c TranscriptCursor
+		var got bytes.Buffer
+		resets := 0
+		scan := func() { c.Scan(path, func() { resets++ }, func(line []byte) { got.Write(line) }) }
+		appendTo := func(p []byte) {
+			fh, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fh.Write(p)
+			fh.Close()
+		}
+		scan()
+		appendTo(data[a:b])
+		scan()
+		appendTo(data[b:])
+		scan()
+		scan()
+		scan()
+		if resets > 1 {
+			t.Fatalf("%d resets while only appending", resets)
+		}
+		if !bytes.HasPrefix(data, got.Bytes()) {
+			t.Fatalf("delivered %d bytes that are not the start of the file (%d bytes)", got.Len(), len(data))
+		}
+		if last := bytes.LastIndexByte(data, '\n'); got.Len() < last+1 {
+			t.Fatalf("delivered %d bytes but the file has complete lines up to %d", got.Len(), last+1)
+		}
+	})
+}
