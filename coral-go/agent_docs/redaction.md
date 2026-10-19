@@ -9,7 +9,7 @@ never passed on as it is.
    private keys, and generic rules for a value assigned to a secret-looking name. **Many of these rules only redact a value that looks random enough**
    (see the table below). A value under a rule's entropy threshold stays showing, however well the pattern matched.
 2. **Coral's own provider rules** (`internal/secrets/extra.go`): Anthropic and OpenAI keys of any length, AWS access key ids, bearer, basic and JWT values,
-   the `aws_secret_access_key` value, the password of a URL's credentials (the part after the user name and its colon).
+   the `aws_secret_access_key` value, the password of a URL's credentials (the part after the user name and its colon). A PEM private key is redacted from its header line to its end line (the library's rule drops a block whose base64 holds "false" in any case, #5158).
 3. **Coral's keyword rules** (`internal/secrets/keyword_rules.go`, #5132, #5141): **the value after a recognised keyword is redacted whatever its entropy.**
    The keyword is the evidence, so the value need not look random. **These run only for Coral Hub** (the cloud tunnel's redactor, `secrets.HubRedactor`): they
    cost redaction speed (about three times the time on text dense in names such as key and token), so every local caller (`coral.log` lines, events, saved

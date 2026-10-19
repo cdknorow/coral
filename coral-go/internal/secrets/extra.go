@@ -50,6 +50,9 @@ var extraRules = []extraRule{
 	// A URL's user name that is itself the credential (https://<token>@host, no password): a long user name that mixes letters and digits.
 	// The passwords of scheme://user:password@host are found by redact.URLPasswordSpans (extraSpans), which needs the URL's own shape (#4769).
 	{re: regexp.MustCompile(`://([A-Za-z0-9._~%+-]{24,})@`), group: 1, ok: mixesLettersAndDigits},
+	// A PEM private key, header line to end line (#5158): betterleaks has the same rule, but its global false-positive filter drops a finding whose
+	// text holds "false" in any case, so a block whose base64 happens to hold those five letters (about one in twenty thousand) was shown whole.
+	{re: regexp.MustCompile(`(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----`)},
 	// AWS access key IDs: AKIA (long-term), ASIA (temporary) and the other IAM prefixes. Amazon's
 	// documentation example (...EXAMPLE) is not a secret, as betterleaks also treats it.
 	{re: regexp.MustCompile(`\b(?:AKIA|ASIA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ABIA|ACCA)[A-Z0-9]{16}\b`), ok: notDocumentationKey},
