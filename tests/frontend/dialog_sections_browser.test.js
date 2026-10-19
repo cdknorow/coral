@@ -40,6 +40,8 @@ const BASE = require('./test_base').BASE;
                 listShown: shown(m.querySelector('.settings-tabs')), pickShown: shown(sel), pick: sel && sel.value, open: pane && pane.dataset.section, title: pane && pane.querySelector('.settings-pane-title').textContent, desc: pane && pane.querySelector('.settings-pane-sub').textContent,
                 panesVisible: [...m.querySelectorAll('.settings-pane[data-section]')].filter(p => shown(p)).length, footBottom: foot && Math.round(foot.getBoundingClientRect().bottom), contentBottom: Math.round(content.getBoundingClientRect().bottom), footShown: shown(foot),
                 overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
+        // The pane's highest scroll over the next second: a card scrolled into view animates (smooth), so one look right after opening sees nothing.
+        const topStays = async root => { let max = 0; for (let i = 0; i < 20; i++) { max = Math.max(max, await ev(`document.querySelector('${root} .settings-panes').scrollTop`)); await new Promise(r => setTimeout(r, 50)); } return max; }; // sleep-ok: watching an animation that has no completion event
         const go = (root, id) => ev(`(() => { const m = document.querySelector(${JSON.stringify(root)}); const t = [...m.querySelectorAll('.settings-tabs [role=tab]')].find(x => x.dataset.section === ${JSON.stringify(id)}); if (getComputedStyle(m.querySelector('.settings-tabs')).display !== 'none') t.click(); else { const s = m.querySelector('.settings-group-pick select'); s.value = ${JSON.stringify(id)}; s.dispatchEvent(new Event('change', { bubbles: true })); } return true; })()`);
         const session = { name: 'ag', display_name: 'QA Engineer', session_id: 'sid-r', type: 'live', agent_type: 'claude', model: 'claude-opus-4', prompt: 'Be kind.\nAlways.', capabilities: { allow: ['file_read'] }, tmux_session: 'ag' };
 
@@ -160,6 +162,7 @@ const BASE = require('./test_base').BASE;
         const TM = '#launch-step-team';
         assert.deepEqual(await names(TM), [['Members', 'group'], ['Board & workspace', 'forum'], ['Defaults', 'tune']]);
         v = await view(TM); assert.equal(v.open, 'members'); assert.match(v.desc, /template/);
+        assert.equal(await topStays(TM), 0, 'the Members section opens at its top and stays there: its heading and the template picker are in view, not scrolled past by the default agents being added');
         assert.ok(await ev(vis('#team-agents-list')) && await ev(vis('#launch-step-team [data-on-click="m-show-team-agent-modal"]')) && await ev(vis('#team-template-selector')), 'the agents, Add Agent and the templates are in Members');
         await shot('team-members-desktop');
         for (const [id, sel] of [['board', '#team-board-name'], ['board', '#launch-team-dir'], ['board', '#team-board-server'], ['defaults', '#team-agent-type'], ['defaults', '#team-permission-mode']]) { await go(TM, id); assert.ok(await ev(vis(sel)), `${sel} is reached in ${id}`); }
@@ -177,6 +180,7 @@ const BASE = require('./test_base').BASE;
         await ev(`window.showLaunchModal(); window._selectLaunchType('team'); true`);
         await waitFor(vis('#launch-step-team'), 'the phone team step');
         v = await view(TM); assert.ok(v.pickShown && !v.listShown, 'the selector at the top'); assert.equal(v.overflow, 0);
+        assert.equal(await topStays(TM), 0, 'and on a phone');
         assert.ok(v.footShown && v.footBottom <= v.contentBottom, 'Launch Team stays in view');
         assert.equal(await ev(`[...document.querySelectorAll('#launch-step-team .settings-group-pick select, #launch-step-team .modal-actions .btn')].every(e => e.getBoundingClientRect().height >= 44)`), true, 'targets of 44 px');
         await shot('team-members-phone');
@@ -195,8 +199,8 @@ const BASE = require('./test_base').BASE;
         const TA = '#team-agent-modal';
         assert.deepEqual(await names(TA), [['Role', 'badge'], ['Agent', 'smart_toy'], ['Prompt', 'description'], ['Permissions', 'lock'], ['Advanced', 'tune']]);
         await go(TA, 'agent');
-        await click('#team-agent-modal [data-on-click="m-save-team-agent-from-modal"]');
-        await waitFor(`document.activeElement.classList.contains('acf-name')`, 'the empty name focused');
+        // The agent form fills in after it opens (the models arrive and it is drawn again), which can replace the name field the problem was marked on: Save is pressed again until the empty name has the focus.
+        await waitFor(`(() => { if (document.activeElement.classList.contains('acf-name')) return true; document.querySelector('#team-agent-modal [data-on-click="m-save-team-agent-from-modal"]').click(); return false; })()`, 'the empty name focused');
         v = await view(TA); assert.equal(v.open, 'role', 'Save without a name opens Role'); assert.equal(await dot(TA, 'Role'), true);
         await shot('team-agent-role-desktop');
         await ev(`window.hideTeamAgentModal(); window.hideLaunchModal(); true`);

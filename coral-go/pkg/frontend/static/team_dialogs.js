@@ -394,7 +394,7 @@ function saveTeamAgentFromModal() {
         setAgentConfig(launch.teamAgentModalRow.dataset.acfId, config);
         _updateTeamAgentSummary(launch.teamAgentModalRow);
     } else {
-        _addTeamAgent(config.name, config.prompt, config.capabilities, config.agentType, config.model, config.flags);
+        _addTeamAgent(config.name, config.prompt, config.capabilities, config.agentType, config.model, config.flags, { reveal: true });
     }
 
     hideTeamAgentModal();
@@ -746,7 +746,9 @@ function _truncatePrompt(text, maxLen) {
     return text.substring(0, maxLen) + "\u2026";
 }
 
-function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultAgentType, defaultModel, defaultFlags) {
+// reveal: scroll the new card into view. Only for an agent the person added; the default agents and a template's are added while the dialog opens or fills, and scrolling to the last of them
+// left the Members section opened past its heading and the template picker (#4950).
+function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultAgentType, defaultModel, defaultFlags, { reveal = false } = {}) {
     launch.teamAgentCounter++;
     const idx = launch.teamAgentCounter;
     const acfId = `team-agent-acf-${idx}`;
@@ -844,7 +846,7 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
         }
     });
 
-    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (reveal) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 // The first card cannot move up and the last cannot move down: those buttons are disabled (#3770).
