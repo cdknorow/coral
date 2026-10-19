@@ -53,6 +53,10 @@ var extraRules = []extraRule{
 	// A PEM private key, header line to end line (#5158): betterleaks has the same rule, but its global false-positive filter drops a finding whose
 	// text holds "false" in any case, so a block whose base64 happens to hold those five letters (about one in twenty thousand) was shown whole.
 	{re: regexp.MustCompile(`(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----`)},
+	// A key in an HTTP header or its JSON form, named by the header: X-Api-Key: <value>, "X-Auth-Token": "<value>" (#5190). betterleaks' generic rule drops a value whose text holds a common word
+	// (house, table, apple, false...) or reads as words, as a false positive, and a 32-character key that holds one was shown whole; the header's name already says what the value is, so a value of 16
+	// characters or more after one of these names is the secret, whatever it looks like. Only these header names: ordinary text has none (the repository's own docs and sources hold two, both test secrets).
+	{re: regexp.MustCompile(`(?i)\b(?:x-?api-?key|api-?key|x-?api-?token|x-?auth-?token|x-?access-?token|x-?auth-?key|x-?secret(?:-?key)?|x-?api-?secret|private-?token)\b["']?[ \t]*:[ \t]*["']?([A-Za-z0-9._~+/=-]{16,})`), group: 1},
 	// AWS access key IDs: AKIA (long-term), ASIA (temporary) and the other IAM prefixes. Amazon's
 	// documentation example (...EXAMPLE) is not a secret, as betterleaks also treats it.
 	{re: regexp.MustCompile(`\b(?:AKIA|ASIA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ABIA|ACCA)[A-Z0-9]{16}\b`), ok: notDocumentationKey},

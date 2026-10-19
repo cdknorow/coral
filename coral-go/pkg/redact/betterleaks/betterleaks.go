@@ -35,12 +35,24 @@ const (
 	anchoredBoolWords   = "`(?i)^(?:true|false|null)$`"
 )
 
-// fixGlobalFilter replaces the unanchored alternation in cfg's global filter. A library whose filter no longer has it (fixed upstream) is left as it
-// is; one that still has the bug after the replacement is refused, so the fault cannot come back unseen.
+// The same filter drops a finding whose secret CONTAINS the lowercase alphabet (or a known example UUID): containsAny where the intent was "the secret is the placeholder", so a real
+// token that holds abcdefghijklmnopqrstuvwxyz anywhere in it (a key someone typed, a generated one with that run) was never redacted, whatever rule found it (#5190).
+// The placeholders themselves are still dropped, as whole values.
+const (
+	containsPlaceholders = "containsAny(finding[\"secret\"], [\n  \"abcdefghijklmnopqrstuvwxyz\",\n  \"014df517-39d1-4453-b7b3-9930c563627c\"\n])"
+	equalsPlaceholders   = "matchesAny(finding[\"secret\"], [\n  `^abcdefghijklmnopqrstuvwxyz$`,\n  `^014df517-39d1-4453-b7b3-9930c563627c$`\n])"
+)
+
+// fixGlobalFilter repairs cfg's global filter: the unanchored alternation (#5179) and the alphabet suppression (#5190). A library whose filter no longer has a fault (fixed upstream) is left as it
+// is; one that still has it after the replacement is refused, so the fault cannot come back unseen.
 func fixGlobalFilter(cfg *config.Config) error {
 	cfg.Filter = strings.Replace(cfg.Filter, unanchoredBoolWords, anchoredBoolWords, 1)
 	if strings.Contains(cfg.Filter, "^true|false|null$") {
 		return errors.New("betterleaks rules: the global filter still discards any secret that contains false (#5179)")
+	}
+	cfg.Filter = strings.Replace(cfg.Filter, containsPlaceholders, equalsPlaceholders, 1)
+	if strings.Contains(cfg.Filter, "\"abcdefghijklmnopqrstuvwxyz\"") {
+		return errors.New("betterleaks rules: the global filter still discards any secret that contains the lowercase alphabet (#5190)")
 	}
 	return nil
 }

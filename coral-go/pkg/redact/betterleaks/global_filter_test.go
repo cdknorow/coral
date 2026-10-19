@@ -64,3 +64,45 @@ func TestGlobalFilterIsAnchored(t *testing.T) {
 	require.NoError(t, fixGlobalFilter(ok))
 	assert.Equal(t, "xxx", ok.Filter)
 }
+
+// #5190: the same filter dropped any finding whose secret CONTAINS the lowercase alphabet. The secrets here hold it, at random places, in tokens and in private keys the
+// rule has no other gate for; the placeholder itself (the whole value) is still not a finding.
+func TestASecretHoldingTheAlphabetIsStillFound(t *testing.T) {
+	d, err := New()
+	require.NoError(t, err)
+	r := rand.New(rand.NewSource(5190))
+	find := func(text string) bool {
+		sp, err := d.Find(context.Background(), text)
+		require.NoError(t, err)
+		return len(sp) > 0
+	}
+	const alpha = "abcdefghijklmnopqrstuvwxyz"
+	for i := 0; i < 200; i++ {
+		// a GitHub token: ghp_ and 36 characters, here the alphabet and ten random ones, in either order
+		var body string
+		if i%2 == 0 {
+			body = alpha + randFrom(r, alnumSet, 10)
+		} else {
+			body = randFrom(r, alnumSet, 10) + alpha
+		}
+		assert.True(t, find("token ghp_"+body+" end"), "a token holding the alphabet is found")
+		// a private key whose body holds it (no entropy gate on the rule, so only this filter could drop it)
+		kb := randFrom(r, b64, 300)
+		at := r.Intn(len(kb) - len(alpha))
+		key := "-----BEGIN OPENSSH PRIVATE KEY-----\n" + kb[:at] + alpha + kb[at+len(alpha):] + "\n-----END OPENSSH PRIVATE KEY-----"
+		assert.True(t, find(key), "a private key whose body holds the alphabet is found")
+	}
+}
+
+// The filter is repaired at load: the alphabet is compared as a whole value after New, and one that keeps the suppression is refused.
+func TestGlobalFilterAlphabetIsAnchored(t *testing.T) {
+	cfg, err := config.Default()
+	require.NoError(t, err)
+	require.NoError(t, fixGlobalFilter(cfg))
+	assert.NotContains(t, cfg.Filter, "containsAny(finding[\"secret\"], [\n  \"abcdefghijklmnopqrstuvwxyz\"")
+	assert.Contains(t, cfg.Filter, "`^abcdefghijklmnopqrstuvwxyz$`")
+	bad := &config.Config{Filter: "x || containsAny(finding[\"secret\"], [ \"abcdefghijklmnopqrstuvwxyz\" ])"}
+	assert.Error(t, fixGlobalFilter(bad), "a form we do not recognise but that still has the suppression is refused")
+	ok := &config.Config{Filter: "nothing here"}
+	require.NoError(t, fixGlobalFilter(ok))
+}
