@@ -1,0 +1,83 @@
+name: go-tests
+# The Linux go test of a release batch on GitHub-hosted runners (#4997), so the proof does not wait on one shared host: epoch's
+# go test of both tag sets took about 60 minutes of wall time on v1.4.102 and v1.4.103 (a loaded machine, and routes alone is about
+# 20 minutes of it). Same two tag sets as the epoch gate (the default build, and 'dev fts5'), every package, in three shards each:
+# internal/server/routes alone (the longest), pkg/tunnel alone (its throughput tests measure bytes per second and fail next to
+# other packages' load, as on Windows: windows-tests.yml), and every other package. Each package runs in exactly one shard: the
+# "rest" shard is `go list` minus the two, and a step fails when one of those names no longer exists.
+#
+# Trust: it runs only on pushes to ci/** (branches the landing agent pushes) and by manual dispatch, never on pull_request, so a
+# fork's code never runs here; the job has no secrets and read-only contents; actions are pinned by SHA; nothing is cached (a
+# cache written by a ci/ branch could be read by a release, #4251). No agent CLI is installed: the tests start their own stubs.
+# CORAL_TELEMETRY_DISABLED is not set: routes' analytics tests need events (sent to a local sink, never the network).
+on:
+  push:
+    branches: ["ci/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-tests-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'push' }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: go test (${{ matrix.tagname }}, ${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        tagname: [default, dev-fts5]
+        shard: [routes, tunnel, rest]
+        include:
+          - { tagname: default, tags: "" }
+          - { tagname: dev-fts5, tags: "dev fts5" }
+    env:
+      ROUTES_PKG: internal/server/routes
+      TUNNEL_PKG: pkg/tunnel
+    defaults:
+      run:
+        shell: bash
+        working-directory: coral-go
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false # nothing cached here: see the header
+      - name: tmux and git (the terminal tests start a real tmux)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tmux git
+          tmux -V
+      - name: go test (${{ matrix.tagname }}, ${{ matrix.shard }})
+        env:
+          TAGS: ${{ matrix.tags }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          # A short temp dir: a long TMPDIR breaks tmux socket paths.
+          export TMPDIR=/tmp/gt
+          mkdir -p "$TMPDIR"
+          root=$(go list -m)
+          all=(); while IFS= read -r p; do all+=("${p#"$root"/}"); done < <(go list ${TAGS:+-tags "$TAGS"} ./...)
+          for need in "$ROUTES_PKG" "$TUNNEL_PKG"; do
+            printf '%s\n' "${all[@]}" | grep -qxF "$need" || { echo "::error::package $need no longer exists: update go-tests.yml"; exit 1; }
+          done
+          pkgs=()
+          for p in "${all[@]}"; do
+            case "$SHARD" in
+              routes) [ "$p" = "$ROUTES_PKG" ] || continue ;;
+              tunnel) [ "$p" = "$TUNNEL_PKG" ] || continue ;;
+              rest) { [ "$p" = "$ROUTES_PKG" ] || [ "$p" = "$TUNNEL_PKG" ]; } && continue ;;
+            esac
+            pkgs+=("./$p")
+          done
+          echo "go test (${TAGS:-default tags}), shard $SHARD: ${#pkgs[@]} of ${#all[@]} packages"
+          [ "${#pkgs[@]}" -gt 0 ] || { echo "::error::an empty shard"; exit 1; }
+          go test -count=1 -p 4 -timeout 45m ${TAGS:+-tags "$TAGS"} "${pkgs[@]}"
