@@ -311,6 +311,7 @@ var routeTable = cat(
 		"/api/sessions/launch-team",
 		"/api/sessions/live/{name}/resume",
 		"/api/sessions/live/{name}/restart",
+		"/api/sessions/live/{name}/model", // the live model and thinking-level switch (#4969): as restarting, a launch-tier action
 		"/api/sessions/live/{name}/attach",
 		"/api/sessions/live/{id}/wake",
 		// Resuming an agent on the current hook set stops and restarts it (#3665).

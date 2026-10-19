@@ -45,6 +45,8 @@ type SessionsHandler struct {
 	boardStatus *replyCache
 	// sendGate lets a person's messages through to each agent one at a time (#4587, human_send.go).
 	sendGate humanSendGate
+	// modelSwitches tracks the live model and thinking-level switches in progress (#4969, model_switch.go).
+	modelSwitches modelSwitchTracker
 	// inOldTmux reports an agent session still running in Coral's private tmux server, for a
 	// pty Coral's wake (#3634). Tests replace it.
 	inOldTmux func(ctx context.Context, sessionName string) bool

@@ -1982,3 +1982,9 @@ func (s *SessionStore) GetSessionAncestry(ctx context.Context, sessionID string)
 
 	return lineage, nil
 }
+
+// SetSessionThinking records the thinking level a live session now runs with: "" is the CLI's own default (#4969).
+func (s *SessionStore) SetSessionThinking(ctx context.Context, sessionID, level string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET thinking = ? WHERE session_id = ?", level, sessionID)
+	return err
+}

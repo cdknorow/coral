@@ -298,6 +298,7 @@ c POST /api/sessions/live/{name}/files/refresh
 b POST /api/sessions/live/{name}/goal
 b POST /api/sessions/live/{name}/keys
 b POST /api/sessions/live/{name}/kill
+b POST /api/sessions/live/{name}/model
 a POST /api/sessions/live/{name}/notes
 b POST /api/sessions/live/{name}/open-in-editor
 a POST /api/sessions/live/{name}/pending-tool

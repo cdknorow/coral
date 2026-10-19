@@ -274,6 +274,7 @@ func (s *Server) registerSessions(r *chi.Mux, h *routeHandlers) {
 	r.Post("/api/sessions/live/{name}/resize", sessHandler.Resize)
 	r.Post("/api/sessions/live/{name}/kill", sessHandler.Kill)
 	r.Post("/api/sessions/live/{name}/restart", sessHandler.Restart)
+	r.Post("/api/sessions/live/{name}/model", sessHandler.SwitchModel) // the live model and thinking-level switch (#4969)
 	r.Post("/api/sessions/live/{name}/resume", sessHandler.Resume)
 	r.Post("/api/sessions/live/{name}/attach", sessHandler.Attach)
 	r.Put("/api/sessions/live/{name}/display-name", sessHandler.SetDisplayName)

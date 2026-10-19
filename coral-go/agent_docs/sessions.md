@@ -543,14 +543,29 @@ Kill and relaunch a session with the same or updated configuration. If the agent
   "extra_flags": ["--verbose"],
   "prompt": "Updated prompt",
   "model": "claude-sonnet-4-20250514",
+  "thinking": "high",
   "capabilities": ["tool_use"]
 }
 ```
+
+`thinking` is the thinking (reasoning effort) level to restart with: omitted keeps the agent's stored level, `""` clears it (the CLI's own default), and a level the agent type does not take is a 400 with `"field": "thinking"`. Claude takes `low`, `medium`, `high`, `xhigh` and `max` (passed as `--effort`); other types take none yet.
 
 **Response:**
 ```json
 {"ok": true, "session_id": "new-uuid", "session_name": "coral_claude_newuuid"}
 ```
+
+### POST `/api/sessions/live/{name}/model`
+
+Switch a running agent's model and/or thinking level without restarting it (the operator's chat-bar chip). Operator only: an agent token gets 403 `operator_only`. Claude is the only type with a checked live switch; others get 409 `needs_restart` (restart with the new `model`/`thinking` instead).
+
+```json
+{"session_id": "abc123", "agent_type": "claude", "model": "claude-sonnet-5-5", "thinking": "high"}
+```
+
+At least one of `model` and `thinking` (`""` asks for the CLI's default, `/effort auto`). Coral types the CLI's own command (`/model <model>`, then `/effort <level>`) once the agent is between turns: a switch asked for mid-turn waits for the reply to end (`after_reply: true`). 202 with the switch state; a second switch while one is pending is 409 `switch_in_progress`. The agent's stored model and level change only when the transcript confirms: the `/model` entry Claude Code writes when it takes the command, and the next reply's `effort` for a level. The state is on the agent's row (the list, the feed and `info`) as `model_switch`: `{"state": "pending"|"done"|"failed", "model", "thinking", "after_reply", "message"}`, kept for two minutes after it ends.
+
+Rows also carry `thinking` (the level the agent was started with, when it has one) and `thinking_actual` (the level its newest turn ran at, from the CLI's transcript).
 
 ### POST `/api/sessions/live/{name}/resume`
 

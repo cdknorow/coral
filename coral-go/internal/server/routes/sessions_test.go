@@ -2540,6 +2540,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
 	r.Post("/api/sessions/live/{name}/open-in-editor", handler.OpenInEditor)
 	r.Post("/api/sessions/live/{name}/restart", handler.Restart)
+	r.Post("/api/sessions/live/{name}/model", handler.SwitchModel)
 	r.Post("/api/sessions/live/{name}/resume", handler.Resume)
 	r.Get("/api/sessions/live/{name}/info", handler.Info)
 	r.Post("/api/sessions/live/{name}/attach", handler.Attach)

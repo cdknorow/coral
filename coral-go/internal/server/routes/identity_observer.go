@@ -451,6 +451,7 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/sessions/live/{name}/answer-prompt":                     "answer an agent's permission prompt",
 	"POST /api/sessions/live/{name}/kill":                              "stop an agent",
 	"POST /api/sessions/live/{name}/restart":                           "restart an agent",
+	"POST /api/sessions/live/{name}/model":                             "switch an agent's model or thinking level",
 	"POST /api/sessions/live/{name}/resume":                            "resume an agent",
 	"POST /api/sessions/live/{name}/attach":                            "attach to an agent's terminal",
 	"POST /api/sessions/live/{name}/resize":                            "resize an agent's terminal",

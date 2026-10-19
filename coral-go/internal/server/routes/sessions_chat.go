@@ -469,6 +469,7 @@ func (h *SessionsHandler) addTranscriptModel(entry map[string]any, sessionID str
 			entry["thinking_actual"] = t // the level the newest turn ran at, as the CLI's own transcript records it (#4969)
 		}
 	}
+	h.addModelSwitch(entry, sessionID)
 	if m != "" {
 		entry["model"], entry["model_source"] = m, "transcript"
 	} else if o := ptr.Value(observed); o != "" {
