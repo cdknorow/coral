@@ -157,8 +157,8 @@ var resumeOutcomes = map[string]int{
 // Restart's step: a live tmux pane whose respawn or rename fails is refused (the old Resume typed the command into
 // it anyway), and a tmux terminal's title is set. Those are checked as the new rule, not compared.
 func TestResumeAgreesWithBefore4809(t *testing.T) {
-	prevSettle, prevUUID := paneRespawnSettle, generateUUID
-	t.Cleanup(func() { paneRespawnSettle, generateUUID = prevSettle, prevUUID })
+	prevSettle := paneRespawnSettle
+	t.Cleanup(func() { paneRespawnSettle = prevSettle })
 	paneRespawnSettle = 0
 	prevOut := log.Writer()
 	log.SetOutput(&bytes.Buffer{})
@@ -166,10 +166,24 @@ func TestResumeAgreesWithBefore4809(t *testing.T) {
 	prevLog := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)))
 	t.Cleanup(func() { slog.SetDefault(prevLog) })
+	// Each seed has its own handlers, stores and id sequence (h.newUUID), so the 600 seeds run in parallel (#4982: 32 s of the
+	// package, one after another), inside one group so the floors are read after every seed has finished.
+	var mu sync.Mutex
 	counts := map[string]int{}
-	for seed := int64(1); seed <= 600; seed++ {
-		runResumeOracle(t, seed, counts)
-	}
+	t.Run("seeds", func(t *testing.T) {
+		for seed := int64(1); seed <= 600; seed++ {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				own := map[string]int{}
+				runResumeOracle(t, seed, own)
+				mu.Lock()
+				for k, v := range own {
+					counts[k] += v
+				}
+				mu.Unlock()
+			})
+		}
+	})
 	t.Logf("compared, per outcome: %v", counts)
 	for name, floor := range resumeOutcomes {
 		require.GreaterOrEqual(t, counts[name], floor, "%q went (almost) unexercised", name)
@@ -267,7 +281,7 @@ func runResumeOracle(t *testing.T, seed int64, counts map[string]int) {
 			require.NoError(t, err)
 		}
 		n := 0
-		generateUUID = func() string { n++; return fmt.Sprintf("48090000-0000-4000-8000-%012d", seed*10+int64(n)) }
+		h.newUUID = func() string { n++; return fmt.Sprintf("48090000-0000-4000-8000-%012d", seed*10+int64(n)) }
 		mux := chi.NewRouter()
 		if i == 0 {
 			mux.Post("/api/sessions/live/{name}/resume", h.resumeBefore4809)
@@ -507,7 +521,7 @@ func (h *SessionsHandler) resumeBefore4809(w http.ResponseWriter, r *http.Reques
 	// Prepare resume files
 	agent.TryPrepareResume(agentImpl, body.SessionID, workdir)
 
-	newSessionID := generateUUID()
+	newSessionID := h.uuid()
 	newSessionName := naming.SessionName(agentType, newSessionID)
 	newLogPath := naming.LogFile(h.cfg.LogDir, agentType, newSessionID)
 

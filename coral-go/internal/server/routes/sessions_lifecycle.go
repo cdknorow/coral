@@ -380,7 +380,7 @@ func (h *SessionsHandler) restartResolve(ctx context.Context, name string, req r
 		}
 	}
 
-	p.newSessionID = generateUUID()
+	p.newSessionID = h.uuid()
 	p.newSessionName = naming.SessionName(p.agentType, p.newSessionID)
 	p.newLogPath = naming.LogFile(h.cfg.LogDir, p.agentType, p.newSessionID)
 
@@ -806,7 +806,7 @@ func (h *SessionsHandler) resumeResolve(ctx context.Context, name string, body *
 		return nil, func(w http.ResponseWriter) { writeTerminalError(w, ptymanager.ErrTerminalGone) }
 	}
 	p.usePTY = h.restartsOnPTY(ls)
-	p.newSessionID = generateUUID()
+	p.newSessionID = h.uuid()
 	p.newSessionName = naming.SessionName(agentType, p.newSessionID)
 	p.newLogPath = naming.LogFile(h.cfg.LogDir, agentType, p.newSessionID)
 	p.prompt, p.board, p.boardServer = ptr.Value(ls.Prompt), ptr.Value(ls.BoardName), ptr.Value(ls.BoardServer)

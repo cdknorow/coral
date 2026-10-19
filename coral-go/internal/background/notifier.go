@@ -15,20 +15,23 @@ import (
 
 // BoardNotifier nudges agents when they have unread board messages.
 type BoardNotifier struct {
-	boardStore  *board.Store
-	runtime     AgentRuntime
-	interval    time.Duration
-	logger      *slog.Logger
-	discoverFn  func(ctx context.Context) ([]AgentInfo, error)
-	isPausedFn  func(project string) bool
-	notifiedMu  sync.Mutex
-	notified    map[string]notifyState // session_name -> last nudge since the agent last read
-	notifyNowCh chan struct{}
-	pendingMu   sync.Mutex
-	pendingAll  bool             // a pass over every board is due (NotifyNow)
-	pending     map[string]bool  // boards a message was posted to since the last pass (NotifyBoard)
-	remindAfter time.Duration    // resend when still unread this long after a nudge
-	now         func() time.Time // for tests
+	// deliverNudge, when set, delivers this notifier's nudges instead of deliverNudgeFn (a test that compares two notifiers gives each its own
+	// recorder without swapping the package variable, so such tests can run in parallel, #4982).
+	deliverNudge nudgeDeliverFn
+	boardStore   *board.Store
+	runtime      AgentRuntime
+	interval     time.Duration
+	logger       *slog.Logger
+	discoverFn   func(ctx context.Context) ([]AgentInfo, error)
+	isPausedFn   func(project string) bool
+	notifiedMu   sync.Mutex
+	notified     map[string]notifyState // session_name -> last nudge since the agent last read
+	notifyNowCh  chan struct{}
+	pendingMu    sync.Mutex
+	pendingAll   bool             // a pass over every board is due (NotifyNow)
+	pending      map[string]bool  // boards a message was posted to since the last pass (NotifyBoard)
+	remindAfter  time.Duration    // resend when still unread this long after a nudge
+	now          func() time.Time // for tests
 
 	discMu     sync.Mutex
 	discAgents []AgentInfo     // the last discovery, reused by event passes for discoveryMaxAge
@@ -470,7 +473,7 @@ func (n *BoardNotifier) nudgeAgent(ctx context.Context, pass *notifyPass, a Agen
 		return err != nil || n > 0
 	}
 	deliver := func() (bool, error) {
-		return deliverNudgeFn(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
+		return n.nudgeDeliverer()(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
 	}
 	skipped, err := deliver()
 	if err != nil && pass.cached && !skipped {
@@ -494,8 +497,19 @@ func (n *BoardNotifier) nudgeAgent(ctx context.Context, pass *notifyPass, a Agen
 	n.notifiedMu.Unlock()
 }
 
+// nudgeDeliverFn is the type of deliverAutomatedIfWanted, which delivers a nudge.
+type nudgeDeliverFn = func(ctx context.Context, rt AgentRuntime, logger *slog.Logger, name, agentType, sessionID, key, text, what string, requireInputBox, mention bool, wanted func(context.Context) bool) (skipped bool, err error)
+
 // deliverNudgeFn delivers a nudge (tests replace it, to see each nudge and to fail some).
-var deliverNudgeFn = deliverAutomatedIfWanted
+var deliverNudgeFn nudgeDeliverFn = deliverAutomatedIfWanted
+
+// nudgeDeliverer is how this notifier delivers a nudge: its own deliverNudge when set, else deliverNudgeFn.
+func (n *BoardNotifier) nudgeDeliverer() nudgeDeliverFn {
+	if n.deliverNudge != nil {
+		return n.deliverNudge
+	}
+	return deliverNudgeFn
+}
 
 // nudgeDue reports whether an agent with unread messages (latestID the newest) is nudged now: one nudge until the
 // agent reads, which covers more messages arriving meanwhile (the agent reads them all at once), with a reminder once

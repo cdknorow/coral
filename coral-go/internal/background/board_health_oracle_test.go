@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,15 +36,25 @@ var checkPhrases = map[string]int{
 
 var checkSeen map[string]int
 
+// checkSeenMu guards checkSeen and escalatedWhileParked: the seeds run in parallel (#4982).
+var checkSeenMu sync.Mutex
+
 // escalatedWhileParked counts escalations whose task was parked at a check (left out of it); it has a floor too.
 var escalatedWhileParked int
 
 func TestComposeCheckAgreesWithBefore4599(t *testing.T) {
 	checkSeen = map[string]int{}
 	escalatedWhileParked = 0
-	for seed := int64(1); seed <= 24; seed++ {
-		t.Run(fmt.Sprint(seed), func(t *testing.T) { runCheckOracle(t, seed) })
-	}
+	// Each seed has its own boards, databases and random source: the seeds run in parallel (#4982: 132 s of the package on epoch),
+	// inside one group so the floors are read after every seed has finished.
+	t.Run("seeds", func(t *testing.T) {
+		for seed := int64(1); seed <= 24; seed++ {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				runCheckOracle(t, seed)
+			})
+		}
+	})
 	t.Logf("compared, per phrase: %v", checkSeen)
 	for phrase, floor := range checkPhrases {
 		require.GreaterOrEqual(t, checkSeen[phrase], floor, "%q went (almost) unprinted", phrase)
@@ -273,7 +284,9 @@ func runCheckOracle(t *testing.T, seed int64) {
 				var id int64
 				fmt.Sscan(e.Subject, &id)
 				if task, err := bs.GetTask(ctx, "team", id); err == nil && task != nil && task.Parked(now) {
+					checkSeenMu.Lock()
 					escalatedWhileParked++
+					checkSeenMu.Unlock()
 				}
 			}
 		}
@@ -307,7 +320,9 @@ func runCheckOracle(t *testing.T, seed int64) {
 		require.Equal(t, results[0], results[1], "step %d: the check", step)
 		require.Equal(t, dumpBoard(t, pathA), dumpBoard(t, pathB), "step %d: the databases after the check", step)
 		for phrase := range checkPhrases {
+			checkSeenMu.Lock()
 			checkSeen[phrase] += strings.Count(results[1].text, phrase)
+			checkSeenMu.Unlock()
 		}
 		for _, name := range names {
 			keysSeen["idle|"+name] = true

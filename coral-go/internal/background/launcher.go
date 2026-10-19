@@ -195,13 +195,20 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 // foreground of its terminal after the initial delay.
 var promptStartWait = 30 * time.Second
 
+// promptInitialDelay is the pause before SendPrompt first looks at the terminal, and promptPollEvery how often it looks until the CLI is in
+// the foreground (variables so the tests need not wait real seconds, #4982).
+var (
+	promptInitialDelay = 3 * time.Second
+	promptPollEvery    = 250 * time.Millisecond
+)
+
 // SendPrompt sends a prompt to an agent session after a delay for initialization.
 // The CLI is typed into a shell at launch, so the prompt is sent only once the CLI
 // is in the foreground: typed into the shell, it would run as a command (#3219).
 func (l *AgentLauncher) SendPrompt(ctx context.Context, sessionID, sessionName, agentType, prompt string) error {
 	// Wait for agent to initialize
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(promptInitialDelay):
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -215,7 +222,7 @@ func (l *AgentLauncher) SendPrompt(ctx context.Context, sessionID, sessionName, 
 			return nil
 		}
 		select {
-		case <-time.After(250 * time.Millisecond):
+		case <-time.After(promptPollEvery):
 		case <-ctx.Done():
 			return ctx.Err()
 		}

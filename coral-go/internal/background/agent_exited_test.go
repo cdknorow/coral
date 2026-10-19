@@ -16,8 +16,15 @@ import (
 // fgRuntimes report a foreground command per session name, like a terminal whose
 // agent CLI may have exited back to its shell (#3219).
 type fgState struct {
-	mu sync.Mutex
-	fg map[string]string
+	mu    sync.Mutex
+	fg    map[string]string
+	idles int // how many times AgentShellIdle was asked
+}
+
+func (f *fgState) idleCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.idles
 }
 
 func (f *fgState) set(name, cmd string) {
@@ -34,6 +41,7 @@ func (f *fgState) set(name, cmd string) {
 func (f *fgState) AgentShellIdle(_ context.Context, name, _, _ string) (bool, string, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.idles++
 	c, ok := f.fg[name]
 	if !ok || c == "" {
 		return false, "", false
@@ -190,33 +198,40 @@ func TestSkipIfAgentExitedAlwaysSkipsATerminalAgent(t *testing.T) {
 
 // ── Launcher: the first prompt waits for the CLI ─────────────────────────
 
+// fastPromptTimings shrinks SendPrompt's pauses (3 s and 250 ms in production) for a test (#4982).
+func fastPromptTimings(t *testing.T, startWait time.Duration) {
+	t.Helper()
+	oldWait, oldInit, oldPoll := promptStartWait, promptInitialDelay, promptPollEvery
+	promptStartWait, promptInitialDelay, promptPollEvery = startWait, 5*time.Millisecond, 5*time.Millisecond
+	t.Cleanup(func() { promptStartWait, promptInitialDelay, promptPollEvery = oldWait, oldInit, oldPoll })
+}
+
 func TestLauncherPromptWaitsForTheCLI(t *testing.T) {
-	old := promptStartWait
-	promptStartWait = 2 * time.Second
-	t.Cleanup(func() { promptStartWait = old })
+	fastPromptTimings(t, 30*time.Second)
 	rt := &fgMockRuntime{}
 	l := NewAgentLauncher(rt, nil, 0)
 	name := FormatSessionName("claude", testUUID)
 
 	rt.set(name, "zsh")
-	go func() {
-		time.Sleep(4 * time.Second) // sleep-ok: the CLI takes the foreground 1 s after the 3 s initial delay
-		rt.set(name, "node")
-	}()
-	require.NoError(t, l.SendPrompt(context.Background(), testUUID, name, "claude", "do the task"))
+	done := make(chan error, 1)
+	go func() { done <- l.SendPrompt(context.Background(), testUUID, name, "claude", "do the task") }()
+	// SendPrompt has looked at the terminal several times and found the shell in the foreground: nothing is sent yet.
+	require.Eventually(t, func() bool { return rt.idleCalls() >= 5 }, 10*time.Second, time.Millisecond, "SendPrompt polls the terminal while the CLI has not started")
+	assert.Zero(t, rt.sentTo(name), "nothing is typed while the shell is in the foreground")
+	rt.set(name, "node") // the CLI takes the foreground
+	require.NoError(t, <-done)
 	assert.Equal(t, 1, rt.sentTo(name), "sent once the CLI is in the foreground")
 }
 
 func TestLauncherPromptNeverTypedIntoAShell(t *testing.T) {
-	old := promptStartWait
-	promptStartWait = 500 * time.Millisecond
-	t.Cleanup(func() { promptStartWait = old })
+	fastPromptTimings(t, 100*time.Millisecond)
 	rt := &fgMockRuntime{}
 	l := NewAgentLauncher(rt, nil, 0)
 	name := FormatSessionName("claude", testUUID)
 	rt.set(name, "zsh") // the CLI never starts
 	require.NoError(t, l.SendPrompt(context.Background(), testUUID, name, "claude", "do the task"))
 	assert.Equal(t, 0, rt.sentTo(name), "the prompt is not typed into the shell")
+	assert.Greater(t, rt.idleCalls(), 1, "it looked until its wait ran out")
 }
 
 // #3268: Restart and Resume replace an old session's row with a new one, so the new

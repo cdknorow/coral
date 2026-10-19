@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -56,13 +57,22 @@ func (r *oracleRecorder) deliver(_ context.Context, _ AgentRuntime, _ *slog.Logg
 // oracleTotals counts what the runs covered, so a run that nudged nobody can't pass for a comparison.
 var oracleTotals struct{ nudges, resends, health, mentions int }
 
+var oracleTotalsMu sync.Mutex // the seeds run in parallel (#4982)
+
 func TestRunPassAgreesWithBefore4599(t *testing.T) {
-	old := deliverNudgeFn
-	t.Cleanup(func() { deliverNudgeFn = old })
+	oracleTotalsMu.Lock()
 	oracleTotals.nudges, oracleTotals.resends, oracleTotals.health, oracleTotals.mentions = 0, 0, 0, 0
-	for seed := int64(1); seed <= 150; seed++ {
-		t.Run(fmt.Sprint(seed), func(t *testing.T) { runNotifierOracle(t, seed) })
-	}
+	oracleTotalsMu.Unlock()
+	// Each seed has its own notifiers (each delivers through its own recorder: n.deliverNudge), boards and random source, so the 150
+	// seeds run in parallel (#4982: 58 s of the package on epoch), inside one group so the floors are read after every seed has finished.
+	t.Run("seeds", func(t *testing.T) {
+		for seed := int64(1); seed <= 150; seed++ {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				runNotifierOracle(t, seed)
+			})
+		}
+	})
 	t.Logf("compared: %d nudge attempts, %d resends after a failure, %d health nudges, %d mentions", oracleTotals.nudges, oracleTotals.resends, oracleTotals.health, oracleTotals.mentions)
 	require.Greater(t, oracleTotals.nudges, 1000)
 	require.Greater(t, oracleTotals.resends, 10)
@@ -189,10 +199,11 @@ func runNotifierOracle(t *testing.T, seed int64) {
 			{newN, newRec, func(n *BoardNotifier) error { return n.runPassWith(ctx, boards, reuse) }},
 		} {
 			side.rec.pass, side.rec.sent, side.rec.attempts = step, nil, map[string]int{}
-			deliverNudgeFn = side.rec.deliver
+			side.n.deliverNudge = side.rec.deliver
 			require.NoError(t, side.run(side.n))
 		}
 		require.Equal(t, oldRec.sent, newRec.sent, "step %d (boards %v, reuse %v): the nudges", step, boards, reuse)
+		oracleTotalsMu.Lock()
 		for _, r := range newRec.sent {
 			oracleTotals.nudges++
 			if r.attempt > 1 {
@@ -205,6 +216,7 @@ func runNotifierOracle(t *testing.T, seed int64) {
 				oracleTotals.mentions++
 			}
 		}
+		oracleTotalsMu.Unlock()
 		require.Equal(t, oldN.notified, newN.notified, "step %d: the nudge records", step)
 		require.Equal(t, oldN.discAbsent, newN.discAbsent, "step %d: the absent subscribers", step)
 	}
@@ -448,7 +460,7 @@ func (n *BoardNotifier) runPassWithBefore4599(ctx context.Context, boards map[st
 			n, err := n.boardStore.CheckUnread(ctx, project, reader)
 			return err != nil || n > 0
 		}
-		skipped, err := deliverNudgeFn(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
+		skipped, err := n.nudgeDeliverer()(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
 		if err != nil && cached && !skipped {
 			// The discovery was reused: if the session is still running, its pane may only
 			// have moved; send once more to the same session (never another).
@@ -456,7 +468,7 @@ func (n *BoardNotifier) runPassWithBefore4599(ctx context.Context, boards map[st
 				n.logger.Info("agent gone since the last discovery; no nudge", "session", sessName)
 				continue
 			}
-			skipped, err = deliverNudgeFn(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
+			skipped, err = n.nudgeDeliverer()(ctx, n.runtime, n.logger, sessName, a.AgentType, a.SessionID, "board-unread:"+sub.Project, board.OneLine(nudge), "board nudge", false, mention, stillUnread)
 		}
 		if skipped {
 			continue

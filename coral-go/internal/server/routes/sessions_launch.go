@@ -797,7 +797,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 	}
 	backend := h.launchPath(spec.Backend)
 	folderName := filepath.Base(absDir)
-	sessionID := generateUUID()
+	sessionID := h.uuid()
 	sessionName := naming.SessionName(agentType, sessionID)
 	logFile := naming.LogFile(h.cfg.LogDir, agentType, sessionID)
 

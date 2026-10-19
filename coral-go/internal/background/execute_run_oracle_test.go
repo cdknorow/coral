@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -55,12 +56,17 @@ func TestExecuteRunAgreesWithBefore4845(t *testing.T) {
 		dataDir string
 		repo    string
 	}
-	var sides [2]side
-	for i := range sides {
-		wfStore := store.NewWorkflowStore(setupTestDB(t))
-		dataDir, repo := t.TempDir(), t.TempDir()
-		rt := newWfMockRuntime()
-		sides[i] = side{NewWorkflowRunner(wfStore, &AgentLauncher{runtime: rt}, rt, nil, nil, dataDir, "localhost", 8420), wfStore, dataDir, repo}
+	// Each seed has its own two runners, stores and folders, so the seeds run in parallel (#4982: the 260 seeds ran one after
+	// another, and the ones with a one-second time limit really sleep).
+	newSides := func(t *testing.T) [2]side {
+		var sides [2]side
+		for i := range sides {
+			wfStore := store.NewWorkflowStore(setupTestDB(t))
+			dataDir, repo := t.TempDir(), t.TempDir()
+			rt := newWfMockRuntime()
+			sides[i] = side{NewWorkflowRunner(wfStore, &AgentLauncher{runtime: rt}, rt, nil, nil, dataDir, "localhost", 8420), wfStore, dataDir, repo}
+		}
+		return sides
 	}
 	commands := []string{"echo hi > out.txt", "exit 1", "echo step $CORAL_WORKFLOW_STEP of $CORAL_WORKFLOW_NAME > step.txt", "true", "printf data > a.txt; mkdir sub; printf x > sub/b.txt",
 		"echo to stderr >&2; exit 3", "echo $CORAL_WORKFLOW_RUN_ID > run.txt",
@@ -70,114 +76,122 @@ func TestExecuteRunAgreesWithBefore4845(t *testing.T) {
 			"command": "echo " + event + " $CORAL_STEP_STATUS >> \"$CORAL_WORKFLOW_RUN_DIR/hooks.log\""}}}}})
 		return b
 	}
+	var mu sync.Mutex
 	counts := map[string]int{}
-	for seed := int64(1); seed <= 260; seed++ {
-		rng := rand.New(rand.NewSource(seed))
-		var steps []StepDef
-		for k := 1 + rng.Intn(4); k > 0; k-- {
-			st := StepDef{Name: fmt.Sprintf("s%d", k), Type: "shell", Command: commands[rng.Intn(len(commands))], ContinueOnFailure: rng.Intn(2) == 0}
-			switch rng.Intn(12) {
-			case 0:
-				st.Type = "dance"
-			case 1:
-				st.Connections = []string{"github"}
-			case 2, 3:
-				event := []string{"StepComplete", "StepFailed"}[rng.Intn(2)]
-				st.Hooks = hook(event)
-				if event == "StepFailed" {
-					st.Command = "exit 1" // so the hook it names fires
+	bump := func(k string) { mu.Lock(); counts[k]++; mu.Unlock() }
+	t.Run("seeds", func(t *testing.T) {
+		for seed := int64(1); seed <= 260; seed++ {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				sides := newSides(t)
+				rng := rand.New(rand.NewSource(seed))
+				var steps []StepDef
+				for k := 1 + rng.Intn(4); k > 0; k-- {
+					st := StepDef{Name: fmt.Sprintf("s%d", k), Type: "shell", Command: commands[rng.Intn(len(commands))], ContinueOnFailure: rng.Intn(2) == 0}
+					switch rng.Intn(12) {
+					case 0:
+						st.Type = "dance"
+					case 1:
+						st.Connections = []string{"github"}
+					case 2, 3:
+						event := []string{"StepComplete", "StepFailed"}[rng.Intn(2)]
+						st.Hooks = hook(event)
+						if event == "StepFailed" {
+							st.Command = "exit 1" // so the hook it names fires
+						}
+					}
+					steps = append(steps, st)
 				}
-			}
-			steps = append(steps, st)
-		}
-		stepsJSON, _ := json.Marshal(steps)
-		wfDef := store.Workflow{Name: fmt.Sprintf("wf-%d", seed), StepsJSON: string(stepsJSON), MaxDurationS: 60, Enabled: 1}
-		switch rng.Intn(20) {
-		case 0:
-			wfDef.StepsJSON = "[{not json"
-		case 1:
-			wfDef.DefaultAgentJSON = "{nope"
-		case 2:
-			wfDef.MaxDurationS, wfDef.StepsJSON = 1, `[{"name":"slow","type":"shell","command":"sleep 2","continue_on_failure":true},{"name":"after","type":"shell","command":"true"}]`
-		}
-		var states [2]string
-		for i, s := range sides {
-			wf := wfDef
-			wf.RepoPath = s.repo
-			created, err := s.wfStore.CreateWorkflow(context.Background(), &wf)
-			require.NoError(t, err)
-			run, err := s.wfStore.CreateWorkflowRun(context.Background(), created.ID, "api", nil)
-			require.NoError(t, err)
-			if i == 0 {
-				s.wr.executeRunBefore4845(run.ID, created)
-			} else {
-				s.wr.executeRun(run.ID, created)
-			}
-			got, err := s.wfStore.GetWorkflowRunDirect(context.Background(), run.ID)
-			require.NoError(t, err)
-			norm := func(x string) string {
-				x = strings.ReplaceAll(x, s.dataDir, "<data>")
-				x = strings.ReplaceAll(x, s.repo, "<repo>")
-				x = regexp.MustCompile(`"duration_s":[0-9.e+-]+`).ReplaceAllString(x, `"duration_s":0`)
-				return runStamp.ReplaceAllString(x, "<t>")
-			}
-			var files []string
-			runDir := filepath.Join(s.dataDir, "workflows", "runs", fmt.Sprint(run.ID))
-			_ = filepath.WalkDir(runDir, func(p string, d fs.DirEntry, err error) error {
-				if err != nil || d.IsDir() {
-					return nil
+				stepsJSON, _ := json.Marshal(steps)
+				wfDef := store.Workflow{Name: fmt.Sprintf("wf-%d", seed), StepsJSON: string(stepsJSON), MaxDurationS: 60, Enabled: 1}
+				switch rng.Intn(20) {
+				case 0:
+					wfDef.StepsJSON = "[{not json"
+				case 1:
+					wfDef.DefaultAgentJSON = "{nope"
+				case 2:
+					wfDef.MaxDurationS, wfDef.StepsJSON = 1, `[{"name":"slow","type":"shell","command":"sleep 2","continue_on_failure":true},{"name":"after","type":"shell","command":"true"}]`
 				}
-				b, _ := os.ReadFile(p)
-				rel, _ := filepath.Rel(runDir, p)
-				files = append(files, rel+"="+norm(string(b)))
-				return nil
-			})
-			errMsg := ""
-			if got.ErrorMsg != nil {
-				errMsg = *got.ErrorMsg
-			}
-			states[i] = fmt.Sprintf("status=%s step=%d err=%s results=%s files=%q", got.Status, got.CurrentStep, norm(errMsg), norm(got.StepResults), files)
-		}
-		label := fmt.Sprintf("seed %d %s", seed, wfDef.StepsJSON)
-		require.Equal(t, states[0], states[1], label)
+				var states [2]string
+				for i, s := range sides {
+					wf := wfDef
+					wf.RepoPath = s.repo
+					created, err := s.wfStore.CreateWorkflow(context.Background(), &wf)
+					require.NoError(t, err)
+					run, err := s.wfStore.CreateWorkflowRun(context.Background(), created.ID, "api", nil)
+					require.NoError(t, err)
+					if i == 0 {
+						s.wr.executeRunBefore4845(run.ID, created)
+					} else {
+						s.wr.executeRun(run.ID, created)
+					}
+					got, err := s.wfStore.GetWorkflowRunDirect(context.Background(), run.ID)
+					require.NoError(t, err)
+					norm := func(x string) string {
+						x = strings.ReplaceAll(x, s.dataDir, "<data>")
+						x = strings.ReplaceAll(x, s.repo, "<repo>")
+						x = regexp.MustCompile(`"duration_s":[0-9.e+-]+`).ReplaceAllString(x, `"duration_s":0`)
+						return runStamp.ReplaceAllString(x, "<t>")
+					}
+					var files []string
+					runDir := filepath.Join(s.dataDir, "workflows", "runs", fmt.Sprint(run.ID))
+					_ = filepath.WalkDir(runDir, func(p string, d fs.DirEntry, err error) error {
+						if err != nil || d.IsDir() {
+							return nil
+						}
+						b, _ := os.ReadFile(p)
+						rel, _ := filepath.Rel(runDir, p)
+						files = append(files, rel+"="+norm(string(b)))
+						return nil
+					})
+					errMsg := ""
+					if got.ErrorMsg != nil {
+						errMsg = *got.ErrorMsg
+					}
+					states[i] = fmt.Sprintf("status=%s step=%d err=%s results=%s files=%q", got.Status, got.CurrentStep, norm(errMsg), norm(got.StepResults), files)
+				}
+				label := fmt.Sprintf("seed %d %s", seed, wfDef.StepsJSON)
+				require.Equal(t, states[0], states[1], label)
 
-		st := states[1]
-		has := func(x string) bool { return strings.Contains(st, x) }
-		switch {
-		case has("failed to parse steps"):
-			counts["steps that don't parse"]++
-		case has("failed to parse default_agent"):
-			counts["a default agent that doesn't parse"]++
-		case has("status=completed"):
-			counts["completed"]++
-		case has("workflow timeout exceeded"):
-			counts["the run's time limit, killed"]++
+				st := states[1]
+				has := func(x string) bool { return strings.Contains(st, x) }
+				switch {
+				case has("failed to parse steps"):
+					bump("steps that don't parse")
+				case has("failed to parse default_agent"):
+					bump("a default agent that doesn't parse")
+				case has("status=completed"):
+					bump("completed")
+				case has("workflow timeout exceeded"):
+					bump("the run's time limit, killed")
+				}
+				if has("status=failed") && has(`"status":"skipped"`) {
+					bump("a step failed, the rest skipped")
+				}
+				if has(`"status":"failed"`) && has("status=completed") {
+					bump("a step failed and the run went on")
+				}
+				if has("already exists or can't be made") && has(`"status":"skipped"`) {
+					bump("a step's folder taken, the rest skipped")
+				}
+				if has("unknown step type") {
+					bump("an unknown step type")
+				}
+				if has("retired Connected Apps") {
+					bump("retired connections")
+				}
+				if has("StepComplete completed") {
+					bump("StepComplete hooks fired")
+				}
+				if has("StepFailed failed") {
+					bump("StepFailed hooks fired")
+				}
+				if has("sub/b.txt") || has("out.txt") {
+					bump("files a step made, listed")
+				}
+			})
 		}
-		if has("status=failed") && has(`"status":"skipped"`) {
-			counts["a step failed, the rest skipped"]++
-		}
-		if has(`"status":"failed"`) && has("status=completed") {
-			counts["a step failed and the run went on"]++
-		}
-		if has("already exists or can't be made") && has(`"status":"skipped"`) {
-			counts["a step's folder taken, the rest skipped"]++
-		}
-		if has("unknown step type") {
-			counts["an unknown step type"]++
-		}
-		if has("retired Connected Apps") {
-			counts["retired connections"]++
-		}
-		if has("StepComplete completed") {
-			counts["StepComplete hooks fired"]++
-		}
-		if has("StepFailed failed") {
-			counts["StepFailed hooks fired"]++
-		}
-		if has("sub/b.txt") || has("out.txt") {
-			counts["files a step made, listed"]++
-		}
-	}
+	})
 	t.Logf("compared, per outcome: %v", counts)
 	for name, floor := range executeRunOutcomes {
 		require.GreaterOrEqual(t, counts[name], floor, "%q went (almost) unexercised", name)

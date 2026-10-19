@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,13 +32,29 @@ import (
 // notice, and a claim nudge a wait held back.
 
 // healthKinds counts what the runs covered, per rule.
-var healthKinds map[string]int
+var (
+	healthKinds   map[string]int
+	healthKindsMu sync.Mutex
+)
+
+func healthAdd(kind string, n int) {
+	healthKindsMu.Lock()
+	healthKinds[kind] += n
+	healthKindsMu.Unlock()
+}
 
 func TestRunProjectAgreesWithBefore4599(t *testing.T) {
 	healthKinds = map[string]int{}
-	for seed := int64(1); seed <= 13; seed++ {
-		t.Run(fmt.Sprint(seed), func(t *testing.T) { runHealthOracle(t, seed) })
-	}
+	// Each seed has its own boards, databases and random source: the seeds run in parallel (#4982: 139 s of the package on epoch),
+	// inside one group so the floors are read after every seed has finished.
+	t.Run("seeds", func(t *testing.T) {
+		for seed := int64(1); seed <= 13; seed++ {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				runHealthOracle(t, seed)
+			})
+		}
+	})
 	t.Logf("compared, per rule: %v", healthKinds)
 	for kind, floor := range map[string]int{
 		"claim nudge": 15, "status nudge": 15, "claim escalation": 5, "status escalation": 5,
@@ -243,10 +260,10 @@ func runHealthOracle(t *testing.T, seed int64) {
 				continue
 			}
 			if task.Parked(now) {
-				healthKinds["parked task"]++
+				healthAdd("parked task", 1)
 			}
 			if until, _ := bs.TaskSnoozedUntil(ctx, "team", task.ID); task.Status == "in_progress" && until.After(now) {
-				healthKinds["snoozed reminder"]++
+				healthAdd("snoozed reminder", 1)
 			}
 		}
 		for _, w := range waits {
@@ -254,7 +271,7 @@ func runHealthOracle(t *testing.T, seed int64) {
 			mine, pending := agentTasks(tasks, w.SubscriberID, now)
 			if _, live := bySession[session(w.SubscriberID)]; live && known[sid(w.SubscriberID)] && !sig.InTurn && !sig.NeedsInput &&
 				len(mine) == 0 && len(pending) > 0 && now.Sub(sig.Since) >= time.Duration(hs.ClaimNudge.AfterMin)*time.Minute {
-				healthKinds["claim held back by a wait"]++
+				healthAdd("claim held back by a wait", 1)
 			}
 		}
 
@@ -304,11 +321,11 @@ func runHealthOracle(t *testing.T, seed int64) {
 		for _, k := range sent[1] {
 			for kind, key := range map[string]string{"claim nudge": "|health-claim:", "status nudge": "|health-status:", "mention renudge": "|health-mention:"} {
 				if strings.Contains(k, key) {
-					healthKinds[kind]++
+					healthAdd(kind, 1)
 				}
 			}
 		}
-		healthKinds["failed delivery"] += failed[1]
+		healthAdd("failed delivery", failed[1])
 
 		bs, err = board.NewStoreWithKey(pathA, "")
 		require.NoError(t, err)
@@ -322,9 +339,9 @@ func runHealthOracle(t *testing.T, seed int64) {
 			healthKinds["claim escalation"] += strings.Count(c, "has not claimed")
 			healthKinds["status escalation"] += strings.Count(c, "silent on #")
 		case strings.Contains(c, "waiting at a dialog"):
-			healthKinds["held notice"]++
+			healthAdd("held notice", 1)
 		case strings.Contains(c, "[Coral health actions paused]"):
-			healthKinds["budget line"]++
+			healthAdd("budget line", 1)
 		}
 	}
 	require.NoError(t, bs.Close())

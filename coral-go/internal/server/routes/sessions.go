@@ -37,6 +37,9 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
+	// newUUID, when set, makes this handler's new session ids (a test that compares two handlers gives both the same ones without
+	// touching the package variable, so such tests can run in parallel, #4982); nil is generateUUID.
+	newUUID func() string
 	// boardStatus shares one computation of a board's status among the requests that arrive
 	// together (#3721); it keeps nothing, so a status is never stale.
 	boardStatus *replyCache
@@ -610,6 +613,13 @@ func (h *SessionsHandler) findLogPath(agentType, sessionID string) string {
 var writeJSON = httputil.WriteJSON
 
 // generateUUID is a new session's id (random; tests that compare two runs give both the same ids).
+func (h *SessionsHandler) uuid() string {
+	if h.newUUID != nil {
+		return h.newUUID()
+	}
+	return generateUUID()
+}
+
 var generateUUID = func() string {
 	b := make([]byte, 16)
 	crand.Read(b)
