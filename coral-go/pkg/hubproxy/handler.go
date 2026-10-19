@@ -266,6 +266,15 @@ func (h *Handler) writeUpstreamErr(w http.ResponseWriter, ctx context.Context, i
 		// 503 with a short Retry-After, and the server keeps its status.
 		w.Header().Set("Retry-After", "1")
 		h.writeCodedErr(w, http.StatusServiceUnavailable, "remote busy", tunnel.CodeTooManyStreams, id)
+	case errors.As(err, &se) && se.Code == tunnel.CodeUpstream && se.Status == http.StatusTooManyRequests:
+		// The machine's own Coral refused the upgrade for being busy (its cap on open terminals or dashboards, #5011): the machine is
+		// reachable and says so. Busy like the stream cap, with the Retry-After it gave (a short default when it gave none).
+		retry := se.RetryAfter
+		if retry == "" {
+			retry = "5"
+		}
+		w.Header().Set("Retry-After", retry)
+		h.writeCodedErr(w, http.StatusServiceUnavailable, "remote busy", tunnel.CodeTooManyStreams, id)
 	case errors.As(err, &se) && se.Code == tunnel.CodeBadRequest:
 		// The connector could not accept this request as sent (bad header, method or body). The request is at
 		// fault, not the machine: 400, not marked.

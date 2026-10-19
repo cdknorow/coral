@@ -474,7 +474,7 @@ func (s *Session) readResponse(hs *HubStream) (ResponseHeader, error) {
 	// would otherwise pass them and be written as Set-Cookie by the reverse proxy (#3410).
 	rh.Headers = CanonicalHeader(rh.Headers)
 	if rh.Error != "" {
-		return rh, &StreamError{Code: rh.ErrorCode, Message: rh.Error, Status: rh.Status}
+		return rh, &StreamError{Code: rh.ErrorCode, Message: rh.Error, Status: rh.Status, RetryAfter: CleanRetryAfter(rh.Headers.Get("Retry-After"))}
 	}
 	return rh, nil
 }

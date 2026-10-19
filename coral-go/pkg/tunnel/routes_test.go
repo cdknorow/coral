@@ -3,6 +3,7 @@ package tunnel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -737,4 +738,50 @@ func TestHomeRelativeBrowsePath(t *testing.T) {
 	}
 	// The other parameters of the two routes are not path parameters.
 	assert.Equal(t, TierNever, Classify("GET", "/api/filesystem/list", "path=~&other=~"))
+}
+
+// #5035: the Retry-After a hub repeats is whole seconds from 1 to a minute; a date, text, zero, a negative or a huge number is dropped or capped.
+func TestCleanRetryAfter(t *testing.T) {
+	for in, want := range map[string]string{"1": "1", " 7 ": "7", "60": "60", "61": "60", "3600": "60", "999999999999": "60", "99999999999999999999999": "", "0": "", "-5": "", "": "", "soon": "",
+		"Wed, 21 Oct 2026 07:28:00 GMT": "", "5 seconds": "", "5\r\nSet-Cookie: x=y": ""} {
+		if got := CleanRetryAfter(in); got != want {
+			t.Errorf("CleanRetryAfter(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// #5035: GET /api/agents/models (the model chip's list) is a Launch route that accepts only its type parameter.
+func TestAgentModelsListIsALaunchRouteWithOnlyType(t *testing.T) {
+	_, tier, ok := RuleFor("GET", "/api/agents/models")
+	if !ok || tier != TierLaunch {
+		t.Fatalf("GET /api/agents/models: ok=%v tier=%v, want Launch", ok, tier)
+	}
+	if _, _, ok := RuleFor("POST", "/api/agents/models/refresh"); ok {
+		t.Fatal("the refresh route must stay local")
+	}
+	if got := routeQueries["GET /api/agents/models"]; got != "type" {
+		t.Fatalf("query parameters = %q, want only type", got)
+	}
+}
+
+// #5035 end to end: the local Coral refuses a terminal upgrade with 429 and a Retry-After; the hub's DialWS error carries the status and the
+// cleaned Retry-After (so the hub proxy can answer "busy" and say when), and a hostile Retry-After is dropped.
+func TestRefused429UpgradeCarriesItsRetryAfterToTheHub(t *testing.T) {
+	for _, c := range []struct{ header, want string }{{"7", "7"}, {"3600", "60"}, {"soon", ""}, {"", ""}} {
+		hub := newHub(t, fastCfg())
+		sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if c.header != "" {
+				w.Header().Set("Retry-After", c.header)
+			}
+			http.Error(w, "too many terminal connections are open", http.StatusTooManyRequests)
+		}), nil)
+		_, err := sess.DialWS(context.Background(), "/ws/terminal/a", "", nil)
+		var se *StreamError
+		if !errors.As(err, &se) {
+			t.Fatalf("Retry-After %q: want a StreamError, got %v", c.header, err)
+		}
+		if se.Code != CodeUpstream || se.Status != http.StatusTooManyRequests || se.RetryAfter != c.want {
+			t.Fatalf("Retry-After %q: StreamError = %+v, want code %s, status 429, retry %q", c.header, se, CodeUpstream, c.want)
+		}
+	}
 }

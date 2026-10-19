@@ -126,9 +126,10 @@ var (
 
 // StreamError is returned when the connector rejected or failed a stream.
 type StreamError struct {
-	Code    string
-	Message string
-	Status  int // upstream status for failed WebSocket handshakes, else 0
+	Code       string
+	Message    string
+	Status     int    // upstream status for failed WebSocket handshakes, else 0
+	RetryAfter string // the upstream's Retry-After for a 429, whole seconds as the connector cleaned them, else ""
 }
 
 func (e *StreamError) Error() string {

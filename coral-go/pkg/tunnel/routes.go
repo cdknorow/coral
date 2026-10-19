@@ -335,6 +335,10 @@ var routeTable = cat(
 	// never View. Only type (an exact agent type) and source (cli_recheck) may pass (routes_query.go); binary, which would name a
 	// program to run, is not in the table, and the handler refuses it through the tunnel as well. The reply carries no path.
 	rules(http.MethodGet, TierLaunch, "/api/system/cli-check"),
+	// The models a CLI offers its user, for the model chip's menu and the launch forms (#5035): Launch, like the switch and the launch it feeds.
+	// It never runs a CLI itself: the handler answers from a cache and refreshes in the background at most once a day per CLI build (an hour after
+	// a failure, one fetch at a time), and only type (an exact agent type) may pass. The refresh route (POST .../refresh) stays local.
+	rules(http.MethodGet, TierLaunch, "/api/agents/models"),
 	// Which agents run an older hook set: for the Operator who would resume them (#3665).
 	rules(http.MethodGet, TierLaunch, "/api/system/hooks-status"),
 	// Pinning a folder to the Agents list names a folder to launch into (#3630): Launch, like

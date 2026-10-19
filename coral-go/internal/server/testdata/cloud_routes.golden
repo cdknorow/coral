@@ -37,7 +37,7 @@ GET /api/agent/tasks/{taskID} never
 GET /api/agent/ui view
 GET /api/agent/ui/{id}/content view
 GET /api/agent/ui/{id}/events view
-GET /api/agents/models never
+GET /api/agents/models launch
 GET /api/artifacts/{id} view
 GET /api/auth/hub-origins never
 GET /api/auth/hub-signin never

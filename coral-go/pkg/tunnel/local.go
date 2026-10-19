@@ -1081,6 +1081,10 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 		if resp != nil {
 			status = resp.StatusCode
 		}
+		if status == http.StatusTooManyRequests {
+			s.RejectBusy(CodeUpstream, "local websocket failed", status, resp.Header.Get("Retry-After"))
+			return
+		}
 		s.Reject(CodeUpstream, "local websocket failed", status)
 		return
 	}

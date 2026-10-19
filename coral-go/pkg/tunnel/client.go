@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -473,6 +474,28 @@ func (s *Stream) abort() {
 // a failed WebSocket handshake, else 0.
 func (s *Stream) Reject(code, msg string, status int) {
 	_ = s.send(ResponseHeader{Error: msg, ErrorCode: code, Status: status})
+}
+
+// RejectBusy is Reject for a handshake the local Coral refused with 429: the answer's Retry-After (whole seconds, at most maxRetryAfter) goes
+// along, so the hub can say when to try again (#5035).
+func (s *Stream) RejectBusy(code, msg string, status int, retryAfter string) {
+	rh := ResponseHeader{Error: msg, ErrorCode: code, Status: status}
+	if n := CleanRetryAfter(retryAfter); n != "" {
+		rh.Headers = http.Header{"Retry-After": {n}}
+	}
+	_ = s.send(rh)
+}
+
+// maxRetryAfter bounds a Retry-After the hub will repeat to a browser: a minute is a pause, an hour is an outage the hub should not promise.
+const maxRetryAfter = 60
+
+// CleanRetryAfter is a Retry-After as whole seconds from 1 to maxRetryAfter, or "" for anything else (a date, text, a negative or huge number).
+func CleanRetryAfter(v string) string {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 1 {
+		return ""
+	}
+	return strconv.Itoa(min(n, maxRetryAfter))
 }
 
 // AcceptWS completes a WebSocket stream, returning the message conn.
