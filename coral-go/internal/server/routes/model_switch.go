@@ -214,7 +214,7 @@ func (h *SessionsHandler) runModelSwitch(name, agentType, sessionID, workDir str
 			h.switchFail(sessionID, "Could not type /model into the agent: "+err.Error())
 			return
 		}
-		if msg := h.confirmModel(ctx, sessionID, workDir, sent); msg != "" {
+		if msg := h.confirmModel(ctx, sessionID, workDir, model, sent); msg != "" {
 			h.switchFail(sessionID, msg)
 			return
 		}
@@ -240,10 +240,12 @@ func (h *SessionsHandler) runModelSwitch(name, agentType, sessionID, workDir str
 	h.kickWS() // the feed shows the result now, not on the next tick
 }
 
-// confirmModel waits for the transcript's /model entry after the command was typed: Claude Code prints what it did ("Set model
-// to ..." or "Kept model as ...") when it takes the command, not only at the next reply. It returns "" on success, else the
-// reason.
-func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir string, since time.Time) string {
+// confirmModel waits for the transcript's /model entry after the command was typed: Claude Code prints what it did when it takes the
+// command, not only at the next reply. It confirms the switch only when the entry is for the model that was asked for (its
+// arguments are the model) and its output says it was set ("Set model to ..."). "Kept model as ...", the entry of another model
+// (a picker choice, a command the operator typed meanwhile) and any other output are a failed switch, with that text, so the stored
+// model never changes to one the agent is not running. It returns "" on success, else the reason.
+func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir, model string, since time.Time) string {
 	deadline := time.Now().Add(switchTiming.modelConfirm)
 	for {
 		var cmds []jsonl.LocalCommand
@@ -254,7 +256,10 @@ func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir s
 			if c.Name != "/model" || c.Output == "" {
 				continue
 			}
-			if errorOutputR.MatchString(c.Output) {
+			if !strings.EqualFold(strings.TrimSpace(c.Args), model) {
+				return "Claude Code ran /model for " + shownArgs(c.Args) + ", not " + model + ": " + c.Output
+			}
+			if errorOutputR.MatchString(c.Output) || !setOutputR.MatchString(c.Output) {
 				return "Claude Code did not take the model: " + c.Output
 			}
 			return ""
@@ -266,6 +271,16 @@ func (h *SessionsHandler) confirmModel(ctx context.Context, sessionID, workDir s
 			return "The change was cancelled."
 		}
 	}
+}
+
+// setOutputR is what Claude Code prints when it set the model: it starts with "Set".
+var setOutputR = regexp.MustCompile(`(?i)^\s*set\b`)
+
+func shownArgs(args string) string {
+	if strings.TrimSpace(args) == "" {
+		return "the model picker"
+	}
+	return args
 }
 
 // confirmLevel waits for the transcript to show the new level: Claude Code records the level a turn ran at on that turn's assistant
