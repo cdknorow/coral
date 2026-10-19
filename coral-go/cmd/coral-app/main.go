@@ -183,22 +183,6 @@ func main() {
 		if (navigator.platform && navigator.platform.indexOf('Mac') !== -1) document.body.classList.add('native-macos');
 		if (navigator.platform && navigator.platform.indexOf('Win') !== -1) document.body.classList.add('native-windows');
 	});
-	document.addEventListener('click', function(e) {
-		var a = e.target.closest('a');
-		if (!a) return;
-		var href = a.getAttribute('href');
-		if (!href) return;
-		// Open external links and target=_blank in system browser
-		var isExternal = href.startsWith('http') && !href.startsWith(location.origin);
-		if (isExternal || a.target === '_blank') {
-			e.preventDefault();
-			if (window._coralOpenExternal) {
-				_coralOpenExternal(href);
-			} else {
-				window.open(href, '_blank');
-			}
-		}
-	}, true);
 
 	// Server health check — detect when the backend crashes
 	(function() {
@@ -266,11 +250,19 @@ func main() {
 		});
 	})();`)
 
+	// What a link may do in this window (#5094): see linkInterceptScript.
+	w.Init(linkInterceptScript)
+
 	// Bind native URL opener — WKWebView doesn't support window.open(),
 	// so the link interceptor calls this to open external URLs in the system browser.
-	w.Bind("_coralOpenExternal", func(url string) {
-		log.Printf("[WEBVIEW] opening external URL: %s", url)
-		executil.OpenBrowser(url)
+	// The binding is callable by whatever page the window shows, and the system's opener runs files and starts custom
+	// schemes: only a plain http or https address goes through (executil.WebURL).
+	w.Bind("_coralOpenExternal", func(raw string) {
+		if !executil.OpenWebURL(raw) {
+			log.Printf("[WEBVIEW] refused to open an address that is not a plain http or https URL (%d bytes)", len(raw))
+			return
+		}
+		log.Printf("[WEBVIEW] opening external URL: %s", loginlink.Redact(raw))
 	})
 
 	// Bind JS console.log to Go logger in debug mode
