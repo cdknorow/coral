@@ -20,7 +20,7 @@ if (os.path.realpath(PROJECTS) + os.sep).startswith(REAL + os.sep):
 rnd = random.Random(4669)
 WORDS = ("function handler request response error cache index session transcript window cursor offset budget limit "
          "refactor rename extract inline test fixture mock stub assert mutation oracle floor build vet lint format").split()
-FILES = ["internal/server/routes/sessions_chat.go", "internal/jsonl/reader.go", "internal/board/store.go", "cmd/coral/main.go",
+FILES = ["internal/server/routes/sessions_chat.go", "internal/jsonl/reader.go", "internal/board/store_tasks.go", "cmd/coral/main.go",
          "pkg/frontend/static/app.js", "internal/store/sessions.go", "internal/background/scheduler.go", "README.md", "go.mod"]
 
 

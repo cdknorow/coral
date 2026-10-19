@@ -316,8 +316,11 @@ const (
 )
 
 var queryIdentityReads = map[string]string{
-	"board.go subscriber_id":             queryBoard,
-	"board.go target":                    queryTarget,
+	"board_messages.go subscriber_id":    queryBoard,
+	"board_subscribers.go subscriber_id": queryBoard,
+	"board_task_create.go subscriber_id": queryBoard,
+	"board_waits.go subscriber_id":       queryBoard,
+	"board_subscribers.go target":        queryTarget,
 	"board_remotes.go subscriber_id":     queryBoard,
 	"cross_team_send.go subscriber_id":   queryBoard,
 	"cross_team_send.go session_name":    queryBoardSession,
