@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -131,6 +132,9 @@ func resetChatCaches(h *SessionsHandler) {
 	h.resumeMu.Lock()
 	h.resumeCache, h.resumeKnown = map[string]string{}, map[string]bool{}
 	h.resumeMu.Unlock()
+	h.hints.mu.Lock() // the prompt options a poll read (promptReadTTL) and the hook events behind them
+	h.hints.reads, h.hints.m = nil, nil
+	h.hints.mu.Unlock()
 }
 
 func chatOracleRequest(rng *rand.Rand, sids, names []string) (string, url.Values) {
@@ -199,6 +203,13 @@ func chatGet(t *testing.T, srv *httptest.Server, path string, q url.Values) (int
 
 func TestChatAgreesWithBefore4713(t *testing.T) {
 	old, cur, sids, names, handlers := chatOracleSetup(t)
+	// A read of a session's prompt options answers its polls for promptReadTTL of WALL-CLOCK time (2 s). The two handlers read at slightly different
+	// moments, so on a loaded host a window ran out for one of them mid-seed and not for the other: one took a fresh read (after the session's row
+	// changed under it) and one reused the earlier answer, and their replies differed by prompt_options alone (#4911). The window never runs out
+	// here; resetChatCaches starts each seed with no read.
+	keepTTL := promptReadTTL
+	promptReadTTL = time.Hour
+	t.Cleanup(func() { promptReadTTL = keepTTL })
 	db := handlers[0].db
 	ctx := context.Background()
 	kinds := map[string]int{}
