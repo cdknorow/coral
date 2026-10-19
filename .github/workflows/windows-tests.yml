@@ -31,7 +31,8 @@ concurrency:
   group: windows-tests-${{ github.ref }}
   cancel-in-progress: true
 
-# Three shards run at once (#4605): "packages" is every package but the slow tests below, "slow-1" is vet and the
+# Five shards run at once (#4605, #4956): "packages" is every package but the timing packages, pkg/tunnel and the slow
+# tests below, "timing" is the packages in TIMING_PKGS and "tunnel" is TUNNEL_PKG (every package runs in exactly one), "slow-1" is vet and the
 # slowest test, "slow-2" the next two and the routes step. internal/background's old-vs-new oracles (#4599) take
 # 341 s of its 7 minutes on Windows (probe run 39129482198), and with every package in one job that package
 # alone set the wall time (600 s in the v1.4.91 gate). A slow test listed here must exist under that exact name:
@@ -44,7 +45,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [packages, slow-1, slow-2]
+        shard: [packages, timing, tunnel, slow-1, slow-2]
     env:
       CGO_ENABLED: "0"
       CORAL_TELEMETRY_DISABLED: "1"
@@ -53,6 +54,12 @@ jobs:
       SLOW_1_COUNT: "1"
       SLOW_2: "^(TestComposeCheckAgreesWithBefore4599|TestRunPassAgreesWithBefore4599)$"
       SLOW_2_COUNT: "2"
+      # The packages whose tests mostly wait (timers, timeouts, board round trips): about 230 s each on their own in the
+      # v1.4.101 run, while the other shard's CPU-bound packages queued behind them (#4956). pkg/tunnel has its own
+      # shard: its throughput tests measure bytes per second, and next to board and server on one runner one of them
+      # fell under its floor (run 39212450911), while with the 80 other packages it took the packages shard to 409 s.
+      TIMING_PKGS: "internal/board internal/server"
+      TUNNEL_PKG: "pkg/tunnel"
     defaults:
       run:
         shell: bash
@@ -86,8 +93,14 @@ jobs:
           for e in "${excluded[@]}"; do
             printf '%s\n' "${all[@]}" | grep -qxF "$e" || { echo "::error::excluded package $e no longer exists: drop it from windows-tests.yml"; exit 1; }
           done
+          read -ra timing <<< "$TIMING_PKGS $TUNNEL_PKG"
+          # A split-out package that no longer exists would silently leave its shard: fail instead.
+          for t in "${timing[@]}"; do
+            printf '%s\n' "${all[@]}" | grep -qxF "$t" || { echo "::error::package $t no longer exists: drop it from TIMING_PKGS or TUNNEL_PKG in windows-tests.yml"; exit 1; }
+          done
           pkgs=(); for p in "${all[@]}"; do
             [ "$p" = internal/server/routes ] && continue
+            printf '%s\n' "${timing[@]}" | grep -qxF "$p" && continue
             printf '%s\n' "${excluded[@]}" | grep -qxF "$p" && continue
             pkgs+=("./$p")
           done
@@ -99,8 +112,19 @@ jobs:
             echo "known Windows failure $pkg: only its Windows-only tests, -run '$run'"
             go test -count=1 -timeout 30m -tags fts5 -run "$run" "$pkg"
           done < <(bash ../tests/windows/windows_only_tests.sh --tests)
+      - name: pkg/tunnel on its own
+        if: matrix.shard == 'tunnel'
+        run: go test -count=1 -timeout 40m -tags fts5 "./$TUNNEL_PKG"
+      - name: the timing packages (internal/board, internal/server)
+        if: matrix.shard == 'timing'
+        run: |
+          set -euo pipefail
+          read -ra timing <<< "$TIMING_PKGS"
+          pkgs=(); for t in "${timing[@]}"; do pkgs+=("./$t"); done
+          echo "go test on Windows: ${#pkgs[@]} timing packages: ${pkgs[*]}"
+          go test -count=1 -timeout 40m -tags fts5 "${pkgs[@]}"
       - name: the slow tests of this shard
-        if: matrix.shard != 'packages'
+        if: matrix.shard == 'slow-1' || matrix.shard == 'slow-2'
         run: |
           set -euo pipefail
           if [ "${{ matrix.shard }}" = slow-1 ]; then run=$SLOW_1; want=$SLOW_1_COUNT; else run=$SLOW_2; want=$SLOW_2_COUNT; fi
