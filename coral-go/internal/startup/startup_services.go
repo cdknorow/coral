@@ -373,5 +373,5 @@ func ResolveBackend(flagValue, saved, goos string) (backend string, forced bool)
 // Settings dialog saves a JSON boolean, which the settings table keeps as sent ("False"), so the word is compared
 // without regard to case (#5128).
 func boardHealthMonitorEnabled(settings map[string]string) bool {
-	return !strings.EqualFold(strings.TrimSpace(settings["board_health_monitor"]), "false")
+	return !config.Falsy(settings["board_health_monitor"])
 }

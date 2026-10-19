@@ -95,7 +95,7 @@ func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config,
 	} else {
 		widenForRemote(cfg)
 	}
-	tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(settings["telemetry_enabled"]), "false"))
+	tracking.SetTelemetryEnabled(!config.Falsy(settings["telemetry_enabled"]))
 }
 
 // applyHubModeSetting turns hub mode on when Settings > Run as a hub saved it

@@ -346,7 +346,7 @@ func applyLiveSettings(values map[string]string) {
 				ptymanager.SetReplayBytes(n)
 			}
 		case "telemetry_enabled":
-			tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(s), "false"))
+			tracking.SetTelemetryEnabled(!config.Falsy(s))
 		case agentprio.SettingKey:
 			agentprio.SetSetting(s) // agents started from now on (#3437)
 		case inputlog.SettingKey:

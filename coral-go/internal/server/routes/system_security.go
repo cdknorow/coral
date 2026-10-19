@@ -119,7 +119,7 @@ func (h *SystemHandler) GetPrivacyStatus(w http.ResponseWriter, r *http.Request)
 		errInternalServer(w, err.Error())
 		return
 	}
-	telemetryEnabled := !strings.EqualFold(strings.TrimSpace(settings["telemetry_enabled"]), "false")
+	telemetryEnabled := !config.Falsy(settings["telemetry_enabled"])
 	// Remote access is opt-in: only an explicit saved "true" enables it.
 	savedValue, configured := settings["remote_access_enabled"]
 	remoteEnabled := strings.EqualFold(strings.TrimSpace(savedValue), "true")

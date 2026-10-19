@@ -317,6 +317,17 @@ func StrictLocalAuthFromEnv() (on bool, warning string) {
 
 // Truthy reads an on/off value, from the environment or a stored setting: 1, true, yes or on, in
 // any case, around spaces. The one helper for it (#3824: there were six copies).
+// Falsy is the settings' words for off: false, 0, no and off, in any case. A setting that is on unless it is turned off (telemetry,
+// the board health monitor) is read with it, not with a comparison to the one word "false": PUT /api/settings accepts all four, and a
+// JSON false is stored as "False" (#5129).
+func Falsy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "0", "false", "no", "off":
+		return true
+	}
+	return false
+}
+
 func Truthy(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "1", "true", "yes", "on":
