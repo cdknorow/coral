@@ -396,10 +396,18 @@
     transition: opacity 0.1s;
 }
 
+/* The button blends with the row it sits on (#5121): at rest no fill; on a hovered or selected row the dots take the row's secondary text colour; hovered, a faint tint of its own
+   text colour. A fixed grey (--bg-hover) drew an opaque box over the selected row's blue fill. */
 .sidebar-kebab-btn:hover {
     color: var(--text-primary);
-    background: var(--bg-hover);
+    background: color-mix(in srgb, currentColor 12%, transparent);
 }
+.session-list li:hover .sidebar-kebab-btn,
+.session-list li.active .sidebar-kebab-btn,
+.session-group-header:hover .sidebar-kebab-btn {
+    color: var(--text-secondary);
+}
+.session-list li .sidebar-kebab-btn:hover { color: var(--text-primary); }
 
 .session-list li:hover .sidebar-kebab-btn,
 .session-list li:focus-within .sidebar-kebab-btn {
