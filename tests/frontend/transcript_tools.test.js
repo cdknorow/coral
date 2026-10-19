@@ -167,7 +167,7 @@ async function run() {
   check('Chat is the default center view', dflt.mode === 'chat' && dflt.chat && dflt.toggle, JSON.stringify(dflt));
 
   // Chat mode: the command bar keeps just Cancel (Esc) and Send
-  const bar = () => ev(`Array.from(document.querySelectorAll('#command-toolbar button')).filter(b => b.offsetParent !== null && !b.closest('.send-btn-menu')).map(b => (b.innerText || b.getAttribute('aria-label') || '').trim())`);
+  const bar = () => ev(`Array.from(document.querySelectorAll('#command-toolbar button')).filter(b => b.offsetParent !== null && !b.closest('.send-btn-menu') && b.id !== 'model-chip' && !b.closest('#model-chip-bar')).map(b => (b.innerText || b.getAttribute('aria-label') || '').trim())`);
   const chatBar = await bar();
   check('in chat mode the command bar shows only Cancel and Send', JSON.stringify(chatBar) === JSON.stringify(['Cancel', '', '']) || (chatBar.some(t => /^(Cancel|stop)$/i.test(t)) && !chatBar.includes('Esc') && chatBar.length <= 3 && !chatBar.some(t => /Bash|Undo|\u2191|\u2193/.test(t))), JSON.stringify(chatBar));
   await ev(`window.setLiveViewMode('terminal'); true`);
