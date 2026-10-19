@@ -26,6 +26,25 @@ import (
 // A rule change comes with a new version, so it shows in the redaction notes.
 const Version = "v1.9.0"
 
+// The embedded global filter discards a finding whose secret matches `(?i)^true|false|null$`, which reads as "the secret is the word true, false
+// or null" but, with the | binding looser than ^ and $, means: starts with "true", OR contains "false" anywhere, OR ends with "null". So a
+// secret holding "false" in any case anywhere (a random 1,600-character private key body does about one time in 3,600), or starting with "true" or
+// ending with "null", was never redacted, whatever rule found it (#5179). fixGlobalFilter anchors the alternation as intended.
+const (
+	unanchoredBoolWords = "`(?i)^true|false|null$`"
+	anchoredBoolWords   = "`(?i)^(?:true|false|null)$`"
+)
+
+// fixGlobalFilter replaces the unanchored alternation in cfg's global filter. A library whose filter no longer has it (fixed upstream) is left as it
+// is; one that still has the bug after the replacement is refused, so the fault cannot come back unseen.
+func fixGlobalFilter(cfg *config.Config) error {
+	cfg.Filter = strings.Replace(cfg.Filter, unanchoredBoolWords, anchoredBoolWords, 1)
+	if strings.Contains(cfg.Filter, "^true|false|null$") {
+		return errors.New("betterleaks rules: the global filter still discards any secret that contains false (#5179)")
+	}
+	return nil
+}
+
 // Detector finds what betterleaks' rules find. One is safe for any number of goroutines.
 type Detector struct {
 	d *detect.Detector
@@ -51,6 +70,9 @@ func New() (*Detector, error) {
 	cfg, err := config.Default()
 	if err != nil {
 		return nil, fmt.Errorf("betterleaks rules: %w", err)
+	}
+	if err := fixGlobalFilter(cfg); err != nil {
+		return nil, err
 	}
 	// Its global logger writes to stderr and, at debug level, logs each finding with its secret.
 	quiet.Do(func() { logging.Logger = zerolog.Nop() })
