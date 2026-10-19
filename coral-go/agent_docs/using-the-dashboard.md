@@ -70,5 +70,5 @@ The ☰ **Display** button under the search box opens a panel in place (not a po
 
 When you paste or attach an image in the message box and send it, its chip in the chat shows a small thumbnail (48 px) next to the file name. Click it to open the image in the Preview pane.
 
-- It is shown for images Coral stored in its uploads folder on the agent's computer (PNG, JPEG, GIF and WebP). A file the agent only names, or an image through Coral Hub, stays a plain name.
-- **Local only:** the image is served to this dashboard, not through Coral Hub and never to an agent's token.
+- It is shown for images Coral stored in its uploads folder on the agent's computer, and for images pasted into a Claude or Codex conversation, which Coral reads from the agent's own transcript (PNG, JPEG, GIF and WebP). A file the agent only names stays a plain name.
+- **Local only:** never through Coral Hub, where the chip keeps its name. An agent token reads only its own session's and its board's chat images.
