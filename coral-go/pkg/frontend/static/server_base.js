@@ -333,6 +333,11 @@ export async function fetchValidated(key, doFetch) {
     return { ok: true, text, notModified: false };
 }
 
+/** Gives up the body of a response nobody will read (a failed poll): an unread body keeps its loader and buffer until the response is collected (#5050). */
+export function dropBody(resp) {
+    try { if (resp && resp.body && !resp.bodyUsed) resp.body.cancel().catch(() => {}); } catch { /* already closed or locked */ }
+}
+
 /** fetch for any team-scoped endpoint whose path embeds the bare board name:
  *  teamFetch(teamKey, n => `/api/teams/detail/${encodeURIComponent(n)}/knowledge`). */
 export function teamFetch(teamKey, pathFn, options) {

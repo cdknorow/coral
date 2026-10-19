@@ -3,7 +3,7 @@ import { escapeHtml, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
 import { closeOnBackdropAndEscape } from './dialog_close.js';
 import { _formatCost, _formatTokenCount, formatTaskDate } from './task_format.js';
 import { redrawBoardTaskList, closeTaskDetailModal } from './task_hooks.js';
-import { serverFetch, serverForSession } from './server_base.js';
+import { serverFetch, serverForSession, dropBody } from './server_base.js';
 import { state } from './state.js';
 import { formatDuration } from './format.js';
 
@@ -28,7 +28,7 @@ export async function loadSubagents(agentName, sessionId, options) {
     let subagents = [];
     try {
         const resp = await serverFetch(serverForSession(agentName, sid), `/api/sessions/live/${encodeURIComponent(agentName)}/subagents?session_id=${encodeURIComponent(sid)}`, options);
-        if (!resp.ok) throw new Error(`subagents fetch failed: ${resp.status}`);
+        if (!resp.ok) { dropBody(resp); throw new Error(`subagents fetch failed: ${resp.status}`); }
         subagents = await resp.json();
     } catch (e) {
         if (e?.name === 'AbortError') return;

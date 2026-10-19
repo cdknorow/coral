@@ -1,7 +1,7 @@
 /* Session-scoped generated panels. Frames never receive ambient Coral privileges. */
 import { state } from './state.js';
 import { addPendingMessage } from './live_chat.js';
-import { serverFetch, serverForSession, isCloud } from './server_base.js';
+import { serverFetch, serverForSession, isCloud, dropBody } from './server_base.js';
 import { createPanelFrame, openPanel, isPanelEvent, createEventThrottle, MAX_PANEL_BYTES, MAX_PANELS } from './panel_sandbox.js';
 import { sessionUnreachable, backoffBlocked, backoffRecord } from './remote_health.js';
 import { responseErrorText } from './server_status.js';
@@ -130,7 +130,7 @@ export async function refreshAgentUI() {
     try {
         const response = await serverFetch(srv, endpoint(sid));
         backoffRecord('ui:' + srv, response.ok ? 200 : response.status);
-        if (!response.ok) throw new Error(await responseErrorText(response, srv, `Unable to load agent UI (HTTP ${response.status}).`));
+        if (!response.ok) { const text = await responseErrorText(response, srv, `Unable to load agent UI (HTTP ${response.status}).`); dropBody(response); throw new Error(text); }
         let allPanels = await response.json();
         if (token !== generation || sid !== currentID()) return;
         // On the hub at most MAX_PANELS panels per agent are shown (the newest), however many the machine lists.

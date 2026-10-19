@@ -10,7 +10,7 @@ import { registerActions, idOf, withId, tokenOf, textOf } from './actions.js';
 import { addPendingMessage } from './live_chat.js';
 // Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
 import './task_verification.js';
-import { pathId, serverUrl, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, isCloud, fetchValidated } from './server_base.js';
+import { pathId, serverUrl, splitKey, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, isCloud, fetchValidated, dropBody } from './server_base.js';
 import { platform } from './platform/detect.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { _agentTaskStatus, _formatCost, _formatTaskTime, _priorityLabel, _priorityOrder, formatTaskDate } from './task_format.js';
@@ -165,7 +165,7 @@ async function _boardTasksFetch(boardName, suffix) {
     try {
         // Polled every 10 s per open board: an unchanged page comes back 304 (#3439).
         const r = await fetchValidated('board-tasks ' + boardName + suffix, headers => boardFetch(boardName, suffix, { signal: ctrl.signal, headers }));
-        if (!r.ok) { const err = new Error(`board tasks fetch failed: ${r.resp.status}`); err.resp = r.resp; throw err; }
+        if (!r.ok) { dropBody(r.resp); const err = new Error(`board tasks fetch failed: ${r.resp.status}`); err.resp = r.resp; throw err; }
         return JSON.parse(r.text);
     } finally {
         clearTimeout(timer);

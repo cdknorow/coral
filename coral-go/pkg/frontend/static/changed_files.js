@@ -8,7 +8,7 @@ import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js'
 import { fileIconHtml } from './file_explorer.js';
 import { openPreviewTab, openArtifactTab, setPreviewSession } from './preview_pane.js';
 import { storeKey, readStars, writeStars } from './local_store.js';
-import { serverFetch, serverForSession, sessionServer, currentServer, isCloud } from './server_base.js';
+import { serverFetch, serverForSession, sessionServer, currentServer, isCloud, dropBody } from './server_base.js';
 
 let _currentFiles = [];
 let _searchTimeout = null;
@@ -260,7 +260,7 @@ export async function loadChangedFiles(agentName, sessionId) {
         const qs = params.toString() ? `?${params}` : "";
         const resp = await serverFetch(serverForSession(agentName), `/api/sessions/live/${encodeURIComponent(agentName)}/files${qs}`);
         _filesRefused = !resp.ok && await refusedTooLarge(resp);
-        if (!resp.ok) throw new Error(`files fetch failed: ${resp.status}`);
+        if (!resp.ok) { dropBody(resp); throw new Error(`files fetch failed: ${resp.status}`); }
         const data = await resp.json();
         _currentFiles = data.files || [];
         if (data.diff_mode) _cloudDiffMode = data.diff_mode;

@@ -7,7 +7,7 @@ import { renderTaskList } from './tasks.js';
 import { renderEventTimeline } from './agentic_state.js';
 import { getTerminalCols, isTerminalWsOpen, mayResizePane, isFollowingPane } from './xterm_renderer.js';
 import { platform } from './platform/detect.js';
-import { serverFetch, currentServer, isCloud } from './server_base.js';
+import { serverFetch, currentServer, isCloud, dropBody } from './server_base.js';
 import { sessionUnreachable, liveViewShown, backoffBlocked, backoffRecord } from './remote_health.js';
 import { pollEvery } from './overload.js';
 
@@ -123,6 +123,7 @@ export async function refreshCapture() {
         const unchanged = resp.status === 304 && !!last;
         const gateway = backoffRecord(backoffKey, resp.ok || unchanged ? 200 : resp.status);
         if (!resp.ok && !unchanged) {
+            dropBody(resp);
             if (gateway) { if (!_gatewayLogged) { _gatewayLogged = true; console.warn(`capture poll: server not reachable (${resp.status}); backing off`); } return; }
             throw new Error(`poll failed: ${resp.status}`);
         }
