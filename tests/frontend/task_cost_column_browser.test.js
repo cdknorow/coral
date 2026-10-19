@@ -5,12 +5,14 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const PANELS = require('./helpers/list_bars_panels');
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
+    let ctx;
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
-        const ctx = { ev, waitFor, Page, Emulation, client, install, BASE, assert, settle: (c, l) => waitFor(c, l, 10000) };
+        ctx = { ev, waitFor, Page, Emulation, client, install, BASE, assert, settle: (c, l) => waitFor(c, l, 10000) };
         await Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
         const tasks = PANELS.find(p => p.key === 'tasks');
         await tasks.prepare(ctx);
@@ -34,5 +36,5 @@ const BASE = require('./test_base').BASE;
         assert.ok(m.list < 560, 'a narrow list: ' + m.list); assert.equal(m.head.shown || m.row.shown, false, 'Cost stays out of a narrow list (the sidebar): ' + JSON.stringify(m));
         assert.ok(m.scrolls <= 1, 'and it does not scroll sideways');
         console.log('PASS task cost column');
-    } finally { try { await client.close(); } catch (_) {} }
+    } finally { await removeBoards(ev, [ctx && ctx.TBOARD, ctx && ctx.BBOARD]); try { await client.close(); } catch (_) {} } // the panel helper's boards (themes-t-, themes-b-)
 })().catch(e => { console.error(e); process.exit(1); });
