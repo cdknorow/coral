@@ -1,0 +1,8 @@
+# cosign v2.4.1 release binaries: sha256, as published in sigstore/cosign's cosign_checksums.txt for v2.4.1 (#5112).
+# The anchor that makes the install of the tool that checks our releases not circular: tools/devops/install-cosign.sh
+# and lib.sh's require_cosign compare against THESE lines. Change them only by a reviewed commit that also changes COSIGN_VERSION
+# in install-cosign.sh, with the new lines copied from that release's checksum file and checked against a second source.
+666032ca283da92b6f7953965688fd51200fdc891a86c19e05c98b898ea0af4e  cosign-darwin-amd64
+13343856b69f70388c4fe0b986a31dde5958e444b41be22d785d3dc5e1a9cc62  cosign-darwin-arm64
+8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b  cosign-linux-amd64
+3b2e2e3854d0356c45fe6607047526ccd04742d20bd44afb5be91fa2a6e7cb4a  cosign-linux-arm64

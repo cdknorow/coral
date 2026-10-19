@@ -5,13 +5,15 @@
 #
 # Stops at the first failure: a failed release run, a failed verify-release, a cask.sh refusal. Without --cask it stops after the
 # verification, because the cask commit moves main: re-read the board before passing --cask. Each step's exit status is read on its
-# own (never through a pipe). Run it from the main checkout or any worktree of it, with cosign on PATH if the bundles are to be checked.
+# own (never through a pipe). Run it from the main checkout or any worktree of it, with the pinned cosign on PATH (tools/devops/install-cosign.sh): it refuses to
+# start without it, since verify-release would only SKIP the bundles (#5112).
 set -o pipefail
 V=${1:?usage: after-release.sh VER [--cask]}; CASK=${2:-}
 case "$V" in *[!0-9A-Za-z.-]*) echo "VER may hold only letters, digits, . and -" >&2; exit 2 ;; esac
 case "$CASK" in ""|--cask) ;; *) echo "usage: after-release.sh VER [--cask]" >&2; exit 2 ;; esac
 R=$(git rev-parse --show-toplevel) || exit 1; cd "$R" || exit 1
 . "$R/tools/devops/lib.sh"
+require_cosign   # before the wait: a release the bundles of which cannot be checked is not verified (#5112)
 git fetch -q origin --tags
 git rev-parse -q --verify "refs/tags/v$V" >/dev/null || die "no tag v$V (push it first)"
 RUN=""

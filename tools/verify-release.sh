@@ -19,7 +19,8 @@
 #                  SHA256SUMS.txt; the repo's own cask is checked only once it is at this version. Authenticode is a Windows
 #                  signature and is not checked on macOS (the DMG gets spctl, stapler and codesign).
 #   5. cosign      cosign verify-blob of every .sigstore.json bundle, when cosign is installed (a
-#                  plain SKIP, not a pass, when it is not)
+#                  plain SKIP, not a pass, when it is not; with --require-cosign a missing cosign, or a release with
+#                  no bundle at all, is a FAIL: what tools/devops/finish-release.sh uses, #5112)
 #   6. dmg         hdiutil verify of the DMG (macOS hosts only); spctl, stapler on the DMG and app, codesign,
 #                  no entitlements, the licenses folder; its coral prints the version
 #   7. contents    the tarball and zip entry counts against the previous release of the same kind, and
@@ -33,6 +34,7 @@
 # Options: --repo OWNER/NAME (default cdknorow/coral), --prev TAG (default: the release before this one
 # of the same kind), --no-prev, --keep, --out DIR (use an empty folder you name; implies --keep),
 # --local DIR (check assets already in DIR instead of downloading: for a re-check, or to see a tampered copy fail),
+# --require-cosign (the cosign row FAILS instead of SKIPping when cosign is missing or there is no bundle to check),
 # --published (download the assets from the published release, as a user would: each counts as a download; use it
 # when the release run's artifacts have expired or you can't read the repo's Actions).
 set -u
@@ -41,11 +43,12 @@ set -o pipefail
 export CORAL_TELEMETRY_DISABLED=1
 
 usage() { sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 2; }
-TAG=""; REPO="cdknorow/coral"; PREV=""; NOPREV=0; KEEP=0; OUT=""; LOCAL=""; PUBLISHED=0
+TAG=""; REPO="cdknorow/coral"; PREV=""; NOPREV=0; KEEP=0; OUT=""; LOCAL=""; PUBLISHED=0; REQUIRE_COSIGN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) REPO="${2:?}"; shift 2 ;;
     --published) PUBLISHED=1; shift ;;
+    --require-cosign) REQUIRE_COSIGN=1; shift ;;
     --prev) PREV="${2:?}"; shift 2 ;;
     --no-prev) NOPREV=1; shift ;;
     --keep) KEEP=1; shift ;;
@@ -261,8 +264,10 @@ done
 
 # ---- 5. cosign ----
 if command -v cosign >/dev/null 2>&1; then
+  bundles=0
   for b in *.sigstore.json; do
     [ -f "$b" ] || continue
+    bundles=$((bundles + 1))
     blob="${b%.sigstore.json}"
     if out="$(cosign verify-blob "$blob" --bundle "$b" --new-bundle-format \
         --certificate-oidc-issuer https://token.actions.githubusercontent.com \
@@ -270,6 +275,11 @@ if command -v cosign >/dev/null 2>&1; then
       pass cosign "$b" "Verified OK"
     else fail cosign "$b" "$(tail -1 <<<"$out" | cut -c1-120)"; fi
   done
+  if [ "$bundles" = 0 ] && [ "$REQUIRE_COSIGN" = 1 ]; then
+    fail cosign "all .sigstore.json bundles" "there is no .sigstore.json bundle to check (--require-cosign)"
+  fi
+elif [ "$REQUIRE_COSIGN" = 1 ]; then
+  fail cosign "all .sigstore.json bundles" "cosign is required (--require-cosign) and is not installed: tools/devops/install-cosign.sh"
 else
   skip cosign "all .sigstore.json bundles" "cosign is not installed: bundles NOT checked (the gh attestation rows above do cover the packages)"
 fi

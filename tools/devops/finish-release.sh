@@ -2,10 +2,11 @@
 # tools/devops/finish-release.sh VER: after the release workflow published vVER (#4605): set the release body from the
 # tag's RELEASE_NOTES.md section, start the runtime check, then run verify-release.sh. It takes the files from the
 # release run's artifacts and checks each against GitHub's digest of the published asset, so nothing is downloaded from
-# the release (#4936; a download there counts as a user download). cosign must be on PATH (verify-release's cosign rows
-# SKIP without it).
+# the release (#4936; a download there counts as a user download). The pinned cosign must be on PATH (#5112): it refuses to start without it, and
+# verify-release runs with --require-cosign, so a missing cosign or a release with no bundles is a FAIL row, never a SKIP.
 set -o pipefail
 V=${1:?usage: finish-release.sh VER}; R=$(git rev-parse --show-toplevel); cd "$R" || exit 1
+. "$R/tools/devops/lib.sh"; require_cosign || exit 1
 git fetch -q origin --tags
 B=$(mktemp /tmp/body.XXXX)
 git show "v$V:RELEASE_NOTES.md" | awk -v h="## v$V " 'index($0,h)==1{f=1;next} f&&/^## v[0-9]/{exit} f' | awk 'NF{p=1} p' > "$B"
@@ -13,4 +14,4 @@ git show "v$V:RELEASE_NOTES.md" | awk -v h="## v$V " 'index($0,h)==1{f=1;next} f
 gh release edit "v$V" --notes-file "$B" >/dev/null || exit 1; echo "body set ($(wc -l < "$B" | tr -d ' ') lines)"; rm -f "$B"
 gh workflow run 373415903 -f tag="v$V" && sleep 6 && echo "runtime check: $(gh run list --workflow 373415903 --limit 1 --json databaseId -q '.[0].databaseId')"
 T=$(mktemp -d /tmp/vr.XXXX); trap 'rm -rf "$T"' EXIT
-TMPDIR=$T bash tools/verify-release.sh "v$V"
+TMPDIR=$T bash tools/verify-release.sh "v$V" --require-cosign

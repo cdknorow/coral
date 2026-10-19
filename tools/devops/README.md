@@ -77,7 +77,12 @@ the first failed check.
    - runs `tools/verify-release.sh`, which takes every file from the release run's artifacts and checks each against
      GitHub's digest of the published asset, so it verifies the published files without downloading them. It also checks
      that the tap's `Casks/coral.rb` carries the DMG's sha256 from `SHA256SUMS.txt` (and the repo's own, once it is at this
-     version). It needs cosign on PATH.
+     version). It needs the PINNED cosign on PATH (#5112): `after-release.sh` and `finish-release.sh` stop at once without it, and
+     `verify-release.sh --require-cosign` (which `finish-release.sh` passes) makes a missing cosign, or a release with no
+     bundle to check, a FAIL row instead of a SKIP. Install it with `tools/devops/install-cosign.sh [DIR]` (default
+     `~/.local/bin`; put DIR on PATH): it takes cosign's release binary and installs it only when its sha256 equals the line in
+     `tools/devops/cosign.sha256`, which is the anchor in this repo, changed only by a reviewed commit (with `COSIGN_VERSION` in
+     the script). A cosign that is not that exact binary (a distro build) is refused: it is the tool that vouches for every release.
 
    Edit the body only after verify-release has passed, since its notes row compares the body with the tag's notes.
 
