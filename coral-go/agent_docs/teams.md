@@ -397,7 +397,7 @@ team tasks likewise requires the Operator or a registered Orchestrator.
 save the preset. Select it as the working mode and save team settings to use it.
 Editing a built-in saves an override on this team only. **Reset built-in** removes
 that preset's override and restores the shipped instructions; it preserves
-custom presets, the selected mode, extra team guidance, global settings, and all
+custom presets, the selected mode, extra team guidance, and all
 historical task snapshots. Empty preset instructions are allowed. Edits to the
 currently selected preset apply to subsequent first claims immediately, without
 requiring the mode to be saved again. Existing claimed tasks retain their snapshot.
@@ -466,7 +466,7 @@ detail/current for the actual stored instructions of a particular task.
 Two switches decide whether a team gets health checks, and they are not the same thing:
 
 - **A team's own health check** is **off by default** (`health.on`, the team's settings, `GET` and `PUT /api/board/{project}/settings`). Turn it on in Team settings, on the **Health check** tab, or with **Team health monitor** in the Agent Team dialog. The agent list shows an icon beside the team's info button, dimmed while it is off and accent while it is on (`team_health_on` on the team's rows). It uses tokens each time it sends. The tab also sets how often (5 to 1440 minutes, 10 by default), who receives the check (the orchestrator by default) and each automatic rule. See [Using the Dashboard](using-the-dashboard.md#turn-on-the-team-health-monitor).
-- **The global monitor**: **Run global board health monitor** in the **Global settings** section of Team settings is the global `board_health_monitor` user setting, stored through `GET /api/settings` and `PUT /api/settings` as the strings `"true"` or `"false"`. It is **on** unless it is `"false"` (absent counts as on), and it is not a per-team convention or snapshotted into tasks. Saving it from one team's dialog changes the global value visible from other teams' dialogs. It is read when the server starts: a changed value takes effect on the next start. Off, no team gets any of what follows.
+- **The global monitor**: **Allow team health checks (all teams)** in the main **Settings**, under **Agents** (#5128; it used to be a Global settings tab in Team settings, which is gone), is the global `board_health_monitor` user setting, stored through `GET /api/settings` and `PUT /api/settings` as a boolean or the strings `"true"` or `"false"` (the Settings dialog sends a boolean, which is kept as `"False"`, so read it without regard to case). It is **on** unless it is false (absent counts as on), and it is not a per-team convention or snapshotted into tasks. It is read when the server starts: a changed value takes effect on the next start. While it is off, a team's **Health check** tab says so, with a link to Settings. Off, no team gets any of what follows.
 
 When the global monitor runs, Coral does two things on each board (#4175), each only as the team's own settings allow:
 

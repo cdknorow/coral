@@ -176,7 +176,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Board health scanning — enabled by default; disable with
 	// `board_health_monitor` user setting set to `false`.
 	boardSettings, _ := sessStore.GetSettings(ctx)
-	if boardSettings["board_health_monitor"] != "false" {
+	if boardHealthMonitorEnabled(boardSettings) {
 		// Every 5 minutes; each team's own interval (10 by default) decides when its check goes.
 		healthMonitor := background.NewBoardHealthMonitor(srv.BoardStore(), 5*time.Minute)
 		healthMonitor.SetAgents(taskStore, agentRT, discoverFn)
@@ -367,4 +367,11 @@ func ResolveBackend(flagValue, saved, goos string) (backend string, forced bool)
 		return saved, false
 	}
 	return "tmux", false
+}
+
+// boardHealthMonitorEnabled reports whether the all-teams health service runs: on unless the setting is false. The
+// Settings dialog saves a JSON boolean, which the settings table keeps as sent ("False"), so the word is compared
+// without regard to case (#5128).
+func boardHealthMonitorEnabled(settings map[string]string) bool {
+	return !strings.EqualFold(strings.TrimSpace(settings["board_health_monitor"]), "false")
 }

@@ -49,7 +49,6 @@ const { removeBoards } = require('./helpers/board_cleanup');
     assert.deepEqual(settingsTabs, [
       { label: 'Workflow', selected: 'true' },
       { label: 'Prompt inspection', selected: 'false' },
-      { label: 'Global settings', selected: 'false' },
       { label: 'Health check', selected: 'false' }, // #4230: the real settings API returns a health object
     ], 'Team settings should expose clear section tabs');
     await ev(`document.querySelector('[data-settings-tab="prompts"]').click()`);

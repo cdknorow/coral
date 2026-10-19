@@ -47,13 +47,13 @@ const HEX = n => String(n).repeat(64).slice(0, 64);
         await waitFor(`!!document.querySelector('#agentic-panel-team-settings .team-settings-tabs [role=tab]') && document.querySelector('#agentic-panel-team-settings .working-mode-form').dataset.initialState !== undefined`, 'the loaded settings', 8000);
         const tl = await ev(`(() => { const d = document.getElementById('agentic-panel-team-settings'); const tabs = [...d.querySelectorAll('[role=tab]')]; return { n: tabs.length, sel: tabs.map(t => t.getAttribute('aria-selected')), tab: tabs.map(t => t.tabIndex), controls: tabs.map(t => !!document.getElementById(t.getAttribute('aria-controls'))),
             labelled: [...d.querySelectorAll('[role=tabpanel]')].map(p => { const by = p.getAttribute('aria-labelledby'); return !!by && !!document.getElementById(by) && document.getElementById(by).getAttribute('aria-controls') === p.id; }), hidden: [...d.querySelectorAll('[role=tabpanel]')].map(p => p.hidden) }; })()`);
-        assert.equal(tl.n, 3); assert.deepEqual(tl.sel, ['true', 'false', 'false']); assert.deepEqual(tl.tab, [0, -1, -1], 'roving tabindex: only the selected tab is a Tab stop');
-        assert.deepEqual(tl.controls, [true, true, true], 'aria-controls names a real panel'); assert.deepEqual(tl.hidden, [false, true, true]);
-        assert.deepEqual(tl.labelled, [true, true, true], 'each panel is labelled by its tab');
+        assert.equal(tl.n, 2); assert.deepEqual(tl.sel, ['true', 'false']); assert.deepEqual(tl.tab, [0, -1], 'roving tabindex: only the selected tab is a Tab stop');
+        assert.deepEqual(tl.controls, [true, true], 'aria-controls names a real panel'); assert.deepEqual(tl.hidden, [false, true]);
+        assert.deepEqual(tl.labelled, [true, true], 'each panel is labelled by its tab');
 
         console.log('2. Team settings: arrow keys');
         await ev(`document.querySelector('#agentic-panel-team-settings [data-settings-tab=workflow]').focus(); true`);
-        for (const [k, code, vk, want] of [['ArrowRight', 'ArrowRight', 39, 'prompts'], ['End', 'End', 35, 'global'], ['ArrowRight', 'ArrowRight', 39, 'workflow'], ['ArrowLeft', 'ArrowLeft', 37, 'global'], ['Home', 'Home', 36, 'workflow']]) {
+        for (const [k, code, vk, want] of [['ArrowRight', 'ArrowRight', 39, 'prompts'], ['End', 'End', 35, 'prompts'], ['ArrowRight', 'ArrowRight', 39, 'workflow'], ['ArrowLeft', 'ArrowLeft', 37, 'prompts'], ['Home', 'Home', 36, 'workflow']]) {
             await press(k, code, vk);
             const a = await active();
             assert.equal(a.tab, want, `${k} moves the focus to ${want}`);

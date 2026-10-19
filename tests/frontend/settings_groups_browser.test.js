@@ -9,7 +9,7 @@ const BASE = require('./test_base').BASE;
 
 const GROUPS = {
     general: ['settings-theme', 'settings-renderer-select', 'settings-agent-type', 'settings-group-by-team', 'settings-show-summary', 'settings-show-scrollbars', 'settings-check-updates', 'app-version-label', 'machine-health-local'],
-    agents: ['settings-permission-mode', 'settings-working-dir', 'settings-cli-path-claude', 'settings-default-model-claude', 'settings-auto-resume', 'settings-auto-goals', 'settings-agent-low-priority', 'settings-board-auto-attach'],
+    agents: ['settings-permission-mode', 'settings-working-dir', 'settings-cli-path-claude', 'settings-default-model-claude', 'settings-auto-resume', 'settings-auto-goals', 'settings-agent-low-priority', 'settings-board-auto-attach', 'settings-board-health-monitor'],
     terminal: ['settings-terminal-font-size', 'settings-terminal-scrollback', 'settings-fit-pane-width', 'settings-terminal-backend', 'settings-debug-input-log'],
     notifications: ['settings-notify-needs-input', 'settings-desktop-notify'],
     files: ['settings-file-search-mode', 'settings-file-search-limit', 'settings-git-diff-mode', 'settings-git-poll-interval'],

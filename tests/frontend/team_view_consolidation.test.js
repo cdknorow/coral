@@ -152,10 +152,7 @@ const BASE = require('./test_base').BASE;
     await ev(`document.querySelector('#team-availability-dialog header button').click()`);
     await ev(`new Promise(r => setTimeout(r, 50))`);
 
-    // 5. Open Team settings (showTeamWorkingMode) and verify settings + health monitor.
-    // Save sends only what changed (#4423): the global switch is stored off first, so turning it on below is a change
-    // whatever an earlier suite left (a fresh server has no value, which the dialog shows as on).
-    await ev(`fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ board_health_monitor: 'false' }) }).then(r => r.status)`);
+    // 5. Open Team settings (showTeamWorkingMode) and verify its settings (the all-Coral health switch is in Settings now, #5128).
     await ev(`(async () => {
       const modeModule = await import((window.__coralStatic||'/static/')+'team_working_mode.js');
       modeModule.showTeamWorkingMode('test-team');
@@ -167,59 +164,52 @@ const BASE = require('./test_base').BASE;
     assert.equal(settingsTitle, 'Team settings', 'Settings dialog header must be "Team settings"');
 
     const hasHealthMonitorCheckbox = await ev(`Boolean(document.querySelector('.working-mode-form input[name="board_health_monitor"]'))`);
-    assert.ok(hasHealthMonitorCheckbox, 'Team settings must include board_health_monitor checkbox');
+    assert.ok(!hasHealthMonitorCheckbox, 'Team settings no longer carry the all-Coral board_health_monitor switch (it is in Settings, #5128)');
 
     // Change settings and save
     await ev(`(async () => {
       const form = document.querySelector('.working-mode-form');
       form.elements.mode.value = 'shared_checkout';
       form.elements.dependency_guidance.checked = true;
-      form.elements.board_health_monitor.checked = true;
       form.elements.custom_instructions.value = 'Custom instructions for test.';
       await form.onsubmit({ preventDefault() {} });
     })()`);
 
     const saveStatus = await ev(`document.querySelector('.working-mode-status').textContent`);
     assert.ok(saveStatus.includes('Saved'), 'Settings status should indicate Saved');
-    assert.ok(saveStatus.includes('server restart'), 'Status must clarify server restart for health monitor');
-    console.log('✓ Team settings saved successfully with restart applicability notice');
+    console.log('✓ Team settings saved successfully');
 
     // Verify fieldset sectioning (the last three are the Health check tab's, #4230 and #4962)
     const legends = await ev(`Array.from(document.querySelectorAll('.team-settings-section legend')).map(l => l.textContent)`);
-    assert.deepEqual(legends, ['Workflow instructions', 'Team working mode', 'Prompt inspection', 'Global settings', 'The check', 'Reviews', 'Automatic rules'], 'Form must clearly separate team and global settings');
-    console.log('✓ Clear fieldset separation verified (team working mode vs global settings)');
+    assert.deepEqual(legends, ['Workflow instructions', 'Team working mode', 'Prompt inspection', 'The check', 'Reviews', 'Automatic rules'], 'Form has team sections only: no Global settings');
+    console.log('✓ Fieldset sections verified (no Global settings)');
 
-    // Verify partial failure feedback when global settings PUT fails
+    // A failed working-mode save says so
     await ev(`(async () => {
       const origFetch = window.fetch;
       window.fetch = async (url, opts) => {
-        if (typeof url === 'string' && url.includes('/api/settings') && opts && opts.method === 'PUT') {
+        if (typeof url === 'string' && url.includes('/working-mode') && opts && opts.method === 'PUT') {
           return { ok: false, status: 500, json: async () => ({ error: 'Simulated settings disk error' }) };
         }
         return origFetch(url, opts);
       };
       const form = document.querySelector('.working-mode-form');
-      // Save sends only what changed (#4423): change a working-mode field and the global one, so both are sent.
       form.elements.custom_instructions.value += ' Again.';
-      form.elements.board_health_monitor.checked = !form.elements.board_health_monitor.checked;
       await form.onsubmit({ preventDefault() {} });
       window.fetch = origFetch;
     })()`);
 
     const partialStatus = await ev(`document.querySelector('.working-mode-status').textContent`);
-    assert.ok(partialStatus.includes('Working mode saved'), 'Should indicate working mode succeeded');
-    assert.ok(partialStatus.includes('Could not save global health monitor setting'), 'Should indicate health setting failed');
-    console.log('✓ Partial failure feedback verified');
+    assert.ok(partialStatus.includes('Save failed') && partialStatus.includes('Simulated settings disk error'), 'Should say the save failed, and why: ' + partialStatus);
+    console.log('✓ Failed-save feedback verified');
 
     // Verify persisted settings via API
     const persistedWorkingMode = await ev(`fetch('/api/board/test-team/working-mode').then(r => r.json())`);
     assert.equal(persistedWorkingMode.mode, 'shared_checkout');
     assert.equal(persistedWorkingMode.dependency_guidance, true);
-    assert.equal(persistedWorkingMode.custom_instructions, 'Custom instructions for test. Again.', 'the partial save saved the working mode');
+    assert.equal(persistedWorkingMode.custom_instructions, 'Custom instructions for test.', 'the failed save did not change the working mode');
 
-    const persistedGlobalSettings = await ev(`fetch('/api/settings').then(r => r.json())`);
-    assert.equal(persistedGlobalSettings.settings?.board_health_monitor, 'true');
-    console.log('✓ Verified settings persistence (working-mode + board_health_monitor)');
+    console.log('✓ Verified settings persistence (working mode)');
 
     // Close settings dialog
     await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);

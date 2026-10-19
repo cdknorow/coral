@@ -142,6 +142,9 @@ export async function loadSettings() {
         const autoAttach = document.getElementById('settings-board-auto-attach');
         // Off unless the Operator turned it on (#3563); an empty value is unset.
         if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach || undefined, false);
+        const healthMonitor = document.getElementById('settings-board-health-monitor');
+        // On unless the Operator turned it off (#5128); an empty value is unset.
+        if (healthMonitor) healthMonitor.checked = settingBool(s.board_health_monitor || undefined, true);
         const autoResume = document.getElementById('settings-auto-resume');
         // Off unless the Operator turned it on (#3613).
         if (autoResume) autoResume.checked = settingBool(s.auto_resume_after_api_error || undefined, false);

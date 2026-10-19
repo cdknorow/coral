@@ -63,7 +63,7 @@ const sha = t => require('node:crypto').createHash('sha256').update(t).digest('h
         }; true`);
         const SCRIPTS = {
             tabs: `async ({ q, root, record, flush, settle }) => {
-                for (const t of ['prompts', 'global', 'workflow']) { q('[data-settings-tab=' + t + ']', root()).click(); await settle(); record('tab ' + t); flush(); }
+                for (const t of ['prompts', 'workflow']) { q('[data-settings-tab=' + t + ']', root()).click(); await settle(); record('tab ' + t); flush(); }
                 const key = (el, k) => el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
                 for (const k of ['ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowLeft', 'End', 'Home']) { key(q('[data-settings-tab][aria-selected=true]', root()), k); await settle(); record('key ' + k); }
             }`,
@@ -83,7 +83,7 @@ const sha = t => require('node:crypto').createHash('sha256').update(t).digest('h
                 const f = q('form', root());
                 f.requestSubmit(); await settle(); record('save with nothing changed'); flush();
                 f.elements.mode.value = 'worktrees'; f.elements.dependency_guidance.checked = true; f.elements.custom_instructions.value = 'Team rule'; f.requestSubmit(); await settle(); record('save the working mode'); flush();
-                f.elements.cross_team_messaging.checked = !f.elements.cross_team_messaging.checked; f.elements.board_health_monitor.checked = !f.elements.board_health_monitor.checked; f.requestSubmit(); await settle(); record('save the board and global settings'); flush();
+                f.elements.cross_team_messaging.checked = !f.elements.cross_team_messaging.checked; f.requestSubmit(); await settle(); record('save the board settings'); flush();
                 f.elements.mode.value = 'none'; f.requestSubmit(); await settle(); record('save again'); flush();
             }`,
             nothing: `async ({ record }) => { record('nothing more'); }`,
@@ -96,8 +96,8 @@ const sha = t => require('node:crypto').createHash('sha256').update(t).digest('h
             ['workspace, save', 'workspace', {}, 'save'],
             ['dialog, save', 'dialog', {}, 'save'],
             ['preset save fails', 'workspace', { presetSave: 500, reset: 500 }, 'presets'],
-            ['save fails (mode, board, global)', 'workspace', { wmSave: 500, boardSave: 500, settingsSave: 500 }, 'save'],
-            ['global settings fail to load', 'workspace', { settings: 500 }, 'save'],
+            ['save fails (mode, board)', 'workspace', { wmSave: 500, boardSave: 500 }, 'save'],
+            ['all-Coral settings fail to load (Health check tab note)', 'workspace', { settings: 500 }, 'save'],
             ['board settings missing', 'workspace', { board: 404 }, 'save'],
             ['inspection fails', 'workspace', { inspect: 500 }, 'nothing'],
             ['working mode fails to load', 'workspace', { wm: 500 }, 'nothing'],

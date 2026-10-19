@@ -558,6 +558,9 @@ async function _fillMachineSettings(s) {
         const autoAttach = document.getElementById('settings-board-auto-attach');
         // Off unless the Operator turned it on (#3563); an empty value is unset.
         if (autoAttach) autoAttach.checked = settingBool(s.board_auto_attach || undefined, false);
+        const healthMonitor = document.getElementById('settings-board-health-monitor');
+        // On unless the Operator turned it off (#5128).
+        if (healthMonitor) healthMonitor.checked = settingBool(s.board_health_monitor || undefined, true);
         const autoResume = document.getElementById('settings-auto-resume');
         // Off unless the Operator turned it on (#3613).
         if (autoResume) autoResume.checked = settingBool(s.auto_resume_after_api_error || undefined, false);
@@ -878,6 +881,7 @@ function readSettingsForm() {
     const agentPriority = lowBox ? (lowBox.checked ? "low" : "normal") : (state.settings?.agent_priority === "normal" ? "normal" : "low");
     const telemetryEnabled = document.getElementById("settings-telemetry-enabled")?.checked ?? settingBool(state.settings?.telemetry_enabled, true);
     const boardAutoAttach = document.getElementById("settings-board-auto-attach")?.checked ?? settingBool(state.settings?.board_auto_attach || undefined, false);
+    const boardHealthMonitor = document.getElementById("settings-board-health-monitor")?.checked ?? settingBool(state.settings?.board_health_monitor || undefined, true);
     const autoResume = document.getElementById("settings-auto-resume")?.checked ?? settingBool(state.settings?.auto_resume_after_api_error || undefined, false);
     const autoGoals = document.getElementById("settings-auto-goals")?.checked ?? settingBool(state.settings?.auto_goals || undefined, true);
     // When CORAL_DEBUG_INPUT/--debug-input force the log on, the checkbox is shown checked and
@@ -926,6 +930,7 @@ function readSettingsForm() {
         agent_priority: agentPriority,
         telemetry_enabled: telemetryEnabled,
         board_auto_attach: boardAutoAttach,
+        board_health_monitor: boardHealthMonitor,
         auto_resume_after_api_error: autoResume,
         auto_goals: autoGoals,
         ...artifactStoreMaxSetting(),

@@ -21,7 +21,6 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
   await ev(`import((window.__coralStatic||'/static/')+'team_working_mode.js').then(m=>window.openSettings=m.showTeamWorkingMode)`);
   for(const [name,width,height] of [['desktop',1280,800],['mobile',390,844]]) {
    await Emulation.setDeviceMetricsOverride({width,height,deviceScaleFactor:1,mobile:false});
-   await ev(`fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({board_health_monitor:'false'})}).then(r=>r.status)`); // so turning it on below is a change: Save sends only what changed (#4423)
    console.log(name,'opening');await ev(`window.openSettings('navigation-review')`);
    // Polled with timers, not animation frames: after the pass's Escape key press the Mac's headless Chrome reports the page hidden and runs no animation frames, so the old frame loop never saw the button enabled (#3703, #3705).
    await waitFor(`!!document.querySelector('[type=submit]') && !document.querySelector('[type=submit]').disabled`,'the settings to load',{timeout:10000,diag:`({status:(document.querySelector('.working-mode-status')||{}).textContent})`});
@@ -37,44 +36,33 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
    assert.equal(await ev(`document.querySelector('.prompt-inspection-content details').open`),true);
    await ev(`document.querySelectorAll('.prompt-inspection-content details').forEach(d=>d.open=true);document.querySelector('.working-mode-form').scrollTop=100000`);
    results.push({name,stage:'prompts-bottom',...await geometry()});await shot(`${name}-prompts-bottom`);
-   await ev(`document.querySelector('[data-settings-tab=global]').click()`);
-   results.push({name,stage:'global',...await geometry()});await shot(`${name}-global`);
-   await ev(`(() => {
-    window.reviewOriginalFetch=window.fetch;
-    window.reviewSaveDone=new Promise(resolve=>window.reviewResolve=resolve);
-    window.fetch=async (...args)=>{const response=await window.reviewOriginalFetch(...args);if(args[0]==='/api/settings'&&args[1]?.method==='PUT')setTimeout(window.reviewResolve,0);return response};
-    document.querySelector('.working-mode-form').elements.board_health_monitor.checked=true;
-    document.querySelector('.team-settings-actions button').click();
-   })()`);
-   await ev(`window.reviewSaveDone`);console.log('save response received');
-   assert.equal(await ev(`fetch('/api/settings').then(r=>r.json()).then(x=>x.settings.board_health_monitor)`),'true');
-   await ev(`window.fetch=window.reviewOriginalFetch`);
+   // The all-Coral health switch is in Settings now (#5128): the team panel has only the Workflow and Prompt inspection tabs (and Health check), no Global tab.
+   assert.equal(await ev(`!!document.querySelector('[data-settings-tab=global]') || !!document.querySelector('.working-mode-form').elements.board_health_monitor`),false);
    if(name==='desktop') {
-    for(const fail of ['mode','health','both']) {
-     await ev(`(() => {
-      window.reviewSaveDone=new Promise(resolve=>window.reviewResolve=resolve);
-      window.fetch=async (url,opts)=>{
-       const failure=opts?.method==='PUT' && (('${fail}'==='mode'||'${fail}'==='both')&&url.includes('/working-mode')||('${fail}'==='health'||'${fail}'==='both')&&url==='/api/settings');
-       const response=failure?new Response(JSON.stringify({error:'Injected save failure'}),{status:500,headers:{'Content-Type':'application/json'}}):await window.reviewOriginalFetch(url,opts);
-       if(url==='/api/settings'&&opts?.method==='PUT')setTimeout(window.reviewResolve,0);
-       return response;
-      };
-      // Change the working mode and the global setting away from what the server has, so each Save sends both (#4423).
-      const f=document.querySelector('.working-mode-form');
-      return Promise.all([window.reviewOriginalFetch('/api/settings').then(r=>r.json()),window.reviewOriginalFetch('/api/board/navigation-review/working-mode').then(r=>r.json())]).then(([g,m])=>{
-       f.elements.board_health_monitor.checked=g.settings.board_health_monitor==='false';
-       f.elements.mode.value=m.mode==='worktrees'?'shared_checkout':'worktrees';
-       document.querySelector('.team-settings-actions button').click();
-      });
-     })()`);
-     await ev(`window.reviewSaveDone`);console.log('save response received');
-     const status=await ev(`document.querySelector('.working-mode-status').textContent`);
-     assert.match(status,fail==='mode'?/Working mode save failed/:fail==='health'?/Working mode saved.*Could not save global/:/Save failed/);
-     assert.equal(await ev(`document.querySelector('.working-mode-form').elements.preset_instructions.value`),'Unsaved preset draft');
-     assert.equal(await ev(`document.querySelector('.working-mode-form').elements.custom_instructions.value`),'Unsaved extra');
-     results.push({name,stage:'partial-save',failure:fail,status});
-     await ev(`window.fetch=window.reviewOriginalFetch`);
-    }
+    // A failed working-mode save says so and keeps what was typed.
+    await ev(`(() => {
+     window.reviewOriginalFetch=window.fetch;
+     window.reviewSaveDone=new Promise(resolve=>window.reviewResolve=resolve);
+     window.fetch=async (url,opts)=>{
+      const mode=opts?.method==='PUT' && String(url).includes('/working-mode');
+      const response=mode?new Response(JSON.stringify({error:'Injected save failure'}),{status:500,headers:{'Content-Type':'application/json'}}):await window.reviewOriginalFetch(url,opts);
+      if(mode)setTimeout(window.reviewResolve,0);
+      return response;
+     };
+     const f=document.querySelector('.working-mode-form');
+     return window.reviewOriginalFetch('/api/board/navigation-review/working-mode').then(r=>r.json()).then(m=>{
+      f.elements.mode.value=m.mode==='worktrees'?'shared_checkout':'worktrees';
+      document.querySelector('.team-settings-actions button').click();
+     });
+    })()`);
+    await ev(`window.reviewSaveDone`);
+    await waitFor(`/Save failed/.test(document.querySelector('.working-mode-status').textContent)`,'the failure shown');
+    const status=await ev(`document.querySelector('.working-mode-status').textContent`);
+    assert.match(status,/Save failed: .*Injected save failure/);
+    assert.equal(await ev(`document.querySelector('.working-mode-form').elements.preset_instructions.value`),'Unsaved preset draft');
+    assert.equal(await ev(`document.querySelector('.working-mode-form').elements.custom_instructions.value`),'Unsaved extra');
+    results.push({name,stage:'partial-save',failure:'mode',status});
+    await ev(`window.fetch=window.reviewOriginalFetch`);
    }
    await ev(`document.querySelector('[data-settings-tab=workflow]').click()`);
    assert.equal(await ev(`document.querySelector('form.working-mode-form').elements.preset_instructions.value`),'Unsaved preset draft');
@@ -95,6 +83,6 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
    for(const control of ['header','tabs','save','close']) assert.equal(row[control].visible,true,`${row.name}/${row.stage}/${control}`);
    assert.equal(row.horizontalOverflow,false);
   }
-  console.log('PASS: controls reachable, prompt disclosure, keyboard tabs, Global persistence, partial-save feedback and edit preservation. Escape status recorded separately.');
+  console.log('PASS: controls reachable, prompt disclosure, keyboard tabs, no Global tab (#5128), failed-save feedback and edit preservation. Escape status recorded separately.');
  } finally {fs.writeFileSync('/tmp/coral-1273-geometry.json',JSON.stringify(results,null,2));await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message))); await client.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

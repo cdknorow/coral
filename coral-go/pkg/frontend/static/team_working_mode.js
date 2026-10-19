@@ -86,7 +86,6 @@ function _teamSettingsShell(workspaceMode) {
       <nav class="team-settings-tabs" aria-label="Team settings sections" role="tablist">
         <button type="button" role="tab" id="team-settings-tab-workflow" aria-selected="true" aria-controls="team-settings-workflow" tabindex="0" data-settings-tab="workflow">Workflow</button>
         <button type="button" role="tab" id="team-settings-tab-prompts" aria-selected="false" aria-controls="team-settings-prompts" tabindex="-1" data-settings-tab="prompts">Prompt inspection</button>
-        <button type="button" role="tab" id="team-settings-tab-global" aria-selected="false" aria-controls="team-settings-global" tabindex="-1" data-settings-tab="global">Global settings</button>
       </nav>
       <form class="working-mode-form">
       <section class="team-settings-panel active" id="team-settings-workflow" role="tabpanel" aria-labelledby="team-settings-tab-workflow" data-settings-panel="workflow" tabindex="0">
@@ -119,14 +118,7 @@ function _teamSettingsShell(workspaceMode) {
         <div class="prompt-inspection-content" aria-live="polite">Loading prompt inspection…</div>
       </fieldset>
       </section>
-      <section class="team-settings-panel" id="team-settings-global" role="tabpanel" aria-labelledby="team-settings-tab-global" data-settings-panel="global" tabindex="0" hidden>
-      <fieldset class="team-settings-section global-settings-section">
-        <legend>Global settings</legend>
-        <label><input type="checkbox" name="board_health_monitor"> Run global board health monitor</label>
-        <p class="working-mode-hint">Applies to all teams. Takes effect on next Coral server restart.</p>
-      </fieldset>
-      </section>
-      <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button><span>Saves selected working mode, additional guidance, and global health. Save preset instructions separately.</span></div>
+      <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button><span>Saves the working mode, additional guidance and cross-team sharing. Save preset instructions separately.</span></div>
       </form>`;
     return dialog;
 }
@@ -221,17 +213,16 @@ export async function showTeamWorkingMode(team, options = {}) {
     const workingModeURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode`, teamServer);
     const presetsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode/presets`, teamServer);
     const boardSettingsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/settings`, teamServer);
+    let healthMonitorOn = true; // Settings > Agents: "Allow team health checks (all teams)", on unless turned off
     let boardSettingsLoaded = false;
     const inspectionURL = serverUrl(`/api/settings/prompt-inspection?board=${encodeURIComponent(teamName)}`, teamServer);
     let presets = [];
     let workingMode = null;
-    let settingsLoaded = false;
     // What each part of the form showed when it loaded (#4423): Save sends only what the person changed since, so a
     // setting another client changed while the dialog was open is not put back.
     let opened = null;
     const modeValues = () => ({ mode: form.elements.mode.value, dependency_guidance: form.elements.dependency_guidance.checked, custom_instructions: form.elements.custom_instructions.value });
     const boardValues = () => ({ cross_team_messaging: form.elements.cross_team_messaging.checked, ...(isCloud() ? {} : { cross_team_artifacts: form.elements.cross_team_artifacts.checked }) });
-    const globalValues = () => ({ board_health_monitor: form.elements.board_health_monitor.checked ? 'true' : 'false' });
 
     const { tabs, panels, bindTab } = _wireSettingsTabs(dialog, form);
     // The Health check tab (#4230) exists only when the settings GET returned a "health" object: not through Coral Hub, which leaves it out.
@@ -246,7 +237,23 @@ export async function showTeamWorkingMode(team, options = {}) {
         dialog.querySelector('.team-settings-tabs').append(tab);
         form.after(panel);
         tabs.push(tab); panels.push(panel); bindTab(tab);
-        await m.mountHealthSettings(panel, team, health);
+        // The tab's form is drawn again after a save, so the note about the all-Coral switch (#5128) sits beside it, not in it.
+        const host = document.createElement('div');
+        panel.append(host);
+        if (!healthMonitorOn) {
+            const note = document.createElement('p');
+            note.className = 'working-mode-hint health-global-off'; note.setAttribute('role', 'status');
+            note.append('Team health checks are turned off for all of Coral, so this team\'s check will not run. Turn on "Allow team health checks (all teams)" in ');
+            const link = document.createElement('button');
+            link.type = 'button'; link.className = 'working-mode-settings-link'; link.textContent = 'Settings';
+            link.addEventListener('click', () => {
+                if (typeof dialog.close === 'function' && dialog.matches(':modal')) dialog.close(); // the Settings dialog opens over the page, not under this one
+                window.showSettingsModal?.('agents');
+            });
+            note.append(link, '. It takes effect after Coral restarts.');
+            panel.prepend(note);
+        }
+        await m.mountHealthSettings(host, team, health);
     }
 
     const selectedPreset = () => presets.find(p => p.id === presetSelect.value);
@@ -366,15 +373,8 @@ export async function showTeamWorkingMode(team, options = {}) {
             form.elements.mode.value = workingMode.mode || 'none';
             form.elements.dependency_guidance.checked = Boolean(workingMode.dependency_guidance);
             form.elements.custom_instructions.value = workingMode.custom_instructions || '';
-            if (settingsResponse.ok) {
-                const settings = await settingsResponse.json();
-                form.elements.board_health_monitor.checked = settings.settings?.board_health_monitor !== 'false';
-                settingsLoaded = true;
-            } else {
-                form.elements.board_health_monitor.disabled = true;
-                const hint = dialog.querySelector('.global-settings-section .working-mode-hint');
-                if (hint) hint.textContent = 'Could not load global settings; changes to global settings are disabled.';
-            }
+            // The all-Coral health switch lives in Settings (#5128); this dialog only reads it, for the Health check tab's note.
+            if (settingsResponse.ok) healthMonitorOn = String((await settingsResponse.json()).settings?.board_health_monitor ?? '').trim().toLowerCase() !== 'false'; // the dialog stores a boolean as "False"
             if (boardSettingsResponse?.ok) {
                 const boardSettings = await boardSettingsResponse.json();
                 form.elements.cross_team_messaging.checked = Boolean(boardSettings.cross_team_messaging);
@@ -390,19 +390,18 @@ export async function showTeamWorkingMode(team, options = {}) {
             inspection.innerHTML = inspectionResponse.ok ? renderInspection(await inspectionResponse.json(), workingMode) : '<p class="working-mode-hint">Prompt inspection is unavailable.</p>';
             setStatus('');
             form.dataset.initialState = settingsFormSnapshot(form);
-            opened = { mode: modeValues(), board: boardValues(), global: globalValues() };
+            opened = { mode: modeValues(), board: boardValues() };
             save.disabled = false;
         } catch (error) { setStatus(error.message, true); inspection.textContent = 'Prompt inspection could not be loaded.'; }
     }
     form.onsubmit = async event => {
         event.preventDefault(); save.disabled = true; setStatus('Saving…');
-        let modeError = null; let healthError = null;
-        const base = opened || { mode: {}, board: {}, global: {} };
-        const mode = modeValues(), boardNow = boardValues(), globalNow = globalValues();
+        let modeError = null;
+        const base = opened || { mode: {}, board: {} };
+        const mode = modeValues(), boardNow = boardValues();
         const modeChanged = Object.keys(changedFields(base.mode, mode)).length > 0;
         const boardChanged = changedFields(base.board, boardNow);
-        const globalChanged = changedFields(base.global, globalNow);
-        if (!modeChanged && !(boardSettingsLoaded && Object.keys(boardChanged).length) && !(settingsLoaded && Object.keys(globalChanged).length)) {
+        if (!modeChanged && !(boardSettingsLoaded && Object.keys(boardChanged).length)) {
             setStatus(NOTHING_TO_SAVE);
             save.disabled = false;
             return;
@@ -419,7 +418,6 @@ export async function showTeamWorkingMode(team, options = {}) {
                 else { workingMode = await response.json(); base.mode = mode; }
             } catch (error) { modeError = error.message; }
         }
-        // Team settings save before the global ones, so the status is final once those return.
         if (boardSettingsLoaded && Object.keys(boardChanged).length) {
             try {
                 const response = await fetch(boardSettingsURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', ...boardChanged }) });
@@ -427,19 +425,10 @@ export async function showTeamWorkingMode(team, options = {}) {
                 else base.board = boardNow;
             } catch (error) { modeError = [modeError, error.message].filter(Boolean).join('; '); }
         }
-        if (settingsLoaded && Object.keys(globalChanged).length) {
-            try {
-                const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(globalChanged) });
-                if (!response.ok) healthError = 'Could not save board health setting.';
-                else base.global = globalNow;
-            } catch (error) { healthError = error.message; }
-        }
         opened = base;
-        if (!modeError && !healthError) setStatus('Saved. Working mode applies on first claim; global health monitor applies on server restart.');
-        else if (modeError && healthError) setStatus(`Save failed: ${modeError}; ${healthError}`, true);
-        else if (modeError) setStatus(`Working mode save failed: ${modeError}. Global health monitor setting was saved (applies on restart).`, true);
-        else setStatus(`Working mode saved (applies on first claim). Could not save global health monitor setting: ${healthError}`, true);
-        if (!modeError && !healthError) form.dataset.initialState = settingsFormSnapshot(form);
+        if (!modeError) setStatus('Saved. Working mode applies on first claim.');
+        else setStatus(`Save failed: ${modeError}`, true);
+        if (!modeError) form.dataset.initialState = settingsFormSnapshot(form);
         save.disabled = false;
     };
     load();
