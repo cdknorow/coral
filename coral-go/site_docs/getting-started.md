@@ -54,6 +54,7 @@ By default Coral stores data in `~/.coral`, uses port **8420**, and listens on t
 |---|---|
 | `--home <dir>` | Data directory (default `~/.coral`; also `CORAL_DATA_DIR`) |
 | `--host <addr>` | Address to bind (also `CORAL_HOST`). Only honored for network addresses when [remote access](remote-access.md) is enabled. |
+| `--remote` | Allow remote access for this run without saving the setting (see [remote access](remote-access.md)). With no `--host`, Coral then listens on every interface. |
 | `--port <n>` | Port (default 8420; also `CORAL_PORT`) |
 | `--backend tmux\|pty` | Terminal backend. Default `tmux`. |
 | `--no-browser` | Do not open a browser on startup |

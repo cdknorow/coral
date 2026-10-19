@@ -20,6 +20,8 @@ Changes take effect only on restart. Between saving and restarting the two diffe
 
 If the saved setting is missing, set to anything other than `true`, or cannot be read at startup, Coral binds to loopback. This also applies if you pass `--host 0.0.0.0` or set `CORAL_HOST`: the startup log says the bind was restricted and why.
 
+To allow remote connections for one run without saving the setting, start Coral with `--remote`. With remote access on (saved or `--remote`) and no `--host`, Coral listens on every interface; give `--host <address>` (or a comma list such as `127.0.0.1,100.101.102.103`) to listen only there. With it off, `--host` and `CORAL_HOST` only ever narrow the bind to this computer.
+
 To turn it off, clear the setting and restart. Existing remote connections are not closed until the restart.
 
 ## Authentication
