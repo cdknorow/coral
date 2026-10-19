@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.4.113 — Separate model and thinking chips, a quieter team health icon and attention rows, and Cost by provider, model and level
+
+### Changes
+
+- **The chat bar has two chips, one for the model and one for the thinking level:** the single chip ("Claude · Opus 5.5 · High") opened one long menu with every model above the levels. The model chip ("Claude · Opus 5.5") opens a menu of models, the thinking chip ("High") a menu of the levels the model takes (none for a CLI that reports no level). Each keeps what the chip did before: a live switch for Claude, "Apply with restart" for other CLIs, the pending or failed state on the chip that changed, one shared note line, Home, End, Escape and Tab with focus back on its own chip, and the names "Model: ..." and "Thinking level: ...". One menu is open at a time.
+- **The Cost view has By Provider, By Model and By Thinking Level tables:** By Provider is the totals per agent type, By Model is today's table, and By Thinking Level is by provider, model and level (with the thinking tokens apart from every total); a model that was not recorded is "Not reported" and sorts last. The "Not reported" remainder is now per provider and model. `GET /api/token-usage/summary`'s `by_thinking` rows gain `model`; a database from an earlier release is rebuilt once in one transaction when it is opened, every row kept under the empty model.
+- **The team health icon is quiet:** on is the accent-coloured pulse icon alone (no fill, ring or border, 44 px on a phone), and off has no icon at all (turn the check on from the team's info button, Team settings, Health check, or the Agent Team dialog, as before).
+- **An agent row's attention states are quiet:** there is no amber or red wash across a Needs input or Stuck row, no expanding ring around its pill, and no amber border or glow on the phone's card; the state pill has the neutral pill's surface, weight and hairline with only its text warm, and the words still say which state it is.
+- **The row menu button blends with the row it sits on:** its hover fill is a faint tint of its own text colour, so the selected row's blue tile shows through, instead of an opaque grey box.
+
+### Fixes
+
+- **The team health icon no longer blinks in and out:** a live-list tick whose database read failed reported every team's health check as off (an empty map reads as "the default, off"), and the next tick as on again. The list now keeps the last state it read.
+
+### Other changes
+
+- **Docs:** the "By Thinking Level" screenshot in the guides shows provider, model and level.
+
 ## v1.4.112 — An agent stuck behind Claude's session survey is freed, the model chip sits with Send, and a "Show branches" option
 
 ### Fixes
