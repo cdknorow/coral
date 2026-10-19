@@ -170,9 +170,11 @@ export function launchNote(s) {
 
 let _modeCache = { at: 0, byId: null, pending: null };
 
-/** Forget the cached Servers list, so the next access lookup asks the hub (after
- *  a mode change, so it applies at once rather than within 15 s). */
-export function invalidateServerAccess() { _modeCache = { at: 0, byId: null, pending: null }; }
+/** Mark the cached Servers list stale, so the next access lookup asks the hub (after
+ *  a mode change, so it applies at once rather than within 15 s). The last list stays
+ *  readable by cachedServerAccess until the new one arrives: a dialog drawn from it keeps
+ *  its answer instead of flickering to "allowed" while the hub is asked again (#5004). */
+export function invalidateServerAccess() { _modeCache = { at: 0, byId: _modeCache.byId, pending: null }; }
 
 async function _serverRow(serverId) {
     const now = Date.now();
@@ -205,9 +207,10 @@ export async function serverAccess(serverId) {
     return s ? _access(s, serverId) : null;
 }
 
-/** Whether the Servers list has been loaded once (even if that load failed or left a server out). */
-export function serverListLoaded() {
-    return _modeCache.byId !== null;
+/** Whether the Servers list has loaded (even if that load failed or left a server out) and no mode
+ *  change has marked it stale since: a failed load counts, it stamps the time and is not retried at once. */
+export function serverListSettled() {
+    return _modeCache.byId !== null && _modeCache.at !== 0;
 }
 
 /** serverAccess from the cached Servers list, without asking the hub: null when the list was not

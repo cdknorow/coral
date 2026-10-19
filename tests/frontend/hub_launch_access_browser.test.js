@@ -13,7 +13,7 @@ const BASE = require('./test_base').BASE;
     const { Page, Runtime, Network, Fetch, Emulation } = client;
     const ev = async expression => { const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
     const { waitFor } = require('./helpers/wait').bind(ev);
-    let mode = 'view', launched = 0;
+    let mode = 'view', launched = 0, hold = null;
     try {
         await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
         await Network.setCacheDisabled({ cacheDisabled: true });
@@ -23,7 +23,7 @@ const BASE = require('./test_base').BASE;
         safePaused(client, async e => {
             const u = e.request.url;
             if (u.endsWith('/auth/session')) return json(e.requestId, 200, { authenticated: true, email: 'tester@example.com', csrf: 'x' });
-            if (/\/api\/servers(\?|$)/.test(u)) return json(e.requestId, 200, { servers: [{ id: 'box-b', label: 'Box B', online: true, access_mode: mode, local_mode: 'launch', created_at: '2026-10-01T00:00:00Z', last_seen: '2026-10-18T00:00:00Z' }] });
+            if (/\/api\/servers(\?|$)/.test(u)) { if (hold) await hold; return json(e.requestId, 200, { servers: [{ id: 'box-b', label: 'Box B', online: true, access_mode: mode, local_mode: 'launch', created_at: '2026-10-01T00:00:00Z', last_seen: '2026-10-18T00:00:00Z' }] }); }
             if (/\/api\/sessions\/live(\?|$)/.test(u)) return json(e.requestId, 200, { sessions: [], servers: [{ id: 'box-b', label: 'Box B', status: 'online' }] });
             if (/\/api\/remote\//.test(u)) { if (/\/api\/sessions\/launch$/.test(u)) { launched++; return json(e.requestId, 403, { error: 'access_mode', hub_mode: 'view', required: 'launch' }); } return json(e.requestId, 200, {}); }
             if (e.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: e.requestId });
@@ -54,6 +54,10 @@ const BASE = require('./test_base').BASE;
         await waitFor(`(() => { const n = document.getElementById('launch-access-note'); return !n.hidden && /Box B needs Launch/.test(n.textContent) && document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked'); })()`, 'the note says Box B needs Launch and the launch button is dimmed', { timeout: 30000 });
         assert.equal(await ev(`document.querySelectorAll('.toast').length`), 0, 'nothing was toasted yet');
 
+        console.log('1b. The controls scanner leaves the dialog\'s dimming alone (it cleared every hub-blocked class it did not set, which un-dimmed the buttons within 120 ms)');
+        await ev(`(async () => { (await import((window.__coralStatic || '/static/') + 'hub_blocked_controls.js')).markBlockedControls(); return true; })()`);
+        assert.equal(await ev(`document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`), true, 'the scan un-dimmed the launch button');
+
         console.log('2. Launch with the form filled in: one toast, nothing sent');
         // Click only at an instant when the page knows the machine is limited: the click then says so itself and sends nothing. (A click while the
         // access answer is being asked for again goes to the hub, which refuses it: a different, also correct, path, tested in 3b.)
@@ -63,6 +67,15 @@ const BASE = require('./test_base').BASE;
         const t = await toasts();
         assert.equal(t.length, 1, JSON.stringify(t)); assert.match(t[0], /^Blocked: Box B needs Launch/);
         assert.equal(launched, 0, 'the refused launch was never sent');
+
+        console.log('2b. While the access answer is asked again the dialog keeps the last answer (dimmed, note up), and changes only when the new one arrives (#5004)');
+        let release; hold = new Promise(r => { release = r; });
+        await ev(`(async () => { (await import((window.__coralStatic || '/static/') + 'cloud_servers.js')).invalidateServerAccess(); document.dispatchEvent(new CustomEvent('coral:server-access-loaded')); return true; })()`);
+        await new Promise(r => setTimeout(r, 400)); // sleep-ok: the stale answer must still be showing after the held request has had time to go out; there is nothing to wait on for a change that must not happen
+        assert.equal(await ev(`document.getElementById('launch-access-note').hidden`), true === false, 'the note is still up while the answer is asked again');
+        assert.equal(await ev(`document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`), true, 'the launch button is still dimmed');
+        mode = 'launch'; release(); hold = null;
+        await waitFor(`document.getElementById('launch-access-note').hidden && !document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`, 'the new answer (Launch) un-dims the dialog', { timeout: 8000 });
 
         console.log('3. A machine at Launch: no note, no dimming');
         mode = 'launch';

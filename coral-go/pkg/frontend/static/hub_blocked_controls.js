@@ -68,7 +68,8 @@ export function markBlockedControls(root = document) {
     for (const el of root.querySelectorAll('[data-on-click], #sleeping-composer button[data-action], .mobile-send-btn')) {
         const tier = tierOf(el);
         const was = el.classList.contains('hub-blocked');
-        if (!tier) { if (was) _clear(el); continue; }
+        // A control with no tier of its own is another module's to dim (the launch dialog's buttons, #4586): only what this scan marked is cleared.
+        if (!tier) { if (el.dataset.hubBlockedTip) _clear(el); continue; }
         const reason = reasonFor(el, tier);
         if (reason) {
             el.classList.add('hub-blocked');

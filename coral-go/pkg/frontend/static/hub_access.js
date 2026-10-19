@@ -39,9 +39,10 @@ let _cloudServers = null;
 let _warming = null;
 // Warm the list only until it has loaded once (DevOps' #3443 note): a failed load, or a machine
 // the list leaves out, must not make every menu redraw ask again and redraw again. The redraw
-// event goes out only when this server's answer actually changed.
+// event goes out only when this server's answer actually changed. A list a mode change marked
+// stale is asked for again the same way, and its old answer is what callers see meanwhile.
 function _warmAccess(server) {
-    if (_warming || (_cloudServers && _cloudServers.serverListLoaded())) return;
+    if (_warming || (_cloudServers && _cloudServers.serverListSettled())) return;
     const before = _cloudServers ? JSON.stringify(_cloudServers.cachedServerAccess(server)) : 'null';
     _warming = importOnce('./cloud_servers.js')
         .then(m => { _cloudServers = m; return m.serverAccess(server); })
@@ -52,11 +53,13 @@ function _warmAccess(server) {
 
 /** Why this account cannot do an action needing `tier` ('interact' or 'launch') on `server` through the
  *  Coral Hub: the "Blocked: … needs Interact/Launch" text, or '' when it can, outside the hub, or when
- *  that is not known yet (the list is asked for, and the menus redraw once it is in). */
+ *  that is not known yet (the list is asked for, and the menus redraw once it is in). While a stale
+ *  list is asked for again, its last answer stands, so nothing flickers to "allowed" (#5004). */
 export function blockedReason(server, tier) {
     if (!isCloud() || !server || server === 'local') return '';
     const a = _cloudServers ? _cloudServers.cachedServerAccess(server) : null;
-    if (!a) { _warmAccess(server); return ''; }
+    _warmAccess(server);
+    if (!a) return '';
     return (tier === 'launch' ? a.mayLaunch : a.mayInteract) ? '' : accessBlockedMessage(a, tier);
 }
 
