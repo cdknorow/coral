@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.4.109 — A hub redirect closed, workflow output capped, and the docs say what an agent may read
+
+### Security
+
+- **A connector's redirect can no longer send a hub user to another site:** the hub proxy's response filter let through a `Location` of slash, backslash and a host (`/\evil.example/x`), which Go reads as a path with no host and a browser reads as `//evil.example/x`, so a compromised connector could redirect a hub user's browser away. A `Location` now survives only when every value is a path on the hub's own origin (one leading `/`, not followed by `/` or a backslash, no backslash, control character or space, no scheme, host or user); a second `Location` header is checked too. The hub proxy also gets fuzz targets for this filter, for `Content-Disposition` file names and for the `api_key` strip, and one whose oracle is a browser's reading of a redirect.
+- **A workflow step's output is capped:** a shell or agent `--print` step wrote its output straight to `stdout.txt` and `stderr.txt` with no bound, so a runaway command (`yes`) filled the disk until its timeout (300 s by default, up to a day). Each stream now keeps its first 64 MiB, the file ends with a line saying where it was cut, and the step's result carries a note; the step passes or fails as before, and a process the step leaves running keeps writing (capped, never killed) while the step ends within about 3 s of its own process when something it started still holds its output.
+
+### Other changes
+
+- **The docs say which reads an agent's token is refused:** where each route is described (workflows, scheduled jobs, session history, sessions, token usage, board, teams and auth), the docs now say that an agent's token gets 403 `forbidden_for_agent` on the Operator's reads and `forbidden_other_session` on another board's session, and what it may read instead (its own board's tasks, `coral-agent history`, its own session and its board mates); `coral-board`'s usage marks `workflow list`, `status` and `runs` Operator only.
+- **Internals:** `message_board.js`, `live_chat.js`, `utils.js`, `app.js` and `tasks.js` are split further by concern, moves only.
+- **Tests:** the Chats page's URL test checks that a button remembers its page and that a new search starts again at page 1.
+
 ## v1.4.108 — Agent tokens see other boards as a roster only, a faster server, and the Cost tables on a phone
 
 ### Security
