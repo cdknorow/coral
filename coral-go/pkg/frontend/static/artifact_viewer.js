@@ -5,10 +5,15 @@
  * and Markdown by the strict renderer (raw HTML shown as text, then the sanitizer). The
  * Download button keeps the original bytes one click away, through Coral Hub too. */
 import { escapeHtml, renderMarkdownStrict, highlightCodeIn, keepFragmentsInside } from './utils.js';
-import { serverUrl, artifactPath, isCloud } from './server_base.js';
+import { serverUrl, artifactPath, isCloud, boardKeyName, sessionTeamKey } from './server_base.js';
+import { state } from './state.js';
+import { boardOfPage } from './dock_page.js';
 import { renderArtifact } from './artifact_preview.js';
 import { downloadArtifact, sanitizeDownloadName } from './artifact_download.js';
 import { trapTab } from './dialog_focus.js';
+import { importOnce } from './import_once.js';
+// Asked for when used, not imported: this module loads lazily and may only import startup modules statically.
+const { attachComments } = await importOnce('./artifact_comments.js');
 
 const HEX_RE = /^[a-f0-9]{64}$/;
 let _dialog = null;
@@ -16,6 +21,14 @@ let _abort = null;
 let _gen = 0;
 let _returnFocus = null;
 let _server = undefined; // the server of the artifact on show, for the artifacts it links
+let _comments = null;    // the comments panel of the viewer (#5182)
+
+/** The team the viewer is opened from, as the bare board name the comments routes take: the team's page, the board page, or the open agent's own team; none otherwise (#5182). */
+function teamContext(opts) {
+    if (opts && opts.board) return opts.board;
+    const key = state.selectedTeam || boardOfPage() || sessionTeamKey(state.currentSession);
+    return key ? boardKeyName(key) : undefined;
+}
 
 /** Render an artifact's text: Markdown through the strict renderer, anything else as plain text. */
  function renderArtifactText(el, content, path) {
@@ -41,7 +54,7 @@ function _build() {
             <a class="btn artifact-viewer-download" rel="noopener noreferrer" download>Download</a>
             <button type="button" class="btn artifact-viewer-close" aria-label="Close">✕</button>
         </div>
-        <div class="artifact-viewer-body"></div>
+        <div class="artifact-viewer-main"><div class="artifact-viewer-body"></div></div>
     </div>`;
     d.addEventListener('click', (e) => { if (e.target === d) closeArtifactViewer(); });
     d.querySelector('.artifact-viewer-close').addEventListener('click', closeArtifactViewer);
@@ -60,6 +73,7 @@ function _build() {
         else if (e.key === 'Tab') trapTab(d, e);
     });
     keepFragmentsInside(d.querySelector('.artifact-viewer-body'));
+    _comments = attachComments(d, d.querySelector('.artifact-viewer-body'), d.querySelector('.artifact-viewer-main'));
     // Back or Forward changes the page under the viewer (#3532 routes): close it with the page.
     window.addEventListener('popstate', closeArtifactViewer);
     document.body.appendChild(d);
@@ -87,11 +101,12 @@ export function openArtifactViewer(hex, opts = {}) {
     dl.onclick = isCloud() ? (e) => { e.preventDefault(); downloadArtifact(url, sanitizeDownloadName(opts.filename || 'artifact')).catch(err => { title.textContent = err.message; }); } : null;
     const body = d.querySelector('.artifact-viewer-body');
     d.hidden = false;
+    _comments.open(hex, opts.server, teamContext(opts));
     d.querySelector('.artifact-viewer-close').focus();
     renderArtifact(body, `coral://artifacts/${hex}`, { server: opts.server, filename: opts.filename, mediaType: opts.mediaType }, {
         signal: _abort.signal,
         isStale: () => gen !== _gen || d.hidden,
-        renderContent: renderArtifactText,
+        renderContent: (el, content, path) => { renderArtifactText(el, content, path); _comments.docRendered(content, true); },
         openEntry: (entry) => {
             const m = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(entry.uri || '');
             if (m) openArtifactViewer(m[1], { server: opts.server, filename: entry.name, mediaType: entry.media_type });
@@ -110,6 +125,7 @@ export function openArtifactViewer(hex, opts = {}) {
     _abort = null;
     _gen++;
     _dialog.hidden = true;
+    _comments?.close();
     _dialog.querySelector('.artifact-viewer-body').replaceChildren(); // stop media, drop frames
     const back = _returnFocus;
     _returnFocus = null;

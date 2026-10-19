@@ -1,0 +1,51 @@
+/* The comments routes of an artifact (#5182), the only place the UI talks to /api/artifacts/{id}/comments, so the server's shape is read in one spot. Every call resolves the parsed answer or throws
+ * an Error whose message is the server's reason (a 403 says why) and whose .status is the HTTP status (requestJson, api.js). `server` routes the call to a registered remote like the artifact itself. */
+import { serverUrl } from './server_base.js';
+
+// One request: the parsed answer, or an Error with the server's reason ({"error": "..."}) or "HTTP <status>" and .status on it (the same as api.js requestJson once that lands).
+async function requestJson(method, url, body) {
+    const init = { method };
+    if (body !== undefined) { init.headers = { 'Content-Type': 'application/json' }; init.body = JSON.stringify(body); }
+    const resp = await fetch(url, init);
+    const text = await resp.text().catch(() => '');
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (e) { if (resp.ok) throw e; }
+    if (!resp.ok) {
+        const error = new Error((data && typeof data.error === 'string' && data.error) || `HTTP ${resp.status}`);
+        error.status = resp.status;
+        throw error;
+    }
+    return data;
+}
+
+const base = (hex, server) => serverUrl(`/api/artifacts/${hex}/comments`, server);
+
+/** What the panel draws from one comment: the server's fields under the names the UI uses. `can` is what this viewer may do to it (the server decides again on every write; the UI only hides what would be refused). */
+export function normalizeComment(c) {
+    const can = c.can || {}, who = c.author || {};
+    return {
+        id: c.id, parentId: c.parent_id == null ? null : c.parent_id, anchor: c.anchor || { whole: true }, body: String(c.body == null ? '' : c.body),
+        authorId: who.subject || '', authorName: who.name || '', authorKind: who.kind || '',
+        createdAt: c.created_at || '', editedAt: c.edited_at || '', resolved: !!c.resolved_at, resolvedBy: c.resolved_by ? (c.resolved_by.subject || '') : '', deleted: !!c.deleted, mine: !!c.mine,
+        can: { reply: !!can.reply, edit: !!can.edit, delete: !!can.delete, resolve: !!can.resolve },
+    };
+}
+
+const boardQuery = (board) => (board ? `&board=${encodeURIComponent(board)}` : '');
+
+/** { comments, locked, canComment, canLock, reason, limits }: every comment of the artifact (the panel filters by state itself). `you` is what the server says of the viewer. */
+export async function listComments(hex, server, board) {
+    const d = await requestJson('GET', `${base(hex, server)}?state=all${boardQuery(board)}`);
+    const you = d.you || {};
+    return { comments: (d.comments || []).map(normalizeComment), locked: !!d.locked, canComment: !!you.can_comment, canLock: !!you.can_lock, reason: you.reason || '', limits: d.limits || {} };
+}
+
+/** Make a comment: a thread on an anchor ({quote, prefix, suffix, start_line, end_line} or {whole: true}), or a reply to parentId (a reply has no anchor). */
+export const createComment = (hex, server, { body, anchor, parentId, board }) => requestJson('POST', base(hex, server),
+    { body, ...(parentId != null ? { parent_id: parentId } : { anchor }), ...(board ? { board } : {}) }).then(normalizeComment);
+export const editComment = (hex, server, id, body) => requestJson('PATCH', `${base(hex, server)}/${id}`, { body }).then(normalizeComment);
+export const deleteComment = (hex, server, id) => requestJson('DELETE', `${base(hex, server)}/${id}`);
+export const resolveComment = (hex, server, id) => requestJson('POST', `${base(hex, server)}/${id}/resolve`, {}).then(normalizeComment);
+export const reopenComment = (hex, server, id) => requestJson('POST', `${base(hex, server)}/${id}/reopen`, {}).then(normalizeComment);
+/** The owner's lock: this artifact's comments read only for everyone (reads stay open). */
+export const setLocked = (hex, server, locked) => requestJson(locked ? 'PUT' : 'DELETE', `${base(hex, server)}/lock`, { scope: 'artifact' });
