@@ -367,7 +367,11 @@ func (h *SessionsHandler) heartbeatInterval() time.Duration {
 func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]any, error) {
 	trace := newPhaseTrace("ws-list")
 	defer trace.finish()
-	return h.liveSessionRows(r, trace, true)
+	rows, err := h.liveSessionRows(r, trace, true)
+	if err == nil {
+		h.orderLiveRows(r.Context(), rows)
+	}
+	return rows, err
 }
 
 // getActiveRuns fetches active job runs for the Jobs sidebar.

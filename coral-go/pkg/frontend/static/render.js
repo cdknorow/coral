@@ -28,7 +28,7 @@ import { registerLiveListRenderer, redrawLiveList, liveListEl } from './list_hoo
 import { _boardChatSelectAll, _boardChatSelectNone, _boardMentionInput, _boardMentionKey, _cancelBoardChatSelect, _exportBoardChatSelected, _insertBoardMention, _toggleBoardChatMsgSelect, _toggleBoardChatPause } from './board_chat.js';
 import { _formatCost, _gitStateSummary, _repoBranch, _shortPath, buildSessionTooltip, deriveSessionState, formatShortTime, formatStaleness, getDotClass, resolveSessionIdentity, sessionStateInfo, sessionUnreadCount } from './session_state.js';
 import { _getBoardColor } from './board_accents.js';
-import { _getGroupOrder, _sortByOrder, _sortGroups } from './list_order.js';
+import { _getGroupOrder, _sortByOrder, _sortGroups, followServerOrder } from './list_order.js';
 import { _isServerCollapsed, _openServerDetails } from './server_rows.js';
 import { kebabId, _attachDragListeners, _renderAgentListWithSubgroups, _renderArchivedSection, _renderSessionItem, _within, applySessionSummaryPref, isGroupedByServer, isServerShownOnRows, isSessionSummaryShown } from './session_rows.js';
 import { showConfirmModal } from './confirm_dialog.js';
@@ -835,6 +835,7 @@ export function agentSearchKey(e) {
  *  A pending scheduled render is dropped: this one shows the latest list. */
 export function renderLiveSessions(sessions) {
     if (_scheduledRender) { cancelAnimationFrame(_scheduledRender); _scheduledRender = 0; }
+    followServerOrder(sessions); // a replaced agent's place was moved to its new id on the server (#4943)
     noteBoardLabels(sessions); // board_label beside board_project (#3536): what keyLabel shows
     syncHubFirstRun(); // Coral Hub with no machine connected: the first-run screens (#4586)
     const result = _renderLiveSessions(sessions);

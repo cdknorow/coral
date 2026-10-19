@@ -1347,6 +1347,15 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 			}
 		}
 
+		// The agent keeps its place in the list (#4943): in the saved order, and by the time that place was taken.
+		if err := carrySessionOrderTx(ctx, tx, oldSessionID, newSession.SessionID); err != nil {
+			return err
+		}
+		var listAt sql.NullString
+		if err := tx.GetContext(ctx, &listAt, "SELECT COALESCE(list_at, created_at) FROM live_sessions WHERE session_id = ?", oldSessionID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+
 		// The new row starts without auto-accept (a new agent run).
 		if err := clearAutoAcceptTx(ctx, tx, oldSessionID, AutoAcceptAgentRestarted, false); err != nil {
 			return err
@@ -1363,13 +1372,13 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 		now := nowUTC()
 		_, err = tx.ExecContext(ctx,
 			`INSERT OR REPLACE INTO live_sessions
-			 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, capabilities, model, context_window, tools, pid, status, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+			 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, capabilities, model, context_window, tools, pid, status, created_at, list_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
 			newSession.SessionID, newSession.AgentType, newSession.AgentName,
 			newSession.WorkingDir, newSession.DisplayName, newSession.ResumeFromID,
 			newSession.Flags, newSession.IsJob, newSession.Prompt, newSession.BoardName,
 			newSession.BoardServer, newSession.Backend, newSession.Icon, newSession.NameColor, newSession.IsSleeping, newSession.BoardType,
-			newSession.Capabilities, newSession.Model, newSession.ContextWindow, newSession.Tools, newSession.PID, now)
+			newSession.Capabilities, newSession.Model, newSession.ContextWindow, newSession.Tools, newSession.PID, now, listAt)
 		return err
 	})
 }

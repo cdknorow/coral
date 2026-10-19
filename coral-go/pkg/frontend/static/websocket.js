@@ -156,8 +156,12 @@ function _mergeFeedDiff(data) {
                 // Reload the list instead; the next diff after it fits.
                 _resyncLiveList();
             } else {
-                // New session: taken as-is.
-                sessions.push(changed);
+                // New session: taken as-is, in its place. The list is in the order the agents' places were taken (list_at, #4943): a
+                // restarted agent has its predecessor's, a new agent or team the newest, so it goes before the first row with a later one.
+                const at = changed.list_at;
+                const next = at ? sessions.findIndex(s => s.list_at && s.list_at > at) : -1;
+                if (next >= 0) sessions.splice(next, 0, changed);
+                else sessions.push(changed);
             }
         }
     }

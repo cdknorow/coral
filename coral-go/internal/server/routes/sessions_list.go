@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,6 +39,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
+	h.orderLiveRows(r.Context(), sessions)
 	// Polled by every open dashboard: an unchanged list is a 304 with no body (#3439).
 	if snap := h.remoteSnapshot(); snap.Configured() {
 		httputil.WriteJSONValidated(w, r, http.StatusOK, map[string]any{
@@ -47,6 +49,52 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSONValidated(w, r, http.StatusOK, emptyIfNil(sessions))
+}
+
+// orderLiveRows puts the live list's rows in a stable order and gives each the time its place in the list was taken, "list_at"
+// (#4943). The terminals list their sessions in no order that lasts (the pty backend's are a map's), and the dashboard shows the
+// list in the order it is given, so an agent's place, and its team's (the earliest of its agents'), came from where discovery
+// happened to put it, and a feed diff adds a new session last. The order is list_at, then the id; a restarted or resumed agent keeps
+// the list_at of the session it replaces (store.ReplaceLiveSession), so it stays where it was, and a new agent or team comes last.
+// Awake agents come first, then sleeping, then archived ones, as before. A row with no live record goes last in its kind. If the times cannot be read the rows stay as they were.
+func (h *SessionsHandler) orderLiveRows(ctx context.Context, rows []map[string]any) {
+	if h.ss == nil || len(rows) == 0 {
+		return
+	}
+	at, err := h.ss.LiveListAt(ctx)
+	if err != nil {
+		return
+	}
+	id := func(row map[string]any) string { s, _ := row["session_id"].(string); return s }
+	for _, row := range rows {
+		if t, ok := at[id(row)]; ok {
+			row["list_at"] = t
+		}
+	}
+	// Awake agents first, then sleeping ones, then archived ones, as the list always had them; each kind by place.
+	kind := func(row map[string]any) int {
+		if archived, _ := row["archived"].(bool); archived {
+			return 2
+		}
+		if sleeping, _ := row["sleeping"].(bool); sleeping {
+			return 1
+		}
+		return 0
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if ki, kj := kind(rows[i]), kind(rows[j]); ki != kj {
+			return ki < kj
+		}
+		ai, aok := at[id(rows[i])]
+		aj, bok := at[id(rows[j])]
+		if aok != bok {
+			return aok
+		}
+		if ai != aj {
+			return ai < aj
+		}
+		return id(rows[i]) < id(rows[j])
+	})
 }
 
 // listUnavailable is a live list that can't be built right now: the agents' metadata could not be read.

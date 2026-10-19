@@ -35,8 +35,44 @@ export function _sortByOrder(sessions) {
     });
 }
 
+// Restart and resume replace an agent with a new session id. The server moves the old id's place to the new one in the saved order
+// (#4943), but this page read the order once at startup: when a session the page has not seen appears, the saved order is read
+// again, so the replaced agent stays where it was in its group. A drag being saved is never overwritten by that read. (Its place
+// among the groups comes from the list's order: see _mergeFeedDiff in websocket.js.)
+let _knownIds = null;
+let _savingOrder = 0;
+let _readingOrder = false;
+
+export function followServerOrder(sessions) {
+    const ids = new Set((sessions || []).map(s => s.session_id));
+    const before = _knownIds;
+    _knownIds = ids;
+    if (!before) return; // the first list: the order was read with the settings
+    for (const id of ids) {
+        if (!before.has(id)) { _readServerOrder(); return; }
+    }
+}
+
+async function _readServerOrder() {
+    if (_readingOrder || _savingOrder) return;
+    _readingOrder = true;
+    try {
+        const resp = await fetch("/api/settings");
+        if (!resp.ok) return;
+        const saved = ((await resp.json()).settings || {}).session_order;
+        if (_savingOrder || saved === undefined || saved === state.settings.session_order) return;
+        state.settings.session_order = saved;
+        redrawLiveList();
+    } catch (e) {
+        console.error("Failed to read session order:", e);
+    } finally {
+        _readingOrder = false;
+    }
+}
+
 export async function _saveSessionOrder(orderedIds) {
     state.settings.session_order = JSON.stringify(orderedIds);
+    _savingOrder++;
     try {
         await fetch("/api/settings", {
             method: "PUT",
@@ -45,6 +81,8 @@ export async function _saveSessionOrder(orderedIds) {
         });
     } catch (e) {
         console.error("Failed to save session order:", e);
+    } finally {
+        _savingOrder--;
     }
 }
 
