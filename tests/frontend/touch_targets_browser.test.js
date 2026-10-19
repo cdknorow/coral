@@ -155,6 +155,34 @@ const UNDERSIZED = `(() => {
         assert.deepEqual(serversSmall.small, [], 'phone 390, Servers tab: every control is at least 44x44: ' + JSON.stringify(serversSmall.small));
         console.log('PASS phone 390 coarse: Servers tab (Access select) at least 44x44');
 
+        // #5053: the Cost view's tables (their sort headers and filter icons), with rows in By Model and By Thinking Level and the request table the server fills.
+        const costSmall = await ev(`(async () => {
+            const real = window.fetch;
+            const json = b => Promise.resolve(new Response(JSON.stringify(b), { headers: { 'content-type': 'application/json' } }));
+            window.fetch = (u, o) => String(u).includes('/api/token-usage/summary') ? json({ totals: { input_tokens: 10, output_tokens: 20, cost_usd: 4 }, by_agent: [],
+                by_model: [{ model: 'claude-opus-5-5', agent_type: 'claude', num_sessions: 3, input_tokens: 2000, output_tokens: 300, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: 2.5 }],
+                by_thinking: [{ agent_type: 'claude', thinking: 'high', input_tokens: 2000, output_tokens: 300, cache_read_tokens: 0, cache_write_tokens: 0, thinking_tokens: 4000, cost_usd: 2.0, num_calls: 9 },
+                    { agent_type: 'agy', thinking: '', input_tokens: 100, output_tokens: 10, cache_read_tokens: 0, cache_write_tokens: 0, thinking_tokens: 0, cost_usd: 0.25, num_calls: 0 }] })
+                : real(u, o);
+            window.switchNavTab('tokens');
+            const t0 = Date.now();
+            while (document.querySelectorAll('#cost-by-thinking tbody tr').length < 2 && Date.now() - t0 < 10000) await new Promise(r => setTimeout(r, 100));
+            await ${framesJs(2)};
+            const heads = document.querySelectorAll('#cost-by-thinking th .cost-sort-btn').length, filters = document.querySelectorAll('.cost-table .cost-col-filter').length;
+            // The sweep skips what is off screen: each table is scrolled to in turn.
+            const small = new Set();
+            for (const table of document.querySelectorAll('#view-cost .cost-table, #cost-view .cost-table, .cost-table')) {
+                table.scrollIntoView({ block: 'center' });
+                await ${framesJs(2)};
+                for (const s of ${UNDERSIZED}) small.add(s);
+            }
+            window.fetch = real;
+            return { heads, filters, tables: document.querySelectorAll('.cost-table').length, small: [...small] };
+        })()`);
+        assert.ok(costSmall.heads >= 7 && costSmall.filters >= 2 && costSmall.tables >= 3, 'the Cost view shows its sort headers and filter icons: ' + JSON.stringify(costSmall));
+        assert.deepEqual(costSmall.small, [], 'phone 390, Cost tables: every control, the header buttons and filter icons too, is at least 44x44: ' + JSON.stringify(costSmall.small));
+        console.log(`PASS phone 390 coarse: Cost tables (${costSmall.heads} sort headers, ${costSmall.filters} filter icons) at least 44x44`);
+
         // The Cloud Hub sign-in and enroll pages (templates the hub renders with
         // our stylesheets): every input and button is at least 44px tall.
         for (const page of ['signin', 'enroll']) {

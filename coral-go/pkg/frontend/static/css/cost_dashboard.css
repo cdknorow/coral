@@ -60,6 +60,14 @@
     color: var(--accent);
 }
 
+/* On a touch screen the header's two controls are 44 px (#5053): the label button fills the header's height, and the filter icon is a 44 px button with the glyph centred.
+ * The header row grows from 33 to 44 px; a fine pointer keeps the compact sizes above. */
+@media (pointer: coarse) {
+    .cost-table thead th.cost-th-sort { padding-top: 0; padding-bottom: 0; } /* the buttons carry the height: the cell's own padding would add 18 px to them */
+    .cost-sort-btn { min-width: 44px; min-height: 44px; vertical-align: middle; }
+    .cost-col-filter { min-width: 44px; min-height: 44px; justify-content: center; margin-left: 0; }
+}
+
 /* Filter dropdown */
 .cost-filter-dropdown {
     z-index: 1000;
