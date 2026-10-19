@@ -277,6 +277,16 @@ function _loadAgentSecondary(name, sessionId, agentData, srv, generation, transc
     Promise.resolve(transcriptReady).catch(() => {}).then(loadFiles);
 }
 
+// Every way of opening an agent (a toast, a desktop notification, a board link, a Workflows step, a Needs you row, a route) comes
+// through selectLiveSession, so this is the one place that puts the Agents tab up first: the nav, the agent list in the sidebar and
+// the agent then agree. From Inbox, Chats, Servers, Workflows or Jobs the agent used to draw over the tab that was still active,
+// with the agent list hidden (#4953). The page's own address is written by selectLiveSession, so the tab switch writes none.
+function showAgentsTab() {
+    if (isPopout()) return;
+    const active = document.querySelector('.top-nav-tab.active');
+    if (active && active.id !== 'nav-tab-agents') window.switchNavTab?.('agents', { fromHistory: true });
+}
+
 export async function selectLiveSession(name, agentType, sessionId, server) {
     // Identity is (server, name). Callers that only know the session id (hash
     // restore, toasts) omit `server` and it is resolved from the live list.
@@ -284,6 +294,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     dbg('selectLiveSession', { name, agentType, sessionId, server: srv });
     // Selecting an agent leaves the team view (declining to discard unsaved team settings cancels).
     if (state.selectedTeam && window.exitTeamContext && await window.exitTeamContext({ goBack: false }) === false) return;
+    showAgentsTab();
     const generation = ++switchGeneration;
     agentSwitchStarted(name, sessionId || null); // window.__coralReady.agentSelected (#3118)
     const input = _leaveCurrentAgent();
