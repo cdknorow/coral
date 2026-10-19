@@ -1796,11 +1796,12 @@
 }
 .terminal-branch::after { right: 6px; top: 100%; max-width: calc(100% - 12px); }
 .title-branch::after { left: 0; max-width: min(36rem, calc(100vw - 2rem)); }
-/* Shown (a box exists only while it has content) on keyboard focus and when tapped open; hover only where there is a pointer that hovers: on a phone a tap leaves :hover stuck
-   on the text, which kept the box open when the second tap closed it (#5154). */
+/* Shown (a box exists only while it has content) on keyboard focus and when tapped open; hover everywhere but on a touch screen: on a phone a tap leaves :hover stuck on the text,
+   which kept the box open when the second tap closed it (#5154). The condition is "the primary pointer is not coarse", not "(hover: hover)": a desktop browser with no pointing device
+   reported (hover: none) (GitHub's headless Chrome) and never showed the box on hover, while a phone's finger is always (pointer: coarse). */
 .terminal-branch:has(> .terminal-branch-text:is(:focus-visible, .is-open))::after,
 .title-branch:has(> .branch-text:is(:focus-visible, .is-open))::after { content: attr(data-full); }
-@media (hover: hover) {
+@media not all and (pointer: coarse) {
     .terminal-branch:has(> .terminal-branch-text:hover)::after,
     .title-branch:has(> .branch-text:hover)::after { content: attr(data-full); }
 }

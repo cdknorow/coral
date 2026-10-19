@@ -56,7 +56,11 @@ const SHORT = 'fix/header';
             check(`${dev}: the branch is capped with an ellipsis (${g.textW} px wide, the name is longer), named in full for a screen reader`, g.capped && g.fullName === LONG && g.label === 'Branch ' + LONG && g.chipFull === LONG, JSON.stringify([g.capped, g.textW, g.label]));
             check(`${dev}: the capped text can be focused and says it is a button`, g.focusable && g.role === 'button');
             await shot(`header-branch-${dev.replace(' ', '-')}-closed`);
-            // hover
+            // hover. A desktop runner may have no pointing device at all ((hover: none) and (pointer: none), as GitHub's headless Chrome has): the rule keys on the pointer not being coarse,
+            // so what the check below needs is that this window's pointer is not coarse, which holds there and on a Mac alike; the phone widths have a coarse one from touch emulation.
+            const hoverRule = await ev(`(() => { for (const sh of document.styleSheets) { let rules; try { rules = sh.cssRules; } catch { continue; } for (const r of rules) if (r.media && [...r.cssRules].some(x => x.cssText.includes('.terminal-branch-text:hover'))) return r.media.mediaText; } return null; })()`);
+            check(`${dev}: the hover rule's media query asks about a coarse pointer, never (hover: hover) (a runner with no pointing device reports hover: none)`, hoverRule !== null && /pointer:\s*coarse/.test(hoverRule) && !/hover:\s*hover/.test(hoverRule), String(hoverRule));
+            check(`${dev}: the pointer is ${mobile ? '' : 'not '}coarse, as the window is meant to be`, (await ev(`matchMedia('(pointer: coarse)').matches`)) === mobile);
             if (!mobile) {
                 await move(g.x, g.y);
                 let p = await pop();
