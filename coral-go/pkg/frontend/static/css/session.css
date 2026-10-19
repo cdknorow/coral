@@ -722,9 +722,7 @@
     background: rgba(var(--accent-rgb), 0.06);
 }
 
-.session-group-item.needs-attention {
-    background: rgba(210, 153, 34, 0.06);
-}
+/* A row that needs the Operator has no tint of its own (#5123: the amber wash across the row was louder than the context and Waiting badges): its flashing dot and its state pill carry it. */
 
 .session-group-item.sleeping .session-label {
     color: var(--text-secondary);
@@ -753,11 +751,6 @@
 .session-line2 .session-goal {
     flex: 1 1 auto;
     min-width: 0;
-}
-
-/* Stuck rows switch from the amber to the error tint */
-.session-group-item.needs-attention.is-stuck {
-    background: rgba(248, 81, 73, 0.07);
 }
 
 /* Selected and attention rows keep full-strength names for readability/contrast */
@@ -817,24 +810,26 @@
     white-space: nowrap;
 }
 
-/* Sentence-case labels ("Needs input" / "Check terminal" / "Stuck") on a quiet
-   warning surface: tinted background + hairline + warm text (>= 4.5:1). The
-   higher-specificity selector outranks `.badge.waiting-badge`. */
+/* Sentence-case labels ("Needs input" / "Check terminal" / "Stuck"), quiet (#5123): the shape and weight of the neutral pill below, with only the text in the
+   warm colour (>= 4.5:1), no amber fill and no amber ring; the words, not the colour, say which state it is. The higher-specificity selector outranks `.badge.waiting-badge`. */
 .session-group-item .badge.session-state-pill {
     text-transform: none;
     letter-spacing: 0;
-    font-weight: 600;
-    background: rgba(var(--warning-rgb), 0.16);
+    font-weight: 500;
+    background: var(--bg-tertiary);
     color: var(--warning);
-    box-shadow: inset 0 0 0 1px rgba(var(--warning-rgb), 0.35);
+    box-shadow: inset 0 0 0 1px var(--border);
 }
 
 .session-group-item .badge.session-state-pill.stuck {
-    background: rgba(var(--error-rgb), 0.16);
-    /* Lifted toward the primary text colour: plain --error is only ~3.6:1 on the dark tint. */
+    background: var(--bg-tertiary);
+    /* Lifted toward the primary text colour: plain --error is only ~3.6:1 on a dark surface. */
     color: color-mix(in srgb, var(--error) 62%, var(--text-primary));
-    box-shadow: inset 0 0 0 1px rgba(var(--error-rgb), 0.4);
+    box-shadow: inset 0 0 0 1px var(--border);
 }
+
+/* No expanding ring around the pill (the row's flashing dot is the motion): the badge's pulse-ring pseudo-element is for badges elsewhere. */
+.session-group-item .waiting-badge::after { content: none; }
 
 [data-theme="light"] .session-group-item .badge.session-state-pill {
     color: var(--warning);
@@ -849,7 +844,7 @@
     box-shadow: inset 0 0 0 1px var(--border);
 }
 [data-theme="light"] .session-group-item .badge.session-state-pill.stuck {
-    color: var(--error);
+    color: color-mix(in srgb, var(--error) 80%, black); /* plain --error is 4.2:1 on the neutral surface in the light theme */
 }
 
 .session-ctx-pill {

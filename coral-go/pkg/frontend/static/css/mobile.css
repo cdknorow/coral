@@ -825,10 +825,7 @@
         box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.18), 0 14px 28px rgba(0, 0, 0, 0.2);
     }
 
-    #mobile-session-list .session-group-item.needs-attention {
-        border-color: rgba(255, 193, 7, 0.45);
-        box-shadow: 0 0 0 1px rgba(255, 193, 7, 0.12), 0 14px 28px rgba(0, 0, 0, 0.22);
-    }
+    /* A card that needs the Operator has no amber border or glow of its own (#5123): its flashing dot and the state chip carry it. */
 
     #mobile-session-list .session-group-item.needs-attention .session-dot.waiting,
     #mobile-session-list .session-group-item.needs-attention .session-dot.stuck {
@@ -907,17 +904,18 @@
         margin: 8px 0 0;
         padding: 4px 8px;
         border-radius: 999px;
-        background: rgba(255, 193, 7, 0.14);
-        border: 1px solid rgba(255, 193, 7, 0.3);
+        /* Quiet (#5123): the neutral pill's surface and hairline, with only the text in the warm colour. */
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
         color: var(--warning);
         font-size: 0.6875rem;
-        font-weight: 600;
+        font-weight: 500;
     }
 
     #mobile-session-list .session-mobile-banner.error {
-        background: rgba(248, 81, 73, 0.14);
-        border-color: rgba(248, 81, 73, 0.3);
-        color: var(--error);
+        background: var(--bg-tertiary);
+        border-color: var(--border);
+        color: color-mix(in srgb, var(--error) 62%, var(--text-primary)); /* plain --error is 4.2:1 on the neutral surface in the dark theme */
     }
 
     #mobile-session-list .session-mobile-meta {
@@ -952,8 +950,9 @@
     }
 
     #mobile-session-list .session-status-chip.needs-input {
-        background: rgba(255, 193, 7, 0.18);
+        background: var(--bg-tertiary); /* quiet (#5123): only the text is warm */
         color: var(--warning);
+        font-weight: 600;
     }
 
     /* "Ready for input" rows carry no chip; with no unread pill either the meta row is
@@ -963,8 +962,9 @@
     #mobile-session-list .session-dot.sleeping::before { font-size: 0.8125rem; inset: -4px -2px; }
 
     #mobile-session-list .session-status-chip.error {
-        background: rgba(248, 81, 73, 0.16);
-        color: var(--error);
+        background: var(--bg-tertiary);
+        color: color-mix(in srgb, var(--error) 62%, var(--text-primary));
+        font-weight: 600;
     }
 
     #mobile-session-list .session-mobile-meta-pill {
