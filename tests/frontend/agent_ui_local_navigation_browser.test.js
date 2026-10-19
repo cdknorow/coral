@@ -54,15 +54,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   fs.writeFileSync(file, `<h1>panel</h1><script>coralUI.emit('ran',{});${vectors.map(v => `setTimeout(function(){try{${v}}catch(e){}},50);`).join('')}</script>`);
   cli(['publish', '--id', 'nav', '--title', 'Navigation test', '--file', file]);
   await Page.enable(); await Runtime.enable(); await Page.navigate({url: BASE}); await Page.loadEventFired(); await coralReady();
-  await ev(`(async()=>{const {state}=await import((window.__coralStatic||'/static/')+'state.js');state.currentSession={type:'live',session_id:${JSON.stringify(sid)}};document.getElementById('live-session-view').style.display='';const ui=await import((window.__coralStatic||'/static/')+'agent_ui.js');await ui.refreshAgentUI();window.switchAgenticTab('agent-ui','top');})()`);
+  // The frame is read at the moment the card is mounted: a panel that navigates is stopped and its frame REMOVED by the dashboard (that is the defence working), and
+  // the vectors below do exactly that 50 ms after the panel runs, so reading the frame later races the guard.
+  const mounted = await ev(`(async()=>{const {state}=await import((window.__coralStatic||'/static/')+'state.js');state.currentSession={type:'live',session_id:${JSON.stringify(sid)}};document.getElementById('live-session-view').style.display='';const ui=await import((window.__coralStatic||'/static/')+'agent_ui.js');await ui.refreshAgentUI();const f=document.querySelector('.agent-ui-card iframe');const shown={src:f&&f.getAttribute('src'),sandbox:f&&f.getAttribute('sandbox'),authored:!!document.querySelector('.agent-ui-card .agent-ui-authored')};window.switchAgenticTab('agent-ui','top');return shown;})()`);
   await waitFor(`!!document.querySelector('.agent-ui-home-row')`, 'the panel list');
   await ev(`document.querySelector('.agent-ui-home-row').click()`);
   for (const end = Date.now() + 8000; !cli(['events', '--id', 'nav']).some(e => e.action === 'ran') && Date.now() < end; await sleep(100));
   assert.ok(cli(['events', '--id', 'nav']).some(e => e.action === 'ran'), 'the panel ran (the positive control)');
-  await waitFor(`!!document.querySelector('.agent-ui-card iframe')`, 'the panel frame');
-  assert.match(await ev(`document.querySelector('.agent-ui-card iframe').getAttribute('src')`), /panel_host\.html$/, 'shown through the sandboxed host');
-  assert.equal(await ev(`document.querySelector('.agent-ui-card iframe').getAttribute('sandbox')`), 'allow-scripts');
-  assert.ok(await ev(`!!document.querySelector('.agent-ui-card .agent-ui-authored')`), 'the card says the content is the agent\'s');
+  assert.ok(mounted.src, 'the panel was mounted in a frame');
+  assert.match(mounted.src, /panel_host\.html$/, 'shown through the sandboxed host');
+  assert.equal(mounted.sandbox, 'allow-scripts');
+  assert.ok(mounted.authored, 'the card says the content is the agent\'s');
   await sleep(3000); // sleep-ok: a request that would leave needs time to arrive; the counting server must stay silent
   assert.deepEqual(hits, [], 'no navigation or request of a panel reached the outside: ' + JSON.stringify(hits));
   console.log('ok: ' + vectors.length + ' vectors, 0 hits');
