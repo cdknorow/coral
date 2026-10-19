@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
     const { Page, Runtime } = client;
@@ -78,5 +79,5 @@ const BASE = require('./test_base').BASE;
         assert.equal(personal.status, 'pending');
         await ev(`fetch('/api/sessions/live/'+encodeURIComponent(personalSession.name)+'/kill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_type:'terminal',session_id:personalSession.session_id})})`);
         console.log('PASS workflow creation, default instructions, required artifacts, completion, and safe rendering');
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, ['workflow-browser']); await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

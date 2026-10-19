@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 
 const hex = i => i.toString(16).padStart(20, '0');
 
@@ -29,6 +30,7 @@ const hex = i => i.toString(16).padStart(20, '0');
             navActive: document.querySelector('.top-nav-tab.active') && document.querySelector('.top-nav-tab.active').dataset.arg, tabs, navBadge: (document.getElementById('nav-tab-hub-inbox-badge') || {}).textContent || '', navLabel: document.getElementById('nav-tab-hub-inbox').getAttribute('aria-label'),
             dockShown: !!dock && getComputedStyle(dock).display !== 'none' && dock.getClientRects().length > 0 && !dock.classList.contains('collapsed') || (!!dock && dock.classList.contains('mobile-panel-overlay')), dockHasSavedTab: vis('agentic-tab-saved'),
             savedBtn: document.getElementById('saved-btn').getAttribute('aria-pressed'), over: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
+    let BOARD = ''; // the board this suite makes, taken away again in the finally (#4959)
     const ALL_ROWS = ['fe-a chat', 'qa-a chat', 'qa-b chat', 'team-a board, by the Orchestrator', 'team-a board, by the QA Engineer', 'team-b board, by the QA Engineer'];
 
     try {
@@ -114,7 +116,7 @@ const hex = i => i.toString(16).padStart(20, '0');
 
         // Open board from the page: the board opens at the message, "Back to Saved" returns to the Inbox, Remove stays on it
         console.log('open and back');
-        const BOARD = 'inbox-local-' + Date.now().toString(36);
+        BOARD = 'inbox-local-' + Date.now().toString(36);
         const post = await api('POST', `/api/board/${BOARD}/messages`, { subscriber_id: 'sv-dev', content: 'the message to go back to' });
         assert.ok(post.status < 300, JSON.stringify(post));
         const msgId = String(post.body.id);
@@ -193,6 +195,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         results.push(false);
     } finally {
         await require('./helpers/saved_cleanup').clearSaved(api).catch(() => {}); // the bookmarks this suite saved are taken off again (#4916)
+        await removeBoards(ev, [BOARD, 'team-a', 'team-b']);
         try { await client.close(); } catch (_) {}
     }
     const failed = results.filter(r => !r).length;

@@ -23,6 +23,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         return r.result.value;
     };
     const { waitFor, coralReady } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
     const until = (expr, what, ms = 8000) => waitFor(expr, what, { timeout: ms, soft: true });
     const MOD = `(window.__coralStatic||'/static/')`;
     let agent = null;
@@ -177,6 +178,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         if (agent) {
             try { await ev(`fetch('/api/sessions/live/' + encodeURIComponent(${JSON.stringify(agent.session_name)}) + '/kill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_type: 'terminal', session_id: ${JSON.stringify(agent.session_id)} }) }).then(() => true)`); } catch { /* best effort */ }
         }
+        await removeBoards(ev, [agent && agent.board]);
         await client.close();
     }
     const failed = results.filter(r => !r).length;

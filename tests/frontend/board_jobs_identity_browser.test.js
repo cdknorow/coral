@@ -17,6 +17,7 @@ const BASE = require('./test_base').BASE;
         return r.result.value;
     };
     const { waitFor, coralReady } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
     const api = async (path, method = 'GET', body) => {
         const r = await fetch(BASE + path, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
         const text = await r.text();
@@ -66,6 +67,7 @@ const BASE = require('./test_base').BASE;
         assert.ok(row.some(t => /nightly/.test(t) && /\bcron\b/.test(t)), 'a scheduled run keeps its job name and cron badge');
         console.log('PASS (10) one-off runs: "Job run N" with a one-off badge');
     } finally {
+        await removeBoards(ev, [board]);
         await client.close();
     }
 })().catch(e => {

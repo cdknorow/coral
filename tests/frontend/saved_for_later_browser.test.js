@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 const hex = i => i.toString(16).padStart(20, '0');
 
 (async () => {
@@ -49,6 +50,7 @@ const hex = i => i.toString(16).padStart(20, '0');
     })()`;
     const btnState = idx => ev(`(() => { const b = ${C}.querySelector('[data-msg-key="${hex(idx)}"] .chat-save-btn'); return b ? { pressed: b.getAttribute('aria-pressed'), label: b.getAttribute('aria-label'), hidden: b.hidden } : null; })()`);
 
+    let BOARD = ''; // the board this suite makes, taken away again in the finally (#4959)
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -189,7 +191,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         console.log('   ✓');
 
         console.log('7b. A board message: saved from its row, listed as a Board item, the jump opens the board at the message, a deleted one is gone');
-        const BOARD = 'saved-4510-board';
+        BOARD = 'saved-4510-board';
         await api('POST', `/api/board/${BOARD}/subscribe`, { subscriber_id: 'Saver', job_title: 'Saver' });
         for (const c of ['first board message', 'the one to save', 'the one to delete']) { const r = await api('POST', `/api/board/${BOARD}/messages`, { subscriber_id: 'Saver', content: c }); assert.equal(r.status, 200, 'post: ' + JSON.stringify(r)); }
         const got = await api('GET', `/api/board/${BOARD}/messages/all?limit=10`);
@@ -325,6 +327,7 @@ const hex = i => i.toString(16).padStart(20, '0');
 
         console.log('\nAll Save for Later checks passed');
     } finally {
+        await removeBoards(ev, [BOARD]);
         await client.close();
     }
 })().catch(err => {

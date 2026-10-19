@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 const BOARD = 'working-mode-browser-' + Date.now().toString(36); // a fresh board per run: reruns on one server do not collide
 (async () => {
  const client = await CDP({port:Number(process.env.CDP_PORT || 9222)});
@@ -30,5 +31,5 @@ const BOARD = 'working-mode-browser-' + Date.now().toString(36); // a fresh boar
   assert.equal(retained.workflow.instructions,claimed.workflow.instructions);
   await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);
   console.log('PASS team working mode editor, API claim instructions and immutable snapshot');
- }finally{await client.close()}
+ }finally{await removeBoards(ev, [BOARD]); await client.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

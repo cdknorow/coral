@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 const TEAM = 'health-bounds-team';
 
 (async () => {
@@ -71,6 +72,7 @@ const TEAM = 'health-bounds-team';
         }
         console.log('\nAll Health check tab bounds checks passed');
     } finally {
+        await removeBoards(ev, [TEAM]);
         await client.close();
     }
 })().catch(err => {

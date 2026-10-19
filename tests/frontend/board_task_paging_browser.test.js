@@ -43,6 +43,7 @@ async function run() {
     Runtime.exceptionThrown(e => exceptions.push((((e.exceptionDetails || {}).exception || {}).description || 'exception').slice(0, 200)));
     const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
     const { waitFor } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
     const MODS = `const tasks = await import((window.__coralStatic||'/static/')+'tasks.js'); const { state } = await import((window.__coralStatic||'/static/')+'state.js');`;
     const listed = () => ev(`(async () => { ${MODS} return (state.currentBoardTasks || []).map(t => ({ id: t.id, status: t.status, hasBody: 'body' in t, hasWorkflow: 'workflow' in t })); })()`);
     const load = () => ev(`(async () => { ${MODS} await tasks.loadBoardTasks(${JSON.stringify(BOARD)}); return true; })()`);
@@ -123,6 +124,7 @@ async function run() {
     } catch (e) {
         check('test ran', false, e.stack || String(e));
     } finally {
+        await removeBoards(ev, [BOARD]);
         await client.close();
     }
     const failed = results.filter(r => r === 'FAIL').length;

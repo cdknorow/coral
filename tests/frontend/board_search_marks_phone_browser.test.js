@@ -24,6 +24,7 @@ async function run() {
     await Promise.all([Page.enable(), Runtime.enable()]);
     const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
     const { waitFor } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
     const settle = (cond, label) => waitFor(cond, label, { timeout: 10000 });
     const type = async (sel, text) => { await ev(`document.querySelector(${JSON.stringify(sel)}).focus(); true`); await Input.insertText({ text }); };
     try {
@@ -64,7 +65,7 @@ async function run() {
         check('the tools row shows with the search, Filters, First and Latest', g.shown && g.btns.map(b => b[0]).join() === 'Filters,First,Latest', JSON.stringify(g.btns));
         check('they are 44px targets, and so are the search box and the result buttons', g.search >= 44 && g.btns.every(b => b[1] >= 44) && g.steps.every(h => h >= 44), JSON.stringify([g.search, g.btns, g.steps]));
         check('the results line shows, and nothing scrolls sideways', g.status && g.tools <= 1 && g.page <= 0, JSON.stringify([g.status, g.tools, g.page]));
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, [BOARD]); await client.close(); }
     const failed = results.filter(r => r === 'FAIL').length;
     console.log(failed ? `\n${failed} FAILED` : '\nALL PASS');
     process.exit(failed ? 1 : 0);

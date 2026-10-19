@@ -5,6 +5,7 @@
 // card when the server returns held_notice, and no sideways scroll on a phone or at 200% text. Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { removeBoards } = require('./helpers/board_cleanup');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -140,5 +141,5 @@ const { connect } = require('./agent_view_harness');
             ok(`${label}: no control past the screen edge, no sideways scroll`);
         }
         console.log('\nPASS the Health check tab of Team settings');
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, [TEAM]); await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

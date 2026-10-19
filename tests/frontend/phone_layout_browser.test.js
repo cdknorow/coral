@@ -28,6 +28,7 @@ const SCAN = `(() => { const vw = innerWidth; const sel = e => (e.id ? '#' + e.i
     // in helpers/wait.js; it is no worse than the old fixed settle-sleeps (caps at ms, never throws) and usually
     // far faster. The panels and dialogs fill over frames with no completion event, so the scans below settle first.
     const { settle } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
     const board = 'phone-layout-' + Date.now();
     const problems = [];
     let tag = '';
@@ -165,5 +166,5 @@ const SCAN = `(() => { const vw = innerWidth; const sel = e => (e.id ? '#' + e.i
         }
         assert.deepEqual(problems, [], 'phone layout problems:\n  ' + problems.join('\n  '));
         console.log('\nPASS phone layout: 320, 375 and 414 px, every tab, the side panel, Settings, every dialog, the keyboard up');
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, [board]); await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

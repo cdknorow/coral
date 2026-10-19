@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 
 const BOARD = 'verify-4564-board';
 // The server's field, by title: v- verified (two reviewers), e- evidence (by: []), u- unverified, n- none sent (an older server).
@@ -133,5 +134,5 @@ const ADD = `(() => {
         await shot('verify-list-phone');
         await Emulation.setTouchEmulationEnabled({ enabled: false });
         console.log('   ✓');
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, [BOARD]); await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

@@ -7,6 +7,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 const hex = i => i.toString(16).padStart(20, '0');
 
 (async () => {
@@ -52,6 +53,7 @@ const hex = i => i.toString(16).padStart(20, '0');
     const toasts = () => ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent)`);
     const link = (o) => '/?' + new URLSearchParams(o).toString();
 
+    let BOARD = ''; // the board this suite makes, taken away again in the finally (#4959)
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -83,7 +85,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         assert.equal(await ev(`!document.getElementById('saved-jumpbar')`), true);
 
         console.log('3. A board message: the link opens the board at the message; a deleted one is gone');
-        const BOARD = 'saved-4596-board';
+        BOARD = 'saved-4596-board';
         await api('POST', `/api/board/${BOARD}/subscribe`, { subscriber_id: 'Saver', job_title: 'Saver' });
         for (const c of ['first board message', 'the one to find']) { const r = await api('POST', `/api/board/${BOARD}/messages`, { subscriber_id: 'Saver', content: c }); assert.equal(r.status, 200, JSON.stringify(r)); }
         const bm = (await api('GET', `/api/board/${BOARD}/messages/all?limit=10`)).body; const msgs = bm.messages || bm;
@@ -109,5 +111,5 @@ const hex = i => i.toString(16).padStart(20, '0');
             assert.deepEqual(await ev(SAVED_URLS), [], 'no request for ' + JSON.stringify(bad));
         }
         console.log('\nPASS saved link: the jump through paging, gone, a board message, a URL, malformed links ignored');
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, [BOARD]); await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

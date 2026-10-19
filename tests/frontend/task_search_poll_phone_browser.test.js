@@ -22,6 +22,7 @@ async function run() {
     await Promise.all([Page.enable(), Runtime.enable()]);
     const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
     const { waitFor } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
     const MODS = `const tasks = await import((window.__coralStatic||'/static/')+'tasks.js'); const { state } = await import((window.__coralStatic||'/static/')+'state.js');`;
     const rows = () => ev(`document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)').length`);
     const load = () => ev(`(async () => { ${MODS} await tasks.loadBoardTasks(${JSON.stringify(BOARD)}); return true; })()`);
@@ -71,7 +72,7 @@ async function run() {
         check('the bar shows above the list on a phone', g.shown && g.above, JSON.stringify(g));
         check('its controls are 44px targets', g.filters >= 44 && g.sort >= 44 && g.search >= 44, JSON.stringify([g.filters, g.sort, g.search]));
         check('nothing scrolls sideways', g.bar <= 1 && g.list <= 1 && g.page <= 0, JSON.stringify([g.bar, g.list, g.page]));
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, [BOARD]); await client.close(); }
     const failed = results.filter(r => r === 'FAIL').length;
     console.log(failed ? `\n${failed} FAILED` : '\nALL PASS');
     process.exit(failed ? 1 : 0);

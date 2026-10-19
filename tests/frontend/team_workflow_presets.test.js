@@ -18,6 +18,7 @@ const TEAM_A = 'team-alpha-' + RUN, TEAM_B = 'team-beta-' + RUN;
   // Condition waits (#3118): the dialog's form is up; the status line has its next message (cleared before
   // each action, so an earlier 'saved' can't satisfy it); the dialog is gone.
   const { waitFor } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
   // load() sets data-initial-state once the team's mode, presets and settings are in the form.
   const formOpen = () => waitFor(`document.querySelector('.working-mode-form')?.dataset.initialState !== undefined`, 'the working-mode form to load');
   const statusSet = () => waitFor(`(t => t && !/saving|resetting|loading/i.test(t))(document.querySelector('.working-mode-status')?.textContent.trim())`, 'the status message');
@@ -289,6 +290,7 @@ const TEAM_A = 'team-alpha-' + RUN, TEAM_B = 'team-beta-' + RUN;
 
     console.log('\nPASS: All editable team workflows and prompt inspection end-to-end checks passed!');
   } finally {
+    await removeBoards(ev, [TEAM_A, TEAM_B]);
     await client.close();
   }
 })().catch(e => {

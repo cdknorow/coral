@@ -16,6 +16,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 const BOARD = 'qa-limit-board';
 
 // Wraps the harness's fetch mock (registered after it): chosen requests get a chosen answer.
@@ -100,6 +101,7 @@ const LIMITS = `(() => {
 
         console.log('\nAll action-limit checks passed');
     } finally {
+        await removeBoards(ev, [BOARD]);
         await client.close();
     }
 })().catch(err => {

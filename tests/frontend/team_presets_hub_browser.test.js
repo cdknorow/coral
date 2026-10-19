@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const { safePaused } = require('./helpers/paused');
 const { connect } = require('./agent_view_harness');
+const { removeBoards } = require('./helpers/board_cleanup');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -77,6 +78,7 @@ const { connect } = require('./agent_view_harness');
         console.error(e);
         process.exitCode = 1;
     } finally {
+        await removeBoards(ev, [TEAM]);
         await client.close();
     }
 })();

@@ -121,12 +121,14 @@ export function rowLeaks(before, after) {
     if (b.rows > a.rows) out.push({ table: t, was: a.rows, now: b.rows, kind: 'added' });
     else if (b.rows === a.rows && b.hash !== a.hash) out.push({ table: t, was: a.rows, now: b.rows, kind: 'changed' });
   }
-  // A message board that was there before the suite and has more messages, tasks or subscribers now (a board the suite made is the runner's to remove, like a team).
+  // A message board that was there before the suite and has more messages, tasks or subscribers now.
   for (const name of Object.keys(after.boards || {}).sort()) {
     const a = (before.boards || {})[name], b = after.boards[name];
     if (!a) continue;
     for (const f of ['messages', 'tasks', 'subscribers']) if (b[f] > a[f]) out.push({ table: `board ${name} ${f}`, was: a[f], now: b[f], kind: 'added' });
   }
+  // A board the suite made and left with messages or subscribers (#4959): the suite removes its own board in a finally (helpers/board_cleanup.js). The runner still removes it, by name, so the next suite does not read it.
+  for (const name of leftovers(before, after).boards) out.push({ table: `board ${name}`, was: 0, now: after.boards[name].messages + after.boards[name].subscribers, kind: 'added' });
   return out;
 }
 

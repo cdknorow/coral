@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 
 const hex = i => i.toString(16).padStart(20, '0');
 
@@ -147,6 +148,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         results.push(false);
     } finally {
         await require('./helpers/saved_cleanup').clearSaved(api).catch(() => {}); // the bookmarks this suite saved are taken off again (#4916)
+        await removeBoards(ev, ['team-a', 'team-b']);
         try { await client.close(); } catch (_) {}
     }
     const failed = results.filter(r => !r).length;

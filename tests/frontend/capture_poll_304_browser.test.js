@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 const CDP_PORT = Number(process.env.CDP_PORT || 9222);
 
 async function httpJson(method, path, body) {
@@ -133,6 +134,7 @@ async function httpJson(method, path, body) {
         console.log('\nAll capture poll 304 checks passed');
     } finally {
         if (sname) await httpJson('POST', `/api/sessions/live/${encodeURIComponent(sname)}/kill`, { agent_type: 'terminal', session_id: sid }).catch(() => {});
+        await removeBoards(ev, ['poll-304-board']);
         await client.close();
     }
 })().catch(err => {

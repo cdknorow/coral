@@ -25,6 +25,7 @@ const BOARD = 'tasks-3645';
         return r.result.value;
     };
     const { waitFor, coralReady } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
     const until = (expr, what, ms = 8000) => waitFor(expr, what, { timeout: ms, soft: true });
     const MODS = `const tasks = await import((window.__coralStatic||'/static/')+'tasks.js'); const { state } = await import((window.__coralStatic||'/static/')+'state.js');`;
     try {
@@ -191,6 +192,7 @@ const BOARD = 'tasks-3645';
     } catch (e) {
         check('the test ran', false, e.stack || String(e));
     } finally {
+        await removeBoards(ev, [BOARD]);
         await client.close();
     }
     const failed = results.filter(r => !r).length;

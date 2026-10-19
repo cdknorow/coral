@@ -42,6 +42,7 @@ function page(q) {
     };
     const { waitFor, waitStable, coralReady } = require('./helpers/wait').bind(ev);
     const { framesJs } = require('./helpers/wait');
+const { removeBoards } = require('./helpers/board_cleanup');
     const C = `document.getElementById('mb-messages')`;
     const shot = async (name) => {
         if (!process.env.CORAL_SCREENSHOT_DIR) return;
@@ -155,10 +156,12 @@ function page(q) {
         console.log('   ✓');
 
         console.log('board_followups: ok');
+        await removeBoards(ev, [B]);
         await client.close();
         process.exit(0);
     } catch (e) {
         console.error('FAIL', e && e.stack || e);
+        await removeBoards(ev, [B]);
         try { await client.close(); } catch { /* closing */ }
         process.exit(1);
     }

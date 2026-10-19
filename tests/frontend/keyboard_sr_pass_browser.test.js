@@ -5,6 +5,7 @@
 // Drives the real dashboard over CDP; run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { removeBoards } = require('./helpers/board_cleanup');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, sleep, PRELOAD, install } = await connect();
@@ -19,6 +20,7 @@ const { connect } = require('./agent_view_harness');
     const ok = name => console.log(`   ✓ ${name}`);
     const active = () => ev(`(() => { const a = document.activeElement; return a ? (a.id || a.className.split(' ')[0] || a.tagName) + ':' + (a.dataset.tab || a.dataset.displayInput || '') : null; })()`);
 
+    let TEAM = ''; // the board this suite makes, taken away again in the finally (#4959)
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -110,7 +112,7 @@ const { connect } = require('./agent_view_harness');
         ok('a steps group opens and closes by Enter, keeps focus and a visible ring while it grows, and is not in a live region');
 
         // 5. The Health check tab's names: the title only (the explanation and the limits are descriptions), numbers inside a group named for their rule.
-        const TEAM = 'kb-health-team';
+        TEAM = 'kb-health-team';
         for (const [id, title] of [['Boss', 'Orchestrator'], ['Dev One', 'Developer']]) {
             const r = await ev(`fetch('/api/board/${TEAM}/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: ${JSON.stringify(id)}, job_title: ${JSON.stringify(title)}, session_name: ${JSON.stringify(id.toLowerCase().replace(' ', '-') + '-session')} }) }).then(r => r.status)`);
             assert.ok(r < 300, `subscribe ${id}: ${r}`);
@@ -146,6 +148,7 @@ const { connect } = require('./agent_view_harness');
         console.error(e);
         process.exitCode = 1;
     } finally {
+        await removeBoards(ev, [TEAM]);
         await client.close();
     }
 })();

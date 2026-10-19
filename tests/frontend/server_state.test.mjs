@@ -55,7 +55,7 @@ try {
   assert.deepEqual(rowLeaks(p2, snapshot(dir)), [{ table: 'pinned_folders', was: 2, now: 2, kind: 'changed' }]);
   sql("DELETE FROM pinned_folders WHERE path = '/b';");
   assert.deepEqual(rowLeaks(p2, snapshot(dir)), [], 'fewer rows: not a leak');
-  // The message boards (#4920): counted per board in messageboard.db. A board the suite made is the runner's to remove (by its name, through the API); rows added to one that was there are a leak.
+  // The message boards (#4920): counted per board in messageboard.db. A board the suite made and left with messages or subscribers is a leak (#4959) the runner also removes (by its name, through the API); so are rows added to one that was there.
   const bdb = path.join(dir, 'messageboard.db');
   const bsql = x => execFileSync('sqlite3', [bdb, x], { stdio: ['ignore', 'pipe', 'pipe'] });
   const bb0 = snapshot(dir);
@@ -71,7 +71,8 @@ try {
   assert.deepEqual(leftovers(bb1, bb2).boards, ['new-board'], 'a board that was not there is the suite\'s');
   bsql("INSERT INTO board_tasks (board_id, title) VALUES ('tasks-only', 't');");
   assert.deepEqual(leftovers(bb1, snapshot(dir)).boards, ['new-board'], 'a board with only tasks is not listed: DELETE /api/board removes messages and subscribers, and the API has no way to delete a task');
-  assert.deepEqual(rowLeaks(bb1, bb2), [{ table: 'board old-board messages', was: 1, now: 2, kind: 'added' }], 'a new board is the runner\'s to remove, not a leak; more messages on an old one are');
+  assert.deepEqual(rowLeaks(bb1, bb2), [{ table: 'board old-board messages', was: 1, now: 2, kind: 'added' }, { table: 'board new-board', was: 0, now: 2, kind: 'added' }], 'more messages on an old board are a leak, and so is a new board left with messages or subscribers (#4959; the runner still removes it by name)');
+  assert.deepEqual(rowLeaks(bb1, snapshot(dir)).map(r => r.table), ['board old-board messages', 'board new-board'], 'a board with only tasks is not one: the suite cannot remove tasks through the API');
   const bcalls = [];
   const bres = await cleanup('http://x', 'KEY', leftovers(bb1, bb2), async (url, o) => { bcalls.push([o.method, url]); return { ok: true }; });
   assert.deepEqual(bcalls, [['DELETE', 'http://x/api/board/new-board']]);

@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { removeBoards } = require('./helpers/board_cleanup');
 const BOARD = 'qa-busy-board';
 
 // Wraps the harness's fetch mock (registered after it): a rule refuses its next `left` matching
@@ -130,6 +131,7 @@ async function api(method, path, body) {
 
         console.log('\nAll first-load-under-overload checks passed');
     } finally {
+        await removeBoards(ev, [BOARD]);
         await client.close();
     }
 })().catch(err => {

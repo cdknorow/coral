@@ -24,6 +24,7 @@ const { framesJs } = require('./helpers/wait');
         return result.result.value;
     };
     const { waitFor, waitStable, coralReady, nextFrame } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
     // A real key press: a native button activates on Enter's character, so keyDown carries text.
     const key = async (k, code = k, keyCode = 0) => {
         await Input.dispatchKeyEvent({ type: 'keyDown', key: k, code, windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode, text: k === 'Enter' ? '\r' : undefined });
@@ -337,6 +338,7 @@ const { framesJs } = require('./helpers/wait');
 
         console.log('PASS board_team_ux_browser');
     } finally {
+        await removeBoards(ev, ['alpha']);
         await client.close();
     }
 })().catch(err => { console.error(err); process.exit(1); });

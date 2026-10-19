@@ -15,6 +15,7 @@
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 const { launchStandIn } = require('./helpers/stand_in_agent');
+const { removeBoards } = require('./helpers/board_cleanup');
 
 const results = [];
 const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 'PASS' : 'FAIL'}] ${label}${detail !== undefined ? ' — ' + detail : ''}`); };
@@ -257,6 +258,7 @@ const HOOK = `(() => {
         if (standIn) await standIn.stop().catch(() => {});
         for (const u of made) await ev(`fetch(${JSON.stringify(u)}, { method: 'DELETE' }).then(r => r.status)`).catch(() => {});
         try { if (/\/pwn-repo-/.test(repo)) fs.rmSync(repo, { recursive: true, force: true }); } catch { /* best effort */ }
+        await removeBoards(ev, [BOARD]);
         await client.close();
     }
     process.exit(results.every(Boolean) ? 0 : 1);

@@ -48,6 +48,7 @@ function page(q) {
     };
     const { waitFor, waitStable, coralReady } = require('./helpers/wait').bind(ev);
     const { framesJs } = require('./helpers/wait');
+const { removeBoards } = require('./helpers/board_cleanup');
     const MB = `(await import((window.__coralStatic || '/static/') + 'message_board.js'))`;
     const C = `document.getElementById('mb-messages')`;
     const ROWS = `[...${C}.querySelectorAll(':scope > .mb-message, :scope > .mb-queue-run')]`;
@@ -250,10 +251,12 @@ function page(q) {
         await pollUntil(`!${C}.querySelector('[data-message-id="${gone}"]')`, `deleted ${gone} gone once at the bottom`);
 
         console.log('board_window: ok');
+        await removeBoards(ev, [B]);
         await client.close();
         process.exit(0);
     } catch (e) {
         console.error('FAIL', e && e.stack || e);
+        await removeBoards(ev, [B]);
         try { await client.close(); } catch { /* closing */ }
         process.exit(1);
     }

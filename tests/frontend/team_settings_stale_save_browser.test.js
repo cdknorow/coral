@@ -7,6 +7,7 @@
 // Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { removeBoards } = require('./helpers/board_cleanup');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -77,6 +78,7 @@ const { connect } = require('./agent_view_harness');
         await ev(`window.__restoreFetch(); true`);
         console.log('PASS Team settings saves only what changed');
     } finally {
+        await removeBoards(ev, [TEAM]);
         try { await client.close(); } catch (_) {}
     }
 })().catch(error => { console.error(error); process.exit(1); });

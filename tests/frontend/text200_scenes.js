@@ -22,7 +22,9 @@ module.exports = async function runScenes(group) {
     // in helpers/wait.js; it is no worse than the old fixed settle-sleeps (caps at ms, never throws) and usually
     // far faster. The views and dialogs fill over frames with no completion event, so the scans below settle first.
     const { settle } = require('./helpers/wait').bind(ev);
+const { removeBoards } = require('./helpers/board_cleanup');
     const report = []; const problems = [];
+    let board = ''; // the board the scenes make, taken away again in the finally (#4959)
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -35,7 +37,7 @@ module.exports = async function runScenes(group) {
         await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 });
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
-        const board = 'probe-' + Date.now();
+        board = 'probe-' + Date.now();
         await ev(`(async () => { for (const c of ['hello team', 'a longer second message with some words']) await fetch('/api/board/${board}/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'a', content: c }) }).catch(() => {});
             localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('phone-bot-with-a-long-name', 'A', 8, { sleeping: false, board_project: '${board}' }); window.__m.add('second-bot', 'B', 5, { sleeping: true }); return true; })()`);
         await settle(900);
@@ -130,7 +132,7 @@ module.exports = async function runScenes(group) {
             report.push('HEADER GLYPHS ' + JSON.stringify(g16) + ' -> ' + JSON.stringify(g32));
             report.push('HEADER BUTTONS: ' + JSON.stringify(await ev(`[...document.querySelectorAll('.terminal-header button, .terminal-header-btn, .terminal-header a')].filter(e => e.getClientRects().length).map(e => ({ c: String(e.className).slice(0, 30), w: Math.round(e.getBoundingClientRect().width), h: Math.round(e.getBoundingClientRect().height), icon: (e.querySelector('.material-icons, svg') ? (parseFloat(getComputedStyle(e.querySelector('.material-icons') || e.querySelector('svg')).fontSize) || e.querySelector('svg').getBoundingClientRect().width) : null) }))`)));
         }
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, [board]); await client.close(); }
     if (process.env.T200_REPORT) throw new Error('\nREPORT (T200_REPORT is set: failing on purpose to print it)\n' + report.join('\n'));
     if (problems.length) throw new Error('\n' + problems.join('\n') + '\n\nFULL REPORT\n' + report.join('\n'));
     console.log('   ✓ ' + group + ': ' + report.length + ' scenes at 390 px, 200% text, touch: no overflow, no clipped text, 44 px targets, text grows, header glyphs scale');

@@ -6,6 +6,7 @@
 // Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { removeBoards } = require('./helpers/board_cleanup');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -78,5 +79,5 @@ const { connect } = require('./agent_view_harness');
         }
         console.log('   ✓ Ctrl+Enter and Cmd+Enter send');
         console.log('\nPASS board panel by keyboard');
-    } finally { await client.close(); }
+    } finally { await removeBoards(ev, [board]); await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
