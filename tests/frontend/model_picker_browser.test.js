@@ -111,7 +111,7 @@ const { connect } = require('./agent_view_harness');
         console.log('6. the model on the agent row and in the header');
         await ev(`document.getElementById('acf-t').remove(); window.__m.add('opus-bot', 'A', 3, { sleeping: false }); window.__m.add('sonnet-bot', 'B', 3, { sleeping: false });
             for (const s of T.state.liveSessions) { if (s.name === 'opus-bot') s.model = ${JSON.stringify(OPUS.value)}; if (s.name === 'sonnet-bot') s.model = 'claude-sonnet-4-5-20250929'; }
-            localStorage.setItem('coral-models:v1:local:claude', JSON.stringify({ models: [${JSON.stringify(OPUS)}], fetched_at: null, source: 'account' }));
+            localStorage.setItem('coral-show-agent-type', 'true'); localStorage.setItem('coral-models:v1:local:claude', JSON.stringify({ models: [${JSON.stringify(OPUS)}], fetched_at: null, source: 'account' }));
             T.render.renderLiveSessions(T.state.liveSessions); true`);
         await waitFor(`document.querySelectorAll('.session-model').length >= 2`, 'the model lines', 4000);
         const rows = await ev(`Object.fromEntries([...document.querySelectorAll('#live-sessions-list li[data-session-id]')].map(li => [li.dataset.sessionId, li.querySelector('.session-model') && li.querySelector('.session-model').textContent]))`);

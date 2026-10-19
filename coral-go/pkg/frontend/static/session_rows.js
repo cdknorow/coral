@@ -347,7 +347,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
             </div>
             <div class="session-mobile-meta">${mobileStatusChip}${unreadBoardBadge}</div>
             ${(goalLine || unreadChip) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
-            ${(!isCompact && s.model && modelLabel(s.agent_type, s.model, sessionServer(s))) ? `<div class="session-model" title="${escapeAttr(s.model)}">${escapeHtml(modelLabel(s.agent_type, s.model, sessionServer(s)))}</div>` : ''}
+            ${(!isCompact && isAgentTypeShown() && s.model && modelLabel(s.agent_type, s.model, sessionServer(s))) ? `<div class="session-model" title="${escapeAttr(s.model)}">${escapeHtml(modelLabel(s.agent_type, s.model, sessionServer(s)))}</div>` : ''}
             ${branchTag}
         </div>
         <div class="session-tooltip"></div>
@@ -390,6 +390,12 @@ export function _renderAgentListWithSubgroups(agents, teamDefaultDir, isCompact,
 
 // ── Agent summary line (the goal text under each agent name) ──────────
 
+/** 'Show agent type' (#5133): the second line under an agent's name that says its type and model ("Claude · Opus 5.5"). Kept per viewer; off unless turned on. The model stays in the row's tooltip and the agent's header. */
+export function isAgentTypeShown() {
+    try { return browserLocal.get('coral-show-agent-type') === 'true'; }
+    catch { return false; }
+}
+
 /** 'Show branches' (#5117): the worktree and branch line under an agent's name. Kept per viewer, like Group by server; off unless turned on. The branch stays in the row's tooltip and the agent's header. */
 export function isBranchShown() {
     try { return browserLocal.get('coral-show-branches') === 'true'; }
@@ -430,8 +436,8 @@ onBuilt('settings-modal', () => applySessionSummaryPref()); // its Show summarie
  *  page (and of a long chat) each time (#4985). */
  export function syncDisplayMenu() {
     const n = serversShown().length;
-    const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer(), branches: isBranchShown() };
-    const offered = { summary: true, server: n >= 1, group: n >= 2, branches: true };
+    const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer(), branches: isBranchShown(), agenttype: isAgentTypeShown() };
+    const offered = { summary: true, server: n >= 1, group: n >= 2, branches: true, agenttype: true };
     for (const header of [...document.getElementsByClassName('sidebar-header'), ...document.getElementsByClassName('mobile-list-header')]) {
         for (const input of header.querySelectorAll('[data-display-input]')) setChecked(input, checked[input.dataset.displayInput] === true);
         for (const row of header.querySelectorAll('[data-display-row]')) setHidden(row, !offered[row.dataset.displayRow]);
