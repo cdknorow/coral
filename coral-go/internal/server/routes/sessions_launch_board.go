@@ -18,6 +18,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/hooks"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/testguard"
 )
@@ -100,7 +101,7 @@ func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config
 	}
 
 	data, _ := json.Marshal(state)
-	statePath := filepath.Join(stateDir, fmt.Sprintf("board_state_%s.json", sessionName))
+	statePath := filepath.Join(stateDir, hooks.BoardStateFileName(sessionName))
 	// 0600: it names the agent's board and server (#3581).
 	if err := os.WriteFile(statePath, data, 0o600); err != nil {
 		log.Printf("Failed to write board state file for %s: %v", sessionName, err)
@@ -118,7 +119,7 @@ func removeBoardStateFile(sessionName string, cfg *config.Config) {
 	if !plainFileName(sessionName) {
 		return // nothing was written for it (writeBoardStateFile)
 	}
-	statePath := filepath.Join(cfg.CoralDir(), fmt.Sprintf("board_state_%s.json", sessionName))
+	statePath := filepath.Join(cfg.CoralDir(), hooks.BoardStateFileName(sessionName))
 	os.Remove(statePath) // Ignore error — file may not exist
 }
 

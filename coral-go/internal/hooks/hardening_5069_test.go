@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,23 +24,33 @@ func TestReadStdinIsBounded(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok, "exactly the bound is read")
 
-	over := &countingReader{r: bytes.NewReader(make([]byte, MaxHookStdin+10<<20))}
-	raw, ok, err = ReadStdin(over)
+	raw, ok, err = ReadStdin(bytes.NewReader(make([]byte, MaxHookStdin+10<<20)))
 	require.NoError(t, err)
 	assert.False(t, ok, "a payload over the bound is dropped")
 	assert.Nil(t, raw)
-	assert.LessOrEqual(t, over.n, MaxHookStdin+1, "and not read to its end")
 }
 
-type countingReader struct {
-	r *bytes.Reader
-	n int
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.n += n
-	return n, err
+// The rest of an oversized payload is read and discarded, so the CLI writing it never gets EPIPE (#5073): a writer that writes past the bound finishes
+// without an error.
+func TestReadStdinDrainsAnOversizedPayload(t *testing.T) {
+	pr, pw := io.Pipe()
+	writeErr := make(chan error, 1)
+	go func() {
+		chunk := make([]byte, 1<<20)
+		for i := 0; i < MaxHookStdin>>20+8; i++ { // 8 MiB past the bound
+			if _, err := pw.Write(chunk); err != nil {
+				writeErr <- err
+				return
+			}
+		}
+		writeErr <- pw.Close()
+	}()
+	raw, ok, err := ReadStdin(pr)
+	require.NoError(t, err)
+	assert.False(t, ok)
+	assert.Nil(t, raw)
+	pr.Close() // the hook exits: a writer still writing would now get EPIPE
+	assert.NoError(t, <-writeErr, "the writer was not cut off (no EPIPE)")
 }
 
 // A credential embedded in CORAL_URL never reaches a log or the agent's screen.

@@ -106,7 +106,7 @@ func LivePath(agentName, route string) string {
 // MaxHookStdin bounds what a hook reads from the agent CLI: a tool's whole output rides in a PostToolUse payload, and every tool call runs a hook.
 const MaxHookStdin = 32 << 20
 
-// ReadStdin reads a hook's stdin up to MaxHookStdin. A longer payload (a tool that printed a huge file) is not read to its end and not parsed: the hook
+// ReadStdin reads a hook's stdin up to MaxHookStdin. A longer payload (a tool that printed a huge file) is not held and not parsed: the hook
 // records nothing for that call, as for one that is not JSON, and the CLI goes on.
 func ReadStdin(r io.Reader) ([]byte, bool, error) {
 	raw, err := io.ReadAll(io.LimitReader(r, MaxHookStdin+1))
@@ -114,6 +114,8 @@ func ReadStdin(r io.Reader) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	if len(raw) > MaxHookStdin {
+		// The rest is read and thrown away, never held: the CLI writing the payload must not get EPIPE (a closed pipe) for a hook that stopped reading.
+		_, _ = io.Copy(io.Discard, r)
 		return nil, false, nil
 	}
 	return raw, true, nil
