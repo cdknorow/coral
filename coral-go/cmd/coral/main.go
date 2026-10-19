@@ -187,6 +187,7 @@ func main() {
 
 	if *host != "" {
 		cfg.Host = *host
+		cfg.HostExplicit = true
 	}
 	cfg.NoAutoLoopback = *noAutoLoopback
 	if *port != 0 {

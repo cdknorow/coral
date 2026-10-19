@@ -67,7 +67,7 @@ const BASE = require('./test_base').BASE;
             const opener=document.createElement('button');opener.id='qr-test-opener';opener.textContent='Mobile QR';document.body.append(opener);opener.focus();
         })()`);
         await ev('window._showMobileConnectModal()');
-        assert.equal(await status(),'Mobile access is disabled. Enable it?');
+        assert.equal(await status(),'Mobile access is disabled. Enable it, or use Coral Hub, which needs no network access.');
         assert.deepEqual(await ev('window.__calls.map(c=>c.url)'),['/api/system/privacy']);
         await noQR(); await shot('mobile-qr-disabled');
         // Focus trap excludes controls hidden in the enabled-only details.

@@ -43,7 +43,7 @@ func TestVerification_ApplyPrivacySettings_RemoteAccess_OptIn(t *testing.T) {
 	}
 	hostFor := func(t *testing.T, db *store.DB, host string) string {
 		t.Helper()
-		cfg := &config.Config{Host: host, Port: 8420}
+		cfg := &config.Config{Host: host, HostExplicit: true, Port: 8420} // a host that was asked for (--host, CORAL_HOST)
 		applyPrivacySettings(ctx, db, cfg, false, nil)
 		return cfg.Host
 	}

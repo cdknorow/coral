@@ -14,7 +14,7 @@ Changes take effect only on restart. Between saving and restarting the two diffe
 ## Turn it on
 
 1. Open the mobile connection (QR) dialog or **Settings → Privacy**.
-2. If access is off, the dialog asks **"Mobile access is disabled. Enable it?"**. Opening or cancelling changes nothing. Choose **Enable** to save the preference.
+2. If access is off, the dialog asks **"Mobile access is disabled. Enable it, or use Coral Hub, which needs no network access."**. Opening or cancelling changes nothing. Choose **Enable** to save the preference.
 3. **Restart Coral.** The QR code and API key stay hidden until both the saved and the running state are enabled.
 4. Scan the QR code or open the shown URL from a device on the same network.
 

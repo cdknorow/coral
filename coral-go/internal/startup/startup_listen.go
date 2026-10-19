@@ -104,6 +104,16 @@ func restrictToLoopback(cfg *config.Config, reason string) {
 	cfg.Host = "127.0.0.1"
 }
 
+// widenForRemote is the other half of restrictToLoopback: Coral listens on this computer only by default (#5124), so when remote access is on
+// (the saved setting or --remote) and no host was asked for, it listens on every interface. A host that was asked for (--host, CORAL_HOST) is kept.
+func widenForRemote(cfg *config.Config) {
+	if cfg.HostExplicit || !config.IsLoopbackHost(cfg.Host) {
+		return
+	}
+	cfg.Host = "0.0.0.0"
+	log.Printf("[startup] remote access is on: listening on every interface, so other devices on this network can connect")
+}
+
 // maxRequestHeaderBytes caps one request's headers (Go's default is 1 MiB per connection; the tunnel allows 64 KiB in all). Past it the
 // server answers 431 before any handler runs (#4602).
 const maxRequestHeaderBytes = 64 << 10

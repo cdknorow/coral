@@ -51,7 +51,7 @@ func main() {
 	// macOS requires Cocoa calls on the main thread
 	runtime.LockOSThread()
 
-	host := flag.String("host", "0.0.0.0", "Host to bind to")
+	host := flag.String("host", "", "Host to bind to (default: this computer only, or every interface when Settings > Privacy allows remote access)")
 	port := flag.Int("port", config.DefaultPort, "Port to bind to")
 	homeDir := flag.String("home", "", "Home directory for Coral")
 	foreground := flag.Bool("foreground", false, "Run in foreground (used internally)")
@@ -120,7 +120,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cannot find executable: %v", err)
 	}
-	args := []string{"--foreground", "--host", *host, "--port", strconv.Itoa(*port), "--home", home, "--backend", *backendFlag}
+	args := []string{"--foreground", "--port", strconv.Itoa(*port), "--home", home, "--backend", *backendFlag}
+	args = append(args, hostArgs(*host)...)
 	if *noBrowser {
 		args = append(args, "--no-browser")
 	}
@@ -223,7 +224,6 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	// Coral's server runs as a child process the tray supervises (#4163): restarted after a
 	// crash with backoff, stopped after a crash loop, never restarted after a clean stop.
 	cfg := config.Load()
-	cfg.Host = host
 	cfg.Port = port
 	coralAppDataDir = cfg.CoralDir()
 	url := fmt.Sprintf("http://localhost:%d", port)
@@ -240,7 +240,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		log.Printf("Failed to start: cannot find this program: %v", err)
 		return
 	}
-	sup := newSupervisor(exe, []string{"--server-child", "--host", host, "--port", strconv.Itoa(port), "--backend", backendType}, log.Writer())
+	sup := newSupervisor(exe, append([]string{"--server-child", "--port", strconv.Itoa(port), "--backend", backendType}, hostArgs(host)...), log.Writer())
 	sup.password = nativeDatabasePassword
 	status := &trayStatus{}
 	sup.onState = status.set
@@ -787,4 +787,13 @@ func waitForExit(pid int, limit time.Duration) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	log.Printf("[STARTUP] pid %d still running after %s; starting anyway", pid, limit)
+}
+
+// hostArgs is the --host the tray hands the server: none when the host was not asked for, so that the server's default
+// (this computer only, or every interface once Settings > Privacy allows remote access, #5124) applies.
+func hostArgs(host string) []string {
+	if host == "" {
+		return nil
+	}
+	return []string{"--host", host}
 }

@@ -56,7 +56,9 @@ func runServerChild(host string, port int, backendType string) {
 
 	var restart atomic.Bool
 	cfg := config.Load()
-	cfg.Host = host
+	if host != "" {
+		cfg.Host, cfg.HostExplicit = host, true
+	}
 	cfg.Port = port
 	rs, err := startup.Start(ctx, cfg, startup.Options{
 		BackendType: backendType,

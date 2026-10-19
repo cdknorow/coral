@@ -151,8 +151,8 @@ Every workflow step (shell and agent) receives the following environment variabl
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `CORAL_PORT` | Server port | `8420` |
-| `CORAL_HOST` | Server bind address | `0.0.0.0` |
-| `CORAL_URL` | Full server URL | `http://0.0.0.0:8420` |
+| `CORAL_HOST` | Server bind address (default `127.0.0.1`, this computer only; remote access also needs Settings > Privacy or `--remote`) | `127.0.0.1` |
+| `CORAL_URL` | Full server URL | `http://127.0.0.1:8420` |
 | `CORAL_DIR` | Coral data directory | `~/.coral` |
 | `CORAL_DATA_DIR` | Alias for `CORAL_DIR` | `~/.coral` |
 

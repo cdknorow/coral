@@ -152,7 +152,7 @@ Open **http://localhost:8420** in your browser. Click **+New** to launch your fi
 Coral doesn't have to run where you sit. Start it on a dev box, a home server, or a cloud VM and the agents run there, in tmux, until you stop them:
 
 ```bash
-./coral --host 0.0.0.0 --port 8420
+./coral --remote --host 0.0.0.0 --port 8420
 ```
 
 Then open `http://<that-machine>:8420` from any browser. Requests from anywhere other than localhost need the API key Coral generated on first run; the **Mobile QR** button in the dashboard shows it, along with a QR code that encodes the URL and key together. Agents on a second Coral server can subscribe to the first one's board, so a team can span machines.

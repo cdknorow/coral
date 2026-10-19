@@ -29,7 +29,8 @@ func TestLoadDefaults(t *testing.T) {
 	cfg := Load()
 
 	assert.Equal(t, DefaultPort, cfg.Port) // 8420, or 8450 on Windows (defaults_windows.go)
-	assert.Equal(t, "0.0.0.0", cfg.Host)
+	assert.Equal(t, "127.0.0.1", cfg.Host, "this computer only unless remote access is turned on (#5124)")
+	assert.False(t, cfg.HostExplicit)
 	assert.Equal(t, 5000, cfg.DBBusyTimeoutMS)
 	assert.Equal(t, 120, cfg.IndexerIntervalS)
 	assert.Equal(t, 120, cfg.GitPollerIntervalS)
@@ -65,4 +66,13 @@ func TestLoadCloudMaxModeFromEnv(t *testing.T) {
 		t.Setenv("CORAL_CLOUD_MAX_MODE", tc.env)
 		assert.Equal(t, tc.want, Load().CloudMaxMode, "CORAL_CLOUD_MAX_MODE=%q", tc.env)
 	}
+}
+
+// CORAL_HOST is an explicit host: it is kept, and Settings > Privacy's remote access does not widen it (#5124).
+func TestLoadHostFromEnvIsExplicit(t *testing.T) {
+	isolateConfigEnv(t)
+	t.Setenv("CORAL_HOST", "0.0.0.0")
+	cfg := Load()
+	assert.Equal(t, "0.0.0.0", cfg.Host)
+	assert.True(t, cfg.HostExplicit)
 }

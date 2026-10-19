@@ -36,7 +36,10 @@ type Config struct {
 	// Server
 	// Host is the --host value: one address or a comma list (Hosts, ListenHosts; #3594).
 	Host string
-	Port int
+	// HostExplicit is true when the host was asked for (--host or CORAL_HOST): the default, this computer only
+	// (127.0.0.1), is widened to every interface when remote access is turned on (Settings > Privacy, #5124); an asked-for host is not.
+	HostExplicit bool
+	Port         int
 	// NoAutoLoopback (--no-auto-loopback or CORAL_NO_AUTO_LOOPBACK=1): don't add the 127.0.0.1
 	// listener Coral otherwise opens when Host names only network addresses (#3594).
 	NoAutoLoopback bool
@@ -161,8 +164,9 @@ func Load(dataDir ...string) *Config {
 		DBPath:           filepath.Join(coralDir, "sessions.db"),
 		DBBusyTimeoutMS:  5000,
 
-		Host: envOrDefault("CORAL_HOST", "0.0.0.0"),
-		Port: envIntOrDefault("CORAL_PORT", DefaultPort),
+		Host:         envOrDefault("CORAL_HOST", "127.0.0.1"),
+		HostExplicit: strings.TrimSpace(os.Getenv("CORAL_HOST")) != "",
+		Port:         envIntOrDefault("CORAL_PORT", DefaultPort),
 
 		CoralRoot: envOrDefault("CORAL_ROOT", homeDir),
 		LogDir:    logDir,

@@ -69,6 +69,8 @@ func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config,
 			// Fail closed for the bind too: never widen exposure because the
 			// opt-in could not be read.
 			restrictToLoopback(cfg, "settings unreadable")
+		} else {
+			widenForRemote(cfg)
 		}
 		return
 	}
@@ -90,6 +92,8 @@ func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config,
 	}
 	if !forceRemote && !strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "true") {
 		restrictToLoopback(cfg, "remote access is not enabled")
+	} else {
+		widenForRemote(cfg)
 	}
 	tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(settings["telemetry_enabled"]), "false"))
 }

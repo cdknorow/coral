@@ -75,7 +75,7 @@ async function renderAccess(status, gen, signal) {
             renderState('Mobile access is enabled in settings but is not running yet. Restart Coral to apply the change, then check again.',
                 [button('Check again', checkAccess, true), button('Close', hideMobileConnectModal)]);
         } else {
-            renderState('Mobile access is disabled. Enable it?',
+            renderState('Mobile access is disabled. Enable it, or use Coral Hub, which needs no network access.',
                 [button('Enable', enableMobileAccess, true), button('Cancel', hideMobileConnectModal)]);
         }
         return;
