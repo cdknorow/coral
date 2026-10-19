@@ -9,7 +9,8 @@ name: go-tests
 # Trust: it runs only on pushes to ci/** (branches the landing agent pushes) and by manual dispatch, never on pull_request, so a
 # fork's code never runs here; the job has no secrets and read-only contents; actions are pinned by SHA; nothing is cached (a
 # cache written by a ci/ branch could be read by a release, #4251). No agent CLI is installed: the tests start their own stubs.
-# CORAL_TELEMETRY_DISABLED is not set: routes' analytics tests need events (sent to a local sink, never the network).
+# CORAL_TELEMETRY_DISABLED=1 is set like every CI workflow's (the telemetry census); the packages whose tests check what is
+# sent (tracking, routes) clear it in their own TestMain.
 on:
   push:
     branches: ["ci/**"]
@@ -36,6 +37,7 @@ jobs:
           - { tagname: default, tags: "" }
           - { tagname: dev-fts5, tags: "dev fts5" }
     env:
+      CORAL_TELEMETRY_DISABLED: "1"
       ROUTES_PKG: internal/server/routes
       TUNNEL_PKG: pkg/tunnel
     defaults:

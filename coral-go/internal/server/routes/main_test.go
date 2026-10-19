@@ -18,6 +18,10 @@ func TestMain(m *testing.M) {
 	// The tests' tmux servers start their panes with $SHELL. A developer's interactive shell and its
 	// rc files make typed commands wait on an unknown startup; a plain sh has none.
 	os.Setenv("SHELL", "/bin/sh")
+	// CI sets CORAL_TELEMETRY_DISABLED=1 for every job (the telemetry census requires it), and with it set the analytics tests
+	// (launch, lifecycle, prerequisite) see no events: they check what is sent, to a local sink. The tracking package's TestMain
+	// does the same; the tests that check the variable set it themselves (#4997).
+	os.Unsetenv("CORAL_TELEMETRY_DISABLED")
 	// A team's later agent starts are typed after their slot (#3613); the spacer is process-wide,
 	// so tests reusing a board name within seconds would see a start deferred. Here a deferred
 	// start is typed at once; a test about the spacing replaces afterTeamSlot itself.
