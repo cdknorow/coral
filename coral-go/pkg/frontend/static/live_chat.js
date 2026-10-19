@@ -340,6 +340,14 @@ function isCoralDelivery(msg) {
     return msg.coral_notice === true || isCoralNudge(unwrapPastedContent(msg.content));
 }
 
+// A pasted image in a user turn (Codex records it as a name like "[Image #1]" and the saved file's base name): a chip with
+// the name, and the file name when there is one. The image itself is not served, so the chip is not a link (#4940).
+function attachmentChips(attachments) {
+    const chips = (Array.isArray(attachments) ? attachments : []).filter(a => a && a.name).map(a =>
+        `<span class="chat-attachment-chip">${escapeHtml(a.name)}${a.file ? ` <span class="chat-attachment-file">${escapeHtml(a.file)}</span>` : ""}</span>`);
+    return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
+}
+
 function renderOneMessage(msg, container, agentType) {
     const adapter = chatAgentAdapter(agentType);
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
@@ -349,7 +357,7 @@ function renderOneMessage(msg, container, agentType) {
 		appendCoralNotice(container, normalizeNudgeText(text), isCoralHealthNudge(text));
     } else if (msg.type === "user") {
         const bubble = makeBubble("chat-bubble human",
-            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')}</div>${msg.key ? SAVE_BUTTON : ""}`);
+            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')}</div>${attachmentChips(msg.attachments)}${msg.key ? SAVE_BUTTON : ""}`);
         if (msg.key) { bubble.dataset.msgKey = msg.key; bubble.dataset.said = msg.timestamp || ""; } // Save for Later finds the message again by this (#4510)
         appendContent(container, bubble);
     } else if (msg.type === "assistant") {

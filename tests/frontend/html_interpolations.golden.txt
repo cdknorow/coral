@@ -207,7 +207,9 @@
 1	history_tabs.js	icon
 1	history_tabs.js	statusClass
 1	live_chat.js	COPY_BUTTON
+1	live_chat.js	attachmentChips(msg.attachments)
 2	live_chat.js	bodyHtml
+1	live_chat.js	chips.join("")
 1	live_chat.js	cls
 3	live_chat.js	getToolIcon(view.icon)
 2	live_chat.js	msg.key ? SAVE_BUTTON : ""

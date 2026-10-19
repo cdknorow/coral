@@ -1638,20 +1638,13 @@ func parseCodexEventEntry(entry map[string]any, toolUseNames map[string]string) 
 		message, _ := payload["message"].(string)
 		switch payloadType {
 		case "user_message":
-			if strings.TrimSpace(message) == "" {
-				if imgs, ok := payload["images"].([]any); ok && len(imgs) > 0 {
-					var paths []string
-					for _, img := range imgs {
-						if p, ok := img.(string); ok && p != "" {
-							paths = append(paths, p)
-						}
-					}
-					if len(paths) > 0 {
-						message = strings.Join(paths, " ")
-					}
-				}
+			var atts []agent.CodexAttachment
+			if imgs, ok := payload["images"].([]any); ok {
+				atts = agent.CodexPayloadImages(imgs)
 			}
-			return parseCodexUserEntry(message, timestamp, toolUseNames)
+			messages := parseCodexUserEntry(agent.CodexUserMessageText(message, atts), timestamp, toolUseNames)
+			setCodexAttachments(messages, atts)
+			return messages
 		case "agent_message":
 			messages := parseCodexAssistantEntry(message, timestamp, toolUseNames)
 			phase, _ := payload["phase"].(string)
@@ -1672,6 +1665,8 @@ func parseCodexEventEntry(entry map[string]any, toolUseNames map[string]string) 
 			switch role {
 			case "user":
 				messages = parseCodexUserEntry(payload["content"], timestamp, toolUseNames)
+				_, atts := agent.CodexUserContent(payload["content"])
+				setCodexAttachments(messages, atts)
 			case "assistant":
 				messages = parseCodexAssistantEntry(payload["content"], timestamp, toolUseNames)
 			}
@@ -1754,7 +1749,36 @@ func mergeDuplicateCodexMessage(previous, current map[string]any) bool {
 	if previous["phase"] == nil && current["phase"] != nil {
 		previous["phase"] = current["phase"]
 	}
+	// The event_msg copy holds a data URL (no file name); the response_item copy names the file.
+	if previous["attachments"] == nil || !attachmentsHaveFile(previous["attachments"]) && attachmentsHaveFile(current["attachments"]) {
+		if current["attachments"] != nil {
+			previous["attachments"] = current["attachments"]
+		}
+	}
 	return true
+}
+
+// setCodexAttachments puts a user message's pasted images on it as
+// attachments: [{name: "[Image #1]", file: "image.png"}].
+func setCodexAttachments(messages []map[string]any, atts []agent.CodexAttachment) {
+	if len(atts) == 0 || len(messages) != 1 || messages[0]["type"] != "user" {
+		return
+	}
+	list := make([]map[string]any, len(atts))
+	for i, a := range atts {
+		list[i] = map[string]any{"name": a.Name, "file": a.File}
+	}
+	messages[0]["attachments"] = list
+}
+
+func attachmentsHaveFile(v any) bool {
+	list, _ := v.([]map[string]any)
+	for _, a := range list {
+		if f, _ := a["file"].(string); f != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func stringValue(value any) string {
@@ -1905,7 +1929,7 @@ func parseCodexUserEntry(content any, timestamp string, toolUseNames map[string]
 		}
 		return []map[string]any{{"type": "user", "timestamp": timestamp, "content": c}}
 	case []any:
-		var textParts []string
+		text, _ := agent.CodexUserContent(c)
 		var results []map[string]any
 		for _, block := range c {
 			b, ok := block.(map[string]any)
@@ -1913,23 +1937,7 @@ func parseCodexUserEntry(content any, timestamp string, toolUseNames map[string]
 				continue
 			}
 			bt, _ := b["type"].(string)
-			if bt == "text" || bt == "input_text" {
-				if text, _ := b["text"].(string); text != "" {
-					textParts = append(textParts, text)
-				}
-			} else if bt == "input_image" || bt == "image" {
-				var imgPath string
-				if urlStr, _ := b["image_url"].(string); urlStr != "" {
-					imgPath = urlStr
-				} else if urlMap, _ := b["image_url"].(map[string]any); urlMap != nil {
-					imgPath, _ = urlMap["url"].(string)
-				} else if p, _ := b["path"].(string); p != "" {
-					imgPath = p
-				}
-				if imgPath != "" {
-					textParts = append(textParts, imgPath)
-				}
-			} else if bt == "function_call_output" || bt == "tool_result" {
+			if bt == "function_call_output" || bt == "tool_result" {
 				callID, _ := b["call_id"].(string)
 				if callID == "" {
 					callID, _ = b["tool_use_id"].(string)
@@ -1958,10 +1966,6 @@ func parseCodexUserEntry(content any, timestamp string, toolUseNames map[string]
 		if len(results) > 0 {
 			return results
 		}
-		if len(textParts) == 0 {
-			return nil
-		}
-		text := strings.Join(textParts, "\n")
 		if strings.TrimSpace(text) == "" || isSystemInjected(text) {
 			return nil
 		}

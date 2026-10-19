@@ -140,33 +140,15 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 	}, nil
 }
 
+// extractCodexFirstText is the text of a message for the search index: what was
+// typed or the image labels, never a data URL or a path.
 func extractCodexFirstText(content any) string {
 	switch c := content.(type) {
 	case string:
 		return c
 	case []any:
-		for _, block := range c {
-			if b, ok := block.(map[string]any); ok {
-				bt, _ := b["type"].(string)
-				if bt == "text" || bt == "input_text" {
-					if t, _ := b["text"].(string); t != "" {
-						return t
-					}
-				}
-				if bt == "input_image" {
-					if imgURL, ok := b["image_url"].(map[string]any); ok {
-						if u, ok := imgURL["url"].(string); ok && u != "" {
-							return u
-						}
-					}
-				}
-				if bt == "image" {
-					if p, ok := b["path"].(string); ok && p != "" {
-						return p
-					}
-				}
-			}
-		}
+		text, _ := CodexUserContent(c)
+		return text
 	}
 	return ""
 }
@@ -184,15 +166,8 @@ func codexIndexMessage(entry map[string]any) (role, text string) {
 		return "", ""
 	}
 	message, _ := payload["message"].(string)
-	if strings.TrimSpace(message) == "" {
-		if imgs, ok := payload["images"].([]any); ok && len(imgs) > 0 {
-			for _, img := range imgs {
-				if p, ok := img.(string); ok && p != "" {
-					message = p
-					break
-				}
-			}
-		}
+	if imgs, ok := payload["images"].([]any); ok {
+		message = CodexUserMessageText(message, CodexPayloadImages(imgs))
 	}
 	if strings.TrimSpace(message) == "" {
 		return "", ""

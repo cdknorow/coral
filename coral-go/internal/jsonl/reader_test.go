@@ -335,20 +335,20 @@ func TestReadNewMessages_CodexImageAndTextMessages(t *testing.T) {
 	if len(msgs) != 4 {
 		t.Fatalf("expected 4 new messages, got %d", len(msgs))
 	}
-	// Image only in event_msg should extract image path
-	if msgs[0]["type"] != "user" || msgs[0]["content"] != "/Users/test/.coral/uploads/image1.png" {
+	// Image only in event_msg reads as its label, with the file as an attachment
+	if msgs[0]["type"] != "user" || msgs[0]["content"] != "[Image #1]" {
 		t.Fatalf("unexpected msgs[0]: %#v", msgs[0])
 	}
 	// Image + text in event_msg should extract text
 	if msgs[1]["type"] != "user" || msgs[1]["content"] != "Here is text with image" {
 		t.Fatalf("unexpected msgs[1]: %#v", msgs[1])
 	}
-	// Image only in response_item should extract image URL/path
-	if msgs[2]["type"] != "user" || msgs[2]["content"] != "/Users/test/.coral/uploads/image3.png" {
+	// Image only in response_item reads as its label
+	if msgs[2]["type"] != "user" || msgs[2]["content"] != "[Image #1]" {
 		t.Fatalf("unexpected msgs[2]: %#v", msgs[2])
 	}
 	// Image + text in response_item should preserve text
-	if msgs[3]["type"] != "user" || msgs[3]["content"] != "/Users/test/.coral/uploads/image4.png\nCaption for image 4" {
+	if msgs[3]["type"] != "user" || msgs[3]["content"] != "Caption for image 4" {
 		t.Fatalf("unexpected msgs[3]: %#v", msgs[3])
 	}
 }
