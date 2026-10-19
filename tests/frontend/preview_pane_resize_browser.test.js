@@ -130,6 +130,36 @@ const BASE = require('./test_base').BASE;
         await open(1800, 900, 600);
         check('nothing is saved: a reload opens with Chat', await ev(`!document.querySelector('.live-body').classList.contains('preview-maximised') && document.querySelector('.live-left-column') && getComputedStyle(document.querySelector('.live-left-column')).display !== 'none'`));
 
+        console.log('6. Every way of opening the pane keeps Chat: only the Maximise toggle hides it (the operator saw it open full width on an image)');
+        const wayOut = [
+            ['a markdown artifact', `window.PP.openArtifactTab('coral://artifacts/' + 'a'.repeat(64), { name: 'a.md', mediaType: 'text/markdown' })`],
+            ['an image artifact (a 4000 x 2000 PNG)', `window.PP.openArtifactTab('coral://artifacts/' + 'c'.repeat(64), { name: 'big.png', mediaType: 'image/png' })`],
+            ['a file from the Files tab (code)', `window.PP.openPreviewTab('/work/main.go')`],
+            ['an image file from the Files tab (a 4000 x 2000 PNG)', `window.PP.openPreviewTab('/work/big.png')`],
+        ];
+        for (const [saved, w] of [[undefined, 1400], [99999, 1400], [1200, 1000], [700, 1800]]) for (const [label, call] of wayOut) {
+            await Emulation.setDeviceMetricsOverride({ width: w, height: 900, deviceScaleFactor: 1, mobile: false });
+            await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+            await ev(`localStorage.clear(); localStorage.setItem('coral-preview-pane-dock', 'column'); ${saved === undefined ? '' : `localStorage.setItem('coral-preview-column-width', ${JSON.stringify(String(saved))});`} true`);
+            await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
+            await ev(`window.__coralReady.then(() => true)`);
+            await ev(`(async () => { const st = ${S}; const { state } = await import(st + 'state.js'); window.PP = await import(st + 'preview_pane.js'); const { showView } = await import(st + 'utils.js');
+                const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 4000; c.height = 2000; const x = c.getContext('2d'); x.fillStyle = '#39c'; x.fillRect(0, 0, 4000, 2000); c.toBlob(r, 'image/png'); });
+                const real = window.fetch; window.fetch = (u, o) => { const t = String(u);
+                    if (/\\/api\\/artifacts\\/c{64}/.test(t) || /big\\.png/.test(t)) { const r = new Response(png, { status: 200, headers: { 'content-type': 'image/png' } }); Object.defineProperty(r, 'url', { value: URL.createObjectURL(png) }); return Promise.resolve(r); } // the viewer shows the address the bytes came from: a blob URL, so the image really loads
+                    if (/file-content|file-original/.test(t)) return Promise.resolve(new Response(JSON.stringify({ content: 'package main\\n' }), { status: 200, headers: { 'content-type': 'application/json' } }));
+                    return real(u, o); };
+                window.__m.add('pv-a', 'P', 4, { sleeping: false, session_id: 'pv-a-id' });
+                state.currentSession = { type: 'live', name: 'pv-a', session_id: 'pv-a-id', agent_type: 'claude' }; showView('live-session-view');
+                window.PP.setPreviewSession('pv-a-id'); ${call}; return true; })()`);
+            await waitFor(`getComputedStyle(document.getElementById('preview-column')).display !== 'none'`, 'the column for ' + label, 8000);
+            await ev(`new Promise(r => setTimeout(r, 600))`); // sleep-ok: the image decodes and lays out after the tab is placed; there is no event for it
+            const g6 = await geo();
+            if (saved === 99999 && /^an image artifact|^an image file/.test(label)) await shot('preview-' + label.replace(/[^a-z]+/gi, '-').toLowerCase() + '-saved-99999-at-1400');
+            if (saved === 99999 && /^an image artifact|^an image file/.test(label)) await shot('preview-' + label.replace(/[^a-z]+/gi, '-').toLowerCase() + '-saved-99999-at-1400');
+            check(`${label}, saved ${saved === undefined ? 'nothing' : saved}, window ${w}: Chat keeps its room and the pane stays inside the centre (pane ${g6.col}, Chat ${g6.chat})`, g6.chatShown && (g6.chat >= 240 || g6.body < 481) && g6.colLeft >= g6.bodyLeft && g6.colRight <= g6.bodyLeft + g6.body + 1, JSON.stringify(g6));
+        }
+
         console.log('5. A phone: no toggle, and nothing breaks');
         await open(390, 800, 500);
         const phone = await ev(`(() => { const b = document.getElementById('preview-max-btn'); const pane = document.getElementById('preview-pane'); const r = pane.getBoundingClientRect(); return { btn: !!b && (b.hidden || getComputedStyle(b).display === 'none'), pane: getComputedStyle(pane).display !== 'none' && r.width > 0, overflow: document.documentElement.scrollWidth <= window.innerWidth + 1 }; })()`);
