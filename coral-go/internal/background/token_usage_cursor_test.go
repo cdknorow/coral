@@ -6,10 +6,12 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/store"
@@ -350,3 +352,50 @@ func TestTokenPollerRecordsUnterminatedLastCall(t *testing.T) {
 	h.pollClaude(sid, "/w")
 	require.Equal(t, []int{11, 12, 13}, inputs())
 }
+
+// #4969: the thinking level a call ran at, and the thinking tokens it reported, are read with its usage.
+func TestClaudeParserReadsTheLevelAndThinkingTokens(t *testing.T) {
+	var p claudeParser
+	for _, l := range []string{
+		`{"type":"assistant","timestamp":"2026-10-19T00:00:01Z","effort":"high","message":{"model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5,"output_tokens_details":{"thinking_tokens":3}}}}`,
+		`{"type":"assistant","timestamp":"2026-10-19T00:00:02Z","effort":null,"message":{"model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5}}}`,
+		`{"type":"assistant","timestamp":"2026-10-19T00:00:03Z","message":{"model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5}}}`,
+		`{"type":"assistant","timestamp":"2026-10-19T00:00:04Z","effort":"Not A Level","message":{"model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5}}}`,
+		`{"type":"assistant","timestamp":"2026-10-19T00:00:05Z","effort":"xhigh","message":{"model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5,"output_tokens_details":{"thinking_tokens":9}}}}`,
+	} {
+		p.line(l)
+	}
+	require.Len(t, p.Calls, 5)
+	assert.Equal(t, "high", p.Calls[0].Effort)
+	assert.Equal(t, 3, p.Calls[0].ThinkingTokens)
+	assert.Equal(t, "", p.Calls[1].Effort, "null: none")
+	assert.Equal(t, "", p.Calls[2].Effort, "missing: none, never the earlier call's")
+	assert.Equal(t, "", p.Calls[3].Effort, "not a level: none")
+	assert.Equal(t, "xhigh", p.Calls[4].Effort)
+	assert.Equal(t, 9, p.Calls[4].ThinkingTokens)
+}
+
+func TestCodexParserReadsTheTurnsLevelAndReasoningTokens(t *testing.T) {
+	var p codexParser
+	count := func(ts string, in, out, reasoning int) string {
+		return `{"type":"event_msg","timestamp":"` + ts + `","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":` + itoa(in) + `,"output_tokens":` + itoa(out) + `,"reasoning_output_tokens":` + itoa(reasoning) + `,"total_tokens":` + itoa(in+out) + `}}}}`
+	}
+	for _, l := range []string{
+		`{"type":"turn_context","timestamp":"2026-10-19T00:00:00Z","payload":{"model":"gpt-6-sol","effort":"low"}}`,
+		count("2026-10-19T00:00:01Z", 10, 5, 2),
+		`{"type":"turn_context","timestamp":"2026-10-19T00:01:00Z","payload":{"model":"gpt-6-sol","effort":"xhigh"}}`,
+		count("2026-10-19T00:01:01Z", 20, 9, 6),
+		`{"type":"turn_context","timestamp":"2026-10-19T00:02:00Z","payload":{"model":"gpt-6-sol"}}`,
+		count("2026-10-19T00:02:01Z", 30, 12, 6),
+	} {
+		p.line(l)
+	}
+	require.Len(t, p.Calls, 3)
+	assert.Equal(t, "low", p.Calls[0].Effort)
+	assert.Equal(t, 2, p.Calls[0].Reasoning)
+	assert.Equal(t, "xhigh", p.Calls[1].Effort, "the turn the call belongs to")
+	assert.Equal(t, 6, p.Calls[1].Reasoning, "cumulative: the poller takes the difference")
+	assert.Equal(t, "", p.Calls[2].Effort, "a turn that recorded none: none, not the earlier turn's")
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }

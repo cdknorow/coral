@@ -33,6 +33,11 @@ type TokenUsage struct {
 	// write-only for now: the session-level reads aggregate rows that may span
 	// several models, so they do not select it.
 	Model string `db:"model" json:"model,omitempty"`
+	// Thinking is the thinking level the call's turn ran at, as the transcript recorded it ("" when it recorded none: never a guess).
+	// ThinkingTokens is the thinking tokens the CLI reported for the call. Both only feed the Cost view's breakdown by thinking level
+	// (token_usage_thinking); they are not columns of the usage rows (#4969).
+	Thinking       string `db:"-" json:"-"`
+	ThinkingTokens int    `db:"-" json:"-"`
 }
 
 // UsageSummary represents aggregated token usage totals.
@@ -204,6 +209,9 @@ func (s *TokenUsageStore) RecordUsage(ctx context.Context, u *TokenUsage) error 
 		return err
 	}
 	u.ID = id
+	if n, _ := result.RowsAffected(); n > 0 {
+		return s.recordThinking(ctx, u) // only a call that was stored counts: a repeated report is ignored
+	}
 	return nil
 }
 

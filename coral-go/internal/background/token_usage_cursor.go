@@ -18,7 +18,8 @@ import (
 // codexParser extracts cumulative token_count entries from Codex rollout lines.
 type codexParser struct {
 	codexUsageData
-	currentModel string
+	currentModel  string
+	currentEffort string // the newest turn_context's reasoning level (#4969)
 }
 
 func (p *codexParser) line(line string) {
@@ -40,8 +41,9 @@ func (p *codexParser) line(line string) {
 					TotalTokens           int `json:"total_tokens"`
 				} `json:"total_token_usage"`
 			} `json:"info"`
-			Model string `json:"model"`
-			CWD   string `json:"cwd"`
+			Model  string `json:"model"`
+			Effort string `json:"effort"`
+			CWD    string `json:"cwd"`
 		} `json:"payload"`
 	}
 	if err := json.Unmarshal([]byte(line), &entry); err != nil {
@@ -52,6 +54,7 @@ func (p *codexParser) line(line string) {
 	}
 	if entry.Type == "turn_context" && entry.Payload.Model != "" {
 		p.currentModel = entry.Payload.Model
+		p.currentEffort = jsonl.CleanEffort(entry.Payload.Effort) // "" when the turn recorded none: never the earlier turn's
 	}
 	if entry.Type == "event_msg" && entry.Payload.Type == "token_count" {
 		tu := entry.Payload.Info.TotalTokenUsage
@@ -62,6 +65,8 @@ func (p *codexParser) line(line string) {
 			TotalTokens:  tu.TotalTokens,
 			Timestamp:    entry.Timestamp,
 			Model:        p.currentModel,
+			Effort:       p.currentEffort,
+			Reasoning:    tu.ReasoningOutputTokens,
 		})
 	}
 }
@@ -80,6 +85,7 @@ func (p *claudeParser) line(line string) {
 	var entry struct {
 		Type      string `json:"type"`
 		Timestamp string `json:"timestamp"`
+		Effort    string `json:"effort"` // the thinking level the turn ran at (#4969)
 		Message   struct {
 			Model string `json:"model"`
 			Usage struct {
@@ -87,6 +93,9 @@ func (p *claudeParser) line(line string) {
 				OutputTokens             int `json:"output_tokens"`
 				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+				OutputTokensDetails      struct {
+					ThinkingTokens int `json:"thinking_tokens"`
+				} `json:"output_tokens_details"`
 			} `json:"usage"`
 		} `json:"message"`
 	}
@@ -105,6 +114,8 @@ func (p *claudeParser) line(line string) {
 			CacheWriteTokens: entry.Message.Usage.CacheCreationInputTokens,
 			Model:            entry.Message.Model,
 			Timestamp:        entry.Timestamp,
+			Effort:           jsonl.CleanEffort(entry.Effort),
+			ThinkingTokens:   entry.Message.Usage.OutputTokensDetails.ThinkingTokens,
 		})
 		if m := strings.TrimSpace(entry.Message.Model); m != "" {
 			p.lastModel = m

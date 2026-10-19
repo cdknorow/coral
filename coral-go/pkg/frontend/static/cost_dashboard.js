@@ -67,6 +67,7 @@ let _costRefreshTimer = null;
 
 const _sortState = {
     model:   { field: 'cost_usd', asc: false },
+    thinking: { field: 'cost_usd', asc: false },
     agent:   { field: 'cost_usd', asc: false },
     team:    { field: 'cost_usd', asc: false },
     branch:  { field: 'cost_usd', asc: false },
@@ -80,7 +81,7 @@ const _colFilters = {};
 
 // Raw data caches — populated on fetch, re-rendered on sort/filter
 const _rawData = {
-    model: [], agent: [], team: [], branch: [], task: [], request: [],
+    model: [], thinking: [], agent: [], team: [], branch: [], task: [], request: [],
 };
 
 // Currently open dropdown (only one at a time)
@@ -100,6 +101,7 @@ function _toggleSort(table, field) {
 function _rerender(table) {
     switch (table) {
         case 'model':   _renderModelTable(_rawData.model); break;
+        case 'thinking': _renderThinkingTable(_rawData.thinking); break;
         case 'agent':   _renderAgentTable(_rawData.agent); break;
         case 'team':    _renderTeamTable(_rawData.team); break;
         case 'branch':  _renderBranchTable(_rawData.branch); break;
@@ -401,6 +403,20 @@ export async function _refreshCostDashboard() {
                 cost_usd: a.cost_usd || 0,
             })));
 
+            // By thinking level (#4969): the levels the transcripts recorded, and the rest of each provider's usage as "Not reported".
+            _renderThinkingTable((data.by_thinking || []).map(a => ({
+                agent_type: a.agent_type || 'unknown',
+                level: _thinkingLevelName(a.thinking),
+                level_key: a.thinking || '',
+                input_tokens: a.input_tokens || 0,
+                output_tokens: a.output_tokens || 0,
+                cache_read_tokens: a.cache_read_tokens || 0,
+                cache_write_tokens: a.cache_write_tokens || 0,
+                thinking_tokens: a.thinking ? (a.thinking_tokens || 0) : null,
+                cost_usd: a.cost_usd || 0,
+                cost_pct: 0,
+            })));
+
             // Render per-agent (session) breakdown
             _renderAgentTable((data.by_agent || []).map(a => ({
                 session_id: a.session_id,
@@ -503,6 +519,51 @@ function _renderModelTable(rows) {
         </tr>`;
     }
 
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+const _THINKING_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+function _thinkingLevelName(level) { return level ? (_THINKING_NAMES[level] || level) : 'Not reported'; }
+
+/** Usage by thinking level (#4969). "Not reported" is the usage whose turn recorded no level (a CLI that writes none, or from before it was tracked):
+ *  never the level an agent was launched with. "Thinking" is the tokens the CLI reported for thinking, shown apart: it is not added to any total. */
+function _renderThinkingTable(rows) {
+    const total = rows.reduce((n, r) => n + (r.cost_usd || 0), 0);
+    rows.forEach(r => { r.cost_pct = total > 0 ? (r.cost_usd || 0) / total : 0; });
+    _rawData.thinking = rows;
+    const container = document.getElementById('cost-by-thinking');
+    if (!container) return;
+    const sorted = _sortRows(rows, 'thinking', (r, f) => {
+        if (f === 'level') return r.level_key ? r.level : 'zzzz Not reported'; // after the named levels when ascending (localeCompare puts '~' first)
+        if (f === 'agent_type') return r.agent_type || '';
+        return r[f] || 0;
+    });
+    if (sorted.length === 0) {
+        container.innerHTML = '<div class="cost-empty">No usage data yet</div>';
+        return;
+    }
+    let html = `<table class="cost-table">
+        <thead><tr>
+            ${_sortHeader('thinking', 'agent_type', 'Provider', '', true)}
+            ${_sortHeader('thinking', 'level', 'Thinking level', '', true)}
+            ${_sortHeader('thinking', 'input_tokens', 'Input', 'cost-col-right')}
+            ${_sortHeader('thinking', 'output_tokens', 'Output', 'cost-col-right')}
+            ${_sortHeader('thinking', 'thinking_tokens', 'Thinking', 'cost-col-right')}
+            ${_sortHeader('thinking', 'cost_usd', 'Cost', 'cost-col-right')}
+            ${_sortHeader('thinking', 'cost_pct', 'Share', 'cost-col-right')}
+        </tr></thead><tbody>`;
+    for (const r of sorted) {
+        html += `<tr${r.level_key ? '' : ' class="cost-row-unreported"'}>
+            <td>${escapeHtml(r.agent_type)}</td>
+            <td>${escapeHtml(r.level)}</td>
+            <td class="cost-col-right">${formatTokens(r.input_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.output_tokens || 0)}</td>
+            <td class="cost-col-right">${r.thinking_tokens === null ? '–' : formatTokens(r.thinking_tokens)}</td>
+            <td class="cost-col-right cost-cost-cell">${_formatCost(r.cost_usd)}</td>
+            <td class="cost-col-right">${Math.round((r.cost_pct || 0) * 100)}%</td>
+        </tr>`;
+    }
     html += '</tbody></table>';
     container.innerHTML = html;
 }

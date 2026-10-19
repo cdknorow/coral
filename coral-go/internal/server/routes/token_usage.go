@@ -117,6 +117,13 @@ func (h *TokenUsageHandler) UsageSummary(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	tracked, err := h.ts.GetUsageByThinking(r.Context(), since)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	byThinking := withNotReported(tracked, summaries)
+
 	// Compute grand totals
 	var totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalTokens int64
 	var totalCost float64
@@ -135,6 +142,7 @@ func (h *TokenUsageHandler) UsageSummary(w http.ResponseWriter, r *http.Request)
 		"by_agent_type": summaries,
 		"by_agent":      byAgent,
 		"by_model":      byModel,
+		"by_thinking":   byThinking,
 		"totals": map[string]any{
 			"input_tokens":       totalInput,
 			"output_tokens":      totalOutput,
@@ -288,4 +296,53 @@ func (h *TokenUsageHandler) UsageSummaryByBoard(w http.ResponseWriter, r *http.R
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"teams": teams})
+}
+
+// withNotReported is the usage by thinking level: the levels the transcripts recorded (tracked) and, for each agent type, a "" row for
+// the rest of its usage: calls whose turn recorded no level, and everything from before the levels were tracked (#4969). It is the
+// type's total less what is tracked, never filled with the level an agent was launched with. The breakdown is kept by hour, so a
+// range that starts inside an hour can track a little more than the total counts: the rest is then none, never negative.
+func withNotReported(tracked []store.ThinkingUsageSummary, totals []store.UsageSummary) []store.ThinkingUsageSummary {
+	out := append([]store.ThinkingUsageSummary{}, tracked...)
+	sum := map[string]*store.ThinkingUsageSummary{}
+	for i := range tracked {
+		t := &tracked[i]
+		s := sum[t.AgentType]
+		if s == nil {
+			s = &store.ThinkingUsageSummary{AgentType: t.AgentType}
+			sum[t.AgentType] = s
+		}
+		s.InputTokens += t.InputTokens
+		s.OutputTokens += t.OutputTokens
+		s.CacheReadTokens += t.CacheReadTokens
+		s.CacheWriteTokens += t.CacheWriteTokens
+		s.TotalTokens += t.TotalTokens
+		s.CostUSD += t.CostUSD
+		s.NumCalls += t.NumCalls
+	}
+	for _, tot := range totals {
+		rest := store.ThinkingUsageSummary{AgentType: tot.AgentType, Thinking: ""}
+		have := sum[tot.AgentType]
+		if have == nil {
+			have = &store.ThinkingUsageSummary{}
+		}
+		clamp := func(a, b int64) int64 {
+			if a < b {
+				return 0
+			}
+			return a - b
+		}
+		rest.InputTokens = clamp(tot.InputTokens, have.InputTokens)
+		rest.OutputTokens = clamp(tot.OutputTokens, have.OutputTokens)
+		rest.CacheReadTokens = clamp(tot.CacheReadTokens, have.CacheReadTokens)
+		rest.CacheWriteTokens = clamp(tot.CacheWriteTokens, have.CacheWriteTokens)
+		rest.TotalTokens = clamp(tot.TotalTokens, have.TotalTokens)
+		if tot.CostUSD > have.CostUSD {
+			rest.CostUSD = tot.CostUSD - have.CostUSD
+		}
+		if rest.TotalTokens > 0 || rest.CostUSD > 0 {
+			out = append(out, rest)
+		}
+	}
+	return out
 }

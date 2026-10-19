@@ -81,6 +81,9 @@ func codexLineModelEffort(line []byte) (model, effort string) {
 	return cleanModelID(rec.Payload.Model), cleanEffort(rec.Payload.Effort)
 }
 
+// CleanEffort is cleanEffort for callers outside the package: a thinking level a transcript recorded, or "" when it does not look like one.
+func CleanEffort(e string) string { return cleanEffort(e) }
+
 var effortR = regexp.MustCompile(`^[a-z]{2,8}$`)
 
 // cleanEffort keeps a thinking level that looks like one ("low", "xhigh", "max"), else "".

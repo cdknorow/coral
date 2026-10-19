@@ -346,3 +346,66 @@ func TestPollCodexSession_RecordsModelIncludingMidSessionSwitch(t *testing.T) {
 	assert.InDelta(t, 0.76, rows[0].CostUSD, 1e-9)
 	assert.InDelta(t, 0.20, rows[1].CostUSD, 1e-9)
 }
+
+// #4969: the poller keeps the breakdown by thinking level as it records calls: Claude's effort and thinking tokens per assistant
+// entry, Codex's turn level and the difference of the cumulative reasoning tokens.
+func TestPollRecordsTheThinkingBreakdown(t *testing.T) {
+	t.Run("claude", func(t *testing.T) {
+		db := setupTestDB(t)
+		const sid = "00000000-0000-0000-0000-000000000969"
+		ss, ls := registerForPoll(t, db, sid, "claude")
+		us := store.NewTokenUsageStore(db)
+		path := writeTestJSONL(t, strings.Join([]string{
+			`{"type":"assistant","effort":"high","message":{"model":"claude-opus-5-5","usage":{"input_tokens":100,"output_tokens":50,"output_tokens_details":{"thinking_tokens":30}}},"timestamp":"2026-10-19T10:00:01Z"}`,
+			`{"type":"assistant","effort":"high","message":{"model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5,"output_tokens_details":{"thinking_tokens":2}}},"timestamp":"2026-10-19T10:05:01Z"}`,
+			`{"type":"assistant","effort":"low","message":{"model":"claude-opus-5-5","usage":{"input_tokens":7,"output_tokens":3}},"timestamp":"2026-10-19T11:00:01Z"}`,
+			`{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":1000,"output_tokens":9}},"timestamp":"2026-10-19T11:30:01Z"}`, // no level recorded
+		}, "\n")+"\n")
+		poller := NewTokenPoller(ss, us, time.Hour)
+		poller.sessionPaths[sid] = path
+		poller.pollClaudeSession(context.Background(), ls)
+		poller.pollClaudeSession(context.Background(), ls) // a second poll reads nothing new
+
+		rows, err := us.GetUsageByThinking(context.Background(), "")
+		require.NoError(t, err)
+		got := map[string]store.ThinkingUsageSummary{}
+		for _, r := range rows {
+			got[r.Thinking] = r
+		}
+		require.Len(t, got, 2, "%+v", rows)
+		assert.EqualValues(t, 110, got["high"].InputTokens)
+		assert.EqualValues(t, 32, got["high"].ThinkingTokens)
+		assert.EqualValues(t, 2, got["high"].NumCalls)
+		assert.EqualValues(t, 7, got["low"].InputTokens)
+		assert.NotContains(t, got, "", "the call with no level is not tracked: the Cost view shows it as Not reported")
+	})
+	t.Run("codex", func(t *testing.T) {
+		db := setupTestDB(t)
+		const sid = "00000000-0000-0000-0000-000000000970"
+		ss, ls := registerForPoll(t, db, sid, "codex")
+		us := store.NewTokenUsageStore(db)
+		count := func(ts string, in, out, reasoning int) string {
+			return fmt.Sprintf(`{"type":"event_msg","timestamp":%q,"payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":%d,"output_tokens":%d,"reasoning_output_tokens":%d,"total_tokens":%d}}}}`, ts, in, out, reasoning, in+out)
+		}
+		path := writeTestJSONL(t, strings.Join([]string{
+			`{"type":"turn_context","timestamp":"2026-10-19T10:00:00Z","payload":{"model":"gpt-6-sol","effort":"low"}}`,
+			count("2026-10-19T10:00:01Z", 100, 20, 8),
+			`{"type":"turn_context","timestamp":"2026-10-19T10:01:00Z","payload":{"model":"gpt-6-sol","effort":"xhigh"}}`,
+			count("2026-10-19T10:01:01Z", 300, 70, 38), // cumulative: +200 input, +50 output, +30 reasoning
+		}, "\n")+"\n")
+		poller := NewTokenPoller(ss, us, time.Hour)
+		poller.sessionPaths[sid] = path
+		poller.pollCodexSession(context.Background(), ls)
+		rows, err := us.GetUsageByThinking(context.Background(), "")
+		require.NoError(t, err)
+		got := map[string]store.ThinkingUsageSummary{}
+		for _, r := range rows {
+			got[r.Thinking] = r
+		}
+		require.Len(t, got, 2, "%+v", rows)
+		assert.EqualValues(t, 100, got["low"].InputTokens)
+		assert.EqualValues(t, 8, got["low"].ThinkingTokens)
+		assert.EqualValues(t, 200, got["xhigh"].InputTokens, "the delta of the cumulative count")
+		assert.EqualValues(t, 30, got["xhigh"].ThinkingTokens, "the difference of the cumulative reasoning tokens")
+	})
+}

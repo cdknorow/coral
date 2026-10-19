@@ -591,3 +591,54 @@ func TestUsageSummary_ByModel(t *testing.T) {
 	r2.ServeHTTP(empty, httptest.NewRequest(http.MethodGet, "/api/token-usage/summary", nil))
 	assert.Contains(t, empty.Body.String(), `"by_model":[]`)
 }
+
+// #4969: the summary has by_thinking: the levels the transcripts recorded, and for each agent type a "" row (shown as "Not reported")
+// for the rest of its usage. It is never filled with the level an agent was launched with.
+func TestUsageSummary_ByThinkingHasANotReportedRemainder(t *testing.T) {
+	ts, _, router := setupTokenUsageTest(t)
+	ctx := t.Context()
+	rec := func(sid, typ, level, at string, in, out, think int, cost float64) {
+		require.NoError(t, ts.RecordUsage(ctx, &store.TokenUsage{SessionID: sid, AgentName: sid, AgentType: typ, Thinking: level, ThinkingTokens: think, Source: "jsonl",
+			RecordedAt: at, InputTokens: in, OutputTokens: out, TotalTokens: in + out, CostUSD: cost}))
+	}
+	rec("s1", "claude", "high", "2026-10-19T10:00:00Z", 1000, 100, 40, 1.0)
+	rec("s1", "claude", "low", "2026-10-19T10:10:00Z", 500, 50, 0, 0.5)
+	rec("s1", "claude", "", "2026-10-19T10:20:00Z", 200, 20, 0, 0.25) // no level recorded
+	rec("s2", "agy", "", "2026-10-19T10:30:00Z", 300, 30, 0, 0.1)     // a type that records none
+
+	req := httptest.NewRequest(http.MethodGet, "/api/token-usage/summary", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		ByThinking []store.ThinkingUsageSummary `json:"by_thinking"`
+		Totals     map[string]any               `json:"totals"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	got := map[string]store.ThinkingUsageSummary{}
+	var tokens int64
+	var cost float64
+	for _, r := range body.ByThinking {
+		got[r.AgentType+"|"+r.Thinking] = r
+		tokens += r.TotalTokens
+		cost += r.CostUSD
+	}
+	require.Len(t, got, 4, "%+v", body.ByThinking)
+	assert.EqualValues(t, 1000, got["claude|high"].InputTokens)
+	assert.EqualValues(t, 40, got["claude|high"].ThinkingTokens)
+	assert.EqualValues(t, 500, got["claude|low"].InputTokens)
+	assert.EqualValues(t, 200, got["claude|"].InputTokens, "the claude call with no level is Not reported")
+	assert.InDelta(t, 0.25, got["claude|"].CostUSD, 1e-9)
+	assert.EqualValues(t, 300, got["agy|"].InputTokens, "a type with no level at all is all Not reported")
+	assert.Equal(t, body.Totals["total_tokens"], float64(tokens), "the breakdown adds up to the totals")
+	assert.InDelta(t, body.Totals["cost_usd"], cost, 1e-9)
+}
+
+func TestWithNotReportedNeverGoesNegative(t *testing.T) {
+	// A range that starts inside an hour tracks a little more (the breakdown is by hour) than the totals count.
+	tracked := []store.ThinkingUsageSummary{{AgentType: "claude", Thinking: "high", InputTokens: 100, TotalTokens: 110, CostUSD: 1}}
+	totals := []store.UsageSummary{{AgentType: "claude", InputTokens: 90, TotalTokens: 99, CostUSD: 0.9}}
+	out := withNotReported(tracked, totals)
+	require.Len(t, out, 1, "nothing left over: no Not reported row")
+	assert.Equal(t, "high", out[0].Thinking)
+}

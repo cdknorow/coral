@@ -160,7 +160,7 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 		if deltaInput == 0 && deltaOutput == 0 {
 			prev = cumulativeTokens{
 				Input: call.InputTokens, Output: call.OutputTokens,
-				Cached: call.CachedInput, Total: call.TotalTokens,
+				Cached: call.CachedInput, Total: call.TotalTokens, Reasoning: call.Reasoning,
 			}
 			continue
 		}
@@ -189,6 +189,8 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 			RecordedAt:      call.Timestamp,
 			Source:          "jsonl",
 			Model:           call.Model,
+			Thinking:        call.Effort,
+			ThinkingTokens:  call.Reasoning - prev.Reasoning,
 		}
 
 		if err := p.usageStore.RecordUsage(ctx, record); err != nil {
@@ -207,7 +209,7 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 		// Update cumulative tracking
 		prev = cumulativeTokens{
 			Input: call.InputTokens, Output: call.OutputTokens,
-			Cached: call.CachedInput, Total: call.TotalTokens,
+			Cached: call.CachedInput, Total: call.TotalTokens, Reasoning: call.Reasoning,
 		}
 	}
 
@@ -218,10 +220,11 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 // codexUsageData holds token usage extracted from a Codex rollout file.
 // cumulativeTokens tracks the running cumulative totals for delta computation.
 type cumulativeTokens struct {
-	Input  int
-	Output int
-	Cached int
-	Total  int
+	Input     int
+	Output    int
+	Cached    int
+	Total     int
+	Reasoning int
 }
 
 // codexCallData represents a single API call's token delta.
@@ -232,6 +235,8 @@ type codexCallData struct {
 	TotalTokens  int
 	Timestamp    string
 	Model        string
+	Effort       string // the reasoning level of the turn this call belongs to ("" when it recorded none)
+	Reasoning    int    // the cumulative reasoning_output_tokens
 }
 
 // codexUsageData holds all per-call deltas extracted from a rollout file.
@@ -280,6 +285,8 @@ type claudeCallData struct {
 	CacheWriteTokens int
 	Model            string
 	Timestamp        string
+	Effort           string // the thinking level the turn ran at, from the transcript ("" when it recorded none)
+	ThinkingTokens   int    // the thinking tokens the CLI reported for the call
 }
 
 // claudeUsageData holds all per-turn usage records extracted from a Claude JSONL file.
@@ -382,6 +389,8 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 			RecordedAt:       call.Timestamp,
 			Source:           "jsonl",
 			Model:            call.Model,
+			Thinking:         call.Effort,
+			ThinkingTokens:   call.ThinkingTokens,
 		}
 
 		if err := p.usageStore.RecordUsage(ctx, record); err != nil {
