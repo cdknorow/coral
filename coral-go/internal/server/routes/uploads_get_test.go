@@ -70,14 +70,16 @@ func TestGetUploadServesAnImageByItsBytes(t *testing.T) {
 
 // Content-Disposition carries a plain name: a name with quotes, spaces or non-ASCII is not copied into the header as it is.
 func TestGetUploadDispositionNameIsPlain(t *testing.T) {
+	// A name with a quote, a space, a semicolon and a non-ASCII letter: the quote cannot exist in a Windows file name, so there the name has the rest.
+	name, want := `a"b c;d é.png`, `inline; filename=a_b_c_d___.png`
 	if runtime.GOOS == "windows" {
-		t.Skip("a file name with a double quote cannot exist on Windows (the test makes one on disk)")
+		name, want = `a b;c é.png`, `inline; filename=a_b_c___.png`
 	}
 	h, dir := getUploadRouter(t)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, `a"b c;d é.png`), testPNG, 0o600))
-	rec := getUpload(h, url.PathEscape(`a"b c;d é.png`))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), testPNG, 0o600))
+	rec := getUpload(h, url.PathEscape(name))
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, `inline; filename=a_b_c_d___.png`, rec.Header().Get("Content-Disposition"))
+	assert.Equal(t, want, rec.Header().Get("Content-Disposition"))
 }
 
 // Only an image, by its bytes: SVG (a stored-XSS risk), HTML, text, a bare name with an image extension but other content, BMP and TIFF are refused.
