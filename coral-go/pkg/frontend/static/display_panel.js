@@ -17,11 +17,14 @@ export function syncDisplaySummary() {
     for (const el of document.querySelectorAll('[data-agent-list-summary]')) el.hidden = open || !el.dataset.text;
 }
 
-/** Applies the stored state to every copy of the expander (called after the phone's header is built and after every list render). */
+/** Applies the stored state to every copy of the expander (called after the phone's header is built and after every list render). Each copy is
+ *  looked for inside its own header (the sidebar's and the phone's), never over the whole page: this runs on every list render (#4985's budget). */
 export function syncDisplayPanels() {
     const open = isDisplayPanelOpen();
-    for (const b of document.querySelectorAll('[data-display-button]')) b.setAttribute('aria-expanded', String(open));
-    for (const p of document.querySelectorAll('[data-display-panel]')) p.hidden = !open;
+    for (const header of [...document.getElementsByClassName('sidebar-header'), ...document.getElementsByClassName('mobile-list-header')]) {
+        for (const b of header.querySelectorAll('[data-display-button]')) b.setAttribute('aria-expanded', String(open));
+        for (const p of header.querySelectorAll('[data-display-panel]')) p.hidden = !open;
+    }
     syncDisplaySummary();
 }
 
