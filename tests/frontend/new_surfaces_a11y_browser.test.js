@@ -68,38 +68,44 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
             await open(w, h, mobile);
             await stubs();
 
-            console.log(`${L}: 1. the model chip and its menu`);
+            console.log(`${L}: 1. the model chip, the thinking chip and their menus`);
             await feed({ agent_type: 'claude', model: OPUS.value, thinking_actual: 'high', thinking: 'high' });
             await select('a11y-a');
-            await waitFor(`!document.getElementById('model-chip-bar').hidden && document.getElementById('model-chip-text').textContent.includes('Opus')`, 'the chip', 8000);
+            await waitFor(`!document.getElementById('model-chip-bar').hidden && document.getElementById('model-chip-text').textContent.includes('Opus') && document.getElementById('thinking-chip-text').textContent === 'High'`, 'the chips', 8000);
             if (!mobile) { // (the phone has no chip bar: the sidebar's menu is not drawn at that width)
-                let c = await ax('#model-chip');
-                assert.equal(c.role, 'button'); assert.ok(c.name.includes('Opus 5.5'), `the chip's name holds what it shows (label in name): "${c.name}"`);
-                assert.equal(c.props.hasPopup, 'menu'); assert.equal(c.props.expanded, false);
                 const noteEmpty = await ax('#model-chip-note');
                 assert.ok(!noteEmpty.ignored, 'the live region is in the accessibility tree while empty, so a note that appears is announced');
                 assert.equal(await ev(`getComputedStyle(document.getElementById('model-chip-note')).display`) !== 'none', true);
-                await focus('#model-chip'); await key('Enter');
-                await waitFor(`!document.getElementById('model-chip-menu').hidden && document.querySelectorAll('#model-chip-menu .model-chip-item').length > 4`, 'the menu opens from the keyboard', 5000);
-                assert.equal((await ax('#model-chip')).props.expanded, true);
-                const menu = await ax('#model-chip-menu'); assert.equal(menu.role, 'menu'); assert.ok(menu.name);
-                const first = await ax('#model-chip-menu .model-chip-item');
-                assert.equal(first.role, 'menuitemradio'); assert.ok('checked' in first.props, 'a radio item says whether it is checked');
-                assert.equal(await ev(`document.activeElement.classList.contains('model-chip-item')`), true, 'focus is in the menu once it is open');
-                const names = () => ev(`document.activeElement.textContent.replace('check', '').trim()`);
-                const n0 = await names(); await key('ArrowDown'); const n1 = await names(); assert.notEqual(n0, n1, 'ArrowDown moves');
-                await key('End'); const last = await ev(`[...document.querySelectorAll('#model-chip-menu .model-chip-item')].at(-1) === document.activeElement`);
-                assert.ok(last, 'End goes to the last item'); await key('Home');
-                assert.equal(await ev(`document.querySelector('#model-chip-menu .model-chip-item') === document.activeElement`), true, 'Home goes to the first');
-                await key('Escape');
-                assert.equal(await ev(`document.getElementById('model-chip-menu').hidden`), true); assert.equal(await active(), 'model-chip', 'Escape gives focus back to the chip');
-                await key('Enter'); await waitFor(`!document.getElementById('model-chip-menu').hidden`, 'reopened', 4000);
-                await key('Tab');
-                assert.equal(await ev(`document.getElementById('model-chip-menu').hidden`), true, 'Tab closes the menu');
-                await focus('#model-chip'); await key('Enter'); await waitFor(`!document.getElementById('model-chip-menu').hidden && !!document.querySelector('#model-chip-menu [data-level="low"]')`, 'reopened again', 4000);
-                await ev(`document.querySelector('#model-chip-menu [data-level="low"]').focus(); true`); await key('Enter');
-                await waitFor(`window.__posts.length === 1`, 'the choice is sent', 4000);
-                assert.equal(await active(), 'model-chip', 'after a choice focus is on the chip, not lost with the menu');
+                for (const [kind, nameHas, itemsMin, choose] of [['model', ['Model', 'Opus 5.5'], 1, null], ['thinking', ['Thinking level', 'High'], 4, 'low']]) {
+                    const chip = `#${kind}-chip`, menuSel = `#${kind}-chip-menu`, id = `${kind}-chip`;
+                    let c = await ax(chip);
+                    assert.equal(c.role, 'button');
+                    for (const part of nameHas) assert.ok(c.name.includes(part), `the ${kind} chip's name holds what it shows (label in name): "${c.name}"`);
+                    assert.equal(c.props.hasPopup, 'menu'); assert.equal(c.props.expanded, false);
+                    await focus(chip); await key('Enter');
+                    await waitFor(`!document.querySelector(${JSON.stringify(menuSel)}).hidden && document.querySelectorAll(${JSON.stringify(menuSel + ' .model-chip-item')}).length > ${itemsMin}`, `the ${kind} menu opens from the keyboard`, 5000);
+                    assert.equal((await ax(chip)).props.expanded, true);
+                    const menu = await ax(menuSel); assert.equal(menu.role, 'menu'); assert.ok(menu.name);
+                    const first = await ax(menuSel + ' .model-chip-item');
+                    assert.equal(first.role, 'menuitemradio'); assert.ok('checked' in first.props, 'a radio item says whether it is checked');
+                    assert.equal(await ev(`document.activeElement.classList.contains('model-chip-item')`), true, 'focus is in the menu once it is open');
+                    const names = () => ev(`document.activeElement.textContent.replace('check', '').trim()`);
+                    const n0 = await names(); await key('ArrowDown'); const n1 = await names(); assert.notEqual(n0, n1, 'ArrowDown moves');
+                    await key('End'); const last = await ev(`[...document.querySelectorAll(${JSON.stringify(menuSel + ' .model-chip-item')})].at(-1) === document.activeElement`);
+                    assert.ok(last, 'End goes to the last item'); await key('Home');
+                    assert.equal(await ev(`document.querySelector(${JSON.stringify(menuSel + ' .model-chip-item')}) === document.activeElement`), true, 'Home goes to the first');
+                    await key('Escape');
+                    assert.equal(await ev(`document.querySelector(${JSON.stringify(menuSel)}).hidden`), true); assert.equal(await active(), id, 'Escape gives focus back to its own chip');
+                    await key('Enter'); await waitFor(`!document.querySelector(${JSON.stringify(menuSel)}).hidden`, 'reopened', 4000);
+                    await key('Tab');
+                    assert.equal(await ev(`document.querySelector(${JSON.stringify(menuSel)}).hidden`), true, 'Tab closes the menu');
+                    if (choose) {
+                        await focus(chip); await key('Enter'); await waitFor(`!document.querySelector(${JSON.stringify(menuSel)}).hidden && !!document.querySelector(${JSON.stringify(menuSel + ' [data-level="low"]')})`, 'reopened again', 4000);
+                        await ev(`document.querySelector(${JSON.stringify(menuSel + ' [data-level="low"]')}).focus(); true`); await key('Enter');
+                        await waitFor(`window.__posts.length === 1`, 'the choice is sent', 4000);
+                        assert.equal(await active(), id, 'after a choice focus is on its own chip, not lost with the menu');
+                    }
+                }
                 await feed({ agent_type: 'claude', model: OPUS.value, thinking: 'high', model_switch: { state: 'pending', thinking: 'low', after_reply: true } });
                 await waitFor(`document.getElementById('model-chip-note').textContent.length > 0`, 'the note', 4000);
                 assert.match(await ev(`document.getElementById('model-chip-note').textContent`), /after this reply/i);
@@ -199,15 +205,17 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
             await setTheme(ev, theme);
             for (const [state, extra] of [['pending', { model_switch: { state: 'pending', thinking: 'low', after_reply: true } }], ['failed', { model_switch: { state: 'failed', message: 'The CLI refused the change.' } }], ['requested', { model_switch: null, thinking: 'low', thinking_actual: null }]]) {
                 await feed({ agent_type: 'claude', model: OPUS.value, ...extra });
-                await waitFor(`document.getElementById('model-chip').dataset.state === ${JSON.stringify(state)}`, 'the chip state ' + state, 4000);
-                const r = await auditRegion(ev, ['#model-chip-bar', '.sidebar-header'], { focus: ['#model-chip'] });
+                await waitFor(`document.getElementById('thinking-chip').dataset.state === ${JSON.stringify(state)}`, 'the chip state ' + state, 4000);
+                const r = await auditRegion(ev, ['#model-chip-bar', '.sidebar-header'], { focus: ['#model-chip', '#thinking-chip'] });
                 assert.deepEqual(r.fails, [], `${theme}, ${state}: the chip bar and the list header reach contrast: ` + JSON.stringify(r.fails));
             }
-            await ev(`document.getElementById('model-chip').click(); true`);
-            await waitFor(`!document.getElementById('model-chip-menu').hidden && document.querySelectorAll('#model-chip-menu .model-chip-item').length > 2`, 'the menu', 4000);
-            const m = await auditRegion(ev, ['#model-chip-menu'], { focus: ['#model-chip-menu .model-chip-item'] });
-            assert.deepEqual(m.fails, [], `${theme}: the chip's menu reaches contrast: ` + JSON.stringify(m.fails));
-            await ev(`document.getElementById('model-chip').click(); true`);
+            for (const kind of ['model', 'thinking']) {
+                await ev(`document.getElementById('${kind}-chip').click(); true`);
+                await waitFor(`!document.getElementById('${kind}-chip-menu').hidden && document.querySelectorAll('#${kind}-chip-menu .model-chip-item').length > 1`, 'the ' + kind + ' menu', 4000);
+                const m = await auditRegion(ev, [`#${kind}-chip-menu`], { focus: [`#${kind}-chip-menu .model-chip-item`] });
+                assert.deepEqual(m.fails, [], `${theme}: the ${kind} chip's menu reaches contrast: ` + JSON.stringify(m.fails));
+                await ev(`document.getElementById('${kind}-chip').click(); true`);
+            }
         }
         // the Display panel open (its fields) and shut with a filter on (the summary line), the sectioned dialog's list, and a chip's thumbnail
         await ev(`window.switchNavTab('agents'); true`);

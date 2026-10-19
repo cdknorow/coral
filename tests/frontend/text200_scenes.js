@@ -130,9 +130,11 @@ const { removeBoards } = require('./helpers/board_cleanup');
             const openAgent = async () => { await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await settle(900); };
             await probe('chip', async () => { await openAgent(); await feed({ agent_type: 'claude', model: 'claude-opus-4-1-20250805', thinking_actual: 'high', thinking: 'low' }); await waitFor(`!document.getElementById('model-chip-bar').hidden && document.getElementById('model-chip-text').textContent.length > 3`, 'the chip', 8000); await settle(500); }, '#command-pane');
             await probe('chip with its note (Switches after this reply)', async () => { await openAgent(); await feed({ agent_type: 'claude', model: 'claude-opus-4-1-20250805', thinking_actual: 'high', model_switch: { state: 'pending', thinking: 'max', after_reply: true } }); await waitFor(`!document.getElementById('model-chip-note').textContent.includes('after this reply') === false`, 'the note', 8000); await settle(500); }, '#command-pane');
-            await probe('chip menu open', async () => { await openAgent(); await feed({ agent_type: 'claude', model: 'claude-opus-4-1-20250805', thinking_actual: 'high', model_switch: null }); await settle(400);
-                await ev(`document.getElementById('model-chip').click(); true`); await waitFor(`!document.getElementById('model-chip-menu').hidden && document.querySelectorAll('#model-chip-menu .model-chip-item').length > 2`, 'the chip menu', 8000); await settle(900); }, '#command-pane');
-            await ev(`(document.getElementById('model-chip-menu') || {}).hidden === false && document.getElementById('model-chip').click(); true`);
+            for (const kind of ['model', 'thinking']) { // the model chip's menu (models) and the thinking chip's (levels)
+                await probe(`${kind} chip menu open`, async () => { await openAgent(); await feed({ agent_type: 'claude', model: 'claude-opus-4-1-20250805', thinking_actual: 'high', model_switch: null }); await settle(400);
+                    await ev(`document.getElementById('${kind}-chip').click(); true`); await waitFor(`!document.getElementById('${kind}-chip-menu').hidden && document.querySelectorAll('#${kind}-chip-menu .model-chip-item').length > ${kind === 'model' ? 0 : 2}`, 'the ${kind} chip menu', 8000); await settle(900); }, '#command-pane');
+                await ev(`(document.getElementById('${kind}-chip-menu') || {}).hidden === false && document.getElementById('${kind}-chip').click(); true`);
+            }
             await probe('Cost tables', async () => {
                 await ev(`(() => { window.__realFetch = window.fetch; const json = b => Promise.resolve(new Response(JSON.stringify(b), { headers: { 'content-type': 'application/json' } }));
                     window.fetch = (u, o) => { const url = String(u && u.url || u);

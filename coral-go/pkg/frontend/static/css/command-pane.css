@@ -501,7 +501,9 @@
 /* The model and thinking-level chip by the composer (#4969, model_chip.js). */
 /* The chip is the first item of the buttons' row, left of Stop and Send and centred with them (#5116): not between the text and the buttons, where it
    read as part of the typing area. Its note is a small line under that row. The menu opens upward from the chip's left edge. */
-.model-chip-bar { position: relative; display: flex; align-items: center; flex: 0 1 auto; min-width: 0; margin-left: 6px; }
+.model-chip-bar { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; flex: 0 1 auto; min-width: 0; margin-left: 6px; }
+.model-chip-wrap { position: relative; display: inline-flex; min-width: 0; max-width: 100%; }
+.model-chip-wrap[hidden] { display: none; }
 .model-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 28px; padding: 2px 8px 2px 10px; border: 1px solid var(--border); border-radius: 999px;
     background: var(--bg-tertiary); color: var(--text-secondary); font: inherit; font-size: 0.75rem; cursor: pointer; }
 .model-chip:hover { color: var(--text-primary); border-color: var(--text-muted); }

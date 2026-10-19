@@ -161,12 +161,20 @@
                             </div>
                             <!-- After the text box in the DOM so Tab reaches the box first, then the model chip, Stop, Send and Send options; CSS order keeps the toolbar where it was drawn -->
                             <div class="command-pane-toolbar" id="command-toolbar">
-                                <!-- The model and thinking level it runs, and a menu to change them (model_chip.js, #4969): the toolbar's first item, which renderQuickActions keeps when it rebuilds the buttons. Typing is never held up by it. -->
+                                <!-- The model it runs and the thinking level, each a chip with a menu to change it (model_chip.js, #4969, #5118): the toolbar's first item, which renderQuickActions keeps when it rebuilds the buttons. Typing is never held up by it. -->
                                 <div class="model-chip-bar" id="model-chip-bar" hidden>
-                                    <button type="button" class="model-chip" id="model-chip" aria-haspopup="menu" aria-expanded="false" aria-controls="model-chip-menu" aria-label="Model and thinking level">
-                                        <span id="model-chip-text" class="model-chip-text"></span><span class="material-icons model-chip-caret" aria-hidden="true">expand_more</span>
-                                    </button>
-                                    <div id="model-chip-menu" class="model-chip-menu" role="menu" aria-label="Model and thinking level" hidden></div>
+                                    <span class="model-chip-wrap" id="model-chip-wrap">
+                                        <button type="button" class="model-chip" id="model-chip" aria-haspopup="menu" aria-expanded="false" aria-controls="model-chip-menu" aria-label="Model">
+                                            <span id="model-chip-text" class="model-chip-text"></span><span class="material-icons model-chip-caret" aria-hidden="true">expand_more</span>
+                                        </button>
+                                        <div id="model-chip-menu" class="model-chip-menu" role="menu" aria-label="Model" hidden></div>
+                                    </span>
+                                    <span class="model-chip-wrap" id="thinking-chip-wrap" hidden>
+                                        <button type="button" class="model-chip" id="thinking-chip" aria-haspopup="menu" aria-expanded="false" aria-controls="thinking-chip-menu" aria-label="Thinking level">
+                                            <span id="thinking-chip-text" class="model-chip-text"></span><span class="material-icons model-chip-caret" aria-hidden="true">expand_more</span>
+                                        </button>
+                                        <div id="thinking-chip-menu" class="model-chip-menu" role="menu" aria-label="Thinking level" hidden></div>
+                                    </span>
                                 </div>
                                 <!-- All other buttons populated dynamically -->
                             </div>

@@ -9,13 +9,13 @@ Task-oriented notes on the dashboard controls added in v1.4.102 to v1.4.106: cho
 - **Default** passes nothing, so the CLI uses its own default.
 - **Restart** opens on the level the agent was started with and keeps it unless you change it. Choose **Default** to clear it.
 
-**While the agent runs.** The chip under the message box names what the agent runs now, for example `Claude · Opus 5.5 · High`. It is the model and level of the newest turn, read from the CLI's transcript. Before the agent's first reply it shows the level it was *started* with, in italics, as requested. There is no chip for a sleeping or archived agent or a terminal.
+**While the agent runs.** Two chips beside the Send button name what the agent runs now: the model chip, for example `Claude · Opus 5.5`, and the thinking chip, for example `High`. They show the model and level of the newest turn, read from the CLI's transcript. Before the agent's first reply the thinking chip shows the level it was *started* with, in italics, as requested. There are no chips for a sleeping or archived agent or a terminal, and a CLI that reports no thinking level has only the model chip.
 
-![The chip's menu: models and thinking levels, with a check on what runs](assets/model-chip-menu.png)
+![The thinking chip's menu, beside the model chip: the levels the model takes, with a check on what runs](assets/model-chip-menu.png)
 
-Click the chip to pick a model or a level. The menu lists the models the agent's CLI offers and the levels that model takes.
+Click the model chip to pick a model, or the thinking chip to pick a level. The model menu lists the models the agent's CLI offers; the thinking menu lists only the levels that model takes.
 
-- **Claude Code switches live.** Coral types the CLI's own `/model` and `/effort` into the agent's terminal once the agent is between turns. The chip says `Switching to …` until the transcript confirms it, and shows the CLI's message if it refused. You can keep typing the whole time.
+- **Claude Code switches live.** Coral types the CLI's own `/model` and `/effort` into the agent's terminal once the agent is between turns. The chip you used says `Switching to …` until the transcript confirms it, and shows the CLI's message if it refused. You can keep typing the whole time.
 - **Switches after this reply.** You changed it while the agent was in the middle of a turn. Coral waits for the reply to end and never types into the middle of one.
 - **Apply with restart.** Shown in the menu for a CLI with no live switch (Codex, Antigravity, Pi: only Claude is checked so far). Choosing an item opens the Restart dialog with your choice filled in; the dialog is the confirmation.
 
