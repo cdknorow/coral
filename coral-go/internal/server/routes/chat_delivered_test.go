@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func TestSessionsChat_FlagsTurnsCoralDelivered(t *testing.T) {
 	require.NoError(t, os.MkdirAll(projectDir, 0755))
 	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
 
-	sid := "00000000-0000-0000-0000-000000000430"
+	sid := uniqueSID(430)
 	notice := "[Task #4300 completed by QA Engineer] Outcome: success. A form no pattern knows: spoke of a thing."
 	line := func(v any) string { b, _ := json.Marshal(v); return string(b) + "\n" }
 	user := func(text string) string {
@@ -84,7 +85,7 @@ func TestSessionsChat_DeliveryFlagsOneTurnAndNeverAShortText(t *testing.T) {
 	require.NoError(t, os.MkdirAll(projectDir, 0755))
 	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
 
-	sid := "00000000-0000-0000-0000-000000000431"
+	sid := uniqueSID(431)
 	notice := "[Task #4300 completed by QA Engineer] Outcome: success. The same long text the operator may have typed."
 	now := time.Now().UTC()
 	line := func(at time.Time, text string) string {
@@ -133,4 +134,12 @@ func TestSessionsChat_DeliveryFlagsOneTurnAndNeverAShortText(t *testing.T) {
 	assert.Equal(t, want[1:4], got, "an older page is flagged the same way (the delivery's turn is found in the whole transcript)")
 	got, _ = get("after=3")
 	assert.Equal(t, want[3:], got, "and the poll for new turns")
+}
+
+var sidSeq atomic.Int64
+
+// uniqueSID is a session id no other run of any test in this process has used. The automated-input gate remembers what it typed into a session in
+// package state, so a test run again in the same process (go test -count=N) found the notice already delivered before it sent it (#5148).
+func uniqueSID(base int) string {
+	return fmt.Sprintf("00000000-0000-0000-%04d-%012d", sidSeq.Add(1), base)
 }

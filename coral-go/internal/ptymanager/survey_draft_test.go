@@ -35,7 +35,7 @@ func (d *draftSurveyTerm) SendRawInput(_ context.Context, _ string, keys []strin
 func TestSurveyWithADraftInTheInputBoxGetsNoZero(t *testing.T) {
 	surveyGate(t, time.Hour)
 	term := &draftSurveyTerm{screen: claudeScreen(neutralScrollback+surveyLines, "half a draft of a message", false)}
-	in := AutomatedInput{Term: term, Name: "claude-survey-draft", AgentType: "claude", SessionID: "sid"}
+	in := AutomatedInput{Term: term, Name: uniqueName("claude-survey-draft"), AgentType: "claude", SessionID: "sid"}
 	assert.False(t, gate.dismissSurvey(context.Background(), in), "the survey is not dismissed over a person's draft")
 	term.mu.Lock()
 	defer term.mu.Unlock()
@@ -76,7 +76,7 @@ func TestSurveyOverASuggestionIsDismissedButNotOverADraftOrAPaste(t *testing.T) 
 			styled := styledSurveyScreen(c.box)
 			term := &styledSurveyTerm{styled: styled}
 			term.screen = stripSGR(styled)
-			in := AutomatedInput{Term: term, Name: "claude-survey-ghost-" + strings.ReplaceAll(name, " ", "-"), AgentType: "claude", SessionID: "sid"}
+			in := AutomatedInput{Term: term, Name: uniqueName("claude-survey-ghost-" + strings.ReplaceAll(name, " ", "-")), AgentType: "claude", SessionID: "sid"}
 			gate.dismissSurvey(context.Background(), in)
 			term.mu.Lock()
 			defer term.mu.Unlock()

@@ -22,16 +22,17 @@ func TestHeldSendFailuresAreCoalesced(t *testing.T) {
 	heldSendFailures.SetClock(func() time.Time { return at })
 	t.Cleanup(func() { heldSendFailures.SetClock(time.Now) })
 
+	held, other := uniqueName("claude-held-4112"), uniqueName("claude-other-4112") // the limiter is package state: a second run must not find these said already
 	gone := errors.New("the agent's terminal is gone")
 	for i := 0; i < 100; i++ {
-		logHeldSendFailure("claude-held-4112", "board nudge", gone)
+		logHeldSendFailure(held, "board nudge", gone)
 	}
 	assert.Equal(t, 1, strings.Count(buf.String(), "a held send failed"), "one line for 100 identical failures")
-	logHeldSendFailure("claude-other-4112", "board nudge", gone)
-	logHeldSendFailure("claude-held-4112", "board nudge", errors.New("another error"))
+	logHeldSendFailure(other, "board nudge", gone)
+	logHeldSendFailure(held, "board nudge", errors.New("another error"))
 	assert.Equal(t, 3, strings.Count(buf.String(), "a held send failed"), "another session's and another error's are their own")
 
 	at = at.Add(5 * time.Minute)
-	logHeldSendFailure("claude-held-4112", "board nudge", gone)
+	logHeldSendFailure(held, "board nudge", gone)
 	assert.Contains(t, buf.String(), "more_like_it=99")
 }

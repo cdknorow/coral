@@ -74,7 +74,7 @@ func surveyGate(t *testing.T, retryGap time.Duration) {
 func TestSurveyIsDismissedWithZeroThenTheNudgeIsDelivered(t *testing.T) {
 	surveyGate(t, time.Hour)
 	term := newSurveyTerm(true, false)
-	name := "claude-survey-dismiss"
+	name := uniqueName("claude-survey-dismiss")
 	t.Cleanup(func() { DropHeld(name, "test") })
 	text := "2 unread messages on the message board."
 	in := dialogInput(term.dialogTerm, name, "k", text, false)
@@ -96,7 +96,7 @@ func TestSurveyQuotedInScrollbackGetsNoZero(t *testing.T) {
 	term := newSurveyTerm(false, false)
 	term.dialogTerm.set(func(d *dialogTerm) { d.dialog = false })
 	term.quoted = true
-	name := "claude-survey-quoted"
+	name := uniqueName("claude-survey-quoted")
 	t.Cleanup(func() { DropHeld(name, "test") })
 	in := dialogInput(term.dialogTerm, name, "k", "hello", false)
 	in.Term = term
@@ -118,7 +118,7 @@ func (s *surveyTerm) AgentScreen(ctx context.Context, name, agentType, sessionID
 func TestBugReportDialogIsNotDismissed(t *testing.T) {
 	surveyGate(t, time.Hour)
 	term := newSurveyTerm(false, false) // the bug-report box
-	name := "claude-survey-bugreport"
+	name := uniqueName("claude-survey-bugreport")
 	t.Cleanup(func() { DropHeld(name, "test") })
 	in := dialogInput(term.dialogTerm, name, "k", "2 to send? no: a board nudge", false)
 	in.Term = term
@@ -137,7 +137,7 @@ func TestBugReportDialogIsNotDismissed(t *testing.T) {
 func TestSurveyThatIgnoresTheZeroIsNotPressedAgainAndHoldsTheSend(t *testing.T) {
 	surveyGate(t, time.Hour)
 	term := newSurveyTerm(true, true)
-	name := "claude-survey-ignores"
+	name := uniqueName("claude-survey-ignores")
 	t.Cleanup(func() { DropHeld(name, "test") })
 	in := dialogInput(term.dialogTerm, name, "k", "3 new tasks", false)
 	in.Term = term
