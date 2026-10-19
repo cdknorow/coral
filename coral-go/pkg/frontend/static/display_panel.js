@@ -6,6 +6,7 @@
  *   [data-agent-list-summary]  the read-only line
  * The open or shut state is the person's, kept in this browser. */
 import { browserLocal } from './safe_storage.js';
+import { setHidden, setAttr } from './dom_write.js';
 
 /** Said when the panel opens: the list's filter bar, which is not drawn while the panel stays shut (agent_list_bar.js, #4995), draws itself then. */
 export const DISPLAY_PANEL_OPEN = 'coral:display-panel-open';
@@ -25,15 +26,15 @@ export function isDisplayPanelOpen() { return browserLocal.get(KEY) === '1'; }
 /** Shows the summary line only while the panel is shut and there is something to say. */
 export function syncDisplaySummary() {
     const open = isDisplayPanelOpen();
-    for (const el of inListHeaders('[data-agent-list-summary]')) el.hidden = open || !el.dataset.text;
+    for (const el of inListHeaders('[data-agent-list-summary]')) setHidden(el, open || !el.dataset.text);
 }
 
 /** Applies the stored state to every copy of the expander (called after the phone's header is built and after every list render). Each copy is
  *  looked for inside its own header (the sidebar's and the phone's), never over the whole page: this runs on every list render (#4985's budget). */
 export function syncDisplayPanels() {
     const open = isDisplayPanelOpen();
-    for (const b of inListHeaders('[data-display-button]')) b.setAttribute('aria-expanded', String(open));
-    for (const p of inListHeaders('[data-display-panel]')) p.hidden = !open;
+    for (const b of inListHeaders('[data-display-button]')) setAttr(b, 'aria-expanded', open);
+    for (const p of inListHeaders('[data-display-panel]')) setHidden(p, !open);
     syncDisplaySummary();
 }
 

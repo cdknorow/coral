@@ -22,6 +22,7 @@ import { syncUnreachableBanner } from './hub_access.js';
 import { applyMachineHealth } from './machine_health.js';
 import { syncAutoAcceptHeader, noteAutoAcceptPauses } from './auto_accept.js';
 import { pruneTerminalGone, syncTerminalGoneHeader } from './terminal_gone.js';
+import { setText } from './dom_write.js';
 
 // Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
 // a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
@@ -311,13 +312,14 @@ function _syncViewedSession(data) {
             state.currentSession.first_prompt = s.first_prompt || '';
             const headerName = resolveSessionIdentity(s);
             const nameEl = document.getElementById("session-name");
-            if (nameEl) nameEl.textContent = headerName;
+            setText(nameEl, headerName);
             const termLabel = document.getElementById("terminal-header-label");
-            if (termLabel) termLabel.textContent = formatTerminalLabel(headerName, s.session_id);
+            setText(termLabel, formatTerminalLabel(headerName, s.session_id));
             updateHeaderContext(s);
             const cmdInput = document.getElementById("command-input");
             if (cmdInput) {
-                cmdInput.placeholder = commandPlaceholder(headerName, s.agent_type, s.board_project);
+                const ph = commandPlaceholder(headerName, s.agent_type, s.board_project);
+                if (cmdInput.placeholder !== ph) cmdInput.placeholder = ph;
             }
             updateSessionStatus(s.status);
             updateSessionSummary(s.summary);

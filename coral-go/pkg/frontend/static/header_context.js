@@ -6,6 +6,7 @@
 
 import { keyLabel, noteBoardLabels, onBoardLabelsChanged, sessionServer, sessionTeamKey } from './server_base.js';
 import { serverLabel, showServerLabels } from './server_status.js';
+import { setText, setHidden, setTitle } from './dom_write.js';
 
 /** headerContext returns { team, server } for a session ("" where nothing is shown). */
  function headerContext(s) {
@@ -28,11 +29,11 @@ export function updateHeaderContext(s) {
     const { team, server } = headerContext(s);
     const teamEl = document.getElementById('terminal-header-team');
     const serverEl = document.getElementById('terminal-header-server');
-    if (teamEl) teamEl.textContent = team;
-    if (serverEl) serverEl.textContent = server;
-    box.hidden = !team && !server;
+    setText(teamEl, team);
+    setText(serverEl, server);
+    setHidden(box, !team && !server);
     // The full text when it is cut short, and for a screen reader.
-    box.title = [team && `Team: ${team}`, server && `Server: ${server}`].filter(Boolean).join(' · ');
+    setTitle(box, [team && `Team: ${team}`, server && `Server: ${server}`].filter(Boolean).join(' · '));
 }
 
 // A board's label can arrive after the header was filled (the board list loads later): show it then.

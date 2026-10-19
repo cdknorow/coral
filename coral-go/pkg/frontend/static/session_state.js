@@ -5,6 +5,7 @@ import { formatTokens, formatCost } from './format.js';
 import { getCachedAgentAvailability } from './team_availability.js';
 import { isGoneAsleep } from './terminal_gone.js';
 import { keyLabel, sessionTeamKey } from './server_base.js';
+import { setClassName, setTitle, setAttr } from './dom_write.js';
 
 /* ── Session identity ───────────────────────────────────────────────── */
 const GOAL_LINE_MAX = 140;
@@ -162,12 +163,11 @@ export function terminalDotClass(s) {
 export function applyTerminalDot(dot, s) {
     if (!dot) return;
     const info = sessionStateInfo(s || {});
-    dot.className = terminalDotClass(s);
-    dot.title = info.label;
-    dot.setAttribute('role', 'img');
-    dot.setAttribute('aria-label', info.label);
-    const word = document.getElementById('terminal-state-word');
-    if (word) word.setAttribute('data-word', info.label);
+    setClassName(dot, terminalDotClass(s));
+    setTitle(dot, info.label);
+    setAttr(dot, 'role', 'img');
+    setAttr(dot, 'aria-label', info.label);
+    setAttr(document.getElementById('terminal-state-word'), 'data-word', info.label);
 }
 
 export function getMobileStatusChip(s) {

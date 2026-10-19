@@ -10,6 +10,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isCloud, sessionServer } from './server_base.js';
 import { sessionUnreachable, unreachableReason, backoffReset } from './remote_health.js';
+import { setText, setHidden } from './dom_write.js';
 // utils.js is loaded on demand: these message builders stay importable from
 // pure-node tests (utils touches localStorage when it loads).
 const toast = (...args) => importOnce('./utils.js').then(u => u.showToast(...args));
@@ -234,6 +235,6 @@ export function syncUnreachableBanner() {
     _bannerFor = key; _bannerDown = down;
     const el = document.getElementById('server-unreachable-banner');
     if (!el) return;
-    el.hidden = !down;
-    el.textContent = down ? unreachableReason(s) : '';
+    setHidden(el, !down);
+    setText(el, down ? unreachableReason(s) : '');
 }

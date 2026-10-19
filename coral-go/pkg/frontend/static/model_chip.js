@@ -8,6 +8,7 @@ import { serverFetch } from './server_base.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { importOnce } from './import_once.js';
 import { modelLabel, readModelsCache, writeModelsCache } from './model_labels.js';
+import { setText, setHidden, setTitle, setData } from './dom_write.js';
 
 /** The agent types whose CLI takes /model and /effort in a running session (the server's liveSwitchTypes). */
 const LIVE_SWITCH_TYPES = new Set(['claude']);
@@ -50,15 +51,15 @@ export function updateModelChip(session, server) {
     wireModelChip();
     const s = session;
     const show = !!s && s.agent_type && s.agent_type !== 'terminal' && !s.sleeping && !s.archived;
-    bar.hidden = !show;
+    setHidden(bar, !show);
     if (!show) { _closeMenu(); return; }
     const v = chipView(s, server);
-    text.textContent = v.text;                 // plain text, never markup (a failure message is the CLI's own output)
-    chip.dataset.state = v.state;
-    chip.title = v.state === 'requested' ? v.note : '';
-    note.textContent = v.note;
-    note.hidden = !v.note;
-    note.dataset.state = v.state;
+    setText(text, v.text);                     // plain text, never markup (a failure message is the CLI's own output)
+    setData(chip, 'state', v.state);
+    setTitle(chip, v.state === 'requested' ? v.note : '');
+    setText(note, v.note);
+    setHidden(note, !v.note);
+    setData(note, 'state', v.state);
     if (_open) _renderMenu();
 }
 

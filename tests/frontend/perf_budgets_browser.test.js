@@ -84,6 +84,17 @@ const { framesJs } = require('./helpers/wait');
         console.log('6. Startup: the page yields to the browser between creating the requests and wiring the rest, so no startup task is a long one (#4995)');
         const y = await ev(`({ yields: window.__yields, drawn: document.getElementById('agent-list-bar').childElementCount })`);
         assert.ok(y.yields >= 1, 'the startup handler called scheduler.yield (the only yield it makes; the zero timers the page sets for other things do not count): ' + JSON.stringify(y));
+        console.log('7. A feed message writes only what changed: nothing at all when no drawn field did, one row and the header text when the viewed agent\'s summary did (#5010)');
+        const feed = fields => ev(`(async () => { const T = window.T; const e = window.__m.entry(window.__m.agents['perf-a-id']); Object.assign(e, ${JSON.stringify(fields)});
+            const seen = []; const mo = new MutationObserver(rs => { for (const r of rs) seen.push({ type: r.type, inList: !!r.target.closest?.('#live-sessions-list') || r.target.id === 'live-sessions-list', target: (r.target.id || r.target.className || r.target.nodeName) + '' }); });
+            mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+            T.ws.handleCoralMessage({ type: 'coral_diff', changed: [e], removed: [] }); await ${framesJs(3)}; seen.push(...mo.takeRecords().map(r => ({ type: r.type, inList: false, target: 'late' }))); mo.disconnect(); return seen; })()`);
+        await feed({ summary: 'budget settled' }); // the first message may still be settling what the last one changed
+        const quiet = await feed({ staleness_seconds: 7 });
+        assert.deepEqual(quiet, [], 'a message that changes nothing drawn writes nothing to the page: ' + JSON.stringify(quiet));
+        const one = await feed({ summary: 'budget step ' + Math.random() });
+        assert.ok(one.filter(r => r.inList && r.type === 'childList').length <= 2, 'one row is replaced, not the list: ' + JSON.stringify(one));
+        assert.ok(one.length <= 8, 'a changed summary is a handful of writes (its row, its rail tile, the header text), not a rewrite of the header: ' + one.length + ' ' + JSON.stringify(one));
         console.log('PASS perf budgets: no page-wide lookups per key, scroll or render; the sanitizer skips coloured spans; a switch touches two rows');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

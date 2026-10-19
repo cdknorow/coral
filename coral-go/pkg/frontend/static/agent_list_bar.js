@@ -9,6 +9,7 @@ import { serverLabel } from './launch_server.js';
 import { state } from './state.js';
 import { redrawLiveList } from './list_hooks.js';
 import { syncDisplayPanels, inListHeaders, isDisplayPanelOpen, DISPLAY_PANEL_OPEN } from './display_panel.js';
+import { setData, setHidden, setAttr } from './dom_write.js';
 
 const HOSTS = [['agent-list-bar', 'al'], ['mobile-agent-list-bar', 'alm']]; // the sidebar's and the phone's
 const bars = new Map(); // host element -> its bar
@@ -80,8 +81,8 @@ export function syncAgentListBars(sessions, matched) {
         }
     }
     for (const b of inListHeaders('[data-display-badge]')) {
-        b.dataset.count = parts.length ? String(parts.length) : ''; b.hidden = !parts.length; // a dot: the count is data (and in the button's name), not text a contrast check would measure
-        const btn = b.closest('[data-display-button]'); if (btn) btn.setAttribute('aria-label', parts.length ? `Display options, ${parts.length} on` : 'Display options');
+        setData(b, 'count', parts.length ? String(parts.length) : ''); setHidden(b, !parts.length); // a dot: the count is data (and in the button's name), not text a contrast check would measure
+        const btn = b.closest('[data-display-button]'); if (btn) setAttr(btn, 'aria-label', parts.length ? `Display options, ${parts.length} on` : 'Display options');
     }
     syncDisplayPanels();
     for (const [id, idp] of HOSTS) {

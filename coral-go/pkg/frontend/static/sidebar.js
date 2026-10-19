@@ -5,6 +5,7 @@ import { makeDraggable, makeDelegatedDraggable } from './draggable.js';
 import { browserLocal } from './safe_storage.js';
 import { dockKey, dockOpenByDefault, onDockPage } from './dock_page.js';
 import { machineState } from './launch_server.js';
+import { setText, setAttr } from './dom_write.js';
 
 /* Layout persistence is scoped per entry mode: a narrow popout window must
    never overwrite the dashboard's saved panel sizes. */
@@ -199,12 +200,12 @@ export function updateSectionVisibility(sectionId, itemCount) {
     if (!section) return;
 
     const badge = section.querySelector('.section-count-badge');
-    if (badge) badge.textContent = itemCount;
+    if (badge) setText(badge, String(itemCount));
 
     // Update aria-expanded
     const header = section.querySelector('[data-collapse-toggle]');
     if (header) {
-        header.setAttribute('aria-expanded', !section.classList.contains('collapsed'));
+        setAttr(header, 'aria-expanded', !section.classList.contains('collapsed'));
     }
 
     // Keep History available when a search/filter has no matches. Collapsing the
@@ -214,9 +215,9 @@ export function updateSectionVisibility(sectionId, itemCount) {
 
     // Auto-collapse empty sections (unless user manually expanded)
     if (itemCount === 0 && canAutoCollapseWhenEmpty && !section.dataset.manualExpand) {
-        section.classList.add('collapsed');
+        if (!section.classList.contains('collapsed')) section.classList.add('collapsed'); // (a class write to the class it has is still a mutation)
     } else if ((itemCount > 0 || !canAutoCollapseWhenEmpty) && !section.dataset.manualCollapse) {
-        section.classList.remove('collapsed');
+        if (section.classList.contains('collapsed')) section.classList.remove('collapsed');
     }
 }
 

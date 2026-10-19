@@ -15,6 +15,7 @@ import { terminalGoneChip } from './terminal_gone.js';
 import { browserLocal } from './safe_storage.js';
 import { onBuilt } from './lazy_dom.js';
 import { syncDisplayPanels } from './display_panel.js';
+import { setChecked, setHidden } from './dom_write.js';
 
 // ── Archived section (#3030) ─────────────────────────────────────────────
 // One global collapsed section at the bottom of the list. The grouping is all
@@ -426,8 +427,8 @@ onBuilt('settings-modal', () => applySessionSummaryPref()); // its Show summarie
     const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer() };
     const offered = { summary: true, server: n >= 1, group: n >= 2 };
     for (const header of [...document.getElementsByClassName('sidebar-header'), ...document.getElementsByClassName('mobile-list-header')]) {
-        for (const input of header.querySelectorAll('[data-display-input]')) input.checked = checked[input.dataset.displayInput] === true;
-        for (const row of header.querySelectorAll('[data-display-row]')) row.hidden = !offered[row.dataset.displayRow];
+        for (const input of header.querySelectorAll('[data-display-input]')) setChecked(input, checked[input.dataset.displayInput] === true);
+        for (const row of header.querySelectorAll('[data-display-row]')) setHidden(row, !offered[row.dataset.displayRow]);
         for (const btn of header.querySelectorAll('[data-display-button]')) btn.classList.toggle('active', checked.summary || (n >= 1 && checked.server));
     }
     syncDisplayPanels(); // the phone's header is built later than the sidebar's: it takes the stored open or shut state here

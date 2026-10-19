@@ -5,6 +5,7 @@ import { redrawLiveList } from './list_hooks.js';
 import { isAgentFiltering } from './agent_filter.js';
 import { browserLocal } from './safe_storage.js';
 import { inListHeaders } from './display_panel.js';
+import { setHidden, setTitle, setAttr, setData } from './dom_write.js';
 
 // ── Group collapse state ─────────────────────────────────────────────
 function _getCollapsedGroups() {
@@ -63,10 +64,10 @@ export function toggleAllGroups() { setAllGroupsCollapsed(!groupState().allClose
 export function syncGroupToggle() {
     const { any, allClosed } = groupState();
     for (const b of inListHeaders('[data-group-toggle]')) {
-        b.hidden = !any;
+        setHidden(b, !any);
         const label = allClosed ? 'Expand all groups' : 'Collapse all groups';
-        b.title = label; b.setAttribute('aria-label', label);
-        b.dataset.next = allClosed ? 'expand' : 'collapse';
+        setTitle(b, label); setAttr(b, 'aria-label', label);
+        setData(b, 'next', allClosed ? 'expand' : 'collapse');
     }
 }
 

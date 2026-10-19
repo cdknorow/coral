@@ -1,11 +1,12 @@
 /* Live updates to the open agent's header: its folder, model, branch, waiting state, goal and status (moved out of render.js, #4996; no behaviour change). */
 import { _shortPath, _gitStateSummary, _repoBranch, deriveSessionState } from './session_state.js';
 import { modelLabel } from './model_labels.js';
+import { setText, setHidden, setTitle, setHtml, setDisplay, setClassName } from './dom_write.js';
 
 export function updateSessionStatus(status) {
     const el = document.getElementById("session-status");
     if (status) {
-        el.querySelector(".status-text").textContent = status;
+        setText(el.querySelector(".status-text"), status);
     }
 }
 
@@ -19,10 +20,10 @@ function _syncHeaderFolder() {
     const el = document.getElementById("terminal-header-folder");
     if (!el) return;
     const show = !!_headerDir && !_headerHasBranch;
-    el.hidden = !show;
+    setHidden(el, !show);
     if (!show) return;
-    el.querySelector(".terminal-folder-text").textContent = _shortPath(_headerDir, 2);
-    el.title = _headerDir;
+    setText(el.querySelector(".terminal-folder-text"), _shortPath(_headerDir, 2));
+    setTitle(el, _headerDir);
 }
 
 export function updateSessionFolder(dir) {
@@ -35,9 +36,9 @@ export function updateSessionModel(agentType, model, server) {
     const el = document.getElementById("terminal-header-model");
     if (!el) return;
     const text = modelLabel(agentType, model, server);
-    el.hidden = !text;
-    el.textContent = text;
-    el.title = text ? model : "";
+    setHidden(el, !text);
+    setText(el, text);
+    setTitle(el, text ? model : "");
 }
 
 export function updateSessionBranch(branch, repoName, gitState) {
@@ -45,15 +46,15 @@ export function updateSessionBranch(branch, repoName, gitState) {
     const el = document.getElementById("session-branch");
     if (el) {
         if (display) {
-            el.querySelector(".branch-text").textContent = display;
+            setText(el.querySelector(".branch-text"), display);
             const gsEl = el.querySelector(".branch-git-state");
             if (gsEl) {
                 const wt = gitState?.is_worktree ? '<span class="gs-worktree" title="This agent is working in a linked git worktree">worktree</span> ' : '';
-                gsEl.innerHTML = wt + _gitStateSummary(gitState);
+                setHtml(gsEl, wt + _gitStateSummary(gitState));
             }
-            el.style.display = "";
+            setDisplay(el, "");
         } else {
-            el.style.display = "none";
+            setDisplay(el, "none");
         }
     }
     _headerHasBranch = !!display;
@@ -61,14 +62,14 @@ export function updateSessionBranch(branch, repoName, gitState) {
     // Same info in the terminal header, which has room beside the agent name.
     const th = document.getElementById("terminal-header-branch");
     if (th) {
-        th.hidden = !display;
+        setHidden(th, !display);
         if (display) {
-            th.querySelector(".terminal-branch-text").textContent = display;
-            th.title = display;
+            setText(th.querySelector(".terminal-branch-text"), display);
+            setTitle(th, display);
             const gs = th.querySelector(".branch-git-state");
             if (gs) {
                 const wt = gitState?.is_worktree ? '<span class="gs-worktree" title="This agent is working in a linked git worktree">worktree</span> ' : '';
-                gs.innerHTML = wt + _gitStateSummary(gitState);
+                setHtml(gs, wt + _gitStateSummary(gitState));
             }
         }
     }
@@ -96,14 +97,14 @@ export function updateWaitingIndicator(s) {
         // Same resolver as the rows: the banner follows the WINNING state, so a
         // sleeping or stuck agent with a stale waiting flag never shows it.
         const bannerKey = deriveSessionState(s);
-        banner.style.display = (bannerKey === 'needs_input' || bannerKey === 'check_terminal') ? "" : "none";
+        setDisplay(banner, (bannerKey === 'needs_input' || bannerKey === 'check_terminal') ? "" : "none");
         if (bannerKey === 'needs_input') {
-            banner.className = "waiting-banner";
-            banner.textContent = s.waiting_kind === 'login' ? "⏳ Agent needs you to sign in (in its terminal)" : "⏳ Agent is waiting for input";
+            setClassName(banner, "waiting-banner");
+            setText(banner, s.waiting_kind === 'login' ? "⏳ Agent needs you to sign in (in its terminal)" : "⏳ Agent is waiting for input");
         } else if (bannerKey === 'check_terminal') {
-            banner.className = "waiting-banner waiting-banner-not-started";
-            banner.textContent =
-                "⏳ This agent hasn't done anything yet — check the terminal below. Some agents ask permission to trust a folder the first time they run in it.";
+            setClassName(banner, "waiting-banner waiting-banner-not-started");
+            setText(banner,
+                "⏳ This agent hasn't done anything yet — check the terminal below. Some agents ask permission to trust a folder the first time they run in it.");
         }
     }
 }
@@ -112,8 +113,8 @@ export function updateSessionSummary(summary) {
     const el = document.getElementById("session-summary");
     if (!el) return;
     if (summary) {
-        el.querySelector(".summary-text").textContent = summary;
-        el.style.display = "";
+        setText(el.querySelector(".summary-text"), summary);
+        setDisplay(el, "");
     }
     // Don't hide — a null summary from a WebSocket tick shouldn't
     // clear a previously-known goal.

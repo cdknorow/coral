@@ -16,14 +16,13 @@ export function dbg(...args) {
 }
 
 /** Escape for HTML text AND for double- or single-quoted attribute values: & < > " ' */
+const _HTML_SPECIAL = /[&<>"']/;
+const _HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export function escapeHtml(str) {
     if (str == null) return '';
-    return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+    const s = String(str);
+    // The list draws every row again for each feed message and nearly every string in it needs no escaping: one test, and the string itself (#5010).
+    return _HTML_SPECIAL.test(s) ? s.replace(/[&<>"']/g, c => _HTML_ESCAPES[c]) : s;
 }
 
 // A tag's colour goes into a style attribute, where HTML escaping is not enough ("red;position:fixed;inset:0" is a valid
