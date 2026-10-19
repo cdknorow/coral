@@ -194,9 +194,10 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	// The text goes to another computer and Coral Hub does not redact it: the same scan as an attachment's
 	// (with the re-encoded views), before anything is sent or counted (#4449). Local posts and messages
 	// received from another Coral are not scanned here.
-	switch scanMessageText([]byte(body.Content)) {
+	found, why := scanMessageTextWhy([]byte(body.Content))
+	switch found {
 	case scanFound:
-		relayError(w, http.StatusUnprocessableEntity, "message_secret", "the message looks like it contains a secret (a token or a key), so it was not sent; remove it and send again", 0)
+		relayError(w, http.StatusUnprocessableEntity, "message_secret", "the message looks like it contains a secret (a token or a key)"+why.where()+", so it was not sent; remove it and send again", 0)
 		return
 	case scanUnchecked:
 		relayError(w, http.StatusUnprocessableEntity, "message_unchecked", "the message could not be checked for secrets in time, so it was not sent; send a shorter message", 0)

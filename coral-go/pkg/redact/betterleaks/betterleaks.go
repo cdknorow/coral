@@ -125,6 +125,25 @@ func (d *Detector) Find(ctx context.Context, text string) ([]redact.Span, error)
 	}
 }
 
+// RuleIDs names the betterleaks rules that find something in text (each once, in the order found): what a refusal says it was stopped by (#5212). It never returns a secret, only rule names.
+func (d *Detector) RuleIDs(ctx context.Context, text string) ([]string, error) {
+	select {
+	case d.slots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("betterleaks: every scan slot is busy: %w", ctx.Err())
+	}
+	defer func() { <-d.slots }()
+	var ids []string
+	seen := map[string]bool{}
+	for _, f := range d.d.DetectContext(ctx, sources.Fragment{Raw: text}) { //nolint:staticcheck // the one call that takes a context
+		if !seen[f.RuleID] {
+			seen[f.RuleID] = true
+			ids = append(ids, f.RuleID)
+		}
+	}
+	return ids, ctx.Err()
+}
+
 // spans maps findings to byte ranges of text.
 func spans(text string, findings []report.Finding) []redact.Span {
 	if len(findings) == 0 {

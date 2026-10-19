@@ -133,11 +133,12 @@ func scanAttachment(ctx context.Context, a attachedArtifact, data []byte) *attac
 		return &attachRefusal{http.StatusServiceUnavailable, "attach_busy", fmt.Sprintf("%s was not sent: another file is being checked for secrets on this computer; try again in a minute", shown)}
 	}
 	defer release()
-	switch scanSecrets(data) {
+	found, why := scanSecretsWhy(data)
+	switch found {
 	case scanUnchecked:
 		return &attachRefusal{http.StatusUnprocessableEntity, "attach_unchecked", fmt.Sprintf("%s could not be checked for secrets in time, so it was not sent; send a smaller file", shown)}
 	case scanFound:
-		return &attachRefusal{http.StatusUnprocessableEntity, "attach_secret", fmt.Sprintf("%s looks like it contains a secret (a token or a key), so it was not sent; remove it and upload the file again", shown)}
+		return &attachRefusal{http.StatusUnprocessableEntity, "attach_secret", fmt.Sprintf("%s looks like it contains a secret (a token or a key)%s, so it was not sent; remove it and upload the file again", shown, why.where())}
 	}
 	return nil
 }

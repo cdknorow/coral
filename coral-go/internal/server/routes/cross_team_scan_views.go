@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"html"
 	"regexp"
 	"time"
@@ -107,18 +108,46 @@ var liveScan = scanEnv{now: time.Now, text: func(budget time.Duration, v []byte)
 	return secrets.HubBudgetedRedactor(budget, keywordsOn).Text(v)
 }}
 
-// scanSecrets runs Coral's secret rules over a file and its re-encoded views (scanViews), within the file's
-// budget: it is the scan of an attachment.
-func scanSecrets(data []byte) scanOutcome { return scanFile(liveScan, data) }
-
-// scanMessageText is the scan of a message's own text: the same rules and views, the 3 s of a reply.
-func scanMessageText(data []byte) scanOutcome {
-	return scanWith(liveScan, data, func(int) time.Duration { return textBudget })
+// scanWhy says where a refused text holds what the rules found (#5212): the line, in the file or in one of its re-encoded views, and the rule that found it, so the person can go to it; never any part of the secret.
+type scanWhy struct {
+	line int
+	rule string
+	view string // "" for the text itself, else what the copy is (decoded, reversed...): its line numbers are the copy's
 }
 
-func scanFile(env scanEnv, data []byte) scanOutcome {
+// where is the clause a refusal adds: " (line 12: a value after the name "api_key" (the keyword rules))", or "" when nothing is known.
+func (w scanWhy) where() string {
+	if w.line == 0 {
+		return ""
+	}
+	at := fmt.Sprintf("line %d", w.line)
+	if w.view != "" {
+		at = fmt.Sprintf("line %d of %s", w.line, w.view)
+	}
+	if w.rule == "" {
+		return " (" + at + ")"
+	}
+	return " (" + at + ": " + w.rule + ")"
+}
+
+// scanSecrets runs Coral's secret rules over a file and its re-encoded views (scanViews), within the file's
+// budget: it is the scan of an attachment.
+func scanSecrets(data []byte) scanOutcome { o, _ := scanSecretsWhy(data); return o }
+
+func scanSecretsWhy(data []byte) (scanOutcome, scanWhy) { return scanFileWhy(liveScan, data) }
+
+// scanMessageText is the scan of a message's own text: the same rules and views, the 3 s of a reply.
+func scanMessageText(data []byte) scanOutcome { o, _ := scanMessageTextWhy(data); return o }
+
+func scanMessageTextWhy(data []byte) (scanOutcome, scanWhy) {
+	return scanWithWhy(liveScan, data, func(int) time.Duration { return textBudget })
+}
+
+func scanFile(env scanEnv, data []byte) scanOutcome { o, _ := scanFileWhy(env, data); return o }
+
+func scanFileWhy(env scanEnv, data []byte) (scanOutcome, scanWhy) {
 	deadline := env.now().Add(scanFileCap)
-	return scanWith(env, data, func(n int) time.Duration {
+	return scanWithWhy(env, data, func(n int) time.Duration {
 		budget := scanPassBudget(n)
 		if left := deadline.Sub(env.now()); left < budget {
 			budget = left
@@ -129,24 +158,55 @@ func scanFile(env scanEnv, data []byte) scanOutcome {
 
 // scanWith scans data and each of its views, each pass within budgetFor(its size).
 func scanWith(env scanEnv, data []byte, budgetFor func(n int) time.Duration) scanOutcome {
+	o, _ := scanWithWhy(env, data, budgetFor)
+	return o
+}
+
+// codeReferenceRe is a value that is a code reference, not a secret: letters and underscores with dots and no digit, after '=', ':' or ':=' (config.PostHogKey, container._modelToken). A real key holds a digit
+// or is not made of identifiers joined by dots; only the refusal scan skips these (a reply to Coral Hub is redacted as before, where over-redacting costs nothing).
+var codeReferenceRe = regexp.MustCompile(`([=:][ \t]*["'` + "`" + `]?)([A-Za-z_]+(?:\.[A-Za-z_]+)+)(["'` + "`" + `\s,;)\]}]|$)`)
+
+// maskCodeReferences returns data with each code reference in a value position replaced by as many 'a's, so a rule sees a repeated character (which no rule takes for a secret) and every offset, so every line
+// number, is the file's own.
+func maskCodeReferences(data []byte) []byte {
+	locs := codeReferenceRe.FindAllSubmatchIndex(data, -1)
+	if len(locs) == 0 {
+		return data
+	}
+	out := append([]byte(nil), data...)
+	for _, m := range locs {
+		for i := m[4]; i < m[5]; i++ {
+			out[i] = 'a'
+		}
+	}
+	return out
+}
+
+func scanWithWhy(env scanEnv, data []byte, budgetFor func(n int) time.Duration) (scanOutcome, scanWhy) {
 	views, ok := scanViews(data)
 	if !ok {
-		return scanUnchecked
+		return scanUnchecked, scanWhy{}
 	}
-	for _, v := range append([][]byte{data}, views...) {
+	for i, v := range append([][]byte{data}, views...) {
 		budget := budgetFor(len(v))
 		if budget <= 0 {
-			return scanUnchecked
+			return scanUnchecked, scanWhy{}
 		}
+		v = maskCodeReferences(v)
 		out, err := env.text(budget, v)
 		if err != nil {
-			return scanUnchecked
+			return scanUnchecked, scanWhy{}
 		}
 		if !bytes.Equal(out, v) {
-			return scanFound
+			why := scanWhy{}
+			why.line, why.rule = secrets.ExplainHub(v, out, budget)
+			if i > 0 {
+				why.view = "a re-encoded copy of it"
+			}
+			return scanFound, why
 		}
 	}
-	return scanClean
+	return scanClean, scanWhy{}
 }
 
 // scanViews returns the re-encoded views of data to scan besides data itself. ok is false when a bound
