@@ -25,6 +25,9 @@
     --border-light: #3a3a42;
     /* The edge of what you type in or press (inputs, selects, buttons): 3:1 against the panels (WCAG 1.4.11, #4877). Dividers and cards stay on --border. */
     --control-border: #7a7a85;
+    /* What a dialog's text fields and its inset cards are filled with (#5036): a dark wash on the dark panels, the field colour of the page on the light ones. */
+    --field-fill:   rgba(0, 0, 0, 0.18);
+    --inset-fill:   rgba(0, 0, 0, 0.08);
 
     /* Text */
     --text-primary:   #f0f0f2;
@@ -225,6 +228,8 @@
     --border:       #c9cdd3;
     --border-light: #b0b6be;
     --control-border: #767b83;
+    --field-fill:   var(--bg-primary);
+    --inset-fill:   rgba(0, 0, 0, 0.03);
 
     /* Text */
     --text-primary:   #1f2328;

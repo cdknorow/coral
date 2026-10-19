@@ -527,6 +527,7 @@
     .model-chip-menu { position: fixed; left: 8px; right: 8px; bottom: 8px; max-width: none; max-height: 60vh; }
     .model-chip-item { min-height: 44px; }
     .model-chip { min-height: 44px; min-width: 44px; } /* a touch target (#4276) */
+    .model-chip-bar { padding-bottom: 8px; } /* the last row of the composer: it sat on the bottom edge of the screen (#5036); the command pane below already adds the safe area */
 }
 @media (max-width: 767px) and (max-height: 520px) {
     /* A phone with the keyboard up, or on its side: the conversation needs the room more than the chip (#4969). */

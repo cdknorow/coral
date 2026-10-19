@@ -2255,7 +2255,7 @@ button.subscriber-history-link {
 #launch-board-select,
 #launch-board-name,
 #launch-board-server {
-    background: rgba(0, 0, 0, 0.18);
+    background: var(--field-fill);
 }
 
 .acf-prompt {
@@ -2304,7 +2304,7 @@ button.subscriber-history-link {
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 12px;
-    background: rgba(0, 0, 0, 0.08);
+    background: var(--inset-fill);
 }
 
 .team-agents-header {
