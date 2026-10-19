@@ -1,5 +1,22 @@
 # Release Notes
 
+## v1.4.107 — Pasted Claude and Codex images show as thumbnails, a "Using the Dashboard" help page, and an accessibility pass
+
+### Fixes
+
+- **A busy machine behind Coral Hub is "busy", not "unreachable":** a terminal or dashboard upgrade that Coral refused with 429 (the socket caps) arrived at the hub as an upstream error, so the machine was marked unreachable and the browser got 502 "remote unreachable". It is now a 503 "remote busy" with the cap's code (the dashboard already backs off on it); the machine stays reachable and the `Retry-After` it gave is passed on (whole seconds, 1 to 60, 5 when none). `GET /api/agents/models?type=...` now goes through the tunnel at Launch tier, with `type` as its only query parameter.
+- **Deleting a board with agents running is refused:** the agents used to stay live in a sidebar group named with the raw board id (and Cost by Team listed that id). The route now answers 409 `board_has_running_agents`, naming how many and which, and 503 `running_agents_unknown` (deleting nothing) when the running terminals cannot be listed. The dashboard's Delete names the running agents instead of asking, shows the server's message when it refuses anyway, and no longer treats a refused delete as done.
+
+### Changes
+
+- **Pasted Claude and Codex images show as thumbnails in Chat:** the chip shows a thumbnail taken from the transcript's own image data, through `GET /api/sessions/live/{name}/attachment/{ref}`, where the reference is a hash of the image (it holds no path and no offset). The route finds the image in the session's own transcript, decodes it under a size cap, serves only PNG, JPEG, GIF and WebP (never SVG, HTML or text), and applies the same hardening as the upload route (`nosniff`, inline, a sandboxing CSP, private no-cache). It is local only (not served through Coral Hub), and an agent token of another board gets 403, so a hash cannot probe another session's transcript.
+- **A "Using the Dashboard" help page:** a task-oriented page for the controls added since v1.4.102 (model and thinking level and the chat-bar chip, the Cost view's By Thinking Level table, the team health monitor, the Display panel, the sectioned dialogs and the image thumbnails), with five screenshots; help pages can now show screenshots from the dashboard's own `static/docs-img` folder (lower-case name, `.png`, no query).
+- **An accessibility pass on the recent surfaces:** the model chip's name holds the model and level and its menu takes Home, End and Tab, with focus returning to the chip and a visible focus ring; the "switches after this reply" note is announced; pending and failed chip text reaches 4.5:1 contrast in the light theme; the Cost tables' sort headers are buttons with `aria-sort` and the filter icon is a named button.
+
+### Other changes
+
+- **Tests and CI:** a browser guard that the dashboard's memory (heap, DOM nodes, listeners, documents) stays bounded over hundreds of agent switches and feed bursts; the git fixtures of a board test no longer flake (a background-maintenance race with the temp-dir cleanup); `TestGetUploadDispositionNameIsPlain` runs on Windows with a name Windows can hold instead of skipping; the hub cleans a hand-written `Retry-After` in a refusal.
+
 ## v1.4.106 — Chat shows thumbnails of images, a full Content-Security-Policy on the dashboard, and an update check that stays on one host
 
 ### Security
