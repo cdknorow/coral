@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.108 — Agent tokens see other boards as a roster only, a faster server, and the Cost tables on a phone
+
+### Security
+
+- **An agent's token sees other boards' sessions as a roster, not what they work on:** `GET /api/sessions/live` and the `/ws/coral` feed carried every session's prompt, first prompt, summary, waiting text, branch, working directory, log path and git state to any agent token. An agent's own row and its board mates' rows are unchanged; any other board's row (and a session on no board) is reduced to an allow-list of roster fields (name, type, session id, display name, board and role, status and state flags, model, thinking level and the like), so a free-text field added later stays private until it is listed. `GET /api/sessions/{id}/resolve` does the same for a session outside the agent's board. This was found by QA's release check of v1.4.105.
+- **More reads across every board are the Operator's:** the per-session token usage list and the usage by branch, the goal generator's metrics, and the eleven workflow, scheduled-job and run `GET` routes (they held shell commands and prompts that often hold a credential; an agent's token now gets 403 `forbidden_for_agent`, so agents can no longer list workflows, runs or jobs through `coral-board`, and get a clear refusal; the Operator's command line and the dashboard are unchanged). For an agent's token the usage summary leaves out its per-session `by_agent` rows and keeps the totals. Editing a scheduled job is refused what creating one refuses.
+- **Hooks and agent tools bound what they read:** a hook's stdin is capped at 32 MiB (a longer payload is read and discarded, never held, so the CLI still writing it gets no `EPIPE`), a server reply at 8 MiB, a debug-log line at 2 KiB; no credential is printed in the server URL of an error or debug line; and every program names a session's board state file the same safe way.
+- **Sign-in:** the password throttle counts an IPv6 network once (as the failed-key limit already did); a sign-in link or the key form ends the session it replaces; a password sign-in that began before a password change cannot create a session after it; and a request authenticated with `?api_key` makes a browser session only for a browser navigation that holds none (a script polling with the key in its URL used to grow the session list without bound).
+
+### Fixes
+
+- **The Restart form shows the level and model the agent really runs** (the bug dates from the live switch in v1.4.104): it showed Default for the thinking level and, after a live switch from the chip, the model the agent ran when it was chosen; a restart confirmed as it stood would have started on that old model.
+- **The built-in Claude model list names the current models** (Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.1) when the CLI gives no list, and a running model the list lacks shows as itself instead of under "Other...". The two `[STARTUP]` lines lost their diagnostic marker.
+
+### Changes
+
+- **The server does less work:** a transcript chunk is read into one buffer (the biggest allocation site of a server whose chats page back through their transcripts), the token poller decodes only the Claude lines that can hold usage, and an image's place in a transcript is remembered so a chat of many images no longer rescans the transcript for each one. Older chat pages are faster: a read checkpoints every 1 MiB inside a chunk, so paging back through a long chat reads far less (p95 163 ms to 90 ms in the scale test). Steady-state server CPU is down 32% and allocations 51% in the scale test.
+- **The Cost tables on a phone:** the sort buttons and filter icons are 44 px on a coarse pointer, Cost and Share come right after the columns that name the row, the keyboard stays on a heading after a sort, and the By Thinking Level filter buttons filter; on a phone each Settings (i) button sits beside its label.
+
+### Other changes
+
+- **Internals:** `tmux/client.go`, `background/workflow_runner.go` and `startup.go` are split by concern, moves only.
+- **Tests and CI:** the heap guard also covers terminals, resizing, the board and History, and failed polls give up their response bodies; `TestProcUsageAgreesWithGopsutil` uses a relative tolerance; a data race in a ptymanager test is fixed; several browser suites (`terminal_switch`, `chat_jump_latest`, `list_bars_themes`, `saved_search`, `saved_for_later`) clean up after an early failure.
+
 ## v1.4.107 — Pasted Claude and Codex images show as thumbnails, a "Using the Dashboard" help page, and an accessibility pass
 
 ### Fixes
