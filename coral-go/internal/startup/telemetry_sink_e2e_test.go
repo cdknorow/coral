@@ -72,11 +72,7 @@ func TestTelemetrySinkE2E(t *testing.T) {
 		t.Skip("builds and runs a dev coral binary")
 	}
 	bin := filepath.Join(t.TempDir(), "coral")
-	build := exec.Command("go", "build", "-tags", "dev", "-o", bin, "./cmd/coral")
-	build.Dir = telemetryModuleRoot(t)
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build dev coral: %v\n%s", err, out)
-	}
+	buildDevCoral(t, bin)
 
 	// run starts the dev binary against a fresh fake sink and returns the events captured within the deadline.
 	// seed, when set, writes settings into the data dir's database before the server starts.
@@ -233,4 +229,77 @@ func eventNames(events []capturedEvent) []string {
 		names = append(names, e.event)
 	}
 	return names
+}
+
+// realGoCaches are the module and build caches of the real environment, read before TestMain points HOME at a temporary folder: with that HOME the
+// inner go build would use an empty $HOME/go/pkg/mod and download every module from the proxy, and a proxy error failed the test (#5206: ci/5150 go-race).
+var realGoModCache, realGoBuildCache = goCaches()
+
+func goCaches() (mod, build string) {
+	out, err := exec.Command("go", "env", "GOMODCACHE", "GOCACHE").Output()
+	if err != nil {
+		return "", ""
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) != 2 {
+		return "", ""
+	}
+	return strings.TrimSpace(lines[0]), strings.TrimSpace(lines[1])
+}
+
+// buildDevCoral builds the dev binary into bin with the real module and build caches, and tries again (see buildWithRetry) only when the failure is a
+// module download that the network refused: the code is not at fault then.
+func buildDevCoral(t *testing.T, bin string) {
+	t.Helper()
+	root := telemetryModuleRoot(t)
+	once := func() ([]byte, error) {
+		build := exec.Command("go", "build", "-tags", "dev", "-o", bin, "./cmd/coral")
+		build.Dir = root
+		build.Env = os.Environ()
+		if realGoModCache != "" {
+			build.Env = append(build.Env, "GOMODCACHE="+realGoModCache)
+		}
+		if realGoBuildCache != "" {
+			build.Env = append(build.Env, "GOCACHE="+realGoBuildCache)
+		}
+		return build.CombinedOutput()
+	}
+	if out, err := buildWithRetry(once, time.Sleep, t.Logf); err != nil {
+		t.Fatalf("build dev coral failed: %v\n%s", err, out)
+	}
+}
+
+// buildWithRetry runs once up to three times, pausing 3 s then 6 s, and again only while the failure is a refused module download.
+func buildWithRetry(once func() ([]byte, error), sleep func(time.Duration), logf func(string, ...any)) ([]byte, error) {
+	var out []byte
+	var err error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if out, err = once(); err == nil {
+			return out, nil
+		}
+		if !downloadFailed(out) || attempt == 3 {
+			break
+		}
+		logf("build dev coral, attempt %d: a module download failed, trying again:\n%s", attempt, tailBytes(out, 600))
+		sleep(time.Duration(attempt) * 3 * time.Second)
+	}
+	return out, err
+}
+
+// downloadFailed: the go command's output for a module it could not fetch (a proxy or network error), not a compile error.
+func downloadFailed(out []byte) bool {
+	s := string(out)
+	for _, marker := range []string{"proxy.golang.org", "i/o timeout", "connection reset", "connection refused", "no such host", "TLS handshake timeout", "unexpected EOF", "502 Bad Gateway", "503 Service Unavailable"} {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func tailBytes(b []byte, n int) string {
+	if len(b) <= n {
+		return string(b)
+	}
+	return "..." + string(b[len(b)-n:])
 }
