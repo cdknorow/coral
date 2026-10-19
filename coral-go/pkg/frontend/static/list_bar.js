@@ -58,6 +58,8 @@ export function buildListBar(spec, onChange) {
 
     // A panel that has a search box of its own (the agent list's) gives spec.noSearch: the bar then has the filters, the sort, the count and the chips, and no search row (its q is not the bar's).
     const noSearch = !!spec.noSearch;
+    // spec.inline (the agent list's, #4947): the fields and the sort sit open in the panel that holds the bar (the Display expander), not behind a Filters button; the chips give way to the panel owner's summary line.
+    const inline = !!spec.inline;
     const searchRow = make('div', 'list-bar-search-row');
     const wrap = make('div', 'list-bar-search-wrap');
     const q = make('input', 'list-bar-search'); q.type = 'search'; q.id = `${p}-search`; q.placeholder = spec.placeholder; q.maxLength = 200; q.autocomplete = 'off'; q.spellcheck = false;
@@ -80,24 +82,26 @@ export function buildListBar(spec, onChange) {
     if (sort) { sort.wrap.classList.add('list-bar-sort'); sort.input.setAttribute('aria-label', spec.sorts.aria); }
     // A panel with only a search (no fields: the Servers list) has no Filters button and no menu.
     const hasFilters = spec.fields.length > 0;
-    controls.append(...[hasFilters ? filterBtn : null, sort ? sort.wrap : null].filter(Boolean));
-    if (noSearch) controls.append(count);
+    if (inline) { if (sort) sort.wrap.classList.remove('list-bar-sort'); }
+    else controls.append(...[hasFilters ? filterBtn : null, sort ? sort.wrap : null].filter(Boolean));
+    if (noSearch && !inline) controls.append(count);
 
     const menu = make('div', 'list-bar-menu'); menu.id = `${p}-menu`; menu.hidden = true; menu.setAttribute('role', 'group'); menu.setAttribute('aria-label', 'Filters');
     const fields = spec.fields.map(buildField);
     const clearAll = make('button', 'list-bar-clear-all', 'Clear all'); clearAll.type = 'button';
-    menu.append(...fields.map(x => x.wrap), clearAll);
+    menu.append(...fields.map(x => x.wrap), ...(inline && sort ? [sort.wrap] : []), ...(inline ? [count] : []), clearAll);
+    if (inline) { menu.hidden = false; menu.classList.add('list-bar-menu-inline'); clearAll.textContent = 'Clear filters'; }
 
     const chipList = make('ul', 'list-bar-chips'); chipList.setAttribute('aria-label', 'Active filters'); chipList.hidden = true;
     if (noSearch) node.classList.add('list-bar-nosearch');
-    node.append(...(noSearch ? [] : [searchRow]), ...(controls.children.length ? [controls] : []), ...(hasFilters ? [menu] : []), chipList, live);
+    node.append(...(noSearch ? [] : [searchRow]), ...(controls.children.length ? [controls] : []), ...(hasFilters ? [menu] : []), ...(inline ? [] : [chipList]), live);
 
     // Whatever a panel's model does with a text, the bar sends it trimmed: a tab or a space pasted at either end is a request the server refuses (#4806), and no panel can forget it.
     const textKeys = ['q', ...spec.fields.filter(x => x.type === 'text').map(x => x.key)];
     const trimmed = o => { const t = { ...o }; for (const k of textKeys) if (typeof t[k] === 'string') t[k] = t[k].trim(); return t; };
     const apply = next => { f = clean(trimmed(next)); announce = true; onChange({ ...f }); };
     const later = next => { clearTimeout(timer); timer = setTimeout(() => apply(next), DEBOUNCE_MS); };
-    const closeMenu = (focus) => { if (menu.hidden) return; menu.hidden = true; filterBtn.setAttribute('aria-expanded', 'false'); if (focus) filterBtn.focus(); };
+    const closeMenu = (focus) => { if (inline || menu.hidden) return; menu.hidden = true; filterBtn.setAttribute('aria-expanded', 'false'); if (focus) filterBtn.focus(); };
 
     if (!noSearch) {
         q.addEventListener('input', () => { clearQ.hidden = !q.value; later({ ...f, q: q.value }); });
@@ -109,8 +113,8 @@ export function buildListBar(spec, onChange) {
         menu.hidden = !open; filterBtn.setAttribute('aria-expanded', String(open));
         if (open && fields.length) fields[0].input.focus();
     });
-    node.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { e.preventDefault(); e.stopPropagation(); closeMenu(true); } });
-    const outside = e => { if (!menu.hidden && !node.contains(e.target)) closeMenu(false); };
+    node.addEventListener('keydown', e => { if (e.key === 'Escape' && !inline && !menu.hidden) { e.preventDefault(); e.stopPropagation(); closeMenu(true); } });
+    const outside = e => { if (!inline && !menu.hidden && !node.contains(e.target)) closeMenu(false); };
     document.addEventListener('click', outside);
     for (const fld of fields) {
         const key = fld.spec.key;
@@ -120,7 +124,7 @@ export function buildListBar(spec, onChange) {
     }
     if (sort) sort.input.addEventListener('change', () => apply({ ...f, sort: sort.input.value }));
     const everything = () => { clearTimeout(timer); apply({ ...EMPTY, sort: f.sort }); };
-    const focusSearch = () => { if (noSearch) filterBtn.focus(); else q.focus(); };
+    const focusSearch = () => { if (!noSearch) q.focus(); else if (inline) fields[0]?.input.focus(); else filterBtn.focus(); };
     clearAll.addEventListener('click', () => { everything(); focusSearch(); });
 
     return {
@@ -149,6 +153,7 @@ export function buildListBar(spec, onChange) {
             }));
             if (list.length > 1) { const li = make('li'); const b = make('button', 'list-bar-chip list-bar-chip-all', 'Clear all'); b.type = 'button'; b.addEventListener('click', () => { everything(); focusSearch(); }); li.append(b); chipList.append(li); }
             chipList.hidden = !list.length;
+            if (inline) clearAll.hidden = !isFiltered(f);
             filterBtn.textContent = isFiltered(f) ? `Filters (${list.filter(c => c.key !== 'q').length})` : 'Filters';
             const all = `${counts && counts.all}${counts && counts.truncated ? '+' : ''}`; // '+': older ones were not scanned
             const say = text => {

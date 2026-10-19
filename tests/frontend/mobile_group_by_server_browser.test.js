@@ -21,13 +21,13 @@ const { connect } = require('./agent_view_harness');
         const view = () => ev(`(() => {
             const list = document.getElementById('mobile-agent-list');
             const vis = e => !!e && !e.hidden && e.getClientRects().length > 0;
-            const menu = list.querySelector('[data-list-display-menu]');
-            const sum = menu && menu.querySelector('summary');
-            const panel = menu && menu.querySelector('.list-display-panel');
+            const menu = list.querySelector('[data-display-panel]');
+            const sum = list.querySelector('[data-display-button]');
+            const panel = menu;
             const rows = menu ? [...menu.querySelectorAll('.list-display-option')].map(l => ({ text: l.textContent.trim(), shown: vis(l), checked: l.querySelector('input').checked })) : [];
             const pr = panel && vis(panel) ? panel.getBoundingClientRect() : null;
             const sr = sum && sum.getBoundingClientRect();
-            return { menu: !!menu, button: sr ? { w: Math.round(sr.width), h: Math.round(sr.height), shown: vis(sum) } : null, open: !!(menu && menu.open), rows,
+            return { menu: !!menu, button: sr ? { w: Math.round(sr.width), h: Math.round(sr.height), shown: vis(sum) } : null, open: !!(sum && sum.getAttribute('aria-expanded') === 'true'), rows,
                 panelFits: pr ? pr.left >= 0 && pr.right <= innerWidth : null, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                 headers: [...list.querySelectorAll('li.server-group-header')].map(h => h.querySelector('.server-group-name').textContent.trim()),
                 grouped: localStorage.getItem('coral-group-by-server'), dupIds: ['display-group-by-server', 'display-show-server', 'display-show-summary'].filter(id => document.querySelectorAll('#' + id).length > 1) };
@@ -36,12 +36,12 @@ const { connect } = require('./agent_view_harness');
 
         const TWO = [{ id: 'm1', label: 'studio-mac', status: 'online' }, { id: 'm2', label: 'workstation', status: 'online' }];
         await scene(TWO);
-        await waitFor(`!!document.querySelector('#mobile-agent-list [data-list-display-menu]')`, 'the phone display menu', 4000);
+        await waitFor(`!!document.querySelector('#mobile-agent-list [data-display-panel]')`, 'the phone display menu', 4000);
         let v = await view();
         assert.ok(v.menu && v.button.shown, 'the phone list header has the ≡ display menu');
         assert.ok(v.button.w >= 36 && v.button.h >= 36, `a usable target (${v.button.w} x ${v.button.h}; 44 with a coarse pointer)`);
         assert.deepEqual(v.dupIds, [], 'no id appears twice (the sidebar keeps its ids)');
-        await ev(`document.querySelector('#mobile-agent-list [data-list-display-menu]').open = true; true`);
+        await ev(`(() => { const b = document.querySelector('#mobile-agent-list [data-display-button]'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()`);
         v = await view();
         assert.deepEqual(v.rows.map(r => [r.text, r.shown]), [['Show summaries', true], ['Show server', true], ['Group by server', true]], 'Show summaries, Show server and Group by server are offered with two servers');
         assert.equal(v.panelFits, true, 'the menu panel fits the 390 px screen');

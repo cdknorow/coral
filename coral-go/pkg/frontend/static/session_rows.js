@@ -14,6 +14,7 @@ import { modelLabel } from './model_labels.js';
 import { terminalGoneChip } from './terminal_gone.js';
 import { browserLocal } from './safe_storage.js';
 import { onBuilt } from './lazy_dom.js';
+import { syncDisplayPanels } from './display_panel.js';
 
 // ── Archived section (#3030) ─────────────────────────────────────────────
 // One global collapsed section at the bottom of the list. The grouping is all
@@ -425,6 +426,7 @@ onBuilt('settings-modal', () => applySessionSummaryPref()); // its Show summarie
     for (const input of document.querySelectorAll('[data-display-input]')) input.checked = checked[input.dataset.displayInput] === true;
     for (const row of document.querySelectorAll('[data-display-row]')) row.hidden = !offered[row.dataset.displayRow];
     for (const btn of document.querySelectorAll('[data-display-button]')) btn.classList.toggle('active', checked.summary || (n >= 1 && checked.server));
+    syncDisplayPanels(); // the phone's header is built later than the sidebar's: it takes the stored open or shut state here
 }
 
 function _isSleepingExpanded(groupName) {

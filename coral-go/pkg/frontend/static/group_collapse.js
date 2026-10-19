@@ -34,7 +34,7 @@ export function groupHeaderKey(event, header = event.currentTarget) {
     toggleGroupCollapse(header.dataset.groupName);
 }
 
-/** Collapse every team and folder group in the list, or open them all: the two buttons of the Display options panel. A group the person
+/** Collapse every team and folder group in the list, or open them all (the header's one toggle). A group the person
  *  opened or closed by hand keeps its state until one of these is used; the result is stored the way a single collapse is. */
 export function setAllGroupsCollapsed(collapsed) {
     if (!collapsed) browserLocal.set('coral_collapsed_groups', '[]');
@@ -44,6 +44,28 @@ export function setAllGroupsCollapsed(collapsed) {
         browserLocal.set('coral_collapsed_groups', JSON.stringify([...names]));
     }
     redrawLiveList();
+}
+
+const GROUP_HEADERS = '.session-group-header[data-group-name]';
+
+/** Whether the list has groups, and whether every one of them is closed (read off the headers as drawn, which already account for a search that opens them). */
+function groupState() {
+    const headers = [...document.querySelectorAll(GROUP_HEADERS)];
+    return { any: headers.length > 0, allClosed: headers.length > 0 && headers.every(h => h.getAttribute('aria-expanded') === 'false') };
+}
+
+/** The one Collapse / Expand toggle in the list header (#4947): closes every group, or, when they are all closed already, opens them. */
+export function toggleAllGroups() { setAllGroupsCollapsed(!groupState().allClosed); }
+
+/** Called after every render of the list: the header toggle is there while the list has groups, and says (name, icon) what it does next. */
+export function syncGroupToggle() {
+    const { any, allClosed } = groupState();
+    for (const b of document.querySelectorAll('[data-group-toggle]')) {
+        b.hidden = !any;
+        const label = allClosed ? 'Expand all groups' : 'Collapse all groups';
+        b.title = label; b.setAttribute('aria-label', label);
+        b.dataset.next = allClosed ? 'expand' : 'collapse';
+    }
 }
 
 export function toggleGroupCollapse(groupName) {

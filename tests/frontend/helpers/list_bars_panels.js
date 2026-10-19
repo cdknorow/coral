@@ -96,9 +96,9 @@ PANELS.push({
     },
 });
 
-// ── The agent list (the filters menu open, a State chip) ──
-PANELS.push({
-    key: 'agents',
+// ── The agent list: the Display panel open with a State filter on, and (agents-closed) shut with the summary line (#4947) ──
+const agentsPanel = (key, openPanel) => ({
+    key,
     async show(ctx, { phone }) {
         await fresh(ctx);
         const TEAMS = ['team-a', 'team-b', 'team-c'];
@@ -108,14 +108,16 @@ PANELS.push({
             window.__T = { ws, render, state };
             ws.handleCoralMessage({ type: 'coral_update', servers: [], sessions: ${JSON.stringify(sessions)}, session_ids: [] }); render.flushLiveSessionsRender(); render.renderLiveSessions(state.liveSessions); return true; })()`);
         const bar = phone ? '#mobile-agent-list-bar' : '#agent-list-bar';
+        const head = phone ? '.mobile-list-header' : '.sidebar-header';
         if (phone) await ctx.ev(`window.switchNavTab('agents'); true`);
-        await ctx.settle(`!!document.querySelector('${bar} .list-bar-filter-btn')`, 'the bar');
+        await ctx.settle(`!!document.querySelector('${bar} select[id$="state"]')`, 'the bar');
         await pick(ctx, `${bar} #al-state, ${bar} select[id$="state"]`, 'working');
-        await ctx.settle(`!!document.querySelector('${bar} .list-bar-chip')`, 'a chip').catch(() => {});
-        await openMenu(ctx, bar);
-        return { roots: [phone ? '#mobile-agent-list' : '.sidebar'], focus: [phone ? '#mobile-agent-list-bar ~ * input, .mobile-search-input' : '#agent-search-input', `${bar} .list-bar-filter-btn`] };
+        await ctx.settle(`!!document.querySelector('${head} [data-agent-list-summary]').dataset.text`, 'the summary');
+        await ctx.ev(`(() => { const b = document.querySelector('${head} [data-display-button]'); if ((b.getAttribute('aria-expanded') === 'true') !== ${openPanel}) b.click(); return true; })()`);
+        return { roots: [phone ? '#mobile-agent-list' : '.sidebar'], focus: [phone ? '.mobile-search-input' : '#agent-search-input', openPanel ? `${bar} select[id$="state"]` : `${head} .agent-list-summary-clear`, `${head} [data-display-button]`] };
     },
 });
+PANELS.push(agentsPanel('agents', true), agentsPanel('agents-closed', false));
 
 // ── Tasks (a board's tasks in the dock; the menu open, a status chip) ──
 PANELS.push({

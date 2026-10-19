@@ -29,6 +29,14 @@ const SERVERS = [
         const bound = document.querySelector('.sidebar') && ${JSON.stringify(root)}.startsWith('#live') ? document.querySelector('.sidebar').getBoundingClientRect() : { left: 0, right: innerWidth };
         const out = { left: Math.round(r.left), right: Math.round(r.right), bl: Math.round(bound.left), br: Math.round(bound.right), w: Math.round(r.width) };
         d.open = false; return out; })()`);
+    // The Display expander is a row of the header, not a popover (#4947): its box still has to sit inside the sidebar or the screen.
+    const panelBox = header => ev(`(() => {
+        const h = document.querySelector(${JSON.stringify(header)}); const btn = h.querySelector('[data-display-button]');
+        if (btn.getAttribute('aria-expanded') !== 'true') btn.click();
+        const r = h.querySelector('[data-display-panel]').getBoundingClientRect();
+        const bound = document.querySelector('.sidebar') && ${JSON.stringify(header)}.startsWith('.sidebar') ? document.querySelector('.sidebar').getBoundingClientRect() : { left: 0, right: innerWidth };
+        const out = { left: Math.round(r.left), right: Math.round(r.right), bl: Math.round(bound.left), br: Math.round(bound.right), w: Math.round(r.width) };
+        btn.click(); return out; })()`);
     const inside = (b, what) => assert.ok(b && b.w > 0 && b.left >= b.bl - 1 && b.right <= b.br + 1, `${what} stays inside (${JSON.stringify(b)})`);
 
     try {
@@ -57,7 +65,7 @@ const SERVERS = [
             await waitFor(`!!document.querySelector('${root} li.server-group-header')`, 'the server headers', 4000);
 
             // The popovers: the display menu, a server's menu (online with an update, and offline).
-            inside(await box(header, '.list-display-menu', '.list-display-panel'), 'the display menu');
+            inside(await panelBox(header), 'the Display panel');
             for (const id of ['m1', 'm2', 'm3']) inside(await box(root, `li.server-group-header[data-server-group="${id}"] details`, '.server-switcher-panel'), `the menu of server ${id}`);
 
             // The server that needs an update keeps its name: the marker gives way first. (A name that does not fit even alone, in a 320 px

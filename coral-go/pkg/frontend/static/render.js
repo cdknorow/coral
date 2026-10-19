@@ -35,7 +35,7 @@ import { showConfirmModal } from './confirm_dialog.js';
 import { getAgentFilter, setAgentFilter, getListFilters } from './agent_filter.js';
 import { matches as _matchesListFilters, isFiltered as _listFiltered } from './agent_list_filters.js';
 import { FILTER_CTX, syncAgentListBars } from './agent_list_bar.js';
-import { _collapseAttrs, _isGroupCollapsed } from './group_collapse.js';
+import { _collapseAttrs, _isGroupCollapsed, syncGroupToggle } from './group_collapse.js';
 import { browserLocal } from './safe_storage.js';
 export { groupHeaderKey, toggleGroupCollapse } from './group_collapse.js';
 export { hideConfirmModal, showConfirmModal } from './confirm_dialog.js';
@@ -1346,6 +1346,7 @@ function _renderLiveSessions(sessions) {
     if (!sessions.length && !archived.length && !pinsShown) {
         // Coral Hub with no machine connected: say what to do (the same list is the phone's Agents page), not just that there is nothing
         list.innerHTML = (!unfilteredCount && hubEmptyListHtml(machineState())) || `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
+        syncGroupToggle(); // no groups drawn: the header toggle goes
         return;
     }
 
@@ -1373,6 +1374,7 @@ function _renderLiveSessions(sessions) {
 
     html += _renderArchivedSection(archived);
     _applyListHtml(list, html, focusedSid, focusedInMenu);
+    syncGroupToggle(); // the header's Collapse / Expand toggle reads the headers just drawn (#4947)
     _refreshTeamBadges(sessions);
 }
 

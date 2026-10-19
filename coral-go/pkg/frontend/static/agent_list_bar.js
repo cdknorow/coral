@@ -8,6 +8,7 @@ import { sessionServer, sessionTeamKey, keyLabel, LOCAL_SERVER } from './server_
 import { serverLabel } from './launch_server.js';
 import { state } from './state.js';
 import { redrawLiveList } from './list_hooks.js';
+import { syncDisplayPanels } from './display_panel.js';
 
 const HOSTS = [['agent-list-bar', 'al'], ['mobile-agent-list-bar', 'alm']]; // the sidebar's and the phone's
 const bars = new Map(); // host element -> its bar
@@ -19,7 +20,7 @@ const MODEL = makeModel({ boardLabel, machineLabel });
 
 function spec(idp) {
     return {
-        idp, noun: 'agent', noSearch: true, label: 'Filter and sort agents', searchLabel: 'Search agents', placeholder: 'Search agents',
+        idp, noun: 'agent', noSearch: true, inline: true, label: 'Filter and sort agents', searchLabel: 'Search agents', placeholder: 'Search agents',
         sorts: { values: SORTS, labels: SORT_LABEL, aria: 'Sort agents' },
         fields: [
             { type: 'select', key: 'state', id: `${idp}-state`, label: 'State', values: STATES, labels: STATE_LABEL, any: 'Any state' },
@@ -55,6 +56,25 @@ export function syncAgentListBars(sessions, matched) {
     const narrowed = !!(f.state || f.board || f.machine || getAgentFilter());
     const n = sessions.length;
     const text = narrowed ? `${matched} of ${n} agent${n === 1 ? '' : 's'}` : `${n} agent${n === 1 ? '' : 's'}`;
+    // The summary line and the Display button's count tell, with the panel shut, which filters and which sort are on (the sort counts when it is not the list's own order).
+    const sortOn = f.sort && f.sort !== EMPTY.sort;
+    const parts = [...MODEL.chips(f).map(c => c.label), ...(sortOn ? [`Sort: ${SORT_LABEL[f.sort]}`] : [])];
+    const summary = parts.length ? `${parts.join(' · ')}${narrowed ? ` (${text})` : ''}` : '';
+    for (const el of document.querySelectorAll('[data-agent-list-summary]')) {
+        if (el.dataset.text !== summary) {
+            el.dataset.text = summary;
+            el.replaceChildren();
+            if (summary) {
+                const t = document.createElement('span'); t.className = 'agent-list-summary-text'; t.textContent = summary;
+                const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'agent-list-summary-clear'; clear.textContent = 'Clear';
+                clear.setAttribute('aria-label', 'Clear filters and sort');
+                clear.addEventListener('click', () => onChange({ ...EMPTY }));
+                el.append(t, clear);
+            }
+        }
+    }
+    for (const b of document.querySelectorAll('[data-display-badge]')) { b.textContent = parts.length ? String(parts.length) : ''; b.hidden = !parts.length; }
+    syncDisplayPanels();
     for (const [id, idp] of HOSTS) {
         const host = document.getElementById(id);
         if (!host) continue;

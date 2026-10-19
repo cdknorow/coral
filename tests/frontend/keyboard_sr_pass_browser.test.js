@@ -61,15 +61,15 @@ const { connect } = require('./agent_view_harness');
         assert.equal(await active(), 'agentic-tab-customize:');
         ok('Tab past the last control and Shift+Tab before the first close the chooser and put focus on its button');
 
-        // 2. The display menu: Down on the button opens it and focuses the first option, Up and Down move, Escape closes it with focus back on the button.
-        await ev(`document.getElementById('sidebar-summary-btn').focus(); true`);
-        await key('ArrowDown');
-        await waitFor(`document.getElementById('list-display-menu').open`, 'display menu opens');
-        await waitFor(`document.activeElement && document.activeElement.dataset.displayInput === 'summary'`, 'first option focused');
+        // 2. The Display panel (#4947, an expander): the button, a disclosure (aria-expanded, aria-controls), opens it and puts the keyboard in its first control; Escape closes it with focus back on the button.
+        assert.equal(await ev(`document.getElementById('sidebar-summary-btn').getAttribute('aria-expanded') + '|' + document.getElementById('sidebar-summary-btn').getAttribute('aria-controls')`), 'false|display-panel', 'a disclosure button naming its panel');
+        await ev(`document.getElementById('sidebar-summary-btn').focus(); document.getElementById('sidebar-summary-btn').click(); true`);
+        await waitFor(`!document.getElementById('display-panel').hidden && document.getElementById('sidebar-summary-btn').getAttribute('aria-expanded') === 'true'`, 'display panel opens');
+        await waitFor(`document.activeElement && document.getElementById('display-panel').contains(document.activeElement)`, 'a control in the panel is focused');
         await key('Escape');
-        assert.equal(await ev(`document.getElementById('list-display-menu').open`), false, 'Escape closes the display menu');
+        assert.equal(await ev(`document.getElementById('display-panel').hidden`), true, 'Escape closes the display panel');
         assert.equal(await active(), 'sidebar-summary-btn:', 'focus is back on the Display options button');
-        ok('display options: Down opens and focuses the first option, Escape closes and returns focus');
+        ok('display options: the button opens the panel and focuses its first control, Escape closes and returns focus');
 
         // 3. A server's details menu (the markup server_status.js draws, as a fixture): Down opens, Up/Down/Home/End move over its buttons, Escape returns focus.
         await ev(`(() => { const d = document.createElement('details'); d.id = 'kb-server-details'; d.className = 'server-group-more'; d.setAttribute('data-server-details', 'kb');

@@ -2566,3 +2566,13 @@ button.team-artifact-name { cursor: pointer; }
 
 /* The Tasks panel's search bar (#4744): the shared list bar above the table; nothing while it is not shown. */
 .board-task-bar:empty { display: none; }
+
+/* The agent list's bar inside the Display expander (#4947): its fields and sort are open rows of the panel, not a popover. */
+.agent-list-bar .list-bar-bar { padding: 0; }
+.list-bar-menu-inline { background: none; border: 0; box-shadow: none; padding: 0; flex-direction: column; flex-wrap: nowrap; gap: 6px; }
+.list-bar-menu-inline .list-bar-clear-all { align-self: flex-start; }
+.list-bar-menu-inline .list-bar-clear-all[hidden] { display: none; }
+.list-bar-menu-inline > .list-bar-count { flex: none; }
+.list-bar-menu-inline .list-bar-field { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); align-items: center; gap: 8px; }
+.list-bar-menu-inline .list-bar-field > :last-child { flex: none; width: 100%; }
+.list-bar-menu-inline > .list-bar-count { padding-left: 2px; }

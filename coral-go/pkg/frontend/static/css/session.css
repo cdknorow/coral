@@ -2093,11 +2093,11 @@
 .xterm-container.agent-sleeping ~ .terminal-statusbar .xterm-focus-hint { display: none; }
 
 /* ── Servers in the agent list (#3085; #4932 removed the search-row server pill) ─────────── */
-.list-display-menu, .server-group-more { position: relative; }
-.list-display-menu > summary, .server-group-more > summary { list-style: none; cursor: pointer; }
-.list-display-menu > summary::-webkit-details-marker, .server-group-more > summary::-webkit-details-marker { display: none; }
+.server-group-more { position: relative; }
+.server-group-more > summary { list-style: none; cursor: pointer; }
+.server-group-more > summary::-webkit-details-marker { display: none; }
 .server-group-toggle:focus-visible, .server-group-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.server-switcher-panel, .list-display-panel {
+.server-switcher-panel {
     position: absolute; right: 0; top: calc(100% + 4px); z-index: 50;
     min-width: 16em; max-width: min(22em, calc(100vw - 32px));
     padding: var(--space-md); border: 1px solid var(--border); border-radius: var(--radius-md);
@@ -2109,11 +2109,25 @@
 .server-details-list dd { margin: 0; overflow-wrap: anywhere; }
 .server-details-update, .server-details-hint { margin: 0 0 var(--space-md); color: var(--text-secondary); }
 .server-switcher-panel .btn + .btn { margin-left: var(--space-xs); }
-.list-display-panel { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 12em; }
-.list-display-option { display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: 4px 0; }
+/* The Display expander (#4947): it opens in place under the search, so it is a row of the header, not a popover. */
+.list-display-panel { display: flex; flex-direction: column; gap: var(--space-xs); flex: 1 1 100%; min-width: 0; box-sizing: border-box; position: static; box-shadow: none; max-width: none; padding: var(--space-sm) 0 0; border: 0; border-top: 1px solid var(--border-subtle, var(--border)); background: none; }
+.list-display-panel[hidden] { display: none; }
+.list-display-options { display: flex; flex-direction: column; gap: var(--space-xs); padding: 0 var(--space-xs); }
+.list-display-option { display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: 4px 0; font-size: 0.8125rem; }
 .list-display-option[hidden] { display: none; }
-.list-display-actions { display: flex; gap: var(--space-sm); margin-top: var(--space-xs); padding-top: var(--space-sm); border-top: 1px solid var(--border-subtle, var(--border)); }
-.list-display-actions .btn { flex: 1 1 0; white-space: nowrap; }
+.list-display-panel .agent-list-bar:not([hidden]) + .list-display-options { border-top: 1px solid var(--border-subtle, var(--border)); padding-top: var(--space-xs); }
+/* What is on while the panel is shut: a count on the button, and a line under the search saying which filters and which sort. */
+.display-badge { position: absolute; top: 2px; right: 2px; min-width: 0.875rem; height: 0.875rem; padding: 0 3px; box-sizing: border-box; border-radius: 0.4375rem; background: var(--accent-dim); color: #fff; font-size: 0.625rem; line-height: 0.875rem; text-align: center; }
+.display-badge[hidden] { display: none; }
+.sidebar-collapse-btn[data-display-button] { position: relative; }
+.agent-list-summary { flex: 1 1 100%; display: flex; align-items: center; gap: var(--space-sm); min-width: 0; font-size: 0.75rem; color: var(--text-secondary); }
+.agent-list-summary[hidden] { display: none; }
+.agent-list-summary-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-list-summary-clear { flex: none; border: 0; background: none; color: var(--text-primary); /* 4.5:1 on the light panel; the accent blue was 4.44 */ font: inherit; cursor: pointer; padding: 4px; text-decoration: underline; }
+.agent-list-summary-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The header's one Collapse / Expand toggle: its icon is the next action. */
+.group-toggle-btn[hidden] { display: none; }
+.group-toggle-btn[data-next="collapse"] .group-toggle-expand, .group-toggle-btn[data-next="expand"] .group-toggle-collapse { display: none; }
 /* Group headers (Group by server): the outermost level of the list, flush left, with a
    computer icon and no status dot; an offline server is dimmed (#3507). */
 .session-list .server-group-header {
@@ -2153,9 +2167,10 @@
 /* Phone width and touch screens: the header's controls are the touch size, all of them (mobile.css gives every .btn that minimum at this width). */
 @media (max-width: 767px), (pointer: coarse) {
     .sidebar-header.sidebar-header, .mobile-list-header.mobile-list-header { --ctl-h: var(--control-touch-height, 44px); }
+    .list-display-option, .agent-list-summary-clear { min-height: var(--control-touch-height, 44px); }
 }
 @media (pointer: coarse) {
-    .server-group-toggle, .server-launch-btn, .list-display-option, .list-display-actions .btn {
+    .server-group-toggle, .server-launch-btn, .list-display-option {
         min-height: var(--control-touch-height, 44px);
     }
     .server-group-more > summary.sidebar-kebab-btn { display: inline-flex; align-items: center; justify-content: center; } /* the kebab's own touch size (touch.css) */
@@ -2168,15 +2183,9 @@
 .mobile-list-header .mobile-list-title { white-space: nowrap; flex: none; }
 /* The display menu hangs from the whole header row, not from its own small button, so it is never wider than the screen or cut off at the edge (#4062). */
 .sidebar-header, .mobile-list-header { position: relative; }
-/* The display menu and a server's menu hang from the whole header / row, not from their own small button, so at 200% text and on a phone they are never
-   wider than the screen or cut off at its left edge (#4247; the server list did this since #4062). */
-.sidebar-header .list-display-menu, .mobile-list-header .list-display-menu { position: static; }
-.sidebar-header .list-display-panel, .mobile-list-header .list-display-panel {
-    left: auto; right: 12px; top: calc(100% - 4px); min-width: min(12em, calc(100% - 24px)); max-width: calc(100% - 24px); box-sizing: border-box;
-}
 .session-list .server-group-header { position: relative; }
 .server-group-header .server-group-more { position: static; }
-.list-display-menu:not([open]) > .list-display-panel, .server-group-more:not([open]) > .server-switcher-panel { display: none; } /* a closed menu has no boxes */
+.server-group-more:not([open]) > .server-switcher-panel { display: none; } /* a closed menu has no boxes */
 .server-group-more > .server-switcher-panel { left: auto; right: 0; top: calc(100% - 2px); min-width: min(16em, 100%); max-width: 100%; box-sizing: border-box; }
 /* Keep the search box usable: it gives up width down to 6em and a very narrow sidebar wraps the header (#3085, #4062). */
 .sidebar-header { flex-wrap: wrap; }

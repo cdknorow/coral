@@ -225,7 +225,7 @@ const SETTINGS_PRELOAD = `(() => {
         await ev(`(() => { const d = document.querySelector('#mobile-agent-list li.server-group-header details[data-server-details]'); if (d) d.open = true; return true; })()`);
         const phone = await ev(`(() => {
             const coarse = matchMedia('(pointer: coarse)').matches;
-            const sizes = [...document.querySelectorAll('#mobile-agent-list .server-group-toggle, #mobile-agent-list .server-group-more-btn, #mobile-agent-list [data-list-display-menu] summary')]
+            const sizes = [...document.querySelectorAll('#mobile-agent-list .server-group-toggle, #mobile-agent-list .server-group-more-btn, #mobile-agent-list [data-display-button], #mobile-agent-list [data-group-toggle]')]
                 .filter(el => el.getBoundingClientRect().width > 0)
                 .map(el => ({ cls: el.className, h: Math.round(el.getBoundingClientRect().height), w: Math.round(el.getBoundingClientRect().width) }));
             return { coarse, overflow: document.documentElement.scrollWidth - innerWidth, small: sizes.filter(s => s.h < 44 || s.w < 44), count: sizes.length };

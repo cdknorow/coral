@@ -44,16 +44,16 @@ if (typeof document !== 'undefined') {
             if (d.open) _openServerDetails.add(d.dataset.serverDetails); else _openServerDetails.delete(d.dataset.serverDetails);
         }
     }, true);
-    // A click or tap outside an open server details or display menu closes it; a click inside leaves it open (#4062).
+    // A click or tap outside an open server details closes it; a click inside leaves it open (#4062). The list's Display panel is an expander (display_panel.js) and stays as the person left it.
     // Capture phase, before any action redraws the list, so a click inside a row that gets replaced is still seen as inside.
     document.addEventListener('click', (e) => {
-        for (const d of document.querySelectorAll('details[data-server-details][open], details[data-list-display-menu][open]')) {
+        for (const d of document.querySelectorAll('details[data-server-details][open]')) {
             if (!d.contains(e.target)) d.open = false;
         }
     }, true);
-    // Arrow keys in the sidebar's menus (a server's details, the display options): Down on the button opens the menu,
+    // Arrow keys in a server's details menu: Down on the button opens the menu,
     // then Up and Down, Home and End move through its controls.
-    const MENUS = 'details[data-server-details], details[data-list-display-menu]';
+    const MENUS = 'details[data-server-details]';
     const menuItems = d => [...d.querySelectorAll('button:not(:disabled), input:not(:disabled), a[href]')].filter(x => !x.closest('[hidden]'));
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
@@ -75,7 +75,7 @@ if (typeof document !== 'undefined') {
     // Escape closes an open menu and returns focus to its button.
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
-        const d = e.target.closest && e.target.closest('details[data-server-details][open], details[data-list-display-menu][open]');
+        const d = e.target.closest && e.target.closest('details[data-server-details][open]');
         if (!d) return;
         d.open = false;
         const sum = d.querySelector('summary');

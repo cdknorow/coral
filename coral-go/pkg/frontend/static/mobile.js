@@ -88,26 +88,28 @@ function _listHeader(agentList) {
     header.className = 'mobile-list-header';
     header.innerHTML = `
             <h2 class="mobile-list-title">Live Sessions</h2>
-            <details class="list-display-menu" data-list-display-menu>
-                <summary class="sidebar-collapse-btn" data-display-button title="Display options" aria-label="Display options">
-                    <span class="material-icons" style="font-size:1.125rem" aria-hidden="true">notes</span>
-                </summary>
-                <div class="list-display-panel" role="group" aria-label="Display options">
-                    <label class="list-display-option"><input type="checkbox" data-display-input="summary" data-on-change="toggle-session-summary"> Show summaries</label>
-                    <label class="list-display-option" data-display-row="server" hidden><input type="checkbox" data-display-input="server" data-on-change="toggle-show-server"> Show server</label>
-                    <label class="list-display-option" data-display-row="group" hidden><input type="checkbox" data-display-input="group" data-on-change="toggle-group-by-server"> Group by server</label>
-                    <div class="list-display-actions"><button type="button" class="btn btn-small" data-on-click="groups-collapse-all">Collapse all</button><button type="button" class="btn btn-small" data-on-click="groups-expand-all">Expand all</button></div>
-                </div>
-            </details>
+            <button class="sidebar-collapse-btn" type="button" data-display-button data-on-click="display-panel-toggle" aria-expanded="false" aria-controls="mobile-display-panel" title="Display options" aria-label="Display options">
+                <span class="material-icons" style="font-size:1.125rem" aria-hidden="true">notes</span><span class="display-badge" data-display-badge hidden></span>
+            </button>
+            <button class="sidebar-collapse-btn group-toggle-btn" type="button" data-group-toggle data-next="collapse" data-on-click="groups-toggle-all" title="Collapse all groups" aria-label="Collapse all groups" hidden>
+                <svg class="group-toggle-collapse" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9l5-5 5 5M7 15l5 5 5-5"/></svg>
+                <svg class="group-toggle-expand" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>
+            </button>
             <button class="btn btn-small btn-primary" data-on-click="launch-show">+ New</button>
             <div class="mobile-search-row" id="mobile-search-row">
                 <input type="search" class="sidebar-search-input mobile-search-input" placeholder="Search agents" autocomplete="off" aria-label="Search agents" data-on-input="agent-search-filter" data-on-keydown="agent-search-key">
             </div>
+            <div class="agent-list-summary" data-agent-list-summary role="status" hidden></div>
+            <div class="list-display-panel" id="mobile-display-panel" data-display-panel role="group" aria-label="Display options" data-on-keydown="display-panel-key" hidden>
+                <div class="agent-list-bar" id="mobile-agent-list-bar" hidden></div>
+                <div class="list-display-options">
+                    <label class="list-display-option"><input type="checkbox" data-display-input="summary" data-on-change="toggle-session-summary"> Show summaries</label>
+                    <label class="list-display-option" data-display-row="server" hidden><input type="checkbox" data-display-input="server" data-on-change="toggle-show-server"> Show server</label>
+                    <label class="list-display-option" data-display-row="group" hidden><input type="checkbox" data-display-input="group" data-on-change="toggle-group-by-server"> Group by server</label>
+                </div>
+            </div>
         `;
     agentList.prepend(header);
-    // The list's filters and sort (agent_list_bar.js, #4744), under the header's own controls.
-    const bar = document.createElement('div'); bar.className = 'agent-list-bar'; bar.id = 'mobile-agent-list-bar'; bar.hidden = true;
-    header.after(bar);
     return header;
 }
 

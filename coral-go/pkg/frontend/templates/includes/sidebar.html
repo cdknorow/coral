@@ -19,27 +19,30 @@
                     <svg class="sidebar-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
                     <input type="search" id="agent-search-input" class="sidebar-search-input" placeholder="Search" autocomplete="off" aria-label="Search agents" data-on-input="agent-search-filter" data-on-keydown="agent-search-key">
                 </div>
-                <!-- List display options (#3085): summaries, server name, grouping by server -->
-                <details class="list-display-menu" id="list-display-menu" data-list-display-menu>
-                    <summary class="sidebar-collapse-btn" id="sidebar-summary-btn" data-display-button title="Display options" aria-label="Display options">
-                        <span class="material-icons" style="font-size:1.125rem" aria-hidden="true">notes</span>
-                    </summary>
-                    <div class="list-display-panel" role="group" aria-label="Display options">
-                        <label class="list-display-option"><input type="checkbox" id="display-show-summary" data-display-input="summary" data-on-change="toggle-session-summary"> Show summaries</label>
-                        <label class="list-display-option" id="display-show-server-row" data-display-row="server" hidden><input type="checkbox" id="display-show-server" data-display-input="server" data-on-change="toggle-show-server"> Show server</label>
-                        <label class="list-display-option" id="display-group-by-server-row" data-display-row="group" hidden><input type="checkbox" id="display-group-by-server" data-display-input="group" data-on-change="toggle-group-by-server"> Group by server</label>
-                        <div class="list-display-actions"><button type="button" class="btn btn-small" data-on-click="groups-collapse-all">Collapse all</button><button type="button" class="btn btn-small" data-on-click="groups-expand-all">Expand all</button></div>
-                    </div>
-                </details>
+                <!-- List display options (#3085): the ☰ button opens a panel in place with the list's filters and sort (#4947), summaries, server name and grouping by server; the one toggle beside it collapses or expands every group -->
+                <button class="sidebar-collapse-btn" id="sidebar-summary-btn" type="button" data-display-button data-on-click="display-panel-toggle" aria-expanded="false" aria-controls="display-panel" title="Display options" aria-label="Display options">
+                    <span class="material-icons" style="font-size:1.125rem" aria-hidden="true">notes</span><span class="display-badge" data-display-badge hidden></span>
+                </button>
+                <button class="sidebar-collapse-btn group-toggle-btn" type="button" data-group-toggle data-next="collapse" data-on-click="groups-toggle-all" title="Collapse all groups" aria-label="Collapse all groups" hidden>
+                    <svg class="group-toggle-collapse" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9l5-5 5 5M7 15l5 5 5-5"/></svg>
+                    <svg class="group-toggle-expand" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>
+                </button>
                 <!-- last in the row: the collapsed rail has its own way back (Expand sidebar) -->
                 <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" type="button" data-on-click="sidebar-rail-toggle" title="Collapse sidebar" aria-label="Collapse sidebar">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M16 9l-3 3 3 3"/></svg>
                 </button>
+                <div class="agent-list-summary" data-agent-list-summary role="status" hidden></div>
+                <div class="list-display-panel" id="display-panel" data-display-panel role="group" aria-label="Display options" data-on-keydown="display-panel-key" hidden>
+                    <div class="agent-list-bar" id="agent-list-bar" hidden></div>
+                    <div class="list-display-options">
+                        <label class="list-display-option"><input type="checkbox" id="display-show-summary" data-display-input="summary" data-on-change="toggle-session-summary"> Show summaries</label>
+                        <label class="list-display-option" id="display-show-server-row" data-display-row="server" hidden><input type="checkbox" id="display-show-server" data-display-input="server" data-on-change="toggle-show-server"> Show server</label>
+                        <label class="list-display-option" id="display-group-by-server-row" data-display-row="group" hidden><input type="checkbox" id="display-group-by-server" data-display-input="group" data-on-change="toggle-group-by-server"> Group by server</label>
+                    </div>
+                </div>
             </div>
             <section class="sidebar-section" data-section="live-sessions">
                 <div class="sidebar-section-body">
-                    <!-- The list's filters and sort on the shared list bar (agent_list_bar.js, #4744): State, Board, Machine, Sort, the count and the chips; with the list, so it goes with the Agents tab -->
-                    <div class="agent-list-bar" id="agent-list-bar" hidden></div>
                     <ul id="live-sessions-list" class="session-list">
                         <li class="empty-state">No live sessions</li>
                     </ul>

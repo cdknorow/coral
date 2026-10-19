@@ -70,7 +70,8 @@ import { showServersModal, hideServersModal, initServersUi } from './servers.js'
 import { initHubIndicator } from './hub_indicator.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './inbox_tab.js'; // Inbox tab (hub only): its visibility and badge (#4718)
-import { setAllGroupsCollapsed } from './group_collapse.js'; // the Display options panel's Collapse all / Expand all
+import { toggleAllGroups } from './group_collapse.js'; // the list header's one Collapse / Expand toggle
+import { toggleDisplayPanel, displayPanelKey } from './display_panel.js'; // the Display expander
 import { registerActions, tokenOf } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
 import { markReady } from './ready.js';
 import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch, loadModals, loadResumeDialog, loadDefaultPromptsDialog } from './lazy_panels.js';
@@ -224,8 +225,9 @@ registerActions({
     'agent-search-filter': el => window.filterLiveAgents(el.value),
     'agent-search-key': (el, event) => window.agentSearchKey(event),
     'toggle-session-summary': () => window.toggleSessionSummary(),
-    'groups-collapse-all': () => setAllGroupsCollapsed(true),
-    'groups-expand-all': () => setAllGroupsCollapsed(false),
+    'groups-toggle-all': () => toggleAllGroups(),
+    'display-panel-toggle': el => toggleDisplayPanel(el),
+    'display-panel-key': (el, event) => displayPanelKey(event),
     'toggle-show-server': () => window.toggleShowServer(),
     'toggle-group-by-server': () => window.toggleGroupByServer(),
     'jobs-subtab': el => { if (el.dataset.tab === 'active' || el.dataset.tab === 'scheduled') window.switchJobsSubtab(el.dataset.tab); },
