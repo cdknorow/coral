@@ -225,3 +225,36 @@ func TestUsageSummaryForAnAgentTokenHasNoPerSessionRows(t *testing.T) {
 	assert.Contains(t, ag, "by_model")
 	assert.Equal(t, 15.0, ag["totals"].(map[string]any)["total_tokens"], "the totals stay")
 }
+
+// GET /api/sessions/{id}/resolve (an agent tool calls it) answers a session of another board with the roster fields only: no working directory, no prompt (#5041, QA's sweep).
+func TestResolveForAnAgentTokenReducesOtherBoards(t *testing.T) {
+	_, h, _, ss := setupSessionsTestServer(t)
+	registerRosterSessions(t, ss)
+	resolve := func(agent, sid string) map[string]any {
+		req := httptest.NewRequest(http.MethodGet, "/api/sessions/"+sid+"/resolve", nil)
+		rc := chi.NewRouteContext()
+		rc.URLParams.Add("sessionID", sid)
+		ctx := context.WithValue(req.Context(), chi.RouteCtxKey, rc)
+		if agent != "" {
+			ctx = context.WithValue(ctx, verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: agent, SessionName: "claude-" + agent})
+		}
+		rec := httptest.NewRecorder()
+		h.ResolveSession(rec, req.WithContext(ctx))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		return out
+	}
+	const me, mate, other = "aaaaaaaa-5041-4000-8000-00000000000a", "bbbbbbbb-5041-4000-8000-00000000000b", "cccccccc-5041-4000-8000-00000000000c"
+
+	assert.Equal(t, "/work/other", resolve("", other)["working_directory"], "the Operator's answer is whole")
+	assert.Equal(t, "/work/me", resolve(me, me)["working_directory"])
+	assert.Equal(t, "/work/mate", resolve(me, mate)["working_directory"], "a board mate's answer is whole")
+
+	got := resolve(me, other)
+	assert.NotContains(t, got, "working_directory")
+	assert.NotContains(t, got, "first_prompt")
+	assert.Equal(t, other, got["session_id"], "the roster fields stay")
+	assert.Equal(t, "team-y", got["board_project"])
+	assert.Equal(t, "other", got["name"])
+}

@@ -688,7 +688,24 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 	for k, v := range h.autoAcceptPayload(r.Context(), ls.SessionID) {
 		out[k] = v
 	}
+	// An agent's token gets the roster fields of a session that is not its own or its board's (the live list's rule, #5041): not the working directory, the prompt or the waiting text.
+	if owner, isAgent := VerifiedSession(r.Context()); isAgent && !h.agentMayReadSession(r.Context(), owner.SessionID, ls) {
+		out = rosterRow(out)
+	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// agentMayReadSession reports whether the agent whose session is ownerSessionID may read ls whole: its own session, or one on its own board.
+func (h *SessionsHandler) agentMayReadSession(ctx context.Context, ownerSessionID string, ls *store.LiveSession) bool {
+	if ls.SessionID == ownerSessionID {
+		return true
+	}
+	own, err := h.ss.GetLiveSession(ctx, ownerSessionID)
+	if err != nil || own == nil {
+		return false
+	}
+	board := ptr.Value(own.BoardName)
+	return board != "" && board == ptr.Value(ls.BoardName)
 }
 
 // validateExactLiveTarget prevents name-based terminal APIs from selecting a

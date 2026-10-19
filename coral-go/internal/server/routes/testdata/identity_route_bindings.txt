@@ -88,7 +88,7 @@ GET /api/sessions/live/{name}/tasks | unbound
 GET /api/sessions/resolve | unbound
 GET /api/sessions/{sessionID}/changes | unbound
 GET /api/sessions/{sessionID}/changes.diff | unbound
-GET /api/sessions/{sessionID}/resolve | unbound
+GET /api/sessions/{sessionID}/resolve | token-session
 GET /api/sessions/{sessionID}/status | unbound
 GET /api/token-usage/summary | token-session
 PATCH /api/agent/tasks/{taskID} | token-bound
