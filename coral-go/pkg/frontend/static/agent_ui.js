@@ -169,11 +169,10 @@ export async function refreshAgentUI() {
             metric.textContent = `${Number(panel.event_count || 0)} event${Number(panel.event_count || 0) === 1 ? '' : 's'}`;
             metric.title = 'Persisted interactions from this panel';
             title.append(' ', metric);
-            if (isCloud()) {
-                const label = document.createElement('span'); label.className = 'agent-ui-authored';
-                label.textContent = 'agent-authored panel'; label.title = 'This content was written by the agent and runs in a restricted frame. Open panels only from agents you trust.';
-                title.append(' ', label);
-            }
+            // Always said, on this computer too (#5090): what is inside the frame is the agent's, not Coral's, whatever it draws.
+            const label = document.createElement('span'); label.className = 'agent-ui-authored';
+            label.textContent = 'agent-authored panel'; label.title = 'This content was written by the agent and runs in a restricted frame. Coral never asks for a password or a key in a panel.';
+            title.append(' ', label);
             const expand = document.createElement('button'); expand.innerHTML = '<span class="material-icons" aria-hidden="true">open_in_full</span>'; expand.title = 'Expand panel';
             expand.setAttribute('aria-label', 'Expand panel');
             const popout = document.createElement('button'); popout.innerHTML = '<span class="material-icons" aria-hidden="true">open_in_new</span>'; popout.title = 'Open in new tab';
@@ -187,16 +186,10 @@ export async function refreshAgentUI() {
             actions.append(expand, popout, dismiss, remove); header.append(title, actions);
             const status = document.createElement('p'); status.className = 'agent-ui-status'; status.setAttribute('role', 'status');
             const contentPath = endpoint(sid, panel.id).replace('?','/content?') + '&revision=' + panel.revision;
-            let frame;
-            if (isCloud()) {
-                // On the hub the panel is read as TEXT (a View-tier GET) and run in the sandboxed host frame, never as a URL of its own.
-                frame = createPanelFrame(panel.title);
-            } else {
-                frame = document.createElement('iframe'); frame.title = panel.title;
-                frame.setAttribute('sandbox', 'allow-scripts');
-                frame.setAttribute('referrerpolicy', 'no-referrer');
-                frame.src = contentPath;
-            }
+            // The panel is read as TEXT and run in the sandboxed host frame (panel_host.html), on this computer as on the hub, never as a URL of its own
+            // (#5090): a document loaded by URL could navigate itself anywhere (the dashboard's frame-src allows https for the Linked preview) and carry what the
+            // Operator typed into it out in the address. The host's frame-src forbids that and the suite proves it.
+            const frame = createPanelFrame(panel.title);
             card.append(header, frame, status); container.append(card); card.hidden = activePanel !== panel.id;
             const item = { throttle: createEventThrottle(), card, frame, status, metric, eventCount: Number(panel.event_count || 0), revision: panel.revision, sid, id: panel.id };
             dismiss.onclick = () => {
@@ -225,17 +218,17 @@ export async function refreshAgentUI() {
                     status.textContent = error.message;
                 }
             });
-            popout.onclick = () => window.open(frame.src, '_blank', 'noopener,noreferrer');
+            popout.onclick = () => window.open(new URL(contentPath, location.href).href, '_blank', 'noopener,noreferrer');
             if (isCloud()) {
                 // Publishing and removing panels is the agent's own action on its machine (the hub never forwards PUT/DELETE), and a
                 // sandboxed panel has no URL of its own to open in a tab.
                 remove.hidden = true; popout.hidden = true;
-                item.panel = openPanel(frame, {
-                    onReady: () => { status.textContent = ''; },
-                    onNavigated: () => { status.textContent = 'This panel tried to navigate away from Coral and was stopped.'; frame.remove(); },
-                });
-                loadCloudPanel(item, contentPath, status);
             }
+            item.panel = openPanel(frame, {
+                onReady: () => { status.textContent = ''; },
+                onNavigated: () => { status.textContent = 'This panel tried to navigate away from Coral and was stopped.'; frame.remove(); },
+            });
+            loadPanel(item, contentPath, status);
             expand.onclick = () => {
                 const dialog = document.createElement('dialog'); dialog.id = 'agent-ui-expanded';
                 // A named dialog with a visible Close button: a backdrop tap is not the only way out (touch, keyboard).
@@ -303,7 +296,7 @@ export function initAgentUI() {
 
     window.addEventListener('message', async event => {
         if (event.data?.type !== 'coral-ui-event') return;
-        if (isCloud() && !isPanelEvent(event.data)) return; // the host already validated it; so does the dashboard
+        if (!isPanelEvent(event.data)) return; // the host already validated it; so does the dashboard
         const item = [...mounted.values()].find(p => p.frame.contentWindow === event.source);
         if (!item || item.sid !== currentID()) return;
         const { action, payload, requestId } = event.data;
@@ -335,8 +328,8 @@ export function initAgentUI() {
     });
 }
 
-// Read one panel as text through the hub and hand it to the sandboxed host frame.
-async function loadCloudPanel(item, contentPath, status) {
+// Read one panel as text and hand it to the sandboxed host frame.
+async function loadPanel(item, contentPath, status) {
     try {
         status.textContent = 'Loading panel…';
         const response = await serverFetch(serverForSession(null, item.sid), contentPath);

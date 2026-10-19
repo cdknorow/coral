@@ -32,7 +32,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
  try {
   const file = path.join(dir,'panel.html');
   fs.writeFileSync(file,`<style>body{margin:0;color:white;background:#222}button{padding:16px}</style><button id="choose" onclick="coralUI.emit('choose',{option:'A'})">Choose A</button><script>
-  (async()=>{let parentBlocked=false,networkBlocked=false;try{parent.document.body.dataset.uiEscaped='yes'}catch(e){parentBlocked=true}try{await fetch('/api/sessions/live')}catch(e){networkBlocked=true}await coralUI.emit('isolation',{parentBlocked,networkBlocked});})();</script>`);
+  (async()=>{let parentBlocked=false,networkBlocked=false;try{parent.document.body.dataset.uiEscaped='yes'}catch(e){parentBlocked=true}try{await fetch('/api/sessions/live')}catch(e){networkBlocked=true}await coralUI.emit('isolation',{parentBlocked,networkBlocked});await new Promise(r=>setTimeout(r,700))/* sleep-ok: the panel's own 500 ms minimum gap between responses */;await coralUI.emit('choose',{option:'A'});})();</script>`);
   const published=cli(['publish','--id','demo','--title','<b>Demo</b>','--file',file]);
   assert.equal(published.revision,1);assert.equal(cli(['list']).length,1);
   await Page.enable();await Runtime.enable();await Page.navigate({url:BASE});await Page.loadEventFired();await coralReady();
@@ -47,17 +47,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal(await ev(`document.querySelector('.agent-ui-card iframe').getAttribute('sandbox')`),'allow-scripts');
   assert.equal(await ev(`getComputedStyle(document.querySelector('.agent-ui-card')).flexGrow`),'1');
   assert.equal(await ev(`getComputedStyle(document.querySelector('.agent-ui-card button')).borderRadius`),'6px');
-  // The panel frame on screen: right after opening, an earlier frame's target can still be listed, so match the
-  // card's current iframe URL exactly.
-  const frameSrc=await ev(`document.querySelector('.agent-ui-card iframe').src`);
-  let child;
-  for (const end=Date.now()+5000; !child && Date.now()<end; await sleep(50)) child=(await client.Target.getTargets()).targetInfos.find(t=>t.type==='iframe'&&t.url===frameSrc);
-  assert.ok(child,'isolated panel target exists');
-  const attached=await client.Target.attachToTarget({targetId:child.targetId,flatten:true});
-  // A panel may send one response per 500 ms (panel_sandbox createEventThrottle, minGapMs); its isolation report
-  // was the last one, so a click inside that window is refused ('Too many responses; slow down.').
-  await sleep(600); // sleep-ok: the panel's documented minimum gap between responses
-  await client.send('Runtime.evaluate',{expression:"document.getElementById('choose').click()"},attached.sessionId);
+  // The panel runs in a child frame of the sandboxed host frame (#5090: on this computer as on the hub, never as a document of its own), which a
+  // test cannot click into from outside: it sends its second response itself, after the throttle's 500 ms gap (panel_sandbox createEventThrottle).
+  const hostFrame=await ev(`document.querySelector('.agent-ui-card iframe').getAttribute('src')`);
+  assert.match(hostFrame,/panel_host\.html$/,'the panel is shown through the sandboxed host, not as a document of its own');
   events=await untilEvent(e=>e.action==='choose', 'the choose event');
   await waitFor(`document.querySelector('.agent-ui-status')?.textContent.includes('Response saved')`, 'the response status', { soft: true });assert.ok(events.some(e=>e.action==='choose'&&e.payload.option==='A'));
   assert.ok(await ev(`document.querySelector('.agent-ui-status').textContent.includes('Response saved; agent not notified: session is not an agent')`));

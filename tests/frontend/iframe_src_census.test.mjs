@@ -1,6 +1,6 @@
 // Every place the dashboard gives an iframe an address (#4718, Security's rider 4): the Inbox frame's address is the constant '/inbox', and the
 // only frames whose address comes from data are named here, each with why that is safe. A new `iframe.src = ...` fails this until it is looked at.
-//   agent_ui.js         a panel of an agent on a local Coral: a same-origin API path built from the session and panel ids, in a sandbox with allow-scripts only
+//   agent_ui.js         (none since #5090: a panel on a local Coral goes through panel_sandbox.js's host frame, as on the hub)
 //   artifact_preview.js the Linked preview: an external https address in a locked sandbox (no scripts, forms, popups or navigation)
 //   panel_sandbox.js    the constant address of the panel host page
 //   view_sandbox.js     the constant address of the custom-view host page
@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const STATIC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'coral-go', 'pkg', 'frontend', 'static');
-const ALLOWED = { 'agent_ui.js': 1, 'artifact_preview.js': 1, 'panel_sandbox.js': 1, 'view_sandbox.js': 1, 'inbox_tab.js': 1 };
+const ALLOWED = { 'artifact_preview.js': 1, 'panel_sandbox.js': 1, 'view_sandbox.js': 1, 'inbox_tab.js': 1 };
 const found = {};
 for (const f of fs.readdirSync(STATIC).filter(n => n.endsWith('.js'))) {
     const src = fs.readFileSync(path.join(STATIC, f), 'utf8');
