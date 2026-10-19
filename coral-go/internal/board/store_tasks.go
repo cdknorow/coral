@@ -379,7 +379,7 @@ func (s *Store) NextPendingTaskForSubscriber(ctx context.Context, project, subsc
 	// Check assigned tasks first
 	err := s.db.GetContext(ctx, &task,
 		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
-		 FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ?
+		 FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ? AND NOT `+parkedSQL+`
 		 ORDER BY `+priorityOrder+` LIMIT 1`, project, subscriberID)
 	if err == nil {
 		return &task
@@ -387,7 +387,7 @@ func (s *Store) NextPendingTaskForSubscriber(ctx context.Context, project, subsc
 	// Then unassigned
 	err = s.db.GetContext(ctx, &task,
 		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
-		 FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '')
+		 FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '') AND NOT `+parkedSQL+`
 		 ORDER BY `+priorityOrder+` LIMIT 1`, project)
 	if err == nil {
 		return &task
@@ -399,7 +399,7 @@ func (s *Store) NextPendingTaskForSubscriber(ctx context.Context, project, subsc
 // It first looks for tasks assigned to the subscriber, then unassigned tasks.
 // Tasks are ordered by priority (critical > high > medium > low), then by ID.
 // Returns nil if no tasks are available.
-// An agent cannot claim a new task while they have an in-progress task.
+// An agent cannot claim a new task while they have an in-progress task. A parked task is never offered or claimed until it is unparked (#5183).
 func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, requestedID ...int64) (*Task, error) {
 	now := nowUTC()
 	priorityOrder := `CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`
@@ -416,15 +416,18 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, req
 	// hide a later ready task.
 	var candidateIDs []int64
 	if len(requestedID) > 0 && requestedID[0] > 0 {
-		if err := s.db.SelectContext(ctx, &candidateIDs, `SELECT id FROM board_tasks WHERE id = ? AND board_id = ? AND status = 'pending' AND (assigned_to = ? OR assigned_to IS NULL OR assigned_to = '')`, requestedID[0], project, subscriberID); err != nil || len(candidateIDs) == 0 {
+		if err := s.db.SelectContext(ctx, &candidateIDs, `SELECT id FROM board_tasks WHERE id = ? AND board_id = ? AND status = 'pending' AND (assigned_to = ? OR assigned_to IS NULL OR assigned_to = '') AND NOT `+parkedSQL, requestedID[0], project, subscriberID); err != nil || len(candidateIDs) == 0 {
+			if t, gerr := s.GetTask(ctx, project, requestedID[0]); gerr == nil && t != nil && t.Status == "pending" && t.Parked(time.Now()) {
+				return nil, fmt.Errorf("task #%d is parked and cannot be claimed until it is unparked", requestedID[0])
+			}
 			return nil, fmt.Errorf("requested task is not available to this subscriber")
 		}
 	} else {
 		var assigned, unassigned []int64
-		if err := s.db.SelectContext(ctx, &assigned, `SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ? ORDER BY `+priorityOrder, project, subscriberID); err != nil {
+		if err := s.db.SelectContext(ctx, &assigned, `SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ? AND NOT `+parkedSQL+` ORDER BY `+priorityOrder, project, subscriberID); err != nil {
 			return nil, err
 		}
-		if err := s.db.SelectContext(ctx, &unassigned, `SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '') ORDER BY `+priorityOrder, project); err != nil {
+		if err := s.db.SelectContext(ctx, &unassigned, `SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '') AND NOT `+parkedSQL+` ORDER BY `+priorityOrder, project); err != nil {
 			return nil, err
 		}
 		candidateIDs = append(assigned, unassigned...)

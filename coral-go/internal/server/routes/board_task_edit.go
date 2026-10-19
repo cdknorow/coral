@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/go-chi/chi/v5"
@@ -132,6 +133,7 @@ func (h *BoardHandler) announceTaskEdit(ctx context.Context, project string, rea
 	h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Task #%d edited] %s", task.ID, task.Title), nil)
 	assignee := taskAssignee(task)
 	nudged := false
+	parked := task.Parked(time.Now()) // a parked task is set aside: nobody is nudged to start it (#5183)
 	switch {
 	case prevStatus == "pending" && task.Status == "blocked":
 		if assignee != "" {
@@ -144,12 +146,12 @@ func (h *BoardHandler) announceTaskEdit(ctx context.Context, project string, rea
 			msg += fmt.Sprintf(" — @%s your task is now ready", assignee)
 		}
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", msg, nil)
-		if assignee != "" {
+		if assignee != "" && !parked {
 			h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
 			nudged = true
 		}
 	}
-	if !reassigned || task.Status != "pending" || nudged || assignee == "" || assignee == taskAssignee(before) {
+	if !reassigned || task.Status != "pending" || nudged || parked || assignee == "" || assignee == taskAssignee(before) {
 		return
 	}
 	if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, assignee, task.ID); !hasActive {
@@ -254,7 +256,7 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		notification := h.buildAssignmentNotification(ctx, project, task, body.Assignee, true)
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
-		if body.Assignee != "" && task.Status == "pending" {
+		if body.Assignee != "" && task.Status == "pending" && !task.Parked(time.Now()) {
 			if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, body.Assignee, task.ID); !hasActive {
 				h.sendTaskNudge(ctx, project, body.Assignee, taskClaimNudge(task.ID))
 			}

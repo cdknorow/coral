@@ -24,6 +24,17 @@ func (h *BoardHandler) buildAssignmentNotification(ctx context.Context, project 
 		}
 		return fmt.Sprintf("[Task #%d assigned to %s; still blocked] %s — waiting for prerequisites; cannot be claimed yet", task.ID, owner, task.Title)
 	}
+	// A parked task is set aside on purpose: no one is invited to claim it, and no one is told it is theirs to start (#5183).
+	if task.Parked(time.Now()) {
+		why := ""
+		if task.ParkedReason != nil {
+			why = *task.ParkedReason
+		}
+		if assignee == "" {
+			return fmt.Sprintf("[Task #%d now unassigned; parked, not for claiming yet: %s] %s", task.ID, why, task.Title)
+		}
+		return fmt.Sprintf("[Task #%d assigned to %s; parked, not to be started yet: %s] %s", task.ID, assignee, why, task.Title)
+	}
 	if assignee == "" {
 		if reassigned {
 			return fmt.Sprintf("@notify-all [Task #%d reassigned — now unassigned] %s — run 'coral-board task claim' to pick it up", task.ID, task.Title)
