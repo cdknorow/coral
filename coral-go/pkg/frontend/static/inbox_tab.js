@@ -32,6 +32,27 @@ export function updateInboxTab() {
     const label = n > 0 ? `Inbox, ${n} waiting for input` : null;
     if (tab.getAttribute('aria-label') !== label) { if (label) tab.setAttribute('aria-label', label); else tab.removeAttribute('aria-label'); }
     renderNeedsYou();
+    announceNewlyWaiting(tab);
+}
+
+let _announced = null; // the agents that were waiting at the last look (null before the first)
+const waitingKey = s => `${sessionServer(s)}|${s.session_id}`;
+/** A screen reader hears who has just started waiting, once each (#4926): "<agent> needs you: <why>" in a polite live region of the Inbox. Only an agent that was not waiting at the last look is new, so a redraw of
+ *  the list, a refresh of the same agents, or the page loading with agents already waiting says nothing. It speaks only while the Inbox is on screen: elsewhere the toast ("needs input") and the tab's badge
+ *  carry it, and a second voice for the same agent would only repeat it. The look is kept up while the Inbox is not shown, so what waited meanwhile is in the list but not announced when it is opened. */
+function announceNewlyWaiting(tab) {
+    const rows = (state.liveSessions || []).filter(s => s && s.waiting_for_input);
+    const now = new Set(rows.map(waitingKey));
+    const before = _announced;
+    _announced = now;
+    if (!before) return;
+    const live = document.getElementById('inbox-live');
+    const shown = !!live && tab.classList.contains('active') && !document.getElementById('inbox-local')?.hidden;
+    const fresh = rows.filter(s => !before.has(waitingKey(s)));
+    if (!shown || !fresh.length) return;
+    const span = document.createElement('span'); // a new node each time: the same words for the same agent waiting again are said again
+    span.textContent = fresh.map(s => `${resolveSessionIdentity(s)} needs you: ${sessionStateInfo(s).label}`).join('. ');
+    live.replaceChildren(span);
 }
 
 let _needsKey = null;

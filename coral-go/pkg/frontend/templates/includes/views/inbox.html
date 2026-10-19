@@ -2,6 +2,7 @@
 <!-- Inbox tab (#4718, #4811). Where the hub serves the dashboard it is the hub's /inbox page in a frame, made by inbox_tab.js the first time the tab is shown (so no page carries an empty one). On every other Coral the dashboard builds its own: Needs you (the agents waiting for input) and Saved for later (saved.js moves the one Saved list into #saved-view). -->
 <div id="inbox-view" class="inbox-view" role="region" aria-label="Inbox" style="display:none">
     <div id="inbox-local" class="inbox-local" hidden>
+        <div id="inbox-live" class="inbox-live" role="status" aria-live="polite" aria-atomic="true"></div>
         <section id="inbox-needs" class="inbox-needs" aria-labelledby="inbox-needs-title">
             <h2 id="inbox-needs-title" class="inbox-section-title">Needs you <span class="n" id="inbox-needs-count"></span></h2>
             <ul id="inbox-needs-list" class="inbox-needs-list"></ul>
