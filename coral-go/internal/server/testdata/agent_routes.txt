@@ -183,8 +183,8 @@ c GET /api/themes
 c GET /api/themes/variables
 c GET /api/themes/{name}
 b GET /api/upload/{name}
-c GET /api/token-usage
-c GET /api/token-usage/by-branch
+b GET /api/token-usage
+b GET /api/token-usage/by-branch
 c GET /api/token-usage/by-team
 c GET /api/token-usage/session/{sessionID}/turns
 c GET /api/token-usage/summary

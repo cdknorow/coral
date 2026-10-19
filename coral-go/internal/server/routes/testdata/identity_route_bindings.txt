@@ -61,7 +61,7 @@ GET /api/sessions/history/{sessionID}/notes | unbound
 GET /api/sessions/history/{sessionID}/resume-info | unbound
 GET /api/sessions/history/{sessionID}/tags | unbound
 GET /api/sessions/history/{sessionID}/tasks | unbound
-GET /api/sessions/live | unbound
+GET /api/sessions/live | token-session
 GET /api/sessions/live/team/{boardName}/sleep-status | unbound
 GET /api/sessions/live/{name} | unbound
 GET /api/sessions/live/{name}/attachment/{ref} | unbound

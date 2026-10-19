@@ -493,6 +493,8 @@ var operatorOnlyRoutes = map[string]string{
 	// history through /api/agent/history; none of these is called by an agent tool.
 	"GET /api/sessions/history":                             "list every session's history",
 	"GET /api/sessions/history/search":                      "search every session's history",
+	"GET /api/token-usage":                                  "list every session's token usage",
+	"GET /api/token-usage/by-branch":                        "read token usage by branch",
 	"GET /api/system/identity-report":                       "read the identity report (every session's calls and mismatches)",
 	"GET /api/board/tasks":                                  "list the tasks of every board",
 	"GET /api/teams/detail/{name}/knowledge":                "read a team's knowledge",
