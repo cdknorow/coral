@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.4.100 — The Inbox speaks up, a clearer message for a damaged board, and steadier tests
+
+### Changes
+
+- **The Inbox tells screen readers who has just started waiting:** each agent that newly needs you is announced once ("<agent> needs you: <why>"), only while the Inbox is on screen; redraws and refreshes of the same list stay quiet.
+- **A damaged message-board database gets an actionable message:** Coral still refuses to start rather than create a fresh board over the damaged one and lose its history, but the error now names the file and says it can be moved aside or restored from a backup.
+
+### Other changes
+
+- **Internals:** a server built without a board answers 503 "board unavailable" on the board's routes instead of crashing, and its background restores skip the board.
+- **Tests and CI:** the browser gate also fails a suite that leaves rows in a shared table or on a message board that was already there, and removes the boards a suite made; five timing tests and the tunnel throughput tests are steadier under load (the URL-finder test counts work instead of timing it; the rest re-measure or compare ratios), without being weakened; the route tests are faster again.
+
 ## v1.4.99 — The bookmark always opens everything's Saved, cross-team names cleaned, and old tag colours repaired
 
 ### Security
