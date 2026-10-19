@@ -3,17 +3,32 @@
 package routes
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/cdknorow/coral/internal/board"
 )
 
 // DeleteBoard deletes a board and everything on it: its messages, tasks, members and settings (Store.DeleteProject, one transaction).
+// Not while its agents run (#5043): they would stay live in a sidebar group named with the raw board id, and the cost table would list
+// that id. 409 board_has_running_agents says how many and which; kill them or move them first. An agent that is asleep or gone has no
+// terminal and does not count. When the running terminals cannot be listed the delete is refused too (503): a check that could not
+// be made is not a pass.
 // DELETE /api/board/{project}
 func (h *BoardHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
+	running, err := h.runningAgentsOn(r.Context(), project)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "could not check which agents are running on this board; try again", "code": "running_agents_unknown"})
+		return
+	}
+	if len(running) > 0 {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": runningAgentsMessage(running), "code": "board_has_running_agents", "agents": running})
+		return
+	}
 	if err := h.bs.DeleteProject(r.Context(), project); err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -23,6 +38,54 @@ func (h *BoardHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
 	delete(h.paused, project)
 	h.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// runningAgentsOn is the names of the board's active members whose terminal is running now (a member whose agent is asleep, gone or on
+// another machine has none here). Nil when the handler has no terminal backend to ask.
+func (h *BoardHandler) runningAgentsOn(ctx context.Context, project string) ([]string, error) {
+	if h.terminal == nil {
+		return nil, nil
+	}
+	subs, err := h.bs.ListSubscribers(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, nil
+	}
+	panes, err := h.terminal.ListSessions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	live := make(map[string]bool, len(panes))
+	for _, p := range panes {
+		live[p.SessionName] = true
+	}
+	var names []string
+	for _, sub := range subs {
+		if sub.SessionName == "" || !live[sub.SessionName] {
+			continue
+		}
+		name := strings.TrimSpace(sub.JobTitle)
+		if name == "" {
+			name = sub.SubscriberID
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+// runningAgentsMessage: "2 agents are still on this board (Orchestrator, QA Engineer): kill them or move them first".
+func runningAgentsMessage(names []string) string {
+	shown := names
+	if len(shown) > 5 {
+		shown = append(append([]string{}, shown[:5]...), "…")
+	}
+	who := strings.Join(shown, ", ")
+	if len(names) == 1 {
+		return "1 agent is still on this board (" + who + "): kill it or move it first"
+	}
+	return strconv.Itoa(len(names)) + " agents are still on this board (" + who + "): kill them or move them first"
 }
 
 // refuseNewBoardName answers 400 invalid_board_name and returns true when name would start

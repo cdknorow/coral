@@ -165,10 +165,17 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await until(`document.querySelectorAll('#mb-messages [data-on-click="mb-msg-delete"]').length === ${before - 1}`, 'one message deleted');
         check('Yes deletes the message', (await countMsgs()) === before - 1, `${before} -> ${await countMsgs()}`);
 
+        // With the board's agent still running the Delete says so instead of asking (#5043); once it is stopped, the delete asks first and, without a Yes, leaves the board.
+        const boardListed = () => ev(`fetch('/api/board/projects').then(r => r.json()).then(p => (Array.isArray(p) ? p : p.projects || []).some(x => x.project === ${JSON.stringify(agent.board)}))`);
         await ev(`window.__confirmModal = null; window.showConfirmModal = t => { window.__confirmModal = t; }; (() => { const b = document.getElementById('mb-delete-btn'); b.style.display = ''; b.click(); })(); true`);
+        await until(`[...document.querySelectorAll('.toast')].some(t => /still on this board.*kill (it|them) or move (it|them) first/.test(t.textContent))`, 'the refusal while the agent runs');
+        check('a board with its agent running is not deleted: Delete says so instead of asking (#5043)', (await ev(`window.__confirmModal`)) === null && (await boardListed()), JSON.stringify({ modal: await ev(`window.__confirmModal`) }));
+        await ev(`fetch('/api/sessions/live/' + encodeURIComponent(${JSON.stringify(agent.session_name)}) + '/kill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_type: 'terminal', session_id: ${JSON.stringify(agent.session_id)} }) }).then(() => true)`);
+        await until(`!document.querySelector('#live-sessions-list [data-session-id="${agent.session_id}"]')`, 'the stopped agent gone from the list');
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); window.__confirmModal = null; document.getElementById('mb-delete-btn').click(); true`);
         await new Promise(r => setTimeout(r, 300)); // sleep-ok: shows that nothing is deleted without a Yes
-        const still = await ev(`fetch('/api/board/projects').then(r => r.json()).then(p => (Array.isArray(p) ? p : p.projects || []).some(x => x.project === ${JSON.stringify(agent.board)}))`);
-        check('deleting the board still asks first; without a Yes it stays', (await ev(`window.__confirmModal`)) === 'Delete Board' && still, JSON.stringify({ modal: await ev(`window.__confirmModal`), still }));
+        const still = await boardListed();
+        check('with nothing running, deleting the board asks first; without a Yes it stays', (await ev(`window.__confirmModal`)) === 'Delete Board' && still, JSON.stringify({ modal: await ev(`window.__confirmModal`), still }));
 
         const inline = await ev(`[...document.querySelectorAll('#messageboard-view *, #mb-subscribers-sheet *')].flatMap(el => [...el.attributes].filter(a => /^on/i.test(a.name)).map(a => el.tagName + '.' + el.className + ' ' + a.name))`);
         check('no inline handler left in the board view or its sheet', inline.length === 0, JSON.stringify(inline.slice(0, 5)));

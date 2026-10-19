@@ -8,7 +8,7 @@ import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { platform } from './platform/detect.js';
 import { BOARD_SAVE_BUTTON } from './saved_marks.js';
-import { pathId, identityKey, keyLabel, noteBoardLabel, noteBoardLabels, hasBoardLabel, onBoardLabelsChanged, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
+import { pathId, identityKey, keyLabel, noteBoardLabel, noteBoardLabels, hasBoardLabel, onBoardLabelsChanged, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud, inTeam } from './server_base.js';
 import { launchBlockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 import { note } from './nav.js';
@@ -895,17 +895,39 @@ function syncBoardDeleteButton(project) {
 }
 document.addEventListener('coral:server-access-loaded', () => syncBoardDeleteButton(currentProject));
 
+/** The agents running on this board now, by name (the live list: not asleep, not archived). */
+function runningAgentsOn(project) {
+    return (state.liveSessions || []).filter(a => inTeam(a, project) && !a.sleeping && !a.archived).map(a => a.display_name || a.name);
+}
+
+/** "2 agents are still on this board (A, B): kill them or move them first": the server's words (DeleteBoard, #5043), for the answer it does not have to give. */
+function runningAgentsText(names) {
+    const shown = names.length > 5 ? [...names.slice(0, 5), '…'] : names;
+    return names.length === 1 ? `1 agent is still on this board (${shown.join(', ')}): kill it or move it first`
+        : `${names.length} agents are still on this board (${shown.join(', ')}): kill them or move them first`;
+}
+
 export function deleteMessageBoardProject() {
     const blocked = currentProject ? launchBlockedReason(splitKey(currentProject).server) : '';
     if (blocked) { showToast(blocked, true); return; }
     if (!currentProject) return;
     const project = currentProject;
+    // A board with agents running is not deleted (#5043): they would stay live in a group named with the raw board id. Said here, before asking; the server
+    // says it again for an agent this page's list does not show yet.
+    const running = runningAgentsOn(project);
+    if (running.length) { showToast(runningAgentsText(running), true); return; }
     window.showConfirmModal('Delete Board', `Delete board "${keyLabel(project)}" with all its messages and tasks? This cannot be undone.`, async () => {
         try {
-            await boardFetch(project, ``, { method: 'DELETE' });
+            const resp = await boardFetch(project, ``, { method: 'DELETE' });
+            if (!resp.ok) {
+                const out = await resp.json().catch(() => ({}));
+                showToast(out.error || 'The board was not deleted.', true);
+                return;
+            }
             showMessageBoardProjects();
         } catch (e) {
             console.error('Failed to delete project:', e);
+            showToast('Could not reach Coral to delete the board.', true);
         }
     });
 }

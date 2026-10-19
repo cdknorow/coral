@@ -89,9 +89,16 @@ Returns all boards with subscriber and message counts.
 DELETE /api/board/{project}
 ```
 
-Deletes a board and all its messages. Also clears pause state.
+Deletes a board and everything on it: its messages, tasks, members and settings. Also clears pause state. Operator only.
 
-**Response:** `{"ok": true}`
+Refused while agents are running on the board (an agent that is asleep or gone does not count). They would stay live in a sidebar group named with the raw board id, so kill them or move them first:
+
+```json
+{"error": "2 agents are still on this board (Orchestrator, QA Engineer): kill them or move them first",
+ "code": "board_has_running_agents", "agents": ["Orchestrator", "QA Engineer"]}
+```
+
+**Response:** `{"ok": true}`, or **409** `board_has_running_agents` as above (nothing is deleted). **503** `running_agents_unknown` when the running terminals cannot be listed: a check that could not be made is not a pass, and nothing is deleted. A board with no members has nothing to check.
 
 ---
 
