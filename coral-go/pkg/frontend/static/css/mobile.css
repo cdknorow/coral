@@ -851,27 +851,12 @@
         margin: 5px 6px 0 0;
     }
 
-    /* Compact list: no avatars, no elapsed text; the status chip carries state */
-    #mobile-session-list .agent-avatar,
-    #mobile-session-list .session-activity-text {
-        display: none !important;
-    }
-
     #mobile-session-list .sidebar-kebab-btn {
         min-width: 44px;
         min-height: 44px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-    }
-
-    #mobile-session-list .agent-avatar {
-        width: 32px;
-        height: 32px;
-    }
-
-    #mobile-session-list .agent-avatar-emoji {
-        font-size: 1rem;
     }
 
     #mobile-session-list .session-name-row {
@@ -965,20 +950,12 @@
     /* "Ready for input" rows carry no chip; with no unread pill either the meta row is
        empty and must not leave its 8px top margin behind. */
     #mobile-session-list .session-mobile-meta:empty { display: none; }
-
-    /* The phone shows unread in its meta row already */
-    #mobile-session-list .session-unread-chip { display: none; }
     #mobile-session-list .session-line2 { height: auto; align-items: flex-start; }
     #mobile-session-list .session-dot.sleeping::before { font-size: 0.8125rem; inset: -4px -2px; }
 
     #mobile-session-list .session-status-chip.error {
         background: rgba(248, 81, 73, 0.16);
         color: var(--error);
-    }
-
-    #mobile-session-list .session-activity-text {
-        font-size: 0.6875rem;
-        color: var(--text-secondary);
     }
 
     #mobile-session-list .session-mobile-meta-pill {

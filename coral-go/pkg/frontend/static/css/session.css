@@ -138,32 +138,6 @@
     animation: pulse-stuck 3s ease-in-out infinite;
 }
 
-/* ── Agent Avatars ──────────────────────────────────────────── */
-
-.agent-avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    margin-top: 0;
-}
-
-.agent-avatar-emoji {
-    font-size: 0.9375rem;
-    line-height: 1;
-}
-
-.agent-avatar-initials {
-    font-size: 0.6875rem;
-    font-weight: 700;
-    line-height: 1;
-    letter-spacing: 0.3px;
-}
-
 .avatar-status-dot {
     position: absolute;
     bottom: -1px;
@@ -191,10 +165,6 @@
 .avatar-status-dot.stuck {
     background: var(--danger);
     animation: pulse-stuck 3s ease-in-out infinite;
-}
-
-.session-group-item.sleeping .agent-avatar {
-    opacity: 0.6;
 }
 
 /* ── History Token Usage Summary ──────────────────────────── */
@@ -291,27 +261,6 @@
     white-space: nowrap;
     font-size: var(--fs-md);
     font-weight: 500;
-}
-
-.session-context-bar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 1px;
-    line-height: 14px;
-}
-
-.context-bar-label {
-    font-size: var(--fs-base);
-    line-height: 14px;
-    color: var(--text-secondary);
-    opacity: 0.8;
-    white-space: nowrap;
-}
-
-.session-context-bar.ctx-error .context-bar-label {
-    color: var(--status-error);
-    opacity: 1;
 }
 
 .session-info {
@@ -536,67 +485,6 @@
     gap: 3px;
     margin-top: 2px;
     opacity: 0.7;
-}
-
-.board-card-dir {
-    font-size: var(--fs-base);
-    font-weight: 400;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 2px;
-    opacity: 0.8;
-}
-
-.board-card-dir svg {
-    flex-shrink: 0;
-    opacity: 0.7;
-}
-
-.board-card-branch {
-    margin-left: 6px;
-    color: var(--accent-primary);
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-}
-
-.board-card-branch svg {
-    opacity: 0.8;
-}
-
-.board-card-branch-line {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    margin-top: 2px;
-    font-size: var(--fs-base);
-    color: var(--accent-primary);
-    opacity: 0.85;
-}
-
-.board-card-branch-line svg {
-    opacity: 0.7;
-    flex-shrink: 0;
-}
-
-.board-card-branch-line .branch-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.agent-dir-chip {
-    font-size: var(--fs-base);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-light);
-    color: var(--text-secondary);
-    padding: 0 4px;
-    border-radius: 4px;
-    margin-left: 4px;
-    white-space: nowrap;
-    opacity: 0.8;
 }
 
 .session-list .sleeping-summary-row {
@@ -858,18 +746,6 @@
     flex: 1 1 auto;
     min-width: 0;
 }
-.session-unread-chip {
-    flex: 0 0 auto;
-    font-size: var(--fs-sm);
-    line-height: 14px;
-    padding: 0 5px;
-    border-radius: 7px;
-    color: var(--text-secondary);
-    box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.4);
-}
-.session-line2 > .session-unread-chip:first-child {
-    margin-left: var(--row-dot-block, 16px); /* rows with no goal line */
-}
 
 /* Stuck rows switch from the amber to the error tint */
 .session-group-item.needs-attention.is-stuck {
@@ -1016,12 +892,6 @@
     color: var(--text-goal, var(--text-secondary));
 }
 
-/* ── Agent Status Text ────────────────────────────────────── */
-
-.session-activity-text {
-    display: none;  /* hidden — colored dot is sufficient status indicator */
-}
-
 .session-status-chip {
     display: none;
 }
@@ -1031,20 +901,6 @@
 .session-mobile-banner-row,
 .session-mobile-meta {
     display: none;
-}
-
-/* Color-code status text based on dot state class */
-.session-dot.working ~ .session-info .session-activity-text {
-    color: var(--accent);
-}
-
-.session-dot.waiting ~ .session-info .session-activity-text,
-.session-dot.stuck ~ .session-info .session-activity-text {
-    color: var(--warning);
-}
-
-.session-dot.done ~ .session-info .session-activity-text {
-    color: var(--success);
 }
 
 .session-group-item.dragging {
@@ -1437,18 +1293,6 @@
 .session-board-card-toplevel .board-card-header .group-name-line {
     font-size: 0.8125rem;
     font-weight: 600;
-}
-
-.session-inline-status {
-    font-size: var(--fs-base);
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
-    display: block;
-    margin-top: 1px;
-    font-style: italic;
 }
 
 /* ── Board Chat (right panel) ─────────────────────────────── */

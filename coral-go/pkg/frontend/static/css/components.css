@@ -2262,16 +2262,6 @@ button.subscriber-history-link {
     min-height: 120px;
 }
 
-.acf-auto-permissions-toggle input[type="checkbox"] {
-    margin-top: 4px;
-}
-
-.acf-auto-permissions-toggle strong {
-    display: block;
-    font-size: 0.875rem;
-    color: var(--text-primary);
-}
-
 .acf-auto-permissions-flag {
     font-size: 0.75rem;
     font-weight: 600;
@@ -2288,23 +2278,11 @@ button.subscriber-history-link {
     gap: 12px;
 }
 
-.acf-auto-permissions-toggle {
-    margin: 10px 0 6px;
-    padding: 12px 14px;
-    border: 1px solid var(--control-border);
-    border-radius: 10px;
-    background: var(--bg-secondary);
-}
-
 .acf-auto-permissions-note {
     margin-top: 4px;
     font-size: 0.75rem;
     color: var(--text-secondary);
     line-height: 1.45;
-}
-
-.acf-auto-permissions-flag-wrap {
-    margin-top: 8px;
 }
 
 .acf-auto-permissions-flag {
