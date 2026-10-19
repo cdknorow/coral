@@ -216,9 +216,17 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 			return fmt.Errorf("corrupt stored capabilities: %w", err)
 		}
 	}
-	permMode := agent.PermissionModeFromFlags(flags)
-	if permMode == "" {
-		permMode = userSettings["default_permission_mode"]
+	var permMode string
+	if ls.PermissionMode != nil && *ls.PermissionMode != "" {
+		if !agent.ValidPermissionMode(*ls.PermissionMode) {
+			return fmt.Errorf("corrupt stored permission mode: %s", *ls.PermissionMode)
+		}
+		permMode = *ls.PermissionMode
+	} else {
+		permMode = agent.PermissionModeFromFlags(flags)
+		if permMode == "" {
+			permMode = userSettings["default_permission_mode"]
+		}
 	}
 	if caps.IsEmpty() && permMode != "" && permMode != "default" {
 		if agent.PermissionModeFromFlags(flags) == "" {

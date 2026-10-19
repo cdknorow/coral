@@ -308,3 +308,13 @@ func PermissionFlagsForAgent(agentType, mode string) []string {
 		return nil
 	}
 }
+
+// ValidPermissionMode reports whether mode is a recognized permission mode string.
+func ValidPermissionMode(mode string) bool {
+	switch mode {
+	case "default", "plan", "acceptEdits", "auto", "bypassPermissions", "dontAsk":
+		return true
+	default:
+		return false
+	}
+}

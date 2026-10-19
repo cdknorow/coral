@@ -58,6 +58,7 @@ type launchSpec struct {
 	Capabilities                    *agent.Capabilities
 	Tools                           []string
 	Hooks                           map[string]interface{}
+	PermissionMode                  string // effective permission mode if already decided (team reset, etc.) (#5188)
 }
 
 // launchSession creates a new agent session using the specified backend (tmux or pty).
@@ -131,10 +132,16 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 		Hooks:           spec.Hooks,
 		CLIPath:         cliPath,
 		PermissionMode: func() string {
+			if spec.PermissionMode != "" {
+				return spec.PermissionMode
+			}
 			if m := agent.PermissionModeFromFlags(spec.Flags); m != "" {
 				return m
 			}
-			return userSettings["default_permission_mode"]
+			if def := userSettings["default_permission_mode"]; def != "" {
+				return def
+			}
+			return "default"
 		}(),
 		CoralDir:  h.cfg.CoralDir(),
 		CoralHost: h.cfg.AgentHost(),
@@ -176,24 +183,25 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 	// Register in DB
 	h.chatMeta.forget(sessionID, sessionName, folderName)
 	h.ss.RegisterLiveSession(ctx, &store.LiveSession{
-		SessionID:     sessionID,
-		AgentType:     agentType,
-		AgentName:     folderName,
-		WorkingDir:    absDir,
-		DisplayName:   ptr.NonEmpty(displayName),
-		ResumeFromID:  ptr.NonEmpty(spec.ResumeSessionID),
-		Flags:         store.MarshalFlags(spec.Flags),
-		Prompt:        ptr.NonEmpty(spec.Prompt),
-		BoardName:     ptr.NonEmpty(spec.BoardName),
-		BoardServer:   ptr.NonEmpty(spec.BoardServer),
-		Backend:       ptr.NonEmpty(backend),
-		BoardType:     ptr.NonEmpty(spec.BoardType),
-		Capabilities:  store.MarshalCapabilities(spec.Capabilities),
-		Model:         ptr.NonEmpty(spec.Model),
-		Thinking:      ptr.NonEmpty(spec.Thinking),
-		ContextWindow: proxy.LookupContextWindow(spec.Model),
-		Tools:         store.MarshalCapabilities(spec.Tools),
-		PID:           shellPID,
+		SessionID:      sessionID,
+		AgentType:      agentType,
+		AgentName:      folderName,
+		WorkingDir:     absDir,
+		DisplayName:    ptr.NonEmpty(displayName),
+		ResumeFromID:   ptr.NonEmpty(spec.ResumeSessionID),
+		Flags:          store.MarshalFlags(spec.Flags),
+		Prompt:         ptr.NonEmpty(spec.Prompt),
+		BoardName:      ptr.NonEmpty(spec.BoardName),
+		BoardServer:    ptr.NonEmpty(spec.BoardServer),
+		Backend:        ptr.NonEmpty(backend),
+		BoardType:      ptr.NonEmpty(spec.BoardType),
+		Capabilities:   store.MarshalCapabilities(spec.Capabilities),
+		Model:          ptr.NonEmpty(spec.Model),
+		Thinking:       ptr.NonEmpty(spec.Thinking),
+		ContextWindow:  proxy.LookupContextWindow(spec.Model),
+		Tools:          store.MarshalCapabilities(spec.Tools),
+		PID:            shellPID,
+		PermissionMode: ptr.NonEmpty(launchParams.PermissionMode),
 	})
 	h.noteLaunchedHooks(ctx, sessionID, agentType) // #3665
 	if !isTerminal {

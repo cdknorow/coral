@@ -336,6 +336,13 @@ func (h *SessionsHandler) restartResolve(ctx context.Context, name string, req r
 					}
 				}
 			}
+			if ls.PermissionMode != nil && *ls.PermissionMode != "" {
+				if !agent.ValidPermissionMode(*ls.PermissionMode) {
+					return nil, func(w http.ResponseWriter) {
+						errInternalServer(w, fmt.Sprintf("corrupt stored permission mode: %s", *ls.PermissionMode))
+					}
+				}
+			}
 			// Restart requests from older clients may omit agent_type. Keep the
 			// persisted provider instead of silently switching Codex to Claude.
 			if p.agentType == "" && ls.AgentType != "" {
@@ -487,9 +494,12 @@ func (p *restartPlan) restartSettings() {
 	if p.thinkingFlag {
 		storedFlags = agentmodels.StripThinkingFlags(storedFlags)
 	}
-	allStored := append(append([]string{}, storedFlags...), strings.Fields(p.req.ExtraFlags)...)
-	if perm := agent.PermissionModeFromFlags(allStored); perm != "" {
-		p.permMode = perm
+	if p.stored != nil && p.stored.PermissionMode != nil && *p.stored.PermissionMode != "" {
+		p.permMode = *p.stored.PermissionMode
+	} else {
+		if perm := agent.PermissionModeFromFlags(storedFlags); perm != "" {
+			p.permMode = perm
+		}
 	}
 	cleanFlags := restartFlags(storedFlags, p.model, p.req.ExtraFlags)
 	if p.caps.IsEmpty() && p.permMode != "" && p.permMode != "default" {
@@ -721,6 +731,12 @@ func (h *SessionsHandler) restartRecord(ctx context.Context, p *restartPlan) {
 		ContextWindow: p.contextWindow,
 		Tools:         p.toolsJSON,
 		PID:           restartPID,
+		PermissionMode: func() *string {
+			if p.stored != nil {
+				return p.stored.PermissionMode
+			}
+			return nil
+		}(),
 	})
 	h.noteLaunchedHooks(ctx, p.newSessionID, p.agentType) // #3665
 	h.ss.MigrateDisplayName(ctx, p.req.SessionID, p.newSessionID)
@@ -861,12 +877,22 @@ func (h *SessionsHandler) resumeResolve(ctx context.Context, name string, body *
 		}
 		p.capsJSON = ls.Capabilities
 	}
+	if ls.PermissionMode != nil && *ls.PermissionMode != "" {
+		if !agent.ValidPermissionMode(*ls.PermissionMode) {
+			return nil, func(w http.ResponseWriter) {
+				errInternalServer(w, fmt.Sprintf("corrupt stored permission mode: %s", *ls.PermissionMode))
+			}
+		}
+		p.permMode = *ls.PermissionMode
+	} else {
+		storedFlags := store.UnmarshalFlags(ls.Flags)
+		p.permMode = agent.PermissionModeFromFlags(storedFlags)
+	}
 	if ls.Model != nil {
 		p.model = *ls.Model
 	}
 	p.contextWindow = ls.ContextWindow
 	storedFlags := store.UnmarshalFlags(ls.Flags)
-	p.permMode = agent.PermissionModeFromFlags(storedFlags)
 	cleanFlags := stripAgentPermissionFlags(storedFlags)
 	cleanFlags = agentmodels.StripThinkingFlags(cleanFlags)
 	if p.caps.IsEmpty() && p.permMode != "" && p.permMode != "default" {
@@ -956,6 +982,12 @@ func (h *SessionsHandler) resumeRecord(ctx context.Context, p *restartPlan, resu
 		Model:         ptr.NonEmpty(p.model),
 		ContextWindow: p.contextWindow,
 		Tools:         store.MarshalCapabilities(p.tools),
+		PermissionMode: func() *string {
+			if p.stored != nil {
+				return p.stored.PermissionMode
+			}
+			return nil
+		}(),
 	})
 	h.noteLaunchedHooks(ctx, p.newSessionID, p.agentType) // #3665
 	h.ss.MigrateDisplayName(ctx, oldID, p.newSessionID)

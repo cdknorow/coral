@@ -64,6 +64,8 @@ type LiveSession struct {
 	GitDiffMode  *string `db:"git_diff_mode" json:"git_diff_mode,omitempty"`
 	Capabilities *string `db:"capabilities" json:"capabilities,omitempty"`
 	Model        *string `db:"model" json:"model,omitempty"`
+	// PermissionMode is the effective permission mode the agent was launched with (#5188).
+	PermissionMode *string `db:"permission_mode" json:"permission_mode,omitempty"`
 	// Thinking is the thinking (reasoning effort) level the agent was started with: "" or NULL is the CLI's own default (#4969).
 	Thinking      *string `db:"thinking" json:"thinking,omitempty"`
 	ContextWindow int     `db:"context_window" json:"context_window,omitempty"`

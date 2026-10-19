@@ -297,8 +297,9 @@ var columnMigrations = []struct {
 	{"live_sessions", "cli_version", "TEXT"},
 	// The hook set a Claude agent loaded at launch (#3665), e.g. 3; NULL = unknown.
 	{"live_sessions", "hooks_rev", "INTEGER"},
-	{"cloud_connection", "route_key", "TEXT"}, // the hub's routing hint for this enrollment (#3683)
-	{"cloud_connection", "hub_owner", "TEXT"}, // the Coral Hub account that owns this enrollment (#3966)
+	{"live_sessions", "permission_mode", "TEXT"}, // the launch's effective permission mode (#5188)
+	{"cloud_connection", "route_key", "TEXT"},    // the hub's routing hint for this enrollment (#3683)
+	{"cloud_connection", "hub_owner", "TEXT"},    // the Coral Hub account that owns this enrollment (#3966)
 	// A Hub sign-in's grant (#3966): empty for every other browser session.
 	{"browser_sessions", "hub_grant", "TEXT NOT NULL DEFAULT ''"},
 	{"browser_sessions", "hub_account", "TEXT NOT NULL DEFAULT ''"},

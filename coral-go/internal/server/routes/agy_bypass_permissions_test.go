@@ -623,3 +623,515 @@ func TestAgyBypassPermissions_FailClosed_CorruptCapabilities(t *testing.T) {
 	assert.Error(t, wakeErr, "wake must fail closed on corrupt capabilities")
 	assert.Contains(t, wakeErr.Error(), "corrupt stored capabilities")
 }
+
+// --------------------------------------------------------------------------
+// Follow-up #5188: Pinned Launch Permission Mode tests
+// --------------------------------------------------------------------------
+
+// 1. Launch with default=bypass then set default=default:
+// restart/resume/wake/team reset must all STAY bypass.
+func TestPinnedLaunchPermissionMode_BypassToDefault(t *testing.T) {
+	rig := setupAgyTestRig(t)
+	ctx := context.Background()
+
+	// Launch with global default_permission_mode = "bypassPermissions"
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "bypassPermissions"))
+
+	body, _ := json.Marshal(map[string]any{
+		"agent_type":  at.Agy,
+		"working_dir": rig.workdir,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	rig.router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	cmd := lastSentCommand(rig.term)
+	assert.Contains(t, cmd, "--dangerously-skip-permissions", "launch with default=bypass must include bypass flag")
+
+	var launchRes map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &launchRes))
+	sid := launchRes["session_id"].(string)
+	name := launchRes["session_name"].(string)
+
+	ls, err := rig.ss.GetLiveSession(ctx, sid)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	require.NotNil(t, ls.PermissionMode)
+	assert.Equal(t, "bypassPermissions", *ls.PermissionMode, "stored permission_mode must be recorded as bypassPermissions")
+
+	// Now flip global default setting to "default"
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "default"))
+
+	// Test A: Restart stays bypass
+	require.NoError(t, rig.term.CreateSession(ctx, name, rig.workdir))
+	restartBody, _ := json.Marshal(map[string]any{
+		"session_id": sid,
+		"agent_type": at.Agy,
+	})
+	restartReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/restart", bytes.NewReader(restartBody))
+	restartRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(restartRec, restartReq)
+	require.Equal(t, http.StatusOK, restartRec.Code, restartRec.Body.String())
+
+	cmd = lastSentCommand(rig.term)
+	assert.Contains(t, cmd, "--dangerously-skip-permissions", "restart must stay bypass after global default changed to default")
+
+	var restartRes map[string]any
+	require.NoError(t, json.Unmarshal(restartRec.Body.Bytes(), &restartRes))
+	restartedSid := restartRes["session_id"].(string)
+	restartedName := restartRes["session_name"].(string)
+
+	lsRestarted, err := rig.ss.GetLiveSession(ctx, restartedSid)
+	require.NoError(t, err)
+	require.NotNil(t, lsRestarted.PermissionMode)
+	assert.Equal(t, "bypassPermissions", *lsRestarted.PermissionMode, "replacement row must preserve stored bypassPermissions mode")
+
+	// Test B: Resume stays bypass
+	require.NoError(t, rig.term.CreateSession(ctx, restartedName, rig.workdir))
+	resumeBody, _ := json.Marshal(map[string]any{
+		"session_id":         restartedSid,
+		"current_session_id": restartedSid,
+		"agent_type":         at.Agy,
+	})
+	resumeReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+restartedName+"/resume", bytes.NewReader(resumeBody))
+	resumeRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(resumeRec, resumeReq)
+	require.Equal(t, http.StatusOK, resumeRec.Code, resumeRec.Body.String())
+
+	cmd = lastSentCommand(rig.term)
+	assert.Contains(t, cmd, "--dangerously-skip-permissions", "resume must stay bypass after global default changed to default")
+
+	var resumeRes map[string]any
+	require.NoError(t, json.Unmarshal(resumeRec.Body.Bytes(), &resumeRes))
+	resumedSid := resumeRes["session_id"].(string)
+
+	lsResumed, err := rig.ss.GetLiveSession(ctx, resumedSid)
+	require.NoError(t, err)
+	require.NotNil(t, lsResumed.PermissionMode)
+	assert.Equal(t, "bypassPermissions", *lsResumed.PermissionMode, "resumed row must preserve stored bypassPermissions mode")
+
+	// Test C: Wake stays bypass
+	require.NoError(t, rig.ss.SetSessionSleeping(ctx, resumedSid, true))
+	lsSleeping, err := rig.ss.GetLiveSession(ctx, resumedSid)
+	require.NoError(t, err)
+	require.NoError(t, rig.h.wakeExistingSession(ctx, lsSleeping))
+	cmd = lastSentCommand(rig.term)
+	assert.Contains(t, cmd, "--dangerously-skip-permissions", "wake must stay bypass after global default changed to default")
+
+	// Test D: Team Reset stays bypass
+	// Reset default to bypass, launch a team
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "bypassPermissions"))
+	boardName := "team-bypass-board"
+	teamBody, _ := json.Marshal(map[string]any{
+		"board_name":  boardName,
+		"working_dir": rig.workdir,
+		"agent_type":  at.Agy,
+		"agents": []map[string]any{
+			{"name": "lead", "agent_type": at.Agy},
+		},
+	})
+	teamReq := httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(teamBody))
+	teamRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(teamRec, teamReq)
+	require.Equal(t, http.StatusOK, teamRec.Code, teamRec.Body.String())
+
+	teamSessions, err := rig.ss.GetBoardSessions(ctx, boardName)
+	require.NoError(t, err)
+	require.Len(t, teamSessions, 1)
+	require.NotNil(t, teamSessions[0].PermissionMode)
+	assert.Equal(t, "bypassPermissions", *teamSessions[0].PermissionMode)
+
+	// Now flip global default to "default" and ResetTeam
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "default"))
+	resetReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/team/"+boardName+"/reset", nil)
+	resetRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(resetRec, resetReq)
+	require.Equal(t, http.StatusOK, resetRec.Code, resetRec.Body.String())
+
+	cmd = lastSentCommand(rig.term)
+	assert.Contains(t, cmd, "--dangerously-skip-permissions", "team reset must stay bypass after global default changed to default")
+
+	resetSessions, err := rig.ss.GetBoardSessions(ctx, boardName)
+	require.NoError(t, err)
+	require.Len(t, resetSessions, 1)
+	require.NotNil(t, resetSessions[0].PermissionMode)
+	assert.Equal(t, "bypassPermissions", *resetSessions[0].PermissionMode, "team reset row must preserve stored bypassPermissions mode")
+}
+
+// 2. Launch with default=default then set default=bypass:
+// restart/resume/wake/team reset must all STAY default (never widen to bypass!).
+func TestPinnedLaunchPermissionMode_DefaultToBypass(t *testing.T) {
+	rig := setupAgyTestRig(t)
+	ctx := context.Background()
+
+	// Launch with global default_permission_mode = "default"
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "default"))
+
+	body, _ := json.Marshal(map[string]any{
+		"agent_type":  at.Agy,
+		"working_dir": rig.workdir,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	rig.router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	cmd := lastSentCommand(rig.term)
+	assert.NotContains(t, cmd, "--dangerously-skip-permissions", "launch with default=default must not include bypass flag")
+
+	var launchRes map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &launchRes))
+	sid := launchRes["session_id"].(string)
+	name := launchRes["session_name"].(string)
+
+	ls, err := rig.ss.GetLiveSession(ctx, sid)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	require.NotNil(t, ls.PermissionMode)
+	assert.Equal(t, "default", *ls.PermissionMode, "stored permission_mode must be recorded as default")
+
+	// Now flip global default setting to "bypassPermissions"
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "bypassPermissions"))
+
+	// Test A: Restart stays default (never widens to bypass!)
+	require.NoError(t, rig.term.CreateSession(ctx, name, rig.workdir))
+	restartBody, _ := json.Marshal(map[string]any{
+		"session_id": sid,
+		"agent_type": at.Agy,
+	})
+	restartReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/restart", bytes.NewReader(restartBody))
+	restartRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(restartRec, restartReq)
+	require.Equal(t, http.StatusOK, restartRec.Code, restartRec.Body.String())
+
+	cmd = lastSentCommand(rig.term)
+	assert.NotContains(t, cmd, "--dangerously-skip-permissions", "restart must stay default (not widen) after global default changed to bypass")
+
+	var restartRes map[string]any
+	require.NoError(t, json.Unmarshal(restartRec.Body.Bytes(), &restartRes))
+	restartedSid := restartRes["session_id"].(string)
+	restartedName := restartRes["session_name"].(string)
+
+	lsRestarted, err := rig.ss.GetLiveSession(ctx, restartedSid)
+	require.NoError(t, err)
+	require.NotNil(t, lsRestarted.PermissionMode)
+	assert.Equal(t, "default", *lsRestarted.PermissionMode, "replacement row must preserve stored default mode")
+
+	// Test B: Resume stays default (never widens to bypass!)
+	require.NoError(t, rig.term.CreateSession(ctx, restartedName, rig.workdir))
+	resumeBody, _ := json.Marshal(map[string]any{
+		"session_id":         restartedSid,
+		"current_session_id": restartedSid,
+		"agent_type":         at.Agy,
+	})
+	resumeReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+restartedName+"/resume", bytes.NewReader(resumeBody))
+	resumeRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(resumeRec, resumeReq)
+	require.Equal(t, http.StatusOK, resumeRec.Code, resumeRec.Body.String())
+
+	cmd = lastSentCommand(rig.term)
+	assert.NotContains(t, cmd, "--dangerously-skip-permissions", "resume must stay default (not widen) after global default changed to bypass")
+
+	var resumeRes map[string]any
+	require.NoError(t, json.Unmarshal(resumeRec.Body.Bytes(), &resumeRes))
+	resumedSid := resumeRes["session_id"].(string)
+
+	lsResumed, err := rig.ss.GetLiveSession(ctx, resumedSid)
+	require.NoError(t, err)
+	require.NotNil(t, lsResumed.PermissionMode)
+	assert.Equal(t, "default", *lsResumed.PermissionMode, "resumed row must preserve stored default mode")
+
+	// Test C: Wake stays default (never widens to bypass!)
+	require.NoError(t, rig.ss.SetSessionSleeping(ctx, resumedSid, true))
+	lsSleeping, err := rig.ss.GetLiveSession(ctx, resumedSid)
+	require.NoError(t, err)
+	require.NoError(t, rig.h.wakeExistingSession(ctx, lsSleeping))
+	cmd = lastSentCommand(rig.term)
+	assert.NotContains(t, cmd, "--dangerously-skip-permissions", "wake must stay default (not widen) after global default changed to bypass")
+
+	// Test D: Team Reset stays default (never widens to bypass!)
+	// Reset default to default, launch a team
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "default"))
+	boardName := "team-default-board"
+	teamBody, _ := json.Marshal(map[string]any{
+		"board_name":  boardName,
+		"working_dir": rig.workdir,
+		"agent_type":  at.Agy,
+		"agents": []map[string]any{
+			{"name": "lead", "agent_type": at.Agy},
+		},
+	})
+	teamReq := httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(teamBody))
+	teamRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(teamRec, teamReq)
+	require.Equal(t, http.StatusOK, teamRec.Code, teamRec.Body.String())
+
+	teamSessions, err := rig.ss.GetBoardSessions(ctx, boardName)
+	require.NoError(t, err)
+	require.Len(t, teamSessions, 1)
+	require.NotNil(t, teamSessions[0].PermissionMode)
+	assert.Equal(t, "default", *teamSessions[0].PermissionMode)
+
+	// Now flip global default to "bypassPermissions" and ResetTeam
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "bypassPermissions"))
+	resetReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/team/"+boardName+"/reset", nil)
+	resetRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(resetRec, resetReq)
+	require.Equal(t, http.StatusOK, resetRec.Code, resetRec.Body.String())
+
+	cmd = lastSentCommand(rig.term)
+	assert.NotContains(t, cmd, "--dangerously-skip-permissions", "team reset must stay default after global default changed to bypass")
+
+	resetSessions, err := rig.ss.GetBoardSessions(ctx, boardName)
+	require.NoError(t, err)
+	require.Len(t, resetSessions, 1)
+	require.NotNil(t, resetSessions[0].PermissionMode)
+	assert.Equal(t, "default", *resetSessions[0].PermissionMode, "team reset row must preserve stored default mode")
+}
+
+// 3. Capabilities presets keep driving the agent's permissions under every default.
+func TestPinnedLaunchPermissionMode_PresetUnderEveryDefault(t *testing.T) {
+	for _, defaultMode := range []string{"bypassPermissions", "default"} {
+		t.Run("default_"+defaultMode, func(t *testing.T) {
+			rig := setupAgyTestRig(t)
+			ctx := context.Background()
+			require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", defaultMode))
+
+			readOnlyCaps := &agent.Capabilities{Allow: []string{agent.CapFileRead}}
+			body, _ := json.Marshal(map[string]any{
+				"agent_type":   at.Agy,
+				"working_dir":  rig.workdir,
+				"capabilities": readOnlyCaps,
+			})
+			req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch", bytes.NewReader(body))
+			rec := httptest.NewRecorder()
+			rig.router.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+			cmd := lastSentCommand(rig.term)
+			assert.Contains(t, cmd, "--mode plan", "preset must start with --mode plan")
+			assert.NotContains(t, cmd, "--dangerously-skip-permissions", "preset must never bypass under default=%s", defaultMode)
+
+			var launchRes map[string]any
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &launchRes))
+			sid := launchRes["session_id"].(string)
+			name := launchRes["session_name"].(string)
+
+			// Restart
+			require.NoError(t, rig.term.CreateSession(ctx, name, rig.workdir))
+			restartBody, _ := json.Marshal(map[string]any{
+				"session_id": sid,
+				"agent_type": at.Agy,
+			})
+			restartReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/restart", bytes.NewReader(restartBody))
+			restartRec := httptest.NewRecorder()
+			rig.router.ServeHTTP(restartRec, restartReq)
+			require.Equal(t, http.StatusOK, restartRec.Code, restartRec.Body.String())
+
+			cmd = lastSentCommand(rig.term)
+			assert.Contains(t, cmd, "--mode plan", "restarted preset must keep --mode plan")
+			assert.NotContains(t, cmd, "--dangerously-skip-permissions", "restarted preset must never bypass under default=%s", defaultMode)
+
+			var restartRes map[string]any
+			require.NoError(t, json.Unmarshal(restartRec.Body.Bytes(), &restartRes))
+			newSid := restartRes["session_id"].(string)
+
+			// Wake
+			require.NoError(t, rig.ss.SetSessionSleeping(ctx, newSid, true))
+			ls, err := rig.ss.GetLiveSession(ctx, newSid)
+			require.NoError(t, err)
+			require.NoError(t, rig.h.wakeExistingSession(ctx, ls))
+
+			cmd = lastSentCommand(rig.term)
+			assert.Contains(t, cmd, "--mode plan", "woken preset must keep --mode plan")
+			assert.NotContains(t, cmd, "--dangerously-skip-permissions", "woken preset must never bypass under default=%s", defaultMode)
+		})
+	}
+}
+
+// 4. Stored mode written once at launch and not overwritten by restart's extra flags.
+func TestPinnedLaunchPermissionMode_StoredModeNotOverwrittenByRestartExtraFlags(t *testing.T) {
+	rig := setupAgyTestRig(t)
+	ctx := context.Background()
+
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "default"))
+
+	body, _ := json.Marshal(map[string]any{
+		"agent_type":  at.Agy,
+		"working_dir": rig.workdir,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	rig.router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var launchRes map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &launchRes))
+	sid := launchRes["session_id"].(string)
+	name := launchRes["session_name"].(string)
+
+	ls, err := rig.ss.GetLiveSession(ctx, sid)
+	require.NoError(t, err)
+	require.NotNil(t, ls.PermissionMode)
+	assert.Equal(t, "default", *ls.PermissionMode)
+
+	// Restart with extra flags containing bypass
+	require.NoError(t, rig.term.CreateSession(ctx, name, rig.workdir))
+	restartBody, _ := json.Marshal(map[string]any{
+		"session_id":  sid,
+		"agent_type":  at.Agy,
+		"extra_flags": "--dangerously-skip-permissions",
+	})
+	restartReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/restart", bytes.NewReader(restartBody))
+	restartRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(restartRec, restartReq)
+	require.Equal(t, http.StatusOK, restartRec.Code, restartRec.Body.String())
+
+	var restartRes map[string]any
+	require.NoError(t, json.Unmarshal(restartRec.Body.Bytes(), &restartRes))
+	restartedSid := restartRes["session_id"].(string)
+	restartedName := restartRes["session_name"].(string)
+
+	// Check replacement row in DB: PermissionMode MUST STILL BE "default"!
+	lsRestarted, err := rig.ss.GetLiveSession(ctx, restartedSid)
+	require.NoError(t, err)
+	require.NotNil(t, lsRestarted.PermissionMode)
+	assert.Equal(t, "default", *lsRestarted.PermissionMode, "stored mode must NOT be overwritten by restart's extra flags")
+
+	// Now restart again without extra flags: must stay default
+	require.NoError(t, rig.term.CreateSession(ctx, restartedName, rig.workdir))
+	restart2Body, _ := json.Marshal(map[string]any{
+		"session_id": restartedSid,
+		"agent_type": at.Agy,
+	})
+	restart2Req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+restartedName+"/restart", bytes.NewReader(restart2Body))
+	restart2Rec := httptest.NewRecorder()
+	rig.router.ServeHTTP(restart2Rec, restart2Req)
+	require.Equal(t, http.StatusOK, restart2Rec.Code, restart2Rec.Body.String())
+
+	cmd := lastSentCommand(rig.term)
+	assert.NotContains(t, cmd, "--dangerously-skip-permissions", "subsequent restart must stay default")
+}
+
+// 5. Old sessions migration: row with PermissionMode=nil takes current default setting.
+func TestPinnedLaunchPermissionMode_OldSessionFallback(t *testing.T) {
+	rig := setupAgyTestRig(t)
+	ctx := context.Background()
+
+	// Case A: when setting is bypass, old session takes current default (bypass)
+	sid1 := "11111111-aaaa-bbbb-cccc-000000000001"
+	name1 := naming.SessionName(at.Agy, sid1)
+	require.NoError(t, rig.term.CreateSession(ctx, name1, rig.workdir))
+	require.NoError(t, rig.ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID:      sid1,
+		AgentType:      at.Agy,
+		AgentName:      filepath.Base(rig.workdir),
+		WorkingDir:     rig.workdir,
+		PermissionMode: nil, // old row from before migration
+	}))
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "bypassPermissions"))
+	restartBody1, _ := json.Marshal(map[string]any{
+		"session_id": sid1,
+		"agent_type": at.Agy,
+	})
+	restartReq1 := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name1+"/restart", bytes.NewReader(restartBody1))
+	restartRec1 := httptest.NewRecorder()
+	rig.router.ServeHTTP(restartRec1, restartReq1)
+	require.Equal(t, http.StatusOK, restartRec1.Code, restartRec1.Body.String())
+	assert.Contains(t, lastSentCommand(rig.term), "--dangerously-skip-permissions")
+
+	// Case B: when setting is default, old session takes current default (default)
+	sid2 := "11111111-aaaa-bbbb-cccc-000000000002"
+	name2 := naming.SessionName(at.Agy, sid2)
+	require.NoError(t, rig.term.CreateSession(ctx, name2, rig.workdir))
+	require.NoError(t, rig.ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID:      sid2,
+		AgentType:      at.Agy,
+		AgentName:      filepath.Base(rig.workdir),
+		WorkingDir:     rig.workdir,
+		PermissionMode: nil, // old row from before migration
+	}))
+	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "default"))
+	restartBody2, _ := json.Marshal(map[string]any{
+		"session_id": sid2,
+		"agent_type": at.Agy,
+	})
+	restartReq2 := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name2+"/restart", bytes.NewReader(restartBody2))
+	restartRec2 := httptest.NewRecorder()
+	rig.router.ServeHTTP(restartRec2, restartReq2)
+	require.Equal(t, http.StatusOK, restartRec2.Code, restartRec2.Body.String())
+	assert.NotContains(t, lastSentCommand(rig.term), "--dangerously-skip-permissions")
+}
+
+// 6. Corrupt stored values fail closed (both corrupt capabilities and corrupt permission mode).
+func TestPinnedLaunchPermissionMode_FailClosed_CorruptValues(t *testing.T) {
+	rig := setupAgyTestRig(t)
+	ctx := context.Background()
+
+	corruptMode := "corrupt_mode_value"
+	sid := "c1111111-2222-3333-4444-555555555555"
+	name := naming.SessionName(at.Agy, sid)
+
+	require.NoError(t, rig.term.CreateSession(ctx, name, rig.workdir))
+	require.NoError(t, rig.ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID:      sid,
+		AgentType:      at.Agy,
+		AgentName:      filepath.Base(rig.workdir),
+		WorkingDir:     rig.workdir,
+		PermissionMode: &corruptMode,
+	}))
+
+	// 1. Restart fails closed with 500
+	restartBody, _ := json.Marshal(map[string]any{
+		"session_id": sid,
+		"agent_type": at.Agy,
+	})
+	restartReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/restart", bytes.NewReader(restartBody))
+	restartRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(restartRec, restartReq)
+	assert.Equal(t, http.StatusInternalServerError, restartRec.Code, "restart must fail closed on corrupt permission mode")
+	assert.Contains(t, restartRec.Body.String(), "corrupt stored permission mode")
+
+	// 2. Resume fails closed with 500
+	resumeBody, _ := json.Marshal(map[string]any{
+		"session_id":         sid,
+		"current_session_id": sid,
+		"agent_type":         at.Agy,
+	})
+	resumeReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/resume", bytes.NewReader(resumeBody))
+	resumeRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(resumeRec, resumeReq)
+	assert.Equal(t, http.StatusInternalServerError, resumeRec.Code, "resume must fail closed on corrupt permission mode")
+	assert.Contains(t, resumeRec.Body.String(), "corrupt stored permission mode")
+
+	// 3. Wake fails closed with error
+	ls, err := rig.ss.GetLiveSession(ctx, sid)
+	require.NoError(t, err)
+	wakeErr := rig.h.wakeExistingSession(ctx, ls)
+	assert.Error(t, wakeErr, "wake must fail closed on corrupt permission mode")
+	assert.Contains(t, wakeErr.Error(), "corrupt stored permission mode")
+
+	// 4. ResetTeam skips agent with corrupt permission mode
+	boardName := "corrupt-perm-board"
+	corruptSid := "c2222222-2222-3333-4444-555555555555"
+	require.NoError(t, rig.ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID:      corruptSid,
+		AgentType:      at.Agy,
+		AgentName:      filepath.Base(rig.workdir),
+		BoardName:      &boardName,
+		WorkingDir:     rig.workdir,
+		PermissionMode: &corruptMode,
+	}))
+	resetReq := httptest.NewRequest(http.MethodPost, "/api/sessions/live/team/"+boardName+"/reset", nil)
+	resetRec := httptest.NewRecorder()
+	rig.router.ServeHTTP(resetRec, resetReq)
+	require.Equal(t, http.StatusOK, resetRec.Code, resetRec.Body.String())
+	var resetRes struct {
+		Ok     bool             `json:"ok"`
+		Board  string           `json:"board"`
+		Agents []map[string]any `json:"agents"`
+	}
+	require.NoError(t, json.Unmarshal(resetRec.Body.Bytes(), &resetRes))
+	assert.Empty(t, resetRes.Agents, "agent with corrupt permission mode must be skipped during team reset")
+}

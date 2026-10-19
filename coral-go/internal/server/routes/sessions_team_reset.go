@@ -41,18 +41,19 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 
 	// Save each agent's config before killing
 	type agentConfig struct {
-		DisplayName  *string
-		WorkingDir   string
-		AgentType    string
-		Flags        *string
-		Prompt       *string
-		BoardServer  *string
-		BoardType    *string
-		Icon         *string
-		Capabilities *string
-		Model        *string
-		Thinking     *string
-		Tools        *string
+		DisplayName    *string
+		WorkingDir     string
+		AgentType      string
+		Flags          *string
+		Prompt         *string
+		BoardServer    *string
+		BoardType      *string
+		Icon           *string
+		Capabilities   *string
+		Model          *string
+		Thinking       *string
+		Tools          *string
+		PermissionMode *string
 	}
 	configs := make([]agentConfig, 0, len(sessions))
 	for _, s := range sessions {
@@ -64,18 +65,19 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		configs = append(configs, agentConfig{
-			DisplayName:  dn,
-			WorkingDir:   s.WorkingDir,
-			AgentType:    s.AgentType,
-			Flags:        s.Flags,
-			Prompt:       s.Prompt,
-			BoardServer:  s.BoardServer,
-			BoardType:    s.BoardType,
-			Icon:         s.Icon,
-			Capabilities: s.Capabilities,
-			Model:        s.Model,
-			Thinking:     s.Thinking,
-			Tools:        s.Tools,
+			DisplayName:    dn,
+			WorkingDir:     s.WorkingDir,
+			AgentType:      s.AgentType,
+			Flags:          s.Flags,
+			Prompt:         s.Prompt,
+			BoardServer:    s.BoardServer,
+			BoardType:      s.BoardType,
+			Icon:           s.Icon,
+			Capabilities:   s.Capabilities,
+			Model:          s.Model,
+			Thinking:       s.Thinking,
+			Tools:          s.Tools,
+			PermissionMode: s.PermissionMode,
 		})
 	}
 
@@ -141,11 +143,24 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		if modelStr != "" {
 			flags = append(flags, "--model", modelStr)
 		}
+		storedPermMode := ""
+		if cfg.PermissionMode != nil && *cfg.PermissionMode != "" {
+			if !agent.ValidPermissionMode(*cfg.PermissionMode) {
+				log.Printf("[reset-team] corrupt stored permission mode for agent %s: %s", displayName, *cfg.PermissionMode)
+				continue
+			}
+			storedPermMode = *cfg.PermissionMode
+		}
+		cleanFlags := stripAgentPermissionFlags(flags)
+		if caps.IsEmpty() && storedPermMode != "" && storedPermMode != "default" {
+			cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(cfg.AgentType, storedPermMode)...)
+		}
 		tools := store.UnmarshalFlags(cfg.Tools)
 		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, displayName, prompt)
 		result, err := h.launchSession(bgCtx, launchSpec{
-			WorkDir: cfg.WorkingDir, AgentType: cfg.AgentType, DisplayName: displayName, Flags: flags, Prompt: prompt,
+			WorkDir: cfg.WorkingDir, AgentType: cfg.AgentType, DisplayName: displayName, Flags: cleanFlags, Prompt: prompt,
 			BoardName: boardName, BoardServer: boardServer, BoardType: boardType, Model: modelStr, Thinking: ptr.Value(cfg.Thinking), Capabilities: caps, Tools: tools,
+			PermissionMode: storedPermMode,
 		})
 		if err != nil {
 			log.Printf("[reset-team] failed to re-launch %s: %v", displayName, err)
