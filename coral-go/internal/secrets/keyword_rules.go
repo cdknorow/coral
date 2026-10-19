@@ -60,8 +60,11 @@ const (
 	nameChain        = `((?:[a-z0-9]+[_-])*`
 	// The separator: an optional closing quote (raw, or backslash-escaped, once or twice, as JSON inside a JSON string writes it), ':' or '=' (or the
 	// full-width forms), an optional opening quote.
-	sepAndQuote = `((?:\\*["'])?\s*[:=\x{FF1D}\x{FF1A}]\s*(?:\\*["'])?)`
-	encSep      = `(%(?:25)?3[Dd])` // '=' URL-encoded, or encoded twice
+	// A quote as a log or a web page writes it: raw, backslash-escaped, or an HTML entity (&quot; &#34; &#x22; and the single-quote forms, #5172).
+	quoteLike   = `(?:\\*["']|&(?:quot|apos|#0*34|#0*39|#[xX]0*2[27]);)`
+	sepAndQuote = `((?:` + quoteLike + `)?\s*[:=\x{FF1D}\x{FF1A}]\s*(?:` + quoteLike + `)?)`
+	// '=' URL-encoded, or encoded twice; or ':' with its space (password%3A%20value, #5172).
+	encSep = `(%(?:25)?3[Dd]|%(?:25)?3[Aa](?:%(?:25)?20|\+)?)`
 	// What a URL-encoded value may hold: the characters of a key or a token, encoded or not; it ends at the first encoded & ; space or quote.
 	encValue = `(?:[A-Za-z0-9._~+/=-]|%(?:2[BbFfDdEe]|3[Dd]|5[Ff]))`
 
@@ -104,13 +107,27 @@ func keywordSpansIn(text string) []redact.Span {
 	var out []redact.Span
 	for _, r := range keywordRules {
 		for _, m := range r.re.FindAllStringSubmatchIndex(text, -1) {
-			name, sep, value := text[m[2]:m[3]], text[m[4]:m[5]], text[m[6]:m[7]]
-			if keywordValueOK(r, name, sep, value) {
-				out = append(out, redact.Span{Start: m[6], End: m[7]})
+			end := trimEntityQuotes(text, m[6], m[7]) // a password may hold &, so a closing &quot; is part of what was matched: it is not the value's
+			name, sep, value := text[m[2]:m[3]], text[m[4]:m[5]], text[m[6]:end]
+			if value != "" && keywordValueOK(r, name, sep, value) {
+				out = append(out, redact.Span{Start: m[6], End: end})
 			}
 		}
 	}
 	return append(out, cookieSpans(text)...)
+}
+
+// trimEntityQuotes is end moved back over the HTML quote entities that end text[start:end] (&quot; &#34; ...).
+func trimEntityQuotes(text string, start, end int) int {
+	for end-start >= 4 && text[end-1] == ';' {
+		tail := strings.ToLower(text[max(start, end-12):end])
+		n := entityQuoteEndingAt(tail, len(tail))
+		if n == 0 {
+			break
+		}
+		end -= n
+	}
+	return end
 }
 
 func keywordValueOK(r keywordRule, name, sep, value string) bool {
@@ -143,7 +160,7 @@ func keywordValueOK(r keywordRule, name, sep, value string) bool {
 		}
 	}
 	// After an unquoted ':' or a space only a value that is not a plain word counts (see the tradeoff).
-	if !strings.ContainsAny(sep, "=\uFF1D\"'%") && lettersOnly(value) && len(value) < minKeyLen {
+	if !strings.ContainsAny(sep, "=\uFF1D\"'%&") && lettersOnly(value) && len(value) < minKeyLen {
 		return false
 	}
 	return true

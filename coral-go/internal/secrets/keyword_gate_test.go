@@ -81,7 +81,7 @@ func TestKeywordGateOnLongLines(t *testing.T) {
 func TestKeywordGateOnRandomText(t *testing.T) {
 	pieces := []string{"api_key", "token", "TOKEN", "x-api-key", "password", "Password", "secret", "mytoken", "tokens", "DB_PASSWORD", "PGPASSWORD", "MYSQL_PWD",
 		"AWS_SECRET", "STRIPE_KEY", "key", "sig", "auth", "authorization", "Authorization", "Cookie", "Set-Cookie", "session", "SID", "curl", "-u", "--user",
-		"mysql", "-p", "sshpass", "--password", "--token", "--api-key", "--", "-", "bearer", "Bearer", "=", ":", "＝", "：", "%3D", "%253D", "%3F", "%26", "&", "?", ";", ",",
+		"mysql", "-p", "sshpass", "--password", "--token", "--api-key", "--", "-", "bearer", "Bearer", "=", ":", "＝", "：", "%3D", "%253D", "%3F", "%3A", "%253A", "%20", "+", "&quot;", "&#34;", "&#x22;", "&apos;", "&#39;", "&amp;", "%26", "&", "?", ";", ",",
 		" ", "  ", "\t", "\n", "\r\n", `"`, "'", `\"`, `\\\"`, "{", "}", "[", "]", "(", ")", "<", ">", "$", "%", "_", ".", "/", "+",
 		"Zq8Lm2Xv9Rt4Wk7Pd3Hs", "\u017f", "\u212a", strings.Repeat("a-", 40), strings.Repeat(" ", 300), strings.Repeat("\n", 300), strings.Repeat("ab", 5000), "abcdefgh", "0123456789abcdef", "a1", "x", "AAAA", "https://h.example.com/cb", "next=", "user:pw", "​", "é"}
 	r := rand.New(rand.NewSource(5158))

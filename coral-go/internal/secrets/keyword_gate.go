@@ -39,6 +39,10 @@ func nameBefore(lower string, p int) (word string, from int, ok bool) {
 			i--
 			continue
 		}
+		if n := entityQuoteEndingAt(lower, i); n > 0 {
+			i -= n
+			continue
+		}
 		break
 	}
 	j := i
@@ -47,6 +51,32 @@ func nameBefore(lower string, p int) (word string, from int, ok bool) {
 	}
 	word = lower[j:i]
 	return word, j, word != "" && endsLikeAName(word)
+}
+
+// entityQuoteEndingAt is the length of the HTML entity for a quote (&quot; &apos; &#34; &#39; &#x22; &#x27;, any zero padding) that ends at i, or 0.
+func entityQuoteEndingAt(s string, i int) int {
+	if i < 4 || s[i-1] != ';' {
+		return 0
+	}
+	for n := 4; n <= 12 && n <= i; n++ { // the longest: &#x0000022;
+		if s[i-n] != '&' {
+			continue
+		}
+		switch body := s[i-n+1 : i-1]; {
+		case body == "quot", body == "apos":
+			return n
+		case strings.HasPrefix(body, "#x"):
+			if v := strings.TrimLeft(body[2:], "0"); v == "22" || v == "27" {
+				return n
+			}
+		case strings.HasPrefix(body, "#"):
+			if v := strings.TrimLeft(body[1:], "0"); v == "34" || v == "39" {
+				return n
+			}
+		}
+		return 0
+	}
+	return 0
 }
 
 type place struct{ start, end int }
@@ -129,9 +159,28 @@ func skipBlanks(text string, p int) int {
 			p++
 			continue
 		}
+		if c := text[p]; c == '&' { // an entity quote
+			if n := entityQuoteStartingAt(text, p); n > 0 {
+				p += n
+				continue
+			}
+		}
 		break
 	}
 	return p
+}
+
+// entityQuoteStartingAt is the length of the quote entity (see entityQuoteEndingAt) that starts at p, or 0.
+func entityQuoteStartingAt(s string, p int) int {
+	for n := 4; n <= 12 && p+n <= len(s); n++ {
+		if s[p+n-1] == ';' {
+			if entityQuoteEndingAt(strings.ToLower(s[p:p+n]), n) == n {
+				return n
+			}
+			return 0
+		}
+	}
+	return 0
 }
 
 // valueEndAt is the end of a window that starts a value at p: valueWindow on, then up to the first byte a value cannot hold.
@@ -191,7 +240,7 @@ func keywordPlaces(text string) []place {
 			if strings.HasPrefix(lower[j:], "25") {
 				j += 2
 			}
-			if strings.HasPrefix(lower[j:], "3d") {
+			if strings.HasPrefix(lower[j:], "3d") || strings.HasPrefix(lower[j:], "3a") {
 				if _, from, ok := nameBefore(lower, i); ok {
 					add(g.lineStart(from), g.valueEndAt(j+2))
 				}

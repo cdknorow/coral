@@ -24,6 +24,7 @@ import (
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/ptr"
+	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -493,7 +494,7 @@ func (h *SessionsHandler) chatBefore4713(w http.ResponseWriter, r *http.Request)
 		start := max(end-limit, 0)
 		page := withKeys(messageKeySecretFor(h.cfg), chatSlice(r.Context(), tv, messages, start, end)) // each message's stable key, for Save for Later (#4510)
 		if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
-			page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
+			page = trimChatPage(page, trim, secrets.Redactor()) // long tool fields cut, marked (chat_trim.go, #3723)
 		}
 		reply := map[string]any{
 			"messages":     page,

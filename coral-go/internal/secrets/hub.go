@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/cdknorow/coral/pkg/redact"
 )
@@ -54,13 +55,33 @@ func HubRedactor(on func() bool) redact.Redactor {
 	return hubSwitch{on: on}
 }
 
-type hubSwitch struct{ on func() bool }
+// HubBudgetedRedactor is HubRedactor with a budget of the caller's choosing, as BudgetedRedactor is to Redactor: a file or a message that leaves this
+// computer for another Coral through Coral Hub is scanned with the hub's rules (#5172).
+func HubBudgetedRedactor(budget time.Duration, on func() bool) redact.Redactor {
+	once.Do(build)
+	if initErr != nil {
+		return redact.Refuse
+	}
+	return hubSwitch{on: on, budget: budget}
+}
+
+type hubSwitch struct {
+	on     func() bool
+	budget time.Duration // 0: the process's own redactors and their budgets
+}
 
 func (h hubSwitch) pick() redact.Redactor {
-	if keywordsEnvOff() || (h.on != nil && !h.on()) {
-		return red
+	keywords := !keywordsEnvOff() && (h.on == nil || h.on())
+	if h.budget > 0 {
+		if keywords {
+			return &redact.Scanner{Detector: withKeywordRules{base: det}, Budget: h.budget}
+		}
+		return &redact.Scanner{Detector: det, Budget: h.budget}
 	}
-	return hubRed
+	if keywords {
+		return hubRed
+	}
+	return red
 }
 
 func (h hubSwitch) Text(b []byte) ([]byte, error)             { return h.pick().Text(b) }

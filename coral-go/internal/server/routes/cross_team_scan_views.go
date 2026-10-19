@@ -103,7 +103,8 @@ type scanEnv struct {
 }
 
 var liveScan = scanEnv{now: time.Now, text: func(budget time.Duration, v []byte) ([]byte, error) {
-	return secrets.BudgetedRedactor(budget).Text(v)
+	// A file or a message sent to another Coral through Coral Hub is not redacted by the hub: it is scanned with the hub's rules, the keyword rules too (#5172).
+	return secrets.HubBudgetedRedactor(budget, keywordsOn).Text(v)
 }}
 
 // scanSecrets runs Coral's secret rules over a file and its re-encoded views (scanViews), within the file's

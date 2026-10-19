@@ -445,7 +445,7 @@ func (h *SessionsHandler) chatHistoryPage(r *http.Request, tv *jsonl.Transcript,
 	start = max(end-limit, 0)
 	page = withKeys(messageKeySecretFor(h.cfg), chatSlice(r.Context(), tv, messages, start, end)) // each message's stable key, for Save for Later (#4510)
 	if trim, _ := strconv.Atoi(r.URL.Query().Get("trim")); trim > 0 {
-		page = trimChatPage(page, trim) // long tool fields cut, marked (chat_trim.go, #3723)
+		page = trimChatPage(page, trim, requestRedactor(r)) // long tool fields cut, marked (chat_trim.go, #3723)
 	}
 	return page, start, nil
 }

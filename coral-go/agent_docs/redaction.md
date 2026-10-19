@@ -15,11 +15,22 @@ never passed on as it is.
    cost redaction speed (about three times the time on text dense in names such as key and token), so every local caller (`coral.log` lines, events, saved
    views, the board) keeps rules 1 and 2 only (`secrets.Redactor`).
 
+### Where the hub's rules (the keyword rules too) apply
+
+- Everything the cloud tunnel sends (replies, streams, terminal frames): `secrets.HubRedactor`.
+- A request that came through the tunnel, for the text it cuts or keeps before the reply is redacted: a chat page's trimmed tool fields (`?trim=N`) and a saved
+  message's snippet (`requestRedactor`). Local requests keep the local rules.
+- What a hub viewer matches a team-artifact query on (`shownText`): it must be what the reply shows.
+- A file or a message sent to another Coral through Coral Hub, which the hub does not redact: the scan before it leaves (`secrets.HubBudgetedRedactor`).
+  With the keyword rules on, a file or message with a keyword and a value in it is refused.
+
+The local callers (`coral.log`, events, the board, saved views of local requests) keep `secrets.Redactor`: they cannot reach a hub viewer without the reply's own redaction.
+
 ### Turning the keyword rules off
 
 They are on whenever Coral is connected to Coral Hub. Two switches, both local: the setting `hub_redact_keywords` (Settings > Coral Hub, or `PUT /api/settings`
 with `{"hub_redact_keywords": false}`; read on every reply) and the environment variable `CORAL_REDACT_KEYWORDS=off` (also `0`, `no`, `false`; read at every
-reply). Off, the hub's redactor is rules 1 and 2 only. Coral Hub cannot change either: `PUT /api/settings` is never reachable through the tunnel.
+reply). Off, the hub's redactor is rules 1 and 2 only, and so is the scan of what is sent to another Coral. Coral Hub cannot change either: `PUT /api/settings` is never reachable through the tunnel.
 
 ## The keyword rules
 
@@ -36,6 +47,8 @@ reply). Off, the hub's redactor is rules 1 and 2 only. Coral Hub cannot change e
 | a name written as one word | `PGPASSWORD`, `MYSQL_PWD`, `SSHPASS`, `AWS_SECRET`, `SECRET_KEY_BASE`, `REDISCLI_AUTH`, `APITOKEN` (an exact list: `mytoken` is still not a name) | 8 or more characters |
 | a command-line argument | the flags `--password`, `--token`, `--api-key`, `--db-password` followed by a value (after a space or `=`); the password after `mysql -p` (no space) or `sshpass -p` | as the name above (4 or more after `-p`); a value that starts with `-` is the next flag and is left |
 | a Cookie or Set-Cookie header | every `name=value` pair of the header | 16 or more characters, or 8 or more under a name with `sess`, `sid`, `auth`, `token`, `key`, `secret`, `pass`, ... in it; the attributes (`Path`, `Domain`, `Expires`, `SameSite`, ...) are left |
+| URL-encoded colon | a name followed by an encoded colon and an encoded space or a plus (`%3A%20`, `%3A+`), once or twice encoded | as the encoded rules above |
+| HTML-entity quotes | the quotes around a name and its value written as `&quot;`, `&#34;`, `&#x22;`, `&apos;`, `&#39;` | as the name above; a closing entity is not part of the value |
 | the full-width equals sign and colon (U+FF1D, U+FF1A) | read as `=` and `:` | as above |
 
 The tradeoffs are on purpose, to keep ordinary text readable:

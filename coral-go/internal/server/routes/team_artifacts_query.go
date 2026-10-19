@@ -16,6 +16,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/secrets"
+	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // The Team Artifacts list's query (#4572): search, filters, sort, cursor paging and a total, on the existing list route. The rows
@@ -412,10 +413,11 @@ func finishTeamArtifactName(it *teamArtifact) {
 	}
 }
 
-// shownRedactor is the redactor the connector uses (a variable so a test can make it fail).
-var shownRedactor = secrets.Redactor
+// shownRedactor is the redactor the connector uses for Coral Hub, the keyword rules included (#5172: matching must agree with what the reply shows);
+// a variable so a test can make it fail.
+var shownRedactor = func() redact.Redactor { return secrets.HubRedactor(keywordsOn) }
 
-// shownText is what a viewer through Coral Hub sees of s: the connector's own rules (secrets.Redactor) applied. A text that cannot be
+// shownText is what a viewer through Coral Hub sees of s: the connector's own rules (secrets.HubRedactor) applied. A text that cannot be
 // checked is treated as hidden, never matched raw.
 func shownText(s string) string {
 	if s == "" {

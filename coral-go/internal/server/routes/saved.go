@@ -17,7 +17,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/redact"
 )
@@ -170,8 +169,8 @@ func (h *SystemHandler) fillSavedAuthors(ctx context.Context, team string) {
 }
 
 // savedSnippet is text redacted, one line, and cut to maxSavedSnippet bytes where no token can be split. Text that can't be checked is not kept.
-func savedSnippet(text string) string {
-	b, err := secrets.Redactor().Text([]byte(text))
+func savedSnippet(text string, rd redact.Redactor) string {
+	b, err := rd.Text([]byte(text))
 	if err != nil {
 		return redact.Marker
 	}
@@ -241,7 +240,7 @@ func (h *SystemHandler) SavedAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := store.SavedMessage{Kind: body.Kind, Ref: ref, Key: body.Key, AgentType: cleanSavedField(body.AgentType), Title: cleanSavedField(body.Title),
-		Snippet: savedSnippet(body.Snippet), SaidAt: cleanSavedField(body.SaidAt), Team: cleanSavedField(body.Team)}
+		Snippet: savedSnippet(body.Snippet, requestRedactor(r)), SaidAt: cleanSavedField(body.SaidAt), Team: cleanSavedField(body.Team)}
 	if m.Kind == "board" {
 		m.Team = ref // a board message belongs to its own board
 		m.Author = cleanSavedField(body.Author)

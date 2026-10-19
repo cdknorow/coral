@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/pkg/redact"
 )
 
@@ -28,12 +27,12 @@ var trimmedToolFields = []string{"write_content", "old_string", "new_string", "p
 
 // trimChatPage returns page with long tool fields cut to n bytes. The messages are shared with
 // the transcript reader's cache, so a message that changes is copied, never edited.
-func trimChatPage(page []map[string]any, n int) []map[string]any {
+func trimChatPage(page []map[string]any, n int, rd redact.Redactor) []map[string]any {
 	n = min(max(n, trimMin), trimMax)
 	out := page
 	copied := false
 	for i, m := range page {
-		t, changed := trimChatMessage(m, n)
+		t, changed := trimChatMessage(m, n, rd)
 		if !changed {
 			continue
 		}
@@ -46,7 +45,7 @@ func trimChatPage(page []map[string]any, n int) []map[string]any {
 	return out
 }
 
-func trimChatMessage(m map[string]any, n int) (map[string]any, bool) {
+func trimChatMessage(m map[string]any, n int, rd redact.Redactor) (map[string]any, bool) {
 	var c map[string]any
 	clone := func() {
 		if c == nil {
@@ -59,7 +58,7 @@ func trimChatMessage(m map[string]any, n int) (map[string]any, bool) {
 	if m["type"] == "tool_result" {
 		if s, ok := m["content"].(string); ok && len(s) > n {
 			clone()
-			c["content"] = trimField(s, n)
+			c["content"] = trimField(s, n, rd)
 			c["trimmed"] = true
 		}
 	}
@@ -88,7 +87,7 @@ func trimChatMessage(m map[string]any, n int) (map[string]any, bool) {
 						tc[k] = v
 					}
 				}
-				tc[f] = trimField(s, n)
+				tc[f] = trimField(s, n, rd)
 				tc["trimmed"] = true
 			}
 		}
@@ -113,8 +112,8 @@ func trimChatMessage(m map[string]any, n int) (map[string]any, bool) {
 
 // trimField is s, longer than n, redacted and then cut to at most n bytes where no token can
 // be split. Text that can't be checked is not shown.
-func trimField(s string, n int) string {
-	b, err := secrets.Redactor().Text([]byte(s))
+func trimField(s string, n int, rd redact.Redactor) string {
+	b, err := rd.Text([]byte(s))
 	if err != nil {
 		return redact.Marker
 	}

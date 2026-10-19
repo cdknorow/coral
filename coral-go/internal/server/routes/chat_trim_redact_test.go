@@ -55,7 +55,7 @@ func TestTrimNeverShowsAPieceOfAToken(t *testing.T) {
 	}
 	// check is called from several goroutines (#4852): it reports with t.Errorf, never t.Fatal or require.
 	check := func(t *testing.T, content, secret string, n int) {
-		body, err := json.Marshal(map[string]any{"messages": trimChatPage(page(content), n)})
+		body, err := json.Marshal(map[string]any{"messages": trimChatPage(page(content), n, secrets.Redactor())})
 		if err != nil {
 			t.Errorf("trim=%d: %v", n, err)
 			return
@@ -93,7 +93,7 @@ func TestTrimNeverShowsAPieceOfAPEMKey(t *testing.T) {
 	content := strings.Repeat("cat id_rsa\n", 20) + key.String() + "\ndone\n" + strings.Repeat("z", 1000)
 	parallelFor(len(content)-trimMin+1, func(i int) bool { // on several goroutines: t.Errorf, not t.Fatal (#4852)
 		n := trimMin + i
-		body, _ := json.Marshal(map[string]any{"messages": trimChatPage([]map[string]any{{"type": "tool_result", "content": content}}, n)})
+		body, _ := json.Marshal(map[string]any{"messages": trimChatPage([]map[string]any{{"type": "tool_result", "content": content}}, n, secrets.Redactor())})
 		red, err := secrets.Redactor().Reply(body, true)
 		if err != nil {
 			t.Errorf("trim=%d: %v", n, err)
@@ -111,7 +111,7 @@ func TestTrimNeverShowsAPieceOfAPEMKey(t *testing.T) {
 func TestTrimRedactsBeforeCutting(t *testing.T) {
 	tok := trimFake("ghp_", 36, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 	content := "token " + tok + "\n" + strings.Repeat("output\n", 100)
-	got := trimChatPage([]map[string]any{{"type": "tool_result", "content": content}}, 300)[0]["content"].(string)
+	got := trimChatPage([]map[string]any{{"type": "tool_result", "content": content}}, 300, secrets.Redactor())[0]["content"].(string)
 	assert.Contains(t, got, redact.Marker)
 	assert.NotContains(t, got, tok[4:12])
 	assert.LessOrEqual(t, len(got), 300)

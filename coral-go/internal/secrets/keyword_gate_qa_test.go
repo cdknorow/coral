@@ -33,7 +33,7 @@ func TestKeywordGateKeepsWhatTheRulesFindInOddText(t *testing.T) {
 func TestKeywordGateOnOddRandomText(t *testing.T) {
 	pieces := []string{"api_key", "token", "TOKEN", "x-api-key", "password", "PASSWORD", "secret", "DB_PASSWORD", "PGPASSWORD", "STRIPE_KEY", "key", "sig", "auth",
 		"Authorization", "Cookie", "Set-Cookie", "curl", "-u", "--user", "mysql", "mysqldump", "-p", "sshpass", "--password", "--token", "--api-key", "--", "-",
-		"bearer", "=", ":", "\uFF1D", "%3D", "%253D", "%3F", "&", "?", ";", " ", "  ", "\t", "\n", "\r\n", "\f", "\u00a0", `"`, "'", `\"`, `\\`, "<", ">", "%", "_", ".",
+		"bearer", "=", ":", "\uFF1D", "%3D", "%253D", "%3F", "%3A", "%253A", "%20", "+", "&quot;", "&#34;", "&#x22;", "&apos;", "&#39;", "&amp;", "&", "?", ";", " ", "  ", "\t", "\n", "\r\n", "\f", "\u00a0", `"`, "'", `\"`, `\\`, "<", ">", "%", "_", ".",
 		"\u017f", "\u212a", "pa\u017f\u017fword", "Zq8Lm2Xv9Rt4Wk7Pd3Hs", "abcdefgh", "a1", "x", strings.Repeat(" ", 2000), strings.Repeat("a-", 40),
 		strings.Repeat("ab_", 30), strings.Repeat("x", 1100), strings.Repeat("\n", 50), "\u00e9", "A_KEY", "_KEY", "KEY", "export "}
 	r := rand.New(rand.NewSource(51580))

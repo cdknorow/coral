@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cdknorow/coral/internal/auth"
@@ -21,7 +22,9 @@ import (
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/peercred"
+	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -85,6 +88,30 @@ func RedactKeywordsFromSettings(ss *store.SessionStore) func() bool {
 		on, at = err != nil || !settingOff(s[RedactKeywordsSetting]), time.Now()
 		return on
 	}
+}
+
+// keywordSwitch is the keyword rules' switch for the hub-bound paths of this package (chat_trim, saved, the scans of what is sent to another Coral):
+// set once at startup (SetKeywordSwitch) from the same reader the cloud connector's redactor has; nil is on. Read on each use.
+var keywordSwitch atomic.Pointer[func() bool]
+
+// SetKeywordSwitch sets keywordSwitch.
+func SetKeywordSwitch(on func() bool) { keywordSwitch.Store(&on) }
+
+func keywordsOn() bool {
+	if f := keywordSwitch.Load(); f != nil && *f != nil {
+		return (*f)()
+	}
+	return true
+}
+
+// requestRedactor is the redactor for text a request will show: Coral Hub's (the keyword rules too) when the request came through the tunnel,
+// otherwise the local one. The reply is redacted again on its way out, but a field cut or kept first (chat_trim, saved) must be redacted
+// before it is cut, or a fragment of a value the keyword rules would take can pass (#5172).
+func requestRedactor(r *http.Request) redact.Redactor {
+	if r != nil && viaTunnel(r) {
+		return secrets.HubRedactor(keywordsOn)
+	}
+	return secrets.Redactor()
 }
 
 // settingOff: a bool setting stored as sent ("false", "False", 0, no, off) is off.

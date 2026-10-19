@@ -308,13 +308,15 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 			hubURL = u
 		}
 	}
+	keywordSwitch := routes.RedactKeywordsFromSettings(ss)
+	routes.SetKeywordSwitch(keywordSwitch) // the hub-bound paths of the routes read the same switch (#5172)
 	mgr := cloud.New(cloud.Options{
 		HubURL:       hubURL,
 		Store:        store.NewCloudStore(db, store.NewRemoteServerStore(db, cfg.CoralDir())),
 		LocalBaseURL: "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Port)),
 		MaxMode:      routes.MaxModeFromSettings(ss),
 		RedactTokens: routes.RedactTokensFromSettings(ss),
-		Redactor:     secrets.HubRedactor(routes.RedactKeywordsFromSettings(ss)), // Redactor plus the keyword rules (#5141)
+		Redactor:     secrets.HubRedactor(keywordSwitch), // Redactor plus the keyword rules (#5141)
 		HubLimits:    routes.HubLimitsFromSettings(ss),
 		CoralVersion: config.ReportedVersion(),
 		Logger:       slog.Default(),
