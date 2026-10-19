@@ -90,9 +90,6 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	transcript := filepath.Join(r.dir, ".claude", "projects", "x", sid+".jsonl")
 	require.NoError(t, os.MkdirAll(filepath.Dir(transcript), 0o700))
 	require.NoError(t, os.WriteFile(transcript, []byte(`{"type":"user","message":{"role":"user","content":"hi"},"timestamp":"2026-10-15T00:00:00.000Z"}`+"\n"), 0o600))
-	// An uploaded image under the session's name, for GET /api/upload/{name} (#5028): a View route like the rest, answering 200 with an image.
-	require.NoError(t, os.MkdirAll(filepath.Join(r.dir, "uploads"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(r.dir, "uploads", name), []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"), 0o600))
 	require.NoError(t, store.NewSubagentStore(r.db).UpsertSubagent(ctx, &store.Subagent{SessionID: sid, SubagentID: "x"}))
 	require.NoError(t, store.NewSessionStore(r.db).UpdateSessionPID(ctx, sid, 1))
 	teamConfig, _ := json.Marshal(map[string]any{"working_dir": r.work, "agents": []map[string]any{{"name": "Dev", "working_dir": r.work}}})

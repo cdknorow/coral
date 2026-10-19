@@ -290,9 +290,9 @@ Serves one uploaded image to the dashboard (the thumbnail on a chat image chip).
 (the last element of the upload's `path`), a base name only: `400` for a separator, a dot segment, a hidden or
 device name, a folder or a link; `404` if it is gone. The type is what the bytes are: PNG, JPEG, GIF or WebP
 (`415` for anything else, SVG included, whatever the name says). The reply is `X-Content-Type-Options: nosniff`,
-`Content-Disposition: inline` with a plain file name, a sandboxing `Content-Security-Policy` and a private
-cache header, up to the 20 MiB upload cap. The Operator's (the dashboard, the command line); an agent's token
-is refused. Through Coral Hub it is a View route.
+`Content-Disposition: inline` with a plain file name, a sandboxing `Content-Security-Policy` and a `private, no-cache` header, up to
+the 20 MiB upload cap. The Operator's (the dashboard, the command line); an agent's token is refused. Local
+only: never through Coral Hub (the chip there keeps its name).
 
 ```
 DELETE /api/upload/{name}

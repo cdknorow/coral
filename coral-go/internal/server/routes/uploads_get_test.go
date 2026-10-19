@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -62,7 +63,7 @@ func TestGetUploadServesAnImageByItsBytes(t *testing.T) {
 		assert.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"), name)
 		assert.Contains(t, rec.Header().Get("Content-Disposition"), "inline", name)
 		assert.Contains(t, rec.Header().Get("Content-Security-Policy"), "sandbox", name)
-		assert.Contains(t, rec.Header().Get("Cache-Control"), "private", name)
+		assert.Equal(t, "private, no-cache", rec.Header().Get("Cache-Control"), name)
 		assert.Equal(t, c.body, rec.Body.Bytes(), name)
 	}
 }
@@ -147,4 +148,12 @@ func TestGetUploadWithNoUploadsFolderIsNotFound(t *testing.T) {
 	uploadDir = filepath.Join(t.TempDir(), "never-made")
 	t.Cleanup(func() { uploadDir = old })
 	assert.Equal(t, http.StatusNotFound, getUpload(r, "a.png").Code)
+}
+
+// A name no file system could hold is refused before it is decoded or looked up.
+func TestGetUploadRefusesAnOverLongName(t *testing.T) {
+	h, _ := getUploadRouter(t)
+	assert.Equal(t, http.StatusBadRequest, getUpload(h, strings.Repeat("a", 256)+".png").Code)
+	assert.Equal(t, http.StatusBadRequest, getUpload(h, strings.Repeat("a", 256*3+1)).Code)
+	assert.Equal(t, http.StatusNotFound, getUpload(h, strings.Repeat("a", 251)+".png").Code, "255 bytes is still a name")
 }

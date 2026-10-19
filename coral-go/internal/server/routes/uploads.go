@@ -162,6 +162,9 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 
 // thumbnailTypes are the image types GET /api/upload/{name} serves, by what the bytes are (net/http's sniff of the first 512 bytes), never by the
 // name or the extension. SVG (text/xml or text/plain to the sniffer), BMP and TIFF are not here: the chip's thumbnail is a PNG, JPEG, GIF or WebP.
+// maxUploadNameLen is the longest file name GET /api/upload/{name} looks up: file systems stop at 255 bytes, so a longer one names nothing.
+const maxUploadNameLen = 255
+
 var thumbnailTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
 
 // GetUpload serves one uploaded image to the dashboard's chat chips (#5028). GET /api/upload/{name}
@@ -173,6 +176,10 @@ var thumbnailTypes = map[string]bool{"image/png": true, "image/jpeg": true, "ima
 // at the upload size, and cacheable by the browser that asked (the name is random, the file never changes).
 func GetUpload(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	if len(name) > maxUploadNameLen*3 { // a name no upload has (the encoded form of one can be three times as long): refused before it is decoded or looked up
+		errBadRequest(w, "not an upload name")
+		return
+	}
 	if strings.Contains(name, "%") { // chi hands the segment as it came on the wire: a browser percent-encodes a name with a space-free but non-ASCII letter
 		decoded, err := url.PathUnescape(name)
 		if err != nil {
@@ -181,7 +188,7 @@ func GetUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		name = decoded // once: the checks below run on the decoded name, so an encoded separator or dot segment is refused as the plain one is
 	}
-	if name == "" || name != filepath.Base(name) || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") || strings.HasPrefix(name, ".") || safefs.CheckName(name) != nil {
+	if len(name) > maxUploadNameLen || name == "" || name != filepath.Base(name) || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") || strings.HasPrefix(name, ".") || safefs.CheckName(name) != nil {
 		errBadRequest(w, "not an upload name")
 		return
 	}
@@ -232,7 +239,7 @@ func GetUpload(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	h.Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": safeDownloadName(name)}))
-	h.Set("Cache-Control", "private, max-age=86400, immutable")
+	h.Set("Cache-Control", "private, no-cache") // the browser may keep it but asks again (a validation, not a trust in its age): an upload can be removed
 	h.Set("Content-Length", fmt.Sprint(fi.Size()))
 	w.WriteHeader(http.StatusOK)
 	io.Copy(w, io.LimitReader(f, fi.Size()))

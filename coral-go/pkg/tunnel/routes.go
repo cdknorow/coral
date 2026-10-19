@@ -126,7 +126,6 @@ var routeTable = cat(
 	// ── view: reads ─────────────────────────────────────────────────────
 	rules(http.MethodGet, TierView,
 		"/api/health", "/ws/coral", "/ws/terminal/{name}",
-		"/api/upload/{name}", // an uploaded image for the chat chips: the chat is View, so is what it shows (#5028)
 		"/api/sessions/live",
 		"/api/sessions/live/{name}",
 		"/api/sessions/live/{name}/capture",
