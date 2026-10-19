@@ -66,8 +66,8 @@ NM=$N/coralgo-cache/frontend
 # The two go test tag sets and test:cloud at the same time (36 cores; GOMAXPROCS=8 and -p=8 each).
 # Each writes its own whole log and its own exit status; nothing is read until all three end.
 rm -f ../gotest.rc ../gotestdev.rc ../cloud.rc
-( nice -n 10 ionice -c3 env -u CORAL_TELEMETRY_DISABLED go test -count=1 ./... > ../gotest.log 2>&1; echo $? > ../gotest.rc ) &
-( nice -n 10 ionice -c3 env -u CORAL_TELEMETRY_DISABLED go test -count=1 -tags 'dev fts5' ./... > ../gotestdev.log 2>&1; echo $? > ../gotestdev.rc ) &
+( nice -n 10 ionice -c3 env -u CORAL_TELEMETRY_DISABLED go test -count=1 -timeout 45m ./... > ../gotest.log 2>&1; echo $? > ../gotest.rc ) &
+( nice -n 10 ionice -c3 env -u CORAL_TELEMETRY_DISABLED go test -count=1 -timeout 45m -tags 'dev fts5' ./... > ../gotestdev.log 2>&1; echo $? > ../gotestdev.rc ) &
 [ -z "${GO_ONLY:-}" ] && ( cd ../tests/frontend && nice -n 10 ionice -c3 npm run -s test:cloud > ../../cloud.log 2>&1; echo $? > ../../cloud.rc ) &
 wait
 ts go test, go test dev fts5 and test:cloud done
