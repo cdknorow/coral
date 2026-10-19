@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/cdknorow/coral/internal/agent"
+	setreg "github.com/cdknorow/coral/internal/settings"
 )
 
 // agentCaller reports a request made with an agent session's token.
@@ -99,7 +100,7 @@ func inSavedTeamTemplate(settings map[string]string, def launchTeamAgent) bool {
 			Hooks        map[string]interface{} `json:"hooks"`
 		} `json:"agents"`
 	}
-	if json.Unmarshal([]byte(settings["saved_team_templates"]), &templates) != nil {
+	if json.Unmarshal([]byte(setreg.Raw(settings, "saved_team_templates")), &templates) != nil {
 		return false
 	}
 	want := teamAgentKey(def.Name, def.Prompt, def.AgentType, def.Model, def.Flags, def.Capabilities, def.Tools, def.Hooks)

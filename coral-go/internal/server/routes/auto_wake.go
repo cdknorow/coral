@@ -20,6 +20,7 @@ import (
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/safefs"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -37,10 +38,9 @@ import (
 const (
 	// AutoWakeSetting is Settings > "Wake agents that were running when Coral stopped": "true"
 	// (the default) or "false".
-	AutoWakeSetting = "auto_wake_after_restart"
+	AutoWakeSetting = setreg.AutoWakeAfterRestart
 	// AutoWakeCapSetting is how many agents Coral wakes without asking, 1 to 50 (default 8).
-	AutoWakeCapSetting = "auto_wake_cap"
-	defaultAutoWakeCap = 8
+	AutoWakeCapSetting = setreg.AutoWakeCap
 	maxAutoWakeCap     = 50
 
 	autoWakeStartDelay = 5 * time.Second // the server listens before an agent resumes
@@ -99,14 +99,11 @@ func (a *autoWaker) set(f func(*autoWakeStatus)) {
 
 // autoWakeOn: the setting, on unless it says "false".
 func autoWakeOn(settings map[string]string) bool {
-	return strings.TrimSpace(settings[AutoWakeSetting]) != "false"
+	return setreg.Bool(settings, AutoWakeSetting)
 }
 
 func autoWakeCap(settings map[string]string) int {
-	if n, err := strconv.Atoi(strings.TrimSpace(settings[AutoWakeCapSetting])); err == nil && n >= 1 && n <= maxAutoWakeCap {
-		return n
-	}
-	return defaultAutoWakeCap
+	return int(setreg.Int(settings, AutoWakeCapSetting))
 }
 
 // validateAutoWakeSettings checks the two settings in a settings PUT (Security's point d):

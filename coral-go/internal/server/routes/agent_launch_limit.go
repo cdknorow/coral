@@ -3,10 +3,9 @@ package routes
 import (
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/cdknorow/coral/internal/httputil"
+	setreg "github.com/cdknorow/coral/internal/settings"
 )
 
 // The ceiling on the live agents an agent token may add (#4602): POST /api/sessions/launch and /launch-team are routes an agent
@@ -14,26 +13,15 @@ import (
 // an agent token is refused with 429 agent_limit once Coral already has AgentLaunchLimitSetting live agents (running, not asleep),
 // or would pass it with the agents a launch-team names. The Operator, the dashboard and the command line are never refused: the
 // person decides how many agents their machine runs. 0 turns the ceiling off.
-const (
-	AgentLaunchLimitSetting = "agent_launch_limit"
-	defaultAgentLaunchLimit = 64
-)
+const AgentLaunchLimitSetting = setreg.AgentLaunchLimit
 
 // agentLaunchLimit is the ceiling in force: the setting, or the default when it is unset or unreadable.
 func (h *SessionsHandler) agentLaunchLimit(r *http.Request) int {
 	settings, err := h.ss.GetSettings(r.Context())
 	if err != nil {
-		return defaultAgentLaunchLimit
+		return int(setreg.Int(nil, AgentLaunchLimitSetting))
 	}
-	s := strings.TrimSpace(settings[AgentLaunchLimitSetting])
-	if s == "" {
-		return defaultAgentLaunchLimit
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil || n < 0 {
-		return defaultAgentLaunchLimit
-	}
-	return n
+	return int(setreg.Int(settings, AgentLaunchLimitSetting))
 }
 
 // refuseAgentLaunchOverLimit answers 429 agent_limit, and reports true, when the caller is an agent token and adding more live

@@ -23,6 +23,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/safego"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -138,7 +139,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 			if m := agent.PermissionModeFromFlags(spec.Flags); m != "" {
 				return m
 			}
-			if def := userSettings["default_permission_mode"]; def != "" {
+			if def := setreg.Enum(userSettings, "default_permission_mode"); def != "" {
 				return def
 			}
 			return "default"

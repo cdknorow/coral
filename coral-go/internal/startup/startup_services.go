@@ -23,6 +23,7 @@ import (
 	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/server"
 	"github.com/cdknorow/coral/internal/server/routes"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/jmoiron/sqlx"
@@ -200,7 +201,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Batch summarizer — only runs if auto_summarize setting is enabled
 	summarizeFn := background.BuildSummarizeFn(sessStore)
 	settings, _ := sessStore.GetSettings(ctx)
-	if config.Truthy(settings["auto_summarize"]) { // PUT /api/settings stores a JSON true as "True"
+	if setreg.Bool(settings, setreg.AutoSummarize) { // PUT /api/settings stores a JSON true as "True"
 		batchSummarizer := background.NewBatchSummarizer(sessStore, summarizeFn)
 		safeGo(ctx, "batch_summarizer", func() { batchSummarizer.Run(ctx) })
 	}
@@ -375,5 +376,5 @@ func ResolveBackend(flagValue, saved, goos string) (backend string, forced bool)
 // Settings dialog saves a JSON boolean, which the settings table keeps as sent ("False"), so the word is compared
 // without regard to case (#5128).
 func boardHealthMonitorEnabled(settings map[string]string) bool {
-	return !config.Falsy(settings["board_health_monitor"])
+	return setreg.Bool(settings, setreg.BoardHealthMonitor)
 }

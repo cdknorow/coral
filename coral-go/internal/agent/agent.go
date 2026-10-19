@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	setreg "github.com/cdknorow/coral/internal/settings"
 )
 
 var coralSessionIDPattern = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}`)
@@ -350,7 +351,7 @@ func GetCLIInfo(agentType string) *CLIInfo {
 
 // CLIPathSettingKey returns the settings key for the agent's custom CLI path.
 func CLIPathSettingKey(agentType string) string {
-	return "cli_path_" + agentType
+	return setreg.CLIPathPrefix + agentType
 }
 
 // ResolveCLIPath returns the configured CLI path for an agent type from settings,
@@ -359,14 +360,14 @@ func ResolveCLIPath(settings map[string]string, agentType string) string {
 	if settings == nil {
 		return ""
 	}
-	if p := strings.TrimSpace(settings[CLIPathSettingKey(agentType)]); p != "" {
+	if p := setreg.TextFamily(settings, CLIPathSettingKey(agentType)); p != "" {
 		return p
 	}
 	if agentType == at.Agy || agentType == at.Antigravity {
-		return strings.TrimSpace(settings[CLIPathSettingKey(at.Gemini)])
+		return setreg.TextFamily(settings, CLIPathSettingKey(at.Gemini))
 	}
 	if agentType == at.Gemini {
-		return strings.TrimSpace(settings[CLIPathSettingKey(at.Agy)])
+		return setreg.TextFamily(settings, CLIPathSettingKey(at.Agy))
 	}
 	return ""
 }

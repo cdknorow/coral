@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -116,28 +117,28 @@ func (h *SessionsHandler) retentionTick(ctx context.Context, now time.Time) (*pr
 	if err != nil {
 		return nil, "settings unreadable"
 	}
-	days, _ := strconv.Atoi(strings.TrimSpace(settings[RetentionDaysSetting]))
+	days := int(setreg.Int(settings, RetentionDaysSetting))
 	if days <= 0 {
-		if settings[retentionEnabledAtKey] != "" {
+		if setreg.Raw(settings, retentionEnabledAtKey) != "" {
 			_ = h.ss.SetSetting(ctx, retentionEnabledAtKey, "")
 			_ = h.ss.SetSetting(ctx, retentionSeenDaysKey, "")
 		}
 		return nil, "off"
 	}
 	// A new value (turned on, or changed) restarts the wait for the Operator's acknowledgement.
-	enabledAt, _ := time.Parse(time.RFC3339, settings[retentionEnabledAtKey])
-	if settings[retentionSeenDaysKey] != strconv.Itoa(days) || enabledAt.IsZero() {
+	enabledAt, _ := time.Parse(time.RFC3339, setreg.Raw(settings, retentionEnabledAtKey))
+	if setreg.Raw(settings, retentionSeenDaysKey) != strconv.Itoa(days) || enabledAt.IsZero() {
 		enabledAt = now
 		_ = h.ss.SetSetting(ctx, retentionEnabledAtKey, now.UTC().Format(time.RFC3339))
 		_ = h.ss.SetSetting(ctx, retentionSeenDaysKey, strconv.Itoa(days))
 	}
-	ackAt, _ := time.Parse(time.RFC3339, settings[RetentionAckAtKey])
+	ackAt, _ := time.Parse(time.RFC3339, setreg.Raw(settings, RetentionAckAtKey))
 	if ackAt.Before(enabledAt) && now.Sub(enabledAt) < retentionAckWait {
 		slog.Info("[artifacts] retention is on but waits until a dry run is acknowledged in Settings, or 24 hours after it was turned on",
 			"days", days, "starts_by", enabledAt.Add(retentionAckWait).UTC().Format(time.RFC3339))
 		return nil, "waiting"
 	}
-	rep, err := h.runPrune(ctx, pruneOptions{OlderThan: time.Duration(days) * 24 * time.Hour, Kinds: retentionKinds(settings[RetentionKindsSetting]),
+	rep, err := h.runPrune(ctx, pruneOptions{OlderThan: time.Duration(days) * 24 * time.Hour, Kinds: retentionKinds(setreg.Raw(settings, RetentionKindsSetting)),
 		MaxBytes: retentionRunCap, Now: now})
 	if err != nil {
 		slog.Warn("[artifacts] retention: nothing removed this run", "error", err)
@@ -161,7 +162,7 @@ func (h *SessionsHandler) retentionAckRoute(w http.ResponseWriter, r *http.Reque
 		errInternalServer(w, "could not read settings")
 		return
 	}
-	if days, _ := strconv.Atoi(settings[RetentionDaysSetting]); days <= 0 {
+	if days := setreg.Int(settings, RetentionDaysSetting); days <= 0 {
 		errBadRequest(w, fmt.Sprintf("%s is off: set it first", RetentionDaysSetting))
 		return
 	}

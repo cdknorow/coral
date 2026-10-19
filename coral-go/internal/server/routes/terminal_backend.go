@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/tmux"
 )
 
@@ -73,7 +74,7 @@ func (h *CloudHandler) TerminalBackend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s, _ := h.ss.GetSettings(r.Context())
-	saved := s[TerminalBackendSetting]
+	saved := setreg.Enum(s, TerminalBackendSetting)
 	if saved != "tmux" && saved != "pty" {
 		saved = ""
 	}

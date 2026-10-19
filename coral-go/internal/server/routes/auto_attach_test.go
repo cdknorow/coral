@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"image"
 	"image/color"
 	"image/gif"
@@ -493,8 +494,8 @@ func TestAutoAttachImageWhitelists(t *testing.T) {
 func TestAutoAttachOnlyWhenTurnedOn(t *testing.T) {
 	for v, want := range map[string]bool{
 		"": false, " ": false, "false": false, "False": false, "0": false, "off": false, "disabled": false,
-		"true": true, "True": true, "1": true, "on": true, "enabled": true,
+		"true": true, "True": true, "1": true, "on": true, "yes": true, "enabled": false, // a value that is no boolean word stays off (#5147)
 	} {
-		assert.Equal(t, want, autoAttachOn(v), "%q", v)
+		assert.Equal(t, want, setreg.Bool(map[string]string{AutoAttachSetting: v}, AutoAttachSetting), "%q", v)
 	}
 }

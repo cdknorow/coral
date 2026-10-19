@@ -14,6 +14,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/safefs"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -121,7 +122,7 @@ func (h *SessionsHandler) flushExits(ctx context.Context, team string) {
 	h.exits.mu.Unlock()
 
 	settings, _ := h.ss.GetSettings(ctx)
-	resumeOn := strings.TrimSpace(settings[AutoResumeSetting]) == "true"
+	resumeOn := setreg.Bool(settings, AutoResumeSetting)
 	attempts := h.autoResumeAttempts()
 
 	var agents []exitedAgent
@@ -198,7 +199,7 @@ const AutoResumeNotice = "Coral resumed you after your CLI stopped on an API err
 // count (a stale timer).
 func (h *SessionsHandler) autoResume(ctx context.Context, sid string, n int) {
 	settings, _ := h.ss.GetSettings(ctx)
-	if strings.TrimSpace(settings[AutoResumeSetting]) != "true" {
+	if !setreg.Bool(settings, AutoResumeSetting) {
 		return
 	}
 	ls, err := h.ss.GetLiveSession(ctx, sid)

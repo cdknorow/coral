@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"os"
 	"path/filepath"
 	"sort"
@@ -168,10 +169,10 @@ func (h *SessionsHandler) withRetention(ctx context.Context, cached map[string]a
 		}
 	}
 	var last any
-	_ = json.Unmarshal([]byte(settings[RetentionLastKey]), &last)
+	_ = json.Unmarshal([]byte(setreg.Raw(settings, RetentionLastKey)), &last)
 	out["retention"] = map[string]any{
-		"days": settings[RetentionDaysSetting], "kinds": settings[RetentionKindsSetting],
-		"enabled_at": settings[retentionEnabledAtKey], "acknowledged_at": settings[RetentionAckAtKey], "last": last,
+		"days": setreg.Raw(settings, RetentionDaysSetting), "kinds": setreg.Raw(settings, RetentionKindsSetting),
+		"enabled_at": setreg.Raw(settings, retentionEnabledAtKey), "acknowledged_at": setreg.Raw(settings, RetentionAckAtKey), "last": last,
 	}
 	return out
 }

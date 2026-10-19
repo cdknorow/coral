@@ -12,6 +12,7 @@ import (
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/agentmodels"
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/tracking"
 )
 
@@ -51,7 +52,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	// as the + New Agent modal pre-selects it.
 	if body.AgentType == "" {
 		if settings, err := h.ss.GetSettings(r.Context()); err == nil {
-			body.AgentType = settings["default_agent_type"]
+			body.AgentType = setreg.Enum(settings, setreg.DefaultAgentType)
 		}
 	}
 	if body.ResumeSessionID != "" && !agent.IsResumeID(body.AgentType, body.ResumeSessionID) {
@@ -215,7 +216,7 @@ func defaultThinkingFromSettings(settings map[string]string, agentType, requeste
 	if agentType == at.Terminal || settings == nil {
 		return ""
 	}
-	if d := strings.TrimSpace(settings["default_thinking_"+agentType]); agentmodels.ValidThinking(agentType, d) {
+	if d := setreg.TextFamily(settings, setreg.DefaultThinkingPrefix+agentType); agentmodels.ValidThinking(agentType, d) {
 		return d
 	}
 	return ""

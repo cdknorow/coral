@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -199,7 +200,7 @@ func (h *SessionsHandler) receivedArtifactsMaxBytes() int64 {
 	if err != nil {
 		return defaultReceivedMaxBytes
 	}
-	v, ok := s[ReceivedArtifactsMaxBytesSetting]
+	v, ok := setreg.Raw(s, ReceivedArtifactsMaxBytesSetting), setreg.Has(s, ReceivedArtifactsMaxBytesSetting)
 	if !ok || v == "" {
 		return defaultReceivedMaxBytes
 	}
@@ -221,7 +222,7 @@ func (h *SessionsHandler) receivedStatus(withItems bool) map[string]any {
 	max := h.receivedArtifactsMaxBytes()
 	notice := false
 	if max > 0 && used*receivedNoticeDenominator >= max*receivedNoticeNumerator && h.ss != nil {
-		if s, err := h.ss.GetSettings(context.Background()); err == nil && s[ReceivedCapNoticeAckSetting] != strconv.FormatInt(max, 10) {
+		if s, err := h.ss.GetSettings(context.Background()); err == nil && setreg.Raw(s, ReceivedCapNoticeAckSetting) != strconv.FormatInt(max, 10) {
 			notice = true
 		}
 	}

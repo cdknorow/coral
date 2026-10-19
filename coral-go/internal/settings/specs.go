@@ -120,6 +120,7 @@ func init() {
 	boolOff(BoardAutoAttach, ApplyLive, "Attach files named on the board to the artifact store.")
 	boolOff(DebugInputLog, ApplyLive, "Log the keystrokes sent to agents.")
 	boolOff(RemoteAccessEnabled, ApplyRestart, "Listen on the network, not just this computer.")
+	optIn(RemoteAccessEnabled)
 	boolOff("refresh_files_on_switch", ApplyClient, "Refresh the file list when switching agents.")
 	boolOff("show_session_server", ApplyClient, "Show each agent's server.")
 	boolOff("show_session_summary", ApplyClient, "Show each agent's summary.")
@@ -157,9 +158,18 @@ func init() {
 	register(s)
 
 	// Coral Hub request pools. Their limits are per pool (hub_limits.go).
-	register(Spec{Key: "hub_limit_global", Kind: KindInt, Apply: ApplyLive, Doc: "Hub requests in flight, all pools (8..1024)."})
-	register(Spec{Key: "hub_limit_long", Kind: KindInt, Apply: ApplyLive, Doc: "Hub long requests in flight (2..256)."})
-	register(Spec{Key: "hub_limit_search", Kind: KindInt, Apply: ApplyLive, Doc: "Hub searches in flight (1..64)."})
+	for _, hl := range []struct {
+		key    string
+		lo, hi int64
+		doc    string
+	}{
+		{"hub_limit_global", 8, 1024, "Coral Hub requests in flight, all pools; 0 is the built-in size."},
+		{"hub_limit_long", 2, 256, "Coral Hub long requests in flight; 0 is the built-in size."},
+		{"hub_limit_search", 1, 64, "Coral Hub searches in flight; 0 is the built-in size."},
+	} {
+		register(whole(hl.key, "0", hl.lo, hl.hi, ReadDefault, ApplyLive, hl.doc))
+		ownCheck(hl.key)
+	}
 
 	// Prompts.
 	text(DefaultPromptOrch, ApplyLive, "The default orchestrator prompt.")
@@ -179,11 +189,13 @@ func init() {
 	ownRoute(HubOperatorDisabled, KindBool, "false", "The Hub may not act as the Operator.")
 	ownRoute(LegacyHubOperator, KindBool, "false", "Old spelling of the opposite of hub_operator_disabled.")
 	ownRoute(HubMode, KindBool, "false", "Coral is a Coral Hub's server.")
+	optIn(HubMode)
 	register(Spec{Key: IdentityActor, Kind: KindEnum, Values: []string{"log", "enforce"}, Default: "log", Class: ClassOwnRoute, Apply: ApplyLive, Doc: "Whether the actor header is enforced."})
 	ownRoute(CloudMaxMode, KindText, "", "The most access Coral Hub may have.")
 	ownRoute(CloudAllowHubAutoAccept, KindBool, "true", "The Hub may auto-accept.")
 	ownRoute(HubRedactTokens, KindBool, "true", "Redact tokens in what the Hub sees.")
 	ownRoute("hub_signin_enabled", KindBool, "false", "Sign in with the Hub.")
+	optIn("hub_signin_enabled")
 	ownRoute("hub_signin_origins", KindText, "", "Origins allowed for the Hub sign-in.")
 	ownRoute("hub_signin_offer_dismissed", KindBool, "false", "The sign-in offer was dismissed.")
 	ownRoute(ArtifactRetentionAckAt, KindOpaque, "", "When the Operator acknowledged a dry run.")
@@ -208,5 +220,12 @@ func init() {
 func ownCheck(key string) {
 	s := specs[key]
 	s.OwnCheck = true
+	specs[key] = s
+}
+
+// optIn marks an already registered bool as one only the word true turns on.
+func optIn(key string) {
+	s := specs[key]
+	s.OptIn = true
 	specs[key] = s
 }

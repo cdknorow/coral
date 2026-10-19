@@ -27,6 +27,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/safego"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -591,7 +592,7 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 	}
 	permMode := p.permMode
 	if permMode == "" {
-		permMode = userSettings["default_permission_mode"]
+		permMode = setreg.Enum(userSettings, "default_permission_mode")
 	}
 	cmd, err := launchCommand(agent.GetAgent(p.agentType), agent.LaunchParams{
 		SessionID:       p.newSessionID,
@@ -974,7 +975,7 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 	}
 	permMode := p.permMode
 	if permMode == "" {
-		permMode = userSettings["default_permission_mode"]
+		permMode = setreg.Enum(userSettings, "default_permission_mode")
 	}
 	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
 		SessionID:       p.newSessionID,

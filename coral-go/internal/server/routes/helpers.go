@@ -19,6 +19,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/safefs"
+	setreg "github.com/cdknorow/coral/internal/settings"
 )
 
 // urlParam extracts a chi URL parameter and percent-decodes it.
@@ -147,8 +148,8 @@ func intPtrOr(p *int, def int) int {
 // settings map. Used by restart, resume, launch, and rejoin handlers.
 func promptOverrides(settings map[string]string) map[string]string {
 	return map[string]string{
-		"default_prompt_orchestrator": settings["default_prompt_orchestrator"],
-		"default_prompt_worker":       settings["default_prompt_worker"],
+		"default_prompt_orchestrator": setreg.Raw(settings, "default_prompt_orchestrator"),
+		"default_prompt_worker":       setreg.Raw(settings, "default_prompt_worker"),
 	}
 }
 

@@ -47,6 +47,8 @@ Upserts arbitrary key-value settings.
 **Note:** Booleans are converted to Python-style `"True"` / `"False"` strings. Coral reads its
 boolean settings in any case, so `true` and `"true"` mean the same.
 
+**One registry (#5147):** every setting is declared once in `internal/settings` (`specs.go`): its type (on/off, whole number with its limits, one of a list, text), its default, whether a change applies live, at restart or only in the dashboard, and who writes it. `PUT /api/settings` checks a value against that declaration, and the server reads a setting only through its typed readers (`settings.Bool`, `Int`, `Enum`, `Text`, `Raw`), so the words for on and off (`true`, `1`, `yes`, `on` / `false`, `0`, `no`, `off`, any case), the default and the clamp are decided in one place. Two switches that widen exposure, `remote_access_enabled` and `hub_mode`, are on only for the word `true`. A test (`internal/settings/census_test.go`) fails on code that indexes a settings map directly instead of using the readers. To add a setting, declare it in `specs.go`; a key not declared there is refused by the PUT and panics in a reader.
+
 **Settings with no control in the dashboard** (set them with this route):
 
 | Key | Default | Effect |

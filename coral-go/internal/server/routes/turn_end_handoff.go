@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	setreg "github.com/cdknorow/coral/internal/settings"
 )
 
 // TurnEndHandoffSetting turns the turn-end hand-off off when "off" (#3481, #3475 3A).
@@ -58,7 +58,7 @@ func (h *SessionsHandler) TurnEndHandoff(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusOK, none)
 		return
 	}
-	if settings, _ := h.ss.GetSettings(ctx); strings.EqualFold(strings.TrimSpace(settings[TurnEndHandoffSetting]), "off") {
+	if settings, _ := h.ss.GetSettings(ctx); setreg.Enum(settings, TurnEndHandoffSetting) == "off" {
 		writeJSON(w, http.StatusOK, none)
 		return
 	}

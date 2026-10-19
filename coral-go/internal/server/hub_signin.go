@@ -12,6 +12,7 @@ import (
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/server/routes"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -124,15 +125,16 @@ func (b hubBackend) LinkState() (string, string) {
 // hubSettings keeps Hub sign-in's settings in user_settings.
 type hubSettings struct{ ss *store.SessionStore }
 
-func (h hubSettings) get(key string) string {
+// all is the saved settings; an unreadable store reads as none saved.
+func (h hubSettings) all() map[string]string {
 	s, err := h.ss.GetSettings(context.Background())
 	if err != nil {
-		return ""
+		return nil
 	}
-	return s[key]
+	return s
 }
 
-func (h hubSettings) SigninEnabled() bool { return h.get(HubSigninEnabledSetting) == "true" }
+func (h hubSettings) SigninEnabled() bool { return setreg.Bool(h.all(), HubSigninEnabledSetting) }
 
 func (h hubSettings) SetSigninEnabled(on bool) error {
 	return h.ss.SetSetting(context.Background(), HubSigninEnabledSetting, strconv.FormatBool(on))
@@ -141,7 +143,7 @@ func (h hubSettings) SetSigninEnabled(on bool) error {
 // Origins are re-validated on every read: a value that doesn't parse is no origin.
 func (h hubSettings) Origins() []string {
 	var list []string
-	if json.Unmarshal([]byte(h.get(HubSigninOriginsSetting)), &list) != nil {
+	if json.Unmarshal([]byte(setreg.Raw(h.all(), HubSigninOriginsSetting)), &list) != nil {
 		return nil
 	}
 	var out []string
@@ -161,7 +163,7 @@ func (h hubSettings) SetOrigins(origins []string) error {
 	return h.ss.SetSetting(context.Background(), HubSigninOriginsSetting, string(b))
 }
 
-func (h hubSettings) OfferDismissed() bool { return h.get(HubSigninDismissedSetting) == "true" }
+func (h hubSettings) OfferDismissed() bool { return setreg.Bool(h.all(), HubSigninDismissedSetting) }
 
 func (h hubSettings) DismissOffer() error {
 	return h.ss.SetSetting(context.Background(), HubSigninDismissedSetting, "true")

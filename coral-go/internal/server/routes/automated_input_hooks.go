@@ -12,6 +12,7 @@ import (
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/sessionstate"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -56,17 +57,8 @@ func (h *SessionsHandler) InstallAutomatedInputHooks() {
 // CORAL_GATE_MODE=screen overrides it (the kill switch).
 const GateSignalsClaudeSetting = "gate_signals_claude"
 
-// gateSettingOff reports whether the stored value turns phase 2 off: false, 0, no or off, in any
-// case, around spaces (the spellings strict local auth's switch takes too). Anything else, and
-// no value, is on, so a mistyped "on" stays on; the kill switch that does not depend on the
-// setting is CORAL_GATE_MODE=screen.
-func gateSettingOff(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "false", "0", "no", "off":
-		return true
-	}
-	return false
-}
+// The setting is a boolean read with the words every boolean setting takes (false, 0, no and off turn it off; anything else, and no
+// value, is on, so a mistyped "on" stays on); the kill switch that does not depend on the setting is CORAL_GATE_MODE=screen.
 
 // gateSignalsFromSettings reads the setting at most once a second.
 func gateSignalsFromSettings(ss *store.SessionStore) func() bool {
@@ -80,7 +72,7 @@ func gateSignalsFromSettings(ss *store.SessionStore) func() bool {
 			return on
 		}
 		s, err := ss.GetSettings(context.Background())
-		on, at = err == nil && !gateSettingOff(s[GateSignalsClaudeSetting]), time.Now()
+		on, at = err == nil && setreg.Bool(s, GateSignalsClaudeSetting), time.Now()
 		return on
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -19,7 +20,7 @@ import (
 // half the search pool. Set with PUT /api/settings, which the Hub can't reach, so the Hub can't
 // raise its own limits.
 const (
-	HubLimitGlobalSetting = "hub_limit_global"
+	HubLimitGlobalSetting = "hub_limit_global" // their ranges are declared in internal/settings
 	HubLimitLongSetting   = "hub_limit_long"
 	HubLimitSearchSetting = "hub_limit_search"
 )
@@ -28,7 +29,7 @@ var hubLimitRanges = []struct {
 	key      string
 	min, max int
 }{
-	{HubLimitGlobalSetting, 8, 1024},
+	{HubLimitGlobalSetting, 8, 1024}, // kept equal to the declared ranges by TestHubLimitRangesMatchTheRegistry
 	{HubLimitLongSetting, 2, 256},
 	{HubLimitSearchSetting, 1, 64},
 }
@@ -94,16 +95,7 @@ func HubLimitsFromSettings(ss *store.SessionStore) func() tunnel.HubLimits {
 		if err != nil {
 			return cur
 		}
-		read := func(key string) int {
-			for _, r := range hubLimitRanges {
-				if r.key == key {
-					if n, err := strconv.Atoi(s[key]); err == nil && n >= r.min && n <= r.max {
-						return n
-					}
-				}
-			}
-			return 0
-		}
+		read := func(key string) int { return int(setreg.Int(s, key)) }
 		cur.Global, cur.Long, cur.Search = read(HubLimitGlobalSetting), read(HubLimitLongSetting), read(HubLimitSearchSetting)
 		return cur
 	}

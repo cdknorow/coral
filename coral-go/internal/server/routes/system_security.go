@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"path/filepath"
-	"strings"
 
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/inputlog"
+	setreg "github.com/cdknorow/coral/internal/settings"
 )
 
 // DatabaseSecurityStatus is intentionally metadata-only. Passwords and key
@@ -119,10 +119,10 @@ func (h *SystemHandler) GetPrivacyStatus(w http.ResponseWriter, r *http.Request)
 		errInternalServer(w, err.Error())
 		return
 	}
-	telemetryEnabled := !config.Falsy(settings["telemetry_enabled"])
+	telemetryEnabled := setreg.Bool(settings, setreg.TelemetryEnabled)
 	// Remote access is opt-in: only an explicit saved "true" enables it.
-	savedValue, configured := settings["remote_access_enabled"]
-	remoteEnabled := strings.EqualFold(strings.TrimSpace(savedValue), "true")
+	configured := setreg.Has(settings, setreg.RemoteAccessEnabled)
+	remoteEnabled := setreg.Bool(settings, setreg.RemoteAccessEnabled)
 	effectiveRemote := !config.IsLoopbackHost(h.cfg.Host)
 	status := "disabled"
 	switch {

@@ -90,6 +90,9 @@ type Spec struct {
 	ReadBounded      bool
 	// KindEnum: the values. An enum is read without regard to case; an unrecognised value reads as the default.
 	Values []string
+	// OptIn is for a bool that widens exposure (remote access, hub mode): only the word true turns it on, in any case; yes, 1 and on do not, so a
+	// stray value fails closed. It is off by default and off for anything else.
+	OptIn bool
 	// OwnCheck marks a setting whose value PUT /api/settings checks with its own rule (it names the problem better than the type
 	// could, or ties the value to another setting); the type check is not applied to it.
 	OwnCheck bool
@@ -170,10 +173,13 @@ func must(key string, want ...Kind) Spec {
 }
 
 // Bool reads an on/off setting. The words for on are 1, true, yes and on; for off 0, false, no and off; any case, spaces ignored. Anything else, and an unset
-// setting, is the default. This is the one place those words are decided.
+// setting, is the default. This is the one place those words are decided. An OptIn setting is on only for the word true.
 func Bool(m map[string]string, key string) bool {
 	s := must(key, KindBool)
 	v := m[key]
+	if s.OptIn {
+		return strings.EqualFold(strings.TrimSpace(v), "true")
+	}
 	switch {
 	case config.Truthy(v):
 		return true
@@ -269,11 +275,13 @@ func Has(m map[string]string, key string) bool {
 	return ok
 }
 
-// TextFamily reads a text setting of a family by its full key (default_model_claude).
+// TextFamily reads a text setting of a family by its full key (default_model_claude): trimmed, empty when unset. A key outside every
+// declared family panics, like an undeclared key; the bare prefix (an empty type) is a member too and reads empty.
 func TextFamily(m map[string]string, key string) string {
-	s, ok := Lookup(key)
-	if !ok || s.Kind != KindText {
-		panic("settings: " + key + " is not a declared text setting")
+	for _, f := range families {
+		if f.Kind == KindText && strings.HasPrefix(key, f.Prefix) {
+			return strings.TrimSpace(m[key])
+		}
 	}
-	return strings.TrimSpace(m[key])
+	panic("settings: " + key + " is not a declared text setting")
 }

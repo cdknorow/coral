@@ -8,10 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -38,13 +38,9 @@ func (h *SessionsHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read file search limit from user settings (default 500)
-	fileSearchLimit := 500
+	fileSearchLimit := int(setreg.Int(nil, setreg.FileSearchLimit))
 	if settings, err := h.ss.GetSettings(r.Context()); err == nil {
-		if v, ok := settings["file_search_limit"]; ok {
-			if n, err := strconv.Atoi(v); err == nil && n > 0 {
-				fileSearchLimit = n
-			}
-		}
+		fileSearchLimit = int(setreg.Int(settings, setreg.FileSearchLimit))
 	}
 
 	workdir := h.resolveGitRoot(r.Context(), name, "", sessionID)

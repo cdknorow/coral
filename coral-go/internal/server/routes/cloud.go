@@ -23,6 +23,7 @@ import (
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/peercred"
 	"github.com/cdknorow/coral/internal/secrets"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/cdknorow/coral/pkg/tunnel"
@@ -47,7 +48,7 @@ const RedactTokensSetting = "hub_redact_tokens"
 
 // HubRedactTokens reads the switch (default on).
 func HubRedactTokens(settings map[string]string) bool {
-	return settings[RedactTokensSetting] != "false"
+	return setreg.Bool(settings, RedactTokensSetting)
 }
 
 // RedactTokensFromSettings reads the switch for each redacted reply, from the settings at most
@@ -125,7 +126,7 @@ func settingOff(v string) bool {
 
 // HubAutoAcceptAllowed reads the switch (default on).
 func HubAutoAcceptAllowed(settings map[string]string) bool {
-	return settings[AllowHubAutoAcceptSetting] != "false"
+	return setreg.Bool(settings, AllowHubAutoAcceptSetting)
 }
 
 // MaxModeFromSettings reads the local maximum mode. Anything missing or unrecognised is view.
@@ -135,7 +136,7 @@ func MaxModeFromSettings(ss *store.SessionStore) func() tunnel.Mode {
 		if err != nil {
 			return tunnel.TierView
 		}
-		if m, ok := tunnel.ParseMode(s[MaxModeSetting]); ok {
+		if m, ok := tunnel.ParseMode(setreg.Raw(s, MaxModeSetting)); ok {
 			return m
 		}
 		return tunnel.TierView
@@ -266,7 +267,7 @@ func (h *CloudHandler) status() cloudStatus {
 	var boot json.RawMessage
 	if s, err := h.ss.GetSettings(context.Background()); err == nil {
 		allow, redact = HubAutoAcceptAllowed(s), HubRedactTokens(s)
-		if v := s[cloud.BootstrapStatusSetting]; json.Valid([]byte(v)) {
+		if v := setreg.Raw(s, cloud.BootstrapStatusSetting); json.Valid([]byte(v)) {
 			boot = json.RawMessage(v)
 		}
 	}
@@ -540,7 +541,7 @@ func DropLegacyHubOperatorSetting(ctx context.Context, ss *store.SessionStore) {
 }
 
 func hubOperatorDisabled(settings map[string]string) bool {
-	return settings[HubOperatorDisabledSetting] == "true"
+	return setreg.Bool(settings, HubOperatorDisabledSetting)
 }
 
 // HubOperatorDisabled reports whether "Don't let Coral Hub act as the Operator" (#3404) is on in
@@ -934,7 +935,7 @@ func (h *CloudHandler) HubMode(w http.ResponseWriter, r *http.Request) {
 		slog.Info("[hub] 'Run as a hub' changed on this computer; it applies at the next start", "enabled", *body.Enabled)
 	}
 	s, _ := h.ss.GetSettings(r.Context())
-	saved := strings.EqualFold(strings.TrimSpace(s[HubModeSetting]), "true")
+	saved := setreg.Bool(s, HubModeSetting)
 	want := saved || h.HubModeForced
 	writeJSON(w, http.StatusOK, map[string]any{
 		"saved": saved, "running": h.HubModeRunning, "forced": h.HubModeForced,

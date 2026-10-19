@@ -10,6 +10,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -195,7 +196,7 @@ const IdentityActorSetting = "identity_actor"
 // LoadIdentityActor applies the stored mode at startup. Anything but "enforce" is log, the default.
 func LoadIdentityActor(ctx context.Context, ss *store.SessionStore) {
 	settings, err := ss.GetSettings(ctx)
-	setIdentityActorEnforced(err == nil && settings[IdentityActorSetting] == "enforce")
+	setIdentityActorEnforced(err == nil && setreg.Enum(settings, IdentityActorSetting) == "enforce")
 }
 
 // SetIdentityActor: PUT /api/system/identity-actor {"mode": "log"|"enforce"}. The Operator's switch:

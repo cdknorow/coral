@@ -24,6 +24,7 @@ import (
 	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/secfile"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
 )
@@ -104,7 +105,7 @@ func RaiseArtifactStoreLimitIfOver(ctx context.Context, ss *store.SessionStore, 
 		return 0
 	}
 	settings, err := ss.GetSettings(ctx)
-	if err != nil || strings.TrimSpace(settings[ArtifactStoreMaxBytesSetting]) != "" {
+	if err != nil || strings.TrimSpace(setreg.Raw(settings, ArtifactStoreMaxBytesSetting)) != "" {
 		return 0
 	}
 	used, _, _ := storeFor(coralDir).size()
@@ -133,12 +134,12 @@ func (h *SessionsHandler) artifactStoreMaxBytes() int64 {
 	if err != nil {
 		return artifactStoreRefuse
 	}
-	if strings.TrimSpace(s[ArtifactStoreMaxBytesSetting]) == "" {
+	if strings.TrimSpace(setreg.Raw(s, ArtifactStoreMaxBytesSetting)) == "" {
 		return defaultArtifactStoreMaxBytes
 	}
-	n, ok := parseStoreCap(s[ArtifactStoreMaxBytesSetting])
+	n, ok := parseStoreCap(setreg.Raw(s, ArtifactStoreMaxBytesSetting))
 	if !ok {
-		slog.Warn("artifact_store_max_bytes is not a whole number of bytes; the store takes nothing new until it is set again", "value", s[ArtifactStoreMaxBytesSetting])
+		slog.Warn("artifact_store_max_bytes is not a whole number of bytes; the store takes nothing new until it is set again", "value", setreg.Raw(s, ArtifactStoreMaxBytesSetting))
 		return artifactStoreRefuse
 	}
 	return n
@@ -176,8 +177,8 @@ func (h *SessionsHandler) getArtifactStore(w http.ResponseWriter, r *http.Reques
 	}
 	// The limit Coral raised by itself at startup (RaiseArtifactStoreLimitIfOver), while it is still the saved limit.
 	if h.ss != nil {
-		if saved, err := h.ss.GetSettings(r.Context()); err == nil && saved[ArtifactStoreAutoRaisedSetting] != "" && saved[ArtifactStoreAutoRaisedSetting] == saved[ArtifactStoreMaxBytesSetting] {
-			if n, err := strconv.ParseInt(saved[ArtifactStoreAutoRaisedSetting], 10, 64); err == nil {
+		if saved, err := h.ss.GetSettings(r.Context()); err == nil && setreg.Raw(saved, ArtifactStoreAutoRaisedSetting) != "" && setreg.Raw(saved, ArtifactStoreAutoRaisedSetting) == setreg.Raw(saved, ArtifactStoreMaxBytesSetting) {
+			if n, err := strconv.ParseInt(setreg.Raw(saved, ArtifactStoreAutoRaisedSetting), 10, 64); err == nil {
 				out["auto_raised"] = n
 			}
 		}

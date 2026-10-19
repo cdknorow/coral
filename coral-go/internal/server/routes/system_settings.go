@@ -16,9 +16,9 @@ import (
 	"github.com/cdknorow/coral/internal/agentprio"
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/tracking"
 )
 
@@ -255,7 +255,7 @@ func (h *SystemHandler) normalizeSettingValues(ctx context.Context, body map[str
 			return RetentionDaysSetting + " must be a whole number of days from 0 (off) to 3650"
 		}
 		body[RetentionDaysSetting] = s
-		if cur, _ := h.ss.GetSettings(ctx); cur == nil || cur[RetentionDaysSetting] != s {
+		if cur, _ := h.ss.GetSettings(ctx); cur == nil || setreg.Raw(cur, RetentionDaysSetting) != s {
 			if s == "0" {
 				body[retentionEnabledAtKey], body[retentionSeenDaysKey] = "", ""
 			} else {
@@ -346,13 +346,13 @@ func applyLiveSettings(values map[string]string) {
 				ptymanager.SetReplayBytes(n)
 			}
 		case "telemetry_enabled":
-			tracking.SetTelemetryEnabled(!config.Falsy(s))
+			tracking.SetTelemetryEnabled(setreg.Bool(values, k))
 		case agentprio.SettingKey:
 			agentprio.SetSetting(s) // agents started from now on (#3437)
 		case inputlog.SettingKey:
-			inputlog.SetSetting(config.Truthy(s))
+			inputlog.SetSetting(setreg.Bool(values, k))
 		case auth.RequireAuthOnLoopbackSetting:
-			auth.SetRequireAuthOnLoopback(config.Truthy(s)) // #3585: takes effect for the next request
+			auth.SetRequireAuthOnLoopback(setreg.Bool(values, k)) // #3585: takes effect for the next request
 		}
 	}
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/safego"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 )
@@ -252,7 +253,7 @@ func (h *SessionsHandler) getDiffMode(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
-	return settings["git_diff_mode"]
+	return setreg.Enum(settings, setreg.GitDiffMode)
 }
 
 // resolveModel returns the effective model for a launch. A non-empty
@@ -289,12 +290,12 @@ func defaultModelFromSettings(settings map[string]string, agentType, requestMode
 	if agentType == "" || settings == nil {
 		return ""
 	}
-	model := strings.TrimSpace(settings["default_model_"+agentType])
+	model := setreg.TextFamily(settings, setreg.DefaultModelPrefix+agentType)
 	if model == "" {
 		if agentType == at.Agy || agentType == at.Antigravity {
-			model = strings.TrimSpace(settings["default_model_"+at.Gemini])
+			model = setreg.TextFamily(settings, setreg.DefaultModelPrefix+at.Gemini)
 		} else if agentType == at.Gemini {
-			model = strings.TrimSpace(settings["default_model_"+at.Agy])
+			model = setreg.TextFamily(settings, setreg.DefaultModelPrefix+at.Agy)
 		}
 	}
 	return model

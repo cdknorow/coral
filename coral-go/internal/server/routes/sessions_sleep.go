@@ -17,6 +17,7 @@ import (
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -234,7 +235,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	} else {
 		permMode = agent.PermissionModeFromFlags(flags)
 		if permMode == "" {
-			permMode = userSettings["default_permission_mode"]
+			permMode = setreg.Enum(userSettings, "default_permission_mode")
 		}
 	}
 	if caps.IsEmpty() && permMode != "" && permMode != "default" {

@@ -27,6 +27,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cdknorow/coral/internal/safefs"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -130,25 +131,16 @@ func SessionDirs(ss *store.SessionStore) func(context.Context, string) (string, 
 	}
 }
 
-// AutoAttachEnabled reads the Operator's switch: off when it isn't set (#3563) or is set to
-// false, 0, off or disabled; on for any other value (the dashboard's settingBool rule; a JSON
-// true is stored as "True"). A settings read that fails counts as off.
+// AutoAttachEnabled reads the Operator's switch: off when it isn't set (#3563), on for the words every boolean setting reads as on
+// (a JSON true is stored as "True"); a value that is no boolean word stays off (it used to turn it on: #5147). A settings read that fails counts as off.
 func AutoAttachEnabled(ss *store.SessionStore) func(context.Context) bool {
 	return func(ctx context.Context) bool {
 		s, err := ss.GetSettings(ctx)
 		if err != nil {
 			return false
 		}
-		return autoAttachOn(s[AutoAttachSetting])
+		return setreg.Bool(s, AutoAttachSetting)
 	}
-}
-
-func autoAttachOn(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "", "false", "0", "off", "disabled":
-		return false
-	}
-	return true
 }
 
 func (a *AutoAttacher) totalFile() string {

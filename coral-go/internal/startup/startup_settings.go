@@ -6,8 +6,6 @@ import (
 	"log"
 	"os"
 	"runtime"
-	"strconv"
-	"strings"
 
 	"github.com/cdknorow/coral/internal/agentprio"
 
@@ -15,6 +13,7 @@ import (
 	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -33,9 +32,9 @@ func applyStartupSettings(ctx context.Context, db *store.DB, cfg *config.Config,
 	routes.RaiseArtifactStoreLimitIfOver(ctx, store.NewSessionStore(db), cfg.CoralDir())
 	savedBackend := ""
 	if settings, err := store.NewSessionStore(db).GetSettings(ctx); err == nil {
-		inputlog.SetSetting(config.Truthy(settings[inputlog.SettingKey]))
-		agentprio.SetSetting(settings[agentprio.SettingKey])
-		savedBackend = settings[routes.TerminalBackendSetting]
+		inputlog.SetSetting(setreg.Bool(settings, inputlog.SettingKey))
+		agentprio.SetSetting(setreg.Raw(settings, agentprio.SettingKey))
+		savedBackend = setreg.Raw(settings, routes.TerminalBackendSetting)
 	}
 	var backendForced bool
 	opts.BackendType, backendForced = ResolveBackend(backendFlag, savedBackend, runtime.GOOS)
@@ -77,25 +76,25 @@ func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config,
 	// On first launch the setting doesn't exist yet — prompt the user, unless
 	// --remote already answered: nothing is saved, so a later start without the
 	// flag still asks.
-	if _, configured := settings["remote_access_enabled"]; !configured && remotePrompt != nil && !forceRemote {
+	if configured := setreg.Has(settings, setreg.RemoteAccessEnabled); !configured && remotePrompt != nil && !forceRemote {
 		enabled := remotePrompt()
 		value := "false"
 		if enabled {
 			value = "true"
 		}
-		if err := ss.SetSetting(ctx, "remote_access_enabled", value); err != nil {
+		if err := ss.SetSetting(ctx, setreg.RemoteAccessEnabled, value); err != nil {
 			log.Printf("[startup] failed to save remote_access_enabled: %v", err)
 		}
-		settings["remote_access_enabled"] = value
+		settings[setreg.RemoteAccessEnabled] = value
 	} else if !configured && !forceRemote {
 		log.Printf("[startup] remote access is off: Coral didn't ask, as nobody is at a terminal to answer (it accepts connections from this computer only). To let other devices connect, turn it on in Settings > Privacy, or start Coral with --remote")
 	}
-	if !forceRemote && !strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "true") {
+	if !forceRemote && !setreg.Bool(settings, setreg.RemoteAccessEnabled) {
 		restrictToLoopback(cfg, "remote access is not enabled")
 	} else {
 		widenForRemote(cfg)
 	}
-	tracking.SetTelemetryEnabled(!config.Falsy(settings["telemetry_enabled"]))
+	tracking.SetTelemetryEnabled(setreg.Bool(settings, setreg.TelemetryEnabled))
 }
 
 // applyHubModeSetting turns hub mode on when Settings > Run as a hub saved it
@@ -109,7 +108,7 @@ func applyHubModeSetting(ctx context.Context, db *store.DB, cfg *config.Config) 
 	if err != nil {
 		return
 	}
-	if strings.EqualFold(strings.TrimSpace(settings[routes.HubModeSetting]), "true") {
+	if setreg.Bool(settings, routes.HubModeSetting) {
 		cfg.HubMode = true
 		log.Printf("[startup] hub mode is on (Settings > Run as a hub)")
 	}
@@ -153,25 +152,14 @@ func applyReplayBytesFromSettings(ctx context.Context, db *store.DB) {
 	if err != nil {
 		return
 	}
-	raw, ok := settings["terminal_replay_bytes"]
-	if !ok || raw == "" {
+	n, state := setreg.IntState(settings, setreg.TerminalReplayBytes)
+	switch state {
+	case setreg.Unset:
+		return
+	case setreg.Invalid:
+		log.Printf("[startup] ignoring invalid %s=%q", setreg.TerminalReplayBytes, settings[setreg.TerminalReplayBytes])
 		return
 	}
-	n, err := strconv.Atoi(raw)
-	if err != nil {
-		log.Printf("[startup] ignoring invalid terminal_replay_bytes=%q: %v", raw, err)
-		return
-	}
-	const (
-		minBytes = 4 * 1024
-		maxBytes = 16 * 1024 * 1024
-	)
-	if n < minBytes {
-		n = minBytes
-	}
-	if n > maxBytes {
-		n = maxBytes
-	}
-	ptymanager.SetReplayBytes(n)
+	ptymanager.SetReplayBytes(int(n))
 	log.Printf("[startup] terminal_replay_bytes=%d", n)
 }

@@ -28,6 +28,14 @@ func TestBoolWordsAndDefaults(t *testing.T) {
 	}
 }
 
+func TestOptInBoolsFailClosed(t *testing.T) {
+	for v, want := range map[string]bool{"true": true, "True": true, " TRUE ": true, "yes": false, "1": false, "on": false, "": false, "false": false} {
+		if got := Bool(map[string]string{RemoteAccessEnabled: v}, RemoteAccessEnabled); got != want {
+			t.Errorf("remote_access_enabled=%q reads %v, want %v", v, got, want)
+		}
+	}
+}
+
 func TestIntReadModes(t *testing.T) {
 	for _, tc := range []struct {
 		key, val  string

@@ -31,6 +31,7 @@ import (
 	"github.com/cdknorow/coral/internal/machinehealth"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
+	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/internal/stallwatch"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/frontend"
@@ -174,7 +175,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 		if err != nil {
 			log.Printf("[auth] WARNING: require_auth_on_loopback could not be read (%v); leaving it OFF until the next change saves it", err)
 		} else {
-			auth.SetRequireAuthOnLoopback(config.Truthy(st[auth.RequireAuthOnLoopbackSetting]))
+			auth.SetRequireAuthOnLoopback(setreg.Bool(st, auth.RequireAuthOnLoopbackSetting))
 		}
 	}
 
