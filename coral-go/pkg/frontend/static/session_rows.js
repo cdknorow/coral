@@ -246,7 +246,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
     // Branch is shown at folder level, except for agents on their own worktree:
     // those are on a different branch than the folder, so each row says which.
     const gsWt = s.git_state?.is_worktree ? s.git_state : null;
-    const branchTag = (gsWt && s.branch)
+    const branchTag = (isBranchShown() && gsWt && s.branch)
         ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${escapeAttr(gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : '')}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
         : "";
     // One pill at most, from the shared state table. The attention states carry a
@@ -390,6 +390,12 @@ export function _renderAgentListWithSubgroups(agents, teamDefaultDir, isCompact,
 
 // ── Agent summary line (the goal text under each agent name) ──────────
 
+/** 'Show branches' (#5117): the worktree and branch line under an agent's name. Kept per viewer, like Group by server; off unless turned on. The branch stays in the row's tooltip and the agent's header. */
+export function isBranchShown() {
+    try { return browserLocal.get('coral-show-branches') === 'true'; }
+    catch { return false; }
+}
+
 /** Stored server-side in user settings (`show_session_summary`); off unless turned on. */
 export function isSessionSummaryShown() {
     return String(state.settings?.show_session_summary).toLowerCase() === 'true';
@@ -424,8 +430,8 @@ onBuilt('settings-modal', () => applySessionSummaryPref()); // its Show summarie
  *  page (and of a long chat) each time (#4985). */
  export function syncDisplayMenu() {
     const n = serversShown().length;
-    const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer() };
-    const offered = { summary: true, server: n >= 1, group: n >= 2 };
+    const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer(), branches: isBranchShown() };
+    const offered = { summary: true, server: n >= 1, group: n >= 2, branches: true };
     for (const header of [...document.getElementsByClassName('sidebar-header'), ...document.getElementsByClassName('mobile-list-header')]) {
         for (const input of header.querySelectorAll('[data-display-input]')) setChecked(input, checked[input.dataset.displayInput] === true);
         for (const row of header.querySelectorAll('[data-display-row]')) setHidden(row, !offered[row.dataset.displayRow]);

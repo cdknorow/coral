@@ -8,6 +8,8 @@ import { sessionServer, sessionTeamKey, keyLabel, LOCAL_SERVER } from './server_
 import { serverLabel } from './launch_server.js';
 import { state } from './state.js';
 import { redrawLiveList } from './list_hooks.js';
+import { isBranchShown } from './session_rows.js';
+import { toggleShowBranches } from './list_display_settings.js';
 import { syncDisplayPanels, inListHeaders, isDisplayPanelOpen, DISPLAY_PANEL_OPEN } from './display_panel.js';
 import { setData, setHidden, setAttr } from './dom_write.js';
 
@@ -65,7 +67,8 @@ export function syncAgentListBars(sessions, matched) {
     const text = narrowed ? `${matched} of ${n} agent${n === 1 ? '' : 's'}` : `${n} agent${n === 1 ? '' : 's'}`;
     // The summary line and the Display button's count tell, with the panel shut, which filters and which sort are on (the sort counts when it is not the list's own order).
     const sortOn = f.sort && f.sort !== EMPTY.sort;
-    const parts = [...MODEL.chips(f).map(c => c.label), ...(sortOn ? [`Sort: ${SORT_LABEL[f.sort]}`] : [])];
+    const branchesOn = isBranchShown(); // a display option that differs from its default (off) is told here too (#5117)
+    const parts = [...MODEL.chips(f).map(c => c.label), ...(sortOn ? [`Sort: ${SORT_LABEL[f.sort]}`] : []), ...(branchesOn ? ['Branches shown'] : [])];
     const summary = parts.length ? `${parts.join(' · ')}${narrowed ? ` (${text})` : ''}` : '';
     for (const el of inListHeaders('[data-agent-list-summary]')) {
         if (el.dataset.text !== summary) {
@@ -74,8 +77,8 @@ export function syncAgentListBars(sessions, matched) {
             if (summary) {
                 const t = document.createElement('span'); t.className = 'agent-list-summary-text'; t.textContent = summary;
                 const clear = document.createElement('button'); clear.type = 'button'; clear.className = 'agent-list-summary-clear'; clear.textContent = 'Clear';
-                clear.setAttribute('aria-label', 'Clear filters and sort');
-                clear.addEventListener('click', () => onChange({ ...EMPTY }));
+                clear.setAttribute('aria-label', branchesOn ? 'Clear filters, sort and branches' : 'Clear filters and sort');
+                clear.addEventListener('click', () => { if (branchesOn) toggleShowBranches(); onChange({ ...EMPTY }); });
                 el.append(t, clear);
             }
         }

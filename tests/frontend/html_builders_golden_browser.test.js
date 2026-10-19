@@ -193,16 +193,18 @@ const HEX = c => c.repeat(64);
             ['Antigravity', { agent_type: 'agy' }],
             ['context at 85 percent', { context_pct: 85, context_window: 200000 }],
             ['context full', { context_pct: 100 }],
-            ['a worktree on its own branch', { branch: 'fix/login', git_state: { is_worktree: true, base_branch: 'main' } }],
+            ['a worktree on its own branch', { branch: 'fix/login', git_state: { is_worktree: true, base_branch: 'main' } }], // Show branches is off, as it starts (#5117): no worktree line
+            ['a worktree on its own branch, with Show branches on', { branch: 'fix/login', git_state: { is_worktree: true, base_branch: 'main' } }, true],
             ['a model on a claude agent', { model: 'claude-opus-4-1' }],
             ['an agent with a prompt only (no summary)', { first_prompt: 'Please fix the login bug', summary: '' }],
             ['an agent on a stale server', { server: 'gone-box', stale: true }],
         ];
-        for (const [name, extra] of ROWS) for (const [flavour, args] of [['', [false, false]], [' (compact, collapsed)', [true, true]]]) {
+        for (const [name, extra, branches] of ROWS) for (const [flavour, args] of [['', [false, false]], [' (compact, collapsed)', [true, true]]]) {
             cases['agent row: ' + name + flavour] = await ev(`(() => { const st = window.ST; const sid = 'row-sid';
                 const s = Object.assign({ session_id: sid, name: 'row-agent', agent_type: 'claude', working_directory: '/tmp/proj', type: 'live' }, ${JSON.stringify(extra)})
                 st.liveSessions = [s]; st.selectedTeam = null; st.currentSession = null;
-                return window.SR._renderSessionItem(s, 'group-a', ${args[0]}, ${args[1]}, '/tmp/proj'); })()`);
+                if (${!!branches}) localStorage.setItem('coral-show-branches', 'true');
+                try { return window.SR._renderSessionItem(s, 'group-a', ${args[0]}, ${args[1]}, '/tmp/proj'); } finally { localStorage.removeItem('coral-show-branches'); } })()`);
         }
         cases['agent row: the open agent'] = await ev(`(() => { const st = window.ST; const s = { session_id: 'row-sid', name: 'row-agent', agent_type: 'claude', working_directory: '/tmp/proj', type: 'live', summary: 'Open now' };
             st.liveSessions = [s]; st.selectedTeam = null; st.currentSession = s; const html = window.SR._renderSessionItem(s, 'group-a', false, false, '/tmp/proj'); st.currentSession = null; return html; })()`);

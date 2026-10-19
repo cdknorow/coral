@@ -106,6 +106,7 @@ function _listHeader(agentList) {
                     <label class="list-display-option"><input type="checkbox" data-display-input="summary" data-on-change="toggle-session-summary"> Show summaries</label>
                     <label class="list-display-option" data-display-row="server" hidden><input type="checkbox" data-display-input="server" data-on-change="toggle-show-server"> Show server</label>
                     <label class="list-display-option" data-display-row="group" hidden><input type="checkbox" data-display-input="group" data-on-change="toggle-group-by-server"> Group by server</label>
+                    <label class="list-display-option" data-display-row="branches"><input type="checkbox" data-display-input="branches" data-on-change="toggle-show-branches"> Show branches</label>
                 </div>
             </div>
         `;
