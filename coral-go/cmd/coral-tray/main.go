@@ -656,7 +656,7 @@ func launchCoralApp(url string, mint func() (string, error)) error {
 	// Find the coral-app binary
 	appPath := findCoralApp()
 	if appPath == "" {
-		return fmt.Errorf("coral-app not found")
+		return fmt.Errorf("coral-app not found next to the Coral tray: reinstall Coral (the tray runs only the app installed beside it)")
 	}
 
 	cmd := exec.Command(appPath, "--url", url, "--data-dir", coralAppDataDir)
@@ -681,30 +681,33 @@ func launchCoralApp(url string, mint func() (string, error)) error {
 	return nil
 }
 
-// findCoralApp looks for the coral-app binary next to the executable, then in PATH.
+// findCoralApp is the coral-app binary next to the executable, and nothing else: it does not search PATH, so a program of that name in a
+// directory somebody else could write is never started by the tray (#5029). "" when there is none beside it.
 // On macOS, it resolves symlinks to handle App Translocation, where the OS
 // moves quarantined apps to a random /private/var/folders path at runtime.
 func findCoralApp() string {
 	exe, err := os.Executable()
-	if err == nil {
-		// Resolve symlinks to handle macOS App Translocation
-		resolved, resolveErr := filepath.EvalSymlinks(exe)
-		if resolveErr == nil {
-			if resolved != exe {
-				log.Printf("[WARN] App Translocation detected: exe=%s resolved=%s", exe, resolved)
-			}
-			exe = resolved
-		}
-		candidate := filepath.Join(filepath.Dir(exe), "coral-app")
-		if runtime.GOOS == "windows" {
-			candidate += ".exe"
-		}
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
+	if err != nil {
+		return ""
 	}
-	if p, err := exec.LookPath("coral-app"); err == nil {
-		return p
+	// Resolve symlinks to handle macOS App Translocation
+	if resolved, resolveErr := filepath.EvalSymlinks(exe); resolveErr == nil {
+		if resolved != exe {
+			log.Printf("[WARN] App Translocation detected: exe=%s resolved=%s", exe, resolved)
+		}
+		exe = resolved
+	}
+	return siblingCoralApp(exe)
+}
+
+// siblingCoralApp is the coral-app file in exe's folder, or "".
+func siblingCoralApp(exe string) string {
+	candidate := filepath.Join(filepath.Dir(exe), "coral-app")
+	if runtime.GOOS == "windows" {
+		candidate += ".exe"
+	}
+	if fi, err := os.Stat(candidate); err == nil && fi.Mode().IsRegular() {
+		return candidate
 	}
 	return ""
 }
