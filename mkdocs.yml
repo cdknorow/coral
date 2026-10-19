@@ -60,6 +60,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Using the dashboard: using-the-dashboard.md
   - Teams and tasks: teams-and-tasks.md
   - Files and artifacts: files-and-artifacts.md
   - Agent UI: agent-ui.md
