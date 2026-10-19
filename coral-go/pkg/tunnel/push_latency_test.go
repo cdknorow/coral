@@ -142,6 +142,21 @@ func interactiveLatencyMode(t testing.TB, s *Session, received *atomic.Int64, pu
 	return percentiles(uiLat), percentiles(keyLat), pushRate
 }
 
+// soloBulkRate is how fast a bulk push alone moves over s, in bytes/s: the time for the next 1 MiB to arrive once it is flowing. It is what
+// this host can deliver on this link right now, the yardstick for the push's rate while requests are timed (#4992).
+func soloBulkRate(t testing.TB, s *Session, received *atomic.Int64) float64 {
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	pushFiles(ctx, s, 8<<20, &wg, true)
+	require.Eventually(t, func() bool { return received.Load() > 256<<10 }, 20*time.Second, 10*time.Millisecond, "the solo push is flowing")
+	before, start := received.Load(), time.Now()
+	require.Eventually(t, func() bool { return received.Load()-before >= 1<<20 }, 30*time.Second, 5*time.Millisecond, "1 MiB of the solo push arrived")
+	rate := float64(received.Load()-before) / time.Since(start).Seconds()
+	cancel()
+	wg.Wait()
+	return rate
+}
+
 func shapedPushSession(t testing.TB, received *atomic.Int64) *Session {
 	shape := hol
 	shape.queue = sendLowWater
@@ -301,6 +316,8 @@ func TestBulkPushStaysWithinTheInteractiveBoundOnASlowDownlink(t *testing.T) {
 			shape.queue = sendLowWater
 			s := connectShapedBothWays(t, newHub(t, SessionConfig{}), pushApp(&received), shape, down)
 			idleUI, idleKey := interactiveLatency(t, s, &received, false)
+			link := down * 1e6 / 8
+			solo := soloBulkRate(t, s, &received)
 			measure := func() (sample, sample, float64) { return interactiveLatencyMode(t, s, &received, true, true) }
 			ui, key, rate := measure()
 			t.Logf("downlink %g Mbit: idle UI p50 %v p95 %v, keystroke p50 %v p95 %v; bulk push (%.0f KiB/s of %.0f KiB/s): UI p50 %v p95 %v, keystroke p50 %v p95 %v",
@@ -325,7 +342,13 @@ func TestBulkPushStaysWithinTheInteractiveBoundOnASlowDownlink(t *testing.T) {
 			}
 			assert.Less(t, ui.p95, hubCriterion, "a UI request's p95 during a bulk push")
 			assert.Less(t, key.p95, hubCriterion, "a keystroke's p95 during a bulk push")
-			assert.Greater(t, rate, 0.4*down*1e6/8, "the bulk push still uses at least 40 percent of the link")
+			// At least 40% of the link, as before; but a host that cannot keep the link full (a shared runner: 892 KB/s of a 2.5 MB/s
+			// link, #4992) is judged against what the same push alone just moved on it (60% of that: the shaped link itself carries
+			// the push at about two thirds of its nominal rate even on an idle host, where 40% of the link is about 60% of the solo rate),
+			// so the interactive requests are what is measured, not the host's speed. The floor is never above the old one.
+			floor := min(0.4*link, 0.6*solo)
+			t.Logf("bulk push %.0f KiB/s while requests were timed; alone %.0f KiB/s; link %.0f KiB/s; floor %.0f KiB/s", rate/1024, solo/1024, link/1024, floor/1024)
+			assert.Greater(t, rate, floor, "the bulk push still uses at least 40 percent of what the link gives it")
 		})
 	}
 }

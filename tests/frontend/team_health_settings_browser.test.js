@@ -31,6 +31,9 @@ const { removeBoards } = require('./helpers/board_cleanup');
             await ev(`document.getElementById('team-settings-workspace')?.remove(); import((window.__coralStatic || '/static/') + 'team_working_mode.js').then(m => m.showTeamWorkingMode(${JSON.stringify(TEAM)}, { workspace: false })); true`);
             await waitFor(`!!document.querySelector('[data-settings-tab=health]')`, 'the Health check tab', 15000);
         };
+        // The dialog can be drawn again after the Health check tab first appears (the page's settings arrive after it): a click at that instant finds no tab (null),
+        // or lands on the one about to be replaced, and the panel's form is drawn only after the board's settings are read, so a read of it straight after finds null. So click in the same evaluation that finds the tab, until the panel and its form are showing (#4992: TypeError null.click and null.elements, ~10%).
+        const clickHealthTab = () => waitFor(`(() => { const t = document.querySelector('[data-settings-tab=health]'); if (!t) return false; t.click(); const p = document.getElementById('team-settings-health'); return !!p && !p.hidden && !!p.querySelector('form'); })()`, 'the Health check tab clicked and its panel and form showing', 15000);
         await open();
 
         // 1. the tab: named, in the tablist, panel linked, roving order includes it
@@ -41,7 +44,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         assert.equal(await ev(`document.activeElement.dataset.settingsTab`), 'health', 'ArrowRight from Global reaches Health check');
         await key('Home', 'Home', 36); await key('End', 'End', 35);
         assert.equal(await ev(`document.activeElement.dataset.settingsTab`), 'health');
-        await ev(`document.querySelector('[data-settings-tab=health]').click(); true`);
+        await clickHealthTab();
         const shown = await ev(`(() => ({ panel: !document.getElementById('team-settings-health').hidden, mainForm: document.querySelector('form.working-mode-form').hidden, mainSave: !!document.querySelector('form.working-mode-form [type=submit]')?.getClientRects().length }))()`);
         assert.deepEqual(shown, { panel: true, mainForm: true, mainSave: false });
         ok('a Health check tab after Global, reached by the arrow keys; the main Save bar is hidden on it');
@@ -84,7 +87,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         ok('Save sends the PUT, the server keeps it (15 minutes, Dev One, claim nudge off, reviewers de-duplicated), the form shows what was kept, nothing left unsaved');
 
         // 5. reopening shows the saved values; Reset fills the defaults without saving
-        await open(); await ev(`document.querySelector('[data-settings-tab=health]').click(); true`);
+        await open(); await clickHealthTab();
         assert.equal(await ev(`document.querySelector('${P} form').elements.interval_min.value`), '15', 'a reopened tab shows what was saved');
         await ev(`window.__puts = 0; document.querySelector('${P} .health-reset').click(); true`);
         const reset = await ev(`(() => { const f = document.querySelector('${P} form'); return { interval: f.elements.interval_min.value, rcpt: f.elements.recipient.value, claimOn: f.elements.claim_nudge_on.checked, save: f.querySelector('[type=submit]').disabled, text: document.querySelector('${P} .health-state').textContent, puts: window.__puts, focus: document.activeElement.name }; })()`);
@@ -107,7 +110,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
             if (/board\\/[^/]+\\/settings$/.test(url) && (o.method || 'GET') === 'GET') return w(u, o).then(async r => { const b = await r.json(); b.health.held_notice = { on: true, after_min: 15 }; b.health.future_rule = { on: true, x: 3 }; return new Response(JSON.stringify(b), { status: 200, headers: { 'content-type': 'application/json' } }); });
             if (/board\\/[^/]+\\/settings$/.test(url) && o.method === 'PUT') { window.__putBody = JSON.parse(o.body); const h = window.__putBody.health; return Promise.resolve(new Response(JSON.stringify({ health: h }), { status: 200, headers: { 'content-type': 'application/json' } })); }
             return w(u, o); }; } true`);
-        await open(); await ev(`document.querySelector('[data-settings-tab=health]').click(); true`);
+        await open(); await clickHealthTab();
         const held = await ev(`(() => { const c = document.querySelector('${P} [data-rule=held_notice]'); const i = c && c.querySelector('input[type=number]'); return c ? { title: c.querySelector('.health-rule-head').textContent.trim(), after: i.value, lo: i.min, hi: i.max } : null; })()`);
         assert.deepEqual(held, { title: 'Tell the Operator about a held delivery', after: '15', lo: '5', hi: '1440' });
         await ev(`{ const f = document.querySelector('${P} form'); f.elements.held_notice_after_min.value = '30'; f.elements.held_notice_after_min.dispatchEvent(new Event('input', { bubbles: true })); f.querySelector('[type=submit]').click(); } true`);
@@ -133,7 +136,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         for (const [label, w, big] of [['phone 390', 390, false], ['phone 390 at 200% text', 390, true]]) {
             await Emulation.setDeviceMetricsOverride({ width: w, height: 844, deviceScaleFactor: 1, mobile: true });
             await ev(`document.documentElement.style.fontSize = ${big ? "'200%'" : "''"}; true`);
-            await open(); await ev(`document.querySelector('[data-settings-tab=health]').click(); true`);
+            await open(); await clickHealthTab();
             await sleep(500); // sleep-ok: a layout settles over frames; there is no completion event
             const m = await ev(`(() => { const p = document.getElementById('team-settings-health'); const d = document.querySelector('#team-working-mode-dialog') || p.parentElement; const over = [...p.querySelectorAll('input, select, button, label')].filter(e => e.getClientRects().length && e.getBoundingClientRect().right > innerWidth + 1).map(e => e.name || e.className); return { over, panelScroll: [p.scrollWidth, p.clientWidth], dialogScroll: [d.scrollWidth, d.clientWidth] }; })()`);
             assert.deepEqual(m.over, [], `${label}: nothing runs past the screen: ${JSON.stringify(m)}`);

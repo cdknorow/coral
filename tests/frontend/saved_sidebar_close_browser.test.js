@@ -53,6 +53,9 @@ async function run() {
         await esc(); check('Escape leaves it (the focus is inside the page after opening), the focus back on the bookmark', await until(`document.getElementById('saved-view').getClientRects().length === 0 && document.activeElement.id === 'saved-btn'`, 'left by Escape'), JSON.stringify(await page()));
         console.log('Escape is left alone where something else has it');
         await clickSaved(); check('opened', await until(`document.getElementById('saved-view').getClientRects().length > 0`, 'the page'));
+        // The page moves the focus into itself once its list is drawn (saved.js, after the fetch): wait for that, or on a slow host it
+        // lands after the field below has the focus and takes it back, and Escape then comes from a button of the page, which closes it (#4992).
+        check('the page took the focus into itself', await until(`!!document.activeElement && !!document.activeElement.closest('#saved-view, #inbox-view')`, 'the focus inside the page'));
         await ev(`const i = document.createElement('input'); i.id = 'qa-field'; document.body.appendChild(i); i.focus(); true`);
         await Page.bringToFront();
         check('the field has the focus', await until(`(() => { const i = document.getElementById('qa-field'); i.focus(); return document.activeElement === i; })()`, 'the field focused'));

@@ -47,16 +47,17 @@ const BASE = require('./test_base').BASE;
 
         console.log('1. A machine at View: the dialog says so as it opens, the launch buttons are dimmed');
         await open(); await openLaunch();
-        // The note, its words and the dimming all follow the access answer, which arrives after the dialog opens: wait for each, never read them at once (it failed a gate under load).
-        await waitFor(`!document.getElementById('launch-access-note').hidden && /Box B needs Launch/.test(document.getElementById('launch-access-note').textContent)`, 'the note says Box B needs Launch', { timeout: 15000 });
-        assert.match(await ev(`document.getElementById('launch-access-note').textContent`), /Box B needs Launch/);
+        // The note, its words and the dimming all follow the access answer, which arrives after the dialog opens, and the page treats an access it
+        // does not hold (yet, or again: the cached answer is dropped and asked for anew) as "not blocked", so each can flicker off for a moment on a slow host.
+        // So they are waited for together, in one evaluation, and nothing is read again afterwards (#4992: read a moment later, the button was undimmed).
         await ev(`window._selectLaunchType('agent'); true`);
-        await waitFor(`document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`, 'the launch button dimmed', { timeout: 15000 });
-        assert.equal(await ev(`document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked')`), true);
+        await waitFor(`(() => { const n = document.getElementById('launch-access-note'); return !n.hidden && /Box B needs Launch/.test(n.textContent) && document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').classList.contains('hub-blocked'); })()`, 'the note says Box B needs Launch and the launch button is dimmed', { timeout: 30000 });
         assert.equal(await ev(`document.querySelectorAll('.toast').length`), 0, 'nothing was toasted yet');
 
         console.log('2. Launch with the form filled in: one toast, nothing sent');
-        await ev(`document.getElementById('launch-dir').value = '/work/project'; document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').click(); true`);
+        // Click only at an instant when the page knows the machine is limited: the click then says so itself and sends nothing. (A click while the
+        // access answer is being asked for again goes to the hub, which refuses it: a different, also correct, path, tested in 3b.)
+        await waitFor(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'hub_access.js'); if (!m.blockedReason('box-b', 'launch')) return false; document.getElementById('launch-dir').value = '/work/project'; document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]').click(); return true; })()`, 'a click while the machine is known to be limited', { timeout: 30000 });
         await waitFor(`document.querySelectorAll('.toast').length >= 1`, 'the toast', { timeout: 6000 });
         await new Promise(r => setTimeout(r, 1500)); // sleep-ok: a second toast, if there were one, arrives after the refusal; there is nothing to wait on for its absence
         const t = await toasts();

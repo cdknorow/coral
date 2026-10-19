@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -156,12 +158,19 @@ func TestDebugFileIsCapped(t *testing.T) {
 }
 
 // A slow or stuck file never holds up the sender: lines are dropped and counted.
+//
+// The writer goroutine reports and resets the drop counter (Swap) when it takes its next line, and when it first runs is up to the
+// scheduler: on a loaded machine it can take the first line after most of the adds, and the counter is then already 0 here (#4992:
+// "0 is not greater than 0"). So the test does not read the counter at one moment: every line must end up written to the file or
+// counted as dropped (in a "line(s) dropped" report or the counter), whatever the order, and while the file is stuck at most the
+// queue (4) and the line in the writer's hand (1) can have been kept.
 func TestDebugFileNeverBlocksTheSender(t *testing.T) {
-	fw := newFileWriter(filepath.Join(t.TempDir(), FileName), 1<<20, 4)
+	const depth, adds = 4, 10000
+	fw := newFileWriter(filepath.Join(t.TempDir(), FileName), 1<<20, depth)
 	fw.mu.Lock() // the writer goroutine can't write: the queue fills
 	done := make(chan struct{})
 	go func() {
-		for i := 0; i < 10000; i++ {
+		for i := 0; i < adds; i++ {
 			fw.add("x\n")
 		}
 		close(done)
@@ -171,14 +180,26 @@ func TestDebugFileNeverBlocksTheSender(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("adding lines blocked on a stuck file")
 	}
-	assert.Greater(t, fw.dropped.Load(), int64(0))
 	fw.mu.Unlock()
 	fw.flush() // the queue drains once the file writes again
 	fw.add("after\n")
 	fw.flush()
 	b, _ := os.ReadFile(fw.path)
-	assert.Contains(t, string(b), "line(s) dropped")
-	assert.Contains(t, string(b), "after")
+	text := string(b)
+	assert.Contains(t, text, "line(s) dropped")
+	assert.Contains(t, text, "after")
+
+	kept := strings.Count(text, "x\n")
+	reported := 0
+	for _, m := range regexp.MustCompile(`(\d+) line\(s\) dropped`).FindAllStringSubmatch(text, -1) {
+		n, err := strconv.Atoi(m[1])
+		require.NoError(t, err)
+		reported += n
+	}
+	left := int(fw.dropped.Load()) // counted after the last report
+	assert.Equal(t, adds, kept+reported+left, "every line was written or counted as dropped (kept %d, reported %d, counted %d)", kept, reported, left)
+	assert.LessOrEqual(t, kept, depth+1, "a stuck file keeps at most the queue and the line in the writer's hand")
+	assert.Greater(t, reported+left, adds-depth-2, "the rest were dropped")
 }
 
 func TestEnabledFromEnv(t *testing.T) {
