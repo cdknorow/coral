@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -179,13 +180,13 @@ func completeLines(chunk []byte, eof bool) []byte {
 // nextChunk reads the next chunk of at most readChunkMax from r, and on past that to the end of a
 // line longer than a chunk. eof is whether the file ended.
 func nextChunk(r io.Reader) (chunk []byte, eof bool, err error) {
-	chunk, err = io.ReadAll(io.LimitReader(r, readChunkMax))
+	chunk, err = readUpTo(r, readChunkMax)
 	if err != nil {
 		return nil, false, err
 	}
 	eof = int64(len(chunk)) < readChunkMax
 	for !eof && bytes.LastIndexByte(chunk, '\n') < 0 {
-		more, err := io.ReadAll(io.LimitReader(r, readChunkMax))
+		more, err := readUpTo(r, readChunkMax)
 		if err != nil {
 			return nil, false, err
 		}
@@ -193,6 +194,53 @@ func nextChunk(r io.Reader) (chunk []byte, eof bool, err error) {
 		eof = int64(len(more)) < readChunkMax
 	}
 	return chunk, eof, nil
+}
+
+// readUpTo is io.ReadAll(io.LimitReader(r, limit)) with the buffer made once at the size the read will
+// most likely have: io.ReadAll starts at 512 bytes and grows by a quarter, and for an 8 MiB chunk
+// that was about as much garbage again as the chunk (#5023: a quarter of the steady-state
+// allocations of a server whose chats page back through their transcripts). The size is what
+// is left of a LimitedReader or of a file, else small; a file that grew since is read on by growing
+// the buffer, as ReadAll does.
+func readUpTo(r io.Reader, limit int64) ([]byte, error) {
+	hint := int64(512)
+	switch v := r.(type) {
+	case *io.LimitedReader:
+		hint = v.N
+		if f, ok := v.R.(*os.File); ok {
+			hint = min(hint, remaining(f))
+		}
+	case *os.File:
+		hint = remaining(v)
+	}
+	buf := make([]byte, 0, min(max(hint, 0), limit)+1) // a byte more, so that the read that finds the end needs no growth
+	for int64(len(buf)) < limit {
+		if len(buf) == cap(buf) {
+			buf = append(buf, 0)[:len(buf)]
+		}
+		n, err := r.Read(buf[len(buf):min(int64(cap(buf)), limit)])
+		buf = buf[:len(buf)+n]
+		if err == io.EOF {
+			return buf, nil
+		}
+		if err != nil {
+			return buf, err
+		}
+	}
+	return buf, nil
+}
+
+// remaining is the bytes of f from its read position to its end, 0 when that can't be told.
+func remaining(f *os.File) int64 {
+	st, err := f.Stat()
+	if err != nil {
+		return 0
+	}
+	pos, err := f.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0
+	}
+	return max(st.Size()-pos, 0)
 }
 
 // Transcript is a session's transcript as the reader holds it: the newest messages (Window, whose
