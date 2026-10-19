@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 const { framesJs } = require('./helpers/wait');
+const { removeBoards } = require('./helpers/board_cleanup');
 const { launchStandIn } = require('./helpers/stand_in_agent');
 const BASE = require('./test_base').BASE;
 async function httpJson(method, path, body) {
@@ -22,6 +23,7 @@ async function httpJson(method, path, body) {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install, select } = await connect();
     const { HeapProfiler, Performance } = client;
     const standIns = [];
+    const boardName = 'hg-board-' + Date.now().toString(36); // removed again in the finally (the gate fails a suite that leaves a board)
     const CYCLES = Number(process.env.HEAP_CYCLES || 60), WARM = Math.min(25, Math.floor(CYCLES / 3)); // the terminals' xterms and the board are built on first use
     const AGENTS = 20;
     const metrics = async () => {
@@ -51,7 +53,7 @@ async function httpJson(method, path, body) {
             T.render.renderLiveSessions(T.state.liveSessions); window.__round = 0; return true; })()`);
         if (process.env.HEAP_FETCHES) await ev(`(() => { const R = window.fetch; window.__f = {}; window.fetch = (u, o) => { const k = (o && o.method || 'GET') + ' ' + String(u && u.url || u).replace(/[0-9a-f-]{8,}/g, '#').split('?')[0]; const e = window.__f[k] = window.__f[k] || { n: 0, settled: 0, bodyRead: 0 }; e.n++;
             return R(u, o).then(r => { e.settled++; const j = r.json.bind(r), t = r.text.bind(r), b = r.blob.bind(r); r.json = (...a) => { e.bodyRead++; return j(...a); }; r.text = (...a) => { e.bodyRead++; return t(...a); }; r.blob = (...a) => { e.bodyRead++; return b(...a); }; return r; }); }; return true; })()`);
-        const BOARD = 'hg-board-' + Date.now().toString(36);
+        const BOARD = boardName;
         const parts = (process.env.HEAP_PARTS || 'terminal,resize,board,history').split(',');
         const terminalPart = async n => {
             for (const si of parts.includes('terminal') ? standIns : []) {
@@ -102,10 +104,14 @@ async function httpJson(method, path, body) {
         };
         let lw = null;
         // The pollers that fail (here the dev server has no such agents: 404) give up the body they will not read, so no loader and buffer waits for the collector (#5050).
-        await ev(`(() => { const R = window.fetch; window.__failed = []; window.fetch = (u, o) => R(u, o).then(r => { const url = String(u && u.url || u); if (!r.ok && r.status !== 304) window.__failed.push({ url, r }); return r; }); window.__R = R; return true; })()`);
+        await ev(`(() => { const R = window.fetch; window.__failed = []; window.fetch = (u, o) => { const url0 = String(u && u.url || u); const pn = new URL(url0, location.origin).pathname; const board = pn.startsWith('/api/board/') && pn.endsWith('/tasks') && (!o || !o.method || o.method === 'GET'); // the board's tasks poll answers 200 here, so it is made to fail like the others: a real Response with a body that nobody reads
+            return (board ? Promise.resolve(new Response(JSON.stringify({ error: 'no such board' }), { status: 404, headers: { 'Content-Type': 'application/json' } })) : R(u, o)).then(r => { const url = url0; if (!r.ok && r.status !== 304) window.__failed.push({ url, r }); return r; }); }; window.__R = R; return true; })()`);
         for (let n = 0; n < 6; n++) await round(1000 + n);
-        const unread = await ev(`(() => { const FIVE = ['/api/agent/ui', '/poll', '/subagents', '/files', '/tasks']; const path = x => new URL(x.url, location.origin).pathname;
-            const bad = window.__failed.filter(x => FIVE.some(f => path(x).endsWith(f)) && !x.r.bodyUsed).map(x => path(x).replace(/hg-[0-9]+/g, 'NAME')); window.fetch = window.__R; window.__failed = null; return [...new Set(bad)]; })()`);
+        const unreadInfo = await ev(`(() => { const FIVE = ['/api/agent/ui', '/poll', '/subagents', '/files', '/tasks']; const path = x => new URL(x.url, location.origin).pathname;
+            const bad = window.__failed.filter(x => FIVE.some(f => path(x).endsWith(f)) && !x.r.bodyUsed).map(x => path(x).replace(/hg-[0-9]+/g, 'NAME'));
+            const seen = FIVE.filter(f => window.__failed.some(x => path(x).endsWith(f))); window.fetch = window.__R; window.__failed = null; return { bad: [...new Set(bad)], seen }; })()`);
+        const { bad: unread, seen } = unreadInfo;
+        assert.deepEqual(seen.sort(), ['/api/agent/ui', '/files', '/poll', '/subagents', '/tasks'], 'the check saw all five pollers fail (a poller that stops failing in this window would otherwise pass it by default)');
         assert.deepEqual(unread, [], 'a failed poll leaves its response body unread (cancel it, or read it): ' + unread.join(', '));
         const series = [];
         let base = null;
@@ -129,5 +135,5 @@ async function httpJson(method, path, body) {
         assert.ok(grew(base.listeners, end.listeners) <= 40 + per / 5, `event listeners grew ${grew(base.listeners, end.listeners)} over ${per} rounds`);
         assert.ok(grew(base.documents, end.documents) <= 3, `documents grew ${grew(base.documents, end.documents)} (detached frames or windows)`);
         console.log(`PASS heap growth: ${per} rounds after a ${WARM}-round warm-up: heap ${grew(base.heapMB, end.heapMB).toFixed(1)} MB, nodes ${grew(base.nodes, end.nodes)}, listeners ${grew(base.listeners, end.listeners)}`);
-    } finally { for (const si of standIns) await si.stop().catch(() => {}); await client.close(); }
+    } finally { await removeBoards(ev, [boardName]); for (const si of standIns) await si.stop().catch(() => {}); await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
