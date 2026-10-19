@@ -60,6 +60,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         const r = await ev(`Object.fromEntries(new URLSearchParams(location.search))`);
         check('and survives a reload', (await ev('location.pathname')) === '/chats' && r.q === 'battle' && r.type === 'agent' && r.page === '2', JSON.stringify(r));
         check('the search box shows the filter after the reload', (await ev(`(document.getElementById('history-search') || {}).value`)) === 'battle');
+
+        // A page button (window.loadHistoryPage, what data-action="history-page" calls) remembers its page: the URL carries it with the filters, and a new search starts again at page 1.
+        const query = async () => { await settled(); return ev(`Object.fromEntries(new URLSearchParams(location.search))`); };
+        await ev(`window.loadHistoryPage(3); true`);
+        let q = await query();
+        check('a page button puts its page in the URL beside the filters', q.page === '3' && q.q === 'battle' && q.type === 'agent', JSON.stringify(q));
+        await ev(`(() => { const i = document.getElementById('history-search'); i.value = 'coral'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return true; })()`);
+        for (const end = Date.now() + 5000; Date.now() < end && (await query()).q !== 'coral'; await sleep(100)) { /* debounce */ }
+        q = await query();
+        check('a new search term starts again at page 1 (no page in the URL)', q.q === 'coral' && !('page' in q), JSON.stringify(q));
+        await ev(`window.loadHistoryPage(4); true`);
+        q = await query();
+        check('and the next page button puts page 4 beside the new term', q.page === '4' && q.q === 'coral', JSON.stringify(q));
     } catch (e) {
         check('no error', false, e.message);
     } finally {
