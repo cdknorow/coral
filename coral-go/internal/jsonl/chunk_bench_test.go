@@ -18,7 +18,7 @@ func BenchmarkNextChunk(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		f, err := os.Open(path)
 		require.NoError(b, err)
-		chunk, _, err := nextChunk(io.LimitReader(f, 7<<20))
+		chunk, _, err := nextChunk(io.LimitReader(f, 7<<20), readChunkMax)
 		f.Close()
 		require.NoError(b, err)
 		require.Equal(b, 7<<20, len(chunk))

@@ -13,15 +13,22 @@ import (
 // when ctx ends (a cancelled Hub poll doesn't sit behind another session's decode), and the slot
 // is given back on every path out, a panic included.
 func decodeLimited(ctx context.Context, data []byte) ([]map[string]any, error) {
+	entries, _, err := decodeLimitedEnds(ctx, data, false)
+	return entries, err
+}
+
+// decodeLimitedEnds is decodeLimited with decodeLinesEnds' line ends when wantEnds is set.
+func decodeLimitedEnds(ctx context.Context, data []byte, wantEnds bool) ([]map[string]any, []int, error) {
 	release, err := decodelimit.Acquire(ctx, int64(len(data)))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer release()
 	if testDuringDecode != nil {
 		testDuringDecode()
 	}
-	return decodeLines(data), nil
+	entries, ends := decodeLinesEnds(data, wantEnds)
+	return entries, ends, nil
 }
 
 // testDuringDecode, when a test sets it, runs while a decode holds its slot.

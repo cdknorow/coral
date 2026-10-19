@@ -106,7 +106,7 @@ func TestNextChunkChunksAreTheSameAsBefore(t *testing.T) {
 		}
 		var got []byte
 		for {
-			chunk, eof, err := nextChunk(r)
+			chunk, eof, err := nextChunk(r, readChunkMax)
 			require.NoError(t, err, name)
 			got = append(got, chunk...)
 			if eof {

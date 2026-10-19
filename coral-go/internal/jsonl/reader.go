@@ -36,6 +36,7 @@ type sessionCache struct {
 	toolUseNames map[string]string // tool_use_id → tool_name, at most toolNamesMax of them
 	toolSeen     map[string]uint32 // the chunk each tool name was first seen in (boundToolNames)
 	chunkSeq     uint32
+	pending      pendingCalls // the tool calls the checkpoints carry (#5023)
 	ckpts        []checkpoint // where in the file the messages before the window can be re-read from (transcript_window.go)
 	// The transcript as last read: a different file, a shorter one, or other first bytes mean
 	// it was replaced or rewritten, and the messages are read again from the start (#3710).
@@ -199,7 +200,7 @@ func (r *SessionReader) readLocked(ctx context.Context, c *sessionCache, session
 	}
 	var collected []map[string]any
 	for {
-		chunk, eof, err := nextChunk(f)
+		chunk, eof, err := nextChunk(f, readChunkMax)
 		if err != nil {
 			return collected, c.total()
 		}
@@ -207,18 +208,29 @@ func (r *SessionReader) readLocked(ctx context.Context, c *sessionCache, session
 		if len(data) == 0 {
 			break
 		}
-		entries, err := decodeLimited(ctx, data)
+		entries, ends, err := decodeLimitedEnds(ctx, data, true)
 		if err != nil {
 			return collected, c.total()
 		}
-		c.noteCheckpoint(p.last)
+		// The chunk is parsed in runs of about checkpointSpacing bytes, a checkpoint at the start of each
+		// (#5023): they were one per chunk, so an old page was read and decoded from 8 to 16 MiB before it.
+		start, from := c.offset, 0
 		c.offset += int64(len(data))
-		parsed := p.parse(entries)
-		c.addMessages(parsed)
-		c.boundToolNames()
-		if collect {
-			collected = append(collected, parsed...)
+		for lo := 0; lo < len(entries); {
+			hi := lo + 1
+			for hi < len(entries) && int64(ends[hi-1]-from) < checkpointSpacing() {
+				hi++
+			}
+			c.noteCheckpoint(start+int64(from), p.last)
+			parsed := p.parse(entries[lo:hi])
+			c.pending.observe(c.toolUseNames, parsed)
+			c.addMessages(parsed)
+			if collect {
+				collected = append(collected, parsed...)
+			}
+			from, lo = ends[hi-1], hi
 		}
+		c.boundToolNames()
 		if eof {
 			break
 		}

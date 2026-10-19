@@ -45,6 +45,7 @@ func (c *sessionCache) total() int { return c.base + len(c.messages) }
 func (c *sessionCache) resetMessages() {
 	c.offset, c.base, c.messages, c.sizes, c.msgBytes = 0, 0, nil, nil, 0
 	c.toolUseNames, c.toolSeen, c.chunkSeq, c.ckpts = make(map[string]string), nil, 0, nil
+	c.pending = pendingCalls{}
 }
 
 // addMessages appends parsed messages and drops the oldest ones past the window's bounds, copying
@@ -177,21 +178,21 @@ func completeLines(chunk []byte, eof bool) []byte {
 	return chunk
 }
 
-// nextChunk reads the next chunk of at most readChunkMax from r, and on past that to the end of a
+// nextChunk reads the next chunk of at most chunkMax from r, and on past that to the end of a
 // line longer than a chunk. eof is whether the file ended.
-func nextChunk(r io.Reader) (chunk []byte, eof bool, err error) {
-	chunk, err = readUpTo(r, readChunkMax)
+func nextChunk(r io.Reader, chunkMax int64) (chunk []byte, eof bool, err error) {
+	chunk, err = readUpTo(r, chunkMax)
 	if err != nil {
 		return nil, false, err
 	}
-	eof = int64(len(chunk)) < readChunkMax
+	eof = int64(len(chunk)) < chunkMax
 	for !eof && bytes.LastIndexByte(chunk, '\n') < 0 {
-		more, err := readUpTo(r, readChunkMax)
+		more, err := readUpTo(r, chunkMax)
 		if err != nil {
 			return nil, false, err
 		}
 		chunk = append(chunk, more...)
-		eof = int64(len(more)) < readChunkMax
+		eof = int64(len(more)) < chunkMax
 	}
 	return chunk, eof, nil
 }
@@ -331,13 +332,20 @@ func streamPart(ctx context.Context, part transcriptPart, offset, from, to int, 
 	var seen map[string]uint32
 	var seq uint32
 	var read int64
-	// Start at a checkpoint, not at the file's start: the last one at or before the first message wanted, and the one before
-	// it, so that the tool names a result looks up are read first (a result is rarely further from its call than that).
+	// Start at a checkpoint, not at the file's start: the last one at or before the first message wanted. The tool calls
+	// before it that have no result yet come with it (pendingCalls), so a result is named as in the whole file.
 	start := checkpoint{}
-	if i := sort.Search(len(part.ckpts), func(k int) bool { return part.ckpts[k].msgs > from-offset }) - 2; i >= 0 {
+	if i := sort.Search(len(part.ckpts), func(k int) bool { return part.ckpts[k].msgs > from-offset }) - 1; i >= 0 {
 		start = part.ckpts[i]
 	}
 	p.last = copyMessage(start.last)
+	for k, v := range start.pending { // older than anything the page reads, so the first to go if the names outgrow their bound
+		p.names[k] = v
+		if seen == nil {
+			seen = make(map[string]uint32, len(start.pending))
+		}
+		seen[k] = 0
+	}
 	read = start.offset
 	idx := offset + start.msgs
 	if read > 0 {
@@ -346,7 +354,7 @@ func streamPart(ctx context.Context, part transcriptPart, offset, from, to int, 
 		}
 	}
 	for read < part.limit && idx < to {
-		chunk, eof, err := nextChunk(io.LimitReader(f, part.limit-read))
+		chunk, eof, err := nextChunk(io.LimitReader(f, part.limit-read), pageChunkMax())
 		if err != nil {
 			return false
 		}
@@ -408,25 +416,34 @@ func (t *Transcript) withAncestor(a *Transcript) *Transcript {
 // of messages before it, its byte offset (a line start: where a chunk of the cache's own read began) and
 // the message just before it, which a Codex duplicate at the start of the chunk is merged into.
 type checkpoint struct {
-	msgs   int
-	offset int64
-	last   map[string]any
+	msgs    int
+	offset  int64
+	last    map[string]any
+	pending map[string]string // the tool calls before it that a result after it may name (pendingCalls)
 }
 
-// checkpointSpacing is the bytes between checkpoints: half a chunk, so a read of an old page parses about
-// one chunk and not the file from its start (#4620's follow-up: Slice and Each read the whole prefix before).
-func checkpointSpacing() int64 { return readChunkMax / 2 }
+// pageChunkMax is the chunk an old page is read in: a page decodes the chunks from a checkpoint up to
+// its last message, and no more of the file than that (#5023).
+func pageChunkMax() int64 { return min(readChunkMax, pageChunkCap) }
 
-// noteCheckpoint records a checkpoint at the cache's current offset, the start of the chunk about to be
-// read, when the last one is a spacing behind. last is the newest message parsed so far.
-func (c *sessionCache) noteCheckpoint(last map[string]any) {
-	if c.offset == 0 {
+// pageChunkCap bounds pageChunkMax (a var for tests).
+var pageChunkCap = int64(2 << 20)
+
+// checkpointSpacing is the bytes between checkpoints: half a page chunk, so a read of an old page
+// parses about two chunks and not the file from its start (#4620's follow-up: Slice and Each read the
+// whole prefix before; #5023: and then the 8 to 16 MiB before the page, now 1 to 3 MiB).
+func checkpointSpacing() int64 { return pageChunkMax() / 2 }
+
+// noteCheckpoint records a checkpoint at offset, the start of a run of lines about to be parsed, when
+// the last one is a spacing behind. last is the newest message parsed so far.
+func (c *sessionCache) noteCheckpoint(offset int64, last map[string]any) {
+	if offset == 0 {
 		return
 	}
-	if n := len(c.ckpts); n > 0 && c.offset-c.ckpts[n-1].offset < checkpointSpacing() {
+	if n := len(c.ckpts); n > 0 && offset-c.ckpts[n-1].offset < checkpointSpacing() {
 		return
 	}
-	c.ckpts = append(c.ckpts, checkpoint{msgs: c.total(), offset: c.offset, last: copyMessage(last)})
+	c.ckpts = append(c.ckpts, checkpoint{msgs: c.total(), offset: offset, last: copyMessage(last), pending: c.pending.snapshot()})
 }
 
 // copyMessage is a shallow copy: the merge of a Codex duplicate writes to the message it merges into, and the
