@@ -102,3 +102,64 @@ func TestAgentTokenReadsOnlyItsOwnSessionAndBoard(t *testing.T) {
 		assert.NotEmpty(t, operatorOnlyRoutes[k], "%s is in operatorOnlyRoutes", k)
 	}
 }
+
+// #5019 (QA's #5017 review): a folder name shared by two boards, reading oneself by display name, and a tmux-style name (claude-<uuid>).
+func TestAgentSessionScopeSharedNamesDisplayNamesAndTmuxNames(t *testing.T) {
+	ctx := context.Background()
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "s.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	ss := store.NewSessionStore(db)
+	reg := func(sid, name, board, display string) {
+		ls := &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: name, WorkingDir: t.TempDir()}
+		ls.BoardName = &board
+		if display != "" {
+			ls.DisplayName = &display
+		}
+		require.NoError(t, ss.RegisterLiveSession(ctx, ls))
+	}
+	const a, b, c, a2, c2 = "aaaaaaaa-5019-4000-8000-00000000000a", "bbbbbbbb-5019-4000-8000-00000000000b", "cccccccc-5019-4000-8000-00000000000c",
+		"a2a2a2a2-5019-4000-8000-0000000000a2", "c2c2c2c2-5019-4000-8000-0000000000c2"
+	reg(c, "shared", "team-y", "")     // registered first: the first live session named "shared"
+	reg(a, "shared", "team-x", "Lead") // the caller: the same folder name on another board
+	reg(b, "mate", "team-x", "")       // a board mate
+	reg(a2, "twin", "team-x", "")      // here the caller's own session is the FIRST of its name
+	reg(c2, "twin", "team-y", "")      // and the other board's the second
+	token, err := db.MintSessionToken(ctx, a, "claude-shared-a")
+	require.NoError(t, err)
+
+	o := NewIdentityObserver(db, nil, func(*http.Request) bool { return false })
+	r := chi.NewRouter()
+	r.Use(o.Middleware)
+	r.Get("/api/sessions/live/{name}/info", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	get := func(path string) int {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set(store.SessionTokenHeader, token)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	live := func(name string, query string) string { return "/api/sessions/live/" + name + "/info" + query }
+
+	// 1. a folder name shared by two boards: the exact session decides, the name is only its own name
+	assert.Equal(t, http.StatusOK, get(live("shared", "?session_id="+a)), "the shared name with the agent's own session_id")
+	assert.Equal(t, http.StatusOK, get(live("claude-"+a, "?session_id="+a)), "its tmux name with its own session_id")
+	assert.Equal(t, http.StatusForbidden, get(live("shared", "?session_id="+c)), "the shared name with the OTHER board's session_id")
+	assert.Equal(t, http.StatusForbidden, get(live("shared", "")), "the shared name alone is the first live session of that name, which is another board's")
+	assert.Equal(t, http.StatusOK, get(live("twin", "")), "the shared name alone, when the first live session of it is the agent's board's")
+	assert.Equal(t, http.StatusForbidden, get(live("twin", "?session_id="+c2)), "...but another board's session_id is still refused")
+	assert.Equal(t, http.StatusOK, get(live("twin", "?session_id="+a2)), "the board's own twin by id")
+
+	// 2. a display name is not a name a handler resolves, so it is nobody's here (the tools use the tmux name or the id)
+	assert.Equal(t, http.StatusForbidden, get(live("Lead", "")), "the agent's own display name is not resolved")
+	assert.Equal(t, http.StatusOK, get(live("Lead", "?session_id="+a)), "...but beside its own session_id it reads nothing and passes")
+	assert.Equal(t, http.StatusForbidden, get(live("Nobody-5019", "")), "a name that is nobody's")
+
+	// 3. a tmux-style name of a known session is judged as that session, beside the agent's own session_id too
+	assert.Equal(t, http.StatusForbidden, get(live("claude-"+c, "?session_id="+a)), "another board's tmux name beside the agent's own session_id")
+	assert.Equal(t, http.StatusForbidden, get(live("claude-"+c, "")), "another board's tmux name")
+	assert.Equal(t, http.StatusOK, get(live("claude-"+b, "")), "a board mate's tmux name")
+	assert.Equal(t, http.StatusOK, get(live("claude-"+b, "?session_id="+a)), "a board mate's tmux name beside the agent's own session_id")
+	assert.Equal(t, http.StatusOK, get(live("claude-"+a, "")), "its own tmux name")
+	assert.Equal(t, http.StatusOK, get(live("claude-00000000-0000-4000-8000-000000000000", "?session_id="+a)), "a tmux name of nobody beside its own session_id reads nothing")
+}

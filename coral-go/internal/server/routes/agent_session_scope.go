@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -81,40 +83,69 @@ func scopedSessionKey(r *http.Request) (key string, ok bool) {
 	return key, key != ""
 }
 
-// agentMaySeeSession is whether the agent whose token this is may read the session named by key (and by the request's session_id, which the
-// live routes check against the name): itself, a session of its own resume lineage, or a session on the same board. An error is a lookup that
-// failed: the request is refused, never let through.
+// agentMaySeeSession is whether the agent whose token this is may read the session the request is about: itself, a session of its own resume
+// lineage, or a session on the same board. The request names it by the path (a name or an id) and, on the live routes, by session_id, which the
+// handlers check against the name (validateExactLiveTarget: the name is the stored agent name or the tmux name of that exact session). So:
+//   - the session_id's session and a name that is that session's own name (or its tmux name) are ONE target: judged once, however many other
+//     sessions share the folder name (#5019: two boards can share a folder name);
+//   - any other name is judged as the session it resolves to: an id, a tmux-style name (claude-<uuid>: the id is parsed out), or the FIRST live
+//     session of that name (the stored agent name), which is the one a handler would pick. A display name or a board title is NOT resolved: no
+//     handler resolves one, and either is set by the agent or a person, so counting it as "me" would let a name that is also another board's
+//     folder name read that board (#5019 review);
+//   - a name that resolves to nothing known reads nothing by itself, so it passes only beside a target that is the agent's own or allowed.
+//
+// An error is a lookup that failed: the request is refused, never let through.
 func (o *IdentityObserver) agentMaySeeSession(ctx context.Context, r *http.Request, owner *store.SessionTokenOwner, key string) (bool, error) {
-	candidates := []string{key}
-	if sid := r.URL.Query().Get("session_id"); sid != "" && sid != key {
-		candidates = append(candidates, sid)
-	}
 	ss := store.NewSessionStore(o.db)
 	all, err := ss.GetAllLiveSessions(ctx)
 	if err != nil {
 		return false, err
 	}
 	var own *store.LiveSession
+	if own, err = ss.GetLiveSession(ctx, owner.SessionID); err != nil {
+		return false, err
+	}
+	lookup := func(c string) (*store.LiveSession, error) {
+		if ls, err := ss.GetLiveSession(ctx, c); err != nil || ls != nil {
+			return ls, err
+		}
+		if id := naming.SessionIDFromName(c); id != c { // claude-<uuid>: the tmux name of a session
+			if _, perr := uuid.Parse(id); perr == nil {
+				if ls, err := ss.GetLiveSession(ctx, id); err != nil || ls != nil {
+					return ls, err
+				}
+			}
+		}
+		for i := range all {
+			if all[i].AgentName == c {
+				return &all[i], nil
+			}
+		}
+		return nil, nil
+	}
+
+	candidates := []string{key}
+	if sid := r.URL.Query().Get("session_id"); sid != "" && sid != key {
+		exact, err := ss.GetLiveSession(ctx, sid)
+		if err != nil {
+			return false, err
+		}
+		if exact != nil && (key == exact.AgentName || key == naming.SessionName(exact.AgentType, exact.SessionID)) {
+			candidates = []string{sid} // the pair names one session
+		} else {
+			candidates = append(candidates, sid)
+		}
+	}
 	var lineage map[string]bool
-	// A candidate that names a session we know must be one the agent may read. One that names nothing we know (a made-up name beside the
-	// agent's own session_id) reads nothing by itself, so it passes only when another candidate is the agent's own or allowed.
 	allowed, unknown := 0, 0
 	for _, c := range candidates {
 		if c == owner.SessionID || c == owner.SessionName {
 			allowed++
 			continue
 		}
-		target, err := ss.GetLiveSession(ctx, c)
+		target, err := lookup(c)
 		if err != nil {
 			return false, err
-		}
-		if target == nil {
-			for i := range all {
-				if all[i].AgentName == c || all[i].SessionID == c {
-					target = &all[i]
-					break
-				}
-			}
 		}
 		if target != nil && target.SessionID == owner.SessionID {
 			allowed++
@@ -137,11 +168,6 @@ func (o *IdentityObserver) agentMaySeeSession(ctx context.Context, r *http.Reque
 		if target == nil {
 			unknown++
 			continue
-		}
-		if own == nil {
-			if own, err = ss.GetLiveSession(ctx, owner.SessionID); err != nil {
-				return false, err
-			}
 		}
 		ob, tb := boardOfLive(own), boardOfLive(target)
 		if ob == "" || ob != tb {
