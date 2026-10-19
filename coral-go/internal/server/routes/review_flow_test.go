@@ -321,3 +321,47 @@ func TestReviewFlowResubmitWithoutClaiming(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, code)
 	assert.Contains(t, out["error"], "in-progress")
 }
+
+// #5159: the one-task limit is for claiming. A reviewer who is busy with another task still gives their verdict (by the task under review
+// or by their review task) and completes a plain task assigned to them (a "review only" request that is not a review task) without claiming it.
+func TestReviewVerdictAndPlainTaskNeedNoClaimWhileBusy(t *testing.T) {
+	base, h, task := reviewTeam(t, "busy", true)
+	ctx := context.Background()
+	submit(t, base, task.ID)
+	reviewers := []string{"Security Reviewer", "QA Engineer"}
+	code, out := postCode(t, base(task.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": reviewers})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	got, err := h.bs.GetTask(ctx, "busy", task.ID)
+	require.NoError(t, err)
+	secReview, qaReview := got.Workflow.ReviewRounds[0].Reviewers[0].ReviewTaskID, got.Workflow.ReviewRounds[0].Reviewers[1].ReviewTaskID
+
+	for _, who := range reviewers {
+		other, err := h.bs.CreateTask(ctx, "busy", "Build for "+who, "", "medium", "lead", who)
+		require.NoError(t, err)
+		_, err = h.bs.ClaimTask(ctx, "busy", who, other.ID)
+		require.NoError(t, err)
+	}
+	// Claiming is refused while busy, as before.
+	_, err = h.bs.ClaimTask(ctx, "busy", "Security Reviewer", secReview)
+	assert.ErrorContains(t, err, "complete your current task")
+
+	// A plain task assigned to a busy agent completes without being claimed.
+	plain, err := h.bs.CreateTask(ctx, "busy", "Review only: a patch", "", "high", "lead", "Security Reviewer")
+	require.NoError(t, err)
+	code, out = postCode(t, base(plain.ID, "complete"), map[string]any{"subscriber_id": "Security Reviewer", "message": "approved, no concerns"})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	done, err := h.bs.GetTask(ctx, "busy", plain.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "completed", done.Status)
+
+	// Verdicts need no claim: one by the task under review, one by the reviewer's own review task.
+	code, out = postCode(t, base(task.ID, "approve"), map[string]any{"subscriber_id": "Security Reviewer"})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	assert.Equal(t, false, out["completed"])
+	code, out = postCode(t, base(qaReview, "approve"), map[string]any{"subscriber_id": "QA Engineer"})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	assert.Equal(t, true, out["completed"])
+	final, err := h.bs.GetTask(ctx, "busy", task.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "completed", final.Status)
+}

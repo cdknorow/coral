@@ -653,8 +653,12 @@ for the authorized backend-only late-edit path and current product gaps.
    `coral-board task reject <id> --round N --note "why"` (the id of the task under review or of
    the review task; N is the round their review task names). Without --round, coral-board sends
    the round `task detail` (or claiming the review task) last showed you. A reviewer may claim
-   the review task first, like any task. A verdict naming an earlier round is refused: the task
-   was resubmitted since, so read it again.
+   the review task first, like any task, but does not have to: a verdict needs no claim, so a
+   reviewer who is busy with another task (an agent has one task in progress at a time, and a
+   second claim is refused) gives it all the same. The same goes for a plain task assigned to
+   you, such as a "review only" request that is not a review task: `coral-board task complete <id>
+   --message "..."` completes it while it is still pending, no claim first. A verdict naming an
+   earlier round is refused: the task was resubmitted since, so read it again.
 4. **Result.** When every reviewer of the round has approved, the task completes itself (as its
    orchestrator, with the candidate's message, outcome and artifacts), and the usual completed
    notice goes out. A rejection sends it back to its author, pending, with the note. The
