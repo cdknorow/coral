@@ -47,6 +47,31 @@ const { connect } = require('./agent_view_harness');
         const openMenu = async () => { await ev(`document.getElementById('model-chip').click(); true`); await waitFor(`!document.getElementById('model-chip-menu').hidden && document.querySelectorAll('#model-chip-menu .model-chip-item').length > 2`, 'the menu', 5000); };
         const pick = sel => ev(`document.querySelector(${JSON.stringify('#model-chip-menu ' + sel)}).click(); true`);
 
+        // The chip is the first item of the buttons' row: outside the text box (a second or third line never runs under it, and the box keeps its full
+        // height), inside the composer's border, level with Send; its note is a small line under that row (#5116). A phone keeps the chip as a row under the input.
+        const geometry = () => ev(`(() => { const R = e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, h: r.height }; };
+            const pane = document.getElementById('command-pane'), ta = document.getElementById('command-input'), chip = document.getElementById('model-chip'), tb = document.getElementById('command-toolbar');
+            const note = document.getElementById('model-chip-note'), send = tb.querySelector('.btn-send');
+            const cs = getComputedStyle(pane); const bw = parseFloat(cs.borderLeftWidth) || 0;
+            const pr = R(pane); return { pane: { l: pr.l + bw, r: pr.r - bw, t: pr.t + bw, b: pr.b - bw }, ta: R(ta), chip: R(chip), toolbar: R(tb), send: send && R(send).h ? R(send) : null,
+                note: note.textContent ? R(note) : null, taH: ta.getBoundingClientRect().height, scrollH: ta.scrollHeight, clientH: ta.clientHeight, vw: innerWidth }; })()`);
+        const checkLayout = async (label, what = '') => {
+            const g = await geometry(); const at = `${label} ${what}: ${JSON.stringify(g)}`; const phone = label !== 'Desktop';
+            assert.ok(g.chip.l >= g.pane.l + 8 && g.chip.r <= g.pane.r - 8 && g.chip.t >= g.pane.t && g.chip.b <= g.pane.b, 'the chip is inside the composer with room to the border: ' + at);
+            assert.ok(g.chip.t >= g.ta.b - 0.5 || g.chip.b <= g.ta.t + 0.5, 'the chip does not overlap the text box: ' + at);
+            assert.ok(g.scrollH <= g.clientH + 1 || g.taH >= parseFloat(await ev(`getComputedStyle(document.getElementById('command-input')).maxHeight`)) - 1, 'the box shows all its text (it grows, or scrolls at its cap): ' + at);
+            if (!phone) {
+                assert.ok(g.send, 'the desktop toolbar has Send: ' + at);
+                assert.ok(g.chip.t >= g.toolbar.t && g.chip.b <= g.toolbar.b, 'the chip is in the buttons row: ' + at);
+                // Level with Send and left of it; when the card is too narrow for both (a docked panel at 1024 px) the row wraps and the chip is the row above the buttons.
+                const wrapped = g.chip.b <= g.send.t + 0.5;
+                if (!wrapped) { assert.ok(Math.abs((g.chip.t + g.chip.b) / 2 - (g.send.t + g.send.b) / 2) <= 1, "the chip is vertically centred with Send: " + at); assert.ok(g.chip.r <= g.send.l, 'the chip is left of Send: ' + at); }
+                if (g.pane.r - g.pane.l >= 440 && !/mode buttons/.test(what)) assert.ok(!wrapped, 'a card this wide holds the chip and the buttons in one row: ' + at);
+            }
+            if (g.note) assert.ok(g.note.t >= g.chip.b - 0.5 && g.note.b <= g.pane.b + 0.5 && (phone || g.note.t >= g.toolbar.b - 6), 'the note is a line under the row, not between the text and the buttons: ' + at);
+            return g;
+        };
+
         const run = async (label) => {
             console.log(`${label}: what the agent runs, and what it was asked to`);
             await feed('ch-a-id', { agent_type: 'claude', model: OPUS.value, thinking_actual: 'high', thinking: 'low' });
@@ -70,6 +95,59 @@ const { connect } = require('./agent_view_harness');
             console.log(`${label}: the menu`);
             await select('ch-a');
             await waitFor(`!document.getElementById('model-chip-bar').hidden`, 'the chip back', 4000);
+            console.log(`${label}: the chip's own row`);
+            await shot('model-chip-layout-' + label.split(' ')[0].toLowerCase() + '-after');
+            await checkLayout(label);
+            // Every state the chip row can be in, with the box typed into and the text bigger: the row stays inside the card and under the text.
+            const LONG = 'claude-opus-5-5-a-very-long-custom-model-name-that-keeps-going-and-going-and-going';
+            const states = [
+                ['long name', { model: LONG, thinking_actual: 'high', model_switch: null }],
+                ['pending, after reply', { model: OPUS.value, thinking_actual: 'high', model_switch: { state: 'pending', thinking: 'xhigh', after_reply: true } }],
+                ['failed, long message', { model: OPUS.value, thinking_actual: 'high', model_switch: { state: 'failed', message: 'Claude Code did not take the model: ' + 'Unknown model, '.repeat(12) } }],
+                ['requested', { model: OPUS.value, thinking_actual: null, thinking: 'low', model_switch: null }],
+            ];
+            const typeLines = n => ev(`(() => { const i = document.getElementById('command-input'); i.focus(); i.value = ${JSON.stringify(Array.from({ length: n }, (_, k) => 'line ' + (k + 1)).join('\n'))}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+            for (const [what, extra] of states) {
+                await feed('ch-a-id', { agent_type: 'claude', thinking: 'low', ...extra });
+                await waitFor(`!document.getElementById('model-chip-bar').hidden`, 'the chip in ' + what, 4000);
+                for (const lines of [0, 1, 3, 12]) {
+                    await typeLines(lines);
+                    await new Promise(r => setTimeout(r, 60)); // sleep-ok: the autosize runs on the input event; a frame for the layout to settle
+                    await checkLayout(label, `${what}, ${lines} lines`);
+                }
+            }
+            await ev(`document.documentElement.style.fontSize = '200%'; true`);
+            await typeLines(3);
+            const big = await checkLayout(label, '200% text');
+            await shot('model-chip-layout-' + label.split(' ')[0].toLowerCase() + '-200');
+            await ev(`document.documentElement.style.fontSize = ''; true`);
+            await typeLines(3); // the box sizes itself again at the normal text size
+            for (const theme of ['light', 'dark']) {
+                await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars && m.clearCustomThemeVars(); m.applyTheme(${JSON.stringify(theme)}); return true; })()`);
+                await new Promise(r => setTimeout(r, 400)); // sleep-ok: the colours transition; the screenshot waits for them
+                assert.equal(await ev(`document.documentElement.getAttribute('data-theme')`), theme, 'the theme was applied');
+                await checkLayout(label, theme + ' theme');
+                await shot('model-chip-layout-' + label.split(' ')[0].toLowerCase() + '-' + theme);
+            }
+            if (label === 'Desktop') { // the terminal view's composer also shows the mode buttons and the macros (chat mode hides them): the chip is still the row's first item
+                await ev(`(() => { const st = document.createElement('style'); st.id = 'show-terminal-tools'; st.textContent = '#command-pane.chat-mode .toolbar-group-modes, #command-pane.chat-mode .toolbar-group-macros { display: flex !important; } #command-pane.chat-mode .toolbar-divider { display: block !important; }'; document.head.appendChild(st); return true; })()`);
+                const t = await checkLayout(label, 'with the mode buttons and macros showing');
+                const modes = await ev(`(() => { const r = document.querySelector('#command-toolbar .toolbar-group-modes').getBoundingClientRect(); return { l: r.left, t: r.top, w: r.width }; })()`);
+                assert.ok(modes.w > 0, 'the mode buttons are showing in this case');
+                assert.ok(t.chip.r <= modes.l + 0.5 || t.chip.b <= modes.t + 0.5, 'the chip comes first in the row: ' + JSON.stringify({ chip: t.chip, modes }));
+                await shot('model-chip-layout-desktop-terminal');
+                await ev(`document.getElementById('show-terminal-tools').remove(); true`);
+            }
+            if (label === 'Desktop') for (const w of [1024, 900, 768]) {
+                await Emulation.setDeviceMetricsOverride({ width: w, height: 900, deviceScaleFactor: 1, mobile: false });
+                await new Promise(r => setTimeout(r, 150)); // sleep-ok: a resize reflows the card; a few frames before measuring
+                await checkLayout(label, `${w} px wide`);
+            }
+            if (label === 'Desktop') await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+            await ev(`(() => { const i = document.getElementById('command-input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+            await feed('ch-a-id', { agent_type: 'claude', model: OPUS.value, thinking_actual: null, thinking: 'low', model_switch: null }); // back to what the menu stage starts from
+            console.log('   ✓ the chip clears the text and stays inside the composer');
+
             await openMenu();
             let m = await menu();
             assert.equal(m.open, true);

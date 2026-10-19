@@ -401,6 +401,7 @@ export function renderQuickActions() {
         <button class="btn-nav btn-enter btn-nav-key" data-on-click="cmd-raw-keys" data-keys="Enter" data-tooltip="Sends an Enter keypress to the terminal" aria-label="Enter">&#9166;</button>
     `;
 
+    const chipBar = document.getElementById("model-chip-bar"); // the toolbar's first item (model_chip.js owns it): kept, with its listeners, across the rebuild
     toolbar.innerHTML = `
         <div class="toolbar-group toolbar-group-modes">
             ${modeButtons}
@@ -440,6 +441,7 @@ export function renderQuickActions() {
             </div>
         </div>
     `;
+    if (chipBar) toolbar.prepend(chipBar);
 }
 
 // Map tmux key names to raw terminal sequences for WebSocket input

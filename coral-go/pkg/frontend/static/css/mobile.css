@@ -407,8 +407,17 @@
         padding-bottom: 0;
     }
 
-    /* Hide toolbar (macros, nav keys, mode buttons) on mobile */
+    /* Hide the toolbar's buttons (macros, nav keys, mode buttons) on mobile; the model chip stays, as a row under the input (#5116) */
+    .command-pane-toolbar > :not(.model-chip-bar) {
+        display: none !important;
+    }
     .command-pane-toolbar {
+        order: 1;
+        padding: 4px 8px 8px;
+        border-bottom: none;
+        min-height: 0;
+    }
+    .command-pane-toolbar:not(:has(> .model-chip-bar:not([hidden]))) {
         display: none !important;
     }
 
