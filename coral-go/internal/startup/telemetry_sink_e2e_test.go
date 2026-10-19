@@ -3,7 +3,9 @@
 package startup
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,11 +13,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,6 +50,23 @@ func telemetryModuleRoot(t *testing.T) string {
 	}
 }
 
+// telemetryRun is one start of the dev binary: what the fake sink captured, whether the server answered,
+// and the isolated paths, so values can be checked for them.
+type telemetryRun struct {
+	events []capturedEvent
+	up     bool
+	iso    string
+	home   string
+}
+
+// allowedEventProps are the property keys an install-time event may carry: the standard properties
+// (events.StandardProperties). Anything else on install, app_opened,
+// upgrade or installation_active_week is a new thing sent about a user and must be added here on purpose.
+var allowedEventProps = map[string]bool{
+	"version": true, "edition": true, "os": true, "arch": true, "platform": true,
+	"schema_version": true, "run_id": true, "entrypoint": true,
+}
+
 func TestTelemetrySinkE2E(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds and runs a dev coral binary")
@@ -58,7 +79,8 @@ func TestTelemetrySinkE2E(t *testing.T) {
 	}
 
 	// run starts the dev binary against a fresh fake sink and returns the events captured within the deadline.
-	run := func(t *testing.T, extraEnv []string) []capturedEvent {
+	// seed, when set, writes settings into the data dir's database before the server starts.
+	run := func(t *testing.T, extraEnv []string, seed func(ctx context.Context, ss *store.SessionStore)) telemetryRun {
 		var mu sync.Mutex
 		var events []capturedEvent
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +120,13 @@ func TestTelemetrySinkE2E(t *testing.T) {
 		for _, b := range []string{"claude", "codex", "pi", "agy", "antigravity", "gemini", "tmux"} {
 			require.NoError(t, os.WriteFile(filepath.Join(stubs, b), []byte("#!/bin/sh\necho 1.0.0\n"), 0o700))
 		}
+		if seed != nil {
+			ctx := context.Background()
+			db, err := store.OpenWithKey(ctx, filepath.Join(data, "sessions.db"), "")
+			require.NoError(t, err)
+			seed(ctx, store.NewSessionStore(db))
+			require.NoError(t, db.Close())
+		}
 		port := freePort(t)
 		cmd := exec.Command(bin, "--host", "127.0.0.1", "--port", strconv.Itoa(port), "--no-browser", "--cloud-url", "off")
 		cmd.Env = append([]string{
@@ -118,9 +147,11 @@ func TestTelemetrySinkE2E(t *testing.T) {
 
 		deadline := time.Now().Add(30 * time.Second)
 		base := "http://127.0.0.1:" + strconv.Itoa(port) + "/"
+		up := false
 		for time.Now().Before(deadline) { // the server is up
 			if resp, err := http.Get(base); err == nil {
 				resp.Body.Close()
+				up = true
 				break
 			}
 			time.Sleep(200 * time.Millisecond)
@@ -142,39 +173,64 @@ func TestTelemetrySinkE2E(t *testing.T) {
 		for time.Now().Before(deadline) && !has() {
 			time.Sleep(200 * time.Millisecond)
 		}
-		// With the opt-out, nothing should ever arrive: wait a fixed moment so a stray send would be caught.
-		if len(extraEnv) > 0 {
+		// With an opt-out, nothing should ever arrive: wait a fixed moment so a stray send would be caught.
+		if len(extraEnv) > 0 || seed != nil {
 			time.Sleep(4 * time.Second)
 		}
 		mu.Lock()
 		defer mu.Unlock()
 		out := make([]capturedEvent, len(events))
 		copy(out, events)
-		return out
+		return telemetryRun{events: out, up: up, iso: iso, home: home}
 	}
 
 	// Case A: a plain dev build sends install and app_opened with the safe standard properties, no 'internal'.
-	got := run(t, nil)
+	plain := run(t, nil, nil)
+	require.True(t, plain.up, "the server answered, so the sends below come from a running Coral")
 	names := map[string]bool{}
-	for _, e := range got {
+	for _, e := range plain.events {
 		names[e.event] = true
 	}
 	require.True(t, names["install"], "install was sent (got %v)", names)
 	require.True(t, names["app_opened"], "app_opened was sent (got %v)", names)
-	for _, e := range got {
+	hostname, _ := os.Hostname()
+	for _, e := range plain.events {
 		assert.Equal(t, "dev-test-sink", e.apiKey, "%s carries the dev test key, so it is the keyed path", e.event)
 		assert.NotEmpty(t, e.distinctID, "%s has a distinct_id", e.event)
 		for _, k := range []string{"version", "edition", "os", "arch", "platform", "schema_version", "run_id", "entrypoint"} {
 			assert.Contains(t, e.props, k, "%s carries the standard property %s", e.event, k)
 		}
 		assert.NotContains(t, e.props, "internal", "%s has no 'internal' property (there is no internal concept in the repo)", e.event)
+		// Nothing that identifies anyone: only allowlisted keys, and no value holds a local path or the host name.
+		for k, v := range e.props {
+			assert.True(t, allowedEventProps[k], "%s carries property %q, which is not in the allowlist of safe properties", e.event, k)
+			val := fmt.Sprint(v)
+			for _, secret := range []string{plain.home, plain.iso, hostname} {
+				if len(secret) >= 3 {
+					assert.False(t, strings.Contains(val, secret), "%s property %q holds a local path or the host name", e.event, k)
+				}
+			}
+		}
+		assert.False(t, strings.Contains(e.distinctID, plain.home) || (len(hostname) >= 3 && strings.Contains(e.distinctID, hostname)), "%s distinct_id is not derived in the clear from a path or host name", e.event)
 	}
 
-	// Case B: with the opt-out, the same dev build sends nothing.
-	optOut := run(t, []string{"CORAL_TELEMETRY_DISABLED=1"})
-	var optNames []string
-	for _, e := range optOut {
-		optNames = append(optNames, e.event)
+	// Case B: with the env opt-out, the same dev build sends nothing.
+	optOut := run(t, []string{"CORAL_TELEMETRY_DISABLED=1"}, nil)
+	require.True(t, optOut.up, "the server answered in the opt-out run, so nothing sent is not just a server that never started")
+	assert.Empty(t, eventNames(optOut.events), "with CORAL_TELEMETRY_DISABLED a dev build sends nothing")
+
+	// Case C: with the saved Settings opt-out (telemetry_enabled=false) and no env var, it sends nothing either.
+	saved := run(t, nil, func(ctx context.Context, ss *store.SessionStore) {
+		require.NoError(t, ss.SetSetting(ctx, "telemetry_enabled", "false"))
+	})
+	require.True(t, saved.up, "the server answered in the saved-setting run")
+	assert.Empty(t, eventNames(saved.events), "with telemetry_enabled=false saved a dev build sends nothing")
+}
+
+func eventNames(events []capturedEvent) []string {
+	var names []string
+	for _, e := range events {
+		names = append(names, e.event)
 	}
-	assert.Empty(t, optOut, "with CORAL_TELEMETRY_DISABLED a dev build sends nothing (got %v)", optNames)
+	return names
 }

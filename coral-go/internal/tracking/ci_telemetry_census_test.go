@@ -54,7 +54,6 @@ var startsCoral = regexp.MustCompile(`coral-tray|coral-board|coral-agent|launch-
 // the flag.
 var notAStarter = map[string]string{
 	// Build / generate / download tools: they build or fetch, they do not run Coral.
-	"tools/build_macos.sh":             "builds the macOS app (does not run it)",
 	"tools/build_windows.ps1":          "builds the Windows binaries",
 	"tools/gen_route_queries.py":       "code generator",
 	"tools/gen_windows_resources.sh":   "resource generator",
@@ -70,29 +69,51 @@ var notAStarter = map[string]string{
 	"tests/stress/agent_task_assignment.sh":   "sourced by run_agent_tasks.sh",
 	"tests/stress/agent_task_workflows.sh":    "sourced by run_agent_tasks.sh",
 	"tests/stress/personal_task_workflows.sh": "sourced by run_agent_tasks.sh",
-	"tests/lib/agent_env.sh":                  "a sourced helper, not a runner",
 	// Load generators and node helpers that reference run_cdp_suites/coral in strings but do not start one.
 	"tests/perf/load.py":                               "drives an already-running server; does not start Coral",
-	"tests/perf/scale_load.py":                         "drives an already-running server; does not start Coral",
-	"tests/frontend/failing_output.mjs":                "formats runner output; names run_cdp_suites in text",
-	"tests/frontend/suites.mjs":                        "classifies suites; names run_cdp_suites in text",
-	"tests/frontend/update_suite_durations.mjs":        "writes suite_durations.json; names run_cdp_suites in text",
 	"tests/frontend/remote_browse.test.mjs":            "a node unit test; does not start a server",
 	"tests/frontend/team_artifacts_copy_link.test.mjs": "a node unit test; does not start a server",
 	"tests/frontend/run_runner_folder_loss.mjs":        "a node helper; names run_cdp_suites in text",
 }
 
+// runnerExts are the file types the runner census reads under tests/ and tools/.
+var runnerExts = map[string]bool{".sh": true, ".mjs": true, ".py": true, ".ps1": true, ".bat": true, ".cmd": true}
+
+// disableAssign is an assignment of CORAL_TELEMETRY_DISABLED to a true value in any of the forms the
+// runners use: export X=1, X=1 cmd, $env:X = "1", process.env.X = '1', os.environ["X"] = "1", X: "1".
+var disableAssign = regexp.MustCompile(`(?i)CORAL_TELEMETRY_DISABLED["'\]]*\s*[:=]\s*["']?(1|true|yes|on)\b`)
+
+// codeLines is the file without its comment-only and blank lines, so a flag named in a comment (or
+// assigned =0) does not satisfy the census.
+func codeLines(content string) []string {
+	var out []string
+	for _, line := range strings.Split(content, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "REM ") || strings.HasPrefix(strings.ToLower(t), "rem ") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// setsDisable reports whether a non-comment line assigns CORAL_TELEMETRY_DISABLED a true value.
+func setsDisable(content string) bool {
+	for _, line := range codeLines(content) {
+		if disableAssign.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestCIRunnersThatStartCoralDisableTelemetry(t *testing.T) {
 	root := repoRoot(t)
-	var offenders []string
+	var offenders, starters []string
+	matchedNotAStarter := map[string]bool{}
 	for _, base := range []string{"tests", "tools"} {
 		_ = filepath.WalkDir(filepath.Join(root, base), func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
-				return nil
-			}
-			switch filepath.Ext(p) {
-			case ".sh", ".mjs", ".py", ".ps1":
-			default:
+			if err != nil || d.IsDir() || !runnerExts[filepath.Ext(p)] {
 				return nil
 			}
 			rel := filepath.ToSlash(mustRel(root, p))
@@ -105,26 +126,54 @@ func TestCIRunnersThatStartCoralDisableTelemetry(t *testing.T) {
 				return nil
 			}
 			if _, ok := notAStarter[rel]; ok {
+				matchedNotAStarter[rel] = true
 				return nil
 			}
-			if !strings.Contains(string(b), "CORAL_TELEMETRY_DISABLED") {
+			starters = append(starters, rel)
+			if !setsDisable(string(b)) {
 				offenders = append(offenders, rel)
 			}
 			return nil
 		})
 	}
 	for _, o := range offenders {
-		t.Errorf("%s starts a Coral but does not set/export CORAL_TELEMETRY_DISABLED (add it, or if it does not start a sender, add it to notAStarter with a reason)", o)
+		t.Errorf("%s starts a Coral but does not assign CORAL_TELEMETRY_DISABLED a true value on a non-comment line (add it, or if it does not start a sender, add it to notAStarter with a reason)", o)
+	}
+
+	// A floor, so a changed regex or moved directory cannot make discovery find nothing and pass.
+	under := func(prefix string) (n int) {
+		for _, s := range starters {
+			if strings.HasPrefix(s, prefix) {
+				n++
+			}
+		}
+		return n
+	}
+	if len(starters) < minStarters || under("tests/stress/") < minStressStarters || under("tests/release/") < minReleaseStarters {
+		t.Errorf("discovery found %d Coral-starting runners (%d in tests/stress, %d in tests/release); expected at least %d, %d, %d: the census may have gone blind (a changed regex or a moved directory)",
+			len(starters), under("tests/stress/"), under("tests/release/"), minStarters, minStressStarters, minReleaseStarters)
+	}
+
+	// notAStarter must not rot into a blanket allowlist: every entry still exists and still matches.
+	for rel := range notAStarter {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err != nil {
+			t.Errorf("notAStarter lists %s, which no longer exists: remove the entry", rel)
+		} else if !matchedNotAStarter[rel] {
+			t.Errorf("notAStarter lists %s, which no longer matches startsCoral: remove the entry", rel)
+		}
 	}
 }
 
+// Floors for the discovery census, set below today's counts so ordinary churn does not trip them.
+const (
+	minStarters        = 15
+	minStressStarters  = 5
+	minReleaseStarters = 3
+)
+
 // startsCoralLine reports whether any non-comment line runs a Coral.
 func startsCoralLine(content string) bool {
-	for _, line := range strings.Split(content, "\n") {
-		t := strings.TrimSpace(line)
-		if t == "" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//") || strings.HasPrefix(t, "*") {
-			continue
-		}
+	for _, line := range codeLines(content) {
 		if startsCoral.MatchString(line) {
 			return true
 		}
@@ -134,15 +183,18 @@ func startsCoralLine(content string) bool {
 
 func mustRel(root, p string) string { r, _ := filepath.Rel(root, p); return r }
 
-// artifactRunnerWorkflows run a published or keyed Coral binary (the release build, or the published
-// runner warmed/verified). Each must set the opt-out at its top-level env. Add a workflow here if it
-// starts running a release/published Coral.
-var artifactRunnerWorkflows = map[string]bool{
-	"release.yml":                 true,
-	"standard-runtime-verify.yml": true,
-	"windows-runner-dryrun.yml":   true,
-	"linux-runner-dryrun.yml":     true,
-	"release-cache-warm.yml":      true,
+// noCoralWorkflows are the workflows that run no Coral binary and bake no key (docs, formatting, vulnerability
+// and audit scans, the SQLCipher amalgamation, the hub impact check, and the keyless from-source encryption
+// verify). Every OTHER workflow must set the opt-out, so a new workflow that runs a published or keyed Coral
+// is caught without being listed. Add a workflow here only when it runs no Coral.
+var noCoralWorkflows = map[string]string{
+	"docs.yml":                   "docs only",
+	"gofmt.yml":                  "formatting check",
+	"govulncheck.yml":            "vulnerability scan",
+	"frontend-audit.yml":         "npm audit",
+	"sqlcipher-amalgamation.yml": "builds the SQLCipher amalgamation",
+	"hub-impact.yml":             "reports hub impact; runs no Coral",
+	"encryption-verify.yml":      "verifies a from-source (keyless) bundle",
 }
 
 var keyRef = regexp.MustCompile(`POSTHOG_PROJECT_KEY|config\.PostHogKey`)
@@ -154,26 +206,33 @@ type ciWorkflow struct {
 	} `yaml:"jobs"`
 }
 
-func TestCIWorkflowsWithAKeyedCoralDisableTelemetry(t *testing.T) {
+func TestCIWorkflowsDisableTelemetry(t *testing.T) {
 	root := repoRoot(t)
 	dir := filepath.Join(root, ".github", "workflows")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	seen := map[string]bool{}
+	checked := 0
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !(strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")) {
 			continue
 		}
+		seen[name] = true
 		raw, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
 			continue
 		}
-		if !keyRef.Match(raw) && !artifactRunnerWorkflows[name] {
-			continue // a from-source build carries no key and sends nothing
+		if _, ok := noCoralWorkflows[name]; ok {
+			if keyRef.Match(raw) {
+				t.Errorf("%s is in noCoralWorkflows but bakes the PostHog key: remove it from the list and set CORAL_TELEMETRY_DISABLED", name)
+			}
+			continue
 		}
+		checked++
 		var wf ciWorkflow
 		if err := yaml.Unmarshal(raw, &wf); err != nil {
 			t.Errorf("%s: parse: %v", name, err)
@@ -190,7 +249,15 @@ func TestCIWorkflowsWithAKeyedCoralDisableTelemetry(t *testing.T) {
 			}
 		}
 		if !ok {
-			t.Errorf("%s builds or runs a keyed Coral but does not set CORAL_TELEMETRY_DISABLED=1 at its top-level env (nor in every job); CI could send real events", name)
+			t.Errorf("%s is not in noCoralWorkflows and does not set CORAL_TELEMETRY_DISABLED=1 at its top-level env (nor in every job); CI could send real events", name)
 		}
+	}
+	for name := range noCoralWorkflows {
+		if !seen[name] {
+			t.Errorf("noCoralWorkflows lists %s, which no longer exists: remove the entry", name)
+		}
+	}
+	if checked < 8 {
+		t.Errorf("only %d workflows were checked; expected at least 8: the census may have gone blind", checked)
 	}
 }
