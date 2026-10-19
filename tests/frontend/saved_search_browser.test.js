@@ -99,11 +99,11 @@ async function run() {
             s = await snap();
             check(`${dev}: nothing scrolls sideways`, s.over <= 0, String(s.over));
         }
-        for (const it of (await api('GET', '/api/saved')).body.items) await api('DELETE', `/api/saved/${it.id}`);
         check('no page exceptions', exceptions.length === 0, exceptions.join(' | '));
     } catch (e) {
         check('test ran', false, e.stack || String(e));
     } finally {
+        await require('./helpers/saved_cleanup').clearSaved(api).catch(() => {}); // the bookmarks this suite saved are taken off again whichever way it ended (#4916, #5083)
         await client.close();
     }
     const failed = results.filter(r => r === 'FAIL').length;

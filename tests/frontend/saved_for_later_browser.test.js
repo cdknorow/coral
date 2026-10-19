@@ -323,10 +323,9 @@ const hex = i => i.toString(16).padStart(20, '0');
 
         await Emulation.setTouchEmulationEnabled({ enabled: false });
         await Emulation.clearDeviceMetricsOverride();
-        for (const it of (await saved()).items) await api('DELETE', `/api/saved/${it.id}`);
-
         console.log('\nAll Save for Later checks passed');
     } finally {
+        await require('./helpers/saved_cleanup').clearSaved(api).catch(() => {}); // the bookmarks this suite saved are taken off again whichever way it ended (#4916, #5083)
         await removeBoards(ev, [BOARD]);
         await client.close();
     }
