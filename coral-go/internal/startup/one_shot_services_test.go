@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,12 +18,22 @@ import (
 // safego.Go.
 var runOnceJobs = map[string]bool{"AutoWakeAfterRestart": true}
 
-// TestRunOnceJobsAreNotRestartedServices reads startup.go: no run-once job is started by safeGo or
+// TestRunOnceJobsAreNotRestartedServices reads the startup files (startup.go and the startup_*.go split from it): no run-once job is started by safeGo or
 // safego.Loop, and the after-restart wake is started by safego.Restart.
 func TestRunOnceJobsAreNotRestartedServices(t *testing.T) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "startup.go", nil, 0)
+	paths, err := filepath.Glob("startup*.go")
 	require.NoError(t, err)
+	var files []*ast.File
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, path, nil, 0)
+		require.NoError(t, err)
+		files = append(files, f)
+	}
+	require.NotEmpty(t, files)
 	calls := func(n ast.Node) map[string]bool {
 		got := map[string]bool{}
 		ast.Inspect(n, func(n ast.Node) bool {
@@ -46,22 +58,24 @@ func TestRunOnceJobsAreNotRestartedServices(t *testing.T) {
 		return ""
 	}
 	restarted := map[string]bool{}
-	ast.Inspect(f, func(n ast.Node) bool {
-		c, ok := n.(*ast.CallExpr)
-		if !ok {
+	for _, f := range files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			c, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch s := starter(c); s {
+			case "safeGo", "safego.Loop":
+				for job := range calls(c) {
+					t.Errorf("%s: %s is a run-once job started by %s, which restarts it whenever it returns", fset.Position(c.Pos()), job, s)
+				}
+			case "safego.Restart", "safego.Go":
+				for job := range calls(c) {
+					restarted[job] = true
+				}
+			}
 			return true
-		}
-		switch s := starter(c); s {
-		case "safeGo", "safego.Loop":
-			for job := range calls(c) {
-				t.Errorf("%s: %s is a run-once job started by %s, which restarts it whenever it returns", fset.Position(c.Pos()), job, s)
-			}
-		case "safego.Restart", "safego.Go":
-			for job := range calls(c) {
-				restarted[job] = true
-			}
-		}
-		return true
-	})
+		})
+	}
 	assert.True(t, restarted["AutoWakeAfterRestart"], "the after-restart wake starts with safego.Restart (or Go)")
 }
