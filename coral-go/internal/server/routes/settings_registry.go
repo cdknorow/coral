@@ -149,6 +149,7 @@ var settingRegistry = map[string]settingSpec{
 	AgentLaunchLimitSetting:           generic(intSetting(0, 100_000, false)), // the live agents an agent token may add (#4602); 0 is none
 	"telemetry_enabled":               generic(boolSetting),
 	"board_auto_attach":               generic(boolSetting),
+	ArtifactCommentsHubWriteSetting:   generic(boolSetting), // #5176: Coral Hub viewers may comment (off)
 	inputlog.SettingKey:               generic(boolSetting),
 	"remote_access_enabled":           generic(boolSetting),
 	"refresh_files_on_switch":         generic(boolSetting),
@@ -209,6 +210,7 @@ var settingRegistry = map[string]settingSpec{
 
 	// Coral's own.
 	retentionEnabledAtKey:          {class: settingCoral},
+	ArtifactCommentsOwnerIDSetting: {class: settingCoral}, // #5176: the install's random owner id for comments
 	ArtifactStoreAutoRaisedSetting: {class: settingCoral},
 	retentionSeenDaysKey:           {class: settingCoral},
 	RetentionLastKey:               {class: settingCoral},

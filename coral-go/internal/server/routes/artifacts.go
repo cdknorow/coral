@@ -693,6 +693,7 @@ func (h *SessionsHandler) deleteAgentArtifact(w http.ResponseWriter, r *http.Req
 	if h.db != nil { // an explicit delete also drops the Operator's keep mark (#3554)
 		_, _ = h.db.ExecContext(r.Context(), "DELETE FROM artifact_keep WHERE hex = ?", id)
 	}
+	h.dropArtifactComments(r.Context(), id) // and the comments on it (#5176)
 	slog.Info("[artifacts] deleted by the Operator", "digest", id, "bytes", freed, "upload_records", removed)
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "bytes": freed})
 }

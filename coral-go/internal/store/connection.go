@@ -413,6 +413,37 @@ CREATE TABLE IF NOT EXISTS saved_messages (
 	UNIQUE (kind, ref, msg_key)
 );
 
+-- Comments on an artifact (#5176): a comment belongs to that exact artifact id (content-addressed, so its text never changes). parent_id is one level of replies. anchor_json is the
+-- quote, its context and line range (or whole-document), kept as sent. The author is (author_issuer, author_subject): who vouches for the identity and who it is, so ownership is one
+-- comparison: 'local' and the local user for the owner not signed in to Coral Hub, the hub's origin and its account for a hub identity (today a hub viewer's hub-user id), an agent's
+-- session for an agent; author_kind is owner, hub or agent and author_name an optional display name (text, capped, empty until the hub sends one).
+-- A deleted comment is a tombstone (deleted_at, an empty body) so its replies keep their place. The owner's lock switch is per artifact or per board (artifact_comment_locks).
+CREATE TABLE IF NOT EXISTS artifact_comments (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	artifact_id TEXT NOT NULL,
+	board       TEXT NOT NULL DEFAULT '',
+	parent_id   INTEGER,
+	anchor_json TEXT NOT NULL DEFAULT '',
+	body        TEXT NOT NULL,
+	author_issuer  TEXT NOT NULL,
+	author_subject TEXT NOT NULL,
+	author_name    TEXT NOT NULL DEFAULT '',
+	author_kind    TEXT NOT NULL,
+	created_at  TEXT NOT NULL,
+	edited_at   TEXT,
+	resolved_by_issuer  TEXT,
+	resolved_by_subject TEXT,
+	resolved_at TEXT,
+	deleted_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_artifact_comments_artifact ON artifact_comments(artifact_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_artifact_comments_parent ON artifact_comments(parent_id);
+CREATE TABLE IF NOT EXISTS artifact_comment_locks (
+	scope TEXT NOT NULL,
+	key   TEXT NOT NULL,
+	PRIMARY KEY (scope, key)
+);
+
 CREATE TABLE IF NOT EXISTS session_index (
 	session_id      TEXT PRIMARY KEY,
 	source_type     TEXT NOT NULL,

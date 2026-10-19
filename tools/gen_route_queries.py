@@ -56,6 +56,9 @@ EXTRA = {
     # The artifact route is registered by SessionsHandler.RegisterAgentArtifacts (not followed by the scan above). Since v1.4.12
     # (#3168) every artifact link is /api/artifacts/<digest>?v=2; the handler reads v and accepts only absent or 2 (#3179).
     'GET /api/artifacts/{}': {'v'},
+    # The comments on an artifact (#5176), registered by SessionsHandler.RegisterArtifactComments (not followed by the scan above):
+    # listArtifactComments reads the thread state filter and the board a lock is read for.
+    'GET /api/artifacts/{}/comments': {'state', 'board'},
 }
 
 # Parameters a handler reads that Coral Hub never sends, refused through the tunnel (#3942, agreed with coral-hub):

@@ -1,5 +1,7 @@
 DELETE /api/agent/ui/{id} never
 DELETE /api/artifacts/{id} never
+DELETE /api/artifacts/{id}/comments/lock never
+DELETE /api/artifacts/{id}/comments/{cid} never
 DELETE /api/artifacts/{id}/keep never
 DELETE /api/auth/sessions/{id} never
 DELETE /api/board/remotes never
@@ -39,6 +41,7 @@ GET /api/agent/ui/{id}/content view
 GET /api/agent/ui/{id}/events view
 GET /api/agents/models launch
 GET /api/artifacts/{id} view
+GET /api/artifacts/{id}/comments view
 GET /api/auth/hub-origins never
 GET /api/auth/hub-signin never
 GET /api/auth/sessions never
@@ -191,6 +194,7 @@ GET /api/workflows/{workflowID}/runs view
 GET /ws/coral view
 GET /ws/terminal/{name} view
 PATCH /api/agent/tasks/{taskID} never
+PATCH /api/artifacts/{id}/comments/{cid} never
 PATCH /api/board/{project} never
 PATCH /api/board/{project}/tasks/{taskID} interact
 PATCH /api/board/{project}/tasks/{taskID}/amend interact
@@ -210,6 +214,9 @@ POST /api/agents/models/refresh never
 POST /api/artifacts/prune never
 POST /api/artifacts/received/unlisted/delete never
 POST /api/artifacts/retention/ack never
+POST /api/artifacts/{id}/comments never
+POST /api/artifacts/{id}/comments/{cid}/reopen never
+POST /api/artifacts/{id}/comments/{cid}/resolve never
 POST /api/auth/hub-signin/dismiss never
 POST /api/auth/password/change never
 POST /api/auth/password/reset never
@@ -324,6 +331,7 @@ POST /api/workflows/by-name/{name}/trigger launch
 POST /api/workflows/runs/{runID}/kill interact
 POST /api/workflows/{workflowID}/trigger launch
 PUT /api/agent/ui/{id} never
+PUT /api/artifacts/{id}/comments/lock never
 PUT /api/artifacts/{id}/keep never
 PUT /api/auth/hub-origins never
 PUT /api/auth/hub-signin never

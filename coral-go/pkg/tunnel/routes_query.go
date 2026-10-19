@@ -14,6 +14,7 @@ var routeQueries = map[string]string{
 	"GET /api/agent/ui/{}/events":                 "after,session_id",
 	"GET /api/agents/models":                      "type",
 	"GET /api/artifacts/{}":                       "v=2",
+	"GET /api/artifacts/{}/comments":              "board,state",
 	"GET /api/board/tasks":                        "assigned_to,board,created_by,created_since,cursor,fields,limit,order,parked,priority,q,sort,status,updated_since,verification",
 	"GET /api/board/{}/artifacts":                 "board,by,cursor,kept,kind,limit,offset,origin,q,session_id,since,sort,until",
 	"GET /api/board/{}/messages":                  "all,limit,subscriber_id",

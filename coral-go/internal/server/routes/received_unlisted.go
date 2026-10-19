@@ -115,5 +115,6 @@ func (h *SessionsHandler) deleteUnlistedReceived(ctx context.Context, id string,
 	if !found {
 		return 0, false, "already gone"
 	}
+	h.dropArtifactComments(ctx, id)
 	return freed, true, ""
 }

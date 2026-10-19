@@ -6,6 +6,8 @@
 b CONNECT /api/remote/{server}/*
 a DELETE /api/agent/ui/{id}
 b DELETE /api/artifacts/{id}
+b DELETE /api/artifacts/{id}/comments/lock
+b DELETE /api/artifacts/{id}/comments/{cid}
 b DELETE /api/artifacts/{id}/keep
 b DELETE /api/auth/sessions/{id}
 b DELETE /api/board/remotes
@@ -47,6 +49,7 @@ a GET /api/agent/ui/{id}/content
 a GET /api/agent/ui/{id}/events
 b GET /api/agents/models
 a GET /api/artifacts/{id}
+a GET /api/artifacts/{id}/comments
 b GET /api/auth/hub-origins
 b GET /api/auth/hub-signin
 b GET /api/auth/sessions
@@ -203,6 +206,7 @@ b GET /ws/terminal/{name}
 b HEAD /api/remote/{server}/*
 b OPTIONS /api/remote/{server}/*
 a PATCH /api/agent/tasks/{taskID}
+b PATCH /api/artifacts/{id}/comments/{cid}
 b PATCH /api/board/{project}
 a PATCH /api/board/{project}/tasks/{taskID}
 a PATCH /api/board/{project}/tasks/{taskID}/amend
@@ -224,6 +228,9 @@ b POST /api/agents/models/refresh
 b POST /api/artifacts/prune
 b POST /api/artifacts/received/unlisted/delete
 b POST /api/artifacts/retention/ack
+b POST /api/artifacts/{id}/comments
+b POST /api/artifacts/{id}/comments/{cid}/reopen
+b POST /api/artifacts/{id}/comments/{cid}/resolve
 b POST /api/auth/hub-signin/dismiss
 b POST /api/auth/password/change
 b POST /api/auth/password/reset
@@ -341,6 +348,7 @@ b POST /api/workflows/by-name/{name}/trigger
 b POST /api/workflows/runs/{runID}/kill
 b POST /api/workflows/{workflowID}/trigger
 a PUT /api/agent/ui/{id}
+b PUT /api/artifacts/{id}/comments/lock
 b PUT /api/artifacts/{id}/keep
 b PUT /api/auth/hub-origins
 b PUT /api/auth/hub-signin

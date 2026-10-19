@@ -88,11 +88,18 @@ var operatorOnlyRoutes = map[string]string{
 	// #3553: the Operator removes an artifact (also refused to anyone but a person, in every mode).
 	"DELETE /api/artifacts/{id}": "delete an artifact",
 	// #3554: pruning, and the keep mark that protects an artifact from it.
-	"POST /api/artifacts/retention/ack":            "acknowledge artifact retention",
-	"POST /api/artifacts/prune":                    "prune artifacts",
-	"PUT /api/artifacts/{id}/keep":                 "keep an artifact",
-	"POST /api/artifacts/received/unlisted/delete": "delete received files no board lists",
-	"DELETE /api/artifacts/{id}/keep":              "release a kept artifact",
+	"POST /api/artifacts/retention/ack":               "acknowledge artifact retention",
+	"POST /api/artifacts/prune":                       "prune artifacts",
+	"PUT /api/artifacts/{id}/keep":                    "keep an artifact",
+	"POST /api/artifacts/{id}/comments":               "comment on an artifact",
+	"PATCH /api/artifacts/{id}/comments/{cid}":        "edit a comment on an artifact",
+	"DELETE /api/artifacts/{id}/comments/{cid}":       "delete a comment on an artifact",
+	"POST /api/artifacts/{id}/comments/{cid}/resolve": "resolve a comment thread",
+	"POST /api/artifacts/{id}/comments/{cid}/reopen":  "reopen a comment thread",
+	"PUT /api/artifacts/{id}/comments/lock":           "lock the comments on an artifact",
+	"DELETE /api/artifacts/{id}/comments/lock":        "unlock the comments on an artifact",
+	"POST /api/artifacts/received/unlisted/delete":    "delete received files no board lists",
+	"DELETE /api/artifacts/{id}/keep":                 "release a kept artifact",
 	// #4512 (Security's #4508 H2 and the class-c routes beside it; a grep of coral-board, coral-agent, the hooks
 	// and the mock agent found no agent-side use of any of them): the terminal stream (and with it typing into and
 	// resizing any agent's terminal), turning every agent's auto-accept off, the dashboard's file upload and

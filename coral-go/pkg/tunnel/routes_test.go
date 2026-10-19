@@ -785,3 +785,27 @@ func TestRefused429UpgradeCarriesItsRetryAfterToTheHub(t *testing.T) {
 		}
 	}
 }
+
+// The comments on an artifact (#5176) are reachable through the hub for reading only: GET (and HEAD) at view with the two queries its handler reads; every write, the owner's lock and any
+// other query are refused whatever the mode, until Coral Hub settles a stable user identity and the write routes are listed deliberately.
+func TestArtifactCommentsRoutesAreReadOnlyThroughTheHub(t *testing.T) {
+	hex := strings.Repeat("ab", 32)
+	base := "/api/artifacts/" + hex + "/comments"
+	assert.Equal(t, TierView, Classify("GET", base, ""))
+	assert.Equal(t, TierView, Classify("GET", base, "state=open&board=team-a"))
+	assert.Equal(t, TierView, Classify("HEAD", base, "state=resolved"))
+	assert.Equal(t, TierNever, Classify("GET", base, "state=open&evil=1"), "a query the handler does not read")
+	assert.Equal(t, TierNever, Classify("GET", base, "author=x"))
+	for _, c := range []struct{ method, path string }{
+		{"POST", base}, {"PATCH", base + "/7"}, {"DELETE", base + "/7"}, {"POST", base + "/7/resolve"}, {"POST", base + "/7/reopen"}, {"PUT", base + "/lock"}, {"DELETE", base + "/lock"},
+		{"PUT", base}, {"POST", base + "/lock"},
+	} {
+		for _, mode := range []Tier{TierView, TierInteract, TierLaunch} {
+			assert.False(t, AllowRequest(func() Mode { return mode })(c.method, c.path, ""), c.method+" "+c.path+" at "+mode.String())
+		}
+		assert.Equal(t, TierNever, Classify(c.method, c.path, ""), c.method+" "+c.path)
+	}
+	for _, bad := range []string{"/api/artifacts/" + hex[:63] + "/comments", "/api/artifacts/" + strings.ToUpper(hex) + "/comments", base + "/", base + "/7", "/api/artifacts/" + hex + "/comments/7/extra/more"} {
+		assert.Equal(t, TierNever, Classify("GET", bad, ""), bad+" is not a comments route")
+	}
+}

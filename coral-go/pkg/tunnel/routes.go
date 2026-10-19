@@ -211,6 +211,9 @@ var routeTable = cat(
 		// enforced by the {hex64} segment, and the only query is the link form v=2 (routes_query.go, #3179). Upload (POST /api/agent/artifacts) and
 		// the artifact list under /api/agent/ stay unlisted (never).
 		"/api/artifacts/{hex64}",
+		// The comments on an artifact (#5176): reads only, for every viewer tier (an agent's own artifact, so the same trust as the artifact). Writing, replying, resolving and the owner's lock are
+		// unlisted (never) from here: a hub viewer cannot comment until coral-hub settles a stable user identity, and the owner comments on this computer.
+		"/api/artifacts/{hex64}/comments",
 		// Agent UI (option B): the panel list, a panel's HTML (read as text and run in a sandbox by the dashboard) and its saved
 		// events. {uiid} is exactly the machine's panel id shape. Publishing and removing panels (PUT/DELETE) are the agent's own
 		// actions on its machine and stay unlisted (never).

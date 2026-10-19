@@ -1,0 +1,120 @@
+package routes
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"net/http"
+	"strings"
+	"sync"
+
+	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/pkg/tunnel"
+)
+
+// The caller of a comments route is derived HERE and nowhere else, and fails closed (#5176, Security's conditions): the author of a comment, the key of its rate limit and every
+// ownership check come from this function and never from the request body or a header the client chose.
+//
+//   - A request carrying the tunnel's stamp is never the owner, whatever else it carries (the operator's own credential included): with the authentic stamp it is a Coral Hub viewer, with
+//     a forged one it is refused outright.
+//   - X-Coral-Hub-User is read only on an authentic stamp, and only when it is exactly hub-user-<8 hex>; unstamped, the header is ignored. (The tunnel forwards it for these routes only
+//     once Coral Hub has settled a stable subject; until then a hub viewer is read-only and has no subject.)
+//   - An agent is the session its verified token names.
+//   - The owner is the person at this computer, as the saved messages already decide it (operatorOrKeyCaller), and is identified by ownerIdentity.
+
+// hubIssuer is the issuer stamped on a Coral Hub viewer's identity until the hub names its origin and a stable account (#5176): the subject then is today's hub-user id.
+const hubIssuer = "coral-hub"
+
+// commentOwnerIdentity names the owner for new comments: the account this Coral is signed in to Coral Hub with, when it has one (set by the server once the roll-up is on; nil until then), or
+// this computer's user. It is the one place the owner's (issuer, subject) comes from.
+type commentOwnerIdentity func(r *http.Request) (issuer, subject, name string)
+
+// ArtifactCommentsOwnerIDSetting holds the random id of this install's owner, the subject the owner's comments are stored under (Coral's own bookkeeping; no client writes it). It is never the
+// operating-system user name: that name must not reach a Coral Hub viewer or an agent, and an account renamed on the computer must not lose its own edit rights.
+const ArtifactCommentsOwnerIDSetting = "artifact_comments_owner_id"
+
+// ownerIdentity names the owner: the hook's answer when the server set one (the account this Coral is signed in to Coral Hub with, once that is turned on), else issuer "local" with this install's
+// random owner id, READ ONLY: a request that only reads must not write a row, so until the id exists the subject is empty (nothing is the owner's yet, so mine is false everywhere).
+// The writes that need an identity (a comment, a resolve) call keepOwnerSubject.
+func (h *SessionsHandler) ownerIdentity(r *http.Request) (issuer, subject, name string) {
+	if h.commentOwner != nil {
+		return h.commentOwner(r)
+	}
+	return "local", h.commentOwnerID(r.Context(), false), ""
+}
+
+// keepOwnerSubject gives an owner caller their install id, made and kept now if need be, for a write. If it cannot be kept the subject stays empty and the write is refused as unattributable.
+func (h *SessionsHandler) keepOwnerSubject(ctx context.Context, c *commentCaller) {
+	if c.Kind == commentCallerOwner && c.Subject == "" && h.commentOwner == nil {
+		c.Subject = h.commentOwnerID(ctx, true)
+	}
+}
+
+var commentOwnerIDMu sync.Mutex
+
+// commentOwnerID is the install's owner id; with create it is made and kept the first time it is needed. Empty means none yet (or none can be kept): an empty subject owns nothing.
+func (h *SessionsHandler) commentOwnerID(ctx context.Context, create bool) string {
+	commentOwnerIDMu.Lock()
+	defer commentOwnerIDMu.Unlock()
+	st, err := h.ss.GetSettings(ctx)
+	if err != nil {
+		return ""
+	}
+	if v := st[ArtifactCommentsOwnerIDSetting]; len(v) == 32 {
+		return v
+	}
+	if !create {
+		return ""
+	}
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	id := hex.EncodeToString(b)
+	if err := h.ss.SetSetting(ctx, ArtifactCommentsOwnerIDSetting, id); err != nil {
+		return ""
+	}
+	return id
+}
+
+// artifactCommentCaller is the single derivation. A false ok means the request is refused with the given status and code.
+func (h *SessionsHandler) artifactCommentCaller(r *http.Request) (c commentCaller, status int, code string) {
+	if r.Header.Get(tunnel.ViaHeader) != "" {
+		if !cloud.TunneledAuthentic(r) {
+			return commentCaller{}, http.StatusForbidden, "forged_tunnel_stamp"
+		}
+		c = commentCaller{Kind: commentCallerHub, Issuer: hubIssuer}
+		if u := r.Header.Get(tunnel.HubUserHeader); tunnel.ValidHubUser(u) {
+			c.Subject = u
+		}
+		return c, 0, ""
+	}
+	if owner, ok := VerifiedSession(r.Context()); ok && owner != nil {
+		return commentCaller{Kind: commentCallerAgent, Session: owner.SessionName, Issuer: "agent", Subject: owner.SessionID}, 0, ""
+	}
+	if r.Header.Get(store.SessionTokenHeader) != "" {
+		return commentCaller{}, http.StatusForbidden, "bad_agent_token"
+	}
+	if operatorOrKeyCaller(r) {
+		issuer, subject, name := h.ownerIdentity(r)
+		return commentCaller{Kind: commentCallerOwner, Issuer: issuer, Subject: subject, Name: cleanCommentName(name)}, 0, ""
+	}
+	return commentCaller{}, http.StatusForbidden, "sign_in_required"
+}
+
+// cleanCommentName is a display name as text: printable, one line, at most 32 characters. It is never an identity.
+func cleanCommentName(s string) string {
+	var b strings.Builder
+	n := 0
+	for _, r := range strings.TrimSpace(s) {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) || r == 0x200b || r == 0x200c || r == 0x200d || r == 0x2060 || r == 0xfeff || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069) {
+			continue
+		}
+		if n++; n > 32 {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}

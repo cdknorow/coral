@@ -776,6 +776,9 @@ func (h *SessionsHandler) deleteObjectIfStillUnused(ctx context.Context, coralDi
 	if !found {
 		return 0, false, nil
 	}
+	if err == nil {
+		h.dropArtifactComments(ctx, id)
+	}
 	return freed, err == nil, err
 }
 

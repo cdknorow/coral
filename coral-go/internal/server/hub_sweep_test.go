@@ -136,6 +136,9 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		if f[1] == "/api/artifacts/{id}" {
 			path = "/api/artifacts/" + artifactHex
 		}
+		if f[1] == "/api/artifacts/{id}/comments" { // the comments of that artifact (#5176)
+			path = "/api/artifacts/" + artifactHex + "/comments"
+		}
 		q := hubSweepQuery(f[1], sid)
 		rec := call(h, "GET", path+q, "", hub)
 		tried = append(tried, f[1]+" "+strconv.Itoa(rec.Code))
