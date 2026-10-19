@@ -96,6 +96,7 @@ function _enterAgent(name, agentType, sessionId, srv) {
         type: "live", name, server: srv, agent_type: agentType || null, session_id: sessionId || null,
         display_name: displayName || null, working_directory: workingDirectory || "",
         prompt: agentData?.prompt || "", model: agentData?.model || "",
+        thinking: agentData?.thinking || "", // the level it is set to: the Restart form shows it and keeps it (#5070)
         capabilities: agentData?.capabilities || null,
         board_project: agentData?.board_project || null,
         board_job_title: agentData?.board_job_title || null,

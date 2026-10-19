@@ -310,6 +310,9 @@ function _syncViewedSession(data) {
             state.currentSession.auto_name = s.auto_name || null;
             state.currentSession.summary = s.summary || null;
             state.currentSession.first_prompt = s.first_prompt || '';
+            // The model and level it runs now (a switch from the chip changes them): the Restart form starts from these, so a restart does not put back what the agent ran when it was chosen (#5070).
+            state.currentSession.model = s.model || '';
+            state.currentSession.thinking = s.thinking || '';
             const headerName = resolveSessionIdentity(s);
             const nameEl = document.getElementById("session-name");
             setText(nameEl, headerName);

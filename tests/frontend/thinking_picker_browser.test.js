@@ -115,13 +115,38 @@ const { connect } = require('./agent_view_harness');
         assert.equal(body.thinking, 'high');
         body = await restartPayload('');
         assert.equal(body.thinking, '', 'Default clears it');
-        // An agent that was started with a level shows it on the restart form, and the restart keeps it.
-        await ev(`T.state.currentSession.thinking = 'max'; true`);
-        await ev(`window.__restarts.length = 0; (async () => { await window.restartSession(); return true; })()`);
-        await waitFor(`!!document.querySelector('#restart-acf .acf-thinking') && document.querySelector('#restart-acf .acf-thinking').value === 'max'`, 'the restart form to show the level it started with', 5000);
-        await ev(`(() => { window.confirmRestart(); return true; })()`);
-        await waitFor(`window.__restarts.length === 1`, 'the restart request', 5000);
-        assert.equal((await ev(`window.__restarts[0]`)).thinking, 'max', 'the level it started with is kept');
+        // An agent that runs at a level shows it on the restart form, and the restart keeps it. The level and the model come from the agent's own row, as the app gets them (#5070): the
+        // session the page holds when the agent is chosen carries them, and the feed keeps them current, so a live switch from the chip is what the Restart form shows next (it used
+        // to show what the agent ran when it was chosen, never a level, and a restart would have gone back to that model).
+        const row = extra => ev(`(() => { const a = window.__m.agents['th-a-id']; T.ws.handleCoralMessage({ type: 'coral_diff', changed: [{ ...window.__m.entry(a), agent_type: 'claude', ...${JSON.stringify(extra)} }] }); return true; })()`);
+        await row({ model: 'opus-x', thinking: 'high', thinking_actual: 'high' });
+        await select('th-a');
+        assert.deepEqual(await ev(`[T.state.currentSession.model, T.state.currentSession.thinking]`), ['opus-x', 'high'], 'the session the page holds when an agent is chosen carries its model and level');
+        const openRestart = async () => {
+            await ev(`window.__restarts.length = 0; (async () => { await window.restartSession(); return true; })()`);
+            await waitFor(`!!document.querySelector('#restart-acf .acf-thinking-wrap') && !document.querySelector('#restart-acf .acf-thinking-wrap').hidden`, 'the restart form', 5000);
+            await waitFor(`document.querySelector('#restart-acf .acf-thinking').options.length > 1`, 'the levels in the restart form', 5000);
+        };
+        const shown = () => ev(`({ thinking: document.querySelector('#restart-acf .acf-thinking').value, model: document.querySelector('#restart-acf .acf-model').value })`);
+        const confirm = async () => { await ev(`(() => { window.confirmRestart(); return true; })()`); await waitFor(`window.__restarts.length === 1`, 'the restart request', 5000); return ev(`window.__restarts[0]`); };
+        await openRestart();
+        assert.deepEqual(await shown(), { thinking: 'high', model: 'opus-x' }, 'the restart form shows the level and model the agent runs');
+        body = await confirm();
+        assert.equal(body.thinking, 'high', 'the level it runs at is kept: ' + JSON.stringify(body));
+        assert.equal(body.model, 'opus-x');
+        // A switch made live (the chip): the row says the new model and level, and the next Restart starts from them, not from what the agent ran when it was chosen.
+        await row({ model: 'sonnet-x', thinking: 'medium', thinking_actual: 'medium' });
+        await openRestart();
+        assert.deepEqual(await shown(), { thinking: 'medium', model: 'sonnet-x' }, 'after a live switch the restart form shows the new model and level');
+        body = await confirm();
+        assert.equal(body.thinking, 'medium', 'a restart does not put the old level back: ' + JSON.stringify(body));
+        assert.equal(body.model, 'sonnet-x', 'nor the old model');
+        // An agent with no stored level shows Default and sends none.
+        await row({ model: 'sonnet-x', thinking: '', thinking_actual: 'high' });
+        await openRestart();
+        assert.equal((await shown()).thinking, '', 'no stored level: Default');
+        body = await confirm();
+        assert.equal('thinking' in body, false, 'and nothing is sent: ' + JSON.stringify(body));
         console.log('   ✓');
 
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
