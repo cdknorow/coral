@@ -8,7 +8,7 @@ import { sessionServer, sessionTeamKey, keyLabel, LOCAL_SERVER } from './server_
 import { serverLabel } from './launch_server.js';
 import { state } from './state.js';
 import { redrawLiveList } from './list_hooks.js';
-import { syncDisplayPanels, inListHeaders } from './display_panel.js';
+import { syncDisplayPanels, inListHeaders, isDisplayPanelOpen, DISPLAY_PANEL_OPEN } from './display_panel.js';
 
 const HOSTS = [['agent-list-bar', 'al'], ['mobile-agent-list-bar', 'alm']]; // the sidebar's and the phone's
 const bars = new Map(); // host element -> its bar
@@ -46,7 +46,13 @@ export const FILTER_CTX = {
 
 /** Called by every render of the list: the bars exist where their host does, offer the boards and machines there are now, and show the filters and the count.
  *  sessions: every agent the list has before any search or filter; matched: how many pass them. */
+// The bars are built when the Display panel is open (or was left open), not at load: they are two selects and a row of fields in a panel nobody has opened yet, and drawing
+// them cost 17 ms of the first render at a 4x slowdown (#4995). The summary line and the count dot do not need them.
+let lastArgs = null;
+document.addEventListener(DISPLAY_PANEL_OPEN, () => { if (lastArgs) { sigs.clear(); syncAgentListBars(...lastArgs); } });
+
 export function syncAgentListBars(sessions, matched) {
+    lastArgs = [sessions, matched];
     const boards = [...new Set(sessions.map(s => sessionTeamKey(s)).filter(Boolean))].sort((a, b) => keyLabel(a).localeCompare(keyLabel(b)));
     const machines = [...new Set(sessions.map(s => sessionServer(s)))];
     const f = getListFilters();
@@ -82,6 +88,7 @@ export function syncAgentListBars(sessions, matched) {
         const host = document.getElementById(id);
         if (!host) continue;
         let bar = bars.get(host);
+        if (!bar && !isDisplayPanelOpen()) continue; // not drawn until the panel opens
         if (!bar) {
             bar = buildListBar(spec(idp), onChange);
             host.append(bar.node);

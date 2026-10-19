@@ -7,6 +7,9 @@
  * The open or shut state is the person's, kept in this browser. */
 import { browserLocal } from './safe_storage.js';
 
+/** Said when the panel opens: the list's filter bar, which is not drawn while the panel stays shut (agent_list_bar.js, #4995), draws itself then. */
+export const DISPLAY_PANEL_OPEN = 'coral:display-panel-open';
+
 const KEY = 'coral_display_panel_open';
 
 /** The elements the Display expander is made of, found inside the two headers that hold it (the sidebar's and the phone's), not by an attribute selector over the whole
@@ -38,6 +41,7 @@ export function toggleDisplayPanel(button) {
     const open = !isDisplayPanelOpen();
     browserLocal.set(KEY, open ? '1' : '0');
     syncDisplayPanels();
+    if (open) document.dispatchEvent(new Event(DISPLAY_PANEL_OPEN));
     // Opening puts the keyboard in the panel's first control; closing leaves it on the button that was used.
     if (open) document.querySelector((button?.closest('.mobile-list-header') ? '.mobile-list-header' : '.sidebar-header') + ' [data-display-panel] :is(select, input):not([hidden])')?.focus();
 }

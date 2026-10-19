@@ -1488,6 +1488,9 @@ function startRoute(popout) {
     }
 }
 
+/** Lets the browser run what is waiting (a paint, an input, a response) before the next step: scheduler.yield where there is one, a zero timer where there is not. */
+const yieldToMain = () => (globalThis.scheduler && typeof scheduler.yield === 'function') ? scheduler.yield() : new Promise(r => setTimeout(r, 0));
+
 document.addEventListener("DOMContentLoaded", async () => {
     beginDashboardAnalytics();
     if (window.innerWidth > 767) buildWelcome(); // a phone starts on the agent list and builds the welcome screen only if it is shown (#4497)
@@ -1517,6 +1520,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     wireComposer();
     wirePaneScroll();
     initPanels();
+
+    // The page's startup was one task of about 60 ms at a 4x slowdown (the bundle's evaluation and every step of this handler, ahead of the first paint). Everything is wired
+    // and the requests are out; the browser may paint and answer before the navigation and the route are set up (#4995).
+    await yieldToMain();
 
     // Initialize nav tabs — hide history section on load (Agents tab is default)
     if (!popout) {

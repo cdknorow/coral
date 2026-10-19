@@ -63,13 +63,15 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         console.log('1. The bar under the search box: 30 agents, no filter, the list\'s own order');
         await open(1440, false, false);
         await ev(`for (const [k, v] of Object.entries(${JSON.stringify(sleepKeys)})) localStorage.setItem(k, v); window.__T.render.flushLiveSessionsRender(); window.__T.render.renderLiveSessions(window.__T.state.liveSessions); true`);
-        await waitFor(`!!document.querySelector('#agent-list-bar #al-sort') && document.querySelector('#agent-list-bar .list-bar-count').textContent === '30 agents'`, 'the bar with its count', { timeout: 8000 });
+        await waitFor(`document.querySelectorAll('#live-sessions-list .session-group-item').length === 30`, 'the list with its 30 agents', { timeout: 8000 });
+        assert.equal(await ev(`document.getElementById('agent-list-bar').childElementCount`), 0, 'the filter bar is not drawn while the Display panel stays shut (#4995)');
         assert.equal(await badge(), ''); assert.deepEqual(await chips(), []); assert.equal(await summaryShown(), false, 'nothing on: no summary line');
-        assert.equal(await ev(`document.querySelector('#agent-list-bar #al-sort').value`), 'default');
         assert.equal(await panelOpen(), false, 'the Display expander is shut');
         assert.equal(await ev(`document.querySelector('.sidebar-header [data-display-button]').getAttribute('aria-controls') === document.querySelector('.sidebar-header [data-display-panel]').id`), true, 'the button names its panel');
         assert.equal(await ev(`document.querySelector('.sidebar-header .list-bar-filter-btn')`), null, 'no Filters button any more: the fields are rows of the panel');
         await toggleBtn(); assert.equal(await panelOpen(), true, 'the button opens it in place');
+        await waitFor(`!!document.querySelector('#agent-list-bar #al-sort') && document.querySelector('#agent-list-bar .list-bar-count').textContent === '30 agents'`, 'the bar, drawn as the panel opens, with its count', { timeout: 8000 });
+        assert.equal(await ev(`document.querySelector('#agent-list-bar #al-sort').value`), 'default');
         assert.equal(await ev(`(() => { const p = document.querySelector('.sidebar-header [data-display-panel]'); return getComputedStyle(p).position === 'static' && p.getBoundingClientRect().width > 150; })()`), true, 'a row of the header, not a popover');
         assert.deepEqual(await ev(`[...document.querySelectorAll('#agent-list-bar .list-bar-field-label')].filter(e => e.getClientRects().length).map(e => e.textContent)`), ['State', 'Board', 'Sort'], 'State and Board (Machine only on a hub), then Sort');
         assert.equal((await ids()).length, 30, 'every agent is in the list (sleeping ones open)');
@@ -194,9 +196,11 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         console.log('10. A phone: the same expander in the Agents page\'s header, at touch size');
         await open(390, true, false);
         await ev(`window.syncMobileAgentList && window.syncMobileAgentList(); window.__T.render.flushLiveSessionsRender(); window.__T.render.renderLiveSessions(window.__T.state.liveSessions); true`);
-        await waitFor(`!!document.querySelector('#mobile-agent-list-bar #alm-sort')`, 'the phone bar', { timeout: 8000 });
-        assert.equal(await ev(`document.querySelector('#mobile-agent-list-bar .list-bar-count').textContent`), '30 agents');
+        await waitFor(`!!document.querySelector('.mobile-list-header [data-display-button]') && !!document.getElementById('mobile-agent-list-bar')`, 'the phone header', { timeout: 8000 });
+        assert.equal(await ev(`document.getElementById('mobile-agent-list-bar').childElementCount`), 0, 'the phone\'s bar is not drawn either until the panel opens');
         assert.equal(await panelOpen('phone'), false); await toggleBtn('phone'); assert.equal(await panelOpen('phone'), true);
+        await waitFor(`!!document.querySelector('#mobile-agent-list-bar #alm-sort')`, 'the phone bar, drawn as the panel opens', { timeout: 8000 });
+        assert.equal(await ev(`document.querySelector('#mobile-agent-list-bar .list-bar-count').textContent`), '30 agents');
         const touch = await ev(`(() => { const r = e => Math.round(document.querySelector(e).getBoundingClientRect().height); return { button: r('.mobile-list-header [data-display-button]'), toggle: r('.mobile-list-header [data-group-toggle]'), state: r('#alm-state'), sort: r('#alm-sort'), option: r('.mobile-list-header .list-display-option') }; })()`);
         assert.ok(Object.values(touch).every(h => h >= 44), 'targets at least 44 px: ' + JSON.stringify(touch));
         await set('#alm-state', 'needs_input', 'phone');
@@ -212,8 +216,10 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
         await open(1440, false, false);
         await ev(`(() => { const st = document.createElement('style'); st.textContent = 'html{font-size:200% !important}'; document.head.appendChild(st); })()`);
         await ev(`for (const [k, v] of Object.entries(${JSON.stringify(sleepKeys)})) localStorage.setItem(k, v); window.__T.render.flushLiveSessionsRender(); window.__T.render.renderLiveSessions(window.__T.state.liveSessions); true`);
+        await toggleBtn(); // the bar is drawn as the panel opens (#4995)
         await waitFor(`!!document.querySelector('#agent-list-bar #al-state')`, 'the bar at 200%', { timeout: 8000 });
         await set('#al-state', 'needs_input'); await set('#al-board', 'team-a');
+        await toggleBtn(); // shut: the dot and the summary line are what is measured first
         const big = await ev(`(() => { const r = e => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
             const btn = document.querySelector('.sidebar-header [data-display-button]'); const icon = btn.querySelector('.material-icons'); const dot = btn.querySelector('[data-display-badge]');
             const a = r(icon), d = r(dot); const ow = Math.max(0, Math.min(a.r, d.r) - Math.max(a.l, d.l)), oh = Math.max(0, Math.min(a.b, d.b) - Math.max(a.t, d.t));

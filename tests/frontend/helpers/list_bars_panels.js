@@ -110,6 +110,8 @@ const agentsPanel = (key, openPanel) => ({
         const bar = phone ? '#mobile-agent-list-bar' : '#agent-list-bar';
         const head = phone ? '.mobile-list-header' : '.sidebar-header';
         if (phone) await ctx.ev(`window.switchNavTab('agents'); true`);
+        // the bar is drawn when the Display panel first opens (#4995): open it, set the filter, then leave the panel as the panel under test wants it
+        await ctx.ev(`(() => { const b = document.querySelector('${head} [data-display-button]'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()`);
         await ctx.settle(`!!document.querySelector('${bar} select[id$="state"]')`, 'the bar');
         await pick(ctx, `${bar} #al-state, ${bar} select[id$="state"]`, 'working');
         await ctx.settle(`!!document.querySelector('${head} [data-agent-list-summary]').dataset.text`, 'the summary');

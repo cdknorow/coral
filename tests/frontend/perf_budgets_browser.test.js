@@ -15,7 +15,10 @@ const { framesJs } = require('./helpers/wait');
     try {
         await Page.enable();
         await Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-        await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + `;localStorage.setItem('coral-live-view-mode', 'chat');` });
+        // count the scheduler.yield calls the startup makes (Chrome has it; the page falls back to a zero timer where it does not)
+        const SPY = `;(() => { window.__yields = 0; if (globalThis.scheduler && typeof scheduler.yield === 'function') { const y = scheduler.yield.bind(scheduler); scheduler.yield = (...a) => { if (!window.__startupDone) window.__yields++; return y(...a); }; }
+            })();`;
+        await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + SPY + `;localStorage.setItem('coral-live-view-mode', 'chat');` });
         await Page.navigate({ url: BASE }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.startup('liveList', 'settings')`);
         // a chat with a few hundred messages on screen, so the page has something to walk
@@ -78,6 +81,9 @@ const { framesJs } = require('./helpers/wait');
         assert.deepEqual(sw.active, ['perf-b-id'], 'the new agent is the highlighted one, and the only one');
         assert.equal(await ev(`document.querySelector('#live-sessions-list li.active').getAttribute('aria-current')`), 'true', 'and says so to a screen reader');
         assert.equal(await ev(`document.querySelectorAll('#live-sessions-list li[aria-current]').length`), 1, 'no other row says so');
+        console.log('6. Startup: the page yields to the browser between creating the requests and wiring the rest, so no startup task is a long one (#4995)');
+        const y = await ev(`({ yields: window.__yields, drawn: document.getElementById('agent-list-bar').childElementCount })`);
+        assert.ok(y.yields >= 1, 'the startup handler called scheduler.yield (the only yield it makes; the zero timers the page sets for other things do not count): ' + JSON.stringify(y));
         console.log('PASS perf budgets: no page-wide lookups per key, scroll or render; the sanitizer skips coloured spans; a switch touches two rows');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

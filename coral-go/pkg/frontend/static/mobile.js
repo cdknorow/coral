@@ -356,8 +356,9 @@ function _initTopBarHeight() {
         const bottom = Math.ceil(bar.getBoundingClientRect().bottom);
         if (bottom > 0) root.style.setProperty('--top-bar-height', bottom + 'px');
     };
-    update();
-    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(update).observe(bar);
+    // A ResizeObserver reports the bar's size once, before the first paint, so there is no need to measure it here: that forced the page's whole first style and layout
+    // inside the startup task, ahead of the list (10 ms at a 4x slowdown, #4995). Without one, measure now.
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(update).observe(bar); else update();
     window.addEventListener('resize', update);
 }
 
