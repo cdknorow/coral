@@ -1,7 +1,6 @@
 // The menu button (the three dots) of an agent row and of a group header blends with the row it sits on (#5121). It had a fixed grey (--bg-hover) hover
 // fill, which drew an opaque box over the selected row's blue tile. On the selected row, the selected row with its attention, stuck, stale and
-// sleeping marks, and a group header, with the pointer over the button (a real mouse move, so :hover applies): no fill at rest, and a hover fill that is a faint
-// tint (alpha 0.25 or less) so the row's own fill shows through; the dots are readable (3:1 against the row). Both themes, desktop and a 390 px phone.
+// sleeping marks, and a group header, with the pointer over the button (a real mouse move, so :hover applies): no fill at rest, and no hover fill either (#5127: only the dots' colour changes); the dots are readable (3:1 against the row). Both themes, desktop and a 390 px phone.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
@@ -55,10 +54,11 @@ const { connect } = require('./agent_view_harness');
                     const hov = await read(SEL);
                     if (what === 'selected') await shot(`row-kebab-${label.split(' ')[0].toLowerCase()}-${th}`, await ev(`(() => { const r = document.querySelector(${JSON.stringify(ROW)}).getBoundingClientRect(); return { x: Math.max(0, r.left - 6), y: Math.max(0, r.top - 6), width: Math.min(r.width + 12, innerWidth), height: r.height + 12 }; })()`));
                     assert.equal(hov.hover, true, `${at}: the pointer is over the button: ` + JSON.stringify({ c, top: await ev(`(() => { const e = document.elementFromPoint(${c.x}, ${c.y}); return e && (e.tagName + '.' + e.className + ' in ' + (e.closest('[id]') || {}).id); })()`), vp: await ev(`[innerWidth, innerHeight, document.querySelector(${JSON.stringify(SEL)}).getBoundingClientRect().toJSON()]`) }));
-                    assert.ok(hov.bg && hov.bg.a > 0 && hov.bg.a <= 0.25, `${at}: the hover fill is a faint tint, so the row's fill shows through: ` + JSON.stringify(hov.bg));
+                    assert.ok(!hov.bg || hov.bg.a === 0, `${at}: no hover fill, only the dots change colour: ` + JSON.stringify(hov.bg));
+                    assert.notDeepEqual(hov.color, rest.color, `${at}: the dots change colour on hover`);
                     const rowFill = hov.rowBg && hov.rowBg.a > 0 ? over(hov.rowBg, page) : page;
-                    const dots = over({ ...hov.color, a: hov.color.a * hov.opacity }, over(hov.bg, rowFill));
-                    assert.ok(ratio(dots, over(hov.bg, rowFill)) >= 3, `${at}: the dots read on the tint (3:1): ` + ratio(dots, over(hov.bg, rowFill)).toFixed(2));
+                    const dots = over({ ...hov.color, a: hov.color.a * hov.opacity }, rowFill);
+                    assert.ok(ratio(dots, rowFill) >= 3, `${at}: the dots read on the row (3:1): ` + ratio(dots, rowFill).toFixed(2));
                 }
                 // The group header's button (the folder's, and a team's, which share the class).
                 if (await ev(`!!document.querySelector(${JSON.stringify(GROUP)})`)) {
@@ -67,11 +67,12 @@ const { connect } = require('./agent_view_harness');
                     const c = await centre(GROUP); await move(c.x, c.y);
                     const hov = await read(GROUP);
                     assert.equal(hov.hover, true);
-                    assert.ok(hov.bg && hov.bg.a > 0 && hov.bg.a <= 0.25, `${label}, ${th}, group header: the hover fill is a faint tint: ` + JSON.stringify(hov.bg));
+                    assert.ok(!hov.bg || hov.bg.a === 0, `${label}, ${th}, group header: no hover fill: ` + JSON.stringify(hov.bg));
+                    assert.notDeepEqual(hov.color, rest.color, `${label}, ${th}, group header: the dots change colour on hover`);
                 }
                 await move(2, 2);
             }
-            console.log(`   ✓ ${label}: no fill at rest, a faint tint on hover, readable dots, on every row state, both themes, and the group header`);
+            console.log(`   ✓ ${label}: no fill at rest or on hover, the dots change colour, readable dots, on every row state, both themes, and the group header`);
         };
         await run('Desktop');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: false }); // the phone's layout; a mouse, so :hover applies (a touch device has none)
