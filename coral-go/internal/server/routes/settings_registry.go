@@ -9,11 +9,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/agentmodels"
-	"github.com/cdknorow/coral/internal/agentprio"
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/inputlog"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/settings"
 )
 
 // The settings registry (#4432, Security's #4431 SHOULD 3): every key PUT /api/settings knows, who may write it and
@@ -123,100 +119,48 @@ func listSetting(v any) (any, error) {
 }
 
 // agentTypes are the agent types a default or a per-type model may name.
-var agentTypes = []string{"claude", "codex", "agy", "antigravity", "gemini", "pi", "terminal"}
+var agentTypes = settings.AgentTypes
 
-var settingRegistry = map[string]settingSpec{
-	// Settings > General and the terminal.
-	"theme":                   generic(enumSetting("dark", "light", "system")),
-	"custom_theme":            generic(textSetting),
-	"default_renderer":        generic(textSetting),
-	"default_agent_type":      generic(enumSetting(agentTypes...)),
-	"default_permission_mode": generic(enumSetting("default", "plan", "acceptEdits", "auto", "bypassPermissions", "dontAsk")),
-	"default_working_dir":     generic(textSetting),
-	"fit_pane_width":          generic(boolSetting),
-	"notify_needs_input":      generic(boolSetting),
-	"show_scrollbars":         generic(boolSetting),
-	RedactKeywordsSetting:     generic(boolSetting),
-	"terminal_font_size":      generic(intSetting(6, 72, false)),
-	"terminal_scrollback":     generic(intSetting(0, 1_000_000, false)),
-	// The startup reader's range (4 KiB to 16 MiB); the live value was never clamped (INFO 2).
-	"terminal_replay_bytes":           generic(intSetting(4<<10, 16<<20, true)),
-	"file_search_mode":                generic(enumSetting("directory", "fuzzy")),
-	"file_search_limit":               generic(intSetting(1, 100_000, false)),
-	"git_diff_mode":                   generic(enumSetting("branch_point", "previous_commit", "main_head")),
-	"git_poll_interval_s":             generic(intSetting(0, 86_400, false)),
-	agentprio.SettingKey:              generic(nil),
-	AgentLaunchLimitSetting:           generic(intSetting(0, 100_000, false)), // the live agents an agent token may add (#4602); 0 is none
-	"telemetry_enabled":               generic(boolSetting),
-	"board_auto_attach":               generic(boolSetting),
-	ArtifactCommentsHubWriteSetting:   generic(boolSetting), // #5176: Coral Hub viewers may comment (off)
-	inputlog.SettingKey:               generic(boolSetting),
-	"remote_access_enabled":           generic(boolSetting),
-	"refresh_files_on_switch":         generic(boolSetting),
-	"show_session_server":             generic(boolSetting),
-	"show_session_summary":            generic(boolSetting),
-	"board_health_monitor":            generic(boolSetting),
-	"auto_summarize":                  generic(boolSetting),
-	"gate_signals_claude":             generic(boolSetting),
-	TurnEndHandoffSetting:             generic(enumSetting("off", "on")),
-	background.GoalSettingKey:         generic(nil),
-	AutoResumeSetting:                 generic(nil),
-	AutoWakeSetting:                   generic(nil),
-	AutoWakeCapSetting:                generic(nil),
-	auth.RequireAuthOnLoopbackSetting: generic(nil),
-	// The first-launch screen (#3221).
-	"welcome_choice":       generic(enumSetting("skipped", "connected", "own-hub")),
-	"welcome_pending":      generic(boolSetting),
-	"home_editions_hidden": generic(boolSetting),
-	// Storage: artifacts, uploads, call metrics, knowledge.
-	ArtifactStoreMaxBytesSetting:          generic(nil),
-	ReceivedArtifactsMaxBytesSetting:      generic(nil),
-	ReceivedCapNoticeAckSetting:           generic(nil),
-	RetentionDaysSetting:                  generic(nil),
-	RetentionKindsSetting:                 generic(nil),
-	"uploads_retention_days":              generic(intSetting(1, 365, false)),
-	"uploads_max_mb":                      generic(intSetting(50, 102_400, false)),
-	store.CallMetricsRetentionSetting:     generic(intSetting(1, 90, false)),
-	background.KnowledgeTimeoutSettingKey: generic(intSetting(1, 86_400, false)),
-	// Coral Hub request pools (#3642).
-	"hub_limit_global": generic(nil),
-	"hub_limit_long":   generic(nil),
-	"hub_limit_search": generic(nil),
-	// Prompts.
-	"default_prompt_orchestrator": generic(textSetting),
-	"default_prompt_worker":       generic(textSetting),
-	"team_reminder_orchestrator":  generic(textSetting),
-	"team_reminder_worker":        generic(textSetting),
-	// JSON lists kept as text.
-	"macros":               {class: settingGeneric, check: listSetting, maxLen: settingListMaxLen},
-	"saved_personas":       {class: settingGeneric, check: listSetting, maxLen: settingListMaxLen},
-	"saved_team_templates": {class: settingGeneric, check: listSetting, maxLen: settingListMaxLen},
-	"session_order":        {class: settingGeneric, check: listSetting, maxLen: settingListMaxLen},
-	"group_order":          {class: settingGeneric, check: listSetting, maxLen: settingListMaxLen},
+// settingRegistry is derived from the typed registry in internal/settings (#5147): the kind, the range and the values of
+// a key are declared there once, for the readers and for this check. A key whose value has rules beyond its type
+// (PutSettings' own validators, which run after this) has no check here: whole numbers with no declared range, and
+// settings of kind opaque.
+var settingRegistry = deriveSettingRegistry()
 
-	// Set only with their own routes.
-	TerminalBackendSetting:       {class: settingOwnRoute},
-	HubOperatorDisabledSetting:   {class: settingOwnRoute},
-	legacyHubOperatorSetting:     {class: settingOwnRoute},
-	HubModeSetting:               {class: settingOwnRoute},
-	IdentityActorSetting:         {class: settingOwnRoute},
-	MaxModeSetting:               {class: settingOwnRoute},
-	AllowHubAutoAcceptSetting:    {class: settingOwnRoute},
-	RedactTokensSetting:          {class: settingOwnRoute},
-	"hub_signin_enabled":         {class: settingOwnRoute},
-	"hub_signin_origins":         {class: settingOwnRoute},
-	"hub_signin_offer_dismissed": {class: settingOwnRoute},
-	RetentionAckAtKey:            {class: settingOwnRoute},
+func deriveSettingRegistry() map[string]settingSpec {
+	out := map[string]settingSpec{}
+	for _, sp := range settings.All() {
+		out[sp.Key] = settingSpecFor(sp)
+	}
+	return out
+}
 
-	// Coral's own.
-	retentionEnabledAtKey:          {class: settingCoral},
-	ArtifactCommentsOwnerIDSetting: {class: settingCoral}, // #5176: the install's random owner id for comments
-	ArtifactStoreAutoRaisedSetting: {class: settingCoral},
-	retentionSeenDaysKey:           {class: settingCoral},
-	RetentionLastKey:               {class: settingCoral},
-	"cloud_bootstrap_status":       {class: settingCoral},
-	"demo_workflows_seeded":        {class: settingCoral},
-	"self_test":                    {class: settingCoral},
+func settingSpecFor(sp settings.Spec) settingSpec {
+	switch sp.Class {
+	case settings.ClassOwnRoute:
+		return settingSpec{class: settingOwnRoute}
+	case settings.ClassCoral:
+		return settingSpec{class: settingCoral}
+	}
+	out := settingSpec{class: settingGeneric, maxLen: sp.MaxLen}
+	if sp.OwnCheck {
+		return out
+	}
+	switch sp.Kind {
+	case settings.KindBool:
+		out.check = boolSetting
+	case settings.KindText:
+		out.check = textSetting
+	case settings.KindEnum:
+		out.check = enumSetting(sp.Values...)
+	case settings.KindList:
+		out.check = listSetting
+	case settings.KindInt:
+		if sp.Min != 0 || sp.Max != 0 {
+			out.check = intSetting(sp.Min, sp.Max, sp.WriteClamp)
+		}
+	}
+	return out
 }
 
 // lookupSetting is key's entry: an exact key of the registry, or cli_path_<type> and default_model_<type> for a

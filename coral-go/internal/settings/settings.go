@@ -90,6 +90,9 @@ type Spec struct {
 	ReadBounded      bool
 	// KindEnum: the values. An enum is read without regard to case; an unrecognised value reads as the default.
 	Values []string
+	// OwnCheck marks a setting whose value PUT /api/settings checks with its own rule (it names the problem better than the type
+	// could, or ties the value to another setting); the type check is not applied to it.
+	OwnCheck bool
 	// MaxLen is the longest value that is written, in bytes; zero is the general limit.
 	MaxLen int
 }

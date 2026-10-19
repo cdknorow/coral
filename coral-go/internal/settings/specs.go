@@ -128,10 +128,15 @@ func init() {
 	boolOn(GateSignalsClaude, ApplyLive, "Phase 2 of the paste gate for Claude.")
 	register(Spec{Key: TurnEndHandoff, Kind: KindEnum, Values: []string{"off", "on"}, Default: "on", Apply: ApplyLive, Doc: "Hand the turn on at its end."})
 	boolOn(AutoGoals, ApplyLive, "Run the goals service.")
+	ownCheck(AutoGoals)
 	boolOff(AutoResumeAfterAPIError, ApplyLive, "Resume an agent after an API error.")
+	ownCheck(AutoResumeAfterAPIError)
 	boolOn(AutoWakeAfterRestart, ApplyLive, "Wake agents after Coral restarts.")
+	ownCheck(AutoWakeAfterRestart)
 	register(whole(AutoWakeCap, "8", 1, 50, ReadDefault, ApplyLive, "Most agents woken after a restart."))
+	ownCheck(AutoWakeCap)
 	boolOff(RequireAuthOnLoopback, ApplyLive, "Ask for a credential on this computer too.")
+	ownCheck(RequireAuthOnLoopback)
 
 	// The first-launch screen.
 	register(Spec{Key: "welcome_choice", Kind: KindEnum, Values: []string{"skipped", "connected", "own-hub"}, Apply: ApplyClient, Doc: "What was chosen on the first-launch screen."})
@@ -197,4 +202,11 @@ func init() {
 		{Prefix: DefaultModelPrefix, Kind: KindText, Apply: ApplyLive, Doc: "The model a launch of that agent type uses."},
 		{Prefix: DefaultThinkingPrefix, Kind: KindText, Apply: ApplyLive, Doc: "The thinking level a launch of that agent type uses."},
 	}
+}
+
+// ownCheck marks an already registered key as checked by PutSettings' own rule.
+func ownCheck(key string) {
+	s := specs[key]
+	s.OwnCheck = true
+	specs[key] = s
 }
