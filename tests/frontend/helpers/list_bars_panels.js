@@ -209,8 +209,8 @@ const EVENTS = [...Array.from({ length: 20 }, (_, i) => ({ event_type: 'tool_use
 async function standIn(ctx, label) {
     const httpJson = async (method, path, body, headers = {}) => { const r = await fetch(ctx.BASE + path, { method, headers: { 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }); let data = null; try { data = await r.json(); } catch { /* none */ } return { status: r.status, data }; };
     const s = await launchStandIn(httpJson, { displayName: label });
+    (ctx.cleanup = ctx.cleanup || []).push(() => s.stop()); // before the check: a stand-in with no session has still set cli_path_claude (#5077)
     if (!s.sid) throw new Error('no stand-in agent: ' + s.diag);
-    (ctx.cleanup = ctx.cleanup || []).push(() => s.stop());
     const list = await (await fetch(ctx.BASE + '/api/sessions/live')).json().catch(() => []);
     const name = ((Array.isArray(list) ? list : list.sessions || []).find(x => x.session_id === s.sid) || {}).name || s.name;
     for (const e of EVENTS) { const r = await httpJson('POST', `/api/sessions/live/${encodeURIComponent(name)}/events`, { ...e, session_id: s.sid }, { 'X-Coral-Session-Token': s.token }); if (r.status >= 300) throw new Error('seed ' + r.status); }

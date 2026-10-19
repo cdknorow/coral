@@ -22,6 +22,10 @@ const TOKEN_DEADLINE_MS = 30000;
 // the same server (settings_modal_trace) then showed. OURS is every script this process set, so a path someone else set is still never overwritten (#4354).
 const LIVE = new Set(), OURS = new Set();
 let ORIGINAL = '';
+// Every stand-in not yet stopped. A caller that throws between launchStandIn and the list it cleans up from (#5077: a check before the push; #5080) never calls stop(), which left
+// cli_path_claude on the script; so the process stops whatever is left when it ends, and a caller cannot forget.
+const PENDING = new Set();
+process.on('beforeExit', async () => { for (const stop of [...PENDING]) await stop().catch(() => {}); });
 
 // launchStandIn starts the stand-in. api(method, path, body) returns {status, data}, as the
 // suites' own JSON helpers do. It returns {sid, name, token, launch, ms, diag, stop}; token is
@@ -51,6 +55,7 @@ async function launchStandIn(api, { workingDir = '/tmp', displayName = 'Stand-in
 
     let launch = null;
     const stop = async () => {
+        if (!PENDING.delete(stop)) return; // stopped already (the caller's, then the process's)
         const d = launch && launch.data;
         if (d && d.session_id) await api('POST', `/api/sessions/live/${encodeURIComponent(d.session_name)}/kill`, { agent_type: 'claude', session_id: d.session_id }).catch(() => {});
         // Restore cli_path_claude only to undo OUR own change, and never write an empty value over a path
@@ -64,6 +69,7 @@ async function launchStandIn(api, { workingDir = '/tmp', displayName = 'Stand-in
         fs.rmSync(dir, { recursive: true, force: true });
     };
 
+    PENDING.add(stop);
     const started = Date.now();
     try {
         launch = await api('POST', '/api/sessions/launch', { working_dir: workingDir, agent_type: 'claude', display_name: displayName });

@@ -45,5 +45,26 @@ function makeApi(initialCliPath) {
         await h.stop();
         assert.equal(settings.cli_path_claude, '/someone/else', 'stop does not overwrite a value changed since its own PUT');
     }
+    // 4. A caller that never calls stop() (it threw between the launch and its own cleanup list, #5077) still gets the path back when its process ends, and the scripts' folder is gone.
+    {
+        const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'standin-test-'));
+        const file = path.join(dir, 'settings.json');
+        fs.writeFileSync(file, JSON.stringify({ cli_path_claude: '/custom/claude' }));
+        const child = `const fs = require('node:fs'); const { launchStandIn } = require(${JSON.stringify(require.resolve('./helpers/stand_in_agent'))});
+            const api = async (m, p, b) => { const s = JSON.parse(fs.readFileSync(${JSON.stringify(file)}, 'utf8'));
+                if (p === '/api/settings' && m === 'GET') return { status: 200, data: { settings: s } };
+                if (p === '/api/settings' && m === 'PUT') { fs.writeFileSync(${JSON.stringify(file)}, JSON.stringify({ ...s, ...b })); return { status: 200, data: {} }; }
+                if (p === '/api/sessions/launch') return { status: 200, data: { session_id: 's1', session_name: 'n' } };
+                return { status: 200, data: {} }; };
+            launchStandIn(api, { deadlineMs: 50 }).then(h => { fs.writeFileSync(${JSON.stringify(file + '.during')}, JSON.parse(fs.readFileSync(${JSON.stringify(file)}, 'utf8')).cli_path_claude + '|' + h.sid); throw new Error('no stop()'); }).catch(e => { process.exitCode = 1; });`;
+        const r = require('node:child_process').spawnSync(process.execPath, ['-e', child], { encoding: 'utf8' });
+        if (r.stderr) console.error(r.stderr);
+        const during = fs.readFileSync(file + '.during', 'utf8').split('|');
+        assert.notEqual(during[0], '/custom/claude', 'the stand-in replaced the path while the process ran');
+        assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).cli_path_claude, '/custom/claude', 'the process end put the path back');
+        assert.ok(!fs.existsSync(path.dirname(during[0])), 'and removed the stand-in script folder');
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
     console.log('stand_in_agent restore: ok');
 })().catch(e => { console.error(e); process.exit(1); });
