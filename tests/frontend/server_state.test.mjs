@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { snapshot, diff, restoreSettings, leftovers, cleanup } from './helpers/server_state.mjs';
+import { snapshot, diff, rowLeaks, restoreSettings, leftovers, cleanup } from './helpers/server_state.mjs';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'srvstate-'));
 try {
@@ -28,7 +28,10 @@ try {
   const after2 = snapshot(dir);
   assert.deepEqual(diff(before, after), ['setting cli_path_claude: /mock -> /deleted-script', 'setting show_session_server added (False)', 'pinned_folders: 1 -> 2 rows']);
   const left = leftovers(before, after2);
-  assert.deepEqual(left, { sessions: [{ id: 'new-1', type: 'claude', name: "It's new" }, { id: 'new-2', type: 'terminal', name: 'Term' }], teams: ['suite-team'] }, 'only what the suite added: the agent that was already there is not touched');
+  assert.deepEqual(left, { sessions: [{ id: 'new-1', type: 'claude', name: "It's new" }, { id: 'new-2', type: 'terminal', name: 'Term' }], teams: ['suite-team'], boards: [] }, 'only what the suite added: the agent that was already there is not touched');
+  // --fail-on-leak's rows (#4920): the pinned folder the suite added is a leak; its agents and team are the runner's to remove, not a failure; an untouched snapshot is clean
+  assert.deepEqual(rowLeaks(before, after2), [{ table: 'pinned_folders', was: 1, now: 2, kind: 'added' }], 'rows added to a shared table; live_sessions and teams are left out');
+  assert.deepEqual(rowLeaks(before, before), [], 'nothing changed, no leak');
   const calls = [];
   const res = await cleanup('http://x', 'KEY', left, async (url, o) => { calls.push([o.method, url, o.body, o.headers.authorization]); return { ok: !url.includes('Term') }; });
   assert.deepEqual(calls.map(c => c.slice(0, 3)), [['POST', "http://x/api/sessions/live/It's%20new/kill", '{"agent_type":"claude","session_id":"new-1"}'], ['POST', 'http://x/api/sessions/live/Term/kill', '{"agent_type":"terminal","session_id":"new-2"}'], ['POST', 'http://x/api/sessions/live/team/suite-team/kill', '{}'], ['DELETE', 'http://x/api/teams/detail/suite-team', undefined]], 'each agent is killed by its session id in the body, the team by its exact name');
@@ -45,5 +48,33 @@ try {
   sql("DELETE FROM user_settings WHERE key = 'note'");
   restoreSettings(dir, b2, snapshot(dir));
   assert.equal(snapshot(dir).settings.note, "it's here");
+  // A row replaced (the same number of rows, other contents) is a leak; a table that shrank is a suite clearing what another left, not one.
+  sql("DELETE FROM pinned_folders; INSERT INTO pinned_folders VALUES ('/a', 'a'), ('/b', 'b');");
+  const p2 = snapshot(dir);
+  sql("UPDATE pinned_folders SET name = 'renamed' WHERE path = '/a';");
+  assert.deepEqual(rowLeaks(p2, snapshot(dir)), [{ table: 'pinned_folders', was: 2, now: 2, kind: 'changed' }]);
+  sql("DELETE FROM pinned_folders WHERE path = '/b';");
+  assert.deepEqual(rowLeaks(p2, snapshot(dir)), [], 'fewer rows: not a leak');
+  // The message boards (#4920): counted per board in messageboard.db. A board the suite made is the runner's to remove (by its name, through the API); rows added to one that was there are a leak.
+  const bdb = path.join(dir, 'messageboard.db');
+  const bsql = x => execFileSync('sqlite3', [bdb, x], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const bb0 = snapshot(dir);
+  assert.deepEqual(bb0.boards, {}, 'no board database yet: no boards');
+  bsql("CREATE TABLE board_messages (id INTEGER PRIMARY KEY, project TEXT, content TEXT); CREATE TABLE board_subscribers (id INTEGER PRIMARY KEY, project TEXT, session_id TEXT); CREATE TABLE board_tasks (id INTEGER PRIMARY KEY, board_id TEXT, title TEXT); CREATE TABLE boards (id TEXT PRIMARY KEY, label TEXT);");
+  bsql("INSERT INTO boards VALUES ('old-board', 'old'); INSERT INTO board_messages (project, content) VALUES ('old-board', 'm1'); INSERT INTO board_subscribers (project, session_id) VALUES ('old-board', 's1');");
+  const bb1 = snapshot(dir);
+  assert.deepEqual(bb1.boards, { 'old-board': { messages: 1, subscribers: 1, tasks: 0, row: true } });
+  assert.deepEqual(diff(bb1, snapshot(dir)), []); assert.deepEqual(rowLeaks(bb1, snapshot(dir)), []);
+  bsql("INSERT INTO board_messages (project, content) VALUES ('old-board', 'm2'), ('new-board', 'x'); INSERT INTO board_tasks (board_id, title) VALUES ('new-board', 't'); INSERT INTO board_subscribers (project, session_id) VALUES ('new-board', 'a');");
+  const bb2 = snapshot(dir);
+  assert.deepEqual(diff(bb1, bb2), ['board new-board added (1 message(s), 1 task(s), 1 subscriber(s))', 'board old-board: messages 1 -> 2']);
+  assert.deepEqual(leftovers(bb1, bb2).boards, ['new-board'], 'a board that was not there is the suite\'s');
+  bsql("INSERT INTO board_tasks (board_id, title) VALUES ('tasks-only', 't');");
+  assert.deepEqual(leftovers(bb1, snapshot(dir)).boards, ['new-board'], 'a board with only tasks is not listed: DELETE /api/board removes messages and subscribers, and the API has no way to delete a task');
+  assert.deepEqual(rowLeaks(bb1, bb2), [{ table: 'board old-board messages', was: 1, now: 2, kind: 'added' }], 'a new board is the runner\'s to remove, not a leak; more messages on an old one are');
+  const bcalls = [];
+  const bres = await cleanup('http://x', 'KEY', leftovers(bb1, bb2), async (url, o) => { bcalls.push([o.method, url]); return { ok: true }; });
+  assert.deepEqual(bcalls, [['DELETE', 'http://x/api/board/new-board']]);
+  assert.deepEqual(bres.boardsRemoved, ['new-board']);
   console.log('server_state: ok');
 } finally { fs.rmSync(dir, { recursive: true, force: true }); }

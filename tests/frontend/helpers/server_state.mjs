@@ -1,11 +1,12 @@
 // What a CDP suite leaves behind in the shard's Coral server (#4830). The suites of a shard share one server and one data dir, so a setting or a saved item one writes is read by the next:
 // show_session_server left False by server_switcher drew the agent list differently in live_list_golden, and terminal_switch's two stand-ins left a deleted script as cli_path_claude, which
 // settings_modal_trace then showed (#4813). The runner takes snapshot() of the SHARED, GLOBAL state before a suite and after it, reports what changed (diff), and puts the settings back
-// (restoreSettings: the server reads user_settings on every request, so a row put back in the database is the value the next suite sees). Per-board data (messages, tasks, the board rows) is
-// namespaced by each suite's own board name and is not compared. Uses the sqlite3 command line, which the runner already needs to seed cli_path (#4354).
+// (restoreSettings: the server reads user_settings on every request, so a row put back in the database is the value the next suite sees). Per-board data (messages, tasks, subscribers: messageboard.db) is counted per board (#4920): a board a suite
+// made is removed by the runner like a team, and rows added to a board that was there already are a leak. Uses the sqlite3 command line, which the runner already needs to seed cli_path (#4354).
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import fs from 'node:fs';
 
 // Tables whose rows every suite on the server can see (names as in sessions.db). One that does not exist (an older or newer schema) is skipped.
 export const SHARED_TABLES = ['pinned_folders', 'saved_messages', 'remote_servers', 'remote_board_subscriptions', 'scheduled_jobs', 'artifact_keep', 'custom_views', 'agent_ui_panels', 'tags',
@@ -33,19 +34,41 @@ export function snapshot(dataDir) {
   // The agents that are running (a stopped one stays in live_sessions as a row marked inactive: the kill route soft-deletes) and the teams, by their ids and names: what a suite launched or created is what it adds (leftovers), and stopping it is the runner's job (cleanup).
   const sessions = have.has('live_sessions') ? q(db, "SELECT session_id, agent_type, agent_name FROM live_sessions WHERE COALESCE(status, 'active') <> 'inactive';").split('\n').filter(Boolean).map(l => { const [id, type, name] = l.split('\u001f'); return { id, type, name }; }) : [];
   const teams = have.has('teams') ? q(db, 'SELECT name FROM teams;').split('\n').filter(Boolean) : [];
-  return { settings, tables, sessions, teams };
+  return { settings, tables, sessions, teams, boards: boardCounts(path.join(dataDir, 'messageboard.db')) };
 }
 
-/** What `after` has that `before` did not: the agents (by session id) and teams (by name) a suite left behind. */
+/** The message board's rows per board name ({name: {messages, subscribers, tasks, row}}); {} when the board database is not there (yet). */
+function boardCounts(db) {
+  const out = {};
+  if (!fs.existsSync(db)) return out;
+  const have = new Set(q(db, "SELECT name FROM sqlite_master WHERE type = 'table';").split('\n').filter(Boolean));
+  const entry = name => (out[name] ||= { messages: 0, subscribers: 0, tasks: 0, row: false });
+  const add = (table, sql, field) => {
+    if (!have.has(table)) return;
+    for (const line of q(db, sql).split('\n')) {
+      if (!line) continue;
+      const i = line.lastIndexOf('\u001f');
+      entry(line.slice(0, i))[field] = Number(line.slice(i + 1));
+    }
+  };
+  add('board_messages', 'SELECT project, COUNT(*) FROM board_messages GROUP BY project;', 'messages');
+  add('board_subscribers', 'SELECT project, COUNT(*) FROM board_subscribers GROUP BY project;', 'subscribers');
+  add('board_tasks', 'SELECT board_id, COUNT(*) FROM board_tasks GROUP BY board_id;', 'tasks');
+  if (have.has('boards')) for (const name of q(db, 'SELECT id FROM boards;').split('\n').filter(Boolean)) entry(name).row = true;
+  return out;
+}
+
+/** What `after` has that `before` did not: the agents (by session id), teams (by name) and message boards (by name) a suite left behind. A board counts while it has messages or subscribers, which DELETE /api/board/{name}
+ *  removes; its tasks stay (the API cannot delete a task), so a board with only tasks is not the runner's to remove and not a failure to clean. */
 export function leftovers(before, after) {
   const had = new Set((before.sessions || []).map(x => x.id)), hadTeams = new Set(before.teams || []);
-  return { sessions: (after.sessions || []).filter(x => !had.has(x.id)), teams: (after.teams || []).filter(t => !hadTeams.has(t)) };
+  return { sessions: (after.sessions || []).filter(x => !had.has(x.id)), teams: (after.teams || []).filter(t => !hadTeams.has(t)), boards: Object.keys(after.boards || {}).filter(b => !(b in (before.boards || {})) && (after.boards[b].messages || after.boards[b].subscribers)).sort() };
 }
 
 /** Stop what a suite left running and remove its teams, through the server's own API (never by name or pattern: an agent is stopped by its session id, which the kill route takes in its body;
- *  a team is removed by the exact name the diff found). base is the server's URL, key its API key. Returns {stopped, removed, failed: [text]}. */
+ *  a team and a board are removed by the exact name the diff found). base is the server's URL, key its API key. Returns {stopped, removed, boardsRemoved, failed: [text]}. */
 export async function cleanup(base, key, left, fetchImpl = fetch) {
-  const out = { stopped: [], removed: [], failed: [] };
+  const out = { stopped: [], removed: [], boardsRemoved: [], failed: [] };
   const call = async (method, url, body) => {
     const r = await fetchImpl(base + url, { method, headers: { authorization: 'Bearer ' + key, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
     if (!r.ok) throw new Error(`${method} ${url}: HTTP ${r.status}`);
@@ -58,6 +81,9 @@ export async function cleanup(base, key, left, fetchImpl = fetch) {
     try { await call('POST', `/api/sessions/live/team/${encodeURIComponent(t)}/kill`, {}); } catch (e) { out.failed.push(`team ${t} (stop): ${e.message}`); continue; }
     try { await call('DELETE', `/api/teams/detail/${encodeURIComponent(t)}`); out.removed.push(t); } catch (e) { out.failed.push(`team ${t}: ${e.message}`); }
   }
+  for (const b of left.boards || []) {
+    try { await call('DELETE', `/api/board/${encodeURIComponent(b)}`); out.boardsRemoved.push(b); } catch (e) { out.failed.push(`board ${b}: ${e.message}`); }
+  }
   return out;
 }
 
@@ -69,9 +95,37 @@ export function diff(before, after) {
     if (a === b) continue;
     out.push(a === undefined ? `setting ${k} added (${b})` : b === undefined ? `setting ${k} removed (was ${a})` : `setting ${k}: ${a} -> ${b}`);
   }
+  for (const name of Object.keys(after.boards || {}).sort()) {
+    const a = (before.boards || {})[name], b = after.boards[name];
+    if (!a) { out.push(`board ${name} added (${b.messages} message(s), ${b.tasks} task(s), ${b.subscribers} subscriber(s))`); continue; }
+    for (const f of ['messages', 'tasks', 'subscribers']) if (b[f] !== a[f]) out.push(`board ${name}: ${f} ${a[f]} -> ${b[f]}`);
+  }
   for (const t of Object.keys(after.tables)) {
     const a = before.tables[t], b = after.tables[t];
     if (a && a.hash !== b.hash) out.push(`${t}: ${a.rows} -> ${b.rows} rows${a.rows === b.rows ? ' (changed)' : ''}`);
+  }
+  return out;
+}
+
+/** Tables the runner empties itself (the agents a suite launched are stopped, its teams removed): rows left in them are not a failure of the suite. */
+export const RUNNER_CLEANS = new Set(['live_sessions', 'teams', 'team_members']);
+
+/** The shared tables a suite left with rows it did not find, for --fail-on-leak (#4920): rows added, or the same number of rows with other contents (one replaced). A table that shrank is a suite
+ *  clearing what another left, not a leak. The tables the runner cleans itself are left out. Returns [{table, was, now, kind: 'added' | 'changed'}]. */
+export function rowLeaks(before, after) {
+  const out = [];
+  for (const t of Object.keys(after.tables).sort()) {
+    if (RUNNER_CLEANS.has(t)) continue;
+    const a = before.tables[t], b = after.tables[t];
+    if (!a) continue;
+    if (b.rows > a.rows) out.push({ table: t, was: a.rows, now: b.rows, kind: 'added' });
+    else if (b.rows === a.rows && b.hash !== a.hash) out.push({ table: t, was: a.rows, now: b.rows, kind: 'changed' });
+  }
+  // A message board that was there before the suite and has more messages, tasks or subscribers now (a board the suite made is the runner's to remove, like a team).
+  for (const name of Object.keys(after.boards || {}).sort()) {
+    const a = (before.boards || {})[name], b = after.boards[name];
+    if (!a) continue;
+    for (const f of ['messages', 'tasks', 'subscribers']) if (b[f] > a[f]) out.push({ table: `board ${name} ${f}`, was: a[f], now: b[f], kind: 'added' });
   }
   return out;
 }

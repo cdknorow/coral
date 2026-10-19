@@ -53,7 +53,7 @@
 // changed live_list_golden; terminal_switch's stand-ins left a deleted script as cli_path_claude, which settings_modal_trace showed). Before and after each suite attempt the runner takes
 // helpers/server_state.mjs's snapshot of the shared state (user_settings and the global tables), prints "LEAK  <suite>: ..." for anything that changed, and PUTS THE SETTINGS BACK (the
 // server reads them from its database on every request). --no-restore only reports. --isolate gives every suite a fresh server, Chrome and data dir (nothing can leak, a few seconds
-// slower per suite). --fail-on-leak makes a suite that leaves SETTINGS changed exit 5 (the agents and teams a suite leaves are stopped and removed by the runner, by id, through the server's API; a leftover agent is not a failure). --shuffle SEED runs the suites in a seeded random order instead of longest first, to expose order dependence.
+// slower per suite). --fail-on-leak makes a suite that leaves SETTINGS changed, or rows added or replaced in a shared table (saved_messages, tags, scheduled_jobs, ...; not what the runner removes itself), exit 5 (the agents and teams a suite leaves are stopped and removed by the runner, by id, through the server's API; a leftover agent is not a failure). --shuffle SEED runs the suites in a seeded random order instead of longest first, to expose order dependence.
 //
 // results.json (path printed at the end) has every suite with its status and every attempt (with the
 // log of the Coral server it ran against); a failed attempt keeps its complete output, untruncated.
@@ -91,7 +91,7 @@ import { fileURLToPath } from 'node:url';
 import { classifySuites, problems } from './suites.mjs';
 import { loadDurations, orderLongestFirst, partsByDuration } from './suite_order.mjs';
 import { failingOutput } from './failing_output.mjs';
-import { snapshot as serverSnapshot, diff as serverDiff, restoreSettings, leftovers, cleanup as cleanupLeftovers } from './helpers/server_state.mjs';
+import { snapshot as serverSnapshot, diff as serverDiff, rowLeaks, restoreSettings, leftovers, cleanup as cleanupLeftovers } from './helpers/server_state.mjs';
 
 // Linux: the run goes in a private network namespace with only loopback (#3466). Chrome cancels
 // every request in flight, even to 127.0.0.1, when the host's addresses change (ERR_NETWORK_CHANGED;
@@ -620,25 +620,26 @@ async function runAttempt(t, shard) {
       for (const end = Date.now() + 2000; !closed && Date.now() < end; await sleep(50)) { /* drain */ }
       const status = timedOut ? 'timeout' : code === 0 ? 'pass' : 'fail';
       // What the suite left in the server's shared state (#4830): reported, and the settings put back so the next suite starts from what this one found.
-      let leaks = [], restored = 0, cleaned = null;
+      let leaks = [], restored = 0, cleaned = null, rows = [];
       if (before) {
         try {
           const after = serverSnapshot(shard.data);
           leaks = serverDiff(before, after);
+          rows = rowLeaks(before, after);
           if (leaks.length && restoreState) restored = restoreSettings(shard.data, before, after);
           // The agents the suite launched and the teams it made are stopped and removed, through the server's own API and by id (the kill route takes the session id in its body); never by name or pattern.
           const left = leftovers(before, after);
-          if (restoreState && (left.sessions.length || left.teams.length)) {
+          if (restoreState && (left.sessions.length || left.teams.length || left.boards.length)) {
             try {
               cleaned = await cleanupLeftovers(shard.env.CORAL_TEST_URL, fs.readFileSync(path.join(shard.data, 'api_key'), 'utf8').trim(), left);
               let rest = leftovers(before, serverSnapshot(shard.data));
-              for (const end = Date.now() + 8000; (rest.sessions.length || rest.teams.length) && Date.now() < end; await sleep(200)) rest = leftovers(before, serverSnapshot(shard.data)); // the server finishes a stop a moment after it answers
-              if (rest.sessions.length || rest.teams.length) cleaned.failed.push(`still there after the cleanup: ${rest.sessions.length} agent(s), ${rest.teams.length} team(s)`);
+              for (const end = Date.now() + 8000; (rest.sessions.length || rest.teams.length || rest.boards.length) && Date.now() < end; await sleep(200)) rest = leftovers(before, serverSnapshot(shard.data)); // the server finishes a stop a moment after it answers
+              if (rest.sessions.length || rest.teams.length || rest.boards.length) cleaned.failed.push(`still there after the cleanup: ${rest.sessions.length} agent(s), ${rest.teams.length} team(s), ${rest.boards.length} board(s)`);
             } catch (e) { cleaned = { stopped: [], removed: [], failed: [`cleanup: ${e.message.split('\n')[0]}`] }; }
           }
         } catch (e) { leaks = [`could not read the shared state after the suite: ${e.message.split('\n')[0]}`]; }
       }
-      resolve({ status, code: timedOut ? 'timeout' : code, secs, shard: shard.n, log: shard.log, leaks, restored, cleaned, out: timedOut ? `${out}\n[runner] TIMEOUT: killed after ${timeoutS}s` : out });
+      resolve({ status, code: timedOut ? 'timeout' : code, secs, shard: shard.n, log: shard.log, leaks, rows, restored, cleaned, out: timedOut ? `${out}\n[runner] TIMEOUT: killed after ${timeoutS}s` : out });
     });
   });
 }
@@ -680,8 +681,9 @@ function noteLeaks(test, attempts) {
   if (!leaked.length) return '';
   const restored = attempts.reduce((n, x) => n + (x.restored || 0), 0);
   const cleanedAll = attempts.map(x => x.cleaned).filter(Boolean);
-  const cleanNote = cleanedAll.length ? `; stopped ${cleanedAll.reduce((n, c) => n + c.stopped.length, 0)} agent(s), removed ${cleanedAll.reduce((n, c) => n + c.removed.length, 0)} team(s)${cleanedAll.some(c => c.failed.length) ? `; FAILED: ${cleanedAll.flatMap(c => c.failed).join(', ')}` : ''}` : '';
-  leakReport.push({ test, leaks: [...new Set(leaked)], restored, settingsLeak: leaked.some(l => l.startsWith('setting ')), cleanNote });
+  const cleanNote = cleanedAll.length ? `; stopped ${cleanedAll.reduce((n, c) => n + c.stopped.length, 0)} agent(s), removed ${cleanedAll.reduce((n, c) => n + c.removed.length, 0)} team(s) and ${cleanedAll.reduce((n, c) => n + (c.boardsRemoved || []).length, 0)} board(s)${cleanedAll.some(c => c.failed.length) ? `; FAILED: ${cleanedAll.flatMap(c => c.failed).join(', ')}` : ''}` : '';
+  const rowTables = [...new Set(attempts.flatMap(x => (x.rows || []).map(r => r.table)))].sort();
+  leakReport.push({ test, leaks: [...new Set(leaked)], restored, settingsLeak: leaked.some(l => l.startsWith('setting ')), rowTables, cleanNote });
   return `LEAK    ${test}: ${[...new Set(leaked)].join('; ')}${restoreState && !isolate ? ` (settings put back: ${restored} row(s)${cleanNote})` : ''}`;
 }
 async function runOnce(run) {
@@ -811,7 +813,9 @@ if (leakReport.length) {
   for (const l of leakReport) console.log(`  ${l.test}: ${l.leaks.join('; ')}${l.cleanNote || ''}`);
   const settingsLeakers = leakReport.filter(l => l.settingsLeak).map(l => l.test);
   if (settingsLeakers.length) console.log(`SUITES THAT LEAVE SETTINGS CHANGED (fix these; --fail-on-leak fails the run for them): ${settingsLeakers.join(', ')}`);
-  if (failOnLeak && settingsLeakers.length && !exitCode) exitCode = 5;
+  const rowLeakers = leakReport.filter(l => l.rowTables.length);
+  if (rowLeakers.length) console.log(`SUITES THAT LEAVE ROWS BEHIND IN A SHARED TABLE (fix these; --fail-on-leak fails the run for them): ${rowLeakers.map(l => `${l.test} (${l.rowTables.join(', ')})`).join(', ')}`);
+  if (failOnLeak && (settingsLeakers.length || rowLeakers.length) && !exitCode) exitCode = 5;
 }
 // Nothing this run started may outlive it (#3550): stop the shards, then look for tmux servers whose
 // socket is under the run's folder. Any found are listed, killed (by the PID just read, whose command
