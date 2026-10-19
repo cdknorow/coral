@@ -4,6 +4,7 @@ import { escapeAttr } from './utils.js';
 import { redrawLiveList } from './list_hooks.js';
 import { isAgentFiltering } from './agent_filter.js';
 import { browserLocal } from './safe_storage.js';
+import { inListHeaders } from './display_panel.js';
 
 // ── Group collapse state ─────────────────────────────────────────────
 function _getCollapsedGroups() {
@@ -50,7 +51,8 @@ const GROUP_HEADERS = '.session-group-header[data-group-name]';
 
 /** Whether the list has groups, and whether every one of them is closed (read off the headers as drawn, which already account for a search that opens them). */
 function groupState() {
-    const headers = [...document.querySelectorAll(GROUP_HEADERS)];
+    const list = document.getElementById('live-sessions-list') || document.getElementById('mobile-session-list'); // the group headers are in the list, not anywhere on the page
+    const headers = list ? [...list.querySelectorAll(GROUP_HEADERS)] : [];
     return { any: headers.length > 0, allClosed: headers.length > 0 && headers.every(h => h.getAttribute('aria-expanded') === 'false') };
 }
 
@@ -60,7 +62,7 @@ export function toggleAllGroups() { setAllGroupsCollapsed(!groupState().allClose
 /** Called after every render of the list: the header toggle is there while the list has groups, and says (name, icon) what it does next. */
 export function syncGroupToggle() {
     const { any, allClosed } = groupState();
-    for (const b of document.querySelectorAll('[data-group-toggle]')) {
+    for (const b of inListHeaders('[data-group-toggle]')) {
         b.hidden = !any;
         const label = allClosed ? 'Expand all groups' : 'Collapse all groups';
         b.title = label; b.setAttribute('aria-label', label);

@@ -8,7 +8,7 @@ import { sessionServer, sessionTeamKey, keyLabel, LOCAL_SERVER } from './server_
 import { serverLabel } from './launch_server.js';
 import { state } from './state.js';
 import { redrawLiveList } from './list_hooks.js';
-import { syncDisplayPanels } from './display_panel.js';
+import { syncDisplayPanels, inListHeaders } from './display_panel.js';
 
 const HOSTS = [['agent-list-bar', 'al'], ['mobile-agent-list-bar', 'alm']]; // the sidebar's and the phone's
 const bars = new Map(); // host element -> its bar
@@ -60,7 +60,7 @@ export function syncAgentListBars(sessions, matched) {
     const sortOn = f.sort && f.sort !== EMPTY.sort;
     const parts = [...MODEL.chips(f).map(c => c.label), ...(sortOn ? [`Sort: ${SORT_LABEL[f.sort]}`] : [])];
     const summary = parts.length ? `${parts.join(' · ')}${narrowed ? ` (${text})` : ''}` : '';
-    for (const el of document.querySelectorAll('[data-agent-list-summary]')) {
+    for (const el of inListHeaders('[data-agent-list-summary]')) {
         if (el.dataset.text !== summary) {
             el.dataset.text = summary;
             el.replaceChildren();
@@ -73,7 +73,7 @@ export function syncAgentListBars(sessions, matched) {
             }
         }
     }
-    for (const b of document.querySelectorAll('[data-display-badge]')) {
+    for (const b of inListHeaders('[data-display-badge]')) {
         b.dataset.count = parts.length ? String(parts.length) : ''; b.hidden = !parts.length; // a dot: the count is data (and in the button's name), not text a contrast check would measure
         const btn = b.closest('[data-display-button]'); if (btn) btn.setAttribute('aria-label', parts.length ? `Display options, ${parts.length} on` : 'Display options');
     }

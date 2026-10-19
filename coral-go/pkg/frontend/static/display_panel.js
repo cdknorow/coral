@@ -9,22 +9,28 @@ import { browserLocal } from './safe_storage.js';
 
 const KEY = 'coral_display_panel_open';
 
+/** The elements the Display expander is made of, found inside the two headers that hold it (the sidebar's and the phone's), not by an attribute selector over the whole
+ *  page: the list's render asks for them every time, and the page (with a long chat in it) has thousands of nodes (#4990). */
+export function inListHeaders(selector) {
+    const out = [];
+    for (const h of [...document.getElementsByClassName('sidebar-header'), ...document.getElementsByClassName('mobile-list-header')]) out.push(...h.querySelectorAll(selector));
+    return out;
+}
+
 export function isDisplayPanelOpen() { return browserLocal.get(KEY) === '1'; }
 
 /** Shows the summary line only while the panel is shut and there is something to say. */
 export function syncDisplaySummary() {
     const open = isDisplayPanelOpen();
-    for (const el of document.querySelectorAll('[data-agent-list-summary]')) el.hidden = open || !el.dataset.text;
+    for (const el of inListHeaders('[data-agent-list-summary]')) el.hidden = open || !el.dataset.text;
 }
 
 /** Applies the stored state to every copy of the expander (called after the phone's header is built and after every list render). Each copy is
  *  looked for inside its own header (the sidebar's and the phone's), never over the whole page: this runs on every list render (#4985's budget). */
 export function syncDisplayPanels() {
     const open = isDisplayPanelOpen();
-    for (const header of [...document.getElementsByClassName('sidebar-header'), ...document.getElementsByClassName('mobile-list-header')]) {
-        for (const b of header.querySelectorAll('[data-display-button]')) b.setAttribute('aria-expanded', String(open));
-        for (const p of header.querySelectorAll('[data-display-panel]')) p.hidden = !open;
-    }
+    for (const b of inListHeaders('[data-display-button]')) b.setAttribute('aria-expanded', String(open));
+    for (const p of inListHeaders('[data-display-panel]')) p.hidden = !open;
     syncDisplaySummary();
 }
 
