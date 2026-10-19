@@ -4024,6 +4024,8 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .acf-model-id:empty { display: none; }
 .acf-model-note { display: block; margin-top: 2px; font-size: var(--fs-sm, 11px); font-weight: 400; color: var(--text-secondary); }
 .acf-model-note:empty { display: none; }
+.acf-thinking-note, .acf-thinking-ran { display: block; margin-top: 2px; font-size: var(--fs-sm, 11px); font-weight: 400; color: var(--text-secondary); }
+.acf-thinking-note:empty, .acf-thinking-ran:empty { display: none; }
 .acf-model-picker:not([hidden]) + .acf-model:not([hidden]) { margin-top: var(--space-sm); }
 @media (pointer: coarse), (max-width: 767px) { .acf-model-refresh { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); } }
 

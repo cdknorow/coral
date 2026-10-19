@@ -573,6 +573,7 @@ async function showRestartModal() {
                 agentType: s.agent_type || 'claude',
                 model: s.model || '',
                 thinking: s.thinking || undefined, // the level it was started with: shown, and kept by the restart (#4969)
+                thinkingActual: s.thinking_actual || '', // what it last ran at: a note under Thinking when that differs (#5105)
                 prompt: s.prompt || '',
                 capabilities: s.capabilities || null,
             },

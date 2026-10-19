@@ -5,7 +5,7 @@ const { PERMISSION_MODE_DESCRIPTIONS, _hasPermFlag, _normalizePermFlagsForAgent,
 const { _acfServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _settingsFor } = await importOnce('./launch_models.js');
 const { _checkAgentCLI } = await importOnce('./cli_check.js');
 const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
-const { modelPickerHtml, loadModelPicker, wireModelPicker, syncModelPicker, thinkingPickerHtml, thinkingValue, setThinking, wireThinking } = await importOnce('./model_picker.js');
+const { modelPickerHtml, loadModelPicker, wireModelPicker, syncModelPicker, thinkingPickerHtml, thinkingValue, setThinking, setThinkingActual, wireThinking } = await importOnce('./model_picker.js');
 const { _renderPresetButtons } = await importOnce('./persona_store.js');
 const { presetEnforcement } = await importOnce('./preset_enforcement.js');
 const { initSectionDialog } = await importOnce('./section_dialog.js');
@@ -292,6 +292,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
     // Initialize permissions chips
     _setPermissions(`${uid}-perms`, caps);
     setThinking(container, v.thinking); // a form opened for a running agent shows the level it started with (#4969)
+    setThinkingActual(container, v.thinking, v.thinkingActual); // and, under it, what the agent last ran at when that differs (#5105)
     _syncEnforcement(container);
     container.querySelector('.acf-permission-mode')?.addEventListener('change', () => _syncEnforcement(container));
     container.querySelector('.perms-shell-input')?.addEventListener('input', () => _syncEnforcement(container));
@@ -438,6 +439,7 @@ export function setAgentConfig(containerId, values) {
         if (v.model) _classifyLoadedACFModel(container, typeEl?.value || 'claude', v.model);
     }
     setThinking(container, v.thinking);
+    setThinkingActual(container, v.thinking, v.thinkingActual);
     const promptEl = container.querySelector('.acf-prompt');
     if (promptEl) promptEl.value = v.prompt || '';
     const flagsEl = container.querySelector('.acf-flags');

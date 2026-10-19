@@ -152,17 +152,30 @@ const LEVEL_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra 
 export function thinkingPickerHtml() {
     return `<label class="acf-thinking-wrap" hidden>Thinking <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:`
         + `<select class="acf-thinking" aria-label="Thinking level"></select>`
-        + `<span class="acf-thinking-note" role="status"></span></label>`;
+        + `<span class="acf-thinking-note" role="status"></span><span class="acf-thinking-ran" role="status"></span></label>`;
 }
 
 function thinkingParts(container) {
-    return { wrap: container.querySelector('.acf-thinking-wrap'), select: container.querySelector('.acf-thinking'), note: container.querySelector('.acf-thinking-note') };
+    return { wrap: container.querySelector('.acf-thinking-wrap'), select: container.querySelector('.acf-thinking'), note: container.querySelector('.acf-thinking-note'), ran: container.querySelector('.acf-thinking-ran') };
+}
+
+/** What the agent last ran at when that is not the level the form holds (a restart keeps the stored one): "The agent last ran at Max (changed inside the CLI)." */
+function ranNote(r) {
+    if (!r || !r.actual || r.actual === (r.stored || '')) return '';
+    return `The agent last ran at ${LEVEL_NAMES[r.actual] || r.actual}${r.stored ? ' (changed inside the CLI)' : ''}.`;
+}
+
+/** Tell the form what the agent's transcript shows it running at, beside the level it was given (setThinking): the two can differ after a change made inside the CLI. */
+export function setThinkingActual(container, stored, actual) {
+    container._thinkingRan = actual ? { stored: stored || '', actual: String(actual) } : null;
+    syncThinking(container);
 }
 
 /** Show the levels this type and model take; keep the choice when it is still offered, else fall back to Default and say so. */
 export function syncThinking(container) {
-    const { wrap, select, note } = thinkingParts(container);
+    const { wrap, select, note, ran } = thinkingParts(container);
     if (!wrap || !select) return;
+    if (ran) ran.textContent = ranNote(container._thinkingRan);
     const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
     const typeLevels = agentType === 'terminal' ? [] : (container._thinkingLevels || []);
     const model = (container.querySelector('.acf-model')?.value || '').trim();
