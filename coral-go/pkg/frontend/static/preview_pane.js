@@ -14,6 +14,7 @@ import { fetchImageSrc } from './image_source.js';
 import { wireDownloads } from './artifact_download.js';
 import { retryOnce } from './overload.js';
 import { agentName, apiQs } from './agent_file_api.js';
+import { trapTab } from './dialog_focus.js';
 import { browserLocal } from './safe_storage.js';
 
 const ICON_MAP = {
@@ -60,6 +61,9 @@ let _paneWidth = null;
 let _sessionKey = null;   // agent whose tabs are showing
 const _stash = new Map(); // session key -> { tabs, activeId } for agents in the background
 let _dock = 'bottom';      // 'bottom' (under the side panel tabs) | 'column' (full-height column)
+let _phoneFull = false;     // a phone's preview covers the screen (#5173); not saved
+let _fullPushed = false;    // the history entry it pushed is still there
+let _fullOpener = null;     // what had focus when it opened
 let _maximised = false;    // the column covers Chat (#4931): not saved (a reload opens with Chat); ends when the pane is hidden, moves to the bottom, or another agent is shown
 
 const DOCK_ICONS = {
@@ -166,15 +170,19 @@ export function initPreviewPane() {
         if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (_tabs.length && _effectiveDock() === 'column' && !_maximised) _applyColumnWidth(); }).observe(liveBody);
     }
 
-    document.getElementById('preview-max-btn')?.addEventListener('click', () => _setMaximised(!_maximised));
+    document.getElementById('preview-max-btn')?.addEventListener('click', () => (_isMobile() ? _setPhoneFull(!_phoneFull) : _setMaximised(!_maximised)));
+    document.getElementById('preview-full-back')?.addEventListener('click', () => _setPhoneFull(false));
     // Escape gives the maximised pane back its place, unless something in it (the editor's own search box) already used the key.
     document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape' || !_maximised || e.defaultPrevented) return;
+        if (_phoneFull && e.key === 'Tab' && !e.defaultPrevented) { trapTab(document.getElementById('preview-pane'), e); return; } // focus stays inside the full-screen preview
+        if (e.key !== 'Escape' || !(_maximised || _phoneFull) || e.defaultPrevented) return;
         if ([...document.querySelectorAll('.modal')].some(m => m.style.display && m.style.display !== 'none')) return; // a dialog has the key
-        _setMaximised(false);
+        if (_phoneFull) _setPhoneFull(false); else _setMaximised(false);
         e.preventDefault();
         document.getElementById('preview-max-btn')?.focus();
     });
+    // The browser's Back (a phone's back gesture) closes the full-screen preview: it has an entry of its own in the history.
+    window.addEventListener('popstate', () => { if (_phoneFull && !history.state?.coralPreviewFull) _setPhoneFull(false, { popped: true }); });
 
     document.getElementById('preview-dock-btn')?.addEventListener('click', () => {
         _dock = _dock === 'column' ? 'bottom' : 'column';
@@ -210,17 +218,45 @@ function _syncColumnHandle(w) {
 function _setMaximised(on) {
     on = !!on && _effectiveDock() === 'column' && _tabs.length > 0;
     const body = document.querySelector('.live-body');
-    const btn = document.getElementById('preview-max-btn');
     const changed = on !== _maximised;
     _maximised = on;
     if (body) body.classList.toggle('preview-maximised', on);
-    if (btn) {
-        btn.innerHTML = on ? MAX_ICON_ON : MAX_ICON_OFF;
-        btn.title = on ? 'Restore the preview beside the chat (Escape)' : 'Maximise the preview over the chat';
-        btn.setAttribute('aria-label', btn.title);
-        btn.setAttribute('aria-pressed', String(on));
-    }
+    _paintMaxButton();
     if (changed) fitTerminal(); // the chat or terminal got its room back or lost it
+}
+
+// The toggle in the tab bar: maximise over the chat (the column), or full screen (a phone).
+function _paintMaxButton() {
+    const btn = document.getElementById('preview-max-btn');
+    if (!btn) return;
+    const phone = _isMobile(), on = phone ? _phoneFull : _maximised;
+    btn.innerHTML = on ? MAX_ICON_ON : MAX_ICON_OFF;
+    btn.title = phone ? (on ? 'Leave full screen (Escape)' : 'Show the preview full screen') : (on ? 'Restore the preview beside the chat (Escape)' : 'Maximise the preview over the chat');
+    btn.setAttribute('aria-label', btn.title);
+    btn.setAttribute('aria-pressed', String(on));
+}
+
+/** A phone's preview takes the whole screen (#5173): the pane leaves the half of the side panel it sits in for a fixed layer over the page, with a Back button, and Escape or the
+ *  browser's Back closes it. Nothing about the tabs changes, so closing it returns to the sheet as it was. */
+function _setPhoneFull(on, { popped = false } = {}) {
+    on = !!on && _isMobile() && _tabs.length > 0;
+    const pane = document.getElementById('preview-pane');
+    const btn = document.getElementById('preview-max-btn');
+    if (!pane || on === _phoneFull) return;
+    _phoneFull = on;
+    pane.classList.toggle('preview-phone-full', on);
+    if (on) {
+        pane.setAttribute('role', 'dialog'); pane.setAttribute('aria-modal', 'true'); pane.setAttribute('aria-label', 'Preview');
+        _fullOpener = document.activeElement;
+        history.pushState({ coralPreviewFull: true }, '');
+        _fullPushed = true;
+    } else {
+        pane.removeAttribute('role'); pane.removeAttribute('aria-modal'); pane.removeAttribute('aria-label');
+        if (_fullPushed) { _fullPushed = false; if (!popped && history.state?.coralPreviewFull) history.back(); }
+    }
+    _paintMaxButton();
+    if (on) document.getElementById('preview-full-back')?.focus();
+    else { const o = _fullOpener; _fullOpener = null; if (o && o.isConnected) o.focus({ preventScroll: true }); }
 }
 
 /** Move the pane between the side panel (bottom) and its own column, then show it if it has tabs. */
@@ -251,8 +287,9 @@ function _placePane() {
     if (dock === 'column' && visible) _applyColumnWidth();
     // Maximise is the column's: nothing to cover at the bottom, on a phone (the pane is full screen there) or with no tabs.
     if (_maximised && !(dock === 'column' && visible)) _setMaximised(false);
+    if (_phoneFull && !(_isMobile() && visible)) _setPhoneFull(false); // the last tab closed, or the window grew past a phone
     const maxBtn = document.getElementById('preview-max-btn');
-    if (maxBtn) maxBtn.hidden = !(dock === 'column' && visible);
+    if (maxBtn) { maxBtn.hidden = _isMobile() ? !visible : !(dock === 'column' && visible); _paintMaxButton(); }
 
     const btn = document.getElementById('preview-dock-btn');
     if (btn) {
@@ -843,6 +880,7 @@ export function setPreviewSession(key) {
     key = key || null;
     if (key === _sessionKey) return;
     _setMaximised(false); // another agent's page opens with its Chat
+    _setPhoneFull(false);
     _captureEditor();
     _destroyEditor();
     _tabs.forEach(_disposeTab);

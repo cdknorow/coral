@@ -150,7 +150,21 @@ body.panel-dragging .preview-pane {
 }
 
 @media (max-width: 767px) {
-    .preview-dock-btn { display: none; }
+    .preview-dock-btn:not(.preview-max-btn):not(.preview-full-back) { display: none; }
+}
+
+/* A phone's preview, full screen (#5173): the pane leaves the sheet's lower half for a fixed layer over the page, inside the safe-area insets; the tab bar, the toolbar and the body stack in it and
+   the body scrolls. The side panel it sits in is lifted above the top bar while it is open (z-index 90: under the dialogs, 100 and up). */
+.preview-full-back { display: none; }
+@media (max-width: 767px) {
+    .preview-pane.preview-phone-full {
+        position: fixed; inset: 0; z-index: 90; height: auto; min-height: 0; width: auto; max-width: none; border-top: 0;
+        padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+        box-sizing: border-box; background: var(--bg-primary);
+    }
+    .preview-pane.preview-phone-full .preview-full-back { display: flex; min-height: 44px; min-width: 44px; justify-content: center; border-left: 0; border-right: 1px solid var(--border); color: var(--text-primary); }
+    .preview-pane.preview-phone-full .preview-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+    body:has(.preview-pane.preview-phone-full) .agentic-state.mobile-panel-overlay { z-index: 90; }
 }
 
 .preview-tabs {

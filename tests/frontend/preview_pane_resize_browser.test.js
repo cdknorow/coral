@@ -5,7 +5,7 @@
 //    back brings the saved width back;
 //  - dragging the handle with the mouse resizes it both ways and saves the width; the handle is a separator the keyboard can move (Left/Right, Home/End);
 //  - Maximise (a 44 px toggle in the pane's header) makes the pane take the whole centre, Chat hidden behind it; Restore, and Escape, bring back the old width; it ends when another agent is shown;
-//    nothing is saved: a reload opens with Chat. On a phone there is no toggle (the pane is full screen there) and nothing breaks.
+//    nothing is saved: a reload opens with Chat. On a phone the toggle is the full-screen one (#5173, preview_phone_full_browser) and nothing breaks.
 // Real isolated server, a mock agent, real mouse and key events through CDP. Drives Chrome through agent_view_harness.js.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -160,11 +160,11 @@ const BASE = require('./test_base').BASE;
             check(`${label}, saved ${saved === undefined ? 'nothing' : saved}, window ${w}: Chat keeps its room and the pane stays inside the centre (pane ${g6.col}, Chat ${g6.chat})`, g6.chatShown && (g6.chat >= 240 || g6.body < 481) && g6.colLeft >= g6.bodyLeft && g6.colRight <= g6.bodyLeft + g6.body + 1, JSON.stringify(g6));
         }
 
-        console.log('5. A phone: no toggle, and nothing breaks');
+        console.log('5. A phone: the toggle is the full-screen one, and nothing breaks');
         await open(390, 800, 500);
-        const phone = await ev(`(() => { const b = document.getElementById('preview-max-btn'); const pane = document.getElementById('preview-pane'); const r = pane.getBoundingClientRect(); return { btn: !!b && (b.hidden || getComputedStyle(b).display === 'none'), pane: getComputedStyle(pane).display !== 'none' && r.width > 0, overflow: document.documentElement.scrollWidth <= window.innerWidth + 1 }; })()`);
+        const phone = await ev(`(() => { const b = document.getElementById('preview-max-btn'); const pane = document.getElementById('preview-pane'); const r = pane.getBoundingClientRect(); return { btn: !!b && !b.hidden && getComputedStyle(b).display !== 'none' && b.getAttribute('aria-label') === 'Show the preview full screen', pane: getComputedStyle(pane).display !== 'none' && r.width > 0, overflow: document.documentElement.scrollWidth <= window.innerWidth + 1 }; })()`);
         await shot('preview-phone-390');
-        check('on a phone the toggle is not there, the pane is shown and the page does not scroll sideways', phone.btn && phone.pane && phone.overflow, JSON.stringify(phone));
+        check('on a phone the toggle is the full-screen one (#5173), the pane is shown and the page does not scroll sideways', phone.btn && phone.pane && phone.overflow, JSON.stringify(phone));
     } catch (e) { console.error(e && e.stack || e); results.push(false); }
     finally { try { await client.close(); } catch (_) {} }
     const failed = results.filter(r => !r).length;
