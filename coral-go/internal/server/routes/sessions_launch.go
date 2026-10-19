@@ -53,6 +53,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		Backend         string                 `json:"backend"`
 		BoardType       string                 `json:"board_type"`
 		Model           string                 `json:"model"`
+		Thinking        string                 `json:"thinking"` // the thinking level to start with ("" = the default for the type, else the CLI's own), #4969
 		ResumeSessionID string                 `json:"resume_session_id"`
 		Capabilities    *agent.Capabilities    `json:"capabilities"`
 		Tools           []string               `json:"tools"`
@@ -147,6 +148,14 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Thinking level: the request's, else the Settings default for the type.
+	effectiveThinking, thinkingErr := h.resolveThinking(r.Context(), body.AgentType, body.Thinking)
+	if thinkingErr != "" {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": thinkingErr, "field": "thinking"})
+		return
+	}
+
 	// Add model flag if resolved to non-empty
 	launchFlags := body.Flags
 	if effectiveModel != "" {
@@ -155,7 +164,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	result, err := h.launchSession(r.Context(), launchSpec{
 		WorkDir: body.WorkingDir, AgentType: body.AgentType, DisplayName: body.DisplayName, ResumeSessionID: body.ResumeSessionID,
 		Flags: launchFlags, Prompt: body.Prompt, BoardName: body.BoardName, BoardServer: body.BoardServer, Backend: body.Backend,
-		BoardType: body.BoardType, Model: effectiveModel, Capabilities: body.Capabilities, Tools: body.Tools, Hooks: body.Hooks,
+		BoardType: body.BoardType, Model: effectiveModel, Thinking: effectiveThinking, Capabilities: body.Capabilities, Tools: body.Tools, Hooks: body.Hooks,
 	})
 	if err != nil {
 		attempt.Finish(tracking.OutcomeFailure, classifyLaunchError(err), 0, 1)
@@ -190,6 +199,7 @@ type launchTeamAgent struct {
 	Capabilities *agent.Capabilities    `json:"capabilities"`
 	AgentType    string                 `json:"agent_type"`
 	Model        string                 `json:"model"`
+	Thinking     string                 `json:"thinking"` // #4969
 	Flags        []string               `json:"flags"`
 	Tools        []string               `json:"tools"`
 	MCPServers   json.RawMessage        `json:"mcpServers"` // refused: not supported (#3644)
@@ -416,6 +426,16 @@ func checkTeamRequest(body launchTeamRequest) string {
 		if a.Model != "" && !agentmodels.ValidModelValue(a.Model) {
 			return fmt.Sprintf("agent %q: %s", a.Name, errInvalidModel)
 		}
+		memberType := a.AgentType
+		if memberType == "" {
+			memberType = body.AgentType
+		}
+		if memberType == "" {
+			memberType = at.Claude
+		}
+		if t := strings.TrimSpace(a.Thinking); t != "" && !agentmodels.ValidThinking(memberType, t) {
+			return fmt.Sprintf("agent %q: %s", a.Name, errInvalidThinking(memberType))
+		}
 	}
 	return ""
 }
@@ -493,11 +513,12 @@ func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamR
 	if effectiveModel != "" {
 		agentFlags = append(agentFlags, "--model", effectiveModel)
 	}
+	effectiveThinking := defaultThinkingFromSettings(userSettings, agentType, def.Thinking)
 	result, err := h.launchSession(ctx, launchSpec{
 		WorkDir: workingDir, AgentType: agentType, DisplayName: def.Name, Flags: agentFlags,
 		Prompt:    InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), body.BoardName, def.Name, def.Prompt),
 		BoardName: body.BoardName, BoardServer: body.BoardServer, Backend: body.Backend, BoardType: body.BoardType,
-		Model: effectiveModel, Capabilities: def.Capabilities, Tools: def.Tools, Hooks: def.Hooks,
+		Model: effectiveModel, Thinking: effectiveThinking, Capabilities: def.Capabilities, Tools: def.Tools, Hooks: def.Hooks,
 	})
 	if err != nil {
 		log.Printf("[launch-team] failed to launch agent %s: %v", def.Name, err)
@@ -600,6 +621,7 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		Icon         *string
 		Capabilities *string
 		Model        *string
+		Thinking     *string
 		Tools        *string
 	}
 	configs := make([]agentConfig, 0, len(sessions))
@@ -622,6 +644,7 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 			Icon:         s.Icon,
 			Capabilities: s.Capabilities,
 			Model:        s.Model,
+			Thinking:     s.Thinking,
 			Tools:        s.Tools,
 		})
 	}
@@ -689,7 +712,7 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, displayName, prompt)
 		result, err := h.launchSession(bgCtx, launchSpec{
 			WorkDir: cfg.WorkingDir, AgentType: cfg.AgentType, DisplayName: displayName, Flags: flags, Prompt: prompt,
-			BoardName: boardName, BoardServer: boardServer, BoardType: boardType, Model: modelStr, Capabilities: caps, Tools: tools,
+			BoardName: boardName, BoardServer: boardServer, BoardType: boardType, Model: modelStr, Thinking: ptr.Value(cfg.Thinking), Capabilities: caps, Tools: tools,
 		})
 		if err != nil {
 			log.Printf("[reset-team] failed to re-launch %s: %v", displayName, err)
@@ -754,6 +777,7 @@ type launchSpec struct {
 	BoardName, BoardServer          string
 	Backend                         string // the launch path asked for: "pty", "tmux" or "" (launchPath)
 	BoardType, Model                string
+	Thinking                        string // the thinking level to start with: launchSession gives the CLI its flag (#4969)
 	Capabilities                    *agent.Capabilities
 	Tools                           []string
 	Hooks                           map[string]interface{}
@@ -783,6 +807,12 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 	}
 	if err := validateAgentModel(agentType, spec.Model); err != nil {
 		return nil, err
+	}
+	if !agentmodels.ValidThinking(agentType, spec.Thinking) {
+		return nil, errors.New(errInvalidThinking(agentType))
+	}
+	if spec.Thinking != "" { // the level is the CLI's one --effort: a stored or given one is replaced, never doubled
+		spec.Flags = append(agentmodels.StripThinkingFlags(spec.Flags), agentmodels.ThinkingArgs(agentType, spec.Thinking)...)
 	}
 	userSettings, err := h.launchSettings(ctx)
 	if err != nil {
@@ -878,6 +908,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 		BoardType:     ptr.NonEmpty(spec.BoardType),
 		Capabilities:  store.MarshalCapabilities(spec.Capabilities),
 		Model:         ptr.NonEmpty(spec.Model),
+		Thinking:      ptr.NonEmpty(spec.Thinking),
 		ContextWindow: proxy.LookupContextWindow(spec.Model),
 		Tools:         store.MarshalCapabilities(spec.Tools),
 		PID:           shellPID,
@@ -1715,3 +1746,50 @@ func launchCommand(ag agent.Agent, p agent.LaunchParams) (string, error) {
 
 // maxLaunchTeamAgents is the most agents one launch-team request may start (#4602).
 const maxLaunchTeamAgents = 32
+
+// errInvalidThinking says which levels a type takes.
+func errInvalidThinking(agentType string) string {
+	levels := agentmodels.ThinkingLevels(agentType)
+	if len(levels) == 0 {
+		return "a thinking level cannot be set for " + agentType + " agents yet"
+	}
+	return "thinking must be one of " + strings.Join(levels, ", ") + " for " + agentType + " agents (or empty for the default)"
+}
+
+// resolveThinking is a launch's thinking level: the request's, else the Settings default for the type (default_thinking_<type>).
+// A request's level the type does not take is refused (the message is the reply's error); a saved default that no longer fits is
+// ignored, as the CLI's own default then applies. Terminal agents have none.
+func (h *SessionsHandler) resolveThinking(ctx context.Context, agentType, requested string) (level, refused string) {
+	if agentType == "" {
+		agentType = at.Claude
+	}
+	requested = strings.TrimSpace(requested)
+	if requested != "" && !agentmodels.ValidThinking(agentType, requested) {
+		return "", errInvalidThinking(agentType)
+	}
+	if requested != "" || agentType == at.Terminal {
+		return requested, ""
+	}
+	settings, err := h.ss.GetSettings(ctx)
+	if err != nil {
+		return "", ""
+	}
+	return defaultThinkingFromSettings(settings, agentType, ""), ""
+}
+
+// defaultThinkingFromSettings is requested, else the saved default_thinking_<type> when the type takes it.
+func defaultThinkingFromSettings(settings map[string]string, agentType, requested string) string {
+	if requested = strings.TrimSpace(requested); requested != "" {
+		if agentmodels.ValidThinking(agentType, requested) {
+			return requested
+		}
+		return ""
+	}
+	if agentType == at.Terminal || settings == nil {
+		return ""
+	}
+	if d := strings.TrimSpace(settings["default_thinking_"+agentType]); agentmodels.ValidThinking(agentType, d) {
+		return d
+	}
+	return ""
+}

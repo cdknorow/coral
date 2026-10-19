@@ -550,3 +550,46 @@ func TestListSessionsPagedDateToIncludesTheWholeDay(t *testing.T) {
 	}
 	require.ElementsMatch(t, []string{"a-noon", "b-end", "c-frac", "d-frac-z", "g-earlier"}, ids)
 }
+
+// #4969: a replacement session keeps the thinking level of the one it replaces for the same provider, and not another provider's.
+func TestReplaceLiveSessionCarriesTheThinkingLevel(t *testing.T) {
+	ctx := context.Background()
+	ss := NewSessionStore(openTestDB(t))
+	high := "high"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &LiveSession{SessionID: "a", AgentType: "claude", AgentName: "a", WorkingDir: "/tmp", Thinking: &high}))
+	got, err := ss.GetLiveSession(ctx, "a")
+	require.NoError(t, err)
+	require.NotNil(t, got.Thinking)
+	assert.Equal(t, "high", *got.Thinking)
+
+	require.NoError(t, ss.ReplaceLiveSession(ctx, "a", &LiveSession{SessionID: "b", AgentType: "claude", AgentName: "a", WorkingDir: "/tmp"}))
+	b, err := ss.GetLiveSession(ctx, "b")
+	require.NoError(t, err)
+	require.NotNil(t, b.Thinking, "the same provider: carried")
+	assert.Equal(t, "high", *b.Thinking)
+
+	low := "low"
+	require.NoError(t, ss.ReplaceLiveSession(ctx, "b", &LiveSession{SessionID: "c", AgentType: "claude", AgentName: "a", WorkingDir: "/tmp", Thinking: &low}))
+	c, err := ss.GetLiveSession(ctx, "c")
+	require.NoError(t, err)
+	assert.Equal(t, "low", *c.Thinking, "a level the replacement is given wins")
+
+	empty := ""
+	require.NoError(t, ss.ReplaceLiveSession(ctx, "c", &LiveSession{SessionID: "d", AgentType: "claude", AgentName: "a", WorkingDir: "/tmp", Thinking: &empty}))
+	d, err := ss.GetLiveSession(ctx, "d")
+	require.NoError(t, err)
+	assert.Equal(t, "", ptrString(d.Thinking), "an empty level clears it")
+
+	require.NoError(t, ss.ReplaceLiveSession(ctx, "d", &LiveSession{SessionID: "e", AgentType: "claude", AgentName: "a", WorkingDir: "/tmp", Thinking: &high}))
+	require.NoError(t, ss.ReplaceLiveSession(ctx, "e", &LiveSession{SessionID: "f", AgentType: "codex", AgentName: "a", WorkingDir: "/tmp"}))
+	f, err := ss.GetLiveSession(ctx, "f")
+	require.NoError(t, err)
+	assert.Equal(t, "", ptrString(f.Thinking), "another provider's level does not carry over")
+}
+
+func ptrString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}

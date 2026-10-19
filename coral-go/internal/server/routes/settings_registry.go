@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentmodels"
 	"github.com/cdknorow/coral/internal/agentprio"
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/background"
@@ -231,6 +232,13 @@ func lookupSetting(key string) (settingSpec, bool) {
 			}
 		}
 	}
+	if t, ok := strings.CutPrefix(key, "default_thinking_"); ok {
+		for _, known := range agentTypes {
+			if t == known {
+				return generic(thinkingSetting(t)), true
+			}
+		}
+	}
 	return settingSpec{}, false
 }
 
@@ -273,4 +281,20 @@ func checkSettingKeys(body map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// thinkingSetting checks a default_thinking_<type> value (#4969): "" (the CLI's own default) or one of the levels Coral passes to that
+// type's CLI.
+func thinkingSetting(agentType string) func(v any) (any, error) {
+	return func(v any) (any, error) {
+		s, ok := v.(string)
+		if !ok {
+			return nil, errors.New("must be a string")
+		}
+		s = strings.TrimSpace(s)
+		if !agentmodels.ValidThinking(agentType, s) {
+			return nil, errors.New(errInvalidThinking(agentType))
+		}
+		return s, nil
+	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentmodels"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/gitutil"
@@ -234,6 +235,7 @@ type restartRequest struct {
 	SessionID    string              `json:"session_id"`
 	Prompt       string              `json:"prompt"`
 	Model        *string             `json:"model"`
+	Thinking     *string             `json:"thinking"` // the thinking level to restart with: nil keeps the stored one, "" clears it (#4969)
 	Capabilities *agent.Capabilities `json:"capabilities"`
 }
 
@@ -259,6 +261,8 @@ type restartPlan struct {
 	// The settings it starts with: the stored ones, with the request's changes.
 	flags                                                     []string
 	prompt, board, boardServer, displayName, boardType, model string
+	thinking                                                  string // the thinking level it starts with ("" = the CLI's default)
+	thinkingFlag                                              bool   // the agent was started with a level, or this restart sets one: its stored --effort is replaced
 	contextWindow                                             int
 	caps                                                      *agent.Capabilities
 	capsJSON, toolsJSON                                       *string
@@ -363,6 +367,12 @@ func (h *SessionsHandler) restartResolve(ctx context.Context, name string, req r
 	if err := validateAgentModel(p.agentType, preflightModel); err != nil {
 		return nil, func(w http.ResponseWriter) { errBadRequest(w, err.Error()) }
 	}
+	if req.Thinking != nil && !agentmodels.ValidThinking(p.agentType, strings.TrimSpace(*req.Thinking)) {
+		msg := errInvalidThinking(p.agentType)
+		return nil, func(w http.ResponseWriter) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg, "field": "thinking"})
+		}
+	}
 
 	// A sleeping agent has no terminal. Restarting one starts a fresh agent in
 	// a new terminal in its working directory, with the restart settings
@@ -428,6 +438,10 @@ func (p *restartPlan) restartSettings() {
 		p.displayName = ptr.Value(ls.DisplayName)
 		p.boardType = ptr.Value(ls.BoardType)
 		p.model = ptr.Value(ls.Model)
+		if t := ptr.Value(ls.Thinking); agentmodels.ValidThinking(p.agentType, t) { // another provider's level does not carry over
+			p.thinking = t
+		}
+		p.thinkingFlag = ptr.Value(ls.Thinking) != ""
 		p.contextWindow = ls.ContextWindow
 		p.capsJSON = ls.Capabilities
 		p.toolsJSON = ls.Tools
@@ -460,7 +474,14 @@ func (p *restartPlan) restartSettings() {
 		p.caps = p.req.Capabilities
 		p.capsJSON = store.MarshalCapabilities(p.req.Capabilities)
 	}
-	p.flags = restartFlags(storedFlags, p.model, p.req.ExtraFlags)
+	if p.req.Thinking != nil {
+		p.thinking = strings.TrimSpace(*p.req.Thinking) // checked in restartResolve
+		p.thinkingFlag = true
+	}
+	if p.thinkingFlag {
+		storedFlags = agentmodels.StripThinkingFlags(storedFlags)
+	}
+	p.flags = append(restartFlags(storedFlags, p.model, p.req.ExtraFlags), agentmodels.ThinkingArgs(p.agentType, p.thinking)...)
 }
 
 // restartFlags is a restarted agent's CLI flags: the stored ones without permission flags (its capabilities are
@@ -677,6 +698,7 @@ func (h *SessionsHandler) restartRecord(ctx context.Context, p *restartPlan) {
 		BoardType:     ptr.NonEmpty(p.boardType),
 		Capabilities:  p.capsJSON,
 		Model:         model,
+		Thinking:      &p.thinking, // "" when it has none: the replaced session's level is not carried over
 		ContextWindow: p.contextWindow,
 		Tools:         p.toolsJSON,
 		PID:           restartPID,
@@ -811,6 +833,9 @@ func (h *SessionsHandler) resumeResolve(ctx context.Context, name string, body *
 	p.newLogPath = naming.LogFile(h.cfg.LogDir, agentType, p.newSessionID)
 	p.prompt, p.board, p.boardServer = ptr.Value(ls.Prompt), ptr.Value(ls.BoardName), ptr.Value(ls.BoardServer)
 	p.displayName, p.boardType, p.tools = ptr.Value(ls.DisplayName), ptr.Value(ls.BoardType), store.UnmarshalFlags(ls.Tools)
+	if t := ptr.Value(ls.Thinking); agentmodels.ValidThinking(agentType, t) { // the resumed agent keeps its level (a resume starts with no other stored flag)
+		p.thinking = t
+	}
 	// The agent's board subscription (job title, receive mode, peek), carried to the new session as restart does
 	// (#3216); a resume that can't read it goes on without (it then joins its board after the launch).
 	if h.bs != nil {
@@ -837,6 +862,7 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 		SessionName:     p.newSessionName,
 		ProtocolPath:    h.protocolPath(),
 		ResumeSessionID: resumeID,
+		Flags:           agentmodels.ThinkingArgs(p.agentType, p.thinking),
 		WorkingDir:      p.workdir,
 		CLIPath:         agent.ResolveCLIPath(userSettings, p.agentType), // Settings > CLI Paths (#3205)
 		BoardName:       p.board,
@@ -878,6 +904,7 @@ func (h *SessionsHandler) resumeRecord(ctx context.Context, p *restartPlan, resu
 		BoardName:    ptr.NonEmpty(p.board),
 		BoardServer:  ptr.NonEmpty(p.boardServer),
 		BoardType:    ptr.NonEmpty(p.boardType),
+		Thinking:     &p.thinking,
 		PID:          resumePID,
 	})
 	h.noteLaunchedHooks(ctx, p.newSessionID, p.agentType) // #3665

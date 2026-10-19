@@ -255,6 +255,7 @@ var columnMigrations = []struct {
 	{"live_sessions", "pid", "INTEGER NOT NULL DEFAULT 0"},
 	{"live_sessions", "tools", "TEXT"},
 	{"live_sessions", "list_at", "TEXT"}, // the time the agent's place in the list was taken; a replacement session keeps its predecessor's (#4943)
+	{"live_sessions", "thinking", "TEXT"}, // the thinking level the agent was started with; NULL or "" is the CLI's default (#4969)
 	{"live_sessions", "mcp_servers", "TEXT"},
 	{"scheduled_jobs", "job_type", "TEXT DEFAULT 'prompt'"},
 	{"scheduled_jobs", "workflow_id", "INTEGER"},

@@ -48,27 +48,29 @@ type SessionIndex struct {
 
 // LiveSession represents a persistent live session record.
 type LiveSession struct {
-	SessionID     string  `db:"session_id" json:"session_id"`
-	AgentType     string  `db:"agent_type" json:"agent_type"`
-	AgentName     string  `db:"agent_name" json:"agent_name"`
-	WorkingDir    string  `db:"working_dir" json:"working_dir"`
-	DisplayName   *string `db:"display_name" json:"display_name,omitempty"`
-	ResumeFromID  *string `db:"resume_from_id" json:"resume_from_id,omitempty"`
-	Flags         *string `db:"flags" json:"flags,omitempty"`
-	IsJob         int     `db:"is_job" json:"is_job"`
-	Prompt        *string `db:"prompt" json:"prompt,omitempty"`
-	BoardName     *string `db:"board_name" json:"board_name,omitempty"`
-	BoardServer   *string `db:"board_server" json:"board_server,omitempty"`
-	Backend       *string `db:"backend" json:"backend,omitempty"`
-	Icon          *string `db:"icon" json:"icon,omitempty"`
-	NameColor     *string `db:"name_color" json:"name_color,omitempty"`
-	IsSleeping    int     `db:"is_sleeping" json:"is_sleeping"`
-	IsArchived    int     `db:"is_archived" json:"is_archived"`
-	SleepReason   *string `db:"sleep_reason" json:"sleep_reason,omitempty"`
-	BoardType     *string `db:"board_type" json:"board_type,omitempty"`
-	GitDiffMode   *string `db:"git_diff_mode" json:"git_diff_mode,omitempty"`
-	Capabilities  *string `db:"capabilities" json:"capabilities,omitempty"`
-	Model         *string `db:"model" json:"model,omitempty"`
+	SessionID    string  `db:"session_id" json:"session_id"`
+	AgentType    string  `db:"agent_type" json:"agent_type"`
+	AgentName    string  `db:"agent_name" json:"agent_name"`
+	WorkingDir   string  `db:"working_dir" json:"working_dir"`
+	DisplayName  *string `db:"display_name" json:"display_name,omitempty"`
+	ResumeFromID *string `db:"resume_from_id" json:"resume_from_id,omitempty"`
+	Flags        *string `db:"flags" json:"flags,omitempty"`
+	IsJob        int     `db:"is_job" json:"is_job"`
+	Prompt       *string `db:"prompt" json:"prompt,omitempty"`
+	BoardName    *string `db:"board_name" json:"board_name,omitempty"`
+	BoardServer  *string `db:"board_server" json:"board_server,omitempty"`
+	Backend      *string `db:"backend" json:"backend,omitempty"`
+	Icon         *string `db:"icon" json:"icon,omitempty"`
+	NameColor    *string `db:"name_color" json:"name_color,omitempty"`
+	IsSleeping   int     `db:"is_sleeping" json:"is_sleeping"`
+	IsArchived   int     `db:"is_archived" json:"is_archived"`
+	SleepReason  *string `db:"sleep_reason" json:"sleep_reason,omitempty"`
+	BoardType    *string `db:"board_type" json:"board_type,omitempty"`
+	GitDiffMode  *string `db:"git_diff_mode" json:"git_diff_mode,omitempty"`
+	Capabilities *string `db:"capabilities" json:"capabilities,omitempty"`
+	Model        *string `db:"model" json:"model,omitempty"`
+	// Thinking is the thinking (reasoning effort) level the agent was started with: "" or NULL is the CLI's own default (#4969).
+	Thinking      *string `db:"thinking" json:"thinking,omitempty"`
 	ContextWindow int     `db:"context_window" json:"context_window,omitempty"`
 	// ObservedModel is the model a hook last reported (agy); display only, never a launch setting.
 	ObservedModel *string `db:"observed_model" json:"-"`
@@ -1095,12 +1097,12 @@ func (s *SessionStore) RegisterLiveSession(ctx context.Context, ls *LiveSession)
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT OR REPLACE INTO live_sessions
-		 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, board_type, capabilities, model, context_window, tools, pid, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+		 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, board_type, capabilities, model, thinking, context_window, tools, pid, status, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
 		ls.SessionID, ls.AgentType, ls.AgentName, ls.WorkingDir,
 		ls.DisplayName, ls.ResumeFromID, ls.Flags, ls.IsJob,
 		ls.Prompt, ls.BoardName, ls.BoardServer, ls.Backend, ls.Icon, ls.IsSleeping, ls.BoardType,
-		ls.Capabilities, ls.Model, ls.ContextWindow, ls.Tools, ls.PID, ls.CreatedAt)
+		ls.Capabilities, ls.Model, ls.Thinking, ls.ContextWindow, ls.Tools, ls.PID, ls.CreatedAt)
 	return err
 }
 
@@ -1156,7 +1158,7 @@ func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, e
 	var sessions []LiveSession
 	err := s.reader().SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, capabilities, model, observed_model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, capabilities, model, thinking, observed_model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE status = 'active' ORDER BY created_at`)
 	return sessions, err
 }
@@ -1174,7 +1176,7 @@ func (s *SessionStore) GetBoardSessions(ctx context.Context, boardName string) (
 	var sessions []LiveSession
 	err := s.reader().SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, is_archived, board_type, capabilities, model, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, is_archived, board_type, capabilities, model, thinking, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE board_name = ? AND status = 'active' ORDER BY created_at`, boardName)
 	return sessions, err
 }
@@ -1279,7 +1281,7 @@ func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*L
 	var ls LiveSession
 	err := s.reader().GetContext(ctx, &ls,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, observed_model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, status
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, thinking, observed_model, context_window, tools, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, status
 		 FROM live_sessions WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1298,7 +1300,7 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 		// Carry forward flags, prompt, board from old session if not set
 		var old LiveSession
 		err := tx.GetContext(ctx, &old,
-			"SELECT agent_type, flags, prompt, board_name, board_server, icon, name_color, is_sleeping, board_type, display_name, is_job, backend, capabilities, model, context_window, tools FROM live_sessions WHERE session_id = ?",
+			"SELECT agent_type, flags, prompt, board_name, board_server, icon, name_color, is_sleeping, board_type, display_name, is_job, backend, capabilities, model, thinking, context_window, tools FROM live_sessions WHERE session_id = ?",
 			oldSessionID)
 		if err == nil {
 			sameProvider := newSession.AgentType == "" || newSession.AgentType == old.AgentType
@@ -1331,6 +1333,9 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 			}
 			if newSession.Model == nil && sameProvider {
 				newSession.Model = old.Model
+			}
+			if newSession.Thinking == nil && sameProvider {
+				newSession.Thinking = old.Thinking // the level belongs to the provider: another one's set differs
 			}
 			if newSession.Model == nil && newSession.ContextWindow == 0 && sameProvider {
 				newSession.ContextWindow = old.ContextWindow
@@ -1372,13 +1377,13 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 		now := nowUTC()
 		_, err = tx.ExecContext(ctx,
 			`INSERT OR REPLACE INTO live_sessions
-			 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, capabilities, model, context_window, tools, pid, status, created_at, list_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+			 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, capabilities, model, thinking, context_window, tools, pid, status, created_at, list_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
 			newSession.SessionID, newSession.AgentType, newSession.AgentName,
 			newSession.WorkingDir, newSession.DisplayName, newSession.ResumeFromID,
 			newSession.Flags, newSession.IsJob, newSession.Prompt, newSession.BoardName,
 			newSession.BoardServer, newSession.Backend, newSession.Icon, newSession.NameColor, newSession.IsSleeping, newSession.BoardType,
-			newSession.Capabilities, newSession.Model, newSession.ContextWindow, newSession.Tools, newSession.PID, now, listAt)
+			newSession.Capabilities, newSession.Model, newSession.Thinking, newSession.ContextWindow, newSession.Tools, newSession.PID, now, listAt)
 		return err
 	})
 }
