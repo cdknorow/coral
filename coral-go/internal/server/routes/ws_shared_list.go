@@ -32,7 +32,10 @@ import (
 // server never changes it.
 var wsListMaxAgeNs atomic.Int64
 
-func init() { wsListMaxAgeNs.Store(int64(750 * time.Millisecond)) }
+// wsListMaxAgeDefault is the production age; tests read it where package-level vars are initialised (before init runs).
+const wsListMaxAgeDefault = 750 * time.Millisecond
+
+func init() { wsListMaxAgeNs.Store(int64(wsListMaxAgeDefault)) }
 
 func wsListMaxAge() time.Duration { return time.Duration(wsListMaxAgeNs.Load()) }
 
