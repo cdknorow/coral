@@ -691,11 +691,11 @@ func parseLiveList(body []byte) ([]map[string]any, error) {
 // What the hub keeps of ONE remote machine's sessions, from its list or its feed (#5099): a machine that is not the Operator's own (a compromised one, a hub
 // registered as a machine) could otherwise grow the hub's memory without bound. The count alone is not a bound, a row can be megabytes (the message limit is
 // 32 MiB), so three limits hold: the sessions, one row's size as the machine sent it, and the sum of the sizes of the rows kept. A real row is a few KiB, a long
-// prompt tens of KiB.
+// prompt tens of KiB. The budget is 16 MiB of the rows as sent: decoded into maps they cost about 7.5 times that in memory (QA, #5099).
 const (
 	maxRemoteSessions = 5000
 	maxRemoteRowBytes = 256 << 10
-	maxRemoteBytes    = 32 << 20
+	maxRemoteBytes    = 16 << 20
 )
 
 // decodeLocalRow is one session row of a machine's list or feed: nil when it is over the row limit, does not parse, or belongs to another server than the

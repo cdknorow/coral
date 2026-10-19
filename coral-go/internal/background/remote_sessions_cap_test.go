@@ -67,7 +67,7 @@ func TestRemoteListRowAndByteLimits(t *testing.T) {
 	require.Len(t, list, 1)
 	assert.Equal(t, "ok1", list[0]["session_id"])
 
-	// 200 KiB rows against the 32 MiB budget: the budget stops them, a later small row still gets in.
+	// 200 KiB rows against the 16 MiB budget: the budget stops them, a later small row still gets in.
 	raws = raws[:0]
 	for i := 0; i < 200; i++ {
 		raws = append(raws, rowJSON(fmt.Sprintf("b%d", i), map[string]any{"prompt": strings.Repeat("y", 200<<10)}))

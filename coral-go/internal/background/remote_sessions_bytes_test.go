@@ -72,7 +72,7 @@ func TestRemoteFeedRetainsABoundedNumberOfBytes(t *testing.T) {
 	}
 }
 
-// Rows each under the row limit still stop at the machine's byte budget: 200 rows of 200 KiB are 40 MiB sent against 32.
+// Rows each under the row limit still stop at the machine's byte budget: 200 rows of 200 KiB are 40 MiB sent against 16.
 func TestRemoteFeedStopsAtTheByteBudget(t *testing.T) {
 	h, conn := feedBytesRig(t)
 	const rows, rowBytes = 200, 200 << 10
@@ -80,10 +80,11 @@ func TestRemoteFeedStopsAtTheByteBudget(t *testing.T) {
 		sendRow(t, conn, fmt.Sprintf("big-%d", i), rowBytes)
 	}
 	sendRow(t, conn, "after", 100)
-	require.Eventually(t, func() bool { return hubHas(h, "big-0") && hubHas(h, "big-100") }, 20*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return hubHas(h, "big-0") && hubHas(h, "big-50") }, 20*time.Second, 50*time.Millisecond)
 	time.Sleep(500 * time.Millisecond) // sleep-ok: the rest of the 200 rows arrive and are refused; there is no event for a refusal
 	n, bytes := heldBytes(t, h)
-	assert.LessOrEqual(t, bytes, maxRemoteBytes+n*512, "held %d MiB in %d rows against a %d MiB budget", bytes>>20, n, maxRemoteBytes>>20)
+	assert.LessOrEqual(t, bytes, 16<<20+n*512, // the literal on purpose: the budget is 16 MiB of rows as sent (about 120 MiB decoded), and a change to it should change this line
+		"held %d MiB in %d rows against a 16 MiB budget", bytes>>20, n)
 	assert.Less(t, n, rows, "the budget stopped some of the %d rows", rows)
 	assert.True(t, hubHas(h, "big-0"), "the first rows are kept")
 	assert.False(t, hubHas(h, fmt.Sprintf("big-%d", rows-1)), "a row past the budget is not")
