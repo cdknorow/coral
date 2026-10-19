@@ -273,6 +273,7 @@ func TestMiddleware_ValidAPIKeyQueryParam(t *testing.T) {
 	ks, handler := newMiddlewareTest(t)
 	r := httptest.NewRequest("GET", "/?api_key="+ks.Key(), nil)
 	r.RemoteAddr = "192.168.1.5:54321"
+	r.Header.Set("Sec-Fetch-Mode", "navigate") // a browser opening the link (#5067: a script gets no session)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	assert.Equal(t, http.StatusOK, w.Code)

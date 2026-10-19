@@ -99,8 +99,10 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 					return
 				}
 				if ks.ValidateKey(key) {
-					// Auto-create session for API key auth via query param
-					if r.URL.Query().Get("api_key") != "" {
+					// A browser that opens a link with the key gets a session cookie (#5067): once, for a navigation that holds none. A script polling
+					// with ?api_key (no cookie jar, no navigation) is authenticated like the header form and makes no session, so the sessions
+					// table and Settings' list do not grow with its requests.
+					if r.URL.Query().Get("api_key") != "" && wantsSessionCookie(ks, r) {
 						token, err := ks.NewSessionRotating(r, SessionByKey, false)
 						if err != nil {
 							log.Printf("[auth] failed to create session: %v", err)
@@ -135,6 +137,20 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			returnTo := SafeReturnTo(r.URL.RequestURI())
 			http.Redirect(w, r, "/auth?return_to="+url.QueryEscape(returnTo), http.StatusTemporaryRedirect)
 		})
+	}
+}
+
+// wantsSessionCookie reports whether a request that authenticated with ?api_key should be given a session: a top-level navigation (Sec-Fetch-Mode:
+// navigate, or from a browser that sends no Sec-Fetch headers, an Accept that asks for HTML) from a browser that holds no live session of this server.
+func wantsSessionCookie(ks *KeyStore, r *http.Request) bool {
+	if t := ks.extractSessionCookie(r); t != "" && ks.ValidateSession(t) {
+		return false
+	}
+	switch mode := r.Header.Get("Sec-Fetch-Mode"); {
+	case mode != "":
+		return mode == "navigate" && r.Header.Get("Sec-Fetch-Dest") != "iframe"
+	default:
+		return strings.Contains(r.Header.Get("Accept"), "text/html")
 	}
 }
 

@@ -109,3 +109,43 @@ func (p *pausingBackend) PutSession(ctx context.Context, s SessionRecord) error 
 	p.onPut()
 	return p.SessionBackend.PutSession(ctx, s)
 }
+
+// A script polling with ?api_key is authenticated like the header form and makes no session; a browser navigation gets one once, and reuses it (#5067).
+func TestQueryKeyMintsASessionOnlyForANavigationThatHoldsNone(t *testing.T) {
+	ks := newTestKeyStore(t)
+	h := Middleware(ks)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	count := func() int {
+		list, err := ks.backend().ListSessions(t.Context())
+		require.NoError(t, err)
+		return len(list)
+	}
+	get := func(setup func(*http.Request)) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/api/sessions/live?api_key="+ks.Key(), nil)
+		r.RemoteAddr = "192.168.1.5:54321"
+		setup(r)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		require.Equal(t, http.StatusOK, w.Code)
+		return w
+	}
+	for i := 0; i < 100; i++ { // a script: curl's headers, then a fetch's
+		get(func(r *http.Request) { r.Header.Set("Accept", "*/*") })
+		get(func(r *http.Request) { r.Header.Set("Sec-Fetch-Mode", "cors") })
+	}
+	assert.Equal(t, 0, count(), "100 query-key requests from a script make no session")
+
+	w := get(func(r *http.Request) { r.Header.Set("Sec-Fetch-Mode", "navigate") })
+	cookie := sessionCookie(t, w)
+	assert.Equal(t, 1, count(), "a navigation gets one")
+	for i := 0; i < 100; i++ { // the browser follows the link again, and its page polls with the key still in the URL
+		get(func(r *http.Request) { r.Header.Set("Sec-Fetch-Mode", "navigate"); r.AddCookie(cookie) })
+	}
+	assert.Equal(t, 1, count(), "a navigation that already holds a session reuses it")
+	get(func(r *http.Request) { r.Header.Set("Accept", "text/html,application/xhtml+xml") }) // a browser that sends no Sec-Fetch headers, no cookie yet
+	assert.Equal(t, 2, count())
+	get(func(r *http.Request) {
+		r.Header.Set("Sec-Fetch-Mode", "navigate")
+		r.Header.Set("Sec-Fetch-Dest", "iframe")
+	})
+	assert.Equal(t, 2, count(), "a framed navigation gets none")
+}

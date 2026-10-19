@@ -242,6 +242,7 @@ func TestAutoAcceptEnableFromALoggedInRemoteDashboard(t *testing.T) {
 	req := httptest.NewRequest("GET", "/?api_key="+r.key(), nil)
 	req.RemoteAddr = "192.168.1.30:52000"
 	req.Host = "192.168.1.5:8420"
+	req.Header.Set("Sec-Fetch-Mode", "navigate") // the phone's browser opening the link (#5067: a script polling with the key makes no session)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	var phone string
