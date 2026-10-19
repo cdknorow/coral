@@ -1,0 +1,191 @@
+{
+  "restart_prefilled": {
+    "name": "",
+    "agentType": "claude",
+    "model": "claude-opus-4",
+    "prompt": "Be kind.",
+    "flags": "--permission-mode bypassPermissions",
+    "capabilities": {
+      "allow": [
+        "file_read"
+      ]
+    }
+  },
+  "restart_unchanged": {
+    "agent_type": "claude",
+    "session_id": "sid-r",
+    "extra_flags": "--permission-mode bypassPermissions",
+    "prompt": "Be kind.",
+    "model": "claude-opus-4",
+    "capabilities": {
+      "allow": [
+        "file_read"
+      ]
+    }
+  },
+  "restart_changed_config": {
+    "name": "",
+    "agentType": "codex",
+    "model": "gpt-x",
+    "prompt": "A new prompt.\nSecond line.",
+    "flags": "--verbose --foo bar --sandbox read-only -a on-request",
+    "capabilities": {
+      "allow": [
+        "file_read",
+        "shell",
+        "web_access",
+        "shell:git *",
+        "shell:npm *"
+      ]
+    }
+  },
+  "restart_changed": {
+    "agent_type": "codex",
+    "session_id": "sid-r",
+    "extra_flags": "--verbose --foo bar --sandbox read-only -a on-request",
+    "prompt": "A new prompt.\nSecond line.",
+    "model": "gpt-x",
+    "capabilities": {
+      "allow": [
+        "file_read",
+        "shell",
+        "web_access",
+        "shell:git *",
+        "shell:npm *"
+      ]
+    }
+  },
+  "restart_claude_deny": {
+    "agent_type": "claude",
+    "session_id": "sid-r",
+    "extra_flags": "--permission-mode acceptEdits",
+    "prompt": "Be kind.",
+    "model": "claude-opus-4",
+    "capabilities": {
+      "allow": [
+        "file_read",
+        "shell"
+      ],
+      "deny": [
+        "web_access",
+        "git_write"
+      ]
+    }
+  },
+  "agent_default_config": {
+    "name": "",
+    "agentType": "claude",
+    "model": "",
+    "prompt": "",
+    "flags": "--permission-mode bypassPermissions",
+    "capabilities": null
+  },
+  "agent_minimal": {
+    "working_dir": "/work/repo",
+    "agent_type": "claude",
+    "backend": "tmux",
+    "flags": [
+      "--permission-mode",
+      "bypassPermissions"
+    ]
+  },
+  "agent_full_config": {
+    "name": "",
+    "agentType": "codex",
+    "model": "gpt-x",
+    "prompt": "Test everything.\nTwice.",
+    "flags": "--verbose --sandbox workspace-write -a on-request",
+    "capabilities": {
+      "allow": [
+        "shell",
+        "shell:git *"
+      ]
+    }
+  },
+  "agent_full": {
+    "working_dir": "/work/other",
+    "agent_type": "codex",
+    "display_name": "QA Engineer",
+    "backend": "tmux",
+    "flags": [
+      "--verbose",
+      "--sandbox",
+      "workspace-write",
+      "-a",
+      "on-request"
+    ],
+    "capabilities": {
+      "allow": [
+        "shell",
+        "shell:git *"
+      ]
+    },
+    "prompt": "Test everything.\nTwice.",
+    "model": "gpt-x",
+    "board_name": "my-board",
+    "board_server": "http://remote:8420"
+  },
+  "agent_existing_board": {
+    "working_dir": "/work/repo",
+    "agent_type": "claude",
+    "backend": "tmux",
+    "flags": [
+      "--permission-mode",
+      "bypassPermissions"
+    ],
+    "board_name": "taken",
+    "board_id": "taken"
+  },
+  "team_edit_prefilled": {
+    "name": "Dev",
+    "agentType": "codex",
+    "model": "gpt-x",
+    "prompt": "Write the code.\nCarefully.",
+    "flags": "--dangerously-bypass-approvals-and-sandbox",
+    "capabilities": null
+  },
+  "team_full": {
+    "board_name": "alpha-team",
+    "working_dir": "/work/repo",
+    "agent_type": "codex",
+    "flags": [
+      "--sandbox",
+      "read-only",
+      "-a",
+      "on-request"
+    ],
+    "agents": [
+      {
+        "name": "Lead",
+        "prompt": "Lead the team.",
+        "capabilities": {
+          "allow": [
+            "shell"
+          ],
+          "deny": [
+            "web_access"
+          ]
+        },
+        "agent_type": "claude",
+        "model": "claude-opus-4",
+        "flags": [
+          "--verbose",
+          "--permission-mode",
+          "bypassPermissions"
+        ]
+      },
+      {
+        "name": "Dev",
+        "prompt": "Write the code, edited.",
+        "agent_type": "codex",
+        "model": "gpt-x",
+        "flags": [
+          "--dangerously-bypass-approvals-and-sandbox"
+        ]
+      }
+    ],
+    "board_server": "http://remote:8420",
+    "worktree": true,
+    "base_branch": "develop"
+  }
+}
