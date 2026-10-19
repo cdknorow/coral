@@ -3,6 +3,7 @@ package machinehealth
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -105,14 +106,40 @@ func TestLinuxProcessTreeGolden(t *testing.T) {
 	assert.Equal(t, 1, h.Agents.Count)
 }
 
-// On the real /proc, the one-read values agree with gopsutil's separate reads for this process.
+// On the real /proc, the one-read values agree with gopsutil's separate reads for this process. The two reads are not at the same
+// instant (a process's RSS moves between them, under a loaded gate by more than any ratio), so gopsutil is read before AND after the
+// one-read value and that value must lie within what the two reads saw, give or take a tolerance (256 KiB or 5%, and a clock tick of CPU time).
 func TestProcUsageAgreesWithGopsutil(t *testing.T) {
 	ctx := context.Background()
 	pid := int32(os.Getpid())
-	gCPU, gRSS, ok := procUsageGopsutil(ctx, pid)
-	require.True(t, ok)
-	cpu, rss, ok := procUsage(ctx, pid)
-	require.True(t, ok)
-	assert.InDelta(t, gCPU, cpu, 0.05, "CPU seconds")
-	assert.InEpsilon(t, float64(gRSS), float64(rss), 0.05, "resident bytes")
+	// Enough CPU time for a wrong tick rate or unit to show: a fresh test binary has used a few milliseconds, inside any slack.
+	for deadline, x := time.Now().Add(10*time.Second), 0.0; time.Now().Before(deadline); {
+		if c, _, ok := procUsageGopsutil(ctx, pid); ok && c >= 0.3 {
+			break
+		}
+		for i := 0; i < 2_000_000; i++ {
+			x += math.Sqrt(float64(i))
+		}
+		_ = x
+	}
+	const slackCPU = 0.05
+	var last string
+	// Memory can move in both directions inside one bracket (a spike between the reads is in neither): a few tries, each judged on its own.
+	for try := 0; try < 10; try++ {
+		gCPU1, gRSS1, ok := procUsageGopsutil(ctx, pid)
+		require.True(t, ok)
+		cpu, rss, ok := procUsage(ctx, pid)
+		require.True(t, ok)
+		gCPU2, gRSS2, ok := procUsageGopsutil(ctx, pid)
+		require.True(t, ok)
+		lo, hi := min(gRSS1, gRSS2), max(gRSS1, gRSS2)
+		// The one-read value and gopsutil's do not agree to the byte even when gopsutil's own two reads are equal: on GitHub's runner the
+		// value was 221 KB (1.6% of 13.5 MB) outside a bracket of no width. So the slack is relative, not a few pages.
+		slack := max(uint64(256<<10), hi/20)
+		if rss+slack >= lo && rss <= hi+slack && cpu >= gCPU1-slackCPU && cpu <= gCPU2+slackCPU {
+			return
+		}
+		last = fmt.Sprintf("resident bytes %d outside gopsutil's %d..%d (+-%d: 256 KiB or 5%%); CPU seconds %.3f outside %.3f..%.3f (+-%.2f)", rss, lo, hi, slack, cpu, gCPU1, gCPU2, slackCPU)
+	}
+	t.Fatal("the one-read values never agreed with gopsutil's: " + last)
 }
