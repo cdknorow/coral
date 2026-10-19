@@ -1,0 +1,114 @@
+name: go-race
+# The race detector in CI (#5006). Security's -race run on epoch found no races (#4979), and nothing keeps it that way: -race is
+# slow, and the package tests take about 20 minutes with it on routes alone. Two parts:
+#  - per push to ci/** (a release batch): the small, high-risk packages that handle credentials, the network and processes, each
+#    in its own job and under about 6 minutes on epoch: internal/auth, internal/cloud, pkg/tunnel, internal/ptymanager and
+#    internal/startup;
+#  - nightly (and by dispatch): every package with -race, internal/server/routes alone with a long timeout, and everything else
+#    in one job. The scheduled run is on the default branch.
+#
+# Trust, as go-tests.yml: no pull_request trigger (a fork's code never runs here), no secrets, read-only contents, actions pinned
+# by SHA, nothing cached. CORAL_TELEMETRY_DISABLED=1 like every CI workflow (the telemetry census); the packages whose tests check
+# what is sent clear it in their own TestMain.
+on:
+  push:
+    branches: ["ci/**"]
+  schedule:
+    - cron: "37 9 * * *" # 09:37 UTC every day, on the default branch
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Also run the nightly full -race (routes alone, then everything else)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-race-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  small:
+    name: race (${{ matrix.pkg }})
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: [internal/auth, internal/cloud, pkg/tunnel, internal/ptymanager, internal/startup]
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+    defaults:
+      run:
+        shell: bash
+        working-directory: coral-go
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false # nothing cached here: see the header
+      - name: tmux and git (the terminal tests start a real tmux)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tmux git
+      - name: go test -race ./${{ matrix.pkg }}
+        env:
+          PKG: ${{ matrix.pkg }}
+        run: |
+          set -euo pipefail
+          export TMPDIR=/tmp/gr
+          mkdir -p "$TMPDIR"
+          go test -race -count=1 -timeout 15m "./$PKG"
+
+  full:
+    name: race full (${{ matrix.shard }})
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [routes, rest]
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+      ROUTES_PKG: internal/server/routes
+    defaults:
+      run:
+        shell: bash
+        working-directory: coral-go
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false # nothing cached here: see the header
+      - name: tmux and git
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tmux git
+      - name: go test -race (${{ matrix.shard }})
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          export TMPDIR=/tmp/gr
+          mkdir -p "$TMPDIR"
+          root=$(go list -m)
+          all=(); while IFS= read -r p; do all+=("${p#"$root"/}"); done < <(go list ./...)
+          printf '%s\n' "${all[@]}" | grep -qxF "$ROUTES_PKG" || { echo "::error::package $ROUTES_PKG no longer exists: update go-race.yml"; exit 1; }
+          pkgs=()
+          for p in "${all[@]}"; do
+            if [ "$SHARD" = routes ]; then [ "$p" = "$ROUTES_PKG" ] || continue; else [ "$p" != "$ROUTES_PKG" ] || continue; fi
+            pkgs+=("./$p")
+          done
+          echo "go test -race, shard $SHARD: ${#pkgs[@]} of ${#all[@]} packages"
+          [ "${#pkgs[@]}" -gt 0 ] || { echo "::error::an empty shard"; exit 1; }
+          go test -race -count=1 -p 2 -timeout 100m "${pkgs[@]}"
