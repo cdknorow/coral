@@ -27,7 +27,7 @@ no branding, icons or colours are copied.
 - **Line 2**: `sessionGoalText` (summary → first_prompt), single line, ellipsis.
   Empty goal keeps today's sparkle + passive "No goal yet" (D1). Line 2 renders
   on every live row **including sleeping rows** (D-E: the goal is what tells a
-  sleeping agent from its siblings); only terminal and ended rows drop it
+  sleeping agent from its siblings); only terminal rows drop it
   (36px row).
 - **Near-full context signal (D-C, ≥80% only)**: a small `ctx 87%` / `ctx full`
   pill on line 1 (same thresholds, colours and explicit-null suppression as
@@ -45,7 +45,7 @@ no branding, icons or colours are copied.
   border-box`, padding `5px 10px 5px 14px`, `min-height: 36px`; line 1
   (`.session-name-row`) is 16px tall; line 2 (`.session-goal`) is 12px text on a
   14px line with no top margin: 5 + 16 + 14 + 5 = **40px** with a goal line;
-  rows without one (terminal/ended) are held at the 36px minimum. The kebab
+  rows without one (terminal) are held at the 36px minimum. The kebab
   button is 16px tall (padding 0 5px, font 14px) so line 1 never grows; its
   24×24 hit target comes from an `::after` overlay (`inset: -4px -2px`). Team
   rows inside `.board-card-agents` use the same vertical padding with 12px left.
@@ -108,6 +108,8 @@ hover.
 
 ## States
 
+A killed agent is not a state: Kill removes its row at once (#4946); its chat stays in History. An agent that ends by itself shows as Sleeping ("Terminal gone") with its Restart chip.
+
 | State | Row treatment |
 |---|---|
 | default | as above |
@@ -119,14 +121,13 @@ hover.
 | stuck (`stuck`) | filled red dot; pill "Stuck" (error surface); row tint switches to the error tint (`.is-stuck`); outranks needs input |
 | ready for input (`awaiting_user`; servers without the field: the stop-derived `done`) | no dot (hollow ring removed by operator request); **no pill and no mobile chip** (removed by operator request, task #175): the tooltip State row and the row `aria-label` carry "Ready for input"; no row tint; never green, never a check mark |
 | sleeping | muted moon glyph in the dot slot (no amber); identity `--text-secondary`; goal line kept (40px, D-E); kebab shows Wake variant (existing) |
-| ended (killed/history rows only, `.session-done`) | muted check glyph, never green; identity line-through `--text-muted`; goal hidden (36px); click opens history (existing) |
 | working | filled GREEN dot (`--success`); no pill; nothing animates |
 | idle | empty dot slot (`visibility: hidden`, slot kept); no pill |
 
 ### State resolver and overlays (task #167)
 
 One resolver (`render.js` `deriveSessionState` / `SESSION_STATES`) picks a single
-winner with the priority **Ended > Sleeping > Stuck > Needs input > Check
+winner with the priority **Sleeping > Stuck > Needs input > Check
 terminal > Ready for input > Working > Idle**, and every surface uses its words: row
 pill, row `aria-label`, tooltip State row, phone status chip, workspace header
 dot and the popout pill. Selection, context and unread are overlays, never
@@ -144,8 +145,7 @@ winners:
 **No aggregation**: there is no attention count on the Agents nav tab or on
 team/folder headers (removed; the counts did not map to anything visible on the
 rows). Attention is shown per row only. An ordinary team member's unread stays
-visible as the neutral row chip / phone metadata. Ended rows render no line 2
-at all (36px), even when they had a goal or unread messages. Needs-input toasts
+visible as the neutral row chip / phone metadata. Needs-input toasts
 fire on a later false -> true transition only: the first snapshot after load
 seeds silently, and the agent the operator is typing into never toasts itself.
 
@@ -207,12 +207,12 @@ prompt, so it cannot be used to clear the request earlier.
   `.sidebar-goal-btn` are ignored by the row handler. Kebab, anchor and sparkle
   remain separate tab stops. Escape closes an open kebab.
 - Row `aria-label="<identity>, <state>"` with the popout vocabulary
-  (Working / Idle / Needs input / Check terminal / Stuck / Sleeping / Ended);
+  (Working / Idle / Needs input / Check terminal / Stuck / Sleeping);
   `aria-current="true"` on the selected row. Labels are rewritten on every
-  render (rename, sleeping, attention, ended ticks) and, because a tick
+  render (rename, sleeping, attention ticks) and, because a tick
   re-renders the list, focus is restored to the row with the same
   `data-session-id` after render so keyboard users are not dropped.
-- Status is never colour-only: attention has pill text; sleeping/ended have
+- Status is never colour-only: attention has pill text; sleeping has
   text treatment; working/idle are in the aria-label.
 - Drag-to-reorder (`draggable`, `moveSessionUp/Down`) is unchanged and starts
   only from pointer drag; keyboard selection never initiates it.
@@ -287,9 +287,9 @@ prompt, so it cannot be used to clear the request earlier.
    activity and closes on Escape.
 5. Selected agent's workspace header shows branch chip + token usage (metadata
    remains one click away).
-6. States: hover/focus-visible/selected/attention/sleeping/ended render per the
+6. States: hover/focus-visible/selected/attention/sleeping render per the
    table; sleeping rows keep their goal line (40px with goal, 36px only when the
-   agent has no goal text); terminal and ended rows are 36px; Agents-nav badge
+   agent has no goal text); terminal rows are 36px; Agents-nav badge
    count unchanged.
 7. Keyboard: Tab reaches rows, Enter/Space selects, Escape closes kebab;
    `aria-label` announces identity + state.
@@ -297,7 +297,7 @@ prompt, so it cannot be used to clear the request earlier.
    pill only, kebab 44×44, banner row visible for attention rows.
 9. Popout (`/agent/<uuid>`) unaffected: no list rendered, 108+ harness green.
 10. Existing suites green: acf, terminal_scroll, agent_bar (updated per C1), popout.
-11. No-sort across ticks that flip attention/sleeping/ended (payload order preserved; existing order assertion).
+11. No-sort across ticks that flip attention/sleeping (payload order preserved; existing order assertion).
 12. Tooltip Context row: unknown model → "Context: unknown"; known → percent of window; ≥80% rows also show the line-1 ctx pill, <80% rows show none.
 13. `aria-label` tracks rename and state ticks in place; the focused row keeps focus (restored by session id) after a re-render.
 14. Cloned phone row: Enter selects, kebab opens, "Open Agent Tab" is the first kebab item (#133); Enter/Space on the kebab, anchor or sparkle do not select the row.
@@ -305,7 +305,7 @@ prompt, so it cannot be used to clear the request earlier.
 16. Drag reorder still works on desktop rows; Space/Enter on a row do not trigger drag or page scroll.
 17. Reduced motion: no new animation; waiting pulse absent in rows.
 18. Team details: opens from the kebab on desktop/tablet/phone, has dialog semantics, traps nothing beyond itself, closes on Escape/outside click and returns focus to the invoker; contains no session ids.
-19. Sleeping rows keep their goal line (40px); terminal and ended rows are 36px.
+19. Sleeping rows keep their goal line (40px); terminal rows are 36px.
 
 ## Decisions (rev 2)
 
@@ -317,7 +317,7 @@ Resolved by Lead Developer + QA review (2026-09-17):
   (same vocabulary as the mobile chip and tooltip). (agreed)
 - **D-D** Team details is an anchored keyboard/touch-reachable disclosure with
   dialog semantics, not a workspace tab and not a tooltip. (agreed)
-- **D-E** Goal line stays on sleeping rows; only terminal/ended rows are 36px.
+- **D-E** Goal line stays on sleeping rows; only terminal rows are 36px.
   (QA proposal, adopted)
 - **D-F** Row a11y pattern: focusable list item + delegated handlers, kebab /
   anchor / sparkle as separate tab stops; no `role="button"` on the row.
