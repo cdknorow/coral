@@ -40,13 +40,13 @@ const { removeBoards } = require('./helpers/board_cleanup');
                 check(`${tag}: ${r.checked} checks, contrast (control borders 3:1: ${r.borders.length} under)`, r.fails.length === 0 && r.borders.length === 0, r.fails.length || r.borders.length ? JSON.stringify([...r.fails, ...r.borders.map(b => ({ ...b, what: 'control border' }))]) : undefined); // a control's border is part of the audit (#4877): it was reported apart while every input shared one 1.3:1 colour
             }
         }
-        for (const it of ((await ev(`fetch('/api/saved').then(r => r.json())`)).items || [])) await ev(`fetch('/api/saved/${it.id}', { method: 'DELETE' }).then(() => true)`); // the bookmarks the Inbox panel seeded
         if (process.env.CONTRAST_REPORT) fs.writeFileSync(process.env.CONTRAST_REPORT, JSON.stringify(all, null, 1));
     } catch (e) {
         console.error(e && e.stack || e);
         results.push(false);
     } finally {
         for (const f of (ctx0.cleanup || [])) { try { await f(); } catch (_) {} }
+        try { for (const it of ((await ev(`fetch('/api/saved').then(r => r.json())`)).items || [])) await ev(`fetch('/api/saved/${it.id}', { method: 'DELETE' }).then(() => true)`); } catch (_) {} // the bookmarks the Inbox panel seeded, whichever way the suite ended
         await removeBoards(ev, ['th-a', 'th-b', ctx0.TBOARD, ctx0.BBOARD]); // the panels' boards (saved: th-a, th-b; tasks and board: themes-t-, themes-b-)
         try { await client.close(); } catch (_) {}
     }
