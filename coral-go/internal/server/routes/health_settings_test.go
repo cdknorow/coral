@@ -50,6 +50,7 @@ func TestHealthSettingsAreTheOperatorsAndChecked(t *testing.T) {
 	_, err := h.bs.Subscribe(ctx, "other", "Other Team Lead", "Orchestrator", "olead-session", nil, "all")
 	require.NoError(t, err)
 	url := server.URL + "/api/board/team/settings"
+	require.NoError(t, h.bs.SetHealthOn(ctx, "team", true)) // off by default (#4962): the refusals below are of changes to a check that is on
 
 	// C6a: an agent (the orchestrator included) can't change them; the Hub can't reach the PUT.
 	for _, who := range []string{"Dev", "Orchestrator"} {
@@ -94,6 +95,7 @@ func TestHealthSettingsHandlerRefusesAnAgentCaller(t *testing.T) {
 	ctx := context.Background()
 	_, err := h.bs.Subscribe(ctx, "team", "Dev", "Developer", "claude-a", nil, "all")
 	require.NoError(t, err)
+	require.NoError(t, h.bs.SetHealthOn(ctx, "team", true)) // off by default (#4962): the refusals below are of changes to a check that is on
 	put := func(mod func(*http.Request)) int {
 		req := httptest.NewRequest(http.MethodPut, "/api/board/team/settings", bytes.NewReader([]byte(`{"subscriber_id":"Operator","health":{"on":false}}`)))
 		req.Header.Set("Content-Type", "application/json")

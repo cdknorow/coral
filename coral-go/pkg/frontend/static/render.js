@@ -266,6 +266,15 @@ function killAllItem(boardName) {
                 </button>`;
 }
 
+// The team's health check, on or off (#4962): an icon beside the team view button, dimmed when off, accent when on, that opens the setting.
+// The state is "team_health_on" on the team's rows in the live list; Coral Hub gets none (the check's settings are the local dashboard's), so no icon there.
+function teamHealthBtn(boardName, boardSessions) {
+    const row = boardSessions.find(s => typeof s.team_health_on === 'boolean');
+    if (!row) return '';
+    const label = row.team_health_on ? 'Team health monitor: on' : 'Team health monitor: off';
+    return `<button type="button" class="folder-copy-btn team-health-btn${escapeAttr(row.team_health_on ? ' is-on' : '')}" data-on-click="team-health" data-board="${escapeAttr(boardName)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg></button>`;
+}
+
 // Redraw the team menus once the Coral Hub's access list is in (#3443).
 document.addEventListener('coral:server-access-loaded', () => { if (state.liveSessions) redrawLiveList(); });
 
@@ -909,7 +918,7 @@ function _renderTeamCard(boardName, boardSessions) {
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}"${accentStyle}>
             <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" data-on-click="group-collapse" data-group="${escapeAttr(boardName)}"${_collapseAttrs(boardCollapsed)}>
-                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${escapeAttr(state.selectedTeam === boardName ? ' is-selected' : '')}" data-on-click="team-enter" data-board="${escapeAttr(boardName)}" title="Team view: members, availability and knowledge" aria-label="Open team view for ${escapeAttr(keyLabel(boardName))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>${bKebab}
+                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}${teamHealthBtn(boardName, boardSessions)}<button type="button" class="folder-copy-btn team-open-btn${escapeAttr(state.selectedTeam === boardName ? ' is-selected' : '')}" data-on-click="team-enter" data-board="${escapeAttr(boardName)}" title="Team view: members, availability and knowledge" aria-label="Open team view for ${escapeAttr(keyLabel(boardName))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>${bKebab}
             </div>
             <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -1137,7 +1146,7 @@ function _renderFolderFirstGroup(groupName, groupSessions) {
                 </div>`;
                 html += `<li class="session-board-card session-team-group"${accentStyle}>
                     <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" data-on-click="group-collapse" data-group="${escapeAttr(boardName)}"${_collapseAttrs(boardCollapsed)}>
-                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${escapeAttr(state.selectedTeam === boardName ? ' is-selected' : '')}" data-on-click="team-enter" data-board="${escapeAttr(boardName)}" title="Team view: members, availability and knowledge" aria-label="Open team view for ${escapeAttr(keyLabel(boardName))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>${bKebab}
+                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${_rowNameWithServer(boardName)}${boardSleepIcon}${distillChip(boardName)} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}${teamHealthBtn(boardName, boardSessions)}<button type="button" class="folder-copy-btn team-open-btn${escapeAttr(state.selectedTeam === boardName ? ' is-selected' : '')}" data-on-click="team-enter" data-board="${escapeAttr(boardName)}" title="Team view: members, availability and knowledge" aria-label="Open team view for ${escapeAttr(keyLabel(boardName))}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button>${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
                 const orderedBoardNested = _sortByOrder(boardSessions);
@@ -1929,6 +1938,7 @@ registerActions({
     'team-add-agent': menu(el => { const b = textOf(el.dataset.board); if (b) W('showAddAgentToBoard')(b, dirOf(el) || ''); }),
     'team-add-terminal': menu(el => { const b = textOf(el.dataset.board); if (b) W('launchTerminalToBoard')(b, dirOf(el) || ''); }),
     'team-accent': (el, event) => { event.stopPropagation(); const b = textOf(el.dataset.board); if (b) window.setBoardAccentColor(b); window.closeSidebarKebabs(); },
+    'team-health': (el, event) => { event.stopPropagation(); const b = textOf(el.dataset.board); if (b) window.showTeamHealthSettings(b); },
     'team-enter': (el, event) => { event.stopPropagation(); const b = textOf(el.dataset.board); if (b) window.enterTeamContext(b); },
     'group-move': menu(el => { const g = textOf(el.dataset.group); if (g && UPDOWN[el.dataset.dir]) W(el.dataset.dir === 'up' ? 'moveGroupUp' : 'moveGroupDown')(g); }),
     'group-kill': menu(el => { const g = textOf(el.dataset.group); if (g) W('killGroup')(g); }),

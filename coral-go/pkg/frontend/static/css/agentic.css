@@ -2509,6 +2509,10 @@ button.team-artifact-name { cursor: pointer; }
    not revealed on hover; it turns accent while that team is selected. */
 .team-open-btn { display: inline-flex; align-items: center; }
 .team-open-btn.is-selected { color: var(--accent); }
+/* The team's health check (#4962): the icon is the muted colour of its neighbours while the check is off and accent while it is on, so it reads at a glance and never by colour alone (the tooltip and the name say on or off). */
+.team-health-btn { display: inline-flex; align-items: center; }
+.team-health-btn.is-on { color: var(--accent); }
+.team-health-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--text-primary); }
 .team-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--text-primary); }
 .team-artifacts-help .material-icons { font-size: 1.125rem; }
 

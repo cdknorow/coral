@@ -49,6 +49,9 @@ func lsrRows(t *testing.T, h *SessionsHandler, old, full bool) string {
 		rows, err = h.liveSessionRowsBefore4713(req, newPhaseTrace("oracle"), full)
 	} else {
 		rows, err = h.liveSessionRows(req, newPhaseTrace("oracle"), full)
+		for _, r := range rows {
+			delete(r, "team_health_on") // new in #4962: the old implementation has no such field
+		}
 	}
 	b, merr := json.Marshal(rows)
 	require.NoError(t, merr)

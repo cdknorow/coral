@@ -49,7 +49,7 @@ const { connect } = require('./agent_view_harness');
         const form = await ev(`(() => { const f = document.querySelector('${P} form'); const v = n => f.elements[n]; const nums = [...f.querySelectorAll('input[type=number]')].map(i => [i.name, i.value, i.min, i.max]);
             const unlabelled = [...f.querySelectorAll('input, select')].filter(e => !(e.closest('label') || e.getAttribute('aria-label'))).map(e => e.name);
             return { on: v('on').checked, allClear: v('all_clear').checked, rcpt: v('recipient').value, opts: [...v('recipient').options].map(o => o.value + '=' + o.textContent), nums, unlabelled, rev: v('default_reviewers').value, rules: ['auto_delegate', 'claim_nudge', 'status_nudge', 'mention_renudge'].map(r => v(r + '_on').checked), held: !!document.querySelector('[data-rule=held_notice]'), save: f.querySelector('[type=submit]').disabled }; })()`);
-        assert.equal(form.on, true); assert.equal(form.allClear, true); assert.equal(form.rcpt, '');
+        assert.equal(form.on, false, 'a new team has the check off (#4962)'); assert.equal(form.allClear, true); assert.equal(form.rcpt, '');
         assert.deepEqual(form.nums, [['interval_min', '10', '5', '1440'], ['claim_nudge_after_min', '10', '5', '1440'], ['claim_nudge_nudges', '2', '1', '5'], ['status_nudge_after_min', '20', '5', '1440'], ['status_nudge_escalate_after_min', '10', '5', '1440'], ['held_notice_after_min', '10', '5', '1440'], ['mention_renudge_after_min', '10', '5', '1440']]); // the server returns held_notice since Lead's #4225: its card is in the defaults
         assert.deepEqual(form.unlabelled, [], 'every control has a label');
         assert.deepEqual(form.rules, [true, true, true, true]);

@@ -25,6 +25,7 @@ function _showLaunchStep(step) {
     document.getElementById("launch-step-agent").style.display = step === "agent" ? "flex" : "none";
     document.getElementById("launch-step-terminal").style.display = step === "terminal" ? "flex" : "none";
     document.getElementById("launch-step-team").style.display = step === "team" ? "flex" : "none";
+    if (step === "team") { const health = document.getElementById("launch-team-health"); if (health) health.checked = false; } // the health monitor is off for each new team (#4962)
     // Widen the modal for multi-column layouts
     const content = document.querySelector("#launch-modal .modal-content");
     if (content) {

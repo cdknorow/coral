@@ -26,6 +26,14 @@ export function confirmTeamWorkspaceChange() {
         () => resolve(true), () => resolve(false)));
 }
 
+// The team's settings opened on its Health check tab (#4962): the icon beside the team's info button. The tab is added once the
+// settings arrive, so the wish waits for it and is dropped if the team has none (Coral Hub leaves the tab out).
+let wantHealthTab = false;
+export function showTeamHealthSettings(team) {
+    wantHealthTab = true;
+    return showTeamWorkingModeWorkspace(team);
+}
+
 /** Open the team: team view in the center, team tabs (settings first) in the sidebar. */
 export function showTeamWorkingModeWorkspace(team, options = {}) {
     return importOnce('./team_context.js').then(m => m.enterTeamContext(team, { tab: 'team-settings', restore: options.restore }));
@@ -191,6 +199,8 @@ function _wireSettingsTabs(dialog, form) {
 }
 
 export async function showTeamWorkingMode(team, options = {}) {
+    const openHealthTab = wantHealthTab; // asked for by the health icon (#4962); taken now so a load that fails does not leave it for the next open
+    wantHealthTab = false;
     const workspaceMode = Boolean(options.workspace);
     const dialog = _teamSettingsShell(workspaceMode);
     _mountTeamSettings(dialog, team, workspaceMode);
@@ -371,6 +381,7 @@ export async function showTeamWorkingMode(team, options = {}) {
                 form.elements.cross_team_artifacts.checked = Boolean(boardSettings.cross_team_artifacts);
                 boardSettingsLoaded = true;
                 if (boardSettings.health && typeof boardSettings.health === 'object') await addHealthTab(boardSettings.health).catch(() => {});
+                if (openHealthTab) document.getElementById('team-settings-tab-health')?.click();
             } else {
                 // The board settings could not be loaded: leave the switch off and disabled.
                 form.elements.cross_team_messaging.disabled = true;

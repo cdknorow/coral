@@ -143,7 +143,7 @@ func runHealthOracle(t *testing.T, seed int64) {
 	for step := 0; step < 24; step++ {
 		offset += time.Duration(2+rng.Intn(9)) * time.Minute
 		now := base.Add(offset)
-		hs := board.DefaultHealthSettings()
+		hs := healthOn()
 		hs.MentionRenudge.On = rng.Intn(5) != 0
 		hs.HeldNotice.On = rng.Intn(5) != 0
 		hs.ClaimNudge.AfterMin = []int{5, 10}[rng.Intn(2)]

@@ -15,7 +15,7 @@ const HEALTH_LIMITS = { minutes: [5, 1440], nudges: [1, 5], reviewers: 8 };
 
 // The server's defaults (DefaultHealthSettings); held_notice is the Lead's #4225 field, filled in only when the server returns it.
 const HEALTH_DEFAULTS = {
-    on: true, interval_min: 10, recipient: '', all_clear: true, default_reviewers: [],
+    on: false, interval_min: 10, recipient: '', all_clear: true, default_reviewers: [], // the check is off until a team turns it on (#4962)
     auto_delegate: { on: true },
     claim_nudge: { on: true, after_min: 10, nudges: 2 },
     status_nudge: { on: true, after_min: 20, escalate_after_min: 10 },
@@ -52,7 +52,7 @@ function healthPanelHTML(h, members) {
         !!h.held_notice.on, knob('held_notice_after_min', 'After', h.held_notice.after_min, MIN_LO, MIN_HI, 'minutes held')) : '';
     return `<form class="health-form working-mode-form" autocomplete="off" novalidate>
       <fieldset class="team-settings-section"><legend>The check</legend>
-        <label class="health-rule-head"><input type="checkbox" name="on"${h.on ? ' checked' : ''} aria-labelledby="hc-on-t" aria-describedby="hc-on-w"><span><b id="hc-on-t">Send a health check to this team</b><br><span class="health-why" id="hc-on-w">Coral looks at the team on a schedule and tells one person who is idle, stuck or waiting, and what changed.</span></span></label>
+        <label class="health-rule-head"><input type="checkbox" name="on"${h.on ? ' checked' : ''} aria-labelledby="hc-on-t" aria-describedby="hc-on-w"><span><b id="hc-on-t">Send a health check to this team</b><br><span class="health-why" id="hc-on-w">Off until you turn it on. Coral checks in on the team every few minutes to spot stuck or idle agents and tells one person who is idle, stuck or waiting, and what changed. It uses tokens each time.</span></span></label>
         <div class="health-row">${knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'minutes')}
           <label class="health-wide-select">Send it to<select name="recipient">${options.join('')}</select></label></div>
         <label class="health-rule-head"><input type="checkbox" name="all_clear"${h.all_clear ? ' checked' : ''} aria-labelledby="hc-clear-t" aria-describedby="hc-clear-w"><span><span id="hc-clear-t">Also post one short line when nothing needs attention</span><br><span class="health-why" id="hc-clear-w">So a quiet team is not mistaken for a stopped check. Off: say nothing when all is well.</span></span></label>

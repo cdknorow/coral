@@ -22,6 +22,8 @@ func healthMonitorStore(t *testing.T) *board.Store {
 	s, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board-health.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
+	// The check is off for a team that has not turned it on (#4962): these tests are about the check, so the team "team" has it on.
+	require.NoError(t, s.SetHealthOn(context.Background(), "team", true))
 	return s
 }
 
@@ -166,7 +168,7 @@ func TestCheckFollowsTheTeamSettings(t *testing.T) {
 	h.member("Orchestrator", "Orchestrator", 1, 0)
 	h.member("Lead", "Lead Developer", 2, 0)
 	set := func(f func(*board.HealthSettings)) {
-		hs := board.DefaultHealthSettings()
+		hs := healthOn()
 		f(&hs)
 		_, err := h.s.UpdateBoardSettings(ctx, "team", board.BoardSettingsUpdate{Health: &hs})
 		require.NoError(t, err)

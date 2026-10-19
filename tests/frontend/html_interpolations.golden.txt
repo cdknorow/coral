@@ -325,6 +325,7 @@
 1	render.js	st.cls
 1	render.js	style
 3	render.js	tagDots
+2	render.js	teamHealthBtn(boardName, boardSessions)
 2	render.js	timeTag
 2	render.js	total
 1	render.js	totalPages

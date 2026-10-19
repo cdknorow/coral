@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
@@ -97,6 +98,30 @@ func (h *SessionsHandler) orderLiveRows(ctx context.Context, rows []map[string]a
 	})
 }
 
+// addTeamHealth gives each row of a team its team's health check state, "team_health_on" (#4962): the on/off icon beside the team's
+// info button reads it. The check's settings are the local dashboard's, so a request through Coral Hub gets no field (as the board
+// settings GET leaves "health" out, #4176 rule 17) and the dashboard draws no icon there.
+func (h *SessionsHandler) addTeamHealth(r *http.Request, rows []map[string]any) {
+	if h.bs == nil || cloud.Tunneled(r) {
+		return
+	}
+	var on map[string]bool
+	for _, row := range rows {
+		project, _ := row["board_project"].(string)
+		if project == "" {
+			continue
+		}
+		if on == nil {
+			on = h.bs.HealthOnByProject(r.Context())
+		}
+		v, stored := on[project]
+		if !stored {
+			v = board.DefaultHealthSettings().On
+		}
+		row["team_health_on"] = v
+	}
+}
+
 // listUnavailable is a live list that can't be built right now: the agents' metadata could not be read.
 type listUnavailable struct{ msg string }
 
@@ -166,6 +191,7 @@ func (h *SessionsHandler) liveSessionRows(r *http.Request, trace *phaseTrace, fu
 
 	sessions = append(sessions, h.sleepingRows(allLive, liveSIDs)...)
 	h.addBoardLabels(r.Context(), sessions)
+	h.addTeamHealth(r, sessions)
 	return archivedLast(sessions), nil
 }
 

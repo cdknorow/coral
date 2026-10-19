@@ -559,6 +559,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	if err := s.ensureBoardSettingsSchema(ctx); err != nil {
 		return err
 	}
+	if err := s.migrateHealthDefaultOff(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureHubOperatorActionsSchema(ctx); err != nil {
 		return err
 	}

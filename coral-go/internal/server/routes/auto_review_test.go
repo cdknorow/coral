@@ -97,6 +97,7 @@ func TestAutoDelegationIgnoresNamesAnAgentGave(t *testing.T) {
 	assert.Empty(t, reviewersOf(t, h, "agentmade", amended.ID), "an agent's amendment: the names don't count")
 
 	hs := board.DefaultHealthSettings()
+	hs.On = true // off for a new team (#4962)
 	hs.DefaultReviewers = []string{"worker", "Security Reviewer"}
 	_, err = h.bs.UpdateBoardSettings(ctx, "agentmade", board.BoardSettingsUpdate{Health: &hs})
 	require.NoError(t, err)
@@ -115,6 +116,7 @@ func TestAutoDelegationCanBeTurnedOff(t *testing.T) {
 	ctx := context.Background()
 	submit(t, base, first.ID) // frees the worker's slot
 	hs := board.DefaultHealthSettings()
+	hs.On = true // off for a new team (#4962)
 	hs.AutoDelegate.On = false
 	_, err := h.bs.UpdateBoardSettings(ctx, "off", board.BoardSettingsUpdate{Health: &hs})
 	require.NoError(t, err)

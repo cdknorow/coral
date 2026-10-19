@@ -51,10 +51,11 @@ type HealthMentionNudge struct {
 	AfterMin int  `json:"after_min"`
 }
 
-// DefaultHealthSettings are the design's values.
+// DefaultHealthSettings are the design's values. The check is OFF for a team that has not turned it on (#4962, the operator: it
+// uses tokens each time and a user may not know what it does); the rules and numbers below are what it uses once it is on.
 func DefaultHealthSettings() HealthSettings {
 	return HealthSettings{
-		On: true, IntervalMin: 10, AllClear: true,
+		On: false, IntervalMin: 10, AllClear: true,
 		AutoDelegate:   HealthRuleOn{On: true},
 		ClaimNudge:     HealthClaimNudge{On: true, AfterMin: 10, Nudges: 2},
 		StatusNudge:    HealthStatusNudge{On: true, AfterMin: 20, EscalateAfterMin: 10},
@@ -111,4 +112,62 @@ func (s *Store) setHealthSettings(ctx context.Context, project string, h HealthS
 		return err
 	}
 	return s.SetBoardSetting(ctx, project, settingHealth, string(raw))
+}
+
+// HealthOnByProject is, for each board that stores health settings, whether its check is on. A board with none is not in the map:
+// it has the default (DefaultHealthSettings().On).
+func (s *Store) HealthOnByProject(ctx context.Context) map[string]bool {
+	out := map[string]bool{}
+	var rows []struct {
+		Project string `db:"project"`
+		Value   string `db:"value"`
+	}
+	if err := s.reader().SelectContext(ctx, &rows, `SELECT project, value FROM board_settings WHERE key = ?`, settingHealth); err != nil {
+		return out
+	}
+	for _, r := range rows {
+		h := DefaultHealthSettings()
+		if json.Unmarshal([]byte(r.Value), &h) == nil {
+			out[r.Project] = h.On
+		}
+	}
+	return out
+}
+
+// SetHealthOn turns a board's health check on or off, leaving every other health setting as it is stored (or the defaults).
+func (s *Store) SetHealthOn(ctx context.Context, project string, on bool) error {
+	h := s.GetHealthSettings(ctx, project)
+	h.On = on
+	return s.setHealthSettings(ctx, project, h)
+}
+
+const healthDefaultOffMarker = "migration:health_default_off"
+
+// migrateHealthDefaultOff keeps the teams that were running the health check when its default became OFF (#4962): a team that never
+// stored a health setting had the check on by default, so the first time this runs it stores "on" for every board that exists and has
+// none. It runs once (a marker row in board_settings under the project "~store"); a board made later has the new default, off.
+func (s *Store) migrateHealthDefaultOff(ctx context.Context) error {
+	var done []string
+	if err := s.db.SelectContext(ctx, &done, `SELECT value FROM board_settings WHERE project = '~store' AND key = ?`, healthDefaultOffMarker); err != nil {
+		return err
+	}
+	if len(done) > 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO board_settings (project, key, value)
+		SELECT p.project, ?, '{"on":true}' FROM (
+			SELECT DISTINCT project FROM board_subscribers WHERE is_active = 1
+			UNION SELECT DISTINCT project FROM board_messages
+		) p WHERE p.project <> ''`, settingHealth); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO board_settings (project, key, value) VALUES ('~store', ?, 'done')`, healthDefaultOffMarker); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

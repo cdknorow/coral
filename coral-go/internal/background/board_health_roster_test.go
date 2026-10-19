@@ -235,7 +235,7 @@ func TestRosterWaitsAreNotSilenced(t *testing.T) {
 	h.member("Orchestrator", "Orchestrator", 1, 0)
 	h.member("Dev", "Developer", 2, 0)
 	h.wait(2, "Dev", "message", "Orchestrator")
-	hs := board.DefaultHealthSettings()
+	hs := healthOn()
 	hs.AllClear = false
 	_, err := h.s.UpdateBoardSettings(context.Background(), "team", board.BoardSettingsUpdate{Health: &hs})
 	require.NoError(t, err)

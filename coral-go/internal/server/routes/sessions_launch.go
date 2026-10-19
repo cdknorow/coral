@@ -212,7 +212,10 @@ type launchTeamRequest struct {
 	BaseBranch         string            `json:"base_branch"`
 	Agents             []launchTeamAgent `json:"agents"`
 	TeamKnowledgeIndex string            `json:"team_knowledge_index"`
-	WorkingMode        *struct {
+	// HealthMonitor true turns the team's health check on (#4962). The check is off for a new team; false or absent leaves the team's
+	// setting as it is, so a relaunch never turns off a check the operator turned on.
+	HealthMonitor *bool `json:"health_monitor"`
+	WorkingMode   *struct {
 		Mode               string `json:"mode"`
 		DependencyGuidance bool   `json:"dependency_guidance"`
 		CustomInstructions string `json:"custom_instructions"`
@@ -363,6 +366,11 @@ func (h *SessionsHandler) restoreTeamTemplate(ctx context.Context, body *launchT
 			log.Printf("[launch-team] failed to restore working mode for team %s: %v", body.BoardName, err)
 		} else {
 			log.Printf("[launch-team] restored working mode %q for team %s", wm.Mode, body.BoardName)
+		}
+	}
+	if body.HealthMonitor != nil && *body.HealthMonitor && h.bs != nil {
+		if err := h.bs.SetHealthOn(ctx, body.BoardName, true); err != nil {
+			log.Printf("[launch-team] failed to turn on the health check for team %s: %v", body.BoardName, err)
 		}
 	}
 	if len(body.WorkflowPresets) > 0 && h.bs != nil {

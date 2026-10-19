@@ -2482,6 +2482,21 @@ button.subscriber-history-link {
     border-top: 1px solid var(--border);
 }
 
+/* Inside a dialog the generic ".modal-content label" (block) outranks .settings-toggle: the box sits beside its words again (#4962: the launch dialog's health option; the worktree option had the same). */
+.modal-content label.team-settings-toggle,
+.sd-modal-content .settings-pane label.team-settings-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: var(--control-touch-height, 0);
+}
+.modal-content label.team-settings-toggle input[type="checkbox"],
+.sd-modal-content .settings-pane label.team-settings-toggle input[type="checkbox"] {
+    width: auto;
+    margin: 3px 0 0;
+    flex-shrink: 0;
+}
+
 .team-settings-toggle strong {
     display: block;
     font-size: 0.875rem;

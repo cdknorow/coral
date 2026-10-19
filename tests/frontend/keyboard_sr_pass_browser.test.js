@@ -129,7 +129,7 @@ const { connect } = require('./agent_view_harness');
         };
         const P = '#team-settings-health';
         const on = await ax(`${P} input[name=on]`);
-        assert.equal(on.name, 'Send a health check to this team'); assert.match(on.desc, /^Coral looks at the team/);
+        assert.equal(on.name, 'Send a health check to this team'); assert.match(on.desc, /^Off until you turn it on\. Coral checks in on the team/);
         const every = await ax(`${P} input[name=interval_min]`);
         assert.equal(every.name, 'Every minutes'); assert.equal(every.desc, '5 to 1440');
         const rev = await ax(`${P} input[name=default_reviewers]`);

@@ -25,6 +25,7 @@ func reviewTeam(t *testing.T, project string, withOrchestrator bool) (base func(
 		_, err := h.bs.Subscribe(ctx, project, "lead", "Orchestrator", "lead-session", nil, "all")
 		require.NoError(t, err)
 	}
+	require.NoError(t, h.bs.SetHealthOn(ctx, project, true)) // off for a new team (#4962); these tests are about what Coral does for a team that has it on
 	for _, s := range []struct{ id, title string }{{"worker", "Backend Dev"}, {"Security Reviewer", "Security Reviewer"}, {"QA Engineer", "QA Engineer"}} {
 		_, err := h.bs.Subscribe(ctx, project, s.id, s.title, s.id+"-session", nil, "all")
 		require.NoError(t, err)

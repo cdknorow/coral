@@ -35,6 +35,7 @@ func newNudgeHarness(t *testing.T, path string) *nudgeHarness {
 	bs, err := board.NewStoreWithKey(path, "")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
+	require.NoError(t, bs.SetHealthOn(context.Background(), "team", true)) // off by default (#4962); these tests are about the rules
 	n := &nudgeHarness{t: t, bs: bs, now: time.Now().UTC().Truncate(time.Second), sig: map[string]agentSignal{}}
 	n.h = &HealthNudges{
 		store: bs, discover: func(context.Context) ([]AgentInfo, error) { return n.agents, nil },
@@ -281,7 +282,7 @@ func TestHealthNudgesFollowTheTeamSettings(t *testing.T) {
 	_, err := n.bs.CreateTask(ctx, "team", "work", "", "high", "Operator", "Dev")
 	require.NoError(t, err)
 	n.sig[sid] = agentSignal{Since: n.now.Add(-time.Hour)}
-	hs := board.DefaultHealthSettings()
+	hs := healthOn()
 	hs.ClaimNudge.On = false
 	_, err = n.bs.UpdateBoardSettings(ctx, "team", board.BoardSettingsUpdate{Health: &hs})
 	require.NoError(t, err)

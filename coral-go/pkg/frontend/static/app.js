@@ -8,7 +8,7 @@ import { initPrerequisiteChecks } from './prerequisites.js';
 import { fetchSystemStatus } from './system_status.js';
 import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardStartupComplete, dashboardFailed } from './dashboard_analytics.js';
 import { initAgentUI } from './agent_ui.js';
-import { showTeamWorkingMode, showTeamWorkingModeWorkspace } from './team_working_mode.js';
+import { showTeamWorkingMode, showTeamWorkingModeWorkspace, showTeamHealthSettings } from './team_working_mode.js';
 import { showTeamAvailability, showTeamAvailabilityWorkspace } from './team_availability.js';
 import { enterTeamContext, exitTeamContext, renderTeamSettingsTab } from './team_context.js';
 /* Coral Dashboard — Entry Point */
@@ -723,7 +723,7 @@ Object.assign(window, {
     moveSessionUp, moveSessionDown,
     toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection,
     enterTeamContext, exitTeamContext, renderTeamSettingsTab,
-    showTeamDetails, hideTeamDetails, buildSessionTooltip, showTeamAvailability, showTeamAvailabilityWorkspace, showTeamWorkingMode, showTeamWorkingModeWorkspace,
+    showTeamDetails, hideTeamDetails, buildSessionTooltip, showTeamAvailability, showTeamAvailabilityWorkspace, showTeamWorkingMode, showTeamWorkingModeWorkspace, showTeamHealthSettings,
     shareAgentTeam, saveTeamFromSidebar, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge,
     showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal,
     killSessionDirect, showInfoDirect, attachDirect, restartDirect,

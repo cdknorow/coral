@@ -58,7 +58,7 @@ func TestHeldAtADialogTellsTheOperatorOnce(t *testing.T) {
 	assert.Len(t, notices(), 2, "a new hold is a new notice")
 
 	// The team's settings: off, or later.
-	hs := board.DefaultHealthSettings()
+	hs := healthOn()
 	hs.HeldNotice.On = false
 	_, err := n.bs.UpdateBoardSettings(ctx, "team", board.BoardSettingsUpdate{Health: &hs})
 	require.NoError(t, err)
@@ -76,7 +76,7 @@ func TestHeldAtADialogTellsTheOperatorOnce(t *testing.T) {
 
 // The notice's setting: on, 10 minutes by default; clamped to 5..1440 like the others.
 func TestHeldNoticeSettingDefaultsAndClamp(t *testing.T) {
-	d := board.DefaultHealthSettings()
+	d := healthOn()
 	assert.Equal(t, board.HealthMentionNudge{On: true, AfterMin: 10}, d.HeldNotice)
 	d.HeldNotice.AfterMin = 1
 	assert.Equal(t, 5, d.Clamp().HeldNotice.AfterMin)
