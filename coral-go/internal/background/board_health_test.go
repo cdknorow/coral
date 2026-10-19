@@ -99,6 +99,29 @@ func TestCheckGoesToTheOrchestratorOnly(t *testing.T) {
 	assert.Len(t, msgs, before, "check is not posted to the board")
 }
 
+// #4983: the check reminds the orchestrator that coral-board peek shows an idle, waiting or stuck agent's terminal, naming the first one; a check the
+// team sent to someone else leaves the line out (peek is the orchestrator's).
+func TestCheckTellsTheOrchestratorAboutPeek(t *testing.T) {
+	h := newCheckHarness(t)
+	h.member("Orchestrator", "Orchestrator", 1, 0)
+	h.member("Dev", "Developer", 2, time.Hour) // idle with nothing assigned: an item
+	out := h.checkTo("Orchestrator")
+	assert.Contains(t, out, `To see why, read their terminal: coral-board peek "Dev" --lines 30.`)
+
+	// The same team, with the check sent to the Developer: no hint.
+	other := newCheckHarness(t)
+	other.member("Orchestrator", "Orchestrator", 1, 0)
+	other.member("Dev", "Developer", 2, 0)
+	other.member("QA", "QA Engineer", 3, time.Hour)
+	hs := board.DefaultHealthSettings()
+	hs.On = true // explicit: the default is off once #4962 lands
+	hs.Recipient = "Dev"
+	_, err := other.s.UpdateBoardSettings(context.Background(), "team", board.BoardSettingsUpdate{Health: &hs})
+	require.NoError(t, err)
+	sent := other.checkTo("Dev")
+	assert.NotContains(t, sent, "coral-board peek", "a recipient who is not the orchestrator is not told about peek")
+}
+
 // A board without an orchestrator, or one whose orchestrator isn't running, gets no check.
 func TestCheckNeedsALiveOrchestrator(t *testing.T) {
 	h := newCheckHarness(t)

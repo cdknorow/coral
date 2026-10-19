@@ -73,6 +73,9 @@ type CheckInput struct {
 	// Roster, when set, is what the agents are doing and who waits on whom (#4583): the check is then the roster's header and list, and
 	// never says "progressing" from post volume. Without it the check is the earlier one.
 	Roster *Roster
+	// PeekHint: the recipient is the orchestrator, who can read another agent's terminal with coral-board peek; the roster check then says so
+	// when an agent is idle, waiting or stuck (#4983). Peek is the orchestrator's: a check sent to someone else leaves the line out.
+	PeekHint bool
 }
 
 // parkedNote is the team line's note on parked tasks, or "".

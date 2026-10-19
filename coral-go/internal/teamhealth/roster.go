@@ -195,6 +195,7 @@ func ComposeLines(in CheckInput) []string {
 	if len(in.Questions) > 0 {
 		lines = append(lines, questionsLine(in))
 	}
+	hintAt := len(lines) // the hint goes before the progress line
 	progressed := in.Progress.Completed+in.Progress.Reviewed+in.Progress.Posts > 0
 	since := in.Progress.Since.Format("15:04")
 	switch {
@@ -213,7 +214,66 @@ func ComposeLines(in CheckInput) []string {
 	case !r.NeedsAttention() && len(in.Items) == 0 && len(in.Questions) == 0:
 		lines = append(lines, "Nothing needs you.")
 	}
+	// The peek hint is a pointer, not a fact: it is left out first when the check would not fit (the other lines then drop as before).
+	if hint := in.peekLine(items); hint != "" {
+		withHint := append(append(append([]string(nil), lines[:hintAt]...), hint), lines[hintAt:]...)
+		if len(strings.Join(withHint, " • ")) <= MaxCheck {
+			return withHint
+		}
+	}
 	return fitLines(lines)
+}
+
+// peekLine is the line that tells the orchestrator how to see why an agent is idle, waiting or stuck: its terminal, with coral-board peek. It names
+// the first such agent (a ranked item's, else the longest waiter's) in the example, and is empty when the recipient is not the orchestrator, when no
+// awake agent is idle, waiting, at a prompt or stuck, or when everyone is working. A sleeper alone has no terminal to read.
+func (in CheckInput) peekLine(items []Item) string {
+	r := in.Roster
+	if !in.PeekHint || r == nil {
+		return ""
+	}
+	name := ""
+	for _, it := range items {
+		if it.Agent != "" && it.Agent != "Board" { // "Board" is a queue problem, not an agent
+			name = it.Agent
+			break
+		}
+	}
+	if name == "" && len(r.Waits) > 0 {
+		groups := append([]WaitGroup(nil), r.Waits...)
+		sort.SliceStable(groups, func(i, j int) bool {
+			a, b := groups[i], groups[j]
+			if a.You != b.You {
+				return a.You
+			}
+			if len(a.Waiters) != len(b.Waiters) {
+				return len(a.Waiters) > len(b.Waiters)
+			}
+			return a.On < b.On
+		})
+		for _, g := range groups {
+			best := ""
+			var age time.Duration = -1
+			for _, w := range g.Waiters {
+				if w.Age > age || (w.Age == age && w.Name < best) {
+					best, age = w.Name, w.Age
+				}
+			}
+			if best != "" {
+				name = best
+				break
+			}
+		}
+	}
+	stuck := name != "" || r.Counts[StatePrompt] > 0 || r.Counts[StateIdle] > 0 || r.Counts[StateUnknown] > 0
+	if !stuck {
+		return ""
+	}
+	if name == "" {
+		name = "<agent>"
+	}
+	name = strings.NewReplacer(`"`, "", `\`, "").Replace(name) // the example is a command: no quote or backslash from a member's name
+	return fmt.Sprintf(`To see why, read their terminal: coral-board peek "%s" --lines 30.`, name)
 }
 
 // fitLines keeps the check within MaxCheck: the header stays, and lines from the end are left out first, counted.

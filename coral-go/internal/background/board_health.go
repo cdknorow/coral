@@ -182,7 +182,8 @@ func (m *BoardHealthMonitor) composeCheck(ctx context.Context, project, orch str
 	roster, attention := m.buildRoster(ctx, rosterInputs{project: project, recipient: rcpt, subs: subs, bySession: bySession, waits: waits, tasks: tasks, now: now})
 	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items, Questions: questions,
 		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts},
-		Parked:   len(parked), BackFromPark: backFromPark, Roster: roster}), len(items) + attention, nil
+		Parked:   len(parked), BackFromPark: backFromPark, Roster: roster,
+		PeekHint: rcpt != nil && rcpt.SubscriberID == orch}), len(items) + attention, nil
 }
 
 // splitParked leaves parked tasks out: a parked task raises no item (#4175 step 3). A task whose park ended is back:

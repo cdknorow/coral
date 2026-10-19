@@ -499,5 +499,6 @@ func (m *BoardHealthMonitor) composeCheckBefore4599(ctx context.Context, project
 	roster, attention := m.buildRoster(ctx, rosterInputs{project: project, recipient: rcpt, subs: subs, bySession: bySession, waits: waits, tasks: tasks, now: now})
 	return teamhealth.Compose(teamhealth.CheckInput{Now: now, Agents: agents, Items: items, Questions: questions,
 		Progress: teamhealth.Progress{Since: since, Completed: p.Completed, Reviewed: p.Reviewed, Posts: p.Posts},
-		Parked:   len(parked), BackFromPark: backFromPark, Roster: roster}), len(items) + attention, nil
+		Parked:   len(parked), BackFromPark: backFromPark, Roster: roster,
+		PeekHint: rcpt != nil && rcpt.SubscriberID == orch /* #4983: the hint is new in both */}), len(items) + attention, nil
 }
