@@ -196,6 +196,8 @@ type inputGate struct {
 	// dialogHeld: sessions whose sends were last held behind a dialog: the held notice stays
 	// up (checkEnded) until a send is delivered again.
 	dialogHeld map[string]bool
+	// surveyTried: when each session was last sent the 0 that dismisses Claude's survey (dismissSurvey, #5114).
+	surveyTried map[string]time.Time
 }
 
 // Defaults for gateTimings' dialog fields.

@@ -140,6 +140,9 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 		}
 		g.mu.Unlock()
 		if waiting, why, kind := in.waiting(ctx); waiting {
+			if kind == KindDialog && g.dismissSurvey(ctx, in) {
+				continue // Claude's session survey was the dialog and is gone: look again (#5114)
+			}
 			if kind == KindDialog && g.giveUpMentionsBehindDialog(name) {
 				continue // the head was a mention given up: look at the next
 			}

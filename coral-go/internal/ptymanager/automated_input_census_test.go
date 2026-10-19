@@ -72,6 +72,8 @@ var allowedSenders = map[string]string{
 	"internal/ptymanager/tmux_backend.go\tTmuxBackend.SendInput\tSendTerminalInputToTarget":                          "primitive",
 	"internal/ptymanager/prompt_screen.go\tTmuxSessionTerminal.SendEnter\tSendRawKeys":                               "primitive",
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendEnter\tSendRawKeys":                                        "primitive",
+	// #5114: the one 0 that dismisses Claude's session survey (never a rating), only when it is the only thing open.
+	"internal/ptymanager/survey_dismiss.go\tinputGate.dismissSurvey\tSendRawInput": "gate (a single 0, only for the exact session survey directly above the input box; waits for it to go; at most once per 30 s; #5114)",
 	// #3457: automated text as a bracketed paste.
 	"internal/ptymanager/automated_input_deliver.go\tinputGate.pasteAndEnter\tSendPrompt":     "gate (the paste, Enter only after the re-check)",
 	"internal/ptymanager/paste_check.go\tinputGate.enterAndConfirm\tSendEnter":                "gate (a held paste's Enter, once its text is in the box and no prompt is open; confirmed, #4104)",
