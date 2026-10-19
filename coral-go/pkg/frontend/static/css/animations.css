@@ -2,51 +2,11 @@
    Animations — All keyframes and reusable motion
    ============================================================ */
 
-/* The status-dot pulses. A box-shadow cannot be animated on the compositor: every frame repainted the dot's layer on the
-   main thread (about 60 paints a second per page with a pulsing dot, nothing else changing; #3945). The element now
-   animates only opacity, and the ring is an ::after that animates transform and opacity, which the compositor runs on its
-   own. The ring colours and sizes are the old box-shadow's. */
+/* The status dots flash by opacity only (the compositor runs it): pulse-working, -waiting and -stuck. There is no expanding ring around any dot (the operator, #5140). */
 @keyframes pulse-working { 0%, 100% { opacity: 1; }    50% { opacity: 0.8; } }
 @keyframes pulse-waiting { 0%, 100% { opacity: 1; }    50% { opacity: 0.6; } }
 @keyframes pulse-stuck   { 0%, 100% { opacity: 1; }    50% { opacity: 0.85; } }
-@keyframes pulse-ring {
-    0%, 100% { transform: scale(1); opacity: var(--pulse-ring-alpha, 0.5); }
-    50%      { transform: scale(var(--pulse-ring-scale, 1.9)); opacity: 0; }
-}
 
-.session-dot.working, .session-dot.waiting, .session-dot.stuck,
-.status-dot.working, .status-dot.waiting, .status-dot.stuck, .status-dot-working,
-.team-distill-dot, .badge.waiting-badge,
-.avatar-status-dot.working, .avatar-status-dot.waiting, .avatar-status-dot.stuck {
-    isolation: isolate;
-}
-/* the avatar's dot is already absolutely positioned; the others are static */
-.session-dot.working, .session-dot.waiting, .session-dot.stuck,
-.status-dot.working, .status-dot.waiting, .status-dot.stuck, .status-dot-working,
-.team-distill-dot, .badge.waiting-badge { position: relative; }
-.session-dot.working::after, .session-dot.waiting::after, .session-dot.stuck::after,
-.status-dot.working::after, .status-dot.waiting::after, .status-dot.stuck::after, .status-dot-working::after,
-.team-distill-dot::after, .badge.waiting-badge::after,
-.avatar-status-dot.working::after, .avatar-status-dot.waiting::after, .avatar-status-dot.stuck::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    background: var(--pulse-ring, rgb(59, 130, 246));
-    pointer-events: none;
-    animation: pulse-ring 1.5s ease-in-out infinite;
-}
-.session-dot.waiting, .status-dot.waiting, .badge.waiting-badge, .avatar-status-dot.waiting { --pulse-ring: rgb(255, 193, 7); }
-.session-dot.stuck, .status-dot.stuck, .avatar-status-dot.stuck { --pulse-ring: rgb(239, 68, 68); --pulse-ring-alpha: 0.3; --pulse-ring-scale: 1.75; }
-.session-dot.stuck::after, .status-dot.stuck::after, .avatar-status-dot.stuck::after { animation-duration: 3s; }
-.avatar-status-dot.working::after, .avatar-status-dot.waiting::after, .avatar-status-dot.stuck::after { --pulse-ring-scale: 2.2; }
-@media (prefers-reduced-motion: reduce) {
-    .session-dot.working::after, .session-dot.waiting::after, .session-dot.stuck::after,
-    .status-dot.working::after, .status-dot.waiting::after, .status-dot.stuck::after, .status-dot-working::after,
-    .team-distill-dot::after, .badge.waiting-badge::after,
-    .avatar-status-dot.working::after, .avatar-status-dot.waiting::after, .avatar-status-dot.stuck::after { animation: none; opacity: 0; }
-}
 
 @keyframes pulse {
     0%, 100% { opacity: 0.4; }
@@ -69,4 +29,16 @@
 
 @keyframes task-spin {
     to { transform: rotate(360deg); }
+}
+
+/* prefers-reduced-motion (#5140): nothing loops and nothing slides. Every animation runs once and at once, so a spinner is a static ring, a pulsing dot is its resting
+   state, the shimmer stops, and a toast appears where it stays; explicit smooth scrolls choose "auto" (motion.js). Written with the universal selector so a new animation is
+   covered without a line of its own (the browser check reduced_motion_browser fails when an infinite one is still running). */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        animation-delay: 0s !important;
+        scroll-behavior: auto !important;
+    }
 }

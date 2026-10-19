@@ -1,5 +1,6 @@
 /* Moved out of modals.js as it was (#4684): The AI team wizard, the team-agent dialog, and the Launch dialog's team form: its agents, templates, quick launch and Launch Team. No behaviour change. */
 import { importOnce } from './import_once.js';
+import { scrollBehavior } from './motion.js';
 import { closeOnBackdropAndEscape, releaseEscape } from './dialog_close.js';
 import { showToast, escapeHtml, escapeAttr, boardNameProblem } from './utils.js';
 import { loadLiveSessions } from './api.js';
@@ -847,7 +848,7 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
         }
     });
 
-    if (reveal) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (reveal) row.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
 }
 
 // The first card cannot move up and the last cannot move down: those buttons are disabled (#3770).

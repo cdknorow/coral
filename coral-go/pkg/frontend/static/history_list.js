@@ -1,5 +1,6 @@
 /* The Chats list and a history transcript (moved out of render.js, #4996; no behaviour change). */
 import { state } from './state.js';
+import { scrollBehavior } from './motion.js';
 import { formatDurationSec as formatDuration, escapeHtml, escapeAttr } from './utils.js';
 import { renderSidebarTagDots } from './tags.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -103,7 +104,7 @@ export function renderHistoryChat(messages, agentType = "claude", baseIndex = 0,
             const target = container.querySelector(`[data-message-index="${CSS.escape(String(focusIndex))}"]`);
             if (target) {
                 target.classList.add('chat-search-target');
-                target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                target.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
                 target.setAttribute('tabindex', '-1');
                 target.focus({ preventScroll: true });
             } else {

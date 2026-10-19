@@ -765,8 +765,8 @@
     color: var(--text-primary);
 }
 
-/* Rows never animate (reduced motion by default); the state pill carries the text. */
-.session-group-item .session-dot,
+/* The row's dot flashes by itself (opacity, pulse-working / -waiting / -stuck, the rules above) with no ring around it (#5140: "the flashing circle is enough"); the pill
+   does not pulse, and carries the text. Reduced motion runs each animation once (animations.css). */
 .session-group-item .waiting-badge {
     animation: none;
 }
@@ -833,8 +833,6 @@
     box-shadow: inset 0 0 0 1px var(--border);
 }
 
-/* No expanding ring around the pill (the row's flashing dot is the motion): the badge's pulse-ring pseudo-element is for badges elsewhere. */
-.session-group-item .waiting-badge::after { content: none; }
 
 [data-theme="light"] .session-group-item .badge.session-state-pill {
     color: var(--warning);

@@ -2,6 +2,7 @@
 
 import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, getAgentColor, showToast, externalMessageBadge, hubUserBadge, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
 import { registerActions, withId, textOf } from './actions.js';
+import { scrollBehavior } from './motion.js';
 import { boardPageChanged } from './dock_page.js';
 import { state } from './state.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
@@ -388,7 +389,7 @@ function revealMessage(target) {
     const run = target.closest('details');
     if (run) run.open = true; // a task-queue line inside a collapsed row
     target.classList.add('chat-search-target');
-    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    target.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
     target.setAttribute('tabindex', '-1'); // the focus goes to the message
     target.focus({ preventScroll: true });
 }

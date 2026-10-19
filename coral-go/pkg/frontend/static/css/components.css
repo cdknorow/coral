@@ -598,7 +598,6 @@ button.subscriber-history-link {
     background: var(--warning);
     color: #000;
     font-size: 0.625rem;
-    animation: pulse-waiting 1.5s ease-in-out infinite;
 }
 
 /* ── Modal ─────────────────────────────────────────────────── */

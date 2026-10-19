@@ -1,6 +1,6 @@
 // The agent list's attention states are quiet (#5123; operator: the "Needs input · Permission" row was "a bit too loud", an amber wash across the row and an amber pill with an
 // amber ring). No amber (or red) wash across a row that needs the Operator; the state pill has the neutral pill's surface and hairline with only its text warm, and no expanding
-// ring (the row's flashing dot is the motion, and stops with reduced motion); on a phone the card has no amber border and the banner and chip are quiet the same way; the text of
+// ring (the row's dot flashes by itself, with no ring either, #5140; it stops with reduced motion); on a phone the card has no amber border and the banner and chip are quiet the same way; the text of
 // every pill is at least 4.5:1 in both themes; the words, not the colour, say which state it is. Drives Chrome over CDP through agent_view_harness.js.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -42,7 +42,7 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
                 const pill = id => { const e = li(id) && li(id).querySelector('.session-state-pill'); return e ? { text: e.textContent.trim(), weight: cs(e).fontWeight, bg: cs(e).backgroundColor, shadow: cs(e).boxShadow, ring: cs(e, '::after').content, shown: cs(e).display !== 'none' } : null; };
                 const chip = id => { const e = li(id) && li(id).querySelector('.session-status-chip'); return e ? { text: e.textContent.trim(), bg: cs(e).backgroundColor } : null; };
                 const banner = id => { const e = li(id) && li(id).querySelector('.session-mobile-banner'); return e ? { bg: cs(e).backgroundColor, border: cs(e).borderTopColor } : null; };
-                const dot = id => { const e = li(id).querySelector('.session-dot'); return { name: cs(e, '::after').animationName }; };
+                const dot = id => { const e = li(id).querySelector('.session-dot'); return { name: cs(e).animationName, ring: cs(e, '::after').animationName }; };
                 return { tertiary: probe(getComputedStyle(document.documentElement).getPropertyValue('--bg-tertiary').trim()), borderVar: probe(getComputedStyle(document.documentElement).getPropertyValue('--border').trim()),
                     rows: Object.fromEntries(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, row(id)])), pills: Object.fromEntries(['r2', 'r3', 'r4', 'r5'].map(id => [id, pill(id)])),
                     chips: Object.fromEntries(['r2', 'r5'].map(id => [id, chip(id)])), banners: Object.fromEntries(['r2'].map(id => [id, banner(id)])), dots: { r2: dot('r2'), r5: dot('r5') } };
@@ -69,11 +69,13 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
                 assert.equal(s.banners.r2.bg, s.tertiary, `${v.name}: the banner is on the neutral surface (${s.banners.r2.bg})`);
                 assert.equal(s.banners.r2.border, s.borderVar, `${v.name}: with the neutral hairline (${s.banners.r2.border})`);
             }
-            // The row's flashing dot stays: it animates with no preference, and stops with reduced motion.
-            assert.notEqual(s.dots.r2.name, 'none', `${v.name}: the waiting dot flashes (${s.dots.r2.name})`);
-            assert.notEqual(s.dots.r5.name, 'none', `${v.name}: the stuck dot flashes (${s.dots.r5.name})`);
+            // The row's dot flashes by itself, with no ring around it (#5140): it animates with no preference, and stops with reduced motion.
+            assert.equal(s.dots.r2.name, 'pulse-waiting', `${v.name}: the waiting dot flashes (${s.dots.r2.name})`);
+            assert.equal(s.dots.r5.name, 'pulse-stuck', `${v.name}: the stuck dot flashes (${s.dots.r5.name})`);
+            assert.equal(s.dots.r2.ring, 'none', `${v.name}: and has no expanding ring (${s.dots.r2.ring})`);
+            assert.equal(s.dots.r5.ring, 'none', `${v.name}: the stuck dot neither (${s.dots.r5.ring})`);
             await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
-            const still = await ev(`(() => { const e = document.querySelector('${root} [data-session-id="r2"] .session-dot'); const c = getComputedStyle(e, '::after'); return c.animationName === 'none' || c.opacity === '0'; })()`);
+            const still = await ev(`(() => { const e = document.querySelector('${root} [data-session-id="r2"] .session-dot'); return e.getAnimations().every(a => a.effect.getTiming().iterations !== Infinity); })()`);
             assert.equal(still, true, `${v.name}: the dot stops with reduced motion`);
             // Every pill's text is readable: 4.5:1 in this theme.
             const sel = v.mobile ? ['.session-status-chip', '.session-mobile-banner'] : ['.session-state-pill'];
