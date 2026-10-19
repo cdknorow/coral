@@ -4,6 +4,7 @@ import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, getAgentCo
 import { registerActions, withId, textOf } from './actions.js';
 import { scrollBehavior } from './motion.js';
 import { boardPageChanged } from './dock_page.js';
+import { emptyState } from './dom_write.js';
 import { state } from './state.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
@@ -63,7 +64,7 @@ function renderBoardSidebar(projects) {
     const list = document.getElementById('messageboard-sidebar-list');
     if (!list) return;
     if (!projects.length) {
-        list.innerHTML = '<li class="empty-state">No projects</li>';
+        emptyState(list, 'No projects', 'empty-state', 'li');
         return;
     }
     list.innerHTML = projects.map(p => {
@@ -423,7 +424,7 @@ function renderMessages(messages, { keepAnchor = false, prepended = 0 } = {}) {
     const container = document.getElementById('mb-messages');
     wireBoardScroll(container);
     if (!messages.length) {
-        container.innerHTML = '<div class="empty-state">No messages yet</div>';
+        emptyState(container, 'No messages yet');
         return;
     }
     // Save scroll position before replacing content

@@ -4,6 +4,7 @@ import { modelDisplayName } from './model_names.js';
 import { showView, escapeHtml, escapeAttr } from './utils.js';
 import { registerActions, idOf, uuidOf, tokenOf, textOf } from './actions.js';
 import { state } from './state.js';
+import { emptyState } from './dom_write.js';
 import { pollEvery } from './overload.js';
 import { keyLabel } from './server_base.js';
 import { formatTokens, formatDuration, formatCost } from './format.js';
@@ -393,9 +394,9 @@ async function _refreshCallMetrics() {
         if (!response.ok) throw new Error('metrics unavailable');
         const data = await response.json();
         const rows = data.rows || [];
-        if (!rows.length) { el.innerHTML = '<div class="cost-empty">No call metrics yet</div>'; return; }
+        if (!rows.length) { emptyState(el, 'No call metrics yet', 'cost-empty'); return; }
         el.innerHTML = `<table class="cost-table"><thead><tr><th>Operation</th><th>Type</th><th>Agent</th><th>Team</th><th>Calls</th><th>Errors</th><th>Avg ms</th></tr></thead><tbody>${rows.map(r => `<tr><td>${escapeHtml(r.operation)}</td><td>${escapeHtml(r.call_type)}</td><td>${escapeHtml(r.agent_name || '—')}</td><td>${escapeHtml(r.board_name || '—')}</td><td>${r.calls}</td><td>${r.errors}</td><td>${Math.round(r.avg_duration_ms || 0)}</td></tr>`).join('')}</tbody></table>`;
-    } catch { el.innerHTML = '<div class="cost-empty">Call metrics unavailable</div>'; }
+    } catch { emptyState(el, 'Call metrics unavailable', 'cost-empty'); }
 }
 
 export function stopCostDashboard() {
@@ -554,7 +555,7 @@ function _renderProviderTable(rows) {
     const filtered = _applyColFilters(rows, 'provider', { agent_type: r => r.agent_type || '' });
     const sorted = _sortRows(filtered, 'provider', (r, f) => f === 'agent_type' ? (r.agent_type || '') : (r[f] || 0));
     if (sorted.length === 0) {
-        container.innerHTML = '<div class="cost-empty">No usage data yet</div>';
+        emptyState(container, 'No usage data yet', 'cost-empty');
         return;
     }
     let html = `<table class="cost-table">
@@ -600,7 +601,7 @@ function _renderModelTable(rows) {
     });
 
     if (sorted.length === 0) {
-        container.innerHTML = '<div class="cost-empty">No usage data yet</div>';
+        emptyState(container, 'No usage data yet', 'cost-empty');
         return;
     }
 
@@ -655,7 +656,7 @@ function _renderThinkingTable(rows) {
         return r[f] || 0;
     });
     if (sorted.length === 0) {
-        container.innerHTML = '<div class="cost-empty">No usage data yet</div>';
+        emptyState(container, 'No usage data yet', 'cost-empty');
         return;
     }
     let html = `<table class="cost-table">
@@ -711,7 +712,7 @@ function _renderAgentTable(rows) {
     });
 
     if (sorted.length === 0) {
-        container.innerHTML = '<div class="cost-empty">No usage data yet</div>';
+        emptyState(container, 'No usage data yet', 'cost-empty');
         return;
     }
 
@@ -894,7 +895,7 @@ function _renderTaskTable(tasks) {
     _costTaskCache = sorted;
 
     if (sorted.length === 0) {
-        container.innerHTML = '<div class="cost-empty">No task data yet</div>';
+        emptyState(container, 'No task data yet', 'cost-empty');
         return;
     }
 
@@ -964,7 +965,7 @@ function _renderRequestLog(requests) {
     });
 
     if (sorted.length === 0) {
-        container.innerHTML = '<div class="cost-empty">No requests yet</div>';
+        emptyState(container, 'No requests yet', 'cost-empty');
         return;
     }
 
@@ -1023,7 +1024,7 @@ function _renderSpendChart(buckets) {
     if (!container) return;
 
     if (buckets.length < 2) {
-        container.innerHTML = '<div class="cost-empty">Not enough data for chart</div>';
+        emptyState(container, 'Not enough data for chart', 'cost-empty');
         return;
     }
 
@@ -1172,7 +1173,7 @@ function _renderTeamTable(teams) {
     });
 
     if (sorted.length === 0) {
-        container.innerHTML = '<div class="cost-empty">No team data yet</div>';
+        emptyState(container, 'No team data yet', 'cost-empty');
         return;
     }
 
@@ -1234,7 +1235,7 @@ function _renderBranchTable(branches) {
     });
 
     if (sorted.length === 0) {
-        container.innerHTML = '<div class="cost-empty">No branch data yet</div>';
+        emptyState(container, 'No branch data yet', 'cost-empty');
         return;
     }
 

@@ -38,3 +38,11 @@ export function setHtml(el, html) {
 export function setData(el, key, value) {
     if (el && el.dataset[key] !== value) el.dataset[key] = value;
 }
+
+/** Replace `container`'s content with one placeholder line (#5162): <tag class="className">text</tag>, "No usage data yet" in the cost tables, "No messages yet" on the board. The text is text, never markup. */
+export function emptyState(container, text, className = 'empty-state', tag = 'div') {
+    const el = document.createElement(tag);
+    el.className = className;
+    el.textContent = text;
+    container.replaceChildren(el);
+}
