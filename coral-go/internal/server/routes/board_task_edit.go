@@ -5,6 +5,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -249,6 +250,10 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 	}
 	task, err := h.bs.ReassignTask(r.Context(), project, taskID, body.Assignee)
 	if err != nil {
+		if errors.Is(err, board.ErrReviewTaskReassign) {
+			errBadRequest(w, err.Error())
+			return
+		}
 		errInternalServer(w, err.Error())
 		return
 	}

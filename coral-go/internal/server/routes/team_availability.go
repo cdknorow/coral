@@ -374,7 +374,7 @@ func availabilityHealthReport(tasks []board.Task) []string {
 		if t.AssignedTo != nil && *t.AssignedTo != "" && t.Status == "in_progress" {
 			assigned[*t.AssignedTo]++
 		}
-		if t.Status == "pending" && t.AssignedTo == nil && len(t.BlockedBy) == 0 {
+		if t.Status == "pending" && t.AssignedTo == nil && len(t.BlockedBy) == 0 && !t.Parked(time.Now()) { // a parked task is set aside, not work to hand out (#5191)
 			parallel++
 		}
 		if t.Status == "blocked" {

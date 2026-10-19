@@ -365,3 +365,49 @@ func TestReviewVerdictAndPlainTaskNeedNoClaimWhileBusy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "completed", final.Status)
 }
+
+// #5191: a review task is not reassigned (the round would still name the old reviewer and the new one would be refused 'no open review'); the refusal says how reviewers change, which works.
+func TestReviewTaskIsNotReassignedItsReviewersChangeOnTheTask(t *testing.T) {
+	base, h, task := reviewTeam(t, "swap", true)
+	ctx := context.Background()
+	submit(t, base, task.ID)
+	code, out := postCode(t, base(task.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": []string{"QA Engineer"}})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	got, err := h.bs.GetTask(ctx, "swap", task.ID)
+	require.NoError(t, err)
+	qaReview := got.Workflow.ReviewRounds[0].Reviewers[0].ReviewTaskID
+
+	code, out = postCode(t, base(qaReview, "reassign"), map[string]any{"subscriber_id": "lead", "assignee": "Security Reviewer"})
+	assert.Equal(t, http.StatusBadRequest, code, "%v", out)
+	assert.Contains(t, fmt.Sprint(out["error"]), fmt.Sprintf("coral-board task review %d --to", task.ID), "it says how to change the reviewer")
+	rt, err := h.bs.GetTask(ctx, "swap", qaReview)
+	require.NoError(t, err)
+	assert.Equal(t, "QA Engineer", *rt.AssignedTo, "the review task stays with its reviewer")
+
+	// the way it says works: the new reviewer gives the verdict
+	code, out = postCode(t, base(task.ID, "review"), map[string]any{"subscriber_id": "lead", "reviewers": []string{"Security Reviewer"}})
+	require.Equal(t, http.StatusOK, code, "%v", out)
+	code, out = postCode(t, base(task.ID, "approve"), map[string]any{"subscriber_id": "Security Reviewer"})
+	assert.Equal(t, http.StatusOK, code, "the new reviewer can approve: %v", out)
+	code, _ = postCode(t, base(task.ID, "approve"), map[string]any{"subscriber_id": "QA Engineer"})
+	assert.NotEqual(t, http.StatusOK, code, "and the one taken off cannot (the round is over once the new reviewer approved)")
+}
+
+// #5191: the availability report's parallelize hint counts unassigned pending tasks, not parked ones.
+func TestAvailabilityHintSkipsParkedTasks(t *testing.T) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	reason := "waiting on phase 1"
+	mk := func(id int64, parked bool) board.Task {
+		tk := board.Task{ID: id, Status: "pending", Title: fmt.Sprintf("task %d", id), CreatedAt: now}
+		if parked {
+			tk.ParkedReason = &reason
+		}
+		return tk
+	}
+	hint := func(tasks []board.Task) string { return strings.Join(availabilityHealthReport(tasks), "\n") }
+	open := []board.Task{mk(1, false), mk(2, false), mk(3, false)}
+	withParked := []board.Task{mk(1, false), mk(2, false), mk(3, true), mk(4, true)}
+	assert.Contains(t, hint(open), "3 unassigned tasks", "three open unassigned tasks are counted")
+	assert.Contains(t, hint(withParked), "2 unassigned tasks", "only the two that are not parked are counted")
+	assert.NotContains(t, hint(withParked), "4 unassigned")
+}

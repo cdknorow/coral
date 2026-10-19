@@ -4,6 +4,7 @@ package board
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -561,10 +562,18 @@ func (s *Store) CompleteTask(ctx context.Context, project string, taskID int64, 
 	return s.CompleteTaskWithArtifacts(ctx, project, taskID, subscriberID, message, "success", nil)
 }
 
+// ErrReviewTaskReassign: a review task is not reassigned; its reviewers are changed on the task under review.
+var ErrReviewTaskReassign = errors.New("a review task cannot be reassigned")
+
 // ReassignTask resets a task back to pending, optionally with a new assignee.
 // Works on pending, in_progress, or blocked tasks, preserving blocked status.
 // If assignee is empty, the task becomes unassigned.
 func (s *Store) ReassignTask(ctx context.Context, project string, taskID int64, assignee string) (*Task, error) {
+	// A review task's reviewer is a place in the reviewed task's round: giving the task to someone else would leave the round naming the old reviewer, and the new one would be refused
+	// ("no open review") when they gave their verdict. Reviewers change through the reviewed task (#5191).
+	if w, err := loadWorkflow(ctx, s.db, taskID); err == nil && w.ReviewOf > 0 {
+		return nil, fmt.Errorf("%w: #%d is the review of #%d: change its reviewers with: coral-board task review %d --to \"Name,Name\"", ErrReviewTaskReassign, taskID, w.ReviewOf, w.ReviewOf)
+	}
 	var assignPtr *string
 	if assignee != "" {
 		assignPtr = &assignee
