@@ -1,5 +1,15 @@
 # Release Notes
 
+## v1.4.114 — Coral listens on this computer only unless remote access is turned on
+
+### Security
+
+- **Remote access is off by default everywhere:** Coral listens on this computer only (`127.0.0.1`) unless remote access is turned on (Settings > Privacy, or `--remote`). The server's default host (`CORAL_HOST`) and the tray's `--host` are both `127.0.0.1`, so the default no longer relies on the loopback restriction alone. Turning remote access on widens that default to every interface; a host that was asked for (`--host`, `CORAL_HOST`) is kept as given, the tray passes `--host` only when it was given one, and settings that cannot be read never widen the bind. Anyone who already had remote access on keeps it, and Coral Hub is unaffected. The first-launch question defaults to no, no launcher, installer, service or workflow passes `--remote`, and the Mobile QR dialog with access off now names Coral Hub as the other way in.
+
+### Other changes
+
+- **Docs:** the README's remote-access example gains the `--remote` it needs.
+
 ## v1.4.113 — Separate model and thinking chips, a quieter team health icon and attention rows, and Cost by provider, model and level
 
 ### Changes
