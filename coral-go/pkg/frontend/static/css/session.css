@@ -1523,6 +1523,7 @@
     .terminal-header-actions > .terminal-branch { max-width: 4.5em; } /* kept on a phone at normal text, cut short: it is a hint, the name is what the header is for */
     .terminal-header { container-type: inline-size; container-name: agent-header; }
 }
+/* (A header narrow for its text keeps the branch as squeezed as before, a few pixels: branch_expand.js then takes it out of the Tab order, data-narrow, #5142.) */
 /* The branch is dropped where the header is narrow for its text: under 22.25 rem of header content, which is 356 px at normal text: a phone up to 368 px wide, since the header has 6 px of padding each side and the
    container is its content box (UX measured two rows from 350 to 365 px with it at 21 rem; 370 px and up keep the branch on one row) and any phone once the text is large (390 px at 200% is 12 rem). A container query: rem here is the root font size, which
    follows the text size (a media query's em would not follow a root font override, and this way a test can) (#4327, #4360 follow-up). */
@@ -1769,6 +1770,37 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* A branch name is capped, in the live header and the history header alike (#5142): a real worktree's branch can be 60 characters or more. The whole name shows in place while the
+   text is hovered, focused with the keyboard or tapped (.is-open, branch_expand.js): drawn by the chip's ::after (data-full) over the page, not in the header's row, so it moves
+   nothing and the header's controls stay where they are. The live header's box is anchored to the header (the header is the positioned ancestor), right-aligned under its
+   buttons and never wider than the header; the history header's under its chip. */
+.terminal-branch-text, .title-branch .branch-text { display: inline-block; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; cursor: pointer; border-radius: 3px; }
+.terminal-branch-text:focus-visible, .title-branch .branch-text:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.terminal-header { position: relative; }
+.title-branch { position: relative; }
+.terminal-branch:has(> .terminal-branch-text:is(:hover, :focus-visible, .is-open))::after,
+.title-branch:has(> .branch-text:is(:hover, :focus-visible, .is-open))::after {
+    content: attr(data-full);
+    position: absolute;
+    top: calc(100% + 2px);
+    z-index: 40;
+    box-sizing: border-box;
+    width: max-content;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    pointer-events: none;
+}
+.terminal-branch:has(> .terminal-branch-text:is(:hover, :focus-visible, .is-open))::after { right: 6px; top: 100%; max-width: calc(100% - 12px); }
+.title-branch:has(> .branch-text:is(:hover, :focus-visible, .is-open))::after { left: 0; max-width: min(36rem, calc(100vw - 2rem)); }
 
 /* ── Multi-server hub: server badges, strip, stale agents ──────────────
    Only rendered when hub mode is on and remotes are registered. */

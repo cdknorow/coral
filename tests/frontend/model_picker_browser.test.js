@@ -118,8 +118,9 @@ const { connect } = require('./agent_view_harness');
         assert.equal(rows['opus-bot-id'], 'Claude · Opus 4.1', 'the display name from the list');
         assert.equal(rows['sonnet-bot-id'], 'Claude · Sonnet 4.5', 'a short name from the id when the list has none');
         await ev(`window.selectLiveSession('opus-bot', 'claude', 'opus-bot-id', 'local'); true`);
-        await waitFor(`!document.getElementById('terminal-header-model').hidden`, 'the header chip', 5000);
-        assert.equal(await ev(`document.getElementById('terminal-header-model').textContent`), 'Claude · Opus 4.1', 'the header says it too');
+        await waitFor(`document.getElementById('terminal-header-label') && document.getElementById('terminal-header-label').textContent.length > 0`, 'the header', 5000);
+        // The model is in the input toolbar's chip and the row's tooltip, not in the agent header (#5142).
+        assert.equal(await ev(`!!document.getElementById('terminal-header-model') || /Opus 4\\.1/.test(document.querySelector('#live-session-view .terminal-header').textContent)`), false, 'the header does not repeat the model');
         console.log('\nPASS model picker and model labels');
     } finally {
         await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));

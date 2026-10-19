@@ -1,6 +1,5 @@
-/* Live updates to the open agent's header: its folder, model, branch, waiting state, goal and status (moved out of render.js, #4996; no behaviour change). */
+/* Live updates to the open agent's header: its folder, branch, waiting state, goal and status (moved out of render.js, #4996; no behaviour change). */
 import { _shortPath, _gitStateSummary, _repoBranch, deriveSessionState } from './session_state.js';
-import { modelLabel } from './model_labels.js';
 import { setText, setHidden, setTitle, setHtml, setDisplay, setClassName } from './dom_write.js';
 
 export function updateSessionStatus(status) {
@@ -31,16 +30,6 @@ export function updateSessionFolder(dir) {
     _syncHeaderFolder();
 }
 
-/** The terminal header's model chip: "Claude · Opus 4.1", hidden when the agent has no model on record (#4066). */
-export function updateSessionModel(agentType, model, server) {
-    const el = document.getElementById("terminal-header-model");
-    if (!el) return;
-    const text = modelLabel(agentType, model, server);
-    setHidden(el, !text);
-    setText(el, text);
-    setTitle(el, text ? model : "");
-}
-
 export function updateSessionBranch(branch, repoName, gitState) {
     const display = _repoBranch(repoName, branch);
     const el = document.getElementById("session-branch");
@@ -64,8 +53,10 @@ export function updateSessionBranch(branch, repoName, gitState) {
     if (th) {
         setHidden(th, !display);
         if (display) {
-            setText(th.querySelector(".terminal-branch-text"), display);
-            setTitle(th, display);
+            const bt = th.querySelector(".terminal-branch-text");
+            setText(bt, display);
+            th.dataset.full = display; // the whole name, drawn by the chip's ::after while the text is hovered, focused or tapped (branch_expand.js)
+            bt.setAttribute("aria-label", `Branch ${display}`);
             const gs = th.querySelector(".branch-git-state");
             if (gs) {
                 const wt = gitState?.is_worktree ? '<span class="gs-worktree" title="This agent is working in a linked git worktree">worktree</span> ' : '';

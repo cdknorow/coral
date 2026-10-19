@@ -856,19 +856,6 @@ body.panel-dragging .xterm-container {
 }
 @media (max-width: 767px) { .terminal-folder { display: none; } }
 
-/* The agent's model in the terminal header: "Claude · Opus 4.1" (#4066) */
-.terminal-model {
-    font-size: 0.6875rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    max-width: 22vw;
-}
-.terminal-model[hidden] { display: none; }
-.terminal-header-actions .terminal-model { margin-right: 8px; }
-
 /* Chat/Terminal toggle sits at the left of the header, before the agent name */
 .terminal-header > .live-view-toggle { flex-shrink: 0; margin-right: 10px; }
 .terminal-header-actions .terminal-branch,

@@ -48,7 +48,7 @@ export { copyFolderPath, hideAlertModal, hidePromptModal, showAlertModal, showPr
 export { killBoard, killGroup, saveTeamFromSidebar, shareAgentTeam, toggleTeamSleep } from './team_actions.js';
 export { expandSleepingGroup, toggleGroupByServer, toggleGroupByTeam, toggleSessionSummary, toggleShowServer, toggleShowBranches, toggleShowAgentType } from './list_display_settings.js';
 export { renderHistoryChat, renderHistoryNodes, renderHistorySessions } from './history_list.js';
-export { updateSessionBranch, updateSessionFolder, updateSessionModel, updateSessionStatus, updateSessionSummary, updateWaitingIndicator } from './session_header_updates.js';
+export { updateSessionBranch, updateSessionFolder, updateSessionStatus, updateSessionSummary, updateWaitingIndicator } from './session_header_updates.js';
 export { distillTeamKnowledge, showTeamTokenUsage, updateHistoryTokenUsage, updateTokenUsage } from './token_usage_ui.js';
 export { groupHeaderKey, toggleGroupCollapse } from './group_collapse.js';
 export { hideConfirmModal, showConfirmModal } from './confirm_dialog.js';

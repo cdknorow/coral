@@ -11,7 +11,7 @@ import { HISTORY_PAGE, setHistoryWindow } from './history_pages.js';
 import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey, keyLabel } from './server_base.js';
 import { updateHeaderContext } from './header_context.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
-import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateSessionModel, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, commandPlaceholder, applyTerminalDot } from './render.js';
+import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, commandPlaceholder, applyTerminalDot } from './render.js';
 import { renderQuickActions, updateSidebarActive, renderAttachments } from './controls.js';
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';
@@ -350,7 +350,6 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     captureWrapper.classList.remove("loading-skeleton");
     updateSessionBranch(agent?.branch || null, agent?.repo_name || null, agent?.git_state || null);
     updateSessionFolder(agent?.working_directory || "");
-    updateSessionModel(agent?.agent_type || agentType, agent?.model || "", srv);
     updateModelChip(agent || null, srv);
     updateWaitingIndicator(agent || {});
     updateTokenUsage(sessionId);
@@ -424,7 +423,10 @@ export async function selectHistorySession(sessionId, locator = null) {
     const historyEntry = state.historySessionsList.find(s => s.session_id === sessionId);
     const branchEl = document.getElementById("history-session-branch");
     if (historyEntry && historyEntry.branch) {
-        branchEl.querySelector(".branch-text").textContent = historyEntry.branch;
+        const bt = branchEl.querySelector(".branch-text");
+        bt.textContent = historyEntry.branch;
+        branchEl.dataset.full = historyEntry.branch; // drawn by the chip's ::after on hover, focus or tap (branch_expand.js)
+        bt.setAttribute("aria-label", `Branch ${historyEntry.branch}`);
         branchEl.style.display = "";
     } else {
         branchEl.style.display = "none";

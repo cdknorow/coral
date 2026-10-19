@@ -5,6 +5,7 @@ import './hub_blocked_controls.js'; // dims controls the Hub tier does not allow
 // Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
 // Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
 import './session_rows.js';
+import './branch_expand.js'; // the capped branch name in the agent header opens in place (#5142)
 import './nav_tabs.js'; // the tab row, its More menu and the phone's view dropdown (#3816)
 import { initPrerequisiteChecks } from './prerequisites.js';
 import './system_status.js';

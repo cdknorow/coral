@@ -15,6 +15,8 @@ Task-oriented notes on the dashboard controls added in v1.4.102 to v1.4.106. Eve
 
 Click the model chip to pick a model, or the thinking chip to pick a level. The model menu lists the models the agent's CLI offers; the thinking menu lists only the levels that model takes.
 
+The agent's header does not repeat the model (the chip and the agent row's tooltip carry it). It shows the git branch, cut short with an ellipsis when it is long (a worktree's branch can be 60 characters or more): hover it, move to it with Tab, or tap it and the whole name opens in place under the header, without moving any button. On a narrow header the branch is left out.
+
 - **Claude Code switches live.** Coral types the CLI's own `/model` and `/effort` into the agent's terminal once the agent is between turns. The chip you used says `Switching to …` until the transcript confirms it, and shows the CLI's message if it refused. You can keep typing the whole time.
 - **Switches after this reply.** You changed it while the agent was in the middle of a turn. Coral waits for the reply to end and never types into the middle of one.
 - **Apply with restart.** Shown in the menu for a CLI with no live switch (Codex, Antigravity, Pi: only Claude is checked so far). Choosing an item opens the Restart dialog with your choice filled in; the dialog is the confirmation.
