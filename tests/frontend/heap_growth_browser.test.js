@@ -23,19 +23,53 @@ async function httpJson(method, path, body) {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install, select } = await connect();
     const { HeapProfiler, Performance } = client;
     const standIns = [];
-    const boardName = 'hg-board-' + Date.now().toString(36); // removed again in the finally (the gate fails a suite that leaves a board)
+    // A step that never finishes ends the suite naming itself, not at the runner's 180 s timeout with no output (#5107: the gate's runs hung 4 times in 20 with nothing to say where).
+    let stepName = 'start', stepSince = Date.now();
+    const mark = s => { stepName = s; stepSince = Date.now(); };
+    const bound = ms => new Promise(r => setTimeout(r, ms)); // a limit raced against a call that may never answer, not a wait for a condition
+    const STEP_MS = Number(process.env.HEAP_STEP_MS || 45000);
+    // Is the page running script (a loop in the app) or not (stuck in the browser)? A pause request interrupts a running script; a page that is not running one never pauses.
+    const diagnose = async () => {
+        try {
+            // A plain evaluation answers when the page's main thread is free, whatever its pending promises wait for.
+            const probe = await Promise.race([client.Runtime.evaluate({ expression: `JSON.stringify({ visibility: document.visibilityState, focus: document.hasFocus(), terminal: !!document.querySelector('#xterm-container canvas'), view: document.body.className.slice(0, 80) })`, returnByValue: true }).then(r => r.result.value), bound(3000).then(() => 'the page did not answer a plain evaluation in 3 s: its main thread is blocked')]);
+            const paused = new Promise(r => client.Debugger.paused(r));
+            await Promise.race([client.Debugger.enable(), bound(2000)]);
+            await Promise.race([client.Debugger.pause(), bound(1000)]);
+            const e = await Promise.race([paused, bound(3000).then(() => null)]);
+            return `probe: ${probe}; ` + (e ? 'the page is running script, paused in: ' + e.callFrames.slice(0, 8).map(f => `${f.functionName || '(anon)'} ${String(f.url).split('/').pop()}:${f.location.lineNumber + 1}`).join(' < ') : 'the page did not pause: it is not running script');
+        } catch (e) { return 'no diagnosis: ' + e.message; }
+    };
+    let watching = false;
+    setInterval(async () => {
+        if (watching || Date.now() - stepSince <= STEP_MS) return;
+        watching = true;
+        const secs = Math.round((Date.now() - stepSince) / 1000), where = stepName;
+        console.error(`HANG heap_growth: no progress for ${secs} s in the step "${where}"; ${await diagnose()}`);
+        if (!process.env.HEAP_RETRIED) {
+            // The GitHub runners stall a page now and then (#5107: about one run in five, in the terminal step, with the server idle; the cause is not proven). Once, on a fresh page:
+            // the stand-ins stopped first, the board kept by name so the second attempt removes it, and the stall stays in this log.
+            console.error('RETRY heap_growth: once more on a fresh page');
+            await Promise.race([Promise.all(standIns.map(si => si.stop().catch(() => {}))), bound(10000)]);
+            const r = require('node:child_process').spawnSync(process.execPath, [__filename], { stdio: 'inherit', env: { ...process.env, HEAP_RETRIED: '1', HEAP_BOARD: boardName } });
+            process.exit(r.status === null ? 1 : r.status);
+        }
+        console.error(`FAIL heap_growth: it stalled twice`);
+        process.exit(1);
+    }, 1000).unref();
+    const boardName = process.env.HEAP_BOARD || 'hg-board-' + Date.now().toString(36); // removed again in the finally (the gate fails a suite that leaves a board)
     const CYCLES = Number(process.env.HEAP_CYCLES || 60), WARM = Math.min(25, Math.floor(CYCLES / 3)); // the terminals' xterms and the board are built on first use
     const AGENTS = 20;
     const metrics = async () => {
-        await HeapProfiler.collectGarbage(); await HeapProfiler.collectGarbage();
-        const m = Object.fromEntries((await Performance.getMetrics()).metrics.map(x => [x.name, x.value]));
+        mark('metrics: collectGarbage'); await HeapProfiler.collectGarbage(); await HeapProfiler.collectGarbage();
+        mark('metrics: Performance.getMetrics'); const m = Object.fromEntries((await Performance.getMetrics()).metrics.map(x => [x.name, x.value]));
         return { heapMB: m.JSHeapUsedSize / 1048576, nodes: m.Nodes, listeners: m.JSEventListeners, documents: m.Documents };
     };
     const snapshot = async name => {
         if (!process.env.HEAP_SNAPSHOT_DIR) return;
         fs.mkdirSync(process.env.HEAP_SNAPSHOT_DIR, { recursive: true });
         const chunks = []; const on = e => chunks.push(e.chunk); HeapProfiler.addHeapSnapshotChunk(on);
-        await HeapProfiler.takeHeapSnapshot({ reportProgress: false });
+        mark('snapshot: takeHeapSnapshot'); await HeapProfiler.takeHeapSnapshot({ reportProgress: false });
         fs.writeFileSync(`${process.env.HEAP_SNAPSHOT_DIR}/${name}.heapsnapshot`, chunks.join(''));
     };
     const withTerminals = process.env.HEAP_TERMINAL !== '0';
@@ -57,10 +91,16 @@ async function httpJson(method, path, body) {
         const parts = (process.env.HEAP_PARTS || 'terminal,resize,board,history').split(',');
         const terminalPart = async n => {
             for (const si of parts.includes('terminal') ? standIns : []) {
+                mark(`round ${n}: ${si.name}: opening it in the terminal view`);
                 await ev(`window.selectLiveSession(${JSON.stringify(si.name)}, 'claude', ${JSON.stringify(si.sid)}, ''); window.setLiveViewMode('terminal'); true`);
+                mark(`round ${n}: ${si.name}: waiting for its terminal canvas`);
                 await waitFor(`!!document.querySelector('#xterm-container canvas')`, 'the terminal', 10000);
-                await ev(`(async () => { await ${framesJs(2)}; window.setLiveViewMode('chat'); return true; })()`);
+                mark(`round ${n}: ${si.name}: two frames in the terminal view`);
+                await ev(`(async () => { await ${framesJs(2)}; return true; })()`);
+                mark(`round ${n}: ${si.name}: back to the chat view`);
+                await ev(`window.setLiveViewMode('chat'); true`);
             }
+            mark(`round ${n}: resize, board and history`);
             if (parts.includes('resize')) await Emulation.setDeviceMetricsOverride({ width: n % 2 ? 1100 : 1280, height: 900, deviceScaleFactor: 1, mobile: false });
             if (parts.includes('board') || parts.includes('history')) await ev(`(async () => { const post = (p, b) => fetch(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
                 if (${parts.includes('board')}) { if (${n} <= 5) { await post('/api/board/${BOARD}/subscribe', { subscriber_id: 'Operator', job_title: 'Operator' }); await post('/api/board/${BOARD}/messages', { subscriber_id: 'Operator', content: 'round ${n} ' + 'y'.repeat(120) }); } // (the board's own messages are bounded: it shows a window of the newest)
@@ -69,8 +109,10 @@ async function httpJson(method, path, body) {
                 window.switchNavTab('agents'); await ${framesJs(1)}; return true; })()`);
         };
         const round = async n => {
-            await select('hg-' + (n % AGENTS));
+            mark(`round ${n}: select`); await select('hg-' + (n % AGENTS));
+            if (process.env.HEAP_STALL_TEST && n === 3 && !process.env.HEAP_RETRIED) await ev(`new Promise(() => {})`); // the retry's own test: a step that never finishes
             if (process.env.HEAP_LEAK_SELFTEST) await ev(`(() => { document.addEventListener('hg-leak', () => document.body); for (let i = 0; i < 3; i++) (window.__leak = window.__leak || []).push(document.body.appendChild(document.createElement('i'))); return true; })()`);
+            mark(`round ${n}: feed diffs and a full update`);
             await ev(`(async () => { const rnd = i => 'hg-' + ((i * 7 + ${n}) % ${AGENTS}) + '-id';
                 for (let i = 0; i < 10; i++) { const a = window.__m.agents[rnd(i)]; T.ws.handleCoralMessage({ type: 'coral_diff', changed: [{ ...window.__m.entry(a), summary: 'step ' + ${n} + '.' + i, working: i % 2 === 0, staleness_seconds: i }] }); }
                 if (${n} % 5 === 0) T.ws.handleCoralMessage({ type: 'coral_update', servers: [], sessions: Object.values(window.__m.agents).map(a => ({ ...window.__m.entry(a), summary: 'full ' + ${n} })) });
@@ -82,7 +124,7 @@ async function httpJson(method, path, body) {
                 const b = document.querySelector('.sidebar-header [data-display-button]'); if (b) { b.click(); await ${framesJs(1)}; b.click(); }
                 if (window.showLaunchModal) { await window.showLaunchModal(); await ${framesJs(1)}; window.hideLaunchModal(); }
                 await ${framesJs(2)}; return true; })()`);
-            if (withTerminals) await terminalPart(n);
+            mark(`round ${n}: terminals`); if (withTerminals) await terminalPart(n);
         };
         // HEAP_LISTENERS=1: the event listeners on window, document, body and every element, by type, at the warm-up and at the end
         const listenerCensus = async () => {
@@ -135,5 +177,5 @@ async function httpJson(method, path, body) {
         assert.ok(grew(base.listeners, end.listeners) <= 40 + per / 5, `event listeners grew ${grew(base.listeners, end.listeners)} over ${per} rounds`);
         assert.ok(grew(base.documents, end.documents) <= 3, `documents grew ${grew(base.documents, end.documents)} (detached frames or windows)`);
         console.log(`PASS heap growth: ${per} rounds after a ${WARM}-round warm-up: heap ${grew(base.heapMB, end.heapMB).toFixed(1)} MB, nodes ${grew(base.nodes, end.nodes)}, listeners ${grew(base.listeners, end.listeners)}`);
-    } finally { await removeBoards(ev, [boardName]); for (const si of standIns) await si.stop().catch(() => {}); await client.close(); }
+    } finally { mark('cleanup: removeBoards'); await removeBoards(ev, [boardName]); mark('cleanup: stopping the stand-in agents'); for (const si of standIns) await si.stop().catch(() => {}); mark('cleanup: closing the page'); await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
