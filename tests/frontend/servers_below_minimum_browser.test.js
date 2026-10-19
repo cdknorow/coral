@@ -54,7 +54,7 @@ const CLOUD_PRELOAD = `(() => {
             }
             if (e.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: e.requestId });
             const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: e.requestId });
-            const html = (base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body).replace('{"mode":"local"}', '{"mode":"cloud"}');
+            const html = (base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body).replace('"mode":"local"', '"mode":"cloud"');
             const headers = (e.responseHeaders || []).filter(h => !/^content-(length|encoding)$/i.test(h.name));
             return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: headers, body: Buffer.from(html).toString('base64') });
         });

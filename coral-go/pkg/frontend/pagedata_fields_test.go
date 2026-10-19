@@ -19,7 +19,7 @@ var reviewedPageDataFields = map[string]string{
 	"EntryMode":        "'' or 'agent' (popout); from the route, not the user",
 	"TargetSessionID":  "popout's agent id: a UUID taken from the URL, validated, not a credential",
 	"TargetServer":     "popout's remote server slug from the URL, validated, not a credential",
-	"BootJSON":         "{\"mode\":\"local\"|\"cloud\"}; built by the server from constants",
+	"BootJSON":         "{\"mode\":\"local\"|\"cloud\"}, plus \"testHooks\":true in a dev build started with CORAL_TEST_HOOKS=1; built by the server from constants",
 	"StaticBase":       "static URL prefix for the build (/static/b/<build>/); constant, never from the request",
 	"ModulePreloads":   "module paths of the embedded build's startup import graph; computed once from the embedded files, same for every viewer, never from the request",
 	"StylesheetBundle": "the path of the one bundled stylesheet (a constant, css/bundle.css); set by the server only with the bundled StaticBase, same for every viewer",

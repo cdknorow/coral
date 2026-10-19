@@ -410,7 +410,7 @@ async function startShard(n, gen = 0, strict = false) {
   // test the prompt and the sign-in page stub the auth API themselves.
   const pwFile = path.join(dir, 'initial-password');
   fs.writeFileSync(pwFile, TEST_PASSWORD + '\n', { mode: 0o600 }); fs.chmodSync(pwFile, 0o600);
-  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile,
+  const serverEnv = { ...testEnv, CORAL_TEST_HOOKS: '1', CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile,
     PATH: stubBin + path.delimiter + (testEnv.PATH || process.env.PATH || '') };  // #4354: this shard's stub CLI first on PATH
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
   // #4354: seed cli_path_<type> at the mock-agent BEFORE the server starts, so the server resolves the

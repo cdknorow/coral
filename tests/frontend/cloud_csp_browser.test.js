@@ -52,7 +52,7 @@ async function load(policy, { strict }) {
       if (ev.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: ev.requestId });
       const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: ev.requestId });
       let html = base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body;
-      html = html.replace('{"mode":"local"}', '{"mode":"cloud"}');
+      html = html.replace('"mode":"local"', '"mode":"cloud"');
       served++;
       const headers = (ev.responseHeaders || []).filter(h => !/^content-(security-policy|length)$/i.test(h.name))
         .concat([{ name: 'Content-Security-Policy', value: policy }]);

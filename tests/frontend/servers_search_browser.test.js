@@ -30,7 +30,7 @@ const hubRows = n => remotes(n).map(s => ({ id: s.id, label: s.label, online: s.
         if (e.request.url.endsWith('/auth/session')) return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify({ authenticated: true, email: 'qa@example.com', csrf: 'qa-csrf' })).toString('base64') });
         if (e.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: e.requestId });
         const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: e.requestId });
-        const html = (base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body).replace('{"mode":"local"}', '{"mode":"cloud"}');
+        const html = (base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body).replace('"mode":"local"', '"mode":"cloud"');
         const headers = (e.responseHeaders || []).filter(h => !/^content-(length|encoding)$/i.test(h.name));
         return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: headers, body: Buffer.from(html).toString('base64') });
     });

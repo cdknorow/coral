@@ -374,6 +374,11 @@ let _boot = null;
     return _boot;
 }
 
+/** True when the server asked this page for the test surface (window.__coralTest, test_hooks.js): a dev build started with CORAL_TEST_HOOKS=1 (#5015). */
+export function testHooksOn() {
+    return bootConfig().testHooks === true;
+}
+
 /** True on the Cloud Hub. */
 export function isCloud() {
     return bootConfig().mode === 'cloud';

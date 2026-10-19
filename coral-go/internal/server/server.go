@@ -574,6 +574,7 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := templateData{CoralRoot: s.cfg.CoralRoot, StaticBase: s.staticBase(), ModulePreloads: frontend.StartupModules()}
+	data.BootJSON = testHooksBoot()
 	if s.bundleBase != "" { // the dashboard starts from one script and one stylesheet; the agent pop-out stays on the original files (#4228)
 		// No per-module hints: under the bundled prefix every module URL is a stub, and hinting 133 stubs would fetch what the bundle replaces.
 		data.StaticBase, data.StylesheetBundle, data.ModulePreloads = s.bundleBase, frontend.BundleStylesheet, nil
@@ -619,6 +620,7 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 		TargetServer:    server,
 		StaticBase:      s.staticBase(),
 		ModulePreloads:  frontend.StartupModules(),
+		BootJSON:        testHooksBoot(),
 	}
 	// Rendered per request (the data names the session); served with the same
 	// revalidation and compression as the dashboard page.
@@ -783,4 +785,13 @@ func (s *Server) buildHeader(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// testHooksBoot is the boot data a dev build gives its pages when CORAL_TEST_HOOKS=1 (the dashboard test suites): the page installs window.__coralTest (#5015).
+// Empty everywhere else, so the page takes the template's default and a release build can never ask for the hooks.
+func testHooksBoot() template.JS {
+	if config.TestHooksEnvHonoured && os.Getenv("CORAL_TEST_HOOKS") == "1" {
+		return template.JS(`{"mode":"local","testHooks":true}`)
+	}
+	return ""
 }

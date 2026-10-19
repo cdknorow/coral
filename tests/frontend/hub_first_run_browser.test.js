@@ -35,7 +35,7 @@ const { settle } = require('./helpers/wait');
             if (e.responseStatusCode !== 200) return Fetch.continueRequest({ requestId: e.requestId });
             const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: e.requestId });
             let html = base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body;
-            if (cloud) html = html.replace('{"mode":"local"}', '{"mode":"cloud"}');
+            if (cloud) html = html.replace('"mode":"local"', '"mode":"cloud"');
             const headers = (e.responseHeaders || []).filter(h => !/^content-length$/i.test(h.name));
             await Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: headers, body: Buffer.from(html).toString('base64') });
         });

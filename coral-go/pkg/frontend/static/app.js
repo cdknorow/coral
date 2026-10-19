@@ -8,8 +8,8 @@ import { initPrerequisiteChecks } from './prerequisites.js';
 import { fetchSystemStatus } from './system_status.js';
 import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardStartupComplete, dashboardFailed } from './dashboard_analytics.js';
 import { initAgentUI } from './agent_ui.js';
-import { showTeamWorkingMode, showTeamWorkingModeWorkspace, showTeamHealthSettings } from './team_working_mode.js';
-import { showTeamAvailability, showTeamAvailabilityWorkspace } from './team_availability.js';
+import { showTeamWorkingModeWorkspace, showTeamHealthSettings } from './team_working_mode.js';
+import { showTeamAvailabilityWorkspace } from './team_availability.js';
 import { enterTeamContext, exitTeamContext, renderTeamSettingsTab } from './team_context.js';
 /* Coral Dashboard — Entry Point */
 
@@ -19,10 +19,10 @@ import { loadLiveSessions, loadHistorySessionsPaged } from './api.js';
 import { filterState, deserializeFromUrl, serializeToUrl, urlSearchFor,
          hasActiveFilters, countActiveFilters, resetFilters }
     from './search_filters.js';
-import { connectCoralWs, handleCoralMessage } from './websocket.js';
-import { sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys, sendModeToggle, cycleModeToggle, sendQuickCommand, executeMacro, addMacro, deleteMacro, hideMacroModal, killSession, restartSession, hideRestartModal, confirmRestart, initImageDrop, editGoal, refreshGoal, requestGoal } from './controls.js';
+import { connectCoralWs } from './websocket.js';
+import { sendCommand, addMacro, hideMacroModal, restartSession, hideRestartModal, confirmRestart, initImageDrop, editGoal, refreshGoal, requestGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon } from './sessions.js';
-import { KILL_LOG_NOTE_MANY, buildSessionTooltip, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, groupHeaderKey } from './render.js';
+import { KILL_LOG_NOTE_MANY, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, groupHeaderKey } from './render.js';
 import { syncPaneWidth, refreshCapture } from './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
@@ -33,11 +33,11 @@ import './board_choice.js'; // the duplicate-name choice used by the lazy modals
 import './dialog_focus.js'; // focus into a dialog and back to its opener (accessibility pass); used by lazy modals.js
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
 import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse, toggleSidebarRail, initSidebarRail } from './sidebar.js';
-import { fitTerminal, getTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
+import { fitTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
 import { saveNotes, generateSummary, toggleNotesEdit, cancelNotesEdit, switchHistoryTab } from './notes.js';
 import { addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag, loadAllTags } from './tags.js';
-import { loadAgentTasks, loadBoardTasks, loadMoreBoardTasks, renderBoardTaskList, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
-import { loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles, copyFilePath, initFileSearch } from './changed_files.js';
+import { loadMoreBoardTasks, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
+import { openFilePreview, openFileEdit, refreshChangedFiles, copyFilePath, initFileSearch } from './changed_files.js';
 import { initFileMention } from './file_mention.js';
 import { initCommandMention } from './command_mention.js';
 import { initNotesMd } from './agent_notes.js';
@@ -45,15 +45,15 @@ import { loadCustomViews, activateCustomView } from './custom_views.js';
 import { initTabCustomize, applyTabPrefs } from './tab_customize.js';
 import { startNav, go, note, onRoute, currentRoute } from './nav.js';
 import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS, parse as parseRoute } from './routes.js';
-import { initPopout, applyPopoutBodyClass, popoutRetry, popoutApi } from './popout.js';
+import { initPopout, applyPopoutBodyClass, popoutRetry } from './popout.js';
 import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize, loadPendingFromStorage } from './live_chat.js';
-import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents } from './agentic_state.js';
+import { switchAgenticTab, restoreAgenticTabs } from './agentic_state.js';
 import { copyBranchName, escapeHtml, showView, showToast, viewChanges, buildWelcome } from './utils.js';
-import { initPreviewPane, openPreviewTab, closeAllTabs as closeAllPreviewTabs } from './preview_pane.js';
-import { initScheduler, selectScheduledJob, editScheduledJob, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
+import { initPreviewPane } from './preview_pane.js';
+import { initScheduler, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
 import { initLiveJobs, selectLiveJobRun } from './live_jobs.js';
-import { initMessageBoard, selectBoardProject, showMessageBoardProjects, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, showExportBoardModal, toggleSelectMode, cancelSelectMode, openBoardSubscribers, hideBoardSubscribers } from './message_board.js';
-import { loadAllFolderTags, showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag } from './folder_tags.js';
+import { initMessageBoard, selectBoardProject, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, showExportBoardModal, toggleSelectMode, openBoardSubscribers, hideBoardSubscribers } from './message_board.js';
+import { loadAllFolderTags, showFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag } from './folder_tags.js';
 import { loadPinnedFolders, pinFolder, unpinFolder, showOpenFolderModal, hideOpenFolderModal, submitOpenFolder } from './pinned_folders.js';
 import { initMobile, syncMobileAgentList } from './mobile.js';
 import { platform } from './platform/detect.js';
@@ -65,7 +65,7 @@ import { initChatFind } from './chat_find.js';
 
 import { checkForUpdates, dismissUpdateToast, showDatabaseWarning, showSecurityWarning } from './update_check.js';
 import { teamFetch, sessionServer, keyLabel } from './server_base.js';
-import { showServersModal, hideServersModal, initServersUi } from './servers.js';
+import { showServersModal, initServersUi } from './servers.js';
 import { initHubIndicator } from './hub_indicator.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './inbox_tab.js'; // Inbox tab (hub only): its visibility and badge (#4718)
@@ -73,15 +73,15 @@ import { toggleAllGroups } from './group_collapse.js'; // the list header's one 
 import { toggleDisplayPanel, displayPanelKey } from './display_panel.js'; // the Display expander
 import { registerActions, tokenOf } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
 import { markReady } from './ready.js';
-import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch, loadModals, loadResumeDialog, loadDefaultPromptsDialog } from './lazy_panels.js';
+import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadChatSearch, loadModals, loadResumeDialog, loadDefaultPromptsDialog } from './lazy_panels.js';
 
 // Panels off the landing view load on first use (#3083 phase 2, lazy_panels.js).
 const {
-    showWorkflowsTab, selectWorkflow, selectWorkflowRun, triggerWorkflow, killWorkflowRun, deleteWorkflow,
-    showWorkflowCreateModal, hideWorkflowCreateModal, editWorkflow, editWorkflowWithAgent, workflowAddStep,
+    showWorkflowsTab, selectWorkflow, selectWorkflowRun, killWorkflowRun, deleteWorkflow,
+    showWorkflowCreateModal, hideWorkflowCreateModal, editWorkflowWithAgent, workflowAddStep,
     workflowStepTypeChanged, saveWorkflow, workflowsBackToList, launchWorkflowAgent,
-} = lazyFns(loadWorkflows, ['showWorkflowsTab', 'selectWorkflow', 'selectWorkflowRun', 'triggerWorkflow', 'killWorkflowRun', 'deleteWorkflow',
-    'showWorkflowCreateModal', 'hideWorkflowCreateModal', 'editWorkflow', 'editWorkflowWithAgent', 'workflowAddStep',
+} = lazyFns(loadWorkflows, ['showWorkflowsTab', 'selectWorkflow', 'selectWorkflowRun', 'killWorkflowRun', 'deleteWorkflow',
+    'showWorkflowCreateModal', 'hideWorkflowCreateModal', 'editWorkflowWithAgent', 'workflowAddStep',
     'workflowStepTypeChanged', 'saveWorkflow', 'workflowsBackToList', 'launchWorkflowAgent']);
 const { showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } =
     lazyFns(loadCostDashboard, ['showCostDashboard', '_refreshCostDashboard', '_costTimeRangeChanged']);
@@ -281,17 +281,16 @@ registerActions({
 // Runs on every tab switch: there is nothing to stop until the dashboard has loaded.
 const stopCostDashboard = () => { loadCostDashboard.module?.stopCostDashboard(); };
 const { showDocsTab, selectDoc } = lazyFns(loadDocs, ['showDocsTab', 'selectDoc']);
-const { showThemeConfigurator, hideThemeConfigurator } = lazyFns(loadThemeConfig, ['showThemeConfigurator', 'hideThemeConfigurator']);
-const { showTemplateBrowser } = lazyFns(loadTemplateBrowser, ['showTemplateBrowser']);
 const { searchChats } = lazyFns(loadChatSearch, ['searchChats']);
+const { showThemeConfigurator, hideThemeConfigurator } = lazyFns(loadThemeConfig, ['showThemeConfigurator', 'hideThemeConfigurator']);
 // The dialogs (#3140): their window functions are stubs until one opens.
 const {
-    showLaunchModal, hideLaunchModal, launchSession, showInfoModal, hideInfoModal, copyInfoCommand,
+    showLaunchModal, hideLaunchModal, launchSession, hideInfoModal, copyInfoCommand,
     showSettingsModal, hideSettingsModal, applySettings,
     toggleFlag, showAddAgentToBoard, hideAddAgentBoardModal, launchAgentToBoard, launchTerminalToBoard, launchDefaultAgent,
-    showAddStandaloneAgent, launchStandaloneTerminal, exportPersonas, importPersonas, exportTeamTemplates, importTeamTemplates,
+    showAddStandaloneAgent, launchStandaloneTerminal, exportPersonas, importPersonas, importTeamTemplates,
 } = lazyFns(loadModals, [
-    'showLaunchModal', 'hideLaunchModal', 'launchSession', 'showInfoModal', 'hideInfoModal', 'copyInfoCommand', 'showSettingsModal', 'hideSettingsModal', 'applySettings', 'toggleFlag', 'showAddAgentToBoard', 'hideAddAgentBoardModal', 'launchAgentToBoard', 'launchTerminalToBoard', 'launchDefaultAgent', 'showAddStandaloneAgent', 'launchStandaloneTerminal', 'exportPersonas', 'importPersonas', 'exportTeamTemplates', 'importTeamTemplates']);
+    'showLaunchModal', 'hideLaunchModal', 'launchSession', 'hideInfoModal', 'copyInfoCommand', 'showSettingsModal', 'hideSettingsModal', 'applySettings', 'toggleFlag', 'showAddAgentToBoard', 'hideAddAgentBoardModal', 'launchAgentToBoard', 'launchTerminalToBoard', 'launchDefaultAgent', 'showAddStandaloneAgent', 'launchStandaloneTerminal', 'exportPersonas', 'importPersonas', 'importTeamTemplates']);
 const { showResumeModal, hideResumeModal, resumeLaunchNew } = lazyFns(loadResumeDialog, ['showResumeModal', 'hideResumeModal', 'resumeLaunchNew']);
 const { showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts } = lazyFns(loadDefaultPromptsDialog, ['showDefaultPromptsModal', 'hideDefaultPromptsModal', 'resetDefaultPrompt', 'saveDefaultPrompts']);
 // Called from the home view's buttons before any dialog has loaded; modals.js sets them on window itself.
@@ -302,6 +301,9 @@ import { installOverloadWatch } from './overload.js';
 import { handleUnauthorized, isSignedOut401 } from './auth_redirect.js';
 import { browserLocal } from './safe_storage.js';
 import { ensureBuilt } from './lazy_dom.js';
+import { installTestHooks } from './test_hooks.js'; // the suites' surface, installed only when the page's boot data asks for it (#5015)
+
+installTestHooks();
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 // Grouped by source module for maintainability. Add new entries to the
@@ -311,59 +313,48 @@ Object.assign(window, {
     _coralLoadLiveSessions: loadLiveSessions,
     // test hooks (tests/frontend): inject a live-sessions payload and render it;
     // feed a /ws/coral message through the real handler without a socket.
-    _coralSetLiveSessions: (sessions) => { state.liveSessions = sessions || []; renderLiveSessions(state.liveSessions); },
-    _coralHandleWsMessage: handleCoralMessage,
-    _coralGetLiveSessions: () => state.liveSessions,
     // popout (/agent/{uuid}) + multi-window ownership
     popoutRetry, 
-    _coralPopout: popoutApi,
     
     // controls
-    sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys,
-    sendModeToggle, cycleModeToggle, sendQuickCommand, 
-    executeMacro, addMacro, deleteMacro, hideMacroModal,
-    killSession, restartSession,
+    addMacro, hideMacroModal,
+    restartSession,
     editGoal, refreshGoal, requestGoal,
     hideRestartModal, confirmRestart, 
     // modals
     showSettingsModal, hideSettingsModal, applySettings,
     showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts,
     showLaunchModal, hideLaunchModal, launchSession, toggleFlag,
-    showInfoModal, hideInfoModal, copyInfoCommand,
-    showResumeModal, hideResumeModal, resumeLaunchNew,
+    hideInfoModal, copyInfoCommand,
+    hideResumeModal, resumeLaunchNew,
     showAddAgentToBoard, hideAddAgentBoardModal, launchAgentToBoard, launchTerminalToBoard,
     launchDefaultAgent, showAddStandaloneAgent, launchStandaloneTerminal,
-    exportPersonas, importPersonas, exportTeamTemplates, importTeamTemplates,
+    exportPersonas, importPersonas, importTeamTemplates,
     // sessions
     selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon,
-    searchChats,
     // xterm
-    getTerminal, connectTerminalWs, disconnectTerminalWs,
+    connectTerminalWs, disconnectTerminalWs,
     // notes
-    switchHistoryTab,
     // tags
     addTagToSession, removeTagFromSession, 
     // changed_files
-    loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles,
+    openFilePreview, openFileEdit, refreshChangedFiles,
     copyFilePath, 
     // tasks
-    loadAgentTasks, loadBoardTasks, renderBoardTaskList,
     showTaskDetailModal, hideTaskDetailModal, loadMoreBoardTasks,
     showCreateTaskModal, hideCreateTaskModal, submitCreateTask,
     enableTaskEditMode, saveTaskEdit, cancelTaskEdit,
     completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder,
     // agent_notes
     // agentic_state
-    switchAgenticTab, loadAgentEvents,
+    switchAgenticTab,
     // live_chat
     setLiveViewMode, showTerminalView,
     // scheduler
-    selectScheduledJob, editScheduledJob,
     showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset,
     // live_jobs
     selectLiveJobRun,
     // preview_pane
-    openPreviewTab, closeAllPreviewTabs, 
     // sidebar
     switchJobsSubtab, toggleAgenticPanel, toggleSidebarRail,
     // browser
@@ -371,7 +362,7 @@ Object.assign(window, {
     // theme
     showThemeConfigurator, hideThemeConfigurator,
     // servers (hub mode)
-    showServersModal, hideServersModal,
+    showServersModal,
     // update_check
     checkForUpdates, dismissUpdateToast,
     // pinned folders (#3630)
@@ -382,22 +373,16 @@ Object.assign(window, {
     wakePendingAgents: () => importOnce('./terminal_backend.js').then(m => m.wakePendingAgents()),
     dismissAutoWake: () => importOnce('./terminal_backend.js').then(m => m.dismissAutoWake()),
     // message_board
-    selectBoardProject, showMessageBoardProjects, postBoardMessage,
-    deleteMessageBoardProject, 
-    showExportBoardModal, 
-    toggleSelectMode, 
-    cancelSelectMode, 
+    selectBoardProject,
     // workflows
     showWorkflowsTab,
-    selectWorkflow, selectWorkflowRun, triggerWorkflow, 
-    showWorkflowCreateModal, editWorkflow,
-    saveWorkflow, workflowsBackToList, 
+    selectWorkflow, selectWorkflowRun,
     // cost_dashboard
     showCostDashboard, 
     // docs
     showDocsTab, selectDoc,
     // folder_tags
-    showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag,
+    showFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag,
     // utils
     // router
     _activateCustomView: activateCustomView, 
@@ -717,13 +702,12 @@ Object.assign(window, {
     moveSessionUp, moveSessionDown,
     toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection,
     enterTeamContext, exitTeamContext, renderTeamSettingsTab,
-    buildSessionTooltip, showTeamAvailability, showTeamAvailabilityWorkspace, showTeamWorkingMode, showTeamWorkingModeWorkspace, showTeamHealthSettings,
+    showTeamAvailabilityWorkspace, showTeamWorkingModeWorkspace, showTeamHealthSettings,
     shareAgentTeam, saveTeamFromSidebar, showTeamTokenUsage, distillTeamKnowledge,
     showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal,
     killSessionDirect, showInfoDirect, attachDirect, restartDirect,
     toggleGroupByTeam, expandSleepingGroup,
     // template_browser
-    showTemplateBrowser,
 });
 
 // Top-bar settings dropdown
