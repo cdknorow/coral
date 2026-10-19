@@ -432,20 +432,33 @@ func TestArtifactCommentsAreRedactedWhenKept(t *testing.T) {
 
 // The Hub's keyword rules apply too (Orchestrator, round 2): a low-entropy api_key typed into a body or copied into an anchor is stored redacted.
 func TestArtifactCommentsKeywordSecretsAreRedactedWhenKept(t *testing.T) {
+	// Low-entropy values, at least as long as the Hub keyword rules' minimums (16 after an api key or token, 8 after a password, 12 in a query string).
 	rig := newCmtRig(t)
 	anchor := anchorOf("q")
-	anchor["quote"] = "config: api_key=hunter2 here"
-	anchor["prefix"] = "password=letmein "
-	anchor["suffix"] = " token=abc"
-	code, out := rig.do("POST", cp(cmtDoc), cmtAsOwner, map[string]any{"body": "use api_key=hunter2 ok", "anchor": anchor})
+	anchor["quote"] = "config: api_key=hunterhunterhunter1 here"
+	anchor["prefix"] = "password=letmeinletmein "
+	anchor["suffix"] = " token=abcabcabcabcabcabc"
+	body := "use PGPASSWORD=pgsecretpgsecret psql, curl -H 'Cookie: a=1; session=cookiesecret1; b=2' tool --password clipassword1 --verbose " +
+		"https://h/cb?x=1&api_key%3Durlsecreturlsecret%26y%3D2"
+	secrets := []string{"hunterhunterhunter1", "letmeinletmein", "abcabcabcabcabcabc", "pgsecretpgsecret", "cookiesecret1", "clipassword1", "urlsecreturlsecret"}
+	code, out := rig.do("POST", cp(cmtDoc), cmtAsOwner, map[string]any{"body": body, "anchor": anchor})
 	require.Equal(t, 201, code, fmt.Sprint(out))
 	list, err := rig.ss.ListArtifactComments(context.Background(), cmtDoc, "", nil)
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	stored := fmt.Sprint(list[0])
-	for _, leaked := range []string{"hunter2", "letmein", "token=abc"} {
+	for _, leaked := range secrets {
 		assert.NotContains(t, stored, leaked)
 	}
+	assert.Contains(t, list[0].Body, "--verbose", "the text around a redacted value is kept")
+	// An edit goes through the same rule.
+	id := fmt.Sprint(int64(out["id"].(float64)))
+	code, out = rig.do("PATCH", cp(cmtDoc)+"/"+id, cmtAsOwner, map[string]any{"body": "now PGPASSWORD=secondsecondsecond and tool --password clitwoclitwo"})
+	require.Equal(t, 200, code, fmt.Sprint(out))
+	got, err := rig.ss.ListArtifactComments(context.Background(), cmtDoc, "", nil)
+	require.NoError(t, err)
+	assert.NotContains(t, fmt.Sprint(got), "secondsecondsecond")
+	assert.NotContains(t, fmt.Sprint(got), "clitwoclitwo")
 }
 
 func TestArtifactCommentNamesAreText(t *testing.T) {

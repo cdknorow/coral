@@ -22,7 +22,6 @@ import (
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/redact"
 )
 
 // Comments on an artifact (#5176, phase 1). Routes under /api/artifacts/{id}/comments, id the artifact's 64-hex digest; every decision about who may do what is commentPolicy's, and who is
@@ -394,15 +393,16 @@ func viewerName(c commentCaller) string {
 	return ""
 }
 
-// redactComment puts text through the secret scanner and then the keyword rules the Coral Hub replies use (api_key=..., "password": "...", Bearer ...: a
-// low-entropy value the scanner would keep), on whether or not a hub is connected: a comment is at most 8 KB, so the cost is nothing, and a typed secret
-// should not sit in sessions.db.
+// redactComment puts text through secrets.HubRedactor: the secret scanner plus the keyword rules the Coral Hub replies use (api_key=, "password": "...",
+// PGPASSWORD=, Cookie:, --password VALUE: a value the scanner would keep). The keyword rules apply regardless of the Hub setting and of whether a hub is
+// connected; only the owner's own switch, CORAL_REDACT_KEYWORDS=off in the environment, still turns them off, as everywhere else. A comment is at most 8 KB,
+// so the cost is nothing, and a typed secret should not sit in sessions.db.
 func redactComment(text string) (string, bool) {
-	b, err := secrets.Redactor().Text([]byte(text))
+	b, err := secrets.HubRedactor(func() bool { return true }).Text([]byte(text))
 	if err != nil {
 		return "", false
 	}
-	return string(redact.Tokens(b)), true
+	return string(b), true
 }
 
 // commentCallerFor derives the caller and asks the policy whether this kind of caller may ever do the action, BEFORE the artifact is looked up: a caller who may not do it learns nothing about
