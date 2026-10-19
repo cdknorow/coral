@@ -1443,51 +1443,6 @@
     color: var(--text-primary);
 }
 
-/* ── Team details disclosure (AGENT_LIST_COMPACT D-D) ─────────── */
-.team-details-popover {
-    position: fixed;
-    z-index: 1001;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-light);
-    border-radius: 8px;
-    padding: 10px 14px 12px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-    min-width: 240px;
-    max-width: 360px;
-    font-size: 0.75rem;
-    color: var(--text-primary);
-}
-.team-details-popover:focus { outline: none; }
-.team-details-popover:focus-visible { outline: 2px solid var(--accent); }
-.team-details-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 6px;
-}
-.team-details-title { font-weight: 600; }
-.team-details-close {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 1rem;
-    line-height: 1;
-    min-width: 24px;
-    min-height: 24px;
-    border-radius: 4px;
-}
-.team-details-close:hover { color: var(--text-primary); background: var(--bg-hover); }
-.team-details-list {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2px 12px;
-    margin: 0;
-}
-.team-details-list dt { color: var(--text-muted); font-weight: 500; }
-.team-details-list dd { margin: 0; word-break: break-word; }
-
 /* Selected-agent header: the identity may shrink; the actions on the right
    never do. */
 .terminal-state-word { display: none; flex: none; font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; } /* #4327: the state in words where there is no hover (touch screens wider than a phone) */

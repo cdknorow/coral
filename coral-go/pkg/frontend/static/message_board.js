@@ -6,7 +6,6 @@ import { boardPageChanged } from './dock_page.js';
 import { state } from './state.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
-import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
 import { BOARD_SAVE_BUTTON } from './saved_marks.js';
 import { pathId, identityKey, keyLabel, noteBoardLabel, noteBoardLabels, hasBoardLabel, onBoardLabelsChanged, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
@@ -1021,27 +1020,6 @@ function updateSleepUI() {
     if (sendBtn) {
         sendBtn.disabled = isSleeping;
         sendBtn.style.opacity = isSleeping ? '0.4' : '';
-    }
-}
-
-export function toggleBoardSleep() {
-    if (!currentProject) return;
-    const action = isSleeping ? 'wake' : 'sleep';
-    const doIt = async () => {
-        try {
-            const resp = await teamFetch(currentProject, n => `/api/sessions/live/team/${encodeURIComponent(n)}/${action}`, { method: 'POST' });
-            const data = await resp.json();
-            isSleeping = !!data.sleeping;
-            updateSleepUI();
-            loadLiveSessions();
-        } catch (e) {
-            console.error('Failed to toggle sleep:', e);
-        }
-    };
-    if (!isSleeping) {
-        window.showConfirmModal('Sleep Team', `Put all agents on "${keyLabel(currentProject)}" to sleep?`, doIt);
-    } else {
-        doIt();
     }
 }
 

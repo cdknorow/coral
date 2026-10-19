@@ -19,10 +19,10 @@ import { loadLiveSessions, loadHistorySessionsPaged } from './api.js';
 import { filterState, deserializeFromUrl, serializeToUrl, urlSearchFor,
          hasActiveFilters, countActiveFilters, resetFilters }
     from './search_filters.js';
-import { connectCoralWs, handleCoralMessage, _resetWaitingSeedForTests } from './websocket.js';
-import { sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys, sendModeToggle, cycleModeToggle, sendQuickCommand, refreshModeLabel, executeMacro, addMacro, deleteMacro, showMacroModal, hideMacroModal, attachTerminal, killSession, restartSession, hideRestartModal, confirmRestart, initImageDrop, removeAttachment, editGoal, refreshGoal, requestGoal } from './controls.js';
+import { connectCoralWs, handleCoralMessage } from './websocket.js';
+import { sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys, sendModeToggle, cycleModeToggle, sendQuickCommand, executeMacro, addMacro, deleteMacro, hideMacroModal, killSession, restartSession, hideRestartModal, confirmRestart, initImageDrop, editGoal, refreshGoal, requestGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon } from './sessions.js';
-import { KILL_LOG_NOTE_MANY, buildSessionTooltip, showTeamDetails, hideTeamDetails, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, groupHeaderKey } from './render.js';
+import { KILL_LOG_NOTE_MANY, buildSessionTooltip, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, groupHeaderKey } from './render.js';
 import { syncPaneWidth, refreshCapture } from './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
@@ -34,26 +34,25 @@ import './dialog_focus.js'; // focus into a dialog and back to its opener (acces
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
 import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse, toggleSidebarRail, initSidebarRail } from './sidebar.js';
 import { fitTerminal, getTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
-import { loadSessionNotes, saveNotes, generateSummary, resummarize, toggleNotesEdit, cancelNotesEdit, switchHistoryTab } from './notes.js';
-import { loadSessionTags, addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag, loadAllTags } from './tags.js';
-import { loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle, loadBoardTasks, loadMoreBoardTasks, renderBoardTaskList, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
-import { loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles, toggleGitDiffMode, setGitDiffMode, toggleStarFile, copyFilePath, searchRepoFiles, renderStarredFiles, initFileSearch } from './changed_files.js';
+import { saveNotes, generateSummary, toggleNotesEdit, cancelNotesEdit, switchHistoryTab } from './notes.js';
+import { addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag, loadAllTags } from './tags.js';
+import { loadAgentTasks, loadBoardTasks, loadMoreBoardTasks, renderBoardTaskList, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
+import { loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles, copyFilePath, initFileSearch } from './changed_files.js';
 import { initFileMention } from './file_mention.js';
 import { initCommandMention } from './command_mention.js';
-import { loadAgentNotes, initNotesMd } from './agent_notes.js';
+import { initNotesMd } from './agent_notes.js';
 import { loadCustomViews, activateCustomView } from './custom_views.js';
 import { initTabCustomize, applyTabPrefs } from './tab_customize.js';
 import { startNav, go, note, onRoute, currentRoute } from './nav.js';
 import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS, parse as parseRoute } from './routes.js';
-import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
-import { isInteractiveOwner, claimOwnership } from './ownership.js';
+import { initPopout, applyPopoutBodyClass, popoutRetry, popoutApi } from './popout.js';
 import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize, loadPendingFromStorage } from './live_chat.js';
 import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents } from './agentic_state.js';
 import { copyBranchName, escapeHtml, showView, showToast, viewChanges, buildWelcome } from './utils.js';
-import { initPreviewPane, openPreviewTab, closeTab as closePreviewTab, closeAllTabs as closeAllPreviewTabs, resetPreviewPane } from './preview_pane.js';
-import { initScheduler, selectScheduledJob, toggleScheduledJob, deleteScheduledJob, editScheduledJob, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
+import { initPreviewPane, openPreviewTab, closeAllTabs as closeAllPreviewTabs } from './preview_pane.js';
+import { initScheduler, selectScheduledJob, editScheduledJob, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
 import { initLiveJobs, selectLiveJobRun } from './live_jobs.js';
-import { initMessageBoard, selectBoardProject, showMessageBoardProjects, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, toggleBoardSleep, deleteBoardMessage, showExportBoardModal, doExportBoard, toggleSelectMode, toggleMessageSelect, selectAllMessages, selectNoneMessages, cancelSelectMode, exportSelectedAsMarkdown, openBoardSubscribers, hideBoardSubscribers } from './message_board.js';
+import { initMessageBoard, selectBoardProject, showMessageBoardProjects, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, showExportBoardModal, toggleSelectMode, cancelSelectMode, openBoardSubscribers, hideBoardSubscribers } from './message_board.js';
 import { loadAllFolderTags, showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag } from './folder_tags.js';
 import { loadPinnedFolders, pinFolder, unpinFolder, showOpenFolderModal, hideOpenFolderModal, submitOpenFolder } from './pinned_folders.js';
 import { initMobile, syncMobileAgentList } from './mobile.js';
@@ -314,20 +313,18 @@ Object.assign(window, {
     // feed a /ws/coral message through the real handler without a socket.
     _coralSetLiveSessions: (sessions) => { state.liveSessions = sessions || []; renderLiveSessions(state.liveSessions); },
     _coralHandleWsMessage: handleCoralMessage,
-    _coralResetWaitingSeed: _resetWaitingSeedForTests,
     _coralGetLiveSessions: () => state.liveSessions,
     // popout (/agent/{uuid}) + multi-window ownership
-    popoutRetry, togglePopoutPanel, popoutWake,
+    popoutRetry, 
     _coralPopout: popoutApi,
-    _coralPopoutIsOwner: isInteractiveOwner,
-    _coralPopoutClaim: claimOwnership,
+    
     // controls
     sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys,
-    sendModeToggle, cycleModeToggle, sendQuickCommand, refreshModeLabel,
-    executeMacro, addMacro, deleteMacro, showMacroModal, hideMacroModal,
-    attachTerminal, killSession, restartSession,
+    sendModeToggle, cycleModeToggle, sendQuickCommand, 
+    executeMacro, addMacro, deleteMacro, hideMacroModal,
+    killSession, restartSession,
     editGoal, refreshGoal, requestGoal,
-    hideRestartModal, confirmRestart, removeAttachment,
+    hideRestartModal, confirmRestart, 
     // modals
     showSettingsModal, hideSettingsModal, applySettings,
     showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts,
@@ -343,31 +340,30 @@ Object.assign(window, {
     // xterm
     getTerminal, connectTerminalWs, disconnectTerminalWs,
     // notes
-    loadSessionNotes, saveNotes, generateSummary, resummarize, toggleNotesEdit, cancelNotesEdit, switchHistoryTab,
+    switchHistoryTab,
     // tags
-    loadSessionTags, addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag,
+    addTagToSession, removeTagFromSession, 
     // changed_files
     loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles,
-    toggleGitDiffMode, setGitDiffMode, toggleStarFile, copyFilePath, searchRepoFiles, renderStarredFiles,
+    copyFilePath, 
     // tasks
-    loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle, loadBoardTasks, renderBoardTaskList,
+    loadAgentTasks, loadBoardTasks, renderBoardTaskList,
     showTaskDetailModal, hideTaskDetailModal, loadMoreBoardTasks,
     showCreateTaskModal, hideCreateTaskModal, submitCreateTask,
     enableTaskEditMode, saveTaskEdit, cancelTaskEdit,
     completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder,
     // agent_notes
-    loadAgentNotes,
     // agentic_state
     switchAgenticTab, loadAgentEvents,
     // live_chat
     setLiveViewMode, showTerminalView,
     // scheduler
-    selectScheduledJob, toggleScheduledJob, deleteScheduledJob, editScheduledJob,
+    selectScheduledJob, editScheduledJob,
     showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset,
     // live_jobs
     selectLiveJobRun,
     // preview_pane
-    openPreviewTab, closePreviewTab, closeAllPreviewTabs, resetPreviewPane,
+    openPreviewTab, closeAllPreviewTabs, 
     // sidebar
     switchJobsSubtab, toggleAgenticPanel, toggleSidebarRail,
     // browser
@@ -387,26 +383,24 @@ Object.assign(window, {
     dismissAutoWake: () => importOnce('./terminal_backend.js').then(m => m.dismissAutoWake()),
     // message_board
     selectBoardProject, showMessageBoardProjects, postBoardMessage,
-    deleteMessageBoardProject, confirmDeleteBoard: deleteMessageBoardProject,
-    toggleBoardPause, toggleBoardSleep, deleteBoardMessage,
-    showExportBoardModal, doExportBoard,
-    toggleSelectMode, toggleMessageSelect, selectAllMessages, selectNoneMessages,
-    cancelSelectMode, exportSelectedAsMarkdown, openBoardSubscribers, hideBoardSubscribers,
+    deleteMessageBoardProject, 
+    showExportBoardModal, 
+    toggleSelectMode, 
+    cancelSelectMode, 
     // workflows
     showWorkflowsTab,
-    selectWorkflow, selectWorkflowRun, triggerWorkflow, killWorkflowRun, deleteWorkflow,
-    showWorkflowCreateModal, hideWorkflowCreateModal, editWorkflow,
-    workflowAddStep, workflowStepTypeChanged, saveWorkflow, workflowsBackToList, launchWorkflowAgent, editWorkflowWithAgent,
+    selectWorkflow, selectWorkflowRun, triggerWorkflow, 
+    showWorkflowCreateModal, editWorkflow,
+    saveWorkflow, workflowsBackToList, 
     // cost_dashboard
-    showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged,
+    showCostDashboard, 
     // docs
     showDocsTab, selectDoc,
     // folder_tags
     showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag,
     // utils
-    copyBranchName,
     // router
-    _activateCustomView: activateCustomView, _noteRoute: note,
+    _activateCustomView: activateCustomView, 
     // render (pagination)
     loadHistoryPage,
     // top nav
@@ -723,8 +717,8 @@ Object.assign(window, {
     moveSessionUp, moveSessionDown,
     toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection,
     enterTeamContext, exitTeamContext, renderTeamSettingsTab,
-    showTeamDetails, hideTeamDetails, buildSessionTooltip, showTeamAvailability, showTeamAvailabilityWorkspace, showTeamWorkingMode, showTeamWorkingModeWorkspace, showTeamHealthSettings,
-    shareAgentTeam, saveTeamFromSidebar, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge,
+    buildSessionTooltip, showTeamAvailability, showTeamAvailabilityWorkspace, showTeamWorkingMode, showTeamWorkingModeWorkspace, showTeamHealthSettings,
+    shareAgentTeam, saveTeamFromSidebar, showTeamTokenUsage, distillTeamKnowledge,
     showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal,
     killSessionDirect, showInfoDirect, attachDirect, restartDirect,
     toggleGroupByTeam, expandSleepingGroup,

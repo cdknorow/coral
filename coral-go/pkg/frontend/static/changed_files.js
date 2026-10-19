@@ -417,13 +417,6 @@ export async function setGitDiffMode(mode) {
     refreshChangedFiles();
 }
 
-export async function toggleGitDiffMode() {
-    const current = _getGitDiffMode();
-    const idx = _diffModes.indexOf(current);
-    const next = _diffModes[(idx + 1) % _diffModes.length];
-    setGitDiffMode(next);
-}
-
 function _getGitDiffMode() {
     if (isCloud()) return _cloudDiffMode || 'branch_point';
     return (state.settings || {}).git_diff_mode || 'branch_point';

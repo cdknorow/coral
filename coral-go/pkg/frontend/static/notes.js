@@ -238,10 +238,6 @@ export async function generateSummary() {
     }
 }
 
-export async function resummarize() {
-    return generateSummary();
-}
-
 export function switchHistoryTab(tabName) {
     // Update tab buttons: each names its tab in data-tab (its text may include a count badge)
     document.querySelectorAll(".history-tab-btn").forEach(btn => {

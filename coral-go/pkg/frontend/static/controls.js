@@ -509,30 +509,6 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
     }
 }
 
-export async function attachTerminal() {
-    if (!state.currentSession || state.currentSession.type !== "live") {
-        showToast("No live session selected", true);
-        return;
-    }
-
-    try {
-        const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/attach`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ agent_type: state.currentSession.agent_type, session_id: state.currentSession.session_id }),
-        });
-        const result = await resp.json();
-        if (result.error) {
-            showToast(result.error, true);
-        } else {
-            showToast("Terminal opened");
-        }
-    } catch (e) {
-        showToast("Failed to open terminal", true);
-        console.error("attachTerminal exception:", e);
-    }
-}
-
 export async function killSession() {
     if (!state.currentSession || state.currentSession.type !== "live") {
         showToast("No live session selected", true);

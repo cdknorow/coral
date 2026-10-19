@@ -26,7 +26,7 @@ import { syncHubFirstRun, hubEmptyListHtml } from './hub_first_run.js';
 import { formatTokens } from './format.js';
 import { registerLiveListRenderer, redrawLiveList, liveListEl } from './list_hooks.js';
 import { _boardChatSelectAll, _boardChatSelectNone, _boardMentionInput, _boardMentionKey, _cancelBoardChatSelect, _exportBoardChatSelected, _insertBoardMention, _toggleBoardChatMsgSelect, _toggleBoardChatPause } from './board_chat.js';
-import { _formatCost, _gitStateSummary, _repoBranch, _shortPath, buildSessionTooltip, deriveSessionState, formatShortTime, formatStaleness, getDotClass, resolveSessionIdentity, sessionStateInfo, sessionUnreadCount } from './session_state.js';
+import { _formatCost, _gitStateSummary, _repoBranch, _shortPath, buildSessionTooltip, deriveSessionState, formatShortTime, getDotClass, resolveSessionIdentity, sessionStateInfo, sessionUnreadCount } from './session_state.js';
 import { _getBoardColor } from './board_accents.js';
 import { _getGroupOrder, _sortByOrder, _sortGroups, followServerOrder } from './list_order.js';
 import { _isServerCollapsed, _openServerDetails } from './server_rows.js';
@@ -1572,71 +1572,6 @@ function _wireListKeyboard(container) {
     });
 }
 
-/** Team details: anchored disclosure with dialog semantics for the metadata
- *  that left the team header (directory, branch, agents, tokens, activity). */
-let _teamDetailsReturnFocus = null;
-export function showTeamDetails(boardName) {
-    hideTeamDetails();
-    const sessions = (state.liveSessions || []).filter(s => inTeam(s, boardName));
-    const header = document.querySelector(`.session-group-header[data-group-name="${CSS.escape(boardName)}"]`);
-    _teamDetailsReturnFocus = (document.activeElement && document.activeElement !== document.body)
-        ? document.activeElement
-        : (header ? header.querySelector('.sidebar-kebab-btn') : null);
-    const dir = sessions.find(s => s.working_directory)?.working_directory || '';
-    const branchSession = sessions.find(s => s.branch);
-    const branch = _repoBranch(branchSession?.repo_name, branchSession?.branch) || '—';
-    let minStale = null;
-    for (const s of sessions) {
-        if (typeof s.staleness_seconds === 'number' && (minStale === null || s.staleness_seconds < minStale)) minStale = s.staleness_seconds;
-    }
-    const names = sessions.map(s => resolveSessionIdentity(s));
-    const titleId = 'team-details-title';
-    const pop = document.createElement('div');
-    pop.id = 'team-details-popover';
-    pop.className = 'team-details-popover';
-    pop.setAttribute('role', 'dialog');
-    pop.setAttribute('aria-labelledby', titleId);
-    pop.setAttribute('tabindex', '-1');
-    pop.innerHTML = `
-        <div class="team-details-head">
-            <span id="${escapeAttr(titleId)}" class="team-details-title">${escapeHtml(keyLabel(boardName))}</span>
-            <button type="button" class="team-details-close" aria-label="Close team details" data-on-click="team-details-close">&times;</button>
-        </div>
-        <dl class="team-details-list">
-            <dt>Directory</dt><dd title="${escapeAttr(dir)}">${dir ? escapeHtml(_shortPath(dir, 3)) : '—'}</dd>
-            <dt>Branch</dt><dd>${escapeHtml(branch)}</dd>
-            <dt>Agents</dt><dd>${sessions.length}${names.length ? ' · ' + escapeHtml(names.join(', ')) : ''}</dd>
-            <dt>Tokens</dt><dd class="team-token-usage team-details-tokens" data-board="${escapeAttr(boardName)}">…</dd>
-            <dt>Last activity</dt><dd>${escapeHtml(formatStaleness(minStale))}</dd>
-        </dl>`;
-    document.body.appendChild(pop);
-    const rect = header ? header.getBoundingClientRect() : { left: 12, bottom: 60 };
-    pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
-    pop.style.top = Math.min(rect.bottom + 4, window.innerHeight - pop.offsetHeight - 8) + 'px';
-    getTeamTokenUsage(boardName).then(text => {
-        const el = pop.querySelector('.team-details-tokens');
-        if (el) el.textContent = text || '—';
-    }).catch(() => {});
-    pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); hideTeamDetails(); } });
-    setTimeout(() => { document.addEventListener('mousedown', _teamDetailsOutside, true); }, 0);
-    pop.focus();
-}
-
-function _teamDetailsOutside(e) {
-    const pop = document.getElementById('team-details-popover');
-    if (pop && !pop.contains(e.target)) hideTeamDetails();
-}
-
-export function hideTeamDetails() {
-    const pop = document.getElementById('team-details-popover');
-    document.removeEventListener('mousedown', _teamDetailsOutside, true);
-    if (!pop) return;
-    pop.remove();
-    const back = _teamDetailsReturnFocus;
-    _teamDetailsReturnFocus = null;
-    if (back && document.contains(back) && typeof back.focus === 'function') back.focus();
-}
-
 export async function updateTokenUsage(sessionId) {
     const el = document.getElementById('session-token-usage');
     if (!el) return;
@@ -1779,12 +1714,6 @@ export async function distillTeamKnowledge(boardName) {
     if (window.enterTeamContext) await window.enterTeamContext(boardName, { tab: 'knowledge' });
     const { distillKnowledgeInTab } = await importOnce('./team_artifacts.js');
     distillKnowledgeInTab(boardName);
-}
-
-export async function showTeamKnowledge(boardName) {
-    const { reloadKnowledgeTab } = await importOnce('./team_artifacts.js');
-    if (window.enterTeamContext) await window.enterTeamContext(boardName, { tab: 'knowledge' });
-    reloadKnowledgeTab();
 }
 
 // The terminal header shows the git branch; only an agent with no branch
@@ -1964,7 +1893,6 @@ registerActions({
     'history-page': el => { const n = idOf(el.dataset.page); if (n) window.loadHistoryPage(n); },
     'board-open': el => { const b = textOf(el.dataset.board); if (b) window.selectBoardProject(b); },
     'msg-edit-resubmit': el => window.editAndResubmit(el),
-    'team-details-close': () => window.hideTeamDetails(),
     // The board chat panel beside an agent.
     'board-chat-open': (el, event) => { event.preventDefault(); const b = textOf(el.dataset.board); if (b) window.selectBoardProject(b); },
     'board-chat-pause': el => { const b = textOf(el.dataset.board); if (b) _toggleBoardChatPause(b); },

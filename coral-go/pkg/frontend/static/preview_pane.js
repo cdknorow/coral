@@ -839,8 +839,3 @@ export function setPreviewSession(key) {
     if (active) _render(active);
 }
 
-export function resetPreviewPane() {
-    closeAllTabs();
-    const body = _body();
-    if (body) body.innerHTML = '';
-}

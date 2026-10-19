@@ -148,6 +148,3 @@ function selectItem(index) {
     list.hide();
 }
 
-export function isDropdownVisible() {
-    return list.visible();
-}

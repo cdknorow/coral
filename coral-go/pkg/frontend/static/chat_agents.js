@@ -23,7 +23,6 @@ class ChatAgentAdapter {
 // default behavior. Their overrides can evolve independently as each CLI's
 // transcript gains richer semantics.
 class ClaudeChatAdapter extends ChatAgentAdapter {}
-class GeminiChatAdapter extends ChatAgentAdapter {}
 class PiChatAdapter extends ChatAgentAdapter {}
 
 class CodexChatAdapter extends ChatAgentAdapter {
