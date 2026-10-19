@@ -17,6 +17,7 @@ import (
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/safego"
 )
@@ -24,6 +25,35 @@ import (
 // composerSendsPerSocket bounds the composer_send deliveries under way on one terminal socket (#4587, Security):
 // each can wait seconds, and a flood of frames would otherwise start a goroutine each.
 const composerSendsPerSocket = 4
+
+// wsSlot counts the open sockets of one kind. The caps are generous (a dashboard tab or a hub viewer is one socket) and bound what a
+// credentialed client that opens sockets without end can hold: a goroutine group, a subscription and buffers each (#5011). A var for the tests.
+type wsSlot struct{ open atomic.Int32 }
+
+var (
+	wsCoralMax    int32 = 512
+	wsTerminalMax int32 = 256
+	wsCoralSlot   wsSlot
+	wsTermSlot    wsSlot
+)
+
+// terminalFrameMax is the largest frame a terminal socket reads from its client (keystrokes, a resize, a composer message): the
+// websocket library's own default, now written down; a bigger frame closes the connection (status 1009).
+const terminalFrameMax = 32 << 10
+
+// take reserves a place, or reports false when max sockets are open; release gives it back.
+func (c *wsSlot) take(max int32) (release func(), ok bool) {
+	if c.open.Add(1) > max {
+		c.open.Add(-1)
+		return nil, false
+	}
+	return func() { c.open.Add(-1) }, true
+}
+
+// wsTooMany answers an upgrade refused for the cap, before the socket exists (the dashboard backs off and reconnects).
+func wsTooMany(w http.ResponseWriter, what string) {
+	httputil.WriteActionLimitBody(w, 5, map[string]any{"error": "too many " + what + " connections are open", "code": "ws_limit"})
+}
 
 // wsAcceptOptions returns WebSocket accept options with origin validation: only
 // this server's own page (the Origin's host is the request's Host). Other ports of
@@ -55,6 +85,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	if debugEnabled() {
 		slog.Info("[debug] ws/coral connection from", "remote", r.RemoteAddr, "origin", r.Header.Get("Origin"))
 	}
+	release, ok := wsCoralSlot.take(wsCoralMax)
+	if !ok {
+		wsTooMany(w, "dashboard")
+		return
+	}
+	defer release()
 	conn, err := websocket.Accept(w, r, h.wsAcceptOptions(r))
 	if err != nil {
 		slog.Debug("ws/coral accept failed", "error", err)
@@ -84,6 +120,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	// not receive, and so mark delivered, this server's UI notifications.
 	notifications := h.notifications
 	if r.URL.Query().Get("feed") == "hub" {
+		notifications = nil
+	}
+	// The notifications are the Operator's too (a toast or an alert about an agent that needs them): a connection that reads one marks it
+	// delivered, so an agent's token on this socket would both read them and keep the dashboard that opens next from ever seeing them
+	// (#5011). An agent gets the feed (a read left open, see the route census) and no notifications.
+	if _, agent := VerifiedSession(r.Context()); agent {
 		notifications = nil
 	}
 	// backlog: notifications no dashboard had received when this one
@@ -425,11 +467,18 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 		slog.Info("[debug] ws/terminal connect", "name", name, "remote", r.RemoteAddr)
 	}
 
+	release, ok := wsTermSlot.take(wsTerminalMax)
+	if !ok {
+		wsTooMany(w, "terminal")
+		return
+	}
+	defer release()
 	conn, err := websocket.Accept(w, r, h.wsAcceptOptions(r))
 	if err != nil {
 		slog.Debug("ws/terminal accept failed", "error", err)
 		return
 	}
+	conn.SetReadLimit(terminalFrameMax)
 	defer func() {
 		if debugEnabled() {
 			slog.Info("[debug] ws/terminal disconnected", "name", name)

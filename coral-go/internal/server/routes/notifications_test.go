@@ -3,14 +3,19 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/store"
 )
 
 func notificationIDs(ns []Notification) []int64 {
@@ -210,4 +215,60 @@ func TestCheckNotificationLink(t *testing.T) {
 	}
 	assert.Error(t, checkNotificationLink(&NotificationLink{Label: strings.Repeat("é", 201), URL: "/agents"}), "label over 200 characters")
 	assert.NoError(t, checkNotificationLink(&NotificationLink{Label: strings.Repeat("é", 200), URL: "/agents"}))
+}
+
+// #5011: the notifications are the Operator's. An agent's token on /ws/coral gets the feed but never a notification, and it does not consume
+// one: a notification pushed while only the agent is connected still reaches the dashboard that opens next.
+func TestWSCoral_AnAgentTokenGetsNoNotificationsAndConsumesNone(t *testing.T) {
+	_, handler := setupTestServer(t)
+	ns := NewNotificationStore()
+	handler.SetNotificationStore(ns)
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if sid := req.Header.Get("X-Test-Agent"); sid != "" { // as the identity layer tags a verified agent session
+				req = req.WithContext(context.WithValue(req.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: sid, SessionName: "agent-" + sid}))
+			}
+			next.ServeHTTP(w, req)
+		})
+	})
+	r.Get("/ws/coral", handler.WSCoral)
+	server := httptest.NewServer(r)
+	t.Cleanup(server.Close)
+	base := "ws" + server.URL[4:] + "/ws/coral"
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	agent, _, err := websocket.Dial(ctx, base, &websocket.DialOptions{HTTPHeader: http.Header{"X-Test-Agent": {"00000000-0000-4000-8000-000000005011"}}})
+	require.NoError(t, err)
+	defer agent.CloseNow()
+	var first map[string]json.RawMessage
+	require.NoError(t, wsjson.Read(ctx, agent, &first), "the agent gets the feed")
+	pushed := ns.Push(Notification{Title: "agent needs you", Level: "warning"})
+
+	readCtx, readCancel := context.WithTimeout(ctx, testWSQuietWindow)
+	for {
+		var msg struct {
+			Notifications []Notification `json:"notifications"`
+		}
+		if err := wsjson.Read(readCtx, agent, &msg); err != nil {
+			break
+		}
+		assert.Empty(t, msg.Notifications, "an agent's socket never carries a notification")
+	}
+	readCancel()
+
+	dash, _, err := websocket.Dial(ctx, base, nil)
+	require.NoError(t, err)
+	defer dash.CloseNow()
+	for {
+		var msg struct {
+			Notifications []Notification `json:"notifications"`
+		}
+		require.NoError(t, wsjson.Read(ctx, dash, &msg))
+		if len(msg.Notifications) > 0 {
+			assert.Equal(t, []int64{pushed.ID}, notificationIDs(msg.Notifications), "the dashboard still gets what the agent's socket did not take")
+			return
+		}
+	}
 }

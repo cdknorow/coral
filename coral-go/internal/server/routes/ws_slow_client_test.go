@@ -3,6 +3,8 @@ package routes
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -167,3 +169,77 @@ func TestResyncBudget(t *testing.T) {
 
 // lagAgent is a terminal name in the form the socket accepts without a session_id.
 const lagAgent = "claude-11111111-2222-3333-4444-555555555555"
+
+// #5011: a frame over terminalFrameMax from the client closes the terminal socket (1009), and the socket's place is given back.
+func TestWSTerminal_AnOversizedClientFrameClosesTheSocket(t *testing.T) {
+	b := newLagBackend()
+	server := setupTerminalTestServer(t, b)
+	conn, ctx, cancel := dialTerminalWS(t, server, lagAgent)
+	defer cancel()
+	readReplay(t, ctx, conn)
+
+	require.NoError(t, conn.Write(ctx, websocket.MessageText, bytes.Repeat([]byte("x"), terminalFrameMax+1)))
+	var err error
+	for err == nil {
+		_, _, err = conn.Read(ctx)
+	}
+	assert.Equal(t, websocket.StatusMessageTooBig, websocket.CloseStatus(err), "an oversized frame closes the connection: %v", err)
+	select {
+	case <-b.unsubbed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the closed socket's terminal subscription was not released")
+	}
+}
+
+// #5011: past the cap an upgrade is refused (429 with the action-limit mark, before any socket) and a place frees when a socket closes; the two
+// kinds of socket have their own counts.
+func TestWSSockets_OverTheCapAreRefusedAndPlacesComeBack(t *testing.T) {
+	oldC := wsCoralMax
+	t.Cleanup(func() { wsCoralMax = oldC })
+	wsCoralMax = 2
+
+	server, _ := setupTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	open := func() (*websocket.Conn, *http.Response) {
+		c, resp, err := websocket.Dial(ctx, "ws"+server.URL[4:]+"/ws/coral", nil)
+		if err != nil {
+			require.NotNil(t, resp, "%v", err)
+			return nil, resp
+		}
+		return c, resp
+	}
+	var first map[string]json.RawMessage
+	c1, _ := open()
+	require.NotNil(t, c1)
+	require.NoError(t, wsjson.Read(ctx, c1, &first))
+	c2, _ := open()
+	require.NotNil(t, c2)
+	require.NoError(t, wsjson.Read(ctx, c2, &first))
+	c3, resp := open()
+	assert.Nil(t, c3)
+	assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode, "the third dashboard socket is over the cap")
+	assert.Equal(t, "action", resp.Header.Get("X-Coral-Limit"), "marked as a limit on this client, not an overloaded server")
+
+	c1.CloseNow()
+	require.Eventually(t, func() bool {
+		c, _ := open()
+		if c != nil {
+			c.CloseNow()
+			return true
+		}
+		return false
+	}, 5*time.Second, 50*time.Millisecond, "a closed socket gives its place back")
+	c2.CloseNow()
+
+	// the terminal's count is its own
+	var slot wsSlot
+	r1, ok1 := slot.take(1)
+	_, ok2 := slot.take(1)
+	assert.True(t, ok1)
+	assert.False(t, ok2, "one place only")
+	r1()
+	r3, ok3 := slot.take(1)
+	assert.True(t, ok3, "released")
+	r3()
+}
