@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.4.111 — Release checks need a pinned cosign, and a phone Settings switch lines up
+
+### Fixes
+
+- **On a phone a Settings switch's toggle is level with the row's (i) button,** not about 17 px above it: the toggle's cell had a label's generic bottom margin inside the box that gets centred. One-line rows are 6 px shorter than before; two-line rows keep their height.
+
+### Other changes
+
+- **Release checks need a pinned cosign:** `verify-release.sh` used to skip its Sigstore bundle rows when cosign was not installed, and every verification of v1.4.105 to v1.4.110 ran on a host without it (the bundles were checked by hand and pass). Now `after-release.sh` and `finish-release.sh` require the pinned cosign v2.4.1 (its sha256 is pinned in the repo for darwin and linux, amd64 and arm64, and a distro build is refused), `tools/devops/install-cosign.sh` installs it only when its checksum equals the pin, and a missing cosign or no bundle to check is a failed row, not a skip.
+- **Internals:** `pkg/redact/redact.go` and `routes/identity_observer.go` are split by concern, moves only.
+- **Tests:** `settings_apply_oracle` records the terminal's assignments just before `applySettings`, so a layout sync that lands while the dialog opens can no longer add a stray `fontSize` (it failed about 2 runs in 4).
+
 ## v1.4.110 — Agent panels and app links can no longer navigate away or run files, a bounded hub, and the tail-poll regression fixed
 
 ### Security
