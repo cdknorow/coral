@@ -10,6 +10,38 @@ import { formatTokens, formatDuration, formatCost } from './format.js';
 
 const _formatCost = c => formatCost(c, { zeroAsTwo: true });
 
+// ── Column order on a phone (#5056) ──────────────────────────────────────
+// The tables scroll sideways inside their card, and Cost, the figure the page is opened for, was the last column: off screen at 390 px. On a phone Cost (and Share, where
+// the table has it) follow the columns that name the row, so they are on screen first; everything else keeps its order after them. Each cell remembers its own index
+// (data-ci), so a wider window puts the original order back. A row that does not have one cell per heading (the empty state, an agent's turns) is left as it is.
+const COST_NAME_COLUMNS = { model: 2, thinking: 2, agent: 1, task: 1, request: 1, team: 1, branch: 1 }; // how many leading columns name the row, by the headings' data-table
+const _phone = typeof matchMedia === 'function' ? matchMedia('(max-width: 767px)') : null;
+
+function placeCostColumns(root) {
+    const narrow = !!(_phone && _phone.matches);
+    for (const table of root.querySelectorAll('table.cost-table')) {
+        const head = table.querySelector('thead tr');
+        if (!head) continue;
+        const ths = [...head.children];
+        const names = COST_NAME_COLUMNS[ths[0] && ths[0].dataset.table] ?? 1;
+        const at = field => ths.findIndex(th => th.dataset.field === field);
+        const cost = at('cost_usd'), share = at('cost_pct');
+        let order = ths.map((_, i) => i);
+        if (narrow && cost >= names) {
+            const moved = share >= names ? [cost, share] : [cost];
+            order = [...order.slice(0, names), ...moved, ...order.slice(names).filter(i => !moved.includes(i))];
+        }
+        for (const tr of table.querySelectorAll('tr')) {
+            const cells = [...tr.children];
+            if (cells.length !== ths.length) continue;
+            cells.forEach((c, i) => { if (c.dataset.ci === undefined) c.dataset.ci = String(i); });
+            const byIndex = new Map(cells.map(c => [Number(c.dataset.ci), c]));
+            for (const i of order) tr.appendChild(byIndex.get(i));
+        }
+    }
+}
+if (_phone) _phone.addEventListener('change', () => placeCostColumns(document.getElementById('cost-dashboard-view') || document));
+
 function _formatLatency(ms) {
     if (ms == null) return '\u2014';
     if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
@@ -524,6 +556,7 @@ function _renderModelTable(rows) {
 
     html += '</tbody></table>';
     container.innerHTML = html;
+    placeCostColumns(container);
 }
 
 const _THINKING_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
@@ -569,6 +602,7 @@ function _renderThinkingTable(rows) {
     }
     html += '</tbody></table>';
     container.innerHTML = html;
+    placeCostColumns(container);
 }
 
 function _renderAgentTable(rows) {
@@ -646,6 +680,7 @@ function _renderAgentTable(rows) {
 
     html += '</tbody></table>';
     container.innerHTML = html;
+    placeCostColumns(container);
 
     // Attach hover chart handlers
     _attachAgentChartHovers(container);
@@ -821,6 +856,7 @@ function _renderTaskTable(tasks) {
 
     html += '</tbody></table>';
     container.innerHTML = html;
+    placeCostColumns(container);
 }
 
 function _renderRequestLog(requests) {
@@ -881,6 +917,7 @@ function _renderRequestLog(requests) {
 
     html += '</tbody></table>';
     container.innerHTML = html;
+    placeCostColumns(container);
 }
 
 // ── Live Indicator ───────────────────────────────────────────
@@ -1089,6 +1126,7 @@ function _renderTeamTable(teams) {
 
     html += '</tbody></table>';
     container.innerHTML = html;
+    placeCostColumns(container);
 }
 
 // ── Branch Table ────────────────────────────────────────────
@@ -1156,4 +1194,5 @@ function _renderBranchTable(branches) {
 
     html += '</tbody></table>';
     container.innerHTML = html;
+    placeCostColumns(container);
 }
