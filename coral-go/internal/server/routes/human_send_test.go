@@ -301,7 +301,11 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		for i, text := range []string{"deploy to staging", "rm -rf the build"} {
 			wg.Add(1)
 			go func() { defer wg.Done(); codes[i] = h.send(text).Code }()
-			time.Sleep(25 * time.Millisecond) // sleep-ok: the probe's gap between the two sends
+			if i == 0 {
+				// The second send comes while the first is in the box, its Enter lost: not "25 ms later", which a loaded or -race host can stretch
+				// until the second goroutine runs first and the expected order is wrong (#4979).
+				require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); _, typed := typedAfter[text]; return typed }, 20*time.Second, 2*time.Millisecond, "the first message is typed")
+			}
 		}
 		wg.Wait()
 		mu.Lock()
