@@ -316,6 +316,8 @@ function _getFilterExtractor(table, field) {
     const extractors = {
         'model:model': r => r.model || '',
         'model:agent_type': r => r.agent_type || '',
+        'thinking:agent_type': r => r.agent_type || '',
+        'thinking:level': r => r.level || '',
         'agent:agent_name': r => r.display_name || r.agent_name || '',
         'agent:board_name': r => r.board_name || '',
         'agent:folder': r => r.folder || '',
@@ -340,7 +342,12 @@ function _sortable(el) {
 // The table's actions (#3645): its markup carries data-on-click names, never code.
 registerActions({
     // Only the tables and columns this view has (an unknown one would make a new sort state).
-    'cost-sort': el => { if (_sortable(el)) _toggleSort(el.dataset.table, el.dataset.field); },
+    'cost-sort': el => {
+        if (!_sortable(el)) return;
+        const keep = el.contains(document.activeElement); // the keyboard was on this heading's button: the table is drawn again, so it is found again (#5042)
+        _toggleSort(el.dataset.table, el.dataset.field);
+        if (keep) document.querySelector(`th[data-table="${el.dataset.table}"][data-field="${el.dataset.field}"] .cost-sort-btn`)?.focus({ preventScroll: true });
+    },
     'cost-filter': (el, event) => { event.stopPropagation(); if (_sortable(el)) _openFilter(el.dataset.table, el.dataset.field, el); },
     'cost-open-live': (el, event) => {
         event.preventDefault();
@@ -570,7 +577,8 @@ function _renderThinkingTable(rows) {
     _rawData.thinking = rows;
     const container = document.getElementById('cost-by-thinking');
     if (!container) return;
-    const sorted = _sortRows(rows, 'thinking', (r, f) => {
+    const filtered = _applyColFilters(rows, 'thinking', { agent_type: r => r.agent_type || '', level: r => r.level || '' }); // the two filter buttons of the headings (#5042: they opened nothing)
+    const sorted = _sortRows(filtered, 'thinking', (r, f) => {
         if (f === 'level') return r.level_key ? r.level : 'zzzz Not reported'; // after the named levels when ascending (localeCompare puts '~' first)
         if (f === 'agent_type') return r.agent_type || '';
         return r[f] || 0;

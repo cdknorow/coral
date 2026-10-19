@@ -149,6 +149,14 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
             await waitFor(`document.querySelector('#cost-by-thinking th:nth-child(2)').getAttribute('aria-sort') !== ${JSON.stringify(before)}`, 'Enter sorts by the column', 4000);
             const sb = await ax(lvl); assert.equal(sb.role, 'button'); assert.match(sb.name, /^thinking level/i, sb.name);
             assert.equal(await ev(`document.querySelectorAll('#cost-by-thinking th[aria-sort]:not([aria-sort="none"])').length`), 1);
+            assert.equal(await ev(`document.activeElement.classList.contains('cost-sort-btn') && document.activeElement.closest('th') === document.querySelector('#cost-by-thinking th:nth-child(2)')`), true, 'after a sort the keyboard is still on that column\'s button (the table is drawn again)');
+            // the filter buttons of the headings open a list and filter the rows (they opened nothing)
+            const rowsBefore = await ev(`document.querySelectorAll('#cost-by-thinking tbody tr').length`);
+            await ev(`document.querySelector('#cost-by-thinking th:nth-child(2) button.cost-col-filter').click(); true`);
+            await waitFor(`document.querySelectorAll('.cost-filter-dropdown .cost-filter-item input').length >= 2`, 'the Thinking level filter list', 4000);
+            await ev(`document.querySelector('.cost-filter-dropdown .cost-filter-item input').click(); true`);
+            await waitFor(`document.querySelectorAll('#cost-by-thinking tbody tr').length < ${rowsBefore}`, 'unticking a level hides its rows', 4000);
+            await ev(`document.body.click(); true`);
         }
 
         for (const [w, h, mobile] of [[1280, 900, false], [390, 844, true]]) {
