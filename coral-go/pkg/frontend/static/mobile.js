@@ -88,7 +88,6 @@ function _listHeader(agentList) {
     header.className = 'mobile-list-header';
     header.innerHTML = `
             <h2 class="mobile-list-title">Live Sessions</h2>
-            <div class="server-switcher-host" data-server-switcher-host hidden></div>
             <details class="list-display-menu" data-list-display-menu>
                 <summary class="sidebar-collapse-btn" data-display-button title="Display options" aria-label="Display options">
                     <span class="material-icons" style="font-size:1.125rem" aria-hidden="true">notes</span>
@@ -126,8 +125,6 @@ export function syncMobileAgentList() {
     const phoneBox = agentList.querySelector('#mobile-search-row input'), sideBox = document.getElementById('agent-search-input');
     if (phoneBox && sideBox && !phoneBox.value) phoneBox.value = sideBox.value; // a search typed on a wide screen is still in the box
     syncDisplayMenu();   // the phone's copy of the ≡ menu (#3991)
-    // The servers button (#3085) lives in the sidebar's search row on wider screens.
-    if (window.renderServerSwitcher) window.renderServerSwitcher();
 
     const list = document.getElementById('live-sessions-list');
     if (list && list.parentElement !== agentList) {

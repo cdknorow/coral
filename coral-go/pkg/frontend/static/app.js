@@ -22,7 +22,7 @@ import { filterState, deserializeFromUrl, serializeToUrl, urlSearchFor,
 import { connectCoralWs, handleCoralMessage, _resetWaitingSeedForTests } from './websocket.js';
 import { sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys, sendModeToggle, cycleModeToggle, sendQuickCommand, refreshModeLabel, executeMacro, addMacro, deleteMacro, showMacroModal, hideMacroModal, attachTerminal, killSession, restartSession, hideRestartModal, confirmRestart, initImageDrop, removeAttachment, editGoal, refreshGoal, requestGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon } from './sessions.js';
-import { KILL_LOG_NOTE_MANY, buildSessionTooltip, showTeamDetails, hideTeamDetails, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, dismissKilledSession, dismissBoardKilled, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, renderServerSwitcher, groupHeaderKey } from './render.js';
+import { KILL_LOG_NOTE_MANY, buildSessionTooltip, showTeamDetails, hideTeamDetails, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, dismissKilledSession, dismissBoardKilled, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, groupHeaderKey } from './render.js';
 import { syncPaneWidth, refreshCapture } from './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
@@ -715,7 +715,7 @@ Object.assign(window, {
     toggleSidebarKebab, closeSidebarKebabs,
     // render (sidebar actions)
     filterLiveAgents, focusAgentSearch, agentSearchKey, toggleSessionSummary, applySessionSummaryPref,
-    toggleShowServer, toggleGroupByServer, renderServerSwitcher,
+    toggleShowServer, toggleGroupByServer,
     toggleGroupCollapse, groupHeaderKey, killGroup, moveGroupUp, moveGroupDown,
     copyFolderPath, killBoard, dismissBoardKilled, setBoardAccentColor, resetTeam,
     moveSessionUp, moveSessionDown,

@@ -79,17 +79,18 @@ const CLOUD_PRELOAD = `(() => {
         assert.equal(await ev('window.__pwned || 0'), 0, 'the hostile markup did not run');
         console.log('   ✓ m1 "Update Coral to 1.4.61"; m2 hostile text, no markup, cut; m3 and m4 nothing; m5 "Update Coral"');
 
-        console.log('2. The server details dialog (the switcher panel)');
+        console.log('2. The server details panel');
         for (const [id, want, hostile] of [['m1', 'Update Coral to 1.4.61'], ['m2', null, true], ['m3', ''], ['m4', ''], ['m5', 'Update Coral']]) {
             const out = await ev(`(async () => {
                 const S = window.__coralStatic || '/static/';
                 const m = await import(S + 'server_status.js');
                 T.state.hub = true;
-                T.state.servers = ${JSON.stringify(LIVE)}.filter(s => s.id === ${JSON.stringify(id)});
-                const host = document.createElement('div'); host.id = 'qa-switcher-host'; document.body.appendChild(host);
-                host.innerHTML = m.serverSwitcherHtml(true);
+                const srv = ${JSON.stringify(LIVE)}.find(s => s.id === ${JSON.stringify(id)});
+                T.state.servers = [srv];
+                const host = document.createElement('div'); host.id = 'qa-details-host'; document.body.appendChild(host);
+                host.innerHTML = m.serverDetailsHtml(srv);
                 const n = [...host.querySelectorAll('.server-below-minimum')];
-                const r = { count: n.length, text: n[0] ? n[0].textContent : '', kids: n[0] ? n[0].children.length : 0, imgs: host.querySelectorAll('.server-switcher-panel img').length };
+                const r = { count: n.length, text: n[0] ? n[0].textContent : '', kids: n[0] ? n[0].children.length : 0, imgs: host.querySelectorAll('img').length };
                 host.remove();
                 return r;
             })()`);

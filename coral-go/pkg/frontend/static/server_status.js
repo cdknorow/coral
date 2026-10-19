@@ -191,8 +191,8 @@ export function belowMinimumText(e) {
     return min ? `Update Coral to ${min}` : 'Update Coral';
 }
 
-/** The details panel shared by the server button and the group headers. */
- function serverDetailsHtml(e) {
+/** The details panel shared by the Servers list and the group headers (#4932: the search-row pill was removed). */
+export function serverDetailsHtml(e) {
     const m = statusMeta(e.status);
     const local = normServer(e.id) === LOCAL_SERVER;
     const count = serverAgentCount(e);
@@ -210,52 +210,6 @@ export function belowMinimumText(e) {
         + (notice ? `<p class="server-details-update">${escHtml(notice.text)} ${updateBadgeHtml(e)}</p>` : '')
         + (!local && belowMinimumText(e) ? `<p class="server-details-update server-below-minimum">${escHtml(belowMinimumText(e))}</p>` : '')
         + (!local && e.status !== 'online' ? `<p class="server-details-hint">${escHtml(m.hint)}</p>` : '');
-}
-
-/** Aggregate status for several servers: online only when every one is. */
-function aggregateStatus(list) {
-    if (list.every(e => e.status === 'online')) return 'online';
-    return list.some(e => e.status === 'unauthorized' || e.status === 'key_unreadable') ? 'unauthorized' : 'unreachable';
-}
-
-/** The search-row server button ('● MacBook-Pro ▾' or '● 3 servers ▾'), '' without servers.
- *  `open` keeps the disclosure open across list re-renders. */
-export function serverSwitcherHtml(open = false) {
-    const list = serversShown();
-    if (!list.length) return '';
-    const single = list.length === 1;
-    const e = single ? list[0] : null;
-    const status = single ? e.status : aggregateStatus(list);
-    const m = statusMeta(status);
-    const label = single ? shortServerName(e) : `${list.length} servers`;
-    const down = list.filter(x => x.status !== 'online').length;
-    const aria = single ? `Server ${e.label || e.id}: ${m.label}` : `${list.length} servers${down ? `, ${down} not online` : ''}`;
-    const body = single
-        ? serverDetailsHtml(e) + `<button type="button" class="server-open-btn server-open-footer" data-server-open="${escHtml(e.id)}">Open in Servers</button>`
-        : `<ul class="server-switcher-list">${list.map(x => {
-            const xm = statusMeta(x.status);
-            // Which server needs the update (#3059): a marker and the accessible name say so.
-            const xn = normServer(x.id) === LOCAL_SERVER ? null : updateNotice(x);
-            const upd = xn ? (xn.level === 'required' ? 'Update required' : 'Update available') : '';
-            return `<li><button type="button" class="server-switcher-item server-${xm.cls}" data-server-open="${escHtml(x.id)}" aria-label="${escHtml(`${x.label || x.id}: ${xm.label}, ${serverAgentCount(x)} agents. Open in Servers${upd ? `. ${upd}` : ''}`)}">`
-                + `<span class="server-dot" aria-hidden="true"></span><span class="server-switcher-name">${escHtml(shortServerName(x))}</span>`
-                // One column for the marker on every row: the same size and place whether the row has one or not.
-                + `<span class="server-switcher-update">${xn ? `<span class="server-update-marker server-update-${xn.level}">${xn.level === 'required' ? 'Update required' : 'Update'}</span>` : ''}</span>`
-                + `<span class="server-switcher-meta">${escHtml(xm.label)} · ${serverAgentCount(x)}</span></button></li>`;
-        }).join('')}</ul>`
-            + `<button type="button" class="server-open-btn server-open-footer" data-server-open="">Open Servers</button>`;
-    // #3059: an update notice stays visible on the button; the link is in the panel.
-    const notices = list.filter(x => normServer(x.id) !== LOCAL_SERVER).map(updateNotice).filter(Boolean);
-    const level = notices.some(n => n.level === 'required') ? 'required' : (notices.length ? 'available' : '');
-    // On the button the marker is short ("Update"); the level is its colour and the button's accessible name says "Update required".
-    const marker = level ? `<span class="server-update-marker server-update-${level}">Update</span>` : '';
-    return `<details class="server-switcher server-${m.cls}${single ? '' : ' server-switcher-multi'}" data-server-switcher${open ? ' open' : ''}>`
-        + `<summary class="server-switcher-btn" aria-label="${escHtml(aria + (level ? `. ${level === 'required' ? 'Update required' : 'Update available'}` : ''))}" title="${escHtml(single ? serverHoverText(e.id) : aria)}">`
-        // Several servers: the dot, the count and the marker, no word ("N servers" is the title and the accessible name), so the search box keeps
-        // its room (operator, #4062). One server: its name, which gives way with an ellipsis.
-        + `<span class="server-dot" aria-hidden="true"></span>${single ? `<span class="server-switcher-label">${escHtml(label)}</span>` : `<span class="server-switcher-count">${list.length}</span>`}`
-        + marker + `<span class="server-switcher-caret" aria-hidden="true">▾</span></summary>`
-        + `<div class="server-switcher-panel${single ? '' : ' server-switcher-panel-list'}">${body}</div></details>`;
 }
 
 /** Launch team / Open folder / Launch agent at the top of a server's menu. Each opens the launch flow with this server chosen;
@@ -305,7 +259,7 @@ export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) 
 }
 
 /** Strip listing every server (local first) with its status. '' without remotes.
- *  (Replaced in the agent list by serverSwitcherHtml + group headers, #3085.) */
+ *  (Replaced in the agent list by the server group headers, #3085.) */
 export function serverStripHtml() {
     if (!showServerLabels()) return '';
     const rows = [...(state.cloud === true ? [] : [serverEntry(LOCAL_SERVER)]), ...remoteServers()].map(e => {

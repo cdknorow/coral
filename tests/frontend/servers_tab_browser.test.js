@@ -355,16 +355,16 @@ const contrast = (a, b) => {
         await open('#servers/m2');
         await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m2'`, 'the old #servers/m2 link focuses its row', 6000);
         assert.equal(await ev('location.pathname + location.hash'), '/servers/m2', 'and its URL becomes the path');
-        await ev(`window.switchNavTab('agents'); window.__m.add('chip-agent', 'C', 3, { sleeping: false, server: 'm3' }); T.render.renderLiveSessions(T.state.liveSessions); true`);
-        // #3085: the search-row server button's panel lists every server as a button that opens its row.
-        await ev(`document.querySelector('[data-server-switcher-host] details[data-server-switcher]').open = true; true`);
-        const item = await ev(`(() => { const b = document.querySelector('[data-server-switcher-host] button.server-switcher-item[data-server-open="m3"]'); return b ? { tag: b.tagName, focusable: b.tabIndex >= 0, aria: b.getAttribute('aria-label') } : null; })()`);
-        assert.ok(item && item.tag === 'BUTTON' && item.focusable, `the server list item is a keyboard-reachable button (${JSON.stringify(item)})`);
-        assert.match(item.aria, /^Box Three: .+ agents?\. Open in Servers$/, 'its accessible name says what it opens');
-        await ev(`document.querySelector('[data-server-switcher-host] button.server-switcher-item[data-server-open="m3"]').click(); true`);
-        await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m3'`, 'the server button item opens the tab at m3', 6000);
-        assert.equal(await ev('location.pathname'), '/servers/m3', 'the server button item writes its row\'s path');
-        console.log('   ✓ /servers/m2 → row focused + highlighted; /servers → heading; #servers/m2 → /servers/m2; server button item → row m3');
+        await ev(`window.switchNavTab('agents'); localStorage.setItem('coral-group-by-server', 'true'); window.__m.add('chip-agent', 'C', 3, { sleeping: false, server: 'm3' }); T.render.renderLiveSessions(T.state.liveSessions); true`);
+        // #4932 (replaces the removed search-row pill): a server group header's ⋮ panel has an 'Open in Servers' button that opens its row.
+        await ev(`document.querySelector('li.server-group-header[data-server-group="m3"] details[data-server-details]').open = true; true`);
+        const item = await ev(`(() => { const b = document.querySelector('li.server-group-header[data-server-group="m3"] button.server-open-btn[data-server-open="m3"]'); return b ? { tag: b.tagName, focusable: b.tabIndex >= 0, text: b.textContent.trim() } : null; })()`);
+        assert.ok(item && item.tag === 'BUTTON' && item.focusable, `the header's Open in Servers is a keyboard-reachable button (${JSON.stringify(item)})`);
+        assert.equal(item.text, 'Open in Servers', 'its label says what it opens');
+        await ev(`document.querySelector('li.server-group-header[data-server-group="m3"] button.server-open-btn[data-server-open="m3"]').click(); true`);
+        await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m3'`, 'the header Open in Servers opens the tab at m3', 6000);
+        assert.equal(await ev('location.pathname'), '/servers/m3', 'it writes its row\'s path');
+        console.log('   ✓ /servers/m2 → row focused + highlighted; /servers → heading; #servers/m2 → /servers/m2; header Open in Servers → row m3');
 
         console.log('5. Phone 375 px: no overflow, actions stacked under the details');
         await Emulation.setDeviceMetricsOverride({ width: 375, height: 812, deviceScaleFactor: 2, mobile: true });

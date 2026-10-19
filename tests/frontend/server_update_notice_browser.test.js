@@ -45,11 +45,10 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         T.render.renderLiveSessions(T.state.liveSessions);
         return true;
     })()`);
-    // Where a notice shows in the agent list (#3085): the search-row server button's marker, and with
-    // Group by server on, each server header's marker and its ⋮ details panel (text + the constant link).
+    // Where a notice shows in the agent list (#3085, #4932 removed the search-row pill): with Group by
+    // server on, each server header's marker and its ⋮ details panel (text + the constant link).
     const notices = (scope = '#live-sessions-list, .sidebar-header') => ev(`(() => {
-        const sw = document.querySelector('[data-server-switcher-host] details[data-server-switcher]');
-        const out = { button: sw ? { marker: sw.querySelector('summary .server-update-marker')?.className || null, markerText: sw.querySelector('summary .server-update-marker')?.textContent || null, aria: sw.querySelector('summary').getAttribute('aria-label') } : null, groups: {} };
+        const out = { groups: {} };
         for (const h of document.querySelectorAll('li.server-group-header[data-server-group]')) {
             const panel = h.querySelector('details[data-server-details] .server-switcher-panel');
             const upd = panel && panel.querySelector('.server-details-update');
@@ -69,13 +68,8 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
     const grouped = on => ev(`(() => { localStorage.setItem('coral-group-by-server', ${on ? "'true'" : "'false'"}); T.render.renderLiveSessions(T.state.liveSessions); return true; })()`);
 
     const checkNotices = async where => {
-        let n = await notices();
-        assert.ok(n.button, `${where}: the server button is shown`);
-        assert.equal(n.button.marker, 'server-update-marker server-update-required', `${where}: the button carries the most urgent level`);
-        assert.equal(n.button.markerText, 'Update', 'the button marker is short; the level is its colour and its accessible name (#4062)');
-        assert.match(n.button.aria, /Update required$/, `${where}: the button's accessible name says so`);
         await grouped(true);
-        n = await notices();
+        let n = await notices();
         for (const sv of SERVERS) assert.ok(n.groups[sv.id], `${where}: ${sv.id} has a server header`);
         for (const [id, want] of Object.entries(EXPECT)) {
             const g = n.groups[id];
@@ -108,10 +102,10 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         await install();
         await ev(`localStorage.clear(); true`);
 
-        console.log('1. Agent list: server button marker, server headers and their details');
+        console.log('1. Agent list: server headers and their details (the search-row pill was removed, #4932)');
         await setup();
         await checkNotices('desktop');
-        console.log('   ✓ button marker (required), header markers and details only for available/required, exact texts, constant link, tooltips, hostile text inert');
+        console.log('   ✓ header markers and details only for available/required, exact texts, constant link, tooltips, hostile text inert');
 
         console.log('2. Coral Hub server list (Servers tab)');
         const dialog = await ev(`(async () => {
@@ -150,19 +144,21 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         assert.equal(await ev('window.__pwned'), undefined, 'dialog: hostile strings did not run');
         console.log('   ✓ server list notes and link for available/required only, nothing disabled');
 
-        console.log('3. Phone width: the phone list header has the server button with the marker');
+        console.log('3. Phone width: a server header carries the marker (the search-row pill was removed, #4932)');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
         await install();
         await setup();
+        // The phone list groups the agents it has by server, so put an agent on an update-required server for its header to show there.
+        await ev(`localStorage.setItem('coral-group-by-server', 'true'); window.__m.add('a-srv-req', 'A', 3, { sleeping: false, server: 'srv-req' }); T.render.renderLiveSessions(T.state.liveSessions); true`);
         await ev(`(async () => { const mob = await import((window.__coralStatic||'/static/')+'mobile.js'); mob.syncMobileAgentList(); return true; })()`);
-        await waitFor(`!!document.querySelector('#mobile-agent-list [data-server-switcher-host] details[data-server-switcher]')`, 'phone server button', 3000);
-        const ph = await ev(`(() => { const s = document.querySelector('#mobile-agent-list [data-server-switcher-host] summary'); const m = s.querySelector('.server-update-marker'); const r = s.getBoundingClientRect(); return { marker: m && m.textContent, inside: r.width > 0 && r.right <= innerWidth + 1 }; })()`);
-        assert.equal(ph.marker, 'Update', 'phone: the server button carries the marker');
-        assert.ok(ph.inside, 'phone: the server button is inside the viewport');
+        await waitFor(`!!document.querySelector('#mobile-agent-list li.server-group-header[data-server-group="srv-req"] .server-group-toggle .server-update-marker')`, 'phone server header marker', 3000);
+        const ph = await ev(`(() => { const m = document.querySelector('#mobile-agent-list li.server-group-header[data-server-group="srv-req"] .server-group-toggle .server-update-marker'); const r = m.getBoundingClientRect(); return { marker: m.textContent, inside: r.width > 0 && r.right <= innerWidth + 1 }; })()`);
+        assert.ok(/Update/.test(ph.marker), `phone: a server header carries the update marker (${ph.marker})`);
+        assert.ok(ph.inside, 'phone: the marker is inside the viewport');
         await Emulation.clearDeviceMetricsOverride();
-        console.log('   ✓ phone server button with the marker, inside the viewport');
+        console.log('   ✓ phone server header with the marker, inside the viewport');
 
         console.log('\nAll server update notice checks passed');
     } finally {

@@ -106,7 +106,6 @@
  "feed_drift_render_browser.test.js": 3.2,
  "lazy_panels_browser.test.js": 3.2,
  "empty_chat_browser.test.js": 3.1,
- "server_button_whole_browser.test.js": 3.1,
  "settings_storage_ux_browser.test.js": 3.1,
  "board_reflow_browser.test.js": 2.9,
  "actions_board_browser.test.js": 2.8,

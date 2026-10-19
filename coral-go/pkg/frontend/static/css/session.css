@@ -2109,23 +2109,11 @@
 .xterm-container.hub-view-only ~ .terminal-statusbar .xterm-focus-hint,
 .xterm-container.agent-sleeping ~ .terminal-statusbar .xterm-focus-hint { display: none; }
 
-/* ── Servers in the agent list (#3085) ─────────────────────────────── */
-.server-switcher-host { position: relative; flex: 0 0 auto; }
-.server-switcher-host[hidden] { display: none; }
-.server-switcher, .list-display-menu, .server-group-more { position: relative; }
-.server-switcher > summary, .list-display-menu > summary, .server-group-more > summary { list-style: none; cursor: pointer; }
-.server-switcher > summary::-webkit-details-marker, .list-display-menu > summary::-webkit-details-marker, .server-group-more > summary::-webkit-details-marker { display: none; }
-.server-switcher-btn {
-    display: inline-flex; align-items: center; gap: var(--space-xs);
-    box-sizing: border-box; height: var(--ctl-h, 36px);
-    max-width: 12em; padding: 0 var(--space-sm);
-    border: 1px solid var(--border); border-radius: var(--radius-md);
-    font-size: var(--fs-base); color: var(--text-secondary); white-space: nowrap;
-}
-.server-switcher-label { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.server-switcher-btn > .server-dot, .server-switcher-count, .server-switcher-btn > .server-update-marker, .server-switcher-caret { flex: none; }
-.server-switcher-caret { opacity: .6; }
-.server-switcher-btn:focus-visible, .server-group-toggle:focus-visible, .server-group-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ── Servers in the agent list (#3085; #4932 removed the search-row server pill) ─────────── */
+.list-display-menu, .server-group-more { position: relative; }
+.list-display-menu > summary, .server-group-more > summary { list-style: none; cursor: pointer; }
+.list-display-menu > summary::-webkit-details-marker, .server-group-more > summary::-webkit-details-marker { display: none; }
+.server-group-toggle:focus-visible, .server-group-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .server-switcher-panel, .list-display-panel {
     position: absolute; right: 0; top: calc(100% + 4px); z-index: 50;
     min-width: 16em; max-width: min(22em, calc(100vw - 32px));
@@ -2138,36 +2126,6 @@
 .server-details-list dd { margin: 0; overflow-wrap: anywhere; }
 .server-details-update, .server-details-hint { margin: 0 0 var(--space-md); color: var(--text-secondary); }
 .server-switcher-panel .btn + .btn { margin-left: var(--space-xs); }
-.server-switcher-list { list-style: none; margin: 0; padding: 0; }
-/* The server list: four columns, the same on every row (dot, name, update marker, status and count) (#4062). */
-.server-switcher-panel-list { padding: var(--space-xs) 0 0; }
-.server-switcher-panel-list .server-switcher-list { padding: 0 var(--space-xs); }
-.server-switcher-item {
-    display: grid; grid-template-columns: 8px minmax(0, 1fr) 8em auto; align-items: center; column-gap: var(--space-sm);
-    width: 100%; min-height: 34px; box-sizing: border-box;
-    padding: 0 var(--space-sm); border: 0; border-radius: var(--radius-sm, 4px);
-    background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
-}
-.server-switcher-item:hover, .server-switcher-item:focus-visible { background: var(--bg-hover); }
-.server-switcher-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.server-switcher-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.server-switcher-update { display: block; }
-.server-switcher-update .server-update-marker { display: block; box-sizing: border-box; width: 100%; padding: 0 2px; font-size: 0.625rem; text-align: center; }
-.server-switcher-btn .server-update-marker { font-size: 0.625rem; padding: 0 3px; }
-.server-switcher-meta { color: var(--text-secondary); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
-/* Not checked yet: quiet, not a state to act on. */
-.server-switcher-item.server-unknown .server-switcher-name,
-.server-switcher-item.server-unknown .server-switcher-meta { color: var(--text-muted); }
-/* "Open Servers" is the footer of the panel, full width, not a floating button. */
-.server-open-footer {
-    display: block; width: calc(100% + 2 * var(--space-md)); margin: var(--space-md) calc(-1 * var(--space-md)) 0;
-    padding: 9px var(--space-md); box-sizing: border-box;
-    border: 0; border-top: 1px solid var(--border); border-radius: 0 0 var(--radius-md) var(--radius-md);
-    background: none; color: var(--accent); font: inherit; font-weight: 500; text-align: left; cursor: pointer;
-}
-.server-switcher-panel-list .server-open-footer { width: 100%; margin: var(--space-xs) 0 0; }
-.server-open-footer:hover, .server-open-footer:focus-visible { background: var(--bg-hover); }
-.server-open-footer:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .list-display-panel { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 12em; }
 .list-display-option { display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: 4px 0; }
 .list-display-option[hidden] { display: none; }
@@ -2214,30 +2172,19 @@
     .sidebar-header.sidebar-header, .mobile-list-header.mobile-list-header { --ctl-h: var(--control-touch-height, 44px); }
 }
 @media (pointer: coarse) {
-    .server-switcher-item { min-width: var(--control-touch-height, 44px); }
-    .server-switcher-btn, .server-group-toggle, .server-switcher-item, .server-open-footer, .server-launch-btn, .list-display-option, .list-display-actions .btn {
+    .server-group-toggle, .server-launch-btn, .list-display-option, .list-display-actions .btn {
         min-height: var(--control-touch-height, 44px);
     }
     .server-group-more > summary.sidebar-kebab-btn { display: inline-flex; align-items: center; justify-content: center; } /* the kebab's own touch size (touch.css) */
 }
-/* The phone's list header: the title, the server button, the display menu and + New share one height (#4062). */
+/* The phone's list header: the title, the display menu and + New share one height (#4062). */
 /* flex-wrap: a narrow phone wraps the header's controls instead of pushing them off the screen (#4086). */
 .mobile-list-header { --ctl-h: 36px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; }
 .mobile-list-header .mobile-list-title { margin-right: auto; }
 .mobile-list-header .btn { height: var(--ctl-h); box-sizing: border-box; padding-top: 0; padding-bottom: 0; margin: 0; } /* margin: 0: .btn-small's 20px side margins counted toward the row and wrapped + New */
 .mobile-list-header .mobile-list-title { white-space: nowrap; flex: none; }
-/* The server button keeps its dot, count, Update marker and caret whole (operator): it shrinks only as far as those. The title and + New are small;
-   if the row cannot hold them all, the header wraps (#4086) rather than clip the button. */
-.mobile-list-header .server-switcher-host { flex: 1 1 0; min-width: 7rem; max-width: 12em; }
-.mobile-list-header .server-switcher, .mobile-list-header .server-switcher-btn { min-width: 0; max-width: 12em; width: 100%; }
-/* The server list opens under the whole header row, not under its own button, so it is never wider than the screen or cut off at the edge (#4062). */
+/* The display menu hangs from the whole header row, not from its own small button, so it is never wider than the screen or cut off at the edge (#4062). */
 .sidebar-header, .mobile-list-header { position: relative; }
-.sidebar-header .server-switcher-host, .sidebar-header .server-switcher,
-.mobile-list-header .server-switcher-host, .mobile-list-header .server-switcher { position: static; }
-.sidebar-header .server-switcher-panel, .mobile-list-header .server-switcher-panel {
-    left: 12px; right: 12px; top: calc(100% - 4px); width: auto; min-width: 0; max-width: 24em;
-}
-.mobile-list-header .server-switcher-panel { left: 16px; right: 16px; max-width: none; }
 /* The display menu and a server's menu hang from the whole header / row, not from their own small button, so at 200% text and on a phone they are never
    wider than the screen or cut off at its left edge (#4247; the server list did this since #4062). */
 .sidebar-header .list-display-menu, .mobile-list-header .list-display-menu { position: static; }
@@ -2246,28 +2193,17 @@
 }
 .session-list .server-group-header { position: relative; }
 .server-group-header .server-group-more { position: static; }
-.list-display-menu:not([open]) > .list-display-panel, .server-group-more:not([open]) > .server-switcher-panel { display: none; } /* a closed one has no boxes (see the switcher's rule) */
+.list-display-menu:not([open]) > .list-display-panel, .server-group-more:not([open]) > .server-switcher-panel { display: none; } /* a closed menu has no boxes */
 .server-group-more > .server-switcher-panel { left: auto; right: 0; top: calc(100% - 2px); min-width: min(16em, 100%); max-width: 100%; box-sizing: border-box; }
-.server-switcher-panel-list { min-width: 0; }
-/* A closed switcher has no panel boxes at all: Chrome keeps a closed <details>' content laid out but skipped, at whatever size it falls to (12px wide here),
-   and touch-target scans and assistive tools saw those as tiny controls. */
-.server-switcher:not([open]) > .server-switcher-panel { display: none; }
-/* Keep the search box usable next to the server button (#3085). */
-/* The server button keeps its dot, count, Update marker and caret whole (operator, #4062): it may shrink only as far as those (7rem; the
-   word after the count gives way with an ellipsis). The search box is the control that gives up width, down to 6em (the whole "Search" placeholder, papercuts_browser), and a very narrow sidebar
-   wraps the header rather than clip the button. */
+/* Keep the search box usable: it gives up width down to 6em and a very narrow sidebar wraps the header (#3085, #4062). */
 .sidebar-header { flex-wrap: wrap; }
 .sidebar-header .sidebar-search { flex: 1 1 6em; min-width: 6em; }
-.sidebar-header .server-switcher-host:has(.server-switcher-multi), .mobile-list-header .server-switcher-host:has(.server-switcher-multi) { flex: none; min-width: max-content; max-width: none; } /* several servers: dot, count, marker, caret: it is its own width */
-.sidebar-header .server-switcher-host { flex: 1 1 0; min-width: 7rem; max-width: 12em; } /* 7rem holds the dot, count, marker and caret (min-content would count the whole word after the count); flex-basis 0 so a wrapping row is judged by that smallest size */
-.sidebar-header .server-switcher, .sidebar-header .server-switcher-btn { min-width: 0; max-width: 12em; width: 100%; }
-@media (pointer: coarse) { .sidebar-header .server-switcher-btn, .mobile-list-header .server-switcher-btn { min-width: var(--control-touch-height, 44px); justify-content: center; } } /* a button of a dot, a count and a caret is still a touch target */ /* the button fills its flexible host, so its label is what gives way */
 /* Status text for screen readers only (the dot carries it visually). */
-.row-server-prefix .sr-only, .server-switcher .sr-only {
+.row-server-prefix .sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
-/* Update notice marker on the server button / group header (#3059 via #3085). */
+/* Update notice marker on the server group header (#3059 via #3085). */
 .server-update-marker {
     padding: 0 4px; border: 1px solid currentColor; border-radius: var(--radius-sm, 4px);
     font-size: var(--fs-sm, 11px); font-weight: 600; color: var(--accent); white-space: nowrap;

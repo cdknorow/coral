@@ -29,7 +29,7 @@ import { _boardChatSelectAll, _boardChatSelectNone, _boardMentionInput, _boardMe
 import { _formatCost, _gitStateSummary, _repoBranch, _shortPath, buildSessionTooltip, deriveSessionState, formatShortTime, formatStaleness, getDotClass, resolveSessionIdentity, sessionStateInfo, sessionUnreadCount } from './session_state.js';
 import { _getBoardColor } from './board_accents.js';
 import { _getGroupOrder, _sortByOrder, _sortGroups } from './list_order.js';
-import { _isServerCollapsed, _openServerDetails, renderServerSwitcher } from './server_rows.js';
+import { _isServerCollapsed, _openServerDetails } from './server_rows.js';
 import { kebabId, _attachDragListeners, _renderAgentListWithSubgroups, _renderArchivedSection, _renderSessionItem, _within, applySessionSummaryPref, isGroupedByServer, isServerShownOnRows, isSessionSummaryShown } from './session_rows.js';
 import { showConfirmModal } from './confirm_dialog.js';
 import { getAgentFilter, setAgentFilter, getListFilters } from './agent_filter.js';
@@ -40,7 +40,6 @@ import { browserLocal } from './safe_storage.js';
 export { groupHeaderKey, toggleGroupCollapse } from './group_collapse.js';
 export { hideConfirmModal, showConfirmModal } from './confirm_dialog.js';
 export { applySessionSummaryPref, isSessionSummaryShown, toggleArchivedSection } from './session_rows.js';
-export { renderServerSwitcher } from './server_rows.js';
 export { moveGroupDown, moveGroupUp, moveSessionDown, moveSessionUp } from './list_order.js';
 export { setBoardAccentColor } from './board_accents.js';
 export { buildSessionTooltip, commandPlaceholder, deriveSessionState, resolveSessionIdentity, sessionStateInfo, terminalDotClass, applyTerminalDot } from './session_state.js';
@@ -1402,7 +1401,6 @@ function _renderLiveSessions(sessions) {
     updateSectionVisibility('live-sessions', unfilteredCount + pinnedFolders().length);
 
     if (!sessions.length && !archived.length && !pinsShown) {
-        renderServerSwitcher();
         // Coral Hub with no machine connected: say what to do (the same list is the phone's Agents page), not just that there is nothing
         list.innerHTML = (!unfilteredCount && hubEmptyListHtml(machineState())) || `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
         return;
@@ -1414,9 +1412,8 @@ function _renderLiveSessions(sessions) {
     if (check) check.style.opacity = groupByTeam ? '1' : '0.2';
 
 
-    // The servers UI (#3085): a compact button in the search row; with two or
-    // more servers the groups below are wrapped in collapsible server headers.
-    renderServerSwitcher();
+    // The servers UI (#3085): with two or more servers the groups below are
+    // wrapped in collapsible server headers (the search-row pill was removed, #4932).
 
     let html = '';
     const shownServers = serversShown();
