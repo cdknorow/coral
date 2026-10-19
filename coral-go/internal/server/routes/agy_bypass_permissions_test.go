@@ -1055,6 +1055,11 @@ func TestPinnedLaunchPermissionMode_OldSessionFallback(t *testing.T) {
 		PermissionMode: nil, // old row from before migration
 	}))
 	require.NoError(t, rig.ss.SetSetting(ctx, "default_permission_mode", "default"))
+	// Forget case A's command: lastSentCommand reads a map of sessions in random order, so with both cases' commands in it the "last" one was
+	// case A's about 1 run in 8 and this case failed.
+	rig.term.mu.Lock()
+	rig.term.sent = map[string][]string{}
+	rig.term.mu.Unlock()
 	restartBody2, _ := json.Marshal(map[string]any{
 		"session_id": sid2,
 		"agent_type": at.Agy,
