@@ -1,5 +1,6 @@
 {
- "terminal_switch_browser.test.js": 113,
+ "terminal_switch_phone_browser.test.js": 53.2,
+ "terminal_switch_desktop_browser.test.js": 52.9,
  "label_injection_browser.test.js": 50.2,
  "terminal_pane_size_browser.test.js": 40.5,
  "list_bars_themes_browser.test.js": 33,
@@ -20,6 +21,7 @@
  "board_chat_incremental_browser.test.js": 12.5,
  "team_settings_trace_browser.test.js": 12.5,
  "unreachable_server_browser.test.js": 11.8,
+ "terminal_switch_cold_browser.test.js": 11.3,
  "hub_readonly_browser.test.js": 11.2,
  "auth_page_browser.test.js": 11,
  "capture_poll_pacing_browser.test.js": 10.7,

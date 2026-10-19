@@ -11,11 +11,12 @@
 //     have to be, and is only reported.
 //  4. A switch to Terminal and straight back to Chat while xterm.js is still downloading opens no terminal socket in Chat view (it used to
 //     attach once the download finished); the next switch to Terminal does attach and shows text.
-// Run against an isolated dev server and headless Chrome via CDP.
+// Run against an isolated dev server and headless Chrome via CDP. The suite is three files so the shards run them side by side (#5027): terminal_switch_desktop
+// (1 and 2 at 1280 px), terminal_switch_phone (1 and 2 at 390 px) and terminal_switch_cold (3 and 4); this module is their body, `parts` says which to run.
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
-const BASE = require('./test_base').BASE;
-const { launchStandIn } = require('./helpers/stand_in_agent');
+const BASE = require('../test_base').BASE;
+const { launchStandIn } = require('./stand_in_agent');
 
 const results = [];
 const lines = [];
@@ -29,7 +30,7 @@ const MOD = `(window.__coralStatic || '/static/')`;
 const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: timing is what is measured; there is no completion event for a repaint
 const BUDGET_MS = 500;
 
-(async () => {
+module.exports = parts => (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
     const { Page, Runtime, Emulation, Network } = client;
     const ev = async expression => {
@@ -37,7 +38,7 @@ const BUDGET_MS = 500;
         if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 500));
         return r.result.value;
     };
-    const { coralReady } = require('./helpers/wait').bind(ev);
+    const { coralReady } = require('./wait').bind(ev);
     const standIns = [];
     // Pixels, not just the buffer: the canvas renderer can leave the screen blank while the buffer holds the text.
     const INK = `(() => { let n = 0; for (const c of document.querySelectorAll('#xterm-container canvas')) { if (!c.width || !c.height) continue; const g = c.getContext('2d'); if (!g) continue;
@@ -88,7 +89,7 @@ const BUDGET_MS = 500;
         };
 
         // 1 and 2: warm switches, desktop then phone width.
-        for (const vp of [{ width: 1280, height: 800 }, { width: 390, height: 800 }]) {
+        for (const vp of [{ width: 1280, height: 800, part: 'desktop' }, { width: 390, height: 800, part: 'phone' }].filter(v => parts.includes(v.part))) {
             await setup(vp);
             await select(standIns[0]);
             await sleep(1200);   // sleep-ok: lets the selected agent settle in Chat view before the timed switches; there is no completion event for "idle"
@@ -106,6 +107,7 @@ const BUDGET_MS = 500;
             check(`${vp.width} px: selecting an agent while the Terminal view shows paints its terminal`, t >= 0 && t <= BUDGET_MS, `${t} ms`);
         }
 
+        if (parts.includes('cold')) {
         // 3: the first switch on a slow link.
         const slow = () => Network.emulateNetworkConditions({ offline: false, latency: 150, downloadThroughput: 1500 * 1024 / 8, uploadThroughput: 1500 * 1024 / 8 });
         const fast = () => Network.emulateNetworkConditions({ offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
@@ -154,6 +156,7 @@ const BUDGET_MS = 500;
         await fast();
         const after = await switchToTerminal();
         check('the next switch to Terminal attaches and shows text', after >= 0 && after <= 2000, `${Math.round(after)} ms`);
+        }
     } finally {
         for (const si of standIns) await si.stop();
         await client.close();
