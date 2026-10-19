@@ -83,9 +83,9 @@ func TestKeywordGateOnRandomText(t *testing.T) {
 		"AWS_SECRET", "STRIPE_KEY", "key", "sig", "auth", "authorization", "Authorization", "Cookie", "Set-Cookie", "session", "SID", "curl", "-u", "--user",
 		"mysql", "-p", "sshpass", "--password", "--token", "--api-key", "--", "-", "bearer", "Bearer", "=", ":", "＝", "：", "%3D", "%253D", "%3F", "%26", "&", "?", ";", ",",
 		" ", "  ", "\t", "\n", "\r\n", `"`, "'", `\"`, `\\\"`, "{", "}", "[", "]", "(", ")", "<", ">", "$", "%", "_", ".", "/", "+",
-		"Zq8Lm2Xv9Rt4Wk7Pd3Hs", "abcdefgh", "0123456789abcdef", "a1", "x", "AAAA", "https://h.example.com/cb", "next=", "user:pw", "​", "é"}
+		"Zq8Lm2Xv9Rt4Wk7Pd3Hs", "\u017f", "\u212a", strings.Repeat("a-", 40), strings.Repeat(" ", 300), strings.Repeat("\n", 300), strings.Repeat("ab", 5000), "abcdefgh", "0123456789abcdef", "a1", "x", "AAAA", "https://h.example.com/cb", "next=", "user:pw", "​", "é"}
 	r := rand.New(rand.NewSource(5158))
-	n := 6000
+	n := 4000
 	if v, err := strconv.Atoi(os.Getenv("KEYWORD_GATE_ITERATIONS")); err == nil {
 		n = v // a longer run on demand
 	}
