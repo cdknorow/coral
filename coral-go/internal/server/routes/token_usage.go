@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -122,7 +123,7 @@ func (h *TokenUsageHandler) UsageSummary(w http.ResponseWriter, r *http.Request)
 		errInternalServer(w, err.Error())
 		return
 	}
-	byThinking := withNotReported(tracked, summaries)
+	byThinking := withNotReported(tracked, byModel)
 
 	// Compute grand totals
 	var totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalTokens int64
@@ -303,50 +304,103 @@ func (h *TokenUsageHandler) UsageSummaryByBoard(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, map[string]any{"teams": teams})
 }
 
-// withNotReported is the usage by thinking level: the levels the transcripts recorded (tracked) and, for each agent type, a "" row for
-// the rest of its usage: calls whose turn recorded no level, and everything from before the levels were tracked (#4969). It is the
-// type's total less what is tracked, never filled with the level an agent was launched with. The breakdown is kept by hour, so a
-// range that starts inside an hour can track a little more than the total counts: the rest is then none, never negative.
-func withNotReported(tracked []store.ThinkingUsageSummary, totals []store.UsageSummary) []store.ThinkingUsageSummary {
+// withNotReported is the usage by thinking level: the levels the transcripts recorded (tracked) and, for each agent type and model, a ""
+// row for the rest of that model's usage: calls whose turn recorded no level, and everything from before the levels were tracked (#4969). It is
+// the model's total (byModel, the By Model table) less what is tracked for it, never filled with the level an agent was launched with. The breakdown
+// is kept by hour, so a range that starts inside an hour can track a little more than the total counts: the rest is then none, never negative.
+//
+// Tracked rows with no model are what was kept before the model was in the key (#5120) and calls that named none; the first are part of the
+// totals of models that were not kept with them, so counting them besides those models' remainders would count them twice. They are shown as they
+// are and taken out of the type's remainders (the model-less remainder first, then the models' largest first), so that a type's rows still add
+// up to its totals. Nothing is attributed to a model: the remainders are what is left.
+func withNotReported(tracked []store.ThinkingUsageSummary, byModel []store.ModelUsageSummary) []store.ThinkingUsageSummary {
 	out := append([]store.ThinkingUsageSummary{}, tracked...)
-	sum := map[string]*store.ThinkingUsageSummary{}
-	for i := range tracked {
-		t := &tracked[i]
-		s := sum[t.AgentType]
-		if s == nil {
-			s = &store.ThinkingUsageSummary{AgentType: t.AgentType}
-			sum[t.AgentType] = s
-		}
-		s.InputTokens += t.InputTokens
-		s.OutputTokens += t.OutputTokens
-		s.CacheReadTokens += t.CacheReadTokens
-		s.CacheWriteTokens += t.CacheWriteTokens
-		s.TotalTokens += t.TotalTokens
-		s.CostUSD += t.CostUSD
-		s.NumCalls += t.NumCalls
+	type key struct{ agentType, model string }
+	sum := map[key]*store.ThinkingUsageSummary{}
+	legacy := map[string]*store.ThinkingUsageSummary{} // by agent type: the tracked rows with no model
+	add := func(to *store.ThinkingUsageSummary, t store.ThinkingUsageSummary) {
+		to.InputTokens += t.InputTokens
+		to.OutputTokens += t.OutputTokens
+		to.CacheReadTokens += t.CacheReadTokens
+		to.CacheWriteTokens += t.CacheWriteTokens
+		to.TotalTokens += t.TotalTokens
+		to.CostUSD += t.CostUSD
+		to.NumCalls += t.NumCalls
 	}
-	for _, tot := range totals {
-		rest := store.ThinkingUsageSummary{AgentType: tot.AgentType, Thinking: ""}
-		have := sum[tot.AgentType]
+	for _, t := range tracked {
+		k := key{t.AgentType, t.Model}
+		if sum[k] == nil {
+			sum[k] = &store.ThinkingUsageSummary{AgentType: t.AgentType, Model: t.Model}
+		}
+		add(sum[k], t)
+		if t.Model == "" {
+			if legacy[t.AgentType] == nil {
+				legacy[t.AgentType] = &store.ThinkingUsageSummary{AgentType: t.AgentType}
+			}
+			add(legacy[t.AgentType], t)
+		}
+	}
+	clamp := func(a, b int64) int64 {
+		if a < b {
+			return 0
+		}
+		return a - b
+	}
+	// The remainders, by agent type.
+	rests := map[string][]*store.ThinkingUsageSummary{}
+	var types []string
+	for _, tot := range byModel {
+		have := sum[key{tot.AgentType, tot.Model}]
+		if tot.Model == "" {
+			have = nil // the model-less tracked rows come out of the pool below, not out of this model's own total
+		}
 		if have == nil {
 			have = &store.ThinkingUsageSummary{}
 		}
-		clamp := func(a, b int64) int64 {
-			if a < b {
-				return 0
-			}
-			return a - b
-		}
-		rest.InputTokens = clamp(tot.InputTokens, have.InputTokens)
-		rest.OutputTokens = clamp(tot.OutputTokens, have.OutputTokens)
-		rest.CacheReadTokens = clamp(tot.CacheReadTokens, have.CacheReadTokens)
-		rest.CacheWriteTokens = clamp(tot.CacheWriteTokens, have.CacheWriteTokens)
-		rest.TotalTokens = clamp(tot.TotalTokens, have.TotalTokens)
+		rest := &store.ThinkingUsageSummary{AgentType: tot.AgentType, Model: tot.Model,
+			InputTokens: clamp(tot.InputTokens, have.InputTokens), OutputTokens: clamp(tot.OutputTokens, have.OutputTokens),
+			CacheReadTokens: clamp(tot.CacheReadTokens, have.CacheReadTokens), CacheWriteTokens: clamp(tot.CacheWriteTokens, have.CacheWriteTokens),
+			TotalTokens: clamp(tot.TotalTokens, have.TotalTokens)}
 		if tot.CostUSD > have.CostUSD {
 			rest.CostUSD = tot.CostUSD - have.CostUSD
 		}
-		if rest.TotalTokens > 0 || rest.CostUSD > 0 {
-			out = append(out, rest)
+		if len(rests[tot.AgentType]) == 0 {
+			types = append(types, tot.AgentType)
+		}
+		rests[tot.AgentType] = append(rests[tot.AgentType], rest)
+	}
+	for _, typ := range types {
+		pool := rests[typ]
+		if l := legacy[typ]; l != nil {
+			// Model-less remainder first, then the largest remainders.
+			sort.SliceStable(pool, func(i, j int) bool {
+				if (pool[i].Model == "") != (pool[j].Model == "") {
+					return pool[i].Model == ""
+				}
+				return pool[i].CostUSD > pool[j].CostUSD
+			})
+			left := *l
+			for _, r := range pool {
+				take := func(have *int64, want *int64) {
+					n := min(*have, *want)
+					*have -= n
+					*want -= n
+				}
+				take(&r.InputTokens, &left.InputTokens)
+				take(&r.OutputTokens, &left.OutputTokens)
+				take(&r.CacheReadTokens, &left.CacheReadTokens)
+				take(&r.CacheWriteTokens, &left.CacheWriteTokens)
+				take(&r.TotalTokens, &left.TotalTokens)
+				if n := min(r.CostUSD, left.CostUSD); n > 0 {
+					r.CostUSD -= n
+					left.CostUSD -= n
+				}
+			}
+		}
+		for _, r := range rests[typ] {
+			if r.TotalTokens > 0 || r.CostUSD > 0 {
+				out = append(out, *r)
+			}
 		}
 	}
 	return out

@@ -209,6 +209,9 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 	if err := d.ensureTokenUsageHourAgg(ctx); err != nil {
 		return err
 	}
+	if err := d.ensureTokenUsageThinkingModel(ctx); err != nil {
+		return err
+	}
 
 	// Fix double-encoded detail_json rows in agent_events (one-time fixup).
 	// Prior to the fix, makeToolDetail returned a JSON string which was then
@@ -783,12 +786,14 @@ CREATE TABLE IF NOT EXISTS call_metrics_hourly (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_token_usage_session_time ON token_usage(session_id, recorded_at);
 
--- The Cost view's breakdown by thinking level (#4969): the usage of the calls whose turn recorded a level, summed by UTC hour, agent type and
+-- The Cost view's breakdown by thinking level (#4969): the usage of the calls whose turn recorded a level, summed by UTC hour, agent type, model
+-- (the call's model, as the By Model table has it; '' for a call that named none and for the rows kept from before the model was in the key, #5120) and
 -- level, kept when a call is recorded (once: a repeated report of the same call is ignored, as the usage rows ignore it). Calls that
 -- recorded no level are not here: the view shows them as "Not reported". It is small and kept as the usage history is.
 CREATE TABLE IF NOT EXISTS token_usage_thinking (
     hour               TEXT NOT NULL,
     agent_type         TEXT NOT NULL,
+    model              TEXT NOT NULL DEFAULT '',
     thinking           TEXT NOT NULL,
     input_tokens       INTEGER NOT NULL DEFAULT 0,
     output_tokens      INTEGER NOT NULL DEFAULT 0,
@@ -798,7 +803,7 @@ CREATE TABLE IF NOT EXISTS token_usage_thinking (
     thinking_tokens    INTEGER NOT NULL DEFAULT 0,
     cost_usd           REAL NOT NULL DEFAULT 0,
     n_calls            INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (hour, agent_type, thinking)
+    PRIMARY KEY (hour, agent_type, model, thinking)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_token_usage_team ON token_usage(team_id);
 CREATE INDEX IF NOT EXISTS idx_token_usage_time ON token_usage(recorded_at);

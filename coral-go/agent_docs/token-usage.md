@@ -29,8 +29,8 @@ recorded model, including everything stored before models were recorded, is the
 row with `model` `""`; it is never filled with a guess. The list is `[]` when
 there is no usage.
 
-`by_thinking` has one row per agent type and thinking level (`agent_type`,
-`thinking`, `input_tokens`, `output_tokens`, `cache_read_tokens`,
+`by_thinking` has one row per agent type, model and thinking level (`agent_type`,
+`model`, `thinking`, `input_tokens`, `output_tokens`, `cache_read_tokens`,
 `cache_write_tokens`, `total_tokens`, `thinking_tokens`, `cost_usd`,
 `num_calls`). The level is the one each call's turn ran at as the CLI's
 transcript recorded it (Claude's `effort` on an assistant entry, Codex's
@@ -38,10 +38,17 @@ transcript recorded it (Claude's `effort` on an assistant entry, Codex's
 inside an hour includes that hour. `thinking_tokens` is what the CLI reported
 for thinking (Claude's `thinking_tokens`, the difference of Codex's cumulative
 `reasoning_output_tokens`); it is shown apart and never added to a total.
-Each agent type also has a row with `thinking` `""` ("Not reported") for the
-rest of its usage: calls whose turn recorded no level, a CLI that writes none
-(agy, Pi), and everything from before levels were tracked. It is the type's
-total less the tracked levels, and never the level an agent was launched with.
+`model` is the call's model, as in `by_model`; `""` is a call that named none and
+every row kept from before the model was in the key (the table was rebuilt with
+those rows under `""`, none lost or guessed). Each agent type and model also has a
+row with `thinking` `""` ("Not reported") for the rest of that model's usage:
+calls whose turn recorded no level, a CLI that writes none (agy, Pi), and
+everything from before levels were tracked. It is the model's total in `by_model`
+less the tracked levels, and never the level an agent was launched with. The
+tracked rows with model `""` come out of the type's remainders (the model-less
+remainder first, then the models' largest first), so a type's rows add up to its
+totals and nothing is counted twice or attributed to a model. By provider is
+`by_agent_type`: one source for the provider totals.
 
 A live session's `model` (the sidebar feed and `GET /api/sessions/live`) is the
 model the agent uses now: the transcript's latest (Claude, Codex), else the one

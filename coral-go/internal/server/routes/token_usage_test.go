@@ -636,9 +636,115 @@ func TestUsageSummary_ByThinkingHasANotReportedRemainder(t *testing.T) {
 
 func TestWithNotReportedNeverGoesNegative(t *testing.T) {
 	// A range that starts inside an hour tracks a little more (the breakdown is by hour) than the totals count.
-	tracked := []store.ThinkingUsageSummary{{AgentType: "claude", Thinking: "high", InputTokens: 100, TotalTokens: 110, CostUSD: 1}}
-	totals := []store.UsageSummary{{AgentType: "claude", InputTokens: 90, TotalTokens: 99, CostUSD: 0.9}}
-	out := withNotReported(tracked, totals)
+	tracked := []store.ThinkingUsageSummary{{AgentType: "claude", Model: "m1", Thinking: "high", InputTokens: 100, TotalTokens: 110, CostUSD: 1}}
+	byModel := []store.ModelUsageSummary{{AgentType: "claude", Model: "m1", InputTokens: 90, TotalTokens: 99, CostUSD: 0.9}}
+	out := withNotReported(tracked, byModel)
 	require.Len(t, out, 1, "nothing left over: no Not reported row")
 	assert.Equal(t, "high", out[0].Thinking)
+}
+
+// A remainder that has something left in one figure and nothing in another never shows a negative one.
+func TestWithNotReportedEveryFigureOfARemainderIsNonNegative(t *testing.T) {
+	tracked := []store.ThinkingUsageSummary{{AgentType: "claude", Model: "m1", Thinking: "high", InputTokens: 100, OutputTokens: 0, TotalTokens: 50, CostUSD: 0.2}}
+	byModel := []store.ModelUsageSummary{{AgentType: "claude", Model: "m1", InputTokens: 90, OutputTokens: 40, TotalTokens: 99, CostUSD: 0.9}}
+	out := withNotReported(tracked, byModel)
+	require.Len(t, out, 2)
+	for _, r := range out {
+		assert.GreaterOrEqual(t, r.InputTokens, int64(0))
+		assert.GreaterOrEqual(t, r.OutputTokens, int64(0))
+		assert.GreaterOrEqual(t, r.CacheReadTokens, int64(0))
+		assert.GreaterOrEqual(t, r.CacheWriteTokens, int64(0))
+		assert.GreaterOrEqual(t, r.TotalTokens, int64(0))
+		assert.GreaterOrEqual(t, r.CostUSD, 0.0)
+	}
+}
+
+// #5120: the remainder is per provider and model: each model's total less what is tracked for it, and every (provider, model) adds up to its
+// By Model row, in tokens and in cost.
+func TestUsageSummary_ByThinkingIsByProviderAndModel(t *testing.T) {
+	ts, _, router := setupTokenUsageTest(t)
+	ctx := t.Context()
+	rec := func(sid, typ, model, level, source, at string, in, out, think int, cost float64) {
+		require.NoError(t, ts.RecordUsage(ctx, &store.TokenUsage{SessionID: sid, AgentName: sid, AgentType: typ, Model: model, Thinking: level, ThinkingTokens: think, Source: source,
+			RecordedAt: at, InputTokens: in, OutputTokens: out, TotalTokens: in + out, CostUSD: cost}))
+	}
+	rec("s1", "claude", "claude-opus-5-5", "high", "jsonl", "2026-10-19T10:00:00Z", 1000, 100, 40, 1.0)
+	rec("s1", "claude", "claude-opus-5-5", "high", "jsonl", "2026-10-19T10:05:00Z", 400, 40, 10, 0.4)
+	rec("s1", "claude", "claude-opus-5-5", "low", "jsonl", "2026-10-19T10:10:00Z", 500, 50, 0, 0.5)
+	rec("s1", "claude", "claude-opus-5-5", "", "jsonl", "2026-10-19T10:20:00Z", 200, 20, 0, 0.25) // no level: Not reported for opus
+	rec("s2", "claude", "claude-sonnet-5-5", "medium", "jsonl", "2026-10-19T10:25:00Z", 300, 30, 0, 0.3)
+	rec("s3", "claude", "claude-haiku-5-5", "", "jsonl", "2026-10-19T10:26:00Z", 60, 6, 0, 0.06) // a model with no level at all
+	rec("s4", "codex", "gpt-5-codex", "medium", "jsonl", "2026-10-19T10:30:00Z", 70, 7, 3, 0.07)
+	rec("s5", "claude", "claude-opus-5-5", "high", "proxy", "2026-10-19T10:40:00Z", 9000, 90, 0, 9.0) // a proxy row: no level line, in the totals as Not reported
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/token-usage/summary", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		ByThinking []store.ThinkingUsageSummary `json:"by_thinking"`
+		ByModel    []store.ModelUsageSummary    `json:"by_model"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	got := map[string]store.ThinkingUsageSummary{}
+	for _, r := range body.ByThinking {
+		got[r.AgentType+"|"+r.Model+"|"+r.Thinking] = r
+		assert.GreaterOrEqual(t, r.InputTokens, int64(0))
+		assert.GreaterOrEqual(t, r.CostUSD, 0.0)
+	}
+	assert.EqualValues(t, 1400, got["claude|claude-opus-5-5|high"].InputTokens, "two calls of one model and level")
+	assert.EqualValues(t, 50, got["claude|claude-opus-5-5|high"].ThinkingTokens)
+	assert.EqualValues(t, 2, got["claude|claude-opus-5-5|high"].NumCalls)
+	assert.EqualValues(t, 500, got["claude|claude-opus-5-5|low"].InputTokens)
+	assert.EqualValues(t, 300, got["claude|claude-sonnet-5-5|medium"].InputTokens)
+	assert.EqualValues(t, 70, got["codex|gpt-5-codex|medium"].InputTokens)
+	assert.EqualValues(t, 9200, got["claude|claude-opus-5-5|"].InputTokens, "opus's remainder: the call with no level and the proxy row")
+	assert.EqualValues(t, 60, got["claude|claude-haiku-5-5|"].InputTokens, "a model with no level at all is all Not reported")
+	assert.NotContains(t, got, "claude|claude-sonnet-5-5|", "nothing left over for sonnet")
+	assert.NotContains(t, got, "codex|gpt-5-codex|")
+	// every (provider, model) adds up to its By Model row, and the thinking tokens are in no total
+	type k struct{ typ, model string }
+	in := map[k]int64{}
+	cost := map[k]float64{}
+	for _, r := range body.ByThinking {
+		in[k{r.AgentType, r.Model}] += r.InputTokens
+		cost[k{r.AgentType, r.Model}] += r.CostUSD
+	}
+	require.NotEmpty(t, body.ByModel)
+	for _, m := range body.ByModel {
+		assert.Equal(t, m.InputTokens, in[k{m.AgentType, m.Model}], "%s %s", m.AgentType, m.Model)
+		assert.InDelta(t, m.CostUSD, cost[k{m.AgentType, m.Model}], 1e-9, "%s %s", m.AgentType, m.Model)
+	}
+}
+
+// Rows kept from before the model was in the key have no model: they are shown as they are and taken out of the type's remainders, so a type's
+// rows still add up to its totals and nothing is counted twice or attributed to a model.
+func TestWithNotReportedTakesModelLessRowsOutOfTheRemainders(t *testing.T) {
+	tracked := []store.ThinkingUsageSummary{
+		{AgentType: "claude", Model: "", Thinking: "high", InputTokens: 300, OutputTokens: 30, TotalTokens: 330, CostUSD: 3},
+		{AgentType: "claude", Model: "opus", Thinking: "low", InputTokens: 100, OutputTokens: 10, TotalTokens: 110, CostUSD: 1},
+	}
+	byModel := []store.ModelUsageSummary{
+		{AgentType: "claude", Model: "opus", InputTokens: 600, OutputTokens: 60, TotalTokens: 660, CostUSD: 6},   // 100 tracked, 500 left
+		{AgentType: "claude", Model: "sonnet", InputTokens: 200, OutputTokens: 20, TotalTokens: 220, CostUSD: 2}, // none tracked, 200 left
+		{AgentType: "claude", Model: "", InputTokens: 50, OutputTokens: 5, TotalTokens: 55, CostUSD: 0.5},
+	}
+	out := withNotReported(tracked, byModel)
+	var in int64
+	var cost float64
+	for _, r := range out {
+		in += r.InputTokens
+		cost += r.CostUSD
+		assert.GreaterOrEqual(t, r.InputTokens, int64(0))
+		assert.GreaterOrEqual(t, r.CostUSD, 0.0)
+	}
+	assert.EqualValues(t, 850, in, "the type's rows add up to its total (600+200+50), the model-less tracked 300 counted once")
+	assert.InDelta(t, 8.5, cost, 1e-9)
+	var kept bool
+	for _, r := range out {
+		if r.Model == "" && r.Thinking == "high" {
+			kept = true
+			assert.EqualValues(t, 300, r.InputTokens, "the model-less tracked row is shown as it is")
+		}
+	}
+	assert.True(t, kept)
 }
