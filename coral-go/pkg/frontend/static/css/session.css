@@ -434,7 +434,7 @@
 
 .session-board-card {
     /* Team card: hairline frame + a little more breathing room between groups */
-    border: 1px solid var(--sidebar-separator, rgba(127, 127, 127, 0.18));
+    border: 1px solid var(--sidebar-separator);
     border-left: 2px solid transparent;
     border-radius: 4px;
     background: rgba(255, 255, 255, 0.025) !important;
@@ -455,7 +455,7 @@
     border-radius: 3px 3px 0 0;
     box-sizing: border-box;
     /* header/agents boundary lives here (the agents list no longer draws its own) */
-    box-shadow: inset 0 -1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
+    box-shadow: inset 0 -1px 0 var(--sidebar-separator);
 }
 
 /* Teams use a lightweight header rather than a framed card. */
@@ -1953,12 +1953,12 @@
 .server-details-update, .server-details-hint { margin: 0 0 var(--space-md); color: var(--text-secondary); }
 .server-switcher-panel .btn + .btn { margin-left: var(--space-xs); }
 /* The Display expander (#4947): it opens in place under the search, so it is a row of the header, not a popover. */
-.list-display-panel { display: flex; flex-direction: column; gap: var(--space-xs); flex: 1 1 100%; min-width: 0; box-sizing: border-box; position: static; box-shadow: none; max-width: none; padding: var(--space-sm) 0 0; border: 0; border-top: 1px solid var(--border-subtle, var(--border)); background: none; }
+.list-display-panel { display: flex; flex-direction: column; gap: var(--space-xs); flex: 1 1 100%; min-width: 0; box-sizing: border-box; position: static; box-shadow: none; max-width: none; padding: var(--space-sm) 0 0; border: 0; border-top: 1px solid var(--border); background: none; }
 .list-display-panel[hidden] { display: none; }
 .list-display-options { display: flex; flex-direction: column; gap: var(--space-xs); padding: 0 var(--space-xs); }
 .list-display-option { display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: 4px 0; font-size: 0.8125rem; }
 .list-display-option[hidden] { display: none; }
-.list-display-panel .agent-list-bar:not([hidden]) + .list-display-options { border-top: 1px solid var(--border-subtle, var(--border)); padding-top: var(--space-xs); }
+.list-display-panel .agent-list-bar:not([hidden]) + .list-display-options { border-top: 1px solid var(--border); padding-top: var(--space-xs); }
 /* What is on while the panel is shut: a count on the button, and a line under the search saying which filters and which sort. */
 /* A dot on the corner of the button, hanging off it so it never covers the icon (at 200% text too); the count is its data-count, and the button's name says it (agent_list_bar.js). */
 .display-badge { position: absolute; top: -0.125rem; right: -0.125rem; width: 0.5rem; height: 0.5rem; padding: 0; overflow: hidden; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg-secondary, var(--bg-primary)); }

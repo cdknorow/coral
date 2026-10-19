@@ -846,7 +846,7 @@ body.panel-dragging .agentic-state {
     padding: 6px 12px;
     font-size: var(--fs-md);
     line-height: 1.4;
-    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .board-task-header {
@@ -934,7 +934,7 @@ body.panel-dragging .agentic-state {
 }
 
 .board-task-item:hover {
-    background: var(--hover-bg, rgba(255,255,255,0.03));
+    background: var(--hover-bg);
 }
 
 .board-task-item.completed {

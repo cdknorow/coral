@@ -2160,7 +2160,7 @@ button.subscriber-history-link {
 }
 .open-folder-error {
     margin-top: var(--space-md);
-    color: var(--color-error, #f85149);
+    color: var(--error-text);
     font-size: var(--fs-md);
 }
 
@@ -3902,11 +3902,11 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
 .tb-default { font-weight: 400; color: var(--text-muted); }
 .tb-d { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; }
 .tb-note { font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.45; margin: var(--space-xs) 0 0; }
-.tb-pending { font-size: var(--fs-base); color: var(--color-warning, #d29922); margin: var(--space-sm) 0 0; }
+.tb-pending { font-size: var(--fs-base); color: var(--warning); margin: var(--space-sm) 0 0; }
 .tb-fixed { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; margin: 0; }
-.leftover-tmux-banner { display: flex; align-items: center; gap: var(--space-lg); margin: var(--space-md) var(--space-xl) 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-lg); border: 1px solid color-mix(in srgb, var(--color-warning, #d29922) 50%, var(--border)); background: color-mix(in srgb, var(--color-warning, #d29922) 12%, var(--bg-secondary)); color: var(--text-primary); font-size: var(--fs-md); }
+.leftover-tmux-banner { display: flex; align-items: center; gap: var(--space-lg); margin: var(--space-md) var(--space-xl) 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-lg); border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border)); background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary)); color: var(--text-primary); font-size: var(--fs-md); }
 .leftover-tmux-banner[hidden] { display: none; }
-.leftover-tmux-banner .material-icons { color: var(--color-warning, #d29922); }
+.leftover-tmux-banner .material-icons { color: var(--warning); }
 .leftover-tmux-text { flex: 1; min-width: 0; }
 .local-auth-banner { flex: none; display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; background: color-mix(in srgb, var(--error) 16%, var(--bg-secondary)); border-bottom: 1px solid var(--error); color: var(--text-primary); font-size: var(--fs-base, 13px); } /* #4291 */
 .local-auth-banner[hidden] { display: none; }

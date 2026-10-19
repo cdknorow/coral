@@ -281,7 +281,7 @@
 
 .cost-table tbody td {
     padding: 6px 12px;
-    border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
+    border-bottom: 1px solid var(--border-subtle);
     color: var(--text-primary);
     white-space: nowrap;
 }
@@ -291,7 +291,7 @@
 }
 
 .cost-table tbody tr:hover {
-    background: var(--hover-bg, rgba(255,255,255,0.03));
+    background: var(--hover-bg);
 }
 
 .cost-col-right {
