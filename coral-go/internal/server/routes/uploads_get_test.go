@@ -70,6 +70,9 @@ func TestGetUploadServesAnImageByItsBytes(t *testing.T) {
 
 // Content-Disposition carries a plain name: a name with quotes, spaces or non-ASCII is not copied into the header as it is.
 func TestGetUploadDispositionNameIsPlain(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a file name with a double quote cannot exist on Windows (the test makes one on disk)")
+	}
 	h, dir := getUploadRouter(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, `a"b c;d é.png`), testPNG, 0o600))
 	rec := getUpload(h, url.PathEscape(`a"b c;d é.png`))
