@@ -32,8 +32,8 @@ var allowedSenders = map[string]string{
 	"internal/server/routes/agent_ui_request.go\tSessionsHandler.agentUIRequest\tSendPrompt": "gate (its send closure)",
 	"internal/ptymanager/automated_input.go\tinputGate.holdEnter\tSendEnter":                 "gate (a withheld Enter, sent once the prompt is gone)",
 	// AgentLauncher.SendPrompt, which goes through the gate itself.
-	"internal/background/launcher.go\tAgentLauncher.startPromptDelivery\tSendPrompt":             "gated launcher prompt",
-	"internal/background/workflow_runner.go\tWorkflowRunner.executeAgentInteractive\tSendPrompt": "gated launcher prompt",
+	"internal/background/launcher.go\tAgentLauncher.startPromptDelivery\tSendPrompt":            "gated launcher prompt",
+	"internal/background/workflow_steps.go\tWorkflowRunner.executeAgentInteractive\tSendPrompt": "gated launcher prompt",
 	// The opt-in auto-accept feature, through its named exemption.
 	"internal/server/routes/auto_accept.go\tAutoAcceptor.check\tAutoAcceptSend": "auto-accept exemption",
 	"internal/server/routes/auto_accept.go\tAutoAcceptor.check\tSendRawInput":   "inside AutoAcceptSend",
