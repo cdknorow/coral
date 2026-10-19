@@ -209,3 +209,26 @@ func TestScheduledJobValidatesAgentType(t *testing.T) {
 	code, _ = sendJSON(t, http.MethodPut, srv.URL+"/api/scheduled/jobs/"+id, map[string]any{"agent_type": "codex"})
 	assert.Equal(t, http.StatusOK, code)
 }
+
+// An edit is refused what a create refuses (#5075): an empty name, an unknown job type, a duration that is not 1 to 86400 whole seconds.
+func TestScheduledJobUpdateValidatesNameTypeAndDuration(t *testing.T) {
+	srv, _ := scheduleTestServer(t)
+	repo := gitRepo(t)
+	code, created := sendJSON(t, http.MethodPost, srv.URL+"/api/scheduled/jobs", map[string]any{"name": "nightly", "cron_expr": "0 9 * * 1-5", "repo_path": repo, "prompt": "do it"})
+	require.Equal(t, http.StatusOK, code)
+	url := srv.URL + "/api/scheduled/jobs/" + strconv.Itoa(int(created["id"].(float64)))
+	for field, bad := range map[string][]any{
+		"name":           {"", "   ", 7},
+		"job_type":       {"shell", "", 1},
+		"max_duration_s": {0, -5, 86401, 1e18, 1.5, "60"},
+	} {
+		for _, v := range bad {
+			code, _ := sendJSON(t, http.MethodPut, url, map[string]any{field: v})
+			assert.Equal(t, http.StatusBadRequest, code, "%s=%v", field, v)
+		}
+	}
+	for field, good := range map[string]any{"name": "weekly", "job_type": "prompt", "max_duration_s": 86400} {
+		code, _ := sendJSON(t, http.MethodPut, url, map[string]any{field: good})
+		assert.Equal(t, http.StatusOK, code, "%s=%v", field, good)
+	}
+}

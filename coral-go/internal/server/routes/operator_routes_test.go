@@ -105,8 +105,9 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		assert.Equal(t, http.StatusOK, do("POST", "/api/sessions/launch-team", agent).Code, "team launches are allowed")
 		assert.Equal(t, http.StatusOK, do("DELETE", "/api/board/coral-go-team/subscribe", agent).Code, "an agent can still leave its board")
 		assert.Equal(t, http.StatusOK, do("POST", "/api/board/coral-go-team/messages", agent).Code, "and post on it")
-		// Reads stay open to agents; the Operator (here the dashboard's sign-in) can write.
-		assert.Equal(t, http.StatusOK, do("GET", "/api/workflows", agent).Code)
+		// Reads of the board and the agent's own session stay open to agents; the workflows' own commands and prompts do not (#5075), and the Operator (here the
+		// dashboard's sign-in) can write.
+		assert.Equal(t, http.StatusForbidden, do("GET", "/api/workflows", agent).Code, "an agent's token reads no workflow (#5075)")
 		cookie = true
 		assert.Equal(t, http.StatusOK, do("POST", "/api/tasks/run", nil).Code)
 		cookie = false
@@ -118,7 +119,8 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		assert.EqualValues(t, 1, calls["claude-dev POST /api/workflows/runs/{runID}/kill"], calls)
 		assert.EqualValues(t, 1, calls["claude-dev POST /api/sessions/launch"], calls)
 		assert.EqualValues(t, 1, calls["claude-dev POST /api/sessions/launch-team"], calls)
-		assert.Len(t, calls, len(writes)+2, "every agent write and launch recorded once, by route pattern (no ids)")
+		assert.EqualValues(t, 1, calls["claude-dev GET /api/workflows"], calls)
+		assert.Len(t, calls, len(writes)+3, "every agent write, launch and refused read recorded once, by route pattern (no ids)")
 		if !strict {
 			// No token: left to strict mode, so in default mode it goes through (and is recorded).
 			assert.Equal(t, http.StatusOK, do("POST", "/api/scheduled/jobs", map[string]string{"User-Agent": "coral-agent/dev"}).Code)

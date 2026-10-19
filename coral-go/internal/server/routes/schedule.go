@@ -230,6 +230,27 @@ func (h *ScheduleHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// What a create refuses, an update refuses too (#5075): a job saved with a name that is empty, a type the scheduler does not know or a duration of
+	// zero, a negative or a century would only fail later, on its first slot.
+	if v, ok := fields["name"]; ok {
+		if name, isStr := v.(string); !isStr || strings.TrimSpace(name) == "" {
+			errBadRequest(w, "'name' must be a non-empty string")
+			return
+		}
+	}
+	if v, ok := fields["job_type"]; ok {
+		if jt, isStr := v.(string); !isStr || (jt != "prompt" && jt != "workflow") {
+			errBadRequest(w, "'job_type' must be 'prompt' or 'workflow'")
+			return
+		}
+	}
+	if v, ok := fields["max_duration_s"]; ok {
+		if d, isNum := v.(float64); !isNum || d != float64(int(d)) || d <= 0 || d > 86400 {
+			errBadRequest(w, "'max_duration_s' must be a whole number of seconds from 1 to 86400")
+			return
+		}
+	}
+
 	delete(fields, "paused_reason") // the scheduler's to set, not the client's
 	if en, ok := fields["enabled"]; ok && (en == true || en == float64(1)) {
 		fields["paused_reason"] = "" // enabled again: clear the scheduler's pause reason
