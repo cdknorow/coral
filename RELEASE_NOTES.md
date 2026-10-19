@@ -1,5 +1,15 @@
 # Release Notes
 
+## v1.4.116 — The team health switch moves to Settings, and "off" means off for telemetry and the health monitor
+
+### Security
+
+- **The health monitor and usage events now honour every word for off:** two settings that are on by default were read by comparing with the one word `false`. The team health monitor ignored the Settings dialog's own off (stored as `False`), and `telemetry_enabled` ignored `off`, `0` and `no` sent through the settings API (the dialog itself was fine for telemetry): Settings > Privacy off must be off. Both are now read as off for `false`, `0`, `no` and `off` in any case, with surrounding spaces ignored (at startup, in the privacy view and when it is saved). Other settings were checked: the rest are written by their own routes or validators, which store only `true` or `false`.
+
+### Changes
+
+- **The switch for team health checks (all teams) moves from Team settings to Settings > Agents,** and the Global settings tab goes. The setting itself (`board_health_monitor`, on by default) and its restart-applied behaviour are unchanged, and a team's Health check tab now says it needs the switch, with a link to Settings, when it is off.
+
 ## v1.4.115 — The local Inbox has tabs, and the row menu button is quieter
 
 ### Changes
