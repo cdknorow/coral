@@ -288,6 +288,7 @@ const UNDERSIZED = `(() => {
         console.log('PASS F2 expanded panel: named dialog, 44px Close, Close/Escape return focus');
     } finally {
         await client.close();
+        try { execFileSync(bin, ['ui', 'remove', '--id', 'touch'], { env, stdio: 'ignore' }); } catch { /* best effort: the panel it published is taken off again (#4920) */ }
         await api(`/api/sessions/live/${encodeURIComponent(sname)}/kill`, 'POST', { agent_type: 'terminal', session_id: sid }).catch(() => {});
         fs.rmSync(dir, { recursive: true, force: true });
     }
