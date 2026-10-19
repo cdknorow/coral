@@ -203,7 +203,7 @@ func keywordPlaces(text string) []place {
 				}
 			}
 		case '-':
-			if i+1 < len(text) && text[i+1] == '-' && (i == 0 || text[i-1] == ' ' || text[i-1] == '\t' || text[i-1] == '"' || text[i-1] == '\'' || text[i-1] == '\n') {
+			if i+1 < len(text) && text[i+1] == '-' && (i == 0 || text[i-1] == ' ' || text[i-1] == '\t' || text[i-1] == '"' || text[i-1] == '\'' || text[i-1] == '\n' || text[i-1] == '\r' || text[i-1] == '\f') { // the rule's [\s"'] before the flag: \s is also CR and FF
 				j := i + 2
 				for j < len(lower) && isNameByte(lower[j]) { // no cap: the rule's name chain has none
 					j++
