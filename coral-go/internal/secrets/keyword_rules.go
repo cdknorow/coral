@@ -64,7 +64,7 @@ const (
 	quoteLike   = `(?:\\*["']|&(?:quot|apos|#0*34|#0*39|#[xX]0*2[27]);)`
 	sepAndQuote = `((?:` + quoteLike + `)?\s*[:=\x{FF1D}\x{FF1A}]\s*(?:` + quoteLike + `)?)`
 	// '=' URL-encoded, or encoded twice; or ':' with its space (password%3A%20value, #5172).
-	encSep = `(%(?:25)?3[Dd]|%(?:25)?3[Aa](?:%(?:25)?20|\+)?)`
+	encSep = `(%(?:25)?3[Dd](?:%(?:25)?20|\+)?|%(?:25)?3[Aa](?:%(?:25)?20|\+)?)`
 	// What a URL-encoded value may hold: the characters of a key or a token, encoded or not; it ends at the first encoded & ; space or quote.
 	encValue = `(?:[A-Za-z0-9._~+/=-]|%(?:2[BbFfDdEe]|3[Dd]|5[Ff]))`
 

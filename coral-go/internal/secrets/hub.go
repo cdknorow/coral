@@ -32,6 +32,7 @@ func (d withKeywordRules) Find(ctx context.Context, text string) ([]redact.Span,
 		return nil, err
 	}
 	spans = append(spans, keywordSpans(text)...)
+	spans = append(spans, moreKeywordSpans(text)...) // round four (#5212)
 	if stripped, at := dropInvisibles(text); at != nil {
 		for _, sp := range keywordSpans(stripped) {
 			if sp.Start < 0 || sp.End > len(at) || sp.Start >= sp.End {

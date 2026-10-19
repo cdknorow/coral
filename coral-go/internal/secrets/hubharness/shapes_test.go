@@ -98,6 +98,17 @@ func leakShapes(t *T) []leakShape {
 	add("api_key at the end of a query string", "GET /v1/items?api_key=", randHexStr(t, 32), "", "")
 	add("password at the end of a query string", "https://x.acme-corp.io/login?password=", r(alnum, 20), "", "")
 	add("openai key without the marker (sk- + 48)", "OPENAI_API_KEY=sk-", r(alnum, 48), "", "")
+	// round 4 (#5212): Security's neighbour leaks of the hub's keyword rules, and coral-hub's four deterministic misses. HARD: zero of 2000 may survive.
+	add("url-encoded JSON in a query parameter", "GET /view?cfg=%7B%22api_key%22%3A%22", r(alnum, 32), "%22%7D", "")
+	add("api_key as an XML element", "<config><api_key>", r(alnum, 32), "</api_key></config>", "")
+	add("api_key as an HTML form field", `<form><input type="hidden" name="api_key" value="`, r(alnum, 32), `"></form>`, "")
+	add("double-encoded entity quotes (&amp;quot;)", "&amp;quot;api_key&amp;quot;: &amp;quot;", r(alnum, 32), "&amp;quot;", "")
+	add("entity quotes without the semicolon", "&quotapi_key&quot: &quot", r(alnum, 32), "&quot", "")
+	add("password after an encoded colon and space", "https://x.acme-corp.io/login?password%3D%20", r(alnum, 20), "", "")
+	add("curl -b with the cookie glued on", "curl -bsession=", r(alnum, 32), " https://api.acme-corp.io/x", "")
+	add("curl -b with a quoted cookie, no space", `curl -b"session=`, r(alnum, 32), `" https://api.acme-corp.io/x`, "")
+	add("a url-encoded key name", "GET /v1/items?api%5Fkey=", randHexStr(t, 32), "", "")
+	add("docker login -p", "docker login -u deploy -p ", r(alnum, 24), " registry.acme-corp.io", "")
 	// KNOWN GAPS (Security's corrected findings, 2026-10-16): the subtest runs and skips with the reason while the secret leaks
 	add("bare Authorization: Bearer line, opaque token", "Authorization: Bearer ", r(alnum, 40), "", gap)
 	add("bare Authorization: Basic line", "Authorization: Basic ", randB64(t, 24), "", gap)

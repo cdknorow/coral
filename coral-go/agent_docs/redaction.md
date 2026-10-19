@@ -22,7 +22,7 @@ never passed on as it is.
   message's snippet (`requestRedactor`). Local requests keep the local rules.
 - What a hub viewer matches a team-artifact query on (`shownText`): it must be what the reply shows.
 - A file or a message sent to another Coral through Coral Hub, which the hub does not redact: the scan before it leaves (`secrets.HubBudgetedRedactor`).
-  With the keyword rules on, a file or message with a keyword and a value in it is refused.
+  With the keyword rules on, a file or message with a keyword and a value in it is refused. The refusal says the line (in the file, or in the re-encoded copy that found it) and the rule, never any part of the secret; in this scan only, a value that is a code reference (letters and underscores joined by dots, no digit: `config.PostHogKey`) is not taken for a secret.
 
 The local callers (`coral.log`, events, the board, saved views of local requests) keep `secrets.Redactor`: they cannot reach a hub viewer without the reply's own redaction.
 
@@ -47,6 +47,10 @@ reply). Off, the hub's redactor is rules 1 and 2 only, and so is the scan of wha
 | a name written as one word | `PGPASSWORD`, `MYSQL_PWD`, `SSHPASS`, `AWS_SECRET`, `SECRET_KEY_BASE`, `REDISCLI_AUTH`, `APITOKEN` (an exact list: `mytoken` is still not a name) | 8 or more characters |
 | a command-line argument | the flags `--password`, `--token`, `--api-key`, `--db-password` followed by a value (after a space or `=`); the password after `mysql -p` (no space) or `sshpass -p` | as the name above (4 or more after `-p`); a value that starts with `-` is the next flag and is left |
 | a Cookie or Set-Cookie header | every `name=value` pair of the header | 16 or more characters, or 8 or more under a name with `sess`, `sid`, `auth`, `token`, `key`, `secret`, `pass`, ... in it; the attributes (`Path`, `Domain`, `Expires`, `SameSite`, ...) are left |
+| a value in markup | an XML element named like a secret (`<api_key>VALUE</api_key>`) and an HTML form field (`<input name="api_key" value="VALUE">`, either order of the attributes) | as the name above |
+| a URL-encoded JSON pair | `%22api_key%22%3A%22VALUE%22`, encoded once or twice; `password%3D%20VALUE` | as the name above |
+| quote entities and encoded name bytes | `&amp;quot;`, `&quot` with no semicolon, `api%5Fkey` and `x%2Dapi%2Dkey` are read as the quote and the underscore or hyphen they stand for | as the name above |
+| curl's cookie argument and docker login | the cookie string of `curl -b` (glued on, quoted or not) and `--cookie`; the password argument of `docker login` (`-p` or `--password`) | a cookie value as for a Cookie header; a docker password of 4 or more characters |
 | URL-encoded colon | a name followed by an encoded colon and an encoded space or a plus (`%3A%20`, `%3A+`), once or twice encoded | as the encoded rules above |
 | HTML-entity quotes | the quotes around a name and its value written as `&quot;`, `&#34;`, `&#x22;`, `&apos;`, `&#39;` | as the name above; a closing entity is not part of the value |
 | the full-width equals sign and colon (U+FF1D, U+FF1A) | read as `=` and `:` | as above |

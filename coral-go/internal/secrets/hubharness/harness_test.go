@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/secrets"
@@ -48,7 +49,7 @@ func TestHubRedactorMissRate(t *testing.T) {
 	}
 	require.NotEmpty(t, names)
 	for _, n := range names {
-		require.Zero(t, miss[n], "%s: %d of %d missed; the first: %.80q", n, miss[n], samples, first[n])
+		assert.Zero(t, miss[n], "%s: %d of %d missed; the first: %.80q", n, miss[n], samples, first[n]) // assert, not require: one run lists every shape that leaks
 	}
 }
 
