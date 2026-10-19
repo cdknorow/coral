@@ -92,6 +92,25 @@ type mockSessionTerminal struct {
 	arrows           map[string][]string // "Up" and "Down", sent with SendArrow
 	onArrow          func(name string)   // called (unlocked) after each SendArrow, e.g. the selection moving
 	onSend           func(target string) // called (unlocked) before each SendToTarget is recorded, e.g. to look at the board then
+	// onCall is called (unlocked) at the start of each terminal step of a restart, resume or wake (CreateSession, StartLogging, RestartPane, RenameSession,
+	// ClearHistory, SendToTarget), and the step then fails with the context's error when the request has ended, as a real terminal's command does (#5171):
+	// only when ctxFails is set, so that the tests written before it, which end a request on purpose, keep their meaning.
+	onCall   func(method string)
+	ctxFails bool
+}
+
+// step runs onCall for method and reports the context's error, if the request that is making this step has ended.
+func (m *mockSessionTerminal) step(ctx context.Context, method string) error {
+	m.mu.Lock()
+	hook, fails := m.onCall, m.ctxFails
+	m.mu.Unlock()
+	if hook != nil {
+		hook(method)
+	}
+	if fails {
+		return ctx.Err()
+	}
+	return nil
 }
 
 func newMockTerminal() *mockSessionTerminal {
@@ -223,7 +242,10 @@ func (m *mockSessionTerminal) SendEnter(_ context.Context, name, _, _ string) er
 	return nil
 }
 
-func (m *mockSessionTerminal) SendToTarget(_ context.Context, target, command string) error {
+func (m *mockSessionTerminal) SendToTarget(ctx context.Context, target, command string) error {
+	if err := m.step(ctx, "SendToTarget"); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	hook := m.onSend
 	m.mu.Unlock()
@@ -242,7 +264,10 @@ func (m *mockSessionTerminal) SendTerminalInput(_ context.Context, _, _ string) 
 	return nil
 }
 
-func (m *mockSessionTerminal) CreateSession(_ context.Context, name, workDir string) error {
+func (m *mockSessionTerminal) CreateSession(ctx context.Context, name, workDir string) error {
+	if err := m.step(ctx, "CreateSession"); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sessions[name] = &ptymanager.PaneInfo{
@@ -269,8 +294,13 @@ func (m *mockSessionTerminal) KillSessionOnly(_ context.Context, name, _, _ stri
 	return nil
 }
 
-func (m *mockSessionTerminal) RestartPane(_ context.Context, _, _ string) error { return nil }
-func (m *mockSessionTerminal) RenameSession(_ context.Context, oldName, newName string) error {
+func (m *mockSessionTerminal) RestartPane(ctx context.Context, _, _ string) error {
+	return m.step(ctx, "RestartPane")
+}
+func (m *mockSessionTerminal) RenameSession(ctx context.Context, oldName, newName string) error {
+	if err := m.step(ctx, "RenameSession"); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if p, ok := m.sessions[oldName]; ok {
@@ -290,9 +320,13 @@ func (m *mockSessionTerminal) ResizeSession(_ context.Context, name string, _ in
 	}
 	return nil
 }
-func (m *mockSessionTerminal) StartLogging(_ context.Context, _, _ string) error { return nil }
-func (m *mockSessionTerminal) StopLogging(_ context.Context, _ string) error     { return nil }
-func (m *mockSessionTerminal) ClearHistory(_ context.Context, _ string) error    { return nil }
+func (m *mockSessionTerminal) StartLogging(ctx context.Context, _, _ string) error {
+	return m.step(ctx, "StartLogging")
+}
+func (m *mockSessionTerminal) StopLogging(_ context.Context, _ string) error { return nil }
+func (m *mockSessionTerminal) ClearHistory(ctx context.Context, _ string) error {
+	return m.step(ctx, "ClearHistory")
+}
 
 func (m *mockSessionTerminal) HasSession(_ context.Context, name string) bool {
 	m.mu.Lock()

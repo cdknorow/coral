@@ -203,6 +203,17 @@ func sendLaunchCommand(ctx context.Context, terminal ptymanager.SessionTerminal,
 	return nil
 }
 
+// lifecycleTimeout bounds the part of a restart, resume or wake that is past the point where it can be undone (a var for the tests).
+var lifecycleTimeout = 2 * time.Minute
+
+// lifecycleCtx is the context for the part of a restart, resume or wake that cannot be left half done (#5171): once the old terminal is ended or the new
+// one made, the rest (the pane respawned and renamed, the log started, the start command typed, the store updated) must run to its end whether or not
+// the dashboard is still waiting. A request that is dropped there (a reload, a tab change) used to leave the agent in neither state: the old one
+// ended, the new one never started, a bare shell. Detached from the request, with its own bound, it is the old agent or the new one, never between.
+func lifecycleCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), lifecycleTimeout)
+}
+
 // afterTeamSlot runs f once d has passed (tests replace it).
 var afterTeamSlot = func(d time.Duration, f func()) { time.AfterFunc(d, f) }
 
@@ -295,6 +306,8 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		fail(w)
 		return
 	}
+	ctx, cancel := lifecycleCtx(ctx) // from here the restart touches the terminals: it runs to its end whatever the request does
+	defer cancel()
 	target, fail := h.restartTerminal(ctx, plan)
 	if fail != nil {
 		fail(w)
@@ -780,6 +793,8 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		fail(w)
 		return
 	}
+	ctx, cancel := lifecycleCtx(ctx) // as Restart: from here it runs to its end whatever the request does
+	defer cancel()
 	target, fail := h.restartTerminal(ctx, p)
 	if fail != nil {
 		fail(w)

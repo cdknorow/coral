@@ -106,7 +106,8 @@ func (h *SessionsHandler) Sleep(w http.ResponseWriter, r *http.Request) {
 func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
 	boardName := urlParam(r, "boardName")
-	ctx := r.Context()
+	ctx, cancel := lifecycleCtx(r.Context()) // a team wake runs to its end whatever the request does (#5171)
+	defer cancel()
 
 	// Find sleeping sessions on this board and relaunch
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
@@ -382,7 +383,8 @@ func (h *SessionsHandler) SleepSession(w http.ResponseWriter, r *http.Request) {
 func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
 	sessionID := chi.URLParam(r, "sessionID")
-	ctx := r.Context()
+	ctx, cancel := lifecycleCtx(r.Context()) // a wake runs to its end whatever the request does (#5171)
+	defer cancel()
 
 	sess, err := h.ss.GetLiveSession(ctx, sessionID)
 	if err != nil || sess == nil {
@@ -523,8 +525,9 @@ func (h *SessionsHandler) SleepAll(w http.ResponseWriter, r *http.Request) {
 // WakeAll wakes all sleeping agents except archived ones.
 // POST /api/sessions/live/wake-all
 func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
-	defer h.kickWS() // the feed shows the change now, not on the next tick
-	ctx := r.Context()
+	defer h.kickWS()                         // the feed shows the change now, not on the next tick
+	ctx, cancel := lifecycleCtx(r.Context()) // a wake of all runs to its end whatever the request does (#5171)
+	defer cancel()
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
 
 	var sleeping []store.LiveSession

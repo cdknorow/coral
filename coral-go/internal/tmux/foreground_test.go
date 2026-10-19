@@ -151,3 +151,21 @@ func TestShellIdleLooksAgainForAShellThatStartedAfterTheSnapshot(t *testing.T) {
 	_, _, err = ShellIdle(1 << 30)
 	assert.ErrorContains(t, err, "no such process", "a pid that does not exist still does not")
 }
+
+// A pid that is not there (a pane that is gone) makes one fresh process-table read a second, not one per check.
+func TestShellIdleFreshLookIsLimitedPerPidPerSecond(t *testing.T) {
+	skipWithoutUnixTmux(t)
+	const gone = 1<<30 + 12345
+	freshLookMu.Lock()
+	delete(freshLooks, gone)
+	freshLookMu.Unlock()
+	before := procTableRuns.Load()
+	for i := 0; i < 5; i++ {
+		procTableMu.Lock()
+		procTableLast = &procTable{byPID: map[int]procEntry{}, children: map[int][]int{}, at: time.Now().Add(-500 * time.Millisecond)} // stale each time
+		procTableMu.Unlock()
+		_, _, err := ShellIdle(gone)
+		require.ErrorContains(t, err, "no such process")
+	}
+	assert.Equal(t, int64(1), procTableRuns.Load()-before, "one fresh ps run for five checks of a pid that is not there")
+}

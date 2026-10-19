@@ -46,7 +46,7 @@ func ShellIdle(pid int) (idle bool, shell string, err error) {
 		return false, "", fmt.Errorf("read process %d: %w", pid, err)
 	}
 	p, ok := procs.byPID[pid]
-	if !ok && time.Since(procs.at) > 20*time.Millisecond { // (a snapshot taken by this call is as fresh as it gets)
+	if !ok && time.Since(procs.at) > 20*time.Millisecond && freshLookAllowed(pid) { // (a snapshot taken by this call is as fresh as it gets)
 		// A shell started since the snapshot (a restart's new terminal) is not in it: look again, now, before an unknown shell counts as a running
 		// agent and automated text is typed into a bare shell (#5171, #5170).
 		if procs, err = readProcTableFresh(); err != nil {
@@ -83,6 +83,31 @@ type procTable struct {
 	children map[int][]int
 	at       time.Time
 }
+
+// freshLookAllowed lets one fresh process-table read per pid per second through: a pid that is not there (a pane that is gone) must not make every check
+// of it run ps.
+func freshLookAllowed(pid int) bool {
+	freshLookMu.Lock()
+	defer freshLookMu.Unlock()
+	now := time.Now()
+	if t, ok := freshLooks[pid]; ok && now.Sub(t) < time.Second {
+		return false
+	}
+	if len(freshLooks) > 1024 { // forget the old ones
+		for k, t := range freshLooks {
+			if now.Sub(t) >= time.Second {
+				delete(freshLooks, k)
+			}
+		}
+	}
+	freshLooks[pid] = now
+	return true
+}
+
+var (
+	freshLookMu sync.Mutex
+	freshLooks  = map[int]time.Time{}
+)
 
 // procTableTTL is how long a process-table snapshot answers: long enough to serve one
 // reconciler pass over every agent, short enough that an exit is seen on the next pass.
