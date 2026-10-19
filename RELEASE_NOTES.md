@@ -1,5 +1,26 @@
 # Release Notes
 
+## v1.4.120 — Secrets are redacted by keyword on the way to Coral Hub, a library filter bug that leaked secrets is fixed, and the tray respects Usage analytics
+
+### Security
+
+- **A secret containing the word "false" was shown unredacted, on every path:** the redaction library's global filter, `(?i)^true|false|null$`, was meant as "the secret is true, false or null" but read as "starts with true, contains false, or ends with null", so any finding that held `false` in any case (a random private key body does about 1 time in 3,600), began with `true` or ended with `null` was thrown away as a false positive, for every rule. The filter is now anchored when loaded, a library whose filter still has the unanchored form is refused, and a PEM private key block is also redacted by Coral's own rule from its header line to its end line, whatever its base64 holds.
+- **Replies to Coral Hub redact the value after a recognised name, whatever it looks like:** `api_key`, `token`, `password`, a cookie, a `--password` flag and the like, in JSON inside a JSON string, URL-encoded, one-word names (`PGPASSWORD`, `MYSQL_PWD`), command-line arguments, `Cookie` and `Set-Cookie`, and full-width `=` and `:`. These rules apply to the cloud tunnel only (every local view is as it was), are on by default whenever connected, and can be turned off with the setting `hub_redact_keywords` or `CORAL_REDACT_KEYWORDS=off`. A cheap gate keeps their cost down on large replies. A reply too large to check within the redaction time budget is refused rather than shown, as before; keyword-dense text reaches that sooner.
+- **The tray no longer sends usage events when Usage analytics are off:** the tray process started its own install and app-opened tracking and never read the saved setting (only `CORAL_TELEMETRY_DISABLED` stopped it). It now sends only after the server it supervises reports that Usage analytics are on. The telemetry and privacy docs name what each part sends.
+
+### Fixes
+
+- **A parked task is never offered or claimed until it is unparked:** `coral-board task claim` with no id handed an idle agent a parked task, and naming one worked too. All four reads now skip it and say it is parked.
+- **A second tap closes the branch name's box on a phone:** the full-name box on an agent's branch chip is a hover effect only for a pointer that is not a finger, so it no longer sticks after a tap.
+
+### Internal
+
+- Three dashboard modules split out of team_dialogs.js and message_board.js (the AI team wizard, the team form's templates, board export), moves only.
+
+### Tests
+
+- A Windows checkout's CRLF no longer empties the docs table the entropy test reads; the dashboard censuses follow the moves.
+
 ## v1.4.119 — The artifact preview can take the whole screen on a phone
 
 ### Fixes
