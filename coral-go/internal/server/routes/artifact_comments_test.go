@@ -430,6 +430,24 @@ func TestArtifactCommentsAreRedactedWhenKept(t *testing.T) {
 	assert.NotContains(t, list[0].Body, secret)
 }
 
+// The Hub's keyword rules apply too (Orchestrator, round 2): a low-entropy api_key typed into a body or copied into an anchor is stored redacted.
+func TestArtifactCommentsKeywordSecretsAreRedactedWhenKept(t *testing.T) {
+	rig := newCmtRig(t)
+	anchor := anchorOf("q")
+	anchor["quote"] = "config: api_key=hunter2 here"
+	anchor["prefix"] = "password=letmein "
+	anchor["suffix"] = " token=abc"
+	code, out := rig.do("POST", cp(cmtDoc), cmtAsOwner, map[string]any{"body": "use api_key=hunter2 ok", "anchor": anchor})
+	require.Equal(t, 201, code, fmt.Sprint(out))
+	list, err := rig.ss.ListArtifactComments(context.Background(), cmtDoc, "", nil)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	stored := fmt.Sprint(list[0])
+	for _, leaked := range []string{"hunter2", "letmein", "token=abc"} {
+		assert.NotContains(t, stored, leaked)
+	}
+}
+
 func TestArtifactCommentNamesAreText(t *testing.T) {
 	assert.Equal(t, "Casey", cleanCommentName("  Casey  "))
 	assert.Equal(t, "ab", cleanCommentName("a‮b​\n"), "bidi, zero-width and control characters are dropped")
