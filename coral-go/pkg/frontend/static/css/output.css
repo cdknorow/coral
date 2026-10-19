@@ -121,6 +121,16 @@ body.panel-dragging .preview-pane {
 
 .preview-dock-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
 
+/* The maximise toggle (#4931): 44px wide, and 44px high where the pointer is a finger; the bar keeps its height with a mouse */
+.preview-max-btn { min-width: 44px; justify-content: center; }
+.preview-max-btn[hidden] { display: none; }
+@media (pointer: coarse) { .preview-max-btn, .preview-dock-btn { min-height: 44px; } }
+.preview-column-resize-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Maximised: the column takes the whole centre, Chat is hidden behind it, the width it had is still on it (inline) and comes back with the class gone */
+.live-body.preview-maximised .live-left-column { display: none; }
+.live-body.preview-maximised .preview-column-resize-handle { display: none !important; }
+.live-body.preview-maximised .preview-column { flex: 1 1 auto; width: auto !important; min-width: 0; }
+
 /* Docked as a full-height column between the terminal and the side panel */
 .preview-column {
     width: 480px;

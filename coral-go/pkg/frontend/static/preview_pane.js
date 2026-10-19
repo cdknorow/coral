@@ -6,6 +6,7 @@ import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImag
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
 import { loadCodeMirror, loadHighlight, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
 import { makeDraggable } from './draggable.js';
+import { fitTerminal } from './xterm_renderer.js';
 import { toggleStarFile, isFileStarred } from './changed_files.js';
 import { renderArtifact, resolveArtifactSource } from './artifact_preview.js';
 import { serverUrl, currentServer, isCloud } from './server_base.js';
@@ -57,6 +58,7 @@ let _paneWidth = null;
 let _sessionKey = null;   // agent whose tabs are showing
 const _stash = new Map(); // session key -> { tabs, activeId } for agents in the background
 let _dock = 'bottom';      // 'bottom' (under the side panel tabs) | 'column' (full-height column)
+let _maximised = false;    // the column covers Chat (#4931): not saved (a reload opens with Chat); ends when the pane is hidden, moves to the bottom, or another agent is shown
 
 const DOCK_ICONS = {
     // Shown while docked at the bottom: switch to a full-height column.
@@ -64,6 +66,32 @@ const DOCK_ICONS = {
     // Shown while docked as a column: switch back to the bottom.
     column: '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M1.5 9h13"/></svg>',
 };
+
+// A maximised preview shows these in the tab bar (a toggle, #4931): maximise = the pane takes the whole centre, Chat hidden behind it; restore = the old split.
+const MAX_ICON_OFF = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5l-4.5 4.5M2.5 13.5 7 9"/></svg>';
+const MAX_ICON_ON = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5l4-4M6.5 9.5l-4 4"/></svg>';
+
+// The column's width (#4931). What is saved is the person's wish; what is shown is that wish held to what the window has room for, every time it is placed, so a width saved in a big window, a
+// corrupted value or a narrow window can never leave a pane that cannot be seen or dragged: at least COLUMN_MIN wide, and Chat keeps at least CHAT_MIN. (The side panel is outside .live-body.)
+const COLUMN_MIN = 240, COLUMN_DEFAULT = 480, CHAT_MIN = 240, HANDLE_W = 1;
+function _maxColumnWidth() {
+    const body = document.querySelector('.live-body');
+    const room = body ? body.getBoundingClientRect().width : window.innerWidth;
+    return Math.max(COLUMN_MIN, Math.floor(room - CHAT_MIN - HANDLE_W));
+}
+function _clampColumnWidth(w) {
+    w = Number(w);
+    if (!Number.isFinite(w) || w <= 0) w = COLUMN_DEFAULT;
+    return Math.round(Math.min(Math.max(w, COLUMN_MIN), _maxColumnWidth()));
+}
+function _clampPaneHeight(h) {
+    h = Number(h);
+    const side = document.getElementById('agentic-state');
+    const max = Math.max(100, Math.floor((side ? side.getBoundingClientRect().height : window.innerHeight) * 0.7));
+    if (!Number.isFinite(h) || h <= 0) return null;
+    return Math.round(Math.min(Math.max(h, 100), max));
+}
+const _savedNumber = key => { const n = parseInt(browserLocal.get(key), 10); return Number.isFinite(n) && n > 0 ? n : null; };
 
 const _isMobile = () => window.innerWidth <= 767;
 const _effectiveDock = () => (_isMobile() ? 'bottom' : _dock);
@@ -74,8 +102,7 @@ export function initPreviewPane() {
     const handle = document.getElementById('preview-pane-resize-handle');
     if (!handle) return;
 
-    const saved = browserLocal.get('coral-preview-pane-height');
-    if (saved) _paneHeight = parseInt(saved, 10);
+    _paneHeight = _savedNumber('coral-preview-pane-height');
 
     makeDraggable(handle, {
         cursor: 'row-resize',
@@ -100,8 +127,7 @@ export function initPreviewPane() {
         },
     });
 
-    const savedWidth = browserLocal.get('coral-preview-column-width');
-    if (savedWidth) _paneWidth = parseInt(savedWidth, 10);
+    _paneWidth = _savedNumber('coral-preview-column-width');
     if (browserLocal.get('coral-preview-pane-dock') === 'column') _dock = 'column';
 
     const colHandle = document.getElementById('preview-column-resize-handle');
@@ -111,11 +137,10 @@ export function initPreviewPane() {
         makeDraggable(colHandle, {
             cursor: 'col-resize',
             onMove: (e) => {
-                const side = document.getElementById('agentic-state');
-                const max = liveBody.getBoundingClientRect().width - 240 - (side ? side.offsetWidth : 0);
-                return Math.min(Math.max(column.getBoundingClientRect().right - e.clientX, 240), Math.max(240, max));
+                // The room is .live-body's: the side panel is outside it (it was taken off again here, so the limit fell to the minimum and the pane could only be dragged narrower, #4931).
+                return Math.min(Math.max(column.getBoundingClientRect().right - e.clientX, COLUMN_MIN), _maxColumnWidth());
             },
-            onFlush: (v) => { column.style.width = v + 'px'; },
+            onFlush: (v) => { column.style.width = v + 'px'; _syncColumnHandle(v); },
             onEnd: (v) => {
                 if (v != null) {
                     _paneWidth = Math.round(v);
@@ -123,7 +148,31 @@ export function initPreviewPane() {
                 }
             },
         });
+        // The handle by keyboard (a separator with a value): Left widens, Right narrows, Home and End go to the ends; kept where the window has room.
+        colHandle.addEventListener('keydown', (e) => {
+            const step = e.shiftKey ? 96 : 24;
+            const now = column.getBoundingClientRect().width;
+            const next = e.key === 'ArrowLeft' ? now + step : e.key === 'ArrowRight' ? now - step : e.key === 'Home' ? COLUMN_MIN : e.key === 'End' ? _maxColumnWidth() : null;
+            if (next === null) return;
+            e.preventDefault();
+            _paneWidth = _clampColumnWidth(next);
+            browserLocal.set('coral-preview-column-width', _paneWidth);
+            _applyColumnWidth();
+            fitTerminal();
+        });
+        // The room changes with the window, the side panel opening or shutting, and the sidebar's width: the width shown is held to it again each time.
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (_tabs.length && _effectiveDock() === 'column' && !_maximised) _applyColumnWidth(); }).observe(liveBody);
     }
+
+    document.getElementById('preview-max-btn')?.addEventListener('click', () => _setMaximised(!_maximised));
+    // Escape gives the maximised pane back its place, unless something in it (the editor's own search box) already used the key.
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || !_maximised || e.defaultPrevented) return;
+        if ([...document.querySelectorAll('.modal')].some(m => m.style.display && m.style.display !== 'none')) return; // a dialog has the key
+        _setMaximised(false);
+        e.preventDefault();
+        document.getElementById('preview-max-btn')?.focus();
+    });
 
     document.getElementById('preview-dock-btn')?.addEventListener('click', () => {
         _dock = _dock === 'column' ? 'bottom' : 'column';
@@ -132,9 +181,44 @@ export function initPreviewPane() {
     });
     window.addEventListener('resize', () => { if (_tabs.length) _placePane(); });
     _placePane();
+    _setMaximised(false); // paints the toggle's icon and label
 
     // Toolbar buttons are re-rendered per tab, so listen on the container.
     document.getElementById('preview-toolbar')?.addEventListener('click', _onToolbarClick);
+}
+
+/** Show the column at the width wished for, held to the room there is (the wish itself is kept for when the window grows back). */
+function _applyColumnWidth() {
+    const column = document.getElementById('preview-column');
+    if (!column) return;
+    const w = _clampColumnWidth(_paneWidth);
+    column.style.width = w + 'px';
+    _syncColumnHandle(w);
+}
+
+function _syncColumnHandle(w) {
+    const h = document.getElementById('preview-column-resize-handle');
+    if (!h) return;
+    h.setAttribute('aria-valuemin', String(COLUMN_MIN));
+    h.setAttribute('aria-valuemax', String(_maxColumnWidth()));
+    h.setAttribute('aria-valuenow', String(Math.round(w)));
+}
+
+/** Maximise the column over Chat, or give Chat its place back (#4931). The width the column had is untouched: restoring is taking one class off. */
+function _setMaximised(on) {
+    on = !!on && _effectiveDock() === 'column' && _tabs.length > 0;
+    const body = document.querySelector('.live-body');
+    const btn = document.getElementById('preview-max-btn');
+    const changed = on !== _maximised;
+    _maximised = on;
+    if (body) body.classList.toggle('preview-maximised', on);
+    if (btn) {
+        btn.innerHTML = on ? MAX_ICON_ON : MAX_ICON_OFF;
+        btn.title = on ? 'Restore the preview beside the chat (Escape)' : 'Maximise the preview over the chat';
+        btn.setAttribute('aria-label', btn.title);
+        btn.setAttribute('aria-pressed', String(on));
+    }
+    if (changed) fitTerminal(); // the chat or terminal got its room back or lost it
 }
 
 /** Move the pane between the side panel (bottom) and its own column, then show it if it has tabs. */
@@ -152,16 +236,21 @@ function _placePane() {
         if (pane.parentElement !== column) column.appendChild(pane);
         pane.classList.add('docked-column');
         pane.style.height = '';
-        if (_paneWidth) column.style.width = _paneWidth + 'px';
     } else {
         if (pane.parentElement !== side) side.appendChild(pane);
         pane.classList.remove('docked-column');
-        if (_paneHeight) pane.style.height = _paneHeight + 'px';
+        const h = _clampPaneHeight(_paneHeight);
+        if (h) pane.style.height = h + 'px';
     }
     column.style.display = dock === 'column' && visible ? '' : 'none';
     colHandle.style.display = dock === 'column' && visible ? '' : 'none';
     bottomHandle.style.display = dock === 'bottom' && visible ? '' : 'none';
     pane.style.display = visible ? '' : 'none';
+    if (dock === 'column' && visible) _applyColumnWidth();
+    // Maximise is the column's: nothing to cover at the bottom, on a phone (the pane is full screen there) or with no tabs.
+    if (_maximised && !(dock === 'column' && visible)) _setMaximised(false);
+    const maxBtn = document.getElementById('preview-max-btn');
+    if (maxBtn) maxBtn.hidden = !(dock === 'column' && visible);
 
     const btn = document.getElementById('preview-dock-btn');
     if (btn) {
@@ -730,6 +819,7 @@ async function saveTab(tab, btn) {
 export function setPreviewSession(key) {
     key = key || null;
     if (key === _sessionKey) return;
+    _setMaximised(false); // another agent's page opens with its Chat
     _captureEditor();
     _destroyEditor();
     _tabs.forEach(_disposeTab);
