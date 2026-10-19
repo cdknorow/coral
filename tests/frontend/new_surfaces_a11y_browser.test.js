@@ -21,8 +21,8 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
     const SONNET = { value: 'claude-sonnet-5-5', display_name: 'Sonnet 5.5', efforts: ['low', 'medium', 'high'] };
     const TEAM = 'a11y-' + Date.now().toString(36);
     const SUMMARY = { totals: { input_tokens: 10, output_tokens: 20, cost_usd: 4 }, by_model: [], by_agent: [], by_thinking: [
-        { agent_type: 'claude', thinking: 'high', input_tokens: 2000, output_tokens: 300, cache_read_tokens: 0, cache_write_tokens: 0, thinking_tokens: 4000, cost_usd: 2.0, num_calls: 3 },
-        { agent_type: 'claude', thinking: 'low', input_tokens: 800, output_tokens: 60, cache_read_tokens: 0, cache_write_tokens: 0, thinking_tokens: 0, cost_usd: 1.0, num_calls: 2 }] };
+        { agent_type: 'claude', model: 'claude-opus-5-5', thinking: 'high', input_tokens: 2000, output_tokens: 300, cache_read_tokens: 0, cache_write_tokens: 0, thinking_tokens: 4000, cost_usd: 2.0, num_calls: 3 },
+        { agent_type: 'claude', model: 'claude-opus-5-5', thinking: 'low', input_tokens: 800, output_tokens: 60, cache_read_tokens: 0, cache_write_tokens: 0, thinking_tokens: 0, cost_usd: 1.0, num_calls: 2 }] };
     const KEYS = { Enter: 13, Escape: 27, Tab: 9, ArrowDown: 40, ArrowUp: 38, Home: 36, End: 35, ' ': 32 };
     const key = async (k, shift = false) => {
         const base = { key: k, code: k === ' ' ? 'Space' : k, windowsVirtualKeyCode: KEYS[k], modifiers: shift ? 8 : 0 };
@@ -146,19 +146,19 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
             await ev(`window.switchNavTab('tokens'); true`);
             await waitFor(`document.querySelectorAll('#cost-by-thinking tbody tr').length === 2`, 'the thinking table', 8000);
             const ths = await ev(`[...document.querySelectorAll('#cost-by-thinking th')].map(t => ({ sort: t.getAttribute('aria-sort'), btn: !!t.querySelector('button.cost-sort-btn'), filter: [...t.querySelectorAll('button.cost-col-filter')].map(b => b.getAttribute('aria-label')) }))`);
-            assert.ok(ths.length === 7 && ths.every(t => t.btn && ['none', 'ascending', 'descending'].includes(t.sort)), 'every column header is a sort button with aria-sort: ' + JSON.stringify(ths));
+            assert.ok(ths.length === 11 && ths.every(t => t.btn && ['none', 'ascending', 'descending'].includes(t.sort)), 'every column header is a sort button with aria-sort: ' + JSON.stringify(ths));
             assert.ok(ths[0].filter[0] && /Filter/.test(ths[0].filter[0]), 'a filter button has a name: ' + JSON.stringify(ths[0]));
             assert.equal(ths.filter(t => t.sort !== 'none').length, 1, 'exactly one column is the sort');
-            const lvl = `#cost-by-thinking th:nth-child(2) button.cost-sort-btn`;
-            const before = await ev(`document.querySelector('#cost-by-thinking th:nth-child(2)').getAttribute('aria-sort')`);
+            const lvl = `#cost-by-thinking th[data-field="level"] button.cost-sort-btn`;
+            const before = await ev(`document.querySelector('#cost-by-thinking th[data-field="level"]').getAttribute('aria-sort')`);
             await focus(lvl); await key('Enter');
-            await waitFor(`document.querySelector('#cost-by-thinking th:nth-child(2)').getAttribute('aria-sort') !== ${JSON.stringify(before)}`, 'Enter sorts by the column', 4000);
+            await waitFor(`document.querySelector('#cost-by-thinking th[data-field="level"]').getAttribute('aria-sort') !== ${JSON.stringify(before)}`, 'Enter sorts by the column', 4000);
             const sb = await ax(lvl); assert.equal(sb.role, 'button'); assert.match(sb.name, /^thinking level/i, sb.name);
             assert.equal(await ev(`document.querySelectorAll('#cost-by-thinking th[aria-sort]:not([aria-sort="none"])').length`), 1);
-            assert.equal(await ev(`document.activeElement.classList.contains('cost-sort-btn') && document.activeElement.closest('th') === document.querySelector('#cost-by-thinking th:nth-child(2)')`), true, 'after a sort the keyboard is still on that column\'s button (the table is drawn again)');
+            assert.equal(await ev(`document.activeElement.classList.contains('cost-sort-btn') && document.activeElement.closest('th') === document.querySelector('#cost-by-thinking th[data-field="level"]')`), true, 'after a sort the keyboard is still on that column\'s button (the table is drawn again)');
             // the filter buttons of the headings open a list and filter the rows (they opened nothing)
             const rowsBefore = await ev(`document.querySelectorAll('#cost-by-thinking tbody tr').length`);
-            await ev(`document.querySelector('#cost-by-thinking th:nth-child(2) button.cost-col-filter').click(); true`);
+            await ev(`document.querySelector('#cost-by-thinking th[data-field="level"] button.cost-col-filter').click(); true`);
             await waitFor(`document.querySelectorAll('.cost-filter-dropdown .cost-filter-item input').length >= 2`, 'the Thinking level filter list', 4000);
             await ev(`document.querySelector('.cost-filter-dropdown .cost-filter-item input').click(); true`);
             await waitFor(`document.querySelectorAll('#cost-by-thinking tbody tr').length < ${rowsBefore}`, 'unticking a level hides its rows', 4000);

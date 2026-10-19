@@ -21,18 +21,20 @@ Click the model chip to pick a model, or the thinking chip to pick a level. The 
 
 A second change while one is still pending is refused with a message. The API behind this is described in [Sessions](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/sessions.md).
 
-## See cost by thinking level
+## See cost by provider, model and thinking level
 
-In **Analytics**, the **By Thinking Level** table has a row per provider and level.
+In **Analytics**, three tables break the cost down, each one inside the one before: **By Provider** (claude, codex, ...: the totals), **By Model** (a row per provider and model) and **By Thinking Level** (a row per provider, model and level). All three have Requests, Input, Output, Cache Read, Cache Write, Cost and **Share** (the row's share of the cost); in the thinking table Requests is **Calls**, because that breakdown counts calls, not sessions.
+
+The **By Thinking Level** table has a row per provider, model and level.
 
 ![The By Thinking Level table, with Not reported rows dimmed](assets/cost-by-thinking.png)
 
 - **Thinking** is the number of tokens the CLI reported for thinking. It is shown apart and is not added to any total.
 - **Share** is the row's share of the cost.
-- **Not reported** (dimmed) is usage whose turn recorded no level: a CLI that writes none (Antigravity, Pi), turns that recorded none, and everything from before levels were tracked. It is never the level an agent was launched with.
-- Click a column heading to sort. **Provider** and **Thinking level** also have a filter (the small icon beside the name). On a phone the table scrolls sideways inside its card.
+- **Not reported** (dimmed) in the Thinking level column is usage whose turn recorded no level: a CLI that writes none (Antigravity, Pi), turns that recorded none, and everything from before levels were tracked. Each model has its own: that model's total less what is tracked for it. It is never the level an agent was launched with. **Not reported** in the Model column is usage from before the model was kept with the levels, and calls that named none.
+- Click a column heading to sort. **Provider**, **Model** and **Thinking level** also have a filter (the small icon beside the name). On a phone the tables scroll sideways inside their card, and Cost and Share come right after the columns that name the row: in By Thinking Level those are Model and Thinking level, and Provider follows Share.
 
-The numbers come from `by_thinking` in [Token usage](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/token-usage.md).
+The numbers come from `by_agent_type`, `by_model` and `by_thinking` in [Token usage](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/token-usage.md).
 
 ## Turn on the team health monitor
 

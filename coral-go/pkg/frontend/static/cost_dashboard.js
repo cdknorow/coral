@@ -14,7 +14,10 @@ const _formatCost = c => formatCost(c, { zeroAsTwo: true });
 // The tables scroll sideways inside their card, and Cost, the figure the page is opened for, was the last column: off screen at 390 px. On a phone Cost (and Share, where
 // the table has it) follow the columns that name the row, so they are on screen first; everything else keeps its order after them. Each cell remembers its own index
 // (data-ci), so a wider window puts the original order back. A row that does not have one cell per heading (the empty state, an agent's turns) is left as it is.
-const COST_NAME_COLUMNS = { model: 2, thinking: 2, agent: 1, task: 1, request: 1, team: 1, branch: 1 }; // how many leading columns name the row, by the headings' data-table
+const COST_NAME_COLUMNS = { provider: 1, model: 2, thinking: 2, agent: 1, task: 1, request: 1, team: 1, branch: 1 }; // how many leading columns name the row, by the headings' data-table
+// By Thinking Level has three columns that name its rows, each with its 44 px buttons: all three do not fit before Cost at 390 px (#5120). On a phone the model and the level come first (a
+// model's name says its provider; the Provider column follows Share), so the figure is on screen.
+const COST_PHONE_NAMES = { thinking: ['model', 'level'] };
 const _phone = typeof matchMedia === 'function' ? matchMedia('(max-width: 767px)') : null;
 
 function placeCostColumns(root) {
@@ -27,7 +30,11 @@ function placeCostColumns(root) {
         const at = field => ths.findIndex(th => th.dataset.field === field);
         const cost = at('cost_usd'), share = at('cost_pct');
         let order = ths.map((_, i) => i);
-        if (narrow && cost >= names) {
+        const lead = (COST_PHONE_NAMES[ths[0] && ths[0].dataset.table] || []).map(at);
+        if (narrow && cost >= 0 && lead.length && lead.every(i => i >= 0)) {
+            const moved = [...lead, cost, ...(share >= 0 ? [share] : [])];
+            order = [...moved, ...order.filter(i => !moved.includes(i))];
+        } else if (narrow && cost >= names) {
             const moved = share >= names ? [cost, share] : [cost];
             order = [...order.slice(0, names), ...moved, ...order.slice(names).filter(i => !moved.includes(i))];
         }
@@ -98,6 +105,7 @@ let _costRefreshTimer = null;
 // ── Sort & Filter State ─────────────────────────────────────
 
 const _sortState = {
+    provider: { field: 'cost_usd', asc: false },
     model:   { field: 'cost_usd', asc: false },
     thinking: { field: 'cost_usd', asc: false },
     agent:   { field: 'cost_usd', asc: false },
@@ -113,7 +121,7 @@ const _colFilters = {};
 
 // Raw data caches — populated on fetch, re-rendered on sort/filter
 const _rawData = {
-    model: [], thinking: [], agent: [], team: [], branch: [], task: [], request: [],
+    provider: [], model: [], thinking: [], agent: [], team: [], branch: [], task: [], request: [],
 };
 
 // Currently open dropdown (only one at a time)
@@ -132,6 +140,7 @@ function _toggleSort(table, field) {
 
 function _rerender(table) {
     switch (table) {
+        case 'provider': _renderProviderTable(_rawData.provider); break;
         case 'model':   _renderModelTable(_rawData.model); break;
         case 'thinking': _renderThinkingTable(_rawData.thinking); break;
         case 'agent':   _renderAgentTable(_rawData.agent); break;
@@ -314,9 +323,11 @@ function _closeDropdown() {
 
 function _getFilterExtractor(table, field) {
     const extractors = {
+        'provider:agent_type': r => r.agent_type || '',
         'model:model': r => r.model || '',
         'model:agent_type': r => r.agent_type || '',
         'thinking:agent_type': r => r.agent_type || '',
+        'thinking:model': r => r.model || '',
         'thinking:level': r => r.level || '',
         'agent:agent_name': r => r.display_name || r.agent_name || '',
         'agent:board_name': r => r.board_name || '',
@@ -432,6 +443,18 @@ export async function _refreshCostDashboard() {
             _setText('cost-total-requests', String(t.num_sessions || 0));
             _setText('cost-total-cost', _formatCost(t.cost_usd || 0));
 
+            // By provider (#5120): the agent types' totals, from by_agent_type: the one source for them (by_model and by_thinking split them).
+            _renderProviderTable((data.by_agent_type || []).map(a => ({
+                agent_type: a.agent_type || 'unknown',
+                requests: a.num_sessions || 0,
+                input_tokens: a.input_tokens || 0,
+                output_tokens: a.output_tokens || 0,
+                cache_read_tokens: a.cache_read_tokens || 0,
+                cache_write_tokens: a.cache_write_tokens || 0,
+                cost_usd: a.cost_usd || 0,
+                cost_pct: 0,
+            })));
+
             // One row per model id and agent type (#4589); a session that switched models is in each model's row.
             _renderModelTable((data.by_model || []).map(a => ({
                 model: modelDisplayName(a.model, a.model_display) || 'unknown',
@@ -445,9 +468,12 @@ export async function _refreshCostDashboard() {
                 cost_usd: a.cost_usd || 0,
             })));
 
-            // By thinking level (#4969): the levels the transcripts recorded, and the rest of each provider's usage as "Not reported".
+            // By thinking level (#4969, #5120): per provider and model, the levels the transcripts recorded, and the rest of each model's usage as "Not reported".
             _renderThinkingTable((data.by_thinking || []).map(a => ({
                 agent_type: a.agent_type || 'unknown',
+                model: a.model ? modelDisplayName(a.model, a.model_display) : 'Not reported',
+                model_id: typeof a.model === 'string' ? a.model : '',
+                requests: a.num_calls || 0,
                 level: _thinkingLevelName(a.thinking),
                 level_key: a.thinking || '',
                 input_tokens: a.input_tokens || 0,
@@ -519,7 +545,49 @@ function _setText(id, text) {
     if (el) el.textContent = text;
 }
 
+function _renderProviderTable(rows) {
+    const total = rows.reduce((n, r) => n + (r.cost_usd || 0), 0);
+    rows.forEach(r => { r.cost_pct = total > 0 ? (r.cost_usd || 0) / total : 0; });
+    _rawData.provider = rows;
+    const container = document.getElementById('cost-by-provider');
+    if (!container) return;
+    const filtered = _applyColFilters(rows, 'provider', { agent_type: r => r.agent_type || '' });
+    const sorted = _sortRows(filtered, 'provider', (r, f) => f === 'agent_type' ? (r.agent_type || '') : (r[f] || 0));
+    if (sorted.length === 0) {
+        container.innerHTML = '<div class="cost-empty">No usage data yet</div>';
+        return;
+    }
+    let html = `<table class="cost-table">
+        <thead><tr>
+            ${_sortHeader('provider', 'agent_type', 'Provider', '', true)}
+            ${_sortHeader('provider', 'requests', 'Requests', 'cost-col-right')}
+            ${_sortHeader('provider', 'input_tokens', 'Input', 'cost-col-right')}
+            ${_sortHeader('provider', 'output_tokens', 'Output', 'cost-col-right')}
+            ${_sortHeader('provider', 'cache_read_tokens', 'Cache Read', 'cost-col-right')}
+            ${_sortHeader('provider', 'cache_write_tokens', 'Cache Write', 'cost-col-right')}
+            ${_sortHeader('provider', 'cost_usd', 'Cost', 'cost-col-right')}
+            ${_sortHeader('provider', 'cost_pct', 'Share', 'cost-col-right')}
+        </tr></thead><tbody>`;
+    for (const r of sorted) {
+        html += `<tr>
+            <td>${escapeHtml(r.agent_type)}</td>
+            <td class="cost-col-right">${r.requests}</td>
+            <td class="cost-col-right">${formatTokens(r.input_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.output_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_read_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_write_tokens || 0)}</td>
+            <td class="cost-col-right cost-cost-cell">${_formatCost(r.cost_usd)}</td>
+            <td class="cost-col-right">${Math.round((r.cost_pct || 0) * 100)}%</td>
+        </tr>`;
+    }
+    html += '</tbody></table>';
+    container.innerHTML = html;
+    placeCostColumns(container);
+}
+
 function _renderModelTable(rows) {
+    const modelTotal = rows.reduce((n, r) => n + (r.cost_usd || 0), 0);
+    rows.forEach(r => { r.cost_pct = modelTotal > 0 ? (r.cost_usd || 0) / modelTotal : 0; });
     _rawData.model = rows;
     const container = document.getElementById('cost-by-model');
     if (!container) return;
@@ -546,6 +614,7 @@ function _renderModelTable(rows) {
             ${_sortHeader('model', 'cache_read_tokens', 'Cache Read', 'cost-col-right')}
             ${_sortHeader('model', 'cache_write_tokens', 'Cache Write', 'cost-col-right')}
             ${_sortHeader('model', 'cost_usd', 'Cost', 'cost-col-right')}
+            ${_sortHeader('model', 'cost_pct', 'Share', 'cost-col-right')}
         </tr></thead><tbody>`;
 
     for (const r of sorted) {
@@ -558,6 +627,7 @@ function _renderModelTable(rows) {
             <td class="cost-col-right">${formatTokens(r.cache_read_tokens || 0)}</td>
             <td class="cost-col-right">${formatTokens(r.cache_write_tokens || 0)}</td>
             <td class="cost-col-right cost-cost-cell">${_formatCost(r.cost_usd)}</td>
+            <td class="cost-col-right">${Math.round((r.cost_pct || 0) * 100)}%</td>
         </tr>`;
     }
 
@@ -577,10 +647,11 @@ function _renderThinkingTable(rows) {
     _rawData.thinking = rows;
     const container = document.getElementById('cost-by-thinking');
     if (!container) return;
-    const filtered = _applyColFilters(rows, 'thinking', { agent_type: r => r.agent_type || '', level: r => r.level || '' }); // the two filter buttons of the headings (#5042: they opened nothing)
+    const filtered = _applyColFilters(rows, 'thinking', { agent_type: r => r.agent_type || '', model: r => r.model || '', level: r => r.level || '' }); // the three filter buttons of the headings (#5042: they opened nothing)
     const sorted = _sortRows(filtered, 'thinking', (r, f) => {
         if (f === 'level') return r.level_key ? r.level : 'zzzz Not reported'; // after the named levels when ascending (localeCompare puts '~' first)
         if (f === 'agent_type') return r.agent_type || '';
+        if (f === 'model') return r.model_id ? r.model : 'zzzz Not reported'; // after the named models when ascending
         return r[f] || 0;
     });
     if (sorted.length === 0) {
@@ -590,9 +661,13 @@ function _renderThinkingTable(rows) {
     let html = `<table class="cost-table">
         <thead><tr>
             ${_sortHeader('thinking', 'agent_type', 'Provider', '', true)}
+            ${_sortHeader('thinking', 'model', 'Model', '', true)}
             ${_sortHeader('thinking', 'level', 'Thinking level', '', true)}
+            ${_sortHeader('thinking', 'requests', 'Calls', 'cost-col-right')}
             ${_sortHeader('thinking', 'input_tokens', 'Input', 'cost-col-right')}
             ${_sortHeader('thinking', 'output_tokens', 'Output', 'cost-col-right')}
+            ${_sortHeader('thinking', 'cache_read_tokens', 'Cache Read', 'cost-col-right')}
+            ${_sortHeader('thinking', 'cache_write_tokens', 'Cache Write', 'cost-col-right')}
             ${_sortHeader('thinking', 'thinking_tokens', 'Thinking', 'cost-col-right')}
             ${_sortHeader('thinking', 'cost_usd', 'Cost', 'cost-col-right')}
             ${_sortHeader('thinking', 'cost_pct', 'Share', 'cost-col-right')}
@@ -600,9 +675,13 @@ function _renderThinkingTable(rows) {
     for (const r of sorted) {
         html += `<tr${r.level_key ? '' : ' class="cost-row-unreported"'}>
             <td>${escapeHtml(r.agent_type)}</td>
+            <td class="cost-model-name" title="${escapeAttr(r.model_id || '')}">${escapeHtml(r.model)}</td>
             <td>${escapeHtml(r.level)}</td>
+            <td class="cost-col-right">${r.requests ? r.requests : '–'}</td>
             <td class="cost-col-right">${formatTokens(r.input_tokens || 0)}</td>
             <td class="cost-col-right">${formatTokens(r.output_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_read_tokens || 0)}</td>
+            <td class="cost-col-right">${formatTokens(r.cache_write_tokens || 0)}</td>
             <td class="cost-col-right">${r.thinking_tokens === null ? '–' : formatTokens(r.thinking_tokens)}</td>
             <td class="cost-col-right cost-cost-cell">${_formatCost(r.cost_usd)}</td>
             <td class="cost-col-right">${Math.round((r.cost_pct || 0) * 100)}%</td>

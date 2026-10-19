@@ -113,7 +113,7 @@
 1	cost_dashboard.js	_formatCost(b.cost_usd || 0)
 2	cost_dashboard.js	_formatCost(maxCost)
 1	cost_dashboard.js	_formatCost(midCost)
-4	cost_dashboard.js	_formatCost(r.cost_usd)
+5	cost_dashboard.js	_formatCost(r.cost_usd)
 2	cost_dashboard.js	_formatCost(t.cost_usd || 0)
 1	cost_dashboard.js	_formatDate(r.started_at)
 1	cost_dashboard.js	_formatLatency(r.latency_ms)
@@ -141,11 +141,20 @@
 1	cost_dashboard.js	_sortHeader('model', 'agent_type', 'Provider', '', true)
 1	cost_dashboard.js	_sortHeader('model', 'cache_read_tokens', 'Cache Read', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('model', 'cache_write_tokens', 'Cache Write', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('model', 'cost_pct', 'Share', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('model', 'cost_usd', 'Cost', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('model', 'input_tokens', 'Input', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('model', 'model', 'Model', '', true)
 1	cost_dashboard.js	_sortHeader('model', 'output_tokens', 'Output', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('model', 'requests', 'Requests', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('provider', 'agent_type', 'Provider', '', true)
+1	cost_dashboard.js	_sortHeader('provider', 'cache_read_tokens', 'Cache Read', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('provider', 'cache_write_tokens', 'Cache Write', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('provider', 'cost_pct', 'Share', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('provider', 'cost_usd', 'Cost', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('provider', 'input_tokens', 'Input', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('provider', 'output_tokens', 'Output', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('provider', 'requests', 'Requests', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('request', 'agent_name', 'Agent', '')
 1	cost_dashboard.js	_sortHeader('request', 'cache_read_tokens', 'Cache R', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('request', 'cache_write_tokens', 'Cache W', 'cost-col-right')
@@ -174,11 +183,15 @@
 1	cost_dashboard.js	_sortHeader('team', 'num_agents', 'Agents', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('team', 'output_tokens', 'Output', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('thinking', 'agent_type', 'Provider', '', true)
+1	cost_dashboard.js	_sortHeader('thinking', 'cache_read_tokens', 'Cache Read', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('thinking', 'cache_write_tokens', 'Cache Write', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('thinking', 'cost_pct', 'Share', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('thinking', 'cost_usd', 'Cost', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('thinking', 'input_tokens', 'Input', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('thinking', 'level', 'Thinking level', '', true)
+1	cost_dashboard.js	_sortHeader('thinking', 'model', 'Model', '', true)
 1	cost_dashboard.js	_sortHeader('thinking', 'output_tokens', 'Output', 'cost-col-right')
+1	cost_dashboard.js	_sortHeader('thinking', 'requests', 'Calls', 'cost-col-right')
 1	cost_dashboard.js	_sortHeader('thinking', 'thinking_tokens', 'Thinking', 'cost-col-right')
 2	cost_dashboard.js	areaPoints.join(' ')
 1	cost_dashboard.js	arrow
@@ -199,11 +212,11 @@
 1	cost_dashboard.js	formatTokens(b.cache_write_tokens || 0)
 1	cost_dashboard.js	formatTokens(b.input_tokens || 0)
 1	cost_dashboard.js	formatTokens(b.output_tokens || 0)
-3	cost_dashboard.js	formatTokens(r.cache_read_tokens || 0)
-3	cost_dashboard.js	formatTokens(r.cache_write_tokens || 0)
-3	cost_dashboard.js	formatTokens(r.input_tokens || 0)
+5	cost_dashboard.js	formatTokens(r.cache_read_tokens || 0)
+5	cost_dashboard.js	formatTokens(r.cache_write_tokens || 0)
+4	cost_dashboard.js	formatTokens(r.input_tokens || 0)
 1	cost_dashboard.js	formatTokens(r.input_tokens)
-3	cost_dashboard.js	formatTokens(r.output_tokens || 0)
+4	cost_dashboard.js	formatTokens(r.output_tokens || 0)
 1	cost_dashboard.js	formatTokens(r.output_tokens)
 2	cost_dashboard.js	formatTokens(t.cache_read_tokens || 0)
 2	cost_dashboard.js	formatTokens(t.cache_write_tokens || 0)
@@ -222,7 +235,8 @@
 1	cost_dashboard.js	priorityClass
 1	cost_dashboard.js	r.calls
 1	cost_dashboard.js	r.errors
-2	cost_dashboard.js	r.requests
+3	cost_dashboard.js	r.requests
+1	cost_dashboard.js	r.requests ? r.requests : '–'
 1	cost_dashboard.js	r.thinking_tokens === null ? '–' : formatTokens(r.thinking_tokens)
 1	cost_dashboard.js	rows.map(r => `<tr><td>${escapeHtml(r.operation)}</td><td>${escapeHtml(r.call_type)}</td><td>${escapeHtml(r.ag
 1	cost_dashboard.js	startTime
