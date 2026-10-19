@@ -606,6 +606,7 @@ type Writer struct {
 	inPEM   bool            // inside a private key: dropped until its END line or the closing quote
 	pemEsc  bool            // inside a private key: the last byte dropped was an unpaired backslash
 	inToken func(byte) bool // inside a token longer than its rule's ceiling: its class is dropped
+	qdrop   *quoteDrop      // with inToken: the token is a quoted value, dropped to its closing quote with escapes read (nil: the class alone)
 	shown   int             // the leading bytes of pending that Flush already emitted as they are
 	err     error
 	buf     []byte // pending + the new bytes (reused)
@@ -694,9 +695,12 @@ func (r *Writer) Flush(force bool) error {
 			out = out[:0] // a token began inside what was shown: the marker follows it
 		}
 		out = append(out, Marker...)
-		r.inToken = rule.class
-		if rule.toQuote && openingQuote(r.pending, valueAt) != nil {
-			r.inToken = notQuoteEnd // a quoted value's rest runs to its quote, spaces and all
+		r.inToken, r.qdrop = rule.class, nil
+		if rule.toQuote {
+			if oq := openingQuote(r.pending, valueAt); oq != nil {
+				r.inToken = notQuoteEnd // a quoted value's rest runs to its quote, spaces and all
+				r.qdrop = quoteDropFor(oq)
+			}
 		}
 		r.settleAll()
 	} else {
@@ -793,31 +797,48 @@ func (r *Writer) process(data []byte, final bool) (out []byte, consumed int) {
 			// next name with the run and let its value out (#3761, found by FuzzTrimCut). A start
 			// counts as it does for a value's end in the match below.
 			j := i
-			for j < len(data) && r.inToken(data[j]) {
-				j++
+			emit := 0 // backslashes of a closing quote's spelling that earlier chunks dropped with the run's start
+			limit := len(data)
+			if !final {
+				limit -= st.partialTail(i) // a start may begin in the tail: it is told with more bytes
+			}
+			ended := false // the drop ends inside data (at j), not with it
+			if q := r.qdrop; q != nil {
+				j, emit = q.dropEnd(data[:limit], i)
+				ended = q.closed
+			} else {
+				for j < len(data) && r.inToken(data[j]) {
+					j++
+				}
+				ended = j < len(data)
 			}
 			for k, kr := st.next(i); k >= 0 && k < j; k, kr = st.next(k + 1) {
 				if kr == nil { // a PEM BEGIN
-					j = k
+					j, emit, ended = k, 0, true
 					break
 				}
 				_, _, kok, kneed, _ := kr.match(data[k:], final)
 				if kneed && !final {
+					r.qdrop.carryTo(data, i, k)
 					return out, k // dropped up to the start; it's told with more bytes
 				}
 				if kok {
-					j = k
+					j, emit, ended = k, 0, true
 					break
 				}
 			}
-			if j == len(data) {
+			if !ended {
 				if final {
-					r.inToken = nil
+					r.inToken, r.qdrop = nil, nil
 					return out, len(data)
 				}
-				return out, len(data) - st.partialTail(i) // a start may begin in the tail
+				r.qdrop.carryTo(data, i, limit)
+				return out, limit
 			}
-			r.inToken = nil
+			if emit > 0 {
+				out = append(out, bytes.Repeat([]byte{'\\'}, emit)...)
+			}
+			r.inToken, r.qdrop = nil, nil
 			i = j
 			continue
 		}
@@ -913,9 +934,12 @@ func (r *Writer) process(data []byte, final bool) (out []byte, consumed int) {
 			out = append(out, Marker...)
 			i = start + n
 			if long {
-				r.inToken = rule.class // the rest of the run is dropped as it arrives
-				if rule.toQuote && openingQuote(data, start+valueAt) != nil {
-					r.inToken = notQuoteEnd // a quoted value's rest runs to its quote, spaces and all (as when it is held: #5002)
+				r.inToken, r.qdrop = rule.class, nil // the rest of the run is dropped as it arrives
+				if rule.toQuote {
+					if oq := openingQuote(data, start+valueAt); oq != nil {
+						r.inToken = notQuoteEnd // a quoted value's rest runs to its quote, spaces and all (as when it is held: #5002)
+						r.qdrop = quoteDropFor(oq)
+					}
 				}
 			}
 		}
@@ -1172,6 +1196,72 @@ func (ru *tokenRule) match(b []byte, final bool) (n, valueAt int, ok, need, long
 // notQuoteEnd: inside a quoted value whose start was flushed as the marker, every byte is
 // dropped up to a quote (or the backslash before an escaped one).
 func notQuoteEnd(c byte) bool { return c != '"' && c != '\'' && c != '\\' }
+
+// quoteDrop is how an over-long quoted value is dropped to its closing quote with its escapes read (#5018): notQuoteEnd alone stopped at the first
+// quote OR backslash, so a value of more than the rule's reach that held an escaped quote (password="...600 bytes...x\"y TAIL") ended there and
+// showed what followed. char is the quote that opened the value and run the backslashes in its spelling (0 for a plain quote, 1 for the \" of a
+// JSON string). A quote closes the value when the backslashes before it are an even number (a plain quote, or the end of the JSON string around
+// the text) or exactly run (the same spelling as the opening one); any other odd number is an escaped quote inside the value, and is dropped.
+type quoteDrop struct {
+	char   byte
+	run    int
+	carry  int  // backslashes that end the data already dropped: their run goes on in the next chunk
+	closed bool // dropEnd found the closing spelling
+}
+
+// quoteDropFor is the drop for a value that opened with this spelling: a quote after backslashes only; any other spelling (\u0022) keeps the
+// class-only drop.
+func quoteDropFor(spelling []byte) *quoteDrop {
+	n := len(spelling)
+	if n == 0 || (spelling[n-1] != '"' && spelling[n-1] != '\'') {
+		return nil
+	}
+	for _, b := range spelling[:n-1] {
+		if b != '\\' {
+			return nil
+		}
+	}
+	return &quoteDrop{char: spelling[n-1], run: n - 1}
+}
+
+// dropEnd is where the drop from data[i:] ends: the start of the closing spelling's backslashes in data (or its quote), with emit the backslashes of
+// that spelling that earlier chunks already dropped (they are written back before the quote, as a whole write keeps them), or len(data) when
+// the value goes on. A run of backslashes at the end of data is not held back: its length is carried (carryTo) and the run goes on counting in
+// the next chunk, so the work stays linear in the data however it is cut (#5018 review: held bytes were counted again on every write).
+func (q *quoteDrop) dropEnd(data []byte, i int) (j, emit int) {
+	q.closed = false
+	run, carried := q.carry, q.carry
+	for j = i; j < len(data); j++ {
+		switch c := data[j]; {
+		case c == '\\':
+			run++
+		case c == q.char:
+			if run%2 == 0 || run == q.run {
+				q.closed, q.carry = true, 0
+				return j - (run - carried), carried
+			}
+			run, carried = 0, 0 // an escaped quote: part of the value
+		default:
+			run, carried = 0, 0
+		}
+	}
+	return j, 0
+}
+
+// carryTo records the run of backslashes at the end of data[i:end), which has been dropped, so the next chunk counts on from it.
+func (q *quoteDrop) carryTo(data []byte, i, end int) {
+	if q == nil {
+		return
+	}
+	n := 0
+	for k := end - 1; k >= i && data[k] == '\\'; k-- {
+		n++
+	}
+	if n == end-i {
+		n += q.carry // all of it is backslashes: the earlier run continues
+	}
+	q.carry = n
+}
 
 // openingQuote is the quote (however written: quoteLen) that ends right at b[at], or nil. The
 // longest spelling wins: \" is one quote, not a backslash and a raw ".
