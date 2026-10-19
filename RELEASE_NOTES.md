@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.4.112 — An agent stuck behind Claude's session survey is freed, the model chip sits with Send, and a "Show branches" option
+
+### Fixes
+
+- **Claude's session survey no longer holds every message back:** Claude Code sometimes draws a session survey above its input box ("How is Claude doing this session? (optional)", choices "1: Bad 2: Fine 3: Good 0: Dismiss"). Coral's gate held every send behind it as a dialog, so board messages and nudges waited for a person who never answered and the agent sat stuck. When a held send is behind a dialog and the survey is the only thing open (not a permission prompt, not the bug-report box, not quoted in the scrollback), Coral now sends one `0` (Dismiss; never `1`, `2` or `3`, Coral rates nothing for you), waits up to 4 s for the survey to be gone, and only then delivers the held send, with the gate's usual checks still run first; a survey that does not go is tried once per 30 s per session and the send stays held. Coral never sends the `0` while the input box holds text that may be yours (a `0` typed into a draft would join it); the held send then waits until you send or clear it. This is complete on the tmux backend; on the PTY backend (the default on Windows) a box showing Claude's faint suggestion counts as a draft, so the survey is dismissed there only from an empty box.
+- **The model chip no longer covers the chat input:** it moves into the composer's buttons row, level with Stop and Send, with its note as a small line under that row (on a phone it stays the row under the input).
+
+### Changes
+
+- **A "Show branches" option in the agent list's Display panel, off by default:** the worktree line (icon, branch and git state) under every agent on its own worktree is hidden unless you tick it (it is kept in this browser, like Group by server). The branch stays in the row's tooltip and the agent's header either way; with it on, the summary line and the Display button's count say "Branches shown", and Clear turns it off.
+
+### Other changes
+
+- **Tests:** the `heap_growth` browser suite names the step it hangs in, says what the page is doing, and re-runs once in a fresh process on a first stall, failing by name on a second (it timed out about one run in four on GitHub's runners, with the cause not proven).
+
 ## v1.4.111 — Release checks need a pinned cosign, and a phone Settings switch lines up
 
 ### Fixes
