@@ -60,6 +60,7 @@ func TrackBrowserEvent(event string, props map[string]string) {
 		TrackEvent(event, map[string]string{"page_id": page})
 	case EventDashboardActiveDay:
 		asyncGo(trackActiveDay)
+		asyncGo(trackActiveWeek)
 	case EventDashboardFailed:
 		code := props["code"]
 		if !allowFailure(code) {
@@ -133,13 +134,16 @@ func trackActiveDay() {
 
 // pruneActiveDays keeps the milestone file small: only today's active-day
 // record is needed to dedupe, so older ones are removed.
-func pruneActiveDays(today string) {
+func pruneActiveDays(today string) { pruneDatedMilestones(EventDashboardActiveDay, today) }
+
+// pruneDatedMilestones removes every "<event>|<period>" record of event except the current period's.
+func pruneDatedMilestones(event, current string) {
 	milestoneMu.Lock()
 	defer milestoneMu.Unlock()
 	s := loadMilestones()
 	changed := false
 	stale := func(k string) bool {
-		return len(k) > len(EventDashboardActiveDay)+1 && k[:len(EventDashboardActiveDay)+1] == EventDashboardActiveDay+"|" && k != EventDashboardActiveDay+"|"+today
+		return len(k) > len(event)+1 && k[:len(event)+1] == event+"|" && k != event+"|"+current
 	}
 	for _, m := range []map[string]string{s.Fired, s.Reached} {
 		for k := range m {

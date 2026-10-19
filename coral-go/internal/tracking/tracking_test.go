@@ -77,6 +77,7 @@ func newTestTracking(t *testing.T) (*recorder, string) {
 	coralDir = dir
 	cachedInstallID = "install-under-test"
 	installIDOnce.Do(func() {}) // consume the Once so getInstallID uses our value
+	resetActiveWeek()
 	t.Cleanup(func() {
 		waitForAsync()
 		posthogURL, config.PostHogKey, coralDir, cachedInstallID, config.Version = prevURL, prevKey, prevDir, prevID, prevVer
@@ -357,3 +358,5 @@ func dirSnapshot(dir string) string {
 	}
 	return strings.Join(b, " ")
 }
+
+func writeTestFile(path, content string) error { return os.WriteFile(path, []byte(content), 0600) }

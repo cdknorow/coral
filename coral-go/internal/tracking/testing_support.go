@@ -16,6 +16,7 @@ func ConfigureForTest(captureURL, dir, installID string) (restore func()) {
 	posthogURL, coralDir, cachedInstallID = captureURL, dir, installID
 	retryDelays = nil // no retries/sleeps in other packages' tests
 	installIDOnce.Do(func() {})
+	resetActiveWeek()
 	SetTelemetryEnabled(true)
 	return func() {
 		waitForAsync()

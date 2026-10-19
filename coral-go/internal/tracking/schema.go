@@ -112,11 +112,12 @@ var eventSpecs = map[string]map[string]propSpec{
 		"duration_ms": intRange(0, 600000), "started_agents": agentCount, "failed_agents": agentCount},
 	EventTaskCompleted: {"outcome": enum(OutcomeSuccess, OutcomeFailed)},
 
-	EventDashboardReady:        {"page_id": slugProp},
-	EventDashboardActiveDay:    {},
-	EventDashboardFailed:       {"code": enum("sessions_fetch_http", "sessions_fetch_network", "sessions_fetch_invalid", "status_fetch_http", "status_fetch_network", "status_fetch_invalid", "init_failed")},
-	EventFirstPromptSubmitted:  {"source": enum("http_send")},
-	EventPromptSubmitRequested: {"source": enum("dashboard_composer")},
+	EventDashboardReady:         {"page_id": slugProp},
+	EventDashboardActiveDay:     {},
+	EventInstallationActiveWeek: {},
+	EventDashboardFailed:        {"code": enum("sessions_fetch_http", "sessions_fetch_network", "sessions_fetch_invalid", "status_fetch_http", "status_fetch_network", "status_fetch_invalid", "init_failed")},
+	EventFirstPromptSubmitted:   {"source": enum("http_send")},
+	EventPromptSubmitRequested:  {"source": enum("dashboard_composer")},
 }
 
 // KnownEvent reports whether name is on the allowlist.

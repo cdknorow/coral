@@ -10,6 +10,8 @@ const (
 	EventInstall   = "install"
 	EventUpgrade   = "upgrade"
 	EventAppOpened = "app_opened"
+	// EventInstallationActiveWeek is the weekly-active-installs signal (#4935).
+	EventInstallationActiveWeek = "installation_active_week"
 
 	// Usage.
 	EventSessionLaunched = "session_launched"
@@ -57,6 +59,7 @@ var AllEvents = []EventDoc{
 	{Name: EventInstall, When: "The first time Coral runs on this machine."},
 	{Name: EventUpgrade, When: "The first run after Coral's version changes."},
 	{Name: EventAppOpened, When: "Every time the Coral server starts."},
+	{Name: EventInstallationActiveWeek, When: "At most once per ISO week (UTC) that Coral runs: sent when Coral starts, and again the first time that week you open the dashboard, launch an agent or team, or complete a task, so a long-running Coral still counts every week it is used."},
 	{Name: EventSessionLaunched, When: "Every time you launch a single agent."},
 	{Name: EventTeamLaunched, When: "Every time a team launch starts at least one agent.", Extra: "agent_count — how many agents started; requested_agents, started_agents, failed_agents"},
 	{Name: EventFirstAgentLaunched, When: "Once ever: the first agent you launch."},

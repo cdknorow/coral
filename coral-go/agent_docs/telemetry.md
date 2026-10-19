@@ -13,6 +13,7 @@ The runtime disclosure is generated from `internal/tracking/events.go`. New funn
 | `install` | First tracked startup for this data directory | — |
 | `upgrade` | First tracked startup after the version changes | — |
 | `app_opened` | Coral process startup; not proof that a dashboard loaded | — |
+| `installation_active_week` | This install ran Coral during an ISO week (UTC). Sent at most once per install per week: at startup, and the first time that week the dashboard is open for a day, an agent or team is launched, or a task is completed (so a Coral that runs for weeks counts every week it is used) | — |
 | `session_launched` | Individual launch handler created/submitted the agent process | — |
 | `team_launched` | Team launch with at least one member started | `agent_count`, `requested_agents`, `started_agents`, `failed_agents` |
 | `prerequisite_check` | Coral checked tmux or a supported agent CLI prerequisite | `tool`, `status`, `source` |
@@ -30,6 +31,8 @@ The runtime disclosure is generated from `internal/tracking/events.go`. New funn
 | `first_task_succeeded` | First task completed with a successful outcome | — |
 | `returned_24h` | First tracked process startup more than 24 hours after the first tracked open | — |
 
+Weekly active installs are the distinct `distinct_id`s with `installation_active_week` in a week. `app_opened` alone cannot give that (a Coral that stays up for weeks sends it once, at startup) and `dashboard_active_day` alone cannot either (it needs the dashboard open, so an install driven from the CLI never sends it). `installation_active_week` is deduplicated like `dashboard_active_day`: the week is recorded as sent only after the service accepts the event, under an event UUID that is stable for the install and week, and an opt-out does not use the week up. It carries the standard properties only.
+
 Launch completion does not prove provider authentication, model readiness, or a response. The WebSocket composer currently lacks a transport acknowledgment suitable for the confirmed-send milestone, so `first_prompt_submitted` covers HTTP sends only. `prompt_submit_requested` measures intent, not delivery. No first-response or generic agent-ready event is emitted: existing transcript updates cannot reliably attribute new assistant output to a particular submitted prompt.
 
 `dashboard_ready` counts page loads, not users. Active-day records are deduplicated for the installation and UTC date, including multiple tabs. The legacy `returned_24h` event measures restarts; use dashboard activity for engagement and retention. An observed failure may precede recovery and a ready event. Missing events alone do not prove abandonment or a crash.
@@ -45,6 +48,10 @@ These observations identify missing prerequisites and later availability. Coral 
 ## Properties and identifiers
 
 Every event carries `version`, `edition`, `os`, `arch`, `schema_version`, `run_id`, and `entrypoint`. The process run ID is random and changes on restart. Entrypoint is a controlled value distinguishing the server, tray, launcher, or unknown entrypoint. Launch attempt IDs correlate requests and outcomes; dashboard page IDs distinguish page loads. These are analytics IDs, not agent session IDs, task IDs, or board identifiers.
+
+### Test sink
+
+For tests only, a `-tags dev` build reads `CORAL_TELEMETRY_TEST_SINK=<url>`: it gives that server a dummy key and sends its events to the local capture endpoint at that URL. The code is in a `//go:build dev` file; `TestDefaultBuildHasNoTestSinkSeam` fails if a default-tags build contains the variable's name, so a release binary cannot be redirected.
 
 Events use a random installation UUID stored in `<coralDir>/.install_id`. This identifies a data directory, not necessarily a person. It is not derived from hardware, hostname, username, or email. Deleting it changes the analytics identity.
 

@@ -13,6 +13,7 @@ var allEventConstants = []string{
 	EventInstall,
 	EventUpgrade,
 	EventAppOpened,
+	EventInstallationActiveWeek,
 	EventSessionLaunched,
 	EventTeamLaunched,
 	EventFirstAgentLaunched,

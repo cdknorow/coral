@@ -118,6 +118,7 @@ func TrackInstallAsync() {
 		emitEvent(EventAppOpened, nil, uuid.NewString(), nowUTC(), gen)
 		// Retention: fire returned_24h once, on the first open >24h after the first.
 		trackReturnVisitSync(gen)
+		trackActiveWeek()
 	})
 }
 
@@ -129,6 +130,9 @@ func TrackEvent(eventName string, extraProps map[string]string) {
 	}
 	gen, ts, id := telemetryGen.Load(), nowUTC(), uuid.NewString()
 	asyncGo(func() { emitEvent(eventName, extraProps, id, ts, gen) })
+	if activityEvents[eventName] {
+		asyncGo(trackActiveWeek)
+	}
 }
 
 // standardProps are attached to every event. run_id groups one process's
