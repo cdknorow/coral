@@ -339,15 +339,20 @@ func (ks *KeyStore) ValidateKey(key string) bool {
 	return subtle.ConstantTimeCompare([]byte(key), []byte(ks.key)) == 1
 }
 
-// rateKey is the address a failed-key count is kept under: an IPv4 address as it is, an IPv6 one as its /64. A network is handed a whole /64, so
+// rateKey is the address a failed-key count is kept under: an IPv4 address (an IPv4-mapped IPv6 one as the IPv4 address), an IPv6 one as its /64. A network is handed a whole /64, so
 // counting each address would give a client 2^64 budgets (and let it fill the map's 10,000 places with its own addresses) (#4964).
 func rateKey(ip string) string {
 	if i := strings.IndexByte(ip, '%'); i >= 0 { // a zone ("fe80::1%en0") is not part of the address
 		ip = ip[:i]
 	}
 	a, err := netip.ParseAddr(ip)
-	if err != nil || a.Is4() || a.Is4In6() {
+	switch {
+	case err != nil:
 		return ip
+	case a.Is4In6(): // a dual-stack listener reports an IPv4 client as ::ffff:a.b.c.d: the same client as a.b.c.d
+		return a.Unmap().String()
+	case a.Is4():
+		return a.String()
 	}
 	return netip.PrefixFrom(a, 64).Masked().String()
 }

@@ -246,8 +246,7 @@ func isBoardReminderWrite(r *http.Request) bool {
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		return false
 	}
-	rest, _ := strings.CutPrefix(r.URL.Path, "/api/board/")
-	_, tail, _ := strings.Cut(rest, "/")
+	_, tail, _ := boardRoute(r)
 	return tail == "reminder"
 }
 
@@ -256,8 +255,7 @@ func isBoardChatPost(r *http.Request) bool {
 	if r.Method != http.MethodPost {
 		return false
 	}
-	rest, _ := strings.CutPrefix(r.URL.Path, "/api/board/")
-	_, tail, _ := strings.Cut(rest, "/")
+	_, tail, _ := boardRoute(r)
 	return tail == "messages"
 }
 
@@ -267,11 +265,10 @@ func tunnelBoardProject(r *http.Request) (string, bool) {
 	if !cloud.Tunneled(r) || r.Method == http.MethodGet || r.Method == http.MethodHead {
 		return "", false
 	}
-	rest, found := strings.CutPrefix(r.URL.Path, "/api/board/")
+	project, _, found := boardRoute(r)
 	if !found {
 		return "", false
 	}
-	project, _, _ := strings.Cut(rest, "/")
 	switch project {
 	case "", "projects", "tasks", "remotes":
 		return "", false

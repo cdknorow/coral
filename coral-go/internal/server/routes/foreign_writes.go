@@ -100,7 +100,7 @@ func ownBrowserOrigin(r *http.Request, forwardedHost string) bool {
 
 // foreignBrowserRead: a read of /api or /ws that a browser says came from another page.
 func foreignBrowserRead(r *http.Request) bool {
-	p := r.URL.Path
+	p := routedPath(r)
 	if !strings.HasPrefix(p, "/api/") && p != "/ws" && !strings.HasPrefix(p, "/ws/") {
 		return false
 	}

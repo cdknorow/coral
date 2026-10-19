@@ -43,6 +43,21 @@ func routedPath(r *http.Request) string {
 	return r.URL.Path
 }
 
+// boardRoute splits /api/board/{project}/{tail} the way chi and urlParam read it: on the routed path (an encoded slash stays inside the project),
+// then the project decoded. The tail is left as routed, so a comparison with a literal ("messages") means what the router means by it. ok is false
+// for a path that is not under /api/board/ (#4977).
+func boardRoute(r *http.Request) (project, tail string, ok bool) {
+	rest, ok := strings.CutPrefix(routedPath(r), "/api/board/")
+	if !ok {
+		return "", "", false
+	}
+	project, tail, _ = strings.Cut(rest, "/")
+	if d, err := url.PathUnescape(project); err == nil {
+		project = d
+	}
+	return project, tail, true
+}
+
 // decodeJSON decodes JSON from the request body into v.
 func decodeJSON(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)

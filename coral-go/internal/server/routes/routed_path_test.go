@@ -42,3 +42,31 @@ func TestRouteGatesFindTheRouteChiWillRun(t *testing.T) {
 		assert.NotZero(t, limit, path)
 	}
 }
+
+// #4977: the sites that read a board's name from the path read it as chi and urlParam do: "/api/board/a%2Fb/messages" is the project "a/b" with the
+// tail "messages", not the project "a" with the tail "b/messages" (which is what the decoded path says).
+func TestBoardRouteReadsTheProjectAsChiDoes(t *testing.T) {
+	for _, c := range []struct{ path, project, tail string }{
+		{"/api/board/team/messages", "team", "messages"},
+		{"/api/board/team%20x/messages", "team x", "messages"},
+		{"/api/board/a%2Fb/messages", "a/b", "messages"},
+		{"/api/board/a%2fb/reminder", "a/b", "reminder"},
+		{"/api/board/team/tasks/7", "team", "tasks/7"},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "http://x"+c.path, nil)
+		project, tail, ok := boardRoute(req)
+		require.True(t, ok, c.path)
+		assert.Equal(t, c.project, project, c.path)
+		assert.Equal(t, c.tail, tail, c.path)
+	}
+	_, _, ok := boardRoute(httptest.NewRequest(http.MethodPost, "http://x/api/sessions/live/x/kill", nil))
+	assert.False(t, ok)
+
+	// the callers
+	assert.True(t, isBoardChatPost(httptest.NewRequest(http.MethodPost, "http://x/api/board/a%2Fb/messages", nil)), "an encoded slash in the name is still a board post")
+	assert.False(t, isBoardChatPost(httptest.NewRequest(http.MethodPost, "http://x/api/board/a/b/messages", nil)), "a real extra segment is not")
+	assert.True(t, isBoardReminderWrite(httptest.NewRequest(http.MethodDelete, "http://x/api/board/a%2Fb/reminder", nil)))
+	assert.True(t, isRelayedFileRoute(httptest.NewRequest(http.MethodPost, "http://x/api/board/a%2Fb/external-artifacts", nil)), "chi routes it to the file handler: its body is not read as JSON")
+	assert.False(t, isRelayedFileRoute(httptest.NewRequest(http.MethodPost, "http://x/api/board/a/b/external-artifacts", nil)))
+	assert.True(t, strictOpenPaths["GET "+routedPath(httptest.NewRequest(http.MethodGet, "http://x/api/health", nil))])
+}

@@ -664,7 +664,7 @@ var strictOpenPaths = map[string]bool{"GET /api/health": true, "HEAD /api/health
 // admit applies strict local auth to a request with no session token: the request (with
 // what was verified recorded on it) and whether it may go on.
 func (o *IdentityObserver) admit(r *http.Request, caller string) (*http.Request, bool) {
-	if strictOpenPaths[r.Method+" "+r.URL.Path] {
+	if strictOpenPaths[r.Method+" "+routedPath(r)] {
 		return r, true
 	}
 	switch auth.MethodFrom(r.Context()) {
@@ -696,7 +696,7 @@ func (o *IdentityObserver) admit(r *http.Request, caller string) (*http.Request,
 // the API-key flow does, so the Coral app signs in again by itself. It reports whether it
 // answered.
 func (o *IdentityObserver) lockPage(w http.ResponseWriter, r *http.Request) bool {
-	p := r.URL.Path
+	p := routedPath(r)
 	if p == "/auth" || strings.HasPrefix(p, "/auth/") || strings.HasPrefix(p, "/static/") || p == "/manifest.json" || p == "/favicon.ico" {
 		return false
 	}
@@ -774,7 +774,7 @@ func operatorOrKeyCaller(r *http.Request) bool {
 // classify names the caller of a request that carries no session token.
 func (o *IdentityObserver) classify(r *http.Request) string {
 	switch {
-	case strictOpenPaths[r.Method+" "+r.URL.Path]:
+	case strictOpenPaths[r.Method+" "+routedPath(r)]:
 		return callerOpen
 	case r.Header.Get(cliauth.CLIAuthHeader) != "":
 		return callerCLISigned
@@ -867,11 +867,10 @@ func (o *IdentityObserver) logOnce(key, msg string, args ...any) {
 // error means a claimed name couldn't be checked (the board's subscribers couldn't be
 // read), and the caller refuses the request.
 func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionTokenOwner) (first *IdentityMismatch, actorName string, err error) {
-	rest, ok := strings.CutPrefix(r.URL.Path, "/api/board/")
+	project, tail, ok := boardRoute(r)
 	if !ok || o.bs == nil {
 		return nil, "", nil
 	}
-	project, tail, _ := strings.Cut(rest, "/")
 	switch project {
 	case "", "projects", "tasks", "remotes":
 		return nil, "", nil
@@ -1016,10 +1015,10 @@ func boardClaims(r *http.Request) (map[string][]string, error) {
 // isRelayedFileRoute: POST /api/board/{project}/external-artifacts, the file another Coral sends through
 // Coral Hub. Its body is a binary frame of up to 8 MiB, not a JSON request about a board.
 func isRelayedFileRoute(r *http.Request) bool {
-	if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/api/board/") || !strings.HasSuffix(r.URL.Path, "/external-artifacts") {
+	if r.Method != http.MethodPost || !strings.HasPrefix(routedPath(r), "/api/board/") || !strings.HasSuffix(routedPath(r), "/external-artifacts") {
 		return false
 	}
-	project := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/board/"), "/external-artifacts")
+	project := strings.TrimSuffix(strings.TrimPrefix(routedPath(r), "/api/board/"), "/external-artifacts")
 	return project != "" && !strings.Contains(project, "/")
 }
 

@@ -15,7 +15,9 @@ func TestFailedKeyLimiterCountsAnIPv6NetworkOnce(t *testing.T) {
 	assert.Equal(t, rateKey("2001:db8:1:2::1"), rateKey("2001:db8:1:2:ffff::9"), "one /64")
 	assert.NotEqual(t, rateKey("2001:db8:1:2::1"), rateKey("2001:db8:1:3::1"), "another /64")
 	assert.Equal(t, "fe80::/64", rateKey("fe80::1%en0"), "a zone is not part of the address")
-	assert.Equal(t, "::ffff:203.0.113.7", rateKey("::ffff:203.0.113.7"), "an IPv4-mapped address is left as it is")
+	assert.Equal(t, "203.0.113.7", rateKey("::ffff:203.0.113.7"), "an IPv4-mapped address is the IPv4 client")
+	assert.Equal(t, rateKey("203.0.113.7"), rateKey("::ffff:203.0.113.7"), "one client, one count, whichever way the listener reports it")
+	assert.Equal(t, "203.0.113.7", rateKey("::ffff:203.0.113.7%en0"), "a zone on a mapped address is dropped too")
 	assert.Equal(t, "not-an-ip", rateKey("not-an-ip"))
 
 	ks := &KeyStore{rateMap: make(map[string]*rateLimitEntry)}
