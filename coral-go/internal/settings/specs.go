@@ -203,6 +203,8 @@ func init() {
 	ownRoute(ArtifactRetentionAckAt, KindOpaque, "", "When the Operator acknowledged a dry run.")
 
 	// Artifact comments (#5176): Coral Hub viewers may comment (off until coral-hub settles a stable identity), and the install's owner id.
+	boolOn("hub_redact_keywords", ApplyLive, "Redact the value after a name such as api_key or password in what Coral Hub sees (#5141).")
+
 	boolOff(ArtifactCommentsHubWrite, ApplyLive, "Coral Hub viewers may comment on artifacts.")
 	optIn(ArtifactCommentsHubWrite)
 

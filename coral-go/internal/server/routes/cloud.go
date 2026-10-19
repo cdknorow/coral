@@ -86,7 +86,7 @@ func RedactKeywordsFromSettings(ss *store.SessionStore) func() bool {
 			return on
 		}
 		s, err := ss.GetSettings(context.Background())
-		on, at = err != nil || !settingOff(s[RedactKeywordsSetting]), time.Now()
+		on, at = err != nil || setreg.Bool(s, RedactKeywordsSetting), time.Now()
 		return on
 	}
 }
@@ -113,15 +113,6 @@ func requestRedactor(r *http.Request) redact.Redactor {
 		return secrets.HubRedactor(keywordsOn)
 	}
 	return secrets.Redactor()
-}
-
-// settingOff: a bool setting stored as sent ("false", "False", 0, no, off) is off.
-func settingOff(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "false", "0", "no", "off":
-		return true
-	}
-	return false
 }
 
 // HubAutoAcceptAllowed reads the switch (default on).
