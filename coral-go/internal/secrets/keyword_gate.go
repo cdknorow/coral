@@ -83,7 +83,7 @@ type place struct{ start, end int }
 
 const (
 	lookBack    = 1024 // how far before a '=' a name may start, in a line longer than this
-	valueWindow = 8192 // how far after it the window runs at least, to the first white space or quote after (a value holds neither)
+	valueWindow = 8192 // how far after the separator a window runs at least, for the rules that read more than the value (Authorization: Bearer <value>, the lines of curl, mysql and sshpass)
 )
 
 // lineStart is where the place for a name starting at p begins: the start of its line, or, in a line longer than lookBack, the first space, tab or quote
@@ -183,11 +183,13 @@ func entityQuoteStartingAt(s string, p int) int {
 	return 0
 }
 
-// valueEndAt is the end of a window that starts a value at p: valueWindow on, then up to the first byte a value cannot hold.
-func (g *gateScan) valueEndAt(p int) int {
+// valueEndAt is the end of a window that starts a value at p: minimum bytes on (0 for a rule that reads only the value, which is nearly all of them: the
+// window then ends where the value does, so the rules run over a name and its value and not over the kilobytes after them: the gate's whole point),
+// then up to the first byte no value can hold (white space, a quote, < or >).
+func (g *gateScan) valueEndAt(p, minimum int) int {
 	text := g.text
 	p = skipBlanks(text, p) // the separator may be followed by any white space (and an opening quote) before the value: the window starts after it
-	e := min(len(text), p+valueWindow)
+	e := min(len(text), p+minimum)
 	// The names are found in order, so e never goes back: the byte that ends this window is the one that ended the last, when that one is not behind e.
 	if g.termAt >= 0 && g.termFrom <= e && e <= g.termAt {
 		return g.termAt
@@ -231,7 +233,11 @@ func keywordPlaces(text string) []place {
 				if strings.HasSuffix(w, "cookie") {
 					add(g.lineStart(from), g.lineEnd(skipBlanks(text, i+1))) // a header's pairs run to the end of the line, which is the one after the blanks that follow the separator
 				} else {
-					add(g.lineStart(from), g.valueEndAt(i+1))
+					window := 0
+					if strings.HasSuffix(w, "authorization") {
+						window = valueWindow // Authorization: Bearer <value>: the value follows another word
+					}
+					add(g.lineStart(from), g.valueEndAt(i+1, window))
 				}
 			}
 		case '%':
@@ -242,13 +248,13 @@ func keywordPlaces(text string) []place {
 			}
 			if strings.HasPrefix(lower[j:], "3d") || strings.HasPrefix(lower[j:], "3a") {
 				if _, from, ok := nameBefore(lower, i); ok {
-					add(g.lineStart(from), g.valueEndAt(j+2))
+					add(g.lineStart(from), g.valueEndAt(j+2, 0))
 				}
 			}
 		case 0xEF: // the full-width '=' (EF BC 9D) and ':' (EF BC 9A)
 			if i+2 < len(text) && text[i+1] == 0xBC && (text[i+2] == 0x9D || text[i+2] == 0x9A) {
 				if _, from, ok := nameBefore(lower, i); ok {
-					add(g.lineStart(from), g.valueEndAt(i+3))
+					add(g.lineStart(from), g.valueEndAt(i+3, 0))
 				}
 			}
 		case '-':
@@ -258,22 +264,33 @@ func keywordPlaces(text string) []place {
 					j++
 				}
 				if endsLikeAName(lower[i+2 : j]) {
-					add(i, g.valueEndAt(j))
+					add(i, g.valueEndAt(j, 0))
 				}
 			}
 			i++ // a second '-' starts nothing
 		}
 	}
-	// curl -u user:password, mysql -pPASSWORD, sshpass -p PASSWORD: the line.
-	for _, w := range []string{"curl", "mysql", "sshpass"} {
+	// curl -u user:password, mysql -pPASSWORD, sshpass -p PASSWORD: the line, and past it when the flag may start the next line (\s matches a newline). A
+	// place only when the flag is there to be found: the word alone (in prose, in a doc) is not worth reading the next 8 KB.
+	for _, w := range []struct{ word, flag string }{{"curl", "-u"}, {"mysql", "-p"}, {"sshpass", "-p"}} {
+		nextFlag := -1 // where the flag next is, at or after from: looked up again only when it is behind us, so a line of nothing but the word is read once
 		for from := 0; ; {
-			k := strings.Index(lower[from:], w)
+			k := strings.Index(lower[from:], w.word)
 			if k < 0 {
 				break
 			}
 			k += from
-			add(g.lineStart(k), g.valueEndAt(g.lineEnd(k))) // the flag may start the next line (\s matches a newline), and its value follows
-			from = k + len(w)
+			from = k + len(w.word)
+			if nextFlag < from {
+				if i := strings.Index(lower[from:], w.flag); i >= 0 {
+					nextFlag = from + i
+				} else {
+					break // no flag after this word, so none after any later one
+				}
+			}
+			if end := g.valueEndAt(g.lineEnd(k), valueWindow); nextFlag < end { // "--user" holds "-u"
+				add(g.lineStart(k), end)
+			}
 		}
 	}
 	return mergePlaces(ps)

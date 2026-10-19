@@ -97,3 +97,26 @@ func TestKeywordGateOnRandomText(t *testing.T) {
 		sameCoverage(t, "random", b.String())
 	}
 }
+
+// The gate's places are a name and its value, not the kilobytes after them (#5209): on ordinary text with a name here and there the rules read
+// a few percent of the bytes. A window that grew back to a fixed size would cost the hub a third of its speed on source-code-heavy terminal text.
+func TestKeywordPlacesAreTight(t *testing.T) {
+	filler := strings.Repeat("an ordinary line of output, with words and numbers 12345\n", 60) // about 3.4 KB
+	var b strings.Builder
+	for i := 0; i < 200; i++ {
+		b.WriteString(filler)
+		b.WriteString("export DEPLOY_TOKEN=Zq8Lm2Xv9Rt4Wk7Pd3Hs" + strings.Repeat("x", i%7) + "\n")
+		b.WriteString(`curl -H "x-api-key: Zq8Lm2Xv9Rt4Wk7Pd3Hs" https://example.com/` + "\n")
+	}
+	text := b.String()
+	in := 0
+	for _, p := range keywordPlaces(text) {
+		in += p.end - p.start
+	}
+	if in*20 > len(text) { // over 5 percent
+		t.Fatalf("the places hold %d of %d bytes: the windows are too wide", in, len(text))
+	}
+	if got := len(keywordSpans(text)); got < 400 {
+		t.Fatalf("%d values found, want 400", got)
+	}
+}

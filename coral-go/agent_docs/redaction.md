@@ -26,6 +26,15 @@ never passed on as it is.
 
 The local callers (`coral.log`, events, the board, saved views of local requests) keep `secrets.Redactor`: they cannot reach a hub viewer without the reply's own redaction.
 
+### What the keyword rules cost
+
+They are regular expressions, so they only run where a name could be: `internal/secrets/keyword_gate.go` finds each `=`, `:`, `%3D` or full-width separator
+whose word before it ends like a name (key, token, secret, password, ...), and each `--flag` of that kind, and gives the rules that name and its value
+(its line to the end of the value), not the text around. `keyword_gate_test.go` holds the result byte-equal to running the rules over all of the text,
+and `TestKeywordPlacesAreTight` holds the places to a few percent of ordinary text. Through the hub that costs about 10 percent of the speed of the base rules on
+source-code-heavy terminal text and on transcript JSON (Mac, `Redactor` against `HubRedactor`), and about 8 percent on a 2 MiB reply; text that is nothing but names
+costs more (about a third of the base speed).
+
 ### Turning the keyword rules off
 
 They are on whenever Coral is connected to Coral Hub. Two switches, both local: the setting `hub_redact_keywords` (Settings > Coral Hub, or `PUT /api/settings`
