@@ -17,7 +17,7 @@ assert.equal(isFiltered(EMPTY), false); assert.equal(isFiltered({ ...EMPTY, sort
 for (const k of ['state', 'board', 'machine']) assert.equal(isFiltered({ ...EMPTY, [k]: k === 'state' ? 'idle' : 'x' }), true, k);
 
 // the state groups: what the session states map to
-const keys = { needs_input: 'needs_input', working: 'working', sleeping: 'asleep', ended: '', idle: 'idle', your_turn: 'idle', waiting_on: 'idle', task_idle: 'idle', check_terminal: 'idle', stuck: 'idle' };
+const keys = { needs_input: 'needs_input', working: 'working', sleeping: 'asleep', idle: 'idle', your_turn: 'idle', waiting_on: 'idle', task_idle: 'idle', check_terminal: 'idle', stuck: 'idle' };
 for (const [k, g] of Object.entries(keys)) assert.equal(stateGroup(k), g, k);
 assert.deepEqual(STATES, ['needs_input', 'working', 'idle', 'asleep']);
 
@@ -39,7 +39,6 @@ assert.equal(matches(c, { ...EMPTY, board: 'team-a' }, ctx), false, 'an agent wi
 assert.equal(matches(b, { ...EMPTY, machine: 's1' }, ctx), true); assert.equal(matches(a, { ...EMPTY, machine: 's1' }, ctx), false);
 assert.equal(matches(a, { ...EMPTY, state: 'working', board: 'team-a', machine: 'local' }, ctx), true, 'all together');
 assert.equal(matches(a, { ...EMPTY, state: 'working', board: 'team-b' }, ctx), false, 'one failing is enough');
-assert.equal(matches({ k: 'ended' }, { ...EMPTY, state: 'idle' }, ctx), false, 'an ended agent is no state');
 
 // sort comparators
 const nameOf = s => s.n;

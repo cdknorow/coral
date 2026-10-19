@@ -95,9 +95,7 @@ const NOT_POPOUT_RELEVANT = new Map(Object.entries({
     // Security's named list (review of the final step)
     'agent-sleep': 'sidebar agent menu (a popout has no sidebar); sleep is reversible (Wake)',
     'agent-archive': 'sidebar agent menu; archive is reversible (Unarchive)',
-    'agent-dismiss': 'sidebar row of an agent that already ended; only clears it from the list',
     'team-sleep': 'sidebar team menu; reversible (Wake)',
-    'team-dismiss': 'sidebar team menu; clears ended agents from the list',
     'agent-move': 'sidebar order only',
     'group-move': 'sidebar order only',
     'goal-request': 'sidebar row: asks the server to summarise the agent\'s goal; types nothing into the agent',
@@ -152,7 +150,7 @@ const NOT_POPOUT_RELEVANT = new Map(Object.entries({
 }));
 const RISKY = /(^|-)(restart|kill|rename|delete|reset|remove|stop|cancel)(-|$)/;
 const MUST_REVIEW = /^m-launch-|(^|-)import(-|$)|(^|-)save(-|$)|^m-apply-settings$/;
-const SECURITY_NAMED = ['agent-sleep', 'agent-archive', 'agent-dismiss', 'team-sleep', 'team-dismiss', 'agent-move', 'group-move', 'goal-request', 'msg-edit-resubmit'];
+const SECURITY_NAMED = ['agent-sleep', 'agent-archive', 'team-sleep', 'agent-move', 'group-move', 'goal-request', 'msg-edit-resubmit'];
 const unclassified = [...registered.keys()].filter(n => (RISKY.test(n) || MUST_REVIEW.test(n)) && !DESTRUCTIVE_ACTIONS.has(n) && !NOT_POPOUT_RELEVANT.has(n));
 assert.deepStrictEqual(unclassified, [], 'classify each: DESTRUCTIVE_ACTIONS in actions.js (a popout removes it) or NOT_POPOUT_RELEVANT here, with the reason');
 for (const n of SECURITY_NAMED) assert.ok(DESTRUCTIVE_ACTIONS.has(n) || NOT_POPOUT_RELEVANT.has(n), `${n} is reviewed`);

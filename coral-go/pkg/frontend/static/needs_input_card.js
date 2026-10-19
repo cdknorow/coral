@@ -38,7 +38,7 @@ function readsPromptsFromScreen(session) {
 function needsInputInfo(session) {
     const row = (state.liveSessions || []).find(s => s.session_id === session.session_id) || session;
     const key = deriveSessionState(row);
-    if (key === "ended" || key === "sleeping") return null;
+    if (key === "sleeping") return null;
     // Waiting for a sign-in (#3830): the chat reply says so when it has; otherwise the row.
     const login = loginBySession.has(session.session_id) ? loginBySession.get(session.session_id) : (row.needs_login ? { reason: "" } : null);
     if (login) return { kind: "login", reason: login.reason };

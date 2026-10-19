@@ -360,8 +360,8 @@ function _applyLiveState(s) {
     // Same resolver and vocabulary as the dashboard rows (never "ended" here:
     // the popout's own lifecycle decides that).
     const KEY_TO_POPOUT = { sleeping: 'sleeping', stuck: 'stuck', needs_input: 'waiting', check_terminal: 'check',
-                            your_turn: 'your-turn', working: 'working', idle: 'idle', ended: 'idle' };
-    let next = KEY_TO_POPOUT[deriveSessionState(s, { ended: false })] || 'idle';
+                            your_turn: 'your-turn', working: 'working', idle: 'idle' };
+    let next = KEY_TO_POPOUT[deriveSessionState(s)] || 'idle';
     if (_terminalDown && next !== 'sleeping') next = 'reconnecting';
     _renderIdentity(s);
     _setState(next);

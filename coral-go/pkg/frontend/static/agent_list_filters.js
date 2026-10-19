@@ -20,12 +20,11 @@ export function clean(f) {
 export function isFiltered(f) { return !!(f.state || f.board || f.machine); }
 
 /** The filter's state for a session's state key (session_state.js): an agent that needs the person, one working, one asleep, and everything else awake is idle (idle, your turn, waiting on
- *  another agent or a task, a terminal to check, stuck). An ended agent is none of them. */
+ *  another agent or a task, a terminal to check, stuck). */
 export function stateGroup(key) {
     if (key === 'needs_input') return 'needs_input';
     if (key === 'working') return 'working';
     if (key === 'sleeping') return 'asleep';
-    if (key === 'ended') return '';
     return 'idle';
 }
 

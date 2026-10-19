@@ -29,7 +29,6 @@ const SESSIONS = [
     S(13, { board_project: 'team-c', working_directory: '/repo/c', display_name: 'Remote lead', server: 's1' }),
     S(14, { working_directory: '/repo/z', display_name: 'Stale remote', server: 's2', staleness_seconds: 4000 }),
 ];
-const KILLED = S(15, { working_directory: '/repo/x', display_name: 'Finished', status: 'done' });
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -52,7 +51,6 @@ const KILLED = S(15, { working_directory: '/repo/x', display_name: 'Finished', s
             await pf.loadPinnedFolders({ render: false }); window.fetch = real;
             filt.setAgentFilter(${JSON.stringify(filter || '')});
             state.settings = {}; // the list reads the server's display settings (show_session_server: unset = chips with 2+ servers); an earlier suite on the same server may have saved one (server_switcher leaves it False), so the fixture pins them
-            state.killedSessions = {}; state.killedSessions[${JSON.stringify(KILLED.session_id)}] = ${JSON.stringify(KILLED)};
             const hub = ${JSON.stringify(settings.__hub || false)};
             state.hub = hub;
             ws.handleCoralMessage({ type: 'coral_update', servers: hub ? [{ id: 'local', label: 'here', status: 'online' }, { id: 's1', label: 'box-one', status: 'online' }, { id: 's2', label: 'box-two', status: 'unreachable' }] : [{ id: 'local', label: 'here', status: 'online' }], sessions: ${JSON.stringify(SESSIONS)}.filter(s => hub || s.server === 'local') });

@@ -123,14 +123,13 @@ const HEX = c => c.repeat(64);
             ['the agent has not started (check the terminal)', { agent_type: 'claude', not_started: true }, { pt: null, screen: null }],
             ['a sign-in with the CLI\'s reason', { agent_type: 'claude' }, { login: { reason: 'Please run /login · API Error: 401' } }],
             ['a sign-in the row reports, with no reason', { agent_type: 'pi', needs_login: true }, {}],
-            ['an ended agent shows no card', { agent_type: 'claude', killed: true }, { pt: ASK, screen: null }],
             ['a sleeping agent shows no card', { agent_type: 'claude', sleeping: true }, { pt: ASK, screen: null }],
         ];
         for (const [name, row, maps] of NEEDS) {
             cases['needs input: ' + name] = await ev(`(() => { const NI = window.NI, st = window.ST; const sid = 'ni-sid';
                 const row = Object.assign({ session_id: sid, name: 'ni-agent', agent_type: 'claude', waiting_for_input: ${!!row.waiting}, waiting_summary: ${JSON.stringify(row.summary || '')} }, ${JSON.stringify(row)});
-                delete row.waiting; delete row.summary; delete row.killed;
-                st.liveSessions = [row]; st.killedSessions = ${row.killed ? "{ [sid]: true }" : '{}'};
+                delete row.waiting; delete row.summary;
+                st.liveSessions = [row];
                 NI.pendingToolBySession.clear(); NI.promptOptionsBySession.clear(); NI.loginBySession.clear();
                 const m = ${JSON.stringify(maps)}; if (m.pt) NI.pendingToolBySession.set(sid, m.pt); if (m.screen) NI.promptOptionsBySession.set(sid, m.screen); if (m.login) NI.loginBySession.set(sid, m.login);
                 const box = document.createElement('div'); NI.syncNeedsInputCard(box, row); return box.innerHTML; })()`);
@@ -184,7 +183,6 @@ const HEX = c => c.repeat(64);
             ['a permission prompt', { waiting_for_input: true, waiting_kind: 'permission', waiting_summary: 'Notification: Claude needs your permission to use Bash' }],
             ['a stuck agent', { stuck: true }],
             ['a sleeping agent', { sleeping: true }],
-            ['an ended agent', { killed: true, summary: 'Finished the release notes' }],
             ['an agent that has not started', { not_started: true }],
             ['a sign-in', { needs_login: true }],
             ['a display name and a job title', { display_name: 'Release Engineer', board_job_title: 'DevOps', board_project: 'ship-team' }],
@@ -202,12 +200,12 @@ const HEX = c => c.repeat(64);
         ];
         for (const [name, extra] of ROWS) for (const [flavour, args] of [['', [false, false]], [' (compact, collapsed)', [true, true]]]) {
             cases['agent row: ' + name + flavour] = await ev(`(() => { const st = window.ST; const sid = 'row-sid';
-                const s = Object.assign({ session_id: sid, name: 'row-agent', agent_type: 'claude', working_directory: '/tmp/proj', type: 'live' }, ${JSON.stringify(extra)}); const killed = !!s.killed; delete s.killed;
-                st.liveSessions = [s]; st.killedSessions = killed ? { [sid]: true } : {}; st.selectedTeam = null; st.currentSession = null;
+                const s = Object.assign({ session_id: sid, name: 'row-agent', agent_type: 'claude', working_directory: '/tmp/proj', type: 'live' }, ${JSON.stringify(extra)})
+                st.liveSessions = [s]; st.selectedTeam = null; st.currentSession = null;
                 return window.SR._renderSessionItem(s, 'group-a', ${args[0]}, ${args[1]}, '/tmp/proj'); })()`);
         }
         cases['agent row: the open agent'] = await ev(`(() => { const st = window.ST; const s = { session_id: 'row-sid', name: 'row-agent', agent_type: 'claude', working_directory: '/tmp/proj', type: 'live', summary: 'Open now' };
-            st.liveSessions = [s]; st.killedSessions = {}; st.selectedTeam = null; st.currentSession = s; const html = window.SR._renderSessionItem(s, 'group-a', false, false, '/tmp/proj'); st.currentSession = null; return html; })()`);
+            st.liveSessions = [s]; st.selectedTeam = null; st.currentSession = s; const html = window.SR._renderSessionItem(s, 'group-a', false, false, '/tmp/proj'); st.currentSession = null; return html; })()`);
 
         // ── workflows.js renderRunDetail (through selectWorkflowRun, with the clock fixed: a running run shows how long it has run) ──
         await ev(`(async () => { const st = ${S}; window.WF = await import(st + 'workflows.js'); return true; })()`);

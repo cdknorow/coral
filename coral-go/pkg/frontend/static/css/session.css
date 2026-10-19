@@ -98,7 +98,7 @@
 }
 .session-dot.working {
     /* Working is GREEN. Green no longer means "done": a finished turn is
-       "Ready for input" (no dot) and only killed rows are "Ended". */
+       "Ready for input" (no dot). */
     background: var(--success);
     animation: pulse-working 1.5s ease-in-out infinite;
 }
@@ -117,16 +117,14 @@
     background: transparent;
 }
 
-/* Sleeping = muted moon, Ended = muted check. Glyphs, not coloured dots, so
-   neither reads as a faded "needs input" or as healthy. aria-hidden in markup. */
-.session-dot.sleeping,
-.session-dot.ended {
+/* Sleeping = muted moon. A glyph, not a coloured dot, so it does not read as a
+   faded "needs input" or as healthy. aria-hidden in markup. */
+.session-dot.sleeping {
     background: transparent;
     opacity: 1;
     position: relative;
 }
-.session-dot.sleeping::before,
-.session-dot.ended::before {
+.session-dot.sleeping::before {
     position: absolute;
     inset: -4px -3px;
     font-size: 0.6875rem;
@@ -135,7 +133,6 @@
     color: var(--text-secondary);
 }
 .session-dot.sleeping::before { content: "\263E"; }
-.session-dot.ended::before    { content: "\2713"; }
 .session-dot.stuck {
     background: var(--danger);
     animation: pulse-stuck 3s ease-in-out infinite;
@@ -198,19 +195,6 @@
 
 .session-group-item.sleeping .agent-avatar {
     opacity: 0.6;
-}
-
-.session-group-item.session-done .session-label,
-/* Muted missed AA on a hovered or selected row in both themes (#4209); the
-   grey and the struck-through name still mark the row done. */
-.session-group-item.session-done .session-goal {
-    color: var(--text-goal, color-mix(in srgb, var(--text-secondary) 65%, var(--text-muted)));
-    filter: grayscale(1);
-}
-
-.session-group-item.session-done .session-label {
-    text-decoration: line-through;
-    text-decoration-color: var(--text-muted);
 }
 
 /* ── History Token Usage Summary ──────────────────────────── */
@@ -1768,14 +1752,13 @@
 
 /* On the selected row the muted name is 4.3:1 in the light theme; the primary colour passes (#4023), and on a
    hovered row too (4.4:1 there, #4218). A colour the user picked still wins. */
-.session-group-item.active:not(.sleeping):not(.session-done) .session-label-name:not([style]),
-.session-group-item:hover:not(.sleeping):not(.session-done) .session-label-name:not([style]) {
+.session-group-item.active:not(.sleeping) .session-label-name:not([style]),
+.session-group-item:hover:not(.sleeping) .session-label-name:not([style]) {
     color: var(--text-primary);
 }
 
-/* Sleeping and finished agents stay muted so their state still reads at a glance */
-.session-group-item.sleeping .session-label-name,
-.session-group-item.session-done .session-label-name {
+/* Sleeping agents stay muted so their state still reads at a glance */
+.session-group-item.sleeping .session-label-name {
     color: inherit;
 }
 

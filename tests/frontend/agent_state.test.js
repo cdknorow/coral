@@ -1,8 +1,8 @@
 // Acceptance harness for the unified Agent state indicators (tasks #165-#167).
 //
 // One vocabulary everywhere: Working, Idle, Needs input, Check terminal, Stuck,
-// Ready for input, Sleeping, Ended. Priority:
-//   Ended (killed rows) > Sleeping > Stuck > Needs input > Check terminal >
+// Ready for input, Sleeping. Priority:
+//   Sleeping > Stuck > Needs input > Check terminal >
 //   Ready for input > Working > Idle.   Overlays: context >= 80%, unread, selection.
 //
 // Fixture-driven through the pre-navigation fetch + /ws/coral stub (same
@@ -54,8 +54,8 @@ const SESSIONS = [
     base({ session_id: ID.twinThere, name: 'twin-dir', working_directory: '/repo/twin', display_name: 'Twin There', awaiting_user: true, done: true, board_project: 'other-team', board_is_orchestrator: false }),
 ];
 const ORDER = SESSIONS.map(s => s.session_id).join(',');
-// Payload order, except that a group lists its sleeping agents after the awake ones (the killed row,
-// which is not sleeping, stays with the awake rows).
+// Payload order, except that a group lists its sleeping agents after the awake ones (the row that is killed
+// later, which is not sleeping, stays with the awake rows).
 const EXPECTED_ORDER = ORDER.split(',').filter(id => id !== ID.sleeping).flatMap(id => id === ID.kill ? [id, ID.sleeping] : [id]).join(',');
 
 const STUB = `
@@ -257,12 +257,11 @@ async function run() {
         check('I no toast for the selected session while typing in its command input; another session still toasts', typingFocus && typedToasts === 0 && (await ev(TOASTS)) === 1, JSON.stringify({ typingFocus, typedToasts, after: await ev(TOASTS), input: await ev(`(() => { const i = document.getElementById('command-input'); const a = document.activeElement; return i ? { disabled: i.disabled, readOnly: i.readOnly, visible: i.checkVisibility(), inert: !!i.closest('[inert]'), active: a ? a.tagName + '#' + a.id : null, pageFocus: document.hasFocus(), cur: document.querySelector('#live-sessions-list .session-group-item.active')?.dataset.sessionId === ${JSON.stringify(ID.idle)} } : 'missing'; })()`) }));
         await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.turnSolo, waiting_for_input: false }); await nextFrame();
 
-        // ── K: Ended only for killed rows ──
+        // ── K: a killed agent's row is removed ──
         await ev(`window.killSessionDirect('coral-go', 'claude', '${ID.kill}'); true`); await until(`!!document.getElementById('confirm-modal-yes') && document.getElementById('confirm-modal-yes').offsetParent !== null`, 'the kill confirmation');
-        await ev(`document.getElementById('confirm-modal-yes').click(); true`); await until(`document.querySelector('#live-sessions-list [data-session-id="${ID.kill}"]')?.getAttribute('data-state') === 'ended'`, 'the killed row');
+        await ev(`document.getElementById('confirm-modal-yes').click(); true`); await until(`!document.querySelector('#live-sessions-list [data-session-id="${ID.kill}"]')`, 'the killed row to go');
         rows = await ev(ROWS('live-sessions-list'));
-        const k = rows[ID.kill];
-        check('K killed row is Ended: data-state ended, struck-through name, glyph dot, 36px, no pill, not counted', !!k && k.state === 'ended' && /line-through/.test(k.labelDecoration) && /ended/.test(k.dotCls) && Math.abs(k.h - 36) <= 1 && k.pills.length === 0 && /, Ended$/.test(k.aria), JSON.stringify(k && { state: k.state, deco: k.labelDecoration, dot: k.dotCls, h: k.h, aria: k.aria }));
+        check('K a killed agent leaves the list at once: no row, no crossed-out Ended row', !rows[ID.kill] && !(await ev(`document.querySelectorAll('#live-sessions-list .session-done, #live-sessions-list [data-state="ended"]').length`)), JSON.stringify(Object.keys(rows).length));
         check('K live awaiting_user rows are never styled Ended/Done', !rows[ID.turnSolo].done && rows[ID.turnSolo].state === 'your_turn' && !/line-through/.test(rows[ID.turnSolo].labelDecoration), JSON.stringify({ state: rows[ID.turnSolo].state, deco: rows[ID.turnSolo].labelDecoration }));
         check('no page exceptions (desktop)', exceptions.length === 0, JSON.stringify(exceptions.slice(0, 2)));
 

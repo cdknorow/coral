@@ -556,16 +556,7 @@ export async function killSession() {
                 } else {
                     showToast(`Killed and saved changes.diff: ${state.currentSession.name}`);
                 }
-                // Preserve killed session for history link
-                const killed = state.liveSessions.find(s => s.session_id === killedSid);
-                if (killed) {
-                    killed.done = true;
-                    killed.working = false;
-                    killed.waiting_for_input = false;
-                    killed.stuck = false;
-                    killed.sleeping = false;
-                    state.killedSessions[killedSid] = killed;
-                }
+                // The row goes at once; the agent's chat stays in History.
                 stopCaptureRefresh();
                 state.currentSession = null;
                 showView("welcome-screen");

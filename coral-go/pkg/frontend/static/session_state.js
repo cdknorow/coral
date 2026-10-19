@@ -74,13 +74,12 @@ export function formatStaleness(seconds) {
 
 /* ── Agent state: one resolver, one vocabulary ─────────────────────────
  * Priority (AGENT_LIST_COMPACT state table):
- *   Ended (killed/history) > Sleeping > Stuck > Needs input > Check terminal
+ *   Sleeping > Stuck > Needs input > Check terminal
  *   > Ready for input (turn ended, awaiting instruction) > Working > Idle
  * Context, unread and selection are overlays, never winners. Every surface
  * (row dot/pill/aria, tooltip, mobile chip, workspace header, popout pill,
  * nav and group counts) reads this table so the words never diverge. */
  export const SESSION_STATES = {
-    ended:          { label: 'Ended',          dot: 'ended',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
     sleeping:       { label: 'Sleeping',       dot: 'sleeping',  pill: null,             pillClass: '',          chip: 'idle',        attention: false },
     stuck:          { label: 'Stuck',          dot: 'stuck',     pill: 'Stuck',          pillClass: 'stuck',     chip: 'error',       attention: true },
     needs_input:    { label: 'Needs input',    dot: 'waiting',   pill: 'Needs input',    pillClass: '',          chip: 'needs-input', attention: true },
@@ -106,8 +105,6 @@ function _isAwaitingUser(s) {
 /** Resolve the single winning state key for a session. */
 export function deriveSessionState(s, opts = {}) {
     if (!s) return 'idle';
-    const ended = opts.ended !== undefined ? opts.ended : !!state.killedSessions?.[s.session_id];
-    if (ended) return 'ended';
     if (s.sleeping) return 'sleeping';
     if (s.stuck) return 'stuck';
     if (s.waiting_for_input) return 'needs_input';

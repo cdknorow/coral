@@ -89,17 +89,8 @@ export function killSessionDirect(name, agentType, sessionId) {
         } else {
             showToast(`Killed and saved changes.diff: ${name}`);
         }
-        // Mark as done and preserve for history link instead of removing
-        const killed = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
-        if (killed) {
-            killed.done = true;
-            killed.working = false;
-            killed.waiting_for_input = false;
-            killed.stuck = false;
-            killed.sleeping = false;
-            state.killedSessions[sessionId] = killed;
-        }
-        state.liveSessions = state.liveSessions.filter(s => s.session_id !== sessionId);
+        // The row goes at once: the agent's chat stays in History. A killed agent is not listed again.
+        state.liveSessions = state.liveSessions.filter(s => !(s.session_id === sessionId && sessionServer(s) === server));
         if (state.currentSession && state.currentSession.session_id === sessionId) {
             state.currentSession = null;
             showView("welcome-screen");
@@ -211,24 +202,6 @@ export function hideAlertModal() {
     modal.style.display = "none";
 }
 
-export function dismissKilledSession(sessionId) {
-    delete state.killedSessions[sessionId];
-    state.liveSessions = state.liveSessions.filter(s => s.session_id !== sessionId);
-    redrawLiveList();
-}
-
-export function dismissBoardKilled(boardName) {
-    const killedIds = Object.keys(state.killedSessions).filter(sid => {
-        const s = state.killedSessions[sid];
-        return s && inTeam(s, boardName);
-    });
-    for (const sid of killedIds) {
-        delete state.killedSessions[sid];
-    }
-    state.liveSessions = state.liveSessions.filter(s => !killedIds.includes(s.session_id));
-    redrawLiveList();
-}
-
 export function copyFolderPath(path) {
     if (!path) return;
     navigator.clipboard.writeText(path).then(() => {
@@ -265,13 +238,6 @@ export async function killGroup(groupName) {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ agent_type: s.agent_type, session_id: s.session_id }),
                     });
-                    // Preserve killed session for history link
-                    s.done = true;
-                    s.working = false;
-                    s.waiting_for_input = false;
-                    s.stuck = false;
-                    s.sleeping = false;
-                    state.killedSessions[s.session_id] = s;
                 } catch (e) {
                     console.error(`Failed to kill ${s.name}:`, e);
                 }
@@ -322,12 +288,6 @@ export async function killBoard(boardName) {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ agent_type: s.agent_type, session_id: s.session_id }),
                     });
-                    s.done = true;
-                    s.working = false;
-                    s.waiting_for_input = false;
-                    s.stuck = false;
-                    s.sleeping = false;
-                    state.killedSessions[s.session_id] = s;
                 } catch (e) {
                     console.error(`Failed to kill ${s.name}:`, e);
                 }
@@ -865,11 +825,11 @@ export function flushLiveSessionsRender() {
 
 registerLiveListRenderer(renderLiveSessions); // the hook other modules redraw through (list_hooks.js)
 
-/** The session a list row shows: live, or a killed one still listed (by id and server, by name when the row has no id). */
+/** The session a list row shows (by id and server, by name when the row has no id). */
 function _rowSession(item) {
     const id = item.dataset.sessionId, server = item.dataset.server, name = item.dataset.name;
     const same = x => (id ? x.session_id === id : x.name === name) && sessionServer(x) === server;
-    return (state.liveSessions || []).find(same) || Object.values(state.killedSessions || {}).find(same) || null;
+    return (state.liveSessions || []).find(same) || null;
 }
 
 // A team's color: the one the user picked for it (the team's color menu, kept per viewer),
@@ -944,10 +904,6 @@ function _renderTeamCard(boardName, boardSessions) {
                     Reset Team
                 </button>
                 ${killAllItem(boardName)}
-                <button class="overflow-menu-item" data-on-click="team-dismiss" data-board="${escapeAttr(boardName)}" title="Remove all killed agents from the sidebar">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M5 6V4a3 3 0 0 1 6 0v2M6 10v2M10 10v2M4 6l1 8h6l1-8"/></svg>
-                    Dismiss All
-                </button>
             </div>
         </div>`;
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
@@ -1177,10 +1133,6 @@ function _renderFolderFirstGroup(groupName, groupSessions) {
                         </button>
                         <hr class="overflow-menu-divider">
                         ${killAllItem(boardName)}
-                        <button class="overflow-menu-item" data-on-click="team-dismiss" data-board="${escapeAttr(boardName)}" title="Remove all killed agents from the sidebar">
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M5 6V4a3 3 0 0 1 6 0v2M6 10v2M10 10v2M4 6l1 8h6l1-8"/></svg>
-                            Dismiss All
-                        </button>
                     </div>
                 </div>`;
                 html += `<li class="session-board-card session-team-group"${accentStyle}>
@@ -1362,16 +1314,6 @@ function _renderLiveSessions(sessions) {
         const list = liveListEl();
         if (list) list.innerHTML = '';
         return;
-    }
-
-    // Merge killed sessions back so they appear as "done" with history links.
-    // Use a copy to avoid mutating state.liveSessions.
-    const liveIds = new Set(sessions.map(s => s.session_id));
-    sessions = [...sessions];
-    for (const [sid, ks] of Object.entries(state.killedSessions)) {
-        if (!liveIds.has(sid)) {
-            sessions.push(ks);
-        }
     }
 
     applySessionSummaryPref();
@@ -1959,7 +1901,6 @@ const withAgent = (fn, modes) => menu(el => {
     if (modes) { if (modes.includes(el.dataset.mode)) W(fn)(...a, el.dataset.mode); } else W(fn)(...a);
 });
 const withBoard = fn => menu(el => { const b = textOf(el.dataset.board); if (b) W(fn)(b); });
-const withSid = fn => menu(el => { const sid = textOf(el.dataset.sessionId); if (sid) W(fn)(sid); });
 const dirOf = el => textOf(el.dataset.dir, 4096);
 const UPDOWN = { up: true, down: true };
 registerActions({
@@ -1974,8 +1915,6 @@ registerActions({
     'agent-sleep': withAgent('toggleAgentSleep', ['sleep', 'wake']),
     'agent-archive': withAgent('toggleAgentArchive', ['archive', 'unarchive']),
     'agent-move': menu(el => { const sid = textOf(el.dataset.sessionId); if (sid && UPDOWN[el.dataset.dir]) W(el.dataset.dir === 'up' ? 'moveSessionUp' : 'moveSessionDown')(sid); }),
-    'agent-history': withSid('selectHistorySession'),
-    'agent-dismiss': withSid('dismissKilledSession'),
     'team-sleep': menu(el => { const b = textOf(el.dataset.board); if (b && ['sleep', 'wake'].includes(el.dataset.mode)) W('toggleTeamSleep')(b, el.dataset.mode); }),
     'team-working-mode': withBoard('showTeamWorkingModeWorkspace'),
     'team-tokens': withBoard('showTeamTokenUsage'),
@@ -1983,7 +1922,6 @@ registerActions({
     'team-share': withBoard('shareAgentTeam'),
     'team-save': withBoard('saveTeamFromSidebar'),
     'team-distill': withBoard('distillTeamKnowledge'),
-    'team-dismiss': withBoard('dismissBoardKilled'),
     'team-reset': withBoard('resetTeam'),
     'team-kill': withBoard('killBoard'),
     'team-add-agent': menu(el => { const b = textOf(el.dataset.board); if (b) W('showAddAgentToBoard')(b, dirOf(el) || ''); }),
@@ -2004,10 +1942,9 @@ registerActions({
     'folder-pin': menu(el => { const d = dirOf(el); if (d && (el.dataset.mode === 'pin' || el.dataset.mode === 'unpin')) W(el.dataset.mode === 'pin' ? 'pinFolder' : 'unpinFolder')(d); }),
     'wf-run-open': menu(el => { const id = idOf(el.dataset.runId); if (id) window.selectWorkflowRun(id); }),
     'goal-request': (el, event) => { event.stopPropagation(); const a = agentArgs(el); if (a) window.requestGoal(...a); },
-    // A row (or a rail tile) opens its agent, or a done one's history.
+    // A row (or a rail tile) opens its agent.
     'session-open': el => {
         const sid = textOf(el.dataset.sessionId) || '';
-        if (el.dataset.done === '1') { if (sid) window.selectHistorySession(sid); return; }
         const name = textOf(el.dataset.name), type = tokenOf(el.dataset.agentType);
         if (name && type) window.selectLiveSession(name, type, sid, textOf(el.dataset.server) || '');
     },

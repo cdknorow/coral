@@ -47,7 +47,7 @@ const DEVICES = [
                 window.selectLiveSession = function (...a) { window.__picked.push(a[0]); try { return orig.apply(this, a); } catch (e) { /* the fake session has no server */ } };
                 window.__seedRows = () => {
                     const list = (document.getElementById('live-sessions-list') || document.getElementById('mobile-session-list')); // the one list: in the phone's page at this width (#4497)
-                    list.innerHTML = ['alpha', 'beta'].map(n => '<li class="session-group-item" data-session-id="sid-' + n + '" data-server="local" data-on-click="session-open" data-done="0" data-name="' + n + '" data-agent-type="terminal"><span class="session-label">' + n + '</span></li>').join('');
+                    list.innerHTML = ['alpha', 'beta'].map(n => '<li class="session-group-item" data-session-id="sid-' + n + '" data-server="local" data-on-click="session-open" data-name="' + n + '" data-agent-type="terminal"><span class="session-label">' + n + '</span></li>').join('');
                     return import((window.__coralStatic||'/static/')+'mobile.js').then(m => m.syncMobileAgentList());
                 };
                 return window.__seedRows();

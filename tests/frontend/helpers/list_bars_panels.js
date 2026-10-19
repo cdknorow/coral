@@ -105,7 +105,7 @@ PANELS.push({
         const sessions = Array.from({ length: 12 }, (_, i) => { const n = i + 1; const o = { name: 'ag-' + n, session_id: uid(n), agent_type: 'claude', server: 'local', status: 'idle', summary: 'Task ' + n, display_name: 'Agent ' + String(n).padStart(2, '0'), working_directory: '/repo/' + TEAMS[i % 3], branch: 'main', staleness_seconds: 1000 - n * 17, token_cost_usd: n / 10, working: n % 3 === 0, waiting_for_input: n % 6 === 1, board_project: TEAMS[i % 3] }; return o; });
         await ctx.ev(`(async () => { const st = window.__coralStatic || '/static/'; const ws = await import(st + 'websocket.js'); const render = await import(st + 'render.js'); const { state } = await import(st + 'state.js');
             if (state.coralWs) { state.coralWs.onclose = null; state.coralWs.onmessage = null; try { state.coralWs.close(); } catch {} }
-            state.killedSessions = {}; window.__T = { ws, render, state };
+            window.__T = { ws, render, state };
             ws.handleCoralMessage({ type: 'coral_update', servers: [], sessions: ${JSON.stringify(sessions)}, session_ids: [] }); render.flushLiveSessionsRender(); render.renderLiveSessions(state.liveSessions); return true; })()`);
         const bar = phone ? '#mobile-agent-list-bar' : '#agent-list-bar';
         if (phone) await ctx.ev(`window.switchNavTab('agents'); true`);

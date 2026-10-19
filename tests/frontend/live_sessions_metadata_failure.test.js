@@ -44,7 +44,7 @@ const html = '<!doctype html><html><body><section data-section="live-sessions"><
                 return new Response('{}',{headers:{'Content-Type':'application/json'}});
             };
             window.s=(await import((window.__coralStatic||'/static/')+'state.js')).state;
-            s.liveSessions=[];s.killedSessions={};
+            s.liveSessions=[];
             window.api=await import((window.__coralStatic||'/static/')+'api.js');
             window.load=()=>api.loadLiveSessions(reason=>failures.push(reason));
             window.inspect=()=>({

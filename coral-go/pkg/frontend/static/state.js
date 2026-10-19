@@ -48,7 +48,6 @@ export const state = {
     eventFiltersHidden: null,   // Set of hidden filter keys (lazily initialized)
     settings: {},               // cached global user settings from /api/settings
     prevWaitingState: {},       // tracks previous waiting_for_input per session_id for toast notifications
-    killedSessions: {},         // sessionId -> session data for killed agents (preserved for history links)
     hub: false,                 // server runs in hub mode (from /api/health, read once at startup)
     currentBoardServer: 'local', // server id of the open team/board context ("local" = the hub)
     servers: [],                // [{id,label,status}] from the live list when remotes are registered

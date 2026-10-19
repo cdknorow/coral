@@ -113,8 +113,8 @@ function _mobileRowParts(s, stateInfo) {
     return { mobileStatusChip, unreadBoardBadge, mobileAttentionBanner };
 }
 
-/** The items of an agent row's action menu (drawn when it opens): the done, archived, sleeping or awake set. */
-function _rowMenuContent(s, sid, isDone) {
+/** The items of an agent row's action menu (drawn when it opens): the archived, sleeping or awake set. */
+function _rowMenuContent(s, sid) {
     const _archiveItem = `
             <button class="overflow-menu-item" data-on-click="agent-archive" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}" data-session-id="${escapeAttr(sid)}" data-mode="archive">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M6.5 9h3"/></svg>
@@ -204,16 +204,6 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                 Kill Session
             </button>`;
-    const _doneMenu = `
-            <button class="overflow-menu-item" data-on-click="agent-history" data-session-id="${escapeAttr(sid)}">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3h10v10H3z"/><path d="M6 6h4"/><path d="M6 9h4"/></svg>
-                View History
-            </button>
-            <hr class="overflow-menu-divider">
-            <button class="overflow-menu-item overflow-menu-danger" data-on-click="agent-dismiss" data-session-id="${escapeAttr(sid)}">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
-                Dismiss
-            </button>`;
     // Archived: no Restart, Rename or reordering (#3030).
     const _archivedMenu = `
             <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${escapeAttr(sid)}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" data-on-click="kebab-close">
@@ -237,7 +227,7 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                 Remove Agent
             </button>`;
-    return isDone ? _doneMenu : (s.archived ? _archivedMenu : (s.sleeping ? _sleepingMenu : _awakeMenu));
+    return s.archived ? _archivedMenu : (s.sleeping ? _sleepingMenu : _awakeMenu);
 }
 
 export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) {
@@ -298,18 +288,17 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
                 <span class="session-goal-empty-label">No goal yet</span>
             </span>`;
     }
-    const isDone = !!state.killedSessions?.[s.session_id];
     // A state without a chip class ("Ready for input") renders no mobile chip. The meta
     // row is emitted without whitespace so :empty can collapse it on the phone.
     const { mobileStatusChip, unreadBoardBadge, mobileAttentionBanner } = _mobileRowParts(s, stateInfo);
     const needsAttention = sessionNeedsAttention(s);
     // Unread board messages: a neutral count on line 2 (never an attention colour),
     // shown on selected rows too.
-    const unreadCount = stateInfo.key === 'ended' ? 0 : sessionUnreadCount(s);
+    const unreadCount = sessionUnreadCount(s);
     // The unread count on agent rows was not useful to users, so no chip is rendered.
     void unreadCount;
     const unreadChip = '';
-    const kebabMenuContent = _rowMenuContent(s, sid, isDone);
+    const kebabMenuContent = _rowMenuContent(s, sid);
     // The menu's items (about 50 elements a row) are drawn when it opens (#4611): the row holds an empty menu and this module the text for it.
     rememberRowMenu(s, kebabMenuContent);
     const rowMenuId = kebabId('agent', rowMenuKey(s.session_id, sessionServer(s), s.name));
@@ -321,19 +310,18 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
     const collapsedClass = collapsed ? ' group-collapsed' : '';
     const sleepingClass = s.sleeping ? ' sleeping' : '';
     const attentionClass = needsAttention ? ' needs-attention' : '';
-    const doneClass = isDone ? ' session-done' : '';
     // Hub: an agent on an unreachable server is last-known data only.
     const stale = isStaleSession(s);
     const staleClass = stale ? ' session-stale' : '';
-    // Its click opens the agent (or, when done, its history): data the session-open action reads.
-    const clickHandler = stale ? '' : ` data-on-click="session-open" data-done="${Number(isDone ? 1 : 0)}" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}"`;
+    // Its click opens the agent: data the session-open action reads.
+    const clickHandler = stale ? '' : ` data-on-click="session-open" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}"`;
     // Focusable list item (not a button: it contains the kebab, the open-tab
     // anchor and the sparkle). Selection is delegated (see _wireListKeyboard).
     const ariaLabel = `${identity}, ${stateInfo.label}`
         + (ctxHigh ? `, context ${s.context_pct >= 100 ? 'full' : Math.round(s.context_pct) + '%'}` : '')
         + (unreadCount > 0 ? `, ${unreadCount} unread` : '');
     const stuckClass = stateInfo.key === 'stuck' ? ' is-stuck' : '';
-    return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}${sleepingClass}${attentionClass}${stuckClass}${doneClass}${staleClass}"
+    return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}${sleepingClass}${attentionClass}${stuckClass}${staleClass}"
         draggable="${stale ? 'false' : 'true'}"${stale ? ` aria-disabled="true" title="${escapeAttr(staleReason(s))}"` : ''}
         data-state="${escapeAttr(stateInfo.key)}"
         tabindex="0"
@@ -356,7 +344,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
                 ${mobileAttentionBanner}
             </div>
             <div class="session-mobile-meta">${mobileStatusChip}${unreadBoardBadge}</div>
-            ${(stateInfo.key !== 'ended' && (goalLine || unreadChip)) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
+            ${(goalLine || unreadChip) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
             ${(!isCompact && s.model && modelLabel(s.agent_type, s.model, sessionServer(s))) ? `<div class="session-model" title="${escapeAttr(s.model)}">${escapeHtml(modelLabel(s.agent_type, s.model, sessionServer(s)))}</div>` : ''}
             ${branchTag}
         </div>

@@ -35,7 +35,7 @@ const stateOf = s => s.waiting_for_input ? 'needs_input' : s.sleeping ? 'asleep'
                 const ws = await import(st + 'websocket.js'); const render = await import(st + 'render.js'); const { state } = await import(st + 'state.js');
                 if (state.coralWs) { state.coralWs.onclose = null; state.coralWs.onmessage = null; try { state.coralWs.close(); } catch {} }
                 localStorage.clear(); localStorage.setItem('coral-sleeping-expanded:all', 'true');
-                state.killedSessions = {}; state.hub = ${!!hub};
+                state.hub = ${!!hub};
                 window.__T = { ws, render, state };
                 ws.handleCoralMessage({ type: 'coral_update', servers: ${hub ? "[{ id: 'local', label: 'here', status: 'online' }, { id: 's1', label: 'box-one', status: 'online' }]" : '[]'}, sessions: ${JSON.stringify(SESSIONS.map(x => (hub ? x : { ...x, server: 'local' })))} });
                 render.flushLiveSessionsRender(); render.renderLiveSessions(state.liveSessions);

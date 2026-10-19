@@ -6,7 +6,7 @@
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
-const STATES = [[], ['active'], ['sleeping'], ['session-done'], ['needs-attention'], ['needs-attention', 'is-stuck'], ['active', 'sleeping'], ['active', 'session-done']];
+const STATES = [[], ['active'], ['sleeping'], ['needs-attention'], ['needs-attention', 'is-stuck'], ['active', 'sleeping']];
 const PSEUDO = [[], ['hover'], ['focus-visible'], ['hover', 'focus-visible']];
 
 // The label's colour over its composited background (every translucent layer up to an opaque one).
@@ -49,7 +49,7 @@ const RATIO = `(() => {
             const { nodeId } = await DOM.querySelector({ nodeId: root.nodeId, selector: '.session-group-item[data-qa-row]' });
             const base = await ev(`document.querySelector('[data-qa-row]').className`);
             for (const classes of STATES) {
-                await ev(`(() => { const li = document.querySelector('[data-qa-row]'); li.className = ${JSON.stringify(base)}; for (const c of ['active', 'sleeping', 'session-done', 'needs-attention', 'is-stuck']) li.classList.remove(c); for (const c of ${JSON.stringify(classes)}) li.classList.add(c); return true; })()`);
+                await ev(`(() => { const li = document.querySelector('[data-qa-row]'); li.className = ${JSON.stringify(base)}; for (const c of ['active', 'sleeping', 'needs-attention', 'is-stuck']) li.classList.remove(c); for (const c of ${JSON.stringify(classes)}) li.classList.add(c); return true; })()`);
                 for (const pseudo of PSEUDO) {
                     await CSS.forcePseudoState({ nodeId, forcedPseudoClasses: pseudo });
                     const ratio = await ev(RATIO);

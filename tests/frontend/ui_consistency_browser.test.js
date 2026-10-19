@@ -61,7 +61,7 @@ const fixtures = async () => {
         return new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
     };
     s.liveSessions=['Orchestrator','Lead Developer','Backend Dev','UI'].map((name,i)=>({name:'coral-task-workflows',session_id:'fixture-'+i,display_name:name,board_project:'coral-task-workflows',agent_type:'codex',working_directory:'/workspace/coral',waiting_for_input:i===0,working:i===3,status:'idle',summary:'Review workspace consistency',branch:'main'}));
-    s.currentSession={...s.liveSessions[3],type:'live'};s.currentBoardTasks=[task];s.settings={};s.killedSessions={};
+    s.currentSession={...s.liveSessions[3],type:'live'};s.currentBoardTasks=[task];s.settings={};
     mods.render.renderLiveSessions(s.liveSessions);
     document.getElementById('welcome-screen').style.display='none';document.getElementById('startup-loading').style.display='none';
     document.querySelectorAll('.session-view').forEach(e=>e.style.display='none');document.getElementById('live-session-view').style.display='flex';

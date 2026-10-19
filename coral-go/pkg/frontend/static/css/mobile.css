@@ -997,8 +997,7 @@
     /* The phone shows unread in its meta row already */
     #mobile-session-list .session-unread-chip { display: none; }
     #mobile-session-list .session-line2 { height: auto; align-items: flex-start; }
-    #mobile-session-list .session-dot.sleeping::before,
-    #mobile-session-list .session-dot.ended::before { font-size: 0.8125rem; inset: -4px -2px; }
+    #mobile-session-list .session-dot.sleeping::before { font-size: 0.8125rem; inset: -4px -2px; }
 
     #mobile-session-list .session-status-chip.error {
         background: rgba(248, 81, 73, 0.16);

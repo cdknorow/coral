@@ -384,7 +384,7 @@
 1	servers.js	statusPill(s.status)
 1	servers.js	title
 1	servers.js	warningHtml(s.warning)
-1	session_rows.js	(stateInfo.key !== 'ended' && (goalLine || unreadChip)) ? `<div class="session-line2">${goalLine}${unreadChip}
+1	session_rows.js	(goalLine || unreadChip) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''
 1	session_rows.js	_WORKTREE_ICON
 2	session_rows.js	_archiveItem
 1	session_rows.js	_gitStateSummary(gsWt)
@@ -398,7 +398,6 @@
 1	session_rows.js	compactClass
 1	session_rows.js	count
 1	session_rows.js	dirChip
-1	session_rows.js	doneClass
 1	session_rows.js	dotClass
 1	session_rows.js	goalBtn
 1	session_rows.js	goalLine
