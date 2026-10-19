@@ -23,7 +23,6 @@ TIMEOUT="${TIMEOUT:-30}"
 FAILURES=0
 TRAY_PID=""
 APP_PID=""
-CORAL_HOME="$HOME/.coral"
 
 # Color helpers
 pass() { printf "\033[32m[PASS]\033[0m %s\n" "$*"; }
@@ -48,31 +47,45 @@ if [ ! -f "$APP/Contents/MacOS/coral-tray" ]; then
 fi
 pass "Coral.app bundle found with coral-tray binary"
 
+# The app runs in a throwaway data folder and HOME of its own (#4960): never the real ~/.coral (its logs, tray.pid and
+# database) and never the operator's real ~/.claude. Removed by this exact path on exit; CORAL_CLOUD_URL, CORAL_URL and
+# TMUX from an agent shell are dropped so nothing reaches a running Coral, and the run sends no usage events.
+SMOKE_ROOT=$(mktemp -d /tmp/coral-smoke.XXXXXX)
+case "$SMOKE_ROOT" in /tmp/coral-smoke.??????) ;; *) echo "unexpected temp dir: $SMOKE_ROOT" >&2; exit 1 ;; esac
+CORAL_HOME="$SMOKE_ROOT/data"
+mkdir -p "$CORAL_HOME" "$SMOKE_ROOT/home"
+export HOME="$SMOKE_ROOT/home" CORAL_DATA_DIR="$CORAL_HOME" CORAL_TELEMETRY_DISABLED=1
+unset CORAL_CLOUD_URL CORAL_URL CORAL_DIR TMUX
+
 # ── Cleanup trap ────────────────────────────────────────────────────
+# Only the processes this script started are stopped, by the PIDs it recorded and their children (the tray starts the
+# server as a child): never a process found by name or by the port it listens on.
+kill_tree() {
+    local pid=$1 child
+    for child in $(pgrep -P "$pid" 2>/dev/null || true); do kill_tree "$child"; done
+    kill "$pid" 2>/dev/null || true
+}
 cleanup() {
     info "Cleaning up..."
     if [ -n "$TRAY_PID" ] && kill -0 "$TRAY_PID" 2>/dev/null; then
-        kill "$TRAY_PID" 2>/dev/null || true
+        kill_tree "$TRAY_PID"
         wait "$TRAY_PID" 2>/dev/null || true
     fi
     if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
-        kill "$APP_PID" 2>/dev/null || true
+        kill_tree "$APP_PID"
         wait "$APP_PID" 2>/dev/null || true
     fi
-    # Kill anything still on the test port
-    lsof -ti :"$TEST_PORT" 2>/dev/null | xargs kill 2>/dev/null || true
+    # SMOKE_ROOT was made by mktemp above and checked to be /tmp/coral-smoke.XXXXXX.
+    case "$SMOKE_ROOT" in /tmp/coral-smoke.??????) rm -rf -- "$SMOKE_ROOT" ;; esac
 }
 trap cleanup EXIT
 
-# ── Phase 2: Kill existing processes on test port ───────────────────
-info "Killing any existing processes on port $TEST_PORT..."
-pkill -f "coral-tray.*--port $TEST_PORT" 2>/dev/null || true
-lsof -ti :"$TEST_PORT" 2>/dev/null | xargs kill 2>/dev/null || true
-rm -f "$CORAL_HOME/tray.pid"
-# Truncate logs so we only check for crashes from THIS run
-: > "$CORAL_HOME/tray.log" 2>/dev/null || true
-: > "$CORAL_HOME/app.log" 2>/dev/null || true
-sleep 1
+# ── Phase 2: The test port must be free ─────────────────────────────
+# A process already on it is not ours to kill (it may be someone's test server or a running Coral).
+if lsof -ti :"$TEST_PORT" >/dev/null 2>&1; then
+    fail "port $TEST_PORT is already in use; stop that process yourself or pick another with TEST_PORT=..."
+    exit 1
+fi
 
 # ── Phase 3: Launch coral-tray ─────────────────────────────────────
 echo ""

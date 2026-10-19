@@ -46,7 +46,7 @@ var (
 // The key is the path relative to the repo root; the value is the reason (shown if the entry is stale).
 var allowlistReasons = map[string]string{
 	"tests/release/operator_cli_smoke.sh":            "an env -i smoke of the CLI with no agents; the stub PATH and isolated HOME would defeat its clean-environment purpose",
-	"tools/test-macos-app.sh":                        "launches the real installed macOS app (coral-tray) on purpose, not a test server with mock agents",
+	"tools/test-macos-app.sh":                        "launches the built macOS app (coral-tray) on purpose, in a data folder and HOME of its own (#4960); no agents, so nothing for a stub CLI to guard",
 	"tests/integration/agent_permissions/harness.sh": "launches REAL agent CLIs on purpose to exercise a real CLI; a stub that exits 1 would break it",
 	"tools/dev-screenshot.sh":                        "developer screenshot helper, not a test harness: a throwaway /tmp data dir, no agents, CORAL_NO_DEMO_SEED set so nothing is launched",
 }

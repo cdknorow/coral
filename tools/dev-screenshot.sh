@@ -11,7 +11,7 @@ export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CORAL_DIR="$SCRIPT_DIR/../coral-go"
 BINARY="/tmp/coral-dev"
-PORT=8450
+PORT="${PORT:-8450}"
 HOME_DIR="/tmp/.coral-dev"
 SCREENSHOT="/tmp/coral-screenshot.png"
 HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
@@ -23,11 +23,11 @@ cd "$CORAL_DIR"
 go build -tags dev -o "$BINARY" ./cmd/coral/
 echo "    Built: $BINARY"
 
-# ── Kill existing ────────────────────────────────────────────
+# ── The port must be free ────────────────────────────────────
+# A process already on it is not ours to kill: 8450 is also where test servers run (#4960).
 if lsof -ti :"$PORT" >/dev/null 2>&1; then
-    echo "==> Killing existing process on port $PORT..."
-    kill $(lsof -ti :"$PORT") 2>/dev/null || true
-    sleep 1
+    echo "ERROR: port $PORT is already in use; stop that process yourself or run with PORT=<free port>" >&2
+    exit 1
 fi
 
 # ── Start server ─────────────────────────────────────────────
