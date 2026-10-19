@@ -14,7 +14,7 @@ const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRec
         const fs = parseFloat(getComputedStyle(e).fontSize);
         if ('${stage}' === 'a') e.__fs16 = fs; else if (e.__fs16 && fs / e.__fs16 < 1.6) out.push((e.id ? '#' + e.id : e.tagName.toLowerCase()) + (typeof e.className === 'string' && e.className.trim() ? '.' + e.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') + ' ' + e.__fs16 + '->' + fs + ' "' + e.textContent.trim().slice(0, 24) + '"'); }
     return out; })()`;
-const GROUPS = ['tabs', 'drawers', 'dialogs', 'wide', 'light'];
+const GROUPS = ['tabs', 'drawers', 'dialogs', 'wide', 'light', 'surfaces'];
 module.exports = async function runScenes(group) {
     if (!GROUPS.includes(group)) throw new Error('text200_scenes: unknown group ' + JSON.stringify(group) + ', expected one of ' + GROUPS.join(', '));
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -31,7 +31,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await Page.addScriptToEvaluateOnNewDocument({ source: `(() => { const F = window.fetch; window.fetch = (u, o = {}) => { const p = new URL(String(u), location.origin).pathname; const m = (o.method || 'GET').toUpperCase();
             if (window.__hubStub && p === '/api/health') return Promise.resolve(new Response(JSON.stringify({ status: 'ok', hub: true, version: '1.4.75' }), { status: 200 }));
             if (window.__hubStub && p === '/api/servers' && m === 'GET') return Promise.resolve(new Response(JSON.stringify(window.__hubStub), { status: 200 }));
-            if (p === '/api/agents/models') return Promise.resolve(new Response(JSON.stringify({ agent_type: 'claude', models: [{ value: 'claude-opus-4-1-20250805', display_name: 'Opus 4.1' }, { value: 'claude-sonnet-4-5', display_name: 'Sonnet 4.5' }], refreshing: false, source: 'account' }), { status: 200, headers: { 'content-type': 'application/json' } }));
+            if (p === '/api/agents/models') return Promise.resolve(new Response(JSON.stringify({ agent_type: 'claude', models: [{ value: 'claude-opus-4-1-20250805', display_name: 'Opus 4.1' }, { value: 'claude-sonnet-4-5', display_name: 'Sonnet 4.5' }], thinking: ['low', 'medium', 'high', 'xhigh', 'max'], refreshing: false, source: 'account' }), { status: 200, headers: { 'content-type': 'application/json' } }));
             return F(u, o); }; })();` });
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
         await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 });
@@ -43,7 +43,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await settle(900);
         const SERVERS = [{ id: 'local', label: 'studio-mac.local', local: true, status: 'online' }, { id: 'm2', label: 'Old Laptop with a rather long display name', url: 'http://192.168.1.50:8420', status: 'unreachable', last_error: 'dial tcp i/o timeout', warning: 'the key crosses the network unencrypted; use https or a tunnel' }];
         await ev(`window.__hubStub = ${JSON.stringify(SERVERS)}; (async () => { const s = await import((window.__coralStatic || '/static/') + 'state.js'); s.state.hub = true; s.state.servers = ${JSON.stringify(SERVERS)}; return true; })()`);
-        const probe = async (name, open, root) => {
+        const probe = async (name, open, root, check) => { // check: a JS expression run at 200% that returns a list of problems (the generic scan does not see text that overflows its own button)
             try {
                 await ev(`if (!document.getElementById('t200-no-transition')) { const st = document.createElement('style'); st.id = 't200-no-transition'; st.textContent = '* { transition: none !important; animation: none !important; }'; document.head.appendChild(st); } true`); // a transition would leave a computed size mid-way when the page's timeline is paused
                 await ev(`document.documentElement.style.fontSize = ''; window.__scanRoot = ${JSON.stringify(root || '')}; true`);
@@ -51,6 +51,8 @@ const { removeBoards } = require('./helpers/board_cleanup');
                 await ev(FONTS('a'));
                 await ev(`document.documentElement.style.fontSize = '32px'; true`); await settle(700);
                 const r = await ev(SCAN); const grew = await ev(FONTS('b'));
+                if (check) { const bad = await ev(check); if (bad.length) problems.push(`${name}: ${bad.slice(0, 4).join('; ')}`); }
+                if (process.env.T200_SHOTS) { fs.mkdirSync(process.env.T200_SHOTS, { recursive: true }); fs.writeFileSync(`${process.env.T200_SHOTS}/${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); }
                 const off = await ev(`[...(window.__scanRoot ? document.querySelector(window.__scanRoot) : document.body).querySelectorAll('button, a[href], select, input:not([type=hidden])')].filter(e => { if (!e.getClientRects().length || getComputedStyle(e).visibility === 'hidden' || e.closest('.top-nav-tabs, .xterm, [data-scan-skip], .modal-content, #mobile-session-list')) return false; const b = e.getBoundingClientRect(); if (!(b.width > 0 && (b.right > innerWidth + 1 || b.left < -1))) return false; for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { const pr = p.getBoundingClientRect(); if (pr.width > 0 && (pr.right <= 1 || pr.left >= innerWidth - 1)) return false; } /* inside a drawer that is closed, off the screen by design */ for (let p = e.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p); if (/(auto|scroll)/.test(o.overflowX) && p.scrollWidth > p.clientWidth + 1) return false; } return true; }).map(e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().split(/\\s+/).slice(0, 2).join('.')) + ' ' + Math.round(e.getBoundingClientRect().left) + '..' + Math.round(e.getBoundingClientRect().right) + ' "' + e.textContent.trim().slice(0, 16) + '"')`);
                 if (off.length) problems.push(`${name}: controls off the edge of the screen ${off.slice(0, 4).join('; ')}`);
                 const spill = await ev(`[...(window.__scanRoot ? document.querySelector(window.__scanRoot) : document.body).querySelectorAll('button, .btn, a.btn, summary, [role=tab]')].filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && e.scrollHeight > e.clientHeight + 8 && !/(auto|scroll)/.test(getComputedStyle(e).overflowY)).map(e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).trim().split(/\\s+/).slice(0, 2).join('.')) + ' ' + e.scrollHeight + '>' + e.clientHeight + ' "' + e.textContent.trim().slice(0, 20) + '"')`);
@@ -120,6 +122,44 @@ const { removeBoards } = require('./helpers/board_cleanup');
             await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars && m.clearCustomThemeVars(); m.applyTheme('light'); return true; })()`); await settle(500);
             await subset('light theme');
             await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.applyTheme('dark'); return true; })()`);
+        }
+        if (group === 'surfaces') {
+            // #5058: what shipped on the night of v1.4.102 to v1.4.108, at 200% text: the chat bar's model chip and its menu, the Cost tables, the sectioned dialogs (their
+            // section selector and footers), and the agent list's Display panel.
+            const feed = extra => ev(`(() => { const a = window.__m.agents['phone-bot-with-a-long-name-id']; window.T.ws.handleCoralMessage({ type: 'coral_diff', changed: [{ ...window.__m.entry(a), ...${JSON.stringify(extra)} }] }); return true; })()`);
+            const openAgent = async () => { await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'phone-bot-with-a-long-name-id', 'local'); true`); await settle(900); };
+            await probe('chip', async () => { await openAgent(); await feed({ agent_type: 'claude', model: 'claude-opus-4-1-20250805', thinking_actual: 'high', thinking: 'low' }); await waitFor(`!document.getElementById('model-chip-bar').hidden && document.getElementById('model-chip-text').textContent.length > 3`, 'the chip', 8000); await settle(500); }, '#command-pane');
+            await probe('chip with its note (Switches after this reply)', async () => { await openAgent(); await feed({ agent_type: 'claude', model: 'claude-opus-4-1-20250805', thinking_actual: 'high', model_switch: { state: 'pending', thinking: 'max', after_reply: true } }); await waitFor(`!document.getElementById('model-chip-note').textContent.includes('after this reply') === false`, 'the note', 8000); await settle(500); }, '#command-pane');
+            await probe('chip menu open', async () => { await openAgent(); await feed({ agent_type: 'claude', model: 'claude-opus-4-1-20250805', thinking_actual: 'high', model_switch: null }); await settle(400);
+                await ev(`document.getElementById('model-chip').click(); true`); await waitFor(`!document.getElementById('model-chip-menu').hidden && document.querySelectorAll('#model-chip-menu .model-chip-item').length > 2`, 'the chip menu', 8000); await settle(900); }, '#command-pane');
+            await ev(`(document.getElementById('model-chip-menu') || {}).hidden === false && document.getElementById('model-chip').click(); true`);
+            await probe('Cost tables', async () => {
+                await ev(`(() => { window.__realFetch = window.fetch; const json = b => Promise.resolve(new Response(JSON.stringify(b), { headers: { 'content-type': 'application/json' } }));
+                    window.fetch = (u, o) => { const url = String(u && u.url || u);
+                        if (url.includes('/api/token-usage/summary')) return json({ totals: { input_tokens: 4200000, output_tokens: 610000, cost_usd: 143.9 }, by_agent: [],
+                            by_model: [{ model: 'claude-opus-5-5', agent_type: 'claude', num_sessions: 3, input_tokens: 2000000, output_tokens: 300000, cache_read_tokens: 10, cache_write_tokens: 5, cost_usd: 62.5 }],
+                            by_thinking: [{ agent_type: 'claude', thinking: 'high', input_tokens: 1800000, output_tokens: 260000, cache_read_tokens: 0, cache_write_tokens: 0, thinking_tokens: 910000, cost_usd: 64.2, num_calls: 212 },
+                                { agent_type: 'agy', thinking: '', input_tokens: 100000, output_tokens: 20000, cache_read_tokens: 0, cache_write_tokens: 0, thinking_tokens: 0, cost_usd: 3.2, num_calls: 0 }] });
+                        if (url.includes('/api/token-usage/by-team')) return json({ teams: [{ board_name: 'coral-go-team', num_agents: 6, input_tokens: 9000, output_tokens: 1000, cache_read_tokens: 0, cache_write_tokens: 0, cost_usd: 8.5 }] });
+                        if (url.includes('/api/token-usage/')) return json({});
+                        return window.__realFetch(u, o); }; return true; })()`);
+                await ev(`window.switchNavTab('tokens'); true`);
+                await waitFor(`document.querySelectorAll('#cost-by-thinking tbody tr').length >= 2 && document.querySelectorAll('#cost-by-team tbody tr').length >= 1`, 'the Cost tables', 15000);
+                await ev(`document.getElementById('cost-by-thinking').scrollIntoView({ block: 'center' }); true`); // (the scan covers the whole view; the scroll is for a screenshot)
+            }, '#cost-dashboard-view', `[...document.querySelectorAll('#cost-dashboard-view .cost-sort-btn')].filter(b => b.getClientRects().length && b.scrollWidth > b.clientWidth + 1).map(b => 'heading text runs out of its button: ' + b.textContent.trim() + ' (' + b.scrollWidth + ' in ' + b.clientWidth + ')')`);
+            await ev(`window.fetch = window.__realFetch || window.fetch; window.switchNavTab('agents'); true`);
+            await probe('Restart dialog', async () => { await openAgent(); await ev(`window.restartSession(); true`);
+                await waitFor(`getComputedStyle(document.getElementById('restart-modal')).display === 'flex' && !!document.querySelector('#restart-modal .acf-thinking-wrap')`, 'the Restart dialog', 8000); await settle(800); }, '#restart-modal');
+            await ev(`window.hideRestartModal && window.hideRestartModal(); true`);
+            await probe('New Agent dialog, Agent section', async () => { await ev(`(async () => { await window.showLaunchModal(); window._selectLaunchType('agent'); return true; })()`); await settle(900);
+                await ev(`(() => { const t = [...document.querySelectorAll('#launch-modal [role="tab"]')].find(x => /Agent\s*$/.test(x.textContent)); if (t) t.click(); const s = document.querySelector('#launch-modal .settings-group-pick select'); if (s && getComputedStyle(s).display !== 'none') { s.value = 'agent'; s.dispatchEvent(new Event('change', { bubbles: true })); } return true; })()`); await waitFor(`!!document.querySelector('#launch-step-agent .acf-thinking-wrap') && document.querySelector('#launch-step-agent .acf-thinking-wrap').getBoundingClientRect().width > 0`, 'the Agent section with its Thinking select', 8000); await settle(700); }, '#launch-modal');
+            await ev(`window.hideLaunchModal(); true`);
+            await probe('Agent Team dialog', async () => { await ev(`(async () => { await window.showLaunchModal(); window._selectLaunchType('team'); return true; })()`); await waitFor(`getComputedStyle(document.getElementById('launch-step-team')).display !== 'none' && !!document.querySelector('#launch-step-team .settings-pane:not([hidden])')`, 'the Agent Team dialog', 8000); await settle(1000); }, '#launch-modal');
+            await ev(`window.hideLaunchModal(); true`);
+            await probe('Display panel open', async () => { await ev(`window.switchNavTab('agents'); window.goHome && window.goHome(); true`); await settle(600);
+                await ev(`(() => { const b = document.querySelector('.mobile-list-header [data-display-button]'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()`);
+                await waitFor(`!!document.querySelector('.mobile-list-header [data-display-panel]') && !document.querySelector('.mobile-list-header [data-display-panel]').hidden`, 'the Display panel', 6000); await settle(700); }, '.mobile-list-header');
+            await ev(`(() => { const b = document.querySelector('.mobile-list-header [data-display-button]'); if (b && b.getAttribute('aria-expanded') === 'true') b.click(); return true; })()`);
         }
         if (group === 'tabs') {
 

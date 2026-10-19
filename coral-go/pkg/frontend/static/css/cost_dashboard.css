@@ -64,7 +64,7 @@
  * The header row grows from 33 to 44 px; a fine pointer keeps the compact sizes above. */
 @media (pointer: coarse) {
     .cost-table thead th.cost-th-sort { padding-top: 0; padding-bottom: 0; } /* the buttons carry the height: the cell's own padding would add 18 px to them */
-    .cost-sort-btn { min-width: 44px; min-height: 44px; vertical-align: middle; white-space: normal; max-width: 72px; } /* a long heading ("Thinking level") takes two lines inside the button, the filter stays beside it (#5056) */
+    .cost-sort-btn { min-width: 44px; min-height: 44px; vertical-align: middle; white-space: normal; max-width: 6em; } /* a long heading ("Thinking level") takes two lines inside the button, the filter stays beside it (#5056); in em so it grows with large text: 72 px was narrower than "Provider" at 200% (#5058) */
     .cost-col-filter { min-width: 44px; min-height: 44px; justify-content: center; margin: 0 -8px; } /* its 44 px hit area overlaps the label's end and the cell's padding, so the column is no wider than before and Cost stays on screen (#5056) */
 }
 
