@@ -88,7 +88,7 @@ func newRawCollector(t *testing.T) (*rawCollector, string) {
 	})
 	SetTelemetryEnabled(true)
 	// These tests count the requests one event makes; this week's installation_active_week, which a launch or an
-	// active day would also send, has its own tests (internal_tag_test.go).
+	// active day would also send, has its own tests (active_week_test.go).
 	activeWeekMu.Lock()
 	activeWeekSent = isoWeek(activeWeekNow())
 	activeWeekMu.Unlock()
