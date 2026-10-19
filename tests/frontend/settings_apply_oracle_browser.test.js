@@ -50,6 +50,7 @@ const CASES = [
     ['file search limit', [sel('settings-file-search-limit')], 'ok'],
     ['git diff mode', [sel('settings-git-diff-mode')], 'ok'],
     ['git diff mode, with an agent open (its changed files are asked for again)', [sel('settings-git-diff-mode')], 'ok', '', true],
+    ['fit pane width, with an agent open (the pane is told its width)', [chk('settings-fit-pane-width')], 'ok', '', true],
     ['git poll interval', [sel('settings-git-poll-interval')], 'ok'],
     ['agent priority normal', [chk('settings-agent-low-priority')], 'ok'],
     ['telemetry off', [chk('settings-telemetry-enabled')], 'ok'],
@@ -81,7 +82,7 @@ const CASES = [
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
         await ev(`(async () => { const st = ${S};
-            window.ST = (await import(st + 'state.js')).state; window.MD = await import(st + 'modals.js'); window.SD = await import(st + 'settings_dialog.js'); window.XT = await import(st + 'xterm_renderer.js');
+            window.ST = (await import(st + 'state.js')).state; window.MD = await import(st + 'modals.js'); window.SD = await import(st + 'settings_dialog.js'); window.XT = await import(st + 'xterm_renderer.js'); window.LM = await import(st + 'launch_models.js');
             await (await import(st + 'vendor_loader.js')).loadXterm();
             const host = document.createElement('div'); host.id = 'oracle-term'; host.style.cssText = 'position:fixed;left:0;top:0;width:600px;height:300px;z-index:99999'; document.body.appendChild(host); window.XT.createTerminal(host);
             // every assignment to the terminal's options (fitTerminal may move the font size afterwards, so the end value alone hides what Save set)
@@ -124,9 +125,12 @@ const CASES = [
                     else e.value = v;
                     e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true }));
                 }
+                window.__dm0 = window.LM._getDefaultModels();
                 const before = window.__fetched.length;
                 await window.SD.applySettings();
                 await ${framesJs(6, 1000)};
+                const fetchedNow = [...new Set(window.__fetched.slice(before))].sort();
+                window.__modelsRefetched = window.__dm0 !== window.LM._getDefaultModels(); // the saved defaults' cache: a new promise means Save emptied it (launch_models.js _invalidateDefaultModels)
                 const body = window.__puts.length ? JSON.parse(window.__puts[window.__puts.length - 1]) : null;
                 const sorted = o => o && Object.fromEntries(Object.keys(o).sort().map(k => [k, o[k]]));
                 const toasts = [...document.querySelectorAll('.toast')].map(t => (t.querySelector('.toast-message') || t).textContent + (t.classList.contains('error') ? ' (error)' : ''));
@@ -137,7 +141,7 @@ const CASES = [
                     theme: { dataTheme: document.documentElement.getAttribute('data-theme'), saved: localStorage.getItem('coral-theme'), vars },
                     noScrollbars: document.body.classList.contains('no-scrollbars'), terminal: { fontSize: T.options.fontSize, scrollback: T.options.scrollback, assigned: window.__termSets.slice() },
                     updateCheck: localStorage.getItem('coral-update-check-enabled'), settings: sorted(st.settings), privacy: { remote: pv.remote_access_enabled, restart: pv.remote_access_restart_required, debugInput: pv.debug_input_log },
-                    fetched: [...new Set(window.__fetched.slice(before))].sort() }; })()`);
+                    fetched: fetchedNow, defaultModelsCacheEmptied: window.__modelsRefetched }; })()`);
             if (from === 'empty') saved = out.request;
             if (out.request) for (const k of Object.keys(out.request)) keys.add(k);
             cases[name] = JSON.stringify(out, null, 1).replace(/[^"\s|,]*coral-cdp-[A-Za-z0-9]+(\/shard\d+(-\d+)?)?/g, '<run folder>'); // the run's own temporary folder is in the CLI path the server fills in

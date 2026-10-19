@@ -77,6 +77,11 @@ const HEX = c => c.repeat(64);
         cases['team artifacts: rows'] = await snap('team-artifacts');
         await ev(`window.__ta.extra = { has_more: true, next_cursor: 'c2', total: 9, all: 40 }; true`); await refresh('team-artifacts'); await settled('team-artifacts');
         cases['team artifacts: more rows to load, 9 of 40'] = await snap('team-artifacts');
+        // a later page that fails keeps the rows already shown and says so, with Retry (UX's note on #4895: the Retry button is built from the rows it is given)
+        await ev(`window.__ta.mode = 'error'; ${ROOT('team-artifacts')}.querySelector('.team-artifacts-more').click(); true`);
+        await waitFor(`!!${ROOT('team-artifacts')}.querySelector('.team-artifacts-retry') && ${ROOT('team-artifacts')}.getAttribute('aria-busy') === 'false'`, 'the failed page and its Retry');
+        cases['team artifacts: a later page failed (the rows stay, with Retry)'] = await snap('team-artifacts');
+        await ev(`window.__ta.mode = 'normal'; true`);
         await ev(`window.__ta.extra = { truncated: true, total: 9, all: 9 }; true`); await refresh('team-artifacts'); await settled('team-artifacts');
         cases['team artifacts: the server cut the list'] = await snap('team-artifacts');
         await ev(`window.__ta.extra = {}; window.__ta.kept = [${JSON.stringify(HEX('a'))}]; true`); await refresh('team-artifacts'); await settled('team-artifacts');
