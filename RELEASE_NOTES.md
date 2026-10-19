@@ -1,5 +1,12 @@
 # Release Notes
 
+## v1.4.115 — The local Inbox has tabs, and the row menu button is quieter
+
+### Changes
+
+- **The local Inbox has "Needs you" and "Saved for later" tabs, like Coral Hub's:** one panel at a time, and the tab you chose is kept across reloads.
+- **The row menu button has no hover fill:** only its dots change colour, on hover and on keyboard focus (it no longer draws a box over the row).
+
 ## v1.4.114 — Coral listens on this computer only unless remote access is turned on
 
 ### Security
