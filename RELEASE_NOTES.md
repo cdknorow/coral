@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.4.102 — Agents keep their place in the list across restarts, Codex pasted images read as chips, and a weekly active-installs count
+
+### Fixes
+
+- **A restarted or resumed agent keeps its place in the agent list,** and so does its team: the list used to put the replacement last. The list is now served in a stable order (an agent's place is carried over from the session it replaces, and a team takes the place of the earliest of its agents), and the dashboard puts a new row where the server says. A new agent or team still comes last; a team with no saved order shows in creation order.
+- **A pasted image in a Codex chat is a chip, not raw text:** Codex records the image as an `<image ...>` wrapper around a base64 data URL, and Chat showed all of it (and search indexed it). The wrapper and the data URL are now left out of the message and the search index, and each image shows as an attachment chip named like `[Image #1]`, with the file's base name only; typed text is kept.
+
+### Changes
+
+- **A weekly active-installs count:** `installation_active_week` is sent once per install per ISO week, with the standard properties only and no new identifying data, alongside the existing usage events. `PRIVACY_CONTROLS.md` lists it. Like every usage event, it is not sent when usage events are turned off in Settings or `CORAL_TELEMETRY_DISABLED` is set.
+
+### Other changes
+
+- **Our own checks no longer download a release's assets:** the release workflow keeps the checksums and signature bundles as a run artifact, and the tap update, the runtime check, `verify-release.sh`, `finish-release.sh` and the cask script read the run's artifacts and compare them with GitHub's digest of each published asset. Our own CI and test runs send no usage events.
+- **Tests and CI:** a census that fails when a runner or workflow that starts Coral lacks the usage-events opt-out; an end-to-end test of a keyed build against a local capture endpoint (what is sent, and that nothing identifying is); and a check that every event the dashboard sends leaves the page as a POST to the server's tracking endpoint with only reviewed property names.
+
 ## v1.4.101 — The Preview pane resizes again, can be maximised, and the servers pill is gone
 
 ### Fixes
