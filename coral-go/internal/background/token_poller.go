@@ -359,6 +359,8 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 		agentName = *ls.DisplayName
 	}
 
+	var recs []*store.TokenUsage // this poll's calls, recorded together after the loop (#5074)
+	var priced []string          // the model each was priced as, for the debug line
 	for _, call := range newCalls {
 		// Skip zero-usage entries
 		if call.InputTokens == 0 && call.OutputTokens == 0 {
@@ -393,18 +395,21 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 			ThinkingTokens:   call.ThinkingTokens,
 		}
 
-		if err := p.usageStore.RecordUsage(ctx, record); err != nil {
+		recs = append(recs, record)
+		priced = append(priced, model)
+	}
+	for i, err := range p.usageStore.RecordUsageBatch(ctx, recs) {
+		if err != nil {
 			p.logger.Error("failed to record Claude usage", "session_id", ls.SessionID, "error", err)
 			continue
 		}
-
 		p.logger.Debug("recorded Claude turn",
 			"session_id", ls.SessionID[:8],
-			"model", model,
-			"input", call.InputTokens,
-			"output", call.OutputTokens,
-			"cost_usd", costUSD,
-			"timestamp", call.Timestamp)
+			"model", priced[i],
+			"input", recs[i].InputTokens,
+			"output", recs[i].OutputTokens,
+			"cost_usd", recs[i].CostUSD,
+			"timestamp", recs[i].RecordedAt)
 	}
 
 	p.lastEntryCount[ls.SessionID] = total
@@ -552,6 +557,7 @@ func (p *TokenPoller) pollPiSession(ctx context.Context, ls *store.LiveSession) 
 		agentName = *ls.DisplayName
 	}
 
+	var recs []*store.TokenUsage // this poll's calls, recorded together after the loop (#5074)
 	for _, call := range newCalls {
 		if call.InputTokens == 0 && call.OutputTokens == 0 {
 			continue
@@ -576,18 +582,20 @@ func (p *TokenPoller) pollPiSession(ctx context.Context, ls *store.LiveSession) 
 			Model:            call.Model,
 		}
 
-		if err := p.usageStore.RecordUsage(ctx, record); err != nil {
+		recs = append(recs, record)
+	}
+	for i, err := range p.usageStore.RecordUsageBatch(ctx, recs) {
+		if err != nil {
 			p.logger.Error("failed to record Pi usage", "session_id", ls.SessionID, "error", err)
 			continue
 		}
-
 		p.logger.Debug("recorded Pi turn",
 			"session_id", ls.SessionID[:8],
-			"model", call.Model,
-			"input", call.InputTokens,
-			"output", call.OutputTokens,
-			"cost_usd", call.CostUSD,
-			"timestamp", call.Timestamp)
+			"model", recs[i].Model,
+			"input", recs[i].InputTokens,
+			"output", recs[i].OutputTokens,
+			"cost_usd", recs[i].CostUSD,
+			"timestamp", recs[i].RecordedAt)
 	}
 
 	p.lastEntryCount[ls.SessionID] = total

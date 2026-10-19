@@ -24,12 +24,12 @@ type ThinkingUsageSummary struct {
 
 // recordThinking adds one stored call to its hour's line of the breakdown, when its turn recorded a level. Only the transcript-derived
 // ("jsonl") calls count, as the Cost totals count them rather than the proxy's (the two would count the same call twice).
-func (s *TokenUsageStore) recordThinking(ctx context.Context, u *TokenUsage) error {
+func (s *TokenUsageStore) recordThinking(ctx context.Context, ex usageExecer, u *TokenUsage) error {
 	level := strings.TrimSpace(u.Thinking)
 	if level == "" || u.Source != "jsonl" || len(u.RecordedAt) < 13 {
 		return nil
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO token_usage_thinking
+	_, err := ex.ExecContext(ctx, `INSERT INTO token_usage_thinking
 		(hour, agent_type, thinking, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_tokens, thinking_tokens, cost_usd, n_calls)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
 		ON CONFLICT(hour, agent_type, thinking) DO UPDATE SET
