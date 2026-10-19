@@ -1,4 +1,5 @@
 import { showTerminalStatusbar } from './terminal_statusbar.js';
+import { updateModelChip } from './model_chip.js';
 import { importOnce } from './import_once.js';
 import { refreshAgentUI } from './agent_ui.js';
 /* Session selection and management */
@@ -348,6 +349,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     updateSessionBranch(agent?.branch || null, agent?.repo_name || null, agent?.git_state || null);
     updateSessionFolder(agent?.working_directory || "");
     updateSessionModel(agent?.agent_type || agentType, agent?.model || "", srv);
+    updateModelChip(agent || null, srv);
     updateWaitingIndicator(agent || {});
     updateTokenUsage(sessionId);
 

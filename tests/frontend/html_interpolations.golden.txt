@@ -304,6 +304,9 @@
 1	message_board.js	spacing
 1	message_board.js	subList
 1	message_board.js	tag
+1	model_chip.js	checked
+2	model_chip.js	how
+1	model_chip.js	kind
 1	needs_input_card.js	controls.foot
 1	needs_input_card.js	hint
 2	needs_input_card.js	kicker

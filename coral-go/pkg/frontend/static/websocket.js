@@ -1,5 +1,6 @@
 /* WebSocket connection for real-time coral updates */
 
+import { updateModelChip } from './model_chip.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { signInUrl } from './cloud.js';
@@ -323,6 +324,7 @@ function _syncViewedSession(data) {
             updateSessionBranch(s.branch, s.repo_name, s.git_state);
             updateSessionFolder(s.working_directory || "");
             updateSessionModel(s.agent_type, s.model || "", sessionServer(s));
+            updateModelChip(s, sessionServer(s));
             updateWaitingIndicator(s);
             updateChangedFileCount(s.changed_file_count || 0);
             // Update terminal header status dot
