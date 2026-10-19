@@ -115,15 +115,16 @@ func (s *Store) setHealthSettings(ctx context.Context, project string, h HealthS
 }
 
 // HealthOnByProject is, for each board that stores health settings, whether its check is on. A board with none is not in the map:
-// it has the default (DefaultHealthSettings().On).
-func (s *Store) HealthOnByProject(ctx context.Context) map[string]bool {
+// it has the default (DefaultHealthSettings().On). A read that fails is an error and not an empty map: an empty map reads as every team
+// having the default (off), and the live list's rows flipped a team's icon off for the tick (#5119).
+func (s *Store) HealthOnByProject(ctx context.Context) (map[string]bool, error) {
 	out := map[string]bool{}
 	var rows []struct {
 		Project string `db:"project"`
 		Value   string `db:"value"`
 	}
 	if err := s.reader().SelectContext(ctx, &rows, `SELECT project, value FROM board_settings WHERE key = ?`, settingHealth); err != nil {
-		return out
+		return nil, err
 	}
 	for _, r := range rows {
 		h := DefaultHealthSettings()
@@ -131,7 +132,7 @@ func (s *Store) HealthOnByProject(ctx context.Context) map[string]bool {
 			out[r.Project] = h.On
 		}
 	}
-	return out
+	return out, nil
 }
 
 // SetHealthOn turns a board's health check on or off, leaving every other health setting as it is stored (or the defaults).

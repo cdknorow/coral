@@ -72,3 +72,34 @@ func TestLaunchTeamHealthOption(t *testing.T) {
 	h.restoreTeamTemplate(ctx, &launchTeamRequest{BoardName: "kept", HealthMonitor: &no})
 	assert.True(t, bs.GetHealthSettings(ctx, "kept").On, "a relaunch never turns off a check the operator turned on")
 }
+
+// #5119: the icon blinked. A read of the health settings that fails for a tick (a busy database, a request that ended) used to read as every
+// team off, so a team with the check on was reported off for that tick and on again after it. The last state read stands.
+func TestTeamHealthStateDoesNotFlipWhenTheReadFails(t *testing.T) {
+	bs := healthTestStore(t)
+	require.NoError(t, bs.SetHealthOn(context.Background(), "checked", true))
+	h := &SessionsHandler{bs: bs}
+	rows := func() []map[string]any { return []map[string]any{{"board_project": "checked"}} }
+
+	ok := rows()
+	h.addTeamHealth(httptest.NewRequest(http.MethodGet, "/api/sessions/live", nil), ok)
+	require.Equal(t, true, ok[0]["team_health_on"])
+
+	ended, cancel := context.WithCancel(context.Background())
+	cancel() // a read with this context fails
+	for i := 0; i < 5; i++ {
+		failed := rows()
+		h.addTeamHealth(httptest.NewRequest(http.MethodGet, "/api/sessions/live", nil).WithContext(ended), failed)
+		assert.Equal(t, true, failed[0]["team_health_on"], "the check stays on when a tick cannot read the settings")
+	}
+
+	fresh := &SessionsHandler{bs: bs} // nothing read yet: no state to stand on, so no field (the dashboard keeps what it has)
+	none := rows()
+	fresh.addTeamHealth(httptest.NewRequest(http.MethodGet, "/api/sessions/live", nil).WithContext(ended), none)
+	assert.NotContains(t, none[0], "team_health_on")
+
+	require.NoError(t, bs.SetHealthOn(context.Background(), "checked", false)) // a real change still comes through
+	off := rows()
+	h.addTeamHealth(httptest.NewRequest(http.MethodGet, "/api/sessions/live", nil), off)
+	assert.Equal(t, false, off[0]["team_health_on"])
+}

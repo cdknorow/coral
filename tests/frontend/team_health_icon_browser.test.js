@@ -24,8 +24,8 @@ const { setTheme } = require('./helpers/contrast');
     const icon = () => ev(`(() => { const b = document.querySelector('.team-health-btn'); if (!b) return null; const r = b.getBoundingClientRect(), cs = getComputedStyle(b);
         const open = document.querySelector('.team-open-btn').getBoundingClientRect();
         return { label: b.getAttribute('aria-label'), title: b.getAttribute('title'), on: b.classList.contains('is-on'), w: Math.round(r.width), h: Math.round(r.height), color: cs.color, opacity: cs.opacity,
-            beside: Math.abs(r.top - open.top) < 6 && r.right <= open.left + 1, board: b.dataset.board, bg: cs.backgroundColor }; })()`);
-    // The icon's contrast against what is behind it (the pill's tint composited over the panel), 3:1 for a graphic (WCAG 1.4.11).
+            beside: Math.abs(r.top - open.top) < 6 && r.right <= open.left + 1, board: b.dataset.board, bg: cs.backgroundColor, shadow: cs.boxShadow, border: cs.borderTopWidth, stroke: getComputedStyle(b.querySelector('svg')).strokeWidth }; })()`);
+    // The icon's contrast against what is behind it (the panel; the button has no fill of its own), 3:1 for a graphic (WCAG 1.4.11).
     const contrast = () => ev(`(() => { const b = document.querySelector('.team-health-btn'); const cv = document.createElement('canvas'); cv.width = cv.height = 1; const cx = cv.getContext('2d', { willReadFrequently: true });
         const rgba = c => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = c; cx.fillRect(0, 0, 1, 1); const d = cx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
         const over = (f, g) => [f[0] * f[3] + g[0] * (1 - f[3]), f[1] * f[3] + g[1] * (1 - f[3]), f[2] * f[3] + g[2] * (1 - f[3]), 1];
@@ -44,30 +44,27 @@ const { setTheme } = require('./helpers/contrast');
           for (const theme of ['dark', 'light']) {
             await setTheme(ev, theme);
             const tag = `${dev}-${theme}`;
-            // Off: the plain muted outline, named off.
+            // Off: no icon at all (#5119: the operator, "it doesn't need to be there"); turning the check on is in the info button's Team settings.
             await render(false);
-            const off = await icon();
-            assert.ok(off, `${dev}: the team header has the health icon`);
-            assert.equal(off.label, 'Team health monitor: off'); assert.equal(off.title, 'Team health monitor: off');
-            assert.equal(off.on, false);
-            assert.equal(off.bg, 'rgba(0, 0, 0, 0)', `${tag}: off is a plain outline, no pill`);
-            assert.ok(off.beside, `${dev}: it sits beside the team's info button ${JSON.stringify(off)}`);
-            if (mobile) assert.ok(off.w >= 44 && off.h >= 44, `${dev}: 44 px target (${off.w}x${off.h})`);
-            const offContrast = await contrast();
-            assert.ok(offContrast >= 3, `${tag}: the off icon is 3:1 against its panel (${offContrast.toFixed(2)})`);
+            assert.equal(await icon(), null, `${tag}: no health icon while the check is off`);
             await shot(`${tag}-off`);
 
             // On: accent, full strength, named on.
             await render(true);
             const on = await icon();
             assert.equal(on.label, 'Team health monitor: on'); assert.equal(on.title, 'Team health monitor: on'); assert.equal(on.on, true);
-            assert.notEqual(on.color, off.color, `${dev}: on and off differ in colour`);
+            assert.ok(on.beside, `${dev}: it sits beside the team's info button ${JSON.stringify(on)}`);
             const accent = await ev(`getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()`);
             const same = await ev(`(() => { const c = document.createElement('i'); c.style.color = ${JSON.stringify(accent)}; document.body.appendChild(c); const v = getComputedStyle(c).color; c.remove(); return v; })()`);
             assert.equal(on.color, same, `${dev}: accent coloured while on`);
-            assert.notEqual(on.bg, 'rgba(0, 0, 0, 0)', `${tag}: on is an accent-tinted pill (${on.bg})`);
+            // Quiet (#5119): the accent icon alone, no fill, no ring, no border.
+            assert.equal(on.bg, 'rgba(0, 0, 0, 0)', `${tag}: on has no fill (${on.bg})`);
+            assert.equal(on.shadow, 'none', `${tag}: on has no ring (${on.shadow})`);
+            assert.equal(on.border, '0px', `${tag}: on has no border (${on.border})`);
+            assert.ok(parseFloat(on.stroke) >= 2, `${tag}: drawn with the heavier stroke (${on.stroke})`);
+            if (mobile) assert.ok(on.w >= 44 && on.h >= 44, `${dev}: the 44 px target (${on.w}x${on.h})`);
             const onContrast = await contrast();
-            assert.ok(onContrast >= 3, `${tag}: the accent icon is 3:1 on its pill (${onContrast.toFixed(2)})`);
+            assert.ok(onContrast >= 3, `${tag}: the accent icon is 3:1 on its panel (${onContrast.toFixed(2)})`);
             await shot(`${tag}-on`);
           }
             await setTheme(ev, 'dark');
@@ -81,8 +78,28 @@ const { setTheme } = require('./helpers/contrast');
             assert.ok(long.btnInside, `${dev}: the buttons stay inside the header ${JSON.stringify(long)}`);
             await shot(`${dev}-long-name`);
 
+            // No blink (#5119): feed messages that do not touch health never toggle the icon: field-level diffs without the field, whole rows without it, and a null for it
+            // (a field-level diff says null for a field a row no longer has). Only a row that says false turns it off.
+            await render(true);
+            assert.ok(await icon(), `${dev}: on before the burst`);
+            const missing = await ev(`(async () => { const ws = await import(${MOD} + 'websocket.js'); const r = await import(${MOD} + 'render.js'); const missing = [];
+                const ids = [1, 2].map(i => ({ session_id: 'hl-' + i, name: 'hl-agent-' + i, agent_type: 'claude' }));
+                const msgs = [];
+                for (let i = 0; i < 20; i++) { const id = ids[i % 2];
+                    msgs.push({ type: 'coral_diff', changed: [{ ...id, _partial: true, summary: 'step ' + i }] });
+                    msgs.push({ type: 'coral_diff', changed: [{ ...id, working_directory: '/tmp/hl', board_project: ${JSON.stringify(TEAM)}, status: 'idle', display_name: 'Agent', summary: 'row ' + i }] });
+                    if (i % 5 === 0) msgs.push({ type: 'coral_diff', changed: [{ ...id, _partial: true, team_health_on: null }] });
+                    if (i % 7 === 0) msgs.push({ type: 'coral_update', sessions: ids.map(x => ({ ...x, working_directory: '/tmp/hl', board_project: ${JSON.stringify(TEAM)}, status: 'idle' })) });
+                }
+                for (const m of msgs) { ws.handleCoralMessage(m); r.flushLiveSessionsRender(); if (!document.querySelector('.team-health-btn.is-on')) missing.push(JSON.stringify(m).slice(0, 90)); }
+                return { sent: msgs.length, missing }; })()`);
+            assert.ok(missing.sent >= 40, `${dev}: a burst of ${missing.sent} feed messages`);
+            assert.deepEqual(missing.missing, [], `${dev}: the icon never left during a burst of feed messages that do not touch health`);
+            await ev(`import(${MOD} + 'websocket.js').then(ws => { for (const i of [1, 2]) ws.handleCoralMessage({ type: 'coral_diff', changed: [{ session_id: 'hl-' + i, name: 'hl-agent-' + i, agent_type: 'claude', _partial: true, team_health_on: false }] }); return import(${MOD} + 'render.js').then(r => { r.flushLiveSessionsRender(); return true; }); })`);
+            assert.equal(await icon(), null, `${dev}: a row that says the check is off does turn the icon off`);
+
             // Coral Hub: the list carries no state, so no icon.
-            await render(undefined);
+            await render(undefined, 'hub-' + TEAM);
             assert.equal(await icon(), null, `${dev}: no icon where the list gives no state`);
         }
 
@@ -93,7 +110,8 @@ const { setTheme } = require('./helpers/contrast');
         const sub = await ev(`fetch('/api/board/${TEAM}/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Boss', job_title: 'Orchestrator', session_name: 'hl-boss' }) }).then(r => r.status)`);
         assert.ok(sub < 300, 'subscribe');
         await render(false);
-        await ev(`document.querySelector('.team-health-btn').click(); true`);
+        assert.equal(await icon(), null, 'a new team has the check off: no icon, the settings are reached from the info button');
+        await ev(`window.showTeamHealthSettings(${JSON.stringify(TEAM)}); true`);
         await waitFor(`document.getElementById('team-settings-tab-health')?.getAttribute('aria-selected') === 'true'`, 'the Health check tab selected', 15000);
         const panel = await ev(`(() => { const f = document.querySelector('#team-settings-health form'); return { on: f.elements.on.checked, text: document.getElementById('hc-on-w').textContent, shown: !document.getElementById('team-settings-health').hidden, interval: f.elements.interval_min.value }; })()`);
         assert.equal(panel.on, false, 'a new team has the check off');

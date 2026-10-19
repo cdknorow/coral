@@ -60,6 +60,8 @@ type SessionsHandler struct {
 	cliVersionTried   sync.Map
 	roleRes           roleReservations                          // #3543: numbered names picked for launches not yet subscribed
 	agentOperatorGate func(r *http.Request, action string) bool // #3536: Operator-only choices in a request body
+	// healthOn is the last health state read of every team, for the rows when a read fails (#5119).
+	healthOn healthOnMemo
 	// wsHeartbeat overrides wsHeartbeatInterval when set (nanoseconds; tests).
 	wsHeartbeat  atomic.Int64
 	remoteAgents background.RemoteAgentSource

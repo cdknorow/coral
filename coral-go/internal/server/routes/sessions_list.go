@@ -111,6 +111,9 @@ func (h *SessionsHandler) orderLiveRows(ctx context.Context, rows []map[string]a
 // addTeamHealth gives each row of a team its team's health check state, "team_health_on" (#4962): the on/off icon beside the team's
 // info button reads it. The check's settings are the local dashboard's, so a request through Coral Hub gets no field (as the board
 // settings GET leaves "health" out, #4176 rule 17) and the dashboard draws no icon there.
+//
+// The state must not flip with a failed read (#5119: the icon blinked): when the settings cannot be read for a tick (a busy database, a
+// request that ended), the last state that was read stands, and with none yet the rows carry no field (the dashboard keeps what it has).
 func (h *SessionsHandler) addTeamHealth(r *http.Request, rows []map[string]any) {
 	if h.bs == nil || cloud.Tunneled(r) {
 		return
@@ -122,7 +125,15 @@ func (h *SessionsHandler) addTeamHealth(r *http.Request, rows []map[string]any) 
 			continue
 		}
 		if on == nil {
-			on = h.bs.HealthOnByProject(r.Context())
+			var err error
+			if on, err = h.bs.HealthOnByProject(r.Context()); err != nil {
+				var known bool
+				if on, known = h.healthOn.last(); !known {
+					return
+				}
+			} else {
+				h.healthOn.set(on)
+			}
 		}
 		v, stored := on[project]
 		if !stored {
@@ -130,6 +141,24 @@ func (h *SessionsHandler) addTeamHealth(r *http.Request, rows []map[string]any) 
 		}
 		row["team_health_on"] = v
 	}
+}
+
+// healthOnMemo is the last health state read of every team (addTeamHealth).
+type healthOnMemo struct {
+	mu sync.Mutex
+	m  map[string]bool // read only once stored: set replaces it
+}
+
+func (c *healthOnMemo) set(m map[string]bool) {
+	c.mu.Lock()
+	c.m = m
+	c.mu.Unlock()
+}
+
+func (c *healthOnMemo) last() (map[string]bool, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.m, c.m != nil
 }
 
 // listUnavailable is a live list that can't be built right now: the agents' metadata could not be read.

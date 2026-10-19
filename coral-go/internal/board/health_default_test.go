@@ -15,14 +15,14 @@ func TestHealthCheckIsOffByDefault(t *testing.T) {
 	ctx := context.Background()
 	assert.False(t, DefaultHealthSettings().On)
 	assert.False(t, s.GetHealthSettings(ctx, "never-set").On, "a board with no stored setting")
-	assert.Empty(t, s.HealthOnByProject(ctx), "nothing stored: nothing in the map")
+	assert.Empty(t, healthOn(t, s, ctx), "nothing stored: nothing in the map")
 
 	require.NoError(t, s.SetHealthOn(ctx, "team", true))
 	got := s.GetHealthSettings(ctx, "team")
 	assert.True(t, got.On)
 	assert.Equal(t, 10, got.IntervalMin, "turning it on keeps the rest as it was (the defaults)")
 	assert.True(t, got.ClaimNudge.On, "its rules are on once the check is")
-	assert.Equal(t, map[string]bool{"team": true}, s.HealthOnByProject(ctx))
+	assert.Equal(t, map[string]bool{"team": true}, healthOn(t, s, ctx))
 
 	got.IntervalMin = 30
 	require.NoError(t, s.setHealthSettings(ctx, "team", got))
@@ -30,7 +30,7 @@ func TestHealthCheckIsOffByDefault(t *testing.T) {
 	off := s.GetHealthSettings(ctx, "team")
 	assert.False(t, off.On)
 	assert.Equal(t, 30, off.IntervalMin, "turning it off keeps the operator's numbers")
-	assert.Equal(t, map[string]bool{"team": false}, s.HealthOnByProject(ctx))
+	assert.Equal(t, map[string]bool{"team": false}, healthOn(t, s, ctx))
 }
 
 // A team that was running the check when the default became off (it had none stored: on by default) stays on: the first start
@@ -72,4 +72,22 @@ func TestHealthDefaultOffKeepsTheTeamsThatHadItOn(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 	assert.False(t, s.GetHealthSettings(ctx, "made-after").On)
 	assert.True(t, s.GetHealthSettings(ctx, "had-default").On)
+}
+
+func healthOn(t *testing.T, s *Store, ctx context.Context) map[string]bool {
+	t.Helper()
+	on, err := s.HealthOnByProject(ctx)
+	require.NoError(t, err)
+	return on
+}
+
+// A read that fails is an error, not an empty map (an empty map reads as every team off, #5119).
+func TestHealthOnByProjectReportsAFailedRead(t *testing.T) {
+	s := testStore(t)
+	require.NoError(t, s.SetHealthOn(context.Background(), "team", true))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	on, err := s.HealthOnByProject(ctx)
+	assert.Error(t, err)
+	assert.Nil(t, on)
 }

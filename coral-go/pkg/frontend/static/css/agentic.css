@@ -2501,10 +2501,10 @@ button.team-artifact-name { cursor: pointer; }
    not revealed on hover; it turns accent while that team is selected. */
 .team-open-btn { display: inline-flex; align-items: center; }
 .team-open-btn.is-selected { color: var(--accent); }
-/* The team's health check (#4962): the icon is the muted colour of its neighbours while the check is off and accent while it is on, so it reads at a glance and never by colour alone (the tooltip and the name say on or off). */
+/* The team's health check (#4962): shown only while the check is on (#5119; off has no icon), in the accent colour, so it is there at a glance without a ring or a fill (the tooltip and the name say on). */
 .team-health-btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; }
-/* On is unmistakable (#4962): the accent icon on a tinted accent pill, like a pressed toggle; off is the plain muted outline. */
-.team-health-btn.is-on { color: var(--accent); background: color-mix(in srgb, var(--accent) 28%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
+/* On is the accent icon and nothing around it (#5119: the pill and its ring from #4962 round 2 were louder than the context and Waiting badges on every team header): a heavier stroke and the accent colour tell it from the plain muted outline of off, and the name and tooltip say on or off. */
+.team-health-btn.is-on { color: var(--accent); }
 .team-health-btn.is-on svg { stroke-width: 2.2; }
 .team-health-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--text-primary); }
 .team-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--text-primary); }

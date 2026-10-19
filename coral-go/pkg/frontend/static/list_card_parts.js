@@ -24,13 +24,18 @@ export function killAllItem(boardName) {
                 </button>`;
 }
 
-// The team's health check, on or off (#4962): an icon beside the team view button, dimmed when off, accent when on, that opens the setting.
+// The team's health check (#4962, quieter in #5119): an accent icon beside the team view button while the check is ON, that opens the setting; while it is off there is no icon
+// (turning it on is in the team's info button, Team settings, Health check, and in the Agent Team dialog).
 // The state is "team_health_on" on the team's rows in the live list; Coral Hub gets none (the check's settings are the local dashboard's), so no icon there.
+// The icon must not blink: a feed message that leaves the field out or nulls it (a field-level diff says null for a field a row no longer has) is not the team turning
+// the check off, so the last state seen for the team stands until a row says otherwise.
+const _healthSeen = new Map(); // team (board) name -> the last team_health_on a row of it carried
 export function teamHealthBtn(boardName, boardSessions) {
     const row = boardSessions.find(s => typeof s.team_health_on === 'boolean');
-    if (!row) return '';
-    const label = row.team_health_on ? 'Team health monitor: on' : 'Team health monitor: off';
-    return `<button type="button" class="folder-copy-btn team-health-btn${escapeAttr(row.team_health_on ? ' is-on' : '')}" data-on-click="team-health" data-board="${escapeAttr(boardName)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg></button>`;
+    if (row) _healthSeen.set(boardName, row.team_health_on);
+    if (!_healthSeen.get(boardName)) return '';
+    const label = 'Team health monitor: on';
+    return `<button type="button" class="folder-copy-btn team-health-btn is-on" data-on-click="team-health" data-board="${escapeAttr(boardName)}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg></button>`;
 }
 
 // A folder icon on folder groups, as teams have the people icon (#3507 v4, the operator's
