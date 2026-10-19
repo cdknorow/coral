@@ -30,9 +30,13 @@ func main() {
 		}
 	}()
 
-	raw, err := io.ReadAll(os.Stdin)
+	raw, ok, err := hooks.ReadStdin(os.Stdin)
 	if err != nil {
 		hooks.DebugLog(fmt.Sprintf("AGENTIC_STATE STDIN_ERROR: %v", err))
+		return
+	}
+	if !ok {
+		hooks.DebugLog("AGENTIC_STATE DROPPED: the payload is over the size bound")
 		return
 	}
 
@@ -116,7 +120,7 @@ func main() {
 				event["hooks_rev"] = hooksRev
 			}
 			if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/events"), event); err != nil {
-				hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", base, agentName, event["event_type"], err))
+				hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", hooks.RedactedURL(base), agentName, event["event_type"], err))
 			}
 		}
 		return
@@ -144,7 +148,7 @@ func main() {
 		event["hooks_rev"] = hooksRev // which hook set this agent loaded at launch (#3655 F3)
 	}
 	if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/events"), event); err != nil {
-		hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", base, agentName, event["event_type"], err))
+		hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", hooks.RedactedURL(base), agentName, event["event_type"], err))
 		return
 	}
 

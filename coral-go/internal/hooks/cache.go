@@ -33,6 +33,9 @@ const maxCachedSubject = 64 << 10
 
 const debugLogMax = 512000
 
+// debugLineMax is the longest line the hooks' debug log keeps.
+const debugLineMax = 2048
+
 var errNotCacheDir = errors.New("hooks: the hook cache folder is not a plain folder")
 
 // CoralDir is the data folder of the Coral that launched this agent (Coral sets
@@ -219,6 +222,9 @@ func DebugLog(msg string) {
 		}
 		return r
 	}, msg)
+	if len(msg) > debugLineMax {
+		msg = msg[:debugLineMax] + "..." // a line holds an ID or a name, never a payload; one long value cannot grow the file past its bound
+	}
 	fmt.Fprintf(f, "[%s] %s\n", time.Now().UTC().Format("15:04:05.000"), msg)
 }
 

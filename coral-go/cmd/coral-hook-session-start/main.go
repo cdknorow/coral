@@ -6,7 +6,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"runtime/debug"
@@ -22,9 +21,13 @@ func main() {
 		}
 	}()
 
-	raw, err := io.ReadAll(os.Stdin)
+	raw, ok, err := hooks.ReadStdin(os.Stdin)
 	if err != nil {
 		hooks.DebugLog(fmt.Sprintf("SESSION_START STDIN_ERROR: %v", err))
+		return
+	}
+	if !ok {
+		hooks.DebugLog("SESSION_START DROPPED: the payload is over the size bound")
 		return
 	}
 

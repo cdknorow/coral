@@ -103,6 +103,42 @@ func LivePath(agentName, route string) string {
 	return "/api/sessions/live/" + url.PathEscape(agentName) + route
 }
 
+// MaxHookStdin bounds what a hook reads from the agent CLI: a tool's whole output rides in a PostToolUse payload, and every tool call runs a hook.
+const MaxHookStdin = 32 << 20
+
+// ReadStdin reads a hook's stdin up to MaxHookStdin. A longer payload (a tool that printed a huge file) is not read to its end and not parsed: the hook
+// records nothing for that call, as for one that is not JSON, and the CLI goes on.
+func ReadStdin(r io.Reader) ([]byte, bool, error) {
+	raw, err := io.ReadAll(io.LimitReader(r, MaxHookStdin+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(raw) > MaxHookStdin {
+		return nil, false, nil
+	}
+	return raw, true, nil
+}
+
+// maxCoralReply bounds a reply a hook reads from Coral.
+const maxCoralReply = 8 << 20
+
+// RedactedURL is raw with any userinfo (user:password@) hidden, for a message that names the server: a credential embedded in CORAL_URL never reaches a
+// log or the agent's screen.
+func RedactedURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	u.User = url.User("redacted")
+	return u.String()
+}
+
+// BoardStateFileName is the name of an agent session's board state file in the data folder (coral-board writes it, the message-check hook reads it): the
+// session name with any path separator made "_", so no name, whatever the environment says, leaves the data folder.
+func BoardStateFileName(sessionName string) string {
+	return "board_state_" + strings.NewReplacer("/", "_", "\\", "_").Replace(sessionName) + ".json"
+}
+
 // CoralAPI sends a request to the Coral dashboard API.
 func CoralAPI(base, method, path string, data any) (json.RawMessage, error) {
 	var body io.Reader
@@ -129,7 +165,7 @@ func CoralAPI(base, method, path string, data any) (json.RawMessage, error) {
 	}
 	defer resp.Body.Close()
 
-	result, err := io.ReadAll(resp.Body)
+	result, err := io.ReadAll(io.LimitReader(resp.Body, maxCoralReply))
 	if err != nil {
 		return nil, err
 	}

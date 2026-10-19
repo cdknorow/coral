@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/clitext"
+	"github.com/cdknorow/coral/internal/hooks"
 	"io"
 	"net"
 	"net/http"
@@ -64,7 +65,7 @@ func apiCall(method, path string, body any) (map[string]any, int, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
+		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", redactedServerURL(), err)
 	}
 	defer resp.Body.Close()
 
@@ -101,14 +102,7 @@ func serverError(status int, result map[string]any) error {
 
 // redactedServerURL is serverURL with any userinfo (user:password@) hidden, so an error message
 // never carries a credential embedded in CORAL_URL (#3589).
-func redactedServerURL() string {
-	u, err := url.Parse(serverURL)
-	if err != nil || u.User == nil {
-		return serverURL
-	}
-	u.User = url.User("redacted")
-	return u.String()
-}
+func redactedServerURL() string { return hooks.RedactedURL(serverURL) }
 
 // isLoopbackServer reports whether serverURL points at this machine's loopback interface. It uses
 // net.ParseIP so a hostname like "127.0.0.1.example.com" (a real DNS name, not an IP) is not
@@ -131,7 +125,7 @@ func isLoopbackServer() bool {
 func getBoard(path string) ([]byte, error) {
 	resp, err := http.Get(serverURL + "/api/board" + path)
 	if err != nil {
-		return nil, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
+		return nil, fmt.Errorf("cannot reach Coral server at %s: %v", redactedServerURL(), err)
 	}
 	defer resp.Body.Close()
 	data, _ := readServer(resp.Body)
@@ -179,7 +173,7 @@ func apiCallRawTimeout(method, path string, body any, timeout time.Duration) ([]
 		respData, _ := readServer(resp.Body)
 		return respData, resp.StatusCode, nil
 	}
-	return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, lastErr)
+	return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", redactedServerURL(), lastErr)
 }
 
 // retryLoopbackTransport permits fallback only for idempotent GET requests and

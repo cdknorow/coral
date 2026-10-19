@@ -42,7 +42,7 @@ func stateFilePath() string {
 	if sessionName == "" {
 		return ""
 	}
-	return filepath.Join(coralDir(), fmt.Sprintf("board_state_%s.json", sessionName))
+	return filepath.Join(coralDir(), hooks.BoardStateFileName(sessionName))
 }
 
 func loadState() *boardState {
@@ -161,7 +161,7 @@ func resolveViaPID() *pidResolution {
 	pidResolutionDone = true
 
 	pids := getAncestorPIDs()
-	fmt.Fprintf(os.Stderr, "[coral-board] PID resolution: ancestors=%v serverURL=%s\n", pids, serverURL)
+	fmt.Fprintf(os.Stderr, "[coral-board] PID resolution: ancestors=%v serverURL=%s\n", pids, redactedServerURL())
 	if len(pids) == 0 {
 		return nil
 	}

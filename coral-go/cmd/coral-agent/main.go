@@ -378,7 +378,7 @@ func cmdLaunch(args []string) {
 	}
 	fmt.Printf("Launched %s in %s\n", label, absDir)
 	fmt.Printf("  Session: %s\n", sessionName)
-	fmt.Printf("  Open Coral to work with it: %s\n", serverURL)
+	fmt.Printf("  Open Coral to work with it: %s\n", hooks.RedactedURL(serverURL))
 }
 
 // resolveSessionID identifies the calling agent (as coral-board's
@@ -761,7 +761,7 @@ func apiCall(method, path string, body any, timeout time.Duration) ([]byte, int,
 	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
+		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", hooks.RedactedURL(serverURL), err)
 	}
 	defer resp.Body.Close()
 

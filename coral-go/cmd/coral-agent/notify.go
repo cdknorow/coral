@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/hooks"
 )
 
 const notifyUsageText = `Usage: coral-agent notify --title "Title" [--message "text"] [--level info|success|warning|error] [--alert]
@@ -49,7 +51,7 @@ func cmdNotify(args []string, out io.Writer) error {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
-		return fmt.Errorf("could not reach Coral at %s: %w", serverURL, err)
+		return fmt.Errorf("could not reach Coral at %s: %w", hooks.RedactedURL(serverURL), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {

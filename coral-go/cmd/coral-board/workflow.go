@@ -29,7 +29,7 @@ func workflowAPICall(method, path string, body any) ([]byte, int, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
+		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", redactedServerURL(), err)
 	}
 	defer resp.Body.Close()
 	respData, _ := readServer(resp.Body)

@@ -29,7 +29,7 @@ func main() {
 	}()
 
 	// Read and discard stdin (hook protocol requires it)
-	io.ReadAll(os.Stdin)
+	io.Copy(io.Discard, os.Stdin) // never held in memory
 
 	state := loadBoardState()
 	if state == nil {
@@ -101,11 +101,10 @@ func loadBoardState() map[string]any {
 		return nil
 	}
 
-	safeName := strings.NewReplacer("/", "_", "\\", "_").Replace(sessionName)
 	// Must match coral-board's stateFilePath: the CLI writes this file into the
 	// launching server's data directory, so reading ~/.coral unconditionally
 	// would look in the wrong place for any server started with --home.
-	statePath := filepath.Join(hooks.CoralDir(), fmt.Sprintf("board_state_%s.json", safeName))
+	statePath := filepath.Join(hooks.CoralDir(), hooks.BoardStateFileName(sessionName))
 	data, err := os.ReadFile(statePath)
 	if err != nil {
 		return nil

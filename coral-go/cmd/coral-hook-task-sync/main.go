@@ -6,7 +6,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/url"
 	"os"
@@ -23,8 +22,8 @@ func main() {
 		}
 	}()
 
-	raw, err := io.ReadAll(os.Stdin)
-	if err != nil {
+	raw, ok, err := hooks.ReadStdin(os.Stdin)
+	if err != nil || !ok {
 		return
 	}
 	run(raw)
