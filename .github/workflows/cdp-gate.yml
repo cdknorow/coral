@@ -127,11 +127,15 @@ jobs:
     needs: part
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      # The suites the flake-repeat job below runs again: FLAKY ones, and the one a part's end check names (comma-separated, at most 3).
+      suites: ${{ steps.summary.outputs.suites }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: parts
       - name: summary
+        id: summary
         env:
           PARTS_RESULT: ${{ needs.part.result }}
         run: |
@@ -179,6 +183,17 @@ jobs:
               first = next((l.strip() for l in (outs[0] or '').splitlines() if _pat.search(l)), '')
               if first: lines.append(f"  {r['test']}: {first[:300]}")
           for part, block in ends: lines.append(f"{part}: " + " / ".join(block))
+          # Which suites are worth running again (#5096): each FLAKY one, and a suite a part's end check names when it
+          # names exactly one. Only plain file names get through (they reach a workflow input), at most 3.
+          _name = _re.compile(r'[a-z0-9_][a-z0-9_.-]*\.test\.m?js')
+          again = list(flaky)
+          for part, block in ends:
+              named = {m for l in block for m in _name.findall(l)}
+              if len(named) == 1: again += sorted(named)
+          again = [n for n in dict.fromkeys(again) if _name.fullmatch(n)]
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as o:
+              o.write("suites=" + ",".join(again[:3]) + "\n")
+          if len(again) > 3: lines.append(f"{len(again) - 3} more suite(s) to repeat by hand: " + ", ".join(again[3:]))
           print("\n".join(lines))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as s:
               s.write("## cdp-gate\n\n" + "\n\n".join(lines) + "\n")
@@ -257,3 +272,94 @@ jobs:
           path: ${{ runner.temp }}/out
           retention-days: 7
           if-no-files-found: warn
+
+  flake-repeat:
+    # A suite the gate found FLAKY (or that a part's end check names) is run again 10 times with no retries, on this
+    # candidate and on main, and one line per suite says how each did (#5096): the gate's check stays what the summary
+    # job says, this only tells a reviewer whether the flake is new. It does not run for a green gate, and a repeat run
+    # (workflow_dispatch with suites) never starts another. The only job with actions: write, to dispatch the existing
+    # repeat above on the two refs and to read their results; no secrets, no checkout, nothing cached. The suite names
+    # come from the gate's results through an output and are checked again here before use; they reach the shell only
+    # through env. "Same rate on both: pre-existing" is information; a person still decides.
+    name: cdp-gate (flaky suites repeated)
+    needs: summary
+    if: always() && needs.summary.outputs.suites != '' && startsWith(github.ref, 'refs/heads/ci/') && (github.event_name == 'push' || inputs.suites == '')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    continue-on-error: true # never changes the gate's own result
+    permissions:
+      actions: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SUITES: ${{ needs.summary.outputs.suites }}
+      CANDIDATE: ${{ github.ref_name }}
+    steps:
+      - name: repeat on the candidate and on main
+        run: |
+          set -euo pipefail
+          [[ "$SUITES" =~ ^[a-z0-9_.][a-z0-9_.-]*(,[a-z0-9_.][a-z0-9_.-]*){0,2}$ ]] || { echo "suites: not plain file names"; exit 2; }
+          ids() { gh run list --workflow cdp-gate.yml --event workflow_dispatch --branch "$1" --limit 50 --json databaseId -q '.[].databaseId' | sort; }
+          # gh workflow run does not say which run it made: the run on that branch that was not there before.
+          dispatch() {
+            local ref="$1" before new=""
+            before="$(ids "$ref")"
+            gh workflow run cdp-gate.yml --ref "$ref" -f suites="$SUITES" -f runs=10 >/dev/null
+            for _ in $(seq 1 18); do
+              sleep 10
+              new="$(comm -13 <(printf '%s\n' "$before") <(ids "$ref") | head -n1)"
+              [ -n "$new" ] && break
+            done
+            echo "$new"
+          }
+          cand_id="$(dispatch "$CANDIDATE")"
+          main_id="$(dispatch main)"
+          echo "candidate repeat: run ${cand_id:-none}; main repeat: run ${main_id:-none}"
+          wait_for() {
+            local id="$1" st=""
+            [ -n "$id" ] || return 0
+            for _ in $(seq 1 240); do
+              st="$(gh run view "$id" --json status -q .status)"
+              [ "$st" = completed ] && return 0
+              sleep 30
+            done
+          }
+          wait_for "$cand_id"
+          wait_for "$main_id"
+          mkdir -p "$RUNNER_TEMP/cand" "$RUNNER_TEMP/main"
+          [ -z "$cand_id" ] || gh run download "$cand_id" -p 'cdp-repeat-*' -D "$RUNNER_TEMP/cand" || true
+          [ -z "$main_id" ] || gh run download "$main_id" -p 'cdp-repeat-*' -D "$RUNNER_TEMP/main" || true
+          CAND_ID="$cand_id" MAIN_ID="$main_id" python3 - <<'PY'
+          import glob, json, os
+          def rates(d):
+              # {suite: (pass, fail)} from the repeat's results.json; None if the run left none (it never ran, or a suite is not on that ref)
+              f = glob.glob(os.path.join(d, '*', 'results.json')) + glob.glob(os.path.join(d, 'results.json'))
+              if not f: return None
+              out = {}
+              for r in json.load(open(f[0])):
+                  p, x = out.get(r['test'], (0, 0))
+                  out[r['test']] = (p + 1, x) if r['status'] == 'pass' else (p, x + 1)
+              return out
+          tmp = os.environ['RUNNER_TEMP']
+          cand, main = rates(tmp + '/cand'), rates(tmp + '/main')
+          lines = []
+          for name in os.environ['SUITES'].split(','):
+              c = (cand or {}).get(name)
+              m = (main or {}).get(name)
+              fmt = lambda v, ref: f"{ref} {v[0]} pass / {v[1]} fail" if v else f"{ref} no result"
+              line = f"{name}: {fmt(c, 'candidate')}, {fmt(m, 'main')}"
+              if c and m:
+                  if c[1] == m[1]: note = "same rate on both: pre-existing" if c[1] else "no failure on either"
+                  elif c[1] and m[1]: note = "fails on main too, at a different rate"
+                  elif c[1]: note = "fails only on the candidate"
+                  else: note = "no failure on the candidate; fails on main"
+                  line += f" ({note})"
+              elif c and not m:
+                  line += " (main has no result: the suite may not exist there, or its run failed to start)"
+              lines.append(line)
+          text = "\n".join(lines)
+          print(text)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as s:
+              s.write("## cdp-gate: flaky suites repeated 10 times\n\n```\n" + text + "\n```\n\nRuns: candidate " + (os.environ['CAND_ID'] or 'none') + ", main " + (os.environ['MAIN_ID'] or 'none') + ". Information only: a person decides.\n")
+          PY
