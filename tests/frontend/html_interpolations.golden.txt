@@ -30,6 +30,9 @@
 1	board_chat.js	renderBoardMessageBody(m)
 1	board_chat.js	selectedClass
 1	board_chat.js	spacing
+1	board_export.js	agentCheckboxes || '<p style="font-size:0.8125rem;color:var(--text-muted)">No subscribers</p>'
+1	board_export.js	count
+1	board_export.js	role
 1	board_export_render.js	cls
 1	board_export_render.js	color
 1	board_export_render.js	d.stats.agent_chat
@@ -306,12 +309,10 @@
 1	markdown.js	HL_MARK
 1	message_board.js	BOARD_SAVE_BUTTON(currentProject || '', keyLabel(currentProject || ''), String(m.created_at || ''), String(m.j
 1	message_board.js	_totalMessages
-1	message_board.js	agentCheckboxes || '<p style="font-size:0.8125rem;color:var(--text-muted)">No subscribers</p>'
 1	message_board.js	alignClass
 1	message_board.js	boardAvatar(m, agent)
 1	message_board.js	boardMessageColorStyle(color)
 1	message_board.js	checkbox
-1	message_board.js	count
 1	message_board.js	externalMessageBadge(m)
 1	message_board.js	formatTime(m.created_at)
 1	message_board.js	hubUserBadge(m)
@@ -320,7 +321,6 @@
 1	message_board.js	p.subscriber_count
 1	message_board.js	remaining
 1	message_board.js	renderBoardMessageBody(m)
-1	message_board.js	role
 1	message_board.js	selectedClass
 1	message_board.js	spacing
 1	model_chip.js	checked
@@ -587,7 +587,6 @@
 1	team_availability.js	tasks(data.unassigned_tasks)
 1	team_dialogs.js	failList
 1	team_dialogs.js	successCount
-1	team_dialogs.js	suffix
 1	team_health_settings.js	HEALTH_LIMITS.reviewers
 1	team_health_settings.js	extra
 1	team_health_settings.js	held
@@ -599,6 +598,7 @@
 1	team_health_settings.js	rule('claim_nudge', 'Nudge an idle agent to claim its work', 'An agent that is idle with ready work gets a rem
 1	team_health_settings.js	rule('mention_renudge', 'Remind the orchestrator of an unanswered mention', 'A message that @mentions the orch
 1	team_health_settings.js	rule('status_nudge', 'Ask a quiet agent for a status', 'An agent that has done nothing for a while is asked wh
+1	team_templates_ui.js	suffix
 1	team_working_mode.js	fragment('action_default', 'Action default')
 1	team_working_mode.js	fragment('default_instructions', 'Default task instructions')
 1	team_working_mode.js	fragment('effective_action', 'Effective action')
