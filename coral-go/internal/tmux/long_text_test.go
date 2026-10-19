@@ -126,7 +126,7 @@ func TestOnlyLaunchPathsWrapACommand(t *testing.T) {
 		return nil
 	}))
 	assert.Equal(t, map[string]int{
-		"internal/tmux/client.go":                     1, // typeToTarget, only when launch is set
+		"internal/tmux/send_keys.go":                  1, // typeToTarget, only when launch is set
 		"internal/ptymanager/session_terminal_pty.go": 1, // PTYSessionTerminal.SendToTarget (a launch command)
 	}, invocations, "a new caller of commandInvocation must be a launch path: say so here")
 	assert.Equal(t, map[string]int{
@@ -137,7 +137,7 @@ func TestOnlyLaunchPathsWrapACommand(t *testing.T) {
 	}, sendKeysToTarget, "a new caller of SendKeysToTarget (which wraps a long command) must be a launch path: say so here")
 
 	// And the agent-text method itself never reaches the wrapping function.
-	body := funcBody(t, "client.go", "func (c *Client) SendKeys(")
+	body := funcBody(t, "send_keys.go", "func (c *Client) SendKeys(")
 	assert.NotContains(t, body, "SendKeysToTarget(")
 	assert.NotContains(t, body, "commandInvocation(")
 	assert.Contains(t, body, "typeToTarget(ctx, target, command, false)")
