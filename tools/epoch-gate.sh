@@ -2,6 +2,11 @@
 # tools/epoch-gate.sh ID: the batch gate on a shared Linux test host ("epoch"), run DETACHED there (#4383).
 #
 #   EPOCH_HOST=epoch EPOCH_ROOT=/path/on/host tools/epoch-gate.sh v1478     (from the top of a clean worktree)
+#   EPOCH_GO_ONLY=1 ...                      vet and both go test tag sets only, no node, Chrome or test:cloud (#4997: epoch has
+#                                            no coralgo-tools, and GitHub's cdp-gate runs the CDP set); both tag sets run at once.
+#   The gate is started with setsid and no nohup: nohup leaves SIGHUP ignored in every child, and ptymanager's SIGHUP kill test
+#   then waits out its 5 s grace and fails (#4984). go test runs with CORAL_TELEMETRY_DISABLED unset (routes' analytics tests
+#   need events, sent to a local sink); the rest of the gate keeps it set.
 #
 # It ships this worktree's tree (git archive of HEAD, so only committed files) to $EPOCH_ROOT/coralgo-check-ID on
 # $EPOCH_HOST, starts the gate there under setsid/nohup (so a dropped ssh session no longer kills it: epoch lost
@@ -26,7 +31,7 @@ top=$(git rev-parse --show-toplevel) || exit 2
 cd "$top" || exit 2
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "commit or stash first: the gate tests HEAD" >&2; exit 2; }
 echo "gate $ID: $(git rev-parse --short HEAD) tree $(git rev-parse --short 'HEAD^{tree}') -> $H:$ROOT/$D"
-git archive --format=tar HEAD coral-go tests tools installers licenses THIRD_PARTY_NOTICES_MPL.md LICENSE | gzip |
+git archive --format=tar HEAD coral-go tests tools installers licenses .github THIRD_PARTY_NOTICES_MPL.md LICENSE | gzip |
   ssh -o BatchMode=yes "$H" "umask 022; rm -rf -- '$ROOT/$D' && mkdir -p '$ROOT/$D' && cd '$ROOT/$D' && tar xzf - 2>/dev/null" || exit 1
 ssh -o BatchMode=yes "$H" "cat > '$ROOT/$D/gate.sh'" <<'GATE'
 umask 022
@@ -43,7 +48,7 @@ ts vet done
 # The person at a terminal: coral-board join, post and read as the signed Operator against a fresh prod server
 # (tests/release/operator_cli_smoke.sh; v1.4.72's refusal of the Operator's own command line was caught only by
 # the release smoke). A random high port, as epoch is shared.
-if [ -f ../tests/release/operator_cli_smoke.sh ]; then
+if [ -z "${GO_ONLY:-}" ] && [ -f ../tests/release/operator_cli_smoke.sh ]; then
   OB=$(mktemp -d "$N/coralgo-tmp/opbin.XXXXXX")
   if nice -n 10 ionice -c3 go build -tags fts5 -o "$OB/" ./cmd/coral ./cmd/coral-board > ../opsmoke.log 2>&1 && \
      TMPDIR=$N/coralgo-tmp nice -n 10 ionice -c3 bash ../tests/release/operator_cli_smoke.sh "$OB" $((20000 + RANDOM % 20000)) >> ../opsmoke.log 2>&1; then
@@ -56,20 +61,21 @@ if [ -f ../tests/release/operator_cli_smoke.sh ]; then
 fi
 # One shared node_modules for the team's checks, refreshed when package.json changes.
 NM=$N/coralgo-cache/frontend
-mkdir -p $NM && if ! cmp -s ../tests/frontend/package.json $NM/package.json; then cp ../tests/frontend/package.json $NM/ && (cd $NM && npm install --no-audit --no-fund --no-package-lock >/dev/null 2>&1); fi
-ln -sfn $NM/node_modules ../tests/frontend/node_modules
+[ -z "${GO_ONLY:-}" ] && mkdir -p $NM && if ! cmp -s ../tests/frontend/package.json $NM/package.json; then cp ../tests/frontend/package.json $NM/ && (cd $NM && npm install --no-audit --no-fund --no-package-lock >/dev/null 2>&1); fi
+[ -z "${GO_ONLY:-}" ] && ln -sfn $NM/node_modules ../tests/frontend/node_modules
 # The two go test tag sets and test:cloud at the same time (36 cores; GOMAXPROCS=8 and -p=8 each).
 # Each writes its own whole log and its own exit status; nothing is read until all three end.
 rm -f ../gotest.rc ../gotestdev.rc ../cloud.rc
-( nice -n 10 ionice -c3 go test -count=1 ./... > ../gotest.log 2>&1; echo $? > ../gotest.rc ) &
-( nice -n 10 ionice -c3 go test -count=1 -tags 'dev fts5' ./... > ../gotestdev.log 2>&1; echo $? > ../gotestdev.rc ) &
-( cd ../tests/frontend && nice -n 10 ionice -c3 npm run -s test:cloud > ../../cloud.log 2>&1; echo $? > ../../cloud.rc ) &
+( nice -n 10 ionice -c3 env -u CORAL_TELEMETRY_DISABLED go test -count=1 ./... > ../gotest.log 2>&1; echo $? > ../gotest.rc ) &
+( nice -n 10 ionice -c3 env -u CORAL_TELEMETRY_DISABLED go test -count=1 -tags 'dev fts5' ./... > ../gotestdev.log 2>&1; echo $? > ../gotestdev.rc ) &
+[ -z "${GO_ONLY:-}" ] && ( cd ../tests/frontend && nice -n 10 ionice -c3 npm run -s test:cloud > ../../cloud.log 2>&1; echo $? > ../../cloud.rc ) &
 wait
 ts go test, go test dev fts5 and test:cloud done
 rc_of(){ [ -s "$1" ] && cat "$1" || echo missing; }
 r=$(rc_of ../gotest.rc); if [ "$r" = 0 ]; then echo "go test ok"; else echo "go test FAILED (rc=$r):"; grep -E "^(FAIL|--- FAIL|panic:)" ../gotest.log; echo "  failing output (each --- FAIL and the 30 lines after it):"; grep -A30 -E "^(\s*--- FAIL|panic:)" ../gotest.log | head -200 | sed "s/^/    /"; fi
 r=$(rc_of ../gotestdev.rc); if [ "$r" = 0 ]; then echo "go test (dev fts5) ok"; else echo "go test (dev fts5) FAILED (rc=$r):"; grep -E "^(FAIL|--- FAIL|panic:)" ../gotestdev.log; echo "  failing output (each --- FAIL and the 30 lines after it):"; grep -A30 -E "^(\s*--- FAIL|panic:)" ../gotestdev.log | head -200 | sed "s/^/    /"; fi
-r=$(rc_of ../cloud.rc); if [ "$r" = 0 ]; then echo "test:cloud ok"; else echo "test:cloud FAILED (rc=$r)"; tail -5 ../cloud.log; fi
+if [ -z "${GO_ONLY:-}" ]; then r=$(rc_of ../cloud.rc); if [ "$r" = 0 ]; then echo "test:cloud ok"; else echo "test:cloud FAILED (rc=$r)"; tail -5 ../cloud.log; fi; fi
+[ -n "${GO_ONLY:-}" ] && { ts go-only run done; exit 0; }
 # The opt-in real-Chrome hubproxy test (#3663): ok only when both tests ran and passed, never on a skip.
 if [ -f pkg/hubproxy/ws_busy_chrome_test.go ]; then CORAL_CHROME_TEST=1 CORAL_CHROME=$N/coralgo-tools/chrome-linux64/chrome nice -n 10 ionice -c3 go test -count=1 -run Chrome4429 -v ./pkg/hubproxy > ../chrome4429.log 2>&1; np=$(grep -c -E '^--- PASS: TestChrome4429' ../chrome4429.log); if [ "$np" = 2 ]; then echo "chrome4429 ok (2 PASS)"; else echo "chrome4429 FAILED (PASS=$np):"; grep -E '^(--- |FAIL|ok)|_test.go:' ../chrome4429.log | head -15; fi; fi
 ts chrome4429 done
@@ -83,7 +89,7 @@ while [ ! -f gate.done ]; do
   sleep 10
 done
 SMP
-EPOCH_ROOT='$ROOT' D='$D' setsid nohup bash -c 'bash sampler.sh & bash gate.sh > gate.log 2>&1; echo \"gate-rc=\$?\" >> gate.log; touch gate.done' > /dev/null 2>&1 < /dev/null & echo started" || exit 1
+EPOCH_ROOT='$ROOT' D='$D' GO_ONLY='${EPOCH_GO_ONLY:-}' setsid bash -c 'bash sampler.sh & bash gate.sh > gate.log 2>&1; echo \"gate-rc=\$?\" >> gate.log; touch gate.done' > /dev/null 2>&1 < /dev/null & echo started" || exit 1
 while :; do
   r=$(ssh -o ConnectTimeout=15 -o BatchMode=yes "$H" "test -f '$ROOT/$D/gate.done' && echo done" 2>/dev/null)
   [ "$r" = "done" ] && break
