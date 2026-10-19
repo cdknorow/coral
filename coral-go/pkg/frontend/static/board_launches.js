@@ -83,6 +83,7 @@ export async function launchAgentToBoard() {
         // Standalone (no board) when opened from a folder group; a board joins by its id (#3536).
         if (boardName) launchBody.board_id = launchBody.board_name = boardName;
         if (config.model) launchBody.model = config.model;
+        if (config.thinking !== undefined) launchBody.thinking = config.thinking; // #4969
         if (config.capabilities) launchBody.capabilities = config.capabilities;
         const result = await _launchOn(server, "/api/sessions/launch", launchBody, config.agentType);
         if (result) {

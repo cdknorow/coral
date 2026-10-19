@@ -33,6 +33,9 @@ func TestStripThinkingFlags(t *testing.T) {
 		{[]string{"--verbose", "--effort=low"}, []string{"--verbose"}},
 		{[]string{"--model", "opus", "--effort", "max", "--effort", "low"}, []string{"--model", "opus"}},
 		{[]string{"--effort"}, []string{}},
+		{[]string{"--effort", "--dangerously-skip-permissions", "--verbose"}, []string{"--dangerously-skip-permissions", "--verbose"}},
+		{[]string{"--verbose", "--effort", "-p"}, []string{"--verbose", "-p"}},
+		{[]string{"--effort", "high", "--effort", "--verbose"}, []string{"--verbose"}},
 	}
 	for _, c := range cases {
 		assert.Equal(t, c.want, StripThinkingFlags(c.in), "%v", c.in)

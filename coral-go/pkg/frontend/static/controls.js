@@ -627,6 +627,7 @@ export async function confirmRestart() {
         }
         if (config.prompt) payload.prompt = config.prompt;
         if (config.model !== undefined) payload.model = config.model;
+        if (config.thinking !== undefined) payload.thinking = config.thinking; // only when chosen: a restart keeps the agent's level otherwise (#4969)
         if (config.capabilities) payload.capabilities = config.capabilities;
         const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/restart`, {
             method: "POST",

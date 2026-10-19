@@ -695,6 +695,7 @@ async function _saveTeamTemplate() {
             if (config.capabilities) entry.capabilities = config.capabilities;
             if (config.agentType) entry.agent_type = config.agentType;
             if (config.model) entry.model = config.model;
+            if (config.thinking) entry.thinking = config.thinking; // #4969
             if (config.flags) entry.flags = config.flags;
             agents.push(entry);
         }
@@ -959,6 +960,7 @@ async function launchTeam() {
         if (config.capabilities) agent.capabilities = config.capabilities;
         if (config.agentType) agent.agent_type = config.agentType;
         if (config.model) agent.model = config.model;
+        if (config.thinking) agent.thinking = config.thinking; // #4969
         if (config.flags) agent.flags = config.flags.split(/\s+/).filter(Boolean);
         agents.push(agent);
     }

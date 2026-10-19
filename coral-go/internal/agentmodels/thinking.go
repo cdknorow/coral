@@ -46,7 +46,9 @@ func StripThinkingFlags(flags []string) []string {
 	for i := 0; i < len(flags); i++ {
 		f := flags[i]
 		if f == "--effort" {
-			i++ // its value
+			if i+1 < len(flags) && !strings.HasPrefix(flags[i+1], "-") {
+				i++ // its value; a following flag is not a value and stays (a bare --effort must not eat --dangerously-skip-permissions or the like)
+			}
 			continue
 		}
 		if strings.HasPrefix(f, "--effort=") {

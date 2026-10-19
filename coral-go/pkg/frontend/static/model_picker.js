@@ -35,6 +35,8 @@ export function modelPickerHtml() {
 
 function fill(container, agentType, data) {
     const { input, wrap, select, id, note } = parts(container);
+    container._thinkingLevels = data && Array.isArray(data.thinking) ? data.thinking : [];   // the levels the server passes this type's CLI (#4969)
+    syncThinking(container);
     if (!input || !wrap || !select) return;
     const models = (data && Array.isArray(data.models) ? data.models : []).filter(m => m && typeof m.value === 'string' && m.value);
     container._modelList = models;
@@ -62,6 +64,7 @@ export function syncModelPicker(container, fromCode = true) {
         const hit = models.find(m => m.value === v);
         id.textContent = hit ? [hit.value, hit.description].filter(Boolean).join(' · ') : '';
     }
+    syncThinking(container);   // the model decides which levels it takes
 }
 
 async function fetchList(container, agentType, { refresh = false } = {}) {
@@ -89,7 +92,7 @@ export async function loadModelPicker(container, agentType) {
     const { wrap, input, select } = parts(container);
     if (!container || !wrap || !select) return;
     const token = container._modelToken = (container._modelToken || 0) + 1;
-    if (agentType === 'terminal') { wrap.hidden = true; return; }
+    if (agentType === 'terminal') { wrap.hidden = true; container._thinkingLevels = []; syncThinking(container); return; }
     const cached = readModelsCache(_acfServer(container), agentType);
     if (cached) fill(container, agentType, cached); else { wrap.hidden = true; if (input) input.hidden = false; }
     for (let i = 0; i <= POLL_MAX; i++) {
@@ -124,5 +127,71 @@ export function wireModelPicker(container) {
             }
         } catch { showToast('Could not reach Coral to refresh the list.', true); }
         refresh.disabled = false; refresh.removeAttribute('aria-busy');
+    });
+}
+
+// ── Thinking level (#4969) ───────────────────────────────────────────────
+// A Thinking select beside the Model: the levels the server passes this agent type's CLI (the models reply's `thinking`), narrowed to
+// the chosen model's own `efforts` when the catalog lists them (the CLI clamps a level its model does not take, so the form only
+// offers levels it accepts). Hidden when the type takes none. The form's value is `thinkingValue`: undefined until the user chooses or
+// the form is given a level, so a restart that was not asked to change it leaves the agent's level alone.
+const LEVEL_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+
+/** The markup of the Thinking select (after the Model label's row). */
+export function thinkingPickerHtml() {
+    return `<label class="acf-thinking-wrap" hidden>Thinking <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:`
+        + `<select class="acf-thinking" aria-label="Thinking level"></select>`
+        + `<span class="acf-thinking-note" role="status"></span></label>`;
+}
+
+function thinkingParts(container) {
+    return { wrap: container.querySelector('.acf-thinking-wrap'), select: container.querySelector('.acf-thinking'), note: container.querySelector('.acf-thinking-note') };
+}
+
+/** Show the levels this type and model take; keep the choice when it is still offered, else fall back to Default and say so. */
+export function syncThinking(container) {
+    const { wrap, select, note } = thinkingParts(container);
+    if (!wrap || !select) return;
+    const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
+    const typeLevels = agentType === 'terminal' ? [] : (container._thinkingLevels || []);
+    const model = (container.querySelector('.acf-model')?.value || '').trim();
+    const hit = (container._modelList || []).find(m => m.value === model);
+    const efforts = hit && Array.isArray(hit.efforts) && hit.efforts.length ? hit.efforts : null;
+    const allowed = efforts ? typeLevels.filter(l => efforts.includes(l)) : typeLevels;
+    if (!allowed.length) { wrap.hidden = true; if (note) note.textContent = ''; return; }
+    const wanted = container._thinkingWanted !== undefined ? container._thinkingWanted : select.value;
+    select.innerHTML = `<option value="">Default</option>` + allowed.map(l => `<option value="${escapeAttr(l)}">${escapeHtml(LEVEL_NAMES[l] || l)}</option>`).join('');
+    const keep = wanted === '' || allowed.includes(wanted);
+    select.value = keep ? wanted : '';
+    if (note) note.textContent = keep ? '' : `${LEVEL_NAMES[wanted] || wanted} is not offered for ${model || 'this model'}: back to Default.`;
+    wrap.hidden = false;
+}
+
+/** The form's thinking level: undefined when it was not chosen or given and so should not be sent, else "" (Default) or a level. */
+export function thinkingValue(container) {
+    const { wrap, select } = thinkingParts(container);
+    if (!wrap || !select || wrap.hidden || container.dataset.acfThinkingSet !== 'true') return undefined;
+    return select.value;
+}
+
+/** Give the form a level (from a saved config or the running agent); undefined or null forgets the choice. */
+export function setThinking(container, level) {
+    const { select } = thinkingParts(container);
+    if (!select) return;
+    if (level === undefined || level === null) { container._thinkingWanted = undefined; delete container.dataset.acfThinkingSet; select.value = ''; syncThinking(container); return; }
+    container._thinkingWanted = String(level);
+    container.dataset.acfThinkingSet = 'true';
+    syncThinking(container);
+}
+
+/** Wire the select once per form: a user's choice is remembered and counts as set. */
+export function wireThinking(container) {
+    const { select } = thinkingParts(container);
+    if (!select || select.dataset.wired) return;
+    select.dataset.wired = '1';
+    select.addEventListener('change', () => {
+        container._thinkingWanted = select.value;
+        container.dataset.acfThinkingSet = 'true';
+        syncThinking(container);
     });
 }

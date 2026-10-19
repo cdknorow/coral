@@ -741,6 +741,23 @@
                 </dd>
                 </div>
                 <div class="settings-row settings-row-wide">
+                <dt>Default Thinking</dt>
+                <dd class="settings-cli-paths">
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Claude</span>
+                        <select id="settings-default-thinking-claude" class="settings-input">
+                            <option value="">The CLI's own default</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="xhigh">Extra high</option>
+                            <option value="max">Max</option>
+                        </select>
+                    </label>
+                    <span class="settings-hint">How much Claude thinks before it answers, for agents launched with no choice of their own. A model that does not take a level uses the nearest one it does.</span>
+                </dd>
+                </div>
+                <div class="settings-row settings-row-wide">
                 <dt>Default Models</dt>
                 <dd class="settings-cli-paths">
                     <label class="settings-cli-row">

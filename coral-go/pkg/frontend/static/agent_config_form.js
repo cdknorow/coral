@@ -5,7 +5,7 @@ const { PERMISSION_MODE_DESCRIPTIONS, _hasPermFlag, _normalizePermFlagsForAgent,
 const { _acfServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _settingsFor } = await importOnce('./launch_models.js');
 const { _checkAgentCLI } = await importOnce('./cli_check.js');
 const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
-const { modelPickerHtml, loadModelPicker, wireModelPicker, syncModelPicker } = await importOnce('./model_picker.js');
+const { modelPickerHtml, loadModelPicker, wireModelPicker, syncModelPicker, thinkingPickerHtml, thinkingValue, setThinking, wireThinking } = await importOnce('./model_picker.js');
 const { _renderPresetButtons } = await importOnce('./persona_store.js');
 const { presetEnforcement } = await importOnce('./preset_enforcement.js');
 const { initSectionDialog } = await importOnce('./section_dialog.js');
@@ -230,6 +230,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                 <input type="text" class="acf-model" list="acf-models-${uid}" placeholder="Leave blank to use default" autocomplete="off" value="${escapeAttr(modelVal)}">
                 <datalist id="acf-models-${escapeAttr(uid)}"></datalist>
             </label>
+            ${thinkingPickerHtml()}
         </div>
         <div class="acf-cli-warning" style="display:none;margin:8px 0" role="status"></div>`;
     const permEditorHTML = (open) => `
@@ -355,6 +356,7 @@ export function _syncACFModelField(container) {
         _getAgentModels(_acfServer(container)).then(models => _fillModelDatalist(datalist, agentType, models));
     }
     wireModelPicker(container);
+    wireThinking(container);
     loadModelPicker(container, agentType);   // the cached list at once, then the server's (#4066)
     if (!modelInput) return;
     if (container.dataset.acfModelClassifying === 'true' || container.dataset.acfModelDirty === 'true') return; // user owns or we are classifying the value
@@ -403,6 +405,7 @@ export function getAgentConfig(containerId) {
         name: container.querySelector('.acf-name')?.value.trim() || '',
         agentType,
         model,
+        thinking: agentType === 'terminal' ? undefined : thinkingValue(container), // undefined: not chosen, so a launch uses the default and a restart keeps the agent's level (#4969)
         prompt: container.querySelector('.acf-prompt')?.value.trim() || '',
         flags,
         capabilities: uid ? _getPermissions(`${uid}-perms`) : null,
@@ -433,6 +436,7 @@ export function setAgentConfig(containerId, values) {
         container.dataset.acfModelDirty = 'false';
         if (v.model) _classifyLoadedACFModel(container, typeEl?.value || 'claude', v.model);
     }
+    setThinking(container, v.thinking);
     const promptEl = container.querySelector('.acf-prompt');
     if (promptEl) promptEl.value = v.prompt || '';
     const flagsEl = container.querySelector('.acf-flags');

@@ -107,6 +107,12 @@ func TestLaunchGivesTheCLIItsThinkingLevel(t *testing.T) {
 	assert.Equal(t, 1, n)
 	assert.Equal(t, "medium", level)
 
+	// A bare --effort in the flags (no value) does not swallow the flag after it: the permission flag stays a flag.
+	id, n, level = launch(map[string]any{"agent_type": "claude", "thinking": "low", "flags": []string{"--effort", "--verbose"}})
+	assert.Equal(t, 1, n)
+	assert.Equal(t, "low", level)
+	assert.Contains(t, strings.Join(commandsFor(term, id), " "), "--verbose", "the flag after a bare --effort stays")
+
 	// A saved default that no longer fits the type is ignored (the CLI's own default applies).
 	require.NoError(t, ss.SetSetting(ctx, "default_thinking_claude", "ultra"))
 	_, n, _ = launch(map[string]any{"agent_type": "claude"})

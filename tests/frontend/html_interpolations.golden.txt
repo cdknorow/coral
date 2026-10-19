@@ -6,6 +6,7 @@
 1	agent_config_form.js	nameHTML
 1	agent_config_form.js	permEditorHTML(false)
 1	agent_config_form.js	presetHTML
+1	agent_config_form.js	thinkingPickerHtml()
 1	agent_config_form.js	title
 1	agent_config_form.js	topHTML
 1	agent_config_form.js	uid

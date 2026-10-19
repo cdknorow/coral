@@ -272,6 +272,7 @@ export async function launchSession() {
         if (config.capabilities) payload.capabilities = config.capabilities;
         if (config.prompt) payload.prompt = config.prompt;
         if (config.model) payload.model = config.model;
+        if (config.thinking !== undefined) payload.thinking = config.thinking; // chosen on the form (#4969)
 
         const boardSelect = document.getElementById("launch-board-select");
         if (boardSelect && boardSelect.value) {

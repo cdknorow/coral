@@ -62,6 +62,8 @@ type Result struct {
 	Refreshing bool       `json:"refreshing"`
 	Source     string     `json:"source,omitempty"` // "account", or "bundled" (codex's shipped list)
 	Error      string     `json:"error,omitempty"`
+	// Thinking is the levels Coral gives this type's CLI at launch (ThinkingLevels); empty when the type takes none. A model's own `efforts` narrow it.
+	Thinking []string `json:"thinking,omitempty"`
 }
 
 type entry struct {
@@ -119,6 +121,7 @@ func (s *Service) Get(agentType string) Result {
 // (agenttypes.AgentTypeModels, "source": "builtin"), so a picker has choices before the CLI
 // has listed its own, or when it can't.
 func withBuiltin(res Result) Result {
+	res.Thinking = ThinkingLevels(res.AgentType)
 	if len(res.Models) > 0 {
 		return res
 	}

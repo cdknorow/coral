@@ -688,6 +688,8 @@ function _fillCliAndModels(s) {
     const defAgy = document.getElementById("settings-default-model-agy");
     const defPi = document.getElementById("settings-default-model-pi");
     if (defClaude) defClaude.value = s.default_model_claude || "";
+    const defThinkingClaude = document.getElementById("settings-default-thinking-claude");
+    if (defThinkingClaude) defThinkingClaude.value = s.default_thinking_claude || "";
     if (defCodex) defCodex.value = s.default_model_codex || "";
     const agyModel = s.default_model_agy || s.default_model_gemini || "";
     if (defAgy) defAgy.value = agyModel;
@@ -857,6 +859,7 @@ function readSettingsForm() {
     const cliPathAgy = document.getElementById("settings-cli-path-agy")?.value.trim() || "";
     const cliPathPi = document.getElementById("settings-cli-path-pi")?.value.trim() || "";
     const defaultModelClaude = document.getElementById("settings-default-model-claude")?.value.trim() || "";
+    const defaultThinkingClaude = document.getElementById("settings-default-thinking-claude")?.value || "";
     const defaultModelCodex = document.getElementById("settings-default-model-codex")?.value.trim() || "";
     const defaultModelAgy = document.getElementById("settings-default-model-agy")?.value.trim() || "";
     const defaultModelPi = document.getElementById("settings-default-model-pi")?.value.trim() || "";
@@ -911,6 +914,7 @@ function readSettingsForm() {
         cli_path_gemini: cliPathAgy,
         cli_path_pi: cliPathPi,
         default_model_claude: defaultModelClaude,
+        default_thinking_claude: defaultThinkingClaude,
         default_model_codex: defaultModelCodex,
         default_model_agy: defaultModelAgy,
         default_model_gemini: defaultModelAgy,
