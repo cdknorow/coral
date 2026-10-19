@@ -117,7 +117,7 @@ func TestSharedWSTick_RebuildsWhenStale(t *testing.T) {
 	assert.Same(t, first, h.wsList.local, "fresh build is reused")
 
 	h.wsList.mu.Lock()
-	h.wsList.local.builtAt = time.Now().Add(-2 * wsListMaxAge)
+	h.wsList.local.builtAt = time.Now().Add(-2 * wsListMaxAge())
 	h.wsList.mu.Unlock()
 	_, err = h.sharedWSTick(req)
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestSharedWSTick_RemoteChanges(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, tick.current, remoteKey("r1", "remote-c"), "within the age bound the shared part is reused")
 	h.wsList.mu.Lock()
-	h.wsList.remote.builtAt = time.Now().Add(-2 * wsListMaxAge)
+	h.wsList.remote.builtAt = time.Now().Add(-2 * wsListMaxAge())
 	h.wsList.mu.Unlock()
 	tick, err = h.sharedWSTick(req)
 	require.NoError(t, err)

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cdknorow/coral/internal/background"
@@ -26,9 +27,14 @@ import (
 // tick and the 1s remote-change debounce, so a client never sees data older
 // than it would have built itself on a slightly earlier tick.
 //
-// It is a var only so a test can shorten it with a matching poll interval and check the same sharing in a fraction of the time (#4914); the
+// It is atomic only so a test can shorten it with a matching poll interval and check the same sharing in a fraction of the time (#4914): the
+// server's connection goroutines are not waited for at shutdown, so a plain var restored by the test would race with their last read. The
 // server never changes it.
-var wsListMaxAge = 750 * time.Millisecond
+var wsListMaxAgeNs atomic.Int64
+
+func init() { wsListMaxAgeNs.Store(int64(750 * time.Millisecond)) }
+
+func wsListMaxAge() time.Duration { return time.Duration(wsListMaxAgeNs.Load()) }
 
 // wsListBuildTimeout bounds a shared build, which no longer runs under any one
 // client's request context.
@@ -102,8 +108,8 @@ func (h *SessionsHandler) sharedWSTick(r *http.Request) (*wsTick, error) {
 	for {
 		gen, genOK := h.remoteGeneration()
 		c.mu.Lock()
-		remoteFresh := c.remote != nil && genOK && c.remote.genOK && c.remote.gen == gen && time.Since(c.remote.builtAt) < wsListMaxAge
-		localFresh := c.local != nil && c.local.kickGen == c.kickGen && time.Since(c.local.builtAt) < wsListMaxAge
+		remoteFresh := c.remote != nil && genOK && c.remote.genOK && c.remote.gen == gen && time.Since(c.remote.builtAt) < wsListMaxAge()
+		localFresh := c.local != nil && c.local.kickGen == c.kickGen && time.Since(c.local.builtAt) < wsListMaxAge()
 		if remoteFresh && localFresh && c.local.hasRemotes == c.remote.snap.Configured() {
 			if c.tick == nil || c.tickFrom != [2]any{c.local, c.remote} {
 				c.tick = assembleWSTick(c.local, c.remote)
