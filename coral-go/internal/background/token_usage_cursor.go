@@ -82,6 +82,11 @@ func (p *claudeParser) line(line string) {
 	if line == "" {
 		return
 	}
+	// With the session's start known, only a line that can hold the usage key changes anything: a user
+	// message or a tool's result (most of a transcript's bytes) is not decoded (#5023).
+	if p.SessionStartAt != "" && !usageKeyPossible(line) {
+		return
+	}
 	var entry struct {
 		Type      string `json:"type"`
 		Timestamp string `json:"timestamp"`
@@ -121,6 +126,27 @@ func (p *claudeParser) line(line string) {
 			p.lastModel = m
 		}
 	}
+}
+
+// usageKeyPossible is whether encoding/json could match a field named usage in line: the key may be in
+// any case (it matches by simple case folding, so with a long s, U+017F, for the s), or spelled with
+// \u escapes. False means it cannot, so decoding the line would not find a call.
+func usageKeyPossible(line string) bool {
+	if strings.Contains(line, `\u`) || strings.Contains(line, "\u017f") {
+		return true
+	}
+	for i := 0; i+len("usage") <= len(line); {
+		j := strings.IndexAny(line[i:], "uU")
+		if j < 0 {
+			return false
+		}
+		i += j
+		if i+len("usage") <= len(line) && strings.EqualFold(line[i:i+len("usage")], "usage") {
+			return true
+		}
+		i++
+	}
+	return false
 }
 
 // piParser extracts per-turn usage from Pi session lines.
