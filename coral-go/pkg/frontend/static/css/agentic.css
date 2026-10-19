@@ -827,6 +827,10 @@ body.panel-dragging .agentic-state {
        a little narrower than that Agent wrapped under Status, and under the Priority label in the header (#4716). */
     .board-task-list .board-task-item .board-task-assignee { flex: 1 1 0; width: auto; min-width: 0; }
 }
+/* A dock of 560px and up has room for Cost on the first line (status, id, priority, agent, cost: about 300px), so it is not dropped with Type and Created (#4877: it was cut out of a 680px dock). Narrower than that (the sidebar) the row keeps what #4716 gave it. */
+@container (min-width: 560px) and (max-width: 789px) {
+    .board-task-list .board-task-item .board-task-cost { display: block; order: 5; }
+}
 
 .board-task-item {
     display: flex;
