@@ -113,6 +113,8 @@ export async function enterTeamContext(team, opts = {}) {
     scrollGroupChatToNewest();
     syncFilesSourceTeam();
     window.switchAgenticTab?.(tab, 'top');
+    // On a phone the side panel is an overlay that starts shut: a team page that asks for one of its panel's tabs (Team settings, Knowledge) opens it, or the tab is drawn at no size behind the chat (#5131).
+    if (tab !== 'team-view' && window.innerWidth <= 767) window.toggleAgenticPanel?.(true);
     refreshSessionList();
     contextChanged();
     return true;
