@@ -1,5 +1,24 @@
 # Release Notes
 
+## v1.4.105 — An agent's token sees only its own session and board, a redactor leak closed, and WebSocket limits
+
+### Security
+
+- **An agent's token reads its own session and board, not every session:** every route about one session (chat, terminal capture, files, file content, diffs, events, history, subagents, resolve-path and usage turns: 33 routes, plus deleting a session's events) used to answer an agent's token for any session, by name or id, on any board. The target must now be the agent itself, a session of its resume lineage, or a session on the same board (refused with 403 `forbidden_other_session`; a lookup that fails is a 503, never let through). The Operator, the dashboard and the command line are unchanged, and none of the agent tools needed anything that is now refused.
+- **Six reads across every session, board and team are the Operator's:** `GET /api/sessions/history`, `GET /api/sessions/history/search`, `GET /api/board/tasks`, the two team knowledge reads and `GET /api/system/identity-report`. No agent tool calls them.
+- **An agent's WebSocket gets the feed but no notifications:** `/ws/coral` gave every connection the Operator's UI notifications and marked them delivered once written, so an agent that connected while no dashboard was open read the pending alerts (an agent waiting for approval, say) and kept the next dashboard from showing them. There are also per-process caps on open sockets (512 dashboard, 256 terminal; an upgrade over the cap is a 429 with the action-limit mark) and the terminal socket's client-frame limit is set explicitly to 32 KiB (a bigger frame closes it with 1009).
+- **A long quoted credential no longer shows its tail:** a quoted value longer than the redactor's reach (about 500 bytes) was redacted to there, and what followed a space or a control character after it showed. The whole value is now dropped up to its closing quote, as the held-across-writes path already did.
+
+### Fixes
+
+- **The launch dialog stays dimmed while the Servers list refreshes:** the cached list was emptied, so the dialog un-dimmed for a moment and a click then reached a hub that refused it; the last answer now stands until the new one arrives, and the controls scan no longer clears the dimming of the dialog's own buttons.
+- **A model's display name is bounded:** a model with no display name took its value (up to 128 characters) as its name past the 80-character cap, and a name cut at the cap could end in a space.
+
+### Other changes
+
+- **Internals:** `routes/system.go`, `sessions_launch.go`, `sessions_files.go`, `jsonl/reader.go` and `store/sessions.go` are split by concern, moves only.
+- **Tests and CI:** fuzz targets for the parsers of untrusted input (query parsers, the board route, the redactor, the model lists, the transcript cursor), run for 10 minutes each with no crashers after the two fixes above; the race detector runs in CI (the five high-risk packages per release batch, every package nightly); the relay oracle waits for the hub's hook instead of 20 ms; `saved_sidebar_close` no longer has a focus move left to take its field's focus; the browser gate splits `terminal_switch` into three suites so the shards run it side by side, and its part durations are refreshed from the last gate; the epoch gate script gives `go test` a 45 minute timeout.
+
 ## v1.4.104 — Choose a thinking level, switch model and level from the chat bar, and a quicker dashboard
 
 ### Changes
