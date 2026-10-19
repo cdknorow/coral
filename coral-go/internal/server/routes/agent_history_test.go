@@ -615,3 +615,43 @@ func TestAgentHistoryIsBoundToTheCallersToken(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
+
+// #4964: one search collects at most maxHistoryMatches across the lineage and says so when it stopped there; a search that fits says nothing.
+func TestAgentHistorySearch_StopsAtTheMatchCap(t *testing.T) {
+	env := setupAgentHistoryTestEnv(t)
+	ctx := context.Background()
+	old := maxHistoryMatches
+	maxHistoryMatches = 3
+	t.Cleanup(func() { maxHistoryMatches = old })
+
+	sessID := "00000000-0000-4000-8000-0000000000c1"
+	workDir := filepath.Join(env.claudeHome, "cap-project")
+	require.NoError(t, os.MkdirAll(workDir, 0755))
+	require.NoError(t, env.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sessID, AgentType: at.Claude, AgentName: "capper", WorkingDir: workDir}))
+	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
+	require.NoError(t, os.MkdirAll(projDir, 0755))
+	var data strings.Builder
+	for i := 0; i < 5; i++ {
+		fmt.Fprintf(&data, `{"type":"user","timestamp":"2026-09-30T10:0%d:00Z","message":{"content":"needle number %d"}}`+"\n", i, i)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(projDir, sessID+".jsonl"), []byte(data.String()), 0644))
+
+	search := func(q string) AgentHistorySearchResponse {
+		resp, err := http.Get(env.server.URL + "/api/agent/history/search?session_id=" + sessID + "&query=" + q)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var out AgentHistorySearchResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		return out
+	}
+
+	got := search("needle")
+	assert.True(t, got.Truncated, "5 matches against a cap of 3 says it stopped")
+	assert.Equal(t, 3, got.TotalMatches, "only the kept matches are counted")
+
+	maxHistoryMatches = 5 // exactly as many matches as the cap: nothing was cut
+	got = search("needle")
+	assert.False(t, got.Truncated, "5 matches against a cap of 5 is not truncated")
+	assert.Equal(t, 5, got.TotalMatches)
+}

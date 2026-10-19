@@ -29,6 +29,11 @@ type AgentHistoryMatch struct {
 	MatchTerms   []string `json:"match_terms,omitempty"`
 }
 
+// maxHistoryMatches bounds the matches one search collects across a lineage before it sorts and pages them: each excerpt is bounded,
+// their number was not, so a common term over a long lineage held every match in memory for the request. The response says
+// truncated when the search stopped there (a var for the tests).
+var maxHistoryMatches = 5000
+
 // SessionSearchStatus describes the search readiness for each session in a lineage.
 type SessionSearchStatus struct {
 	SessionID        string `json:"session_id"`
@@ -43,6 +48,7 @@ type AgentHistorySearchResponse struct {
 	Query            string                `json:"query"`
 	Status           string                `json:"status"` // "complete", "partial", "unavailable"
 	TotalMatches     int                   `json:"total_matches"`
+	Truncated        bool                  `json:"truncated,omitempty"` // the search stopped at maxHistoryMatches: total_matches is the number kept, there are more
 	HasMore          bool                  `json:"has_more"`
 	Limit            int                   `json:"limit"`
 	Offset           int                   `json:"offset"`
@@ -90,10 +96,20 @@ func (h *SessionsHandler) SearchAgentHistory(w http.ResponseWriter, r *http.Requ
 	phrases, terms := parseSearchQuery(p.query)
 	var allMatches []AgentHistoryMatch
 	var sessionsSearched []SessionSearchStatus
+	truncated := false
 	for _, item := range sessions {
-		status, matches := h.searchHistorySession(r.Context(), item, p, phrases, terms)
+		room := maxHistoryMatches - len(allMatches)
+		if room <= 0 { // the cap is reached: the sessions left are not read
+			truncated = true
+			break
+		}
+		status, matches, more := h.searchHistorySession(r.Context(), item, p, phrases, terms, room)
 		sessionsSearched = append(sessionsSearched, status)
 		allMatches = append(allMatches, matches...)
+		if more {
+			truncated = true
+			break
+		}
 	}
 	sortHistoryMatches(allMatches)
 	results, hasMore := pageHistoryMatches(allMatches, p.offset, p.limit)
@@ -101,6 +117,7 @@ func (h *SessionsHandler) SearchAgentHistory(w http.ResponseWriter, r *http.Requ
 		Query:            p.query,
 		Status:           historySearchStatus(sessionsSearched),
 		TotalMatches:     len(allMatches),
+		Truncated:        truncated,
 		HasMore:          hasMore,
 		Limit:            p.limit,
 		Offset:           p.offset,
@@ -181,7 +198,7 @@ func (h *SessionsHandler) historySearchSessions(ctx context.Context, sessionID s
 // searchHistorySession searches one session's transcript: its status (ready with the messages searched, empty, or
 // its transcript unavailable with why) and each message of an allowed role whose text matches, with an excerpt
 // around the first match.
-func (h *SessionsHandler) searchHistorySession(ctx context.Context, item store.SessionLineageItem, p historySearch, phrases, terms []string) (SessionSearchStatus, []AgentHistoryMatch) {
+func (h *SessionsHandler) searchHistorySession(ctx context.Context, item store.SessionLineageItem, p historySearch, phrases, terms []string, room int) (SessionSearchStatus, []AgentHistoryMatch, bool) {
 	status := SessionSearchStatus{SessionID: item.SessionID, Role: "ancestor"}
 	if item.IsCurrent {
 		status.Role = "current"
@@ -190,13 +207,13 @@ func (h *SessionsHandler) searchHistorySession(ctx context.Context, item store.S
 	switch {
 	case err != nil:
 		status.Status, status.Error = "transcript_unavailable", err.Error()
-		return status, nil
+		return status, nil, false
 	case errMsg != "":
 		status.Status, status.Error = "transcript_unavailable", errMsg
-		return status, nil
+		return status, nil, false
 	case len(messages) == 0:
 		status.Status = "empty"
-		return status, nil
+		return status, nil, false
 	}
 	status.Status, status.MessagesSearched = "ready", len(messages)
 	var matches []AgentHistoryMatch
@@ -212,6 +229,9 @@ func (h *SessionsHandler) searchHistorySession(ctx context.Context, item store.S
 		matched, offsets, matchedTerms := matchMessage(text, phrases, terms)
 		if !matched {
 			continue
+		}
+		if len(matches) >= room { // one match more than the room left: the search is cut here
+			return status, matches, true
 		}
 		firstOffset := 0
 		if len(offsets) > 0 {
@@ -229,7 +249,7 @@ func (h *SessionsHandler) searchHistorySession(ctx context.Context, item store.S
 			MatchTerms:   matchedTerms,
 		})
 	}
-	return status, matches
+	return status, matches, false
 }
 
 // sortHistoryMatches orders matches newest first; at the same time (or one unparsable), the current session's

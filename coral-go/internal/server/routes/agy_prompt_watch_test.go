@@ -302,3 +302,28 @@ func TestCoarseWatcherStillRecordsAndGivesBackItsSlot(t *testing.T) {
 	require.Eventually(t, func() bool { return r.state().NeedsInput }, 10*time.Second, 5*time.Millisecond, "the coarse watcher still records")
 	require.Eventually(t, func() bool { return promptWatchActive.Load() <= before }, 10*time.Second, 5*time.Millisecond, "the watcher gave back the slot it took (the counter is at most what it was)")
 }
+
+// #4964: past promptWatchMax running watchers a pending tool starts none (a flood of distinct tool call ids cannot make a goroutine each),
+// and a watcher that finishes frees its place.
+func TestWatcherCountIsCapped(t *testing.T) {
+	oldDelays, oldMax := promptWatchDelays, promptWatchMax
+	promptWatchDelays = []time.Duration{400 * time.Millisecond}
+	promptWatchMax = 2
+	t.Cleanup(func() { promptWatchDelays, promptWatchMax = oldDelays, oldMax })
+	r := newAgyWatchRig(t, at.Agy)
+	r.event("prompt_submit", "User submitted prompt", "", "")
+	running := func() int {
+		n := 0
+		promptWatches.Range(func(_, _ any) bool { n++; return true })
+		return n
+	}
+	for i := 0; i < 6; i++ {
+		r.h.watchForPrompt(r.sid, r.name, r.pendTool("view_file", fmt.Sprintf("flood-%d", i)))
+	}
+	assert.Equal(t, 2, running(), "only promptWatchMax watchers run; the others were not started")
+	assert.Equal(t, int32(2), promptWatchActive.Load())
+	require.Eventually(t, func() bool { return running() == 0 && promptWatchActive.Load() == 0 }, 5*time.Second, 20*time.Millisecond, "the running ones finish and free their places")
+	r.h.watchForPrompt(r.sid, r.name, r.pendTool("view_file", "after"))
+	assert.Equal(t, 1, running(), "a new watch starts once there is room")
+	require.Eventually(t, func() bool { return running() == 0 }, 5*time.Second, 20*time.Millisecond)
+}

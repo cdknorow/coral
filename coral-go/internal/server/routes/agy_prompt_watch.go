@@ -54,6 +54,12 @@ func promptLooksFor(active int32) []time.Duration {
 
 var promptWatchActive atomic.Int32
 
+// promptWatchMax is how many watchers run at once (a var for the tests). Past it a pending tool starts none and the state falls back to the
+// hook's own events: a team of agents never reaches it, a flood of distinct tool call ids from one agent does (#4964).
+var promptWatchMax int32 = 256
+
+var promptWatchCapLogged atomic.Bool
+
 // watchesPrompts: the agents that report no hook of their own for a permission prompt but do send PreToolUse. Antigravity (agy) only: Gemini's
 // PreToolUse and prompt screen are not verified.
 func watchesPrompts(agentType string) bool {
@@ -84,8 +90,17 @@ func (h *SessionsHandler) watchForPrompt(sessionID, sessionName string, t pendin
 	if _, running := promptWatches.LoadOrStore(key, struct{}{}); running {
 		return
 	}
+	active := promptWatchActive.Add(1)
+	if active > promptWatchMax {
+		promptWatchActive.Add(-1)
+		promptWatches.Delete(key)
+		if promptWatchCapLogged.CompareAndSwap(false, true) {
+			slog.Warn("too many agent prompt watchers at once: further pending tools are not watched until some finish", "max", promptWatchMax)
+		}
+		return
+	}
 	name, agentType, agentName := sessionName, ls.AgentType, ls.AgentName
-	delays := promptLooksFor(promptWatchActive.Add(1))
+	delays := promptLooksFor(active)
 	safego.Go("server/routes/agy_prompt_watch", func() {
 		defer promptWatches.Delete(key)
 		defer promptWatchActive.Add(-1)
