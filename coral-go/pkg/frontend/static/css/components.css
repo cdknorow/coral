@@ -4212,6 +4212,15 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .sd-step-header .sd-sub { margin: .15rem 0 0; color: var(--text-secondary); font-size: .8125rem; }
 .sd-modal-content .launch-modal-step > .modal-actions { position: static; flex: none; margin: 0; padding: 16px 24px; border-top: 1px solid var(--border); background: none; }
 .sd-acf { display: contents; }
+/* The back arrow in a sectioned launch step's header: room between it and the title, so its focus ring does not touch the words (#4976). */
+.sd-step-header .launch-back-btn { margin-right: .5rem; border-radius: var(--radius-md); }
+.sd-step-header .launch-back-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+/* On a phone a team member's card keeps its name and prompt on the first line and its four buttons (move up, move down, edit, remove) on a second line of 44 px targets, instead of four 16-24 px icons squeezed beside the text (#4976). Tapping the card itself still opens the agent. */
+@media (max-width: 767px), (pointer: coarse) {
+    .team-agent-summary { flex-wrap: wrap; }
+    .team-agent-summary-actions { flex: 1 0 100%; justify-content: flex-end; gap: 4px; }
+    .team-agent-summary-actions > button { display: inline-flex; align-items: center; justify-content: center; min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
+}
 .sd-modal-content .agent-persona-actions .btn-subtle { color: var(--text-primary); } /* 4.5:1 on the light panel (the accent blue was 4.44) */
 .sd-extra:empty { display: none; }
 .settings-tab .sd-dot { margin-left: auto; width: .5rem; height: .5rem; flex: none; border-radius: 50%; background: var(--danger, #f85149); }

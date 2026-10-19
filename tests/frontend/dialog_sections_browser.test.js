@@ -11,7 +11,7 @@ const BASE = require('./test_base').BASE;
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     const { Input } = client;
     // (a capture on the emulated phone scrolled the pane by itself mid-shot, which cut a heading in the evidence: nothing is focused and the panes cannot scroll while it is taken)
-    const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; await ev(`document.activeElement && document.activeElement.blur(); document.querySelectorAll('.settings-panes').forEach(b => { b.style.overflow = 'hidden'; }); true`); await new Promise(r => setTimeout(r, 350)); /* sleep-ok: the list's highlight is a transition: a shot taken at once shows the old and the new section both lit */ fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(`${d}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); await ev(`document.querySelectorAll('.settings-panes').forEach(b => { b.style.overflow = ''; }); true`); };
+    const shot = async (name, { keepFocus = false } = {}) => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; await ev(`${keepFocus ? '' : 'document.activeElement && document.activeElement.blur();'} document.querySelectorAll('.settings-panes').forEach(b => { b.style.overflow = 'hidden'; }); true`); await new Promise(r => setTimeout(r, 350)); /* sleep-ok: the list's highlight is a transition: a shot taken at once shows the old and the new section both lit */ fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(`${d}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); await ev(`document.querySelectorAll('.settings-panes').forEach(b => { b.style.overflow = ''; }); true`); };
     const key = async (k, code, vk) => { const b = { key: k, code, windowsVirtualKeyCode: vk }; await Input.dispatchKeyEvent({ type: 'keyDown', ...b }); await Input.dispatchKeyEvent({ type: 'keyUp', ...b }); };
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -184,6 +184,8 @@ const BASE = require('./test_base').BASE;
         assert.ok(v.footShown && v.footBottom <= v.contentBottom, 'Launch Team stays in view');
         assert.equal(await ev(`[...document.querySelectorAll('#launch-step-team .settings-group-pick select, #launch-step-team .modal-actions .btn')].every(e => e.getBoundingClientRect().height >= 44)`), true, 'targets of 44 px');
         await shot('team-members-phone');
+        await ev(`document.querySelector('#team-agents-list').scrollIntoView({ block: 'start' }); true`); await shot('team-cards-phone');
+        await ev(`document.querySelector('#launch-step-team .launch-back-btn').focus({ focusVisible: true }); true`); await shot('team-back-focus-phone', { keepFocus: true });
         await go(TM, 'board');
         const scrollOf = () => ev(`(() => { const p = document.querySelector('#launch-step-team .settings-pane:not([hidden])'); const box = p.closest('.settings-panes'); return [Math.round(p.querySelector('.settings-pane-title').getBoundingClientRect().top - box.getBoundingClientRect().top), box.scrollTop]; })()`);
         assert.deepEqual((await scrollOf()).map(n => n >= 0), [true, true], 'the section heading is not scrolled out of the pane'); assert.equal((await scrollOf())[1], 0);

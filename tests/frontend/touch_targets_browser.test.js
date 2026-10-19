@@ -91,6 +91,18 @@ const UNDERSIZED = `(() => {
         assert.ok(await ev(`document.documentElement.scrollWidth <= innerWidth`), 'phone 390: no horizontal overflow');
         console.log('PASS phone 390 coarse: no control under 44px, no overflow');
 
+        // #4976: the Agent Team dialog's member cards (move up and down, edit, remove) and its Back arrow.
+        await ev(`window.showLaunchModal(); window._selectLaunchType('team'); true`);
+        await waitFor(`!!document.querySelector('#team-agents-list .team-agent-row') && getComputedStyle(document.getElementById('launch-step-team')).display !== 'none'`, 'the team dialog with its member cards');
+        const teamSmall = await ev(UNDERSIZED);
+        assert.deepEqual(teamSmall, [], 'phone 390, Agent Team dialog: every control, the cards\' buttons too, is at least 44x44: ' + JSON.stringify(teamSmall));
+        const cardButtons = await ev(`[...document.querySelectorAll('#team-agents-list .team-agent-row:first-child .team-agent-summary-actions > button')].map(b => { const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })`);
+        assert.equal(cardButtons.length, 4, 'a card has move up, move down, edit and remove');
+        const gap = await ev(`(() => { const b = document.querySelector('#launch-step-team .launch-back-btn').getBoundingClientRect(), t = document.querySelector('#launch-team-title').firstChild; const range = document.createRange(); const txt = [...document.querySelector('#launch-team-title').childNodes].find(n => n.nodeType === 3 && n.textContent.trim()); range.selectNodeContents(txt); const r = range.getBoundingClientRect(); return Math.round(r.left - b.right); })()`);
+        assert.ok(gap >= 6, 'the Back arrow\'s focus ring has room before the title: ' + gap + ' px');
+        await ev(`window.hideLaunchModal(); true`);
+        console.log('PASS phone 390 coarse: Agent Team dialog member cards and Back arrow');
+
         // Round 3 (#3131): the top-bar settings dropdown's rows.
         const menuRows = sel => ev(`[...document.querySelectorAll(${JSON.stringify(sel)})].map(e => e.getBoundingClientRect()).filter(r => r.width && r.height).map(r => [Math.round(r.width), Math.round(r.height)])`);
         await ev(`window.__coral.toggleTopBarSettings()`);
