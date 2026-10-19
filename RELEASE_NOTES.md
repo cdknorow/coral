@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.110 — Agent panels and app links can no longer navigate away or run files, a bounded hub, and the tail-poll regression fixed
+
+### Security
+
+- **An agent's panel can no longer navigate itself and send what you type out in an address:** on a local Coral an Agent UI panel was an iframe loaded by URL. That isolates it from the dashboard, but a panel could still navigate itself (`location.href`, a meta refresh or a link) and CSP has no directive for that, so something the Operator typed into a form the panel drew could leave in an address. A panel is now read as text and handed to the sandboxed host frame (as the hub already did): the child frame has no navigation and no requests, and the card says the content is the agent's.
+- **The app window opens only plain web links, and judges a link by its parsed address:** the app window passed any link straight to the system's opener, so a file path or `file:` URL an agent wrote in a chat message (`/tmp/x.command`) ran when the Operator clicked it, a custom scheme started its handler, and a leading `-` was an option. The opener now takes only `http` and `https`. The link handler also judged a link by a string prefix, which `http://localhost:8420.evil.example/` and `http://localhost:8420@evil.example/` passed, so the window itself navigated to such a page, which then had the native bindings; it now uses the parsed address.
+- **The tray's "Shutdown, Kill Agents and Stop Server" reaches every agent:** a folder name with `?`, `#`, `/`, a control byte or a bad escape changed the kill request's route or made it unbuildable (a nil-pointer panic before the server was stopped, so the menu item silently did nothing). The name is now escaped and an unbuildable request skips only that agent.
+- **The hub keeps a bounded amount of each remote machine:** at most 5000 sessions, a row over 256 KiB as the machine sent it is not kept, and the rows kept never pass 16 MiB in all per machine (a row stays raw until measured, so an oversize one is never decoded into the hub's memory); a feed message no longer costs a re-encoding of everything held. An agent's token sees no remote machine.
+
+### Fixes
+
+- **A v1.4.108 change made each live-list poll of an active agent about 35 us slower** (58 us to 93 us in a benchmark of a session with thousands of calls); it is back to baseline: the pending tool calls are read when a checkpoint is taken instead of on every poll, and a read no longer asks the file for its size twice.
+- **The Restart form says why it shows Default** when the agent last ran at a level other than the stored one ("The agent last ran at Max (changed inside the CLI)").
+
+### Changes
+
+- **The token poller is lighter:** it records one poll's Claude and Pi calls in a transaction instead of one transaction per call, so a first start's usage scan of a large transcript store takes about 0.4 s of CPU instead of 8.6 s.
+
+### Other changes
+
+- **Public docs:** a "Using the dashboard" page and what an agent can and cannot read, with five screenshots, in the site's guides.
+- **Internals:** the History page's number and filter group leave `app.js`, and `ptymanager/automated_input.go` and `tunnel/local.go` are split by concern, moves only.
+- **CI:** when the browser gate finds a flaky suite, it now runs that suite 10 times on the candidate and on `main` and writes both rates in the run's summary (a human still decides).
+
 ## v1.4.109 — A hub redirect closed, workflow output capped, and the docs say what an agent may read
 
 ### Security
