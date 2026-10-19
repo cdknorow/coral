@@ -310,6 +310,12 @@ func TestHostFlagDefaultsAreThisComputer(t *testing.T) {
 			}
 			key := src.rel + ":" + spans.at(call.Pos()) + ":" + name
 			found[key] = true
+			if name == "host" {
+				usage := call.Args[len(call.Args)-1]
+				if u, ok := usage.(*ast.BasicLit); !ok || !strings.Contains(strings.ToLower(u.Value), "remote") {
+					t.Errorf("%s: the --host help must say that a network address needs remote access on, and that the default is this computer only", key)
+				}
+			}
 			switch sel.Sel.Name {
 			case "String", "StringVar":
 				d, ok := defArg.(*ast.BasicLit)
