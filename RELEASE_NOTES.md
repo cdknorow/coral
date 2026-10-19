@@ -1,5 +1,26 @@
 # Release Notes
 
+## v1.4.99 — The bookmark always opens everything's Saved, cross-team names cleaned, and old tag colours repaired
+
+### Security
+
+- **Names and labels on team artifacts are plain text:** the fields an agent, the Operator or a Coral Hub user sets on a task's artifacts (name, media type, revision, digest, kind, runner, branch, remote, times and the other evidence fields), an upload's name and media type, and the origin board of a relayed cross-team message must be valid UTF-8 within a size limit, with no control characters, line separators or format characters such as direction overrides. Before, an upload's name could carry a terminal escape into the cross-team message that is typed into the receiving team's Orchestrator terminal.
+- **Names stored before this release are cleaned too:** when a cross-team message lists its attachments, each stored name is cleaned in that line by the same cleaner the hub copy already used (the stored name itself is unchanged, and the panels escape it), so an upload made before these checks cannot reach another team's terminal either.
+- **Old tag colours are repaired:** on start, any stored tag colour that is not `#rgb`, `#rrggbb` or `#rrggbbaa` is reset to the default blue, and the number changed is logged. Only the colour value changes; no tag is deleted, renamed or moved. From the first start of this release, `GET /api/tags` returns only hex colours.
+
+### Fixes
+
+- **The top bar's bookmark always opens the Inbox at Saved for later, for everything,** on every page, with everything's counts on its badge; a second press or Escape goes back. The Saved tab in an agent's or a team's dock still shows only what was saved there.
+- **Typing isn't lost when a list refreshes:** the Cloud servers enrollment-code box no longer empties while you type in it during the 5-second refresh; a box keeps your text and caret across a background redraw.
+- **Antigravity permission prompts show as waiting sooner:** Coral looks for the prompt every 500 ms for 6 seconds instead of at 1.5, 3 and 5 seconds, falling back to the old pace when many tools are running at once.
+
+### Other changes
+
+- **Simpler code, behaviour unchanged:** the dashboard's startup is a list of named steps, the Team artifacts panel is built from small block builders, and the Settings dialog's Save is split into reading the form, saving and applying, each compared with the old code.
+- **Internals:** Coral's pty backend ends its sessions together at shutdown instead of one by one, and a nil board store no longer panics in the server constructor.
+- **Tests and CI:** the route tests are about a third faster and the terminal tests wait for what they check instead of a fixed time; the URL-credential finder's speed is tested by counting its work rather than by a clock; the browser suites that save messages remove them again.
+- **Docs:** the bookmark always opens the Inbox's Saved for later.
+
 ## v1.4.98 — Tag colours checked on both sides, colours that meet AA, and focus that survives a redraw
 
 ### Security
