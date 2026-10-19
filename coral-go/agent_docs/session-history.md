@@ -135,6 +135,16 @@ curl -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_
 
 ---
 
+### GET `/api/sessions/live/{name}/attachment/{ref}` (a pasted image of the chat)
+
+A user turn that carried a pasted image has a chip in the chat page: `attachments: [{name: "[Image #1]", file, ref}]`. Claude records the image
+as an `image` content block and Codex as a data URL in the transcript; the reader gives the chip `ref` (32 hex characters: the hash of the image's
+base64 text) and never the bytes. This route finds the image in the session's own transcript by that hash and serves it. Same query as the chat
+(`agent_type`, `session_id`, `working_directory`) and the same caller rules. `400` for a `ref` that is not 32 lowercase hex characters, `404` when
+the session has no transcript or none of its images has that hash, `413` for an image over 20 MiB, `415` unless the bytes are a PNG, JPEG, GIF or
+WebP (SVG never, whatever the transcript's media type says). The reply is nosniff, inline, sandboxed by CSP and `private, no-cache`. Local only: never
+through Coral Hub.
+
 ## Notes
 
 ### GET `/api/sessions/history/{sessionID}/notes`

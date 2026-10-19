@@ -37,7 +37,7 @@ function _fileName(filepath) {
 
 function _tabTitle(tab) {
     if (tab.kind === 'artifact') return tab.title || tab.options.filename || 'Artifact';
-    if (tab.kind === 'chat-image') return tab.filepath; // the upload's file name
+    if (tab.kind === 'chat-image') return tab.filepath; // the image's label (its name in the chat)
     return _fileName(tab.filepath);
 }
 
@@ -440,11 +440,12 @@ export function openPreviewTab(filepath, line, opts = {}) {
     _activate(tab);
 }
 
-/** Open an uploaded image (a chat chip's thumbnail was clicked, #5028) in a tab: `name` is the upload's file name, `server` the one it is on. */
-export function openUploadTab(name, server) {
-    if (!name) return;
-    let tab = _tabs.find(t => t.kind === 'chat-image' && t.filepath === name && t.server === server);
-    if (tab) _pin(tab); else { tab = _newTab({ kind: 'chat-image', filepath: name, server }); _addTab(tab); }
+/** Open a chat chip's image (its thumbnail was clicked, #5028, #5032) in a tab: `label` is the chip's name, `path` the server-relative route that serves the image
+ *  (the session's attachment, or an upload), `server` the one it is on. */
+export function openChatImageTab(label, path, server) {
+    if (!label || !path) return;
+    let tab = _tabs.find(t => t.kind === 'chat-image' && t.path === path && t.server === server);
+    if (tab) _pin(tab); else { tab = _newTab({ kind: 'chat-image', filepath: label, path, server }); _addTab(tab); }
     _activate(tab);
 }
 
@@ -575,7 +576,7 @@ async function _render(tab) {
     }
 
     if (tab.kind === 'chat-image') {
-        const url = serverUrl('/api/upload/' + encodeURIComponent(tab.filepath), tab.server);
+        const url = serverUrl(tab.path, tab.server);
         const missing = 'Image not found';
         renderImagePanes(body, [isCloud() ? { load: () => fetchImageSrc(url, { name: tab.filepath }), missing } : { url, missing }]);
         return;

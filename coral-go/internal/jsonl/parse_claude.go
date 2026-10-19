@@ -1,9 +1,11 @@
 package jsonl
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/pkg/redact"
 )
@@ -84,6 +86,7 @@ func parseClaudeUserEntry(entry map[string]any, timestamp string, toolUseNames m
 	case []any:
 		var results []map[string]any
 		var textParts []string
+		var images []map[string]any // a pasted image: its chip (#5032)
 
 		for _, block := range c {
 			b, ok := block.(map[string]any)
@@ -94,6 +97,12 @@ func parseClaudeUserEntry(entry map[string]any, timestamp string, toolUseNames m
 			if bt == "text" {
 				if text, _ := b["text"].(string); text != "" {
 					textParts = append(textParts, text)
+				}
+			} else if bt == "image" {
+				if src, _ := b["source"].(map[string]any); src != nil {
+					if data, _ := src["data"].(string); data != "" && src["type"] == "base64" {
+						images = append(images, map[string]any{"name": fmt.Sprintf("[Image #%d]", len(images)+1), "file": "", "ref": agent.ImageRef(data)})
+					}
 				}
 			} else if bt == "tool_result" {
 				toolUseID, _ := b["tool_use_id"].(string)
@@ -121,17 +130,28 @@ func parseClaudeUserEntry(entry map[string]any, timestamp string, toolUseNames m
 		if len(results) > 0 {
 			return results
 		}
-		if isMeta || len(textParts) == 0 {
+		if isMeta || len(textParts) == 0 && len(images) == 0 {
 			return nil
 		}
 		text := strings.Join(textParts, "\n")
 		if strings.TrimSpace(text) == "" {
-			return nil
+			if len(images) == 0 {
+				return nil
+			}
+			labels := make([]string, len(images)) // an image-only message reads as its labels, as Codex's does
+			for i, a := range images {
+				labels[i], _ = a["name"].(string)
+			}
+			text = strings.Join(labels, " ")
 		}
 		if isSystemInjected(text) {
 			return nil
 		}
-		return []map[string]any{{"type": "user", "timestamp": timestamp, "content": text}}
+		msg := map[string]any{"type": "user", "timestamp": timestamp, "content": text}
+		if len(images) > 0 {
+			msg["attachments"] = images
+		}
+		return []map[string]any{msg}
 	}
 	return nil
 }

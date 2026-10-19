@@ -2526,6 +2526,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}", handler.Detail)
 	r.Get("/api/sessions/live/{name}/capture", handler.Capture)
 	r.Get("/api/sessions/live/{name}/chat", handler.Chat)
+	r.Get("/api/sessions/live/{name}/attachment/{ref}", handler.ChatAttachment)
 	r.Get("/api/sessions/live/{name}/poll", handler.Poll)
 	r.Get("/api/sessions/live/{name}/changes.diff", handler.ChangesDiff)
 	r.Post("/api/sessions/live/{name}/send", handler.Send)

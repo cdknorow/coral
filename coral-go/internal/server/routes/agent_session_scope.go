@@ -22,6 +22,7 @@ var agentSessionRoutes = map[string]int{
 	"GET /api/sessions/live/{name}":                        3,
 	"GET /api/sessions/live/{name}/capture":                3,
 	"GET /api/sessions/live/{name}/chat":                   3,
+	"GET /api/sessions/live/{name}/attachment/{ref}":       3, // a pasted image of that session's chat (#5032): another session's image is not probed by its hash
 	"GET /api/sessions/live/{name}/changes.diff":           3,
 	"GET /api/sessions/live/{name}/diff":                   3,
 	"GET /api/sessions/live/{name}/events":                 3,

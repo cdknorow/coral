@@ -69,9 +69,11 @@ func TestAgentTokenReadsOnlyItsOwnSessionAndBoard(t *testing.T) {
 		method, pattern, _ := strings.Cut(k, " ")
 		with := func(target string) string {
 			p := pattern
-			for _, param := range []string{"{name}", "{sessionID}", "{subagentID}"} {
+			for _, param := range []string{"{name}", "{sessionID}", "{subagentID}", "{ref}"} {
 				if param == "{subagentID}" {
 					p = strings.ReplaceAll(p, param, "sub-1")
+				} else if param == "{ref}" {
+					p = strings.ReplaceAll(p, param, "0123456789abcdef0123456789abcdef")
 				} else {
 					p = strings.ReplaceAll(p, param, target)
 				}
@@ -95,6 +97,7 @@ func TestAgentTokenReadsOnlyItsOwnSessionAndBoard(t *testing.T) {
 		assert.Equal(t, http.StatusOK, call(false, method, with(c)).Code, "%s: the Operator (no token) reads any session", k)
 	}
 	assert.Greater(t, reached, len(keys), "the allowed calls reached their handlers")
+	assert.Contains(t, agentSessionRoutes, "GET /api/sessions/live/{name}/attachment/{ref}", "a chat's pasted image is read under the session's scope: an agent of another board gets forbidden_other_session (#5032)")
 
 	// the reads across every session, board and team are the Operator's
 	for _, k := range []string{"GET /api/sessions/history", "GET /api/sessions/history/search", "GET /api/board/tasks",

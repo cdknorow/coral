@@ -102,6 +102,7 @@ GET /api/sessions/history/{sessionID}/tasks view
 GET /api/sessions/live view
 GET /api/sessions/live/team/{boardName}/sleep-status view
 GET /api/sessions/live/{name} view
+GET /api/sessions/live/{name}/attachment/{ref} never
 GET /api/sessions/live/{name}/capture view
 GET /api/sessions/live/{name}/changes.diff view
 GET /api/sessions/live/{name}/chat view

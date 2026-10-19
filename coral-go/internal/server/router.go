@@ -256,6 +256,7 @@ func (s *Server) registerSessions(r *chi.Mux, h *routeHandlers) {
 	r.Get("/api/sessions/live/{name}/capture", sessHandler.Capture)
 	r.Get("/api/sessions/live/{name}/poll", sessHandler.Poll)
 	r.Get("/api/sessions/live/{name}/chat", sessHandler.Chat)
+	r.Get("/api/sessions/live/{name}/attachment/{ref}", sessHandler.ChatAttachment) // a pasted image of the chat, for its chip (#5032)
 	r.Get("/api/sessions/live/{name}/info", sessHandler.Info)
 	r.Get("/api/sessions/live/{name}/files", sessHandler.Files)
 	r.Post("/api/sessions/live/{name}/files/refresh", sessHandler.RefreshFiles)

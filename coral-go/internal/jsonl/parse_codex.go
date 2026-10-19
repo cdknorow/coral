@@ -162,11 +162,14 @@ func mergeDuplicateCodexMessage(previous, current map[string]any) bool {
 	if previous["phase"] == nil && current["phase"] != nil {
 		previous["phase"] = current["phase"]
 	}
-	// The event_msg copy holds a data URL (no file name); the response_item copy names the file.
-	if previous["attachments"] == nil || !attachmentsHaveFile(previous["attachments"]) && attachmentsHaveFile(current["attachments"]) {
+	// The event_msg copy holds a data URL (a reference, no file name); the response_item copy names the file (and holds the data URL too, in a recent
+	// Codex): each attachment keeps what either copy knew.
+	if previous["attachments"] == nil {
 		if current["attachments"] != nil {
 			previous["attachments"] = current["attachments"]
 		}
+	} else if current["attachments"] != nil {
+		previous["attachments"] = mergeAttachments(previous["attachments"], current["attachments"])
 	}
 	return true
 }
@@ -180,14 +183,43 @@ func setCodexAttachments(messages []map[string]any, atts []agent.CodexAttachment
 	list := make([]map[string]any, len(atts))
 	for i, a := range atts {
 		list[i] = map[string]any{"name": a.Name, "file": a.File}
+		if a.Ref != "" {
+			list[i]["ref"] = a.Ref
+		}
 	}
 	messages[0]["attachments"] = list
+}
+
+// mergeAttachments gives the attachments of two copies of one message: the first's with its gaps (file name, reference) filled from the second's when both
+// name the same number of images in the same order; when the counts differ, whichever names something (the second, if the first names nothing).
+func mergeAttachments(into, from any) any {
+	a, _ := into.([]map[string]any)
+	b, _ := from.([]map[string]any)
+	if len(a) != len(b) {
+		if !attachmentsHaveFile(into) && attachmentsHaveFile(from) {
+			return from
+		}
+		return into
+	}
+	for i := range a {
+		for _, k := range []string{"file", "ref"} {
+			if v, _ := a[i][k].(string); v == "" {
+				if w, _ := b[i][k].(string); w != "" {
+					a[i][k] = w
+				}
+			}
+		}
+	}
+	return into
 }
 
 func attachmentsHaveFile(v any) bool {
 	list, _ := v.([]map[string]any)
 	for _, a := range list {
 		if f, _ := a["file"].(string); f != "" {
+			return true
+		}
+		if r, _ := a["ref"].(string); r != "" {
 			return true
 		}
 	}

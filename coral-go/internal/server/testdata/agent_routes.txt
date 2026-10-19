@@ -114,6 +114,7 @@ c GET /api/sessions/live/team/{boardName}/sleep-status
 c GET /api/sessions/live/{name}
 c GET /api/sessions/live/{name}/capture
 c GET /api/sessions/live/{name}/changes.diff
+c GET /api/sessions/live/{name}/attachment/{ref}
 c GET /api/sessions/live/{name}/chat
 c GET /api/sessions/live/{name}/diff
 c GET /api/sessions/live/{name}/events

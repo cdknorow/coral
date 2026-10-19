@@ -234,15 +234,21 @@ func GetUpload(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, "Failed to read the upload")
 		return
 	}
+	setImageHeaders(w, ct, name, fi.Size())
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, io.LimitReader(f, fi.Size()))
+}
+
+// setImageHeaders is the hardening every image reply of the dashboard's thumbnails has (GET /api/upload/{name}, a chat's attachment): the sniffed type,
+// nosniff, inline with a plain file name, a sandboxing CSP, a private cache and the length.
+func setImageHeaders(w http.ResponseWriter, ct, name string, size int64) {
 	h := w.Header()
 	h.Set("Content-Type", ct)
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	h.Set("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": safeDownloadName(name)}))
-	h.Set("Cache-Control", "private, no-cache") // the browser may keep it but asks again (a validation, not a trust in its age): an upload can be removed
-	h.Set("Content-Length", fmt.Sprint(fi.Size()))
-	w.WriteHeader(http.StatusOK)
-	io.Copy(w, io.LimitReader(f, fi.Size()))
+	h.Set("Cache-Control", "private, no-cache") // the browser may keep it but asks again: an upload can be removed
+	h.Set("Content-Length", fmt.Sprint(size))
 }
 
 // safeDownloadName keeps letters, digits, '.', '_' and '-' of a file name: what goes into Content-Disposition is never a header or a path.

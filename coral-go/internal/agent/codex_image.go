@@ -8,11 +8,12 @@ import (
 )
 
 // CodexAttachment is a pasted image in a Codex user message: the label Codex
-// gives it ("[Image #1]") and the base name of the file it saved, never the
-// image bytes or a full path.
+// gives it ("[Image #1]"), the base name of the file it saved and a reference to its bytes in
+// the transcript (ImageRef), never the image bytes or a full path.
 type CodexAttachment struct {
 	Name string
 	File string
+	Ref  string // ImageRef of the image's own bytes, when the transcript holds them as a data URL (#5032)
 }
 
 var (
@@ -68,7 +69,11 @@ func CodexUserContent(content any) (string, []CodexAttachment) {
 			if file == "" {
 				file = CodexImageFile(ref)
 			}
-			atts = append(atts, CodexAttachment{Name: codexImageName(pendingName, len(atts)+1), File: file})
+			att := CodexAttachment{Name: codexImageName(pendingName, len(atts)+1), File: file}
+			if payload, ok := DataURLBase64(ref); ok {
+				att.Ref = ImageRef(payload)
+			}
+			atts = append(atts, att)
 			pendingName, pendingFile = "", ""
 		}
 	}
@@ -81,7 +86,11 @@ func CodexPayloadImages(images []any) []CodexAttachment {
 	var atts []CodexAttachment
 	for _, img := range images {
 		if ref, _ := img.(string); ref != "" {
-			atts = append(atts, CodexAttachment{Name: codexImageName("", len(atts)+1), File: CodexImageFile(ref)})
+			att := CodexAttachment{Name: codexImageName("", len(atts)+1), File: CodexImageFile(ref)}
+			if payload, ok := DataURLBase64(ref); ok {
+				att.Ref = ImageRef(payload)
+			}
+			atts = append(atts, att)
 		}
 	}
 	return atts

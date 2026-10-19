@@ -80,6 +80,29 @@ const { connect } = require('./agent_view_harness');
         const tab = await ev(`(() => { const t = document.querySelector('.preview-tab.active .preview-tab-name'); return { name: t && t.textContent, image: !!document.querySelector('#preview-pane-body .image-pane img, .image-panes img') }; })()`);
         assert.equal(tab.name, name, 'the click opens the image in the Preview pane: ' + JSON.stringify(tab));
         assert.ok(tab.image, 'with the image shown');
+        // A thumbnail from the transcript's own image (#5032): the chip carries a reference, the page asks the session's attachment route for it (stubbed here: the
+        // server side is covered by the routes tests), and a reference the server does not know stays a name.
+        const REF = '0123456789abcdef0123456789abcdef', MISSING = 'fedcba9876543210fedcba9876543210';
+        await ev(`(async () => {
+            const { state } = await import(${MOD} + 'state.js');
+            state.currentSession = { type: 'live', name: 'pasted-agent', session_id: '00000000-0000-4000-8000-0000000005a1', agent_type: 'claude', working_directory: '/proj' };
+            const bytes = Uint8Array.from(atob(${JSON.stringify(png)}), c => c.charCodeAt(0)); window.__attAsked = [];
+            const real = window.fetch.bind(window);
+            window.fetch = (u, o) => { const url = String(u); if (!url.includes('/attachment/')) return real(u, o); window.__attAsked.push(url);
+                return Promise.resolve(url.includes('${REF}') ? new Response(new Blob([bytes], { type: 'image/png' }), { headers: { 'Content-Type': 'image/png' } }) : new Response('{}', { status: 404 })); };
+            return true; })()`);
+        await render([{ type: 'user', content: '[Image #1]', attachments: [{ name: '[Image #1]', file: '', ref: REF }, { name: '[Image #2]', file: '', ref: MISSING }] }]);
+        for (let k = 0; k < 100 && !(await thumbs())[0].loaded; k++) await ev(`new Promise(r => setTimeout(r, 50))`); // sleep-ok: the lazy fetch has no completion event of its own
+        const [fromRef, unknownRef] = await thumbs();
+        assert.ok(!fromRef.hidden && fromRef.loaded, 'a reference shows its thumbnail: ' + JSON.stringify(fromRef));
+        assert.deepEqual([fromRef.w, fromRef.h], [48, 48], 'fixed size');
+        assert.ok(unknownRef.hidden, 'a reference the server does not know stays a name');
+        const asked = await ev(`window.__attAsked`);
+        assert.ok(asked.some(u => u.includes('/api/sessions/live/pasted-agent/attachment/' + REF) && u.includes('session_id=00000000-0000-4000-8000-0000000005a1') && u.includes('agent_type=claude')), 'the session\'s attachment route was asked: ' + asked.join(' '));
+        await ev(`document.querySelector('#chip-box .chat-attachment-thumb:not([hidden])').click(); true`);
+        await ev(`new Promise(r => setTimeout(r, 300))`); // sleep-ok: the Preview pane draws over a frame or two
+        const refTab = await ev(`(() => { const t = document.querySelector('.preview-tab.active .preview-tab-name'); return { name: t && t.textContent, pane: !!document.querySelector('.image-panes .image-pane') }; })()`); // the pane's <img> asks the real server, which has no such transcript here (the stub is for fetch): the pane is what is checked
+        assert.ok(refTab.name === '[Image #1]' && refTab.pane, 'the click opens it in the Preview pane: ' + JSON.stringify(refTab));
         // 200% text on a phone.
         await ev(`document.documentElement.style.fontSize = '32px'`);
         await render(msgs);

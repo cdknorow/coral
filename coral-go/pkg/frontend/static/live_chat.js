@@ -342,10 +342,11 @@ function isCoralDelivery(msg) {
 }
 
 // A pasted image in a user turn (Codex records it as a name like "[Image #1]" and the saved file's base name): a chip with
-// the name, and the file name when there is one. The chip is not a link; a file that is an upload on the agent's server shows a thumbnail (chat_thumbs.js, #5028).
+// the name, and the file name when there is one. The chip is not a link; the image is shown as a thumbnail from its reference in the session's transcript, or
+// from an upload by the file's name (chat_thumbs.js, #5028, #5032).
 function attachmentChips(attachments) {
     const chips = (Array.isArray(attachments) ? attachments : []).filter(a => a && a.name).map(a =>
-        `<span class="chat-attachment-chip">${escapeHtml(a.name)}${a.file ? ` <span class="chat-attachment-file">${escapeHtml(a.file)}</span>` : ""}</span>${thumbHtml(a.file)}`);
+        `<span class="chat-attachment-chip">${escapeHtml(a.name)}${a.file ? ` <span class="chat-attachment-file">${escapeHtml(a.file)}</span>` : ""}</span>${thumbHtml(a)}`);
     return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
 }
 

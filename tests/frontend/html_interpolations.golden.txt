@@ -269,7 +269,7 @@
 1	live_chat.js	renderMarkdown(msg.text, undefined, 'chat')
 1	live_chat.js	renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')
 1	live_chat.js	renderPatchLines(tool.patch)
-1	live_chat.js	thumbHtml(a.file)
+1	live_chat.js	thumbHtml(a)
 1	live_chat.js	trim
 1	live_jobs.js	clickable
 1	live_jobs.js	dotClass

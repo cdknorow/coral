@@ -64,6 +64,7 @@ GET /api/sessions/history/{sessionID}/tasks | unbound
 GET /api/sessions/live | unbound
 GET /api/sessions/live/team/{boardName}/sleep-status | unbound
 GET /api/sessions/live/{name} | unbound
+GET /api/sessions/live/{name}/attachment/{ref} | unbound
 GET /api/sessions/live/{name}/capture | unbound
 GET /api/sessions/live/{name}/changes.diff | unbound
 GET /api/sessions/live/{name}/chat | unbound
