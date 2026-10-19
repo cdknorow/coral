@@ -110,7 +110,7 @@ const CASES = [
                 for (const t of document.querySelectorAll('.toast')) t.remove();
                 localStorage.removeItem('coral-update-check-enabled'); localStorage.removeItem('coral-theme'); document.body.classList.remove('no-scrollbars');
                 { const s = document.documentElement.style; for (const p of [...s]) if (p.startsWith('--')) s.removeProperty(p); } document.documentElement.setAttribute('data-theme', 'dark');
-                T.options.fontSize = 11; T.options.scrollback = 1000; window.__termSets.length = 0; st.currentSession = ${withAgent ? JSON.stringify({ type: 'live', name: 'oracle-agent', session_id: 'oracle-sid' }) : 'null'}; st.selectedTeam = null;
+                st.currentSession = ${withAgent ? JSON.stringify({ type: 'live', name: 'oracle-agent', session_id: 'oracle-sid' }) : 'null'}; st.selectedTeam = null;
                 await window.MD.showSettingsModal();
                 { const t0 = performance.now(); while (performance.now() - t0 < 1500 && window.__inflight > 0) await ${framesJs(1)}; await ${framesJs(4, 1000)}; }
                 const missing = [];
@@ -127,6 +127,7 @@ const CASES = [
                 }
                 window.__dm0 = window.LM._getDefaultModels();
                 const before = window.__fetched.length;
+                T.options.fontSize = 11; T.options.scrollback = 1000; window.__termSets.length = 0; // here, not at the start of the case: the terminal's own layout sync (_applyFitWidth puts the Settings font back on a size change) can land while the dialog opens and add a stray fontSize before the theme (2 of 4 runs, #5110); what is recorded is what applySettings assigns
                 await window.SD.applySettings();
                 await ${framesJs(6, 1000)};
                 const fetchedNow = [...new Set(window.__fetched.slice(before))].sort();
