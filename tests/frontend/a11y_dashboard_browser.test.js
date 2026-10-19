@@ -18,6 +18,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
+const { settle } = require('./helpers/wait');
 
 // WCAG contrast ratio of two '#rrggbb' colours.
 const contrast = (a, b) => {
@@ -221,7 +222,7 @@ const contrast = (a, b) => {
                 await ev(`window.__coralReady.then(() => true)`);
                 await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); (async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars(); m.applyTheme('${theme}'); })(); window.__m.add('docs-bot', 'A', 6, { sleeping: false }); window.__m.add('api-worker', 'B', 3, { sleeping: false }); true`);
                 await ev(`document.documentElement.style.setProperty('--zz', '1'); const st = document.createElement('style'); st.textContent = '* { transition: none !important }'; document.head.appendChild(st); true`);
-                await sleep(500);   // sleep-ok: a scene settles over several answers; there is no single completion event
+                await settle(ev, 500);   // sleep-ok: a scene settles over several answers; there is no single completion event
                 const scenes = [['home', null], ['chat', `window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`], ['settings', `(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`],
                     // The Launch dialog's agent form (#4673): its Agent Configuration panel's labels were 3.4 to 4.4:1 in the light theme.
                     ['launch', `(async () => { window.hideSettingsModal && window.hideSettingsModal(); await window.showLaunchModal(); for (let i = 0; i < 100 && !(document.getElementById('launch-modal') && getComputedStyle(document.getElementById('launch-modal')).display !== 'none'); i++) await new Promise(r => setTimeout(r, 50)); window._selectLaunchType && window._selectLaunchType('agent'); return true; })()`]];
@@ -255,8 +256,8 @@ const contrast = (a, b) => {
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
         await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('docs-bot', 'A', 6, { sleeping: false }); true`);
-        await sleep(500);   // sleep-ok: a scene settles over several answers; there is no single completion event
-        await ev(`window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`); await sleep(1000);   // sleep-ok: a scene settles over several answers; there is no single completion event
+        await settle(ev, 500);   // sleep-ok: a scene settles over several answers; there is no single completion event
+        await ev(`window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`); await settle(ev, 1000);   // sleep-ok: a scene settles over several answers; there is no single completion event
         await DOM.enable(); await CSS.enable();
         const marked = await ev(`(() => { const seen = new Set(); let i = 0; document.querySelectorAll('[data-zz]').forEach(e => e.removeAttribute('data-zz'));
             const vis = e => { const r = e.getBoundingClientRect(); const c = getComputedStyle(e); return r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none'; };
@@ -281,7 +282,7 @@ const contrast = (a, b) => {
         // The composer: on a phone the box's own border turns accent; on desktop the card around it does. Either must be 3:1 against what is next to it.
         for (const theme of ['dark', 'light']) {
         await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars(); m.applyTheme('${theme}'); return true; })()`);
-        await sleep(150);   // sleep-ok: a scene settles over several answers; there is no single completion event
+        await settle(ev, 150);   // sleep-ok: a scene settles over several answers; there is no single completion event
         const comp = await ev(`(() => { const st = document.createElement('style'); st.textContent = '* { transition: none !important }'; document.head.appendChild(st);
             const t = document.getElementById('command-input'), p = document.getElementById('command-pane'); const parse = c => (c.match(/[\\d.]+/g) || []).map(Number);
             const col = c => { const m = c.match(/color\\(srgb ([\\d.]+) ([\\d.]+) ([\\d.]+)/); return m ? [m[1], m[2], m[3]].map(v => v * 255) : parse(c).slice(0, 3); };

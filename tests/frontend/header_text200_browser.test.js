@@ -5,6 +5,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
+const { settle } = require('./helpers/wait');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, sleep, PRELOAD, install } = await connect();
@@ -18,11 +19,11 @@ const { connect } = require('./agent_view_harness');
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
         await ev(`window.__m.add(${JSON.stringify(NAME)}, 'A', 60, { sleeping: false, session_id: 'h200-sid', board_project: 'coral-go-team' }); true`);
-        await sleep(600); // sleep-ok: the first live list renders from several answers; no single completion event
+        await settle(ev, 600); // sleep-ok: the first live list renders from several answers; no single completion event
         await ev(`window.selectLiveSession(${JSON.stringify(NAME)}, 'claude', 'h200-sid', 'local'); true`);
         await waitFor(`!!document.getElementById('terminal-header-label') && document.getElementById('terminal-header-label').textContent.length > 0`, 'the header', 8000);
         await ev(`T.render.updateSessionBranch('fix-4327-header-wrap', 'coral', {}); true`); // a realistic branch beside the name, as the audit's agent had
-        await sleep(500); // sleep-ok: layout settles after the selection
+        await settle(ev, 500); // sleep-ok: layout settles after the selection
         const read = () => ev(`(() => { const l = document.getElementById('terminal-header-label'); const lr = l.getBoundingClientRect(); const h = l.closest('.terminal-header'); const hr = h.getBoundingClientRect();
             const fs = sel => { const e = document.querySelector(sel); return e ? parseFloat(getComputedStyle(e).fontSize) : null; };
             const kids = [...h.children].map(c => Math.round(c.getBoundingClientRect().bottom - hr.top));
@@ -32,7 +33,7 @@ const { connect } = require('./agent_view_harness');
 
         const at100 = await read();
         await shot('header-phone-100');
-        await ev(`document.documentElement.style.fontSize = '32px'; true`); await sleep(500); // sleep-ok: layout settles after the font-size change
+        await ev(`document.documentElement.style.fontSize = '32px'; true`); await settle(ev, 500); // sleep-ok: layout settles after the font-size change
         const at200 = await read();
         await shot('header-phone-200');
         assert.equal(at100.text, NAME); assert.ok(at100.whole, 'the name is whole at 100%: ' + JSON.stringify(at100));
@@ -48,14 +49,14 @@ const { connect } = require('./agent_view_harness');
         ok('the team, the branch and the load-more texts grow with the root font');
 
         // The narrowest phones at normal text: the header stays one row (nothing wraps until the text is larger).
-        await ev(`window.__m.add('phone-bot-with-a-long-name', 'B', 3, { sleeping: false, session_id: 'h200-long' }); true`); await sleep(600); // sleep-ok: the list renders from several answers
-        await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'h200-long', 'local'); true`); await sleep(800); // sleep-ok: the header fills after the selection
-        await ev(`T.render.updateSessionBranch('fix-4327-header-wrap', 'coral', {}); true`); await sleep(300); // sleep-ok: the header redraws after the branch is set
+        await ev(`window.__m.add('phone-bot-with-a-long-name', 'B', 3, { sleeping: false, session_id: 'h200-long' }); true`); await settle(ev, 600); // sleep-ok: the list renders from several answers
+        await ev(`window.selectLiveSession('phone-bot-with-a-long-name', 'claude', 'h200-long', 'local'); true`); await settle(ev, 800); // sleep-ok: the header fills after the selection
+        await ev(`T.render.updateSessionBranch('fix-4327-header-wrap', 'coral', {}); true`); await settle(ev, 300); // sleep-ok: the header redraws after the branch is set
         await ev(`document.documentElement.style.fontSize = ''; true`);
         // UX's measurement (#4327 review): the header wrapped to TWO rows from 350 to 365 px when the branch showed. A phone's header must be the same one
         // row at every width, with the branch only where it fits (370 px and up), and a long branch the way UX set it.
-        await ev(`T.render.updateSessionBranch('feature/header-wrap-branch', 'coral', {}); true`); await sleep(300); // sleep-ok: the header redraws after the branch is set
-        const oneRow = async w => { await Emulation.setDeviceMetricsOverride({ width: w, height: 800, deviceScaleFactor: 1, mobile: true }); await sleep(400); return read(); }; // sleep-ok: layout settles after the emulation change
+        await ev(`T.render.updateSessionBranch('feature/header-wrap-branch', 'coral', {}); true`); await settle(ev, 300); // sleep-ok: the header redraws after the branch is set
+        const oneRow = async w => { await Emulation.setDeviceMetricsOverride({ width: w, height: 800, deviceScaleFactor: 1, mobile: true }); await settle(ev, 400); return read(); }; // sleep-ok: layout settles after the emulation change
         const rowH = (await oneRow(320)).headerH; // the branch is left out here: the header's one-row height
         for (const w of [320, 330, 340, 350, 355, 360, 365, 370, 375, 390, 414]) {
             const r = await oneRow(w);

@@ -31,6 +31,7 @@ async function run() {
     const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
     const { waitFor } = require('./helpers/wait').bind(ev);
     const { framesJs } = require('./helpers/wait');
+const { settle } = require('./helpers/wait');
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: proves a negative (nothing loaded) and lets the page's first requests settle
     let cloud = true, inboxHits = 0;
     const SW = path.join(__dirname, '..', '..', 'coral-go', 'pkg', 'frontend', 'static');
@@ -59,7 +60,7 @@ async function run() {
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: w < 700 ? 2 : 1, mobile: w < 700 });
             await Emulation.setTouchEmulationEnabled({ enabled: w < 700 });
             await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-            await sleep(2500); // sleep-ok: the page and its first lists arrive from requests; there is no completion event for them
+            await settle(ev, 2500); // sleep-ok: the page and its first lists arrive from requests; there is no completion event for them
             check(`the page is served as the ${cloud ? 'hub' : 'local Coral'}`, (await ev(`document.body.classList.contains('cloud-mode')`)) === cloud);
         };
         const visible = id => ev(`(() => { const e = document.getElementById(${JSON.stringify(id)}); return !!e && !e.hidden && getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0; })()`);

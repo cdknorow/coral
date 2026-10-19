@@ -3,6 +3,7 @@
 // phone sheet, and 200 percent text. Drives the real dashboard's tab row over CDP; run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { settle } = require('./helpers/wait');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, sleep, PRELOAD, install } = await connect();
@@ -22,7 +23,7 @@ const { connect } = require('./agent_view_harness');
     const load = async () => {
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install(); await ev(`window.__coralReady.then(() => true)`);
         await ev(`window.__m.add('tab-bot', 'A', 3, { sleeping: false }); true`);
-        await sleep(600); // sleep-ok: the first live list renders from several answers; no single completion event
+        await settle(ev, 600); // sleep-ok: the first live list renders from several answers; no single completion event
         await ev(`window.selectLiveSession('tab-bot', 'claude', 'tab-bot-id', 'local'); true`);
         await ev(`(() => { const p = document.getElementById('agentic-state'); if (p.classList.contains('collapsed') || document.getElementById('agentic-tab-files').getBoundingClientRect().width === 0) window.toggleAgenticPanel(true); return true; })()`);
         await waitFor(`document.getElementById('agentic-tab-files').getBoundingClientRect().width > 0`, 'side panel open', 8000);

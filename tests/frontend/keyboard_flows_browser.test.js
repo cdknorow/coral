@@ -9,6 +9,7 @@
 // Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { settle } = require('./helpers/wait');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -20,7 +21,7 @@ const { connect } = require('./agent_view_harness');
         await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
         await ev(`window.__coralReady.then(() => true)`);
         await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); window.__m.add('docs-bot', 'A', 6, { sleeping: false }); window.__m.add('api-worker', 'B', 3, { sleeping: false }); true`);
-        await sleep(600); // sleep-ok: the first live list renders from several answers; there is no single completion event
+        await settle(ev, 600); // sleep-ok: the first live list renders from several answers; there is no single completion event
     };
     try {
         await Page.enable();
@@ -45,7 +46,7 @@ const { connect } = require('./agent_view_harness');
         await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
         await load(1280, 800);
         await ev(`window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`);
-        await sleep(1200); // sleep-ok: the Chat view settles over several answers
+        await settle(ev, 1200); // sleep-ok: the Chat view settles over several answers
         const forever = await ev(`document.getAnimations().filter(a => a.effect && a.effect.getTiming().iterations === Infinity).map(a => a.animationName || a.transitionProperty || 'animation')`);
         assert.deepEqual(forever, [], 'with reduced motion no animation runs forever');
         await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
@@ -55,8 +56,8 @@ const { connect } = require('./agent_view_harness');
         for (const w of [640, 320]) {
             await load(w, 800, w === 320);
             for (const scene of ['home', 'chat', 'settings']) {
-                if (scene === 'chat') { await ev(`window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`); await sleep(1200); } // sleep-ok: the Chat view settles over several answers
-                if (scene === 'settings') { await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`); await sleep(1500); } // sleep-ok: Settings fills from several answers
+                if (scene === 'chat') { await ev(`window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`); await settle(ev, 1200); } // sleep-ok: the Chat view settles over several answers
+                if (scene === 'settings') { await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`); await settle(ev, 1500); } // sleep-ok: Settings fills from several answers
                 const r = await ev(`(() => { const de = document.documentElement; const wide = []; for (const e of document.querySelectorAll('body *')) { const b = e.getBoundingClientRect(); const cs = getComputedStyle(e); if (b.width > 0 && b.right > innerWidth + 2 && cs.position !== 'fixed' && cs.visibility !== 'hidden' && !e.closest('[hidden]')) wide.push((e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + String(e.className).split(' ')[0]) + ' ' + Math.round(b.right)); if (wide.length > 5) break; } return { over: de.scrollWidth - de.clientWidth, wide }; })()`);
                 assert.equal(r.over, 0, `${scene} at ${w} px: no horizontal page scroll`);
                 assert.deepEqual(r.wide, [], `${scene} at ${w} px: nothing wider than the screen`);
@@ -71,7 +72,7 @@ const { connect } = require('./agent_view_harness');
             await load(w, 844, mobile);
             await ev(`window.selectLiveSession('docs-bot', 'claude', 'docs-bot-id', 'local'); true`);
             await waitFor(`!!document.querySelector('#command-input') && document.querySelector('#command-toolbar button, .mobile-send-btn')`, 'the composer', 8000);
-            await sleep(800); // sleep-ok: the toolbar fills after the first live answers
+            await settle(ev, 800); // sleep-ok: the toolbar fills after the first live answers
             // Tab into the composer from the control before it: the first stop in the pane is the text box
             await ev(`(() => { const t = document.getElementById('command-input'); const f = [...document.querySelectorAll('button, a[href], input, textarea, select, [tabindex="0"]')].filter(e => e.offsetParent && !e.disabled && e.tabIndex >= 0); const i = f.indexOf(t); f[i - 1].focus(); return true; })()`);
             const into = await tabs(1);
@@ -124,7 +125,7 @@ const { connect } = require('./agent_view_harness');
         await ev(`${BTN}.focus(); true`); await key(' ', 32); await waitFor(`document.activeElement.closest('.sidebar-kebab-menu') !== null`, 'Space opens it for the redraw check', 4000);
         // A redraw of the list while it is open (the feed): the focus lands on the button, not the row.
         await ev(`(() => { const s = T.state.liveSessions[0]; s.summary = 'changed while the menu is open'; s.status = 'working'; s.staleness_seconds = 99; T.render.renderLiveSessions(T.state.liveSessions); return true; })()`);
-        await sleep(300); // sleep-ok: the redraw is scheduled on a frame; there is no completion event
+        await settle(ev, 300); // sleep-ok: the redraw is scheduled on a frame; there is no completion event
         w = await where();
         assert.ok(!w.onRow && (w.onButton || w.inMenu), 'after a redraw the focus is on the button (or still in the menu), never dropped to the row: ' + JSON.stringify(w));
         // The group menus (a team's, a folder's) are the same pattern: named for the group, a menu with menu items, and the same keys.

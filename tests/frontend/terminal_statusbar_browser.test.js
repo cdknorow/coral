@@ -7,6 +7,7 @@
 // Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { settle } = require('./helpers/wait');
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -33,14 +34,14 @@ const { connect } = require('./agent_view_harness');
             await Page.navigate({ url: process.env.CORAL_TEST_URL + '/' }); await Page.loadEventFired(); await install();
             await ev(`window.__coralReady.then(() => true)`);
             await ev(`localStorage.setItem('coral-live-view-mode', 'terminal'); window.__m.add('bar-bot', 'A', 3, { sleeping: false }); (async () => { const x = await import((window.__coralStatic || '/static/') + 'xterm_renderer.js'); window.__term = x.getTerminal; })(); true`);
-            await sleep(700); // sleep-ok: layout settles over a few frames; there is no completion event
+            await settle(ev, 700); // sleep-ok: layout settles over a few frames; there is no completion event
             await ev(`window.selectLiveSession('bar-bot', 'claude', 'bar-bot-id', 'local'); window.setLiveViewMode('terminal'); true`);
             await waitFor(`!!window.__tws && !!document.querySelector('#xterm-container .xterm')`, 'the terminal', 15000);
             if (keyboard) await ev(`document.body.classList.add('keyboard-open'); window.dispatchEvent(new Event('resize')); true`);
-            await sleep(600); // sleep-ok: layout settles over a few frames; there is no completion event
+            await settle(ev, 600); // sleep-ok: layout settles over a few frames; there is no completion event
             await ev(`(() => { const b = new TextEncoder().encode(${JSON.stringify(text)}); window.__tws.onmessage({ data: b.buffer }); return true; })()`);
-            await sleep(700); // sleep-ok: layout settles over a few frames; there is no completion event
-            await ev(`window.dispatchEvent(new Event('resize')); true`); await sleep(500); // sleep-ok: layout settles over a few frames; there is no completion event
+            await settle(ev, 700); // sleep-ok: layout settles over a few frames; there is no completion event
+            await ev(`window.dispatchEvent(new Event('resize')); true`); await settle(ev, 500); // sleep-ok: layout settles over a few frames; there is no completion event
             const g = await ev(GEOM);
             assert.equal(g.barVisible, true, label + ': the bar is shown in the Terminal view');
             assert.ok(g.contBottom <= g.barTop + 0.5, `${label}: the terminal ends above the bar (${g.contBottom} vs ${g.barTop})`);
@@ -59,7 +60,7 @@ const { connect } = require('./agent_view_harness');
             await ev(`window.__tws.onmessage({ data: JSON.stringify({ type: 'terminal_closed' }) }); true`);
             assert.equal(await ev(`document.getElementById('terminal-statusbar').dataset.state`), 'ended', label + ': the bar says the session ended');
             // chat view: no bar
-            await ev(`window.setLiveViewMode('chat'); true`); await sleep(500); // sleep-ok: layout settles over a few frames; there is no completion event
+            await ev(`window.setLiveViewMode('chat'); true`); await settle(ev, 500); // sleep-ok: layout settles over a few frames; there is no completion event
             assert.equal(await ev(`getComputedStyle(document.getElementById('terminal-statusbar')).display !== 'none' && document.getElementById('terminal-statusbar').getBoundingClientRect().height > 0`), false, label + ': no terminal bar in the Chat view (#4587: it said Connecting there, with no terminal socket)');
         }
         console.log('\nPASS terminal bottom bar: under the terminal, last row fully visible, size and state shown');

@@ -16,8 +16,9 @@ const BASE = require('./test_base').BASE;
     const { Page, Runtime, Network, Fetch, Emulation } = client;
     const ev = async expression => { const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
     const { waitFor } = require('./helpers/wait').bind(ev);
+const { settle } = require('./helpers/wait');
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: the layout settles over frames after a viewport change; there is no completion event
-    const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; await sleep(300); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(`${d}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); }; // sleep-ok: the screenshot waits for the layout to settle
+    const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; await settle(ev, 300); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(`${d}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); }; // sleep-ok: the screenshot waits for the layout to settle
     let cloud = true, machines = [], listFails = false, enrollHit = 0;
     try {
         await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
@@ -42,7 +43,7 @@ const BASE = require('./test_base').BASE;
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: w < 700 ? 2 : 1, mobile: w < 700 });
             await Emulation.setTouchEmulationEnabled({ enabled: w < 700 });
             await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-            await sleep(2500); // sleep-ok: the page and its first list of servers arrive from requests; there is no completion event for them
+            await settle(ev, 2500); // sleep-ok: the page and its first list of servers arrive from requests; there is no completion event for them
             assert.equal(await ev(`document.body.classList.contains('cloud-mode')`), cloud, 'the page is served as the hub or as a local Coral');
         };
         const shown = sel => `(() => { const e = document.querySelector(${JSON.stringify(sel)}); return !!e && getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0; })()`;
