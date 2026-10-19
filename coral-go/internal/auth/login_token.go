@@ -188,7 +188,7 @@ func (ks *KeyStore) handleLoginToken(w http.ResponseWriter, r *http.Request) boo
 		http.Error(w, "This sign-in link was already used or has expired. Run 'coral open' on this computer for a new one.", http.StatusForbidden)
 		return true
 	}
-	session, err := ks.NewSession(r, SessionByLink, false)
+	session, err := ks.NewSessionRotating(r, SessionByLink, false)
 	if err != nil {
 		http.Error(w, "could not start a session", http.StatusInternalServerError)
 		return true

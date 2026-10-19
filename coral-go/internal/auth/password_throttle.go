@@ -6,7 +6,7 @@ import (
 )
 
 // passwordThrottle slows wrong passwords without ever locking anyone out (#3949, Security 3 and
-// 4): per source address, the first freeFails are free, then each attempt waits 2^(n-freeFails)
+// 4): per source address (an IPv6 client's whole /64, as the failed-key limit counts it: a network is handed 2^64 addresses), the first freeFails are free, then each attempt waits 2^(n-freeFails)
 // seconds, capped at maxDelay; past globalLimit wrong passwords a minute from everyone, each
 // attempt waits a second; and argon2 runs at most hashSlots at a time, one per address, an
 // attempt waiting up to slotWait for a slot. Only password attempts count: the sign-in link, the
@@ -46,6 +46,7 @@ func newPasswordThrottle() *passwordThrottle {
 
 // delay is how long ip must still wait before its next attempt (0: it may try now).
 func (t *passwordThrottle) delay(ip string) time.Duration {
+	ip = rateKey(ip)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	f := t.perIP[ip]
@@ -75,6 +76,7 @@ func (t *passwordThrottle) delay(ip string) time.Duration {
 // acquire takes a hash slot for ip: false at once if ip already has an attempt in flight, or
 // after slotWait if every slot stays busy. release must be called after a true.
 func (t *passwordThrottle) acquire(ip string) (release func(), ok bool) {
+	ip = rateKey(ip)
 	t.mu.Lock()
 	if t.inflight[ip] {
 		t.mu.Unlock()
@@ -117,6 +119,7 @@ func (t *passwordThrottle) globalBusyLocked() bool {
 
 // fail counts a wrong password from ip.
 func (t *passwordThrottle) fail(ip string) {
+	ip = rateKey(ip)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := t.now()
@@ -144,6 +147,7 @@ func (t *passwordThrottle) fail(ip string) {
 
 // success clears ip's count.
 func (t *passwordThrottle) success(ip string) {
+	ip = rateKey(ip)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.perIP, ip)

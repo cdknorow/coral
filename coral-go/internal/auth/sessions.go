@@ -266,6 +266,20 @@ func (ks *KeyStore) NewSession(r *http.Request, method string, keep bool) (strin
 	return token, nil
 }
 
+// NewSessionRotating is NewSession for a sign-in from a browser that may already hold a session: that one ends here, so a cookie a sign-in
+// replaced (a link, the key form) is not left valid behind it, as the password sign-in does.
+func (ks *KeyStore) NewSessionRotating(r *http.Request, method string, keep bool) (string, error) {
+	old := ks.extractSessionCookie(r)
+	token, err := ks.NewSession(r, method, keep)
+	if err != nil {
+		return "", err
+	}
+	if old != "" {
+		ks.RevokeSession(old)
+	}
+	return token, nil
+}
+
 // CreateSession signs a browser in with the API key (kept for the key paths and tests).
 func (ks *KeyStore) CreateSession(clientIP, userAgent string) (string, error) {
 	r := &http.Request{Header: http.Header{"User-Agent": {userAgent}}}

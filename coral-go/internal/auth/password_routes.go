@@ -148,6 +148,7 @@ func (ar *Routes) SignInWithPassword(w http.ResponseWriter, r *http.Request) {
 		authError(w, http.StatusBadRequest, "too_long", fmt.Sprintf("The password is longer than %d bytes", MaxPasswordBytes))
 		return
 	}
+	gen := ar.pwGen.Load() // before the hash is read: a replacement after this is seen below
 	match, answered := ar.checkPassword(w, r, body.Password)
 	if answered {
 		return
@@ -167,6 +168,13 @@ func (ar *Routes) SignInWithPassword(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("[auth] password sign-in: %v", err)
 		authError(w, http.StatusInternalServerError, "session_failed", "Could not start a session")
+		return
+	}
+	// The password was replaced while this one was checked (a change or reset ends every session, and it may have run before this session began): a sign-in
+	// that matched the old password does not stand.
+	if ar.pwGen.Load() != gen {
+		ar.ks.RevokeSession(token)
+		authError(w, http.StatusConflict, "password_changed", "The password was just changed: sign in again with the new one")
 		return
 	}
 	log.Printf("[auth] signed in with the password from %s (%s)", clientIP(r), label)
@@ -300,6 +308,7 @@ func (ar *Routes) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		authError(w, http.StatusInternalServerError, "save_failed", "The password could not be saved")
 		return
 	}
+	ar.pwGen.Add(1) // before the sessions end: a sign-in that checked the old password sees it, or its session is among those ended
 	n, err := ar.ks.RevokeAllSessions()
 	if err != nil {
 		log.Printf("[auth] password changed, but the sessions couldn't be ended: %v", err)
@@ -347,6 +356,7 @@ func (ar *Routes) ResetPassword(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	ar.pwGen.Add(1)
 	n, err := ar.ks.RevokeAllSessions()
 	if err != nil {
 		log.Printf("[auth] couldn't end the sessions after a reset: %v", err)

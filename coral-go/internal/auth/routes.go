@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cdknorow/coral/internal/httputil"
 )
@@ -18,8 +19,10 @@ type Routes struct {
 	strictLocal bool
 	// The password (#3949): its throttle, the recent attempts, and how a handler knows the
 	// command line's signature was verified (cliauth sits above this package).
-	throttle    *passwordThrottle
-	audit       *signInAudit
+	throttle *passwordThrottle
+	audit    *signInAudit
+	// pwGen counts the replacements of the password (change, reset): a password sign-in that began before one must not leave a session after it.
+	pwGen       atomic.Uint64
 	cliVerified func(*http.Request) bool
 	// afterReset runs once a reset from the command line has changed the password (#4041:
 	// the server rotates its command-line token, since a reset means "don't trust what was
@@ -108,7 +111,7 @@ func (ar *Routes) ValidateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := ar.ks.NewSession(r, SessionByKey, false)
+	token, err := ar.ks.NewSessionRotating(r, SessionByKey, false)
 	if err != nil {
 		log.Printf("[auth] failed to create session: %v", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create session"})

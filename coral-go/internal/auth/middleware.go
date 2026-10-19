@@ -101,7 +101,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 				if ks.ValidateKey(key) {
 					// Auto-create session for API key auth via query param
 					if r.URL.Query().Get("api_key") != "" {
-						token, err := ks.NewSession(r, SessionByKey, false)
+						token, err := ks.NewSessionRotating(r, SessionByKey, false)
 						if err != nil {
 							log.Printf("[auth] failed to create session: %v", err)
 						} else {
