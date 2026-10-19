@@ -57,7 +57,18 @@ export function syncModelPicker(container, fromCode = true) {
     if (fromCode) container._otherChosen = false;
     const v = input.value.trim();
     const models = container._modelList || [];
-    const known = (v === '' && !container._otherChosen) || models.some(m => m.value === v);
+    const listed = (v === '' && !container._otherChosen) || models.some(m => m.value === v);
+    // A model that is set (the one the agent runs) and that the list does not name shows as itself, in an option of its own
+    // after the list, not under "Other…" (#5044: with the CLI silent the list is the built-in one and the running model is
+    // rarely in it). "Other…" is the user's own choice, and what it holds stays free text.
+    select.querySelectorAll('option[data-unlisted]').forEach(o => o.remove());
+    const unlisted = !listed && v !== '' && !container._otherChosen;
+    if (unlisted) {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = v; opt.dataset.unlisted = '1';
+        select.insertBefore(opt, select.querySelector(`option[value="${OTHER}"]`));
+    }
+    const known = listed || unlisted;
     select.value = known ? v : OTHER;
     input.hidden = known;
     if (id) {

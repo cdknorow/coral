@@ -36,8 +36,6 @@ import (
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
-const coralDevStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-02"
-
 // coral.log rotates by size (#3628 F5): at coralLogMaxSize it becomes coral.log.1, and
 // coralLogKeep older copies are kept (about 120 MB at most). A log from before rotation over
 // twice that size keeps only its last coralLogTrim on its first rotation (the operator's choice).
@@ -125,8 +123,8 @@ func main() {
 
 	// Only now, with the flags valid and the server really starting: --help, a bad flag
 	// and the self-test print nothing of a server's (#3506).
-	log.Printf("[STARTUP] coral server starting marker=%s pid=%d go=%s os=%s arch=%s exe=%q path=%q",
-		coralDevStartupMarker, os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, mustExecutable(), os.Getenv("PATH"))
+	log.Printf("[STARTUP] coral server starting pid=%d go=%s os=%s arch=%s exe=%q path=%q",
+		os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, mustExecutable(), os.Getenv("PATH"))
 
 	cfg := config.Load(*homeDir)
 	// --hub or CORAL_HUB=1 (read by config.Load) force hub mode on; otherwise the saved

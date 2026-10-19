@@ -117,6 +117,14 @@ func (s *Service) Get(agentType string) Result {
 	return withBuiltin(s.get(agentType, false))
 }
 
+// builtinDisplayNames are the names the curated list shows for the models it names; any other model shows its id.
+var builtinDisplayNames = map[string]string{
+	"claude-opus-5-5":   "Claude Opus 5.5",
+	"claude-sonnet-5-5": "Claude Sonnet 5.5",
+	"claude-haiku-5-5":  "Claude Haiku 5.5",
+	"claude-fable-5-1":  "Claude Fable 5.1",
+}
+
 // withBuiltin fills an empty result with Coral's curated list for the type
 // (agenttypes.AgentTypeModels, "source": "builtin"), so a picker has choices before the CLI
 // has listed its own, or when it can't.
@@ -127,7 +135,11 @@ func withBuiltin(res Result) Result {
 	}
 	var models []Model
 	for _, v := range at.AgentTypeModels[res.AgentType] {
-		models = append(models, Model{Value: v, DisplayName: v})
+		name := v
+		if n, ok := builtinDisplayNames[v]; ok {
+			name = n
+		}
+		models = append(models, Model{Value: v, DisplayName: name})
 	}
 	if models = clean(models); len(models) > 0 {
 		res.Models, res.Source = models, "builtin"

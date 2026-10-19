@@ -170,12 +170,12 @@ async function run() {
             c.id = 'qa-test-acf';
             document.body.appendChild(c);
             window.renderAgentConfigForm('qa-test-acf', { showPreset: false, showName: false });
-            window.__coral.setAgentConfig('qa-test-acf', { agentType: 'claude', model: 'claude-opus-4-7' });
+            window.__coral.setAgentConfig('qa-test-acf', { agentType: 'claude', model: 'claude-opus-5-5' });
         })();
     `);
     await new Promise(r => setTimeout(r, 300));
     check('S10 known stored model remains replaceable', await dirtyFlag() === 'false');
-    check('S10 setAgentConfig with stored model → value preserved', await modelValue() === 'claude-opus-4-7');
+    check('S10 setAgentConfig with stored model → value preserved', await modelValue() === 'claude-opus-5-5');
     await switchType('agy');
     check('S10 provider switch replaces known stored model', await modelValue() === '');
 

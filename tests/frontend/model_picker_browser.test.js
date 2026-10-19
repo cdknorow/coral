@@ -73,7 +73,19 @@ const { connect } = require('./agent_view_harness');
         await ev(`window.__acf.setAgentConfig('acf-t', { agentType: 'claude', model: ${JSON.stringify(OPUS.value)} }); true`); await sleep(300); // sleep-ok: the form's async loads have no completion event
         b = await box(); assert.equal(b.value, OPUS.value, 'a known model is selected'); assert.equal(b.inputShown, false);
         await ev(`window.__acf.setAgentConfig('acf-t', { agentType: 'claude', model: 'something-else' }); true`); await sleep(300); // sleep-ok: the form's async loads have no completion event
-        b = await box(); assert.equal(b.value, '__other', 'an unknown model sits under Other…'); assert.equal(b.inputValue, 'something-else'); assert.equal(b.inputShown, true);
+        b = await box(); assert.equal(b.value, 'something-else', 'a model the list does not name shows as itself, not under Other… (#5044)');
+        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'something-else', 'Other…'], 'in an option of its own, before Other…');
+        assert.equal(b.inputValue, 'something-else'); assert.equal(b.inputShown, false, 'and the text box stays hidden');
+        assert.equal(await formModel(), 'something-else', 'the form still returns it');
+        await ev(`{ const s = document.querySelector('#acf-t .acf-model-select'); s.value = '__other'; s.dispatchEvent(new Event('change', { bubbles: true })); true }`);
+        b = await box(); assert.equal(b.value, '__other', 'Other… is the user\'s choice and is still there'); assert.equal(b.inputShown, true); assert.equal(b.inputValue, 'something-else', 'with the text kept to edit');
+        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…'], 'the option of its own is gone while the text is edited');
+        await ev(`{ const s = document.querySelector('#acf-t .acf-model-select'); s.value = ${JSON.stringify(OPUS.value)}; s.dispatchEvent(new Event('change', { bubbles: true })); true }`);
+        b = await box(); assert.equal(b.value, OPUS.value); assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…'], 'choosing a listed model leaves no extra option');
+        await ev(`window.__acf.setAgentConfig('acf-t', { agentType: 'claude', model: 'something-else' }); true`); await sleep(300); // sleep-ok: the form's async loads have no completion event
+        b = await box(); assert.equal(b.value, 'something-else', 'set from code again: shown as itself');
+        await ev(`window.__acf.setAgentConfig('acf-t', { agentType: 'claude', model: '' }); true`); await sleep(300); // sleep-ok: the form's async loads have no completion event
+        b = await box(); assert.equal(b.value, '', 'a blank model is Default'); assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…'], 'and the option for the earlier model is gone');
 
         console.log('4. the agent type switches the list; no list means free text');
         await ev(`{ const t = document.querySelector('#acf-t .acf-agent-type'); t.value = 'codex'; t.dispatchEvent(new Event('change', { bubbles: true })); true }`);

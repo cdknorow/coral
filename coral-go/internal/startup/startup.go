@@ -47,8 +47,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-const devStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-01"
-
 // Options configures optional behaviors that differ between entry points.
 type Options struct {
 	// Restart, when set, restarts this process (the desktop apps' tray, #3460):
@@ -331,8 +329,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 // logStartup writes the startup line: version, tier, backend asked for, process, executable and environment.
 func logStartup(opts Options) {
 	exe, exeErr := os.Executable()
-	log.Printf("[STARTUP] %s version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path=%q shell=%q coral_tmux_bin=%q",
-		devStartupMarker,
+	log.Printf("[STARTUP] version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path=%q shell=%q coral_tmux_bin=%q",
 		config.ReportedVersion(),
 		config.TierName,
 		opts.BackendType,
