@@ -32,6 +32,8 @@ POST /api/tasks/run
 
 Queues a new agent task. Returns immediately — all work (worktree creation, agent launch, monitoring) happens in the background.
 
+**Operator only:** starting a run (`POST /api/tasks/run`) and cancelling one (`POST /api/tasks/runs/{run_id}/kill`) are refused to an agent's session token with 403 `forbidden_for_agent`. An agent that needs more work done posts a board task ([Board Tasks](board.md#tasks)) or asks the Operator.
+
 ### Request body
 
 | Field | Type | Default | Description |

@@ -798,11 +798,11 @@ shifts the pages after a cursor.
 as before.
 
 To list recent tasks across every board, use
-`GET /api/board/tasks?limit=100` (default `100`).
+`GET /api/board/tasks?limit=100` (default `100`). That read is the Operator's (the dashboard, an API key or the signed command line): an agent's session token gets 403 `forbidden_for_agent`. An agent reads its own board's tasks with `GET /api/board/{project}/tasks` or `coral-board task list`.
 
 ### Task query (`GET /api/board/tasks` with parameters)
 
-`GET /api/board/tasks` also filters, sorts and pages, and lets the caller leave out the long fields, for clients that show
+The Operator's, like the plain list above (an agent's token gets 403 `forbidden_for_agent`). `GET /api/board/tasks` also filters, sorts and pages, and lets the caller leave out the long fields, for clients that show
 their own filtered view (Coral Hub's Needs you page). With no parameters, or only `limit`, the reply is exactly what it has
 always been: the whole rows of the newest tasks (`limit` read as before, default `100`; an unusable one is ignored).
 Any other parameter makes it a query. Through Coral Hub it is the View tier, with the same token redaction as any View reply,

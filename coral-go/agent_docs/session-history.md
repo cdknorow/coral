@@ -4,6 +4,8 @@ The Session History API provides access to past agent sessions — browsing, sea
 
 All endpoints are prefixed with `/api/sessions/history`, except the live chat transcript (`/api/sessions/live/{name}/chat`, under Session Detail).
 
+> **What an agent's token can read.** The list and the search (`GET /api/sessions/history`, `GET /api/sessions/history/search`) cover every session of every board, so they are the Operator's: an agent's session token gets 403 `forbidden_for_agent`. An agent searches its own history with `coral-agent history` (`/api/agent/history/…`, [below](#agent-session-history-search--context-post-compaction-recovery)). The reads about one session (`/api/sessions/history/{sessionID}`, `agent-notes`, `events`, `files`, `git`, `notes`, `resume-info`, `tags`, `tasks`) answer an agent only for its own session, its resume ancestors and the sessions on its own board; another session's gets 403 `forbidden_other_session`. Changing notes, tags or a summary is the Operator's too. The Operator, the dashboard and the command line are not limited.
+
 ---
 
 ## Listing & Search

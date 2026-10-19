@@ -20,8 +20,8 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 
 ### Automation
 - [Workflow Quickstart](workflow-quickstart.md) — Build your first workflow in 5 minutes
-- [Workflows](workflows.md) — Multi-step workflow definitions and execution
-- [Scheduled Jobs](scheduled-jobs.md) — Cron-based scheduled job management
+- [Workflows](workflows.md) — Multi-step workflow definitions and execution (the Operator's: an agent's token is refused, reads included)
+- [Scheduled Jobs](scheduled-jobs.md) — Cron-based scheduled job management (the Operator's: an agent's token is refused, reads included)
 - [Jobs](jobs.md) — One-shot agent execution
 
 ### Collaboration

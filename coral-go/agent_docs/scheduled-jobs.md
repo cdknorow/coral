@@ -9,6 +9,8 @@ Scheduled jobs support two execution modes:
 
 For one-off launches, see the [Jobs API](jobs.md). For reusable multi-step automations, see the [Workflows API](workflows.md).
 
+> **Every `/api/scheduled/…` route is the Operator's, reads included** (list, get, a job's runs, recent runs, validate-cron, and create, change, delete, toggle): the dashboard, an API key or the Operator's signed command line. An agent's session token gets 403 `forbidden_for_agent`. A job's prompt and flags are the Operator's and may hold a credential.
+
 ---
 
 ## List scheduled jobs

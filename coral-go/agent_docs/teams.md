@@ -211,6 +211,8 @@ Distillation reads the team's agent transcripts and writes a knowledge bundle (a
 | GET | `/api/teams/detail/{name}/distill-knowledge` | The run's status (below), or `{"status":"none"}`. |
 | GET | `/api/teams/detail/{name}/knowledge` | The bundle: `{"exists": false}` or `{"exists": true, "index", "agents": [{name, content}], …}`. |
 
+Reading a team's bundle (`GET …/knowledge`, and one agent's document `GET …/knowledge/{agentName}`) and changing one (`PUT …/knowledge/{agentName}`) are the Operator's: an agent's session token gets 403 `forbidden_for_agent`. An agent does not need them, because the bundle is already in the prompt it starts or wakes with.
+
 Status: `{team_name, status: "running"|"complete"|"failed", progress: {phase, agent, total, completed}, error, started_at, finished_at}` (times RFC 3339 UTC). Phases: `starting`, `extracting` (pass 1, per agent), `cross-referencing` (pass 2), `formatting` (pass 3). The last finished run is kept per team so a dashboard can show when the knowledge was updated, or that the last run failed. Runs are tracked in memory: after a restart a team reads `none` (an interrupted run is never reported as running); start it again.
 
 A `complete` run can be partial. `failed_agents: [{agent, error}]` lists the agents whose knowledge could not be extracted (a Claude CLI call failed): each keeps its earlier knowledge file, if any, and is listed in the index only then; the error text never goes into any agent's document. `collaboration_error` is set when the cross-referencing pass failed, and the documents were built without it. When every agent's extraction fails, the run is `failed` and nothing is written, so the earlier knowledge stays as it was.

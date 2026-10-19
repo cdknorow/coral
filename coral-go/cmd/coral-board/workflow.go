@@ -72,6 +72,8 @@ func printWorkflowUsage() {
 
 const workflowUsageText = `Usage: coral-board workflow <subcommand> [args]
 
+Every subcommand is the Operator's: an agent's session token is refused (403 forbidden_for_agent), reads included.
+
 Subcommands:
   create --file <path>                    Create a workflow from a JSON file
   list                                    List all workflows

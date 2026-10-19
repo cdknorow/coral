@@ -12,6 +12,8 @@ All endpoints are prefixed with `/api/sessions`.
 
 List all live (running) agent sessions with enriched status. Archived agents are listed last.
 
+**An agent's token gets a roster for other boards.** The row of the agent's own session and of the sessions on its own board is complete. A session on any other board appears with the roster fields only: `name`, `agent_type`, `session_id`, `tmux_session`, `display_name`, `icon`, `name_color`, `board_project`, `board_label`, `board_job_title`, `board_is_orchestrator`, `status`, `sleeping`, `archived`, `working`, `waiting_for_input`, `waiting_kind`, `awaiting_user`, `not_started`, `done`, `stuck`, `staleness_seconds`, `model`, `thinking`, `list_at`, `server`. It carries no prompt, first prompt, summary, waiting text, branch, working directory, log path or git state, and a field added later stays private until it is listed. The `/ws/coral` feed is reduced the same way, and the rows of a registered remote server are not listed to an agent. The Operator, the dashboard and the command line get every field.
+
 **Response:**
 ```json
 [
@@ -137,6 +139,8 @@ Resolve session info by process IDs (used by CLI integrations).
 ---
 
 ## Session Metadata & Monitoring
+
+**An agent's token reads its own session and the sessions on its own board, not another's.** The reads about one live session (`GET live/{name}` and its `capture`, `chat`, `attachment/{ref}`, `changes.diff`, `diff`, `events`, `events/counts`, `file-content`, `file-original`, `files`, `git`, `history/context`, `history/search`, `info`, `poll`, `resolve-path`, `search-files`, `subagents`) and `GET /api/sessions/{sessionID}/changes`, `changes.diff` and `status` answer 403 `forbidden_other_session` for a session on another board; `DELETE live/{name}/events` is limited the same way. Acting on a session (typing, keys, kill, restart, sleep, wake, goal, rename) is the Operator's, 403 `forbidden_for_agent`. Both limits apply in every mode. The Operator, the dashboard and the command line (no agent token) are not limited.
 
 **Every per-agent route that reaches its terminal names the session.** `GET live/{name}`, `/capture`, `/poll`, `/info`, `/ws/terminal/{name}` (query `session_id`) and `/kill`, `/restart`, `/attach` (body `session_id`), `/resume` (body `current_session_id`) answer 400 `{"error": "session_id is required", "code": "session_id_required"}` without one (the WebSocket closes with 1008), unless `{name}` is the agent's exact terminal name (`claude-<uuid>`). A bare agent or folder name is shared by teammates and would reach whichever terminal matched it. Take `name` and `session_id` from `GET /api/sessions/live`.
 
@@ -557,7 +561,7 @@ Kill and relaunch a session with the same or updated configuration. If the agent
 
 ### POST `/api/sessions/live/{name}/model`
 
-Switch a running agent's model and/or thinking level without restarting it (the operator's chat-bar chip). Operator only: an agent token gets 403 `operator_only`. Claude is the only type with a checked live switch; others get 409 `needs_restart` (restart with the new `model`/`thinking` instead).
+Switch a running agent's model and/or thinking level without restarting it (the operator's chat-bar chip). Operator only: an agent token is refused with 403 (`forbidden_for_agent` from the identity layer; the handler's own `operator_only` check is a second guard). Claude is the only type with a checked live switch; others get 409 `needs_restart` (restart with the new `model`/`thinking` instead).
 
 ```json
 {"session_id": "abc123", "agent_type": "claude", "model": "claude-sonnet-5-5", "thinking": "high"}

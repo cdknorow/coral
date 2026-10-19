@@ -160,10 +160,10 @@ Commands:
   task submit-review/release-review  Record a candidate or release capacity
   task complete <id> [--message "note"]  Complete with outcome/evidence
   workflow create --file <path>  Create a workflow from JSON file (Operator only)
-  workflow list                  List all workflows
+  workflow list                  List all workflows (Operator only)
   workflow trigger <name> [--context '{"key":"val"}']  Trigger a workflow (Operator only)
-  workflow status <run-id>       Check run status
-  workflow runs [--workflow <name>] [--status <s>]  List recent runs
+  workflow status <run-id>       Check run status (Operator only)
+  workflow runs [--workflow <name>] [--status <s>]  List recent runs (Operator only)
   workflow kill <run-id>         Kill a running workflow (Operator only)
 
 Output:

@@ -2,7 +2,7 @@
 
 Workflows are multi-step automations that chain shell commands and AI agents together. You define a sequence of steps — run a test suite, have an agent analyze the results, send a notification — and Coral executes them in order, passing output from one step to the next.
 
-> **These are Operator actions.** Creating, triggering or deleting a workflow (`/api/workflows…`) and scheduling or toggling a job (`/api/scheduled/jobs…`) are Operator-only: run the `curl` commands below from the Operator's own signed command line (your own terminal) or use the dashboard. An agent's session token is refused on them (403 `forbidden_for_agent`; a token-less call is 401 under strict local auth).
+> **These are Operator actions.** Every `/api/workflows…` and `/api/scheduled/…` route, reads included (list, get, runs, a run's output), is Operator-only: run the `curl` commands below from the Operator's own signed command line (your own terminal) or use the dashboard. An agent's session token is refused on them (403 `forbidden_for_agent`; a token-less call is 401 under strict local auth).
 
 ---
 

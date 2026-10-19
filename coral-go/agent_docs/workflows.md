@@ -4,6 +4,8 @@ Define reusable multi-step automations, trigger them on demand, and inspect step
 
 Workflows are higher-level than one-shot jobs: each workflow stores a reusable definition with ordered `shell` and `agent` steps, optional default agent settings, and its own execution history.
 
+> **Every `/api/workflows…` route is the Operator's, reads included** (list, get, a workflow's runs, recent runs, a run's output and a step's files, as well as create, change, delete, trigger and kill): the dashboard, an API key or the Operator's signed command line. An agent's session token gets 403 `forbidden_for_agent` on all of them, so `coral-board workflow list`, `status` and `runs` print a refusal inside an agent session, like `create`, `trigger` and `kill`. A workflow's steps hold commands, prompts and often credentials, and belong to no board. An agent that needs work done posts a board task ([Board Tasks](board.md#tasks)) or asks the Operator.
+
 ---
 
 ## Workflow object

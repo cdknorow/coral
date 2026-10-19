@@ -13,6 +13,8 @@ Read token and cost records captured by Coral's agent usage hooks.
 | `GET` | `/api/token-usage/by-team` | Usage grouped by board/team; optional `since`. |
 | `GET` | `/api/token-usage/by-branch` | Usage grouped by repository branch; optional `since` and exact `branch`. |
 
+**An agent's session token** gets 403 `forbidden_for_agent` on `GET /api/token-usage` (the list: every session's records) and `GET /api/token-usage/by-branch`; both are the Operator's. `GET /api/token-usage/session/{sessionID}/turns` answers it for its own session and the sessions on its own board, and 403 `forbidden_other_session` for another. The Operator, the dashboard and the command line are not limited.
+
 `since` is an RFC 3339 timestamp. Monetary values are USD. The list endpoint
 returns `{ "records": [...], "totals": {...} }`; grouping endpoints return
 their named collection (`by_agent_type`, `turns`, `buckets`, `teams`, or
