@@ -127,9 +127,13 @@ func StrictResponseFilter(resp *http.Response) error {
 			delete(h, k) // by the key as it is (SEC-TUN-03)
 		}
 	}
-	if loc := h.Get("Location"); loc != "" {
-		if u, err := url.Parse(loc); err != nil || u.IsAbs() || u.Host != "" || strings.HasPrefix(loc, "//") || strings.HasPrefix(loc, "\\") {
+	// Only a path on this origin survives (#5086): a browser reads slash-backslash as two slashes (and drops a tab or newline inside a URL), which Go's parser
+	// calls a path, so a connector's Location of slash, backslash and a host used to pass this check and send the browser off the hub's origin. Every
+	// Location header counts, not only the first.
+	for _, loc := range h.Values("Location") {
+		if !sameOriginLocation(loc) {
 			h.Del("Location")
+			break
 		}
 	}
 	mt, params, err := mime.ParseMediaType(h.Get("Content-Type"))
@@ -167,6 +171,21 @@ func StrictResponseFilter(resp *http.Response) error {
 		}
 	}
 	return nil
+}
+
+// sameOriginLocation reports whether a Location is a path on the origin that answered: it starts with one "/" (not "//" and not "/\\"), holds no backslash,
+// control character or space, and parses as a path with no scheme, host or userinfo.
+func sameOriginLocation(loc string) bool {
+	if len(loc) == 0 || loc[0] != '/' || (len(loc) > 1 && (loc[1] == '/' || loc[1] == '\\')) {
+		return false
+	}
+	for i := 0; i < len(loc); i++ {
+		if c := loc[i]; c <= 0x20 || c == 0x7f || c == '\\' {
+			return false
+		}
+	}
+	u, err := url.Parse(loc)
+	return err == nil && !u.IsAbs() && u.Host == "" && u.User == nil
 }
 
 // MaxPanelBytes is the most the hub relays for one Agent UI panel: the machine accepts 2 MiB of HTML and prepends a small
