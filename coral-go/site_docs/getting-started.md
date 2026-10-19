@@ -141,6 +141,7 @@ Coral shows a toast in the page when an agent needs input. You can also turn on 
 
 ## Next steps
 
+- [Using the dashboard](using-the-dashboard.md)
 - [Remote access](remote-access.md)
 - [Privacy](privacy.md)
 - [Troubleshooting](troubleshooting.md)

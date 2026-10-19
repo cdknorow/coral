@@ -19,9 +19,10 @@ These guides cover the current **Go application**, including the macOS, Linux an
 | Set up the app and launch an agent | [Getting started](getting-started.md) |
 | Delegate work and follow a team's tasks | [Teams and tasks](teams-and-tasks.md) |
 | Browse files and preview agent output | [Files and artifacts](files-and-artifacts.md) |
+| Choose a model and thinking level, read cost by thinking level, turn on the team health monitor, filter the agent list | [Using the dashboard](using-the-dashboard.md) |
 | Ask an agent for a diagram or interactive panel | [Agent UI](agent-ui.md) |
 | Connect from a phone or another computer | [Remote access](remote-access.md) |
-| Understand analytics, local storage, and encryption | [Privacy](privacy.md) |
+| Understand analytics, local storage, encryption, and what an agent can read | [Privacy](privacy.md) |
 | Resolve launch, connection, and preview problems | [Troubleshooting](troubleshooting.md) |
 | Use CLI commands, APIs, jobs, or integrations | [Reference](reference.md) |
 

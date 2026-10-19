@@ -54,7 +54,7 @@ The ☰ **Display** button under the search box opens a panel in place (not a po
 
 - **State** (Needs input, Working, Idle, Asleep), **Board**, **Machine** (when other machines are connected) and **Sort** (List order, Name, Recent activity, Cost), then the count ("4 of 10 agents") and **Clear filters**.
 - **Show summaries**; with other machines connected, **Show server** and **Group by server** too.
-- **Shut**, a line under the search says what is on, for example `State: Working (4 of 10 agents)`, with **Clear**, and a dot on the button marks that something is on.
+- **A summary line** under the search says what is on, for example `State: Working (4 of 10 agents)`, with **Clear**, and a dot on the button marks that something is on.
 - **Escape** closes the panel and returns to its button. Whether it is open is remembered in this browser. On a phone the same panel is in the Agents page header.
 
 ## Sectioned dialogs
