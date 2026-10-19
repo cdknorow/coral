@@ -11,6 +11,7 @@ import { withScope, scopeHeading, scopeEmpty, ALL } from './saved_scope.js';
 import { effectiveLiveViewMode, setLiveViewMode, jumpToLiveMessage } from './live_chat.js';
 import { buildListBar } from './list_bar.js';
 import { importOnce } from './import_once.js';
+import { selectInboxTab } from './inbox_tab.js';
 // This module is loaded lazily, so its own parts are loaded the same way (a static import of a module not loaded at startup could not be retried: import_hygiene).
 const { KINDS, KIND_LABEL, SORTS, SORT_LABEL, EMPTY: SAVED_EMPTY, makeModel: savedModel, clean: cleanSaved, isFiltered: savedFiltered, toQuery: savedQuery } = await importOnce('./saved_filters.js');
 
@@ -359,13 +360,16 @@ export function leaveSavedView() { placeUi('sidebar'); }
 /** The Inbox at its Saved part: from the top bar's button on any page where the scope is all. A press while it shows goes back to where it was opened from. */
 async function openSavedView({ toggle = false } = {}) {
     if (savedViewShowing()) {
-        if (toggle) { closeSaved(); return; }
+        const onSaved = !$('inbox-panel-saved')?.hidden;
+        if (toggle && onSaved) { closeSaved(); return; }
+        if (!onSaved) selectInboxTab('saved'); // the Inbox is open on Needs you: the button brings its Saved tab up
         $('saved-list').querySelector('.btn')?.focus();
         return;
     }
     dropJumpBar();
     _prevTab = activeNavTab() === 'hub-inbox' ? _prevTab : activeNavTab();
     wantAllScope(true); // the Inbox is everything's, whatever agent or team is behind it
+    selectInboxTab('saved'); // before the switch: the Inbox opens on its Saved tab
     window.switchNavTab?.('hub-inbox');
     try { await showSavedView(); } finally { wantAllScope(false); }
     $('saved-view')?.scrollIntoView({ block: 'start' }); // the Inbox at its Saved part

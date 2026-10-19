@@ -1,14 +1,25 @@
 {{ define "includes/views/inbox.html" }}
-<!-- Inbox tab (#4718, #4811). Where the hub serves the dashboard it is the hub's /inbox page in a frame, made by inbox_tab.js the first time the tab is shown (so no page carries an empty one). On every other Coral the dashboard builds its own: Needs you (the agents waiting for input) and Saved for later (saved.js moves the one Saved list into #saved-view). -->
+<!-- Inbox tab (#4718, #4811). Where the hub serves the dashboard it is the hub's /inbox page in a frame, made by inbox_tab.js the first time the tab is shown (so no page carries an empty one). On every other Coral the dashboard builds its own: two tabs, as the hub's: Needs you (the agents waiting for input) and Saved for later (saved.js moves the one Saved list into #saved-view); one panel shows at a time. -->
 <div id="inbox-view" class="inbox-view" role="region" aria-label="Inbox" style="display:none">
     <div id="inbox-local" class="inbox-local" hidden>
         <div id="inbox-live" class="inbox-live" role="status" aria-live="polite" aria-atomic="true"></div>
-        <section id="inbox-needs" class="inbox-needs" aria-labelledby="inbox-needs-title">
-            <h2 id="inbox-needs-title" class="inbox-section-title">Needs you <span class="n" id="inbox-needs-count"></span></h2>
-            <ul id="inbox-needs-list" class="inbox-needs-list"></ul>
-            <p id="inbox-needs-empty" class="inbox-needs-empty">Nothing is waiting for you.</p>
+        <header class="inbox-head">
+            <h2 id="inbox-title" class="inbox-title">Needs you</h2>
+            <p class="inbox-sub">Find waiting agents and saved messages for you on this computer.</p>
+        </header>
+        <div class="inbox-tabs" role="tablist" aria-label="Inbox" id="inbox-tablist">
+            <button type="button" class="inbox-tab" role="tab" id="inbox-tab-needs" aria-controls="inbox-panel-needs" aria-selected="true" tabindex="0">Needs you</button>
+            <button type="button" class="inbox-tab" role="tab" id="inbox-tab-saved" aria-controls="inbox-panel-saved" aria-selected="false" tabindex="-1">Saved for later</button>
+        </div>
+        <section id="inbox-panel-needs" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-needs">
+            <section id="inbox-needs" class="inbox-needs" aria-label="Needs you">
+                <ul id="inbox-needs-list" class="inbox-needs-list"></ul>
+                <p id="inbox-needs-empty" class="inbox-needs-empty">Nothing is waiting for you.</p>
+            </section>
         </section>
-        <section id="saved-view" class="saved-view" aria-label="Saved for later"></section>
+        <section id="inbox-panel-saved" class="inbox-panel" role="tabpanel" aria-labelledby="inbox-tab-saved" hidden>
+            <section id="saved-view" class="saved-view" aria-label="Saved for later"></section>
+        </section>
     </div>
 </div>
 {{ end }}

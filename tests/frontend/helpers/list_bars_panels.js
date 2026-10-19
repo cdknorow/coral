@@ -28,7 +28,7 @@ const mockAgents = (ctx, list) => ctx.ev(`(() => { const jobs = ${JSON.stringify
 
 const PANELS = [];
 
-// ── Inbox: Needs you, Saved for later (the Saved bar's menu open, a filter chip showing) ──
+// ── Inbox, Saved for later tab (the Saved bar's menu open, a filter chip showing; the tabs are one panel at a time, #5126) ──
 PANELS.push({
     key: 'inbox',
     async prepare(ctx) {
@@ -47,11 +47,27 @@ PANELS.push({
         await ctx.settle(`['qa-a-id', 'fe-a-id'].every(id => (window.__qaState.liveSessions || []).some(s => s.session_id === id))`, 'agents');
         await ctx.ev(`import((window.__coralStatic || '/static/') + 'inbox_tab.js').then(m => m.updateInboxTab()); true`);
         if (phone) { await ctx.ev(`window.switchNavTab('hub-inbox'); true`); } else await ctx.ev(`document.getElementById('nav-tab-hub-inbox').click(); true`);
+        await ctx.ev(`document.getElementById('inbox-tab-saved').click(); true`);
         await ctx.settle(`document.querySelectorAll('#saved-list > li:not(.saved-empty)').length >= 4 && document.querySelectorAll('#inbox-needs-list .inbox-needs-item').length === 1`, 'the Inbox');
         await pick(ctx, '#sv-kind', 'board'); // a Type chip
         await ctx.settle(`!!document.querySelector('#saved-bar .list-bar-chip')`, 'a chip');
         await openMenu(ctx, '#saved-bar');
-        return { roots: ['#inbox-view'], focus: ['#sv-search', '.inbox-needs-item', '#saved-bar .list-bar-filter-btn'] };
+        return { roots: ['#inbox-view'], focus: ['#sv-search', '#inbox-tab-needs', '#saved-bar .list-bar-filter-btn'] };
+    },
+});
+
+// ── Inbox, Needs you tab (the hub's tabs and the waiting agent's row) ──
+PANELS.push({
+    key: 'inbox-needs',
+    async show(ctx, { phone }) {
+        await fresh(ctx);
+        await ctx.ev(`localStorage.removeItem('coral.inbox.tab'); true`);
+        await mockAgents(ctx, [{ id: 'qa-a-id', name: 'QA Alpha', team: 'th-a', job: 'QA Engineer', waiting: true }, { id: 'fe-a-id', name: 'FE Alpha', team: 'th-a', job: 'Frontend Dev' }]);
+        await ctx.settle(`['qa-a-id', 'fe-a-id'].every(id => (window.__qaState.liveSessions || []).some(s => s.session_id === id))`, 'agents');
+        await ctx.ev(`import((window.__coralStatic || '/static/') + 'inbox_tab.js').then(m => m.updateInboxTab()); true`);
+        if (phone) { await ctx.ev(`window.switchNavTab('hub-inbox'); true`); } else await ctx.ev(`document.getElementById('nav-tab-hub-inbox').click(); true`);
+        await ctx.settle(`document.querySelectorAll('#inbox-needs-list .inbox-needs-item').length === 1 && document.getElementById('inbox-needs-list').getClientRects().length > 0`, 'Needs you');
+        return { roots: ['#inbox-view'], focus: ['.inbox-needs-item', '#inbox-tab-saved'] };
     },
 });
 

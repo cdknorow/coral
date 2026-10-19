@@ -1,12 +1,13 @@
 /* Inbox tab (#4718, #4811): on every Coral. Where the hub serves the dashboard it is the Coral Hub's /inbox page (what needs the Operator, what was saved) inside the dashboard, in a
  * frame whose address is the constant below: never built from a URL, a hash or a message, and nothing is posted to or read from the frame. On every other Coral the dashboard builds its own Inbox,
  * in the hub's /inbox order: Needs you (the agents waiting for input, from the live list the dashboard already holds, each opening that agent) and Saved for later (saved.js moves the one
- * Saved list in; the top bar's bookmark opens the Inbox at it where the scope is all). The tab carries a badge with the number of agents waiting for input, counted from that list (no
+ * Saved list in; two tabs, one panel at a time; the top bar's bookmark opens the Inbox at it where the scope is all). The tab carries a badge with the number of agents waiting for input, counted from that list (no
  * request of its own). */
 
 import { state } from './state.js';
 import { isCloud, sessionServer, splitKey } from './server_base.js';
 import { importOnce } from './import_once.js';
+import { browserLocal } from './safe_storage.js';
 import { resolveSessionIdentity, sessionStateInfo } from './session_state.js';
 
 const INBOX_URL = '/inbox';
@@ -65,8 +66,6 @@ function renderNeedsYou(force = false) {
     const key = JSON.stringify(rows.map(s => [sessionServer(s), s.session_id, s.name, s.display_name, s.waiting_kind, s.board_project]));
     if (!force && key === _needsKey) return;
     _needsKey = key;
-    const count = document.getElementById('inbox-needs-count');
-    if (count) count.textContent = rows.length ? `(${rows.length})` : '';
     const empty = document.getElementById('inbox-needs-empty');
     if (empty) empty.hidden = rows.length > 0;
     // Built with the DOM: no text from an agent is ever read as markup.
@@ -89,6 +88,46 @@ function renderNeedsYou(force = false) {
     }));
 }
 
+// The two tabs of the dashboard's own Inbox (as the hub's): one panel shows at a time. The chosen tab is kept for this browser (and across a reload) (browserLocal).
+const TAB_KEY = 'coral.inbox.tab';
+const TABS = ['needs', 'saved'];
+let _tab = null;
+const storedTab = () => { const v = browserLocal.get(TAB_KEY); return TABS.includes(v) ? v : 'needs'; };
+/** Which tab the dashboard's own Inbox is on. */
+export const inboxTab = () => _tab || storedTab();
+
+/** Show one tab's panel (and only that one), remember the choice, and load what the panel holds. */
+export function selectInboxTab(name, { focus = false } = {}) {
+    if (!TABS.includes(name)) name = 'needs';
+    _tab = name;
+    browserLocal.set(TAB_KEY, name);
+    for (const t of TABS) {
+        const b = document.getElementById(`inbox-tab-${t}`);
+        const panel = document.getElementById(`inbox-panel-${t}`);
+        if (b) { b.setAttribute('aria-selected', String(t === name)); b.tabIndex = t === name ? 0 : -1; }
+        if (panel && panel.hidden !== (t !== name)) panel.hidden = t !== name;
+    }
+    if (focus) document.getElementById(`inbox-tab-${name}`)?.focus();
+    if (name === 'needs') renderNeedsYou(true);
+    else if (!document.getElementById('inbox-local')?.hidden) importOnce('./saved.js').then(m => m.showSavedView()).catch(() => {});
+}
+
+let _tabsWired = false;
+function wireTabs() {
+    if (_tabsWired) return;
+    const list = document.getElementById('inbox-tablist');
+    if (!list) return;
+    _tabsWired = true;
+    for (const t of TABS) document.getElementById(`inbox-tab-${t}`)?.addEventListener('click', () => selectInboxTab(t));
+    list.addEventListener('keydown', e => {
+        const i = TABS.indexOf(inboxTab());
+        const to = e.key === 'ArrowRight' ? (i + 1) % TABS.length : e.key === 'ArrowLeft' ? (i + TABS.length - 1) % TABS.length : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : -1;
+        if (to < 0) return;
+        e.preventDefault();
+        selectInboxTab(TABS[to], { focus: true });
+    });
+}
+
 /** Called by switchNavTab('hub-inbox'): where the hub serves the dashboard the page is loaded the first time the tab is shown, and kept after; elsewhere the dashboard's own Inbox is drawn. */
 export function showInboxTabContent() {
     const view = document.getElementById('inbox-view');
@@ -96,8 +135,8 @@ export function showInboxTabContent() {
     if (!isCloud()) {
         const local = document.getElementById('inbox-local');
         if (local) local.hidden = false;
-        renderNeedsYou(true);
-        importOnce('./saved.js').then(m => m.showSavedView()).catch(() => {});
+        wireTabs();
+        selectInboxTab(inboxTab()); // the tab it was on (this browser's last choice at first): that panel only is loaded and shown
         return;
     }
     if (document.getElementById('inbox-frame')) return;

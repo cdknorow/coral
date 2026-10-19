@@ -91,7 +91,7 @@ A non-default data directory no longer reads the default tmux socket, so it does
 
 ## Inbox: what needs you
 
-The **Inbox** tab, in the top bar of every Coral (on a phone, in the view dropdown), is one page for what is waiting on you. It has two parts:
+The **Inbox** tab, in the top bar of every Coral (on a phone, in the view dropdown), is one page for what is waiting on you. It has two tabs (the same two as Coral Hub's Inbox; Coral remembers the one you last chose):
 
 - **Needs you**: the agents that are waiting for input, each one a button that opens that agent. The number on the tab is how many are waiting.
 - **Saved for later**: the messages you bookmarked (below), with an **Open** and a **Done** list.
