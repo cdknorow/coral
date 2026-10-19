@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cdknorow/coral/internal/safefs"
@@ -239,4 +242,143 @@ func readInRun(runDir, p string, max int64) ([]byte, error) {
 		return nil, fmt.Errorf("%s is not a regular file", filepath.Base(p))
 	}
 	return io.ReadAll(io.LimitReader(f, max))
+}
+
+// stepOutputCap is how much of each of a step's stdout and stderr is kept on disk (a var for the tests). A command that prints more is not stopped:
+// the rest is read and dropped, and the step says so (#5079).
+var stepOutputCap int64 = 64 << 20
+
+// stepPipeWait is how long after a step's process ends the runner still waits for what it wrote to reach the files, so a normal step's output is all there
+// when its result is read. A process the step left running is not waited for: it keeps writing (capped) and is never killed for it.
+const stepPipeWait = 3 * time.Second
+
+// cappedWriter writes the first left bytes it is given to w and drops the rest. It never returns an error (a copier that stopped reading would leave the
+// command blocked on a full pipe): a failed write (a full disk) drops the output from there on and is reported once, in the step's note.
+type cappedWriter struct {
+	w         io.Writer
+	left      int64
+	truncated atomic.Bool
+	writeErr  atomic.Value // error
+}
+
+func (c *cappedWriter) Write(p []byte) (int, error) {
+	if c.writeErr.Load() != nil {
+		return len(p), nil
+	}
+	if c.left > 0 {
+		n := int64(len(p))
+		if n > c.left {
+			n = c.left
+			c.truncated.Store(true)
+		}
+		if _, err := c.w.Write(p[:n]); err != nil {
+			c.writeErr.Store(err)
+			return len(p), nil
+		}
+		c.left -= n
+	} else if len(p) > 0 {
+		c.truncated.Store(true)
+	}
+	return len(p), nil
+}
+
+// stepStream is one of a step's two output streams: the pipe the child writes to, and the goroutine that copies it into the capped file.
+type stepStream struct {
+	name string
+	pw   *os.File // the child's end
+	capw *cappedWriter
+	done chan struct{}
+}
+
+// stepOutput is a step's stdout and stderr.
+type stepOutput struct {
+	out, errs *stepStream
+	once      sync.Once
+}
+
+func newStepStream(sf stepFiles, name string) (*stepStream, error) {
+	f, err := sf.create(name)
+	if err != nil {
+		return nil, fmt.Errorf("create %s: %w", name, err)
+	}
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("pipe for %s: %w", name, err)
+	}
+	st := &stepStream{name: name, pw: pw, capw: &cappedWriter{w: f, left: stepOutputCap}, done: make(chan struct{})}
+	go func() {
+		// The file is closed here, at the end of the stream, not by the step: a process the step left running still writes to it.
+		defer close(st.done)
+		defer f.Close()
+		defer pr.Close()
+		_, _ = io.Copy(st.capw, pr)
+	}()
+	return st, nil
+}
+
+// newStepOutput makes the step's two files and the pipes and copiers in front of them.
+func newStepOutput(sf stepFiles) (*stepOutput, error) {
+	out, err := newStepStream(sf, "stdout.txt")
+	if err != nil {
+		return nil, err
+	}
+	errs, err := newStepStream(sf, "stderr.txt")
+	if err != nil {
+		out.pw.Close() // its copier sees the end and closes its file
+		return nil, err
+	}
+	return &stepOutput{out: out, errs: errs}, nil
+}
+
+// attach gives the command the pipes' write ends (files: exec starts no copier of its own and Wait returns when the process exits).
+func (o *stepOutput) attach(cmd *exec.Cmd) {
+	cmd.Stdout = o.out.pw
+	cmd.Stderr = o.errs.pw
+}
+
+// release closes this process's copies of the write ends: from here the child's (and its children's) are the only ones, and the streams end when the last
+// closes. Called once the command started or failed to.
+func (o *stepOutput) release() {
+	o.once.Do(func() {
+		o.out.pw.Close()
+		o.errs.pw.Close()
+	})
+}
+
+// finish waits (at most stepPipeWait) for what the command wrote to reach its files, then says in the step's files and result what was cut at the cap or lost
+// to a write error.
+func (o *stepOutput) finish(sf stepFiles, result *StepResult) {
+	expired := make(chan struct{}) // closed, so it answers for both streams (a timer's channel is read once)
+	timer := time.AfterFunc(stepPipeWait, func() { close(expired) })
+	defer timer.Stop()
+	for _, st := range []*stepStream{o.out, o.errs} {
+		select {
+		case <-st.done:
+		case <-expired:
+		}
+	}
+	var cut, lost []string
+	for _, st := range []*stepStream{o.out, o.errs} {
+		if st.capw.truncated.Load() {
+			cut = append(cut, st.name)
+			sf.appendNote(st.name, fmt.Sprintf("coral: output cut here: %s keeps its first %d MiB", st.name, stepOutputCap>>20))
+		}
+		if err, _ := st.capw.writeErr.Load().(error); err != nil {
+			lost = append(lost, st.name+" ("+err.Error()+")")
+		}
+	}
+	var notes []string
+	if len(cut) > 0 {
+		notes = append(notes, "output truncated: "+strings.Join(cut, " and ")+" kept only its first "+fmt.Sprint(stepOutputCap>>20)+" MiB")
+	}
+	if len(lost) > 0 {
+		notes = append(notes, "output lost after a write error: "+strings.Join(lost, " and "))
+	}
+	if len(notes) > 0 && result != nil {
+		if result.Note != "" {
+			notes = append([]string{result.Note}, notes...)
+		}
+		result.Note = strings.Join(notes, "; ")
+	}
 }

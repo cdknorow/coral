@@ -117,26 +117,20 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	// Set process group for clean kill
 	configureChildProcess(cmd)
 
-	// Capture stdout and stderr to files
-	stdoutFile, err := sf.create("stdout.txt")
+	// Capture stdout and stderr to files, through a pipe and a capped copy (#5079): a runaway command cannot fill the disk before its timeout. The child gets
+	// the pipe's write end as a file, so Wait returns when it exits (a process it left behind keeps its end and is never killed for it).
+	output, err := newStepOutput(sf)
 	if err != nil {
-		return fmt.Errorf("create stdout file: %w", err)
+		return err
 	}
-	defer stdoutFile.Close()
-
-	stderrFile, err := sf.create("stderr.txt")
-	if err != nil {
-		return fmt.Errorf("create stderr file: %w", err)
-	}
-	defer stderrFile.Close()
-
-	cmd.Stdout = stdoutFile
-	cmd.Stderr = stderrFile
+	output.attach(cmd)
 
 	// Start the process (not Run — we need separate Start/Wait for clean kill)
 	if err := cmd.Start(); err != nil {
+		output.release()
 		return fmt.Errorf("start command: %w", err)
 	}
+	output.release()
 	trackChildProcess(cmd)                // Windows: its job, so a kill ends everything it started (#3997)
 	agentprio.ApplyGroup(cmd.Process.Pid) // the step's process group at the agents' priority (#3437)
 
@@ -147,6 +141,7 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 
 	err = cmd.Wait()
 	releaseChildProcess(cmd)
+	output.finish(sf, result)
 
 	wr.mu.Lock()
 	delete(wr.activeChildren, runID)
@@ -333,25 +328,19 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
 	configureChildProcess(cmd)
 
-	// Capture stdout and stderr to files
-	stdoutFile, err := sf.create("stdout.txt")
+	// Capture stdout and stderr to files, through a pipe and a capped copy (#5079): a runaway command cannot fill the disk before its timeout. The child gets
+	// the pipe's write end as a file, so Wait returns when it exits (a process it left behind keeps its end and is never killed for it).
+	output, err := newStepOutput(sf)
 	if err != nil {
-		return fmt.Errorf("create stdout file: %w", err)
+		return err
 	}
-	defer stdoutFile.Close()
-
-	stderrFile, err := sf.create("stderr.txt")
-	if err != nil {
-		return fmt.Errorf("create stderr file: %w", err)
-	}
-	defer stderrFile.Close()
-
-	cmd.Stdout = stdoutFile
-	cmd.Stderr = stderrFile
+	output.attach(cmd)
 
 	if err := cmd.Start(); err != nil {
+		output.release()
 		return fmt.Errorf("start agent: %w", err)
 	}
+	output.release()
 	trackChildProcess(cmd)
 	agentprio.ApplyGroup(cmd.Process.Pid) // #3437
 
@@ -362,6 +351,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 
 	err = cmd.Wait()
 	releaseChildProcess(cmd)
+	output.finish(sf, result)
 
 	wr.mu.Lock()
 	delete(wr.activeChildren, runID)
