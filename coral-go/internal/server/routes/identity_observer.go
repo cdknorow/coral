@@ -495,6 +495,7 @@ var operatorOnlyRoutes = map[string]string{
 	"GET /api/sessions/history/search":                      "search every session's history",
 	"GET /api/token-usage":                                  "list every session's token usage",
 	"GET /api/token-usage/by-branch":                        "read token usage by branch",
+	"GET /api/goals/metrics":                                "read the goal generator's metrics (every session's goal text)", // #5041
 	"GET /api/system/identity-report":                       "read the identity report (every session's calls and mismatches)",
 	"GET /api/board/tasks":                                  "list the tasks of every board",
 	"GET /api/teams/detail/{name}/knowledge":                "read a team's knowledge",

@@ -87,7 +87,7 @@ c GET /api/filesystem/is-git
 c GET /api/filesystem/list
 c GET /api/folder-tags
 c GET /api/folder-tags/{folderName}
-c GET /api/goals/metrics
+b GET /api/goals/metrics
 c GET /api/health
 c GET /api/pinned-folders
 b GET /api/saved

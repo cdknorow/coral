@@ -101,7 +101,7 @@ func TestAgentTokenReadsOnlyItsOwnSessionAndBoard(t *testing.T) {
 
 	// the reads across every session, board and team are the Operator's
 	for _, k := range []string{"GET /api/sessions/history", "GET /api/sessions/history/search", "GET /api/board/tasks",
-		"GET /api/teams/detail/{name}/knowledge", "GET /api/teams/detail/{name}/knowledge/{agentName}", "GET /api/system/identity-report", "GET /api/token-usage", "GET /api/token-usage/by-branch"} {
+		"GET /api/teams/detail/{name}/knowledge", "GET /api/teams/detail/{name}/knowledge/{agentName}", "GET /api/system/identity-report", "GET /api/token-usage", "GET /api/token-usage/by-branch", "GET /api/goals/metrics"} {
 		assert.NotEmpty(t, operatorOnlyRoutes[k], "%s is in operatorOnlyRoutes", k)
 	}
 }

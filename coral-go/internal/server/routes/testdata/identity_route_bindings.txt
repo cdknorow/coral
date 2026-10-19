@@ -90,6 +90,7 @@ GET /api/sessions/{sessionID}/changes | unbound
 GET /api/sessions/{sessionID}/changes.diff | unbound
 GET /api/sessions/{sessionID}/resolve | unbound
 GET /api/sessions/{sessionID}/status | unbound
+GET /api/token-usage/summary | token-session
 PATCH /api/agent/tasks/{taskID} | token-bound
 PATCH /api/board/{project} | board-claims | operator-only
 PATCH /api/board/{project}/tasks/{taskID} | board-claims

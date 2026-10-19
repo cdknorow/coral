@@ -138,7 +138,7 @@ func (h *TokenUsageHandler) UsageSummary(w http.ResponseWriter, r *http.Request)
 		totalSessions += s.NumSessions
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"by_agent_type": summaries,
 		"by_agent":      byAgent,
 		"by_model":      byModel,
@@ -152,7 +152,12 @@ func (h *TokenUsageHandler) UsageSummary(w http.ResponseWriter, r *http.Request)
 			"cost_usd":           totalCost,
 			"num_sessions":       totalSessions,
 		},
-	})
+	}
+	// by_agent is one row per session of every board (id, name, board, working directory): an agent's token gets the totals, not that list (#5041).
+	if _, isAgent := VerifiedSession(r.Context()); isAgent {
+		delete(out, "by_agent")
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // SessionTurns returns per-turn cost data for a session.

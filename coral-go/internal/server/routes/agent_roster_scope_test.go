@@ -190,3 +190,38 @@ func TestWSCoralForAnAgentTokenReducesOtherBoards(t *testing.T) {
 	assert.NotContains(t, agent["other"], "working_directory")
 	assert.Equal(t, "team-y", agent["other"]["board_project"])
 }
+
+// The usage summary's by_agent is one row per session of every board (id, name, board, working directory): an agent's token gets the totals and the
+// by-type, by-model and by-thinking tables, not that list; the Operator's reply is whole (#5041, QA's sweep).
+func TestUsageSummaryForAnAgentTokenHasNoPerSessionRows(t *testing.T) {
+	ts, _, router := setupTokenUsageTest(t)
+	board := "team-b"
+	require.NoError(t, ts.RecordUsage(t.Context(), &store.TokenUsage{SessionID: "other-session", AgentName: "other-agent", AgentType: "claude", BoardName: &board,
+		InputTokens: 10, OutputTokens: 5, TotalTokens: 15, CostUSD: 0.01}))
+
+	get := func(agent bool) (map[string]any, string) {
+		req := httptest.NewRequest(http.MethodGet, "/api/token-usage/summary", nil)
+		if agent {
+			req = req.WithContext(context.WithValue(req.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: "me", SessionName: "claude-me"}))
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		return body, w.Body.String()
+	}
+
+	op, opRaw := get(false)
+	assert.Contains(t, op, "by_agent")
+	assert.Contains(t, opRaw, "other-session", "the Operator's reply is whole")
+
+	ag, agRaw := get(true)
+	assert.NotContains(t, ag, "by_agent")
+	for _, secret := range []string{"other-session", "other-agent", "team-b"} {
+		assert.NotContains(t, agRaw, secret)
+	}
+	assert.Contains(t, ag, "by_agent_type")
+	assert.Contains(t, ag, "by_model")
+	assert.Equal(t, 15.0, ag["totals"].(map[string]any)["total_tokens"], "the totals stay")
+}
