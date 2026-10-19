@@ -1,29 +1,30 @@
 import './update_banner.js'; // first: it wraps fetch before the other modules ask for anything (#3751)
 import { importOnce } from './import_once.js';
 import { startChatPrefetch } from './chat_page.js';
-import { markBlockedControls } from './hub_blocked_controls.js'; // dims controls the Hub tier does not allow (#3769)
-import { openRowMenu } from './session_rows.js';
+import './hub_blocked_controls.js'; // dims controls the Hub tier does not allow (#3769)
+// Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
+import './session_rows.js';
 import './nav_tabs.js'; // the tab row, its More menu and the phone's view dropdown (#3816)
 import { initPrerequisiteChecks } from './prerequisites.js';
-import { fetchSystemStatus } from './system_status.js';
-import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardStartupComplete, dashboardFailed } from './dashboard_analytics.js';
+import './system_status.js';
+import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardFailed } from './dashboard_analytics.js';
 import { initAgentUI } from './agent_ui.js';
 import { showTeamWorkingModeWorkspace, showTeamHealthSettings } from './team_working_mode.js';
 import { showTeamAvailabilityWorkspace } from './team_availability.js';
 import { enterTeamContext, exitTeamContext, renderTeamSettingsTab } from './team_context.js';
 /* Coral Dashboard — Entry Point */
 
-import { state, sessionKey, saveSessionDraft, loadSessionDrafts } from './state.js';
-import { accountTag, setStoreOwner, ageOutStored, DAY_MS } from './local_store.js';
+import { state } from './state.js';
+import './local_store.js';
 import { loadLiveSessions, loadHistorySessionsPaged } from './api.js';
 import { filterState, deserializeFromUrl, serializeToUrl, urlSearchFor,
          hasActiveFilters, countActiveFilters, resetFilters }
     from './search_filters.js';
 import { connectCoralWs } from './websocket.js';
-import { sendCommand, addMacro, hideMacroModal, restartSession, hideRestartModal, confirmRestart, initImageDrop, editGoal, refreshGoal, requestGoal } from './controls.js';
+import { addMacro, hideMacroModal, restartSession, hideRestartModal, confirmRestart, editGoal, refreshGoal, requestGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon } from './sessions.js';
 import { KILL_LOG_NOTE_MANY, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, groupHeaderKey } from './render.js';
-import { syncPaneWidth, refreshCapture } from './capture.js';
+import './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
 import './version_line.js';
@@ -32,38 +33,38 @@ import { attachAllDialogFocus } from './dialog_focus.js';
 import './board_choice.js'; // the duplicate-name choice used by the lazy modals.js (#3538): loaded at startup so a launch never fails on it
 import './dialog_focus.js'; // focus into a dialog and back to its opener (accessibility pass); used by lazy modals.js
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
-import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse, toggleSidebarRail, initSidebarRail } from './sidebar.js';
-import { fitTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
+import { switchJobsSubtab, toggleAgenticPanel, toggleSidebarRail } from './sidebar.js';
+import { connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
 import { saveNotes, generateSummary, toggleNotesEdit, cancelNotesEdit, switchHistoryTab } from './notes.js';
 import { addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag, loadAllTags } from './tags.js';
 import { loadMoreBoardTasks, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
-import { openFilePreview, openFileEdit, refreshChangedFiles, copyFilePath, initFileSearch } from './changed_files.js';
-import { initFileMention } from './file_mention.js';
-import { initCommandMention } from './command_mention.js';
-import { initNotesMd } from './agent_notes.js';
+import { openFilePreview, openFileEdit, refreshChangedFiles, copyFilePath } from './changed_files.js';
+import './file_mention.js';
+import './command_mention.js';
+import './agent_notes.js';
 import { loadCustomViews, activateCustomView } from './custom_views.js';
-import { initTabCustomize, applyTabPrefs } from './tab_customize.js';
+import { initTabCustomize } from './tab_customize.js';
 import { startNav, go, note, onRoute, currentRoute } from './nav.js';
 import { liveRoute, keyRoute, routeKey, AGENT_SUBTABS, parse as parseRoute } from './routes.js';
 import { initPopout, applyPopoutBodyClass, popoutRetry } from './popout.js';
-import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize, loadPendingFromStorage } from './live_chat.js';
-import { switchAgenticTab, restoreAgenticTabs } from './agentic_state.js';
+import { setLiveViewMode, showTerminalView } from './live_chat.js';
+import { switchAgenticTab } from './agentic_state.js';
 import { copyBranchName, escapeHtml, showView, showToast, viewChanges, buildWelcome } from './utils.js';
-import { initPreviewPane } from './preview_pane.js';
+import './preview_pane.js';
 import { initScheduler, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
 import { initLiveJobs, selectLiveJobRun } from './live_jobs.js';
 import { initMessageBoard, selectBoardProject, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, showExportBoardModal, toggleSelectMode, openBoardSubscribers, hideBoardSubscribers } from './message_board.js';
 import { loadAllFolderTags, showFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag } from './folder_tags.js';
 import { loadPinnedFolders, pinFolder, unpinFolder, showOpenFolderModal, hideOpenFolderModal, submitOpenFolder } from './pinned_folders.js';
 import { initMobile, syncMobileAgentList } from './mobile.js';
-import { platform } from './platform/detect.js';
-import { initNative } from './platform/native.js';
-import { initMacOS } from './platform/macos.js';
-import { initWindows } from './platform/windows.js';
-import { initBrowser } from './platform/browser.js';
-import { initChatFind } from './chat_find.js';
+import './platform/detect.js';
+import './platform/native.js';
+import './platform/macos.js';
+import './platform/windows.js';
+import './platform/browser.js';
+import './chat_find.js';
 
-import { checkForUpdates, dismissUpdateToast, showDatabaseWarning, showSecurityWarning } from './update_check.js';
+import { checkForUpdates, dismissUpdateToast } from './update_check.js';
 import { teamFetch, sessionServer, keyLabel } from './server_base.js';
 import { showServersModal, initServersUi } from './servers.js';
 import { initHubIndicator } from './hub_indicator.js';
@@ -298,10 +299,14 @@ Object.assign(window, lazyWindowFns(loadModals, ['_selectLaunchType', '_showMobi
 import { initCloud } from './cloud.js';
 import { isCloud } from './server_base.js';
 import { installOverloadWatch } from './overload.js';
-import { handleUnauthorized, isSignedOut401 } from './auth_redirect.js';
-import { browserLocal } from './safe_storage.js';
-import { ensureBuilt } from './lazy_dom.js';
-import { installTestHooks } from './test_hooks.js'; // the suites' surface, installed only when the page's boot data asks for it (#5015)
+import './auth_redirect.js';
+import './safe_storage.js';
+import './lazy_dom.js';
+import { installTestHooks } from './test_hooks.js';
+import { _handleTeamFolderImport, _importTeamFromFolder } from './team_folder_import.js';
+import { closeSidebarKebabs, closeTopBarSettings, toggleSidebarKebab, toggleTopBarSettings } from './sidebar_menus.js';
+import { _startListLoadSettled, pollStartupStatus } from './startup_status.js';
+import { initLocalStore, initPanels, initPlatform, installUnauthorizedRedirect, wireComposer, wirePaneScroll, wireWindowEvents, yieldToMain } from './app_wiring.js'; // the suites' surface, installed only when the page's boot data asks for it (#5015)
 
 installTestHooks();
 
@@ -512,94 +517,9 @@ function tabRoute(tab, view) {
     return { view };
 }
 
-// ── Import team from folder ───────────────────────────────────────────
-function _importTeamFromFolder() {
-    const input = document.getElementById('team-folder-input');
-    if (input) { input.value = ''; input.click(); }
-};
+;
 
-async function _handleTeamFolderImport(input) {
-    const files = Array.from(input.files || []);
-    if (!files.length) return;
-
-    // Parse YAML frontmatter from markdown content
-    function parseFrontmatter(text) {
-        const match = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
-        if (!match) return { meta: {}, body: text.trim() };
-        const meta = {};
-        match[1].split('\n').forEach(line => {
-            const m = line.match(/^(\w[\w-]*):\s*(.+)$/);
-            if (m) meta[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '');
-        });
-        return { meta, body: match[2].trim() };
-    }
-
-    // Find SKILL.md (orchestrator) and agents/*.md
-    let orchestrator = null;
-    const agents = [];
-
-    let folderName = '';
-    for (const file of files) {
-        if (!file.name.endsWith('.md')) continue;
-        const path = file.webkitRelativePath || file.name;
-        const text = await file.text();
-        const { meta, body } = parseFrontmatter(text);
-
-        // Extract top-level folder name for team board name
-        if (!folderName && path.includes('/')) {
-            folderName = path.split('/')[0];
-        }
-
-        if (file.name.match(/^SKILL\.md$/i)) {
-            orchestrator = { name: 'Orchestrator', description: meta.description || '', prompt: body };
-        } else if (path.match(/\/agents\//i) || file.name !== 'SKILL.md') {
-            const name = meta.name || file.name.replace(/\.md$/, '').replace(/-/g, ' ');
-            agents.push({ name, prompt: body });
-        }
-    }
-
-    if (!orchestrator && agents.length === 0) {
-        const { showToast } = await importOnce('./utils.js');
-        showToast('No valid .md files found (expected SKILL.md and/or agents/*.md)', true);
-        return;
-    }
-
-    // Set team board name from folder name if empty
-    const boardNameInput = document.getElementById('team-board-name');
-    if (boardNameInput && !boardNameInput.value.trim() && folderName) {
-        boardNameInput.value = folderName.replace(/-/g, ' ');
-        if (window._validateTeamName) window._validateTeamName();
-    }
-
-    // Clear existing agents and populate
-    const list = document.getElementById('team-agents-list');
-    if (list) list.innerHTML = '';
-
-    // Fetch default prompts from settings for orchestrator/worker board instructions
-    let defaults = {};
-    try {
-        const res = await fetch('/api/settings/default-prompts');
-        defaults = await res.json();
-    } catch { /* use empty defaults */ }
-    const orchSuffix = (defaults.default_prompt_orchestrator || 'Coordinate with the team via the message board.').replace('{board_name}', folderName || 'team');
-    const workerSuffix = (defaults.default_prompt_worker || 'Coordinate with the team via the message board.').replace('{board_name}', folderName || 'team');
-
-    if (orchestrator) {
-        // Strip the name/title heading from the prompt body
-        let body = orchestrator.prompt.replace(/^#\s+.*\n*/m, '').trim();
-        const prompt = `You are the Orchestrator. For this session here is the skill you will use:\n\n${body}\n\n${orchSuffix}`;
-        if (window._addTeamAgent) window._addTeamAgent(orchestrator.name, prompt);
-    }
-    for (const agent of agents) {
-        let body = agent.prompt.replace(/^#\s+.*\n*/m, '').trim();
-        const prompt = `For this session here is the skill you will use:\n\n${body}\n\n${workerSuffix}`;
-        if (window._addTeamAgent) window._addTeamAgent(agent.name, prompt);
-    }
-
-    const { showToast } = await importOnce('./utils.js');
-    const count = (orchestrator ? 1 : 0) + agents.length;
-    showToast(`Imported ${count} agent${count !== 1 ? 's' : ''} from folder`);
-};
+;
 
 // Inline helpers that need custom logic (can't be simple re-exports)
 window.toggleSendMenu = function(btn) {
@@ -620,19 +540,6 @@ window.toggleSendMenu = function(btn) {
 window.closeSendMenu = function() {
     document.querySelectorAll('.send-btn-menu').forEach(m => m.style.display = 'none');
 };
-// ── Sidebar kebab menu helpers ───────────────────────────────────────────
-// With restoreFocus (Escape) the focus goes back to the button of the menu that was open, when it was inside it (#4621).
-function closeSidebarKebabs({ restoreFocus = false } = {}) {
-    for (const m of document.querySelectorAll('.sidebar-kebab-menu')) {
-        const open = m.style.display !== 'none';
-        const btn = m.previousElementSibling;
-        m.style.display = 'none';
-        if (btn && btn.classList.contains('sidebar-kebab-btn')) {
-            btn.setAttribute('aria-expanded', 'false');
-            if (open && restoreFocus && m.contains(document.activeElement)) btn.focus({ preventScroll: true });
-        }
-    }
-}
 
 // Up, Down, Home and End move between a menu's items (it says aria-haspopup="menu"); Escape closes it from inside.
 document.addEventListener('keydown', e => {
@@ -654,43 +561,6 @@ document.addEventListener('focusout', e => {
     if (menu && menu.style.display !== 'none') closeSidebarKebabs();
 });
 
-function toggleSidebarKebab(btn, event) {
-    const menu = btn.nextElementSibling;
-    const wasOpen = menu.style.display !== 'none';
-    closeSidebarKebabs();
-    if (!wasOpen) {
-        // An agent row's menu is drawn when it opens (#4611); the hub's tier marks follow at once rather than at the next sweep.
-        if (menu.dataset.lazyMenu) {
-            if (!openRowMenu(btn, menu)) return;
-            markBlockedControls(menu);
-        }
-        btn.setAttribute('aria-expanded', 'true');
-        // Show off-screen first to measure, then position
-        menu.style.visibility = 'hidden';
-        menu.style.display = 'block';
-        const rect = btn.getBoundingClientRect();
-        const menuHeight = menu.offsetHeight || 150;
-        const menuWidth = menu.offsetWidth || 160;
-        const viewportHeight = window.innerHeight;
-        const viewportWidth = window.innerWidth;
-        // If menu would overflow the bottom, position above the button
-        if (rect.bottom + menuHeight + 4 > viewportHeight) {
-            menu.style.top = Math.max(4, rect.top - menuHeight - 2) + 'px';
-        } else {
-            menu.style.top = rect.bottom + 2 + 'px';
-        }
-        // Clamp left so menu doesn't overflow right edge
-        const left = Math.min(rect.left, viewportWidth - menuWidth - 8);
-        menu.style.left = Math.max(4, left) + 'px';
-        menu.style.visibility = '';
-        // Every item is a menu item for a screen reader (the row menus are marked as they are drawn).
-        for (const it of menu.querySelectorAll('.overflow-menu-item')) if (!it.hasAttribute('role')) it.setAttribute('role', 'menuitem');
-        // Opened from the keyboard (Enter or Space is a click with no pointer): the focus goes to the first item.
-        if (event && event.detail === 0) menu.querySelector('.overflow-menu-item')?.focus({ preventScroll: true });
-        // Hide any visible tooltips so they don't cover the menu
-        document.querySelectorAll('.session-tooltip').forEach(t => t.style.display = 'none');
-    }
-}
 
 Object.assign(window, {
     toggleSidebarKebab, closeSidebarKebabs,
@@ -710,23 +580,6 @@ Object.assign(window, {
     // template_browser
 });
 
-// Top-bar settings dropdown
-function toggleTopBarSettings() {
-    const menu = ensureBuilt('top-bar-settings-menu'); // built on first open (#4500)
-    if (!menu) return;
-    const isOpen = menu.style.display !== 'none';
-    menu.style.display = isOpen ? 'none' : '';
-    // Sync group-by-team checkmark
-    const check = document.getElementById('group-by-team-check-top');
-    if (check) {
-        const groupByTeam = browserLocal.get('coral-group-by-team') === 'true';
-        check.style.opacity = groupByTeam ? '1' : '0.2';
-    }
-}
-function closeTopBarSettings() {
-    const menu = document.getElementById('top-bar-settings-menu');
-    if (menu) menu.style.display = 'none';
-}
 (window.__coral ||= {}).toggleTopBarSettings = toggleTopBarSettings;
 (window.__coral ||= {}).closeTopBarSettings = closeTopBarSettings;
 
@@ -861,70 +714,8 @@ function syncFilterDomToState() {
     updateFilterBadge();
 }
 
-// window.__coralReady 'liveListLoaded': the page start loads the live list twice, once at
-// once and once when the startup check finds the server ready (the two join when they
-// overlap). The part is marked when both have settled, loaded or failed, so a test that
-// injects state after it can't have a late list answer land on top. A startup check that
-// fails, or a page without one, counts as settled for this, so the signal never hangs.
-let _startListLoads = 2;
-const _startListLoadSettled = () => { if (--_startListLoads === 0) markReady('liveListLoaded'); };
-let _pollListLoadSettled = false;
-const _settlePollListLoad = () => { if (!_pollListLoadSettled) { _pollListLoadSettled = true; _startListLoadSettled(); } };
 
-// The server checks its databases a minute after it starts (#4157); a page opened before
-// then asks once more a little after, so a damaged database is not only in the log.
-const DATABASE_RECHECK_MS = 90_000;
-async function recheckDatabases() {
-    try {
-        const resp = await fetchSystemStatus({ fresh: true });
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (data && data.database_warning) showDatabaseWarning(data.database_warning);
-    } catch { /* not shown; the next page load asks again */ }
-}
 
-function pollStartupStatus() {
-    const el = document.getElementById('startup-loading');
-    if (!el) { _settlePollListLoad(); return; }
-    let firstCheck = true;   // the first answer may be the one the page's other startup callers share; a retry must be fresh
-    const check = async () => {
-        // The hub has no local startup phase: each machine is its own server, and the merged list
-        // fills in as the feed reports them, so there is nothing to wait for here.
-        if (isCloud()) {
-            el.classList.add('hidden');
-            dashboardStartupComplete();
-            loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded).finally(_settlePollListLoad);
-            return;
-        }
-        try {
-            const resp = await fetchSystemStatus({ fresh: !firstCheck });
-            firstCheck = false;
-            if (!resp.ok) { dashboardFailed('status_fetch_http'); _settlePollListLoad(); setTimeout(check, 2000); return; }
-            const data = await resp.json();
-            if (!data || typeof data.startup_complete !== 'boolean') throw new SyntaxError('Invalid startup status');
-            if (data.startup_complete) {
-                // The local sign-in banner's strip is settled before the page shows, so the terminal is sized once with it (or without it). Only the
-                // startup overlay waits for it (a check that is slow or fails does not hold the page past 1.5 s): the rest of startup, the list load
-                // included, keeps the timing it had, so nothing else moves when the check is slow (#4291).
-                Promise.race([importOnce('./local_auth_banner.js').then(m => m.startLocalAuthBanner()), new Promise(r => setTimeout(r, 1500))])
-                    .catch(() => {}).then(() => el.classList.add('hidden'));
-                if (data.security_warning) showSecurityWarning(data.security_warning); // #3637
-                // The server checks its databases a minute after it starts (#4157): look again then.
-                if (data.database_warning) showDatabaseWarning(data.database_warning);
-                else setTimeout(recheckDatabases, DATABASE_RECHECK_MS);
-                dashboardStartupComplete();
-                // One question at a time: set a password (#3948, once, while none is set), then Coral Hub sign-in (#3966, once, for a
-                // computer already linked to Coral Hub). The second waits if the first is still open.
-                importOnce('./password_ui.js').then(m => m.maybePromptSetPassword()).catch(() => {})
-                    .then(() => importOnce('./hub_notice.js')).then(m => m.maybeOfferHubSignin()).catch(() => {});
-                loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded).finally(_settlePollListLoad);
-                return;
-            }
-        } catch (error) { dashboardFailed(error instanceof SyntaxError ? 'status_fetch_invalid' : 'status_fetch_network'); _settlePollListLoad(); }
-        setTimeout(check, 2000);
-    };
-    check();
-}
 
 // ── Routes (#3532) ───────────────────────────────────────────────────────
 // nav.js owns history; these show a route the page was opened at or the user went Back or
@@ -1090,45 +881,8 @@ function showHome() {
 // The Coral Hub, the pop-out and a remote server's agent are not /agents/<id> of a local session: nothing starts there.
 startChatPrefetch({ cloud: isCloud() });
 
-// What was typed and where people worked, kept in this browser (local_store.js, #3681): owned by the
-// signed-in Coral Hub account (none locally), aged out at start and daily in a tab left open.
-async function initLocalStore() {
-    let tag = '';
-    try { tag = state.account ? await accountTag(state.account.email) : ''; } catch { tag = ''; }
-    setStoreOwner(tag);
-    applyTabPrefs(); // the tab choice is kept per account, so read it now that the account is known (#4103)
-    loadSessionDrafts(ageOutStored());
-    loadPendingFromStorage();
-    setInterval(() => loadSessionDrafts(ageOutStored()), DAY_MS); // interval-ok: daily, browser storage only, no request
-}
 
-/** Platform detection and what is particular to the platform the page runs in (the Coral app on macOS or Windows, or a browser). */
-function initPlatform() {
-    // Initialize platform detection and platform-specific behavior
-    platform.init();
-    if (platform.isNative) {
-        initNative();
-        if (platform.isMacOS)   initMacOS();
-        if (platform.isWindows) initWindows();
-    } else {
-        initBrowser();
-    }
-}
 
-/** Every fetch of the page goes through a wrapper that sends a signed-out 401 of Coral's own /api to the sign-in page. */
-function installUnauthorizedRedirect() {
-    // A 401 from Coral's /api (session ended; strict mode #3418): to /auth?return_to=this page,
-    // once (auth_redirect.js). The Coral Hub has its own redirect (cloud.js).
-    const _origFetch = window.fetch;
-    window.fetch = async function(...args) {
-        const resp = await _origFetch.apply(this, args);
-        // Only a 401 that means signed out goes to /auth (#3528); the caller gets the response either way.
-        if (resp.status === 401 && !isCloud() && _sameOriginApi(args[0])) {
-            resp.clone().text().then(t => { if (isSignedOut401(t)) handleUnauthorized(); }).catch(() => handleUnauthorized());
-        }
-        return resp;
-    };
-}
 
 /** The first loads (the agent list, tags, pinned folders, views, the feed's socket, history, the scheduler, the board) and the filter state the URL asked for. */
 function loadInitialData(popout) {
@@ -1323,142 +1077,9 @@ function wireHistoryFilters() {
     }
 }
 
-/** The command box and the inputs around it: image drop, the file search, the @file and /command mentions, the notes, the macro dialog's Enter and the box's own keys. */
-function wireComposer() {
-    // Image drag-and-drop on command pane
-    initImageDrop();
 
-    // File search in files panel + top bar
-    initFileSearch();
 
-    // @file mention autocomplete
-    initFileMention();
 
-    // /command mention autocomplete
-    initCommandMention();
-
-    // Markdown notes panel: click-to-edit, blur-to-save
-    initNotesMd();
-
-    // Enter in macro modal submits
-    document.getElementById("macro-command-input").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") { e.preventDefault(); addMacro(); }
-    });
-
-    // Chat mode: the command box grows with its text
-    initCommandInputAutosize();
-    initChatFind();
-
-    // Enter sends command, Shift+Enter inserts newline
-    const cmdInput = document.getElementById("command-input");
-    cmdInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            sendCommand();
-        }
-    });
-    cmdInput.addEventListener("input", () => {
-        const key = sessionKey(state.currentSession);
-        if (key) saveSessionDraft(key, cmdInput.value);
-    });
-
-    // Global keyboard shortcuts removed — terminal input now handled by
-    // xterm.js onData when the terminal is focused.
-}
-
-/** Scroll tracking of the capture pane and the live history, and pausing capture updates while text in the terminal pane is selected. */
-function wirePaneScroll() {
-    // Auto-scroll detection for capture pane and live history
-    const capture = document.getElementById("pane-capture");
-    capture.addEventListener("scroll", () => {
-        const { scrollTop, scrollHeight, clientHeight } = capture;
-        state.autoScroll = (scrollHeight - scrollTop - clientHeight) < 50;
-    });
-    const liveHistory = document.getElementById("live-history-messages");
-    if (liveHistory) {
-        liveHistory.addEventListener("scroll", () => {
-            const { scrollTop, scrollHeight, clientHeight } = liveHistory;
-            state.autoScroll = (scrollHeight - scrollTop - clientHeight) < 50;
-        });
-    }
-
-    // Pause capture updates while user is selecting text inside the terminal pane
-    const pauseBadge = document.getElementById("selection-pause-badge");
-    const captureWrapper = document.getElementById("capture-wrapper");
-    document.addEventListener("selectionchange", () => {
-        const sel = window.getSelection();
-        const hasSelection = sel && sel.toString().length > 0;
-        const inCapture = hasSelection && captureWrapper && sel.anchorNode && captureWrapper.contains(sel.anchorNode);
-        state.isSelecting = !!inCapture;
-        if (pauseBadge) pauseBadge.style.display = state.isSelecting ? "" : "none";
-    });
-}
-
-/** The sidebars and the side panel: collapsible sections, the overflow menu, the resize handles, the preview pane and the saved tabs. */
-function initPanels() {
-    // Sidebar collapsible sections
-    initSidebarCollapse();
-    initAgenticPanelCollapse();
-    initAgenticBlockResize();
-    initAgenticBlockCollapse();
-
-    // Overflow menu close on outside click
-    document.addEventListener('click', (e) => {
-        const openMenus = document.querySelectorAll('.overflow-menu[style*="block"]');
-        for (const menu of openMenus) {
-            if (!menu.parentElement.contains(e.target)) {
-                menu.style.display = 'none';
-            }
-        }
-    });
-    // Overflow menu toggle
-    document.addEventListener('click', (e) => {
-        const trigger = e.target.closest('.overflow-menu-trigger');
-        if (!trigger) return;
-        e.stopPropagation();
-        const menu = trigger.nextElementSibling;
-        if (menu && menu.classList.contains('overflow-menu')) {
-            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-        }
-    });
-
-    // Resize handles
-    initSidebarResize();
-    initSidebarRail();
-    initTaskBarResize();
-    initBoardChatResize();
-    initPreviewPane();
-    restoreAgenticTabs();
-}
-
-/** The window's own events: a hidden page pauses its polling, a resize refits the terminal and the pane width. */
-function wireWindowEvents() {
-    // Pause polling when tab is hidden; refresh immediately when visible again.
-    // Skip in native apps — WKWebView may report document.hidden=true permanently.
-    if (!platform.isNative) {
-        document.addEventListener("visibilitychange", () => {
-            if (!document.hidden && state.currentSession && state.currentSession.type === "live") {
-                refreshCapture();
-                // The transcript poll skips hidden windows, so a window that
-                // was in the background has no chat yet (or a stale one).
-                // Waiting for the next tick to notice shows an empty pane.
-                refreshLiveHistory();
-            }
-        });
-    }
-
-    // Sync tmux pane width on window resize and panel drag
-    let resizeDebounce;
-    window.addEventListener("resize", () => {
-        clearTimeout(resizeDebounce);
-        resizeDebounce = setTimeout(syncPaneWidth, 300);
-        fitTerminal();
-    });
-    // Re-sync after sidebar/task-bar drag ends (the panels change available width)
-    document.addEventListener("mouseup", () => {
-        setTimeout(() => { fitTerminal(); syncPaneWidth(); }, 50);
-    });
-}
 
 /** The page's route: its path, or an old hash link, shown once the handlers are in place. */
 function startRoute(popout) {
@@ -1472,8 +1093,6 @@ function startRoute(popout) {
     }
 }
 
-/** Lets the browser run what is waiting (a paint, an input, a response) before the next step: scheduler.yield where there is one, a zero timer where there is not. */
-const yieldToMain = () => (globalThis.scheduler && typeof scheduler.yield === 'function') ? scheduler.yield() : new Promise(r => setTimeout(r, 0));
 
 document.addEventListener("DOMContentLoaded", async () => {
     beginDashboardAnalytics();
@@ -1526,10 +1145,3 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 
-// Whether a fetch target is this origin's /api (a 401 from elsewhere is not Coral's session).
-function _sameOriginApi(input) {
-    try {
-        const u = new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, location.href);
-        return u.origin === location.origin && u.pathname.startsWith('/api/');
-    } catch { return false; }
-}

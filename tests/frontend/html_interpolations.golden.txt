@@ -477,6 +477,12 @@
 1	tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeAttr(tagColor(t.color))}" title="${esc
 1	task_dep_picker.js	checked
 1	task_dep_picker.js	t.id
+1	task_detail.js	assigneeOptions
+1	task_detail.js	p
+1	task_detail.js	priorityOptions
+1	task_detail.js	requiredLabel
+1	task_detail.js	requiredOutputs.map(output => `<li>${escapeHtml(output)}</li>`).join('')
+1	task_detail.js	revision
 1	task_detail_html.js	(input.artifacts || []).map(artifactHtml).join('')
 1	task_detail_html.js	(review.artifacts || []).map(artifactHtml).join('')
 1	task_detail_html.js	(workflow.gate_results || []).length ? `<div>Gate results: ${(workflow.gate_results || []).map(g => `<span cla
@@ -517,43 +523,37 @@
 1	task_detail_html.js	uriDisplay
 2	task_detail_html.js	warningClass
 1	task_detail_html.js	workflow.artifacts.map(artifactHtml).join('')
+1	task_list.js	arrow('assignee')
+1	task_list.js	arrow('cost')
+2	task_list.js	arrow('created_at')
+1	task_list.js	arrow('id')
+1	task_list.js	arrow('priority')
+1	task_list.js	arrow('type')
+1	task_list.js	blockedBadge
+1	task_list.js	claimedBadge
+1	task_list.js	claimedFor
+1	task_list.js	className
+1	task_list.js	clickHandler
+1	task_list.js	completedCount
+1	task_list.js	costClass
+1	task_list.js	costText
+1	task_list.js	icon
+1	task_list.js	isSubagent || isAgent ? '' : _verifyMark(t)
+1	task_list.js	label
+1	task_list.js	left ? ` (${left} not shown)` : ''
+1	task_list.js	notLoaded ? ` (${notLoaded} not shown)` : ''
+1	task_list.js	priorityClass
+1	task_list.js	statusClass
+1	task_list.js	statusIcon
+1	task_list.js	subagentBadge
+1	task_list.js	t.priority ? (_priorityLabel[t.priority] || escapeHtml(t.priority)) : '\u2014'
+1	task_list.js	taskIdLabel
+1	task_list.js	timeStr
+1	task_list.js	title
+1	task_list.js	tooltip
+1	task_list.js	typeCell
 1	task_verify_marks.js	v.icon
 1	task_verify_marks.js	v.state
-1	tasks.js	arrow('assignee')
-1	tasks.js	arrow('cost')
-2	tasks.js	arrow('created_at')
-1	tasks.js	arrow('id')
-1	tasks.js	arrow('priority')
-1	tasks.js	arrow('type')
-1	tasks.js	assigneeOptions
-1	tasks.js	blockedBadge
-1	tasks.js	claimedBadge
-1	tasks.js	claimedFor
-1	tasks.js	className
-1	tasks.js	clickHandler
-1	tasks.js	completedCount
-1	tasks.js	costClass
-1	tasks.js	costText
-1	tasks.js	icon
-1	tasks.js	isSubagent || isAgent ? '' : _verifyMark(t)
-1	tasks.js	label
-1	tasks.js	left ? ` (${left} not shown)` : ''
-1	tasks.js	notLoaded ? ` (${notLoaded} not shown)` : ''
-1	tasks.js	p
-1	tasks.js	priorityClass
-1	tasks.js	priorityOptions
-1	tasks.js	requiredLabel
-1	tasks.js	requiredOutputs.map(output => `<li>${escapeHtml(output)}</li>`).join('')
-1	tasks.js	revision
-1	tasks.js	statusClass
-1	tasks.js	statusIcon
-1	tasks.js	subagentBadge
-1	tasks.js	t.priority ? (_priorityLabel[t.priority] || escapeHtml(t.priority)) : '\u2014'
-1	tasks.js	taskIdLabel
-1	tasks.js	timeStr
-1	tasks.js	title
-1	tasks.js	tooltip
-1	tasks.js	typeCell
 1	team_artifacts.js	_SPIN
 1	team_artifacts.js	agent
 1	team_artifacts.js	html
