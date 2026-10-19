@@ -1,28 +1,38 @@
 /* Live history view — renders JSONL messages as a read-only conversation log */
 
 import { state } from './state.js';
-import { escapeHtml, renderMarkdown, showToast, copyText } from './utils.js';
-import { registerActions } from './actions.js';
+import { escapeHtml, showToast, copyText } from './utils.js';
+// Load order only (#4996): the imports below with no names are loaded for what the module registers at load, in the order this module imported them before the split (the startup-sequence golden records it).
+import './actions.js';
 import { platform } from './platform/detect.js';
 import { fitTerminal, refreshTerminal } from './xterm_renderer.js';
 import { loadXterm, xtermReady } from './vendor_loader.js';
 import { fireAgentView } from './agent_view.js';
-import { deriveSessionState } from './render.js';
+import './render.js';
 import { chatAgentAdapter } from './chat_agents.js';
 import { serverFetch, sessionServer, isCloud } from './server_base.js';
-import { responseError } from './server_status.js';
-import { reportSendError } from './terminal_gone.js';
+import './server_status.js';
+import './terminal_gone.js';
 import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from './overload.js';
-import { onAccountForgotten } from './local_store.js';
-import { TRAILING_CHROME, appendContent, appendTurnFinal, appendWork, htmlToElement, isShortReply, noticeStartedTurn, rollUpGroups, updateWorkGroupSummary } from './chat_content.js';
+import './local_store.js';
+import { htmlToElement, rollUpGroups, updateWorkGroupSummary } from './chat_content.js';
 import { flashCopied, makeBubble } from './chat_bubbles.js';
-import { SAVE_BUTTON } from './saved_marks.js';
-import { unwrapPastedContent } from './pasted_content.js';
+import './saved_marks.js';
+import './pasted_content.js';
 import { CHAT_TRIM, FIRST_PAGE, takeChatPrefetch } from './chat_page.js';
 import { loginBySession, ownPromptCard, pendingToolBySession, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
-import { INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, isCoralNudge, normalizeNudgeText, noteAgentActivity, noteInterrupt, rememberUserMessage, syncPendingBubbles, syncWorkingIndicator } from './pending_messages.js';
+import { INTERRUPT_RE, noteAgentActivity, noteInterrupt, rememberUserMessage, syncPendingBubbles, syncWorkingIndicator } from './pending_messages.js';
 import { browserLocal } from './safe_storage.js';
-import { thumbHtml, wireThumbs } from './chat_thumbs.js';
+import './chat_thumbs.js';
+import { renderToolCard } from './chat_tool_cards.js';
+import { bubbleSource, renderMessage, renderMessagesChunked } from './chat_messages.js';
+import { freshKeptPage, keepFirstPage, keepMore, keptPages } from './chat_kept_pages.js';
+import { noteUnseenChat, syncJumpToLatest } from './chat_jump_latest.js';
+import { sendPromptAnswer, syncEmptyState } from './chat_prompt_empty.js';
+import { autosizeCommandInput } from './command_autosize.js';
+export { clearKeptChatPages } from './chat_kept_pages.js';
+export { renderTranscript } from './chat_messages.js';
+export { initCommandInputAutosize } from './command_autosize.js';
 export { addPendingMessage, confirmPendingMessage, loadPendingFromStorage, removePendingMessage } from './pending_messages.js';
 export { linkifyRefs } from './chat_bubbles.js';
 
@@ -33,47 +43,10 @@ let historyHasMore = false;  // whether older messages exist
 let initialLoadDone = false; // whether the initial full load has completed
 let loadingMore = false;     // an older page is being fetched
 
-// The chat page of each recently seen agent, kept so a switch back shows it at once and fetches only what came after
-// (#3726), instead of the whole first page again. A page is kept for a few minutes after the agent was last on screen,
-// for the last few agents, and only its newest messages (what the first page and the polls rendered).
-const KEPT_TTL_MS = 5 * 60 * 1000;
-const KEPT_MAX_AGENTS = 6;
-const KEPT_MAX_MESSAGES = 600;
-const keptPages = new Map(); // session_id -> { messages, total, start, at }; the newest-used last
 
-function keepFirstPage(sessionId, messages, total, start) {
-    keptPages.delete(sessionId);
-    keptPages.set(sessionId, { messages: messages.slice(), total, start, at: Date.now() });
-    while (keptPages.size > KEPT_MAX_AGENTS) keptPages.delete(keptPages.keys().next().value);
-}
 
-function keepMore(sessionId, messages, total) {
-    const kept = keptPages.get(sessionId);
-    if (!kept) return;
-    kept.messages.push(...messages);
-    kept.total = total;
-    kept.at = Date.now();
-    if (kept.messages.length > KEPT_MAX_MESSAGES) {
-        const drop = kept.messages.length - KEPT_MAX_MESSAGES;
-        kept.messages.splice(0, drop);
-        kept.start += drop;
-    }
-    keptPages.delete(sessionId);
-    keptPages.set(sessionId, kept);
-}
 
-/** Forget every kept page (a suite that reuses an agent id with different content between its cases). */
-export function clearKeptChatPages() { keptPages.clear(); }
-// The account's chat text is not kept past sign-out or a change of Coral Hub account.
-onAccountForgotten(clearKeptChatPages);
 
-/** The kept page of a session seen within the last few minutes, or null (an older one is dropped). */
-function freshKeptPage(sessionId) {
-    const kept = keptPages.get(sessionId);
-    if (!kept) return null;
-    if (Date.now() - kept.at > KEPT_TTL_MS || kept.messages.length === 0) { keptPages.delete(sessionId); return null; }
-    return kept;
-}
 // Messages per page. Tool calls and results each count as one and are folded
 // away in the chat, so a page covers fewer turns than its size suggests. The
 // first page is small so a switch paints quickly (the payload crosses the hub
@@ -176,116 +149,12 @@ document.addEventListener("toggle", (e) => {
 
 
 
-const TOOL_ICONS = {
-    Read: "\u{1F4C4}",
-    Edit: "\u{270F}\uFE0F",
-    Write: "\u{1F4DD}",
-    Bash: "\u{1F4BB}",
-    Grep: "\u{1F50D}",
-    Glob: "\u{1F4C2}",
-    Agent: "\u{1F916}",
-    WebSearch: "\u{1F310}",
-    WebFetch: "\u{1F310}",
-    TaskCreate: "\u{2611}\uFE0F",
-    TaskUpdate: "\u{2611}\uFE0F",
-    NotebookEdit: "\u{1F4D3}",
-    AskUserQuestion: "\u{2753}",
-};
 
-function getToolIcon(name) {
-    return TOOL_ICONS[name] || "\u{1F527}";
-}
 
-function renderDiffLines(oldStr, newStr) {
-    const oldLines = oldStr.split("\n");
-    const newLines = newStr.split("\n");
-    let html = "";
-    for (const line of oldLines) {
-        html += `<div class="diff-line diff-del">- ${escapeHtml(line)}</div>`;
-    }
-    for (const line of newLines) {
-        html += `<div class="diff-line diff-add">+ ${escapeHtml(line)}</div>`;
-    }
-    return html;
-}
 
-function renderPatchLines(patch) {
-    return patch.split("\n").map(line => {
-        const cls = line.startsWith("+") ? " diff-add" : line.startsWith("-") ? " diff-del" : "";
-        return `<div class="diff-line${cls}">${escapeHtml(line)}</div>`;
-    }).join("");
-}
 
-function toolLabel(tool) {
-    if (tool.description) return tool.description;
-    if (tool.command) return tool.command.split("\n")[0];
-    return tool.input_summary || "";
-}
 
-function renderToolCard(tool, adapter, index) {
-    const toolUseId = tool.tool_use_id || "";
-    // A shortened tool (#3723): the index of its message, loaded in full when the card opens.
-    const trim = tool.trimmed && Number.isInteger(index) ? ` data-trim-use="${Number(index)}"` : "";
-    const view = adapter.toolView(tool);
-    let bodyHtml = "";
 
-    if (tool.command) {
-        bodyHtml += `<pre class="tool-card-command">${escapeHtml(tool.command)}</pre>`;
-    } else if (tool.input_summary && tool.input_summary !== toolLabel(tool)) {
-        bodyHtml += `<div class="tool-card-summary">${escapeHtml(tool.input_summary)}</div>`;
-    }
-    if (tool.patch) {
-        bodyHtml += `<div class="diff-content">${renderPatchLines(tool.patch)}</div>`;
-    }
-
-    if ((tool.name === "Edit" || view.name === "Edit" || view.icon === "Edit") && (tool.old_string || tool.new_string)) {
-        bodyHtml += `<div class="diff-content">${renderDiffLines(tool.old_string || "", tool.new_string || "")}</div>`;
-    }
-    if ((tool.name === "Write" || view.name === "Write" || view.icon === "Write") && tool.write_content) {
-        bodyHtml += `<pre class="tool-result-content">${escapeHtml(tool.write_content)}</pre>`;
-    }
-
-    const label = toolLabel(tool);
-    return `<details class="tool-call" data-tool-use-id="${escapeHtml(toolUseId)}"${trim}>
-        <summary class="tool-call-summary">
-            <span class="tool-call-icon">${getToolIcon(view.icon)}</span>
-            <span class="tool-call-name" title="${escapeHtml(tool.name || "")}">${escapeHtml(view.name)}</span>
-            <span class="tool-call-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
-        </summary>
-        <div class="tool-call-body">${bodyHtml}</div>
-    </details>`;
-}
-
-// Questions to the user are part of the conversation, so they stay expanded.
-function renderQuestionCard(tool) {
-    let bodyHtml = "";
-    if (tool.description) {
-        bodyHtml += `<div class="tool-card-description">${escapeHtml(tool.description)}</div>`;
-    }
-    if (tool.questions) {
-        for (const q of tool.questions) {
-            bodyHtml += `<div class="tool-question">`;
-            bodyHtml += `<div class="tool-question-text">${escapeHtml(q.question)}</div>`;
-            if (q.options && q.options.length > 0) {
-                bodyHtml += `<div class="tool-question-options">`;
-                for (const opt of q.options) {
-                    const label = typeof opt === "string" ? opt : (opt.label || opt.text || "");
-                    const desc = typeof opt === "object" && opt ? opt.description : "";
-                    bodyHtml += `<div class="tool-question-option">`;
-                    bodyHtml += `<span class="tool-question-option-label">${escapeHtml(label)}</span>`;
-                    if (desc) {
-                        bodyHtml += `<span class="tool-question-option-desc">${escapeHtml(desc)}</span>`;
-                    }
-                    bodyHtml += `</div>`;
-                }
-                bodyHtml += `</div>`;
-            }
-            bodyHtml += `</div>`;
-        }
-    }
-
-    return `<div class="tool-card" data-tool-use-id="${escapeHtml(tool.tool_use_id || "")}">${bodyHtml}</div>`;
-}
 
 // Join a prepended older page to the page after it: a run of tool calls split by the page
 // boundary is one group again. A reply at the end of the older page stays a reply (#4105).
@@ -306,10 +175,6 @@ export function stitchPages(lastOlder) {
     }
 }
 
-// Agent replies carry a copy button that copies the reply's markdown as the
-// agent wrote it (not the rendered text).
-const COPY_BUTTON = `<button type="button" class="chat-copy-btn" title="Copy" aria-label="Copy message"><span class="material-icons" aria-hidden="true">content_copy</span></button>`;
-const bubbleSource = new WeakMap();
 
 document.addEventListener("click", async (e) => {
     const btn = e.target.closest && e.target.closest(".chat-copy-btn");
@@ -323,105 +188,9 @@ document.addEventListener("click", async (e) => {
     flashCopied(btn);
 });
 
-// One message that can't be drawn must not cost the rest of the history (#3694): it gets a note
-// in its place, and the messages around it are drawn as usual.
-function renderMessage(msg, container, agentType = "claude") {
-    try {
-        renderOneMessage(msg, container, agentType);
-    } catch (e) {
-        console.warn("[coral] a chat message could not be shown", e);
-        appendContent(container, makeBubble("chat-note chat-message-unrendered", "This message could not be shown."));
-    }
-}
 
-// A user turn that Coral typed into the agent, not the Operator: the server flags the turns it delivered itself (coral_notice,
-// #4306); older history and anything sent before the server started are read by their text. A long notice reaches the agent as a
-// paste, which Claude Code records wrapped in pasted_content tags, so the text is unwrapped before it is read.
-function isCoralDelivery(msg) {
-    return msg.coral_notice === true || isCoralNudge(unwrapPastedContent(msg.content));
-}
 
-// A pasted image in a user turn (Codex records it as a name like "[Image #1]" and the saved file's base name): a chip with
-// the name, and the file name when there is one. The chip is not a link; the image is shown as a thumbnail from its reference in the session's transcript, or
-// from an upload by the file's name (chat_thumbs.js, #5028, #5032).
-function attachmentChips(attachments) {
-    const chips = (Array.isArray(attachments) ? attachments : []).filter(a => a && a.name).map(a =>
-        `<span class="chat-attachment-chip">${escapeHtml(a.name)}${a.file ? ` <span class="chat-attachment-file">${escapeHtml(a.file)}</span>` : ""}</span>${thumbHtml(a)}`);
-    return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
-}
 
-function renderOneMessage(msg, container, agentType) {
-    const adapter = chatAgentAdapter(agentType);
-    if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
-        appendContent(container, makeBubble("chat-note", "Interrupted"));
-	} else if (msg.type === "user" && isCoralDelivery(msg)) {
-		const text = unwrapPastedContent(msg.content);
-		appendCoralNotice(container, normalizeNudgeText(text), isCoralHealthNudge(text));
-    } else if (msg.type === "user") {
-        const bubble = makeBubble("chat-bubble human",
-            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')}</div>${attachmentChips(msg.attachments)}${msg.key ? SAVE_BUTTON : ""}`);
-        if (msg.key) { bubble.dataset.msgKey = msg.key; bubble.dataset.said = msg.timestamp || ""; } // Save for Later finds the message again by this (#4510)
-        wireThumbs(bubble);
-        appendContent(container, bubble);
-    } else if (msg.type === "assistant") {
-        if (msg.text) {
-            const bubble = makeBubble(`chat-bubble assistant${msg.phase === "commentary" ? " commentary" : ""}`,
-                `<div class="message-text">${renderMarkdown(msg.text, undefined, 'chat')}</div>${msg.key ? SAVE_BUTTON : ""}${COPY_BUTTON}`);
-            bubbleSource.set(bubble, msg.text);
-            if (msg.key) { bubble.dataset.msgKey = msg.key; bubble.dataset.said = msg.timestamp || ""; } // Save for Later finds the message again by this (#4510)
-            // Prose in a message that also makes tool calls is a one-line preamble ("Checking the CSS first."): it goes
-            // in the steps group with the calls. Prose in a message with no tool calls (a question card is not a step)
-            // is a reply: it always shows and it ends the group (#4105).
-            const preamble = (msg.tool_uses || []).some(t => !adapter.toolView(t).isQuestion);
-            // A short reply to a turn a Coral notice started folds into the group too, and labels it (#4171).
-            const folded = !preamble && (msg.tool_uses || []).length === 0 && isShortReply(msg.text) && noticeStartedTurn(container);
-            if (folded) bubble.classList.add("folded-reply");
-            if (preamble || folded || adapter.assistantPlacement(msg) === "work") appendWork(container, bubble);
-            else appendTurnFinal(container, bubble);
-        }
-        for (const tool of msg.tool_uses || []) {
-            const view = adapter.toolView(tool);
-            if (view.isQuestion) {
-                appendTurnFinal(container, makeBubble("chat-bubble assistant",
-                    `<div class="role-label">${getToolIcon(view.icon)} ${escapeHtml(view.questionLabel)}</div>` + renderQuestionCard(tool)));
-            } else {
-                appendWork(container, htmlToElement(renderToolCard(tool, adapter, msg._index)));
-            }
-        }
-    } else if (msg.type === "tool_result") {
-        const toolUseId = msg.tool_use_id || "";
-        const target = toolUseId
-            ? container.querySelector(`[data-tool-use-id="${CSS.escape(toolUseId)}"]`)
-            : null;
-        const outputHtml = `<pre class="tool-output-inline${msg.is_error ? " tool-result-error" : ""}">${escapeHtml(msg.content || "")}</pre>`;
-        const markTrimmed = card => {
-            if (!msg.trimmed || !Number.isInteger(msg._index)) return card;
-            card.dataset.trimResult = String(msg._index);
-            card.dataset.trimResultId = toolUseId;
-            return card;
-        };
-        if (target && target.classList.contains("tool-call")) {
-            if (msg.is_error) target.classList.add("tool-call-error");
-            target.querySelector(".tool-call-body").insertAdjacentHTML("beforeend",
-                `<div class="tool-card-output">${outputHtml}</div>`);
-            markTrimmed(target);
-        } else if (target) {
-            target.insertAdjacentHTML("beforeend", `<div class="tool-card-output">${outputHtml}</div>`);
-        } else {
-            // The matching tool call is on an older, not-yet-loaded page.
-            const toolName = msg.tool_name || "Tool";
-            const view = adapter.toolView({ name: toolName });
-            appendWork(container, markTrimmed(htmlToElement(`<details class="tool-call${msg.is_error ? " tool-call-error" : ""}">
-                    <summary class="tool-call-summary">
-                        <span class="tool-call-icon">${getToolIcon(view.icon)}</span>
-                        <span class="tool-call-name" title="${escapeHtml(toolName)}">${escapeHtml(view.name)}</span>
-                        <span class="tool-call-label">output</span>
-                    </summary>
-                    <div class="tool-call-body"><div class="tool-card-output">${outputHtml}</div></div>
-                </details>`)));
-        }
-    }
-}
 
 function syncUsageLimitNotice(container, notice) {
     const existing = container.querySelector('.chat-usage-limit-notice');
@@ -437,34 +206,7 @@ function syncUsageLimitNotice(container, notice) {
     container.append(bubble);
 }
 
-/** Render a full transcript into an empty container (history Chat tab). */
-export function renderTranscript(messages, container, agentType = "claude") {
-    container.dataset.agentType = agentType;
-    for (const msg of messages) {
-        const before = container.children.length;
-        renderMessage(msg, container, agentType);
-        if (msg.__coralMessageIndex != null) {
-            for (let i = before; i < container.children.length; i++) {
-                container.children[i].dataset.messageIndex = String(msg.__coralMessageIndex);
-            }
-        }
-    }
-}
 
-// Messages rendered in slices of RENDER_SLICE with a yield between them, so a long page is not one long task (#3866: 200 messages
-// took about 190 ms and a 600-message kept page about 500 ms in one go). `target` is a detached element; the caller inserts what
-// it built. Resolves false, rendering no more, when `stillWanted()` says the page was left meanwhile.
-const RENDER_SLICE = 40;
-async function renderMessagesChunked(messages, target, agentType, stillWanted) {
-    for (let i = 0; i < messages.length; i += RENDER_SLICE) {
-        for (const msg of messages.slice(i, i + RENDER_SLICE)) renderMessage(msg, target, agentType);
-        if (i + RENDER_SLICE < messages.length) {
-            await new Promise(resolve => setTimeout(resolve, 0));
-            if (!stillWanted()) return false;
-        }
-    }
-    return true;
-}
 
 /** Shows the kept page of an agent seen a moment ago (built off screen in slices). True when the agent was switched while it was built: the refresh ends. */
 async function _showKeptPage(session, container, kept) {
@@ -1073,83 +815,10 @@ for (const type of ["pointerover", "touchstart", "focusin"]) {
 }
 
 
-// On desktop the command box grows with its text, like a chat composer
-// (CSS caps it at 40vh). Mobile keeps its own compact input bar.
-const desktopComposer = window.matchMedia("(min-width: 768px)");
 
-// What the last autosize measured for: the text, the box's width (a ResizeObserver keeps it; 0 while the box is hidden), the window
-// height (the 40vh cap) and the mode. Measuring forces layout several times (#3866: 112 ms over five agent switches), so
-// when none of these changed since the last run the result cannot have changed either and there is nothing to do.
-let _autosizeKey = "";
-let _inputWidth = 0;
 
-// A phone's box has a fixed range of heights (mobile.css); at a large text size the placeholder wraps onto more lines than the range holds
-// and is cut off. An empty box is made tall enough for its placeholder (up to 40 percent of the window); a box with text keeps the range.
-function fitPlaceholder(input) {
-    input.style.removeProperty("min-height");
-    input.style.removeProperty("max-height");
-    if (input.value || !input.placeholder || input.clientWidth < 40) return;   // not laid out yet: nothing to measure
-    const cs = getComputedStyle(input);
-    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
-    const probe = document.createElement("div");
-    probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre-wrap;overflow-wrap:break-word;box-sizing:content-box;width:${input.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)}px;font:${cs.font};line-height:${cs.lineHeight};letter-spacing:${cs.letterSpacing}`;
-    probe.textContent = input.placeholder;
-    document.body.appendChild(probe);
-    const need = Math.min(probe.getBoundingClientRect().height + pad, window.innerHeight * 0.4);
-    probe.remove();
-    if (need > input.offsetHeight + 0.5) {
-        input.style.setProperty("min-height", `${need}px`, "important");
-        input.style.setProperty("max-height", `${need}px`, "important");
-    }
-}
 
-function autosizeCommandInput() {
-    const input = document.getElementById("command-input");
-    if (!input) return;
-    const key = [input.value, _inputWidth, window.innerHeight, desktopComposer.matches, getComputedStyle(input).fontSize,
-        document.getElementById("command-pane")?.classList.contains("chat-mode")].join("\u0001");
-    if (key === _autosizeKey) return;
-    _autosizeKey = key;
-    const before = input.offsetHeight;
-    if (!desktopComposer.matches || !input.offsetParent) {
-        input.style.height = "";
-        fitPlaceholder(input);
-        return;
-    }
-    // Collapse first so scrollHeight measures the text, not the old height
-    input.style.height = "0px";
-    input.style.height = input.scrollHeight + "px";
-    if (input.offsetHeight === before) return;
-    if (document.getElementById("capture-wrapper")?.classList.contains("chat-mode")) {
-        // Keep the newest reply in view as the box grows
-        const messages = document.getElementById("live-history-messages");
-        if (messages && state.autoScroll) messages.scrollTop = messages.scrollHeight;
-    } else {
-        // The terminal area changed size; refit xterm to it
-        fitTerminal();
-    }
-}
 
-/** Autosize the command box on typing and on every programmatic value change
- *  (send clears it, session switches restore drafts, macros fill it). */
-export function initCommandInputAutosize() {
-    const input = document.getElementById("command-input");
-    if (!input) return;
-    const desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
-    Object.defineProperty(input, "value", {
-        configurable: true,
-        get() { return desc.get.call(this); },
-        set(v) { desc.set.call(this, v); autosizeCommandInput(); },
-    });
-    input.addEventListener("input", autosizeCommandInput);
-    window.addEventListener("resize", autosizeCommandInput);
-    if (typeof ResizeObserver === "function") {
-        new ResizeObserver(entries => {
-            const width = Math.round(entries[entries.length - 1].contentRect.width);
-            if (width !== _inputWidth) { _inputWidth = width; autosizeCommandInput(); }
-        }).observe(input);
-    }
-}
 
 export function setLiveViewMode(mode) {
     _terminalOverride = false;
@@ -1172,73 +841,8 @@ export function showTerminalView() {
 }
 
 
-// What a brand-new agent's empty chat says, by what the agent is doing: a title, and a hint on what to do next.
-function emptyStateWords(session) {
-    const row = (state.liveSessions || []).find(s => s.session_id === session?.session_id) || session;
-    switch (deriveSessionState(row)) {
-        case 'sleeping': return ["This agent is asleep", "Use Wake below to chat with it."];
-        default: return ["No messages yet", "Type below and press Enter to send, Shift+Enter for a new line. The agent's replies and steps appear here."];
-    }
-}
 
-// A brand-new agent has no transcript yet; say so, and what to do, instead of a blank pane.
-function syncEmptyState(container) {
-    const hasContent = Array.from(container.children).some(c => !c.matches(TRAILING_CHROME + ", .load-more-btn, .loading-indicator"));
-    const busy = container.querySelector(":scope > .chat-working, :scope > .chat-needs-input, :scope > .pending-messages");
-    let el = container.querySelector(":scope > .chat-empty");
-    if (hasContent || busy) {
-        if (el) el.remove();
-        return;
-    }
-    const [title, hint] = emptyStateWords(state.currentSession);
-    if (!el) {
-        el = document.createElement("div");
-        el.className = "chat-empty";
-        el.setAttribute("role", "status");
-        el.innerHTML = '<div class="chat-empty-title"></div><div class="chat-empty-hint"></div>';
-        container.appendChild(el);
-    }
-    // Only write a word that changed, so a screen reader is not told the same thing at every poll
-    const t = el.querySelector(".chat-empty-title"), h = el.querySelector(".chat-empty-hint");
-    if (t.textContent !== title) t.textContent = title;
-    if (h.textContent !== hint) h.textContent = hint;
-}
 
-// Answering: the server re-reads the terminal and sends the digit (plus the
-// typed text for a text option) only if that option is still on screen with
-// this label.
-async function sendPromptAnswer(card, n, label, action, text) {
-    const session = state.currentSession;
-    if (!session || session.type !== "live") return false;
-    const controls = card ? Array.from(card.querySelectorAll(".cni-answer, .cni-text-form button, .cni-text-form input")) : [];
-    controls.forEach(c => { c.disabled = true; });
-    try {
-        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/answer-prompt`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: session.session_id, agent_type: session.agent_type || "", n, label, text: text || "" }),
-        });
-        if (!resp.ok) {
-            const { text, code } = await responseError(resp, sessionServer(session), "Could not send the answer. Use the terminal.");
-            reportSendError(session, text, code); // under the composer (#3218)
-            controls.forEach(c => { c.disabled = false; });
-            return false;
-        }
-        // The card refreshes from the terminal: the next question, the review
-        // step, or gone once the tool runs.
-        promptOptionsBySession.delete(session.session_id);
-        if (action === "chat") {
-            const input = document.getElementById("command-input");
-            if (input) input.focus();
-            showToast("Type your reply below");
-        }
-        return true;
-    } catch {
-        showToast("Could not send the answer. Use the terminal.", true);
-        controls.forEach(c => { c.disabled = false; });
-        return false;
-    }
-}
 
 document.addEventListener("click", (e) => {
     const btn = e.target.closest && e.target.closest("#live-history-messages .cni-answer");
@@ -1265,92 +869,9 @@ document.addEventListener("submit", (e) => {
     sendPromptAnswer(ownPromptCard(form), Number(form.dataset.n), form.dataset.label, "text", text);
 });
 
-// ── Jump to latest (#4511, operator request) ────────────────────────────
-// Reading higher up in an agent's Chat view, a round down-arrow button above the chat input jumps to the latest message and pins
-// the view again, so new messages follow. It shows once you are more than about a screen from the bottom (or when messages came
-// in while you read higher up: a dot on it, the number in its name) and goes at the bottom. Its live region stays displayed and only its text changes
-// (a region shown already filled can go unannounced: UX on #4502); it reads like the board's "N new messages" pill (#4502).
-let _jumpUnseen = 0;
-let _jumpWired = false;
-const JUMP_AT_BOTTOM_PX = 50; // the pin's own threshold (state.autoScroll, app.js)
 
-function jumpParts() {
-    const region = document.getElementById('chat-jump-latest');
-    return region && { btn: region.querySelector('button'), dot: region.querySelector('.chat-jump-latest-dot'), status: region.querySelector('.chat-jump-latest-status') };
-}
 
-function syncJumpToLatest() {
-    const container = document.getElementById('live-history-messages');
-    const p = jumpParts();
-    if (!container || !p) return;
-    if (!_jumpWired) {
-        _jumpWired = true;
-        container.addEventListener('scroll', syncJumpToLatest, { passive: true });
-        if (!container.hasAttribute('tabindex')) container.tabIndex = -1; // focus after a jump on a touch screen
-    }
-    const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
-    const atBottom = dist < JUMP_AT_BOTTOM_PX;
-    if (atBottom && _jumpUnseen) setJumpUnseen(0);
-    p.btn.hidden = atBottom || !(dist > container.clientHeight || _jumpUnseen > 0);
-}
 
-function setJumpUnseen(n) {
-    _jumpUnseen = n;
-    const p = jumpParts();
-    if (!p) return;
-    const words = n ? `${n} new message${n === 1 ? '' : 's'}` : '';
-    p.dot.hidden = !n; // a dot, no number: the count is in the name and the live region (the operator's restyle)
-    const name = n ? `Jump to latest, ${words}` : 'Jump to latest';
-    p.btn.setAttribute('aria-label', name);
-    p.btn.title = name;
-    if (p.status.textContent !== words) p.status.textContent = words; // announced politely when the count changes
-}
 
-// The messages a poll brings while the view is not pinned: what people and the agent wrote, not tool calls and results.
-function noteUnseenChat(messages) {
-    if (state.autoScroll) return;
-    const n = messages.filter(m => m.type === 'user' || m.type === 'assistant').length;
-    if (n) setJumpUnseen(_jumpUnseen + n);
-}
 
-function jumpToLatest() {
-    const container = document.getElementById('live-history-messages');
-    if (!container) return;
-    setJumpUnseen(0);
-    state.autoScroll = true;
-    // Pinned at the bottom when the smooth scroll gets there, so new messages follow. Messages that come in on the way make the
-    // scroll stop short of the new bottom: once it stops (or after a second) it is finished at once. If you scroll away from the
-    // bottom meanwhile, it lets go; and it watches for that second only, so nothing is left to pull the view down later.
-    const pin = () => { container.scrollTop = container.scrollHeight; state.autoScroll = true; syncJumpToLatest(); };
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) pin();
-    else {
-        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-        const t0 = performance.now();
-        let lastTop = container.scrollTop, lastHeight = container.scrollHeight, still = 0;
-        const watch = () => {
-            const top = container.scrollTop, height = container.scrollHeight;
-            if (height - top - container.clientHeight < 2) { pin(); return; }
-            // Scrolled back up: yours. A real drop in the top counts even when a message grew the height that frame
-            // (#4601: the old height===lastHeight guard pinned the view against a scroll-up that landed on the same frame
-            // as a reply); content above that shrinks can pull the top up on its own, so the drop must exceed that shrink.
-            if (top < lastTop - 1 - Math.max(0, lastHeight - height)) return;
-            still = top === lastTop ? still + 1 : 0;
-            lastTop = top;
-            lastHeight = height;
-            if (still >= 3 || performance.now() - t0 > 1000) pin();
-            else requestAnimationFrame(watch);
-        };
-        requestAnimationFrame(watch);
-    }
-    // Focus: the chat input on a desktop, to type next; on a touch screen the messages (the input would open the keyboard).
-    const input = document.getElementById('command-input');
-    const touch = window.matchMedia?.('(pointer: coarse)').matches;
-    if (!touch && input && !input.disabled && input.getClientRects().length) input.focus({ preventScroll: true });
-    else container.focus({ preventScroll: true });
-}
 
-// A prompt card's Open terminal (#3645), and the jump to the latest message (#4511).
-registerActions({
-    'terminal-view-open': () => window.showTerminalView(),
-    'chat-jump-latest': () => jumpToLatest(),
-});

@@ -13,13 +13,13 @@ const MODES = new Set(['board', 'chat', 'file']);
 // Where marked.parse may be called directly, and why. Files marked `links` must pass a link
 // mode to the sanitizeHtml that follows.
 const MARKED_PARSE = {
-    'utils.js': 'the renderers themselves',
+    'markdown.js': 'the renderers themselves (moved out of utils.js, #5065)',
     'notes.js': 'links', // session notes, which can be an agent-derived auto summary
     'preview_pane.js': 'links', // a workspace file, which can be agent-written
     'team_artifacts.js': 'links', // knowledge distilled from agents' text
 };
 const DOMPURIFY_SANITIZE = {
-    'utils.js': 'sanitizeHtml itself',
+    'markdown.js': 'sanitizeHtml itself (moved out of utils.js, #5065)',
     'subagents.js': 'a second pass over renderMarkdown(..., "board") output',
 };
 
@@ -83,7 +83,7 @@ for (const file of walk(STATIC)) {
         else if (MARKED_PARSE[name] === 'links' && !/sanitizeHtml\([^;]*\{\s*links:\s*'(board|chat|file)'/.test(src)) problems.push(`${name}: marked.parse output must go through sanitizeHtml(..., { links: mode })`);
     }
     if (/DOMPurify\.sanitize\(/.test(src) && !(name in DOMPURIFY_SANITIZE)) problems.push(`${name}: calls DOMPurify.sanitize directly; use sanitizeHtml(html, config, { links: mode }) or add it to DOMPURIFY_SANITIZE with a reason`);
-    if (/new\s+marked\.Marked\(/.test(src) && name !== 'utils.js') problems.push(`${name}: makes its own marked instance; render through utils.js`);
+    if (/new\s+marked\.Marked\(/.test(src) && name !== 'markdown.js') problems.push(`${name}: makes its own marked instance; render through markdown.js`);
 }
 
 if (checkedCalls < 8) problems.push(`only ${checkedCalls} renderMarkdown/sanitizeMarkdown calls found: the scan is broken`);
