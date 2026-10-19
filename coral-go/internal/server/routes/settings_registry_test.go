@@ -45,6 +45,7 @@ var settingRows = map[string]struct{ good, bad string }{
 	"artifact_comments_hub_write": {`"true"`, `"nope"`},
 	"auto_summarize":              {`"1"`, `"nope"`},
 	"gate_signals_claude":         {`"off"`, `"nope"`},
+	"artifact_comments_hub_write": {`"true"`, `"nope"`},
 	"turn_end_handoff":            {`"off"`, `"later"`},
 	"welcome_choice":              {`"connected"`, `"maybe"`},
 	"welcome_pending":             {`"False"`, `"nope"`},
