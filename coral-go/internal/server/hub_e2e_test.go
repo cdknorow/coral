@@ -186,7 +186,7 @@ func newE2ERemote(t *testing.T, id string, mutate func(*config.Config)) *e2eRemo
 	t.Cleanup(func() {
 		r.stop()
 		for _, s := range backend.ListSessions() {
-			_ = backend.Kill(s.AgentName)
+			killTerminal(backend, s.AgentName)
 		}
 		r.srv.Close() // its loops and board database first (#3914)
 		db.Close()
@@ -353,6 +353,19 @@ func newE2EHub(t *testing.T, env *e2eEnv, dir string, hubMode bool) *e2eHub {
 	return h
 }
 
+// killTerminal ends a test's terminal. The real PTY backend's Kill gives the process 5 s to exit on SIGTERM, and the
+// interactive shells these tests start ignore it, so every kill waited the whole 5 s (a hub test closes three servers'
+// terminals: 20 s of one test, #4972). A short grace force-kills the same process and removes the same session.
+func killTerminal(b ptymanager.TerminalBackend, name string) {
+	if k, ok := b.(interface {
+		KillWithin(string, time.Duration) error
+	}); ok {
+		_ = k.KillWithin(name, 100*time.Millisecond)
+		return
+	}
+	_ = b.Kill(name)
+}
+
 func (h *e2eHub) close() {
 	if h.cancel == nil {
 		return
@@ -362,7 +375,7 @@ func (h *e2eHub) close() {
 	h.ts.CloseClientConnections()
 	h.ts.Close()
 	for _, s := range h.backend.ListSessions() {
-		_ = h.backend.Kill(s.AgentName)
+		killTerminal(h.backend, s.AgentName)
 	}
 	h.srv.Close() // its loops and board database first (#3914)
 	h.db.Close()
@@ -780,7 +793,7 @@ func TestHubE2E_MergedListSameNames(t *testing.T) {
 		return false
 	})
 	require.NoError(t, store.NewSessionStore(a.db).UnregisterLiveSession(context.Background(), direct))
-	_ = a.backend.Kill(a.sessionNameFor(direct))
+	killTerminal(a.backend, a.sessionNameFor(direct))
 	hub.eventually("removal reflected", func() bool {
 		for _, s := range hub.live().Sessions {
 			if s.SessionID == direct {
@@ -1404,7 +1417,7 @@ func realPTYUsable() bool {
 		b := ptymanager.NewPTYBackend()
 		if b.Spawn("probe", "terminal", os.TempDir(), "probe-"+fmt.Sprint(time.Now().UnixNano()), "", 80, 24) == nil {
 			ptyUsable = true
-			_ = b.Kill("probe")
+			killTerminal(b, "probe")
 		}
 	})
 	return ptyUsable

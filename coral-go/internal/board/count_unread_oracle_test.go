@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
@@ -229,56 +230,67 @@ func TestCountUnreadAgreesWithBefore4599(t *testing.T) {
 	if testing.Short() {
 		seeds = 2
 	}
+	// Each seed has its own directory, databases and random source: the seeds run in parallel (#4972), inside one group so
+	// the floors are read after every seed has finished.
+	var mu sync.Mutex
 	kinds := map[string]int{}
 	calls := 0
-	for seed := int64(1); seed <= int64(seeds); seed++ {
-		rng := rand.New(rand.NewSource(seed))
-		dir := t.TempDir()
-		pathA, pathB := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
-		seedStore, err := NewStoreWithKey(pathA, "")
-		require.NoError(t, err)
-		cuSeed(t, seedStore, rng, seed%2 == 0)
-		require.NoError(t, seedStore.Close()) // checkpoints the WAL into the main file
-		data, err := os.ReadFile(pathA)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(pathB, data, 0o600))
-		a, err := NewStoreWithKey(pathA, "")
-		require.NoError(t, err)
-		b, err := NewStoreWithKey(pathB, "")
-		require.NoError(t, err)
-		for step := 0; step < 150; step++ {
-			stepSeed := rng.Int63()
-			cuStep(t, a, rand.New(rand.NewSource(stepSeed)))
-			cuStep(t, b, rand.New(rand.NewSource(stepSeed)))
-			for k := 1 + rng.Intn(2); k > 0; k-- { // a second count in a row resumes from the cache
-				sessions := cuSessions(rng)
-				cacheBefore := sidebarCache(b)
-				old, oldErr := countUnreadBefore4599(a, ctx, sessions, true)
-				got, gotErr := b.countUnread(ctx, sessions, true)
-				where := fmt.Sprintf("seed %d step %d: sessions %q", seed, step, sessions)
-				require.Equal(t, fmt.Sprint(oldErr), fmt.Sprint(gotErr), where)
-				require.Equal(t, old, got, where)
-				require.True(t, reflect.DeepEqual(sidebarCache(a), sidebarCache(b)), "%s: the sidebar caches differ", where)
-				calls++
-				if gotErr != nil {
-					kinds["an error"]++
-					continue
-				}
-				for _, kind := range cuKinds(t, b, cacheBefore, got) {
-					kinds[kind]++
-				}
-				if sessions != nil {
-					for _, sn := range sessions {
-						if _, ok := got[sn]; !ok {
-							kinds["an unknown session left out"]++
+	kind := func(k string) { mu.Lock(); kinds[k]++; mu.Unlock() }
+	t.Run("seeds", func(t *testing.T) {
+		for seed := int64(1); seed <= int64(seeds); seed++ {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				rng := rand.New(rand.NewSource(seed))
+				dir := t.TempDir()
+				pathA, pathB := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
+				seedStore, err := NewStoreWithKey(pathA, "")
+				require.NoError(t, err)
+				cuSeed(t, seedStore, rng, seed%2 == 0)
+				require.NoError(t, seedStore.Close()) // checkpoints the WAL into the main file
+				data, err := os.ReadFile(pathA)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(pathB, data, 0o600))
+				a, err := NewStoreWithKey(pathA, "")
+				require.NoError(t, err)
+				b, err := NewStoreWithKey(pathB, "")
+				require.NoError(t, err)
+				for step := 0; step < 150; step++ {
+					stepSeed := rng.Int63()
+					cuStep(t, a, rand.New(rand.NewSource(stepSeed)))
+					cuStep(t, b, rand.New(rand.NewSource(stepSeed)))
+					for k := 1 + rng.Intn(2); k > 0; k-- { // a second count in a row resumes from the cache
+						sessions := cuSessions(rng)
+						cacheBefore := sidebarCache(b)
+						old, oldErr := countUnreadBefore4599(a, ctx, sessions, true)
+						got, gotErr := b.countUnread(ctx, sessions, true)
+						where := fmt.Sprintf("seed %d step %d: sessions %q", seed, step, sessions)
+						require.Equal(t, fmt.Sprint(oldErr), fmt.Sprint(gotErr), where)
+						require.Equal(t, old, got, where)
+						require.True(t, reflect.DeepEqual(sidebarCache(a), sidebarCache(b)), "%s: the sidebar caches differ", where)
+						mu.Lock()
+						calls++
+						mu.Unlock()
+						if gotErr != nil {
+							kind("an error")
+							continue
+						}
+						for _, k := range cuKinds(t, b, cacheBefore, got) {
+							kind(k)
+						}
+						if sessions != nil {
+							for _, sn := range sessions {
+								if _, ok := got[sn]; !ok {
+									kind("an unknown session left out")
+								}
+							}
 						}
 					}
 				}
-			}
+				require.NoError(t, a.Close())
+				require.NoError(t, b.Close())
+			})
 		}
-		require.NoError(t, a.Close())
-		require.NoError(t, b.Close())
-	}
+	})
 	t.Logf("%d counts compared; per kind: %v", calls, kinds)
 	for _, k := range []string{"all, counted", "mentions, counted", "unset mode, counted", "group mode, counted", "resumed from the cache",
 		"first count on a long board", "read past the newest", "a session on two boards", "an unknown session left out", "an error"} {

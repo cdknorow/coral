@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -31,13 +32,31 @@ var verdictOutcomes = map[string]int{
 	"only the reviewers": 40, "you already": 30, "is not open": 40, "the note is too long": 10,
 }
 
-var verdictSeen map[string]int
+var (
+	verdictSeen   map[string]int
+	verdictSeenMu sync.Mutex
+)
 
+// seenVerdict counts one compared outcome; the seeds run in parallel.
+func seenVerdict(outcome string) {
+	verdictSeenMu.Lock()
+	verdictSeen[outcome]++
+	verdictSeenMu.Unlock()
+}
+
+// Each seed has its own directory, databases and random source, so the 60 seeds run in parallel (#4972: they were
+// 273 s of the package's 472 s on epoch, run one after another). They run inside one group so the floors below are
+// read only once every seed has finished.
 func TestReviewVerdictAgreesWithBefore4599(t *testing.T) {
 	verdictSeen = map[string]int{}
-	for seed := int64(1); seed <= 60; seed++ {
-		t.Run(fmt.Sprint(seed), func(t *testing.T) { runVerdictOracle(t, seed) })
-	}
+	t.Run("seeds", func(t *testing.T) {
+		for seed := int64(1); seed <= 60; seed++ {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				runVerdictOracle(t, seed)
+			})
+		}
+	})
 	t.Logf("compared, per outcome: %v", verdictSeen)
 	for outcome, floor := range verdictOutcomes {
 		require.GreaterOrEqual(t, verdictSeen[outcome], floor, "%q went (almost) unexercised", outcome)
@@ -230,15 +249,15 @@ func runVerdictOracle(t *testing.T, seed int64) {
 		case strings.HasPrefix(r, "error: "):
 			for outcome := range verdictOutcomes {
 				if strings.Contains(r, outcome) {
-					verdictSeen[outcome]++
+					seenVerdict(outcome)
 				}
 			}
 		case strings.Contains(r, `"Rejected":true`):
-			verdictSeen["rejected"]++
+			seenVerdict("rejected")
 		case strings.Contains(r, `"Complete":true`):
-			verdictSeen["approved, round complete"]++
+			seenVerdict("approved, round complete")
 		default:
-			verdictSeen["approved, round still open"]++
+			seenVerdict("approved, round still open")
 		}
 		s, err = NewStoreWithKey(pathA, "")
 		require.NoError(t, err)

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -173,56 +174,65 @@ func TestAddTaskDependenciesAgreesWithBefore4599(t *testing.T) {
 	if testing.Short() {
 		seeds = 8
 	}
+	// Each seed has its own directory, databases and random source: the seeds run in parallel (#4972), inside one group so
+	// the floors are read after every seed has finished.
+	var mu sync.Mutex
 	outcomes := map[string]int{}
-	for seed := int64(1); seed <= int64(seeds); seed++ {
-		rng := rand.New(rand.NewSource(seed))
-		dir := t.TempDir()
-		pathA, pathB := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
-		seedStore, err := NewStoreWithKey(pathA, "")
-		require.NoError(t, err)
-		n := seedDepsOracle(t, seedStore, rng)
-		require.NoError(t, seedStore.Close()) // checkpoints the WAL into the main file
-		data, err := os.ReadFile(pathA)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(pathB, data, 0o600))
-		a, err := NewStoreWithKey(pathA, "")
-		require.NoError(t, err)
-		b, err := NewStoreWithKey(pathB, "")
-		require.NoError(t, err)
-		require.Equal(t, dumpDepsTables(t, a), dumpDepsTables(t, b))
-		for step := 0; step < 120; step++ {
-			taskID := int64(1 + rng.Intn(n+2))
-			if rng.Intn(4) > 0 { // mostly a task that hasn't started, so the checks after the first are reached
-				var open []int64
-				require.NoError(t, a.db.Select(&open, `SELECT id FROM board_tasks WHERE status IN ('pending', 'blocked', 'draft') ORDER BY id`))
-				if len(open) > 0 {
-					taskID = open[rng.Intn(len(open))]
+	count := func(k string) { mu.Lock(); outcomes[k]++; mu.Unlock() }
+	t.Run("seeds", func(t *testing.T) {
+		for seed := int64(1); seed <= int64(seeds); seed++ {
+			t.Run(fmt.Sprint(seed), func(t *testing.T) {
+				t.Parallel()
+				rng := rand.New(rand.NewSource(seed))
+				dir := t.TempDir()
+				pathA, pathB := filepath.Join(dir, "a.db"), filepath.Join(dir, "b.db")
+				seedStore, err := NewStoreWithKey(pathA, "")
+				require.NoError(t, err)
+				n := seedDepsOracle(t, seedStore, rng)
+				require.NoError(t, seedStore.Close()) // checkpoints the WAL into the main file
+				data, err := os.ReadFile(pathA)
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(pathB, data, 0o600))
+				a, err := NewStoreWithKey(pathA, "")
+				require.NoError(t, err)
+				b, err := NewStoreWithKey(pathB, "")
+				require.NoError(t, err)
+				require.Equal(t, dumpDepsTables(t, a), dumpDepsTables(t, b))
+				for step := 0; step < 120; step++ {
+					taskID := int64(1 + rng.Intn(n+2))
+					if rng.Intn(4) > 0 { // mostly a task that hasn't started, so the checks after the first are reached
+						var open []int64
+						require.NoError(t, a.db.Select(&open, `SELECT id FROM board_tasks WHERE status IN ('pending', 'blocked', 'draft') ORDER BY id`))
+						if len(open) > 0 {
+							taskID = open[rng.Intn(len(open))]
+						}
+					}
+					project := "team"
+					if rng.Intn(10) > 0 {
+						_ = a.db.Get(&project, `SELECT board_id FROM board_tasks WHERE id = ?`, taskID)
+					} else if rng.Intn(2) == 0 {
+						project = "other"
+					}
+					var dependents []int64
+					require.NoError(t, a.db.Select(&dependents, `SELECT task_id FROM task_dependencies WHERE blocked_by_task_id = ? ORDER BY task_id`, taskID))
+					deps := randomDeps(rng, n, taskID, dependents)
+					maxDepth := []int{0, 3, 5, 10}[rng.Intn(4)]
+					var before string
+					_ = a.db.Get(&before, `SELECT status FROM board_tasks WHERE id = ? AND board_id = ?`, taskID, project)
+					oldDeps, newDeps := copyDeps(deps), copyDeps(deps)
+					oldErr := addTaskDependenciesBefore4599(a, ctx, project, taskID, oldDeps, maxDepth)
+					newErr := b.AddTaskDependencies(ctx, project, taskID, newDeps, maxDepth)
+					where := fmt.Sprintf("seed %d step %d: task %d on %s, deps %+v, depth %d", seed, step, taskID, project, deps, maxDepth)
+					require.Equal(t, fmt.Sprint(oldErr), fmt.Sprint(newErr), where)
+					require.True(t, reflect.DeepEqual(oldDeps, newDeps), "%s: deps filled in as %+v, before %+v", where, newDeps, oldDeps)
+					require.Equal(t, dumpDepsTables(t, a), dumpDepsTables(t, b), where)
+					count(depsOutcome(t, b, newErr, taskID, project, before))
 				}
-			}
-			project := "team"
-			if rng.Intn(10) > 0 {
-				_ = a.db.Get(&project, `SELECT board_id FROM board_tasks WHERE id = ?`, taskID)
-			} else if rng.Intn(2) == 0 {
-				project = "other"
-			}
-			var dependents []int64
-			require.NoError(t, a.db.Select(&dependents, `SELECT task_id FROM task_dependencies WHERE blocked_by_task_id = ? ORDER BY task_id`, taskID))
-			deps := randomDeps(rng, n, taskID, dependents)
-			maxDepth := []int{0, 3, 5, 10}[rng.Intn(4)]
-			var before string
-			_ = a.db.Get(&before, `SELECT status FROM board_tasks WHERE id = ? AND board_id = ?`, taskID, project)
-			oldDeps, newDeps := copyDeps(deps), copyDeps(deps)
-			oldErr := addTaskDependenciesBefore4599(a, ctx, project, taskID, oldDeps, maxDepth)
-			newErr := b.AddTaskDependencies(ctx, project, taskID, newDeps, maxDepth)
-			where := fmt.Sprintf("seed %d step %d: task %d on %s, deps %+v, depth %d", seed, step, taskID, project, deps, maxDepth)
-			require.Equal(t, fmt.Sprint(oldErr), fmt.Sprint(newErr), where)
-			require.True(t, reflect.DeepEqual(oldDeps, newDeps), "%s: deps filled in as %+v, before %+v", where, newDeps, oldDeps)
-			require.Equal(t, dumpDepsTables(t, a), dumpDepsTables(t, b), where)
-			outcomes[depsOutcome(t, b, newErr, taskID, project, before)]++
+				require.NoError(t, a.Close())
+				require.NoError(t, b.Close())
+			})
 		}
-		require.NoError(t, a.Close())
-		require.NoError(t, b.Close())
-	}
+	})
 	t.Logf("calls compared, per outcome: %v", outcomes)
 	for _, k := range append(depOracleOutcomes, "ok, now blocked", "ok, now pending", "ok, left blocked", "ok, left pending", "ok, left draft") {
 		assert.GreaterOrEqual(t, outcomes[k], 10, "%q went (almost) unexercised", k)

@@ -34,7 +34,7 @@ func strictServer(t *testing.T, strict bool) (*Server, *httptest.Server, string)
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { // terminals a test launched: Windows can't delete a folder one is working in (#3914)
 		for _, s := range stack.backend.ListSessions() {
-			_ = stack.backend.Kill(s.AgentName)
+			killTerminal(stack.backend, s.AgentName)
 		}
 	})
 	return srv, ts, dir
