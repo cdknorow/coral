@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -28,6 +30,7 @@ type agyTestRig struct {
 	ss      *store.SessionStore
 	cfg     *config.Config
 	workdir string
+	fakeAgy string
 	router  *chi.Mux
 }
 
@@ -37,6 +40,30 @@ func setupAgyTestRig(t *testing.T) *agyTestRig {
 	cfg.LogDir = filepath.Join(dataDir, "logs")
 	require.NoError(t, os.MkdirAll(cfg.LogDir, 0o700))
 
+	binDir := t.TempDir()
+	fakeAgy := filepath.Join(binDir, "agy")
+	require.NoError(t, os.WriteFile(fakeAgy, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+	if runtime.GOOS == "windows" {
+		require.NoError(t, os.WriteFile(filepath.Join(binDir, "agy.bat"), []byte("@exit /b 0\r\n"), 0o755))
+	}
+
+	// Ensure PATH has fakeAgy prepended and strips any real agy executable from host PATH (#4354)
+	var cleanPath []string
+	cleanPath = append(cleanPath, binDir)
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		if p == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(p, "agy")); err == nil {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(p, "agy.exe")); err == nil {
+			continue
+		}
+		cleanPath = append(cleanPath, p)
+	}
+	t.Setenv("PATH", strings.Join(cleanPath, string(os.PathListSeparator)))
+
 	db, err := storetest.Open(t, filepath.Join(dataDir, "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
@@ -44,6 +71,7 @@ func setupAgyTestRig(t *testing.T) *agyTestRig {
 	term := newMockTerminal()
 	h := NewSessionsHandler(db, cfg, nil, term, nil)
 	ss := store.NewSessionStore(db)
+	require.NoError(t, ss.SetSetting(context.Background(), agent.CLIPathSettingKey(at.Agy), fakeAgy))
 
 	r := chi.NewRouter()
 	r.Post("/api/sessions/launch", h.Launch)
@@ -59,6 +87,7 @@ func setupAgyTestRig(t *testing.T) *agyTestRig {
 		ss:      ss,
 		cfg:     cfg,
 		workdir: dataDir,
+		fakeAgy: fakeAgy,
 		router:  r,
 	}
 }
@@ -223,6 +252,7 @@ func TestAgyBypassPermissions_Path6a_TeamLaunch(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	cmd := lastSentCommand(rig.term)
+	assert.Contains(t, cmd, rig.fakeAgy, "team member launch must run the fake agy stub, never host CLI")
 	assert.Contains(t, cmd, "--dangerously-skip-permissions", "team member launch must inherit --dangerously-skip-permissions")
 }
 
@@ -255,6 +285,7 @@ func TestAgyBypassPermissions_Path6b_TeamReset(t *testing.T) {
 	require.Equal(t, http.StatusOK, resetRec.Code, resetRec.Body.String())
 
 	cmd := lastSentCommand(rig.term)
+	assert.Contains(t, cmd, rig.fakeAgy, "reset team must run the fake agy stub, never host CLI")
 	assert.Contains(t, cmd, "--dangerously-skip-permissions", "reset team must re-launch member with --dangerously-skip-permissions")
 }
 
@@ -307,6 +338,7 @@ func TestAgyBypassPermissions_Path8_ReadOnlyPreset(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	cmd := lastSentCommand(rig.term)
+	assert.Contains(t, cmd, rig.fakeAgy, "read_only launch must run the fake agy stub, never host CLI")
 	assert.Contains(t, cmd, "--mode plan", "read_only must start with --mode plan")
 	assert.NotContains(t, cmd, "--dangerously-skip-permissions", "read_only must NEVER have --dangerously-skip-permissions")
 
