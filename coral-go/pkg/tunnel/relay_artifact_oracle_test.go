@@ -56,7 +56,15 @@ func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
 	mode.Store(hubMode{kind: "all", status: 200})
 	var mu sync.Mutex
 	var got string // what the hub received: length, hash, trailing
+	// How many times the hub's hook has started and returned (#5007). The test waits for them instead of sleeping 20 ms: a loaded or -race host
+	// stretches the hook past that, so what it recorded was missing from the call's result, or arrived during the NEXT call (which then met the
+	// artifact slot still busy and was answered 429 rate_limited).
+	var hooksStarted, hooksEnded atomic.Int64
+	var hubSession atomic.Pointer[Session] // the hub's session: its in-flight artifact count must be back to 0 before the next call
 	h := artifactHub(t, SessionConfig{MaxArtifactBytes: 8 << 20}, func(ctx context.Context, s *Session, req RelayArtifactRequest) RelayResponse {
+		hubSession.Store(s)
+		hooksStarted.Add(1)
+		defer hooksEnded.Add(1)
 		m := mode.Load().(hubMode)
 		record := func(r io.Reader, limit int64) {
 			hash := sha256.New()
@@ -114,6 +122,12 @@ func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
 			return "closed"
 		}
 		return "other"
+	}
+	waitHub := func(done func() bool) {
+		deadline := time.Now().Add(15 * time.Second)
+		for !done() && time.Now().Before(deadline) {
+			time.Sleep(2 * time.Millisecond)
+		}
 	}
 	sizes := []int64{1, 1000, 64 << 10, 64<<10 + 1, 200 << 10, 6 << 20}
 	counts := map[string]int{}
@@ -184,6 +198,13 @@ func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
 			}
 			return bytes.NewReader(payload)
 		}
+		// A frame reaches the hub's hook when the capability is on, the size is in range and the context is live.
+		// A body that is too short or too long, or stops after n bytes, ends in the CLIENT's error (length, idle): the call resets the stream
+		// as soon as it sees it, and whether the hub's hook had started, and how much it had read when the reset reached it, is a race in the
+		// old call and the new one alike (seeds 77, 95, 168 under load, #5007). What the hub received is compared only where the call ends
+		// without its own abort.
+		clientAborts := bodyKind == "short" || bodyKind == "long" || bodyKind == "block"
+		expectHook := !cancelled && client == cs && n >= 1 && n <= RelayMaxArtifact && !clientAborts
 		var outs [2]string
 		for i := range outs {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -193,6 +214,13 @@ func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
 			mu.Lock()
 			got = "nothing"
 			mu.Unlock()
+			// The last call's hook has returned and the session has released its in-flight slot (a call that began while it was held was answered
+			// 429 rate_limited, seeds 28, 156, 218 under load): nothing of the last call is still running.
+			waitHub(func() bool {
+				hs := hubSession.Load()
+				return hooksStarted.Load() == hooksEnded.Load() && (hs == nil || hs.artifactInflight.Load() == 0)
+			})
+			endedBefore := hooksEnded.Load()
 			b := body() // the same body for both calls
 			var resp RelayResponse
 			var err error
@@ -202,10 +230,17 @@ func TestRelayArtifactAgreesWithBefore4857(t *testing.T) {
 				resp, err = client.RelayArtifact(ctx, n, b)
 			}
 			cancel()
-			time.Sleep(20 * time.Millisecond) // the hub's hook has returned
+			if expectHook {
+				// The hub's hook returns when it has read the body, which a loaded or -race host can put well after the call returned (seed 198
+				// failed with "nothing" against 204800 bytes, #5007). Wait for it; a hook that never runs (it should always) leaves "nothing", as
+				// before, after the deadline.
+				waitHub(func() bool { return hooksEnded.Load() > endedBefore })
+			} else {
+				time.Sleep(20 * time.Millisecond) // no frame reaches the hub (range, capability off, cancelled): nothing to wait for
+			}
 			mu.Lock()
 			hub := got
-			if cancelled {
+			if cancelled || (clientAborts && client == cs && n >= 1 && n <= RelayMaxArtifact) {
 				hub = "-" // whether the header reached the hub before the stream closed is a race, in both
 			}
 			outs[i] = fmt.Sprintf("status=%d retry=%d body=%s err=%s hub=%s", resp.Status, resp.RetryAfter, resp.Body, class(err), hub)
