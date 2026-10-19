@@ -98,7 +98,7 @@ func TestRenderWorkIsBounded(t *testing.T) {
 		return d
 	}
 	baseline := best([]byte(strings.Repeat("a", MaxInput)))
-	const factor = 40 // a bounded sequence stays within a small constant of the linear baseline; a quadratic one is thousands×
+	const factor = 150 // a bounded sequence stays within a constant of the linear baseline (newline, a scroll, is ~43× on Windows CI vs ~12× on Mac/Linux); a quadratic one is ~10^5×, so it still fails by orders of magnitude (#4909 windows-tests)
 	for _, seq := range []string{"\x1b[2J", "\x1b[J", "\n", "\x1b[200S", "\x1b[?1049h\x1b[?1049l", "\x1bc"} {
 		input := []byte(strings.Repeat(seq, MaxInput/len(seq)+1))
 		d := best(input)
