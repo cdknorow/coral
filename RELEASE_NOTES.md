@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.4.118 — A calmer dashboard: no expanding rings, and nothing animates with reduced motion
+
+### Changes
+
+- **No expanding ring around the status dots:** the working, waiting and stuck dots now only flash (by opacity), in the agent list, the status dots elsewhere and the team avatars; the row dot flashes by itself. Idle, sleeping and ready dots stay still.
+- **With reduced motion set on the computer, nothing on the dashboard animates:** spinners are a static ring, pulsing dots rest, the shimmer stops, a toast appears where it stays, and smooth scrolls jump.
+- **The agent header no longer repeats the model** (the model chip and the agent row's tooltip carry it). The git branch is cut short with an ellipsis when it is long (a worktree's branch can be 60 characters or more); hover it, move to it with Tab or tap it and the whole name opens in place.
+- **`coral --help` and the docs say what `--host` and `--remote` do:** the default is this computer only; a network address (or 0.0.0.0) is used only when remote access is on (Settings > Privacy, or `--remote` for one run). The getting-started and remote-access pages name `--remote` and what remote access widens.
+
+### Tests
+
+- A census of every listener and its bind default (a new listener or a changed default fails a test), a browser check for reduced motion, and fixes to two dashboard suites (agent_state follows the dot rule, the phone Team settings suite no longer trips the sleep check).
+
 ## v1.4.117 — Team settings opens on the phone, and an optional agent type line in the agent list
 
 ### Fixes
