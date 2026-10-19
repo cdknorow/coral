@@ -11,17 +11,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// quietGitEnv turns off the background work git starts after a commit or a push: since git 2.29 every commit runs
+// "git maintenance run --auto --quiet --detach" (and a push into a repository runs it there), a detached process that
+// can still be touching .git when the test ends, so t.TempDir's cleanup found .git "directory not empty" (the v1.4.106 gate).
+var quietGitEnv = []string{"GIT_CONFIG_COUNT=3",
+	"GIT_CONFIG_KEY_0=maintenance.auto", "GIT_CONFIG_VALUE_0=false",
+	"GIT_CONFIG_KEY_1=gc.auto", "GIT_CONFIG_VALUE_1=0",
+	"GIT_CONFIG_KEY_2=receive.autogc", "GIT_CONFIG_VALUE_2=false"}
+
+// quietBare makes a bare repository that, too, starts nothing after a push into it: git strips GIT_CONFIG_COUNT from the
+// receive-pack it runs for a push, so the remote's own config has to say it.
+func quietBare(t *testing.T, dir string) {
+	t.Helper()
+	require.NoError(t, quietGit("init", "-q", "--bare", dir).Run())
+	for _, kv := range [][2]string{{"receive.autogc", "false"}, {"maintenance.auto", "false"}, {"gc.auto", "0"}} {
+		cmd := quietGit("config", kv[0], kv[1])
+		cmd.Dir = dir
+		require.NoError(t, cmd.Run(), kv[0])
+	}
+}
+
+// quietGit is a git command of these fixtures: it leaves no process behind once it has returned.
+func quietGit(args ...string) *exec.Cmd {
+	cmd := exec.Command("git", args...)
+	cmd.Env = append(os.Environ(), quietGitEnv...)
+	return cmd
+}
+
 func gitFixture(t *testing.T) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module fixture\n\ngo 1.21\n"), 0600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "fixture_test.go"), []byte("package fixture\nimport \"testing\"\nfunc TestFixture(t *testing.T) {}\n"), 0600))
 	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "coral@example.test"}, {"config", "user.name", "Coral Test"}, {"add", "."}, {"commit", "-qm", "fixture"}} {
-		cmd := exec.Command("git", args...)
+		cmd := quietGit(args...)
 		cmd.Dir = dir
 		require.NoError(t, cmd.Run(), strings.Join(args, " "))
 	}
-	revCmd := exec.Command("git", "rev-parse", "HEAD")
+	revCmd := quietGit("rev-parse", "HEAD")
 	revCmd.Dir = dir
 	out, err := revCmd.Output()
 	require.NoError(t, err)
@@ -50,12 +77,11 @@ func TestLocalRegisteredCheckRunnerGoTestBindsCandidateAndRuns(t *testing.T) {
 func TestLocalRegisteredCheckRunnerGitAncestryRejectsUnmergedAndAcceptsRemoteBranch(t *testing.T) {
 	dir, revision := gitFixture(t)
 	remoteDir := filepath.Join(t.TempDir(), "remote.git")
-	cmd := exec.Command("git", "init", "--bare", remoteDir)
-	require.NoError(t, cmd.Run())
-	cmd = exec.Command("git", "remote", "add", "origin", remoteDir)
+	quietBare(t, remoteDir)
+	cmd := quietGit("remote", "add", "origin", remoteDir)
 	cmd.Dir = dir
 	require.NoError(t, cmd.Run())
-	cmd = exec.Command("git", "push", "origin", "HEAD:refs/heads/release/candidate")
+	cmd = quietGit("push", "origin", "HEAD:refs/heads/release/candidate")
 	cmd.Dir = dir
 	require.NoError(t, cmd.Run())
 	runner := NewLocalRegisteredCheckRunner(dir)
@@ -67,13 +93,13 @@ func TestLocalRegisteredCheckRunnerGitAncestryRejectsUnmergedAndAcceptsRemoteBra
 	require.Equal(t, revision, remote.ObservedRevision)
 	// A different valid commit is not an ancestor of the designated branch.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "later.txt"), []byte("later"), 0600))
-	cmd = exec.Command("git", "add", "later.txt")
+	cmd = quietGit("add", "later.txt")
 	cmd.Dir = dir
 	require.NoError(t, cmd.Run())
-	cmd = exec.Command("git", "commit", "-qm", "later")
+	cmd = quietGit("commit", "-qm", "later")
 	cmd.Dir = dir
 	require.NoError(t, cmd.Run())
-	cmd = exec.Command("git", "rev-parse", "HEAD")
+	cmd = quietGit("rev-parse", "HEAD")
 	cmd.Dir = dir // the test repo's commit, not the checkout running the tests (#3442)
 	laterBytes, err := cmd.Output()
 	require.NoError(t, err)
@@ -115,4 +141,29 @@ func TestRegisteredGoTestPackagesStayInTheRepo(t *testing.T) {
 		require.Empty(t, evidence.Command, packages)
 		require.Nil(t, evidence.ExitCode, packages)
 	}
+}
+
+// Mutation: drop quietGitEnv from quietGit: a commit or push in a fixture starts git's detached background maintenance, which
+// races with the TempDir cleanup of the repository.
+func TestFixtureGitStartsNoBackgroundMaintenance(t *testing.T) {
+	dir, _ := gitFixture(t)
+	remoteDir := filepath.Join(t.TempDir(), "remote.git")
+	quietBare(t, remoteDir)
+	trace := filepath.Join(t.TempDir(), "trace.txt")
+	run := func(args ...string) {
+		cmd := quietGit(args...)
+		cmd.Dir = dir
+		cmd.Env = append(cmd.Env, "GIT_TRACE="+trace)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, strings.Join(args, " ")+"\n"+string(out))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "more.txt"), []byte("more"), 0600))
+	run("add", "more.txt")
+	run("commit", "-qm", "more")
+	run("remote", "add", "origin", remoteDir)
+	run("push", "-q", "origin", "HEAD:refs/heads/main")
+	log, err := os.ReadFile(trace)
+	require.NoError(t, err)
+	require.NotContains(t, string(log), "maintenance run", "git started its background maintenance")
+	require.NotContains(t, string(log), "gc --auto", "git started its background gc")
 }
