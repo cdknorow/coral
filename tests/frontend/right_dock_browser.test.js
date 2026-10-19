@@ -228,5 +228,8 @@ const BASE = require('./test_base').BASE;
             await ev(`localStorage.removeItem('coral-agentic-collapsed:board'); true`);
         }
         console.log('   ✓');
-    } finally { await client.close(); }
+    } finally {
+        await require('./helpers/saved_cleanup').clearSaved(api).catch(() => {}); // the bookmarks this suite saved are taken off again (#4916)
+        await client.close();
+    }
 })().catch(e => { console.error(e); process.exit(1); });

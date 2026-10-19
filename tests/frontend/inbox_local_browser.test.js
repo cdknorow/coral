@@ -192,6 +192,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         console.error(e && e.stack || e);
         results.push(false);
     } finally {
+        await require('./helpers/saved_cleanup').clearSaved(api).catch(() => {}); // the bookmarks this suite saved are taken off again (#4916)
         try { await client.close(); } catch (_) {}
     }
     const failed = results.filter(r => !r).length;

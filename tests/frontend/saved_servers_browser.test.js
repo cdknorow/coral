@@ -230,5 +230,8 @@ const REMOTE = `(() => {
         assert.deepEqual({ open: ended.open, remove: ended.remove, snippet: ended.snippet }, { open: false, remove: true, snippet: 'from an agent that ended' });
         assert.ok(/Box B/.test(ended.why) && /cannot be opened/.test(ended.why), ended.why);
         console.log('   ✓');
-    } finally { await client.close(); }
+    } finally {
+        await require('./helpers/saved_cleanup').clearSaved(api).catch(() => {}); // the bookmarks this suite saved are taken off again (#4916)
+        await client.close();
+    }
 })().catch(e => { console.error(e); process.exit(1); });

@@ -85,8 +85,12 @@ const HOOK = `(() => {
     const { waitFor, waitStable, coralReady } = require('./helpers/wait').bind(ev);
     const settle = () => waitStable(`document.getElementsByTagName('*').length`, 'the page to settle', 250, { timeout: 4000 }).catch(() => {});
     const planted = [], refused = [];
+    // What the suite creates in tables that outlive it (saved messages, tags, jobs, views, workflows) is taken off again in its finally (#4916): by id, through the page's fetch.
+    const made = [];
+    const track = (path, id) => { if (id && /^\/api\/(saved|tags|scheduled\/jobs|views|workflows)$/.test(path)) made.push(`${path}/${id}`); };
     const plant = async (field, method, path, body, headers) => {
         const r = await httpJson(method, path, body, headers);
+        track(path, r.data && r.data.id);
         (r.status >= 200 && r.status < 300 ? planted : refused).push(`${field} (${r.status}${r.status >= 300 ? ' ' + JSON.stringify(r.data).slice(0, 160) : ''})`);
         return r;
     };
@@ -139,9 +143,10 @@ const HOOK = `(() => {
         await Page.addScriptToEvaluateOnNewDocument({ source: HOOK });
         { const loaded0 = Page.loadEventFired(); await Page.navigate({ url: BASE + '/' }); await loaded0; await coralReady().catch(() => {}); }
         const plantPage = async (field, method, path, body) => {
-            const r = await ev(`fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, headers: { 'Content-Type': 'application/json' }, body: ${JSON.stringify(JSON.stringify(body))} }).then(async r => ({ status: r.status, text: (await r.text()).slice(0, 160) }))`);
-            (r.status >= 200 && r.status < 300 ? planted : refused).push(`${field} (${r.status}${r.status >= 300 ? ' ' + r.text : ''})`);
-            try { r.id = (JSON.parse(r.text || 'null') || {}).id; } catch { /* the text is cut */ }
+            const r = await ev(`fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, headers: { 'Content-Type': 'application/json' }, body: ${JSON.stringify(JSON.stringify(body))} }).then(async r => ({ status: r.status, text: (await r.text()).slice(0, 4000) }))`); // enough to hold the new row's id
+            (r.status >= 200 && r.status < 300 ? planted : refused).push(`${field} (${r.status}${r.status >= 300 ? ' ' + r.text.slice(0, 160) : ''})`);
+            try { r.id = (JSON.parse(r.text || 'null') || {}).id; } catch { const m = /"id"\s*:\s*"?([0-9A-Za-z_-]+)"?/.exec(r.text || ''); r.id = m && m[1]; } // the text is cut: its first id
+            track(path, r.id);
             return r;
         };
         await plantPage('saved-board', 'POST', '/api/saved', { kind: 'board', ref: BOARD, key: '1', agent_type: 'claude', title: P('saved-board-title'), snippet: P('saved-board-snippet'), said_at: P('saved-board-said-at'), author: P('saved-board-author') });
@@ -250,6 +255,7 @@ const HOOK = `(() => {
         check('the suite ran', false, e.message);
     } finally {
         if (standIn) await standIn.stop().catch(() => {});
+        for (const u of made) await ev(`fetch(${JSON.stringify(u)}, { method: 'DELETE' }).then(r => r.status)`).catch(() => {});
         try { if (/\/pwn-repo-/.test(repo)) fs.rmSync(repo, { recursive: true, force: true }); } catch { /* best effort */ }
         await client.close();
     }
