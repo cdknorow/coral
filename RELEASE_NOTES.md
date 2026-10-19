@@ -1,5 +1,36 @@
 # Release Notes
 
+## v1.4.103 — Dialogs rebuilt in the Settings layout, a compact agent-list header, and a team health monitor that starts off
+
+### Security
+
+- **Route gates see the route Coral will run:** a name with an encoded slash (`a%2Fb`) reached its handler decoded, while the checks before routing (the operator-only guard, the body limit, the identity actor's route, the agent write budget and the board-name and open-path reads) looked at the decoded path and found no route. They now use the path the router uses. No session, team or board name has a slash today, so nothing was reachable; this closes the class.
+- **One client cannot fill the Hub sign-in's open flows:** the sign-in held five open flows and refused a new one while all five were under a minute old, so five starts a minute from one address kept everyone else out. A client (an IPv4 address or an IPv6 /64) now holds at most two; its next start replaces its own oldest. Failed API keys are counted per IPv6 /64, and an IPv4-mapped address counts as its IPv4 address.
+- **A Hub session's sensitive read is named from the routed path** in the Operator-actions log, so a name with an encoded slash is recorded.
+- **Two caps:** a history search stops at 5000 matches and says `truncated`; Antigravity prompt watchers stop at 256 running at once.
+
+### Fixes
+
+- **A killed agent leaves the list at once:** Kill (an agent's menu, a folder's Kill All, a team's Kill All) used to leave a crossed-out "Ended" row to dismiss. The row is gone, with its Dismiss controls; the agent's chat stays in History. An agent that ends by itself still shows as asleep ("Terminal gone") with its Restart chip.
+- **Opening an agent from a notification shows the Agents tab first:** a needs-input toast's link or a desktop notification's click selected the agent but left the Inbox (or Chats, Servers, Workflows, Jobs) highlighted and the agent list hidden.
+- **Deleting a board deletes all of it:** its tasks and everything on them, reminders, waits, settings and health records are removed with its row, in one transaction (the Hub's operator-action record and Coral's health-action record are kept). A task on another board that was blocked only by one of these tasks is no longer blocked. The confirmation now says "Delete board "X" with all its messages and tasks? This cannot be undone."
+- **Ending a terminal agent is quick:** it sends SIGHUP, then SIGTERM, so an interactive shell no longer holds a kill for the full 5 s grace.
+- **The Tasks list keeps its Cost column** in a dock from 560 px of list width.
+
+### Changes
+
+- **The team health monitor starts off for new teams,** because it uses tokens and a user may not know what it does. Teams that were running it keep it (the first start stores "on" for every existing board); a team that turned it off keeps that. An icon beside each team's info button shows and switches it (a clear accent pill when on, a plain outline when off). Handing reviews to the default reviewers is now its own setting, on by default and independent of the monitor, so it works with the monitor off. The health check also reminds the orchestrator that `coral-board peek "<agent>"` shows a stuck agent's terminal.
+- **Restart, New Agent and Agent Team (and the team's agent dialog) are sectioned dialogs on the Settings layout:** a section list with icons, the open section's heading and description, and a fixed footer (a selector on a narrow dialog). New Agent starts with Workspace; Agent Team opens on Members, then Board & workspace, then Defaults. A problem found on Launch or Save opens its section and marks it. The requests they send are unchanged. On a phone the team member cards' buttons are 44 px.
+- **The agent list's header has one Collapse/Expand toggle, and Filters and Sort sit inside the Display expander;** shut, a summary line names the filters and the sort that are on, with Clear. Same on a phone.
+- **Long chats are quicker:** code blocks render about 60% faster and typing does less work per key.
+- **Controls have visible edges:** inputs, selects, buttons, search boxes, chips and the Hub's fields use one `--control-border` token that is at least 3:1 against its panel in both themes; dividers and cards keep their quiet lines.
+
+### Other changes
+
+- **Dead code is gone, with guards:** 58 window functions (57 hooks the guard found plus `hideTeamDetails`, which went with its popover) and 13 other functions (about 260 lines) of dashboard JavaScript that nothing called, and 33 CSS rules for classes nothing draws; `test:cloud` now fails on new dead JavaScript or CSS. Nothing a person sees changes.
+- **The dashboard is faster to type and scroll in a long chat:** no page-wide lookup per keystroke or scroll, code blocks are coloured after the sanitizer, and the Display menu looks only inside its headers.
+- **Tests and CI:** the Windows tests run in five shards (the longest job 283 s, was 464 s, and the whole run 470 to 600 s); the browser gate's six parts are balanced from fresh durations (the slowest 335 s, was 369 s); CDP suites remove their own message boards and the gate fails a board left behind; the slowest board and server tests, and three timing tests, no longer wait on sleeps (the board package 472 s to about 200 s on the test host); a flaky Chat comparison test is fixed.
+
 ## v1.4.102 — Agents keep their place in the list across restarts, Codex pasted images read as chips, and a weekly active-installs count
 
 ### Fixes
