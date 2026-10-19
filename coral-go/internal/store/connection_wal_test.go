@@ -67,7 +67,9 @@ func TestWALReadPoolNonBlocking(t *testing.T) {
 	select {
 	case <-readDone:
 		duration := time.Since(start)
-		assert.Less(t, duration, 100*time.Millisecond, "Read queries should complete quickly without blocking on writer transaction")
+		// A reader that waited for the writer would not return until the 2 s fatal below: the point is "not blocked", not "fast". 100 ms failed
+		// under -race on a loaded host (103 ms, #4979), so the bound is a second.
+		assert.Less(t, duration, time.Second, "Read queries should complete without blocking on writer transaction")
 	case <-time.After(2 * time.Second):
 		t.Fatal("Read query blocked on active write transaction!")
 	}
