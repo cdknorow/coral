@@ -30,6 +30,7 @@ var (
 	once    sync.Once
 	red     redact.Redactor
 	logRed  redact.Redactor
+	hubRed  redact.Redactor // the connector's redactor for Coral Hub: red plus the keyword rules (HubRedactor)
 	det     redact.Detector
 	initErr error
 )
@@ -37,12 +38,13 @@ var (
 func build() {
 	d, err := betterleaks.New()
 	if err != nil {
-		initErr, red, logRed = err, redact.Refuse, redact.Refuse
+		initErr, red, logRed, hubRed = err, redact.Refuse, redact.Refuse, redact.Refuse
 		return
 	}
 	det = withExtraRules{base: d}
 	red = &redact.Scanner{Detector: det, Budget: Budget}
 	logRed = &redact.Scanner{Detector: det, Budget: LogBudget}
+	hubRed = &redact.Scanner{Detector: withKeywordRules{base: det}, Budget: Budget}
 }
 
 // Init builds the detector (it compiles every rule): call it once at startup, before anything

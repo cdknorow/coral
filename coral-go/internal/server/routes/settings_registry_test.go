@@ -26,6 +26,7 @@ var settingRows = map[string]struct{ good, bad string }{
 	"fit_pane_width":              {`true`, `"maybe"`},
 	"notify_needs_input":          {`false`, `"maybe"`},
 	"show_scrollbars":             {`"True"`, `"maybe"`},
+	RedactKeywordsSetting:         {`false`, `"maybe"`},
 	"terminal_font_size":          {`"14"`, `"200"`},
 	"terminal_scrollback":         {`20000`, `-1`},
 	"terminal_replay_bytes":       {`262144`, `"lots"`},

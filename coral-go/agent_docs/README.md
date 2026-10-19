@@ -49,6 +49,7 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 
 ### Privacy
 - [Telemetry](telemetry.md) — Every event Coral sends, what it never collects, and why there is no opt-out
+- [What the redactor recognises](redaction.md) — The rules that hide tokens from Coral Hub viewers, the keyword rules, and every entropy threshold
 
 ### Observability
 - [Token Usage](token-usage.md) — Recorded usage, summaries, turns, time series, teams, and branches

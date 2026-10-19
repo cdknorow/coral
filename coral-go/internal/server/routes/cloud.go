@@ -65,6 +65,37 @@ func RedactTokensFromSettings(ss *store.SessionStore) func() bool {
 	}
 }
 
+// RedactKeywordsSetting is the local switch for the keyword rules of the connector's redactor (#5141): the value after a name such as
+// api_key, token or password is replaced in what goes to Coral Hub whatever it looks like. On unless set off; written only through
+// PUT /api/settings, which the tunnel never reaches, so the hub cannot change it. The environment variable CORAL_REDACT_KEYWORDS=off turns them off too.
+const RedactKeywordsSetting = "hub_redact_keywords"
+
+// RedactKeywordsFromSettings reads the switch for each redacted reply, from the settings at most a second old; an unreadable store means on.
+func RedactKeywordsFromSettings(ss *store.SessionStore) func() bool {
+	var mu sync.Mutex
+	var at time.Time
+	on := true
+	return func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		if time.Since(at) < time.Second {
+			return on
+		}
+		s, err := ss.GetSettings(context.Background())
+		on, at = err != nil || !settingOff(s[RedactKeywordsSetting]), time.Now()
+		return on
+	}
+}
+
+// settingOff: a bool setting stored as sent ("false", "False", 0, no, off) is off.
+func settingOff(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "false", "0", "no", "off":
+		return true
+	}
+	return false
+}
+
 // HubAutoAcceptAllowed reads the switch (default on).
 func HubAutoAcceptAllowed(settings map[string]string) bool {
 	return settings[AllowHubAutoAcceptSetting] != "false"

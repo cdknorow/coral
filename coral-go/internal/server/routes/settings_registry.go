@@ -136,6 +136,7 @@ var settingRegistry = map[string]settingSpec{
 	"fit_pane_width":          generic(boolSetting),
 	"notify_needs_input":      generic(boolSetting),
 	"show_scrollbars":         generic(boolSetting),
+	RedactKeywordsSetting:     generic(boolSetting),
 	"terminal_font_size":      generic(intSetting(6, 72, false)),
 	"terminal_scrollback":     generic(intSetting(0, 1_000_000, false)),
 	// The startup reader's range (4 KiB to 16 MiB); the live value was never clamped (INFO 2).
