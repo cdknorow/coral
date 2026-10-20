@@ -344,7 +344,8 @@ func TestATimedOutCheckIsItsOwnRefusalNotSignedOut(t *testing.T) {
 	assert.Error(t, Require(context.Background(), "claude", bin))
 	assert.Equal(t, 2, asked())
 
-	// And a later answer replaces it.
+	// And a later answer replaces it. The short deadline above was for the hanging stand-in: a stand-in that answers must not race it (the race detector makes this binary start slowly).
+	checkTimeout = 20 * time.Second
 	standInBin(t, "claude-in")
 	require.NoError(t, RequireFresh(context.Background(), "claude", bin))
 	st, ok := Snapshot("claude")
