@@ -325,7 +325,7 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 	}
 	defer rf.Close()
 	// Before the first step (#5469): when an agent step needs a CLI that is signed out, the whole run fails at once, no step starts, and nothing tries to sign in.
-	if nsi := wr.signInPreflight(ctx, steps, defaultAgent); nsi != nil {
+	if nsi := wr.signInPreflightIn(ctx, steps, defaultAgent, workflow.RepoPath); nsi != nil {
 		for i := range results {
 			results[i].Status = "skipped"
 		}
@@ -536,6 +536,11 @@ func (wr *WorkflowRunner) IsRunActive(runID int64) bool {
 // (agentsignin.Supports: Claude and Codex; agy, Gemini and Pi have none), it asks the CLI itself, fresh. It returns the sentence for the run history ("Claude is not signed in")
 // as an error (the agent named) when one is signed out, nil when the run may start. An agent CLI that cannot be found or asked does not stop the run here: its step fails or goes on as it did before.
 func (wr *WorkflowRunner) signInPreflight(ctx context.Context, steps []StepDef, defaultAgent *AgentStepConfig) *agentsignin.NotSignedInError {
+	return wr.signInPreflightIn(ctx, steps, defaultAgent, "")
+}
+
+// signInPreflightIn is signInPreflight asked from dir, the run's repository: its steps run there, so the CLI reads that folder's project settings (#5476).
+func (wr *WorkflowRunner) signInPreflightIn(ctx context.Context, steps []StepDef, defaultAgent *AgentStepConfig, dir string) *agentsignin.NotSignedInError {
 	var types []string
 	seen := map[string]bool{}
 	for _, step := range steps {
@@ -562,7 +567,7 @@ func (wr *WorkflowRunner) signInPreflight(ctx context.Context, steps []StepDef, 
 			continue
 		}
 		var nsi *agentsignin.NotSignedInError
-		if err := agentsignin.RequireFresh(ctx, t, bin); errors.As(err, &nsi) {
+		if err := agentsignin.RequireFreshIn(ctx, t, bin, dir); errors.As(err, &nsi) {
 			return nsi
 		}
 	}

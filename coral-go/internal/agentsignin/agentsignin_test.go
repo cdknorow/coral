@@ -29,6 +29,13 @@ func standIn(mode string, args []string) int {
 		}
 	}
 	switch mode {
+	case "claude-by-cwd": // the CLI reads the project settings of its working folder: signed in only where a credential is configured (#5476)
+		if _, err := os.Stat(filepath.Join(".claude", "settings.json")); err == nil {
+			os.Stdout.WriteString(`{"loggedIn":true,"authMethod":"api_key_helper"}`)
+			return 0
+		}
+		os.Stdout.WriteString(`{"loggedIn":false,"authMethod":"none"}`)
+		return 1
 	case "claude-in":
 		os.Stdout.WriteString(`{"loggedIn":true,"authMethod":"claude.ai"}`)
 		return 0

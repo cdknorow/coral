@@ -274,7 +274,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 		return fmt.Errorf("step %q: %w", step.Name, err)
 	}
 	// The run checked this at its start; a step that begins much later asks again (the answer is reused for a minute), so a CLI signed out meanwhile is not started (#5469).
-	if err := agentsignin.Require(ctx, agentCfg.AgentType, binPath); err != nil {
+	if err := agentsignin.RequireIn(ctx, agentCfg.AgentType, binPath, repoPath); err != nil {
 		return fmt.Errorf("step %q: %w", step.Name, err)
 	}
 

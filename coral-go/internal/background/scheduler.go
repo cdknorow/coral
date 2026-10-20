@@ -710,7 +710,7 @@ func (s *JobScheduler) refuseIfNotSignedIn(ctx context.Context, runID int64, job
 		return false
 	}
 	var nsi *agentsignin.NotSignedInError
-	if err := agentsignin.RequireFresh(ctx, job.AgentType, bin); !errors.As(err, &nsi) {
+	if err := agentsignin.RequireFreshIn(ctx, job.AgentType, bin, job.RepoPath); !errors.As(err, &nsi) {
 		return false
 	}
 	s.logger.Warn("scheduled run not started: "+nsi.Error(), "job", job.Name, "run_id", runID)

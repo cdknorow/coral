@@ -137,7 +137,12 @@ var (
 const maxStatusOutput = 64 << 10
 
 // Check asks the CLI at bin now, whatever was answered before. It never signs in: stdin is empty, there is no terminal, and the call ends at checkTimeout.
-func Check(ctx context.Context, agentType, bin string) State {
+func Check(ctx context.Context, agentType, bin string) State { return CheckIn(ctx, agentType, bin, "") }
+
+// CheckIn is Check run from dir, the folder the job's own CLI will run in ("" or a folder that is not there: the temp folder). The CLI reads the project settings of its working
+// folder (an apiKeyHelper or a credential in <dir>/.claude/settings.json or settings.local.json) and says "signed in" for what it finds, so asking from the temp folder would
+// call a user who is credentialed there signed out and refuse every job in that folder (#5476).
+func CheckIn(ctx context.Context, agentType, bin, dir string) State {
 	sp, ok := specs[agentType]
 	if !ok || bin == "" {
 		return Unknown
@@ -150,6 +155,11 @@ func Check(ctx context.Context, agentType, bin string) State {
 	cmd := executil.Command(cctx, bin, sp.args...)
 	cmd.Stdin = nil // the null device: a prompt gets end of input
 	cmd.Dir = os.TempDir()
+	if dir != "" {
+		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+			cmd.Dir = dir
+		}
+	}
 	cmd.Env = agentenv.Filter(os.Environ())
 	cmd.WaitDelay = 2 * time.Second // a child that holds the pipes open cannot hold this call
 	var out, errOut limited
@@ -193,10 +203,10 @@ var (
 	cache   = map[string]*entry{}
 )
 
-func entryFor(agentType, bin string) *entry {
+func entryFor(agentType, bin, dir string) *entry {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
-	k := agentType + "\x00" + bin
+	k := agentType + "\x00" + bin + "\x00" + dir
 	e := cache[k]
 	if e == nil {
 		e = &entry{}
@@ -209,25 +219,35 @@ func entryFor(agentType, bin string) *entry {
 // *NotSignedInError to skip. A recent answer is reused (a minute for signed in, a backoff that starts at two seconds and doubles to five minutes for signed out), so a signed-out CLI is asked about a dozen times an hour once the backoff has grown, not
 // by every job. It logs once per backoff window that jobs are being skipped.
 func Require(ctx context.Context, agentType, bin string) error {
-	return ask(ctx, agentType, bin, false)
+	return ask(ctx, agentType, bin, "", false)
+}
+
+// RequireIn is Require for a job that runs in dir (see CheckIn): the answer is kept per folder.
+func RequireIn(ctx context.Context, agentType, bin, dir string) error {
+	return ask(ctx, agentType, bin, dir, false)
 }
 
 // RequireFresh is Require without the reused answer: a workflow run asks once, before its first step, so a person who has just signed in is not refused on a stale answer.
 func RequireFresh(ctx context.Context, agentType, bin string) error {
-	return ask(ctx, agentType, bin, true)
+	return ask(ctx, agentType, bin, "", true)
 }
 
-func ask(ctx context.Context, agentType, bin string, fresh bool) error {
+// RequireFreshIn is RequireFresh for a job that runs in dir (see CheckIn).
+func RequireFreshIn(ctx context.Context, agentType, bin, dir string) error {
+	return ask(ctx, agentType, bin, dir, true)
+}
+
+func ask(ctx context.Context, agentType, bin, dir string, fresh bool) error {
 	if !Supports(agentType) || bin == "" {
 		return nil
 	}
-	e := entryFor(agentType, bin)
+	e := entryFor(agentType, bin, dir)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !fresh && e.valid && now().Before(e.until) {
 		return e.verdict(agentType)
 	}
-	st := Check(ctx, agentType, bin)
+	st := CheckIn(ctx, agentType, bin, dir)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -263,7 +283,12 @@ func (e *entry) verdict(agentType string) error {
 func Forget(agentType, bin string) {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
-	delete(cache, agentType+"\x00"+bin)
+	prefix := agentType + "\x00" + bin + "\x00"
+	for k := range cache {
+		if strings.HasPrefix(k, prefix) {
+			delete(cache, k)
+		}
+	}
 }
 
 // Describe is "Claude is not signed in" for an agent type, for messages that name the state without an error value.
