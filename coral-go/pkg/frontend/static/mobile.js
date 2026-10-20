@@ -299,17 +299,20 @@ function _initSwipeNavigation() {
 function _initKeyboardDetection() {
     if (!window.visualViewport) return;
 
+    // What the visual viewport leaves of the screen, in the page's own pixels: its height times its scale. A pinch zoom shrinks visualViewport.height (at 2x it is half the screen's), which is not
+    // a keyboard and leaves the page its whole screen: read plainly, the zoom made the page, and the viewer (position fixed, height from this) half as tall, a screen with its lower half empty (#5493).
+    const visibleHeight = () => Math.round(window.visualViewport.height * (window.visualViewport.scale || 1));
+
     const updateViewportHeight = () => {
         if (!isMobile()) {
             document.documentElement.style.removeProperty('--visual-viewport-height');
             return;
         }
-        const height = window.visualViewport.height;
-        document.documentElement.style.setProperty('--visual-viewport-height', `${height}px`);
+        document.documentElement.style.setProperty('--visual-viewport-height', `${visibleHeight()}px`);
     };
 
     // Track the initial viewport height to detect keyboard open/close
-    let initialHeight = window.visualViewport.height;
+    let initialHeight = visibleHeight();
     updateViewportHeight();
 
     window.visualViewport.addEventListener('resize', () => {
@@ -317,7 +320,7 @@ function _initKeyboardDetection() {
         updateViewportHeight();
 
         // Keyboard is open when viewport shrinks significantly (>100px)
-        const heightDiff = initialHeight - window.visualViewport.height;
+        const heightDiff = initialHeight - visibleHeight();
         const keyboardOpen = heightDiff > 100;
 
         document.body.classList.toggle('keyboard-open', keyboardOpen);
@@ -333,14 +336,14 @@ function _initKeyboardDetection() {
     // Update initial height on orientation change
     window.addEventListener('orientationchange', () => {
         setTimeout(() => {
-            initialHeight = window.visualViewport.height;
+            initialHeight = visibleHeight();
             updateViewportHeight();
         }, 300);
     });
 
     window.addEventListener('resize', () => {
         if (!document.body.classList.contains('keyboard-open')) {
-            initialHeight = window.visualViewport.height;
+            initialHeight = visibleHeight();
         }
         updateViewportHeight();
     });
