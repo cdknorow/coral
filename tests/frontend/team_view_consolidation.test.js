@@ -179,9 +179,9 @@ const BASE = require('./test_base').BASE;
     assert.ok(saveStatus.includes('Saved'), 'Settings status should indicate Saved');
     console.log('✓ Team settings saved successfully');
 
-    // Verify fieldset sectioning (the last three are the Health check tab's, #4230 and #4962)
+    // Verify fieldset sectioning (then the Health check tab's, #4230 and #4962, and the Messaging tab's two, #5516)
     const legends = await ev(`Array.from(document.querySelectorAll('.team-settings-section legend')).map(l => l.textContent)`);
-    assert.deepEqual(legends, ['Workflow instructions', 'Team working mode', 'Prompt inspection', 'The check', 'Reviews', 'Automatic rules'], 'Form has team sections only: no Global settings');
+    assert.deepEqual(legends, ['Workflow instructions', 'Team working mode', 'Prompt inspection', 'The check', 'Reviews', 'Automatic rules', 'Who may message this board', 'Recent changes'], 'Form has team sections only: no Global settings');
     console.log('✓ Fieldset sections verified (no Global settings)');
 
     // A failed working-mode save says so

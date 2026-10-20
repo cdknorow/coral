@@ -50,6 +50,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
       { label: 'Workflow', selected: 'true' },
       { label: 'Prompt inspection', selected: 'false' },
       { label: 'Health check', selected: 'false' }, // #4230: the real settings API returns a health object
+      { label: 'Messaging', selected: 'false' }, // #5516: shown whether or not the allowlist is in force
     ], 'Team settings should expose clear section tabs');
     await ev(`document.querySelector('[data-settings-tab="prompts"]').click()`);
     assert.equal(await ev(`document.querySelector('[data-settings-panel="workflow"]').hidden`), true, 'Workflow panel should hide while inspecting prompts');

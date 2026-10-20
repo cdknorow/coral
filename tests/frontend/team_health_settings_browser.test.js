@@ -38,12 +38,12 @@ const { removeBoards } = require('./helpers/board_cleanup');
 
         // 1. the tab: named, in the tablist, panel linked, roving order includes it
         const tab = await ev(`(() => { const t = document.querySelector('[data-settings-tab=health]'); const p = document.getElementById(t.getAttribute('aria-controls')); return { role: t.getAttribute('role'), text: t.textContent, ctl: !!p, panelRole: p.getAttribute('role'), label: p.getAttribute('aria-labelledby'), tabIndex: t.tabIndex, hidden: p.hidden, order: [...document.querySelectorAll('[role=tablist] [role=tab][data-settings-tab]')].map(x => x.dataset.settingsTab) }; })()`);
-        assert.deepEqual(tab, { role: 'tab', text: 'Health check', ctl: true, panelRole: 'tabpanel', label: 'team-settings-tab-health', tabIndex: -1, hidden: true, order: ['workflow', 'prompts', 'health'] });
+        assert.deepEqual(tab, { role: 'tab', text: 'Health check', ctl: true, panelRole: 'tabpanel', label: 'team-settings-tab-health', tabIndex: -1, hidden: true, order: ['workflow', 'prompts', 'health', 'messaging'] });
         await ev(`document.querySelector('[data-settings-tab=prompts]').focus(); true`);
         await key('ArrowRight', 'ArrowRight', 39);
         assert.equal(await ev(`document.activeElement.dataset.settingsTab`), 'health', 'ArrowRight from Prompt inspection reaches Health check');
         await key('Home', 'Home', 36); await key('End', 'End', 35);
-        assert.equal(await ev(`document.activeElement.dataset.settingsTab`), 'health');
+        assert.equal(await ev(`document.activeElement.dataset.settingsTab`), 'messaging', 'End reaches the last tab, Messaging (#5516)');
         await clickHealthTab();
         const shown = await ev(`(() => ({ panel: !document.getElementById('team-settings-health').hidden, mainForm: document.querySelector('form.working-mode-form').hidden, mainSave: !!document.querySelector('form.working-mode-form [type=submit]')?.getClientRects().length }))()`);
         assert.deepEqual(shown, { panel: true, mainForm: true, mainSave: false });

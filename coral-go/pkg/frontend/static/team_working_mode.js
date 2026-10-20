@@ -258,7 +258,7 @@ export async function showTeamWorkingMode(team, options = {}) {
         await m.mountHealthSettings(host, team, health);
     }
 
-    // The Messaging tab (#5510): who may message this board. Drawn only when the server enforces the list (cross_team_allowlist on), and only for the Operator on this computer (the state route is not served through Coral Hub).
+    // The Messaging tab (#5510): who may message this board. Drawn whenever the state route answers (enforced or not: the list is editable before it is in force), and only for the Operator on this computer (the state route is not served through Coral Hub).
     async function addMessagingTab(state) {
         const m = await importOnce('./team_cross_team_settings.js');
         const tab = document.createElement('button');
@@ -401,7 +401,7 @@ export async function showTeamWorkingMode(team, options = {}) {
                 if (!isCloud()) {
                     const stateResponse = await fetch(serverUrl(`/api/board/${encodeURIComponent(teamName)}/cross-team-state`, teamServer)).catch(() => null);
                     const crossTeam = stateResponse?.ok ? await stateResponse.json().catch(() => null) : null;
-                    if (crossTeam && crossTeam.enforced) await addMessagingTab(crossTeam).catch(() => {});
+                    if (crossTeam && Array.isArray(crossTeam.allowed)) await addMessagingTab(crossTeam).catch(() => {}); // also while the list is not enforced yet: an owner can prepare it (#5516)
                 }
                 if (openHealthTab) document.getElementById('team-settings-tab-health')?.click();
             } else {

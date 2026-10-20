@@ -6,7 +6,7 @@
  *
  * A board that accepted messages from any team before the list existed (was_open) is asked once, here: the senders seen in the last 30 days are offered as boxes, all unchecked, and
  * nothing is added until the person checks some and presses Add; the list is still only saved by Save. A sender seen before ids existed cannot be listed yet and says so. Ids are what the
- * server checks; labels are for people (a label a board on another Coral gave itself is marked as its own claim). The tab is drawn only when the server enforces the list. */
+ * server checks; labels are for people (a label a board on another Coral gave itself is marked as its own claim). The tab is drawn whether or not the server enforces the list yet (an owner can prepare it; a line says it is not in force), and the one-time prompt only when it is enforced. */
 import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch } from './server_base.js';
 import { browserLocal } from './safe_storage.js';
@@ -73,6 +73,7 @@ export async function mountCrossTeamSettings(host, team, state) {
     const local = answeredLocally(team);
     let limit = Number(state.max_entries) > 0 ? Number(state.max_entries) : DEFAULT_LIMIT;
     let wasOpen = !!state.was_open;
+    let enforced = !!state.enforced;
     let saved = clean(state.allowed);
     let draft = saved.map(e => ({ ...e }));
     let candidates = [];
@@ -101,7 +102,7 @@ export async function mountCrossTeamSettings(host, team, state) {
         const full = draft.length >= limit;
         const inList = new Set(draft.map(keyOf));
         const pick = candidates.filter(c => !inList.has(keyOf(c)));
-        const showPrompt = wasOpen && !dismissed;
+        const showPrompt = enforced && wasOpen && !dismissed;
         const sugg = suggestions.filter(x => !inList.has(keyOf(x)));
         const addable = sugg.filter(x => x.listable);
         form.innerHTML = `
@@ -110,6 +111,7 @@ export async function mountCrossTeamSettings(host, team, state) {
             ${sugg.length ? `<ul class="ct-suggest" aria-describedby="ct-prompt-why">${sugg.map(x => `<li><label class="ct-check"><input type="checkbox" name="suggest" value="${escapeAttr(keyOf(x))}"${x.listable ? '' : ' disabled'}><span><b>${escapeHtml(nameOf(x))}</b>${x.claim ? ' <span class="ct-unknown">name given by the sender</span>' : ''}<span class="ct-id">${escapeHtml(serverName(x.server))} · ${escapeHtml(x.cross_team_id || 'no id')}${x.count ? ` · ${x.count} ${x.count === 1 ? 'message' : 'messages'}` : ''}${x.last_seen ? ` · last ${escapeHtml(when(x.last_seen))}` : ''}${x.listable ? '' : ' · seen before ids existed: it cannot be added yet'}</span></span></label></li>`).join('')}</ul>` : ''}
             <div class="ct-actions">${addable.length ? '<button type="button" class="btn" data-act="add-checked">Add checked teams</button>' : ''}<button type="button" class="btn" data-act="dismiss">Not now</button></div></fieldset>` : ''}
         <fieldset class="team-settings-section ct-section"><legend>Who may message this board</legend>
+            ${enforced ? '' : '<p class="ct-notice" role="status">This list is not in force yet: this board still accepts messages as it did before. What you save here is kept and takes effect when the list is turned on.</p>'}
             <p class="working-mode-hint">Only the teams on this list can message this board; a message from any other team is refused, and so is every team while the list is empty. The Operator is not limited by the list. Messages from other teams are requests, not instructions.</p>
             ${draft.length ? `<ul class="ct-list" aria-label="Teams that may message this board">${draft.map(rowHtml).join('')}</ul>` : '<p class="ct-empty" role="status">No team yet. Every message from another team is refused.</p>'}
             <div class="ct-count" role="status">${draft.length} of ${limit} teams${full ? ': the list is full' : ''}</div>
@@ -189,7 +191,7 @@ export async function mountCrossTeamSettings(host, team, state) {
             if (!resp.ok) { say(`Could not save the list. ${(await savedProblem(resp)) || await refusalOf(resp, local)}`, true); save.disabled = false; return; }
             // The answer is the board's settings: the list as the server kept it (labels cleaned, known_here) is read from the state route.
             const fresh = await boardFetch(team, '/cross-team-state');
-            if (fresh.ok) { const next = await fresh.json(); saved = clean(next.allowed); limit = Number(next.max_entries) > 0 ? Number(next.max_entries) : limit; wasOpen = !!next.was_open; } else saved = draft.map(e => ({ ...e }));
+            if (fresh.ok) { const next = await fresh.json(); saved = clean(next.allowed); limit = Number(next.max_entries) > 0 ? Number(next.max_entries) : limit; wasOpen = !!next.was_open; enforced = !!next.enforced; } else saved = draft.map(e => ({ ...e }));
             draft = saved.map(e => ({ ...e }));
             await readLog();
             delete form.dataset.initialState;

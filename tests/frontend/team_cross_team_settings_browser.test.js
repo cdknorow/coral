@@ -57,16 +57,22 @@ const OTHER = { server: 'hub-srv-1', cross_team_id: XID('z'), label: 'Design tea
         assert.ok(sw.status < 300, `the old switch: ${JSON.stringify(sw)}`);
         await layer();
 
-        console.log('1. flag off: no tab');
+        console.log('1. flag off: the tab is there (the list can be prepared), says it is not in force, and asks nothing');
         assert.ok((await call('PUT', '/api/settings', { cross_team_allowlist: 'false' })).status < 300);
-        await open(); await ev(`new Promise(r => setTimeout(r, 700))`); // sleep-ok: proves a negative, the tab gets this long to appear
-        check('no Messaging tab while the server does not enforce the list', await ev(`!document.querySelector('[data-settings-tab=messaging]')`));
+        await ev(`localStorage.removeItem('coral-ct-prompt:${TEAM}'); true`);
+        await open(); await tabClick();
+        check('the Messaging tab shows while the server does not enforce the list', true);
+        check('a line says the list is not in force yet', /not in force yet/.test(await ev(`document.querySelector('${P} .ct-notice')?.textContent || ''`)));
+        check('the one-time prompt is not shown while the list is not enforced (even for a board that was open)', await ev(`!document.querySelector('${P} .ct-prompt')`));
+        assert.ok(await pickFor(ALPHA)); await click(`${P} [data-act=add-pick]`);
+        if (process.env.CORAL_SCREENSHOT_DIR) require('node:fs').writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/messaging-not-enforced.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'));
+        check('the list can be edited and Save is on (nothing is sent until Save)', (await names()).length === 1 && !(await ev(`document.querySelector('${P} [type=submit]').disabled`)) && (await ev(`window.__ct.puts.length`)) === 0);
 
         console.log('2. flag on: the tab, the prompt, an empty list');
         assert.ok((await call('PUT', '/api/settings', { cross_team_allowlist: 'true' })).status < 300);
         await ev(`localStorage.removeItem('coral-ct-prompt:${TEAM}'); true`);
         await open(); await tabClick();
-        check('the tab follows Health check, the panel is linked and the main Save bar is hidden', await ev(`(() => { const t = [...document.querySelectorAll('[data-settings-tab]')].map(x => x.dataset.settingsTab); const p = document.querySelector('${P}'); return t[t.length - 1] === 'messaging' && t[t.length - 2] === 'health' && p.getAttribute('role') === 'tabpanel' && p.getAttribute('aria-labelledby') === 'team-settings-tab-messaging' && document.querySelector('form.working-mode-form').hidden; })()`));
+        check('the notice is gone once the list is enforced, and the tab follows Health check, the panel is linked and the main Save bar is hidden', await ev(`(() => { const t = [...document.querySelectorAll('[data-settings-tab]')].map(x => x.dataset.settingsTab); const p = document.querySelector('${P}'); return t[t.length - 1] === 'messaging' && t[t.length - 2] === 'health' && p.getAttribute('role') === 'tabpanel' && p.getAttribute('aria-labelledby') === 'team-settings-tab-messaging' && document.querySelector('form.working-mode-form').hidden && !document.querySelector('${P} .ct-notice'); })()`));
         check('a board that was open is asked once, and nothing is added or saved by showing it', await ev(`!!document.querySelector('${P} .ct-prompt') && /accepted messages from any team/.test(document.querySelector('${P} .ct-prompt').textContent) && /No team sent it a message/.test(document.querySelector('${P} .ct-prompt').textContent)`) && (await names()).length === 0 && /Every message from another team is refused/.test(await ev(`document.querySelector('${P} .ct-empty').textContent`)) && (await ev(`document.querySelector('${P} [type=submit]').disabled`)));
         check('the count says 0 of 200', (await ev(`document.querySelector('${P} .ct-count').textContent`)) === '0 of 200 teams');
         await click(`${P} [data-act=dismiss]`);

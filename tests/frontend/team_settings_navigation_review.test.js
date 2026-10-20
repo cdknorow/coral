@@ -68,7 +68,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
    assert.equal(await ev(`document.querySelector('form.working-mode-form').elements.preset_instructions.value`),'Unsaved preset draft');
    assert.equal(await ev(`document.querySelector('form.working-mode-form').elements.custom_instructions.value`),'Unsaved extra');
    await ev(`document.querySelector('[data-settings-tab=workflow]').focus()`);
-   for (const [key,want] of [['End','health'],['Home','workflow']] /* the Health check tab (#4230) is the last tab now */) {
+   for (const [key,want] of [['End','messaging'],['Home','workflow']] /* the Messaging tab (#5510, #5516) is the last tab now */) {
     await Input.dispatchKeyEvent({type:'keyDown',key,code:key});await Input.dispatchKeyEvent({type:'keyUp',key,code:key});
     assert.equal(await ev(`document.activeElement.dataset.settingsTab`),want);
    }

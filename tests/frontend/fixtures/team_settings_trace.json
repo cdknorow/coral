@@ -4,279 +4,279 @@
   "workspace, all good, tabs": [
    {
     "step": "opened and loaded",
-    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
+    "sha256": "67295045b5b777574ebeeebf99356764def8b18c16a608bd1729fb49073742eb"
    },
    {
     "step": "tab prompts",
-    "sha256": "a9033401893a4ba1f866030a68fd65f4ab3bccb97e1dd814e7681446252ddf52"
+    "sha256": "e78be9da436769091323be9098be9437a586a2d934f5025bcd0d0fecdf607eaf"
    },
    {
     "step": "tab workflow",
-    "sha256": "10d87e92d72aa56dfc3a8e0f19868b74ee881a95d35a554997261532f75e65ee"
+    "sha256": "d4954b225dbdb8427e03bf86e19f7820890f30eb7feb862747f2cf510c8422bf"
    },
    {
     "step": "key ArrowRight",
-    "sha256": "291c288d09c30e58e0166c53b6f10ccb44ccac09660628cab14ae9d977fc1d74"
+    "sha256": "2867849e9040b618d34c1ac43e83468b9e335158d14132de299021e86f3c6977"
    },
    {
     "step": "key ArrowRight",
-    "sha256": "2cad78fd116ba75f179e07fa3861991b1d9c993cd2c2daad9344b1aaacc35f63"
+    "sha256": "c783f75d0bef56da9e39d4ba134d605ea43d15967c68c4be924454b48bbdb3b9"
    },
    {
     "step": "key ArrowRight",
-    "sha256": "291c288d09c30e58e0166c53b6f10ccb44ccac09660628cab14ae9d977fc1d74"
+    "sha256": "5313aaca30a90f2e328f98b0ef8f388ad7d8fbee839bb40b4847683728134188"
    },
    {
     "step": "key ArrowLeft",
-    "sha256": "b3fae888cd57066b45ddacc083322269b2ad260749e5c77931013a96c3e18b82"
+    "sha256": "8db399a13fccc3b52849902ce1cfeef65b1d78e7922b30f0322508830f51e8c8"
    },
    {
     "step": "key End",
-    "sha256": "9bd02dfb2a7b0f720031e652bac430ae0b798f8eb47c7a288fc49a9234b4a354"
+    "sha256": "08940435a49161ee90e15dd3b26e4dea207a137e0b4d8e880a9fefd95590b503"
    },
    {
     "step": "key Home",
-    "sha256": "62ea9583587af4f813f88c34ea18f07dcb151d190a258dce0a78b94979d5d9c9"
+    "sha256": "e1e4d92312cde39d73a720849a67be01058ef73a9b1c3c946e5872b5fb3cd476"
    }
   ],
   "dialog, all good, tabs": [
    {
     "step": "opened and loaded",
-    "sha256": "d7248176badb5fac557443d1bc0a1355c30db01d6c7d3a37ef3fcce43c1dadc7"
+    "sha256": "ac069ad3ea1335ee7f229281be22858aaba53ac9dc4028551f18d8c88a5a24ef"
    },
    {
     "step": "tab prompts",
-    "sha256": "1167dfdd6dfd8897f02ee696d163eedb2d81cba8bb247307630c304032e5cfe5"
+    "sha256": "1b91b9917e318ff9b952de2dd6794e7b6b505e75fb8855550936c3e70e6995f4"
    },
    {
     "step": "tab workflow",
-    "sha256": "09ac20a4f9cc2f32f1f288d4ab2aecda478d075ac3964ed39a13444abfa0fa58"
+    "sha256": "89e3eaf21017648450ad694319b8ea921fe85cef5f8fb81afb935ff121230831"
    },
    {
     "step": "key ArrowRight",
-    "sha256": "0ad7ed8e7773b9ef4a1058d5c4641a7bad8a84977078bcd0a311294ee1571893"
+    "sha256": "313b14bd3b63f670cd3336a1207471f65758f3a57b552102b0bc1695d049012c"
    },
    {
     "step": "key ArrowRight",
-    "sha256": "affa9798a6249460ecff543b639c453ad033cfec9877faf3b587fa6fba1a16f6"
+    "sha256": "d79f266d2bfa6c27f82bac72ef0e6d9d09c19650279b8b06c28ccb7da1547afa"
    },
    {
     "step": "key ArrowRight",
-    "sha256": "0ad7ed8e7773b9ef4a1058d5c4641a7bad8a84977078bcd0a311294ee1571893"
+    "sha256": "2facf589be14ef4601246233c1337e9d7523ec550df3f7acbc3ac31554a8a0ec"
    },
    {
     "step": "key ArrowLeft",
-    "sha256": "8b709279eb167556323488c2c1c705bedb3aad83413197ea11331b1060e518df"
+    "sha256": "1f9214bfb713bd47c899532ee803c74ed8eec94b8d9db80a36c5cb3923a6dc46"
    },
    {
     "step": "key End",
-    "sha256": "6683f5e1720f0d772220ec7d616703cc1e4eb6db1faffda83cb4342dfb41bc90"
+    "sha256": "bbaef285114d5dd1b2bad7b748e0e2573dde34f48833ffd47580244793c9928b"
    },
    {
     "step": "key Home",
-    "sha256": "eb80c8fa833ebcf4978720644da8e127ca1d510be7c56cbc08eb1e269d3ff31a"
+    "sha256": "873b9bf7f4a6a21438bdb8e2e66289a8b8fc813ea9a23c9b5bba7308e5bff68a"
    }
   ],
   "workspace, presets": [
    {
     "step": "opened and loaded",
-    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
+    "sha256": "67295045b5b777574ebeeebf99356764def8b18c16a608bd1729fb49073742eb"
    },
    {
     "step": "preset shared_checkout",
-    "sha256": "615ba14410a9e0e361aaad879de461f3ce7a148531e2bd787e90f2af1aacd2c9"
+    "sha256": "8a74aa0fa36654d0bba9238e288c1786c802373a38bb7563bdf5a19b634f4764"
    },
    {
     "step": "preset worktrees",
-    "sha256": "abc7dc03bc6e0d4e432413959b595dd0a6265bb28540b79b47887cda4d14867a"
+    "sha256": "0f88a3025a13f823d1c6a6b7e5150f1a987c6688746b7a113f45bddb9833c133"
    },
    {
     "step": "new preset",
-    "sha256": "b73c8b9a9d1f4107f2ccd21a9ab41b26833780e9a2d940f1931fa9b3085164ac"
+    "sha256": "bafc9c38419b6056625374eee5048131f1942a1283001249836f2d7d6c38474f"
    },
    {
     "step": "save with no name",
-    "sha256": "0e923dca9d828ad9694b0ca8302c68a3edc9f950e059b301986041de1c8b6c54"
+    "sha256": "f0495588e574a824d4d479df1ca9b6ad6f759fe366ed23e65c0c9d14672d22bc"
    },
    {
     "step": "save with no instructions",
-    "sha256": "d1505c49aac335075a1965d27c45c0ffdb0156c5aba9e832bcb8f581497c445b"
+    "sha256": "9f1679a530efe37def17b47dd9f63eb3af1e8ff5ffaa89b6b2fa83edd889de12"
    },
    {
     "step": "save by Enter",
-    "sha256": "e3b38bad8547ce55ae41ff8ca54da4763146bf74de719069926826dfa66bbc7a"
+    "sha256": "b6c408b7e1d3ef8d50fb6062352e4615abb09e38e673118f6162213dc42707e9"
    },
    {
     "step": "save built-in override",
-    "sha256": "6926fa2fbd39b72f1713a584796ae133c6e5201cc8858815278ffb53677d09f1"
+    "sha256": "67dbda8e2b1a39135908fce2f8664a3b9db8e51c8befad392bb10275330798c3"
    },
    {
     "step": "reset built-in",
-    "sha256": "caf2c1169a7b4680d1a9f1f23f78bf7b8b6349b56153d0057bed185c805ce493"
+    "sha256": "292e75ae1625ac18e3d2faad7657a8986f030496d90f135c66bf339364cbd4af"
    }
   ],
   "dialog, presets": [
    {
     "step": "opened and loaded",
-    "sha256": "d7248176badb5fac557443d1bc0a1355c30db01d6c7d3a37ef3fcce43c1dadc7"
+    "sha256": "ac069ad3ea1335ee7f229281be22858aaba53ac9dc4028551f18d8c88a5a24ef"
    },
    {
     "step": "preset shared_checkout",
-    "sha256": "7196e12ba9b20ffdc405bcc22837c0627e72b0c60754bff12bcc38184699e564"
+    "sha256": "a0a5f403a9d87484f418828b9caddcce6562356afceee2e6d5cbc3b6d9fc6766"
    },
    {
     "step": "preset worktrees",
-    "sha256": "7c6f275cd87dd18e99e9ef14eb24570b3321302c8a9d12d2b8f5b2a9ffa9f584"
+    "sha256": "7204c5b2c7abf2cf510fdb971e3c2b43fc7c835036bb9aca47171c703d67e52c"
    },
    {
     "step": "new preset",
-    "sha256": "62c98381e0fabdecda462221f739aa82f5b4286293fb0fc78bec1a229d525603"
+    "sha256": "70af55751a2425953c59d589301adf15ffeaad5d7647c958b5d4644d2091f140"
    },
    {
     "step": "save with no name",
-    "sha256": "4315593124c74a4b0adf50e1e0df03fa2231a629c0703fc69c7164b8a98df9c9"
+    "sha256": "05b0dd525e03650a10549e9a4f0fbc40780fe59dfbbdf95fcae1a57bb2f810b5"
    },
    {
     "step": "save with no instructions",
-    "sha256": "97b61bb13428dbfdf8b5d6d52f156fba7eb08ab2ccea9971b531ce654453266d"
+    "sha256": "acaadaf05f518111be4ceb1b8c9841531b9acf1652e1f168f8652bb53c10e1dd"
    },
    {
     "step": "save by Enter",
-    "sha256": "047eb16402218a60c9b18331bc3950accc76f72d301880fa2fe0b1dc9b642dbe"
+    "sha256": "f71c7ebd71523de3e93fc51b4d9f074f46c2a1f88ed5c53c292deff486d4083e"
    },
    {
     "step": "save built-in override",
-    "sha256": "b4e805f5941d88105f0408c29a756a746d73cae063dfcfac92ddbca76c883617"
+    "sha256": "60048f8ed5fea8e18c549c5d3929686318eb1e8c33788e48c34fd6648407561a"
    },
    {
     "step": "reset built-in",
-    "sha256": "538e6e8226bf2bc5b614052e9761674dcb70d82c198e6a9139b1c42dcf1a6355"
+    "sha256": "1ef5ec303447c3a9d2dab2584b066c3b38af16705831ea67bfd503d7648ce30d"
    }
   ],
   "workspace, save": [
    {
     "step": "opened and loaded",
-    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
+    "sha256": "67295045b5b777574ebeeebf99356764def8b18c16a608bd1729fb49073742eb"
    },
    {
     "step": "save with nothing changed",
-    "sha256": "5c41e18e41e3f71ca8691b9cad34d6d97360c654d8214ac689474d0fbefeab96"
+    "sha256": "ad6410d2107a9476c1223ec5b589a9daa54a4016f09042b44c6e1b115d26ea2f"
    },
    {
     "step": "save the working mode",
-    "sha256": "c169ffea5304d66259f904498906967c61292329806d537ed95b5a27474affd0"
+    "sha256": "646a1c5e54e98f35b29a044469d84dcca380a4cd4dccf1c7ebf576b6bf4b7e89"
    },
    {
     "step": "save the board settings",
-    "sha256": "7cd4c7602d785d101ee1c896d21fa347c13780edb66f238be4b60a9a35552330"
+    "sha256": "c1e3e33dd6a9d3a0310f523b53441571dc97a5ef2bd867cedf4ba773910d9d7d"
    },
    {
     "step": "save again",
-    "sha256": "ee4d750f08e9ba2ad45ee5bf349e75f54114bc13f36b63e3397dd1ca062f25af"
+    "sha256": "4526ddb91e96501d45b8c54e61f1140a20baaad621744623986b3c2cf84b1b0d"
    }
   ],
   "dialog, save": [
    {
     "step": "opened and loaded",
-    "sha256": "d7248176badb5fac557443d1bc0a1355c30db01d6c7d3a37ef3fcce43c1dadc7"
+    "sha256": "ac069ad3ea1335ee7f229281be22858aaba53ac9dc4028551f18d8c88a5a24ef"
    },
    {
     "step": "save with nothing changed",
-    "sha256": "7cb35f20e64a8516c8da38ec6d9c8145e2db2d1bc02849c2067341c0b4d4f270"
+    "sha256": "5b7f2aae480adc05f75f846b797743e32d75cfc2d492129e5b18c4a546ad08cf"
    },
    {
     "step": "save the working mode",
-    "sha256": "5fc8a5f5ca00d3364fd2eed54876a52e709a77964347bb5abaa8a6351341e5c6"
+    "sha256": "18efa12e15c782f25a8a16911ff44a945724d5bbfd25082dc47429873dbf5866"
    },
    {
     "step": "save the board settings",
-    "sha256": "92633d1370fcd0db782d109688665061157db707dd4b78bd3b3e620d0fb3aa5f"
+    "sha256": "cd6a4584d032866216f4e60edf8a93d7fb7f49bd88e593ac34ef7ad984836ed1"
    },
    {
     "step": "save again",
-    "sha256": "7f1d6cdffe065e75320c4c3165070496399fb26ae0f29f83ca499016b463f62a"
+    "sha256": "877b9602dc85034755e984300a61f8964eaa77e0b578791850d574c81cc44cdb"
    }
   ],
   "preset save fails": [
    {
     "step": "opened and loaded",
-    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
+    "sha256": "67295045b5b777574ebeeebf99356764def8b18c16a608bd1729fb49073742eb"
    },
    {
     "step": "preset shared_checkout",
-    "sha256": "615ba14410a9e0e361aaad879de461f3ce7a148531e2bd787e90f2af1aacd2c9"
+    "sha256": "8a74aa0fa36654d0bba9238e288c1786c802373a38bb7563bdf5a19b634f4764"
    },
    {
     "step": "preset worktrees",
-    "sha256": "abc7dc03bc6e0d4e432413959b595dd0a6265bb28540b79b47887cda4d14867a"
+    "sha256": "0f88a3025a13f823d1c6a6b7e5150f1a987c6688746b7a113f45bddb9833c133"
    },
    {
     "step": "new preset",
-    "sha256": "b73c8b9a9d1f4107f2ccd21a9ab41b26833780e9a2d940f1931fa9b3085164ac"
+    "sha256": "bafc9c38419b6056625374eee5048131f1942a1283001249836f2d7d6c38474f"
    },
    {
     "step": "save with no name",
-    "sha256": "0e923dca9d828ad9694b0ca8302c68a3edc9f950e059b301986041de1c8b6c54"
+    "sha256": "f0495588e574a824d4d479df1ca9b6ad6f759fe366ed23e65c0c9d14672d22bc"
    },
    {
     "step": "save with no instructions",
-    "sha256": "d1505c49aac335075a1965d27c45c0ffdb0156c5aba9e832bcb8f581497c445b"
+    "sha256": "9f1679a530efe37def17b47dd9f63eb3af1e8ff5ffaa89b6b2fa83edd889de12"
    },
    {
     "step": "save by Enter",
-    "sha256": "07033a2dcbf67fc95837a4705fbf03d55800168f9b484b0733e85c7842c8433f"
+    "sha256": "4c4d6eaf3b2e38fb50215270a58e715d65ebc609f6aeb9ca59ba600d2b551e46"
    },
    {
     "step": "save built-in override",
-    "sha256": "abe9300d856e18a509d278df3403109946b495043ef1768eddae1f91f92ba3d3"
+    "sha256": "e2533d7cc6d92fc62ba13b90db3736df8d682796501c516356e8332631939d16"
    },
    {
     "step": "reset built-in",
-    "sha256": "9ddc27c81f7bb6675682ad6ec9ea68fb2c88f39724a9954fdf85a849b37ba582"
+    "sha256": "9369f00880dfcad1e34e8e6fd1493a2c3c359829fccd7d53e522f7d901348463"
    }
   ],
   "save fails (mode, board)": [
    {
     "step": "opened and loaded",
-    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
+    "sha256": "67295045b5b777574ebeeebf99356764def8b18c16a608bd1729fb49073742eb"
    },
    {
     "step": "save with nothing changed",
-    "sha256": "5c41e18e41e3f71ca8691b9cad34d6d97360c654d8214ac689474d0fbefeab96"
+    "sha256": "ad6410d2107a9476c1223ec5b589a9daa54a4016f09042b44c6e1b115d26ea2f"
    },
    {
     "step": "save the working mode",
-    "sha256": "b8a64f0482a3ea5653e28ef2943b94dbd5f9bfb2f9eda7b3c31c9e626fbca962"
+    "sha256": "ea74405c77c15eefcab7e6e9a407625a0e245a206472b15228e853a371d85e28"
    },
    {
     "step": "save the board settings",
-    "sha256": "5d2cfa3050c24d63196153f9cd080ae7998b7a899045aa0a120624279e2a8199"
+    "sha256": "b2a645233d75a1f2ff35164465dd2bc8a3f887597e7f78088db4e115c559a14d"
    },
    {
     "step": "save again",
-    "sha256": "27a5cf761620003a891c813fb5b8e4c721da4b3ff37df50924219e8caf14ad8e"
+    "sha256": "32c7e86e967390c75bf594aac4f984a9057da4c628539bbed7ac6dbbd3f122ed"
    }
   ],
   "all-Coral settings fail to load (Health check tab note)": [
    {
     "step": "opened and loaded",
-    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
+    "sha256": "67295045b5b777574ebeeebf99356764def8b18c16a608bd1729fb49073742eb"
    },
    {
     "step": "save with nothing changed",
-    "sha256": "5c41e18e41e3f71ca8691b9cad34d6d97360c654d8214ac689474d0fbefeab96"
+    "sha256": "ad6410d2107a9476c1223ec5b589a9daa54a4016f09042b44c6e1b115d26ea2f"
    },
    {
     "step": "save the working mode",
-    "sha256": "c169ffea5304d66259f904498906967c61292329806d537ed95b5a27474affd0"
+    "sha256": "646a1c5e54e98f35b29a044469d84dcca380a4cd4dccf1c7ebf576b6bf4b7e89"
    },
    {
     "step": "save the board settings",
-    "sha256": "7cd4c7602d785d101ee1c896d21fa347c13780edb66f238be4b60a9a35552330"
+    "sha256": "c1e3e33dd6a9d3a0310f523b53441571dc97a5ef2bd867cedf4ba773910d9d7d"
    },
    {
     "step": "save again",
-    "sha256": "ee4d750f08e9ba2ad45ee5bf349e75f54114bc13f36b63e3397dd1ca062f25af"
+    "sha256": "4526ddb91e96501d45b8c54e61f1140a20baaad621744623986b3c2cf84b1b0d"
    }
   ],
   "board settings missing": [
@@ -304,11 +304,11 @@
   "inspection fails": [
    {
     "step": "opened and loaded",
-    "sha256": "0dcb28dd9cbff8476a897ad1202d88cce3b6aeb5ba04b9a4441b360f57c0195d"
+    "sha256": "e9551c0360f4dca9c9b507b6689e9cc52d516ff45a0c9210be25da585f2cfa46"
    },
    {
     "step": "nothing more",
-    "sha256": "d713a0da024f605022e7053fe3ba9ec5ecc8a6013de147b382bd2b2c19222fab"
+    "sha256": "7d2999bd6f018bf8a562e57af4f8aac3156c1563dbe23acb720dd5d91d19f4f2"
    }
   ],
   "working mode fails to load": [
@@ -334,7 +334,7 @@
  },
  "lines": {
   "workspace, all good, tabs": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "tab prompts | status:  | requests: ",
    "tab workflow | status:  | requests: ",
    "key ArrowRight | status:  | requests: ",
@@ -345,7 +345,7 @@
    "key Home | status:  | requests: "
   ],
   "dialog, all good, tabs": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "tab prompts | status:  | requests: ",
    "tab workflow | status:  | requests: ",
    "key ArrowRight | status:  | requests: ",
@@ -356,7 +356,7 @@
    "key Home | status:  | requests: "
   ],
   "workspace, presets": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "preset shared_checkout | status:  | requests: ",
    "preset worktrees | status:  | requests: ",
    "new preset | status:  | requests: ",
@@ -367,7 +367,7 @@
    "reset built-in | status: Built-in preset reset to the shipped default. | requests: POST /api/board/team-x/working-mode/presets/worktrees/reset"
   ],
   "dialog, presets": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "preset shared_checkout | status:  | requests: ",
    "preset worktrees | status:  | requests: ",
    "new preset | status:  | requests: ",
@@ -378,21 +378,21 @@
    "reset built-in | status: Built-in preset reset to the shipped default. | requests: POST /api/board/team-x/working-mode/presets/worktrees/reset"
   ],
   "workspace, save": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "save with nothing changed | status: Nothing to save: no setting changed. | requests: ",
    "save the working mode | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"}",
    "save the board settings | status: Saved. Working mode applies on first claim. | requests: PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}",
    "save again | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"none\",\"dependency_guidance\":false,\"custom_instructions\":\"\"}"
   ],
   "dialog, save": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "save with nothing changed | status: Nothing to save: no setting changed. | requests: ",
    "save the working mode | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"}",
    "save the board settings | status: Saved. Working mode applies on first claim. | requests: PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}",
    "save again | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"none\",\"dependency_guidance\":false,\"custom_instructions\":\"\"}"
   ],
   "preset save fails": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "preset shared_checkout | status:  | requests: ",
    "preset worktrees | status:  | requests: ",
    "new preset | status:  | requests: ",
@@ -403,14 +403,14 @@
    "reset built-in | status: reset failed | requests: POST /api/board/team-x/working-mode/presets/worktrees/reset"
   ],
   "save fails (mode, board)": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "save with nothing changed | status: Nothing to save: no setting changed. | requests: ",
    "save the working mode | status: Save failed: mode not saved | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"}",
    "save the board settings | status: Save failed: mode not saved; no | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"} ; PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}",
    "save again | status: Save failed: mode not saved; no | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"none\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"} ; PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}"
   ],
   "all-Coral settings fail to load (Health check tab note)": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "save with nothing changed | status: Nothing to save: no setting changed. | requests: ",
    "save the working mode | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"}",
    "save the board settings | status: Saved. Working mode applies on first claim. | requests: PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}",
@@ -424,7 +424,7 @@
    "save again | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"none\",\"dependency_guidance\":false,\"custom_instructions\":\"\"}"
   ],
   "inspection fails": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state ; GET /api/board/team-x/cross-team-candidates ; GET /api/board/team-x/settings/log",
    "nothing more | status:  | requests: "
   ],
   "working mode fails to load": [
@@ -436,5 +436,5 @@
    "nothing more | status: no presets | requests: "
   ]
  },
- "sample": "<section id=\"team-settings-workspace\" class=\"team-settings-workspace\" aria-labelledby=\"working-mode-title\"><header><div><h2 id=\"working-mode-title\">Team settings</h2><p class=\"working-mode-team\" data-team=\"team-x\">team-x</p><div class=\"board-rename\"><button type=\"button\" class=\"btn btn-sm board-rename-toggle\" aria-expanded=\"false\" aria-controls=\"board-rename-form-N\">Rename board</button><div class=\"board-rename-form\" id=\"board-rename-form-N\" role=\"group\" aria-label=\"Rename board\" hidden=\"\"><label for=\"board-rename-input-N\">Board name</label><input id=\"board-rename-input-N\" name=\"board_label\" maxlength=\"64\" autocomplete=\"off\" spellcheck=\"false\" aria-describedby=\"board-rename-error-N\"><button type=\"button\" class=\"btn btn-sm btn-primary\">Rename</button><button type=\"button\" class=\"btn btn-sm\">Cancel</button><p class=\"board-rename-error\" id=\"board-rename-error-N\" role=\"alert\"></p><p class=\"board-rename-note\">Changes the name people see. Its agents, tasks, history and links stay the same.</p></div></div></div></header>\n      <div class=\"working-mode-status\" role=\"status\" aria-live=\"polite\"></div>\n      <nav class=\"team-settings-tabs\" aria-label=\"Team settings sections\" role=\"tablist\">\n        <button type=\"button\" role=\"tab\" id=\"team-settings-tab-workflow\" aria-selected=\"true\" aria-controls=\"team-settings-workflow\" tabindex=\"0\" data-settings-tab=\"workflow\">Workflow</button>\n        <button type=\"button\" role=\"tab\" id=\"team-settings-tab-prompts\" aria-selected=\"false\" aria-controls=\"team-settings-prompts\" tabindex=\"-1\" data-settings-tab=\"prompts\">Prompt inspection</button>\n      </nav>\n      <form class=\"working-mode-form\" data-initial-state=\"[{&quot;name&quot;:&quot;preset&quot;,&quot;type&quot;:&quot;select-one&quot;,&quot;value&quot;:&quot;none&quot;},{&quot;name&quot;:&quot;preset_name&quot;,&quot;type&quot;:&quot;text&quot;,&quot;value&quot;:&quot;None&quot;},{&quot;name&quot;:&quot;preset_instructions&quot;,&quot;type&quot;:&quot;textarea&quot;,&quot;value&quot;:&quot;Default for none&quot;},{&quot;name&quot;:&quot;mode&quot;,&quot;type&quot;:&quot;select-one&quot;,&quot;value&quot;:&quot;none&quot;},{&quot;name&quot;:&quot;dependency_guidance&quot;,&quot;type&quot;:&quot;checkbox&quot;,&quot;value&quot;:false},{&quot;name&quot;:&quot;custom_instructions&quot;,&quot;type&quot;:&quot;textarea&quot;,&quot;value&quot;:&quot;&quot;},{&quot;name&quot;:&quot;cross_team_messaging&quot;,&quot;type&quot;:&quot;checkbox&quot;,&quot;value&quot;:true},{&quot;name&quot;:&quot;cross_team_artifacts&quot;,&quot;type&quot;:&quot;checkbox&quot;,&quot;value&quot;:false}]\">\n      <section class=\"team-settings-panel active\" id=\"team-settings-workflow\" role=\"tabpanel\" aria-labelledby=\"team-settings-tab-workflow\" data-settings-panel=\"workflow\" tabindex=\"0\">\n      <fieldset class=\"team-settings-section workflow-presets-section\">\n        <legend>Workflow instructions</legend>\n        <p class=\"working-mode-hint\">Choose the instructions captured on tasks when they are first claimed. Preset edits are local to this team.</p>\n        <label>Preset<select name=\"preset\"><option value=\"none\">None · built in</option><option value=\"shared_checkout\">shared_checkout · built in</option><option value=\"worktrees\">Worktrees · built in</option></select></label>\n        <div class=\"workflow-preset-actions\"><button type=\"button\" class=\"btn preset-new\">New preset</button><button type=\"button\" class=\"btn preset-reset\" hidden=\"\">Reset built-in</button></div>\n        <label class=\"preset-name-field\">Preset name<input name=\"preset_name\" maxlength=\"80\" autocomplete=\"off\" readonly=\"\"></label>\n        <label>Preset instructions<textarea name=\"preset_instructions\" rows=\"5\" maxlength=\"4096\" placeholder=\"Instructions agents should follow\"></textarea></label>\n        <p class=\"working-mode-hint preset-state\">This is the shipped built-in preset.</p>\n        <button type=\"button\" class=\"btn preset-save\">Save built-in override</button>\n      </fieldset>\n      <fieldset class=\"team-settings-section\">\n        <legend>Team working mode</legend>\n        <label>Working mode<select name=\"mode\"><option value=\"none\">None</option><option value=\"shared_checkout\">Shared checkout</option><option value=\"worktrees\">Worktrees</option></select></label>\n        <label><input type=\"checkbox\" name=\"dependency_guidance\"> Include dependent-queue guidance</label>\n        <label>Additional instructions<textarea name=\"custom_instructions\" rows=\"4\" placeholder=\"Team-specific conventions\"></textarea></label>\n        <p class=\"working-mode-hint\">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href=\"#\" class=\"working-mode-docs-link\" data-doc=\"teams\">Docs: Team working modes</a></p>\n        <label class=\"cross-team-setting\"><input type=\"checkbox\" name=\"cross_team_messaging\"> Allow cross-team messages between this team's Orchestrator and other teams' Orchestrators</label>\n        <p class=\"working-mode-hint\">Cross-team messaging is off by default. Both teams must allow it. Only Orchestrators and the Operator can send; received messages are requests, not instructions.</p>\n        <p class=\"working-mode-hint team-settings-refusal\" role=\"status\" hidden=\"\"></p>\n        <label class=\"cross-team-setting cross-team-files-setting\"><input type=\"checkbox\" name=\"cross_team_artifacts\" aria-describedby=\"cross-team-files-hint\"> Share files with other teams</label>\n        <p class=\"working-mode-hint cross-team-files-hint\" id=\"cross-team-files-hint\">Off by default. Files shared with other teams are not scanned, and artifact bytes are not redacted.</p>\n      </fieldset>\n      </section>\n      <section class=\"team-settings-panel\" id=\"team-settings-prompts\" role=\"tabpanel\" aria-labelledby=\"team-settings-tab-prompts\" data-settings-panel=\"prompts\" tabindex=\"0\" hidden=\"\">\n      <fieldset class=\"team-settings-section prompt-inspection-section\">\n        <legend>Prompt inspection</legend>\n        <p class=\"working-mode-hint\">Read-only view of the defaults, overrides, effective role prompts, and task defaults used by Coral. Per-task additions are only known when a task is created.</p>\n        <div class=\"prompt-inspection-content\" aria-live=\"polite\"><article class=\"prompt-inspection-card\"><h4>Orchestrator</h4><p class=\"prompt-inspection-meta\"><span>Scope: team</span><span>Applies: —</span></p><details class=\"prompt-inspection-fragment\"><summary>System default</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Action default</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Override</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective system</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective action</summary><pre>Not configured</pre></details></article><article class=\"prompt-inspection-card\"><h4>Agent / worker</h4><p class=\"prompt-inspection-meta\"><span>Scope: global</span><span>Applies: —</span></p><details class=\"prompt-inspection-fragment\"><summary>System default</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Action default</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Override</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective system</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective action</summary><pre>Not configured</pre></details></article><article class=\"prompt-inspection-card\"><h4>Task defaults</h4><p class=\"prompt-inspection-meta\"><span>Scope: global</span><span>Applies: —</span></p><details class=\"prompt-inspection-fragment\"><summary>Default task instructions</summary><pre>Task defaults</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective composed task preview (on first claim)</summary><pre>Task defaults\n\n[+ per-task extra when supplied at creation]</pre></details></article></div>\n      </fieldset>\n      </section>\n      <div class=\"team-settings-actions\"><button type=\"submit\" class=\"btn\">Save settings</button><span>Saves the working mode, additional guidance and cross-team sharing. Save preset instructions separately.</span></div>\n      </form></section>"
+ "sample": "<section id=\"team-settings-workspace\" class=\"team-settings-workspace\" aria-labelledby=\"working-mode-title\"><header><div><h2 id=\"working-mode-title\">Team settings</h2><p class=\"working-mode-team\" data-team=\"team-x\">team-x</p><div class=\"board-rename\"><button type=\"button\" class=\"btn btn-sm board-rename-toggle\" aria-expanded=\"false\" aria-controls=\"board-rename-form-N\">Rename board</button><div class=\"board-rename-form\" id=\"board-rename-form-N\" role=\"group\" aria-label=\"Rename board\" hidden=\"\"><label for=\"board-rename-input-N\">Board name</label><input id=\"board-rename-input-N\" name=\"board_label\" maxlength=\"64\" autocomplete=\"off\" spellcheck=\"false\" aria-describedby=\"board-rename-error-N\"><button type=\"button\" class=\"btn btn-sm btn-primary\">Rename</button><button type=\"button\" class=\"btn btn-sm\">Cancel</button><p class=\"board-rename-error\" id=\"board-rename-error-N\" role=\"alert\"></p><p class=\"board-rename-note\">Changes the name people see. Its agents, tasks, history and links stay the same.</p></div></div></div></header>\n      <div class=\"working-mode-status\" role=\"status\" aria-live=\"polite\"></div>\n      <nav class=\"team-settings-tabs\" aria-label=\"Team settings sections\" role=\"tablist\">\n        <button type=\"button\" role=\"tab\" id=\"team-settings-tab-workflow\" aria-selected=\"true\" aria-controls=\"team-settings-workflow\" tabindex=\"0\" data-settings-tab=\"workflow\">Workflow</button>\n        <button type=\"button\" role=\"tab\" id=\"team-settings-tab-prompts\" aria-selected=\"false\" aria-controls=\"team-settings-prompts\" tabindex=\"-1\" data-settings-tab=\"prompts\">Prompt inspection</button>\n      <button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-controls=\"team-settings-messaging\" data-settings-tab=\"messaging\" id=\"team-settings-tab-messaging\" tabindex=\"-1\">Messaging</button></nav>\n      <form class=\"working-mode-form\" data-initial-state=\"[{&quot;name&quot;:&quot;preset&quot;,&quot;type&quot;:&quot;select-one&quot;,&quot;value&quot;:&quot;none&quot;},{&quot;name&quot;:&quot;preset_name&quot;,&quot;type&quot;:&quot;text&quot;,&quot;value&quot;:&quot;None&quot;},{&quot;name&quot;:&quot;preset_instructions&quot;,&quot;type&quot;:&quot;textarea&quot;,&quot;value&quot;:&quot;Default for none&quot;},{&quot;name&quot;:&quot;mode&quot;,&quot;type&quot;:&quot;select-one&quot;,&quot;value&quot;:&quot;none&quot;},{&quot;name&quot;:&quot;dependency_guidance&quot;,&quot;type&quot;:&quot;checkbox&quot;,&quot;value&quot;:false},{&quot;name&quot;:&quot;custom_instructions&quot;,&quot;type&quot;:&quot;textarea&quot;,&quot;value&quot;:&quot;&quot;},{&quot;name&quot;:&quot;cross_team_messaging&quot;,&quot;type&quot;:&quot;checkbox&quot;,&quot;value&quot;:true},{&quot;name&quot;:&quot;cross_team_artifacts&quot;,&quot;type&quot;:&quot;checkbox&quot;,&quot;value&quot;:false}]\">\n      <section class=\"team-settings-panel active\" id=\"team-settings-workflow\" role=\"tabpanel\" aria-labelledby=\"team-settings-tab-workflow\" data-settings-panel=\"workflow\" tabindex=\"0\">\n      <fieldset class=\"team-settings-section workflow-presets-section\">\n        <legend>Workflow instructions</legend>\n        <p class=\"working-mode-hint\">Choose the instructions captured on tasks when they are first claimed. Preset edits are local to this team.</p>\n        <label>Preset<select name=\"preset\"><option value=\"none\">None · built in</option><option value=\"shared_checkout\">shared_checkout · built in</option><option value=\"worktrees\">Worktrees · built in</option></select></label>\n        <div class=\"workflow-preset-actions\"><button type=\"button\" class=\"btn preset-new\">New preset</button><button type=\"button\" class=\"btn preset-reset\" hidden=\"\">Reset built-in</button></div>\n        <label class=\"preset-name-field\">Preset name<input name=\"preset_name\" maxlength=\"80\" autocomplete=\"off\" readonly=\"\"></label>\n        <label>Preset instructions<textarea name=\"preset_instructions\" rows=\"5\" maxlength=\"4096\" placeholder=\"Instructions agents should follow\"></textarea></label>\n        <p class=\"working-mode-hint preset-state\">This is the shipped built-in preset.</p>\n        <button type=\"button\" class=\"btn preset-save\">Save built-in override</button>\n      </fieldset>\n      <fieldset class=\"team-settings-section\">\n        <legend>Team working mode</legend>\n        <label>Working mode<select name=\"mode\"><option value=\"none\">None</option><option value=\"shared_checkout\">Shared checkout</option><option value=\"worktrees\">Worktrees</option></select></label>\n        <label><input type=\"checkbox\" name=\"dependency_guidance\"> Include dependent-queue guidance</label>\n        <label>Additional instructions<textarea name=\"custom_instructions\" rows=\"4\" placeholder=\"Team-specific conventions\"></textarea></label>\n        <p class=\"working-mode-hint\">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href=\"#\" class=\"working-mode-docs-link\" data-doc=\"teams\">Docs: Team working modes</a></p>\n        <label class=\"cross-team-setting\"><input type=\"checkbox\" name=\"cross_team_messaging\"> Allow cross-team messages between this team's Orchestrator and other teams' Orchestrators</label>\n        <p class=\"working-mode-hint\">Cross-team messaging is off by default. Both teams must allow it. Only Orchestrators and the Operator can send; received messages are requests, not instructions.</p>\n        <p class=\"working-mode-hint team-settings-refusal\" role=\"status\" hidden=\"\"></p>\n        <label class=\"cross-team-setting cross-team-files-setting\"><input type=\"checkbox\" name=\"cross_team_artifacts\" aria-describedby=\"cross-team-files-hint\"> Share files with other teams</label>\n        <p class=\"working-mode-hint cross-team-files-hint\" id=\"cross-team-files-hint\">Off by default. Files shared with other teams are not scanned, and artifact bytes are not redacted.</p>\n      </fieldset>\n      </section>\n      <section class=\"team-settings-panel\" id=\"team-settings-prompts\" role=\"tabpanel\" aria-labelledby=\"team-settings-tab-prompts\" data-settings-panel=\"prompts\" tabindex=\"0\" hidden=\"\">\n      <fieldset class=\"team-settings-section prompt-inspection-section\">\n        <legend>Prompt inspection</legend>\n        <p class=\"working-mode-hint\">Read-only view of the defaults, overrides, effective role prompts, and task defaults used by Coral. Per-task additions are only known when a task is created.</p>\n        <div class=\"prompt-inspection-content\" aria-live=\"polite\"><article class=\"prompt-inspection-card\"><h4>Orchestrator</h4><p class=\"prompt-inspection-meta\"><span>Scope: team</span><span>Applies: —</span></p><details class=\"prompt-inspection-fragment\"><summary>System default</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Action default</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Override</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective system</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective action</summary><pre>Not configured</pre></details></article><article class=\"prompt-inspection-card\"><h4>Agent / worker</h4><p class=\"prompt-inspection-meta\"><span>Scope: global</span><span>Applies: —</span></p><details class=\"prompt-inspection-fragment\"><summary>System default</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Action default</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Override</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective system</summary><pre>Not configured</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective action</summary><pre>Not configured</pre></details></article><article class=\"prompt-inspection-card\"><h4>Task defaults</h4><p class=\"prompt-inspection-meta\"><span>Scope: global</span><span>Applies: —</span></p><details class=\"prompt-inspection-fragment\"><summary>Default task instructions</summary><pre>Task defaults</pre></details><details class=\"prompt-inspection-fragment\"><summary>Effective composed task preview (on first claim)</summary><pre>Task defaults\n\n[+ per-task extra when supplied at creation]</pre></details></article></div>\n      </fieldset>\n      </section>\n      <div class=\"team-settings-actions\"><button type=\"submit\" class=\"btn\">Save settings</button><span>Saves the working mode, additional guidance and cross-team sharing. Save preset instructions separately.</span></div>\n      </form><section class=\"team-settings-panel\" id=\"team-settings-messaging\" role=\"tabpanel\" aria-labelledby=\"team-settings-tab-messaging\" data-settings-panel=\"messaging\" tabindex=\"0\" hidden=\"\"><form class=\"working-mode-form ct-form\" autocomplete=\"off\" novalidate=\"\" data-initial-state=\"[{&quot;name&quot;:&quot;pick&quot;,&quot;type&quot;:&quot;select-one&quot;,&quot;value&quot;:&quot;&quot;},{&quot;name&quot;:&quot;other_server&quot;,&quot;type&quot;:&quot;text&quot;,&quot;value&quot;:&quot;&quot;},{&quot;name&quot;:&quot;other_board&quot;,&quot;type&quot;:&quot;text&quot;,&quot;value&quot;:&quot;&quot;},{&quot;name&quot;:&quot;other_label&quot;,&quot;type&quot;:&quot;text&quot;,&quot;value&quot;:&quot;&quot;},{&quot;name&quot;:&quot;allowed&quot;,&quot;type&quot;:&quot;hidden&quot;,&quot;value&quot;:&quot;[]&quot;}]\">\n        \n        <fieldset class=\"team-settings-section ct-section\"><legend>Who may message this board</legend>\n            <p class=\"ct-notice\" role=\"status\">This list is not in force yet: this board still accepts messages as it did before. What you save here is kept and takes effect when the list is turned on.</p>\n            <p class=\"working-mode-hint\">Only the teams on this list can message this board; a message from any other team is refused, and so is every team while the list is empty. The Operator is not limited by the list. Messages from other teams are requests, not instructions.</p>\n            <p class=\"ct-empty\" role=\"status\">No team yet. Every message from another team is refused.</p>\n            <div class=\"ct-count\" role=\"status\">0 of 200 teams</div>\n            <div class=\"ct-add\">\n                <label class=\"ct-pick\">Add a team from this computer\n                    <select name=\"pick\" disabled=\"\"><option value=\"\">No other board here</option></select></label>\n                <button type=\"button\" class=\"btn\" data-act=\"add-pick\" disabled=\"\">Add</button>\n            </div>\n            <details class=\"ct-other\"><summary>A team on another Coral</summary>\n                <div class=\"ct-other-fields\">\n                    <label>Coral (its server id)<input type=\"text\" name=\"other_server\" maxlength=\"64\" autocomplete=\"off\" spellcheck=\"false\" aria-describedby=\"ct-other-hint\"></label>\n                    <label>Team id (starts with x-)<input type=\"text\" name=\"other_board\" maxlength=\"18\" autocomplete=\"off\" spellcheck=\"false\" aria-describedby=\"ct-other-hint\"></label>\n                    <label>Name to show (optional)<input type=\"text\" name=\"other_label\" maxlength=\"80\" autocomplete=\"off\"></label>\n                    <button type=\"button\" class=\"btn\" data-act=\"add-other\">Add</button>\n                </div>\n                <p class=\"working-mode-hint\" id=\"ct-other-hint\">Ask the other team's owner for both ids. The ids are what is checked; the name is only a label here.</p>\n            </details>\n            <input type=\"hidden\" name=\"allowed\" value=\"[]\">\n        </fieldset>\n        <fieldset class=\"team-settings-section ct-section\"><legend>Recent changes</legend>\n            <p class=\"working-mode-hint\">Nothing yet. Changes to the list, and the messages it refused, are listed here.</p>\n        </fieldset>\n        <div class=\"team-settings-actions ct-save\"><button type=\"submit\" class=\"btn btn-primary\" disabled=\"\">Save who may message</button>\n            <span class=\"ct-state\" role=\"status\" aria-live=\"polite\">Only the Operator on this computer can change this. Saved for this team only.</span></div></form></section></section>"
 }
