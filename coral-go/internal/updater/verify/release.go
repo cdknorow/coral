@@ -46,6 +46,19 @@ type State struct {
 	// HubRelaunched is the staged version a relaunch from Coral Hub was started for (one per version, #5245 section 13).
 	HubRelaunched string         `json:"hub_relaunched,omitempty"`
 	History       []HistoryEntry `json:"history,omitempty"`
+	// Stage is what the staging step remembers between checks: the version it staged and its back-off (#5292).
+	Stage *StageState `json:"stage,omitempty"`
+}
+
+// StageState is the staging step's own record. NextAttempt is an RFC 3339 time before which no download is tried again for Version; Attempts
+// counts the failures in a row for it; ErrorKind is "network" or "verify".
+type StageState struct {
+	Staged      string `json:"staged,omitempty"`
+	StagedAt    string `json:"staged_at,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Attempts    int    `json:"attempts,omitempty"`
+	NextAttempt string `json:"next_attempt,omitempty"`
+	ErrorKind   string `json:"error_kind,omitempty"`
 }
 
 // FailureRecord is one refusal as it is kept.

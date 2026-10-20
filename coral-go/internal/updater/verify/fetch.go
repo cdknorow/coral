@@ -17,6 +17,15 @@ var AllowedHosts = []string{"github.com", "objects.githubusercontent.com", "rele
 
 const maxRedirects = 3
 
+// StatusError is an answer other than 200: the caller tells a 404 (the file is not there) from a failure to reach GitHub.
+type StatusError struct {
+	URL    string
+	Status int
+	Text   string
+}
+
+func (e *StatusError) Error() string { return fmt.Sprintf("%s: %s", e.URL, e.Text) }
+
 // Fetcher downloads with a host allow-list, https only, a limit on redirects and a size cap. The zero value uses AllowedHosts and a 60 s timeout.
 type Fetcher struct {
 	// Allow decides a host (a test allows its own server); nil is AllowedHosts. Scheme is "https" unless a test says otherwise.
@@ -95,7 +104,7 @@ func (f *Fetcher) Copy(ctx context.Context, rawURL string, w io.Writer, max int6
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s: %s", u.Redacted(), resp.Status)
+		return &StatusError{URL: u.Redacted(), Status: resp.StatusCode, Text: resp.Status}
 	}
 	if resp.ContentLength > max {
 		return fmt.Errorf("the body is %d bytes, more than %d", resp.ContentLength, max)
