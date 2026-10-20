@@ -176,3 +176,17 @@ func TestNoNonTestFileImportsTheStub(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, offenders, "a non-test file imports the claude stand-in")
 }
+
+// #5475 (Security): the PATH is not the only way Coral finds a CLI. FindCLI falls back to the common install folders by absolute path (/usr/local/bin, /opt/homebrew/bin), which
+// Isolate cannot hide, so a machine that has a real claude there makes the matrix skip rather than risk running it (#4354).
+func TestRealCLIReachableSeesTheCommonInstallLocations(t *testing.T) {
+	Isolate(t)
+	old := findCLIInCommonPaths
+	t.Cleanup(func() { findCLIInCommonPaths = old })
+
+	findCLIInCommonPaths = func(string) string { return "" }
+	assert.Empty(t, RealCLIReachable(), "nothing installed anywhere")
+
+	findCLIInCommonPaths = func(bin string) string { return "/opt/homebrew/bin/" + bin }
+	assert.Equal(t, "/opt/homebrew/bin/claude", RealCLIReachable(), "a claude in a common install folder is reachable")
+}

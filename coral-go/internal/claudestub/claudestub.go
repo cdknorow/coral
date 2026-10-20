@@ -17,11 +17,14 @@ package claudestub
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/cdknorow/coral/internal/agent"
 )
 
 // State is how the stub behaves.
@@ -172,6 +175,12 @@ func (s *Stub) Grabs() int { return len(s.events("GRAB")) }
 // real CLI reads for credentials or behaviour is removed. It returns the temp HOME. Call it before anything resolves a CLI.
 func Isolate(t testing.TB) string {
 	t.Helper()
+	defer func() {
+		// Last, with HOME and PATH already the isolated ones (#5475 review): the PATH above cannot hide a CLI the resolver finds by an absolute path.
+		if p := RealCLIReachable(); p != "" {
+			t.Skipf("a real claude is installed at %s, outside the isolated PATH and HOME: Coral's CLI search (agent.FindCLI, FindCLIInCommonPaths) would reach it if a caller did not use the stand-in's configured path; this matrix runs where none is installed (CI, epoch)", p)
+		}
+	}()
 	home := t.TempDir()
 	t.Setenv("PATH", "/usr/bin:/bin")
 	t.Setenv("HOME", home)
@@ -185,4 +194,17 @@ func Isolate(t testing.TB) string {
 		}
 	}
 	return home
+}
+
+// findCLIInCommonPaths is Coral's own search of the places a CLI is installed (/usr/local/bin, /opt/homebrew/bin, /snap/bin, the app bundle, and under HOME); a variable so a test
+// can stand in for a machine that has one.
+var findCLIInCommonPaths = agent.FindCLIInCommonPaths
+
+// RealCLIReachable is where a real claude would be found by the search a caller that does not use the configured path falls back to ("" when there is none): PATH first, then the
+// common install locations, as agent.FindCLI does. The stand-in's folder is not on either, so anything returned here is not the stand-in. Call it with the isolated PATH and HOME.
+func RealCLIReachable() string {
+	if p, err := exec.LookPath("claude"); err == nil {
+		return p
+	}
+	return findCLIInCommonPaths("claude")
 }
