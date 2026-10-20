@@ -205,6 +205,13 @@ func (h *SessionsHandler) notePendingToolEvent(sessionID, eventType, toolUseID s
 	if sessionID == "" {
 		return
 	}
+	// A PostToolUse for another tool than the pending one is a late one of an earlier call: the pending tool still runs, and whatever it waits on is
+	// still open. It changes nothing (it would otherwise mark the session as waiting for nothing, and a prompt answer is refused, #5254).
+	if eventType == "tool_use" && toolUseID != "" {
+		if t, ok := h.pending.get(sessionID, time.Now()); ok && t.ToolUseID != "" && t.ToolUseID != toolUseID {
+			return
+		}
+	}
 	h.hints.note(sessionID, eventType)
 	switch eventType {
 	case "tool_use":
