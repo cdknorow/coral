@@ -28,6 +28,12 @@ import (
 )
 
 func main() {
+	// A CLI answers its version and help calls and exits: Coral's version probe runs "<cli> --version" and waits for it, and a mock that went on to start its agent loop
+	// kept that child running in every suite that launched mocks (#5330).
+	if answerInfoCall(os.Args[1:], os.Stdout) {
+		return
+	}
+
 	// A one-shot "--print" call (Coral's goal generator, #4204) is answered as the claude CLI
 	// answers it with --output-format json, so a harness using the mock as its CLI sees goals
 	// stored, not a timeout per call.
@@ -361,4 +367,23 @@ func printOneShot(in io.Reader, out io.Writer) {
 		"type": "result", "result": result, "is_error": false, "total_cost_usd": 0,
 		"usage": map[string]int{"input_tokens": len(prompt) / 4, "output_tokens": 8},
 	})
+}
+
+// answerInfoCall answers a lone "--version" (or -v, -V) and a lone "--help" (or -h) the way a CLI does: one line on stdout, and the caller then exits 0. It reports whether
+// it was one of these calls. The version line carries no version number on purpose: Coral records the number a CLI prints (agent.CLIVersion), and a mock has always
+// recorded none, so the mock's sessions keep their empty cli_version (tests that read it are unchanged). Only a call of exactly one argument counts: a launch always
+// passes more, and a flag inside one is the agent's own.
+func answerInfoCall(args []string, out io.Writer) bool {
+	if len(args) != 1 {
+		return false
+	}
+	switch args[0] {
+	case "--version", "-v", "-V":
+		fmt.Fprintln(out, "mock-agent (a test double: it has no version)")
+		return true
+	case "--help", "-h":
+		fmt.Fprintln(out, "usage: mock-agent [--session-id ID] [--resume ID] [--settings FILE] [--model NAME] [--mock-transcript] [--print]\n\nA stand-in agent CLI for Coral's tests and harnesses. It is not an agent.")
+		return true
+	}
+	return false
 }
