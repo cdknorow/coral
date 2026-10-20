@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.4.129 — Pasted images become artifacts you can see over Coral Hub, steadier banners, and one filter icon on the lists
+
+### Features
+
+- **An image you paste or attach in the dashboard is now an artifact:** the agent still reads the file by its path, and Coral also keeps a copy as an artifact on that agent, so the chat shows a thumbnail that previews locally and through Coral Hub (the image is served by the same artifact read the hub already uses; no new route). Send types the path and the `coral://artifacts/...` link of each image, the chat shows the file name with a "Remove shared copy" button, and a notice before the first paste after each Coral Hub connect says the image is visible there and that Coral cannot redact what is in an image, with "Don't share pasted images". JPEG, PNG and GIF are stripped of metadata (not re-encoded) in the agent's file and the artifact alike, and the JPEG stripper now keeps the EXIF Orientation tag so a portrait photo is not on its side. Pasted images follow the uploads retention setting.
+- **A switch for it, in Settings > Network and Hub:** "Share pasted images" (on by default). Off, a request through the tunnel for an image that is only pasted gets a 404, and the hub's artifact lists and the image's comments hide it too. It is changed only on this computer (never through the tunnel).
+
+### Changes
+
+- **The "server unreachable" and "waiting for input" notices are small pills that no longer move the agent view:** they were blocks in the page flow, so each one pushed the view down when it appeared and up when it went (the unreachable one on every tunnel drop). They are now overlay pills under the terminal header, shown only after 1.5 seconds of being wanted and hidden at once, announced politely to screen readers, one at a time (the unreachable one wins).
+- **Tasks and both artifact lists use the agents tab's filter pattern:** the search row has one icon that opens the Filters and Sort panel (a dot and the icon's name say when a filter is on, and the open state is kept per board or agent); the artifact lists have a second icon that opens or closes every row's details.
+
+### Tests
+
+- A property test that only the canonical JPEG Orientation segment survives the strip.
+
 ## v1.4.128 — Faster board search, and the first inert parts of automatic updates
 
 ### Changes
