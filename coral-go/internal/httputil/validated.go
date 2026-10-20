@@ -1,8 +1,6 @@
 package httputil
 
 import (
-	"bytes"
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,8 +22,9 @@ const ValidatorHeader = "X-Coral-Validator"
 // Cache-Control: no-cache, and a request whose If-None-Match names it gets 304 Not Modified with
 // no body. Weak, because the same JSON goes out gzipped or not. Only a 200 is validated.
 func WriteJSONValidated(w http.ResponseWriter, r *http.Request, status int, v any) {
-	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(v); err != nil {
+	body := getJSONBuf()
+	defer putJSONBuf(body)
+	if err := json.NewEncoder(body).Encode(v); err != nil {
 		log.Printf("JSON encode error: %v", err)
 		WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
 		return
@@ -50,10 +49,7 @@ func WriteJSONValidated(w http.ResponseWriter, r *http.Request, status int, v an
 		_, _ = w.Write(body.Bytes())
 		return
 	}
-	var gz bytes.Buffer
-	zw, _ := gzip.NewWriterLevel(&gz, gzip.BestSpeed)
-	_, _ = zw.Write(body.Bytes())
-	_ = zw.Close()
+	gz := gzipBody(body.Bytes())
 	h.Set("Content-Encoding", "gzip")
 	h.Set("Content-Length", strconv.Itoa(gz.Len()))
 	w.WriteHeader(status)

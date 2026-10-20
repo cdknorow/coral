@@ -80,6 +80,47 @@ func putGzipWriter(zw *gzip.Writer) {
 	}
 }
 
+// jsonBufs keeps the buffers a reply's JSON is encoded into between replies (#5349). A 70 KB answer grew its buffer by doubling every time: about 300 KB
+// of garbage per call on the live list, which the dashboard asks for every few seconds. The buffer is only read before the handler returns (hashed,
+// gzipped or copied to the connection), so it is safe to reuse; a big one is dropped rather than kept (jsonBufKeep).
+var jsonBufs = make(chan *bytes.Buffer, 8)
+
+// jsonBufKeep is the largest buffer kept for reuse: a rare huge reply (a long transcript) does not pin its memory.
+const jsonBufKeep = 1 << 20
+
+func getJSONBuf() *bytes.Buffer {
+	select {
+	case b := <-jsonBufs:
+		return b
+	default:
+		return new(bytes.Buffer)
+	}
+}
+
+func putJSONBuf(b *bytes.Buffer) {
+	if b.Cap() > jsonBufKeep {
+		return
+	}
+	b.Reset()
+	select {
+	case jsonBufs <- b:
+	default:
+	}
+}
+
+// gzipBody compresses b with a writer from the shared free list (#5349). WriteJSONCompressed and WriteJSONValidated each made a new gzip writer
+// per reply, 814 KB of compressor tables every time: on the live list (70 KB of JSON) that was about 800 KB of the 1.9 MB it allocated per call.
+func gzipBody(b []byte) *bytes.Buffer {
+	var gz bytes.Buffer
+	gz.Grow(len(b)/4 + 64)
+	zw := getGzipWriter()
+	zw.Reset(&gz)
+	_, _ = zw.Write(b)
+	_ = zw.Close()
+	putGzipWriter(zw)
+	return &gz
+}
+
 type gzipAPIWriter struct {
 	http.ResponseWriter
 	state     gzipState

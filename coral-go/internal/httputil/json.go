@@ -2,8 +2,6 @@
 package httputil
 
 import (
-	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -29,8 +27,9 @@ const gzipMinBytes = 8 << 10
 // Transcript JSON shrinks four to five times, which matters when a remote's
 // chat history crosses a real network through the hub.
 func WriteJSONCompressed(w http.ResponseWriter, r *http.Request, status int, v any) {
-	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(v); err != nil {
+	body := getJSONBuf()
+	defer putJSONBuf(body)
+	if err := json.NewEncoder(body).Encode(v); err != nil {
 		log.Printf("JSON encode error: %v", err)
 		WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "encode failed"})
 		return
@@ -44,10 +43,7 @@ func WriteJSONCompressed(w http.ResponseWriter, r *http.Request, status int, v a
 		_, _ = w.Write(body.Bytes())
 		return
 	}
-	var gz bytes.Buffer
-	zw, _ := gzip.NewWriterLevel(&gz, gzip.BestSpeed)
-	_, _ = zw.Write(body.Bytes())
-	_ = zw.Close()
+	gz := gzipBody(body.Bytes())
 	h.Set("Content-Encoding", "gzip")
 	h.Set("Content-Length", strconv.Itoa(gz.Len()))
 	w.WriteHeader(status)
