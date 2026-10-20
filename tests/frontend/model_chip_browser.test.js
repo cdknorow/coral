@@ -60,7 +60,12 @@ const { connect } = require('./agent_view_harness');
             const pr = R(pane); return { pane: { l: pr.l + bw, r: pr.r - bw, t: pr.t + bw, b: pr.b - bw }, ta: R(ta), chip: R(chip), thinking: R(tchip), toolbar: R(tb), send: send && R(send).h ? R(send) : null,
                 note: note.textContent ? R(note) : null, taH: ta.getBoundingClientRect().height, scrollH: ta.scrollHeight, clientH: ta.clientHeight, vw: innerWidth }; })()`);
         const checkLayout = async (label, what = '') => {
-            const g = await geometry(); const at = `${label} ${what}: ${JSON.stringify(g)}`; const phone = label !== 'Desktop';
+            // The geometry is read once it has stopped moving (#5343): a font-size or text change reflows over a few frames (the box sizes itself on the input event, the row wraps or not), and a read taken
+            // in the middle of it failed 'a card this wide holds the chips and the buttons in one row' on a slow runner (and on every run at a 6x CPU throttle). Two reads a frame apart that agree.
+            await ev(`document.fonts.ready.then(() => true)`); // the chips are measured in the fonts the page uses, not a fallback that is still being swapped out
+            let g = await geometry();
+            for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 30)); const g2 = await geometry(); if (JSON.stringify(g2) === JSON.stringify(g)) break; g = g2; } // sleep-ok: poll until the layout has settled
+            const at = `${label} ${what}: ${JSON.stringify(g)}`; const phone = label !== 'Desktop';
             const shown = [['model chip', g.chip], ['thinking chip', g.thinking.h ? g.thinking : null]].filter(x => x[1]);
             assert.ok(shown.length >= 1, 'the model chip is showing: ' + at);
             for (const [name, c] of shown) {
@@ -80,7 +85,11 @@ const { connect } = require('./agent_view_harness');
                 // Level with Send and left of it; when the card is too narrow for both (a docked panel at 1024 px) the row wraps and the chips are the row above the buttons.
                 const last = shown[shown.length - 1][1], wrapped = shown.every(x => x[1].b <= g.send.t + 0.5);
                 if (!wrapped) for (const [name, c] of shown) { assert.ok(Math.abs((c.t + c.b) / 2 - (g.send.t + g.send.b) / 2) <= 1, `the ${name} is vertically centred with Send: ` + at); assert.ok(c.r <= g.send.l, `the ${name} is left of Send: ` + at); }
-                if (g.pane.r - g.pane.l >= 440 && !/mode buttons/.test(what)) assert.ok(!wrapped, 'a card this wide holds the chips and the buttons in one row: ' + at);
+                // 'This wide' is relative to the text: 440 px holds the chips and the buttons in one row at the normal size, and 200% text needs twice that, so at 200% the row wrapping is the
+            // layout working (the chips on their own row above the buttons, which the checks above hold to). Read once the geometry is settled, that is what 200% text always gives (#5343: on a
+            // run that read it a frame early the row had not wrapped yet, which is why this passed on some runs and failed on others).
+            const wide = (g.pane.r - g.pane.l) >= 440 * (/200% text/.test(what) ? 2 : 1);
+                if (wide && !/mode buttons/.test(what)) assert.ok(!wrapped, 'a card this wide holds the chips and the buttons in one row: ' + at);
             }
             if (g.note) assert.ok(g.note.t >= Math.max(...shown.map(x => x[1].b)) - 0.5 && g.note.b <= g.pane.b + 0.5 && (phone || g.note.t >= g.toolbar.b - 6), 'the note is a line under the row, not between the text and the buttons: ' + at);
             return g;

@@ -12,4 +12,19 @@ async function removeBoards(ev, names) {
     }
 }
 
-module.exports = { removeBoards };
+/** Stop and delete each team record by name, through the page (#5343). POST /api/sessions/launch-team makes a team record named after its board (teams and team_members rows) that deleting the board
+ *  does not remove: the runner's end-check reported `teams: 0 -> 1 rows` for every suite that launches a team, in every full gate run, and cleaned it up itself. Killing the team's agent one by one leaves
+ *  the record "running" (with no active member), and DELETE /api/teams/detail refuses a team that is not stopped, so the team is killed through its own route first (POST /api/sessions/live/team/<board>/kill
+ *  stops the record and what is left of its agents). Never throws. */
+async function removeTeams(ev, names) {
+    for (const name of names) {
+        if (!name) continue;
+        const n = JSON.stringify(String(name));
+        try {
+            await ev(`(async () => { await fetch('/api/sessions/live/team/' + encodeURIComponent(${n}) + '/kill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                return (await fetch('/api/teams/detail/' + encodeURIComponent(${n}), { method: 'DELETE' })).status; })()`);
+        } catch { /* the end-check reports what is left */ }
+    }
+}
+
+module.exports = { removeBoards, removeTeams };
