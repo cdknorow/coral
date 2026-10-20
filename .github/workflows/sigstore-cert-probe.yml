@@ -1,0 +1,46 @@
+name: sigstore-cert-probe
+# A one-release probe (#5231): run once by hand (workflow_dispatch) to read what a keyless Sigstore certificate says about a
+# manually started run: the signer identity (SAN), the issuer, and the GitHub extensions (repository, ref, sha, trigger,
+# workflow, runner). It signs a dummy file, prints the certificate, and uploads nothing else. It is removed in the next release.
+#
+# Trust: manual trigger only (never push or pull_request), read-only contents, id-token only to sign the dummy file, no secrets,
+# actions pinned by SHA. Nothing is published to a release.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # to get the short-lived signing certificate for the dummy file
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.6"
+      - name: Sign a dummy file and print its certificate
+        run: |
+          set -euo pipefail
+          echo "probe $GITHUB_RUN_ID" > probe.txt
+          cosign sign-blob --yes --bundle probe.sigstore.json probe.txt
+          python3 - <<'PY' > cert.der
+          import base64, json, sys
+          b = json.load(open("probe.sigstore.json"))
+          vm = b["verificationMaterial"]
+          raw = (vm.get("certificate") or vm["x509CertificateChain"]["certificates"][0])["rawBytes"]
+          sys.stdout.buffer.write(base64.b64decode(raw))
+          PY
+          {
+            echo "## sigstore-cert-probe: the certificate of this run"
+            echo
+            echo "Trigger: $GITHUB_EVENT_NAME, ref: $GITHUB_REF, workflow ref: $GITHUB_WORKFLOW_REF, sha: $GITHUB_SHA"
+            echo
+            echo '```'
+            openssl x509 -inform DER -in cert.der -noout -text | sed -n '/Issuer:/p;/Subject Alternative Name/,+1p;/1\.3\.6\.1\.4\.1\.57264/,+1p'
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
