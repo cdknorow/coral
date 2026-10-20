@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -160,4 +161,32 @@ func TestRelaySendWithOnlyRefusedAutoFilesIsAPlainMessage(t *testing.T) {
 	_, _, msgs := e.wire.snapshot()
 	assert.Equal(t, 1, msgs)
 	assert.Empty(t, e.sharedRows())
+}
+
+// #5504 (Security): a file with a secret in it is never sent because the text links it (the scan --attach does applies), and a text of very many links is looked at only so far.
+func TestRelaySendAutoAttachSkipsASecretFileAndBoundsTheLinksConsidered(t *testing.T) {
+	e := newRelayAttachEnv(t, true)
+	token := "ghp_" + "1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P7q8R"
+	dirty := e.upload(alphaOrchSID, "# notes\ndeploy with token="+token+"\n")
+	clean := e.upload(alphaOrchSID, "# clean notes\n")
+	code, out, _ := e.relayText(alphaOrchSID, "m1", "dirty "+uri(dirty)+" clean "+uri(clean))
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Equal(t, []any{uri(clean)}, out["auto_attached"], "only the file that passes the scan goes")
+	assert.Equal(t, []any{uri(dirty)}, out["unattached_links"])
+	events, _, _ := e.wire.snapshot()
+	assert.Equal(t, []string{"file:sha256:" + clean, "message"}, events)
+
+	// 60 links to nothing, then a real one: only the first maxLinkedConsidered distinct links are looked at, so the real one at the end is only warned about.
+	e2 := newRelayAttachEnv(t, true)
+	real := e2.upload(alphaOrchSID, "# real\n")
+	text := ""
+	for i := 0; i < 60; i++ {
+		text += " coral://artifacts/" + fmt.Sprintf("%064x", i+1)
+	}
+	text += " " + uri(real)
+	code, out, _ = e2.relayText(alphaOrchSID, "m2", text)
+	require.Equal(t, http.StatusOK, code, out)
+	assert.NotContains(t, out, "auto_attached")
+	events2, _, _ := e2.wire.snapshot()
+	assert.Equal(t, []string{"message"}, events2, "the real file at the end was not sent: it is past the links looked at")
 }

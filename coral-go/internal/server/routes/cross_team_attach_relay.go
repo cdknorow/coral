@@ -327,6 +327,9 @@ func (h *BoardHandler) recordSharedAttachments(atts []attachedArtifact, project,
 	}
 }
 
+// maxLinkedConsidered is how many distinct linked files one send looks at: the send takes at most maxCrossTeamAttachments, so a few more than that is enough to skip some that cannot go.
+const maxLinkedConsidered = 20
+
 // linkedArtifactIDs are the ids of the coral://artifacts and /api/artifacts links in text, in order, once each.
 func linkedArtifactIDs(text string) []string {
 	var out []string
@@ -348,6 +351,9 @@ func (h *BoardHandler) autoAttachLinked(ctx context.Context, r *http.Request, pr
 	ids := linkedArtifactIDs(b.Content)
 	if len(ids) == 0 {
 		return prepared
+	}
+	if len(ids) > maxLinkedConsidered { // a text of thousands of links must not cost a store lookup for each (#5504 review): the rest only stay in the warning
+		ids = ids[:maxLinkedConsidered]
 	}
 	settings, err := h.bs.GetBoardSettings(ctx, project)
 	if err != nil || !settings.CrossTeamArtifacts || h.relayArtifactSender() == nil {
