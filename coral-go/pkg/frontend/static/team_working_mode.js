@@ -173,7 +173,7 @@ function _wireSettingsTabs(dialog, form) {
             panel.hidden = !active;
             panel.classList.toggle('active', active);
         });
-        form.hidden = name === 'health'; // the Health check tab has its own form and Save; the main Save bar is not for it (#4230)
+        form.hidden = name === 'health' || name === 'messaging'; // these tabs have their own form and Save; the main Save bar is not for them (#4230, #5510)
         // On a phone the tab strip scrolls sideways: the selected tab is brought into view (the Health check tab is last).
         tabs.find(tab => tab.dataset.settingsTab === name)?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
         if (moveFocus) tabs.find(tab => tab.dataset.settingsTab === name)?.focus();
@@ -256,6 +256,21 @@ export async function showTeamWorkingMode(team, options = {}) {
             panel.prepend(note);
         }
         await m.mountHealthSettings(host, team, health);
+    }
+
+    // The Messaging tab (#5510): who may message this board. Drawn only when the server enforces the list (cross_team_allowlist on), and only for the Operator on this computer (the state route is not served through Coral Hub).
+    async function addMessagingTab(state) {
+        const m = await importOnce('./team_cross_team_settings.js');
+        const tab = document.createElement('button');
+        tab.type = 'button'; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-selected', 'false'); tab.setAttribute('aria-controls', 'team-settings-messaging');
+        tab.dataset.settingsTab = 'messaging'; tab.id = 'team-settings-tab-messaging'; tab.tabIndex = -1; tab.textContent = 'Messaging';
+        const panel = document.createElement('section');
+        panel.className = 'team-settings-panel'; panel.id = 'team-settings-messaging'; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', 'team-settings-tab-messaging');
+        panel.dataset.settingsPanel = 'messaging'; panel.tabIndex = 0; panel.hidden = true;
+        dialog.querySelector('.team-settings-tabs').append(tab);
+        (dialog.querySelector('#team-settings-health') || form).after(panel);
+        tabs.push(tab); panels.push(panel); bindTab(tab);
+        await m.mountCrossTeamSettings(panel, team, state);
     }
 
     const selectedPreset = () => presets.find(p => p.id === presetSelect.value);
@@ -383,6 +398,11 @@ export async function showTeamWorkingMode(team, options = {}) {
                 form.elements.cross_team_artifacts.checked = Boolean(boardSettings.cross_team_artifacts);
                 boardSettingsLoaded = true;
                 if (boardSettings.health && typeof boardSettings.health === 'object') await addHealthTab(boardSettings.health).catch(() => {});
+                if (!isCloud()) {
+                    const stateResponse = await fetch(serverUrl(`/api/board/${encodeURIComponent(teamName)}/cross-team-state`, teamServer)).catch(() => null);
+                    const crossTeam = stateResponse?.ok ? await stateResponse.json().catch(() => null) : null;
+                    if (crossTeam && crossTeam.enforced) await addMessagingTab(crossTeam).catch(() => {});
+                }
                 if (openHealthTab) document.getElementById('team-settings-tab-health')?.click();
             } else {
                 // The board settings could not be loaded: leave the switch off and disabled.

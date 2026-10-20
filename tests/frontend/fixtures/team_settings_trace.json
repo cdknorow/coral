@@ -4,7 +4,7 @@
   "workspace, all good, tabs": [
    {
     "step": "opened and loaded",
-    "sha256": "6427ef5eff5940b3f4480c17f08cf1e460dd9db0f5d1935a604188244329e3bd"
+    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
    },
    {
     "step": "tab prompts",
@@ -42,7 +42,7 @@
   "dialog, all good, tabs": [
    {
     "step": "opened and loaded",
-    "sha256": "72a07e06aa564384bf46c8a85bd2d5c7d2a9e6b10d8270ceff0d4e74a8bcef9c"
+    "sha256": "d7248176badb5fac557443d1bc0a1355c30db01d6c7d3a37ef3fcce43c1dadc7"
    },
    {
     "step": "tab prompts",
@@ -80,7 +80,7 @@
   "workspace, presets": [
    {
     "step": "opened and loaded",
-    "sha256": "6427ef5eff5940b3f4480c17f08cf1e460dd9db0f5d1935a604188244329e3bd"
+    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
    },
    {
     "step": "preset shared_checkout",
@@ -118,7 +118,7 @@
   "dialog, presets": [
    {
     "step": "opened and loaded",
-    "sha256": "72a07e06aa564384bf46c8a85bd2d5c7d2a9e6b10d8270ceff0d4e74a8bcef9c"
+    "sha256": "d7248176badb5fac557443d1bc0a1355c30db01d6c7d3a37ef3fcce43c1dadc7"
    },
    {
     "step": "preset shared_checkout",
@@ -156,7 +156,7 @@
   "workspace, save": [
    {
     "step": "opened and loaded",
-    "sha256": "6427ef5eff5940b3f4480c17f08cf1e460dd9db0f5d1935a604188244329e3bd"
+    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
    },
    {
     "step": "save with nothing changed",
@@ -178,7 +178,7 @@
   "dialog, save": [
    {
     "step": "opened and loaded",
-    "sha256": "72a07e06aa564384bf46c8a85bd2d5c7d2a9e6b10d8270ceff0d4e74a8bcef9c"
+    "sha256": "d7248176badb5fac557443d1bc0a1355c30db01d6c7d3a37ef3fcce43c1dadc7"
    },
    {
     "step": "save with nothing changed",
@@ -200,7 +200,7 @@
   "preset save fails": [
    {
     "step": "opened and loaded",
-    "sha256": "6427ef5eff5940b3f4480c17f08cf1e460dd9db0f5d1935a604188244329e3bd"
+    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
    },
    {
     "step": "preset shared_checkout",
@@ -238,7 +238,7 @@
   "save fails (mode, board)": [
    {
     "step": "opened and loaded",
-    "sha256": "6427ef5eff5940b3f4480c17f08cf1e460dd9db0f5d1935a604188244329e3bd"
+    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
    },
    {
     "step": "save with nothing changed",
@@ -260,7 +260,7 @@
   "all-Coral settings fail to load (Health check tab note)": [
    {
     "step": "opened and loaded",
-    "sha256": "6427ef5eff5940b3f4480c17f08cf1e460dd9db0f5d1935a604188244329e3bd"
+    "sha256": "e25e4b93c3613e2ffd3e2c9dcb49762f433a6e296f131f507db3213df1ba7b9c"
    },
    {
     "step": "save with nothing changed",
@@ -304,7 +304,7 @@
   "inspection fails": [
    {
     "step": "opened and loaded",
-    "sha256": "45731cc037f373547807b9da5d98e64a73d97010af3983d64c2b68d25f9adcb0"
+    "sha256": "0dcb28dd9cbff8476a897ad1202d88cce3b6aeb5ba04b9a4441b360f57c0195d"
    },
    {
     "step": "nothing more",
@@ -334,7 +334,7 @@
  },
  "lines": {
   "workspace, all good, tabs": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "tab prompts | status:  | requests: ",
    "tab workflow | status:  | requests: ",
    "key ArrowRight | status:  | requests: ",
@@ -345,7 +345,7 @@
    "key Home | status:  | requests: "
   ],
   "dialog, all good, tabs": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "tab prompts | status:  | requests: ",
    "tab workflow | status:  | requests: ",
    "key ArrowRight | status:  | requests: ",
@@ -356,7 +356,7 @@
    "key Home | status:  | requests: "
   ],
   "workspace, presets": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "preset shared_checkout | status:  | requests: ",
    "preset worktrees | status:  | requests: ",
    "new preset | status:  | requests: ",
@@ -367,7 +367,7 @@
    "reset built-in | status: Built-in preset reset to the shipped default. | requests: POST /api/board/team-x/working-mode/presets/worktrees/reset"
   ],
   "dialog, presets": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "preset shared_checkout | status:  | requests: ",
    "preset worktrees | status:  | requests: ",
    "new preset | status:  | requests: ",
@@ -378,21 +378,21 @@
    "reset built-in | status: Built-in preset reset to the shipped default. | requests: POST /api/board/team-x/working-mode/presets/worktrees/reset"
   ],
   "workspace, save": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "save with nothing changed | status: Nothing to save: no setting changed. | requests: ",
    "save the working mode | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"}",
    "save the board settings | status: Saved. Working mode applies on first claim. | requests: PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}",
    "save again | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"none\",\"dependency_guidance\":false,\"custom_instructions\":\"\"}"
   ],
   "dialog, save": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "save with nothing changed | status: Nothing to save: no setting changed. | requests: ",
    "save the working mode | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"}",
    "save the board settings | status: Saved. Working mode applies on first claim. | requests: PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}",
    "save again | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"none\",\"dependency_guidance\":false,\"custom_instructions\":\"\"}"
   ],
   "preset save fails": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "preset shared_checkout | status:  | requests: ",
    "preset worktrees | status:  | requests: ",
    "new preset | status:  | requests: ",
@@ -403,14 +403,14 @@
    "reset built-in | status: reset failed | requests: POST /api/board/team-x/working-mode/presets/worktrees/reset"
   ],
   "save fails (mode, board)": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "save with nothing changed | status: Nothing to save: no setting changed. | requests: ",
    "save the working mode | status: Save failed: mode not saved | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"}",
    "save the board settings | status: Save failed: mode not saved; no | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"} ; PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}",
    "save again | status: Save failed: mode not saved; no | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"none\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"} ; PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}"
   ],
   "all-Coral settings fail to load (Health check tab note)": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "save with nothing changed | status: Nothing to save: no setting changed. | requests: ",
    "save the working mode | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"worktrees\",\"dependency_guidance\":true,\"custom_instructions\":\"Team rule\"}",
    "save the board settings | status: Saved. Working mode applies on first claim. | requests: PUT /api/board/team-x/settings {\"subscriber_id\":\"Operator\",\"cross_team_messaging\":false}",
@@ -424,7 +424,7 @@
    "save again | status: Saved. Working mode applies on first claim. | requests: GET /api/board/team-x/working-mode ; PUT /api/board/team-x/working-mode {\"mode\":\"none\",\"dependency_guidance\":false,\"custom_instructions\":\"\"}"
   ],
   "inspection fails": [
-   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings",
+   "opened and loaded | status:  | requests: GET /api/board/team-x/working-mode ; GET /api/board/team-x/working-mode/presets ; GET /api/settings ; GET /api/settings/prompt-inspection?board=team-x ; GET /api/board/team-x/settings ; GET /api/board/team-x/cross-team-state",
    "nothing more | status:  | requests: "
   ],
   "working mode fails to load": [
