@@ -1,10 +1,12 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -126,6 +128,9 @@ func (h *BoardHandler) GetBoardSettings(w http.ResponseWriter, r *http.Request) 
 		errInternalServer(w, err.Error())
 		return
 	}
+	if cloud.Tunneled(r) {
+		w.Header().Set("Cache-Control", "no-store") // the owner's reply holds the health setup (#5307)
+	}
 	if cloud.Tunneled(r) && !hubOwnerRequest(r).owner {
 		// The health check's configuration (its recipient, its default reviewers) is the
 		// local dashboard's: Coral Hub's view of the settings leaves it out (Security's #4176
@@ -143,6 +148,9 @@ func (h *BoardHandler) GetBoardSettings(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, settings)
 }
 
+// boardSettingsHubMax is the largest body a board settings save accepts through Coral Hub (a health setup is well under 2 KB).
+const boardSettingsHubMax = 16 << 10
+
 // UpdateBoardSettings changes a board's settings. Only the Operator (the
 // dashboard's reserved identity, the same trust model as task planning) may
 // change them, so an agent cannot open its own board to other teams.
@@ -152,7 +160,30 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		SubscriberID string `json:"subscriber_id"`
 		board.BoardSettingsUpdate
 	}
-	if err := decodeJSON(r, &body); err != nil {
+	if cloud.Tunneled(r) {
+		// Through Coral Hub this is the owner's alone, decided before the body is read (#5307), and the body is strict: one JSON object of at
+		// most boardSettingsHubMax bytes whose every key (the health setup's included) is known.
+		if !hubOwnerRequest(r).owner {
+			writeJSON(w, http.StatusForbidden, map[string]string{"code": "owner_only", "error": "only the account this computer is linked to can change board settings through Coral Hub"})
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, boardSettingsHubMax))
+		if err != nil {
+			errBadRequest(w, "the body is too large or unreadable")
+			return
+		}
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil {
+			errBadRequest(w, "invalid JSON: only subscriber_id and the known settings are accepted")
+			return
+		}
+		if _, err := dec.Token(); err != io.EOF {
+			errBadRequest(w, "invalid JSON: one object only")
+			return
+		}
+	} else if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -176,12 +207,8 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if cloud.Tunneled(r) {
-		// Through Coral Hub this is the owner's, and only for the health check's setup (#5307): a grantee at launch tier is refused, and the
-		// cross-team fields (who may send to this board, which servers, whether files are accepted) stay on this computer (#3377, #4379).
-		if !hubOwnerRequest(r).owner {
-			writeJSON(w, http.StatusForbidden, map[string]string{"code": "owner_only", "error": "only the account this computer is linked to can change board settings through Coral Hub"})
-			return
-		}
+		// Only the health check's setup (#5307): the cross-team fields (who may send to this board, which servers, whether files are
+		// accepted) stay on this computer (#3377, #4379).
 		if body.CrossTeamMessaging != nil || body.CrossTeamServers != nil || body.CrossTeamArtifacts != nil {
 			writeJSON(w, http.StatusForbidden, map[string]string{"code": "local_only", "error": "cross-team settings can be changed only on this computer, not through Coral Hub"})
 			return

@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/cdknorow/coral/internal/agent"
@@ -15,6 +16,13 @@ func (h *SystemHandler) GetPromptInspection(w http.ResponseWriter, r *http.Reque
 	if cloud.Tunneled(r) && !hubOwnerRequest(r).owner {
 		writeJSON(w, http.StatusForbidden, map[string]string{"code": "owner_only", "error": "only the account this computer is linked to can read the prompts through Coral Hub"})
 		return
+	}
+	if cloud.Tunneled(r) {
+		w.Header().Set("Cache-Control", "no-store") // the prompts are the owner's to read, never to be kept by a cache (#5307)
+		if len(r.URL.Query().Get("board")) > promptInspectionBoardMax {
+			errBadRequest(w, "board is too long")
+			return
+		}
 	}
 	settings, err := h.ss.GetSettings(r.Context())
 	if err != nil {
@@ -34,9 +42,23 @@ func (h *SystemHandler) GetPromptInspection(w http.ResponseWriter, r *http.Reque
 			"applicability":    "Preview for a new board session, excluding agent-specific base prompts. A non-empty global override replaces both role fragments. The system preview includes the board introduction; the action preview resolves the board placeholder. These are separate launch channels, not one concatenated prompt. Existing sessions are unchanged.",
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"orchestrator": role("Orchestrator", "default_prompt_orchestrator", agent.DefaultOrchestratorSystemPrompt, agent.DefaultOrchestratorActionPrompt),
 		"worker":       role("Worker", "default_prompt_worker", agent.DefaultWorkerSystemPrompt, agent.DefaultWorkerActionPrompt),
 		"task":         map[string]any{"default_instructions": board.DefaultTaskWorkflowInstructions, "scope": "Shipped task default; read-only here", "applicability": "Stored when a task is created, followed by any per-task additional instructions. Team workflow guidance is appended on first claim. Historical task instructions are not rewritten."},
-	})
+	}
+	if cloud.Tunneled(r) {
+		// A size cap on what leaves through the tunnel: read only, bounded.
+		if b, err := json.Marshal(out); err != nil || len(b) > promptInspectionHubMax {
+			errInternalServer(w, "the prompts are too large to send")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
+
+// The limits of a prompt inspection through Coral Hub: the board name and the reply.
+const (
+	promptInspectionBoardMax = 128
+	promptInspectionHubMax   = 1 << 20
+)

@@ -30,9 +30,23 @@ var (
 // SetHubOwnerLabel sets where the routes read the owner's enrolled label.
 func SetHubOwnerLabel(f func(ctx context.Context) (string, error)) { hubOwnerLabel = f }
 
-// hubOwnerRequest is identifyOwner with the server's enrolment record.
+// hubOwnerRequest is the owner check of the configuration routes (#5307): identifyOwner with the server's enrolment record, and the label
+// REQUIRED. A machine whose enrolment recorded no owner label (linked before it was recorded) refuses these routes until it is linked
+// again: the hub's marker alone is not enough to read or change the configuration (the update routes accept it, #5280).
 func hubOwnerRequest(r *http.Request) callerIdentity {
-	return identifyOwner(r, hubOwnerLabel, &hubOwnerNoLabelLog)
+	id := identifyOwner(r, hubOwnerLabel, &hubOwnerNoLabelLog)
+	if id.owner && !ownerLabelRecorded(r) {
+		id.owner = false
+	}
+	return id
+}
+
+func ownerLabelRecorded(r *http.Request) bool {
+	if hubOwnerLabel == nil {
+		return false
+	}
+	l, err := hubOwnerLabel(r.Context())
+	return err == nil && l != ""
 }
 
 // identifyOwner runs the stamp and owner checks. It never trusts a header unless the request really came through the connector: the stamp must

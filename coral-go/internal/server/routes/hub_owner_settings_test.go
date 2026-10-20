@@ -62,6 +62,25 @@ func boardCall(t *testing.T, h *BoardHandler, method, body string, hdr map[strin
 	return rec.Code, out
 }
 
+func boardCallRaw(t *testing.T, h *BoardHandler, method, body string, hdr map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, "/api/board/team/settings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("project", "team")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rec := httptest.NewRecorder()
+	if method == http.MethodGet {
+		h.GetBoardSettings(rec, req)
+	} else {
+		h.UpdateBoardSettings(rec, req)
+	}
+	return rec
+}
+
 func TestOwnerKeepsHealthInBoardSettingsThroughTheHubAndGranteesDoNot(t *testing.T) {
 	_, h := setupBoardTestServer(t)
 	withLabel(t, ownerLabel, nil)
@@ -181,4 +200,87 @@ func TestTheOwnerRoutesAreTheTunnelsLaunchRowsWithTheBoardQuery(t *testing.T) {
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify("POST", "/api/board/team/settings", ""))
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify("DELETE", "/api/board/team/settings", ""))
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify("PUT", "/api/settings", ""), "PUT /api/settings stays never")
+}
+
+// coral-hub Security's rules (#5307): the owner label must be recorded and verified (the marker alone is not enough here), the replies are not
+// cacheable, the save is strict JSON of known keys under a size cap, and a viewer at any tier without the owner marker is refused on each route.
+func TestWithoutARecordedOwnerLabelTheConfigurationRoutesRefuseEveryone(t *testing.T) {
+	_, h := setupBoardTestServer(t)
+	withLabel(t, "", nil) // enrolled before the label was recorded
+	_, out := boardCall(t, h, http.MethodGet, "", ownerHeaders(ownerLabel))
+	assert.NotContains(t, out, "health", "the marker alone does not keep the health setup")
+	code, out := boardCall(t, h, http.MethodPut, `{"subscriber_id":"Operator","health":{"on":false}}`, ownerHeaders(ownerLabel))
+	assert.Equal(t, 403, code)
+	assert.Equal(t, "owner_only", out["code"])
+
+	db, err := storetest.Open(t, t.TempDir()+"/c.db")
+	require.NoError(t, err)
+	defer db.Close()
+	sys := NewSystemHandler(db, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/prompt-inspection", nil)
+	for k, v := range ownerHeaders(ownerLabel) {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	sys.GetPromptInspection(rec, req)
+	assert.Equal(t, 403, rec.Code)
+	// This computer is unaffected.
+	assert.Equal(t, 200, boardCallRaw(t, h, http.MethodGet, "", nil).Code)
+}
+
+func TestTheOwnersSaveIsStrictAndTheRepliesAreNotCacheable(t *testing.T) {
+	_, h := setupBoardTestServer(t)
+	withLabel(t, ownerLabel, nil)
+	ctx := context.Background()
+	_, err := h.bs.Subscribe(ctx, "team", "Dev", "Developer", "dev-session", nil, "all")
+	require.NoError(t, err)
+	require.NoError(t, h.bs.SetHealthOn(ctx, "team", true))
+	for name, body := range map[string]string{
+		"an unknown key":        `{"subscriber_id":"Operator","health":{"on":false},"theme":"dark"}`,
+		"an unknown health key": `{"subscriber_id":"Operator","health":{"on":false,"restart_agents":true}}`,
+		"an unknown nested key": `{"subscriber_id":"Operator","health":{"claim_nudge":{"on":true,"kill":true}}}`,
+		"two objects":           `{"subscriber_id":"Operator","health":{"on":false}}{"health":{"on":true}}`,
+		"trailing text":         `{"subscriber_id":"Operator","health":{"on":false}} x`,
+		"not an object":         `[1]`,
+		"empty":                 ``,
+		"oversize (valid JSON)": `{"subscriber_id":"Operator","health":{"on":false}}` + strings.Repeat(" ", boardSettingsHubMax),
+	} {
+		rec := boardCallRaw(t, h, http.MethodPut, body, ownerHeaders(ownerLabel))
+		assert.Equal(t, 400, rec.Code, name)
+		assert.True(t, h.bs.GetHealthSettings(ctx, "team").On, name+": nothing was saved")
+	}
+	// The same strict body is not asked of this computer's dashboard.
+	assert.Equal(t, 200, boardCallRaw(t, h, http.MethodPut, `{"subscriber_id":"Operator","health":{"on":true},"extra":1}`, nil).Code)
+
+	ok := boardCallRaw(t, h, http.MethodPut, `{"subscriber_id":"Operator","health":{"on":false}}`, ownerHeaders(ownerLabel))
+	require.Equal(t, 200, ok.Code, ok.Body.String())
+	assert.Equal(t, "no-store", ok.Header().Get("Cache-Control"))
+	assert.Equal(t, "no-store", boardCallRaw(t, h, http.MethodGet, "", ownerHeaders(ownerLabel)).Header().Get("Cache-Control"))
+	assert.Equal(t, "no-store", boardCallRaw(t, h, http.MethodGet, "", granteeHeaders()).Header().Get("Cache-Control"), "every reply through the hub")
+	assert.Empty(t, boardCallRaw(t, h, http.MethodGet, "", nil).Header().Get("Cache-Control"), "this computer is as before")
+}
+
+func TestPromptInspectionThroughTheHubIsNoStoreAndBounded(t *testing.T) {
+	db, err := storetest.Open(t, t.TempDir()+"/c.db")
+	require.NoError(t, err)
+	defer db.Close()
+	h := NewSystemHandler(db, nil)
+	withLabel(t, ownerLabel, nil)
+	get := func(query string, hdr map[string]string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/settings/prompt-inspection"+query, nil)
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		h.GetPromptInspection(rec, req)
+		return rec
+	}
+	rec := get("?board=team", ownerHeaders(ownerLabel))
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	assert.Less(t, rec.Body.Len(), promptInspectionHubMax)
+	assert.Equal(t, 400, get("?board="+strings.Repeat("b", promptInspectionBoardMax+1), ownerHeaders(ownerLabel)).Code)
+	assert.Equal(t, 200, get("?board="+strings.Repeat("b", promptInspectionBoardMax), ownerHeaders(ownerLabel)).Code)
+	assert.Equal(t, 403, get("", granteeHeaders()).Code, "a grantee at any tier")
+	assert.Empty(t, get("?board=team", nil).Header().Get("Cache-Control"), "this computer is as before")
 }
