@@ -64,6 +64,12 @@
     .ac-filter { flex: 1; }
     /* the composer stays in reach at the sheet's bottom while the list scrolls above it */
     .ac-panel > .ac-composer { position: sticky; bottom: calc(-1 * var(--space-md)); background: var(--bg-secondary); padding: 6px 0 calc(var(--space-md)); margin-bottom: calc(-1 * var(--space-md)); z-index: 1; }
+    /* with the keyboard up there is little height: the sheet may use all of the viewer, and the header folds to one row (the filters and the close button; the title is the sheet's own name and
+       the filters already say what is shown), so the sticky header and the sticky composer never overlap */
+    body.keyboard-open .ac-panel { max-height: 100%; }
+    body.keyboard-open .ac-title { display: none; }
+    body.keyboard-open .ac-filters { order: 1; flex: 1 1 0; }
+    body.keyboard-open .ac-sheet-close { order: 2; }
     .ac-filter, .ac-act, .ac-whole, .ac-lock, .ac-cancel, .ac-send { min-height: 44px; }
     .ac-act { padding: 2px 12px; }
 }
