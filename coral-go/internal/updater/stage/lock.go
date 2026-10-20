@@ -215,3 +215,19 @@ func createLock(dir, path string, body []byte) error {
 	}
 	return werr
 }
+
+// TakeLock is takeLock for the apply: it takes dir/name (the apply's own lock) the way a check takes its own, with the same stale takeover.
+func TakeLock(dir, name string, now time.Time) (release func(), err error) {
+	return takeLock(dir, name, now)
+}
+
+// CheckRunning reports whether a check holds its lock, so an apply does not start over one.
+func CheckRunning(dir string, now time.Time) bool {
+	path := filepath.Join(dir, CheckLockFile)
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	b, _ := os.ReadFile(path)
+	return live(b, fi.ModTime(), now)
+}

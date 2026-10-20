@@ -1,0 +1,363 @@
+// Package apply is coral-update's apply step (#5325): it replaces the installed Coral with the update the check staged and the verifier approved,
+// only when Coral is not running, keeping the old install for rollback, and failing closed at every step. macOS first (mac.go); the platform's
+// part is behind Platform so the order and the rollback are tested without a Mac.
+//
+// The order, and why (the design is #5231 section 4 and #5245 section 12):
+//
+//  1. Nothing running: it waits for Coral (its parent) to end. It never stops Coral and never starts while it runs.
+//  2. One apply, and none during a check (locks).
+//  3. Verify again, from the staged files, against the compiled-in pins, with the trusted root: the record proves nothing.
+//  4. Copy the package into a private folder while hashing it, and use only the copy: a swap of the staged file after it was verified is useless.
+//  5. Build the new install beside the old (same volume) from the copy, and verify THAT, where it will run: signature, signer, notarization, version.
+//  6. Swap in one atomic step, keeping the old for rollback; start the new; check it is up; only then remove the old and move the high-water mark.
+//  7. If anything after the swap fails, swap back and start the old again.
+package apply
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/cdknorow/coral/internal/updater/stage"
+	"github.com/cdknorow/coral/internal/updater/verify"
+)
+
+// What an apply ended as (the JSON "result"; display only).
+const (
+	ResultRelaunched    = "relaunched"          // updated, and the new one is up
+	ResultRefused       = "refused"             // a verification refused it: nothing was changed
+	ResultRolledBack    = "failed_rolled_back"  // the swap happened, the new one was not healthy, the old one is back
+	ResultFailed        = "failed"              // nothing was changed (or the rollback itself failed: FailedStage says so)
+	ResultNothingStaged = "nothing_staged"      //
+	ResultBusy          = "busy"                // another apply or a check is running
+	ResultCoralRunning  = "coral_running"       // Coral did not end in time: nothing was changed
+	ResultUnsupported   = "unsupported_install" // Homebrew, a package manager, a volume without an atomic swap
+	ResultNeedsManual   = "needs_manual"        // an install the user cannot write: the verified package is opened for them
+	ResultPinsNotSet    = "pins_not_set"        // no signer is pinned for this platform: nothing is installed
+)
+
+// Result is one apply's outcome. It holds no path, URL or hash.
+type Result struct {
+	Result      string `json:"result"`
+	From        string `json:"from,omitempty"`
+	To          string `json:"to,omitempty"`
+	FailedStage string `json:"failed_stage,omitempty"`
+}
+
+// Platform is what differs per operating system.
+type Platform interface {
+	// Pinned reports whether a signer is pinned for this platform. Without one nothing is installed.
+	Pinned() bool
+	// Install is the install this program runs from (never an argument): the path of what is to be replaced.
+	Install() (string, error)
+	// Unsupported says why this install cannot be updated automatically ("" when it can): a package manager's, a volume without an atomic swap.
+	Unsupported(install string) string
+	// Writable reports whether this user can replace the install.
+	Writable(install string) bool
+	// Build makes the new install beside the old one from the package at pkg and returns its path; cleanup undoes what it mounted or made in
+	// the work folder. It runs no check of its own beyond what building needs.
+	Build(ctx context.Context, pkg, install, work string) (newPath string, cleanup func(), err error)
+	// Version is the version of the install at path (its bundle's own).
+	Version(path string) (string, error)
+	// Verify checks the new install where it is: signature, signer (one of teamIDs), notarization and that it is version.
+	Verify(ctx context.Context, newPath, version string) error
+	// Swap exchanges the two installs in one atomic step.
+	Swap(a, b string) error
+	// Start starts the install. Healthy waits until it is up.
+	Start(ctx context.Context, install string) error
+	Healthy(ctx context.Context, install string) error
+	// Show opens the verified package for the user to install by hand (an install this user cannot write).
+	Show(ctx context.Context, pkg string) error
+	// WaitCoralGone waits for Coral to end (its parent), and reports false when it did not within the time.
+	WaitCoralGone(ctx context.Context, install string) bool
+}
+
+// Config is what an apply needs; coral-update fills it with the compiled-in values, a test with its own.
+type Config struct {
+	DataDir   string
+	Installed string
+	Pins      verify.Pins
+	Verifier  verify.BundleVerifier
+	Asset     func(version string) string
+	Platform  Platform
+	Now       func() time.Time
+	MaxPkg    int64
+	// BeforeSwap and AfterSwap are test seams: a crash, or a racing process, at those points.
+	BeforeSwap, AfterSwap func()
+}
+
+func (c *Config) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
+}
+
+const journalFile = "apply-journal.json"
+
+type journal struct {
+	Phase   string `json:"phase"` // "swapping": before the swap; "swapped": after it
+	From    string `json:"from"`
+	To      string `json:"to"`
+	NewPath string `json:"new_path"` // where the other install is (the old one once swapped)
+	Install string `json:"install"`
+}
+
+func writeJournal(dir string, j journal) error {
+	b, _ := json.Marshal(j)
+	return verify.WritePrivate(filepath.Join(dir, journalFile), b)
+}
+
+func readJournal(dir string) (journal, bool) {
+	b, err := verify.ReadPrivate(filepath.Join(dir, journalFile))
+	if err != nil {
+		return journal{}, false
+	}
+	var j journal
+	if json.Unmarshal(b, &j) != nil {
+		return journal{}, false
+	}
+	return j, true
+}
+
+func removeJournal(dir string) { _ = os.Remove(filepath.Join(dir, journalFile)) }
+
+// copyVerified copies the staged package into work while hashing it and returns the copy's path, after checking the hash is the verified sums
+// entry's. The staged file is opened without following a link and read once; everything after this uses the copy.
+func copyVerified(staged string, rec *verify.Record, work string, max int64) (string, error) {
+	src, err := stage.OpenPlain(staged)
+	if err != nil {
+		return "", err
+	}
+	defer src.Close()
+	dst := filepath.Join(work, rec.Asset)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, verify.PrivateMode)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	n, err := io.Copy(io.MultiWriter(out, h), io.LimitReader(src, max+1))
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return "", err
+	}
+	if n > max {
+		return "", errors.New("the package is larger than the limit")
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != rec.PackageSHA256 {
+		return "", &verify.Failure{Stage: verify.StagePackage, Reason: fmt.Sprintf("the staged package is %s, the verified sums file says %s", got, rec.PackageSHA256)}
+	}
+	return dst, nil
+}
+
+// freshDir makes dir empty and 0700.
+func freshDir(dir string) error {
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	return verify.EnsureDir(dir)
+}
+
+func (c *Config) history(st *verify.State, from, to, result string) {
+	st.History = append(st.History, verify.HistoryEntry{At: c.now().UTC().Format(time.RFC3339), From: from, To: to, By: "local", Result: result})
+}
+
+// Run applies the staged update. It never returns an error: every outcome is a Result, and a refusal is also recorded in the state for Settings.
+func Run(ctx context.Context, cfg Config) Result {
+	res := Result{From: cfg.Installed}
+	if cfg.MaxPkg <= 0 {
+		cfg.MaxPkg = stage.DefaultMaxPackage
+	}
+	now := cfg.now()
+	dir := filepath.Join(cfg.DataDir, stage.UpdatesDir)
+	if err := verify.EnsureDir(dir); err != nil {
+		res.Result, res.FailedStage = ResultFailed, "updates_folder"
+		return res
+	}
+	if stage.CheckRunning(dir, now) {
+		res.Result = ResultBusy
+		return res
+	}
+	release, err := stage.TakeLock(dir, stage.ApplyLockFile, now)
+	if err != nil {
+		res.Result = ResultBusy
+		return res
+	}
+	defer release()
+
+	if !cfg.Platform.Pinned() {
+		res.Result = ResultPinsNotSet
+		return res
+	}
+	install, err := cfg.Platform.Install()
+	if err != nil {
+		res.Result, res.FailedStage = ResultFailed, "install"
+		return res
+	}
+	if r, ok := recoverInterrupted(ctx, cfg, dir, install); ok {
+		return r
+	}
+	if why := cfg.Platform.Unsupported(install); why != "" {
+		res.Result, res.FailedStage = ResultUnsupported, why
+		return res
+	}
+	staged, err := stage.LoadStaged(cfg.DataDir)
+	if err != nil {
+		res.Result = ResultNothingStaged
+		return res
+	}
+	res.To = staged.Version
+	st, _ := verify.LoadState(dir) // an unreadable state is a first run, never permission
+
+	// Coral must be gone before anything is touched; this waits for it and never stops it.
+	if !cfg.Platform.WaitCoralGone(ctx, install) {
+		res.Result = ResultCoralRunning
+		return res
+	}
+
+	// 3: the whole chain again, from the staged files.
+	rec, err := stage.Reverify(cfg.Verifier, cfg.Pins, staged, cfg.Asset, st, cfg.Installed, now, cfg.MaxPkg)
+	if err != nil {
+		var f *verify.Failure
+		if errors.As(err, &f) {
+			st.Refuse(staged.Version, f, now)
+			cfg.history(&st, cfg.Installed, staged.Version, "refused")
+			_ = verify.SaveState(dir, st)
+			res.Result, res.FailedStage = ResultRefused, f.Stage
+			return res
+		}
+		res.Result, res.FailedStage = ResultFailed, "reverify"
+		return res
+	}
+
+	// 4: the copy everything else uses.
+	work := filepath.Join(dir, "apply")
+	if err := freshDir(work); err != nil {
+		res.Result, res.FailedStage = ResultFailed, "work_folder"
+		return res
+	}
+	defer os.RemoveAll(work)
+	pkg, err := copyVerified(staged.PackagePath, rec, work, cfg.MaxPkg)
+	if err != nil {
+		var f *verify.Failure
+		if errors.As(err, &f) {
+			st.Refuse(staged.Version, f, now)
+			_ = verify.SaveState(dir, st)
+			res.Result, res.FailedStage = ResultRefused, f.Stage
+			return res
+		}
+		res.Result, res.FailedStage = ResultFailed, "copy"
+		return res
+	}
+
+	// An install this user cannot write: no swap, no helper; the verified package is opened for them to install by hand.
+	if !cfg.Platform.Writable(install) {
+		if err := cfg.Platform.Show(ctx, pkg); err != nil {
+			res.Result, res.FailedStage = ResultFailed, "show"
+			return res
+		}
+		res.Result = ResultNeedsManual
+		return res
+	}
+
+	// 5: the new install beside the old, verified where it will run.
+	newPath, cleanup, err := cfg.Platform.Build(ctx, pkg, install, work)
+	if err != nil {
+		res.Result, res.FailedStage = ResultFailed, "build"
+		return res
+	}
+	defer cleanup()
+	if err := cfg.Platform.Verify(ctx, newPath, rec.Version); err != nil {
+		_ = os.RemoveAll(newPath)
+		st.Refuse(staged.Version, &verify.Failure{Stage: "platform_signature", Reason: err.Error()}, now)
+		cfg.history(&st, cfg.Installed, rec.Version, "refused")
+		_ = verify.SaveState(dir, st)
+		res.Result, res.FailedStage = ResultRefused, "platform_signature"
+		return res
+	}
+
+	// 6: swap, start, check; roll back on any failure from here.
+	if cfg.BeforeSwap != nil {
+		cfg.BeforeSwap()
+	}
+	if err := writeJournal(dir, journal{Phase: "swapping", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install}); err != nil {
+		_ = os.RemoveAll(newPath)
+		res.Result, res.FailedStage = ResultFailed, "journal"
+		return res
+	}
+	if err := cfg.Platform.Swap(newPath, install); err != nil {
+		_ = os.RemoveAll(newPath)
+		removeJournal(dir)
+		res.Result, res.FailedStage = ResultFailed, "swap"
+		return res
+	}
+	_ = writeJournal(dir, journal{Phase: "swapped", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install})
+	if cfg.AfterSwap != nil {
+		cfg.AfterSwap()
+	}
+	startErr := cfg.Platform.Start(ctx, install)
+	if startErr == nil {
+		startErr = cfg.Platform.Healthy(ctx, install)
+	}
+	if startErr != nil {
+		return rollBack(ctx, cfg, dir, &st, install, newPath, rec.Version, "health")
+	}
+	// The new one is up: the old one goes, and the high-water mark moves.
+	_ = os.RemoveAll(newPath)
+	removeJournal(dir)
+	if err := st.Accept(rec); err == nil {
+		st.Stage = &verify.StageState{}
+	}
+	cfg.history(&st, cfg.Installed, rec.Version, "relaunched")
+	_ = verify.SaveState(dir, st)
+	_ = os.RemoveAll(filepath.Join(dir, stage.StagingDir, rec.Version))
+	res.Result = ResultRelaunched
+	return res
+}
+
+// rollBack exchanges the installs again and starts the old one.
+func rollBack(ctx context.Context, cfg Config, dir string, st *verify.State, install, other, to, why string) Result {
+	res := Result{Result: ResultRolledBack, From: cfg.Installed, To: to, FailedStage: why}
+	if err := cfg.Platform.Swap(other, install); err != nil {
+		res.Result, res.FailedStage = ResultFailed, "rollback_swap"
+		return res
+	}
+	removeJournal(dir)
+	_ = os.RemoveAll(other)
+	_ = cfg.Platform.Start(ctx, install)
+	cfg.history(st, cfg.Installed, to, "failed_rolled_back")
+	st.Refuse(to, &verify.Failure{Stage: why, Reason: "the new version did not come up; the previous one is back"}, cfg.now())
+	_ = verify.SaveState(dir, *st)
+	return res
+}
+
+// recoverInterrupted finishes what an apply that died in the middle left. Which install is at the install path decides: when it is the new
+// version (the swap happened) and the old one is at the other path, the old one is put back; when it is the old version nothing is installed
+// and the leftover copy is removed. It reports whether it ended this run.
+func recoverInterrupted(ctx context.Context, cfg Config, dir, install string) (Result, bool) {
+	j, ok := readJournal(dir)
+	if !ok {
+		return Result{}, false
+	}
+	defer removeJournal(dir)
+	now, err := cfg.Platform.Version(install)
+	if err != nil || now != j.To {
+		// The old install (or one we cannot read) is in place: whatever is at the other path is a leftover copy.
+		_ = os.RemoveAll(j.NewPath)
+		return Result{}, false
+	}
+	if _, err := os.Lstat(j.NewPath); err != nil {
+		return Result{}, false // the swapped-out install is gone: nothing to put back, and the new one runs
+	}
+	st, _ := verify.LoadState(dir)
+	return rollBack(ctx, cfg, dir, &st, install, j.NewPath, j.To, "interrupted"), true
+}

@@ -19,6 +19,10 @@ import (
 	"github.com/cdknorow/coral/internal/updater/verify"
 )
 
+// applyEnabled is the off switch of the apply (#5325): until all three platforms pass their upgrade tests it answers not_enabled. A constant on
+// purpose: nothing a caller, a setting or the environment says turns it on.
+const applyEnabled = false
+
 const (
 	checkTimeout   = 30 * time.Minute
 	bytesPerSecond = 8 << 20
@@ -83,7 +87,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 		print(stdout, output{Result: "off"})
 		return 0
 	}
-	if args[0] == "apply" {
+	if args[0] == "apply" && !applyEnabled {
 		print(stdout, output{Result: "not_enabled", Installed: config.Version})
 		return 0
 	}
@@ -101,6 +105,9 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 		if real, err := filepath.EvalSymlinks(exe); err == nil {
 			portable = writableFolder(filepath.Dir(real))
 		}
+	}
+	if args[0] == "apply" {
+		return runApply(ctx, stdout, dataDir, trust, source)
 	}
 	res := stage.Check(ctx, stage.Config{
 		DataDir:        dataDir,

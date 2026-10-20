@@ -34,6 +34,9 @@ type Pins struct {
 	// MaxManifestLifetime bounds expires_at - promoted_at, so a manifest cannot approve forever; MaxSkew is the clock skew allowed on promoted_at.
 	MaxManifestLifetime time.Duration
 	MaxSkew             time.Duration
+	// MacTeamIDs are the Apple Developer ID team identifiers a macOS update may be signed by (a set, so a rotation is approved under the old pin
+	// and takes effect in the release after it). With none, the macOS apply installs nothing.
+	MacTeamIDs []string
 }
 
 // DefaultPins is the compiled-in set. The promote workflow's place is decided with the approval model (note section 3: a second locked-down
