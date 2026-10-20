@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.4.122 — Double-clicking Restart starts one agent, and the hub's keyword rules cover ten more shapes at about 90 percent of the old speed
+
+### Security
+
+- **Ten more shapes of a value after a name are redacted for Coral Hub:** a URL-encoded JSON pair (`?cfg=%7B%22api_key%22%3A%22VALUE%22%7D`, once or twice encoded), an XML element (`<api_key>VALUE</api_key>`), an HTML form field, quote entities escaped again (`&amp;quot;`) or without the semicolon, `password%3D%20VALUE`, and `curl -b` and `--cookie` pairs, including coral-hub's four: `curl -bNAME=VALUE` and `-b"NAME=VALUE"` with no space, a URL-encoded key name (`api%5Fkey`), and `docker login -p VALUE`. Each had 0 of 2,000 samples survive in the hub's test harness.
+- **The hub's keyword rules are faster:** they now read only each name and its value, not the kilobytes after them, so redaction on source-code-heavy terminal text is about 90 percent of the speed of the local rules (it was about 70 percent) and a dense 2 MiB reply no longer reaches the redaction time budget. A reply too large to check within the budget is still refused rather than shown.
+- **A file or message refused before it is sent to another Coral through Coral Hub now says why:** the line (in the file, or in the re-encoded copy that found it) and the rule, never any part of the secret. A value that is a code reference (`config.PostHogKey`) is no longer taken for a secret, but a lowercase dotted passphrase after a password or secret name (`password = correct.horse.battery.staple`) is still refused.
+
+### Fixes
+
+- **Double-clicking Restart on 121 started two agents, and they piled up:** a restart or resume now runs one at a time per session (the second request gets 409), and Launch, Launch team, Wake and Wake all also run to their end when the request that asked for them is dropped, with a bound that grows with the number of sessions.
+- **Held input is counted while it is being retried:** the sessions list showed no held input for about a second while the retry loop had a held send off the queue to try it again.
+- **On a phone, touch targets are 44 px and overlays close with Back from the top:** the preview's tab close, the viewer's Close, the comments filter, the capped branch chip and the prompt inspection rows were smaller; the viewer's title is readable at 320 px, the comments sheet fits the keyboard, and Back closes the topmost overlay first.
+
+### Tests
+
+- A nightly `go-shuffle` job on main (`go test -shuffle` with the seed printed, `-count=3`, every package, both tag sets). The tmux test no longer ends with a timer goroutine still running under a shuffled run; the telemetry end-to-end test builds with the real module cache and retries only a refused module download; the saved-search browser check waits for its option.
+
 ## v1.4.121 — Comments on artifacts, and an agent that is restarted or woken is no longer left at a bare shell
 
 ### Features
