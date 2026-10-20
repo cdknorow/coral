@@ -256,3 +256,36 @@ func TestStatusJSONNeverCarriesTheStoredErrorText(t *testing.T) {
 	assert.Contains(t, plain, "permission denied", "the plain text keeps the detail for the person at their terminal")
 	assert.Equal(t, 1, strings.Count(plain, "Last refusal:"))
 }
+
+// #5428: a version field is a version or "unknown", and who started an attempt is "local", a hub pseudonym or "other": a hand-edited state puts no text into the JSON.
+func TestStatusJSONShowsOnlyVersionsInVersionFields(t *testing.T) {
+	dir := withVersion(t, "1.4.130")
+	evil := "/home/someone/.ssh/id_rsa"
+	writeState(t, dir, verify.State{
+		LastFailure: &verify.FailureRecord{Version: evil, Stage: "package", At: "2026-10-20T11:00:00Z"},
+		Stage:       &verify.StageState{Staged: "https://evil.example/x", StagedAt: "2026-10-20T10:00:00Z", Version: "1.4.131-rc1", Attempts: 1, NextAttempt: "2999-01-01T00:00:00Z"},
+		History: []verify.HistoryEntry{
+			{At: "2026-10-20T08:00:00Z", From: "1.4.129", To: evil, By: "hub:someone@example.invalid", Result: "failed_rolled_back", Reason: "not_healthy"},
+			{At: "2026-10-20T09:00:00Z", From: evil, To: "1.4.131", By: evil, Result: "refused", Reason: "package"},
+			{At: "2026-10-20T10:00:00Z", From: "1.4.129", To: "1.4.131", By: "hub:hub-user-1234abcd", Result: "relaunched"},
+		},
+	})
+	_, js := statusRun(t, nil, "status", "--json")
+	for _, bad := range []string{"/home/", "someone", "id_rsa", "https://", "evil", "rc1", "@"} {
+		assert.NotContains(t, js, bad)
+	}
+	m := statusJSON(t, nil)
+	assert.Equal(t, "unknown", m["last_failure"].(map[string]any)["version"])
+	assert.Equal(t, "unknown", m["staged"].(map[string]any)["version"])
+	assert.Equal(t, "unknown", m["backoff"].(map[string]any)["version"])
+	rb := m["last_rollback"].(map[string]any)
+	assert.Equal(t, "1.4.129", rb["from"], "a real version is kept")
+	assert.Equal(t, "unknown", rb["to"])
+	assert.Equal(t, "other", rb["by"])
+	la := m["last_apply"].(map[string]any)
+	assert.Equal(t, "hub:hub-user-1234abcd", la["by"], "a hub pseudonym is kept")
+	assert.Equal(t, "1.4.131", la["to"])
+	_, plain := statusRun(t, nil, "status")
+	assert.NotContains(t, plain, "id_rsa", "the plain text shows the same fields")
+	assert.NotContains(t, plain, "evil")
+}

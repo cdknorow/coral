@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -106,6 +107,27 @@ func word(s string) string {
 	return s
 }
 
+// ver keeps a version (verify.ParseVersion accepts it) as it is, and shows anything else as "unknown": a hand-edited state cannot put text into a version field.
+func ver(s string) string {
+	if s == "" {
+		return ""
+	}
+	if _, err := verify.ParseVersion(s); err != nil {
+		return "unknown"
+	}
+	return s
+}
+
+// by keeps who started an attempt: "local" or a hub pseudonym, else "other".
+func by(s string) string {
+	if s == "" || s == "local" || hubBy.MatchString(s) {
+		return s
+	}
+	return "other"
+}
+
+var hubBy = regexp.MustCompile(`^hub:hub-user-[0-9a-f]{8}$`)
+
 // timeText keeps an RFC 3339 time as written, or nothing when it is not one.
 func timeText(s string) string {
 	if _, err := time.Parse(time.RFC3339, s); err != nil {
@@ -145,20 +167,20 @@ func collectStatus(getenv func(string) string, dataDir string, now time.Time) st
 	out.Revoked = len(st.Revoked)
 	out.LastCheck = timeText(st.LastCheck)
 	if f := st.LastFailure; f != nil {
-		out.LastFailure = &statusFail{Version: text(f.Version), Stage: word(f.Stage), Reason: text(f.Reason), At: timeText(f.At)}
+		out.LastFailure = &statusFail{Version: ver(f.Version), Stage: word(f.Stage), Reason: text(f.Reason), At: timeText(f.At)}
 	}
 	if s := st.Stage; s != nil {
 		if s.Staged != "" {
-			out.Staged = &statusStage{Version: text(s.Staged), StagedAt: timeText(s.StagedAt)}
+			out.Staged = &statusStage{Version: ver(s.Staged), StagedAt: timeText(s.StagedAt)}
 		}
 		if until := timeText(s.NextAttempt); until != "" {
 			t, _ := time.Parse(time.RFC3339, until)
-			out.Backoff = &statusBack{Version: text(s.Version), Until: until, Waiting: t.After(now), Attempts: s.Attempts, Kind: word(s.ErrorKind)}
+			out.Backoff = &statusBack{Version: ver(s.Version), Until: until, Waiting: t.After(now), Attempts: s.Attempts, Kind: word(s.ErrorKind)}
 		}
 	}
 	for i := len(st.History) - 1; i >= 0; i-- {
 		h := st.History[i]
-		a := &statusApply{At: timeText(h.At), From: text(h.From), To: text(h.To), By: text(h.By), Result: word(h.Result), Reason: word(h.Reason)}
+		a := &statusApply{At: timeText(h.At), From: ver(h.From), To: ver(h.To), By: by(h.By), Result: word(h.Result), Reason: word(h.Reason)}
 		if out.LastApply == nil {
 			out.LastApply = a
 		}
