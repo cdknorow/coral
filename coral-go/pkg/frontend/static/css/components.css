@@ -295,7 +295,7 @@
 .settings-cloud-hub-operator-actions ol { margin: 4px 0 0; padding-left: 18px; font-size: var(--fs-sm, 11px); color: var(--text-secondary); }
 .mb-external-badge:not(.is-outbound):not(.mb-hub-user-badge) {
     border-color: var(--accent, var(--border));
-    color: var(--accent, var(--text-secondary));
+    color: var(--link-text, var(--accent, var(--text-secondary))); /* the accent was 4.44:1 on the badge's panel in the light theme; the link colour is 5.9 or more (#5273) */
 }
 
 .mb-message-body {
@@ -306,6 +306,43 @@
        fenced code keeps its own horizontal scroll (pre below). */
     overflow-wrap: anywhere;
     min-width: 0;
+}
+
+/* Files that came with a cross-team message (#5503): under the text, in its column; an image is a thumbnail, any other file a chip with its name and size. */
+.mb-attachments {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+    min-width: 0;
+}
+.mb-attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 6px);
+    background: var(--bg-secondary);
+    color: var(--link-text);
+    text-decoration: none;
+    font-size: var(--fs-md, 13px);
+}
+.mb-attachment:hover { background: var(--bg-hover); text-decoration: underline; }
+.mb-attachment.is-image { flex-direction: column; align-items: flex-start; padding: 6px; }
+.mb-attachment-thumb { display: block; max-width: min(100%, 220px); max-height: 140px; border-radius: var(--radius-sm); object-fit: contain; background: var(--bg-primary); }
+.mb-attachment-icon { font-size: 1.125rem; color: var(--text-secondary); }
+.mb-attachment-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28ch; }
+.mb-attachment-size { color: var(--text-secondary); font-size: var(--fs-sm, 11px); white-space: nowrap; }
+/* A link in a message from another Coral whose file did not come with it: plain muted text and a note, nothing to open. */
+.mb-not-here { color: var(--text-secondary); }
+.mb-not-here-note { font-size: var(--fs-sm, 11px); font-style: italic; white-space: nowrap; }
+@media (max-width: 767px), (pointer: coarse) {
+    .mb-attachment { min-height: 44px; }
+    .mb-attachment.is-image { min-height: 0; }
 }
 
 /* Message board delete button */

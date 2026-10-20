@@ -7,6 +7,7 @@ import { boardPageChanged } from './dock_page.js';
 import { emptyState } from './dom_write.js';
 import { state } from './state.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
+import { messageAttachmentAttrs, messageAttachmentsHtml } from './board_attachments.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { platform } from './platform/detect.js';
 import { BOARD_SAVE_BUTTON } from './saved_marks.js';
@@ -334,7 +335,7 @@ function renderBoardItem(item, prev) {
     const selectedClass = isSelectMode() && isSelected(m.id) ? ' mb-message-selected' : '';
     const checkbox = isSelectMode() ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${isSelected(m.id) ? 'checked' : ''} data-on-click="mb-msg-select">` : '';
     return `
-        <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}" style="${boardMessageColorStyle(color)}">
+        <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}"${messageAttachmentAttrs(m)} style="${boardMessageColorStyle(color)}">
             ${boardAvatar(m, agent)}
             <div class="mb-message-header">
                 ${checkbox}
@@ -345,6 +346,7 @@ function renderBoardItem(item, prev) {
                 <button class="mb-delete-msg-btn" data-on-click="mb-msg-delete" data-msg-id="${Number(m.id)}" title="Delete message">&times;</button>
             </div>
             <div class="mb-message-body">${renderBoardMessageBody(m)}</div>
+            ${messageAttachmentsHtml(m)}
         </div>`;
 }
 

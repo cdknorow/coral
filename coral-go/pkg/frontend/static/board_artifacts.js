@@ -23,8 +23,50 @@ function openInViewer(e, hex, server, filename) {
     });
 }
 
+/** A link or image in a message from another Coral whose file did not come with it (#5503): muted text and a note, not a link that opens nothing. */
+function markNotHere(el, label) {
+    const note = document.createElement('span');
+    note.className = 'mb-not-here';
+    note.title = 'This file was not sent with the message, so it is not stored on this computer.';
+    note.append(document.createTextNode(label), Object.assign(document.createElement('span'), { className: 'mb-not-here-note', textContent: ' (not on this machine)' }));
+    el.replaceWith(note);
+}
+
 export function resolveBoardArtifacts(root, server) {
     if (!root) return;
+    for (const msg of root.querySelectorAll('.mb-message[data-inbound]')) {
+        const here = new Set((msg.dataset.attached || '').split(' ').filter(Boolean));
+        for (const img of msg.querySelectorAll('.mb-message-body img[data-artifact]')) {
+            const hex = artifactRefHex(`coral://artifacts/${img.dataset.artifact}`);
+            if (hex && !here.has(hex)) markNotHere(img, img.getAttribute('alt') || 'image');
+        }
+        for (const a of msg.querySelectorAll('.mb-message-body a[href]')) {
+            const hex = artifactRefHex(a.getAttribute('href'));
+            if (hex && !here.has(hex)) markNotHere(a, a.textContent.trim() || 'file');
+        }
+    }
+    for (const chip of root.querySelectorAll('.mb-attachment[data-attachment]')) {
+        const hex = artifactRefHex(`coral://artifacts/${chip.dataset.attachment}`);
+        if (!hex) { chip.remove(); continue; }
+        chip.href = serverUrl(artifactPath(hex), server);
+        chip.target = '_blank';
+        chip.rel = 'noopener noreferrer';
+        const thumb = chip.querySelector('img[data-attachment-img]');
+        if (thumb && !thumb.getAttribute('src')) {
+            // a thumbnail that cannot be drawn (the file is gone, or not an image after all) leaves the chip a file chip, not an empty box
+            thumb.addEventListener('error', () => {
+                const icon = Object.assign(document.createElement('span'), { className: 'material-icons mb-attachment-icon', textContent: 'image' });
+                icon.setAttribute('aria-hidden', 'true');
+                thumb.replaceWith(icon);
+                chip.classList.remove('is-image');
+            }, { once: true });
+            thumb.src = chip.href;
+        }
+        if (!chip.dataset.viewerBound) {
+            chip.dataset.viewerBound = '1';
+            chip.addEventListener('click', e => openInViewer(e, hex, server, chip.dataset.filename || ''));
+        }
+    }
     for (const img of root.querySelectorAll('.mb-message-body img[data-artifact]')) {
         const hex = artifactRefHex(`coral://artifacts/${img.dataset.artifact}`);
         if (!hex) { img.remove(); continue; }

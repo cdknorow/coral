@@ -4,6 +4,7 @@ import { morphHtml } from './dom_morph.js';
 import { OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, getAgentColor, externalMessageBadge, hubUserBadge, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
 import { splitKey, keyLabel, boardFetch } from './server_base.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
+import { messageAttachmentAttrs, messageAttachmentsHtml } from './board_attachments.js';
 import { pollEvery } from './overload.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
 import { browserLocal } from './safe_storage.js';
@@ -293,7 +294,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
 
         const selectedClass = _boardChatSelectMode && _boardChatSelectedIds.has(m.id) ? ' mb-message-selected' : '';
         const checkbox = _boardChatSelectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_boardChatSelectedIds.has(m.id) ? 'checked' : ''} data-on-click="board-chat-msg-select">` : '';
-        return `<div class="mb-message ${spacing}${alignClass}${selectedClass}" style="${boardMessageColorStyle(color)}">
+        return `<div class="mb-message ${spacing}${alignClass}${selectedClass}"${messageAttachmentAttrs(m)} style="${boardMessageColorStyle(color)}">
             ${boardAvatar(m, agent)}
             <div class="mb-message-header">
                 ${checkbox}
@@ -302,6 +303,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
                 <span class="mb-message-time">${_formatTime(m.created_at)}</span>
             </div>
             <div class="mb-message-body">${renderBoardMessageBody(m)}</div>
+            ${messageAttachmentsHtml(m)}
         </div>`;
     }).join(''));
     resolveBoardArtifacts(msgsEl, _activeBoardChat ? splitKey(_activeBoardChat).server : undefined);

@@ -18,6 +18,8 @@
 1	auto_accept.js	stateText
 1	board_accents.js	_colorSwatches.map(c => `<button class="color-swatch${c === current ? ' active' : ''}" style="background:${c}"
 1	board_accents.js	c
+1	board_attachments.js	body
+1	board_attachments.js	chips
 1	board_chat.js	_formatTime(m.created_at)
 1	board_chat.js	alignClass
 1	board_chat.js	boardAvatar(m, agent)
@@ -26,6 +28,8 @@
 1	board_chat.js	count
 1	board_chat.js	externalMessageBadge(m)
 1	board_chat.js	hubUserBadge(m)
+1	board_chat.js	messageAttachmentAttrs(m)
+1	board_chat.js	messageAttachmentsHtml(m)
 1	board_chat.js	remaining
 1	board_chat.js	renderBoardMessageBody(m)
 1	board_chat.js	selectedClass
@@ -320,6 +324,8 @@
 1	message_board.js	formatTime(m.created_at)
 1	message_board.js	hubUserBadge(m)
 1	message_board.js	icon
+1	message_board.js	messageAttachmentAttrs(m)
+1	message_board.js	messageAttachmentsHtml(m)
 2	message_board.js	p.message_count
 1	message_board.js	p.subscriber_count
 1	message_board.js	remaining
