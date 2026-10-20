@@ -24,7 +24,8 @@ const BOUNDS = { heapMB: 25, detached: 300, domAll: 12000, chatNodes: 3000, boar
 const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a soak waits for time; there is no event for "30 more seconds"
 
 (async () => {
-    const { client, Page, Emulation, ev: rawEv, waitFor, PRELOAD, install } = await connect();
+    const { client, Page, Emulation, ev: rawEv, waitFor } = await connect(); // (not PRELOAD or install(): they mock the agent list and detach the live feed, and this page runs on the real one)
+    const { coralReady } = require('./helpers/wait').bind(rawEv);
     const { HeapProfiler, Performance } = client;
     const S = `(window.__coralStatic || '/static/')`;
     const BASE = process.env.CORAL_TEST_URL;
@@ -48,15 +49,21 @@ const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a soak wa
         console.log(`soak: ${MINUTES} min, a cycle every ${CYCLE_S} s, a sample every ${SAMPLE_MIN} min, ${team.agents.length} agents on board ${board}`);
         await Page.enable(); await HeapProfiler.enable(); await Performance.enable();
         await client.Network.disable().catch(() => {}); // DevTools keeps every response body while its Network domain is on: the tool's memory, not the page's
-        await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + `;(() => {
+        await Page.addScriptToEvaluateOnNewDocument({ source: `;(() => {
             const T = window.__soak = { intervals: new Set(), ws: new Set() };
             const si = window.setInterval, ci = window.clearInterval; window.setInterval = (f, ms, ...a) => { const id = si(f, ms, ...a); T.intervals.add(id); return id; }; window.clearInterval = id => { T.intervals.delete(id); return ci(id); };
             const WS = window.WebSocket; window.WebSocket = class extends WS { constructor(...a) { super(...a); T.ws.add(this); this.addEventListener('close', () => T.ws.delete(this)); } };
         })();` });
         await Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
-        await ev(`window.__coralReady.then(() => true)`);
-        await waitFor(`T.state.liveSessions.filter(s => /^Soak/.test(s.display_name || s.name || '')).length >= ${AGENTS}`, 'the six agents in the list', 60000);
+        // the six sessions are up on the server before the page is opened (the first dispatch passed, the second timed out here after 60 s on a runner that was slower to start them)
+        const isSoak = x => /^Soak/.test(x.display_name || x.name || '');
+        let live = [];
+        for (let k = 0; k < 60 && live.filter(isSoak).length < AGENTS; k++) { const r = await api('GET', '/api/sessions/live'); live = Array.isArray(r.data) ? r.data : (r.data && r.data.sessions) || []; if (live.filter(isSoak).length < AGENTS) await settle(1000); }
+        if (live.filter(isSoak).length < AGENTS) throw new Error(`the server lists ${live.filter(isSoak).length} of ${AGENTS} agents after 1 min (raw: ${JSON.stringify(live).slice(0, 300)}): ${JSON.stringify(live.map(x => [x.name, x.display_name, x.status || x.state]).slice(0, 12))}`);
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await coralReady();
+        await ev(`(async () => { const base = window.__coralStatic || '/static/'; const [state, x] = await Promise.all([import(base + 'state.js'), import(base + 'xterm_renderer.js')]); window.T = { state: state.state }; window.__getTerm = x.getTerminal; return true; })()`);
+        try { await waitFor(`T.state.liveSessions.filter(s => /^Soak/.test(s.display_name || s.name || '')).length >= ${AGENTS}`, 'the six agents in the list', 40000); }
+        catch (e) { const raw = await api('GET', '/api/sessions/live'); throw new Error(`${e.message}: the page has ${JSON.stringify(await ev(`T.state.liveSessions.map(s => [s.name, s.display_name, s.status])`))}; the server has ${JSON.stringify((Array.isArray(raw.data) ? raw.data : (raw.data && raw.data.sessions) || []).map(x => [x.name, x.display_name, x.status || x.state]))}`); }
         // the artifacts tab shows a list of 150 (stubbed: a real team has none yet)
         await ev(`(() => { const R = window.fetch; const items = Array.from({ length: 150 }, (_, i) => ({ id: String(i).padStart(2, '0').repeat(32).slice(0, 64), name: 'report-' + i + '.md', media_type: 'text/markdown', size: 2048 + i, task_id: 100 + i, task_title: 'Task ' + i, produced_by: 'soak', created_at: new Date(Date.UTC(2026, 9, 10, 10, 0, i)).toISOString(), uri: 'coral://artifacts/' + String(i).padStart(2, '0').repeat(32).slice(0, 64), available: true, inline: false }));
             window.fetch = (u, o = {}) => { const url = new URL(String(u), location.origin); if (/\\/api\\/board\\/[^/]+\\/artifacts$/.test(url.pathname) || url.pathname === '/api/session-artifacts') return Promise.resolve(new Response(JSON.stringify({ project: ${JSON.stringify(board)}, artifacts: items, has_more: false, truncated: false }), { status: 200, headers: { 'content-type': 'application/json' } })); return R(u, o); }; return true; })()`);
@@ -65,7 +72,7 @@ const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a soak wa
         const metrics = async (at) => {
             await HeapProfiler.collectGarbage(); await HeapProfiler.collectGarbage();
             const m = Object.fromEntries((await Performance.getMetrics()).metrics.map(x => [x.name, x.value]));
-            const page = await ev(`(() => { const t = window.__coralTest && window.__coralTest.getTerminal ? window.__coralTest.getTerminal() : null; const q = s => document.querySelectorAll(s).length;
+            const page = await ev(`(() => { const t = window.__getTerm ? window.__getTerm() : null; const q = s => document.querySelectorAll(s).length;
                 const name = e => (e.id ? '#' + e.id : e.tagName.toLowerCase() + (e.className && e.className.baseVal === undefined ? '.' + String(e.className).trim().split(/\s+/)[0] : ''));
                 const top = []; let el = document.getElementById('agentic-state'); for (let d = 0; d < 9 && el; d++) { const kids = [...el.children].map(c => [c, c.getElementsByTagName('*').length]).sort((x, y) => y[1] - x[1]); if (!kids.length) break; top.push(name(kids[0][0]) + ':' + kids[0][1] + (kids[1] ? ' (next ' + name(kids[1][0]) + ':' + kids[1][1] + ')' : '')); el = kids[0][0]; }
                 return { domAll: (() => { let n = 0; const w = document.createTreeWalker(document, NodeFilter.SHOW_ALL); while (w.nextNode()) n++; return n; })(), top, intervals: window.__soak.intervals.size, sockets: [...window.__soak.ws].filter(w => w.readyState < 2).length, xtermEls: q('.xterm'), bufferLines: t ? t.buffer.active.length : 0, termSize: t ? t.cols + 'x' + t.rows : '',
