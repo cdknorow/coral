@@ -7,7 +7,7 @@ import { pollEvery } from './overload.js';
 import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
 import { ensureBuilt } from './lazy_dom.js';
 import { formatDuration as fmtDuration } from './format.js';
-import { runFailure, runFailureHtml, runFailureTag } from './run_failure.js';
+import { runFailure, runFailureTag } from './run_failure.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
@@ -142,8 +142,7 @@ function renderJobDetail(job, runs) {
     const failBanner = noSignIn
         ? `<div class="sched-fail-banner" role="status">
              <strong>The last run did not start: ${escapeHtml(noSignIn.text)}.</strong>
-             This job keeps its schedule and runs again once you are signed in.
-             <div class="sched-fail-error">${runFailureHtml(job.last_run)}</div>
+             ${escapeHtml(noSignIn.hint)} This job keeps its schedule and runs again once you are signed in.
            </div>`
         : fails >= 1
         ? `<div class="sched-fail-banner" role="status">

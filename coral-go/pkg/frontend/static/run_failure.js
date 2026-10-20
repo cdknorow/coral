@@ -3,13 +3,14 @@
    that names the server's words. */
 import { escapeHtml } from './utils.js';
 
-const CLI = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' };
+// agent_type -> the CLI's name and the command that signs it in; agy, antigravity and the old gemini are one CLI (agy)
+const CLI = { claude: ['Claude', 'claude'], codex: ['Codex', 'codex'], agy: ['Antigravity', 'agy'], antigravity: ['Antigravity', 'agy'], gemini: ['Antigravity', 'agy'] };
 
 /** { text, short, hint } for a run record that failed for want of a sign-in, else null (a stranger code is not one). */
 export function runFailure(rec) {
     if (!rec || rec.error_code !== 'not_signed_in') return null;
-    const cli = Object.hasOwn(CLI, rec.agent_type) ? rec.agent_type : 'claude';
-    return { text: `${CLI[cli]} is not signed in`, short: 'not signed in', hint: `Sign in with ${cli} in a terminal, then run this again.` };
+    const [name, cmd] = Object.hasOwn(CLI, rec.agent_type) ? CLI[rec.agent_type] : CLI.claude;
+    return { text: `${name} is not signed in`, short: 'not signed in', hint: `Sign in with ${cmd} in a terminal, then run this again.` };
 }
 
 /** The line shown under a failed run: the words and what to do. */

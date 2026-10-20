@@ -372,7 +372,6 @@
 1	scheduler.js	r.id
 1	scheduler.js	r.session_id.substring(0, 8)
 2	scheduler.js	r.status
-1	scheduler.js	runFailureHtml(job.last_run)
 2	scheduler.js	runFailureTag(r)
 1	scheduler.js	runs.map(r => { const scheduled = new Date(r.scheduled_at).toLocaleString(); const duration = r.started_at && 
 1	scheduler.js	runs.map(r => { const statusClass = r.status === 'completed' ? 'status-ok' : r.status === 'failed' || r.status
