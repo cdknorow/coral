@@ -56,3 +56,43 @@ func TestAnswerPromptSendsNoKeyOverADraft(t *testing.T) {
 		})
 	}
 }
+
+// A Claude prompt is answered only while its hooks say a request may be open (or a tool is pending): after the agent has stopped, a screen that looks like a menu is not one.
+func TestAnswerPromptClaudeNeedsAnOpenRequest(t *testing.T) {
+	const sid = "00000000-0000-0000-0000-000000005255"
+	menu := "Do you want to proceed?\n❯ 1. Yes\n  2. No, and tell Claude what to do differently (esc)\n"
+	answer := func(t *testing.T, event string) (int, int) {
+		server, handler, term, ss := setupSessionsTestServer(t)
+		require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "c-hooks", WorkingDir: "/tmp/test"}))
+		term.addSession("c-hooks", "/tmp/test")
+		fastPromptChecks(t)
+		term.mu.Lock()
+		term.outputs["c-hooks"] = menu
+		term.mu.Unlock()
+		if event != "" {
+			handler.hints.note(sid, event)
+		}
+		b, _ := json.Marshal(map[string]any{"n": 1, "label": "Yes", "session_id": sid, "agent_type": "claude"})
+		resp, err := http.Post(server.URL+"/api/sessions/live/c-hooks/answer-prompt", "application/json", bytes.NewReader(b))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		term.mu.Lock()
+		defer term.mu.Unlock()
+		return resp.StatusCode, len(term.raw["c-hooks"])
+	}
+	status, keys := answer(t, "stop")
+	assert.Equal(t, http.StatusConflict, status)
+	assert.Zero(t, keys, "the agent stopped: nothing is waiting, no digit")
+	_, keys = answer(t, "permission_request")
+	assert.Equal(t, 1, keys, "a request is open: answered")
+	_, keys = answer(t, "")
+	assert.Equal(t, 1, keys, "no event seen yet (a restarted server): answered as before")
+}
+
+// Auto-accept on the agents that report no hook for their approvals reads the screen only: a stale approval header above a person's menu-shaped draft is not an approval.
+func TestClassifyApprovalIgnoresADraftUnderAStaleHeader(t *testing.T) {
+	codex := "Would you like to run the following command?\n  $ touch x\n\n• Ran touch x\n\n› 1. Yes, proceed (y)\n  2. No, and tell Codex what to do differently (esc)\n\n  gpt-5-codex medium · 100% context left · ~/x"
+	assert.False(t, classifyApproval("codex", codex).Prompt)
+	agy := "Requesting permission for: run_command\n\nDone.\n\n" + draftRule + "\n❯ 1. Yes, run command\n  2. No\n" + draftRule + "\n  ? for shortcuts"
+	assert.False(t, classifyApproval("agy", agy).Prompt)
+}

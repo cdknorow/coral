@@ -518,6 +518,14 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// An agent that reports its prompts through hooks is answered only while its hooks say a request may be open (or a tool is pending): the same condition
+	// that offers the card (addNeedsInput). A screen that looks like a menu after the agent has stopped is not one (#5254).
+	if body.SessionID != "" && !readsPromptsFromScreen(body.AgentType) {
+		if _, pending := h.pending.get(body.SessionID, time.Now()); !pending && !h.hints.mayBeOpen(body.SessionID) {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "The prompt is no longer open. Check the terminal."})
+			return
+		}
+	}
 	screen, ok := h.capturePromptScreen(r.Context(), name, body.AgentType, body.SessionID)
 	if body.Submit {
 		h.submitMulti(w, r, name, body.AgentType, body.SessionID, screen, ok)
