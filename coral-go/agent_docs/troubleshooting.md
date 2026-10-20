@@ -589,7 +589,7 @@ that still exist.
 
 ### Windows
 
-Each release publishes `Coral-<version>-x64.msi` and `Coral-<version>-x64-portable.zip`. They are
+Each release publishes `Coral-x64.msi` and `Coral-x64-portable.zip` (and the same files with the version in the name). They are
 not code-signed, so SmartScreen warns that the publisher is unknown; verify the download (README,
 "Verify your download") before running it. On Windows Coral uses the native PTY backend
 (ConPTY; there is no tmux on Windows) and listens on port 8450 by default, not 8420, which svchost can hold.

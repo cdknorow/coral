@@ -14,9 +14,11 @@ Coral runs the agent CLIs you already use, each in its own terminal session, and
 
 | Platform | Regular release asset | tmux |
 |---|---|---|
-| **macOS** (13 or later) | `Coral.v<version>.dmg`, a universal (Apple Silicon and Intel) signed and notarized app | Bundled tmux 3.7c with its terminal definitions. Keep the app bundle intact. |
-| **Linux** (x86-64 or ARM64) | `coral-linux-amd64-<version>.tar.gz` or `coral-linux-arm64-<version>.tar.gz`, statically linked CLI/server tools, no desktop app | Not bundled. Install tmux yourself, or start with `--backend pty`. |
-| **Windows** (x64) | `Coral-<version>-x64.msi` (installer) or `Coral-<version>-x64-portable.zip`. Not code-signed: SmartScreen warns that the publisher is unknown, so check the file as the [README](https://github.com/cdknorow/coral#verify-your-download) describes before you run it. The default port is 8450, not 8420. | Not used: Windows uses the native PTY backend (ConPTY; there is no tmux on Windows). |
+| **macOS** (13 or later) | [`Coral.dmg`](https://github.com/cdknorow/coral/releases/latest/download/Coral.dmg), a universal (Apple Silicon and Intel) signed and notarized app | Bundled tmux 3.7c with its terminal definitions. Keep the app bundle intact. |
+| **Windows** (x64) | [`Coral-x64.msi`](https://github.com/cdknorow/coral/releases/latest/download/Coral-x64.msi) (installer) or [`Coral-x64-portable.zip`](https://github.com/cdknorow/coral/releases/latest/download/Coral-x64-portable.zip). Not code-signed: SmartScreen warns that the publisher is unknown, so check the file as the [README](https://github.com/cdknorow/coral#verify-your-download) describes before you run it. The default port is 8450, not 8420. | Not used: Windows uses the native PTY backend (ConPTY; there is no tmux on Windows). |
+| **Linux** (x86-64 or ARM64) | [`coral-linux-amd64.tar.gz`](https://github.com/cdknorow/coral/releases/latest/download/coral-linux-amd64.tar.gz) (x86-64) or [`coral-linux-arm64.tar.gz`](https://github.com/cdknorow/coral/releases/latest/download/coral-linux-arm64.tar.gz) (ARM64), statically linked CLI/server tools, no desktop app | Not bundled. Install tmux yourself, or start with `--backend pty`. |
+
+These file names always point to the newest release. Each release also keeps versioned names (`Coral.v<version>.dmg`, `Coral-<version>-x64.msi`, `Coral-<version>-x64-portable.zip`, `coral-linux-<arch>-<version>.tar.gz`): the same files.
 
 The macOS 13 minimum is checked in the shipped binaries. It has not been tested on a macOS 13 machine.
 
@@ -32,11 +34,11 @@ Download the [latest release](https://github.com/cdknorow/coral/releases/latest)
 
 It links the tools into `~/.local/bin` by default. Use `--dir <path>` for another directory, and make sure that directory is on your `PATH`.
 
+**Windows.** Run the MSI, or extract the portable ZIP. Both are listed under [Platforms](#platforms).
+
 **Linux.** Extract the tarball and put the binaries somewhere on your `PATH`. There is no installer or service unit.
 
 **Homebrew (macOS).** `brew install --cask cdknorow/coral/coral` installs the same signed app from the release; the release workflow updates the tap with each release's checksum. Then run `install-cli.sh` as above for the command-line tools.
-
-**Windows.** Run the MSI, or extract the portable ZIP. Both are listed under [Platforms](#platforms).
 
 **If you once installed the old Python package** (`pip install agent-coral`), remove it. It installs commands with the same names and uses the same `~/.coral` directory and port, and can shadow this program. Check with `which -a coral` and remove it with `pip uninstall agent-coral`. Coral logs a warning at startup when it detects this.
 
