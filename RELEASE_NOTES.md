@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.123 — A multi-select question has a Submit button, and a secret in a key-named header is redacted whatever it looks like
+
+### Security
+
+- **A value after an `X-Api-Key`-style header was shown unredacted when it held a common word:** the redaction library's generic rule drops a value that holds a word such as `house`, `table`, `apple` or `false`, so `X-Api-Key: <32 characters with one of them in>` was shown whole (200 of 200 in the test), on every path. Coral now has its own rule for a value of 16 characters or more after a key-named HTTP header (`X-Api-Key`, `Api-Key`, `X-Auth-Token`, `X-Access-Token`, `X-Api-Token`, `X-Secret-Key`, `X-Auth-Key`, `Private-Token`; as a header line, a `curl -H` or a JSON header map), whatever it looks like. The library's suppression now only drops the placeholder itself.
+
+### Fixes
+
+- **A multi-select question in the "Claude is asking" card now has a Submit button:** the card showed the options as plain buttons with the marks inside their labels, had no Submit, and reported every toggle as "prompt still open". It now shows checkboxes read from the terminal (never flipped on the card alone) and a primary Submit (or Next when more questions follow); a toggle answers once the terminal shows the box flipped, Submit is ok only when the prompt goes, and a single-select card is unchanged.
+- **Show branches and Show agent type work in team groups on the agent list:** the type line was left out of compact rows and a branch was not shown for every row that had one. The Display panel says how many agents have no branch or model on record.
+- **A review task can no longer be reassigned, which left the new assignee refused "no open review":** the refusal names the way (`coral-board task review <id> --to ...`, which moves the reviewer and tells the old one they are off it). The availability report no longer counts a parked unassigned task as work to hand out.
+
+### Changes
+
+- **`GET /api/board/projects` returns each board's `board_id` and `created_at`,** so Coral Hub can tell a deleted and re-created board apart.
+
+### Internal
+
+- Every setting is declared once in a typed registry (type, default, limits, who writes it, when a change applies), and every reader goes through it; an undeclared key panics, and tests pin every opt-in switch to the word `true`. No setting changes meaning.
+
+### Tests
+
+- The header-key census allows the gate test's own example line.
+
 ## v1.4.122 — Double-clicking Restart starts one agent, and the hub's keyword rules cover ten more shapes at about 90 percent of the old speed
 
 ### Security
