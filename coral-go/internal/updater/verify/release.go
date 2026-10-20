@@ -152,6 +152,9 @@ func Release(v BundleVerifier, pins Pins, c Candidate, asset func(version string
 	if err != nil {
 		return nil, fail(StageSumsFormat, "%v", err)
 	}
+	if err := CheckStableAliases(entries, m.Version); err != nil {
+		return nil, fail(StageSumsFormat, "%v", err)
+	}
 	name := asset(m.Version)
 	want, ok := entries[name]
 	if !ok {
@@ -265,4 +268,30 @@ func (r *Record) CheckPackage(src io.Reader, max int64) (int64, error) {
 		return n, fail(StagePackage, "%s is %s, the verified sums file says %s", r.Asset, got, r.PackageSHA256)
 	}
 	return n, nil
+}
+
+// StableAliases are the release's stable-name copies and the versioned files they copy (#5333): every release also publishes the same bytes without the version in the name
+// (so /releases/latest/download/<name> never goes stale), and SHA256SUMS.txt lists both names. The updater installs only the versioned name; a stable name that listed another
+// digest than its versioned file would be a release whose own checksum list contradicts itself.
+func StableAliases(version string) map[string]string {
+	return map[string]string{
+		"coral-linux-amd64.tar.gz": "coral-linux-amd64-" + version + ".tar.gz",
+		"coral-linux-arm64.tar.gz": "coral-linux-arm64-" + version + ".tar.gz",
+		"Coral.dmg":                "Coral.v" + version + ".dmg",
+		"Coral-x64.msi":            "Coral-" + version + "-x64.msi",
+		"Coral-x64-portable.zip":   "Coral-" + version + "-x64-portable.zip",
+	}
+}
+
+// CheckStableAliases requires, for every stable name present in the verified sums entries together with its versioned file, the same digest. Releases cut before the copies existed
+// have none, and a pair with one side missing is not this check's business (the asset the updater wants is looked up by its versioned name).
+func CheckStableAliases(entries map[string]string, version string) error {
+	for stable, versioned := range StableAliases(version) {
+		a, okA := entries[stable]
+		b, okB := entries[versioned]
+		if okA && okB && a != b {
+			return fmt.Errorf("%s is listed as %s and %s as %s: a stable-name copy must be the same bytes", stable, a, versioned, b)
+		}
+	}
+	return nil
 }

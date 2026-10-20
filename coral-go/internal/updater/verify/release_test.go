@@ -313,3 +313,38 @@ func TestVersionCompare(t *testing.T) {
 		assert.Error(t, err, "%q", bad)
 	}
 }
+
+// #5333: the stable-name copies are listed in SHA256SUMS.txt under both names; a stable name with another digest than its versioned file is refused.
+func TestStableAliasesMustCarryTheVersionedFilesDigest(t *testing.T) {
+	good := sha256Hex([]byte("the package bytes"))
+	other := sha256Hex([]byte("other bytes"))
+	build := func(stableDigest string) []byte {
+		return []byte(good + "  " + asset("1.4.130") + "\n" + stableDigest + "  coral-linux-amd64.tar.gz\n" + strings.Repeat("0", 64) + "  Coral-1.4.130-x64.msi\n" + strings.Repeat("0", 64) + "  Coral-x64.msi\n")
+	}
+	// Equal digests under both names: verified, and the installer's asset is the versioned one.
+	r := newRelease(t)
+	r.rebuild(func(*Manifest) {}, build(good))
+	rec, err := r.verify(&fakeSigner{})
+	require.NoError(t, err)
+	assert.Equal(t, asset("1.4.130"), rec.Asset)
+	// A stable name with another digest: refused at the sums format stage, and no record.
+	r = newRelease(t)
+	r.rebuild(func(*Manifest) {}, build(other))
+	rec, err = r.verify(&fakeSigner{})
+	require.Error(t, err)
+	assert.Nil(t, rec)
+	var f *Failure
+	require.True(t, errors.As(err, &f))
+	assert.Equal(t, StageSumsFormat, f.Stage)
+	assert.Contains(t, f.Reason, "coral-linux-amd64.tar.gz")
+	// Every pair is checked, not only the first; a release with no stable names (cut before them) is unaffected.
+	for stable, versioned := range StableAliases("1.4.130") {
+		entries := map[string]string{versioned: good, stable: other}
+		assert.Error(t, CheckStableAliases(entries, "1.4.130"), stable)
+		entries[stable] = good
+		assert.NoError(t, CheckStableAliases(entries, "1.4.130"), stable)
+		delete(entries, stable)
+		assert.NoError(t, CheckStableAliases(entries, "1.4.130"), "a stable name that is not listed")
+	}
+	assert.NoError(t, CheckStableAliases(map[string]string{asset("1.4.130"): good}, "1.4.130"))
+}
