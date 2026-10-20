@@ -322,7 +322,7 @@ func (q *MessageQuery) matches(m Message, mentionID, mentionTitle string, number
 	if q.Mentions != "" && !containsExplicitTag(content, mentionID, mentionTitle, numbered) {
 		return false
 	}
-	if q.Text != "" && !strings.Contains(strings.ToLower(content), q.Text) {
+	if q.Text != "" && !textHasFold(content, q.Text) {
 		return false
 	}
 	return true
