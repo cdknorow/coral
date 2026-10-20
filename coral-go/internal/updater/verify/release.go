@@ -242,6 +242,13 @@ func ParseSums(data []byte) (map[string]string, error) {
 		if name == "" || strings.ContainsAny(name, "/\\\x00") || name == "." || name == ".." {
 			return nil, fmt.Errorf("line %d: %q is not a file name", i+1, name)
 		}
+		// No control character: a name such as "a\r" would read as "a" once written out again (the line's CR is dropped), and nothing the release
+		// publishes has one (#5372, found by FuzzParseSums).
+		for _, r := range name {
+			if r < 0x20 || r == 0x7f {
+				return nil, fmt.Errorf("line %d: the file name holds a control character", i+1)
+			}
+		}
 		if _, dup := out[name]; dup {
 			return nil, fmt.Errorf("line %d: %q appears twice", i+1, name)
 		}

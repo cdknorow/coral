@@ -348,3 +348,22 @@ func TestStableAliasesMustCarryTheVersionedFilesDigest(t *testing.T) {
 	}
 	assert.NoError(t, CheckStableAliases(map[string]string{asset("1.4.130"): good}, "1.4.130"))
 }
+
+// #5372, found by FuzzParseSums: a name with a control character (a CR at its end reads back as another name once written out again) is refused.
+func TestParseSumsRefusesAControlCharacterInAName(t *testing.T) {
+	h := strings.Repeat("ab", 32)
+	for name, line := range map[string]string{
+		"a trailing CR kept after the line's own": h + "  a\r\r\n",
+		"a CR inside": h + "  a\rb\n",
+		"a tab":       h + "  a\tb\n",
+		"an escape":   h + "  a\x1bb\n",
+		"a delete":    h + "  a\x7fb\n",
+		"a bell":      h + "  \x07x\n",
+	} {
+		_, err := ParseSums([]byte(line))
+		assert.Error(t, err, name)
+	}
+	got, err := ParseSums([]byte(h + "  Coral.dmg\r\n"))
+	require.NoError(t, err, "a CRLF line ending is still fine")
+	assert.Equal(t, map[string]string{"Coral.dmg": h}, got)
+}
