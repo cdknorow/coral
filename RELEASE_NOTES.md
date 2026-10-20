@@ -1,5 +1,22 @@
 # Release Notes
 
+## v1.4.135 — Background jobs no longer start a signed-out Claude
+
+### Fixes
+
+- **A signed-out Claude is never started by a background job:** a workflow step, a goal, the knowledge indexer, the summarizer, a team import, the theme generator and the model list used to run `claude --print`, which on a Claude that was not signed in started its sign-in flow and held the login. They now ask one shared sign-in check first (twenty callers at once share a single status process, which is given no stdin, no terminal, the temp folder and no Coral session token, and is killed when the check gives up), and a signed-out Claude ends the job at once with "Claude is not signed in".
+- **A sign-in check that does not answer is its own state:** after 6 seconds (then a 30-second back-off) the job is skipped with "Claude did not answer the sign-in check", never reported as "not signed in".
+
+### Changes
+
+- **Clear failed states for refused jobs:** a background run refused for want of a sign-in shows as failed in the run view, the run lists, the last-run line, the job's banner and its history, with "Claude is not signed in" and "Sign in with claude in a terminal, then run this again"; Antigravity (`agy`, `antigravity` and the old `gemini` type) reads "Antigravity is not signed in. Sign in with agy in a terminal", an agent type this build does not know reads "The agent's CLI is not signed in", and the theme generator's 409 says it too.
+- **A calm status line while Claude is not signed in:** "Claude is not signed in: background jobs are waiting" (hover or tap to see how to sign in), looked at again each minute and gone once Claude is signed in; no alert and no toast. `GET /api/system/status` carries `claude_signed_in` and `claude_checked_at` once a check has been made.
+- **`GET /api/artifacts/{id}/meta`** answers an artifact's id, size, media type and stored name without its bytes (404 exactly as the content read is). An artifact id is now exactly 64 lower-case hexadecimal digits: an upper-case spelling or any other form is refused with 400.
+
+### Internal
+
+- A stand-in `claude` CLI for tests (signed in, signed out, login in progress, hanging status) with a call log, which refuses to run where a real `claude` is reachable, and checks that every background caller starts nothing while Claude is not signed in.
+
 ## v1.4.134 — Replies to a task from Coral Hub, and a Download section at the top of every release's notes
 
 ### Features
