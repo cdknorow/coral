@@ -377,30 +377,58 @@ func codexActionPrompt(files *launchFiles, params LaunchParams) string {
 	return FormatPromptFileArg(files.write("codex_prompt", params.SessionID, "txt", []byte(actionPrompt)))
 }
 
-// collapseCodexSandboxFlags keeps the last --sandbox and the last -a of the command: Codex refuses either given twice ("the argument '--sandbox <SANDBOX_MODE>' cannot be used
-// multiple times"), and the same pair reaching the builder twice (stored by a restart, added again by a wake) left the agent at a bare shell (#5222). The later one is the newer.
+// codexPermissionFlag says which setting the token at parts[i] sets, 's' for the sandbox (--sandbox X, -s X, --sandbox=X, -s=X) or 'a' for the approval policy (-a X,
+// --ask-for-approval X, --approval-mode X and the = forms), and how many tokens it takes (the flag and its value, or the one token of the = form); 0, 0 for anything else.
+// A flag with no value (the next token is itself a flag: "--sandbox -a=never") is passed as it is.
+func codexPermissionFlag(parts []string, i int) (kind byte, n int) {
+	switch parts[i] {
+	case "--sandbox", "-s":
+		kind = 's'
+	case "-a", "--ask-for-approval", "--approval-mode":
+		kind = 'a'
+	default:
+		for _, f := range []struct {
+			prefix string
+			kind   byte
+		}{{"--sandbox=", 's'}, {"-s=", 's'}, {"-a=", 'a'}, {"--ask-for-approval=", 'a'}, {"--approval-mode=", 'a'}} {
+			if strings.HasPrefix(parts[i], f.prefix) {
+				return f.kind, 1
+			}
+		}
+		return 0, 0
+	}
+	if i+1 < len(parts) && !strings.HasPrefix(parts[i+1], "-") {
+		return kind, 2
+	}
+	return 0, 0
+}
+
+// collapseCodexSandboxFlags keeps one sandbox setting and one approval setting, whatever the spelling (--sandbox X, -s X, --sandbox=X; -a X, --ask-for-approval X, -a=X): Codex
+// refuses either given twice ("the argument '--sandbox <SANDBOX_MODE>' cannot be used multiple times"), and the same pair reaching the builder twice (stored by a restart, added
+// again by a wake) left the agent at a bare shell (#5222). The later one is the newer, so it is the one kept.
 //
 // keepFirst: the capabilities preset typed them first, and a flag stored from an earlier launch (or typed by hand) must not widen it: the preset's pair wins (#5247).
 func collapseCodexSandboxFlags(parts []string, keepFirst bool) []string {
-	// A flag has a value when the next token is not itself a flag ("--sandbox -a=never" has none: passed as it is).
-	hasValue := func(i int) bool {
-		return (parts[i] == "--sandbox" || parts[i] == "-a") && i+1 < len(parts) && !strings.HasPrefix(parts[i+1], "-")
-	}
-	lastSandbox, lastApproval := -1, -1
-	for i := 0; i < len(parts)-1; i++ {
-		if !hasValue(i) {
+	keep := map[byte]int{}
+	for i := 0; i < len(parts); i++ {
+		kind, n := codexPermissionFlag(parts, i)
+		if n == 0 {
 			continue
 		}
-		if parts[i] == "--sandbox" && (!keepFirst || lastSandbox < 0) {
-			lastSandbox = i
-		} else if parts[i] == "-a" && (!keepFirst || lastApproval < 0) {
-			lastApproval = i
+		if _, seen := keep[kind]; !seen || !keepFirst {
+			keep[kind] = i
 		}
+		i += n - 1
 	}
 	out := make([]string, 0, len(parts))
 	for i := 0; i < len(parts); i++ {
-		if hasValue(i) && ((parts[i] == "--sandbox" && i != lastSandbox) || (parts[i] == "-a" && i != lastApproval)) {
-			i++ // an earlier one: dropped with its value
+		if kind, n := codexPermissionFlag(parts, i); n > 0 {
+			if keep[kind] != i {
+				i += n - 1 // an earlier (or, with keepFirst, a later) one: dropped with its value
+				continue
+			}
+			out = append(out, parts[i:i+n]...)
+			i += n - 1
 			continue
 		}
 		out = append(out, parts[i])

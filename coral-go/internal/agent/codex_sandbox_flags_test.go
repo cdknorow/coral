@@ -52,3 +52,54 @@ func TestCodexLaunchPresetWinsOverStoredSandboxFlags(t *testing.T) {
 	assert.Contains(t, cmd, "--sandbox workspace-write")
 	assert.NotContains(t, cmd, "read-only")
 }
+
+// #5251: whatever the spelling, Codex gets one sandbox setting and one approval setting (it refuses the second: "cannot be used multiple times"), the preset's when there is a
+// preset, the last given otherwise.
+func TestCodexLaunchCollapsesEverySpellingOfTheSandboxAndApproval(t *testing.T) {
+	build := func(p LaunchParams) string {
+		p.SessionID, p.CLIPath = "11111111-2222-3333-4444-555555555555", "codex"
+		cmd, err := (&CodexAgent{}).LaunchCommand(p)
+		assert.NoError(t, err)
+		return cmd
+	}
+	sandboxes := func(cmd string) int {
+		n := 0
+		for _, f := range []string{" --sandbox ", " --sandbox=", " -s ", " -s="} {
+			n += strings.Count(cmd, f)
+		}
+		return n
+	}
+	approvals := func(cmd string) int {
+		n := 0
+		for _, f := range []string{" -a ", " -a=", " --ask-for-approval ", " --ask-for-approval=", " --approval-mode ", " --approval-mode="} {
+			n += strings.Count(cmd, f)
+		}
+		return n
+	}
+	preset := &Capabilities{Allow: []string{"file_read"}} // read-only, on-request
+	for name, flags := range map[string][]string{
+		"-s X":                 {"-s", "danger-full-access"},
+		"--sandbox=X":          {"--sandbox=danger-full-access"},
+		"-s=X":                 {"-s=danger-full-access"},
+		"--ask-for-approval X": {"--ask-for-approval", "never"},
+		"-a=X":                 {"-a=never"},
+		"--ask-for-approval=X": {"--ask-for-approval=never"},
+		"all of them, mixed":   {"--sandbox=danger-full-access", "-s", "workspace-write", "-a=never", "--ask-for-approval", "never"},
+	} {
+		cmd := build(LaunchParams{Capabilities: preset, Flags: flags})
+		assert.Equal(t, 1, sandboxes(cmd), "%s: one sandbox setting", name)
+		assert.Equal(t, 1, approvals(cmd), "%s: one approval setting", name)
+		assert.Contains(t, cmd, "--sandbox read-only -a on-request", "%s: the preset's pair wins", name)
+		assert.NotContains(t, cmd, "danger-full-access", name)
+	}
+	// With no preset the later one wins, in whatever spelling.
+	cmd := build(LaunchParams{Flags: []string{"--sandbox", "read-only", "-s", "workspace-write", "-a", "on-request", "--ask-for-approval=never"}})
+	assert.Equal(t, 1, sandboxes(cmd), cmd)
+	assert.Equal(t, 1, approvals(cmd), cmd)
+	assert.Contains(t, cmd, "-s workspace-write")
+	assert.Contains(t, cmd, "--ask-for-approval=never")
+	assert.NotContains(t, cmd, "read-only")
+	// A flag with no value is passed as it is, and the prompt is never read as flags.
+	cmd = build(LaunchParams{Flags: []string{"-s", "-a=never"}, Prompt: "-s danger-full-access"})
+	assert.Contains(t, cmd, "-a=never")
+}

@@ -337,11 +337,13 @@ func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamR
 	}
 	effectiveModel := defaultModelFromSettings(userSettings, agentType, def.Model)
 	agentFlags := def.Flags
+	memberPermMode := "" // the mode the team's flags stand for, handed on so that it is the one stored (below)
 	if len(agentFlags) == 0 {
 		permMode := agent.PermissionModeFromFlags(body.Flags)
 		cleanFlags := stripAgentPermissionFlags(body.Flags)
 		if def.Capabilities.IsEmpty() && permMode != "" && permMode != "default" {
 			cleanFlags = append(cleanFlags, agent.PermissionFlagsForAgent(agentType, permMode)...)
+			memberPermMode = permMode
 		}
 		agentFlags = cleanFlags
 	}
@@ -358,6 +360,9 @@ func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamR
 		Prompt:    InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), body.BoardName, def.Name, def.Prompt),
 		BoardName: body.BoardName, BoardServer: body.BoardServer, Backend: body.Backend, BoardType: body.BoardType,
 		Model: effectiveModel, Thinking: effectiveThinking, Capabilities: def.Capabilities, Tools: def.Tools, Hooks: def.Hooks,
+		// The member's flags carry the mode as the expanded flags of its type (--sandbox workspace-write -a never for Codex's auto), which PermissionModeFromFlags does not read
+		// back (it never widens one type's flags into a mode), so the mode stored for it was the default and a team reset relaunched it with no permission flags (#5251).
+		PermissionMode: memberPermMode,
 	})
 	if err != nil {
 		log.Printf("[launch-team] failed to launch agent %s: %v", def.Name, err)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -94,11 +95,15 @@ func TestADoubleRestartStartsOneAgent(t *testing.T) {
 	term.addSession(oldName, t.TempDir())
 
 	hold, release := make(chan struct{}), make(chan struct{})
-	var once sync.Once
+	var held atomic.Bool // not a sync.Once: a second caller of Once.Do waits for the first's function, so a restart that got past a missing guard would hang here, not fail
+	var releaseOnce sync.Once
+	letGo := func() { releaseOnce.Do(func() { close(release) }) }
+	defer letGo() // whatever happens below, the first restart is not left standing
 	term.mu.Lock()
 	term.onCall = func(step string) {
-		if step == "RestartPane" {
-			once.Do(func() { close(hold); <-release }) // the first restart stands at its first change to the terminal
+		if step == "RestartPane" && held.CompareAndSwap(false, true) {
+			close(hold) // the first restart stands at its first change to the terminal
+			<-release
 		}
 	}
 	term.mu.Unlock()
@@ -111,10 +116,21 @@ func TestADoubleRestartStartsOneAgent(t *testing.T) {
 	}
 	first := make(chan *httptest.ResponseRecorder, 1)
 	go func() { first <- post() }()
-	<-hold
-	second := post()
-	assert.Equal(t, http.StatusConflict, second.Code, "the second restart is refused while the first runs: %s", second.Body.String())
-	close(release)
+	select {
+	case <-hold:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first restart never reached its first change to the terminal")
+	}
+	// A short deadline on the second request: refused at once when the turn is kept, and a regression (no turn) fails in seconds, not at the package's timeout.
+	secondDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() { secondDone <- post() }()
+	select {
+	case second := <-secondDone:
+		assert.Equal(t, http.StatusConflict, second.Code, "the second restart is refused while the first runs: %s", second.Body.String())
+	case <-time.After(5 * time.Second):
+		t.Fatal("the second restart neither ran nor was refused within 5 s: the session's turn is not being kept")
+	}
+	letGo()
 	rec := <-first
 	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Len(t, term.sentCommands(), 1, "one agent was started")
