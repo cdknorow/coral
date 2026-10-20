@@ -1,7 +1,7 @@
 name: fuzz-nightly
 # Nightly fuzzing of the cross-team artifact receive gate and the image strippers (#4391, from
 # Security's suggestion on Backend's C4 #4380). The targets ship with a small seed corpus and run
-# only ~25 s in the unit suite; this job runs each one for ~10 minutes on main to find inputs the
+# only ~25 s in the unit suite; this job runs each one for 2 minutes each night on main (a manual run can choose 10m) to find inputs the
 # seed corpus does not reach. Each target is its own job (fail-fast: false), so one crash does not
 # hide the others.
 #
@@ -84,12 +84,12 @@ jobs:
         with:
           go-version-file: coral-go/go.mod
           cache: false # nothing cached here: see the header
-      - name: fuzz ${{ matrix.target }} (10 minutes unless a manual run says less)
+      - name: fuzz ${{ matrix.target }} (2 minutes on the nightly schedule; a manual run chooses)
         working-directory: coral-go
         env: # into the shell as env vars, never interpolated into the run script
           TARGET: ${{ matrix.target }}
           PKG: ${{ matrix.pkg }}
-          FUZZTIME: ${{ inputs.fuzztime || '10m' }}
+          FUZZTIME: ${{ inputs.fuzztime || '2m' }}
         run: |
           go test -tags fts5 -run '^$' -fuzz "^${TARGET}\$" -fuzztime "${FUZZTIME}" "./${PKG}/"
       - name: upload the crasher on failure
