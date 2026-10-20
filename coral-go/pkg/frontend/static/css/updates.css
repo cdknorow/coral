@@ -1,0 +1,70 @@
+/* Auto-update UI (#5275), from the approved mockup (#5270). Tokens are the dashboard's own, so both themes follow. No animation anywhere: the state is a colour, a word and a number of days. */
+
+/* the control in the top bar: before the icons. One state at a time: fresh (green), warm (orange, ready for 2 days or more), stale (red, 7 days or more). The text is the dashboard's text colour on a faint tint; the colour is the dot and the border, and the age is said in words too, so colour is never the only signal. */
+.update-pill { --update-c: var(--success); display: inline-flex; align-items: center; gap: 8px; margin-right: 8px; padding: 4px 12px 4px 10px; min-height: 32px; border-radius: 999px; border: 1px solid var(--update-c); background: color-mix(in srgb, var(--update-c) 12%, var(--bg-secondary)); color: var(--text-primary); font: inherit; font-size: var(--fs-sm, 0.8125rem); font-weight: 600; white-space: nowrap; cursor: pointer; }
+.update-pill[data-age="warm"] { --update-c: var(--warning); }
+.update-pill[data-age="stale"] { --update-c: var(--error); }
+.update-pill:hover { background: color-mix(in srgb, var(--update-c) 22%, var(--bg-secondary)); }
+.update-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.update-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--update-c); flex: none; }
+.update-age { font-weight: 500; } /* the dashboard's text colour like the label: the secondary colour on the red tint was 4.36:1 (light theme) */
+.update-pill[hidden] { display: none; }
+.update-pill[aria-disabled="true"] { border-style: dashed; cursor: default; }
+/* a phone: the control is a full-width row under the bar (update_ui.js moves it), 44 px, with the label and the age written out */
+.update-strip { padding: var(--space-xs) var(--space-md); background: var(--bg-secondary); border-bottom: 1px solid var(--border); }
+.update-strip[hidden] { display: none; }
+.update-strip .update-pill { width: 100%; min-height: 44px; margin: 0; justify-content: flex-start; }
+@media (forced-colors: active) { .update-pill { border-color: ButtonText; } .update-dot { background: ButtonText; } }
+
+/* the confirmation */
+.update-confirm { max-width: 520px; }
+.update-confirm .modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-md, 8px); padding: var(--space-md, 8px) var(--space-xl, 20px) var(--space-lg, 16px); }
+.update-confirm p { margin: 0 0 var(--space-md, 8px); }
+.update-warn { display: flex; gap: var(--space-md, 8px); padding: var(--space-md, 8px) var(--space-lg, 12px); margin: var(--space-md, 8px) 0; border-radius: var(--radius-lg, 8px); border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border)); background: color-mix(in srgb, var(--warning) 9%, var(--bg-secondary)); }
+.update-warn .material-icons { color: var(--warning); flex: none; }
+.update-agents { list-style: none; margin: var(--space-sm, 6px) 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.update-agents li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 var(--space-lg, 12px); }
+.update-agent-note { flex: 1 0 100%; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
+.update-agent-name { font-weight: 600; overflow-wrap: anywhere; }
+.update-agent-state { color: var(--text-secondary); white-space: nowrap; }
+.update-keep, .update-later-note, .update-calm { color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
+@media (max-width: 767px) { .update-confirm { max-width: none; width: 100%; } .update-confirm .modal-actions { flex-direction: column-reverse; } .update-confirm .modal-actions .btn { width: 100%; min-height: 44px; } }
+
+/* Settings > Updates */
+.update-status { display: flex; align-items: flex-start; gap: var(--space-lg, 12px); padding: var(--space-lg, 12px); margin: 0 0 var(--space-lg, 12px); border-radius: var(--radius-lg, 8px); border: 1px solid var(--border); background: var(--bg-secondary); }
+.update-status[data-k="fresh"] { border-color: var(--success); } .update-status[data-k="warm"] { border-color: var(--warning); } .update-status[data-k="bad"] { border-color: var(--error); background: color-mix(in srgb, var(--error) 7%, var(--bg-secondary)); }
+.update-state-dot { width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; flex: none; background: var(--text-muted); }
+.update-state-dot[data-k="fresh"], .update-state-dot[data-k="ok"] { background: var(--success); } .update-state-dot[data-k="warm"] { background: var(--warning); } .update-state-dot[data-k="bad"] { background: var(--error); } .update-state-dot[data-k="info"] { background: var(--accent); }
+.update-status-text { flex: 1 1 auto; min-width: 0; } .update-status-text b { display: block; } .update-status-text p { margin: 2px 0 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); overflow-wrap: anywhere; }
+.update-act { flex: none; }
+.update-bar { margin-top: 8px; height: 6px; border-radius: 3px; background: var(--bg-tertiary); overflow: hidden; } .update-bar span { display: block; height: 100%; background: var(--accent); }
+.update-managed { display: flex; gap: var(--space-lg, 12px); padding: var(--space-lg, 12px); margin: 0 0 var(--space-lg, 12px); border-radius: var(--radius-lg, 8px); border: 1px solid var(--border); background: var(--bg-secondary); }
+.update-managed .material-icons { color: var(--text-secondary); flex: none; } .update-managed p { margin: 4px 0; color: var(--text-secondary); }
+.update-cmd { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border); }
+.update-cmd code { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
+.update-link { color: var(--accent); } .update-privacy { margin-top: var(--space-lg, 12px); }
+@media (max-width: 767px) { .update-status { flex-wrap: wrap; } .update-status-text { flex-basis: calc(100% - 28px); } .update-act { margin-left: 22px; min-height: 44px; } .update-dismiss { min-width: 44px; min-height: 44px; } }
+.update-dismiss { background: none; border: 0; color: var(--text-secondary); }
+
+/* the failure notice: the dashboard's own banner (leftover-tmux-banner), in the error colour, dismissible; on a phone the buttons go under the text */
+.leftover-tmux-banner.update-fail { border-color: color-mix(in srgb, var(--error) 55%, var(--border)); background: color-mix(in srgb, var(--error) 8%, var(--bg-secondary)); }
+.leftover-tmux-banner.update-fail .material-icons { color: var(--error); }
+.leftover-tmux-banner.update-fail .update-fail-acts { display: flex; align-items: center; gap: 8px; flex: none; }
+@media (max-width: 767px) { .leftover-tmux-banner.update-fail .leftover-tmux-text { flex: 1 1 calc(100% - 44px); min-width: 0; } .leftover-tmux-banner.update-fail .update-fail-acts { flex: 1 1 100%; justify-content: flex-end; } .leftover-tmux-banner.update-fail .btn { min-height: 44px; } }
+
+/* what the build adds to the mockup: a long list of agents scrolls (the heading and the buttons stay), a note and an error line in the dialog, the facts under the switches, a 44 px dismiss on a touch screen */
+.update-confirm .modal-body { max-height: min(60vh, 520px); overflow-y: auto; }
+.update-warn-body { min-width: 0; flex: 1; }
+.update-agents { max-height: 30vh; overflow-y: auto; }
+.update-agents:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.update-note { color: var(--text-primary); }
+.update-error { color: var(--error); }
+.update-facts .settings-row { align-items: center; }
+.update-facts dt, .update-facts dd { margin: 0; padding: 0; line-height: 1.4; align-self: center; }
+.update-facts dt { font-weight: 600; }
+.update-bar span { transition: none; }
+@media (pointer: coarse) { .update-fail-close { min-width: 44px; min-height: 44px; } }
+
+/* a link in the Settings > Updates card: a 44 px target on a phone, and a darker accent in the light theme (the accent was 4.44:1 on the panel) */
+[data-theme="light"] .update-link { color: var(--accent-dim); }
+@media (max-width: 767px) { .update-link { display: inline-flex; align-items: center; min-height: 44px; } }

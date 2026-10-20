@@ -8,6 +8,7 @@
 import { browserLocal } from './safe_storage.js';
 import { storeKey } from './local_store.js';
 import { onBuilt } from './lazy_dom.js';
+import { updatesUiOn } from './update_flag.js';
 
 const GROUP_KEY = 'coral-settings-group';
 const FIRST = 'general';
@@ -36,6 +37,7 @@ function showSettingsGroup(id, { focus = false, remember = true } = {}) {
     pane.parentElement.scrollTop = 0;
     if (remember) browserLocal.set(storeKey(GROUP_KEY), pane.dataset.group);
     if (focus) tabFor(pane.dataset.group)?.focus();
+    document.dispatchEvent(new CustomEvent('coral-settings-group', { detail: { id: pane.dataset.group } })); // the Updates pane draws itself when it is shown (#5275)
     return pane.dataset.group;
 }
 
@@ -111,4 +113,7 @@ function buildTabs(modal) {
     pick?.addEventListener('change', () => showSettingsGroup(pick.value));
 }
 
-onBuilt('settings-modal', modal => { buildTabs(modal); buildInfoButtons(modal); });
+onBuilt('settings-modal', modal => {
+    if (!updatesUiOn()) modal.querySelector('[data-flag="updates"]')?.remove(); // behind the flag: no tab, no pane (#5275)
+    buildTabs(modal); buildInfoButtons(modal);
+});

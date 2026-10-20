@@ -1,0 +1,102 @@
+/* The confirmation that comes before a relaunch (#5275, design #5270): it names what restarts. It never relaunches on the first click; the safe answer ("Not now") has the focus when agents would restart;
+ * the primary button says what it will do. The list is the server's (the pty agents a relaunch restarts, and an ack of exactly that list): a list that changed since it was read is shown again and has to be
+ * answered again (409 stale_ack). A dialog on a desktop, a sheet at the bottom on a phone (css). Escape and the focus trap are modal_chrome's; focus goes back to the control that opened it (dialog_focus.js). */
+import { attachDialogFocus } from './dialog_focus.js';
+import { importOnce } from './import_once.js';
+
+const { requestRelaunch } = await importOnce('./update_api.js');
+
+const STATE_WORDS = { working: 'working', idle: 'idle', waiting: 'waiting for you' };
+const REFUSALS = {
+    max_mode: 'This Coral is not allowed to restart agents from here.',
+    owner_only: 'Only the owner can relaunch this Coral.',
+    hub_relaunch_off: 'Relaunching is switched off in Settings > Updates.',
+    nothing_staged: 'There is no update ready to install.',
+    not_verified: 'The update has not been verified, so it was not installed.',
+    busy: 'Another relaunch is already running.',
+    unsupported_install: 'This install cannot update itself.',
+    already_relaunched: 'This update was already tried. Relaunch from this computer, or wait for a newer version.',
+};
+
+const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+let dialog = null;
+let current = null; // the status the dialog shows
+
+function ensure() {
+    if (dialog) return dialog;
+    dialog = mk('div', 'modal update-confirm-modal');
+    dialog.id = 'update-confirm-modal';
+    dialog.setAttribute('role', 'alertdialog'); dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'update-confirm-title'); dialog.setAttribute('aria-describedby', 'update-confirm-body');
+    dialog.style.display = 'none'; // display-ok: modal_chrome (Escape, the Tab trap) and dialog_focus read a .modal's display, as for every dialog
+    document.body.appendChild(dialog);
+    return dialog;
+}
+
+function draw(note) {
+    const s = current, r = s.relaunch, n = r.restarts.length;
+    dialog.replaceChildren();
+    const content = mk('div', 'modal-content modal-md update-confirm');
+    const head = mk('div', 'modal-header'); const h = mk('h3', null, 'Relaunch Coral to update?'); h.id = 'update-confirm-title'; head.append(h);
+    const body = mk('div', 'modal-body'); body.id = 'update-confirm-body';
+    const days = s.staged.days;
+    body.append(mk('p', null, `Coral ${s.staged.version} is downloaded and verified${days >= 1 ? ` (ready for ${plural(days, 'day')})` : ''}. You are on ${s.installed}. Relaunching takes a few seconds.`));
+    if (note) { const p = mk('p', 'update-note', note); p.setAttribute('role', 'status'); body.append(p); }
+    if (n > 0) {
+        const warn = mk('div', 'update-warn');
+        const icon = mk('span', 'material-icons', 'warning'); icon.setAttribute('aria-hidden', 'true');
+        const inner = mk('div', 'update-warn-body');
+        const lead = mk('p'); lead.append(mk('b', null, `Relaunching restarts ${plural(n, 'agent')}`), document.createTextNode(` that run in Coral's own terminal (pty). Their work in progress stops.`));
+        const list = mk('ul', 'update-agents'); list.tabIndex = 0; list.setAttribute('aria-label', 'Agents that restart');
+        for (const a of r.restarts) {
+            const li = mk('li'); li.append(mk('span', 'update-agent-name', a.name || a.sessionId), mk('span', 'update-agent-state', STATE_WORDS[a.state] || a.state));
+            if (a.resumes === true) li.append(mk('span', 'update-agent-note', 'starts again afterwards'));
+            else if (a.resumes === false) li.append(mk('span', 'update-agent-note', 'starts a new conversation'));
+            list.append(li);
+        }
+        inner.append(lead, list, mk('p', 'update-keep', r.tmuxRestart ? 'Agents in tmux restart too: the bundled tmux changed.' : 'Agents in tmux keep running and reattach.'));
+        warn.append(icon, inner); body.append(warn);
+    }
+    body.append(mk('p', 'update-later-note', 'Not now? The update installs the next time Coral starts.'));
+    const acts = mk('div', 'modal-actions modal-footer');
+    const later = mk('button', 'btn update-later', 'Not now'); later.type = 'button';
+    later.addEventListener('click', close);
+    const go = mk('button', 'btn btn-primary update-go', n > 0 ? `Relaunch and restart ${plural(n, 'agent')}` : 'Relaunch now'); go.type = 'button';
+    go.addEventListener('click', () => sendRelaunch(go, later));
+    // the safe answer starts with focus when something would restart; with nothing to lose the action itself does
+    (n > 0 ? later : go).setAttribute('data-initial-focus', '');
+    acts.append(later, go);
+    content.append(head, body, acts); dialog.append(content);
+}
+
+async function sendRelaunch(go, later) {
+    const ack = current.relaunch.ack;
+    go.disabled = true; later.disabled = true;
+    const res = await requestRelaunch(ack);
+    if (res.ok) {
+        const body = dialog.querySelector('.modal-body');
+        const p = mk('p', 'update-note', 'Relaunching. This page reconnects when Coral is back.'); p.setAttribute('role', 'status');
+        body.append(p); later.textContent = 'Close'; later.disabled = false; go.hidden = true;
+        return;
+    }
+    if (res.status === 409 && res.code === 'stale_ack' && res.relaunch) {
+        current = { ...current, relaunch: res.relaunch };
+        draw('The list of agents changed while this was open. Check it again before you relaunch.');
+        dialog.querySelector('[data-initial-focus]')?.focus();
+        return;
+    }
+    go.disabled = false; later.disabled = false;
+    const p = mk('p', 'update-note update-error', REFUSALS[res.code] || res.error || 'Coral could not relaunch. Nothing was changed.'); p.setAttribute('role', 'alert');
+    dialog.querySelector('.modal-body').append(p);
+}
+
+function close() { if (dialog) dialog.style.display = 'none'; } // display-ok: modal_chrome (Escape, the Tab trap) and dialog_focus read a .modal's display, as for every dialog
+
+/** Show the confirmation for the status s (a relaunch is offered in it). */
+export function openUpdateDialog(s) {
+    ensure(); current = s;
+    attachDialogFocus(dialog); // records the opener (the control that has focus now) before the dialog is shown
+    draw('');
+    dialog.style.display = 'flex'; // display-ok: modal_chrome (Escape, the Tab trap) and dialog_focus read a .modal's display, as for every dialog
+}

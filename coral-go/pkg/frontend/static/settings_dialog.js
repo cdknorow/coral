@@ -1,5 +1,6 @@
 /* Moved out of modals.js as it was (#4684): The Settings dialog: its sections, the API key, storage, database encryption, filling and saving it. No behaviour change. */
 import { importOnce } from './import_once.js';
+import { updatesUiOn } from './update_flag.js';
 import { state } from './state.js';
 import { showToast, escapeHtml, escapeAttr, copyText } from './utils.js';
 import { refreshChangedFiles } from './changed_files.js';
@@ -1029,6 +1030,7 @@ export async function applySettings() {
     try {
         const nothingToSave = await saveSettings(form);
         await applySettingsEffects(form, oldGitDiffMode);
+        if (updatesUiOn()) await importOnce('./update_settings.js').then(m => m.applyUpdatePrefs()); // the two update switches (#5275)
         showToast(nothingToSave ? NOTHING_TO_SAVE : "Settings saved");
     } catch (e) {
         showToast(e && e.userMessage ? `Failed to save settings: ${e.userMessage}` : "Failed to save settings", true);
