@@ -249,7 +249,9 @@ func TestCrossTeamArtifactsSwitch(t *testing.T) {
 	}
 	code, out = put(true)
 	require.Equal(t, http.StatusForbidden, code, "not through Coral Hub")
-	require.Equal(t, "local_only", out["code"])
+	// Since #5307 the PUT is the owner's at Launch: a request without the owner marker is refused as owner_only (an owner's own attempt at a
+	// cross-team field is local_only: hub_owner_settings_test.go).
+	require.Equal(t, "owner_only", out["code"])
 	code, out = e.do("GET", "/api/board/alpha/settings", nil)
 	require.Equal(t, false, out["cross_team_artifacts"], "still off")
 	code, out = put(false)

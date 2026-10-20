@@ -583,10 +583,10 @@ func TestHubOperatorSetting(t *testing.T) {
 	}
 	assert.Equal(t, tunnel.TierView, tunnel.Classify("GET", "/api/system/hub-operator", ""))
 	assert.Equal(t, tunnel.TierNever, tunnel.Classify("PUT", "/api/system/hub-operator", ""))
-	// View can't post; board settings stay refused through the tunnel.
+	// View can't post; board settings are the owner's alone through the tunnel (#5307).
 	assert.Equal(t, tunnel.TierInteract, tunnel.Classify("POST", "/api/board/p/messages", ""))
 	assert.Equal(t, tunnel.TierInteract, tunnel.Classify("POST", "/api/board/p/tasks", ""))
-	assert.Equal(t, tunnel.TierNever, tunnel.Classify("PUT", "/api/board/p/settings", ""))
+	assert.Equal(t, tunnel.TierLaunch, tunnel.Classify("PUT", "/api/board/p/settings", ""), "the owner's alone since #5307; the handler refuses anyone else")
 	assert.False(t, h.HubOperatorAllowed(authentic()), "still on")
 
 	// The recent Operator actions are listed locally only.

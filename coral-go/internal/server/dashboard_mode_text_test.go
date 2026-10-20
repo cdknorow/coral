@@ -124,8 +124,8 @@ func TestDashboardModeTextMatchesTheRouteTable(t *testing.T) {
 		}
 		return out
 	}
-	// Board settings (cross-team messaging and files among them) are never reachable through the tunnel.
-	require.Equal(t, "never", modeOf("PUT /api/board/{project}/settings"))
+	// Board settings: Launch and the owner's alone since #5307, and only the health setup; cross-team messaging and files stay local.
+	require.Equal(t, "launch", modeOf("PUT /api/board/{project}/settings"))
 	sets := map[string]map[string]bool{"interact": set("INTERACT"), "launch": set("LAUNCH")}
 	controls := map[string][]string{
 		"cmd-send":      {"POST /api/sessions/live/{name}/send"},
