@@ -68,7 +68,7 @@ export function failureNotice(s) {
         return { kind: 'verify', key: `verify:${to}:${s.last ? s.last.at : ''}`, lead: `Coral found an update (v${to}) it could not verify, so it was not installed.`, rest: ` Your version is unchanged.` }; // the docs' sentence (updates.md)
     }
     if (s.last && s.last.result === 'failed_rolled_back') {
-        return { kind: 'rolled', key: `rolled:${to}:${s.last.at}`, lead: `The update to ${to} was undone.`, rest: ` ${s.rollback && rollbackText(s.rollback.reason) ? rollbackText(s.rollback.reason) + ' ' : ''}Coral went back to ${s.installed}. Your agents are unaffected.` };
+        return { kind: 'rolled', key: `rolled:${to}:${s.last.at}`, lead: `The update to ${to} was undone.`, rest: ` ${s.rollback && rollbackText(s.rollback.reason) ? rollbackText(s.rollback.reason) + ' ' : ''}${s.rollback && s.rollback.restartFailed ? `Coral was stopped by an update that could not restart it, and had to be started again by hand. It is on ${s.installed}.` : `Coral went back to ${s.installed}. Your agents are unaffected.`}` };
     }
     return null;
 }

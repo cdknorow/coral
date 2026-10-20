@@ -5,7 +5,7 @@
 // when it can do something; the relaunch dialog says what happens next per install kind and never promises that the page reconnects. Drives Chrome over CDP against the isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
-const REASONS = ['owner_only', 'max_mode', 'switch_off', 'nothing_staged', 'not_verified', 'busy', 'too_soon', 'already_relaunched', 'unsupported_install'];
+const REASONS = ['owner_only', 'max_mode', 'switch_off', 'nothing_staged', 'not_verified', 'busy', 'too_soon', 'already_relaunched', 'unsupported_install', 'no_run_record'];
 const staged = (over = {}, rel = {}) => ({ enabled: true, installed: '1.4.125', state: 'staged', staged: { version: '1.4.126', staged_at: '2026-10-17T03:00:00Z', days_ready: 3, verified: true }, relaunch: { available: true, reason: '', restarts: [], tmux_agents_restart: false, ack: 'ack-1', ...rel }, last_result: null, ...over });
 const idle = (over = {}) => ({ enabled: true, installed: '1.4.125', state: 'none', staged: null, relaunch: { available: false, reason: 'nothing_staged', restarts: [], ack: '' }, last_result: null, ...over });
 
@@ -34,8 +34,9 @@ const idle = (over = {}) => ({ enabled: true, installed: '1.4.125', state: 'none
 
         console.log('1. every relaunch reason has its own words, one wording for "not available"');
         const words = await ev(`import(${S} + 'update_api.js').then(m => ({ r: ${JSON.stringify(REASONS)}.map(x => m.reasonText(x)), unknown: m.reasonText('who_knows'), proto: m.reasonText('constructor'), na: m.notAvailable('busy') }))`);
-        check(`the nine reasons are not "Unavailable" (${JSON.stringify(words.r.map(w => w.slice(0, 28)))})`, words.r.every(w => w && w !== 'Unavailable'));
+        check(`the ten reasons are not "Unavailable" (${JSON.stringify(words.r.map(w => w.slice(0, 28)))})`, words.r.every(w => w && w !== 'Unavailable'));
         check('switch_off says where the switch is', /Settings > Network and Hub/.test(words.r[2]));
+        check(`no_run_record says Coral could not be restarted automatically (${words.r[9]})`, /^Coral could not be restarted automatically on this computer/.test(words.r[9]));
         check(`an unknown reason, and "constructor", are Unavailable (${words.unknown}, ${words.proto})`, words.unknown === 'Unavailable' && words.proto === 'Unavailable');
         check(`one wording: "${words.na}"`, words.na === 'Not available right now: Another relaunch is already running.');
         await setStatus(staged({}, { available: false, reason: 'busy' }));
@@ -87,9 +88,12 @@ const idle = (over = {}) => ({ enabled: true, installed: '1.4.125', state: 'none
         await setStatus(idle({ not_ready_reason: 'up_to_date', last_result: { at: '2026-10-20T08:21:00Z', from: '1.4.130', to: '1.4.131', result: 'relaunched', by: 'hub:Dana Q' } }));
         const lu = (await pane()).facts || '';
         check(`"Relaunched from Coral Hub at <time>", never a name (${lu})`, /Relaunched from Coral Hub at /.test(lu) && !/Dana/.test(lu));
-        const rb = async (reason) => { await setStatus(idle({ installed: '1.4.130', last_result: { at: '2026-10-20T08:21:00Z', from: '1.4.130', to: '1.4.131', result: 'failed_rolled_back', by: 'hub:x' }, ...(reason ? { last_rollback: { at: '2026-10-20T08:21:00Z', from: '1.4.130', to: '1.4.131', reason } } : {}) })); return ev(`document.querySelector('#update-fail-banner').textContent.replace(/\\s+/g, ' ').trim()`); };
+        const rb = async (reason, restartFailed) => { await setStatus(idle({ installed: '1.4.130', last_result: { at: '2026-10-20T08:21:00Z', from: '1.4.130', to: '1.4.131', result: 'failed_rolled_back', by: 'hub:x' }, ...(reason ? { last_rollback: { at: '2026-10-20T08:21:00Z', from: '1.4.130', to: '1.4.131', reason, ...(restartFailed ? { restart_failed: true } : {}) } } : {}) })); return ev(`document.querySelector('#update-fail-banner').textContent.replace(/\\s+/g, ' ').trim()`); };
         const t1 = await rb('did_not_start'), t2 = await rb('swap_failed'), t3 = await rb('');
         check(`a roll-back says why when the server gives a reason (${t1.slice(0, 120)})`, /The new version did not start\./.test(t1) && /could not be put in place/.test(t2) && !/did not start|put in place/.test(t3) && /went back to 1\.4\.130/.test(t3));
+        const t4 = await rb('did_not_start', true), t5 = await rb('did_not_start', false);
+        check(`a roll-back whose restart failed says Coral was stopped (${t4.slice(0, 200)})`, /Coral was stopped by an update that could not restart it/.test(t4) && /It is on 1\.4\.130\./.test(t4) && !/Your agents are unaffected/.test(t4));
+        check('and one that restarted does not', !/could not restart it/.test(t5) && /Your agents are unaffected/.test(t5));
         await setStatus(idle({ state: 'failed', last_result: { at: '2026-10-19T10:00:00Z', from: '1.4.125', to: '1.4.126', result: 'refused', by: 'local' } }));
         const vt = await ev(`document.querySelector('#update-fail-banner').textContent.replace(/\\s+/g, ' ').trim()`);
         check(`a failed verification has the docs' words (${vt.slice(0, 120)})`, /Coral found an update \(v1\.4\.126\) it could not verify, so it was not installed\. Your version is unchanged\./.test(vt));

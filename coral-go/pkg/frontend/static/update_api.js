@@ -52,7 +52,7 @@ export function normalizeStatus(raw) {
         upgradeCommand: raw.install_kind === 'homebrew' ? str(raw.upgrade_command) : '',
         notReady: NOT_READY.includes(raw.not_ready_reason) ? raw.not_ready_reason : '',
         latest: VERSION_RE.test(str(raw.latest)) ? raw.latest : '',
-        rollback: raw.last_rollback && typeof raw.last_rollback === 'object' ? { at: str(raw.last_rollback.at), from: str(raw.last_rollback.from), to: str(raw.last_rollback.to), reason: ROLLBACK_REASONS.includes(raw.last_rollback.reason) ? raw.last_rollback.reason : 'other' } : null,
+        rollback: raw.last_rollback && typeof raw.last_rollback === 'object' ? { at: str(raw.last_rollback.at), from: str(raw.last_rollback.from), to: str(raw.last_rollback.to), reason: ROLLBACK_REASONS.includes(raw.last_rollback.reason) ? raw.last_rollback.reason : 'other', restartFailed: raw.last_rollback.restart_failed === true } : null,
         auto: typeof raw.auto === 'boolean' ? raw.auto : null,
         progress: Number.isFinite(Number(raw.progress)) ? Math.min(100, Math.max(0, Math.round(Number(raw.progress)))) : null, // provisional: percent of a download in progress
     };
@@ -87,6 +87,7 @@ const REASON_TEXT = {
     too_soon: 'Try again in a few minutes.',
     label_missing: 'This machine is not set up for relaunching from Coral Hub.',
     reauth_required: 'Sign in again to relaunch this Coral.',
+    no_run_record: 'Coral could not be restarted automatically on this computer, so it is not relaunched from here: the update would stop it and not start it again.', // #5419
 };
 /** Set while the person is away signing in again (the hub's 401 reauth_required): on return the dashboard reads the status afresh and shows the dialog again. */
 export const RESUME_KEY = 'coral-update-resume';
