@@ -30,7 +30,7 @@ const LONG_WAIT = "⏳ This agent hasn't done anything yet — check the termina
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     const S = `(window.__coralStatic || '/static/')`;
     const problems = [], info = [];
-    const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a layout settle after a tap or a redraw; there is no event for it
+    const settle = (ms, quietMs = 120) => require('./helpers/wait').settle(ev, ms, quietMs); // the page's geometry still for quietMs, or ms at most (helpers/wait.js); not a fixed sleep
     const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, name.replace(/[^a-z0-9-]+/gi, '-') + '.png'), Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); };
     const ctx = { ev, waitFor, Page, Emulation, client, install, BASE, assert, settle: (c, l) => waitFor(c, l, 10000) };
     let tag = '';

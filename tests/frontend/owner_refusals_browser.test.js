@@ -21,7 +21,7 @@ const CASES = [
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
-    const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a redraw settles over frames; there is no completion event
+    const settle = (ms, quietMs = 120) => require('./helpers/wait').settle(ev, ms, quietMs); // the page's geometry still for quietMs, or ms at most (helpers/wait.js); not a fixed sleep
     const team = 'or-team-' + Date.now().toString(36);
     const S = `(window.__coralStatic || '/static/')`;
     const results = [];

@@ -44,7 +44,7 @@ const STUB = `(() => {
     const { Input, Accessibility, DOM } = client;
     const results = [];
     const check = (label, cond, detail) => { results.push(!!cond); console.log(`[${cond ? 'PASS' : 'FAIL'}] ${label}${detail !== undefined ? ' — ' + detail : ''}`); };
-    const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: the search is debounced and a panel redraws over frames; there is no event for "nothing was sent"
+    const settle = (ms, quietMs = 320) => require('./helpers/wait').settle(ev, ms, quietMs); // the page's geometry still for quietMs, or ms at most (helpers/wait.js); not a fixed sleep
     const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; await settle(350); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, name.replace(/[^a-z0-9-]+/gi, '-') + '.png'), Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); }; // sleep-ok: tab fades
     const press = async (key, code, vk) => { const t = key === 'Enter' ? '\r' : undefined; await Input.dispatchKeyEvent({ type: t ? 'keyDown' : 'rawKeyDown', key, code, windowsVirtualKeyCode: vk, text: t }); await Input.dispatchKeyEvent({ type: 'keyUp', key, code, windowsVirtualKeyCode: vk }); await settle(60); };
     const type = async text => { for (const ch of text) { await Input.dispatchKeyEvent({ type: 'keyDown', key: ch, text: ch }); await Input.dispatchKeyEvent({ type: 'keyUp', key: ch }); } };
@@ -89,17 +89,17 @@ const STUB = `(() => {
             check(`${tag}: the agent's list is asked for with its session, the newest first, and the board's route (${JSON.stringify(r.query)})`, r.kind === 'board' && r.query.session_id === 'aa-1' && r.query.sort === 'newest' && r.query.offset === '0');
             const bar = await ev(`(() => { const p = document.querySelector('${panel('artifacts')}'); const q = s => p.querySelector(s); const vis = e => !!e && e.getClientRects().length > 0; return { search: vis(q('.list-bar-search')), filters: vis(q('.list-bar-toggle')), sort: !!q('select[aria-label="Sort artifacts"]'), count: (q('.list-bar-count') || {}).textContent, label: (q('.list-bar-search') || {}).getAttribute && q('.list-bar-search').getAttribute('aria-label') }; })()`);
             check(`${tag}: the agent's Artifacts tab has the search, the filter icon (Filters and Sort in its panel) and the count (${JSON.stringify(bar)})`, bar.search && bar.filters && bar.sort && /^7 artifacts?$/.test(bar.count || '') && /this agent/i.test(bar.label || ''));
-            await ev(`document.querySelector('${panel('artifacts')} .list-bar-search').focus(); true`); await type('zebra'); await settle(900);
+            await ev(`document.querySelector('${panel('artifacts')} .list-bar-search').focus(); true`); await type('zebra'); await settle(900, 450);
             r = await last();
             check(`${tag}: a search is the server's, scoped to the agent (${JSON.stringify(r.query)}), and the count says N of M`, r.query.q === 'zebra' && r.query.session_id === 'aa-1' && (await ev(`document.querySelector('${panel('artifacts')} .list-bar-count').textContent`)) === '1 of 7');
-            await ev(`document.querySelector('${panel('artifacts')} select[aria-label="Sort artifacts"]').value = 'name'; document.querySelector('${panel('artifacts')} select[aria-label="Sort artifacts"]').dispatchEvent(new Event('change', { bubbles: true })); true`); await settle(500);
+            await ev(`document.querySelector('${panel('artifacts')} select[aria-label="Sort artifacts"]').value = 'name'; document.querySelector('${panel('artifacts')} select[aria-label="Sort artifacts"]').dispatchEvent(new Event('change', { bubbles: true })); true`); await settle(500, 450);
             check(`${tag}: Sort is sent (${JSON.stringify((await last()).query)})`, (await last()).query.sort === 'name' && (await last()).query.q === 'zebra');
             // the filters are kept per agent: another agent starts clean, the first one finds its search again
             await showAgent({ board_project: TEAM, session_id: 'aa-2', name: 'aa-other' }, 'artifacts'); await settle(900);
             check(`${tag}: another agent's tab starts with no search (${(await last()).query.q})`, !(await last()).query.q && (await last()).query.session_id === 'aa-2');
             await showAgent({ board_project: TEAM, session_id: 'aa-1' }, 'artifacts'); await settle(900);
             check(`${tag}: and the first agent's search is remembered (${(await last()).query.q})`, (await last()).query.q === 'zebra');
-            await ev(`document.querySelector('${panel('artifacts')} .list-bar-search').value = ''; document.querySelector('${panel('artifacts')} .list-bar-search').dispatchEvent(new Event('input', { bubbles: true })); true`); await settle(900);
+            await ev(`document.querySelector('${panel('artifacts')} .list-bar-search').value = ''; document.querySelector('${panel('artifacts')} .list-bar-search').dispatchEvent(new Event('input', { bubbles: true })); true`); await settle(900, 450);
             await settled('artifacts');
 
             // ═══ Refresh is a reload icon, in both panels; Details is an (i) in the Actions column

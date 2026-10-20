@@ -84,7 +84,7 @@ const HOOK = `(() => {
         return r.result.value;
     };
     const { waitFor, waitStable, coralReady } = require('./helpers/wait').bind(ev);
-    const settle = () => waitStable(`document.getElementsByTagName('*').length`, 'the page to settle', 250, { timeout: 4000 }).catch(() => {});
+    const settle = () => waitStable(`document.getElementsByTagName('*').length`, 'the page to settle', 120, { timeout: 4000 }).catch(() => {});
     const planted = [], refused = [];
     // What the suite creates in tables that outlive it (saved messages, tags, jobs, views, workflows) is taken off again in its finally (#4916): by id, through the page's fetch.
     const made = [];

@@ -21,7 +21,7 @@ const upToDate = { ...idle, not_ready_reason: 'up_to_date' }; // what the server
     const S = `(window.__coralStatic || '/static/')`;
     const results = [];
     const check = (label, cond, detail) => { results.push(!!cond); console.log(`[${cond ? 'PASS' : 'FAIL'}] ${label}${detail !== undefined ? ' — ' + detail : ''}`); };
-    const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a layout settle after a key press; there is no event for it
+    const settle = (ms, quietMs = 120) => require('./helpers/wait').settle(ev, ms, quietMs); // the page's geometry still for quietMs, or ms at most (helpers/wait.js); not a fixed sleep
     const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, name.replace(/[^a-z0-9-]+/gi, '-') + '.png'), Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); };
     const press = async (key, code, vk) => { const text = key === 'Enter' ? '\r' : undefined; await Input.dispatchKeyEvent({ type: text ? 'keyDown' : 'rawKeyDown', key, code, windowsVirtualKeyCode: vk, text }); await Input.dispatchKeyEvent({ type: 'keyUp', key, code, windowsVirtualKeyCode: vk }); await settle(80); };
     const focused = () => ev(`(() => { const a = document.activeElement; return a ? { id: a.id || '', cls: String(a.className || '').split(' ').slice(0, 3).join('.'), text: (a.getAttribute('aria-label') || a.textContent || '').trim().slice(0, 40) } : null; })()`);
