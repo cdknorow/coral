@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.4.140 — Choose who may message a board, and see the files that arrive with a cross-team message
+
+### Features
+
+- **Who may message this board (off unless you turn it on):** with the `cross_team_allowlist` switch on, a board accepts cross-team messages only from the senders on its list, each named by its stable cross-team id (default deny). The list is edited by the Operator on this computer only, kept as one whole list in a single save (at most 200 entries, no duplicates, never the board's own id), limited to 30 edits an hour, and every change and every refusal is logged. A message from a sender that is not on the list is refused with `cross_team_refused` ("this board does not take messages from that sender", the same answer whatever the reason: not listed, no such board, off, deleted or nobody to deliver to). The switch is off by default, so nothing changes until you turn it on.
+- **Team settings > Messaging:** the list as a screen (name, Coral and id, Remove; Add from this computer's boards or by id), the change and refusal log, and a one-time prompt for a board that was open before (the suggestions start unchecked and nothing is added until you check it). The tab appears only when the server enforces the list.
+- **Files on the receiving board:** a cross-team message that arrived with files shows them under its text, as an image thumbnail or a file chip (name and size) that opens in the artifact viewer; a `coral://artifacts` link in an inbound message whose file did not arrive shows as muted text "(not on this machine)". The sender's own copy and ordinary posts are unchanged, and the "from <board>" badge text is darker in the light theme (it was 4.44:1).
+
+### Internal
+
+- Coral says in its hub handshake that it supports the list (`capabilities: ["cross_team_allowlist/1"]`); whether the list is in force is the separate setting above, default off. A hub reads the capability only from the destination's own handshake, a malformed or over-long list means unsupported, and an unknown capability is ignored.
+
 ## v1.4.139 — Linked files go with a cross-team message, and a received message lists the files that came with it
 
 ### Features
