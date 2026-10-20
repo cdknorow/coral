@@ -27,11 +27,14 @@ export function renderMessage(msg, container, agentType = "claude") {
     }
 }
 
-// A user turn that Coral typed into the agent, not the Operator: the server flags the turns it delivered itself (coral_notice,
-// #4306); older history and anything sent before the server started are read by their text. A long notice reaches the agent as a
-// paste, which Claude Code records wrapped in pasted_content tags, so the text is unwrapped before it is read.
+// A user turn that Coral typed into the agent, not the Operator: the server says which it knows, by where the turn came from (coral_notice, #4306): true for a turn Coral delivered itself, false for one the
+// Operator sent from the dashboard (#5482: a person's own "[Coral ...]", "[Task #4]" or "Stop hook feedback:" is theirs, whatever its words). Only a turn with no recorded origin (older history, anything sent
+// before the server started, keys typed in the terminal view) is read by its text. A long notice reaches the agent as a paste, which Claude Code records wrapped in pasted_content tags, so the text is
+// unwrapped before it is read.
 function isCoralDelivery(msg) {
-    return msg.coral_notice === true || isCoralNudge(unwrapPastedContent(msg.content));
+    if (msg.coral_notice === true) return true;
+    if (msg.coral_notice === false) return false;
+    return isCoralNudge(unwrapPastedContent(msg.content));
 }
 
 // A pasted image in a user turn (Codex records it as a name like "[Image #1]" and the saved file's base name): a chip with

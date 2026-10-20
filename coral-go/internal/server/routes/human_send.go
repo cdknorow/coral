@@ -186,6 +186,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	defer leave()
 	lo := h.sendGate.leftover(key)
 	defer func() {
+		if err == nil {
+			ptymanager.NoteOperatorText(name, text) // the chat page then knows this turn is a person's, not a notice by its words (#5482)
+		}
 		switch {
 		case err == errSendNotSubmit:
 			h.sendGate.setLeftover(key, ptymanager.MarkOf(text))

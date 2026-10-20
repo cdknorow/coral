@@ -143,3 +143,60 @@ var sidSeq atomic.Int64
 func uniqueSID(base int) string {
 	return fmt.Sprintf("00000000-0000-0000-%04d-%012d", sidSeq.Add(1), base)
 }
+
+// #5482: a turn the Operator sent from the dashboard comes back "coral_notice": false, so the page does not take their "[Coral ...]" or "Stop hook feedback:" for a Coral notice by its words; a turn Coral
+// delivered is true; every other turn carries no flag. A text that is both (the delivery came first) is the delivery's.
+func TestSessionsChat_OperatorTurnsAreFlaggedTheirs(t *testing.T) {
+	server, _, _, _ := setupSessionsTestServer(t)
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+
+	sid := uniqueSID(520)
+	notice := "[Task #4301 completed by QA Engineer] Outcome: success. Typed by Coral through the gate, once."
+	line := func(v any) string { b, _ := json.Marshal(v); return string(b) + "\n" }
+	user := func(text string) string {
+		return line(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": text}})
+	}
+	transcript := user("a plain question") + user("[Coral health check] am I still here?") + user(notice) + user("Stop hook feedback: I typed this myself") + user("[Task #1] mine too")
+	require.NoError(t, os.WriteFile(filepath.Join(projectDir, sid+".jsonl"), []byte(transcript), 0644))
+	get := func() []map[string]any {
+		t.Helper()
+		resp, err := http.Get(fmt.Sprintf("%s/api/sessions/live/claude-%s/chat?session_id=%s&agent_type=claude&after=0&limit=30", server.URL, sid, sid))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var body struct {
+			Messages []map[string]any `json:"messages"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		return body.Messages
+	}
+	origin := func(msgs []map[string]any) []string { // "" no origin recorded, "operator" false, "coral" true
+		var out []string
+		for _, m := range msgs {
+			switch v, ok := m["coral_notice"].(bool); {
+			case !ok:
+				out = append(out, "")
+			case v:
+				out = append(out, "coral")
+			default:
+				out = append(out, "operator")
+			}
+		}
+		return out
+	}
+	assert.Equal(t, []string{"", "", "", "", ""}, origin(get()), "nothing remembered: no origin on any turn")
+
+	name := "claude-" + sid
+	ptymanager.NoteOperatorText(name, "[Coral health check] am I still here?")
+	ptymanager.NoteOperatorText(name, "Stop hook feedback: I typed this myself")
+	assert.Equal(t, []string{"", "operator", "", "operator", ""}, origin(get()), "what the Operator sent is theirs; the rest is still read by its words")
+
+	d, err := ptymanager.DeliverAutomated(context.Background(), ptymanager.AutomatedInput{Name: name, AgentType: "claude", SessionID: sid, Text: notice, What: "test", Send: func(context.Context) error { return nil }})
+	require.NoError(t, err)
+	require.Equal(t, ptymanager.Sent, d)
+	ptymanager.NoteOperatorText(name, notice) // the same text sent by a person too: the delivery came first and keeps its turn
+	assert.Equal(t, []string{"", "operator", "coral", "operator", ""}, origin(get()))
+}

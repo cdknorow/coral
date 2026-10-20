@@ -172,3 +172,28 @@ func BenchmarkFlagDelivered(b *testing.B) {
 		}
 	})
 }
+
+// What the Operator sent from the dashboard is remembered apart from what Coral delivered (#5482): any length, whole text, one turn each, and never mistaken for a delivery.
+func TestOperatorSentTextsAreRememberedApartFromDeliveries(t *testing.T) {
+	name := "claude-operator-sent"
+	short := "[Coral] hi" // far under the delivered floor: a person's text that looks like a notice must still be theirs
+	require.False(t, HasOperatorTexts(name))
+	NoteOperatorText(name+".0", short) // a pane target names the session
+	NoteOperatorText(name, "Stop hook feedback: typed by me")
+	require.True(t, HasOperatorTexts(name))
+	flags := func(texts ...string) []bool { return FlagOperatorSent(texts, make([]time.Time, len(texts)), name) }
+	assert.Equal(t, []bool{true, false, true}, flags(short, "[Coral] hi there", "<pasted_content id=\"1\">Stop hook feedback:  typed by me</pasted_content id=\"1\">"),
+		"the whole text matches, the paste wrapper and spacing do not count")
+	assert.Equal(t, []bool{true, false}, flags(short, short), "each send is one turn")
+	assert.Nil(t, FlagOperatorSent([]string{short}, make([]time.Time, 1), "claude-operator-never"), "a session the Operator sent nothing to")
+	// the two logs are separate: an operator text is not a delivery, a delivery is not an operator text
+	assert.Nil(t, turns(name, short), "Coral delivered nothing to this session")
+	noteDeliveredText(name, taskNotice)
+	assert.Equal(t, []bool{false}, flags(taskNotice))
+	// a turn stamped before the send is not it (the Operator typed it earlier, or it is somebody else's)
+	name2 := "claude-operator-sent-stamp"
+	NoteOperatorText(name2, short)
+	before := time.Now().Add(-time.Minute)
+	assert.Equal(t, []bool{false}, FlagOperatorSent([]string{short}, []time.Time{before}, name2))
+	assert.Equal(t, []bool{true}, FlagOperatorSent([]string{short}, []time.Time{time.Now()}, name2))
+}

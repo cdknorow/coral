@@ -46,11 +46,19 @@ type deliveredRing struct {
 	used    uint64
 }
 
-var delivered = struct {
+// textLog is a bounded memory of the texts typed into each session, by hash: what Coral delivered itself (delivered) or what the Operator typed in the dashboard (operatorSent, #5482).
+type textLog struct {
 	sync.Mutex
-	rings map[string]*deliveredRing
-	tick  uint64
-}{rings: map[string]*deliveredRing{}}
+	rings  map[string]*deliveredRing
+	tick   uint64
+	minLen int // the shortest normalised text that is recorded or matched (characters)
+}
+
+var delivered = &textLog{rings: map[string]*deliveredRing{}, minLen: minDeliveredLen}
+
+// operatorSent is what the Operator sent from the dashboard's composer or the send route (#5482). Any length is kept: its use is to say "this turn was typed by a person", and a short text that
+// looks like a notice ("[Coral] ...", "Stop hook feedback:") is exactly the one that must not be taken for one.
+var operatorSent = &textLog{rings: map[string]*deliveredRing{}, minLen: 1}
 
 var (
 	pastedTagRE  = regexp.MustCompile(`</?pasted_content(?:\s+id="[^"<>]*")?\s*>`)
@@ -64,50 +72,66 @@ func normalizeDelivered(text string) string {
 	return strings.TrimSpace(runOfSpaceRE.ReplaceAllString(text, " "))
 }
 
-func deliveredHash(text string) ([sha256.Size]byte, bool) {
+func deliveredHash(text string) ([sha256.Size]byte, bool) { return delivered.hash(text) }
+
+func (l *textLog) hash(text string) ([sha256.Size]byte, bool) {
 	t := normalizeDelivered(text)
-	if utf8.RuneCountInString(t) < minDeliveredLen {
+	if t == "" || utf8.RuneCountInString(t) < l.minLen {
 		return [sha256.Size]byte{}, false
 	}
 	return sha256.Sum256([]byte(t)), true
 }
 
 // noteDeliveredText records that text was typed into the session name ("<type>-<id>", or a pane target of it) just now.
-func noteDeliveredText(name, text string) {
-	h, ok := deliveredHash(text)
+func (l *textLog) note(name, text string) {
+	h, ok := l.hash(text)
 	if !ok {
 		return
 	}
 	name = sessionOfTarget(name)
-	delivered.Lock()
-	defer delivered.Unlock()
-	delivered.tick++
-	r := delivered.rings[name]
+	l.Lock()
+	defer l.Unlock()
+	l.tick++
+	r := l.rings[name]
 	if r == nil {
-		if len(delivered.rings) >= deliveredTextSessions {
+		if len(l.rings) >= deliveredTextSessions {
 			oldest, at := "", uint64(0)
-			for k, v := range delivered.rings {
+			for k, v := range l.rings {
 				if oldest == "" || v.used < at {
 					oldest, at = k, v.used
 				}
 			}
-			delete(delivered.rings, oldest)
+			delete(l.rings, oldest)
 		}
 		r = &deliveredRing{}
-		delivered.rings[name] = r
+		l.rings[name] = r
 	}
 	r.entries[r.n%deliveredTextsPerSession] = deliveredEntry{hash: h, at: time.Now()}
 	r.n++
-	r.used = delivered.tick
+	r.used = l.tick
 }
+
+func noteDeliveredText(name, text string) { delivered.note(name, text) }
+
+// NoteOperatorText records that the Operator sent text to the session name just now (from the dashboard's composer or the send route, #5482).
+func NoteOperatorText(name, text string) { operatorSent.note(name, text) }
 
 // FlagDelivered says which of a transcript's user turns Coral typed into the session. texts[i] is turn i's text ("" for a
 // turn that is not a user's) and stamps[i] its time (the zero time when unknown). Turns are read in order; each recorded
 // delivery is used by at most one turn, the first one with the same text that is not stamped before the delivery. It
 // returns nil when nothing is remembered for the session.
 func FlagDelivered(texts []string, stamps []time.Time, names ...string) []bool {
+	return delivered.flag(texts, stamps, names...)
+}
+
+// FlagOperatorSent is FlagDelivered for what the Operator sent (#5482): which turns a person typed through the dashboard, whatever their text looks like.
+func FlagOperatorSent(texts []string, stamps []time.Time, names ...string) []bool {
+	return operatorSent.flag(texts, stamps, names...)
+}
+
+func (l *textLog) flag(texts []string, stamps []time.Time, names ...string) []bool {
 	pending := map[[sha256.Size]byte][]time.Time{} // hash -> delivery times, oldest first
-	delivered.Lock()
+	l.Lock()
 	seen := map[string]bool{}
 	for _, name := range names {
 		name = sessionOfTarget(name)
@@ -115,7 +139,7 @@ func FlagDelivered(texts []string, stamps []time.Time, names ...string) []bool {
 			continue
 		}
 		seen[name] = true
-		r := delivered.rings[name]
+		r := l.rings[name]
 		if r == nil {
 			continue
 		}
@@ -125,7 +149,7 @@ func FlagDelivered(texts []string, stamps []time.Time, names ...string) []bool {
 			pending[e.hash] = append(pending[e.hash], e.at)
 		}
 	}
-	delivered.Unlock()
+	l.Unlock()
 	if len(pending) == 0 {
 		return nil
 	}
@@ -140,14 +164,14 @@ func FlagDelivered(texts []string, stamps []time.Time, names ...string) []bool {
 	cutoff := oldest.Add(-deliveredSkew)
 	out := make([]bool, len(texts))
 	for i, text := range texts {
-		if len(text) < minDeliveredLen { // normalising only shortens
+		if len(text) < l.minLen { // normalising only shortens
 			continue
 		}
 		if !stamps[i].IsZero() && stamps[i].Before(cutoff) {
 			continue
 		}
 		flagHashed.Add(1)
-		h, ok := deliveredHash(text)
+		h, ok := l.hash(text)
 		if !ok {
 			continue
 		}
@@ -165,11 +189,16 @@ func FlagDelivered(texts []string, stamps []time.Time, names ...string) []bool {
 }
 
 // HasDeliveredTexts reports whether anything typed into one of the sessions is remembered (a cheap check before reading a whole transcript).
-func HasDeliveredTexts(names ...string) bool {
-	delivered.Lock()
-	defer delivered.Unlock()
+func HasDeliveredTexts(names ...string) bool { return delivered.has(names...) }
+
+// HasOperatorTexts is the same for what the Operator sent (#5482).
+func HasOperatorTexts(names ...string) bool { return operatorSent.has(names...) }
+
+func (l *textLog) has(names ...string) bool {
+	l.Lock()
+	defer l.Unlock()
 	for _, name := range names {
-		if r := delivered.rings[sessionOfTarget(name)]; r != nil && r.n > 0 {
+		if r := l.rings[sessionOfTarget(name)]; r != nil && r.n > 0 {
 			return true
 		}
 	}
