@@ -33,3 +33,22 @@ func TestCodexLaunchNeverRepeatsSandboxOrApproval(t *testing.T) {
 	assert.Equal(t, 1, count(cmd, "--sandbox"), cmd)
 	assert.Contains(t, cmd, "read-only")
 }
+
+// #5247: a capabilities preset is the authority: a flag stored from an earlier launch (or typed by hand) never widens it. Without a preset the later flag still wins.
+func TestCodexLaunchPresetWinsOverStoredSandboxFlags(t *testing.T) {
+	build := func(p LaunchParams) string {
+		p.SessionID, p.CLIPath = "11111111-2222-3333-4444-555555555555", "codex"
+		cmd, err := (&CodexAgent{}).LaunchCommand(p)
+		assert.NoError(t, err)
+		return cmd
+	}
+	readOnly := &Capabilities{Allow: []string{"file_read"}}
+	cmd := build(LaunchParams{Capabilities: readOnly, Flags: []string{"--sandbox", "danger-full-access", "-a", "never"}})
+	assert.Contains(t, cmd, "--sandbox read-only")
+	assert.NotContains(t, cmd, "danger-full-access")
+	assert.NotContains(t, cmd, " -a never")
+	assert.Equal(t, 1, strings.Count(cmd, " --sandbox "), cmd)
+	cmd = build(LaunchParams{Flags: []string{"--sandbox", "read-only", "--sandbox", "workspace-write"}})
+	assert.Contains(t, cmd, "--sandbox workspace-write")
+	assert.NotContains(t, cmd, "read-only")
+}
