@@ -1,5 +1,25 @@
 # Release Notes
 
+## v1.4.137 — Custom models in Settings, `coral://` links agents can always download, a tidier machine menu and board panel
+
+### Features
+
+- **Custom models:** Settings > Agents > Custom models lets you add, edit and remove model ids per provider (Claude, Codex, Antigravity and Pi; Pi takes no thinking levels) with the thinking levels each accepts, saved with Apply. They are merged into both model catalogs (the launch pickers and the model list), the pickers mark a custom model, and Codex and Antigravity now offer their thinking levels. A save that omits the models list can no longer wipe the set.
+
+### Changes
+
+- **Attached `coral://` links work from every agent sandbox:** the sent text carries the exact download command with the real link, and the agent prompt and docs say plainly what a `coral://` link is. `coral-agent artifact download` now works from Codex's default sandbox, which blocks connections to localhost: if Coral cannot be reached it reads the artifact from this user's own data folder, and the SHA-256 of what it reads must equal the link's digest (a server that answers, whatever the status, is never second-guessed).
+- **Machine menu cleanup:** one launch row (Launch agent, Launch team, and Open in Servers as a text link; Open folder only on the hub's own machine), one Update control ("Update to <version>"), a two-column details grid, the version cut before `+` with the full build as the tooltip, and the header toggles instead of a Collapse button.
+- **Team board panel:** Pause and Export are icon buttons with a name and a tooltip each; the pause icon, name and tooltip follow the state (Pause or Resume), Export shows pressed in select mode, and both are 44 px on a phone.
+
+### Fixes
+
+- **A workflow step's model is checked before it reaches the CLI:** a saved workflow could carry a model value shaped like a command-line option, which was passed to the agent's CLI unchecked; every place a model becomes a `--model` argument (launch, team launch and reset, restart, workflow steps) now accepts only a valid model id, and a step with anything else fails with "not a valid model id".
+
+### Internal
+
+- The safefs join census and the telemetry census classify the one new file join and the one new test file that mention the fetch command.
+
 ## v1.4.136 — Pasted images are sent to agents as links (never a path), a message you send is always yours, slash commands that ask a question, and a phone pinch-zoom fix
 
 ### Fixes
