@@ -372,6 +372,8 @@
 1	scheduler.js	r.id
 1	scheduler.js	r.session_id.substring(0, 8)
 2	scheduler.js	r.status
+1	scheduler.js	runFailureHtml(job.last_run)
+2	scheduler.js	runFailureTag(r)
 1	scheduler.js	runs.map(r => { const scheduled = new Date(r.scheduled_at).toLocaleString(); const duration = r.started_at && 
 1	scheduler.js	runs.map(r => { const statusClass = r.status === 'completed' ? 'status-ok' : r.status === 'failed' || r.status
 1	scheduler.js	runsHtml
@@ -675,8 +677,12 @@
 1	workflows.js	run.finished_at ? `<span><span class="material-icons" aria-hidden="true">check_circle</span> ${formatTime(run.
 1	workflows.js	run.id
 1	workflows.js	run.started_at ? `<span><span class="material-icons" aria-hidden="true">schedule</span> ${formatTime(run.start
+1	workflows.js	runFailureTag(lr)
+1	workflows.js	runFailureTag(r)
 1	workflows.js	runsHtml
 1	workflows.js	s.exit_code
+1	workflows.js	signInFailure
+1	workflows.js	signInFailure ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons" aria-hidde
 1	workflows.js	statusIcon
 1	workflows.js	stepCount
 2	workflows.js	stepsHtml

@@ -1,5 +1,6 @@
 /* Theme configurator — custom color theme editor with save/load/import/export */
 
+import { runFailure } from './run_failure.js';
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { registerActions } from './actions.js';
@@ -287,7 +288,8 @@ async function generateThemeFromDescription() {
         });
         const data = await resp.json();
         if (data.error) {
-            showToast(data.error, true);
+            const f = runFailure({ error_code: data.code, agent_type: 'claude' }); // 409 not_signed_in (#5469): say what to do
+            showToast(f ? `${f.text}. ${f.hint}` : data.error, true);
             return;
         }
 

@@ -7,6 +7,7 @@ import { pollEvery } from './overload.js';
 import { changedFields, NOTHING_TO_SAVE } from './settings_diff.js';
 import { ensureBuilt } from './lazy_dom.js';
 import { formatDuration as fmtDuration } from './format.js';
+import { runFailure, runFailureHtml, runFailureTag } from './run_failure.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
@@ -136,7 +137,15 @@ function renderJobDetail(job, runs) {
     // for a job that appears to be running fine.
     const fails = job.consecutive_failures || 0;
     const lastErr = job.last_run && job.last_run.error_msg ? job.last_run.error_msg : '';
-    const failBanner = fails >= 1
+    // A run refused for want of a sign-in does not count as a failure (the job keeps its schedule and runs again once signed in), so it has its own banner (#5471).
+    const noSignIn = runFailure(job.last_run);
+    const failBanner = noSignIn
+        ? `<div class="sched-fail-banner" role="status">
+             <strong>The last run did not start: ${escapeHtml(noSignIn.text)}.</strong>
+             This job keeps its schedule and runs again once you are signed in.
+             <div class="sched-fail-error">${runFailureHtml(job.last_run)}</div>
+           </div>`
+        : fails >= 1
         ? `<div class="sched-fail-banner" role="status">
              <strong>${fails === 1 ? 'The last run failed.' : `The last ${fails} runs all failed.`}</strong>
              This job is still firing on schedule; its runs are not completing.
@@ -192,7 +201,7 @@ function renderWorkflowRunsTable(runs) {
             const stepsInfo = r.current_step != null ? `${r.current_step + 1}` : '-';
             return `<tr data-on-click="job-run" data-run-id="${Number(r.id)}" style="cursor:pointer">
                 <td>#${r.id}</td>
-                <td><span class="sched-status ${statusClass}">${r.status}</span></td>
+                <td><span class="sched-status ${statusClass}">${r.status}</span>${runFailureTag(r)}</td>
                 <td>${stepsInfo}</td>
                 <td>${started}</td>
                 <td>${duration}</td>
@@ -218,7 +227,7 @@ function renderRunsTable(runs) {
                 : '-';
             return `<tr>
                 <td>${scheduled}</td>
-                <td><span class="sched-status ${statusClass}">${r.status}</span></td>
+                <td><span class="sched-status ${statusClass}">${r.status}</span>${runFailureTag(r)}</td>
                 <td>${duration}</td>
                 <td>${escapeHtml(r.exit_reason || '-')}</td>
                 <td>${sessionLink}</td>

@@ -268,3 +268,8 @@
     color: var(--text-secondary);
     white-space: pre;
 }
+
+/* A run that failed because the agent's CLI is not signed in (#5471): the words, what to do, and a tag after the status in a table */
+.run-failure-text { font-weight: 600; }
+.run-failure-hint { color: var(--text-secondary); }
+.run-failure-tag { color: var(--error); font-size: 0.8125rem; }

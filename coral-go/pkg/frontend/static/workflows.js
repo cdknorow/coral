@@ -8,6 +8,7 @@ import { pollEvery } from './overload.js';
 import { note, currentRoute } from './nav.js';
 import { KILL_LOG_NOTE } from './render.js';
 import { formatDuration as fmtDuration } from './format.js';
+import { runFailureHtml, runFailureTag } from './run_failure.js';
 
 let workflows = [];
 let selectedWorkflowId = null;
@@ -207,7 +208,7 @@ function renderWorkflowList() {
         if (wf.last_run) {
             const lr = wf.last_run;
             lastRunHtml = `<span class="wf-last-run-status">
-                <span class="wf-status-dot ${esc(lr.status)}"></span> ${esc(lr.status)}
+                <span class="wf-status-dot ${esc(lr.status)}"></span> ${esc(lr.status)}${runFailureTag(lr)}
                 ${lr.started_at ? '&middot; ' + formatTime(lr.started_at) : ''}
             </span>`;
         } else {
@@ -276,7 +277,7 @@ function renderWorkflowDetail(wf, runs) {
             const statusIcon = statusIconHtml(r.status);
             return `<tr data-on-click="wf-run" data-run-id="${Number(r.id)}">
                 <td>#${r.id}</td>
-                <td>${statusIcon} ${esc(r.status)}</td>
+                <td>${statusIcon} ${esc(r.status)}${runFailureTag(r)}</td>
                 <td>${esc(r.trigger_type || '')}</td>
                 <td>${r.started_at ? formatTime(r.started_at) : '—'}</td>
                 <td>${r.finished_at ? formatTime(r.finished_at) : '—'}</td>
@@ -394,6 +395,7 @@ function renderRunDetail(run) {
         </div>` : '';
 
     // The failing step's last stderr line, quoted after the run's error in the header.
+    const signInFailure = runFailureHtml(run); // escaped where it is made (run_failure.js)
     const failedStep = steps.find(s => (s.status === 'failed' || s.status === 'killed') && s.error_tail && s.error_tail.trim());
     const errorExcerpt = failedStep ? failedStep.error_tail.trim().split('\n').pop().trim().slice(0, 200) : '';
 
@@ -499,7 +501,7 @@ function renderRunDetail(run) {
             ${run.started_at ? `<span><span class="material-icons" aria-hidden="true">schedule</span> ${formatTime(run.started_at)}</span>` : ''}
             ${durationHtml}
             ${run.finished_at ? `<span><span class="material-icons" aria-hidden="true">check_circle</span> ${formatTime(run.finished_at)}</span>` : ''}
-            ${run.error_msg ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons" aria-hidden="true">error</span> ${esc(run.error_msg)}${errorExcerpt ? `<span class="wf-run-error-excerpt">: ${esc(errorExcerpt)}</span>` : ''}</span>` : ''}
+            ${signInFailure ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons" aria-hidden="true">error</span> ${signInFailure}</span>` : run.error_msg ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons" aria-hidden="true">error</span> ${esc(run.error_msg)}${errorExcerpt ? `<span class="wf-run-error-excerpt">: ${esc(errorExcerpt)}</span>` : ''}</span>` : ''}
         </div>
         ${progressBarHtml}
         <div class="wf-run-steps wf-timeline">${stepsHtml}</div>
