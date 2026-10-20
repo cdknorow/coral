@@ -51,3 +51,5 @@ Like the macOS smoke it uses a fresh HOME and data folder under `/tmp/coral-lins
 
 Needs Linux, bash, curl, python3 and tar. The stand-in ends when its terminal goes: an agent that never reads its terminal can outlive a stopped server
 (its parent shell is killed, it is orphaned and ignores the SIGHUP the server's own `signal.Ignore` handed down), which is not a failure of this check.
+
+**A smoke failure on a tag is fixed forward in the next version** (#5306): the failing item names what to fix, the tag is never re-used or re-tagged (the `v*` tags cannot be moved), and the step is never re-run by hand to get past it.
