@@ -161,7 +161,7 @@ func (h *SessionsHandler) SetPendingTool(w http.ResponseWriter, r *http.Request)
 		ToolName  string         `json:"tool_name"`
 		ToolInput map[string]any `json:"tool_input"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}

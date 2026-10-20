@@ -2,8 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -31,7 +29,7 @@ func (h *SessionsHandler) deleteUnlistedReceivedRoute(w http.ResponseWriter, r *
 	var body struct {
 		IDs []string `json:"ids"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 64*1024)).Decode(&body); err != nil {
+	if err := decodeJSONLimit(r, &body, 64*1024); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -55,7 +53,7 @@ func (h *SessionsHandler) deleteUnlistedReceivedRoute(w http.ResponseWriter, r *
 	defer cancel()
 	refs, err := h.scanArtifactReferences(ctx)
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "could not check what links these files, so nothing was deleted: " + err.Error(), "code": "scan_failed"})
+		writeError(w, http.StatusServiceUnavailable, "scan_failed", "could not check what links these files, so nothing was deleted: "+err.Error())
 		return
 	}
 	var freed int64

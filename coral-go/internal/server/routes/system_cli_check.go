@@ -31,7 +31,7 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 		// Running a named binary is the Operator's, and only a CLI's: never a path an agent
 		// chose or could have written (#3583, Security's sweep item 5).
 		if cloud.Tunneled(r) || !humanInputCaller(r) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can check a CLI by its path", "code": "operator_only"})
+			writeError(w, http.StatusForbidden, "operator_only", "only the Operator can check a CLI by its path")
 			return
 		}
 		if why := h.cliCheckRefusal(r.Context(), binaryPath, agentType); why != "" {
@@ -57,7 +57,7 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 		if h.ss != nil {
 			settings, serr := h.ss.GetSettingsForCLI(r.Context())
 			if serr != nil {
-				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Coral's settings could not be read; try again"})
+				writeError(w, http.StatusServiceUnavailable, "", "Coral's settings could not be read; try again")
 				return
 			}
 			if p := agent.ResolveCLIPath(settings, agentType); p != "" {

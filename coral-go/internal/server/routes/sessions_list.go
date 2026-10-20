@@ -35,7 +35,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	var unavailable *listUnavailable
 	switch {
 	case errors.As(err, &unavailable):
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": unavailable.msg, "code": "agent_metadata_unavailable"})
+		writeError(w, http.StatusServiceUnavailable, "agent_metadata_unavailable", unavailable.msg)
 		return
 	case err != nil:
 		errInternalServer(w, err.Error())
@@ -827,8 +827,8 @@ func namesNoSession(name, sessionID string) bool {
 // writeSessionIDRequired refuses a per-session request that names no session id: by bare
 // name it would reach whichever terminal matches the name, another agent's included (#3211).
 func writeSessionIDRequired(w http.ResponseWriter) {
-	// (Callers check namesNoSession first: an exact "type-<uuid>" terminal name names one session.)
-	writeJSON(w, http.StatusBadRequest, map[string]string{"error": "session_id is required", "code": "session_id_required"})
+	writeError( // (Callers check namesNoSession first: an exact "type-<uuid>" terminal name names one session.)
+		w, http.StatusBadRequest, "session_id_required", "session_id is required")
 }
 
 func shouldValidateExactTarget(agentType, sessionID string) bool {
@@ -867,7 +867,7 @@ func (h *SessionsHandler) ResolveByPIDs(w http.ResponseWriter, r *http.Request) 
 		ls = h.verifiedSessionForPIDs(r.Context(), pids, rows)
 	}
 	if ls == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no matching session"})
+		errNotFound(w, "no matching session")
 		return
 	}
 	role := ""

@@ -2,7 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -46,7 +45,7 @@ func (h *SessionsHandler) TurnEndHandoff(w http.ResponseWriter, r *http.Request)
 	var body struct {
 		StopHookActive bool `json:"stop_hook_active"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	_ = decodeJSON(r, &body)
 	none := map[string]any{"handoff": false}
 	if body.StopHookActive {
 		writeJSON(w, http.StatusOK, none)

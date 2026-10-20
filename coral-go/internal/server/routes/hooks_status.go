@@ -2,7 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -130,7 +129,7 @@ func (h *SessionsHandler) RefreshHooks(w http.ResponseWriter, r *http.Request) {
 		Force bool `json:"force"`
 	}
 	if r.ContentLength != 0 {
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := decodeJSON(r, &body); err != nil {
 			errBadRequest(w, "invalid JSON")
 			return
 		}

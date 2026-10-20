@@ -126,9 +126,9 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := uploads.MakeRoom(uploadDir, int64(len(content)), uploads.MaxBytes(settings), time.Now()); err != nil {
 		if errors.Is(err, uploads.ErrFull) {
-			writeJSON(w, http.StatusInsufficientStorage, map[string]any{"error": fmt.Sprintf(
+			writeError(w, http.StatusInsufficientStorage, "", fmt.Sprintf(
 				"The uploads folder is full (%d MB, uploads_max_mb): uploads from the last hour are kept. Try again later, or raise the limit.",
-				uploads.MaxBytes(settings)>>20)})
+				uploads.MaxBytes(settings)>>20))
 			return
 		}
 		errInternalServer(w, "Failed to check the uploads folder")
@@ -195,7 +195,7 @@ func GetUpload(w http.ResponseWriter, r *http.Request) {
 	root, err := safefs.OpenRoot(uploadDir)
 	if err != nil {
 		if errors.Is(err, safefs.ErrRootGone) {
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such upload"})
+			errNotFound(w, "no such upload")
 			return
 		}
 		errInternalServer(w, "Failed to open the uploads folder")
@@ -206,7 +206,7 @@ func GetUpload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, os.ErrNotExist):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such upload"})
+			errNotFound(w, "no such upload")
 		case errors.Is(err, safefs.ErrNotRegular), errors.Is(err, safefs.ErrReservedName):
 			errBadRequest(w, "not an upload name")
 		default:
@@ -216,7 +216,7 @@ func GetUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	if fi.Size() > maxFileSize {
-		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "the upload is too large to show"})
+		errPayloadTooLarge(w, "the upload is too large to show")
 		return
 	}
 	head := make([]byte, 512)
@@ -227,7 +227,7 @@ func GetUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	ct := http.DetectContentType(head[:n])
 	if !thumbnailTypes[ct] {
-		writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "not a PNG, JPEG, GIF or WebP image"})
+		writeError(w, http.StatusUnsupportedMediaType, "", "not a PNG, JPEG, GIF or WebP image")
 		return
 	}
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
@@ -272,7 +272,7 @@ func DeleteUpload(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, uploads.ErrBadName):
 		errBadRequest(w, "not an upload name")
 	case errors.Is(err, os.ErrNotExist):
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such upload"})
+		errNotFound(w, "no such upload")
 	default:
 		errInternalServer(w, "Failed to delete the upload")
 	}

@@ -4,7 +4,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -282,7 +281,7 @@ func (h *SessionsHandler) SaveFileContent(w http.ResponseWriter, r *http.Request
 	var body struct {
 		Content *string `json:"content"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}

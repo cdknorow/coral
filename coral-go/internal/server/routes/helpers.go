@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/cdknorow/coral/internal/diskguard"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -59,34 +60,48 @@ func boardRoute(r *http.Request) (project, tail string, ok bool) {
 	return project, tail, true
 }
 
-// decodeJSON decodes JSON from the request body into v.
+// decodeJSON decodes JSON from the request body into v. Every body is already capped by BodyLimit (body_limit.go); a handler that takes less than that says so with decodeJSONLimit or
+// decodeJSONMax, which differ only in how the cut shows: a read of at most n bytes (the rest is never read, a longer document fails to decode), or MaxBytesReader (the reader errors with
+// *http.MaxBytesError and the server closes the connection after the reply).
 func decodeJSON(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
-func errBadRequest(w http.ResponseWriter, msg string) {
-	writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+// decodeJSONLimit is decodeJSON on the first n bytes of the body.
+func decodeJSONLimit(r *http.Request, v any, n int64) error {
+	return json.NewDecoder(io.LimitReader(r.Body, n)).Decode(v)
 }
 
-func errNotFound(w http.ResponseWriter, msg string) {
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": msg})
+// decodeJSONMax is decodeJSON on a body capped at n by http.MaxBytesReader.
+func decodeJSONMax(w http.ResponseWriter, r *http.Request, v any, n int64) error {
+	return json.NewDecoder(http.MaxBytesReader(w, r.Body, n)).Decode(v)
 }
+
+// writeError answers status with the error envelope every route uses: {"error": msg}, and "code" next to it when the client is meant to match on it (#5262). The err* helpers below are
+// this with the status in their name. Extra fields (a limit, the field at fault) are not part of the envelope: such a reply is written with writeJSON.
+func writeError(w http.ResponseWriter, status int, code, msg string) {
+	if code == "" {
+		writeJSON(w, status, map[string]string{"error": msg})
+		return
+	}
+	writeJSON(w, status, map[string]string{"error": msg, "code": code})
+}
+
+func errBadRequest(w http.ResponseWriter, msg string) { writeError(w, http.StatusBadRequest, "", msg) }
+
+func errNotFound(w http.ResponseWriter, msg string) { writeError(w, http.StatusNotFound, "", msg) }
 
 func errInternalServer(w http.ResponseWriter, msg string) {
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": msg})
+	writeError(w, http.StatusInternalServerError, "", msg)
 }
 
-func errForbidden(w http.ResponseWriter, msg string) {
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": msg})
-}
+func errForbidden(w http.ResponseWriter, msg string) { writeError(w, http.StatusForbidden, "", msg) }
 
 func errPayloadTooLarge(w http.ResponseWriter, msg string) {
-	writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": msg})
+	writeError(w, http.StatusRequestEntityTooLarge, "", msg)
 }
 
-func errConflict(w http.ResponseWriter, msg string) {
-	writeJSON(w, http.StatusConflict, map[string]string{"error": msg})
-}
+func errConflict(w http.ResponseWriter, msg string) { writeError(w, http.StatusConflict, "", msg) }
 
 func queryInt(r *http.Request, key string, fallback int) int {
 	v := r.URL.Query().Get(key)

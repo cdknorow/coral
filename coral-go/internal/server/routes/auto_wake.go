@@ -366,7 +366,7 @@ func (h *SessionsHandler) AutoWakeStatus(w http.ResponseWriter, r *http.Request)
 // DismissAutoWake: POST /api/system/auto-wake/dismiss, "Not now": the agents stay asleep.
 func (h *SessionsHandler) DismissAutoWake(w http.ResponseWriter, r *http.Request) {
 	if cloud.Tunneled(r) || !humanInputCaller(r) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can answer this", "code": "operator_only"})
+		writeError(w, http.StatusForbidden, "operator_only", "only the Operator can answer this")
 		return
 	}
 	h.autoWake.set(func(s *autoWakeStatus) { s.Pending, s.State = nil, "done" })

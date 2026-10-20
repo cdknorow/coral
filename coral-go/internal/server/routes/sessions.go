@@ -4,7 +4,6 @@ package routes
 import (
 	"context"
 	crand "crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -181,7 +180,7 @@ func (h *SessionsHandler) RequestGoal(w http.ResponseWriter, r *http.Request) {
 		AgentType string `json:"agent_type"`
 		SessionID string `json:"session_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -194,11 +193,11 @@ func (h *SessionsHandler) RequestGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.goals == nil {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "goal generation is not running"})
+		errConflict(w, "goal generation is not running")
 		return
 	}
 	if settings, err := h.ss.GetSettings(r.Context()); err == nil && background.GoalsDisabled(settings) {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "goal generation is turned off"})
+		errConflict(w, "goal generation is turned off")
 		return
 	}
 	h.goals.RequestGoal(body.SessionID)

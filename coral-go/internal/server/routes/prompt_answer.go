@@ -2,7 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -501,7 +500,7 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		Text      string `json:"text"`   // the typed answer, for a "text" option
 		Submit    bool   `json:"submit"` // take the Submit row of a multi-select question (#5232); no n or label
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.Submit && (body.N < 1 || body.N > 9 || strings.TrimSpace(body.Label) == "") {
+	if err := decodeJSON(r, &body); err != nil || !body.Submit && (body.N < 1 || body.N > 9 || strings.TrimSpace(body.Label) == "") {
 		errBadRequest(w, "n (1-9) and label are required")
 		return
 	}
@@ -532,12 +531,12 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok || body.N > len(screen.Options) {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "The prompt is no longer open. Check the terminal."})
+		errConflict(w, "The prompt is no longer open. Check the terminal.")
 		return
 	}
 	opt := screen.Options[body.N-1]
 	if normalizeLabel(opt.Label) != normalizeLabel(body.Label) {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "The prompt changed. Answer it in the terminal."})
+		errConflict(w, "The prompt changed. Answer it in the terminal.")
 		return
 	}
 	// A typed answer is one line: Enter submits the field
@@ -547,8 +546,8 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if screen.Multi && navigatesByArrows(body.AgentType) {
-		// Its menus take only arrows and Enter, and an Enter on a box toggles it: no key is sent (#5232)
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "Answer this question in the terminal."})
+		errConflict( // Its menus take only arrows and Enter, and an Enter on a box toggles it: no key is sent (#5232)
+			w, "Answer this question in the terminal.")
 		return
 	}
 	if screen.Multi && body.N <= screen.boxes {
@@ -563,8 +562,8 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 			writeTerminalError(w, err)
 			return
 		} else if !moved {
-			writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
-				"error": "The prompt's selection didn't move to that option. Answer it in the terminal."})
+			writeError(w, http.StatusConflict, "prompt_still_open",
+				"The prompt's selection didn't move to that option. Answer it in the terminal.")
 			return
 		}
 	} else if err := h.terminal.SendRawInput(r.Context(), name, []string{strconv.Itoa(body.N)}, body.AgentType, body.SessionID); err != nil {
@@ -587,8 +586,8 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !cleared {
-		writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
-			"error": "The answer was sent, but the agent's prompt is still open. Check the terminal."})
+		writeError(w, http.StatusConflict, "prompt_still_open",
+			"The answer was sent, but the agent's prompt is still open. Check the terminal.")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answered": opt.Label})
@@ -708,8 +707,8 @@ func (h *SessionsHandler) toggleMulti(w http.ResponseWriter, r *http.Request, na
 		return
 	}
 	if !ok {
-		writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
-			"error": "The box didn't change. Check the terminal."})
+		writeError(w, http.StatusConflict, "prompt_still_open",
+			"The box didn't change. Check the terminal.")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "toggled": before.Options[n-1].Label, "checked": want, "prompt_options": now})
@@ -723,13 +722,13 @@ const maxMultiDowns = 12
 // must go (the next question, or the review step) for the answer to be ok.
 func (h *SessionsHandler) submitMulti(w http.ResponseWriter, r *http.Request, name, agentType, sessionID string, before promptScreen, shown bool) {
 	if !shown || !before.Multi || before.Submit == nil {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "There is no Submit row on the terminal now. Check the terminal."})
+		errConflict(w, "There is no Submit row on the terminal now. Check the terminal.")
 		return
 	}
 	as, isArrow := h.terminal.(ptymanager.ArrowSender)
 	es, isEnter := h.terminal.(ptymanager.EnterSender)
 	if !isArrow || !isEnter || navigatesByArrows(agentType) {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "Submit it in the terminal."})
+		errConflict(w, "Submit it in the terminal.")
 		return
 	}
 	steps := 0
@@ -741,13 +740,13 @@ func (h *SessionsHandler) submitMulti(w http.ResponseWriter, r *http.Request, na
 			}
 		}
 		if from < 1 || from > before.boxes {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": "The selection is not on a box. Submit it in the terminal."})
+			errConflict(w, "The selection is not on a box. Submit it in the terminal.")
 			return
 		}
 		steps = before.boxes - from + 1
 	}
 	if steps > maxMultiDowns {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "Too many options to reach Submit from here. Submit it in the terminal."})
+		errConflict(w, "Too many options to reach Submit from here. Submit it in the terminal.")
 		return
 	}
 	for i := 0; i < steps; i++ {
@@ -765,8 +764,8 @@ func (h *SessionsHandler) submitMulti(w http.ResponseWriter, r *http.Request, na
 		return
 	}
 	if !ok {
-		writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
-			"error": "The selection didn't reach Submit. Submit it in the terminal."})
+		writeError(w, http.StatusConflict, "prompt_still_open",
+			"The selection didn't reach Submit. Submit it in the terminal.")
 		return
 	}
 	if err := es.SendEnter(r.Context(), name, agentType, sessionID); err != nil {
@@ -780,8 +779,8 @@ func (h *SessionsHandler) submitMulti(w http.ResponseWriter, r *http.Request, na
 		return
 	}
 	if !cleared {
-		writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
-			"error": "Submit was sent, but the agent's prompt is still open. Check the terminal."})
+		writeError(w, http.StatusConflict, "prompt_still_open",
+			"Submit was sent, but the agent's prompt is still open. Check the terminal.")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answered": before.Submit.Label})

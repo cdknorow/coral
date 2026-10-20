@@ -44,7 +44,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 	task, err := h.bs.SubmitCompletionReviewAtRevisionAndCandidate(r.Context(), project, id, body.SubscriberID, body.Message, body.Outcome, body.Reason, body.Artifacts, body.ExpectedRevision, body.CandidateRevision)
 	if err != nil {
 		if strings.Contains(err.Error(), "revision") {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			errConflict(w, err.Error())
 		} else {
 			errBadRequest(w, err.Error())
 		}
@@ -129,7 +129,7 @@ func (h *BoardHandler) DelegateReview(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	if err := h.bs.RequireTaskReviewer(ctx, project, body.SubscriberID); err != nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		errForbidden(w, err.Error())
 		return
 	}
 	task, reviews, err := h.bs.DelegateReview(ctx, project, id, body.SubscriberID, body.Reviewers)
@@ -196,9 +196,9 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 	}
 	if err != nil {
 		if strings.Contains(err.Error(), "only the reviewers") {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			errForbidden(w, err.Error())
 		} else if strings.Contains(err.Error(), "was resubmitted") {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			errConflict(w, err.Error())
 		} else {
 			errBadRequest(w, err.Error())
 		}
@@ -261,7 +261,7 @@ func (h *BoardHandler) ReleaseCompletionReview(w http.ResponseWriter, r *http.Re
 	}
 	body.SubscriberID = attrWho
 	if err := h.bs.RequireTaskReviewer(r.Context(), project, body.SubscriberID); err != nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		errForbidden(w, err.Error())
 		return
 	}
 	task, err := h.bs.ReleaseCompletionReview(r.Context(), project, id, body.SubscriberID, body.Reason)

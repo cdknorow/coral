@@ -515,7 +515,7 @@ func (h *ThemesHandler) GenerateTheme(w http.ResponseWriter, r *http.Request) {
 	if h.ss != nil {
 		var serr error
 		if settings, serr = h.ss.GetSettingsForCLI(r.Context()); serr != nil {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Coral's settings could not be read; try again"})
+			writeError(w, http.StatusServiceUnavailable, "", "Coral's settings could not be read; try again")
 			return
 		}
 	}

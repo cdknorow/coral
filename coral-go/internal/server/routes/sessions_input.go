@@ -2,7 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -23,7 +22,7 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		AgentType string `json:"agent_type"`
 		SessionID string `json:"session_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -78,7 +77,7 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 		AgentType string   `json:"agent_type"`
 		SessionID string   `json:"session_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Keys) == 0 {
+	if err := decodeJSON(r, &body); err != nil || len(body.Keys) == 0 {
 		errBadRequest(w, "keys must be a non-empty list")
 		return
 	}
@@ -112,7 +111,7 @@ func (h *SessionsHandler) Resize(w http.ResponseWriter, r *http.Request) {
 		AgentType string `json:"agent_type"`
 		SessionID string `json:"session_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Columns < minTerminalCols || body.Columns > maxTerminalCols {
+	if err := decodeJSON(r, &body); err != nil || body.Columns < minTerminalCols || body.Columns > maxTerminalCols {
 		errBadRequest(w, fmt.Sprintf("columns must be from %d to %d", minTerminalCols, maxTerminalCols))
 		return
 	}

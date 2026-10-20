@@ -22,7 +22,7 @@ func (h *BoardHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
 	running, err := h.runningAgentsOn(r.Context(), project)
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "could not check which agents are running on this board; try again", "code": "running_agents_unknown"})
+		writeError(w, http.StatusServiceUnavailable, "running_agents_unknown", "could not check which agents are running on this board; try again")
 		return
 	}
 	if len(running) > 0 {

@@ -1013,7 +1013,7 @@ func isOperatorRequest(r *http.Request) bool {
 
 func refuseNonOperator(w http.ResponseWriter, r *http.Request, what string) bool {
 	if !isOperatorRequest(r) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can " + what + ", from this computer's dashboard or the signed command line", "code": "operator_only"})
+		writeError(w, http.StatusForbidden, "operator_only", "only the Operator can "+what+", from this computer's dashboard or the signed command line")
 		return true
 	}
 	return false
@@ -1032,7 +1032,7 @@ func (h *SessionsHandler) pruneArtifactsRoute(w http.ResponseWriter, r *http.Req
 		DryRun           *bool    `json:"dry_run"`
 		Shrink           bool     `json:"shrink"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil {
+	if err := decodeJSONLimit(r, &body, 4096); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -1064,10 +1064,10 @@ func (h *SessionsHandler) pruneArtifactsRoute(w http.ResponseWriter, r *http.Req
 	rep, err := h.runPrune(ctx, o)
 	switch {
 	case errors.Is(err, errPruneBusy):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error(), "code": "prune_running"})
+		writeError(w, http.StatusConflict, "prune_running", err.Error())
 		return
 	case err != nil:
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error(), "code": "prune_failed"})
+		writeError(w, http.StatusServiceUnavailable, "prune_failed", err.Error())
 		return
 	}
 	if !o.DryRun {

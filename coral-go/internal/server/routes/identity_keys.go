@@ -52,7 +52,7 @@ func CanonicalIdentityKeys(next http.Handler) http.Handler {
 		// A body over the cap is refused here, for the agent routes too (nothing else caps them):
 		// passed on, it would keep its differently spelled keys from every guard.
 		if r.ContentLength > maxBoardBody {
-			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "This board request's body is over the limit", "code": "body_too_large"})
+			writeError(w, http.StatusRequestEntityTooLarge, "body_too_large", "This board request's body is over the limit")
 			return
 		}
 		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBoardBody))
@@ -60,7 +60,7 @@ func CanonicalIdentityKeys(next http.Handler) http.Handler {
 		if err != nil {
 			var tooLarge *http.MaxBytesError
 			if errors.As(err, &tooLarge) {
-				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "This board request's body is over the limit", "code": "body_too_large"})
+				writeError(w, http.StatusRequestEntityTooLarge, "body_too_large", "This board request's body is over the limit")
 				return
 			}
 			errBadRequest(w, "could not read the request body")

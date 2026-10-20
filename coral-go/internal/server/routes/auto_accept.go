@@ -726,7 +726,7 @@ func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Reques
 		Acknowledged bool   `json:"acknowledged"`
 		DurationS    *int64 `json:"duration_s"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -839,7 +839,7 @@ func (h *SessionsHandler) DisableAutoAccept(w http.ResponseWriter, r *http.Reque
 	var body struct {
 		SessionID string `json:"session_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}

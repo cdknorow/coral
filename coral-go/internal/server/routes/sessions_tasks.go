@@ -68,7 +68,7 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		// terminal; see claimPrompt).
 		Notify bool `json:"notify"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "title is required")
 		return
 	}
@@ -232,7 +232,7 @@ func (h *SessionsHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		Completed *int    `json:"completed"`
 		SortOrder *int    `json:"sort_order"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -268,7 +268,7 @@ func (h *SessionsHandler) ReorderTasks(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		TaskIDs []int64 `json:"task_ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.TaskIDs) == 0 {
+	if err := decodeJSON(r, &body); err != nil || len(body.TaskIDs) == 0 {
 		errBadRequest(w, "task_ids required")
 		return
 	}
@@ -301,7 +301,7 @@ func (h *SessionsHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 		Content   string `json:"content"`
 		SessionID string `json:"session_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Content == "" {
+	if err := decodeJSON(r, &body); err != nil || body.Content == "" {
 		errBadRequest(w, "content is required")
 		return
 	}
@@ -337,7 +337,7 @@ func (h *SessionsHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Content string `json:"content"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Content == "" {
+	if err := decodeJSON(r, &body); err != nil || body.Content == "" {
 		errBadRequest(w, "content is required")
 		return
 	}
@@ -404,7 +404,7 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		ToolUseID  string `json:"tool_use_id"`
 		HooksRev   int    `json:"hooks_rev"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -639,7 +639,7 @@ func (h *SessionsHandler) RecordTokenUsage(w http.ResponseWriter, r *http.Reques
 		// since it may differ from the model that produced these tokens.
 		Model string `json:"model"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}

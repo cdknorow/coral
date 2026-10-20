@@ -2,9 +2,7 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -101,7 +99,7 @@ func (h *SessionsHandler) terminalLogsStatus(w http.ResponseWriter, r *http.Requ
 	}
 	scan, err := h.scanTerminalLogs(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error(), "code": "logs_unavailable"})
+		writeError(w, http.StatusServiceUnavailable, "logs_unavailable", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"files": scan.Files, "bytes": scan.Bytes, "ended": map[string]any{"count": len(scan.Ended), "bytes": scan.EndedBytes}})
@@ -118,13 +116,13 @@ func (h *SessionsHandler) deleteEndedTerminalLogs(w http.ResponseWriter, r *http
 		Count *int   `json:"count"`
 		Bytes *int64 `json:"bytes"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || body.Count == nil || body.Bytes == nil {
+	if err := decodeJSONLimit(r, &body, 4096); err != nil || body.Count == nil || body.Bytes == nil {
 		errBadRequest(w, "send the count and size you were shown")
 		return
 	}
 	scan, err := h.scanTerminalLogs(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error() + ", so nothing was deleted", "code": "logs_unavailable"})
+		writeError(w, http.StatusServiceUnavailable, "logs_unavailable", err.Error()+", so nothing was deleted")
 		return
 	}
 	if *body.Count != len(scan.Ended) || *body.Bytes != scan.EndedBytes {
@@ -133,7 +131,7 @@ func (h *SessionsHandler) deleteEndedTerminalLogs(w http.ResponseWriter, r *http
 	}
 	root, err := safefs.OpenRoot(h.cfg.LogDir)
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": errTerminalLogsUnavailable.Error() + ", so nothing was deleted", "code": "logs_unavailable"})
+		writeError(w, http.StatusServiceUnavailable, "logs_unavailable", errTerminalLogsUnavailable.Error()+", so nothing was deleted")
 		return
 	}
 	defer root.Close()

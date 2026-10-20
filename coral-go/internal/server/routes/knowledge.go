@@ -3,7 +3,6 @@ package routes
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -324,7 +323,7 @@ func (h *SessionsHandler) SaveAgentKnowledge(w http.ResponseWriter, r *http.Requ
 	var body struct {
 		Content string `json:"content"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}

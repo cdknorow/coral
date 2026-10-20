@@ -559,7 +559,7 @@ func (h *BoardHandler) ListSessionArtifacts(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !h.mayListSessionUploads(r, sessionID) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "an agent can list only its own uploads or those of its board's agents", "code": "forbidden_for_agent"})
+		writeError(w, http.StatusForbidden, "forbidden_for_agent", "an agent can list only its own uploads or those of its board's agents")
 		return
 	}
 	items := h.uploads.merge(nil, h.coralDir, map[string]string{sessionID: ""})

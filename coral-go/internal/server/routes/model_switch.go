@@ -2,7 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
@@ -120,12 +119,13 @@ type modelSwitchRequest struct {
 func (h *SessionsHandler) SwitchModel(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	var body modelSwitchRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
-	if !humanInputCaller(r) { // a person's choice: an agent or an API key does not change what another agent runs
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the operator can switch an agent's model", "code": "operator_only"})
+	if !humanInputCaller(r) {
+		writeError( // a person's choice: an agent or an API key does not change what another agent runs
+			w, http.StatusForbidden, "operator_only", "only the operator can switch an agent's model")
 		return
 	}
 	ls, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false)
@@ -142,7 +142,7 @@ func (h *SessionsHandler) SwitchModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !liveSwitchTypes[agentType] {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "a " + agentType + " agent cannot switch while it runs: apply it with a restart", "code": "needs_restart"})
+		writeError(w, http.StatusConflict, "needs_restart", "a "+agentType+" agent cannot switch while it runs: apply it with a restart")
 		return
 	}
 	var model string
@@ -173,7 +173,7 @@ func (h *SessionsHandler) SwitchModel(w http.ResponseWriter, r *http.Request) {
 		sw.Thinking = &level
 	}
 	if !h.modelSwitches.begin(ls.SessionID, sw) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "a switch is already in progress for this agent", "code": "switch_in_progress"})
+		writeError(w, http.StatusConflict, "switch_in_progress", "a switch is already in progress for this agent")
 		return
 	}
 	_, busy := h.latestEvent(r.Context(), ls.SessionID)

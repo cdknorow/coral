@@ -40,7 +40,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		MCPServers      json.RawMessage        `json:"mcpServers"` // refused: not supported (#3644)
 		Hooks           map[string]interface{} `json:"hooks"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}

@@ -113,7 +113,7 @@ func attributedTo(w http.ResponseWriter, r *http.Request, claim string) (string,
 	name, verified := actorName(callerActor(r))
 	if identityActorEnforced() {
 		if !verified {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "this request is not from a verified member of the board or the Operator", "code": "identity_unverified"})
+			writeError(w, http.StatusForbidden, "identity_unverified", "this request is not from a verified member of the board or the Operator")
 			return "", false
 		}
 		return name, true
@@ -141,7 +141,7 @@ func attributedSubject(w http.ResponseWriter, r *http.Request, claim string) (st
 	}
 	verified := a.Kind == ActorOperator || (a.Kind == ActorHub && a.Name != "")
 	if identityActorEnforced() && !verified {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "this request is not from a verified member of the board or the Operator", "code": "identity_unverified"})
+		writeError(w, http.StatusForbidden, "identity_unverified", "this request is not from a verified member of the board or the Operator")
 		return "", false
 	}
 	if !verified {
@@ -185,7 +185,7 @@ func attributedJoin(w http.ResponseWriter, r *http.Request, claimName, claimSess
 		}
 		return a.Name, claimSession, true
 	}
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": "this request is not from a verified member of the board or the Operator", "code": "identity_unverified"})
+	writeError(w, http.StatusForbidden, "identity_unverified", "this request is not from a verified member of the board or the Operator")
 	return "", "", false
 }
 
@@ -208,7 +208,7 @@ func (h *CloudHandler) SetIdentityActor(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if a := callerActor(r); a.Kind != ActorOperator || !a.IsOperator() {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator may change the identity mode", "code": "operator_only"})
+		writeError(w, http.StatusForbidden, "operator_only", "only the Operator may change the identity mode")
 		return
 	}
 	if !requireJSON(w, r) {

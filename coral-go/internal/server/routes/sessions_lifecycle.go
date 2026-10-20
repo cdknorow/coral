@@ -42,7 +42,7 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 		AgentType string `json:"agent_type"`
 		SessionID string `json:"session_id"`
 	}
-	json.NewDecoder(r.Body).Decode(&body)
+	decodeJSON(r, &body)
 	if namesNoSession(name, body.SessionID) {
 		writeSessionIDRequired(w)
 		return
@@ -312,7 +312,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
 	name := chi.URLParam(r, "name")
 	var req restartRequest
-	json.NewDecoder(r.Body).Decode(&req)
+	decodeJSON(r, &req)
 	if namesNoSession(name, req.SessionID) {
 		writeSessionIDRequired(w)
 		return
@@ -361,12 +361,12 @@ func (h *SessionsHandler) restartResolve(ctx context.Context, name string, req r
 		if ls, err := h.ss.GetLiveSession(ctx, req.SessionID); err == nil && ls != nil {
 			if ls.Status != "active" || ls.StoppedAt != nil {
 				return nil, func(w http.ResponseWriter) {
-					writeJSON(w, http.StatusConflict, map[string]string{"error": "session is not live", "code": "session_not_live"})
+					writeError(w, http.StatusConflict, "session_not_live", "session is not live")
 				}
 			}
 			if ls.IsArchived == 1 {
 				return nil, func(w http.ResponseWriter) {
-					writeJSON(w, http.StatusConflict, map[string]string{"error": "session is archived", "code": "session_archived"})
+					writeError(w, http.StatusConflict, "session_archived", "session is archived")
 				}
 			}
 			p.stored = ls
@@ -587,7 +587,7 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 	userSettings, serr := h.launchSettings(ctx)
 	if serr != nil { // never start the restarted agent on the CLI found on PATH (#4350)
 		return "", func(w http.ResponseWriter) {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
+			writeError(w, http.StatusServiceUnavailable, "", serr.Error())
 		}
 	}
 	permMode := p.permMode
@@ -804,7 +804,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
 	name := chi.URLParam(r, "name")
 	var body resumeRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.SessionID == "" {
+	if err := decodeJSON(r, &body); err != nil || body.SessionID == "" {
 		errBadRequest(w, "session_id is required")
 		return
 	}
@@ -885,19 +885,19 @@ func (h *SessionsHandler) resumeResolve(ctx context.Context, name string, body *
 	case err != nil:
 		slog.Warn("failed to validate live session metadata", "session_id", targetSID, "error", err)
 		return nil, func(w http.ResponseWriter) {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent metadata is temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
+			writeError(w, http.StatusServiceUnavailable, "agent_metadata_unavailable", "Agent metadata is temporarily unavailable; try again.")
 		}
 	case ls == nil:
 		return nil, func(w http.ResponseWriter) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "live session not found", "code": "session_not_found"})
+			writeError(w, http.StatusNotFound, "session_not_found", "live session not found")
 		}
 	case ls.Status != "active" || ls.StoppedAt != nil:
 		return nil, func(w http.ResponseWriter) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "session is not live", "code": "session_not_live"})
+			writeError(w, http.StatusConflict, "session_not_live", "session is not live")
 		}
 	case ls.IsArchived == 1:
 		return nil, func(w http.ResponseWriter) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "session is archived", "code": "session_archived"})
+			writeError(w, http.StatusConflict, "session_archived", "session is archived")
 		}
 	}
 	body.CurrentSessionID = targetSID
@@ -970,7 +970,7 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 	userSettings, serr := h.launchSettings(ctx)
 	if serr != nil { // never resume the agent on the CLI found on PATH (#4350)
 		return "", func(w http.ResponseWriter) {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": serr.Error()})
+			writeError(w, http.StatusServiceUnavailable, "", serr.Error())
 		}
 	}
 	permMode := p.permMode
@@ -1063,7 +1063,7 @@ func (h *SessionsHandler) Attach(w http.ResponseWriter, r *http.Request) {
 		AgentType string `json:"agent_type"`
 		SessionID string `json:"session_id"`
 	}
-	json.NewDecoder(r.Body).Decode(&body)
+	decodeJSON(r, &body)
 	if namesNoSession(name, body.SessionID) {
 		writeSessionIDRequired(w)
 		return

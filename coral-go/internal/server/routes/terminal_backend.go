@@ -37,7 +37,7 @@ func (h *CloudHandler) refusePersonSystemSetting(w http.ResponseWriter, r *http.
 		return true
 	}
 	if !humanInputCaller(r) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can change the terminal backend", "code": "operator_only"})
+		writeError(w, http.StatusForbidden, "operator_only", "only the Operator can change the terminal backend")
 		return true
 	}
 	return false
@@ -112,7 +112,7 @@ func (h *CloudHandler) EndLeftoverTmuxAgents(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if h.BackendRunning != "pty" {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "Coral runs on tmux: its agents are reachable, nothing is left over", "code": "not_pty"})
+		writeError(w, http.StatusConflict, "not_pty", "Coral runs on tmux: its agents are reachable, nothing is left over")
 		return
 	}
 	ended := tmux.EndPrivateAgentSessions(r.Context(), tmux.PrivateSocketPath(h.dataDir))

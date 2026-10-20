@@ -231,13 +231,13 @@ func serveAsHubOperator(w http.ResponseWriter, r *http.Request, next http.Handle
 
 func refuseOrchestratorIdentity(msg string) answer {
 	return func(w http.ResponseWriter) {
-		writeJSON(w, http.StatusForbidden, map[string]any{"error": msg, "code": "orchestrator_identity"})
+		writeError(w, http.StatusForbidden, "orchestrator_identity", msg)
 	}
 }
 
 func operatorIdentityRequired(w http.ResponseWriter) {
-	writeJSON(w, http.StatusForbidden, map[string]any{"code": "operator_identity_required",
-		"error": "Through Coral Hub you can't act as the Operator: 'Don't let Coral Hub act as the Operator' is on in Settings on this computer"})
+	writeError(w, http.StatusForbidden, "operator_identity_required",
+		"Through Coral Hub you can't act as the Operator: 'Don't let Coral Hub act as the Operator' is on in Settings on this computer")
 }
 
 // isBoardReminderWrite is POST or DELETE /api/board/{project}/reminder: its subscriber_id

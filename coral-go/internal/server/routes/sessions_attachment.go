@@ -33,17 +33,17 @@ func (h *SessionsHandler) ChatAttachment(w http.ResponseWriter, r *http.Request)
 	}
 	path := jsonl.TranscriptPath(id, t.workingDir, t.agentType)
 	if path == "" {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "no transcript for that session"})
+		errNotFound(w, "no transcript for that session")
 		return
 	}
 	data, err := jsonl.FindImage(r.Context(), path, t.agentType, ref)
 	switch {
 	case err == nil:
 	case errors.Is(err, jsonl.ErrImageNotFound):
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such attachment"})
+		errNotFound(w, "no such attachment")
 		return
 	case errors.Is(err, jsonl.ErrImageTooLarge):
-		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": "the attachment is too large to show"})
+		errPayloadTooLarge(w, "the attachment is too large to show")
 		return
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return
@@ -57,7 +57,7 @@ func (h *SessionsHandler) ChatAttachment(w http.ResponseWriter, r *http.Request)
 	}
 	ct := http.DetectContentType(head)
 	if !thumbnailTypes[ct] {
-		writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": "not a PNG, JPEG, GIF or WebP image"})
+		writeError(w, http.StatusUnsupportedMediaType, "", "not a PNG, JPEG, GIF or WebP image")
 		return
 	}
 	setImageHeaders(w, ct, "attachment-"+ref, int64(len(data)))

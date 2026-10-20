@@ -49,7 +49,7 @@ func templateSegments(w http.ResponseWriter, r *http.Request, withName bool) (ca
 		name = chi.URLParam(r, "name")
 	}
 	if !validTemplateSegment(category) || (withName && !validTemplateSegment(name)) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a template category or name has only letters, digits, '.', '_' and '-' (at most 100)", "code": "bad_template_name"})
+		writeError(w, http.StatusBadRequest, "bad_template_name", "a template category or name has only letters, digits, '.', '_' and '-' (at most 100)")
 		return "", "", false
 	}
 	return category, name, true
@@ -217,7 +217,7 @@ func (h *TemplatesHandler) known(kind, category, filename string) error {
 // usual error shape when the listing itself couldn't be read.
 func refuseUnknown(w http.ResponseWriter, err error, empty map[string]interface{}) {
 	if errors.Is(err, errTemplateUnknown) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error(), "code": "template_not_found"})
+		writeError(w, http.StatusNotFound, "template_not_found", err.Error())
 		return
 	}
 	out := map[string]interface{}{"error": err.Error()}

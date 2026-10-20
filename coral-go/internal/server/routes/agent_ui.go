@@ -57,7 +57,7 @@ func (h *SessionsHandler) agentUI(w http.ResponseWriter, r *http.Request) {
 			HTML  string `json:"html"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, 3<<20)
-		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		if err := decodeJSON(r, &b); err != nil {
 			errBadRequest(w, "invalid JSON or request exceeds 3 MiB")
 			return
 		}
@@ -135,7 +135,7 @@ func (h *SessionsHandler) agentUI(w http.ResponseWriter, r *http.Request) {
 		Payload  json.RawMessage `json:"payload"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+	if err := decodeJSON(r, &b); err != nil {
 		errBadRequest(w, "invalid JSON or event exceeds 16 KiB")
 		return
 	}

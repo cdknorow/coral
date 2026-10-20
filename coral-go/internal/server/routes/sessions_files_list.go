@@ -94,7 +94,7 @@ func (h *SessionsHandler) RefreshFiles(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		SessionID string `json:"session_id"`
 	}
-	json.NewDecoder(r.Body).Decode(&body)
+	decodeJSON(r, &body)
 	h.refreshFilesInner(w, r, name, body.SessionID)
 }
 

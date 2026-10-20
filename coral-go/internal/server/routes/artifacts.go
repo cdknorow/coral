@@ -674,7 +674,7 @@ func deleteArtifactFilesLocked(coralDir, id string) (freed int64, records int, f
 // forwards it). Links to it in posts and task results stay and show "unavailable".
 func (h *SessionsHandler) deleteAgentArtifact(w http.ResponseWriter, r *http.Request) {
 	if cloud.Tunneled(r) || !humanInputCaller(r) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can delete an artifact, from this computer's dashboard or the signed command line", "code": "operator_only"})
+		writeError(w, http.StatusForbidden, "operator_only", "only the Operator can delete an artifact, from this computer's dashboard or the signed command line")
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -738,7 +738,7 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 	}
 	if info.Size() != meta.Size {
 		slog.Warn("[artifacts] stored object and its sidecar disagree on the size; not served", "digest", id, "file_bytes", info.Size(), "sidecar_bytes", meta.Size)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "this artifact's stored copy is damaged", "code": "artifact_corrupt"})
+		writeError(w, http.StatusInternalServerError, "artifact_corrupt", "this artifact's stored copy is damaged")
 		return
 	}
 	// An agent chose these bytes and their type: an HTML or SVG upload must not

@@ -72,7 +72,7 @@ func (h *BoardHandler) allowTaskEdit(w http.ResponseWriter, r *http.Request, pro
 		return false
 	}
 	if e.Body != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "task body changes require the revisioned /amend endpoint with a reason and base_revision"})
+		errConflict(w, "task body changes require the revisioned /amend endpoint with a reason and base_revision")
 		return false
 	}
 	removing := e.removesBlockers()
@@ -201,7 +201,7 @@ func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
 	task, err := h.bs.AmendTask(r.Context(), project, taskID, body.SubscriberID, body.BaseRevision, body.Reason, body.Changes)
 	if err != nil {
 		if strings.Contains(err.Error(), "revision") {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			errConflict(w, err.Error())
 		} else {
 			errBadRequest(w, err.Error())
 		}

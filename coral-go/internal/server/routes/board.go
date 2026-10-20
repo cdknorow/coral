@@ -114,10 +114,10 @@ func (h *BoardHandler) refuseArchivedAssignee(w http.ResponseWriter, ctx context
 	if !h.subscriberArchived(ctx, project, assignee) {
 		return false
 	}
-	writeJSON(w, http.StatusConflict, map[string]string{
-		"error": fmt.Sprintf("%s is archived; unarchive it before assigning it work", assignee),
-		"code":  "assignee_archived",
-	})
+	writeError(w, http.StatusConflict,
+
+		"assignee_archived", fmt.Sprintf("%s is archived; unarchive it before assigning it work", assignee),
+	)
 	return true
 }
 

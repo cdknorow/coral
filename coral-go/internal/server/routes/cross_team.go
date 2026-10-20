@@ -176,9 +176,9 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if body.CrossTeamArtifacts != nil && cloud.Tunneled(r) {
-		// Accepting files from other teams is decided on this computer only (#4379; coral-hub's
-		// design, section 10 C3): never through Coral Hub.
-		writeJSON(w, http.StatusForbidden, map[string]string{"code": "local_only", "error": "cross_team_artifacts can be changed only on this computer, not through Coral Hub"})
+		writeError( // Accepting files from other teams is decided on this computer only (#4379; coral-hub's
+			// design, section 10 C3): never through Coral Hub.
+			w, http.StatusForbidden, "local_only", "cross_team_artifacts can be changed only on this computer, not through Coral Hub")
 		return
 	}
 	if body.CrossTeamServers != nil {
@@ -334,7 +334,7 @@ func (m *externalMessage) hubOperatorPrefix(r *http.Request) answer {
 	hubUser := hubOperatorUser(r)
 	if hubUser == "" {
 		return func(w http.ResponseWriter) {
-			writeJSON(w, http.StatusForbidden, map[string]any{"code": "operator_identity_required", "error": "Through Coral Hub you can't act as the Operator here"})
+			writeError(w, http.StatusForbidden, "operator_identity_required", "Through Coral Hub you can't act as the Operator here")
 		}
 	}
 	m.Content = HubOperatorPrefix(hubUser) + m.Content
@@ -389,7 +389,7 @@ func (h *BoardHandler) crossTeamRecipients(ctx context.Context, from, target, to
 	if err != nil {
 		if errors.Is(err, board.ErrNoTargetOrchestrator) {
 			return nil, func(w http.ResponseWriter) {
-				writeJSON(w, http.StatusConflict, map[string]string{"error": fmt.Sprintf("board %q has no active Orchestrator to receive the message", target)})
+				errConflict(w, fmt.Sprintf("board %q has no active Orchestrator to receive the message", target))
 			}
 		}
 		return nil, func(w http.ResponseWriter) { errNotFound(w, err.Error()) }
@@ -415,7 +415,7 @@ func (h *BoardHandler) crossTeamAttachments(ctx context.Context, r *http.Request
 	}
 	if len(off) > 0 {
 		return nil, func(w http.ResponseWriter) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"code": "artifacts_off", "error": fmt.Sprintf("sending artifacts is off on board %s; the Operator can turn on cross_team_artifacts in Team settings on this computer", strings.Join(off, " and "))})
+			writeError(w, http.StatusForbidden, "artifacts_off", fmt.Sprintf("sending artifacts is off on board %s; the Operator can turn on cross_team_artifacts in Team settings on this computer", strings.Join(off, " and ")))
 		}
 	}
 	sender := h.attachSenderFor(ctx, r, m.FromBoard, m.SubscriberID, senderSession)

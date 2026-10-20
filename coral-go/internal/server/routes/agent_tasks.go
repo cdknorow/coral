@@ -133,7 +133,7 @@ type agentTaskRequest struct {
 
 func decodeAgentTaskRequest(w http.ResponseWriter, r *http.Request) (agentTaskRequest, bool) {
 	var body agentTaskRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return body, false
 	}
@@ -212,7 +212,7 @@ func (h *SessionsHandler) ClaimAgentTaskForAgent(w http.ResponseWriter, r *http.
 	task, err := h.ts.ClaimNextAgentTask(r.Context(), name, &body.SessionID, body.TaskID)
 	if err != nil {
 		if strings.Contains(err.Error(), "current task") {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			errConflict(w, err.Error())
 		} else {
 			blocked, lookupErr := h.personalTaskBlockages(r, name, body.SessionID, body.TaskID)
 			if lookupErr != nil {
@@ -270,7 +270,7 @@ func (h *SessionsHandler) CurrentAgentTaskForAgent(w http.ResponseWriter, r *htt
 		return
 	}
 	if task == nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "No active task"})
+		errNotFound(w, "No active task")
 		return
 	}
 	writeJSON(w, http.StatusOK, viewAgentTask(task))
@@ -377,7 +377,7 @@ func (h *SessionsHandler) UpdateAgentTaskForAgent(w http.ResponseWriter, r *http
 		Priority  *string         `json:"priority"`
 		BlockedBy json.RawMessage `json:"blocked_by"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}

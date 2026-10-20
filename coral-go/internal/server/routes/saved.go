@@ -2,7 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/querypage"
@@ -215,7 +214,7 @@ func (h *SystemHandler) SavedAdd(w http.ResponseWriter, r *http.Request) {
 		Team      string `json:"team"`
 		Author    string `json:"author"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&body); err != nil {
+	if err := decodeJSONMax(w, r, &body, 32<<10); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -288,7 +287,7 @@ func (h *SystemHandler) SavedUpdate(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Done *bool `json:"done"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil || body.Done == nil {
+	if err := decodeJSONMax(w, r, &body, 4096); err != nil || body.Done == nil {
 		errBadRequest(w, "send {\"done\": true|false}")
 		return
 	}

@@ -58,8 +58,8 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if strings.EqualFold(strings.TrimSpace(body.ReceiveMode), "all") {
-			writeJSON(w, http.StatusForbidden, map[string]any{"code": "orchestrator_identity",
-				"error": "Through Coral Hub a subscriber can't receive every message (receive_mode all is the orchestrator's)"})
+			writeError(w, http.StatusForbidden, "orchestrator_identity",
+				"Through Coral Hub a subscriber can't receive every message (receive_mode all is the orchestrator's)")
 			return
 		}
 		sub, err := h.bs.Subscribe(r.Context(), project, user, hubSubscriberTitle, "", nil, body.ReceiveMode)

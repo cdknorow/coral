@@ -2,7 +2,6 @@ package routes
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -22,7 +21,7 @@ func (h *SessionsHandler) SetDisplayName(w http.ResponseWriter, r *http.Request)
 		DisplayName string `json:"display_name"`
 		SessionID   string `json:"session_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -45,7 +44,7 @@ func (h *SessionsHandler) SetIcon(w http.ResponseWriter, r *http.Request) {
 		SessionID string `json:"session_id"`
 		Icon      string `json:"icon"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -74,7 +73,7 @@ func (h *SessionsHandler) SetNameColor(w http.ResponseWriter, r *http.Request) {
 		SessionID string `json:"session_id"`
 		Color     string `json:"color"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -111,7 +110,7 @@ func (h *SessionsHandler) UpdateContextWindow(w http.ResponseWriter, r *http.Req
 		SessionID string `json:"session_id"`
 		Model     string `json:"model"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}

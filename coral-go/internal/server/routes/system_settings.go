@@ -366,12 +366,12 @@ func (h *SystemHandler) DeleteDebugInputLog(w http.ResponseWriter, r *http.Reque
 	// Coral Hub tunnel traffic also arrives from loopback (the connector proxies to
 	// 127.0.0.1), so a tunnel-stamped request is refused too, not only by the table.
 	if viaTunnel(r) || !auth.IsDirectLocal(r) {
-		writeJSON(w, http.StatusForbidden, map[string]any{"error": "Delete the terminal input log from the computer running Coral."})
+		errForbidden(w, "Delete the terminal input log from the computer running Coral.")
 		return
 	}
 	n, err := inputlog.Delete()
 	if errors.Is(err, inputlog.ErrOn) {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+		errConflict(w, err.Error())
 		return
 	}
 	if err != nil {

@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -219,7 +218,7 @@ func (h *NotificationHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Level   string            `json:"level"`
 		Link    *NotificationLink `json:"link,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}

@@ -229,7 +229,7 @@ func remoteErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, store.ErrRemoteNotFound):
 		errNotFound(w, "server not found")
 	case errors.Is(err, store.ErrRemoteExists):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "server id already exists"})
+		errConflict(w, "server id already exists")
 	case errors.Is(err, store.ErrInvalidRemoteID):
 		errBadRequest(w, err.Error())
 	case errors.Is(err, store.ErrKeyUnreadable):

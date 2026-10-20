@@ -60,7 +60,7 @@ func (h *SystemHandler) ImportTeam(w http.ResponseWriter, r *http.Request) {
 	// readImportFile): no symlink is followed, no dot-file or sensitive path is read, files are
 	// capped at 256 KiB and agents/ at 50.
 	if !humanInputCaller(r) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can import a team from a folder", "code": "operator_only"})
+		writeError(w, http.StatusForbidden, "operator_only", "only the Operator can import a team from a folder")
 		return
 	}
 	var body struct {
@@ -205,8 +205,9 @@ func (h *SystemHandler) GenerateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	settings, serr := h.ss.GetSettingsForCLI(r.Context())
-	if serr != nil { // never run the CLI found on PATH instead of the configured one (#4350)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Coral's settings could not be read; try again"})
+	if serr != nil {
+		writeError( // never run the CLI found on PATH instead of the configured one (#4350)
+			w, http.StatusServiceUnavailable, "", "Coral's settings could not be read; try again")
 		return
 	}
 	claudePath, err := agent.FindCLI(settings, agenttypes.Claude)
@@ -215,7 +216,7 @@ func (h *SystemHandler) GenerateTeam(w http.ResponseWriter, r *http.Request) {
 		if agent.ResolveCLIPath(settings, agenttypes.Claude) != "" {
 			msg = err.Error() // a configured path that can't be run says so (#4432)
 		}
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": msg})
+		writeError(w, http.StatusServiceUnavailable, "", msg)
 		return
 	}
 
@@ -293,7 +294,7 @@ func (h *SystemHandler) GenerateTeamStatus(w http.ResponseWriter, r *http.Reques
 	h.generateJobsMu.Unlock()
 
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+		errNotFound(w, "job not found")
 		return
 	}
 

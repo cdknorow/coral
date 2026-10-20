@@ -76,7 +76,7 @@ type launchTeamRequest struct {
 func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	defer h.kickWS() // the feed shows the change now, not on the next tick
 	var body launchTeamRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
@@ -142,7 +142,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	userSettings, err := h.launchSettings(ctx)
 	if err != nil {
 		attempt.Finish(tracking.OutcomeFailure, tracking.FailSpawnFailed, 0, len(body.Agents))
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		writeError(w, http.StatusServiceUnavailable, "", err.Error())
 		return
 	}
 	// An agent never starts a less-restricted agent (#4032): the team's own flags and each

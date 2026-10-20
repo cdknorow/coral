@@ -62,7 +62,7 @@ func (h *BoardHandler) SaveWorkflowPreset(w http.ResponseWriter, r *http.Request
 	p, err := h.bs.SaveWorkflowPreset(r.Context(), urlParam(r, "project"), id, body.Name, body.Instructions, create)
 	if err != nil {
 		if errors.Is(err, board.ErrPresetExists) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			errConflict(w, err.Error())
 		} else {
 			errBadRequest(w, err.Error())
 		}

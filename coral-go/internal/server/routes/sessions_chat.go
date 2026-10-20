@@ -258,7 +258,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	if after == 0 {
 		page, start, err := h.chatHistoryPage(r, tv, messages, total)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			errBadRequest(w, err.Error())
 			return
 		}
 		reply := map[string]any{

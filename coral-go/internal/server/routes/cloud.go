@@ -292,7 +292,7 @@ func (h *CloudHandler) Rekey(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Confirm bool `json:"confirm"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || !body.Confirm {
+	if err := decodeJSONLimit(r, &body, 4096); err != nil || !body.Confirm {
 		errBadRequest(w, `re-keying discards the Coral Hub connection and the remote servers' API keys: send {"confirm": true}`)
 		return
 	}
@@ -323,11 +323,12 @@ func (h *CloudHandler) Rekey(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := rs.Rekey(r.Context()); err != nil {
 		if errors.Is(err, store.ErrRekeyNotNeeded) {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "rekey_not_needed"})
+			writeError(w, http.StatusConflict, "rekey_not_needed", err.Error())
 			return
 		}
-		if errors.Is(err, store.ErrKeyNotRefused) { // it changed between the check and the re-key
-			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "code": "key_unreadable"})
+		if errors.Is(err, store.ErrKeyNotRefused) {
+			writeError( // it changed between the check and the re-key
+				w, http.StatusConflict, "key_unreadable", err.Error())
 			return
 		}
 		errInternalServer(w, "re-key failed: "+err.Error())
@@ -360,7 +361,7 @@ func (h *CloudHandler) refuseCloud(w http.ResponseWriter, r *http.Request, allow
 		return true
 	}
 	if same, supported := h.sameUser(r); supported && !same {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Cloud connector settings are only available to the user Coral runs as", "code": "other_user"})
+		writeError(w, http.StatusForbidden, "other_user", "Cloud connector settings are only available to the user Coral runs as")
 		return true
 	}
 	if allow&allowDashboard != 0 && r.Header.Get(cloud.CLIAuthHeader) == "" && localDashboard(r) {
@@ -400,7 +401,7 @@ func (h *CloudHandler) CLIHello(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if same, supported := h.sameUser(r); supported && !same {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Cloud connector settings are only available to the user Coral runs as", "code": "other_user"})
+		writeError(w, http.StatusForbidden, "other_user", "Cloud connector settings are only available to the user Coral runs as")
 		return
 	}
 	if !localCLI(r) {
@@ -472,8 +473,8 @@ func (h *CloudHandler) Connect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, cloud.ErrHubUnavailable) {
-			// Transient (unreachable, or a hub server error): 503, so the CLI says to try again.
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Could not start enrollment: Coral Hub could not be reached or had an error; try again in a minute"})
+			writeError( // Transient (unreachable, or a hub server error): 503, so the CLI says to try again.
+				w, http.StatusServiceUnavailable, "", "Could not start enrollment: Coral Hub could not be reached or had an error; try again in a minute")
 			return
 		}
 		errInternalServer(w, "Could not start enrollment; check that the hub is reachable")
@@ -887,13 +888,13 @@ func (h *CloudHandler) refuseSystemSetting(w http.ResponseWriter, r *http.Reques
 		return true
 	}
 	if same, supported := h.sameUser(r); supported && !same {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": where + ", as the user Coral runs as", "code": "other_user"})
+		writeError(w, http.StatusForbidden, "other_user", where+", as the user Coral runs as")
 		return true
 	}
 	if r.Header.Get(cloud.CLIAuthHeader) == "" && localDashboard(r) {
 		return false
 	}
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": where + ": open Settings there", "code": "local_dashboard_required"})
+	writeError(w, http.StatusForbidden, "local_dashboard_required", where+": open Settings there")
 	return true
 }
 
@@ -943,12 +944,13 @@ func (h *CloudHandler) RestartServer(w http.ResponseWriter, r *http.Request) {
 	if !requireJSON(w, r) {
 		return
 	}
-	if !humanInputCaller(r) { // a person only: never an agent with forged browser headers (#3634)
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can restart Coral", "code": "operator_only"})
+	if !humanInputCaller(r) {
+		writeError( // a person only: never an agent with forged browser headers (#3634)
+			w, http.StatusForbidden, "operator_only", "only the Operator can restart Coral")
 		return
 	}
 	if h.Restart == nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "This Coral can't restart itself: quit it and start it again", "code": "restart_unavailable"})
+		writeError(w, http.StatusConflict, "restart_unavailable", "This Coral can't restart itself: quit it and start it again")
 		return
 	}
 	if err := h.Restart(); err != nil {

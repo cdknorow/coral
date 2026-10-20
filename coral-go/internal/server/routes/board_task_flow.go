@@ -40,7 +40,7 @@ func (h *BoardHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
 	task, err := h.bs.ClaimTask(r.Context(), project, body.SubscriberID, body.TaskID)
 	if err != nil {
 		if err.Error() == "complete your current task before claiming a new one" {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			errConflict(w, err.Error())
 		} else {
 			blocked, lookupErr := h.bs.BlockedTasksForSubscriber(r.Context(), project, body.SubscriberID, body.TaskID)
 			if lookupErr != nil {
@@ -102,7 +102,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 	task, err := h.bs.CompleteTaskWithArtifactsAtRevisionAndCandidate(r.Context(), project, taskID, body.SubscriberID, body.Message, body.Outcome, body.Artifacts, body.ExpectedRevision, body.CandidateRevision)
 	if err != nil {
 		if strings.Contains(err.Error(), "revision") {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			errConflict(w, err.Error())
 		} else {
 			errBadRequest(w, err.Error())
 		}

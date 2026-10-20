@@ -184,9 +184,7 @@ func (h *SessionsHandler) historySearchSessions(ctx context.Context, sessionID s
 			}
 		}
 		return nil, func(w http.ResponseWriter) {
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": "Unauthorized: session is not within the authenticated session lineage",
-			})
+			errForbidden(w, "Unauthorized: session is not within the authenticated session lineage")
 		}
 	}
 	if !p.includeAncestors {
@@ -351,9 +349,7 @@ func (h *SessionsHandler) GetAgentHistoryContext(w http.ResponseWriter, r *http.
 		}
 	}
 	if targetItem == nil {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"error": "Unauthorized: session is not within the authenticated session lineage",
-		})
+		errForbidden(w, "Unauthorized: session is not within the authenticated session lineage")
 		return
 	}
 

@@ -68,7 +68,7 @@ func refuseUnlessPerson(w http.ResponseWriter, r *http.Request, what string) boo
 	if humanInputCaller(r) {
 		return false
 	}
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can " + what, "code": "operator_only"})
+	writeError(w, http.StatusForbidden, "operator_only", "only the Operator can "+what)
 	return true
 }
 
@@ -78,7 +78,7 @@ func refuseUnlessOperator(w http.ResponseWriter, r *http.Request, what string) b
 	if operatorOrKeyCaller(r) {
 		return false
 	}
-	writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can " + what, "code": "operator_only"})
+	writeError(w, http.StatusForbidden, "operator_only", "only the Operator can "+what)
 	return true
 }
 
