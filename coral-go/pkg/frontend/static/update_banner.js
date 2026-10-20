@@ -30,6 +30,12 @@ function isRelayed(url, base = location.href) {
     try { return /^\/api\/remote\//.test(new URL(url, base).pathname); } catch { return false; }
 }
 
+/** Whether a request URL is an artifact's bytes (/api/artifacts/<64 hex>): the browser keeps that answer for a year, headers included, so its build header names the build that
+ *  sent it long ago, not the server now (#5312). The server leaves the header off; an older server's cached answers still carry one, and none of them says anything about this page. */
+export function isArtifactContent(url, base = location.href) {
+    try { return /^\/api\/artifacts\/[0-9a-f]{64}\/?$/i.test(new URL(url, base).pathname); } catch { return false; }
+}
+
 const unsavedChecks = [];
 /** A module with work a reload would lose registers a function that says whether it has some. */
 export function registerUnsavedWork(fn) { unsavedChecks.push(fn); }
@@ -104,7 +110,7 @@ function _install() {
         const p = inner.apply(this, arguments);
         p.then(resp => {
             try {
-                if (!resp || !resp.headers || (resp.url && new URL(resp.url, location.href).origin !== location.origin) || isRelayed(resp.url)) return;
+                if (!resp || !resp.headers || (resp.url && new URL(resp.url, location.href).origin !== location.origin) || isRelayed(resp.url) || isArtifactContent(resp.url)) return;
                 const v = resp.headers.get(BUILD_HEADER);
                 if (isStale(own, v)) _updated(v);
             } catch { /* never let the watch break a request */ }

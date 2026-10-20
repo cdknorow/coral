@@ -72,6 +72,18 @@ const NEW_BUILD = 'ffffffffffff';
         assert.equal(await ev(`window.__marker`), 'old-page', 'and no reload');
         console.log('   ✓ relayed and two-valued headers are ignored');
 
+        console.log('1c. A year-cached artifact answer that carries an old build never drives the banner (#5312)');
+        spoof = 'ffffffffffff';
+        const hex = 'ab'.repeat(32);
+        assert.equal(await ev(`fetch('/api/artifacts/${hex}?v=2').then(r => r.headers.get('X-Coral-Build'))`), 'ffffffffffff', 'the artifact answer carries the old build');
+        assert.equal(await ev(`fetch('/api/artifacts/${hex}').then(r => r.headers.get('X-Coral-Build'))`), 'ffffffffffff');
+        spoof = null;
+        await sleep(700); // sleep-ok: no banner appears in the time a reload would have fired (nothing to wait for)
+        assert.equal(await banner(), null, 'no banner from an artifact answer');
+        assert.equal(await ev(`window.__marker`), 'old-page', 'and no reload');
+        assert.deepEqual(await ev(`import((window.__coralStatic || '/static/') + 'update_banner.js').then(m => [m.isArtifactContent('/api/artifacts/${hex}?v=2'), m.isArtifactContent('/api/artifacts/${hex}/comments'), m.isArtifactContent('/api/artifacts'), m.isArtifactContent('/api/system/status')])`), [true, false, false, false], 'only the bytes of an artifact are exempt');
+        console.log('   ✓ an artifact answer with an old build is ignored');
+
         console.log('2. After an update the banner appears and an idle tab reloads by itself, once');
         await ev(`sessionStorage.removeItem('coral-update-reloaded'); true`);
         spoof = NEW_BUILD;

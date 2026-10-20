@@ -49,6 +49,12 @@ func newArtifactRig(t *testing.T) *artifactRig {
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: "s1", AgentName: "a1", AgentType: "codex", WorkingDir: t.TempDir()}))
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: "s2", AgentName: "a2", AgentType: "codex", WorkingDir: t.TempDir()}))
 	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler { // what server.buildHeader does to every /api/ answer
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("X-Coral-Build", "testbuild0001")
+			next.ServeHTTP(w, req)
+		})
+	})
 	ident := testIdentity(h.db)
 	r.Use(func(next http.Handler) http.Handler {
 		withIdent := ident(next)
@@ -136,6 +142,22 @@ func TestArtifactUploadStreamsAndKeepsTheID(t *testing.T) {
 	}
 	_, hdr, _ := rig.get(sha(body))
 	require.Equal(t, "private, max-age=31536000, immutable", hdr.Get("Cache-Control"), "no shared cache keeps a deletable artifact")
+}
+
+// #5312: a year-cached artifact answer must not carry the build id of the server that sent it, or a Preview after an update reads an old id from the browser cache
+// and the dashboard says "Coral was updated" for good.
+func TestArtifactAnswerNamesNoBuild(t *testing.T) {
+	rig := newArtifactRig(t)
+	body := []byte("a note\n")
+	code, out, upHdr := rig.uploadH("s1", "n.txt", "text/plain", bytes.NewReader(body))
+	require.Equal(t, http.StatusCreated, code, out)
+	require.Equal(t, "testbuild0001", upHdr.Get("X-Coral-Build"), "the rig's middleware does name the build on an ordinary answer")
+	status, hdr, got := rig.get(sha(body))
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, body, got)
+	require.Contains(t, hdr.Get("Cache-Control"), "immutable")
+	_, has := hdr["X-Coral-Build"]
+	require.False(t, has, "an immutable answer names no build")
 }
 
 func TestArtifactUploadTooLarge(t *testing.T) {

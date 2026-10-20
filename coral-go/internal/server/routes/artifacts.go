@@ -767,5 +767,8 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 	// The bytes never change for an id, but an artifact can be deleted (#3553): private, so no
 	// shared cache (in front of Coral Hub, a proxy) keeps serving it after that.
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	// The server's build header (server.buildHeader) is per answer, not per object: a browser keeping this answer for a year would later hand the dashboard an
+	// old build's id and trip its "Coral was updated" banner on every Preview (#5312). An immutable answer names no build.
+	w.Header().Del("X-Coral-Build")
 	http.ServeContent(w, r, "", info.ModTime(), f) // Content-Length (and ranges) from the open file
 }
