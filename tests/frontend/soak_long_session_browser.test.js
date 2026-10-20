@@ -72,6 +72,8 @@ const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a soak wa
                     chatNodes: q('#live-history-messages *'), boardNodes: q('#mb-messages *, #board-panel-msgs *'), artifactRows: q('tr.team-artifact-row'), liveRows: q('#live-sessions-list li') }; })()`);
             const row = { minute: Math.round(at / 600) / 100, heapMB: +(m.JSHeapUsedSize / 1048576).toFixed(1), nodes: m.Nodes, listeners: m.JSEventListeners, documents: m.Documents, ...page };
             row.detached = row.nodes - row.domAll; samples.push(row); console.log('SOAK ' + JSON.stringify(row));
+            // a passing suite's output is not shown by the runner: on a GitHub run the curve goes to the job summary, a line per sample as it is taken (a killed run keeps what it had)
+            if (process.env.GITHUB_STEP_SUMMARY) { try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, (samples.length === 1 ? '\n### soak curve\n\n| minute | heap MB | nodes | detached | listeners | docs | timers | sockets | xterm | buffer | chat nodes | board nodes | domAll |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|\n' : '') + `| ${row.minute} | ${row.heapMB} | ${row.nodes} | ${row.detached} | ${row.listeners} | ${row.documents} | ${row.intervals} | ${row.sockets} | ${row.xtermEls} | ${row.bufferLines} | ${row.chatNodes} | ${row.boardNodes} | ${row.domAll} |\n`); } catch { /* the summary is a convenience */ } }
             return row;
         };
         const start = Date.now(), end = start + MINUTES * 60000;
@@ -104,6 +106,7 @@ const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a soak wa
             const grew = Object.fromEntries(Object.keys(BOUNDS).map(k => [k, +(last[k] - (k === 'xtermEls' || k === 'sockets' || k === 'bufferLines' ? 0 : ref[k])).toFixed(1)]));
             const over = Object.keys(BOUNDS).filter(k => grew[k] > BOUNDS[k]);
             console.log(`SOAK guard vs minute ${ref.minute}: ${JSON.stringify(grew)} bounds ${JSON.stringify(BOUNDS)}`);
+            if (process.env.GITHUB_STEP_SUMMARY) { try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\nguard vs minute ${ref.minute}: \`${JSON.stringify(grew)}\` bounds \`${JSON.stringify(BOUNDS)}\`\n`); } catch { /* ... */ } }
             if (process.env.SOAK_LEAK_SELFTEST) { if (!over.includes('heapMB') && !over.includes('detached')) throw new Error(`the guard did not catch the deliberate leak: ${JSON.stringify(grew)}`); console.log('soak selftest: ok (the guard caught the leak: ' + over.join(', ') + ')'); process.exitCode = 0; verdict = 'selftest'; }
             else if (over.length) throw new Error(`grew past its bound: ${over.map(k => `${k} +${grew[k]} (bound ${BOUNDS[k]})`).join(', ')}`);
             else verdict = 'within bounds';
