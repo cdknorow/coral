@@ -109,6 +109,15 @@ func leakShapes(t *T) []leakShape {
 	add("curl -b with a quoted cookie, no space", `curl -b"session=`, r(alnum, 32), `" https://api.acme-corp.io/x`, "")
 	add("a url-encoded key name", "GET /v1/items?api%5Fkey=", randHexStr(t, 32), "", "")
 	add("docker login -p", "docker login -u deploy -p ", r(alnum, 24), " registry.acme-corp.io", "")
+	// round 5 (#5242): coral-hub's two deterministic misses of v1.4.122, and the names beside them. HARD: zero of 2000 may survive.
+	add("password after an entity-encoded equals (&#61;)", "login?user=a&password&#61;", r(alnum, 20), "", "")
+	add("password after an entity-encoded equals (&#x3d;)", "login?user=a&password&#x3d;", r(alnum, 20), "", "")
+	add("password after an entity-encoded equals (&equals;)", "login?user=a&password&equals;", r(alnum, 20), "", "")
+	add("npm config set registry token, space separated", "npm config set //registry.npmjs.org/:_authToken ", r(alnum, 36), "", "")
+	add("npm config set _authToken", "npm config set _authToken ", r(alnum, 36), "", "")
+	add(".npmrc _authToken line", "//registry.npmjs.org/:_authToken=", r(alnum, 36), "", "")
+	add(".npmrc _auth line", "_auth=", randB64(t, 24), "", "")
+	add("pwd assignment", "pwd=", r(alnum, 18), "", "")
 	// KNOWN GAPS (Security's corrected findings, 2026-10-16): the subtest runs and skips with the reason while the secret leaks
 	add("bare Authorization: Bearer line, opaque token", "Authorization: Bearer ", r(alnum, 40), "", gap)
 	add("bare Authorization: Basic line", "Authorization: Basic ", randB64(t, 24), "", gap)

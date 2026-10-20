@@ -180,6 +180,15 @@ func TestRoundFourIsLinearOnAdversarialText(t *testing.T) {
 		"docker login repeated": func(n int) string { return strings.Repeat("docker login ", n/13) },
 		"docker, one long line": func(n int) string { return "docker " + strings.Repeat("x ", n/2) + "login -p" },
 		"cookie pairs":          func(n int) string { return "curl -b " + strings.Repeat("a=b;", n/4) },
+		// round five (#5242)
+		"entity separators":      func(n int) string { return strings.Repeat("&amp;", n/5) + "#61;" },
+		"entity equals repeated": func(n int) string { return strings.Repeat("password&#61;", n/13) },
+		"npm config repeated":    func(n int) string { return strings.Repeat("npm config set ", n/15) },
+		"npm, one long line":     func(n int) string { return "npm " + strings.Repeat("x ", n/2) + "config set _authToken" },
+		"npm flags":              func(n int) string { return "npm config " + strings.Repeat("-g ", n/3) + "set x" },
+		"npmrc names":            func(n int) string { return strings.Repeat("//h/:_auth ", n/11) },
+		"pwd repeated":           func(n int) string { return strings.Repeat("pwd=", n/4) },
+		"pwd name chain":         func(n int) string { return strings.Repeat("a_", n/2) + "pwd=" },
 	}
 	timeIt := func(text string) time.Duration {
 		best := time.Hour

@@ -47,6 +47,12 @@ func moreKeywordSpans(text string) []redact.Span {
 	if strings.Contains(text, "docker") {
 		out = append(out, dockerLoginSpans(text)...)
 	}
+	if strings.Contains(text, "npm") || strings.Contains(text, "yarn") || strings.Contains(text, "_auth") {
+		out = append(out, npmConfigSpans(text)...)
+	}
+	if strings.Contains(low(), "pwd") {
+		out = append(out, pwdSpans(text)...)
+	}
 	return out
 }
 
@@ -55,6 +61,8 @@ var (
 	oddEntityQuoteRe = regexp.MustCompile(`(?i)&(?:amp;)*(?:quot;?|apos;|#0*34;|#0*39;|#x0*2[27];)`)
 	// an encoded underscore or hyphen, in a name: api%5Fkey, x%2Dapi%2Dkey (and encoded twice)
 	encodedNameBytesRe = regexp.MustCompile(`(?i)%(?:25)?(?:5F|2D)`)
+	// an HTML entity for '=' or ':' between a name and its value (password&#61;VALUE, &#x3d;, &equals;, &#58;, &#x3a;, &colon;), escaped again or not (#5242)
+	entitySepRe = regexp.MustCompile(`(?i)&(?:amp;)*(?:#0*61;|#x0*3d;|equals;|#0*58;|#x0*3a;|colon;)`)
 )
 
 // plainSpellings is text with each odd quote entity written as one '"' and each encoded '_' or '-' as itself, and for each byte of the result where its spelling starts and ends in text (a span that
@@ -67,6 +75,13 @@ func plainSpellings(text string) (norm string, at, to []int) {
 	var reps []rep
 	for _, m := range oddEntityQuoteRe.FindAllStringIndex(text, -1) {
 		reps = append(reps, rep{m[0], m[1], '"'})
+	}
+	for _, m := range entitySepRe.FindAllStringIndex(text, -1) {
+		to := byte('=')
+		if e := strings.ToLower(text[m[0]:m[1]]); strings.HasSuffix(e, "58;") || strings.HasSuffix(e, "3a;") || strings.HasSuffix(e, "colon;") {
+			to = ':'
+		}
+		reps = append(reps, rep{m[0], m[1], to})
 	}
 	for _, m := range encodedNameBytesRe.FindAllStringIndex(text, -1) {
 		to := byte('_')
