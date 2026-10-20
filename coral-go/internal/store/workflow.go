@@ -441,14 +441,23 @@ func (s *WorkflowStore) SetRunStatus(ctx context.Context, runID int64, status st
 	}
 }
 
-// ErrorCodeNotSignedIn is the error_code of a run refused because its agent CLI is not signed in (#5469).
-const ErrorCodeNotSignedIn = "not_signed_in"
+// Error codes of a run refused before it started because its agent CLI is signed out or did not answer the sign-in check (#5469).
+const (
+	ErrorCodeNotSignedIn        = "not_signed_in"
+	ErrorCodeSignInCheckTimeout = "signin_check_timeout"
+)
 
-// SetRunNotSignedIn fails a run that was refused because agentType's CLI is signed out: status failed, the plain sentence in error_msg, the fixed code and the CLI named.
-func (s *WorkflowStore) SetRunNotSignedIn(ctx context.Context, runID int64, errorMsg, agentType string) error {
+// IsSignInRefusalCode reports whether an error_code is one of those two: such a run says nothing about the job or the workflow.
+func IsSignInRefusalCode(code string) bool {
+	return code == ErrorCodeNotSignedIn || code == ErrorCodeSignInCheckTimeout
+}
+
+// SetRunSignInRefused fails a run that was refused because agentType's CLI is signed out or did not answer the sign-in check: status failed, the plain sentence in error_msg, the
+// fixed code and the CLI named.
+func (s *WorkflowStore) SetRunSignInRefused(ctx context.Context, runID int64, errorMsg, code, agentType string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE workflow_runs SET status = 'failed', finished_at = COALESCE(finished_at, ?), error_msg = ?, error_code = ?, agent_type = ? WHERE id = ?`,
-		nowUTC(), errorMsg, ErrorCodeNotSignedIn, agentType, runID)
+		nowUTC(), errorMsg, code, agentType, runID)
 	return err
 }
 

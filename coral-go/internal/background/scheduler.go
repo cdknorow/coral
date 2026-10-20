@@ -87,7 +87,7 @@ func (s *JobScheduler) pauseIfFailing(ctx context.Context, job store.ScheduledJo
 			return false
 		}
 		// A run refused because the agent CLI was signed out says nothing about the job: it does not count toward the pause, and the job runs again once signed in (#5469).
-		if r.ErrorCode != nil && *r.ErrorCode == store.ErrorCodeNotSignedIn {
+		if r.ErrorCode != nil && store.IsSignInRefusalCode(*r.ErrorCode) {
 			return false
 		}
 		// A run from before the job was resumed does not count: the user fixed
@@ -716,7 +716,7 @@ func (s *JobScheduler) refuseIfNotSignedIn(ctx context.Context, runID int64, job
 	s.logger.Warn("scheduled run not started: "+nsi.Error(), "job", job.Name, "run_id", runID)
 	s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
 		"status": "failed", "error_msg": nsi.Error(), "exit_reason": nsi.Error(),
-		"error_code": store.ErrorCodeNotSignedIn, "agent_type": nsi.Agent,
+		"error_code": nsi.Code(), "agent_type": nsi.Agent,
 		"finished_at": time.Now().UTC().Format(store.ISOFormat),
 	})
 	return true

@@ -5,8 +5,10 @@
 //
 // The check is the CLI's own non-interactive status command: "claude auth status --json" (signed out: loggedIn false and exit 1) and "codex login status" (exit 1 when
 // signed out). It runs with no stdin and no terminal, from the temp folder, under a deadline. Antigravity (agy), Gemini and Pi have no such command, so they are not
-// checked (Supports reports it); an answer that cannot be read (an old CLI without the command, a timeout) is Unknown and the caller goes on as before, because a CLI that
-// cannot be asked must not be locked out for good.
+// checked (Supports reports it). An answer that cannot be read (an old CLI without the command, output with no loggedIn) is Unknown and the caller goes on as before, because a
+// CLI that cannot be asked must not be locked out for good. A check that does not answer within its deadline is TimedOut: the job is still skipped (a second claude must not start
+// behind whatever the first is waiting on), but with its own sentence and code, "Claude did not answer the sign-in check" and signin_check_timeout, never "not signed in":
+// a slow start is not a signed-out user.
 package agentsignin
 
 import (
@@ -36,6 +38,8 @@ const (
 	Unknown State = iota
 	SignedIn
 	SignedOut
+	// TimedOut: the status command did not answer within checkTimeout. Jobs are skipped, but the CLI is not said to be signed out.
+	TimedOut
 )
 
 func (s State) String() string {
@@ -44,17 +48,41 @@ func (s State) String() string {
 		return "signed in"
 	case SignedOut:
 		return "signed out"
+	case TimedOut:
+		return "did not answer"
 	}
 	return "unknown"
 }
 
-// NotSignedInError is why a background job did not start: the CLI is signed out.
-type NotSignedInError struct{ Agent string }
+// NotSignedInError is why a background job did not start: the CLI is signed out, or (TimedOut) did not answer the sign-in check in time.
+type NotSignedInError struct {
+	Agent    string
+	TimedOut bool
+}
 
-// Error is the sentence the job's history shows: "Claude is not signed in".
-func (e *NotSignedInError) Error() string { return displayName(e.Agent) + " is not signed in" }
+// Error is the sentence the job's history shows: "Claude is not signed in", or "Claude did not answer the sign-in check".
+func (e *NotSignedInError) Error() string {
+	if e.TimedOut {
+		return displayName(e.Agent) + " did not answer the sign-in check"
+	}
+	return displayName(e.Agent) + " is not signed in"
+}
 
-// IsNotSignedIn reports whether err is (or wraps) a NotSignedInError.
+// Error codes a refused run carries (the run record's error_code).
+const (
+	CodeNotSignedIn        = "not_signed_in"
+	CodeSignInCheckTimeout = "signin_check_timeout"
+)
+
+// Code is the fixed word for the refusal: not_signed_in, or signin_check_timeout.
+func (e *NotSignedInError) Code() string {
+	if e.TimedOut {
+		return CodeSignInCheckTimeout
+	}
+	return CodeNotSignedIn
+}
+
+// IsNotSignedIn reports whether err is (or wraps) a refusal of this package: the CLI is signed out or did not answer the check (see TimedOut and Code).
 func IsNotSignedIn(err error) bool {
 	var e *NotSignedInError
 	return errors.As(err, &e)
@@ -87,17 +115,25 @@ func Supports(agentType string) bool {
 	return ok
 }
 
+var noLoggedInOnce sync.Once
+
 // claudeState reads "claude auth status --json": {"loggedIn": true|false, ...}. Signed out exits 1 with loggedIn false. Without readable JSON, a failing run that says it is not
 // logged in (the CLI's own words) is signed out too; any other answer (an old CLI with no such command, garbage) is Unknown.
 func claudeState(out, errOut []byte, runErr error) State {
 	var v struct {
 		LoggedIn *bool `json:"loggedIn"`
 	}
-	if json.Unmarshal(bytes.TrimSpace(out), &v) == nil && v.LoggedIn != nil {
-		if *v.LoggedIn {
-			return SignedIn
+	if json.Unmarshal(bytes.TrimSpace(out), &v) == nil {
+		if v.LoggedIn != nil {
+			if *v.LoggedIn {
+				return SignedIn
+			}
+			return SignedOut
 		}
-		return SignedOut
+		// Readable JSON with no loggedIn: the CLI renamed its field, and this check can no longer tell. Said once, so that it is not a silent off switch.
+		noLoggedInOnce.Do(func() {
+			slog.Warn("[signin] claude auth status answered without a loggedIn field: the sign-in check cannot tell whether Claude is signed in and lets jobs start")
+		})
 	}
 	if runErr != nil {
 		said := strings.ToLower(string(out) + " " + string(errOut))
@@ -122,10 +158,12 @@ func codexState(_, _ []byte, runErr error) State {
 
 // Variables the tests change.
 var (
-	// checkTimeout is how long the status command may take. The command normally answers in well under a second; one that does not answer is waiting on something (the sign-in
-	// flow another claude holds), and starting a second claude behind it would be the very thing this package prevents, so a check that times out counts as not signed in.
-	checkTimeout = 2 * time.Second
-	now          = time.Now
+	// checkTimeout is how long the status command may take. It normally answers in a second or two (claude is a Node program: a cold start, an antivirus scan or a loaded machine
+	// can take longer), and one that does not answer is waiting on something, such as the sign-in flow another claude holds, so the job is skipped as TimedOut and asked again
+	// after timeoutBackoff.
+	checkTimeout   = 6 * time.Second
+	timeoutBackoff = 30 * time.Second
+	now            = time.Now
 	// positiveTTL is how long a "signed in" (or Unknown) answer is reused by Require: background jobs run often and the check starts a process.
 	positiveTTL = time.Minute
 	// backoffMin and backoffMax bound how long a "signed out" answer is reused by Require: it doubles with each signed-out answer in a row, so a signed-out Claude is asked
@@ -170,7 +208,7 @@ func CheckIn(ctx context.Context, agentType, bin, dir string) State {
 		if ctx.Err() != nil {
 			return Unknown // the caller gave up, not the CLI
 		}
-		return SignedOut
+		return TimedOut
 	}
 	return sp.state(out.b.Bytes(), errOut.b.Bytes(), err)
 }
@@ -265,6 +303,9 @@ func ask(ctx context.Context, agentType, bin, dir string, fresh bool) error {
 		}
 		e.until = now().Add(wait)
 		slog.Warn("[signin] "+displayName(agentType)+" is not signed in: its background jobs are skipped and it is checked again later", "agent", agentType, "next_check_in", wait.String())
+	case TimedOut:
+		e.until = now().Add(timeoutBackoff)
+		slog.Warn("[signin] "+displayName(agentType)+" did not answer the sign-in check: its background jobs are skipped and it is checked again soon", "agent", agentType, "next_check_in", timeoutBackoff.String())
 	default:
 		e.signedOut = 0
 		e.until = now().Add(positiveTTL)
@@ -273,8 +314,11 @@ func ask(ctx context.Context, agentType, bin, dir string, fresh bool) error {
 }
 
 func (e *entry) verdict(agentType string) error {
-	if e.state == SignedOut {
+	switch e.state {
+	case SignedOut:
 		return &NotSignedInError{Agent: agentType}
+	case TimedOut:
+		return &NotSignedInError{Agent: agentType, TimedOut: true}
 	}
 	return nil
 }
@@ -300,7 +344,7 @@ type Status struct {
 	CheckedAt time.Time
 }
 
-// Snapshot is the newest answer for agentType over every CLI path asked about: ok is false when no check has been made (nothing to say). A signed-out answer stands until a
+// Snapshot is the newest answer for agentType over every CLI path asked about: ok is false when no check has been made (nothing to say); a check that timed out says nothing about the sign-in and is not reported. A signed-out answer stands until a
 // later check finds the CLI signed in, so the line clears itself within the backoff (five minutes at most) of the person signing in, or at once when a workflow run, a distill
 // or a theme or team generation asks.
 func Snapshot(agentType string) (st Status, ok bool) {
@@ -314,7 +358,7 @@ func Snapshot(agentType string) (st Status, ok bool) {
 	cacheMu.Unlock()
 	for _, e := range entries {
 		e.snap.Lock()
-		if e.valid && e.state != Unknown && (!ok || e.checkedAt.After(st.CheckedAt)) {
+		if e.valid && (e.state == SignedIn || e.state == SignedOut) && (!ok || e.checkedAt.After(st.CheckedAt)) {
 			st, ok = Status{SignedIn: e.state == SignedIn, CheckedAt: e.checkedAt}, true
 		}
 		e.snap.Unlock()

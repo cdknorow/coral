@@ -330,7 +330,7 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 			results[i].Status = "skipped"
 		}
 		wr.persistResults(context.Background(), runID, 0, results)
-		wr.store.SetRunNotSignedIn(context.Background(), runID, nsi.Error(), nsi.Agent)
+		wr.store.SetRunSignInRefused(context.Background(), runID, nsi.Error(), nsi.Code(), nsi.Agent)
 		return
 	}
 	for i, step := range steps {

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -526,8 +527,9 @@ func (h *ThemesHandler) GenerateTheme(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A signed-out Claude (or Codex) is not started: its sign-in flow would hold the login (#5469).
-	if err := agentsignin.RequireFresh(r.Context(), cliAgent, cliPath); err != nil {
-		writeError(w, http.StatusConflict, "not_signed_in", err.Error())
+	var refused *agentsignin.NotSignedInError
+	if err := agentsignin.RequireFresh(r.Context(), cliAgent, cliPath); errors.As(err, &refused) {
+		writeError(w, http.StatusConflict, refused.Code(), refused.Error())
 		return
 	}
 

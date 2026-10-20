@@ -1,10 +1,14 @@
 package agentsignin
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -93,8 +97,10 @@ func reset(t *testing.T) {
 	cacheMu.Lock()
 	cache = map[string]*entry{}
 	cacheMu.Unlock()
-	oldNow, oldPos, oldMin, oldMax, oldTO := now, positiveTTL, backoffMin, backoffMax, checkTimeout
-	t.Cleanup(func() { now, positiveTTL, backoffMin, backoffMax, checkTimeout = oldNow, oldPos, oldMin, oldMax, oldTO })
+	oldNow, oldPos, oldMin, oldMax, oldTO, oldTB := now, positiveTTL, backoffMin, backoffMax, checkTimeout, timeoutBackoff
+	t.Cleanup(func() {
+		now, positiveTTL, backoffMin, backoffMax, checkTimeout, timeoutBackoff = oldNow, oldPos, oldMin, oldMax, oldTO, oldTB
+	})
 }
 
 func TestClaudeStatusIsReadFromTheCLIsOwnAnswer(t *testing.T) {
@@ -105,7 +111,7 @@ func TestClaudeStatusIsReadFromTheCLIsOwnAnswer(t *testing.T) {
 		"claude-text":    SignedOut, // the CLI's own words, no JSON
 		"claude-old":     Unknown,   // cannot be asked: not treated as signed out
 		"claude-garbage": Unknown,
-		"hang":           SignedOut, // waiting on something (another claude's sign-in): a second claude must not start behind it
+		"hang":           TimedOut, // waiting on something (another claude's sign-in): jobs are skipped, but it is not said to be signed out
 	} {
 		checkTimeout = 20 * time.Second
 		if mode == "hang" {
@@ -296,4 +302,67 @@ func TestCredentialedOutsideLoginIsNeverRefused(t *testing.T) {
 		bin := standInBin(t, "claude-out")
 		assert.Equal(t, SignedOut, Check(context.Background(), "claude", bin))
 	})
+}
+
+// A check that does not answer is its own state: the job is skipped with its own sentence and code, never "not signed in", the dashboard's line is not set, and it is asked again
+// after the short timeout backoff, not the signed-out one.
+func TestATimedOutCheckIsItsOwnRefusalNotSignedOut(t *testing.T) {
+	reset(t)
+	checkTimeout = 300 * time.Millisecond
+	log := filepath.Join(t.TempDir(), "log")
+	t.Setenv("AGENTSIGNIN_LOG", log)
+	bin := standInBin(t, "hang")
+	clock := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	now = func() time.Time { return clock }
+	asked := func() int {
+		b, _ := os.ReadFile(log)
+		return strings.Count(string(b), "\n")
+	}
+
+	err := Require(context.Background(), "claude", bin)
+	var refused *NotSignedInError
+	require.ErrorAs(t, err, &refused)
+	assert.True(t, refused.TimedOut)
+	assert.Equal(t, "Claude did not answer the sign-in check", err.Error())
+	assert.NotContains(t, err.Error(), "not signed in")
+	assert.Equal(t, "signin_check_timeout", refused.Code())
+	assert.Equal(t, "Codex did not answer the sign-in check", (&NotSignedInError{Agent: "codex", TimedOut: true}).Error())
+	assert.Equal(t, "not_signed_in", (&NotSignedInError{Agent: "claude"}).Code())
+	assert.True(t, IsNotSignedIn(err), "still a refusal for the callers")
+
+	_, reported := Snapshot("claude")
+	assert.False(t, reported, "a timeout says nothing about the sign-in: the dashboard line is not set")
+
+	for i := 0; i < 5; i++ { // inside the backoff nothing is asked
+		assert.Error(t, Require(context.Background(), "claude", bin))
+	}
+	assert.Equal(t, 1, asked())
+	clock = clock.Add(timeoutBackoff - time.Second)
+	assert.Error(t, Require(context.Background(), "claude", bin))
+	assert.Equal(t, 1, asked())
+	clock = clock.Add(2 * time.Second) // the short backoff is over: asked again (30 s, not the signed-out doubling)
+	assert.Error(t, Require(context.Background(), "claude", bin))
+	assert.Equal(t, 2, asked())
+
+	// And a later answer replaces it.
+	standInBin(t, "claude-in")
+	require.NoError(t, RequireFresh(context.Background(), "claude", bin))
+	st, ok := Snapshot("claude")
+	require.True(t, ok)
+	assert.True(t, st.SignedIn)
+}
+
+// The check reads loggedIn: output that lacks it (a renamed field) is Unknown and says so in the log once, so that it is never a silent off switch; the CLI's own shape is read.
+func TestStatusOutputWithoutLoggedInIsUnknownAndSaysSo(t *testing.T) {
+	assert.Equal(t, SignedIn, claudeState([]byte(`{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}`), nil, nil))
+	assert.Equal(t, SignedOut, claudeState([]byte(`{"loggedIn":false,"authMethod":"none"}`), nil, errors.New("exit status 1")))
+
+	var logged bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(old) })
+	noLoggedInOnce = sync.Once{}
+	assert.Equal(t, Unknown, claudeState([]byte(`{"logged_in":true}`), nil, nil), "a renamed field is not read as signed in")
+	assert.Equal(t, Unknown, claudeState([]byte(`{"authMethod":"claude.ai"}`), nil, nil))
+	assert.Equal(t, 1, strings.Count(logged.String(), "without a loggedIn field"), "said once")
 }
