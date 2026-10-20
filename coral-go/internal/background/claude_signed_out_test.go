@@ -22,6 +22,25 @@ import (
 // log is what says what was started; the tests name no helper, so they hold for whatever shape the shared check takes.
 const failFast = 3 * time.Second
 
+// hangBound is the ceiling when the status command does not answer (the first ask waits 6 s, #5469): the run is then skipped as "did not answer", its own state, never as signed out.
+const hangBound = 8 * time.Second
+
+// expectation is what a refused run must show in a state: how fast it comes back and what it says.
+type expectation struct {
+	bound time.Duration
+	says  func(error) bool
+	what  string
+}
+
+func expect(state claudestub.State) expectation {
+	if state == claudestub.HangingAuth {
+		return expectation{hangBound, func(err error) bool {
+			return err != nil && strings.Contains(strings.ToLower(err.Error()), "did not answer the sign-in check")
+		}, "Claude did not answer the sign-in check"}
+	}
+	return expectation{failFast, notSignedIn, "Claude is not signed in"}
+}
+
 // notSignedIn is the words a skipped run must carry (the operator's: "Claude is not signed in").
 func notSignedIn(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "not signed in")
@@ -70,7 +89,7 @@ func callers() []caller {
 // ran is one call, timed, with a ceiling well above failFast so a run that does hold (the bug: 2 s signed out, 20 s waiting behind a login) shows as slow, not as a hang.
 func ran(t *testing.T, c caller, path string) (out string, err error, took time.Duration) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	start := time.Now()
 	out, err = c.run(t, ctx, path)
@@ -83,12 +102,16 @@ func TestBackgroundCallersNeverStartAClaudeRunWhileNotSignedIn(t *testing.T) {
 			t.Run(string(state)+"/"+c.name, func(t *testing.T) {
 				claudestub.Isolate(t)
 				stub := claudestub.New(t, state)
+				want := expect(state)
 				out, err, took := ran(t, c, stub.Path())
-				assert.Less(t, took, failFast, "comes back fast")
+				assert.Less(t, took, want.bound, "comes back fast")
 				assert.Empty(t, stub.PrintRuns(), "no print-mode run was started")
 				assert.Zero(t, stub.Grabs(), "no login flow was started or held")
 				if !(c.fallback != nil && err == nil && c.fallback(out)) {
-					assert.True(t, notSignedIn(err), "says Claude is not signed in; got %v", err)
+					assert.True(t, want.says(err), "says %q; got %v", want.what, err)
+					if state == claudestub.HangingAuth {
+						assert.False(t, notSignedIn(err), "a check that did not answer is not 'signed out': %v", err)
+					}
 				}
 			})
 		}

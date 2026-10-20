@@ -24,7 +24,7 @@ func fetched(t *testing.T, path string) (Result, time.Duration) {
 	go func() { svc.Wait(); close(done) }()
 	select {
 	case <-done:
-	case <-time.After(6 * time.Second): // a run that holds the login (the bug) ends later than this; the test says so and moves on
+	case <-time.After(12 * time.Second): // a run that holds the login (the bug) ends later than this; the test says so and moves on
 	}
 	took := time.Since(start)
 	return svc.Get("claude"), took
@@ -36,10 +36,20 @@ func TestModelListNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 			claudestub.Isolate(t)
 			stub := claudestub.New(t, state)
 			res, took := fetched(t, stub.Path())
-			assert.Less(t, took, 3*time.Second, "the background fetch ends fast")
+			bound := 3 * time.Second
+			if state == claudestub.HangingAuth {
+				bound = 8 * time.Second // the status command's first ask waits 6 s (#5469)
+			}
+			assert.Less(t, took, bound, "the background fetch ends fast")
 			assert.Empty(t, stub.PrintRuns(), "no print-mode run was started")
 			assert.Zero(t, stub.Grabs(), "no login flow was started or held")
-			assert.True(t, strings.Contains(strings.ToLower(res.Error), "not signed in"), "says Claude is not signed in; got %q", res.Error)
+			lower := strings.ToLower(res.Error)
+			if state == claudestub.HangingAuth {
+				assert.Contains(t, lower, "did not answer the sign-in check", "a status command that hung is not 'signed out': %q", res.Error)
+				assert.NotContains(t, lower, "not signed in")
+			} else {
+				assert.Contains(t, lower, "not signed in", "says Claude is not signed in; got %q", res.Error)
+			}
 		})
 	}
 }
