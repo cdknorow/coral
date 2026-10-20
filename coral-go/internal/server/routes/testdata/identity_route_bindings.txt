@@ -30,6 +30,8 @@ GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers | board-unchec
 GET /api/board/tasks | board-unchecked | operator-only
 GET /api/board/{project} | board-claims
 GET /api/board/{project}/artifacts | board-claims
+GET /api/board/{project}/cross-team-candidates | board-claims +token-session | operator-only
+GET /api/board/{project}/cross-team-state | board-claims +token-session | operator-only
 GET /api/board/{project}/groups | board-claims
 GET /api/board/{project}/groups/{groupID}/members | board-claims
 GET /api/board/{project}/messages | board-claims
@@ -40,6 +42,7 @@ GET /api/board/{project}/paused | board-claims
 GET /api/board/{project}/peek | board-claims
 GET /api/board/{project}/relay-targets | board-claims
 GET /api/board/{project}/settings | board-claims
+GET /api/board/{project}/settings/log | board-claims +token-session | operator-only
 GET /api/board/{project}/status | board-claims
 GET /api/board/{project}/subscribers | board-claims
 GET /api/board/{project}/tasks | board-claims

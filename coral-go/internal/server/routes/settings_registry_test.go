@@ -36,6 +36,7 @@ var settingRows = map[string]struct{ good, bad string }{
 	"git_poll_interval_s":         {`"60"`, `"abc"`},
 	"telemetry_enabled":           {`"false"`, `"nope"`},
 	"board_auto_attach":           {`true`, `"nope"`},
+	"cross_team_allowlist":        {`true`, `"nope"`},
 	"debug_input_log":             {`false`, `"nope"`},
 	"remote_access_enabled":       {`"true"`, `"nope"`},
 	"refresh_files_on_switch":     {`true`, `"nope"`},

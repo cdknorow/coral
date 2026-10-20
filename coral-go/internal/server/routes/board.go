@@ -54,6 +54,10 @@ type BoardHandler struct {
 	crossTeam crossTeamLimiter
 	// received limits the files other Corals push (cross-team artifacts).
 	received receivedLimiter
+	// allowlistFlag reads the global switch that puts the cross-team allowlist in force (#5508).
+	allowlistFlag func(ctx context.Context) bool
+	// listEdits limits how often one owner session edits a board's list (#5508).
+	listEdits editLimiter
 	// relay sends a cross-team message to another Coral through Coral Hub (#3489).
 	relay RelaySender
 	// relayArtifact sends a file to another Coral through Coral Hub (cross-team artifacts).

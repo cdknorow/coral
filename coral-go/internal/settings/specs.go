@@ -39,6 +39,7 @@ const (
 	AutoWakeCap              = "auto_wake_cap"
 	GateSignalsClaude        = "gate_signals_claude"
 	BoardAutoAttach          = "board_auto_attach"
+	CrossTeamAllowlist       = "cross_team_allowlist"
 	TurnEndHandoff           = "turn_end_handoff"
 	SavedTeamTemplates       = "saved_team_templates"
 	DefaultPromptOrch        = "default_prompt_orchestrator"
@@ -122,6 +123,7 @@ func init() {
 	register(s)
 	boolOn(TelemetryEnabled, ApplyLive, "Anonymous usage statistics.")
 	boolOff(BoardAutoAttach, ApplyLive, "Attach files named on the board to the artifact store.")
+	boolOff(CrossTeamAllowlist, ApplyLive, "Put the cross-team allowlist in force: a board takes messages and files from another team only from a sender on its list (default deny). Off keeps today's rules and only counts what the list would have refused.")
 	boolOff(DebugInputLog, ApplyLive, "Log the keystrokes sent to agents.")
 	boolOff(RemoteAccessEnabled, ApplyRestart, "Listen on the network, not just this computer.")
 	optIn(RemoteAccessEnabled)

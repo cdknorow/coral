@@ -223,14 +223,12 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	}
 	// The files the text names by link go too, when the switch is on and they pass the same checks and limits (#5501).
 	prepared = h.autoAttachLinked(ctx, r, project, &body, prepared)
+	ownCrossTeamID, _ := h.senderIDOf(ctx, project) // this Coral's own board row's id (#5508), never taken from the request
 	payload, err := json.Marshal(map[string]any{
 		"message_id": messageID,
 		"hops":       hops,
 		"to_address": body.ToAddress,
-		"body": map[string]string{
-			"from_board": project, "subscriber_id": body.SubscriberID, "session_name": body.SessionName,
-			"content": body.Content, "to": "",
-		},
+		"body":       relayInnerBody(project, ownCrossTeamID, &body),
 	})
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -513,6 +511,18 @@ func unattachedArtifactLinks(text string, prepared *attachPrepared) []string {
 		if len(out) < maxUnattachedLinksNamed {
 			out = append(out, "coral://artifacts/"+id)
 		}
+	}
+	return out
+}
+
+// relayInnerBody is the message's inner body for the other Coral: the sender, the text, and (#5508) the id of this Coral's own board, which the receiving board checks against its list.
+func relayInnerBody(project, ownCrossTeamID string, b *relayRequest) map[string]string {
+	out := map[string]string{
+		"from_board": project, "subscriber_id": b.SubscriberID, "session_name": b.SessionName,
+		"content": b.Content, "to": "",
+	}
+	if board.ValidCrossTeamID(ownCrossTeamID) {
+		out["from_cross_team_id"] = ownCrossTeamID
 	}
 	return out
 }

@@ -18,6 +18,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/pkg/tunnel"
@@ -175,11 +176,15 @@ func relayMediaType(mt string) string {
 }
 
 // relayArtifactFrame is the request body Coral Hub reads: a 4-byte length, the metadata, then the file.
-func relayArtifactFrame(messageID, toAddress, fromBoard string, a attachedArtifact, data []byte) ([]byte, error) {
-	meta, err := json.Marshal(map[string]any{
+func relayArtifactFrame(messageID, toAddress, fromBoard, fromCrossTeamID string, a attachedArtifact, data []byte) ([]byte, error) {
+	fields := map[string]any{
 		"message_id": messageID, "to_address": toAddress, "from_board": fromBoard,
 		"digest": "sha256:" + a.ID, "size": len(data), "name": relayFileName(a.Name), "media_type": relayMediaType(a.MediaType),
-	})
+	}
+	if board.ValidCrossTeamID(fromCrossTeamID) { // this Coral's own board row's id (#5508); the receiver checks it against its list
+		fields["from_cross_team_id"] = fromCrossTeamID
+	}
+	meta, err := json.Marshal(fields)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +264,8 @@ func (h *BoardHandler) sendRelayAttachments(w http.ResponseWriter, ctx context.C
 			relayError(w, http.StatusForbidden, "artifacts_off", fmt.Sprintf("sending files was turned off on board %q while the files were being sent; %s was not sent and the message was not sent", fromBoard, which), 0)
 			return false, false
 		}
-		frame, err := relayArtifactFrame(messageID, toAddress, fromBoard, a, p.data[i])
+		ownID, _ := h.senderIDOf(ctx, fromBoard)
+		frame, err := relayArtifactFrame(messageID, toAddress, fromBoard, ownID, a, p.data[i])
 		if err != nil {
 			relayError(w, http.StatusInternalServerError, "attach_frame", which+" could not be prepared", 0)
 			return false, false

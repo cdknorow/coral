@@ -226,7 +226,7 @@ func runExternalMessageOracle(t *testing.T, seed int64, counts map[string]int) {
 					fmt.Fprintf(&rb, "%s/%s %s;", kind, b, oracleStamp.ReplaceAllString(string(j), "<t>"))
 				}
 			}
-			results[i] = result{rec.Code, oracleStamp.ReplaceAllString(rec.Body.String(), "<t>"), msgs, rb.String(), append([]string(nil), *s.notified...)}
+			results[i] = result{rec.Code, oracleStamp.ReplaceAllString(oracleCrossTeamID.ReplaceAllString(rec.Body.String(), ""), "<t>"), msgs, rb.String(), append([]string(nil), *s.notified...)}
 		}
 		label := fmt.Sprintf("seed %d step %d: to %s %s who %s artifacts off %v", seed, n, target, raw, who, artifactsOff)
 		require.Equal(t, results[0], results[1], label)

@@ -65,6 +65,8 @@ b GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers
 b GET /api/board/tasks
 c GET /api/board/{project}
 a GET /api/board/{project}/artifacts
+b GET /api/board/{project}/cross-team-candidates
+b GET /api/board/{project}/cross-team-state
 c GET /api/board/{project}/groups
 c GET /api/board/{project}/groups/{groupID}/members
 a GET /api/board/{project}/messages
@@ -75,6 +77,7 @@ c GET /api/board/{project}/paused
 a GET /api/board/{project}/peek
 a GET /api/board/{project}/relay-targets
 c GET /api/board/{project}/settings
+b GET /api/board/{project}/settings/log
 a GET /api/board/{project}/status
 a GET /api/board/{project}/subscribers
 a GET /api/board/{project}/tasks

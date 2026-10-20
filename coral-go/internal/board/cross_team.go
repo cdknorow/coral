@@ -56,6 +56,8 @@ type BoardSettings struct {
 	// turn it on (never through Coral Hub). Needs CrossTeamMessaging. Received files are not
 	// scanned, and artifact bytes are not redacted.
 	CrossTeamArtifacts bool `json:"cross_team_artifacts"`
+	// CrossTeamAllowed is who may message this board, by stable id (#5508): the only thing that admits a sender once the allowlist is in force. Empty: nobody.
+	CrossTeamAllowed []AllowedSender `json:"cross_team_allowed"`
 	// Health is the team's health check configuration (#4175).
 	Health HealthSettings `json:"health"`
 }
@@ -65,6 +67,8 @@ type BoardSettingsUpdate struct {
 	CrossTeamMessaging *bool     `json:"cross_team_messaging"`
 	CrossTeamServers   *[]string `json:"cross_team_servers"`
 	CrossTeamArtifacts *bool     `json:"cross_team_artifacts"`
+	// CrossTeamAllowed replaces the whole list (#5508); the caller has checked it (AllowedProblem).
+	CrossTeamAllowed *[]AllowedSender `json:"cross_team_allowed"`
 	// Health replaces the whole health configuration (clamped; the handler checks the recipient).
 	Health *HealthSettings `json:"health"`
 }
@@ -146,6 +150,8 @@ func (s *Store) GetBoardSettings(ctx context.Context, project string) (BoardSett
 			_ = json.Unmarshal([]byte(r.Value), &out.CrossTeamServers)
 		case settingCrossTeamArtifacts:
 			out.CrossTeamArtifacts = r.Value == "true"
+		case settingCrossTeamAllowed:
+			_ = json.Unmarshal([]byte(r.Value), &out.CrossTeamAllowed)
 		}
 	}
 	out.Health = s.GetHealthSettings(ctx, project)
@@ -162,7 +168,7 @@ func (s *Store) UpdateBoardSettings(ctx context.Context, project string, u Board
 			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`, project, key, value)
 		return err
 	}
-	var servers, health string
+	var servers, health, allowed string
 	if u.CrossTeamServers != nil {
 		list := *u.CrossTeamServers
 		if list == nil {
@@ -173,6 +179,17 @@ func (s *Store) UpdateBoardSettings(ctx context.Context, project string, u Board
 			return BoardSettings{}, err
 		}
 		servers = string(raw)
+	}
+	if u.CrossTeamAllowed != nil {
+		list := *u.CrossTeamAllowed
+		if list == nil {
+			list = []AllowedSender{}
+		}
+		raw, err := json.Marshal(list)
+		if err != nil {
+			return BoardSettings{}, err
+		}
+		allowed = string(raw)
 	}
 	if u.Health != nil {
 		raw, err := json.Marshal(u.Health.Clamp())
@@ -198,6 +215,11 @@ func (s *Store) UpdateBoardSettings(ctx context.Context, project string, u Board
 	}
 	if u.CrossTeamServers != nil {
 		if err := upsert(tx, settingCrossTeamServers, servers); err != nil {
+			return BoardSettings{}, err
+		}
+	}
+	if u.CrossTeamAllowed != nil {
+		if err := upsert(tx, settingCrossTeamAllowed, allowed); err != nil {
 			return BoardSettings{}, err
 		}
 	}
@@ -231,6 +253,9 @@ type MessageOrigin struct {
 	// (the de-duplication key) and how many relayed replies led to it.
 	RelayMessageID string `json:"relay_message_id,omitempty"`
 	Hops           int    `json:"hops,omitempty"`
+	// FromCrossTeamID is the sender board's cross-team id (#5508): read from this Coral's own row for a local sender, the sending Coral's validated claim for a relayed one. Ids only; it is what
+	// the owner's suggestions are computed from.
+	FromCrossTeamID string `json:"from_cross_team_id,omitempty"`
 	// Attachments are the files stored on this computer for an inbound message, in the order the sender attached them (#5506); left out when there are none.
 	Attachments []MessageAttachment `json:"attachments,omitempty"`
 }

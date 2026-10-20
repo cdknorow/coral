@@ -57,6 +57,8 @@ GET /api/board/remotes/proxy/{remoteServer}/{project}/subscribers never
 GET /api/board/tasks view
 GET /api/board/{project} view
 GET /api/board/{project}/artifacts view
+GET /api/board/{project}/cross-team-candidates never
+GET /api/board/{project}/cross-team-state never
 GET /api/board/{project}/groups never
 GET /api/board/{project}/groups/{groupID}/members never
 GET /api/board/{project}/messages view
@@ -67,6 +69,7 @@ GET /api/board/{project}/paused view
 GET /api/board/{project}/peek never
 GET /api/board/{project}/relay-targets never
 GET /api/board/{project}/settings view
+GET /api/board/{project}/settings/log never
 GET /api/board/{project}/status view
 GET /api/board/{project}/subscribers view
 GET /api/board/{project}/tasks view

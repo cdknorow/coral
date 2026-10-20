@@ -192,6 +192,15 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	// An edit of who may message this board (the list, or the old switch that is now a view of it) that is refused for ANY reason is counted: one audit row an hour per board, ids and a
+	// count, never text (#5508, coral-hub's SPEC-2). A refusal by the Operator gate, by the hub, by validation or by the edit limit all count.
+	touchesList := body.CrossTeamAllowed != nil || body.CrossTeamMessaging != nil
+	listEditRefused := touchesList
+	defer func() {
+		if listEditRefused {
+			h.noteEditRefused(r.Context(), urlParam(r, "project"))
+		}
+	}()
 	// The Operator only, decided here and not only by the guard in front of the route: these
 	// settings decide what Coral types into every agent (Security's #4176 rule 16). A claimed
 	// name is not enough; an agent's token, or its command line without the Operator's
@@ -214,7 +223,7 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 	if cloud.Tunneled(r) {
 		// Only the health check's setup (#5307): the cross-team fields (who may send to this board, which servers, whether files are
 		// accepted) stay on this computer (#3377, #4379).
-		if body.CrossTeamMessaging != nil || body.CrossTeamServers != nil || body.CrossTeamArtifacts != nil {
+		if body.CrossTeamMessaging != nil || body.CrossTeamServers != nil || body.CrossTeamArtifacts != nil || body.CrossTeamAllowed != nil {
 			writeJSON(w, http.StatusForbidden, map[string]string{"code": "local_only", "error": "cross-team settings can be changed only on this computer, not through Coral Hub"})
 			return
 		}
@@ -254,10 +263,38 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 			}
 		}
 	}
-	settings, err := h.bs.UpdateBoardSettings(r.Context(), urlParam(r, "project"), body.BoardSettingsUpdate)
+	project := urlParam(r, "project")
+	var before board.BoardSettings
+	if body.CrossTeamAllowed != nil {
+		// The WHOLE list, checked as a whole (#5508): the owner's edit limit first, then each entry's shape, the cap, duplicates and the board's own id; one transaction applies it.
+		if !h.allowEditSlot(callerActor(r)) {
+			writeError(w, http.StatusTooManyRequests, "edit_rate_limited", "too many edits of who may message this board in the last hour; try again later")
+			return
+		}
+		self, _ := h.senderIDOf(r.Context(), project)
+		clean, row, field, msg := board.AllowedProblem(*body.CrossTeamAllowed, self)
+		if field != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": fmt.Sprintf("cross_team_allowed entry %d, %s: %s", row+1, field, msg), "code": "bad_allowlist", "row": row, "field": field, "message": msg})
+			return
+		}
+		body.CrossTeamAllowed = &clean
+		before, _ = h.bs.GetBoardSettings(r.Context(), project)
+	}
+	settings, err := h.bs.UpdateBoardSettings(r.Context(), project, body.BoardSettingsUpdate)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
+	}
+	listEditRefused = false
+	if body.CrossTeamAllowed != nil {
+		// Every successful edit is audited by id: who (the verified Operator identity), when, and the list before and after (ids only).
+		actor := callerActor(r).Name
+		if actor == "" {
+			actor = crossTeamOperatorID
+		}
+		if err := h.bs.AppendEditLog(context.WithoutCancel(r.Context()), project, actor, "cross_team_allowed", allowedForLog(before.CrossTeamAllowed), allowedForLog(settings.CrossTeamAllowed)); err != nil {
+			slog.Warn("cross-team: could not log a list edit", "board", project, "error", err)
+		}
 	}
 	writeJSON(w, http.StatusOK, settings)
 }
@@ -296,15 +333,17 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		refused(w)
 		return
 	}
-	recipients, refused := h.crossTeamRecipients(ctx, body.FromBoard, target, body.To)
+	recipients, rateTaken, refused := h.crossTeamAdmit(ctx, &body, role, target)
 	if refused != nil {
 		refused(w)
 		return
 	}
-	if secs, limited := h.crossTeamWait(body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); limited {
-		// A limit on this sender's posts, not a busy server (#3434).
-		httputil.WriteActionLimit(w, secs, "rate_limited", fmt.Sprintf("too many messages to %q; retry in %ds", target, secs))
-		return
+	if !rateTaken { // the allowlist's door takes the token itself, before it decides (#5508, so a refused send costs what an accepted one does)
+		if secs, limited := h.crossTeamWait(body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); limited {
+			// A limit on this sender's posts, not a busy server (#3434).
+			httputil.WriteActionLimit(w, secs, "rate_limited", fmt.Sprintf("too many messages to %q; retry in %ds", target, secs))
+			return
+		}
 	}
 	attached, refused := h.crossTeamAttachments(ctx, r, &body, target, senderSession)
 	if refused != nil {
@@ -315,6 +354,7 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		Origin: board.MessageOrigin{
 			ServerID: store.LocalServerID, Board: body.FromBoard, Sender: body.SubscriberID, SenderRole: role,
 			TargetServerID: store.LocalServerID, TargetBoard: target,
+			FromCrossTeamID: func() string { id, _ := h.senderIDOf(ctx, body.FromBoard); return id }(),
 		},
 		Mentions: recipients,
 		Content:  body.Content,
@@ -531,7 +571,9 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 		SubscriberID string `json:"subscriber_id"`
 		Content      string `json:"content"`
 		To           string `json:"to"`
-		Relay        *struct {
+		// FromCrossTeamID is the sending Coral's claim of its board's cross-team id (#5508): checked for its shape before anything compares it, never echoed.
+		FromCrossTeamID string `json:"from_cross_team_id"`
+		Relay           *struct {
 			MessageID string `json:"message_id"`
 			Hops      int    `json:"hops"`
 		} `json:"relay"`
@@ -561,36 +603,65 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 		return
 	}
 	ctx := r.Context()
-	if ok, err := h.bs.BoardExists(ctx, target); err != nil {
-		errInternalServer(w, err.Error())
-		return
-	} else if !ok {
-		relayRefuse(w, http.StatusNotFound, "not_found", "no such board")
-		return
-	}
-	settings, err := h.bs.GetBoardSettings(ctx, target)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	if !settings.CrossTeamMessaging {
-		relayRefuse(w, http.StatusForbidden, "cross_team_disabled", "cross-team messaging is off on this board")
-		return
-	}
-	if !settings.AllowsServer(src) {
-		relayRefuse(w, http.StatusForbidden, "source_not_allowed", "this board doesn't accept messages from that server")
-		return
-	}
-	recipients, err := h.bs.TargetOrchestrators(ctx, target, strings.TrimSpace(body.To))
-	if err != nil {
-		relayRefuse(w, http.StatusConflict, "no_orchestrator", "no active Orchestrator to receive the message")
-		return
-	}
-	if ok, wait := h.crossTeam.allow("relay\x00" + src + "\x00" + body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); !ok {
-		secs := int(math.Ceil(wait.Seconds()))
-		// A limit on this sender's messages, not a busy server (#3434).
-		httputil.WriteActionLimitBody(w, secs, map[string]any{"ok": false, "error": "rate_limited", "message": fmt.Sprintf("retry in %ds", secs)})
-		return
+	var settings board.BoardSettings
+	var recipients []string
+	if h.allowlistOn(ctx) {
+		// The allowlist is in force (#5508): the rate token first (taken by a refused send as by an accepted one), then the one door, with the sending Coral's board id as a claim checked for its shape
+		// before it is compared. Every refusal is the same bytes; a relayed sender is never the local Operator, whatever it says its role is.
+		if ok, wait := h.crossTeam.allow("relay\x00" + src + "\x00" + body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); !ok {
+			secs := int(math.Ceil(wait.Seconds()))
+			httputil.WriteActionLimitBody(w, secs, map[string]any{"ok": false, "error": "rate_limited", "message": fmt.Sprintf("retry in %ds", secs)})
+			return
+		}
+		sender := doorSender{server: src, crossTeamID: validIDOrEmpty(body.FromCrossTeamID)}
+		var admitted bool
+		var err error
+		recipients, settings, admitted, err = h.crossTeamDoor(ctx, target, sender, strings.TrimSpace(body.To))
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		if !admitted {
+			h.noteDoor(ctx, target, board.LogRefused, sender)
+			relayRefuse(w, http.StatusForbidden, crossTeamRefusedCode, crossTeamRefusedText)
+			return
+		}
+	} else {
+		if ok, err := h.bs.BoardExists(ctx, target); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		} else if !ok {
+			relayRefuse(w, http.StatusNotFound, "not_found", "no such board")
+			return
+		}
+		var err error
+		if settings, err = h.bs.GetBoardSettings(ctx, target); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		if !settings.CrossTeamMessaging {
+			relayRefuse(w, http.StatusForbidden, "cross_team_disabled", "cross-team messaging is off on this board")
+			return
+		}
+		if !settings.AllowsServer(src) {
+			relayRefuse(w, http.StatusForbidden, "source_not_allowed", "this board doesn't accept messages from that server")
+			return
+		}
+		recipients, err = h.bs.TargetOrchestrators(ctx, target, strings.TrimSpace(body.To))
+		if err != nil {
+			relayRefuse(w, http.StatusConflict, "no_orchestrator", "no active Orchestrator to receive the message")
+			return
+		}
+		if ok, wait := h.crossTeam.allow("relay\x00" + src + "\x00" + body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); !ok {
+			secs := int(math.Ceil(wait.Seconds()))
+			// A limit on this sender's messages, not a busy server (#3434).
+			httputil.WriteActionLimitBody(w, secs, map[string]any{"ok": false, "error": "rate_limited", "message": fmt.Sprintf("retry in %ds", secs)})
+			return
+		}
+		// Shadow (#5508): what the list would have refused, counted, not acted on.
+		if listed := (doorSender{server: src, crossTeamID: validIDOrEmpty(body.FromCrossTeamID)}).listed(settings); !listed {
+			h.noteDoor(ctx, target, board.LogWouldRefuse, doorSender{server: src, crossTeamID: validIDOrEmpty(body.FromCrossTeamID)})
+		}
 	}
 	role := crossTeamSenderRole
 	if body.SubscriberID == crossTeamOperatorID {
@@ -600,7 +671,7 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 		Origin: board.MessageOrigin{
 			ServerID: src, Board: body.FromBoard, Sender: body.SubscriberID, SenderRole: role,
 			TargetServerID: store.LocalServerID, TargetBoard: target,
-			RelayMessageID: body.Relay.MessageID, Hops: body.Relay.Hops,
+			RelayMessageID: body.Relay.MessageID, Hops: body.Relay.Hops, FromCrossTeamID: validIDOrEmpty(body.FromCrossTeamID),
 		},
 		Mentions: recipients,
 		Content:  body.Content,
@@ -614,7 +685,7 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 	// The files this message names (pushed before it, with its message id) are listed now, if the board
 	// still takes files (#4440).
 	if settings.CrossTeamArtifacts {
-		if on, err := h.receivingOn(ctx, target, src); err == nil && on {
+		if on, err := h.receivingOn(ctx, target, src, validIDOrEmpty(body.FromCrossTeamID), true); err == nil && on {
 			h.promotePending(target, src, body.Relay.MessageID, inbound.ID)
 		}
 	}

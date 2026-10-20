@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 )
@@ -76,6 +77,35 @@ type Hello struct {
 	// "launch"). It is informational for the hub (to show "limited by this machine");
 	// the connector enforces it whatever the hub does. Absent or unknown means view.
 	LocalMode string `json:"local_mode,omitempty"`
+	// Capabilities are what this Coral can do beyond the base protocol, each "name/version" (#5508): "cross_team_allowlist/1" means it keeps and checks a board's list of allowed senders
+	// by cross-team board id. A hub reads it only from the destination's own Hello (never from a sender's request or message); absent, malformed or another version means unsupported.
+	Capabilities []string `json:"capabilities,omitempty"`
+}
+
+// CapCrossTeamAllowlist is this Coral's list-of-senders capability, version 1 (see Hello.Capabilities).
+const CapCrossTeamAllowlist = "cross_team_allowlist/1"
+
+// capabilityShape is a well-formed capability string: a lower-case name, a slash and a whole version.
+var capabilityShape = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}/[0-9]{1,4}$`)
+
+// maxCapabilities bounds how many a Hello may carry.
+const maxCapabilities = 16
+
+// HasCapability reports whether a Hello's capabilities name want, exactly: a list that is too long, or holds any malformed string, supports nothing (never a partial read).
+func HasCapability(caps []string, want string) bool {
+	if len(caps) > maxCapabilities {
+		return false
+	}
+	have := false
+	for _, c := range caps {
+		if !capabilityShape.MatchString(c) {
+			return false
+		}
+		if c == want {
+			have = true
+		}
+	}
+	return have
 }
 
 // Welcome is the server's reply to Hello.

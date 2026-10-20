@@ -51,11 +51,14 @@ var operatorOnlyRoutes = map[string]string{
 	// #3445: stopping the Operator's runs, and changing Coral's settings (the whole PUT: it holds
 	// cli_path_* (persistent code execution for every later launch), auto-accept, remote access,
 	// cloud and hub-operator keys and the debug input log, and no agent tool sends it).
-	"POST /api/workflows/runs/{runID}/kill": "stop a workflow run",
-	"POST /api/tasks/runs/{runID}/kill":     "stop a task run",
-	"PUT /api/settings":                     "change Coral's settings",
-	"GET /api/custom-models":                "read the custom models",
-	"PUT /api/custom-models":                "change the custom models",
+	"POST /api/workflows/runs/{runID}/kill":          "stop a workflow run",
+	"POST /api/tasks/runs/{runID}/kill":              "stop a task run",
+	"PUT /api/settings":                              "change Coral's settings",
+	"GET /api/board/{project}/cross-team-state":      "read who may message a board",
+	"GET /api/board/{project}/cross-team-candidates": "list the boards that may be put on a board's list",
+	"GET /api/board/{project}/settings/log":          "read a board's settings log",
+	"GET /api/custom-models":                         "read the custom models",
+	"PUT /api/custom-models":                         "change the custom models",
 	// #4432 (Security's #4431 INFO 1): reading them too: the CLI paths, prompts and storage and access switches
 	// are the Operator's, and no agent tool reads them.
 	"GET /api/settings": "read Coral's settings",

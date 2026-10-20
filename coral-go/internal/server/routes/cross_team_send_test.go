@@ -143,6 +143,8 @@ func TestRelaySendGoesToTheHubAndKeepsAMirror(t *testing.T) {
 	assert.Equal(t, float64(0), body["hops"])
 	assert.Equal(t, "homelab/qa", body["to_address"])
 	inner, _ := body["body"].(map[string]any)
+	assert.Regexp(t, `^x-[a-z2-7]{16}$`, inner["from_cross_team_id"], "this Coral's own board row's id rides along (#5508)")
+	delete(inner, "from_cross_team_id")
 	assert.Equal(t, map[string]any{"from_board": "alpha", "subscriber_id": "Orchestrator", "session_name": "tmux-alphaOrchestrator", "content": "please run the check", "to": ""}, inner)
 	assert.NotContains(t, body, "source", "never a source id in the request")
 

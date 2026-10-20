@@ -20,6 +20,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/pkg/tunnel"
@@ -48,6 +49,8 @@ var (
 
 	// receivedMemberNames are the only members the frame's metadata may have, spelled exactly.
 	receivedMemberNames = map[string]bool{"message_id": true, "to_address": true, "from_board": true, "digest": true, "size": true, "name": true, "media_type": true}
+	// receivedOptionalMember may be there too (a Coral from before the allowlist does not send it).
+	receivedOptionalMember = "from_cross_team_id"
 )
 
 // receivedMeta is the frame's metadata, as the hub re-encoded it.
@@ -59,6 +62,8 @@ type receivedMeta struct {
 	Size      int64  `json:"size"`
 	Name      string `json:"name"`
 	MediaType string `json:"media_type"`
+	// FromCrossTeamID is the sending Coral's claim of its board's cross-team id (#5508), "" when absent or malformed (a Coral from before it, or a bad claim): in force, such a file is refused.
+	FromCrossTeamID string `json:"from_cross_team_id,omitempty"`
 }
 
 // parseReceivedMeta reads the metadata object strictly: one object, nothing after it, every member named
@@ -80,7 +85,7 @@ func parseReceivedMeta(raw []byte) (receivedMeta, error) {
 	for dec.More() {
 		kt, err := dec.Token()
 		key, ok := kt.(string)
-		if err != nil || !ok || !receivedMemberNames[key] || seen[key] {
+		if err != nil || !ok || !(receivedMemberNames[key] || key == receivedOptionalMember) || seen[key] {
 			return m, bad
 		}
 		seen[key] = true
@@ -96,8 +101,15 @@ func parseReceivedMeta(raw []byte) (receivedMeta, error) {
 	if _, err := dec.Token(); err != io.EOF {
 		return m, bad
 	}
-	if len(fields) != len(receivedMemberNames) {
+	_, hasClaim := fields[receivedOptionalMember]
+	if n := len(fields); (hasClaim && n != len(receivedMemberNames)+1) || (!hasClaim && n != len(receivedMemberNames)) {
 		return m, bad
+	}
+	if hasClaim {
+		var claim string
+		if json.Unmarshal(fields[receivedOptionalMember], &claim) == nil && board.ValidCrossTeamID(claim) {
+			m.FromCrossTeamID = claim // anything else is no claim at all, never echoed
+		}
 	}
 	str := func(key string, dst *string) bool {
 		return json.Unmarshal(fields[key], dst) == nil && len(fields[key]) > 0 && fields[key][0] == '"'
@@ -315,11 +327,15 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		errInternalServer(w, "could not check the board")
 		return
 	} else if !ok {
+		if h.allowlistOn(ctx) { // an unknown board is the same answer as every other refusal (#5508: no oracle)
+			receivedRefuse(w, http.StatusForbidden, "artifacts_off", "this board does not accept files from other computers", "")
+			return
+		}
 		receivedRefuse(w, http.StatusNotFound, "not_found", "no such board", "")
 		return
 	}
 	// One uniform answer for every switch that is off, so a sender cannot tell which.
-	if on, err := h.receivingOn(ctx, target, src); err != nil {
+	if on, err := h.receivingOn(ctx, target, src, "", false); err != nil {
 		errInternalServer(w, "could not read the board's settings")
 		return
 	} else if !on {
@@ -377,6 +393,15 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		httputil.WriteActionLimitBody(w, secs, map[string]any{"ok": false, "error": "artifact_quota", "limit": limit, "message": "too many files received; retry later"})
 		return
 	}
+	// The sender's claimed board, now that the metadata is read: in force, a file from a sender that is not on the list is the same uniform refusal as every other "no" (#5508). It has cost the
+	// sender's transfer quota, as an accepted file does.
+	if on, err := h.receivingOn(ctx, target, src, meta.FromCrossTeamID, true); err != nil {
+		errInternalServer(w, "could not read the board's settings")
+		return
+	} else if !on {
+		receivedRefuse(w, http.StatusForbidden, "artifacts_off", "this board does not accept files from other computers", "")
+		return
+	}
 	data := make([]byte, meta.Size)
 	if _, err := io.ReadFull(body, data); err != nil {
 		receivedRefuse(w, http.StatusBadRequest, "bad_frame", "the file is shorter than its size", "")
@@ -409,7 +434,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 	if receivedBeforeStore != nil {
 		receivedBeforeStore()
 	}
-	if on, err := h.receivingOn(ctx, target, src); err != nil {
+	if on, err := h.receivingOn(ctx, target, src, meta.FromCrossTeamID, true); err != nil {
 		errInternalServer(w, "could not read the board's settings")
 		return
 	} else if !on {
@@ -455,11 +480,19 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 // read for the last time and the file is stored.
 var receivedBeforeStore func()
 
-// receivingOn reports whether the board takes files from src right now: messaging on, src listed, files on.
-func (h *BoardHandler) receivingOn(ctx context.Context, target, src string) (bool, error) {
+// receivingOn reports whether the board takes files from src right now. Allowlist off: messaging on, src listed (the server list), files on. In force (#5508): files on, and (once the frame's metadata
+// has been read, claimKnown) the sender is on the board's list by BOTH the hub-verified server and the cross-team id it claims; before that only the files switch can be asked. Every "no" is the
+// same uniform answer.
+func (h *BoardHandler) receivingOn(ctx context.Context, target, src, claim string, claimKnown bool) (bool, error) {
 	settings, err := h.bs.GetBoardSettings(ctx, target)
 	if err != nil {
 		return false, err
+	}
+	if h.allowlistOn(ctx) {
+		if !settings.CrossTeamArtifacts {
+			return false, nil
+		}
+		return !claimKnown || settings.AllowsSender(src, claim), nil
 	}
 	return settings.CrossTeamMessaging && settings.AllowsServer(src) && settings.CrossTeamArtifacts, nil
 }

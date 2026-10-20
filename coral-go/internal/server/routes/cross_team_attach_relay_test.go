@@ -490,7 +490,7 @@ func TestRelayAttachTeammatesUploadIsAttachable(t *testing.T) {
 // The frame's name and media type are what the hub accepts, whatever the sidecar held.
 func TestRelayArtifactFrameFields(t *testing.T) {
 	a := attachedArtifact{ID: strings.Repeat("a", 64), Name: "re\u202Eport\x07 " + strings.Repeat("\u00e9", 300), MediaType: "text/plain; charset=utf-8"}
-	frame, err := relayArtifactFrame("m1", "homelab/qa", "alpha", a, []byte("data"))
+	frame, err := relayArtifactFrame("m1", "homelab/qa", "alpha", "", a, []byte("data"))
 	require.NoError(t, err)
 	ml := int(binary.BigEndian.Uint32(frame[:4]))
 	m, err := parseReceivedMetaForTest(frame[4 : 4+ml])
@@ -501,7 +501,7 @@ func TestRelayArtifactFrameFields(t *testing.T) {
 	assert.Equal(t, "data", string(frame[4+ml:]))
 
 	a.Name, a.MediaType = "\x00\x01", "bad type"
-	frame, err = relayArtifactFrame("m1", "homelab/qa", "alpha", a, []byte("data"))
+	frame, err = relayArtifactFrame("m1", "homelab/qa", "alpha", "", a, []byte("data"))
 	require.NoError(t, err)
 	ml = int(binary.BigEndian.Uint32(frame[:4]))
 	m, err = parseReceivedMetaForTest(frame[4 : 4+ml])

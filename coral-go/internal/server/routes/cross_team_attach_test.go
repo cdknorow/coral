@@ -68,6 +68,9 @@ func newAttachEnv(t *testing.T, artifactsOn bool) *attachEnv {
 	r.Put("/api/board/{project}/settings", e.h.UpdateBoardSettings)
 	r.Post("/api/board/{project}/external-messages", e.h.PostExternalMessage)
 	r.Get("/api/board/{project}/artifacts", e.h.ListTeamArtifacts)
+	r.Get("/api/board/{project}/cross-team-state", e.h.GetCrossTeamState)
+	r.Get("/api/board/{project}/cross-team-candidates", e.h.GetCrossTeamCandidates)
+	r.Get("/api/board/{project}/settings/log", e.h.GetCrossTeamLog)
 	srv := httptest.NewServer(r)
 	t.Cleanup(func() { srv.Close(); e.h.WaitBackground() })
 	e.url = srv.URL

@@ -61,6 +61,9 @@ var relayOutcomes = map[string]int{
 
 var oracleUUID = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 
+// oracleCrossTeamID is the sender board's generated id (#5508): random per run, so it is taken out of what is compared (the oracle is about the answers, not this field).
+var oracleCrossTeamID = regexp.MustCompile(`,"from_cross_team_id":"x-[a-z2-7]{16}"`)
+
 // relayStep is what the fake Coral Hub answers this step, the same on both sides.
 type relayStep struct {
 	msg     func() (tunnel.RelayResponse, error)
@@ -109,7 +112,7 @@ func runRelayOracle(t *testing.T, seed int64, counts map[string]int) {
 		h.SetTaskArtifactWriter(coralDir, nil)
 		h.SetRelay(func(_ context.Context, path string, raw []byte) (tunnel.RelayResponse, error) {
 			step.callsMu.Lock()
-			step.calls = append(step.calls, path+" "+oracleUUID.ReplaceAllString(string(raw), "<id>"))
+			step.calls = append(step.calls, path+" "+oracleUUID.ReplaceAllString(oracleCrossTeamID.ReplaceAllString(string(raw), ""), "<id>"))
 			step.callsMu.Unlock()
 			return step.msg()
 		})
@@ -122,7 +125,7 @@ func runRelayOracle(t *testing.T, seed int64, counts map[string]int) {
 					i++
 				}
 			}
-			step.calls = append(step.calls, fmt.Sprintf("file %d %s", n, oracleUUID.ReplaceAllString(string(raw), "<id>")))
+			step.calls = append(step.calls, fmt.Sprintf("file %d %s", n, oracleUUID.ReplaceAllString(oracleCrossTeamID.ReplaceAllString(string(raw), ""), "<id>")))
 			step.callsMu.Unlock()
 			if step.noFiles {
 				if n%2 == 0 {
@@ -339,7 +342,7 @@ func runRelayOracle(t *testing.T, seed int64, counts map[string]int) {
 				s.h.SetRelay(func(_ context.Context, path string, raw []byte) (tunnel.RelayResponse, error) {
 					_ = st
 					step.callsMu.Lock()
-					step.calls = append(step.calls, path+" "+oracleUUID.ReplaceAllString(string(raw), "<id>"))
+					step.calls = append(step.calls, path+" "+oracleUUID.ReplaceAllString(oracleCrossTeamID.ReplaceAllString(string(raw), ""), "<id>"))
 					step.callsMu.Unlock()
 					return step.msg()
 				})

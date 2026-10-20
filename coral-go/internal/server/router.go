@@ -615,6 +615,7 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 	boardHandler.SetLiveSessionLookup(routes.LiveSessionLookup(store.NewSessionStore(s.db)))
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
 	sessStore := store.NewSessionStore(s.db)
+	boardHandler.SetAllowlistFlag(routes.AllowlistEnabled(sessStore))
 	boardHandler.SetAutoAttacher(routes.NewAutoAttacher(s.cfg.CoralDir(), routes.AutoAttachEnabled(sessStore), routes.SessionDirs(sessStore)))
 	s.goBackground(boardHandler.RecoverTaskNotifications)
 	s.goBackground(func(ctx context.Context) {
@@ -697,6 +698,9 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 		r.Post("/api/board/{project}/tasks", boardHandler.CreateTask)
 		r.Get("/api/board/{project}/working-mode", boardHandler.GetWorkingMode)
 		r.Put("/api/board/{project}/working-mode", boardHandler.SetWorkingMode)
+		r.Get("/api/board/{project}/cross-team-state", boardHandler.GetCrossTeamState)
+		r.Get("/api/board/{project}/cross-team-candidates", boardHandler.GetCrossTeamCandidates)
+		r.Get("/api/board/{project}/settings/log", boardHandler.GetCrossTeamLog)
 		r.Get("/api/board/{project}/working-mode/presets", boardHandler.ListWorkflowPresets)
 		r.Post("/api/board/{project}/working-mode/presets", boardHandler.SaveWorkflowPreset)
 		r.Put("/api/board/{project}/working-mode/presets/{presetID}", boardHandler.SaveWorkflowPreset)

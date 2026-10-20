@@ -26,6 +26,7 @@ var notIdentityFields = map[string]string{
 	"to":                 "who a message is for (a mention list): a target, not who it is from",
 	"to_address":         "a cross-team address",
 	"from_board":         "a board id on a cross-team send; the sender is subscriber_id",
+	"from_cross_team_id": "the sending Coral's claim of its board's generated cross-team id (#5508): shape-checked, compared with the receiving board's list, never echoed; the sender is subscriber_id",
 	"target_message_id":  "a message id",
 	"target_group_id":    "a group id",
 	"target_index":       "an index",

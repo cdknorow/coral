@@ -132,6 +132,8 @@ func TestCrossTeamMessageRules(t *testing.T) {
 	require.Equal(t, "@Orchestrator Please review #12", msg["content"])
 	require.Equal(t, "Orchestrator (alpha)", msg["subscriber_id"])
 	ext := msg["external"].(map[string]any)
+	assert.Regexp(t, `^x-[a-z2-7]{16}$`, ext["from_cross_team_id"], "the sender board's own id is in the envelope (#5508)")
+	delete(ext, "from_cross_team_id")
 	require.Equal(t, map[string]any{"direction": "inbound", "server_id": "local", "board": "alpha", "sender": "Orchestrator", "sender_role": "Orchestrator", "target_server_id": "local", "target_board": "beta"}, ext)
 	mirror := out["mirror"].(map[string]any)
 	require.Equal(t, "Orchestrator", mirror["subscriber_id"])
