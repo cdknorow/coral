@@ -1,5 +1,24 @@
 # Release Notes
 
+## v1.4.133 — Settings labels in sentence case, one spelling of "CLI paths", board reads that carry the board's identity, a stage lock that fails safe on Windows
+
+### Changes
+
+- **Settings labels are sentence case:** 17 labels were Title Case beside sentence-case neighbours; Customize Theme is no longer a second primary button, and a check fails on a new Title Case settings label.
+- **"CLI paths" is spelled one way everywhere it is named:** the settings heading, the buttons in the team and install dialogs, and the messages Coral shows when a CLI is not found or its path cannot be run now read "Settings > CLI paths".
+- **Board reads carry the board's identity:** the board's messages, all-boards messages and tasks replies set two response headers, `X-Coral-Board-Id` (the board's stable id, or the old name for a board that predates ids) and `X-Coral-Board-Created-At` (RFC 3339, UTC). Only a plain printable id becomes a header value. The reply bodies are unchanged.
+- **Update screens** (still behind the update flag, which is off) have words for the two new cases: Coral could not be restarted automatically on this computer (no control in the top bar; Settings carries the sentence), and a roll-back after which Coral was stopped because the update could not restart it.
+- **The docs name the stable download files** (`Coral.dmg`, `Coral-x64.msi`, `Coral-x64-portable.zip`, `coral-linux-amd64.tar.gz`, `coral-linux-arm64.tar.gz`, under `releases/latest/download/`) in the order of the README's download block; the versioned names are the same files.
+
+### Fixes
+
+- **A stage lock that cannot be read is never taken for stale, and a lock file is removed only while it still holds what this check wrote** (retried briefly on Windows), so two update checks can never hold the lock together and one check can never remove the lock another put at the path.
+
+### Internal
+
+- `coral-update status` shows version fields as versions or `unknown`, and who started an attempt as `local`, a hub pseudonym or `other`.
+- Tests: the startup-order check no longer depends on how fast the processor is (it passed 20 of 20 at a 16× throttle, 0 of 6 before), and the linear-time guard's own test takes its trigger and floor as parameters so a quadratic stand-in is refused at any machine speed.
+
 ## v1.4.132 — Pasted JPEGs lose their embedded thumbnails, a terminal freeze fixed, smaller startup, keyboard and phone passes
 
 ### Fixes
