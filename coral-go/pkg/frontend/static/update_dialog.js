@@ -2,21 +2,12 @@
  * the primary button says what it will do. The list is the server's (the pty agents a relaunch restarts, and an ack of exactly that list): a list that changed since it was read is shown again and has to be
  * answered again (409 stale_ack). A dialog on a desktop, a sheet at the bottom on a phone (css). Escape and the focus trap are modal_chrome's; focus goes back to the control that opened it (dialog_focus.js). */
 import { attachDialogFocus } from './dialog_focus.js';
+import { browserSession } from './safe_storage.js';
 import { importOnce } from './import_once.js';
 
-const { requestRelaunch } = await importOnce('./update_api.js');
+const { RESUME_KEY, reasonText, requestRelaunch } = await importOnce('./update_api.js');
 
 const STATE_WORDS = { working: 'working', idle: 'idle', waiting: 'waiting for you' };
-const REFUSALS = {
-    max_mode: 'This Coral is not allowed to restart agents from here.',
-    owner_only: 'Only the owner can relaunch this Coral.',
-    hub_relaunch_off: 'Relaunching is switched off in Settings > Updates.',
-    nothing_staged: 'There is no update ready to install.',
-    not_verified: 'The update has not been verified, so it was not installed.',
-    busy: 'Another relaunch is already running.',
-    unsupported_install: 'This install cannot update itself.',
-    already_relaunched: 'This update was already tried. Relaunch from this computer, or wait for a newer version.',
-};
 
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -87,8 +78,19 @@ async function sendRelaunch(go, later) {
         return;
     }
     go.disabled = false; later.disabled = false;
-    const p = mk('p', 'update-note update-error', REFUSALS[res.code] || res.error || 'Coral could not relaunch. Nothing was changed.'); p.setAttribute('role', 'alert');
-    dialog.querySelector('.modal-body').append(p);
+    // 404: Coral Hub has relaunching switched off for this machine: nothing to offer, so nothing is shown
+    if (res.status === 404) { close(); (await importOnce('./update_ui.js')).refreshUpdateStatus(); return; }
+    const body = dialog.querySelector('.modal-body');
+    const say = (text) => { const p = mk('p', 'update-note update-error', text); p.setAttribute('role', 'alert'); body.append(p); return p; };
+    if (res.status === 401 && res.code === 'reauth_required') {
+        // The hub wants a recent sign-in. Never retry the request by itself: the person signs in, comes back to this dialog, and the status is read again for a fresh ack.
+        say(reasonText('reauth_required'));
+        const a = mk('a', 'btn btn-primary update-signin', 'Sign in again'); a.href = res.signInUrl || (location.pathname + location.search);
+        a.addEventListener('click', () => browserSession.set(RESUME_KEY, '1')); // (no storage: the person returns to the dashboard and opens the dialog again)
+        dialog.querySelector('.modal-actions').insertBefore(a, go); go.hidden = true; a.focus();
+        return;
+    }
+    say(reasonText(res.code)); // 'Unavailable' for a reason this build does not know; never the server's own words
 }
 
 function close() { if (dialog) dialog.style.display = 'none'; } // display-ok: modal_chrome (Escape, the Tab trap) and dialog_focus read a .modal's display, as for every dialog

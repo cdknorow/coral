@@ -2,9 +2,9 @@
  * nothing is fetched. The status comes from update_api.js; this module keeps the last one, asks again every ten minutes and when the tab is shown (the Settings pane reads it with getUpdateStatus).
  * The control never animates: its state is a colour, a word and a number of days (colour is not the only signal: from "warm" on the age is written, on a phone too). */
 import { importOnce } from './import_once.js';
-import { browserLocal } from './safe_storage.js';
+import { browserLocal, browserSession } from './safe_storage.js';
 import { pollEvery } from './overload.js';
-const { ageTier, fetchUpdateStatus, requestCheckNow } = await importOnce('./update_api.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
+const { RESUME_KEY, ageTier, fetchUpdateStatus, reasonText, requestCheckNow } = await importOnce('./update_api.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
 import { updatesUiOn } from './update_flag.js';
 
 const POLL_MS = 10 * 60 * 1000;
@@ -20,7 +20,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 /** Whether the control is offered: an update is staged and verified and this install can apply it. */
 export function relaunchOffered(s) {
     if (!s || !s.enabled || s.state !== 'staged' || !s.staged || !s.staged.verified) return false;
-    return !['unsupported_install', 'nothing_staged', 'not_verified'].includes(s.relaunch.reason);
+    return !['unsupported_install', 'nothing_staged', 'not_verified', 'hub_off'].includes(s.relaunch.reason); // hub_off: Coral Hub's relaunching is off for this machine, so there is nothing to offer
 }
 
 /** What the control says, and the name a screen reader reads. */
@@ -30,7 +30,7 @@ export function pillWords(s) {
     const ago = days < 1 ? 'earlier today' : `${plural(days, 'day')} ago`;
     return {
         tier, age,
-        name: `Relaunch to update to version ${s.staged.version}. Downloaded ${ago}.${s.relaunch.available ? '' : ' Not available now.'}`,
+        name: `Relaunch to update to version ${s.staged.version}. Downloaded ${ago}.${s.relaunch.available ? '' : ` Not available now: ${reasonText(s.relaunch.reason)}`}`,
     };
 }
 
@@ -109,6 +109,16 @@ async function tryAgain() {
     await refreshUpdateStatus();
 }
 
+/** Back from signing in again (the hub's reauth_required): read the status afresh, for a fresh ack, and show the dialog again; the relaunch itself is never sent for the person. */
+export async function resumeAfterSignIn() {
+    const flag = browserSession.get(RESUME_KEY) === '1';
+    browserSession.remove(RESUME_KEY);
+    if (!flag) return false;
+    await refreshUpdateStatus();
+    if (relaunchOffered(status) && status.relaunch.available) { await openDialog(); return true; }
+    return false;
+}
+
 export function openUpdatesSettings() { window.showSettingsModal && window.showSettingsModal('updates'); }
 
 /** Wire the controls and start asking. Safe to call twice. */
@@ -123,5 +133,5 @@ export function startUpdateUi() {
     phone.addEventListener('change', placePill);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshUpdateStatus(); });
     document.addEventListener('coral-settings-group', (e) => { if (e.detail && e.detail.id === 'updates') importOnce('./update_settings.js').then((m) => m.showUpdatesPane()).catch(() => {}); });
-    refreshUpdateStatus();
+    refreshUpdateStatus().then(resumeAfterSignIn);
 }

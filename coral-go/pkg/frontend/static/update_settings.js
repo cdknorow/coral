@@ -3,7 +3,8 @@
  * confirmation (a dialog over this one), "Check now" asks the updater to look. A Homebrew or unsupported install says so and why, with the command to run. */
 import { importOnce } from './import_once.js';
 import { copyText, showToast } from './utils.js';
-const { ageTier, requestCheckNow, savePrefs } = await importOnce('./update_api.js');
+import { isCloud } from './server_base.js';
+const { ageTier, reasonText, requestCheckNow, savePrefs } = await importOnce('./update_api.js');
 const { failureNotice, getUpdateStatus, refreshUpdateStatus, relaunchOffered } = await importOnce('./update_ui.js');
 
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -39,7 +40,7 @@ function card(s) {
         dot.dataset.k = tier; c.dataset.k = tier;
         act = mk('button', 'btn btn-primary update-act', 'Relaunch to update'); act.type = 'button';
         act.setAttribute('aria-haspopup', 'dialog');
-        if (!s.relaunch.available) { act.setAttribute('aria-disabled', 'true'); sub.textContent += ' Not available right now.'; }
+        if (!s.relaunch.available) { act.setAttribute('aria-disabled', 'true'); sub.textContent += ` Not available right now: ${reasonText(s.relaunch.reason)}`; }
         act.addEventListener('click', async () => { if (act.getAttribute('aria-disabled') === 'true') return; (await importOnce('./update_dialog.js')).openUpdateDialog(getUpdateStatus()); });
     } else if (s.progress !== null) {
         title.textContent = `Downloading Coral${s.staged && s.staged.version ? ' ' + s.staged.version : ''}`; sub.textContent = `${s.progress} percent`; dot.dataset.k = 'ok'; c.dataset.k = 'ok';
@@ -89,11 +90,12 @@ export async function showUpdatesPane() {
     if (!s || !s.enabled) { host.append(mk('p', 'update-calm', 'Updates are not available in this Coral.')); return; }
     const unmanaged = s.installKind !== '';
     host.append(unmanaged ? managed(s) : card(s));
+    // Through Coral Hub the switches are not the hub's to change (the machine's owner sets them on that computer), so they are not drawn there
     const grid = mk('dl', 'info-grid settings-grid');
     const reason = unmanaged ? (s.installKind === 'homebrew' ? 'Homebrew manages updates.' : 'This install cannot update itself.') : '';
     grid.append(row('settings-update-auto', 'Download updates automatically', unmanaged ? reason : 'Downloads in the background and checks the release is genuine. The update installs the next time Coral starts, never while you work. Only the latest releases of Coral\'s own GitHub repository are used.', unmanaged ? false : s.auto !== false, unmanaged));
     if (s.hubRelaunch !== null) grid.append(row('settings-update-hub', 'Let Coral Hub relaunch this Coral to install updates', unmanaged ? reason : 'Coral Hub can ask for the relaunch only; it cannot choose a version, and cannot change this setting.', unmanaged ? false : s.hubRelaunch, unmanaged));
-    host.append(grid);
+    if (!isCloud()) host.append(grid);
     const facts = mk('dl', 'info-grid settings-grid update-facts');
     const fact = (k, v) => { const r = mk('div', 'settings-row'); r.append(mk('dt', null, k), mk('dd', null, v)); facts.append(r); };
     if (s.checkedAt) fact('Last checked', stamp(s.checkedAt));
@@ -107,7 +109,7 @@ export async function showUpdatesPane() {
 export async function applyUpdatePrefs() {
     const auto = document.getElementById('settings-update-auto'), hub = document.getElementById('settings-update-hub');
     const s = getUpdateStatus();
-    if (!s || !auto || auto.disabled) return;
+    if (isCloud() || !s || !auto || auto.disabled) return;
     const next = { auto: auto.checked, hubRelaunch: hub ? hub.checked : !!s.hubRelaunch };
     if (next.auto === (s.auto !== false) && (!hub || hub.checked === !!s.hubRelaunch)) return;
     await savePrefs(next);

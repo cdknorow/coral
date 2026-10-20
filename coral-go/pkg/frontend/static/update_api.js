@@ -51,6 +51,32 @@ export function normalizeRelaunch(r) {
     };
 }
 
+/** What a reason says to the person, for the status's `relaunch.reason` and the refusals of a relaunch (the machine's own and Coral Hub's). A reason this build does not know is "Unavailable": never the server's word, which may be anything. */
+const REASON_TEXT = {
+    max_mode: 'This Coral is not allowed to restart agents from here.',
+    owner_only: 'Only the owner can relaunch this Coral.',
+    hub_relaunch_off: 'Relaunching is switched off in Settings > Updates.',
+    nothing_staged: 'There is no update ready to install.',
+    not_verified: 'The update has not been verified, so it was not installed.',
+    busy: 'Another relaunch is already running.',
+    applying: 'The update is being installed.',
+    unsupported_install: 'This install cannot update itself.',
+    already_relaunched: 'This update was already tried. Relaunch from this computer, or wait for a newer version.',
+    mode_too_low: 'Needs Launch access on this machine.',
+    hub_off: 'Relaunching from Coral Hub is switched off for this machine.',
+    fleet_busy: 'Other machines are relaunching. Try again in a few minutes.',
+    relaunch_fleet_busy: 'Try again in a few minutes.',
+    too_soon: 'Try again in a few minutes.',
+    label_missing: 'This machine is not set up for relaunching from Coral Hub.',
+    reauth_required: 'Sign in again to relaunch this Coral.',
+};
+/** Set while the person is away signing in again (the hub's 401 reauth_required): on return the dashboard reads the status afresh and shows the dialog again. */
+export const RESUME_KEY = 'coral-update-resume';
+export const reasonText = (reason) => REASON_TEXT[reason] || 'Unavailable';
+
+/** A sign-in address the hub sent: only a path on this same site is followed (never another host, never a script). */
+const safePath = (v) => (typeof v === 'string' && /^\/(?!\/)[^\s\\]*$/.test(v) ? v : '');
+
 /** The status, or null when the server has no updater (a 404) or did not answer. */
 export async function fetchUpdateStatus() {
     try {
@@ -66,8 +92,9 @@ export async function requestRelaunch(ack) {
         const resp = await fetch(ROUTES.relaunch, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ack }) });
         let body = {};
         try { body = await resp.json(); } catch { /* an empty body */ }
-        return { ok: resp.ok, status: resp.status, code: str(body.code), error: str(body.error), relaunch: body.relaunch && typeof body.relaunch === 'object' ? normalizeRelaunch(body.relaunch) : null };
-    } catch (e) { return { ok: false, status: 0, code: 'network', error: 'Could not reach Coral.', relaunch: null }; }
+        // the hub says why in `reason` (reauth_required, mode_too_low), the machine in `code`; error text is never shown (a reason this build does not know is "Unavailable")
+        return { ok: resp.ok, status: resp.status, code: str(body.code) || str(body.reason), signInUrl: safePath(body.sign_in_url), relaunch: body.relaunch && typeof body.relaunch === 'object' ? normalizeRelaunch(body.relaunch) : null };
+    } catch (e) { return { ok: false, status: 0, code: 'network', signInUrl: '', relaunch: null }; }
 }
 
 /** Ask the updater to look for a release now (provisional). */

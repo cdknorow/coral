@@ -165,6 +165,41 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
             check(`${tag}: the request carries the new ack and nothing else (${JSON.stringify(post)})`, post.length === 1 && post[0].url === '/relaunch' && JSON.stringify(post[0].body) === '{"ack":"ack-2"}');
             await press('Escape', 'Escape', 27);
 
+            // ═══ through Coral Hub: the hub's own answers (#5295)
+            const dlgOpen = async (st = staged(3)) => { await setStatus(st); await ev(`(() => { const d = document.getElementById('update-confirm-modal'); if (d) d.style.display = 'none'; document.getElementById('update-pill').click(); return true; })()`); await waitFor(`document.getElementById('update-confirm-modal').style.display === 'flex'`, 'the dialog', 4000); await settle(200); };
+            const answer = async (status, body) => { await ev(`window.__upd.calls.length = 0; window.__upd.relaunch = { status: ${status}, body: ${JSON.stringify(body)} }; document.querySelector('#update-confirm-modal .update-go').click(); true`); await settle(500); };
+            const errText = () => ev(`(() => { const e = document.querySelector('#update-confirm-modal .update-error'); return e ? e.textContent : null; })()`);
+            await dlgOpen();
+            await answer(401, { reason: 'reauth_required', sign_in_url: '/signin?next=%2F' });
+            let sg = await ev(`(() => { const a = document.querySelector('#update-confirm-modal .update-signin'); const go = document.querySelector('#update-confirm-modal .update-go'); return a ? { href: a.getAttribute('href'), go: go.hidden, focus: document.activeElement === a, posts: window.__upd.calls.filter(c => c.method === 'POST').length } : null; })()`);
+            check(`${tag}: the hub's 401 reauth_required: "${await errText()}", a Sign in again link to the hub's own address, the relaunch button gone, focus on the link, one request and no retry (${JSON.stringify(sg)})`, (await errText()) === 'Sign in again to relaunch this Coral.' && sg && sg.href === '/signin?next=%2F' && sg.go && sg.focus && sg.posts === 1);
+            await ev(`document.addEventListener('click', e => { if (e.target.closest('.update-signin')) e.preventDefault(); }, { capture: true, once: true }); document.querySelector('#update-confirm-modal .update-signin').click(); true`);
+            check(`${tag}: following it leaves a note to come back (${await ev(`sessionStorage.getItem('coral-update-resume')`)}) and sends nothing`, (await ev(`sessionStorage.getItem('coral-update-resume')`)) === '1' && (await ev(`window.__upd.calls.filter(c => c.method === 'POST').length`)) === 1);
+            // back from signing in: the status is read afresh (a new ack) and the dialog is shown again; the relaunch is not sent for the person
+            await ev(`document.getElementById('update-confirm-modal').style.display = 'none'; window.__upd.calls.length = 0; true`);
+            await setStatus({ ...staged(3), relaunch: { ...staged(3).relaunch, ack: 'ack-fresh' } });
+            await ev(`import(${S} + 'update_ui.js').then(m => m.resumeAfterSignIn()).then(r => { window.__resumed = r; return true; })`); await settle(500);
+            check(`${tag}: back from signing in the dialog is shown again from a fresh status and nothing was relaunched (${JSON.stringify(await ev('window.__upd.calls.map(c => c.method + c.url)'))})`, (await ev(`window.__resumed`)) === true && (await ev(`document.getElementById('update-confirm-modal').style.display`)) === 'flex' && (await ev(`window.__upd.calls.some(c => c.method === 'GET' && c.url === '/status') && !window.__upd.calls.some(c => c.method === 'POST')`)) && (await ev(`sessionStorage.getItem('coral-update-resume')`)) === null);
+            await ev(`document.getElementById('update-confirm-modal').style.display = 'none'; true`);
+            // an address that is not on this site is never followed
+            await dlgOpen(); await answer(401, { reason: 'reauth_required', sign_in_url: 'https://evil.test/x' });
+            check(`${tag}: a sign-in address on another site is not followed (${await ev(`document.querySelector('#update-confirm-modal .update-signin').getAttribute('href')`)})`, !/evil/.test(await ev(`document.querySelector('#update-confirm-modal .update-signin').getAttribute('href')`)));
+            for (const [status, body, want, what] of [[403, { reason: 'mode_too_low' }, 'Needs Launch access on this machine.', 'mode_too_low'], [429, { reason: 'relaunch_fleet_busy' }, 'Try again in a few minutes.', '429 relaunch_fleet_busy'], [429, { reason: 'too_soon' }, 'Try again in a few minutes.', '429 too_soon'], [500, { reason: 'something_new' }, 'Unavailable', 'a reason this build does not know']]) {
+                await dlgOpen(); await answer(status, body);
+                check(`${tag}: ${what}: "${await errText()}", never the raw reason`, (await errText()) === want);
+            }
+            await dlgOpen(); await answer(404, { error: 'not found' });
+            check(`${tag}: 404 (the hub's switch is off): the dialog closes and the control is gone`, (await ev(`document.getElementById('update-confirm-modal').style.display`)) === 'none');
+            await ev(`window.__upd.status = null; true`); await ev(`import(${S} + 'update_ui.js').then(m => m.refreshUpdateStatus())`); await settle(300);
+            check(`${tag}: and no control is shown`, (await pill()).hidden);
+            // the status's own reasons
+            for (const [reason, name, shown] of [['mode_too_low', /Needs Launch access on this machine/, true], ['fleet_busy', /Try again in a few minutes/, true], ['label_missing', /not set up for relaunching from Coral Hub/, true], ['hub_off', null, false], ['mystery', /Unavailable/, true]]) {
+                const st = staged(3); st.relaunch = { ...st.relaunch, available: false, reason };
+                await setStatus(st); const pl = await pill();
+                check(`${tag}: status reason ${reason}: ${shown ? `the control says "${(pl.name || '').slice(-60)}" and is not pressable` : 'no control'}${reason === 'mystery' ? ' (never the raw word)' : ''}`, shown ? (!pl.hidden && name.test(pl.name) && !/mystery/.test(pl.name) && (await ev(`document.getElementById('update-pill').getAttribute('aria-disabled')`)) === 'true') : pl.hidden);
+            }
+            await setStatus(staged(3));
+
             // ═══ Settings > Updates
             const open = async () => { await ev(`window.showSettingsModal('updates'); true`); await waitFor(`!document.getElementById('settings-pane-updates')?.hidden && !!document.querySelector('#update-pane-body .update-status, #update-pane-body .update-managed, #update-pane-body .update-calm')`, `${tag}: the Updates pane`, 8000); await settle(200); };
             const pane = () => ev(`(() => { const b = document.getElementById('update-pane-body'); const t = sel => (b.querySelector(sel) || {}).textContent; return { title: t('.update-status-text b') || t('.update-managed b'), sub: t('.update-status-text p'), k: (b.querySelector('.update-status') || {}).dataset?.k, act: t('.update-act'), auto: (document.getElementById('settings-update-auto') || {}).checked, autoOff: (document.getElementById('settings-update-auto') || {}).disabled, hub: (document.getElementById('settings-update-hub') || {}).checked, cmd: t('.update-cmd code'), link: (b.querySelector('.update-link') || {}).href, bar: (b.querySelector('[role=progressbar]') || {}).getAttribute && b.querySelector('[role=progressbar]').getAttribute('aria-valuenow'), facts: t('.update-facts'), priv: t('.update-privacy') }; })()`);

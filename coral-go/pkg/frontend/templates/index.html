@@ -85,7 +85,7 @@
         </div>
         <div class="top-bar-actions">
             <!-- #5275: the auto-update control, hidden until update_ui.js finds an update staged and verified (and only with the flag on) -->
-            <button type="button" class="update-pill" id="update-pill" data-local-only aria-haspopup="dialog" hidden><span class="update-dot" aria-hidden="true"></span><span class="update-long">Relaunch to update</span><span class="update-age"></span></button>
+            <button type="button" class="update-pill" id="update-pill" aria-haspopup="dialog" hidden><span class="update-dot" aria-hidden="true"></span><span class="update-long">Relaunch to update</span><span class="update-age"></span></button>
             <button class="top-bar-btn" data-on-click="m-go-home" title="Home" aria-label="Home"><span class="material-icons top-bar-icon" aria-hidden="true">home</span></button>
             <button class="top-bar-btn saved-top-btn" id="saved-btn" data-local-only data-on-click="m-show-saved" title="Saved for later" aria-label="Saved for later" aria-pressed="false" aria-controls="inbox-view"><svg class="top-bar-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg><span class="saved-count" hidden></span></button>
             <button class="top-bar-btn" id="panel-toggle-btn" data-on-click="m-toggle-agentic-panel" title="Toggle side panel" aria-label="Toggle side panel"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="12" rx="1.5"/><line x1="10" y1="2" x2="10" y2="14"/></svg></button>
@@ -175,10 +175,10 @@
         <!-- Main Content -->
         <main class="main-content">
             <!-- #5275: on a phone the control leaves the top bar (five buttons fill it) and sits here, a row under it (update_ui.js moves it) -->
-            <div id="update-strip" class="update-strip" data-local-only hidden></div>
+            <div id="update-strip" class="update-strip" hidden></div>
 
             <!-- #5275: an update that was not installed (verification failed, or it was rolled back); update_ui.js -->
-            <div id="update-fail-banner" class="leftover-tmux-banner update-fail" role="alert" data-local-only hidden>
+            <div id="update-fail-banner" class="leftover-tmux-banner update-fail" role="alert" hidden>
                 <span class="material-icons" aria-hidden="true">error</span>
                 <div class="leftover-tmux-text"><b class="update-fail-lead"></b><span class="update-fail-rest"></span></div>
                 <div class="update-fail-acts">
