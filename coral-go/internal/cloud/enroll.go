@@ -149,6 +149,9 @@ type Enrolled struct {
 	ServerID string
 	Label    string
 	Account  string // the Coral Hub account that enrolled it (#3966); "" from a hub that doesn't say
+	// OwnerUser is that account's hub-user-<8 hex> label as the hub stamps it (#5280, the update routes' owner check); "" when
+	// the hub doesn't say or says something that is not one.
+	OwnerUser string
 }
 
 func hubPost(ctx context.Context, hc *http.Client, hubURL, path string, in, out any) (int, error) {
@@ -272,6 +275,7 @@ func PollEnrollment(ctx context.Context, hc *http.Client, hubURL, deviceCode str
 		ServerID string `json:"server_id"`
 		Label    string `json:"label"`
 		Account  string `json:"account"`
+		Owner    string `json:"owner_user"`
 		Error    string `json:"error"`
 	}
 	status, err := hubPost(ctx, hc, hubURL, "/api/enroll/poll", map[string]string{"device_code": deviceCode}, &r)
@@ -288,7 +292,11 @@ func PollEnrollment(ctx context.Context, hc *http.Client, hubURL, deviceCode str
 		if !ValidHubAccount(acct) {
 			acct = ""
 		}
-		return &Enrolled{Token: r.Token, ServerID: r.ServerID, Label: cleanLabel(r.Label), Account: acct}, nil
+		owner := r.Owner
+		if !tunnel.ValidHubUser(owner) {
+			owner = ""
+		}
+		return &Enrolled{Token: r.Token, ServerID: r.ServerID, Label: cleanLabel(r.Label), Account: acct, OwnerUser: owner}, nil
 	case http.StatusBadRequest, http.StatusForbidden:
 		switch r.Error {
 		case "authorization_pending":

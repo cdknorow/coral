@@ -100,7 +100,7 @@ func inboundKindFor(kind Kind) *inboundKind {
 func validInboundHeader(k *inboundKind, h Header) bool {
 	max := k.pathCap(h.Path)
 	return h.Kind == k.kind && h.Method == http.MethodPost && max > 0 &&
-		h.Query == "" && len(h.Headers) == 0 && len(h.Protocols) == 0 && h.HubUser == "" && h.HubTier == "" &&
+		h.Query == "" && len(h.Headers) == 0 && len(h.Protocols) == 0 && h.HubUser == "" && h.HubTier == "" && h.HubRole == "" &&
 		h.ContentLength >= 0 && h.ContentLength <= int64(max)
 }
 

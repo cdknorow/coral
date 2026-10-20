@@ -485,6 +485,10 @@ func (m *Manager) pollEnrollment(ctx context.Context, gen int, dc *DeviceCode) {
 					m.signinEvent(ctx, SigninEvent{Kind: SigninOwnerPinned, How: "enrollment"})
 				}
 			}
+			if en.OwnerUser != "" {
+				// Recorded once, here: the update routes' owner check compares every relaunch with it (#5280).
+				_, _ = m.o.Store.PinOwnerUser(ctx, en.ServerID, en.OwnerUser)
+			}
 			conn, gerr := m.o.Store.Get(ctx)
 			if gerr != nil {
 				m.finishEnroll(gen, "enrolled, but the stored enrollment could not be read")

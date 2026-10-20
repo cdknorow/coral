@@ -37,6 +37,7 @@ func TestCloudRoutesSameUserGate(t *testing.T) {
 		{"POST", "/api/cloud/rekey", `{"confirm":true}`, true, true}, // #3698 (the key is usable here: 409)
 		{"PUT", "/api/cloud/max-mode", `{"mode":"view"}`, true, true},
 		{"PUT", "/api/cloud/allow-auto-accept", `{"allow":true}`, true, true},
+		{"PUT", "/api/cloud/hub-relaunch", `{"allow":true}`, true, true}, // #5280
 		{"POST", "/api/cloud/redeem", `{"check":true}`, false, true},
 	}
 	dashboard := map[string]string{"Sec-Fetch-Site": "same-origin", "Origin": "http://127.0.0.1:8420"}

@@ -401,6 +401,11 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
 	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
 	r.Put("/api/cloud/redact-tokens", s.cloudHandler.SetRedactTokens)
+	r.Put("/api/cloud/hub-relaunch", s.cloudHandler.SetHubRelaunch) // #5280
+	// Coral Hub's relaunch into a staged update (#5280): 404 until the feature is switched on and the updater exists.
+	upd := routes.NewUpdateRelaunchHandler(store.NewSessionStore(s.db), s.cfg.CoralDir(), func() string { return routes.TerminalKind(s.terminal) }, nil)
+	r.Get("/api/system/update", upd.Status)
+	r.Post("/api/system/update/relaunch", upd.Relaunch)
 	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)
 	r.Post("/api/cloud/cli-hello", s.cloudHandler.CLIHello)
 }

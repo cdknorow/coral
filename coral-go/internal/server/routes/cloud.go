@@ -41,6 +41,16 @@ const MaxModeSetting = "cloud_max_mode"
 // the mode cap; turning it off ends every enable that came from the hub.
 const AllowHubAutoAcceptSetting = "cloud_allow_hub_auto_accept"
 
+// HubRelaunchSetting is the local switch "Let Coral Hub relaunch this Coral to install updates" (#5280). On unless set to "false",
+// read from the settings store on every relaunch request, and never reachable through the tunnel: its write has its own route, and
+// PUT /api/settings refuses it like the mode cap.
+const HubRelaunchSetting = "hub_relaunch_updates"
+
+// HubRelaunchAllowed reads the switch (default on).
+func HubRelaunchAllowed(settings map[string]string) bool {
+	return setreg.Bool(settings, HubRelaunchSetting)
+}
+
 // RedactTokensSetting is the local switch "hide tokens from Coral Hub viewers" (#3560): the
 // connector replaces well-known credential formats and private keys in View replies before
 // they leave this computer. On unless set to "false"; local only, like the mode cap.
@@ -238,6 +248,8 @@ type cloudStatus struct {
 	AllowHubAutoAccept bool `json:"allow_hub_auto_accept"`
 	// RedactTokens: tokens and private keys are hidden from Coral Hub viewers (#3560).
 	RedactTokens bool `json:"redact_tokens"`
+	// HubRelaunchUpdates is the local switch "Let Coral Hub relaunch this Coral to install updates" (#5280).
+	HubRelaunchUpdates bool `json:"hub_relaunch_updates"`
 	// Bootstrap is the last one-time-credential enrollment's outcome
 	// ({status, detail, at}); absent when there was none.
 	Bootstrap json.RawMessage `json:"bootstrap,omitempty"`
@@ -254,15 +266,15 @@ func (h *CloudHandler) status() cloudStatus {
 	if m := h.manager(); m != nil {
 		st = m.Status()
 	}
-	allow, redact := true, true
+	allow, redact, relaunch := true, true, true
 	var boot json.RawMessage
 	if s, err := h.ss.GetSettings(context.Background()); err == nil {
-		allow, redact = HubAutoAcceptAllowed(s), HubRedactTokens(s)
+		allow, redact, relaunch = HubAutoAcceptAllowed(s), HubRedactTokens(s), HubRelaunchAllowed(s)
 		if v := setreg.Raw(s, cloud.BootstrapStatusSetting); json.Valid([]byte(v)) {
 			boot = json.RawMessage(v)
 		}
 	}
-	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
+	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, HubRelaunchUpdates: relaunch, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
 	if rs := h.secrets(); rs != nil {
 		if ks, err := rs.KeyState(context.Background()); err == nil && ks.State == "refused" {
 			out.SecretKey = &ks
@@ -771,6 +783,26 @@ func (h *CloudHandler) SetRedactTokens(w http.ResponseWriter, r *http.Request) {
 		v = "false"
 	}
 	if err := h.ss.SetSetting(r.Context(), RedactTokensSetting, v); err != nil {
+		errInternalServer(w, "Could not save the setting")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.status())
+}
+
+// SetHubRelaunch: PUT /api/cloud/hub-relaunch {"allow": bool}. Local dashboard and the signed command line only (never through
+// the tunnel): whether Coral Hub's owner may relaunch this Coral into an update it has staged (#5280).
+func (h *CloudHandler) SetHubRelaunch(w http.ResponseWriter, r *http.Request) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
+		return
+	}
+	var body struct {
+		Allow *bool `json:"allow"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.Allow == nil {
+		errBadRequest(w, "allow is required")
+		return
+	}
+	if err := h.ss.SetSetting(r.Context(), HubRelaunchSetting, strconv.FormatBool(*body.Allow)); err != nil {
 		errInternalServer(w, "Could not save the setting")
 		return
 	}

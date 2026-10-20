@@ -29,6 +29,7 @@ const (
 	LegacyHubOperator        = "hub_acts_as_operator"
 	HubRedactTokens          = "hub_redact_tokens"
 	CloudAllowHubAutoAccept  = "cloud_allow_hub_auto_accept"
+	HubRelaunchUpdates       = "hub_relaunch_updates"
 	CloudMaxMode             = "cloud_max_mode"
 	IdentityActor            = "identity_actor"
 	AgentLaunchLimit         = "agent_launch_limit"
@@ -195,6 +196,7 @@ func init() {
 	register(Spec{Key: IdentityActor, Kind: KindEnum, Values: []string{"log", "enforce"}, Default: "log", Class: ClassOwnRoute, Apply: ApplyLive, Doc: "Whether the actor header is enforced."})
 	ownRoute(CloudMaxMode, KindText, "", "The most access Coral Hub may have.")
 	ownRoute(CloudAllowHubAutoAccept, KindBool, "true", "The Hub may auto-accept.")
+	ownRoute(HubRelaunchUpdates, KindBool, "true", "The Hub's owner may relaunch this Coral to install a staged update (#5280).")
 	ownRoute(HubRedactTokens, KindBool, "true", "Redact tokens in what the Hub sees.")
 	ownRoute("hub_signin_enabled", KindBool, "false", "Sign in with the Hub.")
 	optIn("hub_signin_enabled")

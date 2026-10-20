@@ -44,6 +44,7 @@ type fakeHub struct {
 
 	routeKey  atomic.Value // string: the route key Welcome carries (#3683); unset: none
 	account   atomic.Value // string: the account the enrollment reply names (#3966); unset: none
+	ownerUser atomic.Value // string: the owner's hub-user label the enrollment reply names (#5280); unset: none
 	signin    atomic.Value // signinFunc: answers Hub sign-in (#3966); unset: not advertised
 	routeMu   sync.Mutex
 	routeSeen []string // the X-Coral-Route header of each /tunnel dial
@@ -100,6 +101,9 @@ func newFakeHub(t *testing.T) *fakeHub {
 		reply := map[string]any{"server_token": fakeToken, "server_id": "srv_1", "label": "My Laptop"}
 		if a, ok := h.account.Load().(string); ok {
 			reply["account"] = a
+		}
+		if u, ok := h.ownerUser.Load().(string); ok {
+			reply["owner_user"] = u
 		}
 		json.NewEncoder(w).Encode(reply)
 	})

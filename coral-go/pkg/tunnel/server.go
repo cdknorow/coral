@@ -487,7 +487,7 @@ func (s *Session) RoundTrip(req *http.Request) (*http.Response, error) {
 	hdr := Header{
 		Kind: KindHTTP, Method: req.Method, Path: req.URL.EscapedPath(), Query: req.URL.RawQuery,
 		Headers: req.Header.Clone(), ContentLength: req.ContentLength, HubUser: hubUserFrom(ctx),
-		HubTier: hubTierFrom(ctx),
+		HubTier: hubTierFrom(ctx), HubRole: hubRoleFrom(ctx),
 	}
 	hs, err := s.OpenStream(ctx, hdr)
 	if err != nil {

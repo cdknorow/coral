@@ -344,6 +344,11 @@ var routeTable = cat(
 	rules(http.MethodGet, TierLaunch, "/api/agents/models"),
 	// Which agents run an older hook set: for the Operator who would resume them (#3665).
 	rules(http.MethodGet, TierLaunch, "/api/system/hooks-status"),
+	// Relaunching this Coral into an update it has already verified and staged (#5280): the status is View, the relaunch is Launch and
+	// the owner's alone. The machine checks the hub's owner marker (HubRoleHeader, hubrole.go), the enrolled owner, the local switch and
+	// the mode again, and the hub cannot choose a version: the relaunch body is one bound token. Nothing else under /api/system/update.
+	rules(http.MethodGet, TierView, UpdateStatusPath),
+	rules(http.MethodPost, TierLaunch, UpdateRelaunchPath),
 	// Pinning a folder to the Agents list names a folder to launch into (#3630): Launch, like
 	// browsing for one. Reading the pins is View (above).
 	rules(http.MethodPost, TierLaunch, "/api/pinned-folders"),

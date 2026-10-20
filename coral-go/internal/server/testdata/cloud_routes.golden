@@ -154,6 +154,7 @@ GET /api/system/status never
 GET /api/system/telemetry never
 GET /api/system/terminal-backend never
 GET /api/system/terminal-logs never
+GET /api/system/update view
 GET /api/system/update-check never
 GET /api/tags view
 GET /api/tasks/active view
@@ -314,6 +315,7 @@ POST /api/system/restart never
 POST /api/system/telemetry/acknowledge never
 POST /api/system/terminal-backend/end-leftover never
 POST /api/system/terminal-logs/delete-ended never
+POST /api/system/update/relaunch launch
 POST /api/tags never
 POST /api/tasks/run launch
 POST /api/tasks/runs/{runID}/kill never
@@ -339,6 +341,7 @@ PUT /api/board/{project}/settings never
 PUT /api/board/{project}/working-mode interact
 PUT /api/board/{project}/working-mode/presets/{presetID} never
 PUT /api/cloud/allow-auto-accept never
+PUT /api/cloud/hub-relaunch never
 PUT /api/cloud/max-mode never
 PUT /api/cloud/redact-tokens never
 PUT /api/scheduled/jobs/{jobID} never

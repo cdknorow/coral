@@ -50,11 +50,12 @@ func (h *SystemHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 // PutSettings upserts one or more settings.
 // PUT /api/settings
 // hubTrustSettingRoutes are the Coral Hub link's trust settings and the routes that write them
-// (all three are denied to a Coral Hub sign-in, and the dashboard writes them there).
+// (all of them are denied to a Coral Hub sign-in, and the dashboard writes them there).
 var hubTrustSettingRoutes = map[string]string{
 	MaxModeSetting:            "PUT /api/cloud/max-mode",
 	AllowHubAutoAcceptSetting: "PUT /api/cloud/allow-auto-accept",
 	RedactTokensSetting:       "PUT /api/cloud/redact-tokens",
+	HubRelaunchSetting:        "PUT /api/cloud/hub-relaunch", // #5280
 }
 
 // hubSigninSettingKey: a Sign in with Coral Hub setting (server.HubSigninEnabledSetting and its

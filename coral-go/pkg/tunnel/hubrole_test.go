@@ -1,0 +1,129 @@
+package tunnel
+
+import (
+	"context"
+	"net/http"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestIsUpdateRouteIsExactlyTheTwoRoutes(t *testing.T) {
+	for _, tc := range []struct {
+		method, path string
+		want         bool
+	}{
+		{http.MethodGet, "/api/system/update", true},
+		{http.MethodPost, "/api/system/update/relaunch", true},
+		{http.MethodPost, "/api/system/update", false},
+		{http.MethodGet, "/api/system/update/relaunch", false},
+		{http.MethodPut, "/api/system/update/relaunch", false},
+		{http.MethodGet, "/api/system/update-check", false},
+		{http.MethodGet, "/api/system/update/", false},
+		{http.MethodPost, "/api/system/update/relaunch/x", false},
+		{http.MethodGet, "/api/system/hub-operator", false},
+	} {
+		assert.Equal(t, tc.want, IsUpdateRoute(tc.method, tc.path), "%s %s", tc.method, tc.path)
+	}
+}
+
+func TestStampRoleOnlyForAnOwnerStreamOnAnUpdateRoute(t *testing.T) {
+	const user = "hub-user-1234abcd"
+	for _, tc := range []struct {
+		name         string
+		role         string
+		method, path string
+		inHeaders    http.Header
+		wantRole     string
+		wantUser     string
+	}{
+		{"owner on the relaunch", "owner", http.MethodPost, "/api/system/update/relaunch", nil, "owner", user},
+		{"owner on the status", "owner", http.MethodGet, "/api/system/update", nil, "owner", user},
+		{"owner elsewhere", "owner", http.MethodGet, "/api/sessions/live", nil, "", ""},
+		{"owner on a board write", "owner", http.MethodPost, "/api/board/t/messages", nil, "", ""},
+		{"no role on the relaunch", "", http.MethodPost, "/api/system/update/relaunch", nil, "", ""},
+		{"a request's own marker, no role", "", http.MethodPost, "/api/system/update/relaunch", http.Header{HubRoleHeader: {"owner"}}, "", ""},
+		{"a request's own marker, other route", "owner", http.MethodGet, "/api/health", http.Header{HubRoleHeader: {"owner"}}, "", ""},
+		{"two spellings of the marker", "", http.MethodPost, "/api/system/update/relaunch", http.Header{"x-coral-hub-role": {"owner"}, "X-CORAL-HUB-ROLE": {"owner"}}, "", ""},
+		{"a request's own user, owner stream", "owner", http.MethodGet, "/api/system/update", http.Header{HubUserHeader: {"hub-user-ffffffff"}}, "owner", user},
+	} {
+		h := Header{Kind: KindHTTP, Method: tc.method, Path: tc.path, HubUser: user, HubRole: tc.role}
+		out := scrub(tc.inHeaders, tc.method, tc.path)
+		stampRole(out, h, tc.method, tc.path)
+		assert.Equal(t, tc.wantRole, out.Get(HubRoleHeader), tc.name)
+		// A forged spelling never survives, whatever the role.
+		for k := range out {
+			if http.CanonicalHeaderKey(k) != k {
+				t.Errorf("%s: non-canonical key %q", tc.name, k)
+			}
+		}
+		assert.Len(t, out.Values(HubRoleHeader), map[bool]int{true: 1, false: 0}[tc.wantRole != ""], tc.name)
+		if tc.wantUser != "" {
+			assert.Equal(t, tc.wantUser, out.Get(HubUserHeader), tc.name)
+		}
+	}
+}
+
+func TestHubRoleOnlyOwnerSurvivesValidationAndContext(t *testing.T) {
+	assert.Equal(t, "owner", hubRoleFrom(WithHubRole(context.Background(), "owner")))
+	for _, bad := range []string{"", "Owner", "admin", "owner ", "view"} {
+		assert.Empty(t, hubRoleFrom(WithHubRole(context.Background(), bad)), "%q", bad)
+	}
+	l := Limits{}.withDefaults()
+	ok := Header{Kind: KindHTTP, Method: "GET", Path: "/x", HubRole: "owner"}
+	assert.NoError(t, ok.validate(l))
+	bad := ok
+	bad.HubRole = "admin"
+	assert.ErrorIs(t, bad.validate(l), ErrBadHeader)
+}
+
+// End to end: the owner stream's marker reaches the Coral server on the two routes and nowhere else, and a browser's own copy
+// of the header (any spelling) never does.
+func TestHubRoleReachesTheServerOnlyOnTheUpdateRoutes(t *testing.T) {
+	var mu sync.Mutex
+	var got []http.Header
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		got = append(got, r.Header.Clone())
+		mu.Unlock()
+		w.WriteHeader(200)
+	})
+	hub := newHub(t, fastCfg())
+	launch := func() Mode { return TierLaunch }
+	sess, _ := connect(t, hub, local, func(l *LocalHandler) {
+		l.MaxMode = launch
+		l.AllowPath = nil
+		l.AllowRequest = AllowRequest(launch)
+	})
+	do := func(method, path string, ctx context.Context, hdr http.Header) {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(ctx, method, "http://x"+path, nil)
+		for k, vs := range hdr {
+			req.Header[k] = vs
+		}
+		resp, err := sess.RoundTrip(req)
+		require.NoError(t, err, "%s %s", method, path)
+		resp.Body.Close()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	owner := WithHubUser(WithHubRole(WithHubTier(ctx, "launch"), "owner"), "hub-user-1234abcd")
+	forged := http.Header{"X-Coral-Hub-Role": {"owner"}, "x-coral-hub-role": {"owner"}}
+
+	do(http.MethodGet, "/api/system/update", owner, nil)
+	do(http.MethodPost, "/api/system/update/relaunch", owner, nil)
+	do(http.MethodGet, "/api/health", owner, forged)
+	do(http.MethodGet, "/api/system/update", WithHubTier(ctx, "view"), forged)
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, got, 4)
+	assert.Equal(t, "owner", got[0].Get(HubRoleHeader))
+	assert.Equal(t, "hub-user-1234abcd", got[0].Get(HubUserHeader))
+	assert.Equal(t, "owner", got[1].Get(HubRoleHeader))
+	assert.Empty(t, got[2].Get(HubRoleHeader), "another route: no marker, the browser's copy dropped")
+	assert.Empty(t, got[3].Get(HubRoleHeader), "a stream with no role: the browser's copy dropped on the update route too")
+	assert.Empty(t, got[3].Get(HubUserHeader))
+}

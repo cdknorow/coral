@@ -73,6 +73,7 @@ GET /api/sessions/{id}/resolve redact
 GET /api/sessions/{id}/status redact
 GET /api/settings/default-prompts redact
 GET /api/system/hub-operator redact
+GET /api/system/update redact
 GET /api/tags redact
 GET /api/tasks/active redact
 GET /api/teams/all redact

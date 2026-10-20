@@ -69,6 +69,9 @@ var operatorOnlyRoutes = map[string]string{
 	// #3460: Settings > Run as a hub, and restarting Coral (Security's review).
 	"PUT /api/system/hub-mode": "change whether Coral runs as a hub",
 	"POST /api/system/restart": "restart Coral",
+	// #5280: relaunching into a staged update (Coral Hub's owner), and what is staged.
+	"GET /api/system/update":           "see the staged update",
+	"POST /api/system/update/relaunch": "relaunch Coral into the staged update",
 	// #4065: the models each agent CLI offers. Reading runs no CLI, but agents have no use for
 	// it; a refresh runs the user's CLIs (rate limited) and is the Operator's.
 	"GET /api/agents/models":          "list the models each agent CLI offers",
@@ -79,6 +82,7 @@ var operatorOnlyRoutes = map[string]string{
 	"PUT /api/cloud/max-mode":                        "change what Coral Hub may do",
 	"PUT /api/cloud/allow-auto-accept":               "change whether Coral Hub may turn on auto-accept",
 	"PUT /api/cloud/redact-tokens":                   "change whether tokens are hidden from Coral Hub viewers",
+	"PUT /api/cloud/hub-relaunch":                    "change whether Coral Hub may relaunch Coral for an update", // #5280
 	"PUT /api/system/identity-actor":                 "change how Coral decides who is calling",
 	"POST /api/cloud/connect":                        "connect to Coral Hub",
 	"POST /api/cloud/connect/cancel":                 "cancel connecting to Coral Hub",

@@ -300,6 +300,8 @@ var columnMigrations = []struct {
 	{"live_sessions", "permission_mode", "TEXT"}, // the launch's effective permission mode (#5188)
 	{"cloud_connection", "route_key", "TEXT"},    // the hub's routing hint for this enrollment (#3683)
 	{"cloud_connection", "hub_owner", "TEXT"},    // the Coral Hub account that owns this enrollment (#3966)
+	// The owner's hub-user-<8 hex> label as the hub stamps it, recorded at enrolment only (#5280); NULL = unknown.
+	{"cloud_connection", "hub_owner_user", "TEXT"},
 	// A Hub sign-in's grant (#3966): empty for every other browser session.
 	{"browser_sessions", "hub_grant", "TEXT NOT NULL DEFAULT ''"},
 	{"browser_sessions", "hub_account", "TEXT NOT NULL DEFAULT ''"},

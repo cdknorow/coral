@@ -128,6 +128,10 @@ func TestSensitivePathCoralDataDir(t *testing.T) {
 	ProtectDataDir(custom)
 	assert.True(t, sensitivePath(filepath.Join(custom, "api_key")))
 	assert.True(t, sensitivePath(strings.ToUpper(filepath.Join(custom, "sessions.db"))))
+	// #5280: the update state (the relaunch's acknowledgement key and used tokens, the updater's record) is under it too.
+	for _, f := range []string{"ack.key", "ack_used.json", "state.json"} {
+		assert.True(t, sensitivePath(filepath.Join(custom, "updates", f)), f)
+	}
 	assert.False(t, sensitivePath(filepath.Join(e.base, "cdata-notes", "a.txt")))
 
 	t.Setenv("CORAL_DATA_DIR", filepath.Join(e.base, "envdata"))

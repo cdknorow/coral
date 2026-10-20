@@ -76,10 +76,10 @@ func (s *CloudStore) Save(ctx context.Context, hubURL, serverID, label, token st
 	}
 	// A new enrollment starts without a route key (#3683) or an owner (#3966): an earlier one's
 	// belonged to it.
-	_, err = s.db.ExecContext(ctx, `INSERT INTO cloud_connection (id, hub_url, server_id, label, token, state, created_at, route_key, hub_owner)
-		VALUES (1, ?, ?, ?, ?, ?, ?, NULL, NULL)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO cloud_connection (id, hub_url, server_id, label, token, state, created_at, route_key, hub_owner, hub_owner_user)
+		VALUES (1, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
 		ON CONFLICT(id) DO UPDATE SET hub_url=excluded.hub_url, server_id=excluded.server_id, label=excluded.label,
-		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL, route_key=NULL, hub_owner=NULL`,
+		  token=excluded.token, state=excluded.state, created_at=excluded.created_at, last_error=NULL, route_key=NULL, hub_owner=NULL, hub_owner_user=NULL`,
 		strings.TrimRight(hubURL, "/"), serverID, label, env, CloudStateActive, nowUTC())
 	return err
 }
@@ -171,6 +171,27 @@ const OwnerBlocked = "blocked"
 // and reports whether it did.
 func (s *CloudStore) PinOwner(ctx context.Context, serverID, account string) (bool, error) {
 	res, err := s.db.ExecContext(ctx, "UPDATE cloud_connection SET hub_owner = ? WHERE id = 1 AND server_id = ? AND hub_owner IS NULL", account, serverID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// OwnerUser is the owner's hub-user-<8 hex> label recorded at enrolment (#5280), or "" when the enrolment named none (an older hub, or an
+// enrolment made before this existed). It is never set from a later request.
+func (s *CloudStore) OwnerUser(ctx context.Context) (string, error) {
+	var o sql.NullString
+	err := s.db.GetContext(ctx, &o, "SELECT hub_owner_user FROM cloud_connection WHERE id = 1")
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNoCloudConnection
+	}
+	return o.String, err
+}
+
+// PinOwnerUser records user as the owner's label of the enrollment with serverID when none is recorded, and reports whether it did.
+func (s *CloudStore) PinOwnerUser(ctx context.Context, serverID, user string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, "UPDATE cloud_connection SET hub_owner_user = ? WHERE id = 1 AND server_id = ? AND hub_owner_user IS NULL", user, serverID)
 	if err != nil {
 		return false, err
 	}

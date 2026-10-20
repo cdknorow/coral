@@ -164,6 +164,9 @@ type Header struct {
 	// hub's context (WithHubTier); it decides only whether answers are redacted (hubtier.go).
 	// Missing or anything else is View.
 	HubTier string `json:"hub_tier,omitempty"`
+	// HubRole is "owner" when the viewer is the hub account this machine is enrolled to, set by the hub on the two update routes only
+	// (hubrole.go, #5280). Missing or anything else is no role.
+	HubRole string `json:"hub_role,omitempty"`
 }
 
 // ResponseHeader answers a Header (connector to hub).
@@ -255,6 +258,9 @@ func (h *Header) validate(l Limits) error {
 	}
 	if h.HubUser != "" && !ValidHubUser(h.HubUser) {
 		return fmt.Errorf("%w: hub user", ErrBadHeader)
+	}
+	if h.HubRole != "" && h.HubRole != HubRoleOwner {
+		return fmt.Errorf("%w: hub role", ErrBadHeader)
 	}
 	if len(h.Protocols) > 16 {
 		return fmt.Errorf("%w: protocols", ErrBadHeader)
