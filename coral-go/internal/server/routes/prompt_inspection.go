@@ -5,11 +5,17 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cloud"
 )
 
 // GetPromptInspection displays defaults separately from current global overrides.
 // It does not edit global role prompts or represent an already running session.
 func (h *SystemHandler) GetPromptInspection(w http.ResponseWriter, r *http.Request) {
+	// Through Coral Hub the global prompts are the owner's to read (#5307); anyone else, a grantee at launch tier included, is refused.
+	if cloud.Tunneled(r) && !hubOwnerRequest(r).owner {
+		writeJSON(w, http.StatusForbidden, map[string]string{"code": "owner_only", "error": "only the account this computer is linked to can read the prompts through Coral Hub"})
+		return
+	}
 	settings, err := h.ss.GetSettings(r.Context())
 	if err != nil {
 		errInternalServer(w, err.Error())

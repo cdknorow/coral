@@ -57,8 +57,11 @@ func TestHubDocModesMatchTheRouteTable(t *testing.T) {
 	// Pause and resume need Launch, a reminder Interact; reassign is never reachable.
 	routes("launch", "POST /api/board/{project}/pause", "POST /api/board/{project}/resume", "DELETE /api/board/{project}", "POST /api/tasks/run")
 	routes("interact", "POST /api/board/{project}/reminder", "PATCH /api/board/{project}/tasks/{taskID}/amend", "POST /api/board/{project}/tasks/{taskID}/complete")
-	routes("never", "POST /api/board/{project}/tasks/{taskID}/reassign", "PUT /api/board/{project}/settings")
+	routes("never", "POST /api/board/{project}/tasks/{taskID}/reassign")
+	// The board settings: the owner's alone at Launch since #5307 (the machine refuses anyone else), the prompt inspection likewise.
+	routes("launch", "PUT /api/board/{project}/settings", "GET /api/settings/prompt-inspection")
 	require.Contains(t, row("A board write that names no actor"), "pause and resume, which need **Launch**")
 	require.Contains(t, row("in any identity field of a board write"), "reassign is never reachable through the tunnel")
-	require.Contains(t, row("`PUT /api/board/{p}/settings`"), "never")
+	require.Contains(t, row("`PUT /api/board/{p}/settings`"), "needs **Launch** and is this computer's owner's alone")
+	require.Contains(t, row("`GET /api/settings/prompt-inspection`"), "needs **Launch** and is the owner's read alone")
 }

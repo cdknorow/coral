@@ -3,6 +3,7 @@ package tunnel
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -126,4 +127,79 @@ func TestHubRoleReachesTheServerOnlyOnTheUpdateRoutes(t *testing.T) {
 	assert.Empty(t, got[2].Get(HubRoleHeader), "another route: no marker, the browser's copy dropped")
 	assert.Empty(t, got[3].Get(HubRoleHeader), "a stream with no role: the browser's copy dropped on the update route too")
 	assert.Empty(t, got[3].Get(HubUserHeader))
+}
+
+func TestIsOwnerRouteIsTheUpdateRoutesAndTheOwnersConfiguration(t *testing.T) {
+	for _, tc := range []struct {
+		method, path string
+		want         bool
+	}{
+		{http.MethodGet, "/api/system/update", true},
+		{http.MethodPost, "/api/system/update/relaunch", true},
+		{http.MethodGet, "/api/board/team/settings", true},
+		{http.MethodPut, "/api/board/team/settings", true},
+		{http.MethodGet, "/api/settings/prompt-inspection", true},
+		{http.MethodPost, "/api/board/team/settings", false},
+		{http.MethodDelete, "/api/board/team/settings", false},
+		{http.MethodPut, "/api/settings/prompt-inspection", false},
+		{http.MethodGet, "/api/board/team/settings/x", false},
+		{http.MethodGet, "/api/board//settings", false},
+		{http.MethodGet, "/api/board/a/b/settings", false},
+		{http.MethodGet, "/api/settings", false},
+		{http.MethodPut, "/api/settings", false},
+		{http.MethodGet, "/api/settings/default-prompts", false},
+		{http.MethodGet, "/api/board/team/status", false},
+	} {
+		assert.Equal(t, tc.want, IsOwnerRoute(tc.method, tc.path), "%s %s", tc.method, tc.path)
+	}
+}
+
+func TestTheOwnerMarkerReachesTheConfigurationRoutesOnlyForAnOwnerStream(t *testing.T) {
+	var mu sync.Mutex
+	type seen struct{ method, path, role, user string }
+	var got []seen
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		got = append(got, seen{r.Method, r.URL.Path, r.Header.Get(HubRoleHeader), r.Header.Get(HubUserHeader)})
+		mu.Unlock()
+		w.WriteHeader(200)
+	})
+	hub := newHub(t, fastCfg())
+	launch := func() Mode { return TierLaunch }
+	sess, _ := connect(t, hub, local, func(l *LocalHandler) {
+		l.MaxMode = launch
+		l.AllowPath = nil
+		l.AllowRequest = AllowRequest(launch)
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	owner := WithHubUser(WithHubRole(WithHubTier(ctx, "launch"), "owner"), "hub-user-1234abcd")
+	grantee := WithHubUser(WithHubTier(ctx, "launch"), "hub-user-9999ffff")
+	forged := http.Header{"X-Coral-Hub-Role": {"owner"}, "x-coral-hub-role": {"owner"}}
+	do := func(c context.Context, method, path string, hdr http.Header) {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(c, method, "http://x"+path, strings.NewReader("{}"))
+		for k, vs := range hdr {
+			req.Header[k] = vs
+		}
+		resp, err := sess.RoundTrip(req)
+		require.NoError(t, err, "%s %s", method, path)
+		resp.Body.Close()
+	}
+	do(owner, http.MethodGet, "/api/board/team/settings", nil)
+	do(owner, http.MethodPut, "/api/board/team/settings", nil)
+	do(owner, http.MethodGet, "/api/settings/prompt-inspection?board=team", nil)
+	do(grantee, http.MethodPut, "/api/board/team/settings", forged)
+	do(grantee, http.MethodGet, "/api/settings/prompt-inspection", forged)
+	do(owner, http.MethodGet, "/api/board/team/status", forged) // not an owner route
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, got, 6)
+	for i := 0; i < 3; i++ {
+		assert.Equal(t, "owner", got[i].role, "%s %s", got[i].method, got[i].path)
+		assert.Equal(t, "hub-user-1234abcd", got[i].user)
+	}
+	assert.Empty(t, got[3].role, "a grantee's stream: the browser's copy is dropped")
+	assert.Empty(t, got[4].role)
+	assert.Empty(t, got[5].role, "another route: no marker even for an owner stream")
 }

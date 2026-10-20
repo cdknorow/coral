@@ -12,7 +12,6 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -32,7 +31,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/secfile"
 	setreg "github.com/cdknorow/coral/internal/settings"
@@ -178,46 +176,9 @@ func (h *UpdateRelaunchHandler) on() bool {
 	return h.Enabled != nil && h.Enabled() && h.Updater != nil
 }
 
-// callerIdentity is who the stamp says is asking: owner is true only when every check of section 13 (1) and (2) passes.
-type callerIdentity struct {
-	owner  bool
-	pseudo string // the stamped hub user when it has the stamp's form; "" otherwise
-}
-
-// identify runs the stamp and owner checks. It never trusts a header unless the request really came through the connector.
+// identify runs the stamp and owner checks (identifyOwner with this handler's own label source).
 func (h *UpdateRelaunchHandler) identify(r *http.Request) callerIdentity {
-	var id callerIdentity
-	if !cloud.TunneledAuthentic(r) {
-		return id
-	}
-	if u := r.Header.Get(tunnel.HubUserHeader); tunnel.ValidHubUser(u) && len(r.Header.Values(tunnel.HubUserHeader)) == 1 {
-		id.pseudo = u
-	}
-	roles := r.Header.Values(tunnel.HubRoleHeader)
-	if len(roles) != 1 || roles[0] != tunnel.HubRoleOwner {
-		return id
-	}
-	if id.pseudo == "" {
-		return id
-	}
-	var label string
-	if h.OwnerUser != nil {
-		l, err := h.OwnerUser(r.Context())
-		if err != nil {
-			return id // fail closed: an unreadable record is no owner
-		}
-		label = l
-	}
-	if label == "" {
-		// Enrolled before the label was recorded: the hub's marker alone (never recorded from a request).
-		h.noLabelLogged.Do(func() {
-			slog.Warn("[update] this enrolment recorded no owner label: the hub's owner marker is the only owner check; link this computer again to record it")
-		})
-		id.owner = true
-		return id
-	}
-	id.owner = subtle.ConstantTimeCompare([]byte(label), []byte(id.pseudo)) == 1
-	return id
+	return identifyOwner(r, h.OwnerUser, &h.noLabelLogged)
 }
 
 // gate is the status of the checks that don't depend on the update's state, as the reason the relaunch is unavailable ("" = pass).

@@ -272,7 +272,6 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/icon",
 		"/api/sessions/live/{name}/name-color",
 		"/api/board/{project}/working-mode",
-		// PUT /api/board/{project}/settings (cross-team settings) is never through the tunnel (#3377).
 	),
 	rules(http.MethodPatch, TierInteract,
 		"/api/sessions/live/{name}/notes/{id}",
@@ -349,6 +348,11 @@ var routeTable = cat(
 	// Relaunching this Coral into an update it has already verified and staged (#5280): the status is View, the relaunch is Launch and
 	// the owner's alone. The machine checks the hub's owner marker (HubRoleHeader, hubrole.go), the enrolled owner, the local switch and
 	// the mode again, and the hub cannot choose a version: the relaunch body is one bound token. Nothing else under /api/system/update.
+	// The owner's own configuration through the hub (#5307): saving a board's health check setup, and reading the global prompts. Launch tier,
+	// and the machine refuses anyone but the owner (the stamped marker, hubrole.go): a grantee at launch tier gets 403. The hub may set only
+	// the health part of a board's settings; the cross-team fields stay local (#3377, #4379).
+	rules(http.MethodPut, TierLaunch, "/api/board/{project}/settings"),
+	rules(http.MethodGet, TierLaunch, PromptInspectionPath),
 	rules(http.MethodGet, TierView, UpdateStatusPath),
 	rules(http.MethodPost, TierLaunch, UpdateRelaunchPath),
 	// Pinning a folder to the Agents list names a folder to launch into (#3630): Launch, like

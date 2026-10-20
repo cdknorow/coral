@@ -34,7 +34,7 @@ func putSettings(t *testing.T, url string, body map[string]any) (int, map[string
 }
 
 // Cases C6a and C6b of Security's #4180 fixture (#4176 rules 7, 16, 17, 18): only the Operator
-// changes a team's health settings, never through Coral Hub; values are clamped; the recipient
+// changes a team's health settings (through Coral Hub only its owner, #5307); values are clamped; the recipient
 // must be a member of this team.
 func TestHealthSettingsAreTheOperatorsAndChecked(t *testing.T) {
 	_, h := setupBoardTestServer(t)
@@ -58,7 +58,8 @@ func TestHealthSettingsAreTheOperatorsAndChecked(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, code, who)
 	}
 	assert.True(t, h.bs.GetHealthSettings(ctx, "team").On, "settings unchanged")
-	assert.Equal(t, tunnel.TierNever, tunnel.Classify(http.MethodPut, "/api/board/team/settings", ""), "no Hub route accepts the change")
+	// Since #5307 the Hub has a launch-tier route for the OWNER's change of the health setup: the handler refuses everyone else (hub_owner_settings_test.go).
+	assert.Equal(t, tunnel.TierLaunch, tunnel.Classify(http.MethodPut, "/api/board/team/settings", ""))
 	assert.NotEmpty(t, operatorOnlyRoutes["PUT /api/board/{project}/settings"], "an agent token is refused before the handler")
 
 	// C6b: out-of-range values are clamped.

@@ -3,11 +3,12 @@ package tunnel
 import (
 	"context"
 	"net/http"
+	"regexp"
 )
 
-// The owner marker for the update routes (#5280, section 13 of the auto-update design).
+// The owner marker for the update routes (#5280, section 13 of the auto-update design) and the owner's configuration routes (#5307).
 //
-// Coral Hub marks a request "from the account this machine is enrolled to" only on the two update routes, as a field of the stream
+// Coral Hub marks a request "from the account this machine is enrolled to" only on those routes, as a field of the stream
 // (Header.HubRole), never as an HTTP header a browser could send. The connector turns the field into HubRoleHeader for the local
 // server on those two routes and nowhere else; the server honours it only on a request this connector stamped. Any HubRoleHeader a
 // request carries itself is not on the forward allowlist, and is deleted again after the scrub.
@@ -23,6 +24,28 @@ const (
 	UpdateStatusPath   = "/api/system/update"
 	UpdateRelaunchPath = "/api/system/update/relaunch"
 )
+
+// IsOwnerRoute reports whether the owner marker is stamped for (method, decodedPath): the two update routes, and the owner's reads and
+// writes of this computer's own configuration (#5307): GET and PUT /api/board/{project}/settings (the health check's setup) and
+// GET /api/settings/prompt-inspection. The marker only says the hub account is the one this computer is linked to; every one of these routes
+// decides for itself what it gives the owner and refuses a viewer without it.
+func IsOwnerRoute(method, decodedPath string) bool {
+	if IsUpdateRoute(method, decodedPath) {
+		return true
+	}
+	switch method {
+	case http.MethodGet:
+		return decodedPath == PromptInspectionPath || boardSettingsRoute.MatchString(decodedPath)
+	case http.MethodPut:
+		return boardSettingsRoute.MatchString(decodedPath)
+	}
+	return false
+}
+
+// PromptInspectionPath is the read-only view of the global prompts.
+const PromptInspectionPath = "/api/settings/prompt-inspection"
+
+var boardSettingsRoute = regexp.MustCompile(`^/api/board/[^/]+/settings$`)
 
 // IsUpdateRoute reports whether (method, decodedPath) is GET /api/system/update or POST /api/system/update/relaunch.
 func IsUpdateRoute(method, decodedPath string) bool {
@@ -51,7 +74,7 @@ func hubRoleFrom(ctx context.Context) string {
 // whatever the request itself carried under these names is removed first.
 func stampRole(out http.Header, h Header, method, decodedPath string) {
 	out.Del(HubRoleHeader)
-	if h.HubRole == HubRoleOwner && IsUpdateRoute(method, decodedPath) {
+	if h.HubRole == HubRoleOwner && IsOwnerRoute(method, decodedPath) {
 		out.Set(HubRoleHeader, HubRoleOwner)
 		out.Del(HubUserHeader)
 		if h.HubUser != "" {

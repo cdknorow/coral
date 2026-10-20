@@ -134,7 +134,7 @@ GET /api/sessions/{sessionID}/resolve view
 GET /api/sessions/{sessionID}/status view
 GET /api/settings never
 GET /api/settings/default-prompts view
-GET /api/settings/prompt-inspection never
+GET /api/settings/prompt-inspection launch
 GET /api/spec.json never
 GET /api/system/api-key never
 GET /api/system/artifact-store never
@@ -338,7 +338,7 @@ PUT /api/artifacts/{id}/comments/lock never
 PUT /api/artifacts/{id}/keep never
 PUT /api/auth/hub-origins never
 PUT /api/auth/hub-signin never
-PUT /api/board/{project}/settings never
+PUT /api/board/{project}/settings launch
 PUT /api/board/{project}/working-mode interact
 PUT /api/board/{project}/working-mode/presets/{presetID} never
 PUT /api/cloud/allow-auto-accept never

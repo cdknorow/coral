@@ -126,10 +126,10 @@ func (h *BoardHandler) GetBoardSettings(w http.ResponseWriter, r *http.Request) 
 		errInternalServer(w, err.Error())
 		return
 	}
-	if cloud.Tunneled(r) {
+	if cloud.Tunneled(r) && !hubOwnerRequest(r).owner {
 		// The health check's configuration (its recipient, its default reviewers) is the
 		// local dashboard's: Coral Hub's view of the settings leaves it out (Security's #4176
-		// rule 17, on step 2).
+		// rule 17, on step 2), except for this computer's owner (#5307), who sets it through the hub.
 		raw, err := json.Marshal(settings)
 		var fields map[string]json.RawMessage
 		if err != nil || json.Unmarshal(raw, &fields) != nil {
@@ -174,6 +174,18 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 	if !allowed {
 		errForbidden(w, "only the Operator can change board settings")
 		return
+	}
+	if cloud.Tunneled(r) {
+		// Through Coral Hub this is the owner's, and only for the health check's setup (#5307): a grantee at launch tier is refused, and the
+		// cross-team fields (who may send to this board, which servers, whether files are accepted) stay on this computer (#3377, #4379).
+		if !hubOwnerRequest(r).owner {
+			writeJSON(w, http.StatusForbidden, map[string]string{"code": "owner_only", "error": "only the account this computer is linked to can change board settings through Coral Hub"})
+			return
+		}
+		if body.CrossTeamMessaging != nil || body.CrossTeamServers != nil || body.CrossTeamArtifacts != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"code": "local_only", "error": "cross-team settings can be changed only on this computer, not through Coral Hub"})
+			return
+		}
 	}
 	if body.CrossTeamArtifacts != nil && cloud.Tunneled(r) {
 		writeError( // Accepting files from other teams is decided on this computer only (#4379; coral-hub's
