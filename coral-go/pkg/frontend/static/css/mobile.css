@@ -317,6 +317,8 @@
     }
     .nav-select-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .nav-more-menu.nav-all { left: 8px !important; right: 8px !important; }
+    /* 320 px with an agent open has five buttons in the bar: the picker gives up some margin and padding so "Agents" is not cut to "Age..." (#5273) */
+    @media (max-width: 359px) { .nav-select { margin: 0 4px; padding: 0 8px; gap: 4px; } }
 
     /* Show mobile back button in session header */
     .mobile-back-btn {

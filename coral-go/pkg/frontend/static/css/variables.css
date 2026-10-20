@@ -38,6 +38,7 @@
     --accent:     #58a6ff;
     --accent-dim: #1f6feb;
     --accent-rgb: 88, 166, 255;
+    --link-text:  var(--accent); /* a link as text in a post or a chat bubble; the light theme has a darker one (#5273) */
 
     /* Semantic Status */
     --success:     #4aba60;
@@ -239,6 +240,7 @@
     --accent:     #0969da;
     --accent-dim: #0550ae;
     --accent-rgb: 9, 105, 218;
+    --link-text:  #0550ae; /* the accent is 4.0 to 4.4:1 on a chat bubble and a post's panel; this is 5.9 or more */
 
     /* Semantic Status */
     --success:     #1a7f37;
@@ -313,7 +315,7 @@
 
     /* Chat */
     --chat-human-bg:      #d4e4f7;
-    --chat-prose-inline-code: #976012; /* #e5931f's hue, dark enough for 4.5:1 */
+    --chat-prose-inline-code: #7d5200; /* #e5931f's hue, dark enough for 4.5:1 on the bubble and the code chip (#976012 was 4.3 on the chip, #5273) */
     --chat-human-color:   #1f2328;
     --chat-assistant-bg:  #f0f1f3;
     --board-msg-bg:       transparent;

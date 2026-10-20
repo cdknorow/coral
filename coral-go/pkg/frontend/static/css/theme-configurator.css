@@ -138,7 +138,7 @@
 }
 
 .btn-danger {
-    color: var(--error);
+    color: var(--error-text); /* --error is 4.2:1 on the confirm dialog in the light theme; this is the same red where it reads as text (#5273) */
     border-color: var(--error);
 }
 

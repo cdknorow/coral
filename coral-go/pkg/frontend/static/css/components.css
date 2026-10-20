@@ -418,7 +418,7 @@
 .mb-message-body a,
 .board-artifact-link,
 .subscriber-history-link {
-    color: var(--accent);
+    color: var(--link-text);
     text-decoration: none;
 }
 .mb-message-body a:hover,

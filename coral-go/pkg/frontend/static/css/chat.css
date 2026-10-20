@@ -888,7 +888,7 @@
     text-underline-offset: 2px;
 }
 .live-history-center .chat-file-ref-bare {
-    color: var(--accent);
+    color: var(--link-text);
 }
 
 /* Options for a clicked file reference */
@@ -1632,3 +1632,24 @@
 
 /* the page's polite live region for the prompt card: for screen readers only (#5252) */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Code colours in the light theme (#5273): the vendored highlight.js theme is GitHub Dark, whose colours are 1.6 to 2.1:1 on a light panel. These are GitHub's light colours, a shade darker where
+   GitHub's own are under 4.5:1 on the chat's code chip (#e7e9ed). */
+[data-theme="light"] .hljs-doctag, [data-theme="light"] .hljs-keyword, [data-theme="light"] .hljs-meta .hljs-keyword, [data-theme="light"] .hljs-template-tag, [data-theme="light"] .hljs-template-variable,
+[data-theme="light"] .hljs-type { color: #a40e26; }
+[data-theme="light"] .hljs-title, [data-theme="light"] .hljs-title.function_ { color: #6639ba; }
+[data-theme="light"] .hljs-attr, [data-theme="light"] .hljs-attribute, [data-theme="light"] .hljs-literal, [data-theme="light"] .hljs-meta, [data-theme="light"] .hljs-number, [data-theme="light"] .hljs-operator,
+[data-theme="light"] .hljs-selector-attr, [data-theme="light"] .hljs-selector-class, [data-theme="light"] .hljs-selector-id, [data-theme="light"] .hljs-variable { color: #0550ae; }
+[data-theme="light"] .hljs-meta .hljs-string, [data-theme="light"] .hljs-regexp, [data-theme="light"] .hljs-string { color: #0a3069; }
+[data-theme="light"] .hljs-built_in, [data-theme="light"] .hljs-symbol, [data-theme="light"] .hljs-bullet { color: #8a3000; }
+[data-theme="light"] .hljs-code, [data-theme="light"] .hljs-comment, [data-theme="light"] .hljs-formula { color: #57606a; }
+[data-theme="light"] .hljs-name, [data-theme="light"] .hljs-quote, [data-theme="light"] .hljs-selector-pseudo, [data-theme="light"] .hljs-selector-tag { color: #116329; }
+[data-theme="light"] .hljs-subst, [data-theme="light"] .hljs-emphasis, [data-theme="light"] .hljs-strong { color: inherit; }
+[data-theme="light"] .hljs-section { color: #0550ae; font-weight: 700; }
+[data-theme="light"] .hljs-addition { color: #0f5323; background-color: #dafbe1; }
+[data-theme="light"] .hljs-deletion { color: #82071e; background-color: #ffebe9; }
+
+/* The copy button on a code block is a 44 px target on a phone */
+@media (max-width: 767px) {
+    .code-block .code-copy-btn { width: 44px; height: 44px; }
+}
