@@ -216,8 +216,14 @@ function _fit() {
     const maxRows = Math.ceil(window.innerHeight / 6) + 2, maxCols = Math.ceil(window.innerWidth / 3) + 2;
     let rows = Math.min(dims.rows, maxRows);
     const cols = Math.min(dims.cols, maxCols);
+    // The height of one row: the renderer's own measurement (what the addon's proposal uses). Dividing the screen element's height by the row count looked the same but is not: the screen's height
+    // is set by the renderer a frame after a resize, so right after one (or when the view has just been shown) it is the OLD height over the NEW row count, a cell a fraction of its size, and the
+    // rows counted from it are many times too many; the next fit multiplied them again (74 x 48 -> 2,339 -> 113,987, #5396). The DOM figure is only the fallback, and only when it is a plausible cell.
+    const rs = terminal._core && terminal._core._renderService;
+    const measured = rs && rs.dimensions && rs.dimensions.css && rs.dimensions.css.cell ? rs.dimensions.css.cell.height : 0;
     const screen = terminal.element && terminal.element.querySelector('.xterm-screen');
-    const cell = screen && terminal.rows > 0 ? screen.getBoundingClientRect().height / terminal.rows : 0;
+    const fromDom = screen && terminal.rows > 0 ? screen.getBoundingClientRect().height / terminal.rows : 0;
+    const cell = measured > 0 ? measured : (fromDom >= 6 && fromDom <= 120 ? fromDom : 0);
     if (_containerEl && cell > 0) {
         const cs = getComputedStyle(_containerEl);
         const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
