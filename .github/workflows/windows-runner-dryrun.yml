@@ -20,6 +20,8 @@ on:
     branches: ["ci/**"]
     paths:
       - "tests/release/smoke_windows.ps1"
+      - "tests/release/commands.txt"
+      - "tests/release/gui_commands.txt"
       - ".github/workflows/windows-runner-dryrun.yml"
       - ".github/workflows/release.yml"
 
@@ -39,7 +41,12 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - name: Download the published portable ZIP
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: coral-go/go.sum
+
+      - name: Download the published portable ZIP and MSI
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -49,7 +56,18 @@ jobs:
           $zip = Get-ChildItem dist\Coral-*-x64-portable.zip | Select-Object -First 1
           if (-not $zip) { throw "no portable ZIP found for v$env:VERSION" }
           echo "ZIP_PATH=$($zip.FullName)" >> $env:GITHUB_ENV
+          gh release download "v$env:VERSION" --repo "${{ github.repository }}" --pattern "Coral-*-x64.msi" --dir dist
+          $msi = Get-ChildItem dist\Coral-*-x64.msi | Select-Object -First 1
+          if (-not $msi) { throw "no MSI found for v$env:VERSION" }
+          echo "MSI_PATH=$($msi.FullName)" >> $env:GITHUB_ENV
 
-      - name: Smoke test the portable package
+      - name: Smoke test the portable package and the MSI
         shell: pwsh
-        run: ./tests/release/smoke_windows.ps1 -Zip $env:ZIP_PATH
+        run: |
+          Push-Location coral-go
+          $standin = Join-Path $env:RUNNER_TEMP 'standin\claude.exe'
+          go build -o $standin ./cmd/mock-agent
+          if ($LASTEXITCODE -ne 0) { throw "go build ./cmd/mock-agent failed" }
+          Pop-Location
+          ./tests/release/smoke_windows.ps1 -Zip $env:ZIP_PATH -Msi $env:MSI_PATH -Version $env:VERSION -StandIn $standin
+          if ($LASTEXITCODE -ne 0) { throw "smoke_windows.ps1 failed" }

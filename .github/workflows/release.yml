@@ -303,9 +303,20 @@ jobs:
 
       # Start the shipped package: catch a startup break (the v1.4.67 strict-local-auth gap would
       # have hit Windows the same way) before it ships. pwsh (7) for -SkipHttpErrorCheck.
-      - name: Smoke test the portable package
+      # The stand-in agent CLI (cmd/mock-agent) is built here, not shipped: the launch check runs it in place of a real CLI.
+      - name: Smoke test the portable package and the MSI
         shell: pwsh
-        run: ./tests/release/smoke_windows.ps1 -Zip $env:ZIP_PATH
+        env:
+          RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+          BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
+        run: |
+          Push-Location coral-go
+          $standin = Join-Path $env:RUNNER_TEMP 'standin\claude.exe'
+          go build -tags "$env:BUILD_TAGS" -o $standin ./cmd/mock-agent
+          if ($LASTEXITCODE -ne 0) { throw "go build ./cmd/mock-agent failed" }
+          Pop-Location
+          ./tests/release/smoke_windows.ps1 -Zip $env:ZIP_PATH -Msi $env:MSI_PATH -Version $env:RELEASE_VERSION -StandIn $standin
+          if ($LASTEXITCODE -ne 0) { throw "smoke_windows.ps1 failed" }
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
