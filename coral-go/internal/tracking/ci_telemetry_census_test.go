@@ -73,6 +73,7 @@ var notAStarter = map[string]string{
 	// Load generators and node helpers that reference run_cdp_suites/coral in strings but do not start one.
 	"tests/perf/load.py":                               "drives an already-running server; does not start Coral",
 	"tests/frontend/remote_browse.test.mjs":            "a node unit test; does not start a server",
+	"tests/frontend/shared_images.test.mjs":            "a node unit test of the page's pasted-image text; names coral-agent in a string, starts nothing",
 	"tests/frontend/team_artifacts_copy_link.test.mjs": "a node unit test; does not start a server",
 	"tests/frontend/run_runner_folder_loss.mjs":        "a node helper; names run_cdp_suites in text",
 }
