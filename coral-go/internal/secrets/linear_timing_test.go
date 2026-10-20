@@ -3,6 +3,7 @@ package secrets
 import (
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,20 +31,47 @@ func bestOfThree(f func(string), text string) time.Duration {
 	return best
 }
 
-// requireLinear fails when f over mk(large) takes more than 9 times f over mk(small) (a fast small run is floored at 5 ms), in two measurements in a row,
-// or more than 10 s at all (a floor that only catches a blow-up: a shared runner is several times slower than a laptop).
-func requireLinear(t *testing.T, name string, mk func(n int) string, f func(string), small, large int) {
-	t.Helper()
+// measureLinear times f over mk(small) and mk(large) and says whether it is linear: no more than 9 times as long (a fast small run is floored at 5 ms) in at least one
+// of two measurements, or finished within 150 ms (too quick to read a ratio from).
+func measureLinear(mk func(n int) string, f func(string), small, large int) (ds, dl time.Duration, ok bool) {
 	text, big := mk(small), mk(large)
-	var ds, dl time.Duration
 	for attempt := 0; attempt < 2; attempt++ {
 		ds, dl = bestOfThree(f, text), bestOfThree(f, big)
 		if dl <= 150*time.Millisecond || float64(dl)/float64(max(ds, 5*time.Millisecond)) < 9.0 {
-			break
+			return ds, dl, true
 		}
 	}
-	if dl > 150*time.Millisecond {
-		require.Less(t, float64(dl)/float64(max(ds, 5*time.Millisecond)), 9.0, "%s: %v for %d bytes, %v for %d", name, ds, small, dl, large)
-	}
+	return ds, dl, false
+}
+
+// requireLinear fails when measureLinear says the pass is not linear, or when it takes more than 10 s at all (a floor that only catches a blow-up: a shared
+// runner is several times slower than a laptop).
+func requireLinear(t *testing.T, name string, mk func(n int) string, f func(string), small, large int) {
+	t.Helper()
+	ds, dl, ok := measureLinear(mk, f, small, large)
+	require.True(t, ok, "%s: %v for %d bytes, %v for %d: more than 9 times as long for 4 times the text", name, ds, small, dl, large)
 	require.Less(t, dl, 10*time.Second, "%s: %v for %d bytes", name, dl, large)
+}
+
+// The guard still guards: a pass that does work for every 500th byte over the whole text (quadratic) is refused, a single pass is accepted.
+func TestTheLinearGuardRefusesAQuadraticPassAndAcceptsALinearOne(t *testing.T) {
+	mk := func(n int) string { return strings.Repeat("a", n) }
+	var sink byte
+	quadratic := func(text string) {
+		for i := 0; i < len(text); i += 500 {
+			for j := 0; j < len(text); j++ {
+				sink += text[j]
+			}
+		}
+	}
+	linear := func(text string) {
+		for j := 0; j < len(text); j++ {
+			sink += text[j]
+		}
+	}
+	_, _, ok := measureLinear(mk, quadratic, 100_000, 400_000)
+	require.False(t, ok, "a quadratic pass must fail the guard")
+	_, _, ok = measureLinear(mk, linear, 100_000, 400_000)
+	require.True(t, ok, "a single pass must pass it")
+	_ = sink
 }
