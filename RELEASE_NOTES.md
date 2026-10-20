@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.4.139 — Linked files go with a cross-team message, and a received message lists the files that came with it
+
+### Features
+
+- **Files linked in a cross-team message are attached automatically:** when the Operator's cross-team files switch is on, the `coral://artifacts/...` and `/api/artifacts/...` links in the text of a cross-team send are attached with the message, within the same checks and limits as `--attach` (at most 4 files, and only the first 20 distinct linked files are looked at). `coral-board send` says how many were attached automatically because the text linked them, and still warns about any link it did not attach.
+- **A received message lists its files:** a cross-team message that arrives with files carries `external.attachments` in its envelope, a list of `{id, name, media_type, size}` in the order the sender attached them (up to 16; left out when there are none), so the page that shows the message can offer them. The listed file name is cleaned.
+
+### Internal
+
+- A test matrix for auto-attaching linked artifacts on cross-team sends.
+
 ## v1.4.138 — A link to a file on another computer now says so, instead of failing without a reason
 
 ### Changes
