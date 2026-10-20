@@ -195,6 +195,10 @@ if [ -n "$meta" ]; then
   else
     echo "  taking every asset from the release run's artifacts into $DL ..." >&2
     if run_artifacts "$TAG" "$DL" coral-linux-amd64 coral-linux-arm64 coral-windows-msi coral-windows-portable coral-macos-dmg; then
+      # the stable-name copies (#5333) are made in the release job and kept as their own run artifact, from 1.4.130 on
+      if release_has_stable_names "$want_ver" && ! run_artifacts "$TAG" "$DL" release-stable; then
+        fail download "stable-name copies" "$(head -c 160 "$WORK/run.err") (the release-stable run artifact)"
+      fi
       if run_artifacts "$TAG" "$DL" release-sums; then
         pass download "release run $LAST_RUN" "$(ls "$DL" | wc -l | tr -d ' ') files from its artifacts, none from the release"
       # a run from before #4936 has no release-sums artifact: only the small sums and bundles come from the release
