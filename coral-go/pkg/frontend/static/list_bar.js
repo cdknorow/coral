@@ -3,8 +3,17 @@
  * set(). The server does the work: the bar only collects what to ask for. Each panel gives a spec (its fields, sorts and words) and a model (its filters: EMPTY, clean, chips, isFiltered, without; the panel's
  * own *_filters.js, which is pure). The classes are list-bar-* (agentic.css, touch.css); the ids come from the spec so two bars never share one. */
 
+import { browserLocal } from './safe_storage.js';
+
 const DEBOUNCE_MS = 300;
 const LIVE_SETTLE_MS = 500; // how long the count must stay as it is before it is announced
+
+/** Whether a collapsible bar's panel was left open for this list (scope: the panel, key: the board or agent), kept in this browser like the filters. */
+export function loadPanelOpen(scope, key) { return !!key && browserLocal.get(`coral-list-bar-open:${scope}:${key}`) === '1'; }
+export function savePanelOpen(scope, key, open) {
+    if (!key) return;
+    if (open) browserLocal.set(`coral-list-bar-open:${scope}:${key}`, '1'); else browserLocal.remove(`coral-list-bar-open:${scope}:${key}`);
+}
 
 function make(tag, className, text) {
     const n = document.createElement(tag);
@@ -48,7 +57,7 @@ function buildField(spec) {
 }
 
 /** onChange(filters) is called with the new, clean filters when the person changes anything (typing after a short pause). */
-export function buildListBar(spec, onChange) {
+export function buildListBar(spec, onChange, hooks = {}) {
     const { EMPTY, clean, chips, isFiltered, without } = spec.model;
     const p = spec.idp;
     let f = { ...EMPTY };
@@ -60,6 +69,9 @@ export function buildListBar(spec, onChange) {
     const noSearch = !!spec.noSearch;
     // spec.inline (the agent list's, #4947): the fields and the sort sit open in the panel that holds the bar (the Display expander), not behind a Filters button; the chips give way to the panel owner's summary line.
     const inline = !!spec.inline;
+    // spec.collapsible (#5293, the agent list's pattern): the Filters button and the Sort row give way to one icon on the search row, with the count beside it; it opens a panel under the row that holds the
+    // fields, the sort and Clear filters, and the chips of what is on stay under the row when it is shut. spec.expandAll adds the second icon (the list's expand or collapse all), told by hooks.onExpandAll.
+    const collapsible = !!spec.collapsible && !spec.noSearch && !inline;
     const searchRow = make('div', 'list-bar-search-row');
     const wrap = make('div', 'list-bar-search-wrap');
     const q = make('input', 'list-bar-search'); q.type = 'search'; q.id = `${p}-search`; q.placeholder = spec.placeholder; q.maxLength = 200; q.autocomplete = 'off'; q.spellcheck = false;
@@ -72,7 +84,20 @@ export function buildListBar(spec, onChange) {
     const live = make('span', 'list-bar-live'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite');
     let announce = false;
     let liveTimer = 0; // the announcement waits for the count to settle: a server-backed panel draws the old count first and the answer's a moment later
-    if (noSearch) searchRow.hidden = true; else searchRow.append(wrap, count);
+    let tog = null, badge = null, chev = null;
+    if (collapsible) {
+        tog = make('button', 'sidebar-collapse-btn list-bar-toggle'); tog.type = 'button'; tog.id = `${p}-toggle`;
+        tog.setAttribute('aria-expanded', 'false'); tog.setAttribute('aria-controls', `${p}-menu`); tog.title = 'Filters and sort'; tog.setAttribute('aria-label', 'Filters and sort');
+        const icon = make('span', 'material-icons', 'notes'); icon.setAttribute('aria-hidden', 'true');
+        badge = make('span', 'display-badge'); badge.hidden = true;
+        tog.append(icon, badge);
+        if (spec.expandAll) {
+            chev = make('button', 'sidebar-collapse-btn group-toggle-btn list-bar-expand-all'); chev.type = 'button'; chev.dataset.next = 'expand';
+            chev.innerHTML = '<svg class="group-toggle-collapse" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9l5-5 5 5M7 15l5 5 5-5"/></svg><svg class="group-toggle-expand" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>';
+            chev.title = spec.expandAll.expand; chev.setAttribute('aria-label', spec.expandAll.expand);
+        }
+    }
+    if (noSearch) searchRow.hidden = true; else searchRow.append(wrap, count, ...(tog ? [tog] : []), ...(chev ? [chev] : []));
 
     const controls = make('div', 'list-bar-controls');
     const filterBtn = make('button', 'list-bar-filter-btn', 'Filters'); filterBtn.type = 'button';
@@ -83,38 +108,50 @@ export function buildListBar(spec, onChange) {
     // A panel with only a search (no fields: the Servers list) has no Filters button and no menu.
     const hasFilters = spec.fields.length > 0;
     if (inline) { if (sort) sort.wrap.classList.remove('list-bar-sort'); }
+    else if (collapsible) { if (sort) sort.wrap.classList.remove('list-bar-sort'); }
     else controls.append(...[hasFilters ? filterBtn : null, sort ? sort.wrap : null].filter(Boolean));
     if (noSearch && !inline) controls.append(count);
 
     const menu = make('div', 'list-bar-menu'); menu.id = `${p}-menu`; menu.hidden = true; menu.setAttribute('role', 'group'); menu.setAttribute('aria-label', 'Filters');
     const fields = spec.fields.map(buildField);
     const clearAll = make('button', 'list-bar-clear-all', 'Clear all'); clearAll.type = 'button';
-    menu.append(...fields.map(x => x.wrap), ...(inline && sort ? [sort.wrap] : []), ...(inline ? [count] : []), clearAll);
+    menu.append(...fields.map(x => x.wrap), ...((inline || collapsible) && sort ? [sort.wrap] : []), ...(inline ? [count] : []), clearAll);
     if (inline) { menu.hidden = false; menu.classList.add('list-bar-menu-inline'); clearAll.textContent = 'Clear filters'; }
+    if (collapsible) { menu.classList.add('list-bar-menu-inline', 'list-bar-panel'); clearAll.textContent = 'Clear filters'; menu.setAttribute('aria-label', 'Filters and sort'); }
 
     const chipList = make('ul', 'list-bar-chips'); chipList.setAttribute('aria-label', 'Active filters'); chipList.hidden = true;
     if (noSearch) node.classList.add('list-bar-nosearch');
     node.append(...(noSearch ? [] : [searchRow]), ...(controls.children.length ? [controls] : []), ...(hasFilters ? [menu] : []), ...(inline ? [] : [chipList]), live);
+    if (collapsible) node.classList.add('list-bar-collapsible');
 
     // Whatever a panel's model does with a text, the bar sends it trimmed: a tab or a space pasted at either end is a request the server refuses (#4806), and no panel can forget it.
     const textKeys = ['q', ...spec.fields.filter(x => x.type === 'text').map(x => x.key)];
     const trimmed = o => { const t = { ...o }; for (const k of textKeys) if (typeof t[k] === 'string') t[k] = t[k].trim(); return t; };
     const apply = next => { f = clean(trimmed(next)); announce = true; onChange({ ...f }); };
     const later = next => { clearTimeout(timer); timer = setTimeout(() => apply(next), DEBOUNCE_MS); };
-    const closeMenu = (focus) => { if (inline || menu.hidden) return; menu.hidden = true; filterBtn.setAttribute('aria-expanded', 'false'); if (focus) filterBtn.focus(); };
+    // the panel of a collapsible bar: opened and shut by the icon (the state is the panel's owner's to keep: hooks.onPanel)
+    const setOpen = (open, { focus = false, silent = true } = {}) => {
+        if (!tog) return;
+        menu.hidden = !open; tog.setAttribute('aria-expanded', String(open));
+        if (!silent && hooks.onPanel) hooks.onPanel(open);
+        if (open && focus && fields.length) fields[0].input.focus();
+    };
+    const closeMenu = (focus) => { if (tog) { if (!menu.hidden) { setOpen(false, { silent: false }); if (focus) tog.focus(); } return; } if (inline || menu.hidden) return; menu.hidden = true; filterBtn.setAttribute('aria-expanded', 'false'); if (focus) filterBtn.focus(); };
 
     if (!noSearch) {
         q.addEventListener('input', () => { clearQ.hidden = !q.value; later({ ...f, q: q.value }); });
         q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); apply({ ...f, q: q.value }); } });
         clearQ.addEventListener('click', () => { clearTimeout(timer); q.value = ''; clearQ.hidden = true; apply({ ...f, q: '' }); q.focus(); });
     }
+    if (tog) tog.addEventListener('click', () => setOpen(menu.hidden, { focus: true, silent: false }));
+    if (chev) chev.addEventListener('click', () => { const next = chev.dataset.next; if (hooks.onExpandAll) hooks.onExpandAll(next); });
     filterBtn.addEventListener('click', () => {
         const open = menu.hidden;
         menu.hidden = !open; filterBtn.setAttribute('aria-expanded', String(open));
         if (open && fields.length) fields[0].input.focus();
     });
-    node.addEventListener('keydown', e => { if (e.key === 'Escape' && !inline && !menu.hidden) { e.preventDefault(); e.stopPropagation(); closeMenu(true); } });
-    const outside = e => { if (!inline && !menu.hidden && !node.contains(e.target)) closeMenu(false); };
+    node.addEventListener('keydown', e => { if (e.key === 'Escape' && !inline && !menu.hidden && !(tog && !menu.contains(e.target))) { e.preventDefault(); e.stopPropagation(); closeMenu(true); } });
+    const outside = e => { if (!inline && !tog && !menu.hidden && !node.contains(e.target)) closeMenu(false); }; // a collapsible panel is in the flow: it stays open until the icon shuts it
     document.addEventListener('click', outside);
     for (const fld of fields) {
         const key = fld.spec.key;
@@ -153,8 +190,15 @@ export function buildListBar(spec, onChange) {
             }));
             if (list.length > 1) { const li = make('li'); const b = make('button', 'list-bar-chip list-bar-chip-all', 'Clear all'); b.type = 'button'; b.addEventListener('click', () => { everything(); focusSearch(); }); li.append(b); chipList.append(li); }
             chipList.hidden = !list.length;
-            if (inline) clearAll.hidden = !isFiltered(f);
+            if (inline || collapsible) clearAll.hidden = !isFiltered(f);
             filterBtn.textContent = isFiltered(f) ? `Filters (${list.filter(c => c.key !== 'q').length})` : 'Filters';
+            if (tog) {
+                // what is on behind the icon: the filters (the search is its own box) and a sort that is not the default; the icon says so, so a shut panel never hides a filter
+                const on = list.filter(c => c.key !== 'q').length + (f.sort !== EMPTY.sort ? 1 : 0);
+                badge.hidden = on === 0; tog.classList.toggle('active', on > 0);
+                const name = on ? `Filters and sort, ${on} on` : 'Filters and sort';
+                tog.setAttribute('aria-label', name); tog.title = name;
+            }
             const all = `${counts && counts.all}${counts && counts.truncated ? '+' : ''}`; // '+': older ones were not scanned
             const say = text => {
                 count.textContent = text;
@@ -179,6 +223,11 @@ export function buildListBar(spec, onChange) {
         showField(key, visible) { const fld = fields.find(x => x.spec.key === key); if (fld) fld.wrap.hidden = !visible; },
         closeMenu,
         focusSearch,
+        /** A collapsible bar: show or hide the panel (the owner restores what it kept; this does not call hooks.onPanel). */
+        setOpen,
+        isOpen: () => !menu.hidden,
+        /** The expand-all icon: what pressing it will do next ('expand' or 'collapse'). */
+        setExpandNext(next) { if (!chev) return; chev.dataset.next = next; const word = spec.expandAll[next]; chev.title = word; chev.setAttribute('aria-label', word); },
         /** A bar that is replaced (a panel rebuilt for another board) lets go of the page's click listener and any search still waiting. */
         dispose() { document.removeEventListener('click', outside); clearTimeout(timer); clearTimeout(liveTimer); node.remove(); },
     };

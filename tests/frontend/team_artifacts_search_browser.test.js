@@ -126,7 +126,7 @@ const STUB = `(() => {
         assert.equal(await ev(`document.activeElement === document.querySelector('#agentic-panel-team-artifacts .list-bar-search')`), true, 'clearing returns to the box');
 
         console.log('3. The filters: type, origin, uploaded by, kept, dates; each is a request parameter and a chip; a chip removes its filter; Clear all removes the rest');
-        const menu = async () => { if (await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-menu').hidden`)) await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-filter-btn').click(); true`); };
+        const menu = async () => { if (await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-menu').hidden`)) await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-toggle').click(); true`); };
         const pickSel = async (id, v) => { await menu(); const n = await reqs(); await ev(`(() => { const s = document.getElementById('${id}'); s.value = '${v}'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`); await settle(n + 1); };
         await pickSel('ta-kind', 'image');
         r = await last(); assert.equal(r.query.kind, 'image');
@@ -150,7 +150,7 @@ const STUB = `(() => {
         assert.equal(r.query.since, new Date(2026, 9, 5).toISOString()); assert.equal(r.query.until, new Date(2026, 9, 10).toISOString());
         const chipTexts = await ev(`[...document.querySelectorAll('#agentic-panel-team-artifacts .list-bar-chips .list-bar-chip-text')].map(e => e.textContent)`);
         assert.deepEqual(chipTexts, ['By: Dev One', 'Kept', '2026-10-05 to 2026-10-09'], JSON.stringify(chipTexts));
-        assert.equal(await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-filter-btn').textContent`), 'Filters (3)');
+        assert.equal(await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-toggle').getAttribute('aria-label')`), 'Filters and sort, 3 on');
         await shot('ta-search-chips');
         // a chip removes its filter
         n = await reqs(); await ev(`[...document.querySelectorAll('#agentic-panel-team-artifacts .list-bar-chip')].find(c => c.textContent.startsWith('Kept')).click(); true`); await settle(n + 1);
@@ -200,12 +200,12 @@ const STUB = `(() => {
         n = await reqs();
         await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-search').focus(); true`); await type('lima'); await press('Enter', 'Enter', 13);
         await settle(n + 1); assert.equal((await last()).query.q, 'lima');
-        await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-filter-btn').focus(); true`); await press('Enter', 'Enter', 13);
-        assert.equal(await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-filter-btn').getAttribute('aria-expanded')`), 'true');
+        await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-toggle').focus(); true`); await press('Enter', 'Enter', 13);
+        assert.equal(await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-toggle').getAttribute('aria-expanded')`), 'true');
         assert.equal(await ev(`document.activeElement.id`), 'ta-kind', 'the focus goes into the menu');
         await press('Escape', 'Escape', 27);
-        assert.equal(await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-filter-btn').getAttribute('aria-expanded')`), 'false');
-        assert.equal(await ev(`document.activeElement === document.querySelector('#agentic-panel-team-artifacts .list-bar-filter-btn')`), true);
+        assert.equal(await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-toggle').getAttribute('aria-expanded')`), 'false');
+        assert.equal(await ev(`document.activeElement === document.querySelector('#agentic-panel-team-artifacts .list-bar-toggle')`), true);
         n = await reqs(); await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-chip').focus(); true`); await press('Enter', 'Enter', 13); await settle(n + 1);
         assert.equal((await last()).query.q, undefined, 'a chip removes its filter from the keyboard');
 
@@ -217,13 +217,13 @@ const STUB = `(() => {
             await showTeam();
             await ev(`window.toggleAgenticPanel(true); document.getElementById('agentic-state').style.width = ''; ${big ? "document.documentElement.style.fontSize = '32px';" : ''} true`);
             await sleep(400); // sleep-ok: layout settles after the viewport change
-            await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-filter-btn').click(); true`);
+            await ev(`document.querySelector('#agentic-panel-team-artifacts .list-bar-toggle').click(); true`);
             await ev(`document.getElementById('ta-by').value = 'Dev One'; document.querySelector('#agentic-panel-team-artifacts .list-bar-search').value = 'lima'; true`);
-            const m = await ev(`(() => { const R = e => e.getBoundingClientRect(); const dock = R(document.getElementById('agentic-state')); const search = R(document.querySelector('#agentic-panel-team-artifacts .list-bar-search')), btn = R(document.querySelector('#agentic-panel-team-artifacts .list-bar-filter-btn'));
-                const small = [...document.querySelectorAll('#agentic-panel-team-artifacts .list-bar-search, .list-bar-filter-btn, .list-bar-select, .list-bar-by, .list-bar-kept, .list-bar-field input[type=date]')].filter(e => e.getClientRects().length && R(e).height < 43.5).map(e => e.id || e.className);
+            const m = await ev(`(() => { const R = e => e.getBoundingClientRect(); const dock = R(document.getElementById('agentic-state')); const search = R(document.querySelector('#agentic-panel-team-artifacts .list-bar-search')), btn = R(document.querySelector('#agentic-panel-team-artifacts .list-bar-toggle'));
+                const small = [...document.querySelectorAll('#agentic-panel-team-artifacts .list-bar-search, .list-bar-toggle, .list-bar-select, .list-bar-by, .list-bar-kept, .list-bar-field input[type=date]')].filter(e => e.getClientRects().length && R(e).height < 43.5).map(e => e.id || e.className);
                 const out = [...document.querySelectorAll('#agentic-panel-team-artifacts .list-bar-bar *')].filter(e => e.getClientRects().length && (R(e).right > dock.right + 1 || R(e).left < dock.left - 1)).map(e => e.id || e.className).slice(0, 4);
-                return { searchAbove: search.bottom <= btn.top + 1, searchW: Math.round(search.width), dock: Math.round(dock.width), small, out, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
-            assert.ok(m.searchAbove, `the search is on its own row: ${JSON.stringify(m)}`);
+                return { searchAbove: Math.abs((search.top + search.height / 2) - (btn.top + btn.height / 2)) < 16, searchW: Math.round(search.width), dock: Math.round(dock.width), small, out, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
+            assert.ok(m.searchAbove || big, `the search shares its row with the filter icon (at 200% text the icons may wrap under it): ${JSON.stringify(m)}`);
             assert.deepEqual(m.small, [], `every control is a 44 px target (${big ? '200%' : '100%'}): ${JSON.stringify(m)}`);
             assert.deepEqual(m.out, [], `nothing is cut off at the sides (${big ? '200%' : '100%'}): ${JSON.stringify(m)}`);
             assert.ok(m.page <= 0, `no sideways scroll: ${JSON.stringify(m)}`);

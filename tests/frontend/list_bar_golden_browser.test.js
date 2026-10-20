@@ -35,9 +35,9 @@ const sha = t => require('node:crypto').createHash('sha256').update(t).digest('h
         await rec('set, filtered and cut', () => ev(`window.__bar.set({ q: 'plan', kind: 'pdf', sort: 'size' }, { matched: 3, all: 500, truncated: true }); true`));
         await rec('set, one filter only (no Clear all chip)', () => ev(`window.__bar.set({ by: 'Dev', sort: 'oldest' }, { matched: 2, all: 9 }); true`));
         await rec('names offered', () => ev(`window.__bar.names(['Dev', 'QA', 'Operator']); window.__bar.set({ sort: 'newest' }, { matched: 12, all: 12 }); true`));
-        await rec('Filters opened by click', () => ev(`window.__bar.node.querySelector('.list-bar-filter-btn').click(); true`));
+        await rec('Filters opened by click', () => ev(`window.__bar.node.querySelector('.list-bar-toggle').click(); true`));
         await rec('Escape closes it and returns the focus', async () => { await key('Escape', 27); });
-        await rec('Filters opened again, a type chosen', async () => { await ev(`window.__bar.node.querySelector('.list-bar-filter-btn').click(); true`); await ev(`(() => { const s = document.getElementById('ta-kind'); s.value = 'image'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`); });
+        await rec('Filters opened again, a type chosen', async () => { await ev(`window.__bar.node.querySelector('.list-bar-toggle').click(); true`); await ev(`(() => { const s = document.getElementById('ta-kind'); s.value = 'image'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`); });
         await rec('an origin, kept only and two dates', async () => { await ev(`(() => { for (const [id, v] of [['ta-origin', 'received']]) { const s = document.getElementById(id); s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); }
             const k = document.getElementById('ta-kept'); k.checked = true; k.dispatchEvent(new Event('change', { bubbles: true }));
             for (const [id, v] of [['ta-from', '2026-10-05'], ['ta-to', '2026-10-02']]) { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change', { bubbles: true })); } return true; })()`); });
@@ -48,8 +48,8 @@ const sha = t => require('node:crypto').createHash('sha256').update(t).digest('h
         await rec('the search cleared by its x', () => ev(`window.__bar.node.querySelector('.list-bar-clear-q').click(); true`));
         await rec('a chip removed', async () => { await ev(`window.__bar.set({ q: 'x', kind: 'pdf', sort: 'newest' }, { matched: 1, all: 5 }); window.__bar.node.querySelector('.list-bar-chip').click(); true`); });
         await rec('Clear all by its chip', async () => { await ev(`window.__bar.set({ q: 'x', kind: 'pdf', by: 'Dev', sort: 'name' }, { matched: 1, all: 5 }); window.__bar.node.querySelector('.list-bar-chip-all').click(); true`); });
-        await rec('Clear all in the menu keeps the sort', async () => { await ev(`window.__bar.set({ kind: 'pdf', sort: 'size' }, { matched: 1, all: 5 }); window.__bar.node.querySelector('.list-bar-filter-btn').click(); window.__bar.node.querySelector('.list-bar-clear-all').click(); true`); });
-        await rec('a click outside closes the open menu', async () => { await ev(`window.__bar.node.querySelector('.list-bar-filter-btn').click(); document.body.click(); true`); });
+        await rec('Clear all in the menu keeps the sort', async () => { await ev(`window.__bar.set({ kind: 'pdf', sort: 'size' }, { matched: 1, all: 5 }); window.__bar.node.querySelector('.list-bar-toggle').click(); window.__bar.node.querySelector('.list-bar-clear-all').click(); true`); });
+        await rec('a click outside closes the open menu', async () => { await ev(`window.__bar.node.querySelector('.list-bar-toggle').click(); document.body.click(); true`); });
         await rec('a bad value is cleaned', () => ev(`window.__bar.set({ q: 'a\\u0000b', kind: 'weird', from: '2026-13-45', sort: 'nope' }, { matched: 1, all: 1 }); true`));
         await rec('a field being typed in is left as typed', async () => { await ev(`document.getElementById('ta-search').focus(); document.getElementById('ta-search').value = 'half'; window.__bar.set({ q: '', sort: 'newest' }, null); true`); });
         await rec('focusSearch', () => ev(`document.activeElement.blur(); window.__bar.focusSearch(); true`));

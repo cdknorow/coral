@@ -10,6 +10,7 @@ import { EMPTY as TASK_EMPTY, isQuery, loadFilters as loadTaskFilters, phases as
 import { browserLocal } from './safe_storage.js';
 import { showToast, escapeHtml, escapeAttr } from './utils.js';
 import { buildTaskBar } from './task_bar.js';
+import { loadPanelOpen, savePanelOpen } from './list_bar.js';
 import { _priorityOrder, _formatCost, _formatTaskTime, _priorityLabel, formatTaskDate, _agentTaskStatus } from './task_format.js';
 import { morphHtml } from './dom_morph.js';
 import { _verifyMark } from './task_verify_marks.js';
@@ -332,7 +333,11 @@ function _syncTaskBar(show, counts) {
     const host = document.getElementById('board-task-bar');
     if (!host) return;
     if (!show) { if (_taskBar && _taskBar.node.parentElement === host) _taskBar.node.remove(); return; }
-    if (!_taskBar) _taskBar = buildTaskBar(_setTaskFilters);
+    if (!_taskBar) {
+        const board = _taskFiltersBoard;
+        _taskBar = buildTaskBar(_setTaskFilters, { onPanel: open => savePanelOpen('tasks', board, open) });
+        _taskBar.setOpen(loadPanelOpen('tasks', board)); // the panel is left as it was for this board (#5293)
+    }
     if (_taskBar.node.parentElement !== host) host.append(_taskBar.node);
     _taskBar.names([...new Set((state.currentBoardTasks || []).map(t => t.assigned_to).filter(n => typeof n === 'string' && n))].sort().slice(0, 50));
     _taskBar.set(_taskFilters, counts);

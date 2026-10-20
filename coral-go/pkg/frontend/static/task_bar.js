@@ -9,6 +9,7 @@ const SPEC = {
     label: 'Search and filter tasks',
     searchLabel: 'Search tasks',
     placeholder: 'Search tasks',
+    collapsible: true, // the agents tab's pattern (#5293): one icon opens Filters and Sort
     sorts: { values: SORTS, labels: SORT_LABEL, aria: 'Sort tasks' },
     fields: [
         { type: 'select', key: 'status', id: 'tk-status', label: 'Status', values: STATUSES, labels: STATUS_LABEL, any: 'Any status' },
@@ -20,6 +21,6 @@ const SPEC = {
 };
 
 /** onChange(filters) is called with the new, clean filters when the person changes anything (typing after a short pause). */
-export function buildTaskBar(onChange) {
-    return buildListBar(SPEC, onChange);
+export function buildTaskBar(onChange, hooks = {}) {
+    return buildListBar(SPEC, onChange, hooks);
 }

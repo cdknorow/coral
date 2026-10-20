@@ -10,6 +10,7 @@ import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServ
 import { refreshDistill, startDistill, distillJob } from './knowledge_distill.js';
 import { browserLocal } from './safe_storage.js';
 import { buildBar } from './team_artifact_bar.js';
+import { loadPanelOpen, savePanelOpen } from './list_bar.js';
 import { EMPTY, isFiltered, loadFilters, saveFilters, toParams } from './team_artifact_filters.js';
 
 let source = 'files';
@@ -23,7 +24,7 @@ let notice = ''; // the outcome of the last delete (#3553), shown once under the
 
 // The search box, filters and sort of the Team Artifacts list (#4573) and, the same component, of one agent's Artifacts tab (#5283): asked of the server (a search covers every artifact, not just the
 // loaded page), kept per board and, for an agent, per agent. Each panel has its own bar (built once: the list is rebuilt on every change, which would drop the keyboard focus out of a search box).
-const views = { artifacts: { filters: { ...EMPTY }, key: null, bar: null }, 'team-artifacts': { filters: { ...EMPTY }, key: null, bar: null } };
+const views = { artifacts: { filters: { ...EMPTY }, key: null, bar: null, panelKey: null }, 'team-artifacts': { filters: { ...EMPTY }, key: null, bar: null, panelKey: null } };
 const view = () => views[source];
 /** What the filters are kept under: the board, or for an agent's tab the board and the agent. null when there is nothing to filter (no team: a standalone agent's list has no search). */
 function filtersKey() { return source === 'artifacts' ? (team && sessionID ? `${team}::agent::${sessionID}` : null) : team; }
@@ -327,6 +328,16 @@ function buildMore(busy) {
     return more;
 }
 
+const rowKey = item => `${item.source || ''}|${item.uri || ''}|${item.name || ''}`;
+/** The second icon of the bar: open every row's details, or close them. */
+function setAllDetails(open) {
+    for (const item of caches[source].items) { if (open) openDetails.add(rowKey(item)); else openDetails.delete(rowKey(item)); }
+    render();
+}
+function syncExpandAll() {
+    const v = view(), items = caches[source].items;
+    if (v.bar) v.bar.setExpandNext(items.length && items.every(i => openDetails.has(rowKey(i))) ? 'collapse' : 'expand');
+}
 let detailSeq = 0; // ids for the details blocks, unique across rebuilds
 const openDetails = new Set(); // the rows whose details are open
 
@@ -367,7 +378,7 @@ function buildRow(item) {
     const type = unverified ? '—' : artifactType(item);
     const size = unverified ? '—' : sizeLabel(item.size) || '—';
     // The details are a block under the name that the (i) button in the Actions column opens (#5283); which rows are open is kept across the rebuilds the panel does on every change.
-    const openKey = `${item.source || ''}|${item.uri || ''}|${item.name || ''}`;
+    const openKey = rowKey(item);
     const details = el('div', 'team-artifact-details');
     details.id = `team-artifact-details-${++detailSeq}`;
     details.hidden = !openDetails.has(openKey);
@@ -402,6 +413,7 @@ function buildRow(item) {
         details.hidden = !details.hidden;
         if (details.hidden) openDetails.delete(openKey); else openDetails.add(openKey);
         infoBtn.setAttribute('aria-expanded', String(!details.hidden));
+        syncExpandAll();
     });
     actions.append(infoBtn);
     if (link) {
@@ -481,8 +493,9 @@ function render() {
     syncFilters();
     const showBar = !!filtersKey();
     const v = view(), scope = source;
-    if (!v.bar) v.bar = buildBar(next => setFilters(scope, next), { personal });
+    if (!v.bar) v.bar = buildBar(next => setFilters(scope, next), { personal, hooks: { onPanel: open => savePanelOpen(scope, views[scope].key, open), onExpandAll: next => setAllDetails(next === 'expand') } });
     const bar = v.bar, filters = v.filters, counts = caches[source].counts;
+    if (v.panelKey !== v.key) { v.panelKey = v.key; bar.setOpen(loadPanelOpen(scope, v.key)); } // the filter panel is left as it was for this board or agent (#5293)
     for (const c of [...root.children]) if (c !== bar.node) c.remove();
     if (showBar) { if (bar.node.parentElement !== root) root.append(bar.node); } else bar.node.remove();
     const before = node => (showBar ? root.insertBefore(node, bar.node) : root.append(node));
@@ -502,6 +515,7 @@ function render() {
     if (hasMore) root.append(buildMore(busy));
     if (truncated) root.append(el('div', 'team-artifacts-status', 'Some older artifacts are not included in this list.'));
     if (showBar) {
+        syncExpandAll();
         bar.names([...new Set(items.flatMap(i => [i.produced_by, i.sent_by]).filter(n => typeof n === 'string' && n))].sort().slice(0, 50)); // the names on screen, offered in the Uploaded by field
         bar.set(filters, counts ? counts : items.length || !busy ? { matched: items.length, all: items.length } : null);
     }

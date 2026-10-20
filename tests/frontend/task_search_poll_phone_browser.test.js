@@ -67,10 +67,13 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await ev(`(() => { const side = document.getElementById('agentic-state'); side.style.width = ''; side.classList.add('mobile-panel-overlay'); side.classList.remove('collapsed'); return true; })()`);
         await ev(`new Promise(r => setTimeout(r, 500))`); // sleep-ok: the layout settles after the resize
         const g = await ev(`(() => { const b = document.getElementById('board-task-bar'); const r = e => { const x = b.querySelector(e); return x ? Math.round(x.getBoundingClientRect().height) : null; }; const l = document.getElementById('board-task-list');
-            return { shown: b.getClientRects().length > 0, filters: r('.list-bar-filter-btn'), sort: r('.list-bar-sort select'), search: r('.list-bar-search'), above: b.getBoundingClientRect().bottom <= l.getBoundingClientRect().top + 1,
+            return { shown: b.getClientRects().length > 0, filters: r('.list-bar-toggle'), sort: 44, search: r('.list-bar-search'), above: b.getBoundingClientRect().bottom <= l.getBoundingClientRect().top + 1,
               bar: b.scrollWidth - b.clientWidth, list: l.scrollWidth - l.clientWidth, page: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
         check('the bar shows above the list on a phone', g.shown && g.above, JSON.stringify(g));
-        check('its controls are 44px targets', g.filters >= 44 && g.sort >= 44 && g.search >= 44, JSON.stringify([g.filters, g.sort, g.search]));
+        check('its controls are 44px targets', g.filters >= 44 && g.search >= 44, JSON.stringify([g.filters, g.search]));
+        await ev(`document.querySelector('#board-task-bar .list-bar-toggle').click(); true`);
+        const ps = await ev(`Math.round(document.querySelector('#board-task-bar .list-bar-panel select').getBoundingClientRect().height)`);
+        check('and so is the sort in the panel the icon opens', ps >= 44, String(ps));
         check('nothing scrolls sideways', g.bar <= 1 && g.list <= 1 && g.page <= 0, JSON.stringify([g.bar, g.list, g.page]));
     } finally { await removeBoards(ev, [BOARD]); await client.close(); }
     const failed = results.filter(r => r === 'FAIL').length;

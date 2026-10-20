@@ -118,7 +118,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await settle(`document.querySelector('#board-task-bar .list-bar-count').textContent === '1 of 66'`, 'open and critical');
         s = await snap();
         check('Open and Critical together: the one critical open task', s.titles.length === 1 && /alpha first/.test(s.titles[0]) && s.chips.length === 2, JSON.stringify([s.titles, s.chips]));
-        await ev(`document.querySelector('#board-task-bar .list-bar-filter-btn').click(); document.querySelector('#board-task-bar .list-bar-clear-all').click(); true`);
+        await ev(`document.querySelector('#board-task-bar .list-bar-toggle').click(); document.querySelector('#board-task-bar .list-bar-clear-all').click(); true`);
         await settle(`document.querySelector('#board-task-bar .list-bar-count').textContent === '66 tasks'`, 'Clear all');
         s = await snap();
         check('Clear all brings the default list back', s.chips.length === 0 && s.hide && s.statuses.length >= 56, JSON.stringify([s.count, s.hide]));

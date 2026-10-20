@@ -19,7 +19,7 @@ async function fresh(ctx) {
 const api = (ctx, method, path, body) => ctx.ev(`fetch(${JSON.stringify(path)}, { method: ${JSON.stringify(method)}, headers: { 'Content-Type': 'application/json' }, body: ${body ? JSON.stringify(JSON.stringify(body)) : 'undefined'} }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }))`);
 const pick = (ctx, sel, value) => ctx.ev(`(() => { const s = document.querySelector(${JSON.stringify(sel)}); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 const typeInto = (ctx, sel, text) => ctx.ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); e.focus(); e.value = ${JSON.stringify(text)}; e.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
-const openMenu = (ctx, bar) => ctx.ev(`(() => { const m = document.querySelector('${bar} .list-bar-menu'); if (m && m.hidden) document.querySelector('${bar} .list-bar-filter-btn').click(); return true; })()`);
+const openMenu = (ctx, bar) => ctx.ev(`(() => { const m = document.querySelector('${bar} .list-bar-menu'); if (m && m.hidden) document.querySelector('${bar} .list-bar-filter-btn, ${bar} .list-bar-toggle').click(); return true; })()`);
 const dockOpen = ctx => ctx.ev(`(async () => { const side = document.getElementById('agentic-state'); side.classList.remove('collapsed'); side.style.width = '680px'; return true; })()`);
 const mockAgents = (ctx, list) => ctx.ev(`(() => { const jobs = ${JSON.stringify(Object.fromEntries(list.map(a => [a.id, a.job || ''])))}; const waiting = ${JSON.stringify(list.filter(a => a.waiting).map(a => a.id))};
     const entry = window.__m.entry.bind(window.__m); window.__m.entry = a => ({ ...entry(a), board_job_title: jobs[a.session_id] || '', waiting_for_input: waiting.includes(a.session_id), waiting_kind: waiting.includes(a.session_id) ? 'permission' : null });
@@ -163,7 +163,7 @@ PANELS.push({
         await ctx.ev(`(() => { const s = document.querySelector('#board-task-bar select'); return !!s; })()`);
         await openMenu(ctx, '#board-task-bar');
         await ctx.ev(`new Promise(r => setTimeout(r, 400))`);
-        return { roots: ['#board-task-bar', '#board-task-list'], focus: ['#tk-search', '#board-task-bar .list-bar-filter-btn'] };
+        return { roots: ['#board-task-bar', '#board-task-list'], focus: ['#tk-search', '#board-task-bar .list-bar-toggle'] };
     },
 });
 
@@ -214,7 +214,7 @@ PANELS.push({
         await pick(ctx, '#ta-origin', 'received');
         await ctx.settle(`!!document.querySelector('#agentic-panel-team-artifacts .list-bar-chip')`, 'a chip');
         await ctx.ev(`new Promise(r => setTimeout(r, 300))`);
-        return { roots: ['#agentic-panel-team-artifacts'], focus: ['#agentic-panel-team-artifacts .list-bar-search', '#agentic-panel-team-artifacts .list-bar-filter-btn'] };
+        return { roots: ['#agentic-panel-team-artifacts'], focus: ['#agentic-panel-team-artifacts .list-bar-search', '#agentic-panel-team-artifacts .list-bar-toggle'] };
     },
 });
 

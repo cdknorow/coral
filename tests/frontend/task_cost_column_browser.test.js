@@ -23,7 +23,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
             const first = list.querySelector('.board-task-item:not(.board-task-header)'); const desc = first.querySelector('.board-task-desc').getBoundingClientRect(), cost = row.getBoundingClientRect(), id = first.querySelector('.board-task-id').getBoundingClientRect();
             return { list: Math.round(lr.width), head: box(head), row: box(row), sameLine: Math.abs((cost.top + cost.height / 2) - (id.top + id.height / 2)) < 10, titleBelow: desc.top >= id.bottom - 1, scrolls: list.scrollWidth - list.clientWidth }; })()`);
         const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; require('node:fs').mkdirSync(d, { recursive: true }); require('node:fs').writeFileSync(`${d}/${name}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); };
-        await ev(`document.querySelector('#board-task-bar .list-bar-filter-btn') && document.querySelector('#board-task-bar .list-bar-menu:not([hidden])') && document.querySelector('#board-task-bar .list-bar-filter-btn').click(); true`); // the filter menu out of the way of the rows
+        await ev(`document.querySelector('#board-task-bar .list-bar-toggle') && document.querySelector('#board-task-bar .list-bar-menu:not([hidden])') && document.querySelector('#board-task-bar .list-bar-toggle').click(); true`); // the filter menu out of the way of the rows
         await shot('tasks-dock-680-cost');
         let m = await measure();
         assert.ok(m.list >= 560 && m.list < 790, 'the dock is the width in question: ' + m.list);
