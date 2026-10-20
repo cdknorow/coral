@@ -44,7 +44,14 @@ type agentArtifactMeta struct {
 type agentUploadRecord struct {
 	agentArtifactMeta
 	CreatedAt string `json:"created_at"`
+	// UploadedBy is who put it there when it was not the agent: "owner" for an image pasted or attached in the dashboard (#5284). Absent on an agent's own upload.
+	UploadedBy string `json:"uploaded_by,omitempty"`
+	// Source is "paste" for such an image. It follows the uploads retention, the switch that keeps it from Coral Hub viewers, and is not an upload of the agent (a task result cannot name it).
+	Source string `json:"source,omitempty"`
 }
+
+// sourcePaste marks an upload record made from an image pasted or attached in the dashboard.
+const sourcePaste = "paste"
 
 // uploadsDir is where per-session upload records live. The session id is
 // rejected unless it is a plain name, so it cannot escape the directory.
@@ -70,6 +77,7 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	r.Post("/api/agent/artifacts", h.uploadAgentArtifact)
 	r.Get("/api/artifacts/{id}", h.getAgentArtifact)
 	r.Delete("/api/artifacts/{id}", h.deleteAgentArtifact)
+	r.Delete("/api/shared-images/{id}", h.deleteSharedImage)                         // #5284: one session's shared copy of a pasted image
 	r.Post("/api/artifacts/received/unlisted/delete", h.deleteUnlistedReceivedRoute) // #4441
 	r.Get("/api/system/artifact-store/kept", h.keptListRoute)                        // #3554
 	r.Post("/api/artifacts/prune", h.pruneArtifactsRoute)
@@ -257,6 +265,11 @@ func (h *SessionsHandler) artifactDir() string {
 // renamed into place before the sidecar exists, so a sidecar never points at a partial
 // object. Folders are 0700 and files 0600.
 func storeArtifact(coralDir, sessionID, name, mediaType string, data []byte) (string, agentArtifactMeta, error) {
+	return storeArtifactBy(coralDir, sessionID, name, mediaType, "", "", data)
+}
+
+// storeArtifactBy is storeArtifact with the uploader and the record's source named ("owner" and "paste" for the dashboard, #5284); "" and "" is the agent itself.
+func storeArtifactBy(coralDir, sessionID, name, mediaType, uploadedBy, source string, data []byte) (string, agentArtifactMeta, error) {
 	digestBytes := sha256.Sum256(data)
 	hexID := hex.EncodeToString(digestBytes[:])
 	defer lockArtifact(hexID)() // a delete of the same digest waits (#3553)
@@ -284,7 +297,7 @@ func storeArtifact(coralDir, sessionID, name, mediaType string, data []byte) (st
 	}
 	if up := uploadsDir(coralDir, sessionID); up != "" {
 		if os.MkdirAll(up, 0o700) == nil {
-			rec, _ := json.Marshal(agentUploadRecord{mine, time.Now().UTC().Format(time.RFC3339)})
+			rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: mine, CreatedAt: time.Now().UTC().Format(time.RFC3339), UploadedBy: uploadedBy, Source: source})
 			_ = writeFileAtomic(filepath.Join(up, hexID+".json"), rec, 0o600)
 		}
 	}
@@ -546,7 +559,7 @@ func storeArtifactFile(coralDir, sessionID, name, mediaType, tmpPath, hexID stri
 	}
 	if up := uploadsDir(coralDir, sessionID); up != "" {
 		if os.MkdirAll(up, 0o700) == nil {
-			rec, _ := json.Marshal(agentUploadRecord{mine, time.Now().UTC().Format(time.RFC3339)})
+			rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: mine, CreatedAt: time.Now().UTC().Format(time.RFC3339)})
 			_ = writeFileAtomic(filepath.Join(up, hexID+".json"), rec, 0o600)
 		}
 	}
@@ -713,6 +726,10 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 	// handler does too: v absent or 2, nothing else (#3179).
 	if q := r.URL.Query(); q.Has("v") && (len(q["v"]) != 1 || q.Get("v") != "2") {
 		errBadRequest(w, "invalid artifact link version")
+		return
+	}
+	if h.hubMayNotSeePastedImage(r, id) { // #5284: the owner's switch
+		errNotFound(w, "artifact not found")
 		return
 	}
 	path := filepath.Join(h.artifactDir(), id)

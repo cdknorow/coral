@@ -10,23 +10,30 @@ import { registerActions } from './actions.js';
 import { serverUrl, sessionServer, isCloud } from './server_base.js';
 import { fetchImageSrc } from './image_source.js';
 import { openChatImageTab } from './preview_pane.js';
+import { removeSharedCopy } from './shared_images.js';
+import { showConfirmModal } from './confirm_dialog.js';
+import { showToast } from './utils.js';
 
 const SIZE = 48; // px, fixed: the chat does not reflow when the image arrives
 
 /** The thumbnail's markup for an attachment ({ref, file}): hidden until the image has loaded. */
 export function thumbHtml(att) {
-    const ref = att && /^[0-9a-f]{32}$/.test(att.ref || '') ? att.ref : '';
+    const artifact = att && /^[0-9a-f]{64}$/.test(att.artifact || '') ? att.artifact : '';
+    const ref = !artifact && att && /^[0-9a-f]{32}$/.test(att.ref || '') ? att.ref : '';
     const file = att && att.file ? String(att.file) : '';
-    if (!ref && !file) return '';
+    if (!artifact && !ref && !file) return '';
     const label = (att && att.name) || file || 'image';
-    return `<button type="button" class="chat-attachment-thumb" data-on-click="chat-thumb-open" data-ref="${escapeAttr(ref)}" data-upload="${escapeAttr(ref ? '' : file)}" ` +
-        `aria-label="Open ${escapeAttr(label)}" hidden><img alt="${escapeAttr(file || label)}" width="${SIZE}" height="${SIZE}" decoding="async"></button>`;
+    // An artifact (an image pasted in the dashboard, #5284) is served by the artifact route, locally and through Coral Hub; its owner can remove the shared copy (on this computer only).
+    const unshare = artifact && !isCloud() ? `<button type="button" class="chat-attachment-unshare" data-on-click="chat-thumb-unshare" data-artifact="${escapeAttr(artifact)}" aria-label="Remove the shared copy of ${escapeAttr(label)}" title="Remove the shared copy (Coral Hub viewers lose the image)" hidden>&times;</button>` : '';
+    return `<button type="button" class="chat-attachment-thumb" data-on-click="chat-thumb-open" data-artifact="${escapeAttr(artifact)}" data-ref="${escapeAttr(ref)}" data-upload="${escapeAttr(artifact || ref ? '' : file)}" ` +
+        `aria-label="Open ${escapeAttr(label)}" hidden><img alt="${escapeAttr(file || label)}" width="${SIZE}" height="${SIZE}" decoding="async"></button>${unshare}`;
 }
 
 const serverOf = () => (state.currentSession ? sessionServer(state.currentSession) : '');
 
 /** The server-relative route that serves a thumbnail's image: its attachment in the open session's transcript, or an upload by name. */
 function routeOf(btn) {
+    if (btn.dataset.artifact) return `/api/artifacts/${btn.dataset.artifact}?v=2`;
     if (btn.dataset.ref) {
         const s = state.currentSession;
         if (!s) return '';
@@ -46,9 +53,9 @@ async function load(btn) {
     const path = routeOf(btn);
     if (!path) return;
     try {
-        const { src, revoke } = await fetchImageSrc(serverUrl(path, serverOf()), { name: btn.dataset.ref ? undefined : btn.dataset.upload });
+        const { src, revoke } = await fetchImageSrc(serverUrl(path, serverOf()), { name: btn.dataset.ref || btn.dataset.artifact ? undefined : btn.dataset.upload });
         const img = btn.querySelector('img');
-        img.addEventListener('load', () => { btn.hidden = false; if (revoke) URL.revokeObjectURL(src); }, { once: true });
+        img.addEventListener('load', () => { btn.hidden = false; const x = btn.nextElementSibling; if (x && x.classList.contains('chat-attachment-unshare')) x.hidden = false; if (revoke) URL.revokeObjectURL(src); }, { once: true });
         img.addEventListener('error', () => { if (revoke) URL.revokeObjectURL(src); }, { once: true });
         img.src = src;
     } catch { /* not served, or not an image Coral serves: the chip keeps its name */ }
@@ -66,6 +73,17 @@ export function wireThumbs(bubble) {
 }
 
 registerActions({
+    'chat-thumb-unshare': el => {
+        const x = el.closest('.chat-attachment-unshare'), s = state.currentSession;
+        if (!x || !s || !s.session_id) return;
+        showConfirmModal('Remove the shared copy?', 'Coral Hub viewers lose this image, and so does the chat here. The agent keeps its own file.', async () => {
+            if (await removeSharedCopy(serverOf(), s.session_id, x.dataset.artifact).catch(() => false)) {
+                const thumb = x.previousElementSibling;
+                if (thumb) thumb.hidden = true;
+                x.hidden = true; // the chip with the file's name stays
+            } else showToast('Could not remove the shared copy.', true);
+        });
+    },
     'chat-thumb-open': el => {
         const btn = el.closest('.chat-attachment-thumb');
         const path = btn && routeOf(btn);

@@ -53,7 +53,7 @@ func (e *taEnv) upload(session, name, content, mediaType, at string) string {
 	id := storeTyped(e.t, e.coralDir, content, name, mediaType)
 	dir := uploadsDir(e.coralDir, session)
 	require.NoError(e.t, os.MkdirAll(dir, 0o755))
-	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: name, MediaType: mediaType, Size: int64(len(content)), Digest: "sha256:" + id}, at})
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: name, MediaType: mediaType, Size: int64(len(content)), Digest: "sha256:" + id}, CreatedAt: at})
 	require.NoError(e.t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
 	e.ids[name] = id
 	return id
@@ -367,7 +367,7 @@ func TestTeamArtifactsQuerySearchesTheDisplayedName(t *testing.T) {
 	e := newTAEnv(t)
 	id := storeTyped(t, e.coralDir, "payload for a digest named upload", "real-name.md", "text/markdown")
 	dir := uploadsDir(e.coralDir, sessAlice)
-	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: id, MediaType: "text/markdown", Size: 5, Digest: "sha256:" + id}, "2026-10-10T10:00:00Z"})
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: id, MediaType: "text/markdown", Size: 5, Digest: "sha256:" + id}, CreatedAt: "2026-10-10T10:00:00Z"})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
 	assert.Equal(t, []string{"real-name.md"}, e.names("?q=real-name"))
 	assert.Empty(t, e.names("?q="+id[:16]), "the digest is not what is shown or searched")
@@ -473,7 +473,7 @@ func TestTeamArtifactsQueryRedactsTheSidecarName(t *testing.T) {
 	e := newTAEnv(t)
 	id := storeTyped(t, e.coralDir, "a digest named upload", "sidecar "+tok+".md", "text/markdown")
 	dir := uploadsDir(e.coralDir, sessAlice)
-	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: id, MediaType: "text/markdown", Size: 5, Digest: "sha256:" + id}, "2026-10-13T10:00:00Z"})
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: id, MediaType: "text/markdown", Size: 5, Digest: "sha256:" + id}, CreatedAt: "2026-10-13T10:00:00Z"})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
 	req := func(query string) taReply {
 		r, err := http.NewRequest("GET", e.srv.URL+"/api/board/alpha/artifacts"+query, nil)

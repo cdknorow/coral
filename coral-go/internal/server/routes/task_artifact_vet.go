@@ -125,6 +125,10 @@ func (h *BoardHandler) uploadRecordOf(sessionID, id string) (agentUploadRecord, 
 		if !strings.EqualFold(u.rec.Digest, "sha256:"+id) || !strings.EqualFold(h.objectSidecarDigest(id), "sha256:"+id) {
 			return agentUploadRecord{}, false
 		}
+		// An image pasted in the dashboard is the Operator's, not this agent's upload (#5284): a task result or a cross-team file cannot name it, so the uploads retention can never leave one dangling.
+		if u.rec.Source == sourcePaste {
+			return agentUploadRecord{}, false
+		}
 		return u.rec, true
 	}
 	return agentUploadRecord{}, false

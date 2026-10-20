@@ -7,6 +7,7 @@ import { deriveSessionState } from './render.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
 import { makeBubble } from './chat_bubbles.js';
 import { unwrapPastedContent } from './pasted_content.js';
+import { splitSharedImages } from './shared_images.js';
 import { state } from './state.js';
 import { storeKey } from './local_store.js';
 import { browserLocal } from './safe_storage.js';
@@ -75,7 +76,7 @@ function pendingMatchText(text) {
     const normalized = normalizeMsg(String(text || "")
         .replace(/<image\b[^>]*\bpath="([^"]+)"[^>]*>[\s\S]*?<\/image>/g, '$1')
         .replace(/\[Image #\d+\]/g, ''));
-    const body = normalized.replace(/^(?:(?:\/(?:[^\/]+\/)*uploads\/[^\s]+|\/\S*\/uploads\/\S+)\s+)+/, '').trim();
+    const body = splitSharedImages(normalized).rest.replace(/^(?:(?:\/(?:[^\/]+\/)*uploads\/[^\s]+|\/\S*\/uploads\/\S+)\s+)+/, '').trim();
     return body || normalized;
 }
 

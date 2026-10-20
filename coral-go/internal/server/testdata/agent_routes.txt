@@ -6,6 +6,7 @@
 b CONNECT /api/remote/{server}/*
 a DELETE /api/agent/ui/{id}
 b DELETE /api/artifacts/{id}
+b DELETE /api/shared-images/{id}
 b DELETE /api/artifacts/{id}/comments/lock
 b DELETE /api/artifacts/{id}/comments/{cid}
 b DELETE /api/artifacts/{id}/keep
@@ -361,6 +362,7 @@ b PUT /api/cloud/allow-auto-accept
 b PUT /api/cloud/hub-relaunch
 b PUT /api/cloud/max-mode
 b PUT /api/cloud/redact-tokens
+b PUT /api/cloud/share-pasted-images
 b PUT /api/system/identity-actor
 b PUT /api/remote/{server}/*
 b PUT /api/scheduled/jobs/{jobID}

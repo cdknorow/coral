@@ -1653,3 +1653,25 @@
 @media (max-width: 767px) {
     .code-block .code-copy-btn { width: 44px; height: 44px; }
 }
+
+/* An image pasted in the dashboard is an artifact (#5284): the button that removes its shared copy sits beside its thumbnail, and the notice that says Coral Hub viewers can see it. */
+.chat-attachment-unshare {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.chat-attachment-unshare[hidden] { display: none; }
+.chat-attachment-unshare:hover { color: var(--text-primary); background: var(--bg-hover); }
+.chat-attachment-unshare:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 767px) { .chat-attachment-unshare { min-width: 44px; min-height: 44px; } }
+
+.share-notice { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border)); border-radius: var(--radius-lg, 8px); background: color-mix(in srgb, var(--warning) 9%, var(--bg-secondary)); color: var(--text-primary); }
+.share-notice-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+@media (max-width: 767px) { .share-notice-actions { width: 100%; margin-left: 0; } .share-notice-actions .btn { flex: 1 1 auto; min-height: 44px; } }

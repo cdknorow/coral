@@ -56,6 +56,15 @@ func HubRelaunchAllowed(settings map[string]string) bool {
 // they leave this computer. On unless set to "false"; local only, like the mode cap.
 const RedactTokensSetting = "hub_redact_tokens"
 
+// SharePastedImagesSetting is the local switch "share pasted images with Coral Hub viewers" (#5284), on by default: with it off, a request that came through the Hub tunnel for an
+// image that was only pasted or attached in the dashboard gets 404. Written only by PUT /api/cloud/share-pasted-images, never through the tunnel.
+const SharePastedImagesSetting = "hub_share_pasted_images"
+
+// HubSharePastedImages reads the switch (default on).
+func HubSharePastedImages(settings map[string]string) bool {
+	return setreg.Bool(settings, SharePastedImagesSetting)
+}
+
 // HubRedactTokens reads the switch (default on).
 func HubRedactTokens(settings map[string]string) bool {
 	return setreg.Bool(settings, RedactTokensSetting)
@@ -250,6 +259,8 @@ type cloudStatus struct {
 	RedactTokens bool `json:"redact_tokens"`
 	// HubRelaunchUpdates is the local switch "Let Coral Hub relaunch this Coral to install updates" (#5280).
 	HubRelaunchUpdates bool `json:"hub_relaunch_updates"`
+	// SharePastedImages: Coral Hub viewers can see images pasted in the dashboard (#5284).
+	SharePastedImages bool `json:"share_pasted_images"`
 	// Bootstrap is the last one-time-credential enrollment's outcome
 	// ({status, detail, at}); absent when there was none.
 	Bootstrap json.RawMessage `json:"bootstrap,omitempty"`
@@ -266,15 +277,15 @@ func (h *CloudHandler) status() cloudStatus {
 	if m := h.manager(); m != nil {
 		st = m.Status()
 	}
-	allow, redact, relaunch := true, true, true
+	allow, redact, relaunch, share := true, true, true, true
 	var boot json.RawMessage
 	if s, err := h.ss.GetSettings(context.Background()); err == nil {
-		allow, redact, relaunch = HubAutoAcceptAllowed(s), HubRedactTokens(s), HubRelaunchAllowed(s)
+		allow, redact, relaunch, share = HubAutoAcceptAllowed(s), HubRedactTokens(s), HubRelaunchAllowed(s), HubSharePastedImages(s)
 		if v := setreg.Raw(s, cloud.BootstrapStatusSetting); json.Valid([]byte(v)) {
 			boot = json.RawMessage(v)
 		}
 	}
-	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, HubRelaunchUpdates: relaunch, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
+	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, HubRelaunchUpdates: relaunch, SharePastedImages: share, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
 	if rs := h.secrets(); rs != nil {
 		if ks, err := rs.KeyState(context.Background()); err == nil && ks.State == "refused" {
 			out.SecretKey = &ks
@@ -803,6 +814,30 @@ func (h *CloudHandler) SetHubRelaunch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.ss.SetSetting(r.Context(), HubRelaunchSetting, strconv.FormatBool(*body.Allow)); err != nil {
+		errInternalServer(w, "Could not save the setting")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.status())
+}
+
+// SetSharePastedImages: PUT /api/cloud/share-pasted-images {"share": bool} (#5284). Local dashboard and the signed command line only (never through the tunnel).
+// It applies to the next request for a pasted image.
+func (h *CloudHandler) SetSharePastedImages(w http.ResponseWriter, r *http.Request) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
+		return
+	}
+	var body struct {
+		Share *bool `json:"share"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.Share == nil {
+		errBadRequest(w, "share is required")
+		return
+	}
+	v := "true"
+	if !*body.Share {
+		v = "false"
+	}
+	if err := h.ss.SetSetting(r.Context(), SharePastedImagesSetting, v); err != nil {
 		errInternalServer(w, "Could not save the setting")
 		return
 	}

@@ -16,6 +16,7 @@ import { addPendingMessage, confirmPendingMessage, removePendingMessage, resetLi
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked } from './hub_access.js';
+import { attachmentText, ensureShareNotice } from './shared_images.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
 import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends } from './terminal_gone.js';
@@ -111,7 +112,7 @@ export async function sendCommand({ nudge = false } = {}) {
         const sessionAttachments = getPendingAttachments(targetSession);
         const parts = [];
         for (const att of sessionAttachments) {
-            parts.push(att.path);
+            parts.push(attachmentText(att)); // the path the agent reads, and the link of its artifact when it has one (#5284)
         }
         if (textPart) parts.push(textPart);
 
@@ -978,8 +979,10 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
     const uploadPromise = (async () => {
         const formData = new FormData();
         formData.append("file", file);
+        formData.append("session_id", sid); // the agent this image is for: its artifact copy goes on that agent's record (#5284)
 
         try {
+            await ensureShareNotice(document.getElementById("image-attachments")); // Coral Hub connected: say once per connect that a pasted image is visible there
             showToast(`Uploading ${file.name}...`);
             // The path is typed into the agent, so the file must land on the agent's own server.
             const resp = await serverFetch(sessionServer(targetSession), "/api/upload", {
@@ -1003,12 +1006,13 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
                 path: result.path,
                 filename: result.filename,
                 previewUrl,
+                artifact: result.artifact || null, // the image as an artifact (#5284); null with artifact_error saying why
             });
             if (state.currentSession?.session_id === sid) {
                 renderAttachments(targetSession);
                 document.getElementById("command-input")?.focus();
             }
-            showToast(`Attached: ${result.filename}`);
+            showToast(result.artifact_error ? `Attached: ${result.filename} (not shared: ${result.artifact_error})` : `Attached: ${result.filename}`);
             return true;
         } catch (e) {
             showToast("Failed to upload image", true);

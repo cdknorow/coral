@@ -724,6 +724,62 @@ func jpegKeep(marker byte, payload []byte) bool {
 	return false
 }
 
+// jpegExifOrientation is the Orientation tag (0x0112) of the EXIF block in an APP1 payload, 2 to 8, or 0 when there is none, it is 1 (upright) or the block cannot be read.
+// A phone photo says "rotate me" in this one tag; dropping all of EXIF with the GPS would show a portrait photo on its side.
+func jpegExifOrientation(p []byte) int {
+	if len(p) < 14 || string(p[:6]) != "Exif\x00\x00" {
+		return 0
+	}
+	t := p[6:]
+	var bo binary.ByteOrder
+	switch string(t[:2]) {
+	case "II":
+		bo = binary.LittleEndian
+	case "MM":
+		bo = binary.BigEndian
+	default:
+		return 0
+	}
+	if bo.Uint16(t[2:4]) != 42 {
+		return 0
+	}
+	ifd := int(bo.Uint32(t[4:8]))
+	if ifd < 8 || ifd+2 > len(t) {
+		return 0
+	}
+	n := int(bo.Uint16(t[ifd : ifd+2]))
+	for k := 0; k < n && k < 1024; k++ {
+		e := ifd + 2 + k*12
+		if e+12 > len(t) {
+			return 0
+		}
+		if bo.Uint16(t[e:e+2]) != 0x0112 {
+			continue
+		}
+		if bo.Uint16(t[e+2:e+4]) != 3 || bo.Uint32(t[e+4:e+8]) != 1 {
+			return 0
+		}
+		if v := int(bo.Uint16(t[e+8 : e+10])); v >= 2 && v <= 8 {
+			return v
+		}
+		return 0
+	}
+	return 0
+}
+
+// jpegOrientationSegment is an APP1 segment that holds the Orientation tag and nothing else (no GPS, no camera, no thumbnail), or nil for no orientation to keep.
+func jpegOrientationSegment(orientation int) []byte {
+	if orientation < 2 || orientation > 8 {
+		return nil
+	}
+	seg := []byte{0xFF, 0xE1, 0x00, 0x22} // length 34: itself (2), "Exif\0\0" (6), the TIFF header (8), one entry (2 + 12 + 4)
+	seg = append(seg, "Exif\x00\x00"...)
+	seg = append(seg, 'M', 'M', 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08)
+	seg = append(seg, 0x00, 0x01, 0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, byte(orientation), 0x00, 0x00)
+	seg = append(seg, 0x00, 0x00, 0x00, 0x00)
+	return seg
+}
+
 // stripJPEG keeps only the whitelisted segments (jpegKeep) and the entropy-coded scan data,
 // and ends the output at the EOI that ends the image: anything appended after it (another
 // file, a polyglot, trailing data) is dropped. Nothing is re-encoded.
@@ -735,6 +791,7 @@ func stripJPEG(d []byte) ([]byte, error) {
 	out = append(out, 0xFF, 0xD8)
 	i := 2
 	scanned := false
+	orientation := 0 // the EXIF Orientation (2 to 8; 1 is the default and needs no tag), kept below as a segment of its own (#5284)
 	for elements := 0; i+2 <= len(d); elements++ {
 		if elements > stripMaxElements {
 			return nil, errAttach("bad_image")
@@ -751,6 +808,9 @@ func stripJPEG(d []byte) ([]byte, error) {
 			if !scanned {
 				return nil, errAttach("bad_image")
 			}
+			if seg := jpegOrientationSegment(orientation); seg != nil {
+				out = append(out[:2], append(seg, out[2:]...)...) // right after SOI
+			}
 			return append(out, 0xFF, 0xD9), nil
 		case marker >= 0xD0 && marker <= 0xD7, marker == 0x01: // no length
 			return nil, errAttach("bad_image")
@@ -763,6 +823,9 @@ func stripJPEG(d []byte) ([]byte, error) {
 			return nil, errAttach("bad_image")
 		}
 		seg := d[i : i+2+n]
+		if marker == 0xE1 && orientation == 0 {
+			orientation = jpegExifOrientation(d[i+4 : i+2+n])
+		}
 		if jpegKeep(marker, d[i+4:i+2+n]) {
 			out = append(out, seg...)
 		}

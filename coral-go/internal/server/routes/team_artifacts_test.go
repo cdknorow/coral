@@ -391,7 +391,7 @@ func TestTeamArtifactsListsSessionUploads(t *testing.T) {
 	id := storeManagedArtifact(t, coralDir, "# draft\n", true, true)
 	dir := uploadsDir(coralDir, sessAlice)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "draft.md", MediaType: "text/markdown", Size: 8, Digest: "sha256:" + id}, "2026-10-09T10:00:00Z"})
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: "draft.md", MediaType: "text/markdown", Size: 8, Digest: "sha256:" + id}, CreatedAt: "2026-10-09T10:00:00Z"})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
 
 	mine := getTeamArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+sessAlice, http.StatusOK)
@@ -415,7 +415,7 @@ func TestSessionArtifactsForStandaloneAgent(t *testing.T) {
 	id := storeManagedArtifact(t, coralDir, "# draft\n", true, true)
 	dir := uploadsDir(coralDir, "solo-1")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "draft.md", MediaType: "text/markdown", Size: 8, Digest: "sha256:" + id}, "2026-10-09T10:00:00Z"})
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: "draft.md", MediaType: "text/markdown", Size: 8, Digest: "sha256:" + id}, CreatedAt: "2026-10-09T10:00:00Z"})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
 
 	resp := getTeamArtifacts(t, srv, "/api/session-artifacts?session_id=solo-1", http.StatusOK)
@@ -432,7 +432,7 @@ func writeUpload(t *testing.T, coralDir, sessionID, content, name, createdAt str
 	id := storeManagedArtifact(t, coralDir, content, true, true)
 	dir := uploadsDir(coralDir, sessionID)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: name, MediaType: "text/markdown", Size: int64(len(content)), Digest: "sha256:" + id}, createdAt})
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: name, MediaType: "text/markdown", Size: int64(len(content)), Digest: "sha256:" + id}, CreatedAt: createdAt})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
 	return id
 }
@@ -550,7 +550,7 @@ func TestUploadDirCacheReusesUnchangedDirectories(t *testing.T) {
 	require.Equal(t, []string{"first-name.md"}, names())
 
 	// Rewriting a record in place does not touch the directory: the cache answers.
-	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "renamed.md"}, "2026-10-09T10:00:00Z"})
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: "renamed.md"}, CreatedAt: "2026-10-09T10:00:00Z"})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
 	require.NoError(t, os.Chtimes(dir, past, past))
 	require.Equal(t, []string{"first-name.md"}, names(), "an unchanged directory is not re-read")
@@ -587,7 +587,7 @@ func BenchmarkTeamArtifactUploads(b *testing.B) {
 		for u := range 20 {
 			sum := sha256.Sum256([]byte(fmt.Sprintf("%s-%d", sid, u)))
 			id := hex.EncodeToString(sum[:])
-			rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: fmt.Sprintf("file-%d.md", u), MediaType: "text/markdown", Size: 10, Digest: "sha256:" + id}, fmt.Sprintf("2026-10-09T10:%02d:00Z", u)})
+			rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: fmt.Sprintf("file-%d.md", u), MediaType: "text/markdown", Size: 10, Digest: "sha256:" + id}, CreatedAt: fmt.Sprintf("2026-10-09T10:%02d:00Z", u)})
 			if err := os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644); err != nil {
 				b.Fatal(err)
 			}

@@ -19,6 +19,7 @@ var identityWords = map[string]bool{"subscriber": true, "session": true, "sender
 // from or for: each with why. A new one needs a line here, or to be added to identityKeys.
 var notIdentityFields = map[string]string{
 	"agent_type":         "which CLI to launch, not a participant",
+	"uploaded_by":        "written by the server into the upload record of an image pasted in the dashboard (\"owner\", #5284); never read from a request",
 	"author":             "a Saved bookmark's label of who wrote a board message (POST /api/saved, the Operator's own bookmark; the board decides it when wired, #4816), not who a request is from",
 	"agents":             "a list of launch specs for a team launch, validated as names by the launcher",
 	"reviewers":          "task add --reviewers: names the Operator or orchestrator chose, checked against the board's members when delegated (#4175 rule 13)",

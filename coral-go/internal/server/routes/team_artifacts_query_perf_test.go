@@ -32,7 +32,7 @@ func TestTeamArtifactsQuery10kCost(t *testing.T) {
 			kind, name = "image/png", fmt.Sprintf("shot-%05d.png", i)
 		}
 		id := storeTyped(t, coralDir, content, name, kind)
-		rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: name, MediaType: kind, Size: int64(len(content)), Digest: "sha256:" + id}, base.Add(time.Duration(i) * time.Minute).Format(time.RFC3339)})
+		rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: name, MediaType: kind, Size: int64(len(content)), Digest: "sha256:" + id}, CreatedAt: base.Add(time.Duration(i) * time.Minute).Format(time.RFC3339)})
 		require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
 	}
 	// The upload directory cache trusts a folder only once it has been unchanged for a while: let it settle, as it does in use.

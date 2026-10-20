@@ -25,22 +25,25 @@ var (
 	// uploadDir is set by InitUploadDir() from server startup.
 	// Falls back to ~/.coral/uploads if not initialized.
 	uploadDir = ""
+	// uploadCoralDir is the data folder the artifact copy of an image goes to (#5284).
+	uploadCoralDir = ""
 
 	allowedExtensions = map[string]bool{
 		".png": true, ".jpg": true, ".jpeg": true, ".gif": true,
 		".webp": true, ".bmp": true, ".tiff": true,
-		// SVG intentionally excluded: SVG files can contain embedded JavaScript,
-		// creating a stored XSS risk if served inline.
+		// SVG (#5284): accepted as a file for the agent only, never as an artifact and never served by GET /api/upload/{name} (thumbnailTypes), so it is not inline markup on the
+		// dashboard's origin and not shared with Coral Hub viewers (a byte-exact copy cannot be metadata-stripped and can carry script).
+		".svg": true,
 	}
 
 	contentTypeToExt = map[string]string{
-		"image/png":  ".png",
-		"image/jpeg": ".jpg",
-		"image/gif":  ".gif",
-		"image/webp": ".webp",
-		"image/bmp":  ".bmp",
-		// "image/svg+xml" excluded: XSS risk
-		"image/tiff": ".tiff",
+		"image/png":     ".png",
+		"image/jpeg":    ".jpg",
+		"image/gif":     ".gif",
+		"image/webp":    ".webp",
+		"image/bmp":     ".bmp",
+		"image/tiff":    ".tiff",
+		"image/svg+xml": ".svg", // (#5284), see allowedExtensions
 	}
 
 	maxFileSize int64 = 20 * 1024 * 1024 // 20 MB
@@ -57,6 +60,7 @@ func SetUploadSettings(fn func(context.Context) (map[string]string, error)) { up
 // Must be called during server initialization before handling upload requests.
 func InitUploadDir(coralDir string) {
 	uploadDir = filepath.Join(coralDir, "uploads")
+	uploadCoralDir = coralDir
 }
 
 // UploadFile handles POST /api/upload — upload an image and return its path.
@@ -146,18 +150,32 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	safeName = strings.ReplaceAll(safeName, " ", "_")
 
+	// A JPEG, PNG or GIF loses its metadata (a phone photo's GPS) before it is saved: the agent's file and the artifact are the same bytes (#5284).
+	content = strippedUpload(content)
 	dest := filepath.Join(uploadDir, safeName)
 	if err := os.WriteFile(dest, content, 0o600); err != nil {
 		errInternalServer(w, "Failed to save file")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	reply := map[string]any{
 		"ok":       true,
 		"path":     filepath.ToSlash(dest),
 		"filename": orDefault(filename, safeName),
 		"size":     len(content),
-	})
+	}
+	// The same image as an artifact (#5284), on the target agent's session record: the chat shows it from the artifact route, which Coral Hub serves. Whatever stops it is said in the reply;
+	// the upload itself has succeeded and the agent has its path.
+	sid := r.FormValue("session_id")
+	if !safefs.IsSafeID(sid) {
+		sid = ""
+	}
+	if art, why := shareUploadedImage(r.Context(), uploadCoralDir, sid, orDefault(filename, safeName), ext, content); art != nil {
+		reply["artifact"] = art
+	} else {
+		reply["artifact_error"] = why
+	}
+	writeJSON(w, http.StatusOK, reply)
 }
 
 // thumbnailTypes are the image types GET /api/upload/{name} serves, by what the bytes are (net/http's sniff of the first 512 bytes), never by the

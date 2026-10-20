@@ -329,14 +329,14 @@ func TestAttachRecordAndSizeChecksEachRefuse(t *testing.T) {
 	empty := storeManagedArtifact(t, e.coralDir, "", true, true)
 	dir := uploadsDir(e.coralDir, betaQASID)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
-	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "empty", Size: 0, Digest: "sha256:" + empty}, afterJoin()})
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: "empty", Size: 0, Digest: "sha256:" + empty}, CreatedAt: afterJoin()})
 	require.NoError(t, os.WriteFile(filepath.Join(dir, empty+".json"), rec, 0o644))
 	code, out := e.send("alpha", "beta", alphaOrchSID, uri(empty))
 	require.Equal(t, http.StatusBadRequest, code)
 	assert.Equal(t, "not_yours", out["code"])
 
 	d := e.upload(alphaOrchSID, "sized bytes")
-	wrong, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "x", Size: 999, Digest: "sha256:" + d}, afterJoin()})
+	wrong, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: agentArtifactMeta{Name: "x", Size: 999, Digest: "sha256:" + d}, CreatedAt: afterJoin()})
 	require.NoError(t, os.WriteFile(filepath.Join(uploadsDir(e.coralDir, alphaOrchSID), d+".json"), wrong, 0o644))
 	e.h.uploads = uploadDirCache{}
 	code, out = e.send("alpha", "beta", alphaOrchSID, uri(d))

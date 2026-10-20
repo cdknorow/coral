@@ -5,6 +5,7 @@ import { unwrapPastedContent } from './pasted_content.js';
 import { isCoralNudge, INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, normalizeNudgeText } from './pending_messages.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
 import { thumbHtml, wireThumbs } from './chat_thumbs.js';
+import { splitSharedImages } from './shared_images.js';
 import { chatAgentAdapter } from './chat_agents.js';
 import { SAVE_BUTTON } from './saved_marks.js';
 import { getToolIcon, renderToolCard, renderQuestionCard } from './chat_tool_cards.js';
@@ -42,6 +43,13 @@ function attachmentChips(attachments) {
     return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
 }
 
+// The images pasted in the dashboard (#5284): a chip with the file's name and a thumbnail from the artifact, which Coral Hub serves too; a link that is gone (removed, retention, the owner's switch)
+// leaves the chip.
+function sharedImageChips(images) {
+    const chips = images.map(im => `<span class="chat-attachment-chip">${escapeHtml(im.name)}</span>${thumbHtml({ artifact: im.hex, name: im.name })}`);
+    return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
+}
+
 function renderOneMessage(msg, container, agentType) {
     const adapter = chatAgentAdapter(agentType);
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
@@ -50,8 +58,10 @@ function renderOneMessage(msg, container, agentType) {
 		const text = unwrapPastedContent(msg.content);
 		appendCoralNotice(container, normalizeNudgeText(text), isCoralHealthNudge(text));
     } else if (msg.type === "user") {
+        // Images pasted in the dashboard lead the turn as "<path> coral://artifacts/<hex>" pairs (#5284): shown as artifact thumbnails, not as the text of a path and a link.
+        const lead = splitSharedImages(unwrapPastedContent(msg.content));
         const bubble = makeBubble("chat-bubble human",
-            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(unwrapPastedContent(msg.content), undefined, 'chat')}</div>${attachmentChips(msg.attachments)}${msg.key ? SAVE_BUTTON : ""}`);
+            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(lead.rest, undefined, 'chat')}</div>${attachmentChips(msg.attachments)}${sharedImageChips(lead.images)}${msg.key ? SAVE_BUTTON : ""}`);
         if (msg.key) { bubble.dataset.msgKey = msg.key; bubble.dataset.said = msg.timestamp || ""; } // Save for Later finds the message again by this (#4510)
         wireThumbs(bubble);
         appendContent(container, bubble);

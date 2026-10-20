@@ -267,6 +267,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Uploads retention: pasted/dropped images expire after uploads_retention_days
 	// (30 by default) and the folder stays under uploads_max_mb (#3364).
 	uploadsRetention := background.NewUploadsRetention(db, cfg.CoralDir())
+	uploadsRetention.PurgePasted = srv.PurgePastedImages // the artifact copies of pasted images follow it (#5284)
 	safeGo(ctx, "uploads_retention", func() { uploadsRetention.Run(ctx) })
 
 	// Artifact retention (#3554): off unless the Operator sets artifact_retention_days; the

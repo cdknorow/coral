@@ -207,6 +207,8 @@ var routeTable = cat(
 		"/api/templates/commands", "/api/templates/commands/{category}", "/api/templates/commands/{category}/{name}",
 		"/api/views", "/api/views/{id}",
 		"/api/agent-models", "/api/settings/default-prompts", "/api/session-artifacts",
+		// Images pasted or attached in the dashboard are artifacts too (#5284): an image in a chat is served through this same read; /api/upload and /api/shared-images stay local only, and the
+		// owner's switch (share_pasted_images, PUT /api/cloud/share-pasted-images, never from here) makes a request through the tunnel for a pasted-only image a 404.
 		// A content-addressed agent artifact, named by its full SHA-256. Reads only; the exact 64-hex shape is
 		// enforced by the {hex64} segment, and the only query is the link form v=2 (routes_query.go, #3179). Upload (POST /api/agent/artifacts) and
 		// the artifact list under /api/agent/ stay unlisted (never).

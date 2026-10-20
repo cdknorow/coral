@@ -21,6 +21,7 @@ DELETE /api/sessions/history/{sessionID}/tags/{tagID} never
 DELETE /api/sessions/live/{name}/events never
 DELETE /api/sessions/live/{name}/notes/{noteID} interact
 DELETE /api/sessions/live/{name}/tasks/{taskID} interact
+DELETE /api/shared-images/{id} never
 DELETE /api/system/debug-input-log never
 DELETE /api/tags/{tagID} never
 DELETE /api/teams/detail/{name} never
@@ -344,6 +345,7 @@ PUT /api/cloud/allow-auto-accept never
 PUT /api/cloud/hub-relaunch never
 PUT /api/cloud/max-mode never
 PUT /api/cloud/redact-tokens never
+PUT /api/cloud/share-pasted-images never
 PUT /api/scheduled/jobs/{jobID} never
 PUT /api/sessions/history/{sessionID}/notes never
 PUT /api/sessions/live/{name}/display-name interact

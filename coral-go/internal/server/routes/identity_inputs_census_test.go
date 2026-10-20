@@ -317,6 +317,7 @@ const (
 
 var queryIdentityReads = map[string]string{
 	"board_messages.go subscriber_id":      queryBoard,
+	"shared_images.go session_id":          queryLookup, // DELETE /api/shared-images/{id}?session_id=: the agent whose pasted image it is; the Operator calls it (#5284)
 	"board_subscribers.go subscriber_id":   queryBoard,
 	"board_task_create.go subscriber_id":   queryBoard,
 	"board_waits.go subscriber_id":         queryBoard,

@@ -273,9 +273,34 @@ invalid path returns `false`.
 POST /api/upload
 ```
 
-Send multipart form field `file`. PNG, JPEG, GIF, WebP, BMP, and TIFF images up
-to 20 MiB are stored under Coral's uploads directory. SVG is rejected. The
-response contains `ok`, absolute `path`, original `filename`, and byte `size`.
+Send multipart form field `file`, and `session_id` (the agent the image is for). PNG, JPEG, GIF, WebP, BMP, TIFF and SVG
+images up to 20 MiB are stored under Coral's uploads directory. A JPEG, PNG or GIF is saved without its metadata
+(GPS, camera, thumbnail; no re-encoding; a JPEG keeps its Orientation tag so a portrait photo is not on its side).
+The response contains `ok`, absolute `path`, original `filename`, and byte `size`.
+
+The Operator's only (an agent's token is refused). The image is also stored as an artifact on that agent's session
+(`uploaded_by` owner, `source` paste), which Coral Hub serves through the existing `GET /api/artifacts/{id}`; the reply
+then has `artifact` (`id`, `uri` as `coral://artifacts/<id>`, `media_type`, `size`, `name`, `inline`), and the id is the
+SHA-256 of the file at `path`. Otherwise it has `artifact_error`, a sentence saying why, and the upload still succeeded:
+SVG (kept for the agent only, never shared), a WebP or TIFF that carries metadata, a file that is not a recognised picture,
+a `session_id` that is not a live session of this Coral, the store's size cap, the disk guard, or the dashboard's own hourly
+window for these (100 a hour, 512 MiB, separate from every agent's). BMP and TIFF are artifacts that the chat shows as a
+chip, not a thumbnail. The text the dashboard types into the agent for each image is `<path> coral://artifacts/<id>`.
+
+**Who sees it.** An image cannot be redacted. With `PUT /api/cloud/share-pasted-images {"share": bool}` on (the default; the
+Operator's, local only, never through Coral Hub; Settings > Network and Hub) anyone who can view this Coral through Coral
+Hub at View tier can open a pasted image from the link in the chat. With it off a request that came through the tunnel for an
+image that is only a pasted one answers `404`; this computer still serves it. The dashboard says so once after each Coral Hub
+connect, before the first paste, and offers to turn it off.
+
+```
+DELETE /api/shared-images/{id}?session_id=<agent session>
+```
+
+Removes that session's shared copy of a pasted image (the Operator's, never through Coral Hub). The object itself goes only
+when no other session or board lists it and it is not kept; the agent's own file is not touched. `404` for anything that is
+not a pasted image of that session. A pasted image's record also follows `uploads_retention_days` (below), and a task result
+cannot name one (it is the Operator's, not the agent's upload).
 
 Uploads are kept for `uploads_retention_days` (default 30, 1-365): a background job
 removes older ones hourly. The folder is capped at `uploads_max_mb` (default 1024,

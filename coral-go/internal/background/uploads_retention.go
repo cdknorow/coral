@@ -18,6 +18,9 @@ type UploadsRetention struct {
 	dir    string
 	logger *slog.Logger
 
+	// PurgePasted, when set, is called with the cutoff after the files are removed: the artifact copies of pasted images follow the same retention (#5284).
+	PurgePasted func(ctx context.Context, cutoff time.Time)
+
 	FirstRun, Interval time.Duration
 	now                func() time.Time
 }
@@ -51,6 +54,9 @@ func (j *UploadsRetention) RunOnce(ctx context.Context) int {
 	}
 	if files > 0 {
 		j.logger.Info("uploads retention: removed expired uploads", "files", files, "bytes", bytes)
+	}
+	if j.PurgePasted != nil {
+		j.PurgePasted(ctx, cutoff)
 	}
 	if err := uploads.MakeRoom(j.dir, 0, uploads.MaxBytes(settings), now); err != nil && err != uploads.ErrFull {
 		j.logger.Warn("uploads retention: could not trim the uploads folder", "error", err)

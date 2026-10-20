@@ -97,6 +97,10 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	routes.InitUploadDir(cfg.CoralDir())
 	if db != nil {
 		routes.SetUploadSettings(store.NewSessionStore(db).GetSettings)
+		routes.SetUploadSessionCheck(func(ctx context.Context, sid string) bool { // an image pasted for an agent is shared only for a session that exists here (#5284)
+			ls, err := store.NewSessionStore(db).GetLiveSession(ctx, sid)
+			return err == nil && ls != nil
+		})
 	}
 
 	// Open the board store (separate SQLite DB)
@@ -376,6 +380,13 @@ func (s *Server) AgentsSlept(ctx context.Context, sessionIDs []string) {
 func (s *Server) RunArtifactRetention(ctx context.Context) {
 	if s.sessHandler != nil {
 		s.sessHandler.RunArtifactRetention(ctx)
+	}
+}
+
+// PurgePastedImages removes the pasted images older than cutoff from the artifact store (#5284); the uploads retention calls it after it removes the files.
+func (s *Server) PurgePastedImages(ctx context.Context, cutoff time.Time) {
+	if s.sessHandler != nil {
+		s.sessHandler.PurgePastedImages(ctx, cutoff)
 	}
 }
 
