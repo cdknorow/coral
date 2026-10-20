@@ -289,10 +289,18 @@ func TestLinuxStartRestartsCoralTheWayTheServerRecordedItOrLeavesItToTheManager(
 		require.NoError(t, os.WriteFile(filepath.Join(dir, runrecord.File), []byte(body), 0o600))
 	}
 	write(`{"argv":["` + install + `/coral","--port","8420"],"cwd":"/srv/coral"}`)
+	assert.Error(t, l.Start(context.Background(), install), "a record without an environment is not started with the updater's own (#5414)")
+	assert.Empty(t, spawned)
+	write(`{"argv":["` + install + `/coral","--port","8420"],"env":["PATH=/usr/bin"],"cwd":"/srv/coral"}`)
 	require.NoError(t, l.Start(context.Background(), install))
 	assert.Equal(t, []string{install + "/coral", "--port", "8420"}, spawned)
 	assert.Equal(t, "/srv/coral", cwd)
-	assert.Equal(t, os.Environ(), spawnedEnv, "a record without an environment: the updater's own")
+	assert.Equal(t, []string{"PATH=/usr/bin"}, spawnedEnv)
+
+	// A record edited to carry anything the allowlist does not name is filtered again when it is read: no LD_PRELOAD, token or URL with a password reaches Coral.
+	write(`{"argv":["` + install + `/coral"],"env":["LD_PRELOAD=/tmp/x.so","ANTHROPIC_API_KEY=k","CORAL_CLOUD_URL=https://u:pw@hub.example","PATH=/usr/bin","HOME=/home/u"],"cwd":"/srv/coral"}`)
+	require.NoError(t, l.Start(context.Background(), install))
+	assert.Equal(t, []string{"PATH=/usr/bin", "HOME=/home/u"}, spawnedEnv)
 
 	// A record with one: exactly that environment, nothing of the updater's own (#5410).
 	write(`{"argv":["` + install + `/coral"],"env":["CORAL_DATA_DIR=/srv/data","PATH=/usr/bin"],"cwd":"/srv/coral"}`)

@@ -440,9 +440,11 @@ func (l *Linux) Start(ctx context.Context, install string) error {
 	if spawn == nil {
 		spawn = spawnDetached
 	}
-	env := rr.Env
-	if len(env) == 0 { // a record without one (made before it was recorded): the updater's own
-		env = os.Environ()
+	// The environment the restarted Coral gets is the record's allowlisted part, filtered again here (the file is read, not trusted: a name the allowlist does not
+	// carry, an LD_PRELOAD or a token, is not passed on), and never the updater's own, which holds what the server gave it (#5414).
+	env := runrecord.AllowedEnv(rr.Env)
+	if len(env) == 0 {
+		return errors.New("the run record has no environment for Coral")
 	}
 	return spawn(rr.Argv, env, rr.Cwd)
 }

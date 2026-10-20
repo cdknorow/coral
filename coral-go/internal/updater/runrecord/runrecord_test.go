@@ -71,3 +71,42 @@ func TestOnlyTheAllowlistedEnvironmentIsRecorded(t *testing.T) {
 	assert.Equal(t, got, r.Env)
 	assert.Nil(t, AllowedEnv(nil))
 }
+
+// #5414: a value on the allowlist that is a URL with a password in it is not recorded, whatever variable it is in.
+func TestAURLWithCredentialsIsNotRecordedEvenInAnAllowedVariable(t *testing.T) {
+	got := AllowedEnv([]string{
+		"CORAL_CLOUD_URL=https://user:s3cret@app.example.dev/path", "CORAL_HUB=http://token@h", "CORAL_HOST=a b://x@y",
+		"CORAL_CLOUD_URL=https://app.example.dev", "TZ=Europe/Paris", "PATH=/a:/b@c", "CORAL_DATA_DIR=/srv/x@y",
+	})
+	assert.Equal(t, []string{"CORAL_CLOUD_URL=https://app.example.dev", "TZ=Europe/Paris", "PATH=/a:/b@c", "CORAL_DATA_DIR=/srv/x@y"}, got,
+		"credentials in a URL are dropped; an @ in a path is not a URL")
+	assert.True(t, hasUserinfo("https://a:b@c"))
+	assert.True(t, hasUserinfo("x https://ok.example/ ftp://u@h"))
+	assert.False(t, hasUserinfo("https://h/path@x"))
+	assert.False(t, hasUserinfo("mail me@h"))
+}
+
+// #5414: the updates folder is not a link, and one left looser than owner-only is tightened before the record goes in it.
+func TestWriteRefusesALinkedUpdatesFolderAndTightensALooseOne(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("modes and unprivileged links are not a Windows thing")
+	}
+	data := t.TempDir()
+	elsewhere := t.TempDir()
+	require.NoError(t, os.Symlink(elsewhere, filepath.Join(data, "updates")))
+	assert.Error(t, Write(data, []string{"/opt/coral/coral"}, nil, "/"), "a link is not the updates folder")
+	entries, _ := os.ReadDir(elsewhere)
+	assert.Empty(t, entries, "nothing was written where the link leads")
+
+	loose := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(loose, "updates"), 0o755))
+	require.NoError(t, os.Chmod(filepath.Join(loose, "updates"), 0o755))
+	require.NoError(t, Write(loose, []string{"/opt/coral/coral"}, nil, "/"))
+	fi, err := os.Stat(filepath.Join(loose, "updates"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), fi.Mode().Perm())
+
+	// An argument that is a URL with a password in it is not recorded, whatever the flag is called.
+	assert.ErrorIs(t, Write(t.TempDir(), []string{"/opt/coral/coral", "--cloud-url", "https://u:pw@hub.example"}, nil, "/"), ErrSecretFlag)
+	assert.NoError(t, Write(t.TempDir(), []string{"/opt/coral/coral", "--cloud-url", "https://hub.example"}, nil, "/"))
+}

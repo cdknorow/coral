@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
@@ -33,6 +34,25 @@ var envAllowed = map[string]bool{
 	"XDG_RUNTIME_DIR": true, "XDG_DATA_HOME": true, "XDG_CONFIG_HOME": true, "XDG_STATE_HOME": true,
 }
 
+// hasUserinfo reports whether v holds a URL with credentials in it ("https://user:secret@host"): a value on the allowlist is a name, a path, a flag or a mode, and a
+// URL that carries a password is not recorded whatever variable it is in (#5414).
+func hasUserinfo(v string) bool {
+	for rest := v; ; {
+		i := strings.Index(rest, "://")
+		if i < 0 {
+			return false
+		}
+		rest = rest[i+3:]
+		end := strings.IndexAny(rest, "/?# \t")
+		if end < 0 {
+			end = len(rest)
+		}
+		if strings.Contains(rest[:end], "@") {
+			return true
+		}
+	}
+}
+
 // maxEnvValue bounds one recorded value (a PATH can be long, a record is not for payloads).
 const maxEnvValue = 4096
 
@@ -43,7 +63,7 @@ func AllowedEnv(environ []string) []string {
 	seen := map[string]bool{}
 	for _, kv := range environ {
 		name, val, ok := strings.Cut(kv, "=")
-		if !ok || !envAllowed[name] || val == "" || len(val) > maxEnvValue || seen[name] || strings.ContainsAny(kv, "\x00\n") {
+		if !ok || !envAllowed[name] || val == "" || len(val) > maxEnvValue || seen[name] || strings.ContainsAny(kv, "\x00\n") || hasUserinfo(val) {
 			continue
 		}
 		seen[name] = true
@@ -67,13 +87,27 @@ func Write(dataDir string, argv, environ []string, cwd string) error {
 		return errors.New("no command line")
 	}
 	for _, a := range argv[1:] {
-		if secretFlag.MatchString(a) {
+		if secretFlag.MatchString(a) || hasUserinfo(a) { // a flag named for a secret, or any argument that is a URL with a password in it
 			return ErrSecretFlag
 		}
 	}
 	dir := filepath.Join(dataDir, "updates")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
+	}
+	// The folder is the updater's own, so it is not a link (the record would be written wherever the link leads) and it is owner-only: the reader refuses a record in a
+	// folder others can enter, and a folder some earlier run left looser is tightened here (#5414).
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return errors.New("the updates folder is a link or not a folder")
+	}
+	if fi.Mode().Perm()&0o077 != 0 && runtime.GOOS != "windows" {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return err
+		}
 	}
 	b, err := json.Marshal(Record{Argv: argv, Env: AllowedEnv(environ), Cwd: cwd})
 	if err != nil {
