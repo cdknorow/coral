@@ -268,7 +268,7 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 	if body.CrossTeamAllowed != nil {
 		// The WHOLE list, checked as a whole (#5508): the owner's edit limit first, then each entry's shape, the cap, duplicates and the board's own id; one transaction applies it.
 		if !h.allowEditSlot(callerActor(r)) {
-			writeError(w, http.StatusTooManyRequests, "edit_rate_limited", "too many edits of who may message this board in the last hour; try again later")
+			httputil.WriteActionLimit(w, 0, "edit_rate_limited", "too many edits of who may message this board in the last hour; try again later") // marked X-Coral-Limit: action like every per-action limit (limit census)
 			return
 		}
 		self, _ := h.senderIDOf(r.Context(), project)
