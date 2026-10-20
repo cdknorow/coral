@@ -102,6 +102,8 @@ setup() { # NAME
   "${CENV[@]}" "$inst/coral-board" post "a message before the update" >> "$s/board.out" 2>&1
   # The run record: how the server was started, which Linux apply reads to start Coral again after the swap. The server is documented to write it at
   # startup (internal/updater/runrecord) and NOTHING does yet (#5401 finding), so this script writes it, in the documented form: argv, cwd, 0600 in a 0700 folder.
+  # RHS_NO_RUN_RECORD=1 leaves it out: the diagnostic that shows what an apply does today without it (it rolls back)
+  [ -n "${RHS_NO_RUN_RECORD:-}" ] && return 0
   mkdir -p "$dd/updates" && chmod 700 "$dd/updates" &&
   ( umask 077; python3 - "$inst" "$dd" "$PORT" "$s" > "$dd/updates/run.json" <<'PY'
 import json, sys
