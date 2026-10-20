@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -179,6 +180,7 @@ func (l *limited) Write(p []byte) (int, error) {
 
 type entry struct {
 	mu        sync.Mutex // held while the CLI is asked: callers that arrive meanwhile share the answer
+	snap      sync.Mutex // guards state, checkedAt and valid for Snapshot, which must never wait for a check that is running (the status handler reads it, #5476 review)
 	state     State
 	until     time.Time
 	signedOut int // answers of "signed out" in a row
@@ -229,9 +231,11 @@ func ask(ctx context.Context, agentType, bin string, fresh bool) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	e.snap.Lock()
 	e.valid = true
 	e.state = st
 	e.checkedAt = now()
+	e.snap.Unlock()
 	switch st {
 	case SignedOut:
 		e.signedOut++
@@ -284,11 +288,11 @@ func Snapshot(agentType string) (st Status, ok bool) {
 	}
 	cacheMu.Unlock()
 	for _, e := range entries {
-		e.mu.Lock()
+		e.snap.Lock()
 		if e.valid && e.state != Unknown && (!ok || e.checkedAt.After(st.CheckedAt)) {
 			st, ok = Status{SignedIn: e.state == SignedIn, CheckedAt: e.checkedAt}, true
 		}
-		e.mu.Unlock()
+		e.snap.Unlock()
 	}
 	return st, ok
 }
@@ -312,22 +316,28 @@ func credentialedOutsideLogin() bool {
 		}
 		dir = filepath.Join(home, ".claude")
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "settings.json"))
+	f, err := os.Open(filepath.Join(dir, "settings.json"))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 1<<20+1)) // a bigger file is read no further than its limit
 	if err != nil || len(data) > 1<<20 {
 		return false
 	}
+	// Only whether a value is a non-empty string is asked, so one setting of another type (a number in env, say) cannot hide an apiKeyHelper that is there (#5476 review).
 	var settings struct {
-		APIKeyHelper string            `json:"apiKeyHelper"`
-		Env          map[string]string `json:"env"`
+		APIKeyHelper any            `json:"apiKeyHelper"`
+		Env          map[string]any `json:"env"`
 	}
 	if json.Unmarshal(data, &settings) != nil {
 		return false
 	}
-	if settings.APIKeyHelper != "" {
+	if s, ok := settings.APIKeyHelper.(string); ok && s != "" {
 		return true
 	}
 	for _, k := range credentialEnv {
-		if settings.Env[k] != "" {
+		if s, ok := settings.Env[k].(string); ok && s != "" {
 			return true
 		}
 	}
