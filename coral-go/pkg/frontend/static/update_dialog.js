@@ -7,6 +7,14 @@ import { importOnce } from './import_once.js';
 
 const { RESUME_KEY, reasonText, requestRelaunch } = await importOnce('./update_api.js');
 
+// What happens after Relaunch, by how this Coral was installed (the docs' per-platform table): none of it promises that this page comes back by itself
+const AFTER = {
+    app: 'Coral is quitting to install the update. It may open the disk image to finish. If Coral does not start again by itself, open it.',
+    msi: 'Windows will ask for your permission to install the update (the usual admin prompt). Coral starts again when the installer is done.',
+    portable: 'Coral is quitting to swap in the update. If it does not start again by itself, start it.',
+    tarball: 'Coral is quitting to install the update. If it was not started by the tray or a service, it stays stopped: start it again.',
+};
+const AFTER_DEFAULT = 'Coral is quitting to install the update. If it does not start again by itself, start it.';
 const STATE_WORDS = { working: 'working', idle: 'idle', waiting: 'waiting for you' };
 
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -32,7 +40,7 @@ function draw(note) {
     const head = mk('div', 'modal-header'); const h = mk('h3', null, 'Relaunch Coral to update?'); h.id = 'update-confirm-title'; head.append(h);
     const body = mk('div', 'modal-body'); body.id = 'update-confirm-body';
     const days = s.staged.days;
-    body.append(mk('p', null, `Coral ${s.staged.version} is downloaded and verified${days >= 1 ? ` (ready for ${plural(days, 'day')})` : ''}. You are on ${s.installed}. Relaunching takes a few seconds.`));
+    body.append(mk('p', null, `Coral ${s.staged.version} is downloaded and verified${days >= 1 ? ` (ready for ${plural(days, 'day')})` : ''}. You are on ${s.installed}.`));
     if (note) { const p = mk('p', 'update-note', note); p.setAttribute('role', 'status'); body.append(p); }
     if (n > 0) {
         const warn = mk('div', 'update-warn');
@@ -67,7 +75,7 @@ async function sendRelaunch(go, later) {
     const res = await requestRelaunch(ack);
     if (res.ok) {
         const body = dialog.querySelector('.modal-body');
-        const p = mk('p', 'update-note', 'Relaunching. This page reconnects when Coral is back.'); p.setAttribute('role', 'status');
+        const p = mk('p', 'update-note', AFTER[current.installKind] || AFTER_DEFAULT); p.setAttribute('role', 'status');
         body.append(p); later.textContent = 'Close'; later.disabled = false; go.hidden = true;
         return;
     }

@@ -4,7 +4,7 @@
 import { importOnce } from './import_once.js';
 import { browserLocal, browserSession } from './safe_storage.js';
 import { pollEvery } from './overload.js';
-const { RESUME_KEY, ageTier, fetchUpdateStatus, reasonText, requestCheckNow } = await importOnce('./update_api.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
+const { RESUME_KEY, ageTier, fetchUpdateStatus, notAvailable, requestCheckNow, rollbackText, serverHas } = await importOnce('./update_api.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
 import { updatesUiOn } from './update_flag.js';
 
 const POLL_MS = 10 * 60 * 1000;
@@ -30,7 +30,7 @@ export function pillWords(s) {
     const ago = days < 1 ? 'earlier today' : `${plural(days, 'day')} ago`;
     return {
         tier, age,
-        name: `Relaunch to update to version ${s.staged.version}. Downloaded ${ago}.${s.relaunch.available ? '' : ` Not available now: ${reasonText(s.relaunch.reason)}`}`,
+        name: `Relaunch to update to version ${s.staged.version}. Downloaded ${ago}.${s.relaunch.available ? '' : ` ${notAvailable(s.relaunch.reason)}`}`,
     };
 }
 
@@ -65,10 +65,10 @@ export function failureNotice(s) {
     if (!s || !s.enabled) return null;
     const to = (s.last && s.last.to) || (s.staged && s.staged.version) || '';
     if (s.state === 'failed' || (s.last && s.last.result === 'refused')) {
-        return { kind: 'verify', key: `verify:${to}:${s.last ? s.last.at : ''}`, lead: `Coral ${to} was not installed.`, rest: ` The download did not pass verification, so nothing was changed. Coral is still on ${s.installed}.` };
+        return { kind: 'verify', key: `verify:${to}:${s.last ? s.last.at : ''}`, lead: `Coral found an update (v${to}) it could not verify, so it was not installed.`, rest: ` Your version is unchanged.` }; // the docs' sentence (updates.md)
     }
     if (s.last && s.last.result === 'failed_rolled_back') {
-        return { kind: 'rolled', key: `rolled:${to}:${s.last.at}`, lead: `The update to ${to} was undone.`, rest: ` The new version did not start properly, so Coral went back to ${s.installed}. Your agents are unaffected.` };
+        return { kind: 'rolled', key: `rolled:${to}:${s.last.at}`, lead: `The update to ${to} was undone.`, rest: ` ${s.rollback && rollbackText(s.rollback.reason) ? rollbackText(s.rollback.reason) + ' ' : ''}Coral went back to ${s.installed}. Your agents are unaffected.` };
     }
     return null;
 }
@@ -84,6 +84,9 @@ function renderBanner() {
     banner.dataset.kind = n.kind; banner.dataset.key = n.key;
     banner.querySelector('.update-fail-lead').textContent = n.lead;
     banner.querySelector('.update-fail-rest').textContent = n.rest;
+    // Try again is drawn only when it can do something: a check route to ask, or a rolled-back update that can be relaunched again
+    const again = banner.querySelector('.update-fail-again');
+    if (again) again.hidden = !(serverHas.check || (n.kind === 'rolled' && relaunchOffered(status) && status.relaunch.available));
     // role=alert announces a banner when it appears; the same notice redrawn by the next poll is not announced again (the text is only written when it changed)
     if (!wasShown) banner.setAttribute('role', 'alert');
 }

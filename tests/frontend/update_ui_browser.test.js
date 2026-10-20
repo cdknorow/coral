@@ -13,6 +13,7 @@ const BASE = require('./test_base').BASE;
 const agents = (n, extra = {}) => Array.from({ length: n }, (_, i) => ({ session_id: `sid-${i}`, name: ['api-worker', 'review-1', 'docs-2'][i] || `agent-${i}`, backend: 'pty', state: ['working', 'waiting', 'idle'][i % 3], ...(i === 0 ? { resumes: true } : i === 2 ? { resumes: false } : {}), ...extra }));
 const staged = (days, restarts = agents(3), over = {}) => ({ enabled: true, installed: '1.4.125', state: 'staged', staged: { version: '1.4.126', staged_at: '2026-10-17T03:00:00Z', days_ready: days, verified: true }, relaunch: { available: true, reason: '', hub_allowed: true, restarts, tmux_agents_restart: false, ack: 'ack-1' }, last_result: null, checked_at: new Date().toISOString(), auto: true, ...over });
 const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null, relaunch: { available: false, reason: 'nothing_staged', restarts: [], ack: '' }, last_result: null, checked_at: new Date().toISOString(), auto: true };
+const upToDate = { ...idle, not_ready_reason: 'up_to_date' }; // what the server says when it knows (#5388); `idle` says nothing, and the pane must not claim more than that
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -208,7 +209,7 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
             const open = async () => { await ev(`window.showSettingsModal('updates'); true`); await waitFor(`!document.getElementById('settings-pane-updates')?.hidden && !!document.querySelector('#update-pane-body .update-status, #update-pane-body .update-managed, #update-pane-body .update-calm')`, `${tag}: the Updates pane`, 8000); await settle(200); };
             const pane = () => ev(`(() => { const b = document.getElementById('update-pane-body'); const t = sel => (b.querySelector(sel) || {}).textContent; return { title: t('.update-status-text b') || t('.update-managed b'), sub: t('.update-status-text p'), k: (b.querySelector('.update-status') || {}).dataset?.k, act: t('.update-act'), auto: (document.getElementById('settings-update-auto') || {}).checked, autoOff: (document.getElementById('settings-update-auto') || {}).disabled, hub: (document.getElementById('settings-update-hub') || {}).checked, cmd: t('.update-cmd code'), link: (b.querySelector('.update-link') || {}).href, bar: (b.querySelector('[role=progressbar]') || {}).getAttribute && b.querySelector('[role=progressbar]').getAttribute('aria-valuenow'), facts: t('.update-facts'), priv: t('.update-privacy') }; })()`);
             await setStatus(staged(3)); await open(); let pn = await pane();
-            check(`${tag}: Updates, ready: the card, its sentence and its action (${JSON.stringify([pn.title, pn.sub, pn.act, pn.k])})`, pn.title === 'Coral 1.4.126 is ready' && /3 days ago. It installs the next time Coral starts/.test(pn.sub) && pn.act === 'Relaunch to update' && pn.k === 'warm' && pn.auto === true && pn.hub === true && /1\.4\.125/.test(pn.facts) && /GitHub only/.test(pn.priv));
+            check(`${tag}: Updates, ready: the card, its sentence and its action (${JSON.stringify([pn.title, pn.sub, pn.act, pn.k])})`, pn.title === 'Coral 1.4.126 is ready' && /3 days ago. It installs the next time Coral starts/.test(pn.sub) && pn.act === 'Relaunch to update' && pn.k === 'warm' && pn.auto === true && pn.hub === undefined && /1\.4\.125/.test(pn.facts) && /GitHub only/.test(pn.priv));
             await shot(`${tag} settings ready`);
             const au2 = await auditRegion(ev, ['#settings-pane-updates']);
             const un2 = await axUnnamed('#settings-pane-updates');
@@ -222,11 +223,18 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
             // the card's states (Apply closed the dialog: open it again, or the audits below would look at nothing)
             await setStatus(staged(3)); await open();
             for (const [what, st, expect] of [
-                ['up to date', idle, { title: 'Coral is up to date', act: 'Check now' }],
+                ['up to date', upToDate, { title: 'Coral is up to date', act: 'Check now' }],
+                ['nothing known', idle, { title: 'Nothing is ready to install' }],
+                ['a newer one not promoted', { ...idle, not_ready_reason: 'not_promoted', latest: '1.4.130' }, { title: 'Coral 1.4.130 is out', sub: 'It will install automatically once it is ready.' }],
+                ['backing off', { ...idle, not_ready_reason: 'backoff' }, { title: 'Nothing to install right now', sub: 'Coral will check again later.' }],
+                ['check failed', { ...idle, not_ready_reason: 'check_failed' }, { title: 'Coral could not check for updates', k: 'warm' }],
+                ['not checked yet', { ...idle, not_ready_reason: 'not_checked' }, { title: 'Coral has not checked for updates yet' }],
+                ['the switch is off', { ...idle, not_ready_reason: 'switch_off' }, { title: 'Automatic installs are off' }],
                 ['downloading', { ...idle, progress: 64, staged: { version: '1.4.126', staged_at: '', days_ready: 0, verified: false } }, { title: 'Downloading Coral 1.4.126', bar: '64' }],
-                ['failed', { ...idle, state: 'failed', last_result: { at: '2026-10-19T10:00:00Z', from: '1.4.125', to: '1.4.126', result: 'refused', by: 'local' } }, { title: 'Coral 1.4.126 was not installed.', act: 'Try again' }],
-                ['Homebrew', { ...idle, install_kind: 'homebrew', upgrade_command: 'brew upgrade --cask coral' }, { title: 'Homebrew updates this Coral', cmd: 'brew upgrade --cask coral', autoOff: true }],
-                ['unsupported', { ...idle, install_kind: 'unsupported' }, { title: 'This install cannot update itself', link: 'https://github.com/cdknorow/coral/releases', autoOff: true }],
+                ['failed', { ...idle, state: 'failed', last_result: { at: '2026-10-19T10:00:00Z', from: '1.4.125', to: '1.4.126', result: 'refused', by: 'local' } }, { title: 'Coral found an update (v1.4.126) it could not verify, so it was not installed.', sub: 'Your version is unchanged.', act: 'Try again' }],
+                ['Homebrew', { ...idle, install_kind: 'homebrew', upgrade_command: 'brew upgrade --cask coral', relaunch: { ...idle.relaunch, reason: 'unsupported_install' } }, { title: 'Homebrew updates this Coral', cmd: 'brew upgrade --cask coral', autoOff: true }],
+                ['Homebrew by its reason alone (no install_kind: an older server)', { ...idle, relaunch: { ...idle.relaunch, reason: 'unsupported_install' } }, { title: 'This install cannot update itself', autoOff: true }],
+                ['a folder it cannot write to', { ...idle, install_kind: 'unwritable', relaunch: { ...idle.relaunch, reason: 'unsupported_install' } }, { title: 'This install cannot update itself', link: 'https://github.com/cdknorow/coral/releases', autoOff: true }],
             ]) {
                 await setStatus(st); await ev(`import(${S} + 'update_settings.js').then(m => m.showUpdatesPane())`); await settle(300); pn = await pane();
                 check(`${tag}: Updates, ${what} (${JSON.stringify(pn).slice(0, 140)})`, Object.entries(expect).every(([k, v]) => pn[k] === v), JSON.stringify(expect));
@@ -240,7 +248,7 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
             // ═══ the failure notice
             await setStatus({ ...idle, state: 'failed', last_result: { at: '2026-10-19T10:00:00Z', from: '1.4.125', to: '1.4.126', result: 'refused', by: 'local' } });
             let b = await ev(`(() => { const e = document.getElementById('update-fail-banner'); return { hidden: e.hidden, role: e.getAttribute('role'), text: e.textContent.replace(/\\s+/g, ' ').trim() }; })()`);
-            check(`${tag}: a refused download says plainly that nothing was changed (${b.text})`, !b.hidden && b.role === 'alert' && /Coral 1\.4\.126 was not installed\. The download did not pass verification, so nothing was changed\. Coral is still on 1\.4\.125\./.test(b.text));
+            check(`${tag}: a refused download says plainly that nothing was changed (${b.text})`, !b.hidden && b.role === 'alert' && /Coral found an update \(v1\.4\.126\) it could not verify, so it was not installed\. Your version is unchanged\./.test(b.text));
             await shot(`${tag} failure`);
             const aub = await auditRegion(ev, ['#update-fail-banner']);
             check(`${tag}: the notice has 4.5:1 text contrast (${JSON.stringify((aub.fails || []).slice(0, 2))}) and named controls (${JSON.stringify(await axUnnamed('#update-fail-banner'))})`, (aub.fails || []).length === 0 && (await axUnnamed('#update-fail-banner')).length === 0);
@@ -260,13 +268,19 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
             await setStatus(staged(3));
             await ev(`window.showSettingsModal('updates'); true`); await waitFor(`!!document.querySelector('#update-pane-body .update-status')`, `${tag}: the pane`, 6000);
             let bare = await ev(`({ auto: !!document.getElementById('settings-update-auto'), hub: !!document.getElementById('settings-update-hub'), check: !![...document.querySelectorAll('.update-act')].find(b => /Check now|Try again/.test(b.textContent)) })`);
-            check(`${tag}: without server routes the auto switch is not drawn, the hub switch is (${JSON.stringify(bare)})`, !bare.auto && bare.hub);
-            await setStatus(idle); await ev(`import(${S} + 'update_settings.js').then(m => m.showUpdatesPane())`); await settle(300);
+            check(`${tag}: without server routes the auto switch is not drawn, and the hub switch is not in this pane (it is in Network and Hub) (${JSON.stringify(bare)})`, !bare.auto && !bare.hub);
+            await setStatus(upToDate); await ev(`import(${S} + 'update_settings.js').then(m => m.showUpdatesPane())`); await settle(300);
             bare = await ev(`({ check: !![...document.querySelectorAll('.update-act')].find(b => /Check now|Try again/.test(b.textContent)), title: (document.querySelector('.update-status-text b') || {}).textContent })`);
             check(`${tag}: and Check now is not offered (${JSON.stringify(bare)})`, !bare.check && bare.title === 'Coral is up to date');
-            await ev(`window.__upd.calls.length = 0; document.getElementById('settings-update-hub').click(); window.applySettings(); true`); await waitFor(`window.__upd.calls.some(c => c.method === 'PUT')`, `${tag}: the hub save`, 6000);
+            // the Coral Hub relaunch switch lives in Settings > Network and Hub (#5383): there, it saves to PUT /api/cloud/hub-relaunch {allow} at once; Updates only points to it
+            await ev(`window.showSettingsModal('network'); true`); await settle(300);
+            await ev(`window.__upd.calls.length = 0; (() => { const c = document.getElementById('settings-cloud-hub-relaunch'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+            await waitFor(`window.__upd.calls.some(c => c.method === 'PUT')`, `${tag}: the hub save`, 6000);
             const hubPut = await ev(`window.__upd.calls.filter(c => c.method !== 'GET')`);
-            check(`${tag}: the hub switch saves to PUT /api/cloud/hub-relaunch {allow} and nothing goes to a path the server lacks (${JSON.stringify(hubPut)})`, hubPut.length === 1 && hubPut[0].url === '/hub-relaunch' && JSON.stringify(hubPut[0].body) === '{"allow":false}');
+            check(`${tag}: the hub switch in Network and Hub saves to PUT /api/cloud/hub-relaunch {allow} at once and nothing goes to a path the server lacks (${JSON.stringify(hubPut)})`, hubPut.length === 1 && hubPut[0].url === '/hub-relaunch' && JSON.stringify(hubPut[0].body) === '{"allow":false}');
+            await ev(`window.showSettingsModal('updates'); true`); await settle(300);
+            const pointer = await ev(`(() => { const b = document.getElementById('update-pane-body'); const go = [...b.querySelectorAll('button')].find(x => /Network and Hub/.test(x.textContent)); return { text: b.textContent.includes('Relaunch from Coral Hub'), go: !!go }; })()`);
+            check(`${tag}: Updates says where the hub switch is (${JSON.stringify(pointer)})`, pointer.text && pointer.go);
         }
         const failed = results.filter(r => !r).length;
         console.log(`${results.length - failed} of ${results.length} checks passed`);

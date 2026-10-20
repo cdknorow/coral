@@ -114,6 +114,6 @@ function buildTabs(modal) {
 }
 
 onBuilt('settings-modal', modal => {
-    if (!updatesUiOn()) modal.querySelector('[data-flag="updates"]')?.remove(); // behind the flag: no tab, no pane (#5275)
+    if (!updatesUiOn()) modal.querySelectorAll('[data-flag="updates"]').forEach(e => e.remove()); // behind the flag: no tab, no pane (#5275)
     buildTabs(modal); buildInfoButtons(modal);
 });
