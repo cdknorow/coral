@@ -1,5 +1,18 @@
 # Release Notes
 
+## v1.4.125 — A numbered-menu draft is not answered as a prompt, and a team reset keeps its permission mode
+
+### Fixes
+
+- **A draft that looks like a numbered menu is no longer treated as a question:** text typed into an agent's input box that reads like `1. ... 2. ...` was taken for the agent's own menu, so an answer from the dashboard or an auto-accept could type a digit into your draft, and for Codex and arrow-menu agents press Enter, which sent the draft. A draft is not a menu, and a hook-reporting agent (Claude) is now answered only while its hooks say a request may be open. A census checks that every sender into a terminal (the input gate, a human, a screen check with a proof test, a launch, auto-accept and the primitives) declares its guard.
+- **A team launched with a raw permission flag at team level lost it on a team reset:** `--full-auto` or `--permission-mode acceptEdits` (or plan) was not read back from a member's expanded flags, so the reset relaunched with the default mode. The mode the launch derived is now stored and the reset relaunches with it.
+- **A Codex agent no longer ends at a bare shell when a sandbox or approval flag is spelled another way:** `-s X`, `--sandbox=X`, `-a X`, `--ask-for-approval X`, `--approval-mode X` and the `=` forms all collapse to one of each (the preset's when a capabilities preset applied, otherwise the last), since Codex refuses a second one.
+- **With the keyboard up on a phone the comments sheet's Open, Resolved and All row stays above the composer:** at 320 px the filter row sat half under it. The sheet's header folds to one row while the keyboard is open.
+
+### Tests
+
+- The double-restart test fails in seconds instead of hanging to the package timeout when the session's turn is missing.
+
 ## v1.4.124 — A woken Codex agent no longer ends at a bare shell, and six more shapes of secret are redacted for Coral Hub
 
 ### Security
