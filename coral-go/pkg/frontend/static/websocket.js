@@ -71,24 +71,28 @@ export function connectCoralWs() {
     // arrives as only what changed. The Coral Hub's own feed keeps whole rows.
     const url = `${serverWsBase('local')}/ws/coral${isCloud() ? '' : '?diff=fields'}`;
 
-    state.coralWs = new WebSocket(url);
-    state.coralWs.addEventListener('open', () => markReady('feed')); // window.__coralReady (#3118)
+    // A second call must not stack sockets (#5367): the old one is detached and closed first, so its late close neither redraws the feed state nor schedules a second reconnect.
+    const old = state.coralWs;
+    if (old) { old.onmessage = old.onclose = old.onerror = null; try { old.close(); } catch { /* already closed */ } }
+    const ws = state.coralWs = new WebSocket(url);
+    const current = () => state.coralWs === ws;
+    ws.addEventListener('open', () => { if (current()) markReady('feed'); }); // window.__coralReady (#3118)
     // The machine-health card shows unknown while the feed is down (#3446).
-    state.coralWs.addEventListener('open', () => document.dispatchEvent(new CustomEvent('coral:feed-state')));
-    state.coralWs.addEventListener('close', () => document.dispatchEvent(new CustomEvent('coral:feed-state')));
+    ws.addEventListener('open', () => { if (current()) document.dispatchEvent(new CustomEvent('coral:feed-state')); });
+    ws.addEventListener('close', () => { if (current()) document.dispatchEvent(new CustomEvent('coral:feed-state')); });
 
-    state.coralWs.onmessage = (event) => {
+    ws.onmessage = (event) => {
         _feedFailures = 0;   // a socket that delivers is healthy; the next drop starts the backoff over
         handleCoralMessage(JSON.parse(event.data));
     };
 
-    state.coralWs.onclose = (ev) => {
+    ws.onclose = (ev) => {
         dbg('coralWs CLOSE', { code: ev.code, reason: ev.reason });
         if (ev.code === FEED_CLOSE_SESSION_ENDED) { recheckSignIn(); return; }
         scheduleFeedReconnect();
     };
 
-    state.coralWs.onerror = (ev) => {
+    ws.onerror = (ev) => {
         dbg('coralWs ERROR', ev);
         // Will trigger onclose
     };

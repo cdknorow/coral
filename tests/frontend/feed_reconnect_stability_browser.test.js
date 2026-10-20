@@ -23,7 +23,7 @@ const DROP_BOUNDS = { listeners: 5, nodes: 10, documents: 0, intervals: 0, heapM
         await Page.enable(); await HeapProfiler.enable(); await Performance.enable();
         await client.Network.disable().catch(() => {}); // DevTools keeps response bodies while its Network domain is on: the tool's memory, not the page's
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD + `;(() => {
-            const F = window.__fakeFeed = { instances: [], opened: 0, made: 0, refuse: false, delays: [], pending: 0, liveMax: 0 };
+            const F = window.__fakeFeed = { instances: [], opened: 0, made: 0, refuse: false, delays: [], pending: 0 };
             const Real = window.WebSocket;
             class FakeFeed extends EventTarget {
                 constructor(url) { super(); this.url = url; this.readyState = 0; this.binaryType = 'blob'; F.made++; F.instances.push(this); if (F.instances.length > 4) F.instances.shift();
@@ -70,7 +70,7 @@ const DROP_BOUNDS = { listeners: 5, nodes: 10, documents: 0, intervals: 0, heapM
             await waitFor(`window.__fakeFeed.made >= window.__fakeFeed.opened + 3`, 'a short streak', 8000);
             await ev(`window.__fakeFeed.refuse = false; true`); await drop();
         }
-        await ev(`window.__fakeFeed.delays.length = 0; window.__fakeFeed.pendingMax = 0; window.__fakeFeed.liveMax = 0; true`);
+        await ev(`window.__fakeFeed.delays.length = 0; window.__fakeFeed.pendingMax = 0; true`);
         // the page's own timed work (the 1.5 s notice delays, debounces) happens once, whenever it fires: wait until the node count has been the same for a second
         for (let last = -1, same = 0, i = 0; same < 4 && i < 40; i++) { const n = await ev(`document.querySelectorAll('*').length`); same = n === last ? same + 1 : 0; last = n; await settle(300); }
         const base = await metrics();
@@ -84,6 +84,16 @@ const DROP_BOUNDS = { listeners: 5, nodes: 10, documents: 0, intervals: 0, heapM
         const afterDrops = await metrics();
         { const g = Object.fromEntries(Object.keys(DROP_BOUNDS).map(k => [k, +(afterDrops[k] - base[k]).toFixed(2)])); const o = Object.keys(DROP_BOUNDS).filter(k => g[k] > DROP_BOUNDS[k]);
           check(`the ${CYCLES} drops and restores grew listeners, nodes, documents, timers and heap by ${JSON.stringify(g)} (bounds ${JSON.stringify(DROP_BOUNDS)}; over: ${o})`, o.length === 0); }
+        { // connectCoralWs called twice in a row (#5367): the old socket is closed and detached first, so there is one open socket, and its late close schedules no second reconnect
+            const r = await ev(`(async () => { const F = window.__fakeFeed; const m = await import(${S} + 'websocket.js'); const made = F.made, delays = F.delays.length; const first = F.instances[F.instances.length - 1];
+                m.connectCoralWs(); m.connectCoralWs();
+                return { made: F.made - made, delaysBefore: delays, firstClosed: first.readyState === 3 }; })()`);
+            await waitFor(`window.__fakeFeed.instances.filter(i => i.readyState === 1).length === 1 && window.__live() === 1`, 'one open socket after two connects', 8000);
+            await settle(300);
+            const after = await ev(`({ live: window.__live(), delays: window.__fakeFeed.delays.length })`);
+            check(`two connectCoralWs calls: two sockets made, the first closed, one open (made ${r.made}, first closed ${r.firstClosed}, live ${after.live})`, r.made === 2 && r.firstClosed && after.live === 1);
+            check(`the detached sockets' closes asked for no reconnect (${after.delays - r.delaysBefore} asked)`, after.delays === r.delaysBefore);
+        }
         // 2. streaks of refused connects
         console.log('2. ' + STREAKS + ' streaks of ' + STREAK_LEN + ' refused connects');
         for (let s = 0; s < STREAKS; s++) {
@@ -113,7 +123,6 @@ const DROP_BOUNDS = { listeners: 5, nodes: 10, documents: 0, intervals: 0, heapM
         const blockedAfterBack = await ev(`import(${S} + 'remote_health.js').then(m => m.backoffBlocked('ui:srv9'))`);
         check(`when the server is back (the last round it was), its gateway back-off is cleared (${blockedAfterBack})`, blockedAfterBack === false);
 
-        const afterPill = await metrics();
         // 4. nothing grew
         const end = await metrics();
         const grew = Object.fromEntries(Object.keys(BOUNDS).map(k => [k, +(end[k] - base[k]).toFixed(2)]));
