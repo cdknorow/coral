@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 // ClaudeAgent implements the Agent interface for Claude Code.
@@ -257,7 +259,7 @@ func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {
 		return // not a canonical session id: never touch the filesystem with it (#3582)
 	}
 	basePath := a.HistoryBasePath()
-	encoded := strings.ReplaceAll(strings.ReplaceAll(workingDir, "/", "-"), "_", "-")
+	encoded := transcriptlink.ClaudeProjectDirName(workingDir)
 	targetProject := filepath.Join(basePath, encoded)
 	targetJSONL := filepath.Join(targetProject, sessionID+".jsonl")
 

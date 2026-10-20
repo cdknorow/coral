@@ -18,6 +18,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 // The outcomes the history-search oracle must reach, each counted from the condition happening, with a floor.
@@ -54,7 +55,7 @@ func TestSearchAgentHistoryAgreesWithBefore4834(t *testing.T) {
 	ctx := context.Background()
 	work := filepath.Join(env.claudeHome, "oracle-project")
 	require.NoError(t, os.MkdirAll(work, 0o755))
-	proj := filepath.Join(env.claudeHome, strings.ReplaceAll(work, "/", "-"))
+	proj := filepath.Join(env.claudeHome, transcriptlink.ClaudeProjectDirName(work))
 	require.NoError(t, os.MkdirAll(proj, 0o755))
 	line := func(typ, ts, text string) string {
 		b, _ := json.Marshal(map[string]any{"type": typ, "timestamp": ts, "message": map[string]any{"content": text}})

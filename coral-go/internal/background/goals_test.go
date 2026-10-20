@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 func TestGoalDue(t *testing.T) {
@@ -133,7 +134,7 @@ func newGoalFixture(t *testing.T, ls store.LiveSession) *goalFixture {
 	}
 	require.NoError(t, f.ss.RegisterLiveSession(f.ctx, &ls))
 
-	dir := filepath.Join(projects, strings.ReplaceAll(ls.WorkingDir, "/", "-"))
+	dir := filepath.Join(projects, transcriptlink.ClaudeProjectDirName(ls.WorkingDir))
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	f.path = filepath.Join(dir, ls.SessionID+".jsonl")
 	f.appendTranscript(t,

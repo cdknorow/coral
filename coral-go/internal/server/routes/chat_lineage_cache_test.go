@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 // writeClaudeTranscript writes a Claude transcript of about size bytes (prompts, tool calls with
@@ -53,7 +54,7 @@ func TestChatKeepsAResumedSessionsAncestorAcrossAPrune(t *testing.T) {
 	server, h, _, ss := setupSessionsTestServer(t)
 	wd := t.TempDir()
 	const anc, cur, ended = "aaaaaaaa-3710-4000-8000-00000000000a", "bbbbbbbb-3710-4000-8000-00000000000b", "cccccccc-3710-4000-8000-00000000000c"
-	dir := filepath.Join(projects, strings.ReplaceAll(wd, "/", "-"))
+	dir := filepath.Join(projects, transcriptlink.ClaudeProjectDirName(wd))
 	for _, id := range []string{anc, cur, ended} {
 		writeClaudeTranscript(t, filepath.Join(dir, id+".jsonl"), 256<<10)
 	}

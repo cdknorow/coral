@@ -24,6 +24,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 type testHistoryEnv struct {
@@ -120,7 +121,7 @@ func TestAgentHistorySearch_FactsAndSemantics(t *testing.T) {
 	}))
 
 	// Claude project transcript: ~/.claude/projects/-path-encoded/sessionID.jsonl
-	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
+	projDir := filepath.Join(env.claudeHome, transcriptlink.ClaudeProjectDirName(workDir))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 	transcriptPath := filepath.Join(projDir, sessID+".jsonl")
 
@@ -182,7 +183,7 @@ func TestAgentHistorySearch_ResumedLineage(t *testing.T) {
 
 	workDir := filepath.Join(env.claudeHome, "lineage-project")
 	require.NoError(t, os.MkdirAll(workDir, 0755))
-	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
+	projDir := filepath.Join(env.claudeHome, transcriptlink.ClaudeProjectDirName(workDir))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 
 	s0ID := "00000000-0000-4000-8000-0000000000a0"
@@ -399,7 +400,7 @@ func TestAgentHistorySearch_LiveAppendedAndUnavailableSources(t *testing.T) {
 
 	workDir := filepath.Join(env.claudeHome, "live-append-project")
 	require.NoError(t, os.MkdirAll(workDir, 0755))
-	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
+	projDir := filepath.Join(env.claudeHome, transcriptlink.ClaudeProjectDirName(workDir))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 
 	liveSessID := "00000000-0000-4000-8000-0000000000c1"
@@ -465,7 +466,7 @@ func TestAgentHistoryContextEndpoint(t *testing.T) {
 
 	workDir := filepath.Join(env.claudeHome, "context-project")
 	require.NoError(t, os.MkdirAll(workDir, 0755))
-	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
+	projDir := filepath.Join(env.claudeHome, transcriptlink.ClaudeProjectDirName(workDir))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 
 	sessID := "00000000-0000-4000-8000-0000000000d1"
@@ -521,7 +522,7 @@ func TestAgentHistorySearch_ConcurrentRequests(t *testing.T) {
 
 	workDir := filepath.Join(env.claudeHome, "conc-project")
 	require.NoError(t, os.MkdirAll(workDir, 0755))
-	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
+	projDir := filepath.Join(env.claudeHome, transcriptlink.ClaudeProjectDirName(workDir))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 
 	sessID := "00000000-0000-4000-8000-0000000000e1"
@@ -628,7 +629,7 @@ func TestAgentHistorySearch_StopsAtTheMatchCap(t *testing.T) {
 	workDir := filepath.Join(env.claudeHome, "cap-project")
 	require.NoError(t, os.MkdirAll(workDir, 0755))
 	require.NoError(t, env.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sessID, AgentType: at.Claude, AgentName: "capper", WorkingDir: workDir}))
-	projDir := filepath.Join(env.claudeHome, strings.ReplaceAll(workDir, "/", "-"))
+	projDir := filepath.Join(env.claudeHome, transcriptlink.ClaudeProjectDirName(workDir))
 	require.NoError(t, os.MkdirAll(projDir, 0755))
 	var data strings.Builder
 	for i := 0; i < 5; i++ {

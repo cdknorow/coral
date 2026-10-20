@@ -26,6 +26,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 // Chat, split into resolving the session, reading its transcript, its notices and the history page (#4713), answers
@@ -93,7 +94,7 @@ func chatOracleSetup(t *testing.T) (old, cur *httptest.Server, sids []string, na
 			write(filepath.Join(codexHome, "sessions", "2026", "10", "18", "rollout-2026-10-18T10-00-00-"+sid+".jsonl"), b.String())
 		case 8: // found by its working directory: its project folder has it, and a decoy folder (listed first) a different one
 			workDir = wdDir
-			write(filepath.Join(dir, strings.ReplaceAll(wdDir, "/", "-"), sid+".jsonl"), claudeTranscript(n, "wd"))
+			write(filepath.Join(dir, transcriptlink.ClaudeProjectDirName(wdDir), sid+".jsonl"), claudeTranscript(n, "wd"))
 			write(filepath.Join(dir, "+decoy", sid+".jsonl"), claudeTranscript(n, "decoy"))
 		case 9: // an agy transcript with no Coral marker and no live session: read by the generic path only
 			var b strings.Builder

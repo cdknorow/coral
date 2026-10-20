@@ -18,6 +18,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 // #3438: a chat poll through Coral Hub (no working_directory) reads the session's record
@@ -30,7 +31,7 @@ func TestChatPollDoesNotWaitForTheSessionsDB(t *testing.T) {
 	t.Setenv("CLAUDE_PROJECTS_DIR", projects)
 	work := "/tmp/chat-meta-work"
 	sid := "11111111-2222-3333-4444-555555555555"
-	dir := filepath.Join(projects, strings.ReplaceAll(work, "/", "-"))
+	dir := filepath.Join(projects, transcriptlink.ClaudeProjectDirName(work))
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, sid+".jsonl"),
 		[]byte(`{"type":"user","timestamp":"2026-10-14T00:00:00Z","message":{"content":"hello from the hub"}}`+"\n"), 0o644))

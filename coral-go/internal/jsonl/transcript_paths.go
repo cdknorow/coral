@@ -56,7 +56,7 @@ func resolveClaudeTranscript(sessionID, workingDirectory string) string {
 
 	// Try working directory hint first
 	if workingDirectory != "" {
-		encoded := strings.ReplaceAll(workingDirectory, "/", "-")
+		encoded := transcriptlink.ClaudeProjectDirName(workingDirectory)
 		candidate := filepath.Join(basePath, encoded, sessionID+".jsonl")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate

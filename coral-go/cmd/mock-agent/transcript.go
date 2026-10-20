@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 // mockClaudeVersion is the Claude Code version the mock transcript claims to be written by.
@@ -58,16 +60,8 @@ func newTranscript(sessionID, model string) *transcript {
 	return &transcript{path: filepath.Join(dir, sessionID+".jsonl"), sessionID: sessionID, cwd: cwd, model: model}
 }
 
-// encodeProjectDir is Claude Code's folder name for a working directory: every character that
-// isn't a letter, digit or "-" becomes "-".
-func encodeProjectDir(cwd string) string {
-	return strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' {
-			return r
-		}
-		return '-'
-	}, cwd)
-}
+// encodeProjectDir is Claude Code's folder name for a working directory (the shared rule, #5308).
+func encodeProjectDir(cwd string) string { return transcriptlink.ClaudeProjectDirName(cwd) }
 
 func newUUID() string {
 	b := make([]byte, 16)

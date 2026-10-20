@@ -474,7 +474,7 @@ func resolveClaudeTranscriptPath(sessionID, workingDir string) string {
 
 	// Try working directory hint first
 	if workingDir != "" {
-		encoded := strings.ReplaceAll(workingDir, "/", "-")
+		encoded := transcriptlink.ClaudeProjectDirName(workingDir)
 		candidate := filepath.Join(basePath, encoded, sessionID+".jsonl")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
