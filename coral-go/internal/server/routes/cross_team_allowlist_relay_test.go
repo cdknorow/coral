@@ -221,6 +221,7 @@ func TestRelayedFlagOffKeepsTodaysRulesAndCountsWhatWouldBeRefused(t *testing.T)
 		code, body, _ := e.relayed(relaySrc, "beta", "f"+strings.Repeat("y", i), theirID("a"), "Orchestrator")
 		assert.Equal(t, http.StatusOK, code, body)
 	}
+	e.h.WaitBackground() // the count is written after the answer
 	log, err := e.h.bs.ListLog(context.Background(), "beta")
 	require.NoError(t, err)
 	require.Len(t, log, 1)
@@ -231,4 +232,49 @@ func TestRelayedFlagOffKeepsTodaysRulesAndCountsWhatWouldBeRefused(t *testing.T)
 	data := []byte("# old coral\n")
 	status, out := e.send("auth", relaySrc, "", frame(meta(data, "old.md"), data))
 	assert.Equal(t, 200, status, out)
+}
+
+// #5511 (Security): "local" is the word for a board on THIS Coral in an entry; a Coral Hub server whose slug is "local" must not be able to use an entry that names a local board.
+func TestARelayedSenderCalledLocalDoesNotMatchALocalEntry(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	e.enforce(true)
+	e.list(board.AllowedSender{Server: board.LocalServer, CrossTeamID: theirID("a")})
+	code, body, _ := e.relayed("local", "beta", "r1", theirID("a"), "Orchestrator")
+	assert.Equal(t, http.StatusForbidden, code, body)
+	assert.Contains(t, body, `"error":"cross_team_refused"`)
+}
+
+// The same for a file: a pushed file from a Coral Hub server called "local" is not let in by an entry that names a board on this Coral.
+func TestAFileFromARelayedServerCalledLocalIsNotLetInByALocalEntry(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	e.enforce(true)
+	e.list(board.AllowedSender{Server: board.LocalServer, CrossTeamID: theirID("a")})
+	data := []byte("# plan\n")
+	m := meta(data, "plan.md")
+	m["from_cross_team_id"] = theirID("a")
+	status, out := e.send("auth", "local", "", frame(m, data))
+	assert.Equal(t, http.StatusForbidden, status, out)
+	assert.Empty(t, e.stored(), "nothing is stored for it")
+}
+
+// #5511 (Security): a refused send must not write a log row for a board that does not exist: the target name is the sender's, so rows for invented names would grow the table without bound.
+func TestRefusedSendsToInventedBoardsWriteNoLogRows(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.open()
+	e.enforce(true)
+	var names []string
+	for i := 0; i < 5; i++ {
+		name := "no-such-board-" + strings.Repeat("x", i+1)
+		names = append(names, name)
+		code, _, _ := e.relayed(relaySrc, name, "r"+strings.Repeat("1", i+1), theirID("a"), "Orchestrator")
+		assert.Equal(t, http.StatusForbidden, code)
+	}
+	e.h.WaitBackground()
+	for _, name := range names {
+		log, err := e.h.bs.ListLog(context.Background(), name)
+		require.NoError(t, err)
+		assert.Empty(t, log, "no row for %s, a board that does not exist", name)
+	}
 }

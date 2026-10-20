@@ -613,7 +613,7 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 			httputil.WriteActionLimitBody(w, secs, map[string]any{"ok": false, "error": "rate_limited", "message": fmt.Sprintf("retry in %ds", secs)})
 			return
 		}
-		sender := doorSender{server: src, crossTeamID: validIDOrEmpty(body.FromCrossTeamID)}
+		sender := doorSender{server: src, crossTeamID: validIDOrEmpty(body.FromCrossTeamID), relayed: true}
 		var admitted bool
 		var err error
 		recipients, settings, admitted, err = h.crossTeamDoor(ctx, target, sender, strings.TrimSpace(body.To))
@@ -659,8 +659,8 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 			return
 		}
 		// Shadow (#5508): what the list would have refused, counted, not acted on.
-		if listed := (doorSender{server: src, crossTeamID: validIDOrEmpty(body.FromCrossTeamID)}).listed(settings); !listed {
-			h.noteDoor(ctx, target, board.LogWouldRefuse, doorSender{server: src, crossTeamID: validIDOrEmpty(body.FromCrossTeamID)})
+		if listed := (doorSender{server: src, crossTeamID: validIDOrEmpty(body.FromCrossTeamID), relayed: true}).listed(settings); !listed {
+			h.noteDoor(ctx, target, board.LogWouldRefuse, doorSender{server: src, crossTeamID: validIDOrEmpty(body.FromCrossTeamID), relayed: true})
 		}
 	}
 	role := crossTeamSenderRole

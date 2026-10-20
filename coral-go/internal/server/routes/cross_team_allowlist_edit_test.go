@@ -175,6 +175,7 @@ func TestEditsAreAuditedRefusedEditsCountedOnceAnHourAndEditsAreLimited(t *testi
 	}
 	e.put("/api/board/beta/settings", opHdr, listBody("Operator", board.AllowedSender{Server: "local", CrossTeamID: "alpha"}))
 
+	e.h.WaitBackground() // the count is written after the answer
 	log, err := e.h.bs.ListLog(context.Background(), "beta")
 	require.NoError(t, err)
 	var edits, refused []board.LogEntry

@@ -250,6 +250,7 @@ func TestFlagOffKeepsTodaysRulesAndCountsWhatWouldBeRefused(t *testing.T) {
 		code, _, raw := e.rawSend("alpha", "beta", alphaOrchSID, "today's rules")
 		assert.Equal(t, http.StatusOK, code, string(raw))
 	}
+	e.h.WaitBackground() // the count is written after the answer
 	log, err := e.h.bs.ListLog(context.Background(), "beta")
 	require.NoError(t, err)
 	require.Len(t, log, 1, "one shadow row for the hour")
@@ -260,6 +261,7 @@ func TestFlagOffKeepsTodaysRulesAndCountsWhatWouldBeRefused(t *testing.T) {
 	e.setList("gamma", board.AllowedSender{Server: board.LocalServer, CrossTeamID: e.idOf("alpha")})
 	code, _, _ := e.rawSend("alpha", "gamma", alphaOrchSID, "listed")
 	assert.Equal(t, http.StatusOK, code)
+	e.h.WaitBackground() // the count is written after the answer
 	log, _ = e.h.bs.ListLog(context.Background(), "gamma")
 	assert.Empty(t, log)
 }
@@ -272,6 +274,7 @@ func TestRefusedSendsAreCountedOncePerHourWithIDsOnly(t *testing.T) {
 		code, _, _ := e.rawSend("alpha", "beta", alphaOrchSID, "secret text "+strings.Repeat("x", i))
 		assert.Equal(t, http.StatusForbidden, code)
 	}
+	e.h.WaitBackground() // the count is written after the answer
 	log, err := e.h.bs.ListLog(context.Background(), "beta")
 	require.NoError(t, err)
 	require.Len(t, log, 1)

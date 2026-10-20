@@ -492,7 +492,7 @@ func (h *BoardHandler) receivingOn(ctx context.Context, target, src, claim strin
 		if !settings.CrossTeamArtifacts {
 			return false, nil
 		}
-		return !claimKnown || settings.AllowsSender(src, claim), nil
+		return !claimKnown || settings.AllowsRelayedSender(src, claim), nil
 	}
 	return settings.CrossTeamMessaging && settings.AllowsServer(src) && settings.CrossTeamArtifacts, nil
 }

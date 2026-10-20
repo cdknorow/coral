@@ -49,9 +49,13 @@ var doorTrace func(step string)
 type doorSender struct {
 	server, crossTeamID string
 	operator            bool
+	relayed             bool // from another Coral: its server id is never "local", the word for a board on this Coral (#5511 review)
 }
 
 func (s doorSender) listed(settings board.BoardSettings) bool {
+	if s.relayed {
+		return settings.AllowsRelayedSender(s.server, s.crossTeamID)
+	}
 	return s.operator || settings.AllowsSender(s.server, s.crossTeamID)
 }
 
@@ -91,9 +95,21 @@ func (h *BoardHandler) senderIDOf(ctx context.Context, key string) (string, bool
 
 // noteDoor records a send the list refused (kind board.LogRefused, with the flag on) or would have refused (board.LogWouldRefuse, with it off): one row an hour per board, a count and ids only.
 func (h *BoardHandler) noteDoor(ctx context.Context, target, kind string, s doorSender) {
-	if err := h.bs.NoteHourly(context.WithoutCancel(ctx), target, kind, board.AllowedSender{Server: s.server, CrossTeamID: validIDOrEmpty(s.crossTeamID)}, time.Now()); err != nil {
-		slog.Warn("cross-team: could not count a refused send", "error", err)
-	}
+	h.noteHourly(target, kind, board.AllowedSender{Server: s.server, CrossTeamID: validIDOrEmpty(s.crossTeamID)})
+}
+
+// noteHourly counts one event for a board's log, after the answer and off the request: the request does the same thing for every cause (it only starts this), and no row is written for a board
+// that does not exist: the board name is the sender's, so rows for invented names would grow the table without bound (#5511 review).
+func (h *BoardHandler) noteHourly(project, kind string, sender board.AllowedSender) {
+	h.goBG(func() {
+		ctx := context.Background()
+		if ok, err := h.bs.BoardExists(ctx, project); err != nil || !ok {
+			return
+		}
+		if err := h.bs.NoteHourly(ctx, project, kind, sender, time.Now()); err != nil {
+			slog.Warn("cross-team: could not count a refused send or edit", "kind", kind, "error", err)
+		}
+	})
 }
 
 // validIDOrEmpty is id when it is a well-formed cross-team id, else "": a claimed id that is anything else is never stored, shown or echoed.
@@ -144,10 +160,8 @@ func (h *BoardHandler) crossTeamAdmit(ctx context.Context, m *externalMessage, r
 }
 
 // noteEditRefused counts a refused edit of the list: one audit row an hour per board (#5508).
-func (h *BoardHandler) noteEditRefused(ctx context.Context, project string) {
-	if err := h.bs.NoteHourly(context.WithoutCancel(ctx), project, board.LogEditRefused, board.AllowedSender{}, time.Now()); err != nil {
-		slog.Warn("cross-team: could not count a refused edit", "error", err)
-	}
+func (h *BoardHandler) noteEditRefused(_ context.Context, project string) {
+	h.noteHourly(project, board.LogEditRefused, board.AllowedSender{})
 }
 
 // allowedForLog is a list as compact JSON for the log: the server and id of each entry, and the label the owner saw (a cleaned, bounded claim, so that a removed board is still

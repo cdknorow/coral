@@ -56,6 +56,15 @@ func (b BoardSettings) AllowsSender(server, crossTeamID string) bool {
 	return false
 }
 
+// AllowsRelayedSender is AllowsSender for a sender on ANOTHER Coral: the hub-verified server id is never LocalServer. "local" in an entry means a board on THIS Coral, so a Coral Hub
+// server whose id is "local" must not be able to use such an entry (#5511 review): it matches nothing.
+func (b BoardSettings) AllowsRelayedSender(server, crossTeamID string) bool {
+	if server == LocalServer {
+		return false
+	}
+	return b.AllowsSender(server, crossTeamID)
+}
+
 // AllowedProblem checks a whole list for board self (its own cross-team id): at most MaxAllowedSenders entries, each a well-formed server and id, no duplicate, and none for the board itself.
 // It returns the cleaned list, or the first problem as (row, field, message).
 func AllowedProblem(list []AllowedSender, self string) ([]AllowedSender, int, string, string) {
