@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cdknorow/coral/internal/agentprio"
@@ -97,7 +98,44 @@ func applyAgentPriority(out string) {
 		return
 	}
 	agentprio.Apply(pid)
-	time.AfterFunc(agentPriorityRecheck, func() { agentprio.ApplyTree(pid) })
+	scheduleAgentPriorityRecheck(pid)
+}
+
+// The second look is a one-shot timer that runs a ps (agentprio.ApplyTree). It is bounded (ps has its own timeout) and nothing is left after it, so it is not a leak in a running Coral,
+// but a test that ends in the 150 ms before it fires, or while its ps runs, ended with a live timer goroutine (#5217, found by -shuffle). The pending ones are kept so that drainAgentPriority
+// (the test main's, before its leak check) can stop what has not fired and wait for what has.
+var (
+	priorityMu      sync.Mutex
+	priorityPending = map[*time.Timer]struct{}{}
+	priorityRunning sync.WaitGroup
+)
+
+func scheduleAgentPriorityRecheck(pid int) {
+	priorityMu.Lock()
+	defer priorityMu.Unlock()
+	priorityRunning.Add(1)
+	var t *time.Timer
+	t = time.AfterFunc(agentPriorityRecheck, func() {
+		defer priorityRunning.Done()
+		priorityMu.Lock()
+		delete(priorityPending, t)
+		priorityMu.Unlock()
+		agentprio.ApplyTree(pid)
+	})
+	priorityPending[t] = struct{}{}
+}
+
+// drainAgentPriority stops the rechecks that have not fired yet and waits for the ones running.
+func drainAgentPriority() {
+	priorityMu.Lock()
+	for t := range priorityPending {
+		if t.Stop() {
+			priorityRunning.Done() // it will never run
+		}
+		delete(priorityPending, t)
+	}
+	priorityMu.Unlock()
+	priorityRunning.Wait()
 }
 
 // agentPriorityRecheck is when the pane's priority is applied a second time.

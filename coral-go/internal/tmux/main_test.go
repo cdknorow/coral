@@ -19,7 +19,9 @@ func TestMain(m *testing.M) {
 	// The tests drive shells, which need no 300ms between a command and its
 	// Enter (production keeps it for agent TUIs).
 	SetSendKeysSettleForTest(20 * time.Millisecond)
-	os.Exit(testleak.Check(m.Run())) // no goroutine left running (#4167)
+	code := m.Run()
+	drainAgentPriority()          // the second look at a pane's priority is a timer that can fire after the last test (#5217)
+	os.Exit(testleak.Check(code)) // no goroutine left running (#4167)
 }
 
 // skipWithoutUnixTmux skips a test that needs a real tmux, its socket, a shell script standing in
