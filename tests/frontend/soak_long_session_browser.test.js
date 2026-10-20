@@ -110,7 +110,10 @@ const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a soak wa
         let verdict = 'no guard (a smoke run has too few samples)';
         if (samples.length >= 4) {
             const ref = samples.find(s => s.minute >= MINUTES / 4) || samples[1], last = samples[samples.length - 1];
-            const grew = Object.fromEntries(Object.keys(BOUNDS).map(k => [k, +(last[k] - (k === 'xtermEls' || k === 'sockets' || k === 'bufferLines' ? 0 : ref[k])).toFixed(1)]));
+            // detached nodes follow the chat window: a fit of the hour's five samples is detached = 3776 + 0.384 x chatNodes (residuals within 7), and the window swings 573 to 1847 nodes with no
+            // leak, so a plain last-minus-reference reads +263 on one pair and +399 or +495 on others (bound 300). The guard reads detached less 0.4 x the chat's nodes (a range of 35 over the hour).
+            const val = (s, k) => k === 'detached' ? s.detached - 0.4 * s.chatNodes : s[k];
+            const grew = Object.fromEntries(Object.keys(BOUNDS).map(k => [k, +(val(last, k) - (k === 'xtermEls' || k === 'sockets' || k === 'bufferLines' ? 0 : val(ref, k))).toFixed(1)]));
             const over = Object.keys(BOUNDS).filter(k => grew[k] > BOUNDS[k]);
             console.log(`SOAK guard vs minute ${ref.minute}: ${JSON.stringify(grew)} bounds ${JSON.stringify(BOUNDS)}`);
             if (process.env.GITHUB_STEP_SUMMARY) { try { fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\nguard vs minute ${ref.minute}: \`${JSON.stringify(grew)}\` bounds \`${JSON.stringify(BOUNDS)}\`\n`); } catch { /* ... */ } }
