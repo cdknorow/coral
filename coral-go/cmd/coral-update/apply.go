@@ -18,18 +18,24 @@ import (
 var parentAtStart = os.Getppid()
 
 func runApply(ctx context.Context, stdout io.Writer, dataDir string, trust root.TrustedMaterial, source verify.TrustSource) int {
-	if runtime.GOOS != "darwin" {
+	var platform apply.Platform
+	pins := verify.DefaultPins()
+	switch runtime.GOOS {
+	case "darwin":
+		platform = &apply.Mac{Run: apply.NewRunner(), TeamIDs: pins.MacTeamIDs, Parent: parentAtStart, Self: os.Getpid()}
+	case "linux":
+		platform = &apply.Linux{DataDir: dataDir, Parent: parentAtStart, Self: os.Getpid(), Arch: runtime.GOARCH}
+	default:
 		print(stdout, output{Result: "unsupported_platform", Installed: config.Version, Trust: string(source)})
 		return 0
 	}
-	pins := verify.DefaultPins()
 	res := apply.Run(ctx, apply.Config{
 		DataDir:   dataDir,
 		Installed: config.Version,
 		Pins:      pins,
 		Verifier:  verify.Sigstore{Trust: trust},
 		Asset:     assetName(runtime.GOOS, runtime.GOARCH, false),
-		Platform:  &apply.Mac{Run: apply.NewRunner(), TeamIDs: pins.MacTeamIDs, Parent: parentAtStart, Self: os.Getpid()},
+		Platform:  platform,
 	})
 	print(stdout, output{Result: res.Result, Installed: res.From, Version: res.To, FailedStage: res.FailedStage, Trust: string(source)})
 	return 0

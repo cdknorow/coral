@@ -291,6 +291,12 @@ func (m *Mac) running(ctx context.Context, install string) (int, error) {
 	return n, nil
 }
 
+// Running: a process of the install is running now.
+func (m *Mac) Running(install string) bool {
+	n, err := m.running(context.Background(), install)
+	return err == nil && n > 0
+}
+
 // Healthy: a process of the install is running, and still is a few seconds later.
 func (m *Mac) Healthy(ctx context.Context, install string) error {
 	deadline := m.HealthFor

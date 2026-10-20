@@ -60,20 +60,22 @@ type fakePlatform struct {
 	writable  bool
 	coralGone bool
 
-	version   map[string]string // path -> bundle version
-	calls     []string
-	buildPkg  string // what Build was given
-	buildSaw  []byte // the package bytes Build read
-	buildHook func(pkg string)
-	verifyErr error
-	swapErr   error
-	startErrs []error // popped per Start
-	healthErr error
-	shown     string
-	swaps     [][2]string
-	swapHook  func()
-	rollErr   error
-	waitHook  func() bool
+	version    map[string]string // path -> bundle version
+	calls      []string
+	buildPkg   string // what Build was given
+	buildSaw   []byte // the package bytes Build read
+	buildHook  func(pkg string)
+	verifyErr  error
+	swapErr    error
+	startErrs  []error // popped per Start
+	healthErr  error
+	shown      string
+	swaps      [][2]string
+	swapHook   func()
+	rollErr    error
+	waitHook   func() bool
+	running    bool // Running's answer
+	verifyHook func() error
 }
 
 func (f *fakePlatform) rec(s string) { f.calls = append(f.calls, s) }
@@ -114,6 +116,9 @@ func (f *fakePlatform) Build(ctx context.Context, pkg, install, work string) (st
 }
 func (f *fakePlatform) Verify(ctx context.Context, newPath, version string) error {
 	f.rec("verify")
+	if f.verifyHook != nil {
+		return f.verifyHook()
+	}
 	return f.verifyErr
 }
 func (f *fakePlatform) Swap(a, b string) error {
@@ -135,6 +140,7 @@ func (f *fakePlatform) Swap(a, b string) error {
 	f.version[a], f.version[b] = f.version[b], f.version[a]
 	return nil
 }
+func (f *fakePlatform) Running(string) bool { return f.running }
 func (f *fakePlatform) Start(ctx context.Context, install string) error {
 	f.rec("start")
 	if len(f.startErrs) > 0 {
@@ -225,7 +231,7 @@ func TestAnUpdateIsAppliedInTheOrderOfTheDesign(t *testing.T) {
 	res := r.run()
 	require.Equal(t, ResultRelaunched, res.Result, "%+v", res)
 	assert.Equal(t, "1.4.130", res.To)
-	assert.Equal(t, []string{"wait", "build", "verify", "wait", "swap", "start", "healthy", "cleanup"}, r.plat.calls)
+	assert.Equal(t, []string{"wait", "build", "verify", "wait", "verify", "swap", "start", "healthy", "cleanup"}, r.plat.calls)
 	assert.Equal(t, "new", r.installMarker(), "the new install is in place")
 	_, err := os.Stat(filepath.Join(r.plat.root, ".Coral.app.new"))
 	assert.ErrorIs(t, err, os.ErrNotExist, "the old install goes only after the new one is up")
@@ -478,4 +484,55 @@ func TestAJournalDoesNotChooseWhatIsRemovedAndASwappedInstallIsNeverTakenForALef
 	_, _ = recoverInterrupted(context.Background(), r.cfg, dir, install)
 	_, err = os.Stat(filepath.Join(other, "marker"))
 	assert.NoError(t, err, "the old install is not deleted because the new one cannot be read")
+}
+
+// An apply that died after the swap, but whose new install came up (a service manager restarts Coral and can end the updater with it): the next
+// apply finds the new install running and finishes the job, it does not roll a working update back.
+func TestAnInterruptedApplyWhoseNewInstallIsRunningIsFinishedNotRolledBack(t *testing.T) {
+	r := newRig(t)
+	r.cfg.AfterSwap = func() { panic("the manager ended the updater with Coral") }
+	func() {
+		defer func() { _ = recover() }()
+		r.run()
+	}()
+	dir := filepath.Join(r.data, stage.UpdatesDir)
+	dead, _ := json.Marshal(map[string]any{"pid": 2147483646, "taken": testNow.Unix()})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, stage.ApplyLockFile), dead, 0o600))
+	require.Equal(t, "new", r.installMarker())
+	r.cfg.AfterSwap = nil
+	r.plat.running = true
+	r.plat.calls = nil
+	res := r.run()
+	assert.Equal(t, ResultRelaunched, res.Result, "%+v", res)
+	assert.Equal(t, "new", r.installMarker(), "the working new install stays")
+	assert.Len(t, r.plat.swaps, 1, "no rollback swap")
+	_, err := os.Stat(filepath.Join(r.plat.root, ".Coral.app.new"))
+	assert.ErrorIs(t, err, os.ErrNotExist, "the old install is removed")
+	st := r.state()
+	assert.Equal(t, "1.4.130", st.Version, "the high-water mark moves")
+	assert.EqualValues(t, 7, st.Sequence)
+	_, err = os.Stat(filepath.Join(dir, journalFile))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// The new install is checked again right before the swap (it sat beside the old one in the meantime): a copy that fails the second check is
+// discarded and nothing is swapped.
+func TestANewInstallChangedBetweenItsChecksIsNotSwapped(t *testing.T) {
+	r := newRig(t)
+	verifies := 0
+	r.plat.verifyHook = func() error {
+		verifies++
+		if verifies == 2 {
+			return errors.New("a file of the copy changed")
+		}
+		return nil
+	}
+	res := r.run()
+	assert.Equal(t, ResultRefused, res.Result)
+	assert.Equal(t, "platform_signature", res.FailedStage)
+	assert.NotContains(t, r.plat.calls, "swap")
+	assert.Equal(t, "old", r.installMarker())
+	_, err := os.Stat(filepath.Join(r.plat.root, ".Coral.app.new"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+	assert.NotEqual(t, "1.4.130", r.state().Version)
 }

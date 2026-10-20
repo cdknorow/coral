@@ -70,6 +70,8 @@ type Platform interface {
 	Verify(ctx context.Context, newPath, version string) error
 	// Swap exchanges the two installs in one atomic step.
 	Swap(a, b string) error
+	// Running reports, once and without waiting, whether the install is running (a process of it exists).
+	Running(install string) bool
 	// Start starts the install. Healthy waits until it is up.
 	Start(ctx context.Context, install string) error
 	Healthy(ctx context.Context, install string) error
@@ -108,6 +110,8 @@ type journal struct {
 	To      string `json:"to"`
 	NewPath string `json:"new_path"` // where the other install is (the old one once swapped)
 	Install string `json:"install"`
+	// Record is what was verified, so an apply that died after the new install came up can finish: remove the old one and move the high-water mark.
+	Record *verify.Record `json:"record,omitempty"`
 }
 
 func writeJournal(dir string, j journal) error {
@@ -296,7 +300,16 @@ func Run(ctx context.Context, cfg Config) Result {
 		res.Result = ResultCoralRunning
 		return res
 	}
-	if err := writeJournal(dir, journal{Phase: "swapping", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install}); err != nil {
+	// The new install sits beside the old one between its first check and now; check it again right before the swap (it narrows what anyone who can
+	// write that folder could change in between).
+	if err := cfg.Platform.Verify(ctx, newPath, rec.Version); err != nil {
+		_ = os.RemoveAll(newPath)
+		st.Refuse(staged.Version, &verify.Failure{Stage: "platform_signature", Reason: err.Error()}, now)
+		_ = verify.SaveState(dir, st)
+		res.Result, res.FailedStage = ResultRefused, "platform_signature"
+		return res
+	}
+	if err := writeJournal(dir, journal{Phase: "swapping", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install, Record: rec}); err != nil {
 		_ = os.RemoveAll(newPath)
 		res.Result, res.FailedStage = ResultFailed, "journal"
 		return res
@@ -307,7 +320,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		res.Result, res.FailedStage = ResultFailed, "swap"
 		return res
 	}
-	_ = writeJournal(dir, journal{Phase: "swapped", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install})
+	_ = writeJournal(dir, journal{Phase: "swapped", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install, Record: rec})
 	if cfg.AfterSwap != nil {
 		cfg.AfterSwap()
 	}
@@ -374,5 +387,19 @@ func recoverInterrupted(ctx context.Context, cfg Config, dir, install string) (R
 		return Result{}, false // the swapped-out install is gone: nothing to put back, and the new one runs
 	}
 	st, _ := verify.LoadState(dir)
+	// The record in the journal is only a pointer: it counts when it is the very release that is still staged (the journal is a file, not proof).
+	if sr, lerr := stage.LoadStaged(cfg.DataDir); j.Record != nil && lerr == nil && sr.Record.Version == j.Record.Version &&
+		sr.Record.PackageSHA256 == j.Record.PackageSHA256 && sr.Record.SumsSHA256 == j.Record.SumsSHA256 && cfg.Platform.Running(install) {
+		// The new install came up and the apply that started it died before it finished (a service manager that restarted Coral can end the
+		// updater with it): the new one is running, so it stays. Finish: remove the old one, move the high-water mark.
+		_ = os.RemoveAll(j.NewPath)
+		if err := st.Accept(j.Record); err == nil {
+			st.Stage = &verify.StageState{}
+		}
+		cfg.history(&st, j.From, j.To, "relaunched")
+		_ = verify.SaveState(dir, st)
+		_ = os.RemoveAll(filepath.Join(dir, stage.StagingDir, j.To))
+		return Result{Result: ResultRelaunched, From: j.From, To: j.To}, true
+	}
 	return rollBack(ctx, cfg, dir, &st, install, j.NewPath, j.To, "interrupted"), true
 }
