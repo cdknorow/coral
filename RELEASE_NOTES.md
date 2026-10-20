@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.4.136 — Pasted images are sent to agents as links (never a path), a message you send is always yours, slash commands that ask a question, and a phone pinch-zoom fix
+
+### Fixes
+
+- **A pasted image is sent to the agent as its `coral://artifacts/...` link and one hint to fetch it (`coral-agent artifact download`), never as a path on this computer:** an agent's chat text no longer carries the uploads folder, and with it the OS account name. The chat still shows the thumbnails (older path-and-link turns too), the agent prompt and the docs say to fetch the link first, and every agent type's stand-in fetches and decodes it.
+- **A message you send from the dashboard is shown as yours whatever its words:** text such as `[Coral ...]` or `Stop hook feedback:` typed by a person was being drawn as a Coral notice. The server now remembers what the Operator sent and marks those turns (`coral_notice: false`); the page trusts the mark and reads a turn's words only when no origin is recorded.
+- **A pinch zoom no longer halves the page or the artifact viewer on a phone:** `--visual-viewport-height` is the visual viewport's height times its scale, so a zoom is not mistaken for a keyboard.
+
+### Changes
+
+- **A slash command sent from the chat behaves like one typed in the terminal:** its pending bubble clears once Claude ran it (the command shows as a small note), and the screen is read for the confirmation dialog it may open ("Switch model?", "Change effort level?"), which the chat then shows with Yes and No.
+
 ## v1.4.135 — Background jobs no longer start a signed-out Claude
 
 ### Fixes
