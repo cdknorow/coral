@@ -6,6 +6,7 @@ const { buildAnchor, locateQuote, indexText } = await importOnce('./artifact_anc
 const api = await importOnce('./artifact_comments_api.js');
 import { showToast } from './utils.js';
 import { scrollBehavior } from './motion.js';
+import { pushOverlay, popOverlay } from './overlay_history.js';
 
 const BODY_MAX = 8192; // the server's cap on a comment (bytes; most text is one byte a character)
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -248,7 +249,14 @@ export function attachComments(dialog, body, host) {
     });
 
     // ── the phone's sheet
-    function setSheet(open) { panel.classList.toggle('ac-sheet-open', open); paintToggle(); }
+    let sheetOverlay = 0; // the sheet's entry in overlay_history.js while it is open on a phone (#5219)
+    function setSheet(open, { popped = false } = {}) {
+        if (open === panel.classList.contains('ac-sheet-open')) return;
+        panel.classList.toggle('ac-sheet-open', open);
+        paintToggle();
+        if (open && !sheetOverlay && window.innerWidth <= 767) sheetOverlay = pushOverlay(() => setSheet(false, { popped: true }));
+        else if (!open && sheetOverlay) { const id = sheetOverlay; sheetOverlay = 0; if (!popped) popOverlay(id); }
+    }
     function paintToggle() {
         const open = panel.classList.contains('ac-sheet-open');
         toggle.setAttribute('aria-expanded', String(open));
@@ -262,6 +270,6 @@ export function attachComments(dialog, body, host) {
         open(hex, server, board) { st.hex = hex; st.server = server; st.board = board; st.data = null; st.active = null; st.composing = null; st.error = ''; st.text = false; st.gone = false; st.filter = 'open'; render(); setSheet(false); },
         /** The document was drawn: `text` says whether it is text the comments apply to. */
         docRendered(source, text) { st.source = source || ''; st.text = !!text; if (!st.text) { render(); return; } refresh(); },
-        close() { st.hex = null; st.data = null; clearTimeout(selTimer); selBtn.hidden = true; const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } render(); },
+        close() { setSheet(false); st.hex = null; st.data = null; clearTimeout(selTimer); selBtn.hidden = true; const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } render(); },
     };
 }

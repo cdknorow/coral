@@ -12,6 +12,7 @@ import { renderArtifact } from './artifact_preview.js';
 import { downloadArtifact, sanitizeDownloadName } from './artifact_download.js';
 import { trapTab } from './dialog_focus.js';
 import { importOnce } from './import_once.js';
+import { pushOverlay, popOverlay } from './overlay_history.js';
 // Asked for when used, not imported: this module loads lazily and may only import startup modules statically.
 const { attachComments } = await importOnce('./artifact_comments.js');
 
@@ -22,6 +23,7 @@ let _gen = 0;
 let _returnFocus = null;
 let _server = undefined; // the server of the artifact on show, for the artifacts it links
 let _comments = null;    // the comments panel of the viewer (#5182)
+let _overlay = 0;        // its entry in overlay_history.js while it is open on a phone (#5219)
 
 /** The team the viewer is opened from, as the bare board name the comments routes take: the team's page, the board page, or the open agent's own team; none otherwise (#5182). */
 function teamContext(opts) {
@@ -75,7 +77,7 @@ function _build() {
     keepFragmentsInside(d.querySelector('.artifact-viewer-body'));
     _comments = attachComments(d, d.querySelector('.artifact-viewer-body'), d.querySelector('.artifact-viewer-main'));
     // Back or Forward changes the page under the viewer (#3532 routes): close it with the page.
-    window.addEventListener('popstate', closeArtifactViewer);
+    window.addEventListener('popstate', () => { if (!_overlay) closeArtifactViewer(); }); // on a phone the viewer has its own history entry (overlay_history.js)
     document.body.appendChild(d);
     return d;
 }
@@ -100,7 +102,9 @@ export function openArtifactViewer(hex, opts = {}) {
     // Through Coral Hub a link can't navigate to /api/remote/...: the bytes are fetched and saved (artifact_download.js).
     dl.onclick = isCloud() ? (e) => { e.preventDefault(); downloadArtifact(url, sanitizeDownloadName(opts.filename || 'artifact')).catch(err => { title.textContent = err.message; }); } : null;
     const body = d.querySelector('.artifact-viewer-body');
+    const wasOpen = !d.hidden;
     d.hidden = false;
+    if (!wasOpen && window.innerWidth <= 767 && !_overlay) _overlay = pushOverlay(() => closeArtifactViewer({ popped: true })); // Back closes it, above the preview's full screen, under its comments sheet
     _comments.open(hex, opts.server, teamContext(opts));
     d.querySelector('.artifact-viewer-close').focus();
     renderArtifact(body, `coral://artifacts/${hex}`, { server: opts.server, filename: opts.filename, mediaType: opts.mediaType }, {
@@ -119,8 +123,10 @@ export function openArtifactViewer(hex, opts = {}) {
     return true;
 }
 
- function closeArtifactViewer() {
+ function closeArtifactViewer(opts) {
     if (!_dialog || _dialog.hidden) return;
+    _comments?.close(); // the sheet (above it) goes first, so Back's order and ours agree
+    if (_overlay) { const id = _overlay; _overlay = 0; if (!opts || !opts.popped) popOverlay(id); }
     _abort?.abort();
     _abort = null;
     _gen++;

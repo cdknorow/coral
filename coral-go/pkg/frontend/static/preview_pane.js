@@ -15,6 +15,7 @@ import { wireDownloads } from './artifact_download.js';
 import { retryOnce } from './overload.js';
 import { agentName, apiQs } from './agent_file_api.js';
 import { trapTab } from './dialog_focus.js';
+import { pushOverlay, popOverlay } from './overlay_history.js';
 import { browserLocal } from './safe_storage.js';
 
 const ICON_MAP = {
@@ -62,7 +63,7 @@ let _sessionKey = null;   // agent whose tabs are showing
 const _stash = new Map(); // session key -> { tabs, activeId } for agents in the background
 let _dock = 'bottom';      // 'bottom' (under the side panel tabs) | 'column' (full-height column)
 let _phoneFull = false;     // a phone's preview covers the screen (#5173); not saved
-let _fullPushed = false;    // the history entry it pushed is still there
+let _fullOverlay = 0;       // its entry in overlay_history.js, while it is open
 let _fullOpener = null;     // what had focus when it opened
 let _maximised = false;    // the column covers Chat (#4931): not saved (a reload opens with Chat); ends when the pane is hidden, moves to the bottom, or another agent is shown
 
@@ -181,8 +182,6 @@ export function initPreviewPane() {
         e.preventDefault();
         document.getElementById('preview-max-btn')?.focus();
     });
-    // The browser's Back (a phone's back gesture) closes the full-screen preview: it has an entry of its own in the history.
-    window.addEventListener('popstate', () => { if (_phoneFull && !history.state?.coralPreviewFull) _setPhoneFull(false, { popped: true }); });
 
     document.getElementById('preview-dock-btn')?.addEventListener('click', () => {
         _dock = _dock === 'column' ? 'bottom' : 'column';
@@ -248,11 +247,10 @@ function _setPhoneFull(on, { popped = false } = {}) {
     if (on) {
         pane.setAttribute('role', 'dialog'); pane.setAttribute('aria-modal', 'true'); pane.setAttribute('aria-label', 'Preview');
         _fullOpener = document.activeElement;
-        history.pushState({ coralPreviewFull: true }, '');
-        _fullPushed = true;
+        _fullOverlay = pushOverlay(() => _setPhoneFull(false, { popped: true })); // Back closes it, in its order among the overlays (overlay_history.js)
     } else {
         pane.removeAttribute('role'); pane.removeAttribute('aria-modal'); pane.removeAttribute('aria-label');
-        if (_fullPushed) { _fullPushed = false; if (!popped && history.state?.coralPreviewFull) history.back(); }
+        if (_fullOverlay) { const id = _fullOverlay; _fullOverlay = 0; if (!popped) popOverlay(id); }
     }
     _paintMaxButton();
     if (on) document.getElementById('preview-full-back')?.focus();

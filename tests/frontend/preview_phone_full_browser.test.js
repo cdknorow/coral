@@ -56,7 +56,7 @@ const BASE = require('./test_base').BASE;
             check(`${at}: the pane covers the viewport (${JSON.stringify(pane)})`, pane.l === 0 && pane.t === 0 && pane.r === W && pane.b === H);
             const st = await ev(`(() => { const p = document.getElementById('preview-pane'); const body = document.getElementById('preview-body'); const top = document.elementFromPoint(${W} / 2, 4); const mid = document.elementFromPoint(${W} / 2, ${H} / 2);
                 const back = document.getElementById('preview-full-back'); const br = back.getBoundingClientRect();
-                return { role: p.getAttribute('role'), modal: p.getAttribute('aria-modal'), pressed: document.getElementById('preview-max-btn').getAttribute('aria-pressed'), hist: !!(history.state && history.state.coralPreviewFull), topIn: p.contains(top), midIn: p.contains(mid),
+                return { role: p.getAttribute('role'), modal: p.getAttribute('aria-modal'), pressed: document.getElementById('preview-max-btn').getAttribute('aria-pressed'), hist: !!(history.state && history.state.coralOverlay), topIn: p.contains(top), midIn: p.contains(mid),
                     backShown: br.width > 0, backH: Math.round(br.height), backW: Math.round(br.width), focusIn: p.contains(document.activeElement), focusId: document.activeElement && document.activeElement.id, over: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                     bodyScrolls: body.scrollHeight > body.clientHeight + 5, bodyOverflowY: getComputedStyle(body).overflowY, sideOver: p.scrollWidth - p.clientWidth, docScrolls: document.documentElement.scrollHeight > innerHeight + 1 }; })()`);
             check(`${at}: it is a modal layer with a history entry, over the top bar, with a 44 px Back button`, st.role === 'dialog' && st.modal === 'true' && st.pressed === 'true' && st.hist && st.topIn && st.midIn && st.backShown && st.backH >= 44 && st.backW >= 44, JSON.stringify(st));
@@ -74,7 +74,7 @@ const BASE = require('./test_base').BASE;
             await key('Escape', 'Escape', 27);
             await waitFor(`!document.getElementById('preview-pane').classList.contains('preview-phone-full')`, 'Escape closing it', 3000);
             pane = await rect('#preview-pane');
-            check(`${at}: Escape returns to the sheet (${pane.h} high at ${pane.t}), focus on the toggle, no history entry left`, pane.h < H * 0.6 && (await ev(`document.activeElement && document.activeElement.id`)) === 'preview-max-btn' && !(await ev(`!!(history.state && history.state.coralPreviewFull)`)));
+            check(`${at}: Escape returns to the sheet (${pane.h} high at ${pane.t}), focus on the toggle, no history entry left`, pane.h < H * 0.6 && (await ev(`document.activeElement && document.activeElement.id`)) === 'preview-max-btn' && !(await ev(`!!(history.state && history.state.coralOverlay)`)));
             // Back button
             await tap('#preview-max-btn'); await waitFor(`document.getElementById('preview-pane').classList.contains('preview-phone-full')`, 'full again', 3000);
             await tap('#preview-full-back');
