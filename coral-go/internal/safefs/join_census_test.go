@@ -154,7 +154,7 @@ var joinSites = map[string]joinEntry{
 	"internal/server/routes/artifact_prune.go\tuploadRecordTimes":                            {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
 	"internal/server/routes/artifact_storage.go\tSessionsHandler.allDiffs":                   {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifact_store.go\tartifactStore.measureLocked":                  {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
-	"internal/server/routes/artifacts.go\tSessionsHandler.getAgentArtifact":                  {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifacts.go\tSessionsHandler.openArtifactForRead":               {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifacts.go\tdeleteArtifactFilesLocked":                         {4, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifacts.go\tstoreArtifactBy":                                   {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifacts.go\tstoreArtifactFile":                                 {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},

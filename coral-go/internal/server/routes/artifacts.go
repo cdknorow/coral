@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -76,6 +77,7 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	st.mu.Unlock()
 	r.Post("/api/agent/artifacts", h.uploadAgentArtifact)
 	r.Get("/api/artifacts/{id}", h.getAgentArtifact)
+	r.Get("/api/artifacts/{id}/meta", h.getAgentArtifactMeta) // metadata only: do you have it (#5465)
 	r.Delete("/api/artifacts/{id}", h.deleteAgentArtifact)
 	r.Delete("/api/shared-images/{id}", h.deleteSharedImage)                         // #5284: one session's shared copy of a pasted image
 	r.Post("/api/artifacts/received/unlisted/delete", h.deleteUnlistedReceivedRoute) // #4441
@@ -715,13 +717,54 @@ func (h *SessionsHandler) deleteAgentArtifact(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "bytes": freed})
 }
 
+// artifactIDRe is the whole of an artifact id: exactly 64 lower-case hexadecimal digits, the SHA-256 of its bytes (#5465). Upper case, another length, a prefix such as
+// "sha256:", a path or anything else is not an id: on a file system that ignores case an upper-case spelling would otherwise name the same object under another name.
+var artifactIDRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// validArtifactID reports whether id is an artifact id (artifactIDRe).
+func validArtifactID(id string) bool { return artifactIDRe.MatchString(id) }
+
+// openArtifactForRead is what the content read and the metadata read share (#5465), so that they answer the same for the same id: the owner's switch for a pasted image
+// through Coral Hub (404), a missing or unreadable record or object (404), and a stored object whose length disagrees with its record (500, artifact_corrupt: a damaged store
+// is said, not served). The object is opened once, without following a link, and the caller uses that handle. On false the answer has been written.
+func (h *SessionsHandler) openArtifactForRead(w http.ResponseWriter, r *http.Request, id string) (*os.File, agentArtifactMeta, os.FileInfo, bool) {
+	if h.hubMayNotSeePastedImage(r, id) { // #5284: the owner's switch
+		errNotFound(w, "artifact not found")
+		return nil, agentArtifactMeta{}, nil, false
+	}
+	path := filepath.Join(h.artifactDir(), id)
+	meta := agentArtifactMeta{}
+	metaData, err := os.ReadFile(path + ".json")
+	if err != nil || json.Unmarshal(metaData, &meta) != nil {
+		errNotFound(w, "artifact not found")
+		return nil, agentArtifactMeta{}, nil, false
+	}
+	// The object is opened once and served from that handle, its length from the file itself
+	// (Security's #4438 INFO 4): a sidecar that disagrees with the file means the store is corrupt,
+	// and the download is refused rather than sent with a length that doesn't match its bytes.
+	f, err := secfile.OpenNoFollow(path, os.O_RDONLY, 0)
+	if err != nil {
+		errNotFound(w, "artifact not found")
+		return nil, agentArtifactMeta{}, nil, false
+	}
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		f.Close()
+		errNotFound(w, "artifact not found")
+		return nil, agentArtifactMeta{}, nil, false
+	}
+	if info.Size() != meta.Size {
+		f.Close()
+		slog.Warn("[artifacts] stored object and its sidecar disagree on the size; not served", "digest", id, "file_bytes", info.Size(), "sidecar_bytes", meta.Size)
+		writeError(w, http.StatusInternalServerError, "artifact_corrupt", "this artifact's stored copy is damaged")
+		return nil, agentArtifactMeta{}, nil, false
+	}
+	return f, meta, info, true
+}
+
 func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if len(id) != 64 {
-		errBadRequest(w, "invalid artifact id")
-		return
-	}
-	if _, err := hex.DecodeString(id); err != nil {
+	if !validArtifactID(id) {
 		errBadRequest(w, "invalid artifact id")
 		return
 	}
@@ -731,36 +774,11 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 		errBadRequest(w, "invalid artifact link version")
 		return
 	}
-	if h.hubMayNotSeePastedImage(r, id) { // #5284: the owner's switch
-		errNotFound(w, "artifact not found")
-		return
-	}
-	path := filepath.Join(h.artifactDir(), id)
-	meta := agentArtifactMeta{}
-	metaData, err := os.ReadFile(path + ".json")
-	if err != nil || json.Unmarshal(metaData, &meta) != nil {
-		errNotFound(w, "artifact not found")
-		return
-	}
-	// The object is opened once and served from that handle, its length from the file itself
-	// (Security's #4438 INFO 4): a sidecar that disagrees with the file means the store is corrupt,
-	// and the download is refused rather than sent with a length that doesn't match its bytes.
-	f, err := secfile.OpenNoFollow(path, os.O_RDONLY, 0)
-	if err != nil {
-		errNotFound(w, "artifact not found")
+	f, meta, info, ok := h.openArtifactForRead(w, r, id)
+	if !ok {
 		return
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		errNotFound(w, "artifact not found")
-		return
-	}
-	if info.Size() != meta.Size {
-		slog.Warn("[artifacts] stored object and its sidecar disagree on the size; not served", "digest", id, "file_bytes", info.Size(), "sidecar_bytes", meta.Size)
-		writeError(w, http.StatusInternalServerError, "artifact_corrupt", "this artifact's stored copy is damaged")
-		return
-	}
 	// An agent chose these bytes and their type: an HTML or SVG upload must not
 	// run on the dashboard's origin when someone opens its link.
 	setUntrustedContentHeaders(w.Header(), meta.MediaType, meta.Name)
@@ -771,4 +789,32 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 	// old build's id and trip its "Coral was updated" banner on every Preview (#5312). An immutable answer names no build.
 	w.Header().Del("X-Coral-Build")
 	http.ServeContent(w, r, "", info.ModTime(), f) // Content-Length (and ranges) from the open file
+}
+
+// getAgentArtifactMeta answers "do you have this artifact?" without its bytes (#5465, coral-hub). GET /api/artifacts/{id}/meta
+//
+// {"id": "<64 hex>", "size": <bytes of the stored object>, "media_type": "<what a download is served as>", "name": "<the name it was stored under>"} (name only when it has one).
+// It is the content read with the bytes left out: the same id check, the same 404 when the artifact is absent or hidden from Coral Hub by the paste share switch, the same refusal of a damaged
+// copy, from the same code (openArtifactForRead); no query parameter is read. The answer is never cached (no-store): an artifact can be deleted at any time.
+func (h *SessionsHandler) getAgentArtifactMeta(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validArtifactID(id) {
+		errBadRequest(w, "invalid artifact id")
+		return
+	}
+	f, meta, info, ok := h.openArtifactForRead(w, r, id)
+	if !ok {
+		return
+	}
+	f.Close()
+	// The type a download is served as, from the same function: an unknown or malformed one is application/octet-stream there, and here.
+	served := http.Header{}
+	setUntrustedContentHeaders(served, meta.MediaType, meta.Name)
+	out := map[string]any{"id": id, "size": info.Size(), "media_type": served.Get("Content-Type")}
+	if meta.Name != "" {
+		out["name"] = meta.Name
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Del("X-Coral-Build")
+	writeJSON(w, http.StatusOK, out)
 }

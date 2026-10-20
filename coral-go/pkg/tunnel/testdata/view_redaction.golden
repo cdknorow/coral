@@ -4,6 +4,7 @@ GET /api/agent/ui/{uiid}/content redact
 GET /api/agent/ui/{uiid}/events redact
 GET /api/artifacts/{hex64} exempt: byte-exact download: the id is the SHA-256 of the bytes, so any change breaks the link and its check
 GET /api/artifacts/{hex64}/comments redact
+GET /api/artifacts/{hex64}/meta redact
 GET /api/board/projects redact
 GET /api/board/tasks redact
 GET /api/board/{project} redact

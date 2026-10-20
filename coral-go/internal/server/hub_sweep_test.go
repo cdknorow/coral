@@ -136,6 +136,9 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		if f[1] == "/api/artifacts/{id}" {
 			path = "/api/artifacts/" + artifactHex
 		}
+		if f[1] == "/api/artifacts/{id}/meta" { // the facts of that artifact (#5465)
+			path = "/api/artifacts/" + artifactHex + "/meta"
+		}
 		if f[1] == "/api/artifacts/{id}/comments" { // the comments of that artifact (#5176)
 			path = "/api/artifacts/" + artifactHex + "/comments"
 		}

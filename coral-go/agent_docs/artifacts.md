@@ -121,6 +121,8 @@ The table has Name / Type / Created / Actions columns and fits its panel without
 
 The Operator, on this computer's own dashboard, also has **Delete** in both lists (not through Coral Hub, not in the pop-out); see below.
 
+- **Facts without the bytes (#5465):** `GET /api/artifacts/<hex>/meta` answers `{"id", "size", "media_type", "name"}` (`name` is left out when the upload had none; `media_type` is the type the content read sends, `application/octet-stream` when the stored one is not a valid type). It is a view-tier read, `Cache-Control: no-store`, and it is 404 exactly where the content read is (no such artifact, or a pasted image hidden from Coral Hub by the share switch). An artifact id is always exactly 64 lower-case hex digits (its SHA-256); any other id, an upper-case one or one with a `sha256:` prefix included, is `400` on both routes.
+
 ## Limits, images and deleting
 
 - **Size:** at most 64 MiB per artifact (`artifact_too_large`). Uploads are streamed, never held whole in memory.

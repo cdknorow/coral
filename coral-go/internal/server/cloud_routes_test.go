@@ -24,7 +24,7 @@ func concrete(route string) string {
 	if route == "/api/artifacts/{id}" {
 		return "/api/artifacts/" + strings.Repeat("a", 64) // the table only admits a full content digest
 	}
-	if strings.HasPrefix(route, "/api/artifacts/{id}/comments") { // the comments of an artifact (#5176) are under the same digest
+	if strings.HasPrefix(route, "/api/artifacts/{id}/comments") || route == "/api/artifacts/{id}/meta" { // the comments (#5176) and the metadata (#5465) of an artifact are under the same digest
 		route = strings.Replace(route, "{id}", strings.Repeat("a", 64), 1)
 	}
 	segs := strings.Split(route, "/")
