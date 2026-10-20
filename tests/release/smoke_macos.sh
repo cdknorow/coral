@@ -29,6 +29,7 @@
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
+. "$here/../../tools/release-homes.sh"
 dmg="" sums="" tag="" keep=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -69,7 +70,7 @@ print(d)' "$1" 2>/dev/null; }
 app=""
 if [ -z "$dmg" ]; then
   command -v gh >/dev/null || { echo "smoke_macos: a TAG needs gh" >&2; exit 2; }
-  gh release download "$tag" -R cdknorow/coral -p 'Coral*.dmg' -p SHA256SUMS.txt -D "$work/dl" >/dev/null 2>&1 || { echo "smoke_macos: could not download $tag" >&2; exit 2; }
+  gh release download "$tag" -R "$(release_home_current)" -p 'Coral*.dmg' -p SHA256SUMS.txt -D "$work/dl" >/dev/null 2>&1 || { echo "smoke_macos: could not download $tag" >&2; exit 2; }
   dmg=$(ls "$work"/dl/Coral*.dmg | head -1); sums="$work/dl/SHA256SUMS.txt"
 fi
 [ -f "$dmg" ] || { echo "smoke_macos: no DMG at $dmg" >&2; exit 2; }

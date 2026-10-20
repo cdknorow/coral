@@ -8,9 +8,9 @@ V=${1:?usage: cask.sh VER}
 cd "$MAIN_TREE"; git fetch -q origin
 BASE=$(git rev-parse origin/main); [ "$(git rev-parse main)" = "$BASE" ] || die "local main differs from origin/main"
 # GitHub's own digest of the published DMG (release metadata): no download, so it adds nothing to the counts (#4936).
-SHA=$(gh api "repos/cdknorow/coral/releases/tags/v$V" -q ".assets[] | select(.name == \"Coral.v$V.dmg\") | .digest" | sed 's/^sha256://')
+SHA=$(gh api "repos/$(release_home_current)/releases/tags/v$V" -q ".assets[] | select(.name == \"Coral.v$V.dmg\") | .digest" | sed 's/^sha256://')
 [[ "$SHA" =~ ^[0-9a-f]{64}$ ]] || die "no sha256 digest for Coral.v$V.dmg in v$V's release"
-TAP=$(gh api repos/cdknorow/homebrew-coral/contents/Casks/coral.rb -q .content | base64 -d | awk -F'"' '/^  sha256 /{print $2}')
+TAP=$(gh api repos/$(release_tap_repo)/contents/Casks/coral.rb -q .content | base64 -d | awk -F'"' '/^  sha256 /{print $2}')
 [ "$TAP" = "$SHA" ] && echo "tap matches $SHA" || echo "NOTE: the tap's sha256 $TAP differs from the release's $SHA"
 W=$(mktemp -d /tmp/cask.XXXX)/wt
 git worktree add -q --detach "$W" "$BASE"

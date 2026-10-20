@@ -3,13 +3,14 @@
 # Every file it fetches counts as a download of the release, so the release flow no longer uses it (finish-release.sh
 # checks the release run's artifacts instead, #4936). Use it only to re-check exactly what a user downloads.
 set -o pipefail
+. "$(dirname "$0")/../release-homes.sh"
 TAG=$1; DIR=$2; mkdir -p "$DIR"; cd "$(git rev-parse --show-toplevel)" || exit 1
-gh api repos/cdknorow/coral/releases/tags/$TAG -q '.assets[]|"\(.name) \(.digest)"' > "$DIR/.digests" || exit 1
+gh api repos/$(release_home_current)/releases/tags/$TAG -q '.assets[]|"\(.name) \(.digest)"' > "$DIR/.digests" || exit 1
 while read -r name digest; do
   want=${digest#sha256:}; ok=0
   for try in 1 2 3 4 5 6; do
     rm -f "$DIR/$name"
-    gh release download "$TAG" -R cdknorow/coral -p "$name" -D "$DIR" >/dev/null 2>&1
+    gh release download "$TAG" -R "$(release_home_current)" -p "$name" -D "$DIR" >/dev/null 2>&1
     got=$(shasum -a 256 "$DIR/$name" 2>/dev/null | cut -d' ' -f1)
     if [ "$got" = "$want" ]; then ok=1; echo "ok   $name (try $try)"; break; fi
   done

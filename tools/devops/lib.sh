@@ -5,6 +5,8 @@ set -o pipefail
 MAIN_TREE=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
 IDENT=(-c user.name="${CORAL_LAND_NAME:-Coral DevOps stack}" -c user.email="${CORAL_LAND_EMAIL:-devops-stack@example.test}")
 die() { echo "$*" >&2; exit 1; }
+# The release home (where releases are built, signed and downloaded from) and its tap: tools/release-homes.txt (#5299).
+. "$(dirname "${BASH_SOURCE[0]}")/../release-homes.sh"
 
 # ---- cosign (#5112): the release checks need the pinned cosign, never "whatever is installed" or nothing ----
 # sha256_of FILE: the file's sha256.

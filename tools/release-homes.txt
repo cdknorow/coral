@@ -1,0 +1,7 @@
+# Where each release was built and signed, for the checks that verify a release's identity (#5299).
+#
+# One line per home: FIRST_TAG OWNER/REPO. A tag belongs to the last line whose FIRST_TAG is not newer than it (compared as
+# versions). The signing certificate of a release names the repository that built it, and a release keeps that name for ever,
+# so a release cut before the repository moved is checked against its old home and a later one against the new home.
+# The LAST line is the current home: where releases are downloaded from and where the tap lives.
+v0.0.0 cdknorow/coral

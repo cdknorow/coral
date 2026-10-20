@@ -31,7 +31,8 @@
 # read it. Everything goes into a new folder under $TMPDIR (removed at the end unless --keep).
 #
 # Needs: gh (logged in), jq, tar, unzip, shasum or sha256sum. Optional: cosign, go, hdiutil.
-# Options: --repo OWNER/NAME (default cdknorow/coral), --prev TAG (default: the release before this one
+# Options: --repo OWNER/NAME (default: the current home in tools/release-homes.txt; a release is checked against the home that
+# built it, also from that table, unless --repo is given), --prev TAG (default: the release before this one
 # of the same kind), --no-prev, --keep, --out DIR (use an empty folder you name; implies --keep),
 # --local DIR (check assets already in DIR instead of downloading: for a re-check, or to see a tampered copy fail),
 # --require-cosign (the cosign row FAILS instead of SKIPping when cosign is missing or there is no bundle to check),
@@ -43,10 +44,11 @@ set -o pipefail
 export CORAL_TELEMETRY_DISABLED=1
 
 usage() { sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 2; }
-TAG=""; REPO="cdknorow/coral"; PREV=""; NOPREV=0; KEEP=0; OUT=""; LOCAL=""; PUBLISHED=0; REQUIRE_COSIGN=0
+. "$(dirname "$0")/release-homes.sh"
+TAG=""; REPO="$(release_home_current)"; REPO_GIVEN=0; PREV=""; NOPREV=0; KEEP=0; OUT=""; LOCAL=""; PUBLISHED=0; REQUIRE_COSIGN=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --repo) REPO="${2:?}"; shift 2 ;;
+    --repo) REPO="${2:?}"; REPO_GIVEN=1; shift 2 ;;
     --published) PUBLISHED=1; shift ;;
     --require-cosign) REQUIRE_COSIGN=1; shift ;;
     --prev) PREV="${2:?}"; shift 2 ;;
@@ -258,7 +260,7 @@ fi
 # Authenticode is not checked on macOS (it is a Windows signature): the DMG is checked below with spctl, stapler and codesign.
 if [ -f SHA256SUMS.txt ]; then
   dmg_sum="$(awk '$2 ~ /^Coral\.v.*\.dmg$/ {print $1; exit}' SHA256SUMS.txt)"
-  for spec in "tap:cdknorow/homebrew-coral" "repo:$REPO"; do
+  for spec in "tap:$(release_tap_repo "$REPO")" "repo:$REPO"; do
     which_="${spec%%:*}"; cask_repo="${spec#*:}"
     cask="$(gh api "repos/$cask_repo/contents/Casks/coral.rb" -q .content 2>/dev/null | base64 -d 2>/dev/null || true)"
     if [ -z "$cask" ]; then skip cask "$which_ Casks/coral.rb" "could not be read ($cask_repo)"; continue; fi
@@ -271,11 +273,15 @@ if [ -f SHA256SUMS.txt ]; then
 fi
 
 # ---- 4. GitHub attestations ----
-SIGNER="$REPO/.github/workflows/release.yml"
-REPO_RE="$(sed 's/\./\\./g' <<<"$REPO")"; TAG_RE="$(sed 's/[.]/\\./g' <<<"$TAG")"
+# The certificate and the attestation name the repository that built the release, which a later move does not change: a tag is
+# checked against its own home (tools/release-homes.txt), the files are fetched from the current one.
+ID_REPO="$REPO"; [ "$REPO_GIVEN" = 1 ] || ID_REPO="$(release_home_for_tag "$TAG")"
+[ -n "$ID_REPO" ] || ID_REPO="$REPO"
+SIGNER="$ID_REPO/.github/workflows/release.yml"
+REPO_RE="$(sed 's/\./\\./g' <<<"$ID_REPO")"; TAG_RE="$(sed 's/[.]/\\./g' <<<"$TAG")"
 for p in "${packages[@]+"${packages[@]}"}" SHA256SUMS.txt; do
   [ -f "$p" ] || continue
-  if out="$(gh attestation verify "$p" --repo "$REPO" --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" 2>&1)"; then pass attest "$p" "release.yml at refs/tags/$TAG"
+  if out="$(gh attestation verify "$p" --repo "$ID_REPO" --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" 2>&1)"; then pass attest "$p" "release.yml at refs/tags/$TAG"
   else fail attest "$p" "$(tail -1 <<<"$out" | cut -c1-120)"; fi
 done
 
