@@ -26,3 +26,5 @@ coral-go/internal/server/routes/testdata/auto_accept/** -text
 # Captured CLI output (agy and pi model lists, an agy step's output), parsed as the CLI printed it.
 coral-go/internal/agentmodels/testdata/** -text
 coral-go/cmd/coral-hook-agentic-state/testdata/** -text
+# The updater verifier's real release fixtures (a SHA256SUMS.txt and its Sigstore bundle) are byte-exact: a CRLF checkout on Windows breaks the signature (#5279).
+coral-go/internal/updater/verify/testdata/** -text
