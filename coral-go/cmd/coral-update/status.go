@@ -144,7 +144,7 @@ func collectStatus(getenv func(string) string, dataDir string, now time.Time) st
 		if out.LastApply == nil {
 			out.LastApply = a
 		}
-		if out.LastRolled == nil && h.Result == "failed_rolled_back" {
+		if out.LastRolled == nil && (h.Result == "failed_rolled_back" || h.Result == "restart_failed") { // restart_failed: rolled back, and the previous Coral could not be started again (#5419)
 			out.LastRolled = a
 		}
 		if out.LastApply != nil && out.LastRolled != nil {
@@ -218,7 +218,11 @@ func (s statusOut) plain(w io.Writer) {
 		p("Last install attempt: none")
 	}
 	if r := s.LastRolled; r != nil {
-		p("Last roll-back: version %s did not come up%s; the previous version was put back (stopped at: %s)", orNone(r.To), atText(r.At), orNone(r.Reason))
+		if r.Result == "restart_failed" {
+			p("Last roll-back: version %s did not come up%s; the previous version was put back but Coral could NOT be started again, so nothing was running afterwards (stopped at: %s)", orNone(r.To), atText(r.At), orNone(r.Reason))
+		} else {
+			p("Last roll-back: version %s did not come up%s; the previous version was put back (stopped at: %s)", orNone(r.To), atText(r.At), orNone(r.Reason))
+		}
 	}
 	switch s.RunRecord {
 	case "present":

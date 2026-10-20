@@ -215,3 +215,18 @@ func TestStatusDoesNotTouchTheNetwork(t *testing.T) {
 	_, err := os.Stat(filepath.Join(dir, "updates", "tuf"))
 	assert.ErrorIs(t, err, os.ErrNotExist, "no trusted-root cache was made")
 }
+
+// #5419: a roll-back whose restart failed is a roll-back too, and says Coral was not running afterwards.
+func TestStatusShowsARollbackWhoseRestartFailed(t *testing.T) {
+	dir := withVersion(t, "1.4.130")
+	writeState(t, dir, verify.State{History: []verify.HistoryEntry{
+		{At: "2026-10-20T08:00:00Z", From: "1.4.129", To: "1.4.130", By: "local", Result: "failed_rolled_back", Reason: "not_healthy"},
+		{At: "2026-10-20T09:00:00Z", From: "1.4.129", To: "1.4.131", By: "local", Result: "restart_failed", Reason: "not_healthy"},
+	}})
+	m := statusJSON(t, nil)
+	assert.Equal(t, "restart_failed", m["last_rollback"].(map[string]any)["result"])
+	assert.Equal(t, "restart_failed", m["last_apply"].(map[string]any)["result"])
+	_, out := statusRun(t, nil, "status")
+	assert.Contains(t, out, "Coral could NOT be started again")
+	assert.Contains(t, out, "version 1.4.131 did not come up")
+}
