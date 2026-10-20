@@ -33,6 +33,16 @@ type joinEntry struct {
 
 // joinSites is "file<TAB>function" -> its joins, by file relative to coral-go.
 var joinSites = map[string]joinEntry{
+	"internal/server/routes/shared_images.go\tSessionsHandler.removePastedCopy":              {1, joinID, "the id was read back by readUploadRecord (objectNameRe) and the session id is checked by uploadsDir (IsSafeID, \"\" when unsafe) before the join (#5284)"},
+	"internal/server/routes/shared_images.go\totherReferences":                               {2, joinID, "the board folder names pass boardDirName, the kinds are constants, and its only caller (removePastedCopy) passes an id readUploadRecord already checked (#5284)"},
+	"internal/server/routes/shared_images.go\treadUploadRecord":                              {1, joinID, "the id is checked with objectNameRe and the session id by uploadsDir before the join (#5284)"},
+	"internal/updater/stage/load.go\tLoadStaged":                                             {5, joinID, "the version folder name passes verify.ParseVersion and equals the record's version, the record's asset name is a plain file name (no separator, no dot-prefix), the other names are constants (#5292, #5301)"},
+	"internal/updater/stage/load.go\tReverify":                                               {1, joinID, "joins the staged folder with the record's asset name, which LoadStaged checked to be a plain file name and the result must equal the staged package path (#5292, #5301)"},
+	"internal/updater/stage/lock.go\tapplyRunning":                                           {1, joinOwn, "the apply lock's file name, a constant, in the updater's folder"},
+	"internal/updater/stage/lock.go\ttakeLock":                                               {1, joinOwn, "the lock's file name: its callers pass the check's or the apply's lock constant"},
+	"internal/updater/stage/stage.go\tCheck":                                                 {1, joinOwn, "the updater's folder name, a constant, under the data folder"},
+	"internal/updater/stage/stage.go\tchecker.prune":                                         {1, joinFixed, "a name from a directory listing of the staging folder, removed under it"},
+	"internal/updater/stage/stage.go\tchecker.stage":                                         {6, joinID, "the version is the verified record's (verify.ParseVersion), the asset name is the one the program builds for it, the other names are constants (#5292)"},
 	"internal/server/routes/system_update_relaunch.go\tUpdateRelaunchHandler.readPrivate":    {1, joinOwn, "a state file name the handler passes as a constant (ack.key, ack_used.json) in its own updates folder"},
 	"internal/server/routes/system_update_relaunch.go\tUpdateRelaunchHandler.writePrivate":   {1, joinOwn, "a state file name the handler passes as a constant (ack.key, ack_used.json) in its own updates folder"},
 	"internal/server/routes/system_update_relaunch_wire.go\tNewUpdateRelaunchHandler":        {1, joinOwn, "the updates folder name, a constant, under the data folder"},
@@ -125,7 +135,7 @@ var joinSites = map[string]joinEntry{
 	"internal/server/routes/artifact_store.go\tartifactStore.measureLocked":                  {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifacts.go\tSessionsHandler.getAgentArtifact":                  {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifacts.go\tdeleteArtifactFilesLocked":                         {4, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
-	"internal/server/routes/artifacts.go\tstoreArtifact":                                     {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifacts.go\tstoreArtifactBy":                                   {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifacts.go\tstoreArtifactFile":                                 {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifacts.go\tuploadsDir":                                        {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/auto_accept_risk.go\tchangeDir":                                  {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
