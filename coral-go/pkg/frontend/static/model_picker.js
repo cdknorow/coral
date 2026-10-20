@@ -42,7 +42,7 @@ function fill(container, agentType, data) {
     container._modelList = models;
     if (!models.length) { wrap.hidden = true; input.hidden = false; return; }   // no list: the text box, as before
     select.innerHTML = `<option value="">Default</option>`
-        + models.map(m => `<option value="${escapeAttr(m.value)}">${escapeHtml(m.display_name || m.value)}</option>`).join('')
+        + models.map(m => `<option value="${escapeAttr(m.value)}">${escapeHtml((m.display_name || m.value) + (m.custom === true ? ' (custom)' : ''))}</option>`).join('')
         + `<option value="${escapeAttr(OTHER)}">Other…</option>`;
     wrap.hidden = false;
     if (note) note.textContent = data && data.error ? data.error : (data && data.refreshing ? 'Updating the list…' : '');
@@ -180,7 +180,8 @@ export function syncThinking(container) {
     const typeLevels = agentType === 'terminal' ? [] : (container._thinkingLevels || []);
     const model = (container.querySelector('.acf-model')?.value || '').trim();
     const hit = (container._modelList || []).find(m => m.value === model);
-    const efforts = hit && Array.isArray(hit.efforts) && hit.efforts.length ? hit.efforts : null;
+    // a custom model (#5480) lists exactly the levels its owner ticked: none ticked means no level choice (a built-in model with no list takes every level the type has)
+    const efforts = hit && hit.custom === true ? (Array.isArray(hit.efforts) ? hit.efforts : []) : (hit && Array.isArray(hit.efforts) && hit.efforts.length ? hit.efforts : null);
     const allowed = efforts ? typeLevels.filter(l => efforts.includes(l)) : typeLevels;
     if (!allowed.length) { wrap.hidden = true; if (note) note.textContent = ''; return; }
     const wanted = container._thinkingWanted !== undefined ? container._thinkingWanted : select.value;

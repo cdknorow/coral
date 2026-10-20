@@ -16,7 +16,7 @@ import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInpu
 import { attachDialogFocus } from './dialog_focus.js';
 import { browserLocal } from './safe_storage.js';
 import { openSettingsGroup } from './settings_nav.js';
-const { _fillModelDatalist, _getAgentModels, _invalidateDefaultModels } = await importOnce('./launch_models.js');
+const { _fillModelDatalist, _getAgentModels, _invalidateAgentModels, _invalidateDefaultModels } = await importOnce('./launch_models.js');
 const { _updatePermModeDescription } = await importOnce('./permission_flags.js');
 
 // ── Settings: API key (#3152) ─────────────────────────────────────────────
@@ -682,6 +682,7 @@ function _fillCliAndModels(s) {
     if (defAgy) defAgy.value = agyModel;
     if (defPi) defPi.value = s.default_model_pi || "";
     // On the hub the Default Models rows are hidden (machine settings), and the hub has no model catalog of its own to ask.
+    if (!isCloud()) importOnce('./custom_models.js').then(m => m.initCustomModels()).catch(() => {}); // the custom models list (#5480): hidden when this server has no such route
     if (!isCloud()) _getAgentModels().then(models => {
         // _getAgentModels swallows errors and resolves with {} on failure; on
         // success it returns the canonical map with an array for each agent type.
@@ -832,6 +833,7 @@ async function _loadTierBranding() {
 
 export function hideSettingsModal() {
     document.getElementById("settings-modal").style.display = "none";
+    if (!isCloud()) importOnce('./custom_models.js').then(m => m.discardCustomModels()).catch(() => {}); // unsaved custom models are dropped with the dialog (#5480)
 }
 
 /** What the dialog's controls hold: the payload to save (only what the person changed, and on the hub only the per-user keys) and the values the page applies once it is saved. */
@@ -1031,7 +1033,9 @@ export async function applySettings() {
         const nothingToSave = await saveSettings(form);
         await applySettingsEffects(form, oldGitDiffMode);
         if (updatesUiOn()) await importOnce('./update_settings.js').then(m => m.applyUpdatePrefs()); // the two update switches (#5275)
-        showToast(nothingToSave ? NOTHING_TO_SAVE : "Settings saved");
+        const modelsSaved = isCloud() ? false : await importOnce('./custom_models.js').then(m => m.applyCustomModels()); // the custom models (#5480)
+        if (modelsSaved) { _invalidateAgentModels(); (await importOnce('./model_labels.js')).clearModelsCache(); }
+        showToast(nothingToSave && !modelsSaved ? NOTHING_TO_SAVE : "Settings saved");
     } catch (e) {
         showToast(e && e.userMessage ? `Failed to save settings: ${e.userMessage}` : "Failed to save settings", true);
         return;

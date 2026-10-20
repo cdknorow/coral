@@ -4294,3 +4294,33 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 
 /* The control that was clicked while its module is still loading, on a slow link only (lazy_panels.js, #5377): a progress cursor and aria-busy; nothing that moves and no dimming (a dimmed row loses its text contrast, QA). */
 .lazy-loading { cursor: progress; }
+
+/* Settings > Agents > Custom models (#5480): a group per provider, a row per model, an inline form to add or edit one */
+.settings-custom-models { display: flex; flex-direction: column; gap: var(--space-md, 8px); width: 100%; min-width: 0; }
+.cm-group { border: 1px solid var(--border); border-radius: var(--radius-md); margin: 0; padding: var(--space-md, 8px) var(--space-lg, 12px); min-width: 0; width: 100%; box-sizing: border-box; }
+.cm-group > legend { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); padding: 0 var(--space-sm, 4px); }
+.cm-list { list-style: none; margin: 0 0 var(--space-md, 8px); padding: 0; display: flex; flex-direction: column; gap: var(--space-sm, 4px); }
+.cm-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm, 4px) var(--space-md, 8px); min-width: 0; }
+.cm-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-sm, 4px) var(--space-md, 8px); flex: 1 1 12rem; min-width: 0; }
+.cm-id { font-family: var(--font-mono); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.cm-name { color: var(--text-secondary); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.cm-levels { display: inline-flex; flex-wrap: wrap; gap: var(--space-xs, 2px) var(--space-sm, 4px); }
+.cm-chip { font-size: 0.6875rem; padding: 1px var(--space-sm, 4px); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary); }
+.cm-empty { color: var(--text-secondary); font-size: 0.8125rem; }
+.cm-form { display: flex; flex-direction: column; gap: var(--space-md, 8px); width: 100%; min-width: 0; }
+.cm-field { display: flex; flex-direction: column; gap: var(--space-xs, 2px); font-size: 0.75rem; color: var(--text-secondary); margin: 0; }
+.cm-field .settings-input { width: 100%; margin: 0; }
+.cm-levels-field { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-sm, 4px) var(--space-lg, 12px); font-size: 0.8125rem; }
+.cm-levels-field > legend { font-size: 0.75rem; color: var(--text-secondary); padding: 0; margin-bottom: var(--space-sm, 4px); }
+.cm-levels-field .settings-hint { flex-basis: 100%; }
+.cm-levels-field .cm-level { display: inline-flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: var(--space-sm, 4px); min-height: 44px; min-width: 44px; margin: 0; }
+.cm-levels-field .cm-level input { flex: none; width: auto; margin: 0; }
+.cm-levels-field .cm-level span { flex: none; white-space: nowrap; }
+.cm-add { align-self: flex-start; }
+.settings-custom-models .btn { margin: 0; }
+.cm-error { color: var(--error); font-size: 0.8125rem; margin: 0; }
+.cm-actions { display: flex; gap: var(--space-md, 8px); }
+.cm-status:empty { display: none; }
+@media (max-width: 767px) {
+    .cm-row .btn, .cm-actions .btn, .cm-add { min-height: 44px; min-width: 44px; }
+}

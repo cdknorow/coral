@@ -112,12 +112,15 @@ async function _loadList() {
     return _data;
 }
 
-function _levelsFor(modelId) {
-    const levels = (_data && _data.thinking) || [];
-    const hit = ((_data && _data.models) || []).find(m => m.value === modelId);
-    const efforts = hit && Array.isArray(hit.efforts) && hit.efforts.length ? hit.efforts : null;
+/** The levels the switcher offers for a model of a catalog reply `data` ({ thinking, models }): the type's levels, narrowed to the model's own efforts. A custom model (#5480) lists exactly the levels its owner ticked, so none ticked means no level choice. */
+export function levelsFor(data, modelId) {
+    const levels = (data && data.thinking) || [];
+    const hit = ((data && data.models) || []).find(m => m.value === modelId);
+    const efforts = hit && hit.custom === true ? (Array.isArray(hit.efforts) ? hit.efforts : []) : (hit && Array.isArray(hit.efforts) && hit.efforts.length ? hit.efforts : null);
     return efforts ? levels.filter(l => efforts.includes(l)) : levels;
 }
+
+function _levelsFor(modelId) { return levelsFor(_data, modelId); }
 
 function _renderMenu(kind) {
     const { menu } = parts()[kind];
@@ -134,7 +137,7 @@ function _renderMenu(kind) {
         const models = (_data && _data.models) || [];
         if (models.length) {
             html = `<div class="model-chip-group" role="group" aria-label="Model"><div class="model-chip-head">Model ${how}</div>`
-                + models.map(m => item('model', m.value, m.display_name || m.value, m.value === s.model)).join('') + '</div>';
+                + models.map(m => item('model', m.value, (m.display_name || m.value) + (m.custom === true ? ' (custom)' : ''), m.value === s.model)).join('') + '</div>';
         }
     } else {
         const levels = _levelsFor(s.model);

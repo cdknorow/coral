@@ -63,6 +63,10 @@ export function _getAgentModels(server = LOCAL_SERVER) {
 }
 (window.__coral ||= {})._getAgentModels = _getAgentModels;
 
+/** Forgets the catalog so the next picker asks again (custom models were saved, #5480). */
+export function _invalidateAgentModels() { _agentModelsByServer.clear(); }
+(window.__coral ||= {})._invalidateAgentModels = _invalidateAgentModels;
+
 // _fillModelDatalist replaces <option>s in the given <datalist> element with
 // the canonical list for the agent type. Unknown types or an empty list
 // result in an empty datalist (the input still accepts free-form text).

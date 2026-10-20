@@ -121,6 +121,21 @@ const { connect } = require('./agent_view_harness');
         await waitFor(`document.getElementById('terminal-header-label') && document.getElementById('terminal-header-label').textContent.length > 0`, 'the header', 5000);
         // The model is in the input toolbar's chip and the row's tooltip, not in the agent header (#5142).
         assert.equal(await ev(`!!document.getElementById('terminal-header-model') || /Opus 4\\.1/.test(document.querySelector('#live-session-view .terminal-header').textContent)`), false, 'the header does not repeat the model');
+        console.log('7. a custom model (#5480) is marked, and its own levels drive the thinking picker');
+        await ev(`window.__serve.claude = { thinking: ['low', 'medium', 'high', 'xhigh', 'max'], models: [${JSON.stringify(OPUS)}, { value: 'global-opus-5-5', display_name: 'Global Opus 5.5', custom: true, efforts: ['low', 'high'] }, { value: 'global-plain', display_name: '<img src=x onerror="window.__pwn=1">', custom: true, efforts: [] }], refreshing: false }; localStorage.removeItem('coral-models:v1:local:claude');
+            (() => { const old = document.getElementById('acf-t'); if (old) old.remove(); const host = document.createElement('div'); host.id = 'acf-t'; document.body.appendChild(host); window.__acf.renderAgentConfigForm('acf-t', {}); })(); true`);
+        await waitFor(`!!document.querySelector('#acf-t .acf-model-select option[value="global-opus-5-5"]')`, 'the custom model in the list', 4000);
+        b = await box();
+        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Global Opus 5.5 (custom)', '<img src=x onerror="window.__pwn=1"> (custom)', 'Other…'], 'a custom model says so in the list, and a name with markup is text');
+        assert.equal(await ev(`document.querySelectorAll('#acf-t img').length + (window.__pwn ? 1 : 0)`), 0, 'a custom model\'s name never becomes markup');
+        await ev(`{ const s = document.querySelector('#acf-t .acf-model-select'); s.value = 'global-opus-5-5'; s.dispatchEvent(new Event('change', { bubbles: true })); true }`);
+        assert.equal(await formModel(), 'global-opus-5-5', 'the form returns the custom id like any other');
+        const levels = await ev(`[...document.querySelectorAll('#acf-t .acf-thinking-select option, #acf-t select[aria-label*="hinking"] option')].map(o => o.value).join()`);
+        assert.ok(/low/.test(levels) && /high/.test(levels) && !/xhigh|max|medium/.test(levels), 'the thinking picker offers only the levels the custom model accepts (' + levels + ')');
+        await ev(`{ const s = document.querySelector('#acf-t .acf-model-select'); s.value = 'global-plain'; s.dispatchEvent(new Event('change', { bubbles: true })); true }`);
+        assert.equal(await ev(`document.querySelector('#acf-t .acf-thinking-wrap').hidden`), true, 'a custom model with no level ticked offers no thinking level');
+        const sw = await ev(`import((window.__coralStatic || '/static/') + 'model_chip.js').then(m => { const d = { thinking: ['low', 'medium', 'high'], models: [{ value: 'a', custom: true, efforts: ['low', 'high'] }, { value: 'b', custom: true, efforts: [] }, { value: 'c', efforts: [] }, { value: 'd', efforts: ['medium'] }] }; return ['a', 'b', 'c', 'd', 'zz'].map(v => m.levelsFor(d, v).join('+')); })`);
+        assert.deepEqual(sw, ['low+high', '', 'low+medium+high', 'medium', 'low+medium+high'], 'the running agent\'s switcher follows the same rule: a custom model offers exactly its ticked levels, none means none, a built-in model with no list takes every level');
         console.log('\nPASS model picker and model labels');
     } finally {
         await guard.restore().catch(e => console.error('settings restore: ' + (e && e.message)));

@@ -26,6 +26,11 @@ export function writeModelsCache(server, agentType, data) {
     try { browserLocal.set(`${MODELS_CACHE_PREFIX}${server || LOCAL_SERVER}:${agentType}`, JSON.stringify({ models: data.models, fetched_at: data.fetched_at || null, source: data.source || '' })); } catch { /* per-viewer only */ }
 }
 
+/** Forgets every cached model list (a save of the custom models changes what every picker shows, #5480). */
+export function clearModelsCache() {
+    try { for (const k of browserLocal.keys()) if (k.startsWith(MODELS_CACHE_PREFIX)) browserLocal.remove(k); } catch { /* storage unavailable: nothing was cached */ }
+}
+
 /** A short name from a model id when the list has no display name: claude-opus-4-1-20250805 gives "Opus 4.1". */
 function shortModelName(id) {
     let s = String(id || '').trim();
