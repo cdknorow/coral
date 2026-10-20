@@ -17,3 +17,9 @@ release_home_for_tag() {
   [ -n "$best" ] && echo "$best"
 }
 release_tap_repo() { local r="${1:-$(release_home_current)}"; echo "${r%%/*}/homebrew-coral"; }
+# release_has_stable_names VERSION  -> success when that release is expected to carry the stable-name copies (#5333), from 1.4.130
+# on: an older release is verified without them. A suffix (-rc1, -dev) is ignored for the comparison.
+release_has_stable_names() {
+  local v="${1#v}"; v="${v%%-*}"
+  [ "$(printf '%s\n%s\n' 1.4.130 "$v" | sort -V | head -1)" = 1.4.130 ]
+}

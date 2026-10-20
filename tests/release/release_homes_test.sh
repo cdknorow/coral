@@ -23,4 +23,8 @@ eq "a numeric comparison upward (1.10.0 > 1.4.140)" "$(release_home_for_tag v1.1
 eq "current home" "$(release_home_current)" "subgentic/coral"
 eq "tap follows the current home" "$(release_tap_repo)" "subgentic/homebrew-coral"
 eq "tap of an older home" "$(release_tap_repo cdknorow/coral)" "cdknorow/homebrew-coral"
+
+# the stable-name copies are expected from 1.4.130 on only (#5333)
+for v in v1.4.129 1.4.9 v1.3.200 v0.9.0; do if release_has_stable_names "$v"; then eq "no stable names expected for $v" yes no; else eq "no stable names expected for $v" no no; fi; done
+for v in v1.4.130 1.4.131 v1.4.130-rc1 v1.5.0 v2.0.0 1.10.0; do if release_has_stable_names "$v"; then eq "stable names expected for $v" yes yes; else eq "stable names expected for $v" no yes; fi; done
 exit "$fail"

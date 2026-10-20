@@ -139,10 +139,13 @@ if [ -n "$meta" ]; then
   has() { grep -qxF "$1" <<<"$names"; }
   need=("coral-linux-amd64-$want_ver.tar.gz" "coral-linux-arm64-$want_ver.tar.gz"
         "coral-linux-amd64-$want_ver.tar.gz.sigstore.json" "coral-linux-arm64-$want_ver.tar.gz.sigstore.json"
-        "Coral-$want_ver-x64.msi" "Coral-$want_ver-x64-portable.zip" "SHA256SUMS.txt" "SHA256SUMS.txt.sigstore.json"
-        # the stable-name copies (#5333): the same bytes without the version in the name, and the Linux ones' bundles
-        "coral-linux-amd64.tar.gz" "coral-linux-arm64.tar.gz" "coral-linux-amd64.tar.gz.sigstore.json" "coral-linux-arm64.tar.gz.sigstore.json"
-        "Coral.dmg" "Coral-x64.msi" "Coral-x64-portable.zip")
+        "Coral-$want_ver-x64.msi" "Coral-$want_ver-x64-portable.zip" "SHA256SUMS.txt" "SHA256SUMS.txt.sigstore.json")
+  # the stable-name copies (#5333): the same bytes without the version in the name, and the Linux ones' bundles; releases from 1.4.130
+  # on carry them, an older one is verified without (re-checking an old tag still passes)
+  if release_has_stable_names "$want_ver"; then
+    need+=("coral-linux-amd64.tar.gz" "coral-linux-arm64.tar.gz" "coral-linux-amd64.tar.gz.sigstore.json" "coral-linux-arm64.tar.gz.sigstore.json"
+           "Coral.dmg" "Coral-x64.msi" "Coral-x64-portable.zip")
+  fi
   missing=""
   for n in "${need[@]}"; do has "$n" || missing="$missing $n"; done
   dmg="$(grep -E '^Coral\.v.*\.dmg$' <<<"$names" | head -1)"
@@ -241,7 +244,9 @@ else
 fi
 
 # ---- 3c. the stable-name copies (#5333): the same bytes as the versioned file, listed under both names ----
-if [ -f SHA256SUMS.txt ]; then
+if [ -f SHA256SUMS.txt ] && ! release_has_stable_names "$want_ver"; then
+  skip alias "stable-name copies" "$want_ver is before 1.4.130: it has none"
+elif [ -f SHA256SUMS.txt ]; then
   for pair in "coral-linux-amd64-$want_ver.tar.gz:coral-linux-amd64.tar.gz" "coral-linux-arm64-$want_ver.tar.gz:coral-linux-arm64.tar.gz" \
               "Coral.v$want_ver.dmg:Coral.dmg" "Coral-$want_ver-x64.msi:Coral-x64.msi" "Coral-$want_ver-x64-portable.zip:Coral-x64-portable.zip"; do
     ver="${pair%%:*}"; stable="${pair#*:}"
