@@ -53,12 +53,14 @@ func requireLinear(t *testing.T, name string, mk func(n int) string, f func(stri
 	require.Less(t, dl, 10*time.Second, "%s: %v for %d bytes", name, dl, large)
 }
 
-// The guard still guards: a pass that does work for every 500th byte over the whole text (quadratic) is refused, a single pass is accepted.
+// The guard still guards: a pass that does work for every 250th byte over the whole text (quadratic) is refused, a single pass is accepted. The large run is 640
+// million additions, over 300 ms even at two additions a nanosecond, so it stays above the guard's 150 ms "too quick to read" shortcut (every 500th byte could fall
+// under it on a fast runner and the quadratic pass was accepted, 132 gate).
 func TestTheLinearGuardRefusesAQuadraticPassAndAcceptsALinearOne(t *testing.T) {
 	mk := func(n int) string { return strings.Repeat("a", n) }
 	var sink byte
 	quadratic := func(text string) {
-		for i := 0; i < len(text); i += 500 {
+		for i := 0; i < len(text); i += 250 {
 			for j := 0; j < len(text); j++ {
 				sink += text[j]
 			}
