@@ -20,7 +20,7 @@ name: fuzz-nightly
 # feeds it to the target function in a sandbox and never executes it.
 #   1. Open the failed job, download its "fuzz-crashers-<target>" artifact, and unzip it.
 #   2. Copy the crasher file it contains (testdata/fuzz/<Target>/<id>) into your checkout at the
-#      same path: coral-go/internal/server/routes/testdata/fuzz/<Target>/<id>
+#      same path: coral-go/<package>/testdata/fuzz/<Target>/<id> (the package is in the job's matrix, e.g. internal/server/routes)
 #   3. Re-run just that input through the test (it fails the same way, fast, no fuzzing):
 #        cd coral-go && go test -tags fts5 -run '<Target>/<id>' ./internal/server/routes/
 #      e.g. go test -tags fts5 -run 'FuzzStripJPEG/5bd3151860' ./internal/server/routes/
@@ -30,6 +30,12 @@ on:
   schedule:
     - cron: "27 8 * * *" # 08:27 UTC nightly, off the top of the hour to avoid the scheduler's busiest minute
   workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "How long each target fuzzes (a trial run can use 30s or 2m)"
+        type: choice
+        options: ["10m", "2m", "30s"]
+        default: "10m"
 
 permissions:
   contents: read
@@ -50,9 +56,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The image strippers and the receive gate (#4380), and the cross-team receive frame (#4389):
-        # the metadata parser and the whole-frame handler.
-        target: [FuzzStripJPEG, FuzzStripPNG, FuzzStripGIF, FuzzGateReceived, FuzzParseReceivedMeta, FuzzReceiveExternalArtifactFrame]
+        # target: the Fuzz function; pkg: its package under coral-go/ (its crashers land in <pkg>/testdata/fuzz/<target>).
+        include:
+          # The image strippers and the receive gate (#4380), and the cross-team receive frame (#4389): the metadata parser and the whole-frame handler.
+          - {target: FuzzStripJPEG, pkg: internal/server/routes}
+          - {target: FuzzStripPNG, pkg: internal/server/routes}
+          - {target: FuzzStripGIF, pkg: internal/server/routes}
+          - {target: FuzzGateReceived, pkg: internal/server/routes}
+          - {target: FuzzParseReceivedMeta, pkg: internal/server/routes}
+          - {target: FuzzReceiveExternalArtifactFrame, pkg: internal/server/routes}
+          # #5372: the artifact comment anchor, the paste sanitiser every board message goes through, a board key as a path element, the update
+          # chain's two network-fed parsers, and the Hub redactor's four targets.
+          - {target: FuzzCleanAnchor, pkg: internal/server/routes}
+          - {target: FuzzSanitizePaste, pkg: internal/tmux}
+          - {target: FuzzUsableBoardKey, pkg: internal/board}
+          - {target: FuzzParseSums, pkg: internal/updater/verify}
+          - {target: FuzzParseManifest, pkg: internal/updater/verify}
+          - {target: FuzzRedactStream, pkg: pkg/redact}
+          - {target: FuzzRedactJSON, pkg: pkg/redact}
+          - {target: FuzzTrimCut, pkg: pkg/redact}
+          - {target: FuzzRedactBoundedStable, pkg: pkg/redact}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -61,17 +84,19 @@ jobs:
         with:
           go-version-file: coral-go/go.mod
           cache: false # nothing cached here: see the header
-      - name: fuzz ${{ matrix.target }} for ~10 minutes
+      - name: fuzz ${{ matrix.target }} (10 minutes unless a manual run says less)
         working-directory: coral-go
-        env:
-          TARGET: ${{ matrix.target }} # into the shell as an env var, never interpolated into the run script
+        env: # into the shell as env vars, never interpolated into the run script
+          TARGET: ${{ matrix.target }}
+          PKG: ${{ matrix.pkg }}
+          FUZZTIME: ${{ inputs.fuzztime || '10m' }}
         run: |
-          go test -tags fts5 -run '^$' -fuzz "^${TARGET}\$" -fuzztime 10m ./internal/server/routes/
+          go test -tags fts5 -run '^$' -fuzz "^${TARGET}\$" -fuzztime "${FUZZTIME}" "./${PKG}/"
       - name: upload the crasher on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-crashers-${{ matrix.target }}
-          path: coral-go/internal/server/routes/testdata/fuzz/${{ matrix.target }}/
+          path: coral-go/${{ matrix.pkg }}/testdata/fuzz/${{ matrix.target }}/
           if-no-files-found: warn # a build or setup failure leaves no crasher; the job still fails
           retention-days: 14
