@@ -11,6 +11,16 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/cdknorow/coral/releases/latest"><strong>Download the latest release</strong></a><br>
+  <a href="https://github.com/cdknorow/coral/releases/latest/download/Coral.dmg">macOS (.dmg)</a> &bull;
+  <a href="https://github.com/cdknorow/coral/releases/latest/download/Coral-x64.msi">Windows installer (.msi)</a> &bull;
+  <a href="https://github.com/cdknorow/coral/releases/latest/download/Coral-x64-portable.zip">Windows portable (.zip)</a> &bull;
+  <a href="https://github.com/cdknorow/coral/releases/latest/download/coral-linux-amd64.tar.gz">Linux x86-64</a> &bull;
+  <a href="https://github.com/cdknorow/coral/releases/latest/download/coral-linux-arm64.tar.gz">Linux ARM64</a><br>
+  <sub>or with Homebrew: <code>brew install --cask cdknorow/coral/coral</code></sub>
+</p>
+
+<p align="center">
   <a href="https://github.com/cdknorow/coral/stargazers"><img src="https://img.shields.io/github/stars/cdknorow/coral?style=social" alt="GitHub Stars"></a>
   <a href="https://github.com/cdknorow/coral/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0 License"></a>
   <a href="https://cdknorow.github.io/coral/"><img src="https://img.shields.io/badge/docs-live-blue" alt="Documentation"></a>
@@ -91,11 +101,13 @@ Everything else — cron-scheduled runs, shell-and-agent workflows with OAuth to
 
 ### Download a release
 
-Download the latest binary from [GitHub Releases](https://github.com/cdknorow/coral/releases):
+Download the latest release from [GitHub Releases](https://github.com/cdknorow/coral/releases/latest). These links always point to the newest version:
 
-- **macOS**: `Coral.v<version>.dmg` (universal binary), or `brew install --cask cdknorow/coral/coral`
-- **Linux**: `coral-linux-amd64-<version>.tar.gz` (x86-64) or `coral-linux-arm64-<version>.tar.gz` (ARM64, e.g. Graviton or Docker on Apple silicon)
-- **Windows**: `Coral-<version>-x64.msi` (installer) or `Coral-<version>-x64-portable.zip`. These are currently **not code-signed**, so Windows SmartScreen warns that the publisher is unknown. Verify the file with the attestation check below before you run it.
+- **macOS**: [`Coral.dmg`](https://github.com/cdknorow/coral/releases/latest/download/Coral.dmg) (universal binary), or `brew install --cask cdknorow/coral/coral`
+- **Linux**: [`coral-linux-amd64.tar.gz`](https://github.com/cdknorow/coral/releases/latest/download/coral-linux-amd64.tar.gz) (x86-64) or [`coral-linux-arm64.tar.gz`](https://github.com/cdknorow/coral/releases/latest/download/coral-linux-arm64.tar.gz) (ARM64, e.g. Graviton or Docker on Apple silicon)
+- **Windows**: [`Coral-x64.msi`](https://github.com/cdknorow/coral/releases/latest/download/Coral-x64.msi) (installer) or [`Coral-x64-portable.zip`](https://github.com/cdknorow/coral/releases/latest/download/Coral-x64-portable.zip). These are currently **not code-signed**, so Windows SmartScreen warns that the publisher is unknown. Verify the file with the attestation check below before you run it.
+
+Each release also keeps its versioned file names (`Coral.v<version>.dmg`, `coral-linux-<arch>-<version>.tar.gz`, `Coral-<version>-x64.msi`, `Coral-<version>-x64-portable.zip`): the same files.
 
 #### Verify your download
 
@@ -104,7 +116,7 @@ Every release is built and signed by Coral's release workflow on GitHub, with no
 With the [GitHub CLI](https://cli.github.com/) (any package):
 
 ```bash
-gh attestation verify coral-linux-amd64-<version>.tar.gz --repo cdknorow/coral \
+gh attestation verify coral-linux-amd64.tar.gz --repo cdknorow/coral \
   --signer-workflow cdknorow/coral/.github/workflows/release.yml
 ```
 
@@ -122,13 +134,13 @@ The checksum command must print `<your file>: OK` for the file you downloaded; i
 On Windows, check the MSI or the portable ZIP you downloaded the same way (PowerShell, with the GitHub CLI); it must report the attestation as verified for `release.yml` on a tag of `cdknorow/coral`:
 
 ```powershell
-gh attestation verify Coral-<version>-x64.msi --repo cdknorow/coral `
+gh attestation verify Coral-x64.msi --repo cdknorow/coral `
   --signer-workflow cdknorow/coral/.github/workflows/release.yml
 ```
 
 This proves the file came from Coral's release workflow. It is not Windows code signing: the MSI and the programs in it carry no Authenticode signature yet. The `SHA256SUMS.txt` check above covers the Windows files too.
 
-Each Linux tarball also has its own bundle (`coral-linux-<amd64|arm64>-<version>.tar.gz.sigstore.json`), verified the same way. The bundles are in Sigstore's current bundle format: cosign 2.x reads them only with `--new-bundle-format` (without it, it fails with "bundle does not contain cert for verification"); cosign 3 reads them either way. Either check failing means the file is not an official build: don't run it.
+Each Linux tarball also has its own bundle (`coral-linux-<amd64|arm64>.tar.gz.sigstore.json`, and the same for the versioned name), verified the same way. The bundles are in Sigstore's current bundle format: cosign 2.x reads them only with `--new-bundle-format` (without it, it fails with "bundle does not contain cert for verification"); cosign 3 reads them either way. Either check failing means the file is not an official build: don't run it.
 
 ### Build from source
 
