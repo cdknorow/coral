@@ -17,6 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/updater/runrecord"
 )
 
 // installProcesses are the pids whose executable is a file of dir.
@@ -98,8 +100,9 @@ func TestARealCoralIsStartedAgainFromItsOwnRunRecord(t *testing.T) {
 	waitHealthy(t, port)
 
 	l := &Linux{DataDir: data, Self: os.Getpid(), Manager: func() bool { return false }, HealthFor: 5 * time.Second}
-	rr, err := l.runRecord()
-	require.NoError(t, err, "the server wrote its run record at startup")
+	// The record is written right after the server's listeners are up (cmd/coral recordRun), so /api/health can answer a moment before it exists: poll for it.
+	var rr runrecord.Record
+	require.Eventually(t, func() bool { var e error; rr, e = l.runRecord(); return e == nil }, 10*time.Second, 50*time.Millisecond, "the server wrote its run record at startup")
 	assert.Equal(t, []string{filepath.Join(install, "coral"), "--home", data, "--host", "127.0.0.1", "--port", port, "--no-browser", "--cloud-url", "off", "--backend", "pty"}, rr.Argv)
 	assert.Equal(t, work, rr.Cwd)
 	assert.Contains(t, rr.Env, "CORAL_DATA_DIR="+data)
