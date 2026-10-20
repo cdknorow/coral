@@ -433,8 +433,8 @@ func (l *Linux) Start(ctx context.Context, install string) error {
 	if err != nil {
 		return fmt.Errorf("no record of how Coral was started: %w", err)
 	}
-	if len(rr.Argv) == 0 || !filepath.IsAbs(rr.Argv[0]) || filepath.Dir(filepath.Clean(rr.Argv[0])) != install || filepath.Base(rr.Argv[0]) != "coral" {
-		return errors.New("the recorded command is not coral of this install")
+	if err := runrecord.Validate(rr, install); err != nil {
+		return err
 	}
 	spawn := l.Spawn
 	if spawn == nil {
@@ -442,11 +442,21 @@ func (l *Linux) Start(ctx context.Context, install string) error {
 	}
 	// The environment the restarted Coral gets is the record's allowlisted part, filtered again here (the file is read, not trusted: a name the allowlist does not
 	// carry, an LD_PRELOAD or a token, is not passed on), and never the updater's own, which holds what the server gave it (#5414).
-	env := runrecord.AllowedEnv(rr.Env)
-	if len(env) == 0 {
-		return errors.New("the run record has no environment for Coral")
+	return spawn(rr.Argv, runrecord.AllowedEnv(rr.Env), rr.Cwd)
+}
+
+// CanRestart says why Coral could not be started again after the swap ("" when it can): nothing is started by this program under a service manager, and
+// otherwise the run record must be one Start will accept. It is asked before anything is built or ended, so an update that could end Coral and not bring it back
+// does not begin (#5419).
+func (l *Linux) CanRestart(install string) string {
+	if l.managerRestarts() {
+		return ""
 	}
-	return spawn(rr.Argv, env, rr.Cwd)
+	rr, err := l.runRecord()
+	if err != nil || runrecord.Validate(rr, install) != nil {
+		return "no_run_record"
+	}
+	return ""
 }
 
 // running counts the processes whose executable is a file of the install.

@@ -49,6 +49,8 @@ type Result struct {
 	From        string `json:"from,omitempty"`
 	To          string `json:"to,omitempty"`
 	FailedStage string `json:"failed_stage,omitempty"`
+	// RestartFailed: the update was rolled back and the previous Coral could not be started again, so nothing is running (#5419). The user is told so.
+	RestartFailed bool `json:"restart_failed,omitempty"`
 }
 
 // Platform is what differs per operating system.
@@ -72,6 +74,9 @@ type Platform interface {
 	Swap(a, b string) error
 	// Running reports, once and without waiting, whether the install is running (a process of it exists).
 	Running(install string) bool
+	// CanRestart says why Coral could not be started again after the swap ("" when it can). The apply asks it before it builds or ends anything and again
+	// before the swap: an update that could end Coral and not bring it back does not begin.
+	CanRestart(install string) string
 	// Start starts the install. Healthy waits until it is up.
 	Start(ctx context.Context, install string) error
 	Healthy(ctx context.Context, install string) error
@@ -214,6 +219,11 @@ func Run(ctx context.Context, cfg Config) Result {
 		res.Result, res.FailedStage = ResultUnsupported, why
 		return res
 	}
+	// Before anything is built or ended: Coral must be startable again (#5419). Nothing is changed when it is not.
+	if why := cfg.Platform.CanRestart(install); why != "" {
+		res.Result, res.FailedStage = ResultUnsupported, why
+		return res
+	}
 	staged, err := stage.LoadStaged(cfg.DataDir)
 	if err != nil {
 		res.Result = ResultNothingStaged
@@ -309,6 +319,11 @@ func Run(ctx context.Context, cfg Config) Result {
 		res.Result, res.FailedStage = ResultRefused, "platform_signature"
 		return res
 	}
+	if why := cfg.Platform.CanRestart(install); why != "" { // the record may have gone while the package was copied and checked
+		_ = os.RemoveAll(newPath)
+		res.Result, res.FailedStage = ResultUnsupported, why
+		return res
+	}
 	if err := writeJournal(dir, journal{Phase: "swapping", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install, Record: rec}); err != nil {
 		_ = os.RemoveAll(newPath)
 		res.Result, res.FailedStage = ResultFailed, "journal"
@@ -353,8 +368,13 @@ func rollBack(ctx context.Context, cfg Config, dir string, st *verify.State, ins
 	}
 	removeJournal(dir)
 	_ = os.RemoveAll(other)
-	_ = cfg.Platform.Start(ctx, install)
-	cfg.history(st, cfg.Installed, to, "failed_rolled_back", why)
+	restartErr := cfg.Platform.Start(ctx, install)
+	if restartErr != nil {
+		res.RestartFailed = true // nothing is running now: said in the result and in the history, never silence (#5419)
+		cfg.history(st, cfg.Installed, to, "restart_failed", why)
+	} else {
+		cfg.history(st, cfg.Installed, to, "failed_rolled_back", why)
+	}
 	st.Refuse(to, &verify.Failure{Stage: why, Reason: "the new version did not come up; the previous one is back"}, cfg.now())
 	_ = verify.SaveState(dir, *st)
 	return res

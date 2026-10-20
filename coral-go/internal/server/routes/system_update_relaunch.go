@@ -54,6 +54,9 @@ const (
 	reasonAlready     = "already_relaunched"
 	reasonUnsupported = "unsupported_install"
 	reasonApplying    = "applying"
+	// reasonNoRunRecord: Coral could not be started again after the update ended it (no record of how it was started, and no service manager), so no relaunch is
+	// offered or started: it would end Coral and not bring it back (#5419).
+	reasonNoRunRecord = "no_run_record"
 
 	// install_kind: how this Coral was installed, as the updater found it (#5388).
 	installApp        = "app"
@@ -114,6 +117,8 @@ type UpdateRollback struct {
 	At       time.Time
 	From, To string
 	Reason   string // one of rollbackReasons, else shown as "other"
+	// RestartFailed: the previous Coral could not be started again after the roll-back, so nothing was running (#5419).
+	RestartFailed bool
 }
 
 // UpdateResult is the last relaunch's outcome.
@@ -183,6 +188,9 @@ type UpdateRelaunchHandler struct {
 	OwnerUser func(ctx context.Context) (string, error)
 	// Agents lists the pty agents a relaunch would restart.
 	Agents func(ctx context.Context) ([]RestartAgent, error)
+	// CanRestart says whether Coral can be started again once it has ended (the server's own record of how it was started, or a service manager that restarts it);
+	// nil is yes. A relaunch is not offered, and the route answers 409, while it says no (#5419).
+	CanRestart func() bool
 	// Dir is <data dir>/updates.
 	Dir string
 	Now func() time.Time
@@ -513,6 +521,8 @@ func (h *UpdateRelaunchHandler) view(ctx context.Context, id callerIdentity) (re
 		v.reason, v.code = reasonApplying, reasonBusy
 	case !rec.Supported:
 		v.reason, v.code = reasonUnsupported, reasonNothing
+	case h.CanRestart != nil && !h.CanRestart():
+		v.reason, v.code = reasonNoRunRecord, reasonNoRunRecord
 	case rec.Staged == nil || v.version == "":
 		v.reason, v.code = reasonNothing, reasonNothing
 	case !rec.Staged.Verified:
@@ -614,7 +624,11 @@ func (h *UpdateRelaunchHandler) addUpdateFacts(out map[string]any, rec UpdaterRe
 		if rollbackReasons[rb.Reason] {
 			reason = rb.Reason
 		}
-		out["last_rollback"] = map[string]any{"at": rb.At.UTC().Format(time.RFC3339), "from": rb.From, "to": rb.To, "reason": reason}
+		lr := map[string]any{"at": rb.At.UTC().Format(time.RFC3339), "from": rb.From, "to": rb.To, "reason": reason}
+		if rb.RestartFailed {
+			lr["restart_failed"] = true // present only when true: Coral was stopped by an update that could not start it again
+		}
+		out["last_rollback"] = lr
 	}
 }
 

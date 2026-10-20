@@ -37,6 +37,6 @@ func runApply(ctx context.Context, stdout io.Writer, dataDir string, trust root.
 		Asset:     assetName(runtime.GOOS, runtime.GOARCH, false),
 		Platform:  platform,
 	})
-	print(stdout, output{Result: res.Result, Installed: res.From, Version: res.To, FailedStage: res.FailedStage, Trust: string(source)})
+	print(stdout, output{Result: res.Result, Installed: res.From, Version: res.To, FailedStage: res.FailedStage, RestartFailed: res.RestartFailed, Trust: string(source)})
 	return 0
 }

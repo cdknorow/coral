@@ -80,9 +80,13 @@ type fakePlatform struct {
 	waitHook   func() bool
 	running    bool // Running's answer
 	verifyHook func() error
+	// restartWhy is CanRestart's answer: why Coral could not be started again ("" = it can).
+	restartWhy string
 }
 
 func (f *fakePlatform) rec(s string) { f.calls = append(f.calls, s) }
+
+func (f *fakePlatform) CanRestart(string) string { return f.restartWhy }
 
 func (f *fakePlatform) Pinned() bool { return f.pinned }
 func (f *fakePlatform) Install() (string, error) {

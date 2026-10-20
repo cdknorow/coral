@@ -110,3 +110,30 @@ func TestWriteRefusesALinkedUpdatesFolderAndTightensALooseOne(t *testing.T) {
 	assert.ErrorIs(t, Write(t.TempDir(), []string{"/opt/coral/coral", "--cloud-url", "https://u:pw@hub.example"}, nil, "/"), ErrSecretFlag)
 	assert.NoError(t, Write(t.TempDir(), []string{"/opt/coral/coral", "--cloud-url", "https://hub.example"}, nil, "/"))
 }
+
+// #5419: the server and the apply ask the same questions of the record.
+func TestRestartableIsTheRecordBeingOneStartWouldAccept(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		assert.NoError(t, Restartable(t.TempDir(), "/x/coral"), "off Linux nothing is recorded: always restartable")
+		return
+	}
+	t.Setenv("INVOCATION_ID", "")
+	install := t.TempDir()
+	install, err := filepath.EvalSymlinks(install)
+	require.NoError(t, err)
+	exe := filepath.Join(install, "coral")
+	require.NoError(t, os.WriteFile(exe, []byte("x"), 0o755))
+	data := t.TempDir()
+	assert.Error(t, Restartable(data, exe), "no record")
+	require.NoError(t, Write(data, []string{exe, "--port", "8420"}, []string{"PATH=/usr/bin"}, "/"))
+	assert.NoError(t, Restartable(data, exe))
+	assert.Error(t, Restartable(data, filepath.Join(t.TempDir(), "coral")), "a record for another install folder")
+	require.NoError(t, Write(data, []string{exe}, []string{"ANTHROPIC_API_KEY=k"}, "/"))
+	assert.Error(t, Restartable(data, exe), "no allowlisted environment")
+	t.Setenv("INVOCATION_ID", "abc")
+	assert.NoError(t, Restartable(t.TempDir(), exe), "under a service manager no record is needed")
+	t.Setenv("INVOCATION_ID", "")
+	require.NoError(t, Write(data, []string{exe}, []string{"PATH=/usr/bin"}, "/"))
+	require.NoError(t, os.Chmod(filepath.Join(data, "updates", File), 0o644))
+	assert.Error(t, Restartable(data, exe), "a record others can read is not trusted")
+}

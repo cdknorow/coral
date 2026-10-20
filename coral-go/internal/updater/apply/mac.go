@@ -250,6 +250,14 @@ func (m *Mac) Version(path string) (string, error) {
 // Swap exchanges two bundles with renamex_np(RENAME_SWAP) (swap_darwin.go).
 func (m *Mac) Swap(a, b string) error { return swapPaths(a, b) }
 
+// CanRestart: the app is started with open, which every Mac has; nothing is recorded for it (#5419).
+func (m *Mac) CanRestart(string) string {
+	if _, err := os.Stat(open); err != nil {
+		return "no_launcher"
+	}
+	return ""
+}
+
 func (m *Mac) Start(ctx context.Context, install string) error {
 	_, err := m.Run.Run(ctx, open, install)
 	return err

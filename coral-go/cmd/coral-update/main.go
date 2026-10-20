@@ -35,6 +35,8 @@ type output struct {
 	Version     string `json:"version,omitempty"`
 	FailedStage string `json:"failed_stage,omitempty"`
 	NextAttempt string `json:"next_attempt,omitempty"`
+	// RestartFailed: the update was rolled back and the previous Coral could not be started again (#5419).
+	RestartFailed bool `json:"restart_failed,omitempty"`
 	// Trust is where the Sigstore trusted root came from: tuf, tuf_cache or embedded.
 	Trust string `json:"trust,omitempty"`
 }

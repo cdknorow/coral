@@ -4,9 +4,11 @@ package routes
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/updater/runrecord"
 )
 
 // updateRelaunchFeature is the off flag: until coral-hub's half ships and the updater exists, both routes answer 404. It is a constant on
@@ -24,6 +26,11 @@ func NewUpdateRelaunchHandler(ss *store.SessionStore, dataDir string, backend fu
 		Settings:  ss.GetSettings,
 		OwnerUser: cs.OwnerUser,
 		Dir:       filepath.Join(dataDir, updatesDirName),
+		// Coral must be startable again before a relaunch is offered: this computer's own record of how it was started, or a service manager (#5419).
+		CanRestart: func() bool {
+			exe, err := os.Executable()
+			return err == nil && runrecord.Restartable(dataDir, exe) == nil
+		},
 		Agents: func(ctx context.Context) ([]RestartAgent, error) {
 			live, err := ss.GetAllLiveSessions(ctx)
 			if err != nil {
