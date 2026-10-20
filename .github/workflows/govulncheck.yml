@@ -42,12 +42,29 @@ jobs:
       # The release builds: Linux and Windows without cgo (the shipped command-line programs and
       # server), with the fts5 tag as release.yml builds them. The GUI programs (cgo) are covered
       # by the same packages; they add only the webview and tray glue.
+      # The update rehearsal's test packages (internal/updater/testrig, #5401) link sigstore's test CA and with it the unmaintained x/crypto/openpgp (GO-2026-5932, no fix),
+      # which no released program imports (a test in the rig checks that). They are left out of every scan so the scan is of what ships; a package that is added later is
+      # scanned. Each scan lists the packages of its own GOOS and tags.
       - name: Scan Linux
         working-directory: coral-go
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 "$(go env GOPATH)/bin/govulncheck" -tags fts5 ./...
+        run: |
+          set -euo pipefail
+          export CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+          pkgs=()
+          while IFS= read -r p; do
+            case "$p" in */internal/updater/testrig|*/internal/updater/testrig/*) ;; *) pkgs+=("$p") ;; esac
+          done < <(go list -tags fts5 ./...)
+          "$(go env GOPATH)/bin/govulncheck" -tags fts5 "${pkgs[@]}"
       - name: Scan Windows
         working-directory: coral-go
-        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 "$(go env GOPATH)/bin/govulncheck" -tags fts5 ./...
+        run: |
+          set -euo pipefail
+          export CGO_ENABLED=0 GOOS=windows GOARCH=amd64
+          pkgs=()
+          while IFS= read -r p; do
+            case "$p" in */internal/updater/testrig|*/internal/updater/testrig/*) ;; *) pkgs+=("$p") ;; esac
+          done < <(go list -tags fts5 ./...)
+          "$(go env GOPATH)/bin/govulncheck" -tags fts5 "${pkgs[@]}"
       - name: Scan macOS (packages without the cgo GUI programs)
         working-directory: coral-go
         run: |
@@ -55,6 +72,6 @@ jobs:
           export CGO_ENABLED=0 GOOS=darwin GOARCH=arm64
           pkgs=()
           while IFS= read -r p; do
-            case "$p" in */cmd/coral-tray|*/cmd/coral-app) ;; *) pkgs+=("$p") ;; esac
+            case "$p" in */cmd/coral-tray|*/cmd/coral-app|*/internal/updater/testrig|*/internal/updater/testrig/*) ;; *) pkgs+=("$p") ;; esac
           done < <(go list -tags fts5 ./...)
           "$(go env GOPATH)/bin/govulncheck" -tags fts5 "${pkgs[@]}"
