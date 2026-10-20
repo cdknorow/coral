@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // board.NewStorePrepared and store.OpenPrepared open a database file WITHOUT running the schema step (and so none of the migrations that follow it): they are for a test that
@@ -72,4 +74,50 @@ func TestNoProductionCodeOpensADatabaseWithoutItsSchemaStep(t *testing.T) {
 	if len(offenders) > 0 {
 		t.Fatalf("a non-test file uses an opener that skips the schema step and its migrations (only boardtest and storetest may):\n  %s", strings.Join(offenders, "\n  "))
 	}
+}
+
+// boardtest and storetest hand out databases that skip the schema step (above): only tests may import them. A non-test file that did would put a prepared database in a program,
+// or make a production package depend on test support. This reads the imports of every non-test .go file of the module.
+func TestNoNonTestFileImportsTheDatabaseTestSupportPackages(t *testing.T) {
+	root := filepath.Join("..", "..") // coral-go
+	banned := map[string]bool{
+		"github.com/cdknorow/coral/internal/board/boardtest": true,
+		"github.com/cdknorow/coral/internal/store/storetest": true,
+	}
+	fset := token.NewFileSet()
+	var offenders []string
+	checked := 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			name := d.Name()
+			if path != root && (strings.HasPrefix(name, ".") || name == "node_modules" || name == "testdata" || name == "vendor") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		f, perr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if perr != nil {
+			return nil // a file that does not parse is the compiler's to report
+		}
+		checked++
+		rel, _ := filepath.Rel(root, path)
+		for _, imp := range f.Imports {
+			if p, uerr := strconv.Unquote(imp.Path.Value); uerr == nil && banned[p] {
+				offenders = append(offenders, filepath.ToSlash(rel)+" imports "+p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Greater(t, checked, 100, "the module's files were read")
+	sort.Strings(offenders)
+	assert.Empty(t, offenders, "a non-test file imports a database test-support package (only _test.go files may)")
 }
