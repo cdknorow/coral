@@ -249,7 +249,8 @@ func (g *inputGate) pasteAndEnter(ctx context.Context, in AutomatedInput, ps Pro
 		}
 		// The agent repaints its box a moment after the paste: look for the text for
 		// up to pasteVerifyWait before deciding it didn't land (#3457 v2).
-		deadline := time.Now().Add(pasteVerifyWait)
+		w := waits()
+		deadline := time.Now().Add(w.pasteVerifyWait)
 		for {
 			screen, err := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
 			if err != nil {
@@ -265,7 +266,7 @@ func (g *inputGate) pasteAndEnter(ctx context.Context, in AutomatedInput, ps Pro
 			if time.Now().After(deadline) || ctx.Err() != nil {
 				return false
 			}
-			time.Sleep(pasteVerifyEvery)
+			time.Sleep(w.pasteVerifyEvery)
 		}
 	}
 	g.setLastPasted(in.Name, in.Text) // Coral's, until its Enter is seen to submit it (#4104)
@@ -336,13 +337,8 @@ func (in AutomatedInput) boxState(ctx context.Context, screen, agentType, sessio
 // held (and is reported) rather than pasted once more.
 const maxPasteRetries = 1
 
-// pasteVerifyWait and pasteVerifyEvery: how long, and how often, the gate looks for
-// pasted text in the input box before deciding the paste didn't land (variables for
-// tests).
-var (
-	pasteVerifyWait  = time.Second
-	pasteVerifyEvery = 100 * time.Millisecond
-)
+// pasteVerifyWait and pasteVerifyEvery (fields of waits(), seams.go): how long, and how often, the gate looks
+// for pasted text in the input box before deciding the paste didn't land.
 
 // holdPaste holds a paste send whose Enter was withheld, first in the agent's queue.
 // pasted says the text was just pasted (a later turn may paste it once more); prompt

@@ -448,10 +448,7 @@ func (in AutomatedInput) identity() (agentType, sessionID string) {
 // mention behind it) it is given up: dropped with a logged error and a notice on the agent,
 // saying the text may still be in its box. Enter is never pressed on a box Coral can't read or
 // whose text isn't Coral's: that could submit a person's draft.
-var (
-	pasteStuckAfter       = time.Minute
-	pasteStuckAfterUrgent = 10 * time.Second
-)
+// (Both are fields of waits(), seams.go.)
 
 // errPasteGaveUp is the error of a held paste the gate gave up (the next held send goes).
 var errPasteGaveUp = errors.New("a held paste was given up: its input box never confirmed it")
@@ -479,7 +476,8 @@ const maxEnterTries = 3
 // pasteVerifyWait (#4104). The box is read under anything drawn above it (inputBoxTextAny). A
 // screen that can't be read counts as submitted, as before this check.
 func (in AutomatedInput) enterSubmitted(ctx context.Context, sr ScreenReader, agentType, sessionID, text string) bool {
-	deadline := time.Now().Add(pasteVerifyWait)
+	w := waits()
+	deadline := time.Now().Add(w.pasteVerifyWait)
 	for {
 		screen, err := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
 		if err != nil {
@@ -492,7 +490,7 @@ func (in AutomatedInput) enterSubmitted(ctx context.Context, sr ScreenReader, ag
 		if time.Now().After(deadline) || ctx.Err() != nil {
 			return false
 		}
-		time.Sleep(pasteVerifyEvery)
+		time.Sleep(w.pasteVerifyEvery)
 	}
 }
 
@@ -575,9 +573,10 @@ func (g *inputGate) pasteStuck(in AutomatedInput) bool {
 	if in.heldSince.IsZero() {
 		return false
 	}
-	limit := pasteStuckAfter
+	w := waits()
+	limit := w.pasteStuckAfter
 	if in.urgent {
-		limit = pasteStuckAfterUrgent
+		limit = w.pasteStuckAfterUrgent
 	}
 	return g.now().Sub(in.heldSince) >= limit
 }

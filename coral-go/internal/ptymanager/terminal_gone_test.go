@@ -1,7 +1,6 @@
 package ptymanager
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -75,7 +74,7 @@ func TestPTYMissingSessionNeverReachesASibling(t *testing.T) {
 func TestPTYBareNameLookupIsLogged(t *testing.T) {
 	b, _, _ := newFakeBackend(t, "claude-sid")
 	p := NewPTYSessionTerminal(b)
-	var buf bytes.Buffer
+	var buf logBuf
 	old, oldFlags := log.Writer(), log.Flags()
 	log.SetOutput(&buf)
 	log.SetFlags(0)

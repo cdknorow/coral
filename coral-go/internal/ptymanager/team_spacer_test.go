@@ -24,9 +24,7 @@ func fakeSpacer(gap time.Duration) (*teamSpacer, *time.Time) {
 }
 
 func useSpacer(t *testing.T, s *teamSpacer) {
-	saved := spacer
-	spacer = s
-	t.Cleanup(func() { spacer = saved })
+	setSpacer(t, s)
 }
 
 func TestSpacerFirstSendIsNotDelayed(t *testing.T) {

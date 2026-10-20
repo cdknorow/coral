@@ -63,9 +63,9 @@ func (s *surveyTerm) SendPrompt(ctx context.Context, name, text, agentType, sess
 func surveyGate(t *testing.T, retryGap time.Duration) {
 	t.Helper()
 	dialogGate(t, time.Hour)
-	prevWait, prevPoll, prevGap := surveyGoneWait, surveyPoll, surveyRetryGap
-	surveyGoneWait, surveyPoll, surveyRetryGap = 300*time.Millisecond, 10*time.Millisecond, retryGap
-	t.Cleanup(func() { surveyGoneWait, surveyPoll, surveyRetryGap = prevWait, prevPoll, prevGap })
+	setWaits(t, func(w *waitTimings) {
+		w.surveyGoneWait, w.surveyPoll, w.surveyRetryGap = 300*time.Millisecond, 10*time.Millisecond, retryGap
+	})
 }
 
 // Claude's session survey is the only thing open and a nudge is held behind it: Coral sends one 0 (never 1, 2 or 3),

@@ -1,7 +1,6 @@
 package ptymanager
 
 import (
-	"bytes"
 	"errors"
 	"log/slog"
 	"strings"
@@ -14,7 +13,7 @@ import (
 // #4112 part 2: a held send failing again and again (a pane that is gone) warns once, then once
 // per window with the count; another session's or another error's failure is its own line.
 func TestHeldSendFailuresAreCoalesced(t *testing.T) {
-	var buf bytes.Buffer
+	var buf logBuf // read while a loop an earlier test left may still log into it
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })

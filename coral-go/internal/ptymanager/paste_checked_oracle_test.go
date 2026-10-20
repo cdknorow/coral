@@ -189,8 +189,10 @@ func randomPCCase(rng *rand.Rand, now time.Time) pcCase {
 func pcGate(now time.Time, lastPasted string) *inputGate {
 	g := &inputGate{held: map[string][]*heldInput{}, reportedFor: map[string]AutomatedInput{}, gens: map[string]uint64{}, shadowLast: map[string]string{},
 		delivered: map[string]map[string]time.Time{}, lastPasted: map[string]string{}, dialogHeld: map[string]bool{},
-		now: func() time.Time { return now }, running: true, // running: no retry loop starts behind the test's back
+		running: true, // running: no retry loop starts behind the test's back
 		timings: gateTimings{tooLong: time.Hour, expiry: 24 * time.Hour, every: time.Hour}}
+	clock := func() time.Time { return now }
+	g.nowFn.Store(&clock)
 	if lastPasted != "" {
 		g.lastPasted["claude-pc"] = lastPasted
 	}
@@ -266,9 +268,7 @@ func pcRun(c pcCase, now time.Time, old bool) (outcome, state string) {
 }
 
 func TestPasteCheckedAgreesWithBefore4713(t *testing.T) {
-	oldVerify, oldEvery := pasteVerifyWait, pasteVerifyEvery
-	pasteVerifyWait, pasteVerifyEvery = 2*time.Millisecond, time.Millisecond // the screen changes only on a paste or an Enter
-	t.Cleanup(func() { pasteVerifyWait, pasteVerifyEvery = oldVerify, oldEvery })
+	setWaits(t, func(w *waitTimings) { w.pasteVerifyWait, w.pasteVerifyEvery = 2*time.Millisecond, time.Millisecond }) // the screen changes only on a paste or an Enter
 	SetHeldGaveUpFunc(nil)
 	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
 	outcomes := map[string]int{}
@@ -407,7 +407,7 @@ func (g *inputGate) pasteCheckedBefore4713(ctx context.Context, in AutomatedInpu
 		}
 		// The agent repaints its box a moment after the paste: look for the text for
 		// up to pasteVerifyWait before deciding it didn't land (#3457 v2).
-		deadline := time.Now().Add(pasteVerifyWait)
+		deadline := time.Now().Add(waits().pasteVerifyWait)
 		for {
 			screen, err := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
 			if err != nil {
@@ -423,7 +423,7 @@ func (g *inputGate) pasteCheckedBefore4713(ctx context.Context, in AutomatedInpu
 			if time.Now().After(deadline) || ctx.Err() != nil {
 				return false
 			}
-			time.Sleep(pasteVerifyEvery)
+			time.Sleep(waits().pasteVerifyEvery)
 		}
 	}
 	g.setLastPasted(in.Name, in.Text) // Coral's, until its Enter is seen to submit it (#4104)

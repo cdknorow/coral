@@ -67,9 +67,7 @@ func newFakeBackend(t *testing.T, name string) (*PTYBackend, *session, *fakePTYP
 
 func withFastSubmit(t *testing.T) {
 	t.Helper()
-	old := promptSubmitDelay
-	promptSubmitDelay = time.Millisecond
-	t.Cleanup(func() { promptSubmitDelay = old })
+	setWaits(t, func(w *waitTimings) { w.promptSubmitDelay = time.Millisecond })
 }
 
 func TestTrackBracketedPasteFollowsTheLastModeSequenceAcrossChunks(t *testing.T) {
@@ -262,9 +260,7 @@ func TestSendPromptShortOrFailedWritesAreUnknownOnlyWhenInputMayHaveStarted(t *t
 
 // Two prompts to one session never interleave: paste1, Enter1, paste2, Enter2.
 func TestSendPromptSerializesConcurrentPromptsPerSession(t *testing.T) {
-	old := promptSubmitDelay
-	promptSubmitDelay = 30 * time.Millisecond
-	t.Cleanup(func() { promptSubmitDelay = old })
+	setWaits(t, func(w *waitTimings) { w.promptSubmitDelay = 30 * time.Millisecond })
 	b, s, proc := newFakeBackend(t, "claude-x")
 	s.bracketedPaste.Store(true)
 	var wg sync.WaitGroup

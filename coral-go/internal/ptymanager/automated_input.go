@@ -177,8 +177,8 @@ type inputGate struct {
 	stop     chan struct{}
 	stopping bool
 	loops    sync.WaitGroup
-	sleeps   atomic.Int64 // how many times the loop has begun a sleep (tests wait for it to be asleep)
-	now      func() time.Time
+	sleeps   atomic.Int64                     // how many times the loop has begun a sleep (tests wait for it to be asleep)
+	nowFn    atomic.Pointer[func() time.Time] // the clock; nil is time.Now. Tests replace it (setNow) while a loop of an earlier test may still read it
 	// sending serialises the sends to one session (a direct send and the
 	// retry loop), so held sends keep their order and none is typed twice.
 	sending sync.Map // session name -> *sync.Mutex
@@ -217,6 +217,7 @@ const WhyDialogGaveUp = "a dialog was open in the agent's terminal for"
 // dialog recognised (#4104): most likely one Coral doesn't know.
 const WhyEnterGaveUp = "its Enter didn't submit it, three times"
 
+// dialogReportAfter: g.mu must be held (it reads g.timings).
 func (g *inputGate) dialogReportAfter() time.Duration {
 	if g.timings.dialogReport > 0 {
 		return g.timings.dialogReport
@@ -224,6 +225,7 @@ func (g *inputGate) dialogReportAfter() time.Duration {
 	return defaultDialogReport
 }
 
+// dialogGiveUpAfter: g.mu must be held (it reads g.timings).
 func (g *inputGate) dialogGiveUpAfter() time.Duration {
 	if g.timings.dialogMentionGiveUp > 0 {
 		return g.timings.dialogMentionGiveUp
@@ -261,5 +263,13 @@ func (g *inputGate) noteDialogLocked(name, kind string) {
 	}
 }
 
-var gate = &inputGate{held: map[string][]*heldInput{}, reportedFor: map[string]AutomatedInput{}, gens: map[string]uint64{}, shadowLast: map[string]string{}, delivered: map[string]map[string]time.Time{}, now: time.Now,
+var gate = &inputGate{held: map[string][]*heldInput{}, reportedFor: map[string]AutomatedInput{}, gens: map[string]uint64{}, shadowLast: map[string]string{}, delivered: map[string]map[string]time.Time{},
 	timings: gateTimings{tooLong: 2 * time.Minute, expiry: time.Hour, every: 2 * time.Second}}
+
+// now is the gate's clock.
+func (g *inputGate) now() time.Time {
+	if f := g.nowFn.Load(); f != nil {
+		return (*f)()
+	}
+	return time.Now()
+}

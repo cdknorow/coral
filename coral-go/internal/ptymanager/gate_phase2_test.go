@@ -108,11 +108,7 @@ func TestPhase2ZeroSinceFallsBackFromTheFirstHold(t *testing.T) {
 	fastGate(t)
 	phase2(t, true)
 	var offset atomic.Int64
-	gate.mu.Lock()
-	prevNow := gate.now
-	gate.now = func() time.Time { return time.Now().Add(time.Duration(offset.Load())) }
-	gate.mu.Unlock()
-	t.Cleanup(func() { gate.mu.Lock(); gate.now = prevNow; gate.mu.Unlock() })
+	setNow(t, gate, func() time.Time { return time.Now().Add(time.Duration(offset.Load())) })
 	withState(t, AgentState{State: StateInTurn, LastEvent: time.Now()}, true)
 
 	a := &fakeAgent{screen: idleInputBox}

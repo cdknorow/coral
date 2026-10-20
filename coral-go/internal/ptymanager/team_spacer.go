@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,7 +45,13 @@ type teamSpacer struct {
 	gap   func() time.Duration
 }
 
-var spacer = newTeamSpacer()
+// spacerP is the process's spacer; tests swap it (setSpacer, team_spacer_test.go) while a goroutine of an earlier test may still
+// be reading it, so it is read through spacer().
+var spacerP atomic.Pointer[teamSpacer]
+
+func init() { spacerP.Store(newTeamSpacer()) }
+
+func spacer() *teamSpacer { return spacerP.Load() }
 
 func newTeamSpacer() *teamSpacer {
 	return &teamSpacer{
@@ -94,11 +101,11 @@ func SpaceTeam(ctx context.Context, team string) error {
 	if team == "" {
 		return ctx.Err()
 	}
-	d, ok := spacer.reserve(team, MaxTeamWait)
+	d, ok := spacer().reserve(team, MaxTeamWait)
 	if !ok {
 		return ErrTeamBusy
 	}
-	if d > 0 && !spacer.sleep(ctx, d) {
+	if d > 0 && !spacer().sleep(ctx, d) {
 		return ctx.Err()
 	}
 	return ctx.Err()
@@ -112,7 +119,7 @@ func ReserveTeamStart(team string) time.Duration {
 	if team == "" {
 		return 0
 	}
-	if d, ok := spacer.reserve(team, MaxStartWait); ok {
+	if d, ok := spacer().reserve(team, MaxStartWait); ok {
 		return d
 	}
 	return 0

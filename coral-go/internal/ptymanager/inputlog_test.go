@@ -1,7 +1,6 @@
 package ptymanager
 
 import (
-	"bytes"
 	"context"
 	"log"
 	"os"
@@ -24,7 +23,7 @@ func TestPTYWritesAreRecorded(t *testing.T) {
 		// unix; see the #3629 report note on whether the debug-log handle should close sooner.
 		t.Skip("Windows can't unlink the still-open input-debug.log at TempDir cleanup (#3629)")
 	}
-	var coralLog bytes.Buffer
+	var coralLog logBuf
 	old := log.Writer()
 	log.SetOutput(&coralLog)
 	t.Cleanup(func() { log.SetOutput(old) })

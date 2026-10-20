@@ -211,8 +211,8 @@ func (g *inputGate) flushQueue(ctx context.Context, name string) bool {
 // dialogGiveUpAfter (#4104): never pasted, never typed into the dialog, and reported (the note
 // says why). It reports whether the queue's head was one of them.
 func (g *inputGate) giveUpMentionsBehindDialog(name string) (headGone bool) {
-	limit := g.dialogGiveUpAfter()
 	g.mu.Lock()
+	limit := g.dialogGiveUpAfter() // reads g.timings: under the lock, as setTimings writes it (#5266)
 	q := g.held[name]
 	var gone []AutomatedInput
 	kept := q[:0:0]

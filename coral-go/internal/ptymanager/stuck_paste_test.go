@@ -137,12 +137,12 @@ func (g *gaveUpLog) list() []string {
 func stuckGate(t *testing.T, after, urgent time.Duration) *gaveUpLog {
 	t.Helper()
 	fastGate(t)
-	prevWait, prevEvery, prevAfter, prevUrgent := pasteVerifyWait, pasteVerifyEvery, pasteStuckAfter, pasteStuckAfterUrgent
-	pasteVerifyWait, pasteVerifyEvery, pasteStuckAfter, pasteStuckAfterUrgent = 30*time.Millisecond, 10*time.Millisecond, after, urgent
+	setWaits(t, func(w *waitTimings) {
+		w.pasteVerifyWait, w.pasteVerifyEvery, w.pasteStuckAfter, w.pasteStuckAfterUrgent = 30*time.Millisecond, 10*time.Millisecond, after, urgent
+	})
 	g := &gaveUpLog{}
 	SetHeldGaveUpFunc(g.record)
 	t.Cleanup(func() {
-		pasteVerifyWait, pasteVerifyEvery, pasteStuckAfter, pasteStuckAfterUrgent = prevWait, prevEvery, prevAfter, prevUrgent
 		SetHeldGaveUpFunc(nil)
 	})
 	return g
@@ -180,7 +180,8 @@ func TestAStuckHeldPasteGivesUpAndTheQueueMoves(t *testing.T) {
 	require.Eventually(t, func() bool { _, e := term.got(); return e == 1 }, 3*time.Second, 10*time.Millisecond, "the next send is pasted and Entered")
 	pasted, _ := term.got()
 	assert.Equal(t, "You have 1 unread message on the message board.", pasted[len(pasted)-1])
-	assert.Zero(t, HeldCount(name), "nothing is held any more")
+	// The Enter is seen on the terminal before the gate has read the box once more and let go of the send (HeldCount counts it until then, #5205): wait for it.
+	require.Eventually(t, func() bool { return HeldCount(name) == 0 }, 3*time.Second, 10*time.Millisecond, "nothing is held any more")
 }
 
 // A mention never waits behind a stuck routine paste for long: it makes the stuck paste give up

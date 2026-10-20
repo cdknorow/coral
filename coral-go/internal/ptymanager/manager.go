@@ -136,8 +136,7 @@ func (m *PTYBackend) SendInput(name string, data []byte) error {
 	return s.sendInput(data)
 }
 
-// promptSubmitDelay separates a bracketed paste from the submitting Enter.
-var promptSubmitDelay = 150 * time.Millisecond
+// promptSubmitDelay (a field of waits(), seams.go) separates a bracketed paste from the submitting Enter.
 
 // SendLine types text and then submits it with Enter. The Enter is written
 // separately after a short delay: agent TUIs treat text that arrives in the same
@@ -202,7 +201,7 @@ func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
 		return fmt.Errorf("write prompt: %w", err) // nothing reached the PTY
 	}
 	// Input has started: finish regardless of ctx, bounded by the fixed delay.
-	time.Sleep(promptSubmitDelay)
+	time.Sleep(waits().promptSubmitDelay)
 	if !tmux.EnterAllowed(ctx) {
 		return tmux.ErrEnterWithheld // a prompt opened: the gate holds the Enter (#3457)
 	}

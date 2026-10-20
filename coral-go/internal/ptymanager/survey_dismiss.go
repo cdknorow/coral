@@ -102,11 +102,7 @@ type RawInputSender interface {
 // surveyGoneWait is how long after the 0 the screen is read for the survey to be gone, surveyPoll how often, and
 // surveyRetryGap how long before the 0 is sent again to a session whose survey did not go (a screen that does not
 // change must not be sent digits every pass).
-var (
-	surveyGoneWait = 4 * time.Second
-	surveyPoll     = 150 * time.Millisecond
-	surveyRetryGap = 30 * time.Second
-)
+// (Fields of waits(), seams.go.)
 
 // surveyOnScreen is the survey check for agentType's CLI: Claude Code's session survey, or Antigravity's feedback survey (#5229).
 func surveyOnScreen(agentType, screen string) bool {
@@ -142,7 +138,7 @@ func (g *inputGate) dismissSurvey(ctx context.Context, in AutomatedInput) bool {
 	if g.surveyTried == nil {
 		g.surveyTried = map[string]time.Time{}
 	}
-	if last, tried := g.surveyTried[in.Name]; tried && g.now().Sub(last) < surveyRetryGap {
+	if last, tried := g.surveyTried[in.Name]; tried && g.now().Sub(last) < waits().surveyRetryGap {
 		g.mu.Unlock()
 		return false
 	}
@@ -153,7 +149,8 @@ func (g *inputGate) dismissSurvey(ctx context.Context, in AutomatedInput) bool {
 		return false
 	}
 	slog.Info("automated input: dismissed the agent's session survey with 0 (never a rating)", "session", in.Name)
-	deadline := time.Now().Add(surveyGoneWait)
+	w := waits()
+	deadline := time.Now().Add(w.surveyGoneWait)
 	for {
 		if screen, err := reader.AgentScreen(ctx, in.Name, in.AgentType, in.SessionID); err == nil && !surveyOnScreen(in.AgentType, screen) {
 			return true
@@ -162,6 +159,6 @@ func (g *inputGate) dismissSurvey(ctx context.Context, in AutomatedInput) bool {
 			slog.Warn("automated input: the agent's session survey is still on screen after the 0; the send stays held", "session", in.Name)
 			return false
 		}
-		time.Sleep(surveyPoll)
+		time.Sleep(w.surveyPoll)
 	}
 }
