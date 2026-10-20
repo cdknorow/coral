@@ -1198,6 +1198,27 @@
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 10%, var(--bg-tertiary));
 }
+.cni-box {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1.5px solid var(--control-border);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    line-height: 1;
+    color: var(--text-on-accent);
+}
+.cni-answer.is-checked {
+    border-color: color-mix(in srgb, var(--accent) 70%, var(--border-light));
+}
+.cni-answer.is-checked .cni-box {
+    background: var(--accent-dim);
+    border-color: var(--accent-dim);
+}
 .cni-answer.is-default {
     border-color: color-mix(in srgb, var(--accent) 55%, var(--border-light));
 }

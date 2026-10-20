@@ -86,6 +86,17 @@ function optionButtonHtml(o, desc, fullLabel) {
         + `</span></button>`;
 }
 
+// A multi-select option (#5232): a box the digit toggles, its mark read from the terminal (never flipped here),
+// answering nothing until Submit.
+function checkOptionButtonHtml(o, desc, fullLabel) {
+    return `<button type="button" class="cni-answer cni-check${o.checked ? " is-checked" : ""}" role="checkbox" aria-checked="${o.checked ? "true" : "false"}" data-n="${Number(o.n)}" data-label="${escapeHtml(o.label)}" data-action="toggle">`
+        + `<kbd class="cni-key">${Number(o.n)}</kbd>`
+        + `<span class="cni-box" aria-hidden="true">${o.checked ? "\u2714" : ""}</span>`
+        + `<span class="cni-answer-text"><span class="cni-answer-label">${escapeHtml(fullLabel || o.label)}</span>`
+        + (desc ? `<span class="cni-answer-desc">${escapeHtml(desc)}</span>` : "")
+        + `</span></button>`;
+}
+
 function answerControlsHtml(info, descriptions = {}, fullLabels = {}) {
     const opts = (info.screen && info.screen.options) || [];
     if (!opts.length) return { body: "", foot: "" };
@@ -100,8 +111,12 @@ function answerControlsHtml(info, descriptions = {}, fullLabels = {}) {
         foot += selects.map((o, i) => `<button type="button" class="cni-answer btn btn-sm ${i === 0 ? "btn-primary" : ""}" data-n="${Number(o.n)}" data-label="${escapeHtml(o.label)}" data-action="select">${escapeHtml(o.label)}</button>`).join("");
     } else if (selects.length) {
         const withDesc = selects.some(o => descriptions[fullLabels[o.label] || o.label] || descriptions[o.label]);
-        body += `<div class="cni-options ${withDesc ? "cni-options-cards" : "cni-options-chips"}">`
-            + selects.map(o => optionButtonHtml(o, descriptions[fullLabels[o.label] || o.label] || descriptions[o.label], fullLabels[o.label])).join("") + `</div>`;
+        const multi = !!(info.screen && info.screen.multi);
+        const button = multi ? checkOptionButtonHtml : optionButtonHtml;
+        body += `<div class="cni-options ${withDesc ? "cni-options-cards" : "cni-options-chips"}"${multi ? ` role="group" aria-label="Pick everything that applies"` : ""}>`
+            + selects.map(o => button(o, descriptions[fullLabels[o.label] || o.label] || descriptions[o.label], fullLabels[o.label])).join("") + `</div>`;
+        const submit = info.screen && info.screen.submit;
+        if (multi && submit) foot += `<button type="button" class="cni-answer btn btn-sm btn-primary cni-submit" data-n="0" data-label="${escapeHtml(submit.label)}" data-action="submit">${escapeHtml(submit.label)}</button>`;
     }
     for (const o of texts) {
         const placeholder = /^type something/i.test(o.label) ? "Or type your own answer…" : `${o.label.replace(/\.$/, "")}…`;

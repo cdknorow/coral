@@ -6,7 +6,7 @@ import { showToast } from './utils.js';
 import { serverFetch, sessionServer } from './server_base.js';
 import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
-import { promptOptionsBySession } from './needs_input_card.js';
+import { promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 
 // What a brand-new agent's empty chat says, by what the agent is doing: a title, and a hint on what to do next.
 function emptyStateWords(session) {
@@ -52,13 +52,25 @@ export async function sendPromptAnswer(card, n, label, action, text) {
         const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/answer-prompt`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: session.session_id, agent_type: session.agent_type || "", n, label, text: text || "" }),
+            body: JSON.stringify(action === "submit"
+                ? { session_id: session.session_id, agent_type: session.agent_type || "", submit: true }
+                : { session_id: session.session_id, agent_type: session.agent_type || "", n, label, text: text || "" }),
         });
         if (!resp.ok) {
             const { text, code } = await responseError(resp, sessionServer(session), "Could not send the answer. Use the terminal.");
             reportSendError(session, text, code); // under the composer (#3218)
             controls.forEach(c => { c.disabled = false; });
             return false;
+        }
+        if (action === "toggle") {
+            // A box of a multi-select question: nothing is answered. The card shows the screen the server
+            // read after the toggle (the mark it confirmed), never a mark flipped here (#5232).
+            const po = (await resp.json().catch(() => null) || {}).prompt_options;
+            if (po) promptOptionsBySession.set(session.session_id, { question: po.question || "", options: po.options || [], review: po.review || [], multi: !!po.multi, submit: po.submit || null });
+            const container = document.getElementById("live-history-messages");
+            if (container) syncNeedsInputCard(container, session);
+            controls.forEach(c => { c.disabled = false; });
+            return true;
         }
         // The card refreshes from the terminal: the next question, the review
         // step, or gone once the tool runs.

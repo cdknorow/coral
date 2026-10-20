@@ -41,6 +41,15 @@ type promptOption struct {
 	Selected bool   `json:"selected"`
 	Action   string `json:"action"`
 	Wrapped  bool   `json:"wrapped,omitempty"`
+	// Checked: the box of a multi-select option ("[✔]"); the label is what follows the box (#5232).
+	Checked bool `json:"checked,omitempty"`
+}
+
+// The Submit row under the options of a multi-select question (#5232): not numbered, reached with Down from
+// the last option and taken with Enter; "Next" when more questions follow.
+type promptSubmit struct {
+	Label   string `json:"label"`
+	Focused bool   `json:"focused"`
 }
 
 // One line of the "Review your answers" step of a multi-question dialog.
@@ -56,9 +65,15 @@ type promptScreen struct {
 	// Unnumbered: the options carry no numbers (Claude Code's folder-trust and API-key menus at launch,
 	// #4543); n is an option's place in the list, and it is answered with the arrow keys and Enter.
 	Unnumbered bool `json:"unnumbered,omitempty"`
+	// Multi: every option has a box (a multi-select question, #5232): a digit toggles the box and nothing is
+	// answered until Submit is taken. Submit is the row under the options (nil when it is not on screen).
+	Multi  bool          `json:"multi,omitempty"`
+	Submit *promptSubmit `json:"submit,omitempty"`
 	// The few lines above the question (a permission prompt's command): with the question and the labels,
 	// what tells this prompt from the next one the agent opens (samePrompt).
 	context string
+	// boxes: how many options carry a box (the first ones; a "Chat about this" row has none)
+	boxes int
 }
 
 // Time for the dialog to turn an option into a text field before typing
@@ -79,6 +94,10 @@ var (
 var (
 	promptOptionRe = regexp.MustCompile(`^\s*([❯›>]\s*)?(\d{1,2})\.\s+(.+?)\s*$`)
 	separatorRe    = regexp.MustCompile(`^\s*[─━╌┄═]+\s*$`)
+	// A multi-select option's box ("[✔] Label", "[ ] Label"; "[×]" on a terminal without the tick)
+	optionBoxRe = regexp.MustCompile(`^\[([ ✔✓√×xX*])\]\s*(.*)$`)
+	// The Submit row of a multi-select question, with the pointer when it is the focused row
+	submitRowRe = regexp.MustCompile(`^\s*([❯›>]\s*)?(Submit|Next)\s*$`)
 )
 
 func optionAction(label string) string {
@@ -126,9 +145,15 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 	question := ""
 	questionAt := -1
 	sawContinuation := false
+	boxes := 0
+	var submit *promptSubmit
 	for j := end + 1; j < len(lines); j++ {
 		t := strings.TrimSpace(lines[j])
 		if t == "" || separatorRe.MatchString(t) || menuFooterRe.MatchString(t) {
+			continue
+		}
+		if m := submitRowRe.FindStringSubmatch(lines[j]); m != nil && submit == nil {
+			submit = &promptSubmit{Label: m[2], Focused: m[1] != ""}
 			continue
 		}
 		sawContinuation = true
@@ -138,18 +163,29 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 		line := lines[i]
 		if m := promptOptionRe.FindStringSubmatch(line); m != nil && indentOf(line) < 5 {
 			n, _ := strconv.Atoi(m[2])
-			label := m[3]
+			label, checked, boxed := m[3], false, false
+			if b := optionBoxRe.FindStringSubmatch(label); b != nil {
+				label, checked, boxed = b[2], b[1] != " ", true
+			}
+			if boxed {
+				boxes++
+			}
 			opts = append([]promptOption{{
 				N:        n,
 				Label:    label,
 				Selected: m[1] != "",
 				Action:   optionAction(label),
 				Wrapped:  sawContinuation,
+				Checked:  checked,
 			}}, opts...)
 			sawContinuation = false
 			continue
 		}
 		if strings.TrimSpace(line) == "" || separatorRe.MatchString(line) {
+			continue
+		}
+		if m := submitRowRe.FindStringSubmatch(line); m != nil && submit == nil && len(opts) > 0 {
+			submit = &promptSubmit{Label: m[2], Focused: m[1] != ""} // a row between the options and the ones after it
 			continue
 		}
 		if indentOf(line) >= 5 {
@@ -196,10 +232,22 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 		}
 		selected = selected || o.Selected
 	}
-	if !selected {
+	multi := boxes >= 2
+	if !multi {
+		submit = nil // a Submit row is only read under boxed options: "Next" or "Submit" alone is not a row of its own elsewhere
+	}
+	if !selected && !(submit != nil && submit.Focused) {
 		return promptScreen{}, false
 	}
-	return promptScreen{Question: question, Options: opts, Review: parseReview(lines, questionAt), context: promptContext(lines, questionAt)}, true
+	if multi {
+		// A digit toggles an option's box, "Type something" included: nothing here is typed (the field is the terminal's)
+		for i := range opts {
+			if i < boxes && opts[i].Action == "text" {
+				opts[i].Action = "select"
+			}
+		}
+	}
+	return promptScreen{Question: question, Options: opts, Review: parseReview(lines, questionAt), Multi: multi, Submit: submit, boxes: boxes, context: promptContext(lines, questionAt)}, true
 }
 
 var (
@@ -414,9 +462,10 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		AgentType string `json:"agent_type"`
 		N         int    `json:"n"`
 		Label     string `json:"label"`
-		Text      string `json:"text"` // the typed answer, for a "text" option
+		Text      string `json:"text"`   // the typed answer, for a "text" option
+		Submit    bool   `json:"submit"` // take the Submit row of a multi-select question (#5232); no n or label
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.N < 1 || body.N > 9 || strings.TrimSpace(body.Label) == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.Submit && (body.N < 1 || body.N > 9 || strings.TrimSpace(body.Label) == "") {
 		errBadRequest(w, "n (1-9) and label are required")
 		return
 	}
@@ -434,6 +483,10 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	screen, ok := h.capturePromptScreen(r.Context(), name, body.AgentType, body.SessionID)
+	if body.Submit {
+		h.submitMulti(w, r, name, body.AgentType, body.SessionID, screen, ok)
+		return
+	}
 	if !ok || body.N > len(screen.Options) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "The prompt is no longer open. Check the terminal."})
 		return
@@ -447,6 +500,15 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 	text := strings.Join(strings.Fields(body.Text), " ")
 	if opt.Action == "text" && text == "" {
 		errBadRequest(w, "text is required for this option")
+		return
+	}
+	if screen.Multi && navigatesByArrows(body.AgentType) {
+		// Its menus take only arrows and Enter, and an Enter on a box toggles it: no key is sent (#5232)
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "Answer this question in the terminal."})
+		return
+	}
+	if screen.Multi && body.N <= screen.boxes {
+		h.toggleMulti(w, r, name, body.AgentType, body.SessionID, screen, body.N)
 		return
 	}
 	action := opt.Action
@@ -579,6 +641,123 @@ func (h *SessionsHandler) confirmAnswer(ctx context.Context, name, agentType, se
 		select {
 		case <-ctx.Done():
 			return false, ctx.Err()
+		case <-time.After(promptPollEvery):
+		}
+	}
+}
+
+// toggleMulti flips the box of option n of a multi-select question: its digit toggles it and answers nothing.
+// The box is confirmed from the screen (it must have flipped, on the same prompt) and the screen read is the
+// reply, so the card shows what the terminal shows (#5232).
+func (h *SessionsHandler) toggleMulti(w http.ResponseWriter, r *http.Request, name, agentType, sessionID string, before promptScreen, n int) {
+	if err := h.terminal.SendRawInput(r.Context(), name, []string{strconv.Itoa(n)}, agentType, sessionID); err != nil {
+		writeTerminalError(w, err)
+		return
+	}
+	h.hints.forget(sessionID)
+	want := !before.Options[n-1].Checked
+	now, ok, err := h.waitPromptScreen(r.Context(), name, agentType, sessionID, func(s promptScreen) bool {
+		return samePrompt(before, s) && n <= len(s.Options) && s.Options[n-1].Checked == want
+	})
+	if err != nil {
+		writeTerminalError(w, err)
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
+			"error": "The box didn't change. Check the terminal."})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "toggled": before.Options[n-1].Label, "checked": want, "prompt_options": now})
+}
+
+// maxMultiDowns bounds the Down presses one Submit sends: a multi-select question has a handful of options.
+const maxMultiDowns = 12
+
+// submitMulti takes the Submit row of a multi-select question: Down moves the selection from the option it is on
+// to the row under the last box, and Enter is sent only once the screen shows that row selected. The prompt
+// must go (the next question, or the review step) for the answer to be ok.
+func (h *SessionsHandler) submitMulti(w http.ResponseWriter, r *http.Request, name, agentType, sessionID string, before promptScreen, shown bool) {
+	if !shown || !before.Multi || before.Submit == nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "There is no Submit row on the terminal now. Check the terminal."})
+		return
+	}
+	as, isArrow := h.terminal.(ptymanager.ArrowSender)
+	es, isEnter := h.terminal.(ptymanager.EnterSender)
+	if !isArrow || !isEnter || navigatesByArrows(agentType) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "Submit it in the terminal."})
+		return
+	}
+	steps := 0
+	if !before.Submit.Focused {
+		from := 0
+		for i, o := range before.Options {
+			if o.Selected {
+				from = i + 1
+			}
+		}
+		if from < 1 || from > before.boxes {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "The selection is not on a box. Submit it in the terminal."})
+			return
+		}
+		steps = before.boxes - from + 1
+	}
+	if steps > maxMultiDowns {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "Too many options to reach Submit from here. Submit it in the terminal."})
+		return
+	}
+	for i := 0; i < steps; i++ {
+		if err := as.SendArrow(r.Context(), name, agentType, sessionID, false); err != nil {
+			writeTerminalError(w, err)
+			return
+		}
+	}
+	h.hints.forget(sessionID)
+	_, ok, err := h.waitPromptScreen(r.Context(), name, agentType, sessionID, func(s promptScreen) bool {
+		return samePrompt(before, s) && s.Submit != nil && s.Submit.Focused
+	})
+	if err != nil {
+		writeTerminalError(w, err)
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
+			"error": "The selection didn't reach Submit. Submit it in the terminal."})
+		return
+	}
+	if err := es.SendEnter(r.Context(), name, agentType, sessionID); err != nil {
+		writeTerminalError(w, err)
+		return
+	}
+	h.startupScreens.forget(promptReadKey(sessionID, name, agentType))
+	cleared, err := h.confirmAnswer(r.Context(), name, agentType, sessionID, before, 0, "arrows")
+	if err != nil {
+		writeTerminalError(w, err)
+		return
+	}
+	if !cleared {
+		writeJSON(w, http.StatusConflict, map[string]any{"code": "prompt_still_open",
+			"error": "Submit was sent, but the agent's prompt is still open. Check the terminal."})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answered": before.Submit.Label})
+}
+
+// waitPromptScreen reads the prompt screen until done accepts it, for at most promptClearTimeout. ok is false when it
+// never did (the prompt went or changed, or time ran out).
+func (h *SessionsHandler) waitPromptScreen(ctx context.Context, name, agentType, sessionID string, done func(promptScreen) bool) (promptScreen, bool, error) {
+	deadline := time.Now().Add(promptClearTimeout)
+	for {
+		now, ok, err := h.readPromptScreen(ctx, name, agentType, sessionID)
+		if err == nil && ok && done(now) {
+			return now, true, nil
+		}
+		if time.Now().After(deadline) {
+			return now, false, nil
+		}
+		select {
+		case <-ctx.Done():
+			return promptScreen{}, false, ctx.Err()
 		case <-time.After(promptPollEvery):
 		}
 	}
