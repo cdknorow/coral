@@ -48,7 +48,7 @@ func TestFindCLI(t *testing.T) {
 		require.Error(t, err, broken)
 		assert.Empty(t, got)
 		assert.Contains(t, err.Error(), broken)
-		assert.Contains(t, err.Error(), "Settings > CLI Paths")
+		assert.Contains(t, err.Error(), "Settings > CLI paths")
 	}
 	// The agy and gemini pair share a path: a broken one set for gemini stops agy too.
 	writeFakeExe(t, onPath, "agy")
@@ -63,5 +63,5 @@ func TestFindCLI(t *testing.T) {
 	// Nowhere: an error naming the setting.
 	_, err = FindCLI(nil, "zz-not-a-real-agent")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Settings > CLI Paths")
+	assert.Contains(t, err.Error(), "Settings > CLI paths")
 }

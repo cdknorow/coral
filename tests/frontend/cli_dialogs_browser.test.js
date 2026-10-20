@@ -1,5 +1,5 @@
 // The CLI dialogs (#4684): the Settings paths' Verify All (each CLI: its version, Found, Not found, Not allowed or Error), a launch whose CLI is missing opens "<Agent> CLI Not Found" with the install
-// command (Set CLI Path opens Settings, OK closes it), and an agent launched without its permission flag is asked first: Cancel launches nothing, Launch Without sends no flag, Enable & Launch adds it.
+// command (Set CLI path opens Settings, OK closes it), and an agent launched without its permission flag is asked first: Cancel launches nothing, Launch Without sends no flag, Enable & Launch adds it.
 // They were blocks of modals.js and are their own module now; this pins what they do, through the Settings dialog and the Launch dialog as a person uses them. Drives Chrome over CDP through
 // agent_view_harness.js against the isolated dev server; the CLI check and the launch request are answered by the test.
 const assert = require('node:assert/strict');
@@ -59,7 +59,7 @@ const BASE = require('./test_base').BASE;
         await click('enable'); await waitFor(`window.__launches.length === 2`, 'the second launch');
         assert.equal(await ev(`/permission|bypass/i.test((window.__launches[1].flags || []).join(' '))`), true, 'the permission flag is on it: ' + JSON.stringify(await ev(`window.__launches[1].flags`)));
 
-        console.log('A launch whose CLI is missing: the install dialog, Set CLI Path opens Settings, OK closes it');
+        console.log('A launch whose CLI is missing: the install dialog, Set CLI path opens Settings, OK closes it');
         await ev(`window.__launchAnswer = { status: 400, body: { error: 'claude CLI not found on this computer' } }; true`);
         await startLaunch(); await waitFor(`!!document.querySelector('body > .modal:not([id]) [data-action="skip"]')`, 'the question');
         await click('skip');
@@ -68,7 +68,7 @@ const BASE = require('./test_base').BASE;
         assert.match(m[0].title, /^.+ CLI Not Found$/); assert.match(m[0].text, /was not found on this system/); assert.ok(m[0].buttons.includes('settings') && m[0].buttons.includes('close') && m[0].buttons.includes('info-copy') === false || true);
         assert.deepEqual(m[0].buttons.filter(b => b === 'settings' || b === 'close'), ['settings', 'close']);
         await click('settings');
-        await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`, 'Settings opened by Set CLI Path');
+        await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`, 'Settings opened by Set CLI path');
         assert.deepEqual(await modals(), [], 'the dialog closed');
         await ev(`window.hideSettingsModal(); true`);
         await startLaunch(); await waitFor(`!!document.querySelector('body > .modal:not([id]) [data-action="skip"]')`, 'the question'); await click('skip');

@@ -497,7 +497,7 @@ async function launchTeam() {
                         <p style="color:var(--text-secondary);font-size:0.8125rem;margin:8px 0">${successCount} launched successfully, ${failed.length} failed:</p>
                         <ul style="color:var(--error);font-size:0.8125rem;line-height:1.6;margin:8px 0 16px;padding-left:20px">${failList}</ul>
                         <div class="modal-actions">
-                            <button class="btn" data-action="settings">Set CLI Paths</button>
+                            <button class="btn" data-action="settings">Set CLI paths</button>
                             <button class="btn btn-primary" data-action="close">OK</button>
                         </div>
                     </div>

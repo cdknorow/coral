@@ -26,7 +26,7 @@ import (
 type ThemesHandler struct {
 	cfg       *config.Config
 	themesDir string
-	ss        *store.SessionStore // the CLI paths of Settings > CLI Paths; nil in tests that need none
+	ss        *store.SessionStore // the CLI paths of Settings > CLI paths; nil in tests that need none
 }
 
 // SetDB gives the handler the settings that say which CLI to run (#4354).
@@ -582,7 +582,7 @@ func (h *ThemesHandler) GenerateTheme(w http.ResponseWriter, r *http.Request) {
 // resolveThemeCLI finds an available LLM CLI for theme generation.
 // Tries the requested agent type first, then falls back to others.
 //
-// Each CLI is found the way launch finds it (agent.FindCLI): the path in Settings > CLI Paths when
+// Each CLI is found the way launch finds it (agent.FindCLI): the path in Settings > CLI paths when
 // one is set, and a set path that cannot be run skips that CLI rather than running the one on
 // PATH (#4354). Only a CLI with no configured path is looked up on PATH.
 func resolveThemeCLI(settings map[string]string, agentType string) (path string, args []string) {

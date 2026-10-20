@@ -69,7 +69,7 @@ func (h *SystemHandler) putSettingsBefore4599(w http.ResponseWriter, r *http.Req
 			return
 		}
 	}
-	// cli_path_<type> (Settings > CLI Paths) is the program Coral runs for that agent
+	// cli_path_<type> (Settings > CLI paths) is the program Coral runs for that agent
 	// type: only a known type, and only an absolute path to an executable file with no
 	// shell metacharacters (#3364). Checked before anything is saved; a value that is
 	// unchanged is not re-checked, so a CLI that was uninstalled since doesn't block

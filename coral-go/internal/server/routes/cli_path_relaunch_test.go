@@ -14,7 +14,7 @@ import (
 	"github.com/cdknorow/coral/internal/store"
 )
 
-// Restarting an agent runs the CLI from Settings > CLI Paths, like its launch
+// Restarting an agent runs the CLI from Settings > CLI paths, like its launch
 // did, not whatever binary is first on PATH (#3205).
 func TestRestartUsesTheConfiguredCLIPath(t *testing.T) {
 	server, _, term, ss := setupSessionsTestServer(t)

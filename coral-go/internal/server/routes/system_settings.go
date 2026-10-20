@@ -267,7 +267,7 @@ func (h *SystemHandler) normalizeSettingValues(ctx context.Context, body map[str
 	return applySettingRules(body, settingRulesAfterRetention)
 }
 
-// checkCLIPaths: cli_path_<type> (Settings > CLI Paths) is the program Coral runs for that agent type: only a known
+// checkCLIPaths: cli_path_<type> (Settings > CLI paths) is the program Coral runs for that agent type: only a known
 // type, and only an absolute path to an executable file with no shell metacharacters (#3364). A value that is
 // unchanged is not re-checked, so a CLI that was uninstalled since doesn't block saving other settings.
 func (h *SystemHandler) checkCLIPaths(ctx context.Context, body map[string]any) string {

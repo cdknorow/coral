@@ -94,7 +94,7 @@ func TestWorkflowAgentStepWithoutCLIReportsOnce(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), `step "agent-step": `), err.Error())
 	assert.Equal(t, 1, strings.Count(err.Error(), "not found"), err.Error())
-	assert.Contains(t, err.Error(), "Settings > CLI Paths")
+	assert.Contains(t, err.Error(), "Settings > CLI paths")
 }
 
 // testStepFiles is a fresh run folder's step_0, for calling a step executor directly.

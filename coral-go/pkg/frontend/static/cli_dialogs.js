@@ -74,7 +74,7 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
             ${/^https:\/\/[^\s"'<>]+$/.test(info.url || '') ? `<p style="font-size:0.8125rem;margin:10px 0 0">Or follow the official install page:<br><a href="${escapeAttr(info.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);overflow-wrap:anywhere">${escapeHtml(info.url.replace(/^https:\/\//, ''))}</a></p>` : ''}
             ${info.note ? `<p style="color:var(--text-secondary);font-size:0.75rem;line-height:1.5;margin:8px 0 0">${escapeHtml(info.note)}</p>` : ''}
             <div class="modal-actions" style="margin-top:16px">
-                ${remote ? '' : '<button class="btn" data-action="settings">Set CLI Path</button>'}
+                ${remote ? '' : '<button class="btn" data-action="settings">Set CLI path</button>'}
                 <button class="btn btn-primary" data-action="close">OK</button>
             </div>
         </div>

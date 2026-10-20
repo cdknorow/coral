@@ -554,7 +554,7 @@ func (h *SessionsHandler) resumeBefore4809(w http.ResponseWriter, r *http.Reques
 		ProtocolPath:    h.protocolPath(),
 		ResumeSessionID: body.SessionID,
 		WorkingDir:      workdir,
-		CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI Paths (#3205)
+		CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI paths (#3205)
 		BoardName:       storedBoard,
 		BoardLabel:      h.boardLabel(storedBoard),
 		Role:            role,

@@ -212,7 +212,7 @@ func (h *SystemHandler) GenerateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	claudePath, err := agent.FindCLI(settings, agenttypes.Claude)
 	if err != nil {
-		msg := "Claude CLI not found — install Claude Code (npm install -g @anthropic-ai/claude-code) or set its path in Settings > CLI Paths"
+		msg := "Claude CLI not found — install Claude Code (npm install -g @anthropic-ai/claude-code) or set its path in Settings > CLI paths"
 		if agent.ResolveCLIPath(settings, agenttypes.Claude) != "" {
 			msg = err.Error() // a configured path that can't be run says so (#4432)
 		}

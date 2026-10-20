@@ -175,7 +175,7 @@ func (s *Service) get(agentType string, manual bool) Result {
 		if errors.Is(err, ErrSettingsUnreadable) {
 			res.Error = "Coral's settings could not be read, so the CLI could not be found: try again"
 		} else {
-			res.Error = "the CLI is not installed, or not where Settings > CLI Paths says"
+			res.Error = "the CLI is not installed, or not where Settings > CLI paths says"
 		}
 		return res
 	}

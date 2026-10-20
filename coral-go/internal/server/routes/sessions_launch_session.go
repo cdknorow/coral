@@ -30,7 +30,7 @@ import (
 )
 
 // errLaunchSettings is what a launch answers when Coral's settings could not be read.
-var errLaunchSettings = errors.New("Coral's settings could not be read, so the agent was not started (it would have run the CLI found on PATH instead of the one set in Settings > CLI Paths); try again")
+var errLaunchSettings = errors.New("Coral's settings could not be read, so the agent was not started (it would have run the CLI found on PATH instead of the one set in Settings > CLI paths); try again")
 
 // launchSettings reads the settings a launch builds its command from: the CLI path, the default
 // model and permission mode. It reads with a context a client's hang-up cannot cancel (a team launch
@@ -231,7 +231,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 	}, nil
 }
 
-// resolveLaunchCLI is the CLI an agent of agentType starts with: cliPath (Settings > CLI Paths), else its binary
+// resolveLaunchCLI is the CLI an agent of agentType starts with: cliPath (Settings > CLI paths), else its binary
 // found on PATH or, failing that, in the common install places. A CLI found nowhere is an error naming how to
 // install it. A plain terminal has none.
 func resolveLaunchCLI(agentType, cliPath string) (string, error) {

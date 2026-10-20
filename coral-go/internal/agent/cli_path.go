@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// ValidateCLIPath checks a cli_path_<type> setting (Settings > CLI Paths) before it is
+// ValidateCLIPath checks a cli_path_<type> setting (Settings > CLI paths) before it is
 // saved (#3364): an absolute path to an existing, executable regular file (a symlink
 // to one is fine), with no shell metacharacters or control characters. The launch line
 // quotes it either way (#3362); this keeps a typo or a hostile value from being saved.

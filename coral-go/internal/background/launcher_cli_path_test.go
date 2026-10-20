@@ -30,7 +30,7 @@ func (s *spawnRecorder) SpawnAgent(_ context.Context, _, _, _, command string) e
 	return nil
 }
 
-// Job and scheduled runs use Settings > CLI Paths like a dashboard launch, not
+// Job and scheduled runs use Settings > CLI paths like a dashboard launch, not
 // whatever binary is first on PATH (#3205).
 func TestJobRunsUseTheConfiguredCLIPath(t *testing.T) {
 	ctx := context.Background()

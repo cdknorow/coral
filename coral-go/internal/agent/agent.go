@@ -385,7 +385,7 @@ func FindCLI(settings map[string]string, agentType string) (string, error) {
 	if p := ResolveCLIPath(settings, agentType); p != "" {
 		resolved, err := exec.LookPath(p)
 		if err != nil {
-			return "", fmt.Errorf("%s CLI path %q set in Settings > CLI Paths can't be run (%v): fix it or clear it to use the one on PATH", agentType, p, err)
+			return "", fmt.Errorf("%s CLI path %q set in Settings > CLI paths can't be run (%v): fix it or clear it to use the one on PATH", agentType, p, err)
 		}
 		return resolved, nil
 	}
@@ -399,7 +399,7 @@ func FindCLI(settings map[string]string, agentType string) (string, error) {
 	if p := FindCLIInCommonPaths(bin); p != "" {
 		return p, nil
 	}
-	return "", fmt.Errorf("%s CLI %q not found: install it or set its path in Settings > CLI Paths", agentType, bin)
+	return "", fmt.Errorf("%s CLI %q not found: install it or set its path in Settings > CLI paths", agentType, bin)
 }
 
 // resolveBinary returns cliPath if non-empty, otherwise the default binary name.

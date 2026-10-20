@@ -600,7 +600,7 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 		ProtocolPath:    h.protocolPath(),
 		Flags:           p.flags,
 		WorkingDir:      p.workdir,
-		CLIPath:         agent.ResolveCLIPath(userSettings, p.agentType), // Settings > CLI Paths (#3205)
+		CLIPath:         agent.ResolveCLIPath(userSettings, p.agentType), // Settings > CLI paths (#3205)
 		BoardName:       p.board,
 		BoardLabel:      h.boardLabel(p.board),
 		Role:            naming.SubscriberID(p.displayName, p.agentType),
@@ -984,7 +984,7 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 		ResumeSessionID: resumeID,
 		Flags:           p.flags,
 		WorkingDir:      p.workdir,
-		CLIPath:         agent.ResolveCLIPath(userSettings, p.agentType), // Settings > CLI Paths (#3205)
+		CLIPath:         agent.ResolveCLIPath(userSettings, p.agentType), // Settings > CLI paths (#3205)
 		BoardName:       p.board,
 		BoardLabel:      h.boardLabel(p.board),
 		Role:            naming.SubscriberID(p.displayName, p.agentType),

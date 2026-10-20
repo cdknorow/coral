@@ -68,7 +68,7 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 						"binary":     p,
 						"agent_type": agentType,
 						"configured": true,
-						"message":    "the CLI path set in Settings > CLI Paths can't be run: fix it or clear it to use the one on PATH",
+						"message":    "the CLI path set in Settings > CLI paths can't be run: fix it or clear it to use the one on PATH",
 					}))
 					return
 				}

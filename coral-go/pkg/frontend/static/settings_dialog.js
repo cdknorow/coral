@@ -656,7 +656,7 @@ function _fillApiKey() {
 
 // The CLI paths and the default models (and their datalists, from the model catalog; not on the hub).
 function _fillCliAndModels(s) {
-    // CLI Paths
+    // CLI paths
     const cliClaude = document.getElementById("settings-cli-path-claude");
     const cliCodex = document.getElementById("settings-cli-path-codex");
     const cliAgy = document.getElementById("settings-cli-path-agy");
