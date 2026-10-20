@@ -361,7 +361,7 @@ func (s *Store) SearchMessageHits(ctx context.Context, query string, limit int) 
 		        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
 		 FROM board_messages m
 		 LEFT JOIN board_subscribers bs ON m.project = bs.project AND m.subscriber_id = bs.subscriber_id
-		 WHERE lower(m.content) LIKE lower(?)
+		 WHERE m.content LIKE ? COLLATE NOCASE
 		 ORDER BY m.id DESC LIMIT ?`, "%"+query+"%", limit)
 	return messages, err
 }

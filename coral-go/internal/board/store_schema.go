@@ -197,6 +197,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	for _, ddl := range []string{
 		"CREATE INDEX IF NOT EXISTS idx_board_subscribers_session_name ON board_subscribers(session_name)",
 		"CREATE INDEX IF NOT EXISTS idx_board_subscribers_subscriber ON board_subscribers(subscriber_id, project)",
+		// The sender of a board's messages by id (#5354): "has the health monitor posted since I read?" is a seek, not a scan of the unread tail.
+		// subscriber_id is a migrated column, so this index follows its ALTER too.
+		"CREATE INDEX IF NOT EXISTS idx_board_messages_sender ON board_messages(project, subscriber_id, id)",
 	} {
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
 			log.Printf("[board] index warning: %v", err)

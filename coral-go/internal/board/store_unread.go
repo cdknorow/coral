@@ -166,6 +166,16 @@ func (s *Store) HasUnreadNonHealthMessage(ctx context.Context, project, subscrib
 	return s.hasUnreadSenderMessage(ctx, project, subscriberID, "Coral Health Monitor", true)
 }
 
+// unreadSenderWhere is the condition of an unread message from (or, excluded, not from) one sender: the board, newer than what was read, not the
+// reader's own, not the task queue's. With the sender as an equality, idx_board_messages_sender (project, subscriber_id, id) answers it with a seek (#5354).
+func unreadSenderWhere(excludeSender bool) string {
+	senderClause := "m.subscriber_id=?"
+	if excludeSender {
+		senderClause = "m.subscriber_id!=?"
+	}
+	return "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue' AND " + senderClause
+}
+
 func (s *Store) hasUnreadSenderMessage(ctx context.Context, project, subscriberID, sender string, excludeSender bool) (bool, error) {
 	var sub struct {
 		LastReadID  int64  `db:"last_read_id"`
@@ -180,11 +190,7 @@ func (s *Store) hasUnreadSenderMessage(ctx context.Context, project, subscriberI
 		return false, nil
 	}
 	args := []interface{}{project, sub.LastReadID, subscriberID, sender}
-	senderClause := "m.subscriber_id=?"
-	if excludeSender {
-		senderClause = "m.subscriber_id!=?"
-	}
-	where := "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue' AND " + senderClause
+	where := unreadSenderWhere(excludeSender)
 	if sub.ReceiveMode != "all" && !isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek) {
 		args[1] = max(sub.LastReadID, s.unreadFloor(ctx, project)) // within the unread window (#3875)
 		id, err := s.confirmedMention(ctx, project, subscriberID, sub.JobTitle, where, args, args[1].(int64), false)

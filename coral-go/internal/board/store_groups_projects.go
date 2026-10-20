@@ -156,8 +156,16 @@ func (s *Store) ListProjectsEnriched(ctx context.Context) ([]EnrichedProject, er
 // SearchMessages returns project names that have messages matching the query (LIKE search).
 func (s *Store) SearchMessages(ctx context.Context, query string) ([]string, error) {
 	var projects []string
+	// Each board stops at its first match (#5354): a term that is common is found in the first rows of every board instead of scanning all of them.
+	// The boards themselves are found by skipping through the (project, id) index, one seek per board, not by reading every row's entry.
 	err := s.reader().SelectContext(ctx, &projects,
-		"SELECT DISTINCT project FROM board_messages WHERE content LIKE ? COLLATE NOCASE",
+		`WITH RECURSIVE boards(project) AS (
+		     SELECT MIN(project) FROM board_messages
+		     UNION ALL
+		     SELECT (SELECT MIN(project) FROM board_messages WHERE project > boards.project) FROM boards WHERE boards.project IS NOT NULL
+		 )
+		 SELECT b.project FROM boards b
+		 WHERE b.project IS NOT NULL AND EXISTS (SELECT 1 FROM board_messages m WHERE m.project = b.project AND m.content LIKE ? COLLATE NOCASE)`,
 		"%"+query+"%")
 	if err != nil {
 		return []string{}, nil
