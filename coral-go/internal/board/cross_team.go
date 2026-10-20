@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jmoiron/sqlx"
 	"strings"
 	"time"
 
@@ -153,22 +154,15 @@ func (s *Store) GetBoardSettings(ctx context.Context, project string) (BoardSett
 
 // UpdateBoardSettings applies u and returns the resulting settings.
 func (s *Store) UpdateBoardSettings(ctx context.Context, project string, u BoardSettingsUpdate) (BoardSettings, error) {
-	if u.CrossTeamMessaging != nil {
-		if _, err := s.db.ExecContext(ctx,
+	// One transaction: an update that sets several settings (the cross-team switches and the health settings) is applied whole or not at all, and a reader never sees half of
+	// it. Before, each was its own statement, so a failure after the first left the board with some of the change and an error for the caller (#5318).
+	upsert := func(tx *sqlx.Tx, key, value string) error {
+		_, err := tx.ExecContext(ctx,
 			`INSERT INTO board_settings (project, key, value) VALUES (?, ?, ?)
-			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`,
-			project, settingCrossTeamMessaging, fmt.Sprint(*u.CrossTeamMessaging)); err != nil {
-			return BoardSettings{}, err
-		}
+			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`, project, key, value)
+		return err
 	}
-	if u.CrossTeamArtifacts != nil {
-		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO board_settings (project, key, value) VALUES (?, ?, ?)
-			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`,
-			project, settingCrossTeamArtifacts, fmt.Sprint(*u.CrossTeamArtifacts)); err != nil {
-			return BoardSettings{}, err
-		}
-	}
+	var servers, health string
 	if u.CrossTeamServers != nil {
 		list := *u.CrossTeamServers
 		if list == nil {
@@ -178,17 +172,42 @@ func (s *Store) UpdateBoardSettings(ctx context.Context, project string, u Board
 		if err != nil {
 			return BoardSettings{}, err
 		}
-		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO board_settings (project, key, value) VALUES (?, ?, ?)
-			 ON CONFLICT (project, key) DO UPDATE SET value = excluded.value`,
-			project, settingCrossTeamServers, string(raw)); err != nil {
+		servers = string(raw)
+	}
+	if u.Health != nil {
+		raw, err := json.Marshal(u.Health.Clamp())
+		if err != nil {
+			return BoardSettings{}, err
+		}
+		health = string(raw)
+	}
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return BoardSettings{}, err
+	}
+	defer tx.Rollback()
+	if u.CrossTeamMessaging != nil {
+		if err := upsert(tx, settingCrossTeamMessaging, fmt.Sprint(*u.CrossTeamMessaging)); err != nil {
+			return BoardSettings{}, err
+		}
+	}
+	if u.CrossTeamArtifacts != nil {
+		if err := upsert(tx, settingCrossTeamArtifacts, fmt.Sprint(*u.CrossTeamArtifacts)); err != nil {
+			return BoardSettings{}, err
+		}
+	}
+	if u.CrossTeamServers != nil {
+		if err := upsert(tx, settingCrossTeamServers, servers); err != nil {
 			return BoardSettings{}, err
 		}
 	}
 	if u.Health != nil {
-		if err := s.setHealthSettings(ctx, project, *u.Health); err != nil {
+		if err := upsert(tx, settingHealth, health); err != nil {
 			return BoardSettings{}, err
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return BoardSettings{}, err
 	}
 	return s.GetBoardSettings(ctx, project)
 }
