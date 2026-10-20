@@ -740,10 +740,27 @@ jobs:
             fi
             gh release upload "$TAG" "$f" --clobber
           done
-          # Checksums for every published package. Linux has no OS-level code
+          # Stable-name copies (#5333): the same bytes under a name without the version, so
+          # /releases/latest/download/<name> never goes stale. They are copies, not separate
+          # builds: the same file, listed in SHA256SUMS.txt under both names, with the same
+          # Sigstore bundle where the versioned file has one.
+          mkdir -p stable
+          STABLE=()
+          stable_copy() {  # stable_copy "<versioned file>" <stable name>
+            cp "$1" "stable/$2"
+            STABLE+=("stable/$2")
+          }
+          stable_copy artifacts/coral-linux-amd64/*.tar.gz coral-linux-amd64.tar.gz
+          stable_copy artifacts/coral-linux-arm64/*.tar.gz coral-linux-arm64.tar.gz
+          stable_copy artifacts/coral-macos-dmg/*.dmg Coral.dmg
+          stable_copy artifacts/coral-windows-msi/*.msi Coral-x64.msi
+          stable_copy artifacts/coral-windows-portable/*.zip Coral-x64-portable.zip
+          gh release upload "$TAG" "${STABLE[@]}" --clobber
+          # Checksums for every published package, under both names. Linux has no OS-level code
           # signing, so users verify the tarball against this file.
           (cd artifacts && sha256sum coral-linux-amd64/*.tar.gz coral-linux-arm64/*.tar.gz coral-macos-dmg/*.dmg \
             coral-windows-msi/*.msi coral-windows-portable/*.zip | sed 's#  [^ ]*/#  #') > SHA256SUMS.txt
+          (cd stable && sha256sum coral-linux-amd64.tar.gz coral-linux-arm64.tar.gz Coral.dmg Coral-x64.msi Coral-x64-portable.zip) >> SHA256SUMS.txt
           cat SHA256SUMS.txt
           gh release upload "$TAG" SHA256SUMS.txt --clobber
           # Keyless signatures (Sigstore bundles: certificate, signature and
@@ -765,6 +782,16 @@ jobs:
           done
           bundles=(SHA256SUMS.txt.sigstore.json)
           for tgz in "${LINUX_TGZS[@]}"; do bundles+=("$(basename "$tgz").sigstore.json"); done
+          # The stable-name Linux tarballs are the same bytes, so the same bundle verifies them: copy it
+          # under their names and check each pair before publishing (#5333).
+          for arch in amd64 arm64; do
+            vb=(artifacts/coral-linux-$arch/*.tar.gz); vb="$(basename "${vb[0]}").sigstore.json"
+            cp "$vb" "coral-linux-$arch.tar.gz.sigstore.json"
+            cosign verify-blob "stable/coral-linux-$arch.tar.gz" --bundle "coral-linux-$arch.tar.gz.sigstore.json" \
+              --certificate-identity "$ID" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
+            bundles+=("coral-linux-$arch.tar.gz.sigstore.json")
+          done
           gh release upload "$TAG" "${bundles[@]}" --clobber
 
       # The same files as a run artifact: update-tap, tools/devops/cask.sh and tools/verify-release.sh read

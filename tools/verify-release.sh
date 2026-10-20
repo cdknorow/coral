@@ -137,12 +137,15 @@ if [ -n "$meta" ]; then
   has() { grep -qxF "$1" <<<"$names"; }
   need=("coral-linux-amd64-$want_ver.tar.gz" "coral-linux-arm64-$want_ver.tar.gz"
         "coral-linux-amd64-$want_ver.tar.gz.sigstore.json" "coral-linux-arm64-$want_ver.tar.gz.sigstore.json"
-        "Coral-$want_ver-x64.msi" "Coral-$want_ver-x64-portable.zip" "SHA256SUMS.txt" "SHA256SUMS.txt.sigstore.json")
+        "Coral-$want_ver-x64.msi" "Coral-$want_ver-x64-portable.zip" "SHA256SUMS.txt" "SHA256SUMS.txt.sigstore.json"
+        # the stable-name copies (#5333): the same bytes without the version in the name, and the Linux ones' bundles
+        "coral-linux-amd64.tar.gz" "coral-linux-arm64.tar.gz" "coral-linux-amd64.tar.gz.sigstore.json" "coral-linux-arm64.tar.gz.sigstore.json"
+        "Coral.dmg" "Coral-x64.msi" "Coral-x64-portable.zip")
   missing=""
   for n in "${need[@]}"; do has "$n" || missing="$missing $n"; done
-  dmg="$(grep -E '\.dmg$' <<<"$names" | head -1)"
-  [ -n "$dmg" ] || missing="$missing (a .dmg)"
-  [ "$(grep -cE '\.dmg$' <<<"$names")" -le 1 ] || missing="$missing (more than one .dmg)"
+  dmg="$(grep -E '^Coral\.v.*\.dmg$' <<<"$names" | head -1)"
+  [ -n "$dmg" ] || missing="$missing (a versioned .dmg)"
+  [ "$(grep -cE '^Coral\.v.*\.dmg$' <<<"$names")" -le 1 ] || missing="$missing (more than one versioned .dmg)"
   [ -z "$missing" ] && pass release "assets" "$(wc -l <<<"$names" | tr -d ' ') present, none missing" || fail release "assets" "missing:$missing"
   zeros="$(jq -r '.assets[] | select(.size == 0) | .name' <<<"$meta")"
   [ -z "$zeros" ] || fail release "empty assets" "$zeros"
@@ -235,12 +238,26 @@ else
   fail sha256 "SHA256SUMS.txt" "missing"
 fi
 
+# ---- 3c. the stable-name copies (#5333): the same bytes as the versioned file, listed under both names ----
+if [ -f SHA256SUMS.txt ]; then
+  for pair in "coral-linux-amd64-$want_ver.tar.gz:coral-linux-amd64.tar.gz" "coral-linux-arm64-$want_ver.tar.gz:coral-linux-arm64.tar.gz" \
+              "Coral.v$want_ver.dmg:Coral.dmg" "Coral-$want_ver-x64.msi:Coral-x64.msi" "Coral-$want_ver-x64-portable.zip:Coral-x64-portable.zip"; do
+    ver="${pair%%:*}"; stable="${pair#*:}"
+    if [ ! -f "$ver" ] || [ ! -f "$stable" ]; then fail alias "$stable" "the pair $ver and $stable is not both in the release"; continue; fi
+    a="$(SHA "$ver")"; b="$(SHA "$stable")"
+    la="$(awk -v n="$ver" '$2==n {print $1}' SHA256SUMS.txt)"; lb="$(awk -v n="$stable" '$2==n {print $1}' SHA256SUMS.txt)"
+    if [ "$a" != "$b" ]; then fail alias "$stable" "is not the same bytes as $ver (${b:0:12}... against ${a:0:12}...)"
+    elif [ "$la" != "$a" ] || [ "$lb" != "$b" ]; then fail alias "$stable" "SHA256SUMS.txt lists $ver as ${la:0:12}... and $stable as ${lb:0:12}..., the files are ${a:0:12}..."
+    else pass alias "$stable" "the same bytes as $ver, listed under both names (${a:0:12}...)"; fi
+  done
+fi
+
 # ---- 3b. the Homebrew cask: the sha256 users install with is the one SHA256SUMS.txt lists (#4997, Security's INFO) ----
 # The release workflow's update-tap job writes the tap's Casks/coral.rb before this runs, so it is checked here; the repo's own
 # Casks/coral.rb is made after verification (tools/devops/cask.sh), so it is checked only when it is already at this version.
 # Authenticode is not checked on macOS (it is a Windows signature): the DMG is checked below with spctl, stapler and codesign.
 if [ -f SHA256SUMS.txt ]; then
-  dmg_sum="$(awk '$2 ~ /\.dmg$/ {print $1; exit}' SHA256SUMS.txt)"
+  dmg_sum="$(awk '$2 ~ /^Coral\.v.*\.dmg$/ {print $1; exit}' SHA256SUMS.txt)"
   for spec in "tap:cdknorow/homebrew-coral" "repo:$REPO"; do
     which_="${spec%%:*}"; cask_repo="${spec#*:}"
     cask="$(gh api "repos/$cask_repo/contents/Casks/coral.rb" -q .content 2>/dev/null | base64 -d 2>/dev/null || true)"
@@ -285,7 +302,7 @@ else
 fi
 
 # ---- 6. the DMG ----
-dmgfile="$(ls *.dmg 2>/dev/null | head -1)"
+dmgfile="$(ls Coral.v*.dmg 2>/dev/null | head -1)"   # the versioned file; Coral.dmg is a byte-identical copy (checked in 3c)
 if [ -n "$dmgfile" ]; then
   if command -v hdiutil >/dev/null 2>&1; then
     if out="$(hdiutil verify "$dmgfile" 2>&1)"; then pass dmg "$dmgfile" "hdiutil verify: $(tail -1 <<<"$out" | cut -c1-60)"

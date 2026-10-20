@@ -93,9 +93,10 @@ MSI=artifacts/coral-windows-msi/Coral-1-x64.msi
 ZIP=artifacts/coral-windows-portable/Coral-1-x64-portable.zip
 ALL=("$LINUX" "$LINUX_ARM" "$DMG" "$MSI" "$ZIP")
 
-# Every package present: 5 package uploads + SHA256SUMS.txt + one call with the 3 bundles;
-# 3 signatures (the checksums and both Linux tarballs).
-run_case all-present 0 7 3 "${ALL[@]}"
+# Every package present: 5 package uploads + one call with the 5 stable-name copies (#5333) + SHA256SUMS.txt
+# + one call with the 5 bundles (3, and the 2 copied for the stable Linux tarballs); 3 signatures (the checksums
+# and both Linux tarballs: the copies reuse the bundles and sign nothing).
+run_case all-present 0 8 3 "${ALL[@]}"
 # Every package is required (Windows is built on every tag; both Linux arches):
 # a missing one stops the step before anything is signed.
 run_case arm64-missing nonzero 1 0 "$LINUX" "$DMG" "$MSI" "$ZIP"
@@ -108,9 +109,9 @@ FAIL_UPLOAD=Coral.dmg run_case upload-fails nonzero 3 0 "${ALL[@]}"
 # A failed create fails the step at once (it used to be "|| true", and the upload failed later).
 creates() { grep -c '^gh release create' "$WORK/case-$1/gh.log" || true; }
 [[ "$(creates all-present)" == 0 ]] || { echo "FAIL all-present: an existing release was created again" >&2; failures=$((failures + 1)); }
-NO_RELEASE=1 run_case new-release 0 7 3 "${ALL[@]}"
+NO_RELEASE=1 run_case new-release 0 8 3 "${ALL[@]}"
 [[ "$(creates new-release)" == 1 ]] && ! grep -q -- '--prerelease' "$WORK/case-new-release/gh.log" || { echo "FAIL new-release: want one create, not a prerelease" >&2; failures=$((failures + 1)); }
-NO_RELEASE=1 PRERELEASE=true run_case new-prerelease 0 7 3 "${ALL[@]}"
+NO_RELEASE=1 PRERELEASE=true run_case new-prerelease 0 8 3 "${ALL[@]}"
 grep -q -- '^gh release create .*--prerelease --latest=false' "$WORK/case-new-prerelease/gh.log" || { echo "FAIL new-prerelease: created without --prerelease --latest=false" >&2; failures=$((failures + 1)); }
 NO_RELEASE=1 FAIL_CREATE=1 run_case create-fails nonzero 0 0 "${ALL[@]}"
 
