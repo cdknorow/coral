@@ -99,7 +99,7 @@ func TestLoadTrustRefusesAFolderThatIsALink(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// The scheduled check (tests/release/trusted-root-check.workflow.yml): the root compiled in is the one TUF serves today. Run only with
+// The scheduled check (.github/workflows/trusted-root-check.yml): the root compiled in is the one TUF serves today. Run only with
 // CORAL_TUF_LIVE=1, because it asks the Sigstore mirror. A failure means Sigstore rotated something: refresh verify/trusted_root.json and
 // testdata/trusted_root.json from the live root, run the tests, and release, so builds in the field keep a current starting point.
 func TestTheEmbeddedRootIsTheOneTUFServesNow(t *testing.T) {

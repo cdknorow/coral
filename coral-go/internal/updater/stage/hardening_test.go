@@ -183,3 +183,30 @@ func writeFile(t *testing.T, dir, name, body string) string {
 	require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
 	return p
 }
+
+// Security's #5335 LOW 1: a dead takeover lock is moved aside and what was moved is checked, so a fresh takeover lock that another check made after
+// the dead one was judged is put back, not destroyed.
+func TestADeadTakeoverLockIsRemovedButAFreshOneThatReplacedItIsNot(t *testing.T) {
+	dir := t.TempDir()
+	mutex := filepath.Join(dir, CheckLockFile+".takeover")
+	dead, _ := json.Marshal(lockBody{PID: 2147483646, Taken: 1})
+	fresh, _ := json.Marshal(lockBody{PID: os.Getpid(), Taken: time.Now().Unix()})
+
+	require.NoError(t, os.WriteFile(mutex, dead, 0o600))
+	removeDeadMutex(dir, mutex, dead)
+	_, err := os.Stat(mutex)
+	assert.ErrorIs(t, err, os.ErrNotExist, "the dead one is gone")
+
+	require.NoError(t, os.WriteFile(mutex, fresh, 0o600))
+	removeDeadMutex(dir, mutex, dead) // judged dead, but what is there now is another check's
+	b, err := os.ReadFile(mutex)
+	require.NoError(t, err)
+	assert.Equal(t, string(fresh), string(b), "the fresh takeover lock is put back")
+	left, _ := os.ReadDir(dir)
+	assert.Len(t, left, 1, "nothing is left beside it")
+
+	require.NoError(t, os.Remove(mutex))
+	removeDeadMutex(dir, mutex, dead) // already gone: nothing to do
+	left, _ = os.ReadDir(dir)
+	assert.Empty(t, left)
+}

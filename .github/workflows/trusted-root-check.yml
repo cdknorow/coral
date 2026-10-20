@@ -1,0 +1,36 @@
+name: trusted-root-check
+# The weekly check that the Sigstore trusted root compiled into coral-update is the one the public-good TUF mirror serves today (#5303,
+# Security's #5292 review). It fails when Sigstore rotated a key or a log: copy the live root into
+# coral-go/internal/updater/verify/trusted_root.json and .../testdata/trusted_root.json (the test says how), run the updater tests and ship a
+# release, so an updater that cannot reach TUF on its first run still starts from a current root. It asks one external host (the mirror) and
+# nothing else; the job has no secrets and read-only contents; actions are pinned by SHA; CORAL_TELEMETRY_DISABLED=1 is set like every CI
+# workflow's (the telemetry census).
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  embedded-root-matches-tuf:
+    name: the embedded trusted root is the live TUF one
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: Compare the embedded trusted root with TUF's
+        working-directory: coral-go
+        env:
+          CORAL_TUF_LIVE: "1"
+        run: go test ./internal/updater/verify -run TestTheEmbeddedRootIsTheOneTUFServesNow -count=1 -v

@@ -1,6 +1,7 @@
 package stage
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -111,6 +112,30 @@ const (
 	takeoverBusy                       // another check is taking over, or the lock is live
 )
 
+// removeDeadMutex removes a takeover lock that was judged dead with the content judged, by renaming it aside (atomic: of several checks that
+// judged the same one only one moves it) and checking what was moved: a fresh takeover lock another check made in between is put back, not
+// destroyed (Security's #5335 LOW 1: two checks that both removed "the same" dead lock could remove a third's live one).
+func removeDeadMutex(dir, mutex string, judged []byte) {
+	tmp, err := os.CreateTemp(dir, ".dead-*")
+	if err != nil {
+		return
+	}
+	aside := tmp.Name()
+	tmp.Close()
+	os.Remove(aside)
+	if err := os.Rename(mutex, aside); err != nil {
+		return // gone already, or not ours to move
+	}
+	got, _ := os.ReadFile(aside)
+	if bytes.Equal(got, judged) {
+		os.Remove(aside)
+		return
+	}
+	// It was not the dead one: put it back (a failure means another one was created meanwhile; that holder is the check that made it).
+	_ = os.Link(aside, mutex)
+	os.Remove(aside)
+}
+
 // takeOver replaces the stale lock at path with one holding body, under name.takeover.
 func takeOver(dir, path string, body []byte, now time.Time) takeoverResult {
 	mutex := path + ".takeover"
@@ -120,7 +145,7 @@ func takeOver(dir, path string, body []byte, now time.Time) takeoverResult {
 			if fi, lerr := os.Lstat(mutex); lerr == nil && fi.Mode().IsRegular() {
 				mb, _ := os.ReadFile(mutex)
 				if !live(mb, fi.ModTime(), now) || time.Since(fi.ModTime()) > takeoverStale {
-					os.Remove(mutex)
+					removeDeadMutex(dir, mutex, mb)
 				}
 			}
 		}
