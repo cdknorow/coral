@@ -56,29 +56,43 @@ export function attachComments(dialog, body, host) {
 
     // ── highlights: the quote found again in what is drawn
     const textNodes = () => { const out = []; const w = document.createTreeWalker(body, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) out.push(n); return out; };
-    function paint() {
+    // The index of the drawn text, kept while the text nodes are the ones it was made from (a megabyte takes a while to index, #5255); drawn again when any node was replaced, added, removed or changed in length.
+    let docIx = null;
+    function docIndex() {
+        const nodes = textNodes();
+        if (docIx && docIx.nodes.length === nodes.length && nodes.every((n, i) => n === docIx.nodes[i] && n.nodeValue.length === docIx.lens[i])) return docIx.ix;
+        docIx = { nodes, lens: nodes.map(n => n.nodeValue.length), ix: indexText(nodes) };
+        return docIx.ix;
+    }
+    // Where each comment's quote sits now. Needed when the comments or the document change, not when a comment is made current.
+    function locate() {
         st.ranges.clear(); st.orphan.clear();
-        const hl = window.CSS && CSS.highlights;
-        if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); }
         if (!st.data) return;
-        const ix = indexText(textNodes());
-        const open = [];
+        const ix = docIndex();
         for (const { c } of threads()) {
             if (c.deleted || !c.anchor || c.anchor.whole) continue;
             const hit = locateQuote(ix.text, c.anchor);
             if (!hit) { st.orphan.add(c.id); continue; }
+            const first = ix.at(hit.start), last = ix.at(hit.end - 1);
             const r = document.createRange();
-            r.setStart(ix.at[hit.start].node, ix.at[hit.start].offset);
-            const last = ix.at[hit.end - 1];
+            r.setStart(first.node, first.offset);
             r.setEnd(last.node, last.offset + 1);
             st.ranges.set(c.id, r);
-            if (!c.resolved) open.push(r);
         }
-        if (hl && typeof Highlight === 'function') {
-            if (open.length) hl.set('ac-comment', new Highlight(...open));
-            const a = st.ranges.get(st.active);
-            if (a) hl.set('ac-active', new Highlight(a));
-        }
+    }
+    function highlight() {
+        const hl = window.CSS && CSS.highlights;
+        if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); }
+        if (!st.data || !hl || typeof Highlight !== 'function') return;
+        const open = [];
+        for (const { c } of threads()) { const r = st.ranges.get(c.id); if (r && !c.resolved) open.push(r); }
+        if (open.length) hl.set('ac-comment', new Highlight(...open));
+        const a = st.ranges.get(st.active);
+        if (a) hl.set('ac-active', new Highlight(a));
+    }
+    function paint(relocate = true) {
+        if (relocate) locate();
+        highlight();
         render();
     }
 
@@ -205,7 +219,7 @@ export function attachComments(dialog, body, host) {
     // ── a card or a highlight is made current, and the other follows
     function activate(id, fromCard) {
         st.active = id; st.scrollCard = !fromCard;
-        paint();
+        paint(false);
         const r = st.ranges.get(id);
         if (fromCard && r) (r.startContainer.parentElement || body).scrollIntoView({ block: 'center', behavior: scrollBehavior() });
     }
@@ -215,7 +229,7 @@ export function attachComments(dialog, body, host) {
         const range = pos ? null : (document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null);
         const node = pos ? pos.offsetNode : range && range.startContainer, off = pos ? pos.offset : range && range.startOffset;
         if (!node) return;
-        for (const [id, r] of st.ranges) { try { if (r.isPointInRange(node, off)) { if (window.getSelection().isCollapsed) { st.active = id; st.scrollCard = true; paint(); if (window.matchMedia('(max-width: 767px)').matches) setSheet(true); } return; } } catch { /* a range gone with its nodes */ } }
+        for (const [id, r] of st.ranges) { try { if (r.isPointInRange(node, off)) { if (window.getSelection().isCollapsed) { st.active = id; st.scrollCard = true; paint(false); if (window.matchMedia('(max-width: 767px)').matches) setSheet(true); } return; } } catch { /* a range gone with its nodes */ } }
     });
 
     // ── the Comment button by a selection
@@ -267,9 +281,9 @@ export function attachComments(dialog, body, host) {
 
     return {
         /** A new artifact is on show. */
-        open(hex, server, board) { st.hex = hex; st.server = server; st.board = board; st.data = null; st.active = null; st.composing = null; st.error = ''; st.text = false; st.gone = false; st.filter = 'open'; render(); setSheet(false); },
+        open(hex, server, board) { docIx = null; st.hex = hex; st.server = server; st.board = board; st.data = null; st.active = null; st.composing = null; st.error = ''; st.text = false; st.gone = false; st.filter = 'open'; render(); setSheet(false); },
         /** The document was drawn: `text` says whether it is text the comments apply to. */
         docRendered(source, text) { st.source = source || ''; st.text = !!text; if (!st.text) { render(); return; } refresh(); },
-        close() { setSheet(false); st.hex = null; st.data = null; clearTimeout(selTimer); selBtn.hidden = true; const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } render(); },
+        close() { setSheet(false); docIx = null; st.ranges.clear(); st.hex = null; st.data = null; clearTimeout(selTimer); selBtn.hidden = true; const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } render(); },
     };
 }
