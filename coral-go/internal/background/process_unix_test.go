@@ -57,5 +57,6 @@ func TestKillChildProcess_AStepThatIgnoresSIGTERMIsKilledBeforeShutdownReturns(t
 	case <-time.After(2 * time.Second):
 		t.Fatal("the step ignoring SIGTERM was still running after waitChildKills returned")
 	}
-	assert.Error(t, syscall.Kill(-cmd.Process.Pid, 0), "the process group is gone")
+	// the group's last member may be a zombie the runner's init has not reaped yet (kill -0 finds a zombie), so the group is polled, not read once
+	assert.Eventually(t, func() bool { return syscall.Kill(-cmd.Process.Pid, 0) != nil }, 3*time.Second, 25*time.Millisecond, "the process group is gone")
 }

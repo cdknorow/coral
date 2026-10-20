@@ -48,13 +48,13 @@ func killChildProcess(cmd *exec.Cmd) {
 	killEscalations[ended] = struct{}{}
 	killEscalationsMu.Unlock()
 	go func() {
+		defer safego.Recover("background/process_unix:31")
 		defer func() {
 			killEscalationsMu.Lock()
 			delete(killEscalations, ended)
 			killEscalationsMu.Unlock()
 			close(ended)
 		}()
-		defer safego.Recover("background/process_unix:31")
 		for deadline := time.Now().Add(childKillGrace); time.Now().Before(deadline); time.Sleep(25 * time.Millisecond) {
 			if syscall.Kill(-pgid, 0) != nil {
 				return

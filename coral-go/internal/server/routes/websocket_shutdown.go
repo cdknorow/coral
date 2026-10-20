@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/cdknorow/coral/internal/safego"
 )
 
 // wsRegistry tracks the open sockets of the dashboard and terminal routes. A hijacked connection is not one http.Server.Shutdown waits for or ends, and
@@ -55,6 +57,7 @@ func (g *wsRegistry) closeAll(grace time.Duration) {
 	for _, c := range conns {
 		closing.Add(1)
 		go func() {
+			defer safego.Recover("routes/websocket_shutdown:close")
 			defer closing.Done()
 			c.Close(websocket.StatusGoingAway, "Coral is stopping")
 		}()
@@ -62,7 +65,10 @@ func (g *wsRegistry) closeAll(grace time.Duration) {
 	waitFor(&closing, grace)
 	// CloseNow waits for a close that is still waiting on its peer (the library's own 5 s), so a straggler is dropped in its own goroutine and not waited for.
 	for _, c := range conns {
-		go c.CloseNow()
+		go func() {
+			defer safego.Recover("routes/websocket_shutdown:closenow")
+			c.CloseNow()
+		}()
 	}
 	waitFor(&g.wg, grace)
 }
@@ -71,6 +77,7 @@ func (g *wsRegistry) closeAll(grace time.Duration) {
 func waitFor(wg *sync.WaitGroup, d time.Duration) {
 	done := make(chan struct{})
 	go func() {
+		defer safego.Recover("routes/websocket_shutdown:waitfor")
 		wg.Wait()
 		close(done)
 	}()
