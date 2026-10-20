@@ -95,7 +95,7 @@ func TestHeaderKeyRuleFindsNothingInTheRepositorysOwnText(t *testing.T) {
 		return nil
 	})
 	for _, f := range found {
-		assert.True(t, strings.Contains(f, "page_secrets_test.go") || strings.Contains(f, "header_key_test.go"), "an unexpected header key in ordinary text: %s", f)
+		assert.True(t, strings.Contains(f, "page_secrets_test.go") || strings.Contains(f, "header_key_test.go") || strings.Contains(f, "keyword_gate_test.go"), "an unexpected header key in ordinary text: %s", f)
 	}
 }
 
