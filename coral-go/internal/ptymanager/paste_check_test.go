@@ -34,7 +34,7 @@ func TestPasteLanded(t *testing.T) {
 		"older nudge only": {"❯ " + text + "\n⏺ Done.\n" + sep + "\n❯ \n" + sep + "\n", false},
 		"menu open":        {" Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel · Tab to amend\n", false},
 	} {
-		assert.Equal(t, c.want, pasteLanded(c.screen, text), name)
+		assert.Equal(t, c.want, inputBoxState(c.screen, text, false) == boxOurs, name) // the box shows our text, with no placeholder before
 	}
 }
 

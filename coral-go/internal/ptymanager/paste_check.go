@@ -396,9 +396,6 @@ func sgrFaint(params string, faint bool) bool {
 	return faint
 }
 
-// pasteLanded reports whether screen's input box shows text (no placeholder before).
-func pasteLanded(screen, text string) bool { return inputBoxState(screen, text, false) == boxOurs }
-
 // BracketedPasteFromLog reads an agent's bracketed paste mode from its pane's output
 // log (tmux panes can't be asked): the last DECSET or DECRST 2004 it printed.
 // known is false when the log is missing or never set the mode.
