@@ -2,6 +2,8 @@
  * owner_unverified, settings_unavailable, bad_request, too_large), and this computer answers with its code (owner_only, local_only, too_large, operator_identity_required) or only a status (403 below
  * Launch, 400, 413). Each of them is mapped to one short sentence of ours; anything else is "Unavailable". The server's own words are never shown. */
 
+import { isCloud, isLocalServer, splitKey } from './server_base.js';
+
 const TEXT = {
     not_found: 'This team was not found.',
     mode_too_low: 'This computer\'s access mode is too low for that. Raise it to Launch on the computer.',
@@ -30,17 +32,20 @@ export function refusalKey(status, body) {
     return has(BY_STATUS, Number(status)) ? BY_STATUS[Number(status)] : '';
 }
 
-/** A plain validation message this computer's own server wrote for a 400 that has no code ("X is not a member of this team"): it tells the person what to fix, and is shown as it is. */
-const ownValidation = (status, body) => (Number(status) === 400 && body && typeof body === 'object' && body.code === undefined && typeof body.error === 'string' && body.error.trim() && body.error.length <= 200 ? body.error.trim() : '');
+/** A plain validation message this computer's own server wrote for a 400 that has no code (only when the answer came from this computer: `local`. Through Coral Hub, or from another server, the status says it, never the words) ("X is not a member of this team"): it tells the person what to fix, and is shown as it is. */
+const ownValidation = (status, body, local) => (local && Number(status) === 400 && body && typeof body === 'object' && body.code === undefined && typeof body.error === 'string' && body.error.trim() && body.error.length <= 200 ? body.error.trim() : '');
 
-/** The sentence to show for a refused answer (a Response, already read: pass its status and parsed body). */
-export function refusalText(status, body) {
-    return ownValidation(status, body) || TEXT[refusalKey(status, body)] || UNAVAILABLE;
+/** The sentence to show for a refused answer (a Response, already read: pass its status and parsed body). `local`: the answer came from this computer, not through Coral Hub. */
+export function refusalText(status, body, local = false) {
+    return ownValidation(status, body, local) || TEXT[refusalKey(status, body)] || UNAVAILABLE;
 }
 
 /** The sentence for a refused fetch Response: reads its body (an unreadable one counts as none). */
-export async function refusalOf(resp) {
+export async function refusalOf(resp, local = false) {
     let body = null;
     try { body = await resp.json(); } catch { /* no body: the status alone */ }
-    return refusalText(resp.status, body);
+    return refusalText(resp.status, body, local);
 }
+
+/** Whether an answer about `team` (a board key) came from this computer: not through Coral Hub (a cloud page) and not from another server (a key with a server in front, relayed by a hub). */
+export const answeredLocally = team => !isCloud() && isLocalServer(splitKey(team).server);

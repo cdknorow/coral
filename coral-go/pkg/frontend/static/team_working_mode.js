@@ -2,7 +2,7 @@ import { importOnce } from './import_once.js';
 import { escapeHtml } from './utils.js';
 import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
 import { boardRenameControl } from './board_rename.js';
-import { refusalOf } from './owner_refusal.js';
+import { refusalOf, answeredLocally } from './owner_refusal.js';
 import { changedFields, rebaseChanges, NOTHING_TO_SAVE } from './settings_diff.js';
 
 const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };
@@ -389,9 +389,9 @@ export async function showTeamWorkingMode(team, options = {}) {
                 form.elements.cross_team_messaging.disabled = true;
                 form.elements.cross_team_artifacts.disabled = true;
                 // Through Coral Hub the owner-only settings can be refused (#5323): say why, in our words, where the switches are (and the Health check tab is not).
-                if (boardSettingsResponse) { const note = form.querySelector('.team-settings-refusal'); note.textContent = `Team settings: ${await refusalOf(boardSettingsResponse)}`; note.hidden = false; }
+                if (boardSettingsResponse) { const note = form.querySelector('.team-settings-refusal'); note.textContent = `Team settings: ${await refusalOf(boardSettingsResponse, answeredLocally(team))}`; note.hidden = false; }
             }
-            inspection.innerHTML = inspectionResponse.ok ? renderInspection(await inspectionResponse.json(), workingMode) : `<p class="working-mode-hint">Prompt inspection: ${escapeHtml(await refusalOf(inspectionResponse))}</p>`;
+            inspection.innerHTML = inspectionResponse.ok ? renderInspection(await inspectionResponse.json(), workingMode) : `<p class="working-mode-hint">Prompt inspection: ${escapeHtml(await refusalOf(inspectionResponse, answeredLocally(team)))}</p>`;
             setStatus('');
             form.dataset.initialState = settingsFormSnapshot(form);
             opened = { mode: modeValues(), board: boardValues() };
