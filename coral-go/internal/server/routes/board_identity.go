@@ -21,8 +21,26 @@ func (h *BoardHandler) setBoardIdentity(w http.ResponseWriter, r *http.Request, 
 	if err != nil || b == nil {
 		return
 	}
+	if !headerSafeID(b.ID) {
+		return // a board that predates boards is named by its old label, which can be any text: only a plain one goes in a header (#5436)
+	}
 	w.Header().Set(BoardIDHeader, b.ID)
 	if t, err := time.Parse(time.RFC3339, b.CreatedAt); err == nil {
 		w.Header().Set(BoardCreatedAtHeader, t.UTC().Format(time.RFC3339))
 	}
+}
+
+// headerSafeID reports whether id can be a response header value as it is: 1 to 128 printable ASCII characters, not starting or ending with a space. A new board's id
+// (b- and ten letters or digits) always is; a legacy board's label with a control character, a line break or a non-ASCII letter is not, and then the reply has no id
+// header (the hub keeps what it had) instead of one the receiver would read differently.
+func headerSafeID(id string) bool {
+	if id == "" || len(id) > 128 || id[0] == ' ' || id[len(id)-1] == ' ' {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		if id[i] < 0x20 || id[i] > 0x7e {
+			return false
+		}
+	}
+	return true
 }

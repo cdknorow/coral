@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,4 +63,17 @@ func TestABoardWithNoRowGetsNoIdentityHeaders(t *testing.T) {
 	h := headersOf(t, server.URL+"/api/board/nothing-here/messages/all")
 	assert.Empty(t, h.Get(BoardIDHeader))
 	assert.Empty(t, h.Get(BoardCreatedAtHeader))
+}
+
+// #5436: only an id that is plain printable text becomes a header value.
+func TestOnlyAPlainBoardIdIsAHeaderValue(t *testing.T) {
+	for id, ok := range map[string]bool{
+		"b-1234abcd": true, "b-AbC123xyz9": true, "Launch Team": true, "my.board_1-2": true,
+		"": false, " lead": false, "trail ": false, "a\r\nX-Evil: 1": false, "a\nb": false, "tab\there": false, "del\x7f": false, "caf\u00e9": false, "\x00": false,
+		string(make([]byte, 129)): false,
+	} {
+		assert.Equal(t, ok, headerSafeID(id), "%q", id)
+	}
+	assert.True(t, headerSafeID(strings.Repeat("a", 128)))
+	assert.False(t, headerSafeID(strings.Repeat("a", 129)))
 }
