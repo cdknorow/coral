@@ -6,6 +6,7 @@ import { importOnce } from './import_once.js';
 import { dashboardSessionsLoaded, dashboardStartupComplete, dashboardFailed } from './dashboard_analytics.js';
 import { loadLiveSessions } from './api.js';
 import { isCloud } from './server_base.js';
+import { startSigninLine } from './signin_line.js';
 
 // window.__coralReady 'liveListLoaded': the page start loads the live list twice, once at
 // once and once when the startup check finds the server ready (the two join when they
@@ -59,6 +60,7 @@ export function pollStartupStatus() {
                 Promise.race([importOnce('./local_auth_banner.js').then(m => m.startLocalAuthBanner()), new Promise(r => setTimeout(r, 1500))])
                     .catch(() => {}).then(() => el.classList.add('hidden'));
                 if (data.security_warning) showSecurityWarning(data.security_warning); // #3637
+                startSigninLine(data); // #5478: the one calm line while Claude is not signed in
                 // The server checks its databases a minute after it starts (#4157): look again then.
                 if (data.database_warning) showDatabaseWarning(data.database_warning);
                 else setTimeout(recheckDatabases, DATABASE_RECHECK_MS);
