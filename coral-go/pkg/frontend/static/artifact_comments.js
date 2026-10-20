@@ -41,7 +41,7 @@ function ago(iso) {
 export function attachComments(dialog, body, host, opts = {}) {
     const st = { hex: null, server: undefined, board: undefined, source: '', text: false, data: null, filter: 'open', active: null, composing: null, busy: false, error: '', ranges: new Map(), orphan: new Set(), gone: false };
     const panel = el('aside', 'ac-panel'); panel.setAttribute('aria-label', 'Comments'); panel.hidden = true;
-    const toggle = btn('ac-toggle', 'Comments', 'Show the comments'); toggle.hidden = true; toggle.setAttribute('aria-expanded', 'false');
+    const toggle = btn('ac-toggle', 'Comments', 'Comments: show the comments'); toggle.hidden = true; toggle.setAttribute('aria-expanded', 'false');
     const selBtn = btn('ac-selbtn', 'Comment', 'Comment on the selected text'); selBtn.hidden = true;
     host.append(panel); if (!opts.toggleHost) dialog.querySelector('.artifact-viewer-header')?.insertBefore(toggle, dialog.querySelector('.artifact-viewer-download'));
     dialog.append(selBtn);
@@ -352,9 +352,14 @@ export function attachComments(dialog, body, host, opts = {}) {
         const open = panel.classList.contains('ac-sheet-open');
         toggle.setAttribute('aria-expanded', String(open));
         toggle.textContent = open ? 'Document' : `Comments · ${st.data ? threads().filter(t => !t.c.deleted).length : 0}`;
-        toggle.setAttribute('aria-label', open ? 'Show the document' : 'Show the comments');
+        toggle.setAttribute('aria-label', `${toggle.textContent}: ${open ? 'show the document' : 'show the comments'}`); // the visible words first (label in name, #5371)
     }
     toggle.addEventListener('click', () => setSheet(!panel.classList.contains('ac-sheet-open')));
+    // Escape closes the docked pane's open sheet and puts focus back on its toggle (#5371); the composer's own Escape (cancel) stops the key before it gets here, and the viewer's dialog keeps Escape for itself.
+    panel.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || e.defaultPrevented || !opts.sheet || !sheet() || !panel.classList.contains('ac-sheet-open')) return;
+        e.preventDefault(); e.stopPropagation(); setSheet(false); toggle.focus();
+    });
 
     return {
         /** The Comments button of the sheet layout: the owner puts it in place when the attach was given toggleHost. */
