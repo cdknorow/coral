@@ -26,6 +26,9 @@ var ErrBusy = errors.New("another update step is running")
 type lockBody struct {
 	PID   int   `json:"pid"`
 	Taken int64 `json:"taken"`
+	// Nonce is unique to one take of the lock: a check removes a lock only if the file still holds exactly what it wrote (removeOwn), so it can never remove a lock another
+	// check made after it (file identities are not enough: Windows reuses a deleted file's id at once).
+	Nonce string `json:"nonce,omitempty"`
 }
 
 // pidAlive is set per platform (lock_unix.go, lock_windows.go).
@@ -37,7 +40,10 @@ func applyRunning(dir string, now time.Time) bool {
 	if err != nil {
 		return false
 	}
-	b, _ := os.ReadFile(path)
+	b, rerr := os.ReadFile(path)
+	if rerr != nil { // a lock that cannot be read (Windows: another check is moving or removing it) is not shown to be dead: it counts as held
+		return !errors.Is(rerr, fs.ErrNotExist)
+	}
 	return live(b, fi.ModTime(), now)
 }
 
@@ -69,8 +75,10 @@ const takeoverStale = time.Minute
 // holding the takeover lock (a remove-then-create takeover let two checks that had read the same stale lock each remove the other's new one).
 func takeLock(dir, name string, now time.Time) (func(), error) {
 	path := filepath.Join(dir, name)
-	body, _ := json.Marshal(lockBody{PID: os.Getpid(), Taken: now.Unix()})
-	release := func() { os.Remove(path) }
+	body, _ := json.Marshal(lockBody{PID: os.Getpid(), Taken: now.Unix(), Nonce: newNonce()})
+	// The release removes the lock this check took, and only that: the file must still hold exactly the body this check wrote (removeOwn), so a lock another check has put there
+	// since is left alone.
+	release := func() { removeOwn(path, body) }
 	for attempt := 0; attempt < 2; attempt++ {
 		err := createLock(dir, path, body)
 		if err == nil {
@@ -87,7 +95,13 @@ func takeLock(dir, name string, now time.Time) (func(), error) {
 			return nil, ErrBusy // a lock that is not a plain file is not ours to remove
 		}
 		b, rerr := os.ReadFile(path)
-		if rerr == nil && live(b, fi.ModTime(), now) {
+		if rerr != nil {
+			if errors.Is(rerr, fs.ErrNotExist) {
+				continue // released meanwhile: try to create it
+			}
+			return nil, ErrBusy // fail closed: a lock that cannot be read is not shown to be stale (on Windows a live holder's lock can refuse a read while it is moved or removed)
+		}
+		if live(b, fi.ModTime(), now) {
 			return nil, ErrBusy
 		}
 		if afterStaleJudged != nil {
@@ -143,15 +157,14 @@ func takeOver(dir, path string, body []byte, now time.Time) takeoverResult {
 		if errors.Is(err, fs.ErrExist) {
 			// Another check is taking over. One left by a check that died is removed (it guards nothing but this), and the next check goes on.
 			if fi, lerr := os.Lstat(mutex); lerr == nil && fi.Mode().IsRegular() {
-				mb, _ := os.ReadFile(mutex)
-				if !live(mb, fi.ModTime(), now) || time.Since(fi.ModTime()) > takeoverStale {
-					removeDeadMutex(dir, mutex, mb)
+				if mb, merr := os.ReadFile(mutex); merr == nil && (!live(mb, fi.ModTime(), now) || time.Since(fi.ModTime()) > takeoverStale) {
+					removeDeadMutex(dir, mutex, mb) // only a takeover lock that was read, and judged dead on what was read
 				}
 			}
 		}
 		return takeoverBusy
 	}
-	defer os.Remove(mutex)
+	defer removeOwn(mutex, body) // the takeover lock this check just made: only a file that still holds this check's body is removed
 	// Read again, now that no other check can be taking over.
 	fi, err := os.Lstat(path)
 	if err != nil {
@@ -161,7 +174,13 @@ func takeOver(dir, path string, body []byte, now time.Time) takeoverResult {
 		return takeoverBusy
 	}
 	b, rerr := os.ReadFile(path)
-	if rerr == nil && live(b, fi.ModTime(), now) {
+	if rerr != nil {
+		if errors.Is(rerr, fs.ErrNotExist) {
+			return lockReleased
+		}
+		return takeoverBusy // fail closed: a lock that cannot be read is never replaced
+	}
+	if live(b, fi.ModTime(), now) {
 		return takeoverBusy
 	}
 	tmp, err := os.CreateTemp(dir, ".lock-*")
@@ -228,6 +247,9 @@ func CheckRunning(dir string, now time.Time) bool {
 	if err != nil {
 		return false
 	}
-	b, _ := os.ReadFile(path)
+	b, rerr := os.ReadFile(path)
+	if rerr != nil { // a lock that cannot be read (Windows: another check is moving or removing it) is not shown to be dead: it counts as held
+		return !errors.Is(rerr, fs.ErrNotExist)
+	}
 	return live(b, fi.ModTime(), now)
 }
