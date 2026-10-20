@@ -1,5 +1,12 @@
 # Release Notes
 
+## v1.4.138 — A link to a file on another computer now says so, instead of failing without a reason
+
+### Changes
+
+- **A cross-team message that names a `coral://artifacts/...` link it did not attach now warns about it:** such a link is a file on this computer only, so the other Coral cannot open it. The message is still sent; the reply carries `warnings: ["unattached_artifact_links"]` and the links by name (at most 10), `coral-board send` prints "Warning: the message names N links that are not attached ... Send again with --attach coral://artifacts/<id> for each (at most 4 files)", and the `/api/artifacts/<id>` form of the same link is covered too.
+- **`coral-agent artifact download` says why a link is missing:** an artifact that is not on this computer answers "this artifact is not on this computer. It may live on another Coral (a link from a message sent by another team or computer is only a name here): ask the sender to attach the file".
+
 ## v1.4.137 — Custom models in Settings, `coral://` links agents can always download, a tidier machine menu and board panel
 
 ### Features
