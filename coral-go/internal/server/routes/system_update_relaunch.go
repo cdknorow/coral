@@ -158,6 +158,13 @@ type UpdateRelaunchHandler struct {
 
 	mu            sync.Mutex
 	noLabelLogged sync.Once
+	// keyMu makes the first creation of the acknowledgement key one creation: two first requests at once (the status takes no other lock)
+	// would each make a key and the later rename would leave tokens made with the first unverifiable (#5290).
+	keyMu sync.Mutex
+	// startedVersion and startedAt are this process's own memory of the last relaunch it asked the updater to start: the once-per-version
+	// and spacing rules hold even when the updater's record has not caught up yet (#5290).
+	startedVersion string
+	startedAt      time.Time
 }
 
 func (h *UpdateRelaunchHandler) now() time.Time {
@@ -323,6 +330,8 @@ func (h *UpdateRelaunchHandler) writePrivate(name string, data []byte) error {
 // ackKey is the per-install HMAC key (32 random bytes, created on first use). An unreadable or odd key is an error, never a new key:
 // replacing it would let a swapped file mint tokens.
 func (h *UpdateRelaunchHandler) ackKey() ([]byte, error) {
+	h.keyMu.Lock()
+	defer h.keyMu.Unlock()
 	if err := h.ensureDir(); err != nil {
 		return nil, err
 	}
@@ -536,7 +545,7 @@ func (h *UpdateRelaunchHandler) relaunchJSON(key []byte, id callerIdentity, v re
 		if err != nil {
 			return nil, err
 		}
-		out["ack_token"], out["ack_expires_in"] = tok, int(ackTTL/time.Second)
+		out["ack"], out["ack_expires_in"] = tok, int(ackTTL/time.Second)
 	}
 	return out, nil
 }
@@ -642,11 +651,13 @@ func (h *UpdateRelaunchHandler) audit(ctx context.Context, id callerIdentity, v 
 	}
 }
 
+// The field is called "ack", not "ack_token": the redactors (the hub's, and the base one for some values) take any value under a
+// key named for a token as a secret and replace it, which would send the hub "[redacted token]" and make every relaunch stale (#5290).
 type relaunchBody struct {
-	AckToken string `json:"ack_token"`
+	AckToken string `json:"ack"`
 }
 
-// readRelaunchBody is the strict body: one object of exactly ack_token, at most 1 KB.
+// readRelaunchBody is the strict body: one object of exactly ack, at most 1 KB.
 func readRelaunchBody(w http.ResponseWriter, r *http.Request) (string, bool) {
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, relaunchBodyMax))
 	if err != nil || len(bytes.TrimSpace(b)) == 0 {
@@ -685,7 +696,7 @@ func (h *UpdateRelaunchHandler) Relaunch(w http.ResponseWriter, r *http.Request)
 	tok, ok := readRelaunchBody(w, r)
 	if !ok {
 		h.audit(r.Context(), id, nil, "bad_request")
-		errBadRequest(w, `the body is exactly {"ack_token": "<token from the update status>"}`)
+		errBadRequest(w, `the body is exactly {"ack": "<token from the update status>"}`)
 		return
 	}
 	h.mu.Lock()
@@ -745,6 +756,17 @@ func (h *UpdateRelaunchHandler) Relaunch(w http.ResponseWriter, r *http.Request)
 		h.refuse(w, r, id, &v, http.StatusConflict, "stale_ack", "what a relaunch would restart changed: check the list and confirm again", map[string]any{"relaunch": fresh})
 		return
 	}
+	// The same two rules as the status', from this process's own memory: whatever the updater's record says, a version already started
+	// is not started twice and a second start inside the spacing is refused.
+	if h.startedVersion != "" && h.startedVersion == v.version {
+		h.refuse(w, r, id, &v, http.StatusConflict, reasonAlready, "a relaunch into this version was already started", nil)
+		return
+	}
+	if !h.startedAt.IsZero() && h.now().Sub(h.startedAt) < relaunchSpacing {
+		h.audit(r.Context(), id, &v, reasonTooSoon)
+		httputil.WriteActionLimit(w, max(int((relaunchSpacing-h.now().Sub(h.startedAt))/time.Second), 1), reasonTooSoon, "a relaunch was started a moment ago")
+		return
+	}
 	op, err := h.Updater.Apply(r.Context(), id.pseudo)
 	if err != nil {
 		slog.Warn("[update] the updater did not start", "error", err)
@@ -752,6 +774,7 @@ func (h *UpdateRelaunchHandler) Relaunch(w http.ResponseWriter, r *http.Request)
 		errInternalServer(w, "the update could not be started")
 		return
 	}
+	h.startedVersion, h.startedAt = v.version, h.now()
 	used[p.Nonce] = usedAck{Exp: p.Exp, TokenHash: hex.EncodeToString(tokHash[:]), Operation: printable(op, 64)}
 	if err := h.writeUsed(used); err != nil {
 		// The updater already runs, and records that a hub relaunch started for this version (one per version).

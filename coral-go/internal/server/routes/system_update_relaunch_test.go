@@ -127,11 +127,11 @@ func (e *relaunchEnv) token(user string) string {
 	require.Equal(e.t, 200, code)
 	rl := st["relaunch"].(map[string]any)
 	require.Equal(e.t, true, rl["available"], "%v", rl)
-	return rl["ack_token"].(string)
+	return rl["ack"].(string)
 }
 
 func ack(tok string) string {
-	b, _ := json.Marshal(map[string]string{"ack_token": tok})
+	b, _ := json.Marshal(map[string]string{"ack": tok})
 	return string(b)
 }
 
@@ -140,7 +140,7 @@ func TestRelaunchRoutesAre404WhileTheFlagIsOff(t *testing.T) {
 	e.on = false
 	c, _ := e.status(hubHdr(ownerA))
 	assert.Equal(t, 404, c)
-	c, _ = e.post(`{"ack_token":"x"}`, hubHdr(ownerA))
+	c, _ = e.post(`{"ack":"x"}`, hubHdr(ownerA))
 	assert.Equal(t, 404, c)
 	e.on = true
 	e.h.Updater = nil
@@ -166,7 +166,7 @@ func TestRelaunchHappyPathAndStatusShape(t *testing.T) {
 	assert.Equal(t, false, rl["tmux_agents_restart"])
 	assert.Equal(t, []any{map[string]any{"session_id": "claude-1", "name": "Dev", "backend": "pty", "state": "idle"}}, rl["restarts"])
 
-	code, out := e.post(ack(rl["ack_token"].(string)), hubHdr(ownerA))
+	code, out := e.post(ack(rl["ack"].(string)), hubHdr(ownerA))
 	require.Equal(t, 202, code, "%v", out)
 	assert.Equal(t, map[string]any{"ok": true, "operation": "op-1"}, out)
 	assert.Equal(t, []string{ownerA}, e.up.applies)
@@ -226,7 +226,7 @@ func TestOwnerChecksFailClosed(t *testing.T) {
 		"another marker": otherRole, "no user": noUser, "malformed user": badUser, "a label other than the enrolled one": otherLabel, "no headers": nil,
 	} {
 		e := newRelaunchEnv(t)
-		code, out := e.post(`{"ack_token":"x"}`, hdr)
+		code, out := e.post(`{"ack":"x"}`, hdr)
 		assert.Equal(t, 403, code, name)
 		assert.Equal(t, "owner_only", out["code"], name)
 		code, st := e.status(hdr)
@@ -234,12 +234,12 @@ func TestOwnerChecksFailClosed(t *testing.T) {
 		rl := st["relaunch"].(map[string]any)
 		assert.Equal(t, false, rl["available"], name)
 		assert.Equal(t, "owner_only", rl["reason"], name)
-		assert.NotContains(t, rl, "ack_token", name)
+		assert.NotContains(t, rl, "ack", name)
 		assert.Zero(t, e.up.applyCount(), name)
 	}
 	// Two copies of the marker, or of the user, are not one.
 	e := newRelaunchEnv(t)
-	req := httptest.NewRequest("POST", "/api/system/update/relaunch", strings.NewReader(`{"ack_token":"x"}`))
+	req := httptest.NewRequest("POST", "/api/system/update/relaunch", strings.NewReader(`{"ack":"x"}`))
 	for k, v := range hubHdr(ownerA) {
 		req.Header.Set(k, v)
 	}
@@ -251,7 +251,7 @@ func TestOwnerChecksFailClosed(t *testing.T) {
 	// An unreadable enrolment record is no owner.
 	e = newRelaunchEnv(t)
 	e.h.OwnerUser = func(context.Context) (string, error) { return "", errors.New("db closed") }
-	code, _ := e.post(`{"ack_token":"x"}`, hubHdr(ownerA))
+	code, _ := e.post(`{"ack":"x"}`, hubHdr(ownerA))
 	assert.Equal(t, 403, code)
 }
 
@@ -285,7 +285,7 @@ func TestTheCapTheSwitchAndTheOperatorOptOutAreReadOnEveryRequest(t *testing.T) 
 		assert.Equal(t, tc.code, out["code"], tc.name)
 		_, st := e.status(hubHdr(ownerA))
 		assert.Equal(t, tc.reason, st["relaunch"].(map[string]any)["reason"], tc.name)
-		assert.NotContains(t, st["relaunch"], "ack_token", tc.name)
+		assert.NotContains(t, st["relaunch"], "ack", tc.name)
 		assert.Zero(t, e.up.applyCount(), tc.name)
 	}
 	// Settings that cannot be read fail closed.
@@ -300,11 +300,11 @@ func TestTheBodyIsStrict(t *testing.T) {
 	e := newRelaunchEnv(t)
 	tok := e.token(ownerA)
 	for name, body := range map[string]string{
-		"empty": "", "spaces": "  ", "not json": "x", "array": "[]", "no token": `{}`, "empty token": `{"ack_token":""}`,
-		"version": `{"ack_token":"` + tok + `","version":"9.9.9"}`, "url": `{"ack_token":"` + tok + `","url":"http://x"}`,
-		"channel": `{"ack_token":"` + tok + `","channel":"beta"}`, "path": `{"ack_token":"` + tok + `","path":"/x"}`, "force": `{"ack_token":"` + tok + `","force":true}`,
-		"two objects": ack(tok) + ack(tok), "trailing text": ack(tok) + " x", "oversize": `{"ack_token":"` + strings.Repeat("a", 2000) + `"}`,
-		"wrong type": `{"ack_token":5}`,
+		"empty": "", "spaces": "  ", "not json": "x", "array": "[]", "no token": `{}`, "empty token": `{"ack":""}`,
+		"version": `{"ack":"` + tok + `","version":"9.9.9"}`, "url": `{"ack":"` + tok + `","url":"http://x"}`,
+		"channel": `{"ack":"` + tok + `","channel":"beta"}`, "path": `{"ack":"` + tok + `","path":"/x"}`, "force": `{"ack":"` + tok + `","force":true}`,
+		"two objects": ack(tok) + ack(tok), "trailing text": ack(tok) + " x", "oversize": `{"ack":"` + strings.Repeat("a", 2000) + `"}`,
+		"wrong type": `{"ack":5}`,
 	} {
 		code, _ := e.post(body, hubHdr(ownerA))
 		assert.Equal(t, 400, code, name)
@@ -337,7 +337,7 @@ func TestNothingStagedUnverifiedAndUnsupported(t *testing.T) {
 		assert.Zero(t, e.up.applyCount(), tc.name)
 		_, st := e.status(hubHdr(ownerA))
 		assert.Equal(t, false, st["relaunch"].(map[string]any)["available"], tc.name)
-		assert.NotContains(t, st["relaunch"], "ack_token", tc.name)
+		assert.NotContains(t, st["relaunch"], "ack", tc.name)
 	}
 	// Ten minutes later it is allowed again for a newer staged version.
 	e := newRelaunchEnv(t)
@@ -363,7 +363,7 @@ func TestAStaleTokenGetsTheNewListAndANewToken(t *testing.T) {
 		assert.Equal(t, 409, code, name)
 		assert.Equal(t, "stale_ack", out["code"], name)
 		rl := out["relaunch"].(map[string]any)
-		fresh := rl["ack_token"].(string)
+		fresh := rl["ack"].(string)
 		assert.NotEqual(t, tok, fresh, name)
 		assert.Zero(t, e.up.applyCount(), name)
 		code, out = e.post(ack(fresh), hubHdr(ownerA))
@@ -511,8 +511,8 @@ func TestADamagedKeyOrUsedRecordRefusesTheRelaunch(t *testing.T) {
 
 func TestEveryAttemptIsAuditedWithoutPersonalData(t *testing.T) {
 	e := newRelaunchEnv(t)
-	e.post(`{"ack_token":"x"}`, nil)             // refused: no owner
-	e.post(`{"ack_token":"x"}`, hubHdr(ownerA))  // stale
+	e.post(`{"ack":"x"}`, nil)                   // refused: no owner
+	e.post(`{"ack":"x"}`, hubHdr(ownerA))        // stale
 	e.post(`{"version":"9"}`, hubHdr(ownerA))    // bad body
 	e.post(ack(e.token(ownerA)), hubHdr(ownerA)) // started
 	require.Len(t, e.up.audits, 4)
@@ -546,8 +546,8 @@ func TestALocalCallerSeesTheStatusButNoTokenAndCannotRelaunchHere(t *testing.T) 
 	e := newRelaunchEnv(t)
 	code, st := e.status(nil)
 	require.Equal(t, 200, code)
-	assert.NotContains(t, st["relaunch"], "ack_token")
-	code, out := e.post(`{"ack_token":"x"}`, nil)
+	assert.NotContains(t, st["relaunch"], "ack")
+	code, out := e.post(`{"ack":"x"}`, nil)
 	assert.Equal(t, 403, code)
 	assert.Equal(t, "owner_only", out["code"])
 }
