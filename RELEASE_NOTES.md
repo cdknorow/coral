@@ -1,5 +1,25 @@
 # Release Notes
 
+## v1.4.121 — Comments on artifacts, and an agent that is restarted or woken is no longer left at a bare shell
+
+### Features
+
+- **Comments on a text artifact (phase 1):** the artifact viewer has a side panel (a bottom sheet on a phone) of its threads. Comment on a selected quote or on the whole document, reply one level, edit and delete your own, resolve and reopen, and the owner can lock comments per artifact or board. A comment belongs to that exact artifact and goes when the artifact is deleted or pruned. One permission policy decides every request; agents read the comments made on boards they are on; Coral Hub viewers can read comments but not write them yet (`artifact_comments_hub_write` is off). Limits: 8 KB body, 2 KB quote, 500 comments per artifact, 20 writes a minute per author. Comment bodies and quotes are redacted when they are saved (api_key=, password=, tokens and the Hub's keyword rules, with or without a hub).
+
+### Security
+
+- **More ways a value after a name leaked through the hub's keyword rules are closed:** a name followed by a URL-encoded colon and space (`password%3A%20VALUE`, once or twice encoded) and a name and value quoted with HTML entities (`&quot;api_key&quot;: &quot;VALUE&quot;`) were kept; both are now redacted. A chat page's trimmed tool fields and a saved snippet reached through the tunnel, what a hub viewer's team-artifact query matches on, and the scan of a file or message sent to another Coral through Coral Hub now all use the hub's rules too, governed by the one switch (`hub_redact_keywords` and `CORAL_REDACT_KEYWORDS`). A file or message sent to another Coral through Coral Hub is now refused when it holds a keyword and a value (about 1 percent more files than before, mostly test fixtures).
+
+### Fixes
+
+- **A restarted, resumed or woken agent is no longer left at a bare shell:** the dashboard drops a restart request (a reload, a tab change, a closed tab) after the old terminal is touched, and the rest of the restart then failed on that request's context: 22 of 30 restarts on the previous release left a bare shell, 7 of them with the launch command typed and unsubmitted, and the next board nudge was appended to it and run. Restart, resume and wake now run to their end whatever happens to the request (the old agent or the new one, never between). A launch line is also never left typed in a shell, and a restart's new shell is looked up again.
+- **Agents keep their launch permission mode:** bypass permissions and presets survive restart, resume, wake, team launch and reset and model changes, and an agent comes back with the permission mode it was launched with instead of the global default (an invalid stored mode is dropped). An agent launched with `agy` was the case reported.
+- **`coral-board post` and `send` refuse a literal `$(...)` or backtick command substitution that the shell did not expand,** instead of posting it as text.
+
+### Tests
+
+- Test-only: a soak test of 200 hub connect, stream and drop cycles; the heap_growth browser check starts its watchdog before Chrome connects; two package-level timings are atomic so a goroutine left by one test no longer races the next (the nightly `-race` failure); six tests no longer fail when `go test -count=N` runs them again in one process; the agy tests use a stub agent on PATH and one test no longer reads its two sessions' commands in random order.
+
 ## v1.4.120 — Secrets are redacted by keyword on the way to Coral Hub, a library filter bug that leaked secrets is fixed, and the tray respects Usage analytics
 
 ### Security
