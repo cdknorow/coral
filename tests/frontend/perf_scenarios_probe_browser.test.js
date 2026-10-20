@@ -107,6 +107,24 @@ if (!process.env.PERF_PROBE) { console.log('perf_scenarios_probe: skipped (set P
             out.artifactRowsDrawn = await ev(`document.querySelectorAll('#agentic-panel-team-artifacts tr.team-artifact-row').length`);
         }
         await profStop('artifactsTab'); out.artifactsTab = { ...stats(rows), allRowsMs: median(allRows) };
+        // ---- 5. Browse: a directory of 300 entries; 6. changed files: 300 files (stubbed routes)
+        const STUB_FILES = `(() => { const R = window.fetch; const entries = Array.from({ length: ${ARTIFACTS} }, (_, i) => ({ name: 'file_' + String(i).padStart(3, '0') + (i % 7 === 0 ? '.go' : i % 5 === 0 ? '.md' : '.js'), type: 'file', size: 1000 + i }));
+            const files = Array.from({ length: ${ARTIFACTS} }, (_, i) => ({ filepath: 'internal/pkg' + (i % 9) + '/file_' + i + '.go', status: i % 3 ? 'M' : 'A', additions: i % 40, deletions: i % 11 }));
+            window.fetch = (u, o = {}) => { const url = new URL(String(u), location.origin); const j = b => Promise.resolve(new Response(JSON.stringify(b), { status: 200, headers: { 'content-type': 'application/json' } }));
+                if (/\\/search-files$/.test(url.pathname)) return j({ entries, has_more: false, root: '/tmp/x' }); if (/\\/api\\/sessions\\/live\\/[^/]+\\/files$/.test(url.pathname)) return j({ files }); return R(u, o); }; return true; })()`;
+        for (const [name, tab, sel, prep] of [['browse', 'browse', '#agentic-panel-browse .explorer-item', ''], ['changedFiles', 'files', '#agentic-panel-files .file-item', '']]) {
+            rows = []; const allRows2 = []; await profStart();
+            for (let r = 0; r < RUNS; r++) {
+                await Page.navigate({ url: BASE }); await Page.loadEventFired(); await install(); await ev(`window.__coralReady.then(() => true)`); await ev(STUB_FILES);
+                await ev(`window.selectLiveSession('agent-0', 'claude', 'sid-0', ''); window.switchAgenticTab('team-artifacts', 'top'); true`); await ev(`${framesJs(3)}`);
+                const m = await metrics(); await ev(`window.__ltBefore = window.__longtasks.length; window.__f0 = performance.now(); window.switchAgenticTab('${tab}', 'top'); true`);
+                await waitFor(`document.querySelectorAll('${sel}').length > 10`, '${name} rows', 20000);
+                await ev(`${framesJs(2)}`); const t = await ev(`performance.now() - window.__f0`); // to the first rows painted
+                await waitFor(`document.querySelectorAll('${sel}').length >= ${ARTIFACTS}`, '${name} all rows', 20000); allRows2.push(await ev(`performance.now() - window.__f0`));
+                const m2 = await metrics(); rows.push({ wall: t, lt: await ev(`window.__longtasks.length - window.__ltBefore`), ...delta(m, m2) });
+            }
+            await profStop(name); out[name] = { ...stats(rows), allRowsMs: median(allRows2) };
+        }
         const json = JSON.stringify(out, null, 1); console.log(json); if (process.env.PERF_OUT) fs.writeFileSync(process.env.PERF_OUT, json);
     } catch (e) { console.error('FAIL', e && e.stack || e); process.exitCode = 1; }
     finally { await removeBoards(ev, [BOARD]); await client.close().catch(() => {}); }

@@ -5,6 +5,7 @@ import { boardOfPage } from './dock_page.js';
 import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { bindDownload } from './artifact_download.js';
+import { appendRows, FIRST_ROWS, setIcon } from './chunked_rows.js';
 import { fileIconFor, mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath, isCloud, keyLabel } from './server_base.js';
 import { refreshDistill, startDistill, distillJob } from './knowledge_distill.js';
@@ -134,14 +135,6 @@ function el(tag, className, text) {
     if (className) node.className = className;
     if (text != null) node.textContent = text;
     return node;
-}
-
-// An icon is parsed once and cloned after that: a list of 300 rows used to parse six SVG strings per row with innerHTML, the biggest cost of building it (#5329).
-const iconTemplates = new Map();
-function setIcon(node, html) {
-    let tpl = iconTemplates.get(html);
-    if (!tpl) { tpl = document.createElement('template'); tpl.innerHTML = html; iconTemplates.set(html, tpl); }
-    node.replaceChildren(tpl.content.cloneNode(true));
 }
 
 function readableName(item) {
@@ -474,9 +467,6 @@ function buildRow(item) {
     return row;
 }
 
-const FIRST_ROWS = 40, ROWS_PER_FRAME = 60;
-// The next chunk waits for a frame; a page nobody is looking at gets no frames, so it goes on a timer there.
-const later = fn => (document.hidden ? setTimeout(fn, 16) : requestAnimationFrame(fn));
 const scrollSeen = new WeakMap(); // panel root -> its scrollTop as of the last scroll event
 
 /** The table of artifacts, in a scrolling box. */
@@ -495,20 +485,9 @@ function buildList(items, personal, scrolled = false) {
     }
     head.append(headers);list.append(head);
     const rows = el('tbody');list.append(rows);
-    // A long list draws its first rows at once and the rest a few frames later: 300 rows were one 160 ms stall on a slow computer (#5329). A list a person is mid-action in (focus on a row far down, a
-    // delete or a retry just done, or the box is scrolled) is drawn whole, so what the focus goes back to is there and the scroll position is kept.
-    const chunked = items.length > FIRST_ROWS && !scrolled && !(focusKey && focusKey.row >= FIRST_ROWS) && afterDeleteRow === null && !afterRetry;
-    const now = chunked ? FIRST_ROWS : items.length;
-    for (let i = 0; i < now; i++) rows.append(buildRow(items[i]));
-    if (chunked) {
-        let at = now;
-        const more = () => {
-            if (!rows.isConnected) return; // the panel was drawn again: this list is gone
-            for (const stop = Math.min(items.length, at + ROWS_PER_FRAME); at < stop; at++) rows.append(buildRow(items[at]));
-            if (at < items.length) later(more);
-        };
-        later(more);
-    }
+    // A long list draws its first rows at once and the rest a few frames later (chunked_rows.js, #5329). One the person is mid-action in (focus on a row far down, a delete or a retry just done) or has
+    // scrolled is drawn whole, so what the focus goes back to is there and the scroll position is kept.
+    appendRows(rows, items, buildRow, { whole: scrolled || !!(focusKey && focusKey.row >= FIRST_ROWS) || afterDeleteRow !== null || afterRetry });
     scroll.append(list);
     return scroll;
 }
