@@ -209,17 +209,23 @@ function _fit() {
     const dims = typeof fitAddon.proposeDimensions === 'function' ? fitAddon.proposeDimensions() : null;
     if (!dims) { fitAddon.fit(); return; }
     if (!(dims.cols > 0) || !(dims.rows > 0)) return;
-    let rows = dims.rows;
+    // A window-sized terminal never needs more rows or columns than the window has room for (a cell is never smaller than 6 x 3 px). The rows come from the container's own height, and a
+    // container that is not constrained yet (the view just switched, a flex parent not laid out) is as tall as its content, which is the terminal: each fit then adds rows, and the next fit
+    // adds more. A run on a Linux runner reached 113,987 rows (a four million pixel container, buffers and repaints for all of them: a 5 to 8 s animation-frame callback that left the page
+    // answering nothing, #5396). The cap ends that loop at once, whatever starts it.
+    const maxRows = Math.ceil(window.innerHeight / 6) + 2, maxCols = Math.ceil(window.innerWidth / 3) + 2;
+    let rows = Math.min(dims.rows, maxRows);
+    const cols = Math.min(dims.cols, maxCols);
     const screen = terminal.element && terminal.element.querySelector('.xterm-screen');
     const cell = screen && terminal.rows > 0 ? screen.getBoundingClientRect().height / terminal.rows : 0;
     if (_containerEl && cell > 0) {
         const cs = getComputedStyle(_containerEl);
         const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-        rows = Math.max(1, Math.floor((parseFloat(cs.height) - pad) / cell + 0.001));
+        rows = Math.min(maxRows, Math.max(1, Math.floor((parseFloat(cs.height) - pad) / cell + 0.001)));
     }
-    if (dims.cols === terminal.cols && rows === terminal.rows) return;
+    if (cols === terminal.cols && rows === terminal.rows) return;
     if (terminal._core && terminal._core._renderService) terminal._core._renderService.clear(); // as FitAddon.fit() does
-    terminal.resize(dims.cols, rows);
+    terminal.resize(cols, rows);
 }
 
 // Something on this side changed: fit and set the pane's size when this window may, otherwise
