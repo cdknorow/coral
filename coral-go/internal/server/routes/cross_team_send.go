@@ -221,6 +221,8 @@ func (h *BoardHandler) PostRelayMessage(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	// The files the text names by link go too, when the switch is on and they pass the same checks and limits (#5501).
+	prepared = h.autoAttachLinked(ctx, r, project, &body, prepared)
 	payload, err := json.Marshal(map[string]any{
 		"message_id": messageID,
 		"hops":       hops,
@@ -327,7 +329,7 @@ func (h *BoardHandler) sendRelay(w http.ResponseWriter, ctx context.Context, rel
 		return hubAnswer{}, false
 	}
 	if prepared != nil {
-		if ok, refund := h.sendRelayAttachments(w, ctx, prepared, messageID, b.ToAddress, project); !ok {
+		if ok, refund := h.sendAttachments(w, ctx, prepared, messageID, b.ToAddress, project); !ok {
 			if refund {
 				h.crossTeam.refund(quotaKey)
 			}
@@ -399,7 +401,7 @@ func (h *BoardHandler) relayDelivered(w http.ResponseWriter, ctx context.Context
 		out["warnings"] = []string{"unattached_artifact_links"}
 		out["unattached_links"] = links
 	}
-	if prepared != nil {
+	if prepared != nil && len(prepared.atts) > 0 {
 		// The shared rows only now: the hub has the files and the message.
 		h.recordSharedAttachments(prepared.atts, project, server, team, b.SubscriberID, mirror.ID, time.Now().UTC().Format(time.RFC3339))
 		var ids []string
@@ -407,6 +409,9 @@ func (h *BoardHandler) relayDelivered(w http.ResponseWriter, ctx context.Context
 			ids = append(ids, "coral://artifacts/"+a.ID)
 		}
 		out["attached"] = ids
+		if prepared.auto > 0 { // the last ones came from links in the text, not from --attach (#5501)
+			out["auto_attached"] = ids[len(ids)-prepared.auto:]
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

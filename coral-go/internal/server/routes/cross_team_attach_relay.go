@@ -201,6 +201,9 @@ type artifactHubAnswer struct {
 type attachPrepared struct {
 	atts []attachedArtifact
 	data [][]byte
+	// auto is how many of the last atts were attached from links in the message's text, not asked for with --attach (#5501): they are sent after the others, and one the hub refuses is
+	// dropped (its link stays in the warning) instead of stopping the message.
+	auto int
 }
 
 // prepareRelayAttachments does everything about the attachments that can be done before a byte leaves:
@@ -322,4 +325,126 @@ func (h *BoardHandler) recordSharedAttachments(atts []attachedArtifact, project,
 			Board: project, OtherBoard: team, Server: server, By: by, MessageID: messageID, At: at,
 		})
 	}
+}
+
+// linkedArtifactIDs are the ids of the coral://artifacts and /api/artifacts links in text, in order, once each.
+func linkedArtifactIDs(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range artifactLinkRe.FindAllStringSubmatch(text, -1) {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
+// autoAttachLinked attaches the files a message's text names by link (#5501), after the ones --attach named, so that the other Coral gets what the text points at. Only when the sending
+// board's cross_team_artifacts switch is on and this Coral can relay files; each file goes through the very checks --attach does (the team's own upload, the stored object, 8 MiB, the
+// hourly upload window, the secret scan), within the same limits for the whole send (4 files, 16 MiB, the --attach ones counted). A link that fails any of them is simply not attached: it
+// stays in the reply's unattached_links warning (#5499), and the send is never refused for it.
+func (h *BoardHandler) autoAttachLinked(ctx context.Context, r *http.Request, project string, b *relayRequest, prepared *attachPrepared) *attachPrepared {
+	ids := linkedArtifactIDs(b.Content)
+	if len(ids) == 0 {
+		return prepared
+	}
+	settings, err := h.bs.GetBoardSettings(ctx, project)
+	if err != nil || !settings.CrossTeamArtifacts || h.relayArtifactSender() == nil {
+		return prepared
+	}
+	var have map[string]bool
+	var count int
+	var total int64
+	if prepared != nil {
+		have = map[string]bool{}
+		for _, a := range prepared.atts {
+			have[a.ID] = true
+			total += a.Size
+		}
+		count = len(prepared.atts)
+	}
+	sender := h.attachSenderFor(ctx, r, project, b.SubscriberID, b.SessionName)
+	var added *attachPrepared
+	for _, id := range ids {
+		if have[id] {
+			continue
+		}
+		if count >= maxCrossTeamAttachments {
+			break
+		}
+		meta, ok := h.objectMeta(id)
+		if !ok || meta.Size < 1 || meta.Size > maxCrossTeamAttachBytes || total+meta.Size > maxCrossTeamAttachTotal {
+			continue
+		}
+		atts, refused := h.resolveAttachments([]string{"coral://artifacts/" + id}, sender)
+		if refused != nil || len(atts) != 1 {
+			continue
+		}
+		// The size that counts is the one read from the file itself (the sidecar's is only a first filter).
+		if atts[0].Size > maxCrossTeamAttachBytes || total+atts[0].Size > maxCrossTeamAttachTotal {
+			continue
+		}
+		data, refused := h.loadAttachment(atts[0])
+		if refused == nil {
+			refused = scanAttachment(ctx, atts[0], data)
+		}
+		if refused != nil {
+			continue
+		}
+		if added == nil {
+			added = &attachPrepared{}
+		}
+		added.atts = append(added.atts, atts[0])
+		added.data = append(added.data, data)
+		total += atts[0].Size
+		count++
+	}
+	if added == nil {
+		return prepared
+	}
+	if prepared == nil {
+		prepared = &attachPrepared{}
+	}
+	prepared.atts = append(prepared.atts, added.atts...)
+	prepared.data = append(prepared.data, added.data...)
+	prepared.auto = len(added.atts)
+	return prepared
+}
+
+// discardResponse is a response writer that keeps nothing: the answer sendRelayAttachments would write for a file the send can do without.
+type discardResponse struct{ h http.Header }
+
+func (d *discardResponse) Header() http.Header {
+	if d.h == nil {
+		d.h = http.Header{}
+	}
+	return d.h
+}
+func (d *discardResponse) Write(p []byte) (int, error) { return len(p), nil }
+func (d *discardResponse) WriteHeader(int)             {}
+
+// sendAttachments sends a send's files, in order, to Coral Hub: the ones --attach named must all go (the first failure ends the send with its answer written, as before), the ones
+// attached from links in the text (prepared.auto, last) are each tried alone, and one the hub does not take is dropped from prepared, not a reason to stop the message.
+func (h *BoardHandler) sendAttachments(w http.ResponseWriter, ctx context.Context, p *attachPrepared, messageID, toAddress, fromBoard string) (ok, refundable bool) {
+	explicit := len(p.atts) - p.auto
+	if p.auto == 0 {
+		return h.sendRelayAttachments(w, ctx, p, messageID, toAddress, fromBoard)
+	}
+	if explicit > 0 {
+		head := &attachPrepared{atts: p.atts[:explicit], data: p.data[:explicit]}
+		if ok, refundable := h.sendRelayAttachments(w, ctx, head, messageID, toAddress, fromBoard); !ok {
+			return false, refundable
+		}
+	}
+	keptAtts, keptData := append([]attachedArtifact(nil), p.atts[:explicit]...), append([][]byte(nil), p.data[:explicit]...)
+	for i := explicit; i < len(p.atts); i++ {
+		one := &attachPrepared{atts: p.atts[i : i+1], data: p.data[i : i+1]}
+		if ok, _ := h.sendRelayAttachments(&discardResponse{}, ctx, one, messageID, toAddress, fromBoard); ok {
+			keptAtts, keptData = append(keptAtts, p.atts[i]), append(keptData, p.data[i])
+		}
+	}
+	p.auto = len(keptAtts) - explicit
+	p.atts, p.data = keptAtts, keptData
+	return true, false
 }
