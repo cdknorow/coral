@@ -98,11 +98,11 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         assert.equal(await ev(`document.querySelectorAll('.team-artifact-preview').length`),4);
         assert.deepEqual(await ev(`Array.from(document.querySelectorAll('.team-artifacts-list th'),n=>[n.textContent,n.scope])`), ['Name','Type','Created','Actions'].map(label=>[label,'col']), 'Size and Task live in Details (#3044)');
         assert.equal(await ev(`document.querySelector('.team-artifact-col-type:is(td)').textContent`),'Markdown');
-        await click('.team-artifact-details summary');
-        assert.equal(await ev(`document.querySelector('.team-artifact-details').open`),true);
+        await click('.team-artifact-info-btn');
+        assert.equal(await ev(`document.querySelector('.team-artifact-details').hidden`),false);
         assert.match(await ev(`document.querySelector('.team-artifact-details dl').textContent`),/MIMEtext\/markdown/);
         assert.match(await ev(`document.querySelector('.team-artifact-details dl').textContent`),/Task titleTeam artifact browser/);
-        await click('.team-artifact-details summary');
+        await click('.team-artifact-info-btn');
         // Wide and narrow tables keep proper headers and readable secondary fields.
         // Wide: Name, Type, Created and Actions as columns, no horizontal scroll (#3044).
         await ev(`document.getElementById('agentic-state').style.width='1000px'`); await settle();
@@ -333,12 +333,12 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         // Size and Task (or 'No task') in each row's Details, reachable by keyboard at the narrowest width.
         await ev(`document.getElementById('agentic-state').style.width='260px'`); await settle();
         const details = await ev(`[...document.querySelectorAll('.team-artifact-row')].map(r => {
-            const d = r.querySelector('.team-artifact-details'); const s = d.querySelector('summary');
+            const d = r.querySelector('.team-artifact-details'); const s = r.querySelector('.team-artifact-info-btn');
             s.focus(); const focusable = document.activeElement === s;
-            d.open = true; const text = d.querySelector('dl').textContent; d.open = false;
+            d.hidden = false; const text = d.querySelector('dl').textContent; d.hidden = true;
             return { focusable, text };
         })`);
-        assert.ok(details.every(d => d.focusable), 'Details summaries are keyboard-focusable');
+        assert.ok(details.every(d => d.focusable), 'Details buttons are keyboard-focusable');
         assert.ok(details.every(d => /Size\s*\S/.test(d.text) && /Task\s*(#\d+|No task)/.test(d.text)), `Size and Task in every row's Details (${JSON.stringify(details.map(d => d.text.slice(0, 80)))})`);
         assert.ok(details.some(d => /Task\s*No task/.test(d.text)), "an artifact without a task shows 'No task'");
         assert.ok(details.every(d => /Created/.test(d.text) && /Type/.test(d.text)), 'Type and Created (hidden as columns when narrow) are in Details');
@@ -353,9 +353,9 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         ]; window.__state.currentSession={...window.__state.currentSession,session_id:'ui-uploads',board_project:'upload-team'}; window.__files.syncFilesViewerSession()`); await settle();
         await ev(`document.getElementById('agentic-tab-team-artifacts').click()`); await settle();
         const ups = await ev(`[...document.querySelectorAll('.team-artifact-row')].map(r => {
-            const d = r.querySelector('.team-artifact-details'); d.open = true;
+            const d = r.querySelector('.team-artifact-details'); d.hidden = false;
             const dl = Object.fromEntries([...d.querySelectorAll('dt')].map(dt => [dt.textContent.trim(), (dt.nextElementSibling?.textContent || '').trim()]));
-            d.open = false;
+            d.hidden = true;
             return { name: r.querySelector('.team-artifact-name').textContent.trim(), dl, actions: r.querySelectorAll('td.team-artifact-col-actions a, td.team-artifact-col-actions button').length };
         })`);
         assert.equal(ups.length, 3, 'task results and untasked uploads listed together');

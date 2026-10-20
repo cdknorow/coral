@@ -53,7 +53,7 @@ const HEX = c => c.repeat(64);
                 if (new Set(btns.map(b => Math.round(b.top))).size !== 1) bad.push('not one row'); }
             return { bad, buttons: document.querySelectorAll('tr.team-artifact-row')[0].querySelectorAll('td.team-artifact-col-actions a, td.team-artifact-col-actions button').length }; })()`);
         assert.deepEqual(overlap.bad, [], 'the icons overprint nothing and stay in their column: ' + overlap.bad.join(', '));
-        assert.equal(overlap.buttons, 5, 'Preview, Download, Copy link, Keep, Delete');
+        assert.equal(overlap.buttons, 6, 'Details, Preview, Download, Copy link, Keep, Delete');
         await shot('team-artifacts-ux-desktop');
 
         console.log('2. A singular count, the live region and a dd gap');
@@ -126,7 +126,7 @@ const HEX = c => c.repeat(64);
             const m = await ev(`(() => { const hit = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1; const small = [], over = [];
                 for (const row of document.querySelectorAll('tr.team-artifact-row')) { const nameR = row.querySelector('.team-artifact-name').getBoundingClientRect();
                     for (const b of row.querySelectorAll('td.team-artifact-col-actions a, td.team-artifact-col-actions button')) { const r = b.getBoundingClientRect(); if (r.width < 43.5 || r.height < 43.5) small.push((b.getAttribute('aria-label') || '').slice(0, 20) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)); if (hit(r, nameR)) over.push((b.getAttribute('aria-label') || '').slice(0, 20)); }
-                    const sm = row.querySelector('.team-artifact-details summary').getBoundingClientRect(); if (sm.height < 43.5 || sm.width < 43.5) small.push('Details ' + Math.round(sm.width) + 'x' + Math.round(sm.height));
+                    const sm = row.querySelector('.team-artifact-info-btn').getBoundingClientRect(); if (sm.height < 43.5 || sm.width < 43.5) small.push('Details ' + Math.round(sm.width) + 'x' + Math.round(sm.height));
                     const nb = row.querySelector('button.team-artifact-name'); if (nb && nb.getBoundingClientRect().height < 43.5) small.push('name ' + Math.round(nb.getBoundingClientRect().height)); }
                 const help = document.querySelector('.team-artifacts-help').getBoundingClientRect(); if (help.width < 43.5) small.push('help ' + Math.round(help.width));
                 const chip = document.querySelector('.team-artifact-badge-shared'); const cs = getComputedStyle(chip); const lh = parseFloat(cs.lineHeight);
@@ -135,7 +135,7 @@ const HEX = c => c.repeat(64);
             assert.deepEqual(m.small, [], `${size || '100%'}: every control is a 44 px target`);
             assert.deepEqual(m.over, [], `${size || '100%'}: no icon over the file name`);
             assert.ok(m.chipLines <= 2, `${size || '100%'}: the chip is one line (${m.chipLines})`); assert.equal(m.chipNowrap, 'nowrap'); assert.equal(m.chipEllipsis, 'ellipsis'); assert.match(m.chipTitle, /^Sent to a-very-long-server-name/, 'the whole text is its title');
-            assert.ok(m.iconRows >= 2, `${size || '100%'}: the five icons wrap into more than one row on a phone (${m.iconRows})`);
+            assert.ok(m.iconRows >= 2, `${size || '100%'}: the six icons wrap into more than one row on a phone (${m.iconRows})`);
             assert.ok(m.docOver <= 0, `${size || '100%'}: no sideways scroll`);
             await shot(`team-artifacts-ux-phone${size ? '-200' : ''}`);
         }

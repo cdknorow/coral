@@ -77,7 +77,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         // Not offered in the pop-out (its page is the agent, not the Operator's console).
         await ev(`document.body.classList.add('popout-mode'); true`);
         const kept = `[...document.querySelectorAll('.team-artifact-row')].find(r => r.textContent.includes('kept.txt'))`;
-        await ev(`(() => { const b = [...document.querySelectorAll('#agentic-panel-artifacts-view .team-artifacts-action')].find(x => x.textContent === 'Refresh'); b && b.click(); return !!b; })()`);
+        await ev(`(() => { const b = [...document.querySelectorAll('#agentic-panel-artifacts-view .team-artifacts-action')].find(x => x.getAttribute('aria-label') === 'Refresh'); b && b.click(); return !!b; })()`);
         await until(`!!(${kept}) && !(${kept}).querySelector('.team-artifact-delete')`, 'the list re-rendered in pop-out mode');
         const pop = await ev(`({ up: ${up2}, rows: [...document.querySelectorAll('.team-artifact-row')].map(r => r.textContent.slice(0, 40)), del: !!(${kept}) && !!(${kept}).querySelector('.team-artifact-delete'),
             status: (document.querySelector('.team-artifacts-status') || {}).textContent })`);

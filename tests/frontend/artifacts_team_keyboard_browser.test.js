@@ -44,21 +44,21 @@ const HEX = n => String(n).repeat(64).slice(0, 64);
         console.log('1. Artifacts: controls and order');
         await ev(`window.switchAgenticTab('artifacts', 'top'); true`);
         await waitFor(`document.querySelectorAll('#agentic-panel-artifacts-view .team-artifact-row').length === 3`, 'the artifact rows', 8000);
-        const controls = await ev(`[...document.querySelectorAll('#agentic-panel-artifacts-view button, #agentic-panel-artifacts-view a[href], #agentic-panel-artifacts-view summary')].map(e => ({ cls: String(e.className).split(' ').filter(c => c.startsWith('team-artifact') ).join(' ') || e.tagName, name: (e.getAttribute('aria-label') || e.textContent || '').trim(), tab: e.tabIndex, shown: e.getClientRects().length > 0 }))`);
+        const controls = await ev(`[...document.querySelectorAll('#agentic-panel-artifacts-view button, #agentic-panel-artifacts-view a[href]')].map(e => ({ cls: String(e.className).split(' ').filter(c => c.startsWith('team-artifact') ).join(' ') || e.tagName, name: (e.getAttribute('aria-label') || e.textContent || '').trim(), tab: e.tabIndex, shown: e.getClientRects().length > 0 }))`);
         assert.ok(controls.every(c => c.shown && c.tab >= 0 && c.name), 'every control is shown, focusable and named: ' + JSON.stringify(controls.filter(c => !(c.shown && c.tab >= 0 && c.name))));
         const first = controls.slice(0, 2).map(c => c.name);
         assert.deepEqual(first, ['Refresh', 'Copy instructions for agents on how to publish an artifact'], 'Refresh and the help button come first');
-        const rowOrder = await ev(`[...document.querySelectorAll('#agentic-panel-artifacts-view .team-artifact-row:first-child summary, #agentic-panel-artifacts-view .team-artifact-row:first-child button, #agentic-panel-artifacts-view .team-artifact-row:first-child a[href]')].map(e => (e.getAttribute('aria-label') || '').split(' ')[0])`);
+        const rowOrder = await ev(`[...document.querySelectorAll('#agentic-panel-artifacts-view .team-artifact-row:first-child button, #agentic-panel-artifacts-view .team-artifact-row:first-child a[href]')].map(e => (e.getAttribute('aria-label') || '').split(' ')[0])`);
         assert.deepEqual(rowOrder, ['', 'Details', 'Preview', 'Download', 'Copy', 'Keep', 'Delete'], 'a row reads: name, Details, Preview, Download, Copy link, Keep, Delete');
 
         console.log('2. Preview by Enter, Details by Space');
         await ev(`document.querySelector('#agentic-panel-artifacts-view .team-artifact-row .team-artifact-preview').focus(); true`);
         await press('Enter', 'Enter', 13);
         await waitFor(`document.getElementById('preview-pane') && getComputedStyle(document.getElementById('preview-pane')).display !== 'none'`, 'the preview pane after Enter', 6000);
-        await ev(`const s = document.querySelector('#agentic-panel-artifacts-view .team-artifact-row summary'); s.focus(); true`);
-        assert.equal(await ev(`document.querySelector('#agentic-panel-artifacts-view .team-artifact-row details').open`), false);
+        await ev(`const s = document.querySelector('#agentic-panel-artifacts-view .team-artifact-row .team-artifact-info-btn'); s.focus(); true`);
+        assert.equal(await ev(`document.querySelector('#agentic-panel-artifacts-view .team-artifact-row .team-artifact-details').hidden`), true);
         await press(' ', 'Space', 32);
-        assert.equal(await ev(`document.querySelector('#agentic-panel-artifacts-view .team-artifact-row details').open`), true, 'Space opens Details');
+        assert.equal(await ev(`document.querySelector('#agentic-panel-artifacts-view .team-artifact-row .team-artifact-details').hidden`), false, 'Space opens Details');
 
         console.log('3. Keep by Space keeps the focus');
         await ev(`document.querySelector('#agentic-panel-artifacts-view .team-artifact-row:nth-child(2) .team-artifact-keep').focus(); true`);

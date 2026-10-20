@@ -17,30 +17,32 @@ let team = null;
 let sessionID = null;
 let previewArtifact = null;
 let previewFile = null;
-const fresh = () => ({items:[], loaded:false, busy:false, error:'', hasMore:false, truncated:false, cursor:'', controller:null, generation:0});
+const fresh = () => ({items:[], loaded:false, busy:false, error:'', hasMore:false, truncated:false, cursor:'', controller:null, generation:0, counts:null});
 const caches = {artifacts:fresh(), 'team-artifacts':fresh()};
 let notice = ''; // the outcome of the last delete (#3553), shown once under the heading
 
-// The search box, filters and sort of the Team Artifacts list (#4573): asked of the server (a search covers every artifact, not just the loaded page), kept per board.
-let filters = { ...EMPTY };
-let filtersTeam = null;
-let bar = null; // built once: the list is rebuilt on every change, which would drop the keyboard focus out of a search box
-let counts = null; // {matched, all}: the server's totals for the list on screen
+// The search box, filters and sort of the Team Artifacts list (#4573) and, the same component, of one agent's Artifacts tab (#5283): asked of the server (a search covers every artifact, not just the
+// loaded page), kept per board and, for an agent, per agent. Each panel has its own bar (built once: the list is rebuilt on every change, which would drop the keyboard focus out of a search box).
+const views = { artifacts: { filters: { ...EMPTY }, key: null, bar: null }, 'team-artifacts': { filters: { ...EMPTY }, key: null, bar: null } };
+const view = () => views[source];
+/** What the filters are kept under: the board, or for an agent's tab the board and the agent. null when there is nothing to filter (no team: a standalone agent's list has no search). */
+function filtersKey() { return source === 'artifacts' ? (team && sessionID ? `${team}::agent::${sessionID}` : null) : team; }
 function syncFilters() {
-    if (team === filtersTeam) return;
-    filtersTeam = team;
-    filters = loadFilters(team, browserLocal);
-    counts = null;
+    const v = view(), key = filtersKey();
+    if (key === v.key) return;
+    v.key = key;
+    v.filters = loadFilters(key, browserLocal);
+    caches[source].counts = null;
 }
 /** The list's totals from the reply: total (after the search and filters) and all (the whole list before them: "12 of 340"). */
 function noteCounts(data, cache) {
     const matched = Number.isSafeInteger(data.total) ? data.total : cache.items.length;
-    counts = { matched, all: Number.isSafeInteger(data.all) ? Math.max(data.all, matched) : matched, truncated: !!data.truncated };
+    cache.counts = { matched, all: Number.isSafeInteger(data.all) ? Math.max(data.all, matched) : matched, truncated: !!data.truncated };
 }
-function setFilters(next) {
-    filters = next;
-    saveFilters(team, filters, browserLocal);
-    if (source === 'team-artifacts' && team) load(false);
+function setFilters(scope, next) {
+    views[scope].filters = next;
+    saveFilters(views[scope].key, next, browserLocal);
+    if (source === scope && filtersKey()) load(false);
 }
 
 // ── Delete (#3553): the Operator removes a stored artifact ──────────────────
@@ -188,6 +190,9 @@ const AGENT_ARTIFACT_PROMPT = `To publish an artifact in Coral (so it shows in t
 It appears in the Artifacts tab right away. A team agent's upload also appears in Team Artifacts.
 Local paths like /tmp/<file> are not reachable by the user, so always upload. Full docs: artifacts.md in the Coral agent docs.`;
 
+const RELOAD_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.7-3.97"/><path d="M13.5 2.5v3h-3"/></svg>';
+const INFO_ICON = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 7.2V11"/><path d="M8 5h.01"/></svg>';
+
 const COPY_ICONS = {
     copy: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5a3 3 0 0 0 4.2 0l2.3-2.3a3 3 0 0 0-4.2-4.2l-.8.8"/><path d="M9.5 6.5a3 3 0 0 0-4.2 0L3 8.8a3 3 0 0 0 4.2 4.2l.8-.8"/></svg>',
     done: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8.5 3 3 7-7"/></svg>',
@@ -265,8 +270,10 @@ function restoreFocus(root) {
 function buildHeading({ personal, scopeName, busy }) {
     const heading = el('div', 'team-artifacts-heading');
     heading.append(el('span', '', (personal || team) ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts'));
-    const refresh = el('button', 'team-artifacts-action', 'Refresh');
+    const refresh = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifacts-refresh');
     refresh.type = 'button'; refresh.disabled = personal ? !sessionID : !team;
+    refresh.innerHTML = RELOAD_ICON;
+    refresh.title = 'Refresh'; refresh.setAttribute('aria-label', 'Refresh');
     if (busy) refresh.setAttribute('aria-disabled', 'true'); // not disabled: the focus stays on it while the list loads
     refresh.addEventListener('click', () => { if (!caches[source].busy) load(false); });
     const help = el('button', 'team-artifacts-action team-artifacts-help');
@@ -300,7 +307,7 @@ function buildStatus({ personal, items, busy, error, truncated }) {
     status.setAttribute('role', error ? 'alert' : 'status');
     status.textContent = (personal ? !sessionID : !team) ? (personal ? 'Select an agent to browse its artifacts.' : 'Select an agent on a team to browse its artifacts.')
         : error ? error : busy ? (personal ? 'Loading agent artifacts…' : 'Loading team artifacts…')
-        : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : isFiltered(filters) ? 'No artifacts match this search.' : 'No artifacts shared by this team yet.') : (!personal && counts && counts.matched > items.length) ? `Showing ${items.length} of ${counts.matched}${truncated ? '+' : ''}` : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
+        : !items.length ? (isFiltered(view().filters) ? 'No artifacts match this search.' : personal ? 'No artifacts attributed to this agent yet.' : 'No artifacts shared by this team yet.') : (caches[source].counts && caches[source].counts.matched > items.length) ? `Showing ${items.length} of ${caches[source].counts.matched}${truncated ? '+' : ''}` : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
     if (error) status.dataset.state = 'error';
     return status;
 }
@@ -320,7 +327,10 @@ function buildMore(busy) {
     return more;
 }
 
-/** One artifact's row: its name and Details, type, created time and actions. */
+let detailSeq = 0; // ids for the details blocks, unique across rebuilds
+const openDetails = new Set(); // the rows whose details are open
+
+/** One artifact's row: its name, type, created time and actions (the first of them opens its details). */
 function buildRow(item) {
     const row = el('tr', 'team-artifact-row');
     const unverified = isUnverified(item);
@@ -356,9 +366,11 @@ function buildRow(item) {
     const task = item.task_id ? `#${item.task_id}` : 'No task';
     const type = unverified ? '—' : artifactType(item);
     const size = unverified ? '—' : sizeLabel(item.size) || '—';
-    const details = el('details', 'team-artifact-details');
-    const summary = el('summary', '', 'Details');
-    summary.setAttribute('aria-label', `Details for ${name}`);
+    // The details are a block under the name that the (i) button in the Actions column opens (#5283); which rows are open is kept across the rebuilds the panel does on every change.
+    const openKey = `${item.source || ''}|${item.uri || ''}|${item.name || ''}`;
+    const details = el('div', 'team-artifact-details');
+    details.id = `team-artifact-details-${++detailSeq}`;
+    details.hidden = !openDetails.has(openKey);
     const fields = el('dl');
     for (const [label, value] of [
         ['Name', name], ['Type', unverified ? null : type], ['MIME', unverified ? null : item.media_type || 'Unknown'],
@@ -378,11 +390,21 @@ function buildRow(item) {
             if (value.length) fields.append(el('dt', '', label), ...value.map(v => el('dd', '', v)));
         } else if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));
     }
-    details.append(summary, fields);info.append(details);row.append(info);
+    details.append(fields);info.append(details);row.append(info);
     row.append(el('td', 'team-artifact-col-type', type), el('td', 'team-artifact-col-created', created));
     const actionCell = el('td', 'team-artifact-col-actions');row.append(actionCell);
+    const actions = el('div', 'team-artifact-actions');
+    const infoBtn = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-info-btn');
+    infoBtn.type = 'button'; infoBtn.innerHTML = INFO_ICON;
+    infoBtn.title = 'Details'; infoBtn.setAttribute('aria-label', `Details for ${name}`);
+    infoBtn.setAttribute('aria-controls', details.id); infoBtn.setAttribute('aria-expanded', String(!details.hidden));
+    infoBtn.addEventListener('click', () => {
+        details.hidden = !details.hidden;
+        if (details.hidden) openDetails.delete(openKey); else openDetails.add(openKey);
+        infoBtn.setAttribute('aria-expanded', String(!details.hidden));
+    });
+    actions.append(infoBtn);
     if (link) {
-        const actions = el('div', 'team-artifact-actions');
         const preview = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-preview');
         preview.type = 'button';
         preview.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/></svg>';
@@ -422,8 +444,8 @@ function buildRow(item) {
             keep.addEventListener('click', () => toggleKeep(hex, name, keep));
             actions.append(keep, del);
         }
-        actionCell.append(actions);
-    } else actionCell.append(el('span', 'team-artifact-missing', unverified ? 'Not verified' : item.available === false ? 'Missing' : 'Unavailable'));
+    } else actions.append(el('span', 'team-artifact-missing', unverified ? 'Not verified' : item.available === false ? 'Missing' : 'Unavailable'));
+    actionCell.append(actions);
     return row;
 }
 
@@ -455,10 +477,12 @@ function render() {
     const {items, busy, error, hasMore, truncated} = caches[source];
     const personal = source === 'artifacts';
     const scopeName = personal ? state.currentSession?.display_name || state.currentSession?.name || 'Selected agent' : team && keyLabel(team); // a board's name, never its id
-    // Everything but the search bar is rebuilt: the bar keeps what is typed in it and its focus (only the team list has one).
+    // Everything but the search bar is rebuilt: the bar keeps what is typed in it and its focus (the team list and an agent's list on a team have one; a standalone agent's has none).
     syncFilters();
-    const showBar = !personal && !!team;
-    if (!bar) bar = buildBar(setFilters);
+    const showBar = !!filtersKey();
+    const v = view(), scope = source;
+    if (!v.bar) v.bar = buildBar(next => setFilters(scope, next), { personal });
+    const bar = v.bar, filters = v.filters, counts = caches[source].counts;
     for (const c of [...root.children]) if (c !== bar.node) c.remove();
     if (showBar) { if (bar.node.parentElement !== root) root.append(bar.node); } else bar.node.remove();
     const before = node => (showBar ? root.insertBefore(node, bar.node) : root.append(node));
@@ -500,10 +524,11 @@ async function load(append = false) {
     cache.busy=true; cache.error=''; render();
     try {
         const params = new URLSearchParams({limit:'100'});
-        if (scope === 'artifacts') { params.set('offset',String(cache.items.length)); params.set('session_id',requestedSession); }
+        if (scope === 'artifacts' && standalone) { params.set('offset',String(cache.items.length)); params.set('session_id',requestedSession); }
         else if (!standalone) {
+            if (scope === 'artifacts') params.set('session_id', requestedSession); // one agent's list: the same query, scoped to the agent (the totals are the agent's)
             // The search, the filters and the sort are the server's to apply; the next page is asked for by the cursor the last one gave (not by offset).
-            for (const [k, v] of Object.entries(toParams(filters))) params.set(k, v);
+            for (const [k, v] of Object.entries(toParams(views[scope].filters))) params.set(k, v);
             if (!append) params.set('offset', '0');
             else if (cache.cursor) params.set('cursor', cache.cursor);
             else params.set('offset', String(cache.items.length)); // a reply with no cursor is paged by offset
@@ -518,7 +543,7 @@ async function load(append = false) {
         cache.items = append ? [...cache.items,...data.artifacts] : data.artifacts;
         cache.hasMore=!!data.has_more; cache.truncated=!!data.truncated; cache.loaded=true;
         cache.cursor = typeof data.next_cursor === 'string' ? data.next_cursor : '';
-        if (scope === 'team-artifacts' && !standalone) noteCounts(data, cache);
+        if (!standalone) noteCounts(data, cache);
         if (!append) kept = await loadKept(); // the Keep toggles' state (#3554)
     } catch (error) {
         if (gen !== cache.generation || caches[scope] !== cache || error.name === 'AbortError') return;

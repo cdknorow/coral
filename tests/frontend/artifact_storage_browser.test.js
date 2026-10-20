@@ -102,7 +102,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
         // Not offered in the pop-out.
         await ev(`document.body.classList.add('popout-mode'); true`);
-        await ev(`(() => { const b = [...document.querySelectorAll('#agentic-panel-artifacts-view .team-artifacts-action')].find(x => x.textContent === 'Refresh'); b && b.click(); return !!b; })()`);
+        await ev(`(() => { const b = [...document.querySelectorAll('#agentic-panel-artifacts-view .team-artifacts-action')].find(x => x.getAttribute('aria-label') === 'Refresh'); b && b.click(); return !!b; })()`);
         await until(`!!(${row}) && !(${row}).querySelector('.team-artifact-keep')`, 'the pop-out list');
         check('no Keep in the pop-out', !(await ev(`!!(${row}) && !!(${row}).querySelector('.team-artifact-keep')`)));
         await ev(`document.body.classList.remove('popout-mode'); true`);

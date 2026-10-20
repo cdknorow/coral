@@ -40,7 +40,7 @@ assert.equal(buttons[0].getAttribute('aria-label'), 'Copy link to report.md');
 assert.equal(buttons[0].title, 'Copy link');
 assert.equal(buttons[0].type, 'button');
 assert.ok(buttons[0].querySelector('svg[width="16"]'), 'inline 16px icon like the other row actions');
-assert.equal(rows[0].querySelectorAll('.team-artifact-actions > *').length, 3, 'preview, download, copy link');
+assert.equal(rows[0].querySelectorAll('.team-artifact-actions > *').length, 4, 'details, preview, download, copy link');
 
 buttons[0].click();
 await new Promise(r => setTimeout(r, 0));
