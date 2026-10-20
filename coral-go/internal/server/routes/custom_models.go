@@ -1,7 +1,9 @@
 package routes
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -73,11 +75,17 @@ func (h *SystemHandler) GetCustomModels(w http.ResponseWriter, r *http.Request) 
 // PutCustomModels replaces the whole set: the list is validated as a whole, in one transaction, and a problem names the row, the family and the field with nothing changed.
 // PUT /api/custom-models {"models":[{"family","value","display_name","efforts"}]}
 func (h *SystemHandler) PutCustomModels(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Models []agentmodels.Custom `json:"models"`
-	}
-	if err := decodeJSONMax(w, r, &body, maxCustomModelsBody); err != nil {
+	// Replace-all must never be a way to wipe the set by accident (#5485): the body is an object with exactly one key, "models", whose value is a list (empty to clear). A body with no
+	// "models" (a typo, {} or null) or with a key this route does not know is refused, so a misspelt "models" cannot clear everything.
+	var raw map[string]json.RawMessage
+	if err := decodeJSONMax(w, r, &raw, maxCustomModelsBody); err != nil {
 		errBadRequest(w, "invalid JSON, or more than 64 KiB")
+		return
+	}
+	var body struct{ Models []agentmodels.Custom }
+	list, ok := raw["models"]
+	if !ok || len(raw) != 1 || string(bytes.TrimSpace(list)) == "null" || json.Unmarshal(list, &body.Models) != nil {
+		errBadRequest(w, `the body is {"models": [...]}: "models" is a required list (empty to clear) and the only field`)
 		return
 	}
 	clean, err := agentmodels.ValidateCustomSet(body.Models)

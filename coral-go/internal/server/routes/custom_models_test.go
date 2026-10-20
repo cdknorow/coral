@@ -245,3 +245,21 @@ func TestSwitchTypesACustomModelIdExactlyAndRefusesWhatIsNotAnId(t *testing.T) {
 	}
 	assert.Empty(t, r.typed(), "nothing typed for a refused model")
 }
+
+// #5485 (Security): replace-all must not be a way to wipe the set by accident. A body without "models" (a typo, an empty object, null) is refused and the stored set stays.
+func TestAPutWithoutTheModelsListChangesNothing(t *testing.T) {
+	h := newSystemHandlerForTest(t)
+	code, _ := putCustom(t, h, `{"models":[{"family":"claude","value":"keep-me"}]}`)
+	require.Equal(t, http.StatusOK, code)
+	for _, body := range []string{`{}`, `{"model":[{"family":"claude","value":"x"}]}`, `{"models":null}`, `null`, `[]`, `{"models":[],"extra":1}`} {
+		code, _ := putCustom(t, h, body)
+		assert.Equal(t, http.StatusBadRequest, code, body)
+	}
+	got := getCustom(t, h)
+	models, _ := got["models"].([]any)
+	require.Len(t, models, 1, "the stored set is untouched")
+	assert.Equal(t, "keep-me", models[0].(map[string]any)["value"])
+	code, _ = putCustom(t, h, `{"models":[]}`)
+	assert.Equal(t, http.StatusOK, code, "an explicit empty list is how the set is cleared")
+	assert.Empty(t, getCustom(t, h)["models"])
+}
