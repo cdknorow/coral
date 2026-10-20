@@ -6,6 +6,8 @@
 # tag's notes when it sets the release body. A release before 1.4.130 has no stable names: this refuses it.
 set -o pipefail
 V=${1:?usage: download-section.sh VER}; V=${V#v}
+# The version goes into links in a Markdown body: only a plain version (and a suffix such as -rc1) may, never a ")", "[", space or "$" (#5468 review).
+[[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo "download-section: '$V' is not a version" >&2; exit 1; }
 . "$(dirname "${BASH_SOURCE[0]}")/../release-homes.sh"
 release_has_stable_names "$V" || { echo "download-section: v$V has no stable-name files (1.4.130 and later do)" >&2; exit 1; }
 home=$(release_home_for_tag "v$V") || exit 1
