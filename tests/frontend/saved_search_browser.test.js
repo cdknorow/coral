@@ -32,6 +32,15 @@ async function run() {
         return { shown: !!bar.firstChild && bar.getClientRects().length > 0, count: (bar.querySelector('.list-bar-count') || {}).textContent || '', chips: [...bar.querySelectorAll('.list-bar-chip-text')].map(e => e.textContent), titles: rows.map(r => r.textContent.replace(/\\s+/g, ' ').slice(0, 80)),
             empty: (document.querySelector('#saved-list > .saved-empty') || {}).textContent || null, tabs: [document.getElementById('saved-count-open').textContent, document.getElementById('saved-count-done').textContent], over: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
     const type = async (text) => { await ev(`document.getElementById('sv-search').focus(); true`); await Input.insertText({ text }); };
+    // A filter select's options arrive with the saved list (setOptions), a moment after the rows. Picking a value it does not hold yet sets nothing, so the
+    // pick waits for the option itself, not for a chip or a count (#5216: the phone run once picked before sv-a-1 existed). A failure says which it was.
+    const pickOption = async (id, value) => {
+        const state = () => ev(`(() => { const s = document.getElementById(${JSON.stringify(id)}); return { options: s ? [...s.options].map(o => o.value) : null, value: s && s.value, chip: document.querySelector('#saved-bar .list-bar-chip-text')?.textContent || null }; })()`);
+        await settle(`(() => { const s = document.getElementById(${JSON.stringify(id)}); return !!s && [...s.options].some(o => o.value === ${JSON.stringify(value)}); })()`, `the option ${value} in ${id}`)
+            .catch(async e => { throw new Error(`${e.message} | case: the option was not built | ${JSON.stringify(await state())}`); });
+        await pick(id, value);
+        return state;
+    };
     const pick = (id, value) => ev(`(() => { const s = document.getElementById(${JSON.stringify(id)}); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 
     try {
@@ -82,8 +91,9 @@ async function run() {
             s = await snap();
             check(`${dev}: Type: board message leaves the two open board messages`, s.titles.length === 2 && s.titles.every(t => /team-x/.test(t)) && s.chips.join() === 'Type: Board message', JSON.stringify([s.titles, s.chips]));
             await pick('sv-kind', '');
-            await pick('sv-conv', 'sv-a-1');
-            await settle(`document.querySelector('#saved-bar .list-bar-chip-text')?.textContent === 'From: Frontend Dev' && document.querySelector('#saved-bar .list-bar-count').textContent === '2 of 4'`, 'From a conversation');
+            const convState = await pickOption('sv-conv', 'sv-a-1');
+            await settle(`document.querySelector('#saved-bar .list-bar-chip-text')?.textContent === 'From: Frontend Dev' && document.querySelector('#saved-bar .list-bar-count').textContent === '2 of 4'`, 'From a conversation')
+                .catch(async e => { throw new Error(`${e.message} | case: the option existed but the pick had no effect | ${JSON.stringify(await convState())}`); });
             s = await snap();
             check(`${dev}: From a conversation (by its title) leaves that chat's two, and the chip reads the title`, s.titles.length === 2 && s.titles.every(t => /Frontend Dev/.test(t)) && s.chips.join() === 'From: Frontend Dev', JSON.stringify([s.titles, s.chips]));
             await ev(`document.querySelector('#saved-bar .list-bar-filter-btn').click(); document.querySelector('#saved-bar .list-bar-clear-all').click(); true`);
