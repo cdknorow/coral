@@ -54,6 +54,8 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/workflows/runs/{runID}/kill": "stop a workflow run",
 	"POST /api/tasks/runs/{runID}/kill":     "stop a task run",
 	"PUT /api/settings":                     "change Coral's settings",
+	"GET /api/custom-models":                "read the custom models",
+	"PUT /api/custom-models":                "change the custom models",
 	// #4432 (Security's #4431 INFO 1): reading them too: the CLI paths, prompts and storage and access switches
 	// are the Operator's, and no agent tool reads them.
 	"GET /api/settings": "read Coral's settings",

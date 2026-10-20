@@ -1,0 +1,247 @@
+package routes
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/agentmodels"
+	"github.com/cdknorow/coral/internal/store"
+)
+
+// #5480: the operator's custom models. The set is replaced as a whole, validated as a whole; both catalogs the pickers read carry the customs after the CLI's models.
+
+// customRig is a system handler whose model lists come from a stand-in fetcher: the real CLIs are never listed (nor found) by a test.
+func customRig(t *testing.T) *SystemHandler {
+	t.Helper()
+	h := newSystemHandlerForTest(t)
+	cli := filepath.Join(t.TempDir(), "cli")
+	require.NoError(t, os.WriteFile(cli, []byte("#!/bin/sh\n"), 0o755))
+	h.models = agentmodels.NewService(func(string) (string, error) { return cli, nil })
+	h.models.SetFetcher(func(ctx context.Context, family, path string) ([]agentmodels.Model, string, error) {
+		return []agentmodels.Model{{Value: "claude-opus-5-5", DisplayName: "Opus 5.5"}, {Value: "claude-sonnet-5-5", DisplayName: "Sonnet 5.5"}}, "account", nil
+	})
+	t.Cleanup(h.models.Wait)
+	return h
+}
+
+func putCustom(t *testing.T, h *SystemHandler, body string) (int, map[string]any) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.PutCustomModels(rec, httptest.NewRequest(http.MethodPut, "/api/custom-models", strings.NewReader(body)))
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
+
+func getCustom(t *testing.T, h *SystemHandler) map[string]any {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.GetCustomModels(rec, httptest.NewRequest(http.MethodGet, "/api/custom-models", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	return out
+}
+
+func TestCustomModelsRoundTripWithTheLimitsSettingsValidatesAgainst(t *testing.T) {
+	h := newSystemHandlerForTest(t)
+	empty := getCustom(t, h)
+	assert.Equal(t, []any{}, empty["models"], "never null")
+	limits := empty["limits"].(map[string]any)
+	assert.EqualValues(t, 50, limits["max_per_family"])
+	assert.EqualValues(t, 200, limits["max_total"])
+	assert.EqualValues(t, 128, limits["max_value_length"])
+	efforts := limits["efforts"].(map[string]any)
+	assert.Equal(t, []any{"low", "medium", "high", "xhigh", "max"}, efforts["claude"])
+	assert.Equal(t, []any{"minimal", "low", "medium", "high", "xhigh"}, efforts["codex"])
+	assert.Equal(t, []any{"low", "medium", "high", "xhigh", "max"}, efforts["agy"])
+	assert.Equal(t, []any{}, efforts["pi"], "Pi takes no levels (not installed to check)")
+
+	code, out := putCustom(t, h, `{"models":[{"family":"claude","value":"global-opus-5-5","display_name":" Global  Opus ","efforts":["low","high"]},{"family":"codex","value":"gpt-x"}]}`)
+	require.Equal(t, http.StatusOK, code, out)
+	models := out["models"].([]any)
+	require.Len(t, models, 2)
+	assert.Equal(t, "Global Opus", models[0].(map[string]any)["display_name"])
+	assert.Equal(t, []any{"low", "high"}, models[0].(map[string]any)["efforts"])
+	assert.Equal(t, getCustom(t, h)["models"], out["models"], "the same shape as GET")
+
+	code, out = putCustom(t, h, `{"models":[]}`)
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Equal(t, []any{}, getCustom(t, h)["models"], "an empty list clears them")
+}
+
+// A bad row names its place and field, and nothing at all changes.
+func TestCustomModelsAreValidatedAsAWholeAndNothingChangesOnAnError(t *testing.T) {
+	h := newSystemHandlerForTest(t)
+	good := `{"models":[{"family":"claude","value":"keep-me"}]}`
+	code, _ := putCustom(t, h, good)
+	require.Equal(t, http.StatusOK, code)
+
+	for body, want := range map[string]struct {
+		row           int
+		family, field string
+	}{
+		`{"models":[{"family":"claude","value":"a"},{"family":"codex","value":"--dangerous"}]}`:                        {1, "codex", "value"},
+		`{"models":[{"family":"claude","value":"a b"}]}`:                                                               {0, "claude", "value"},
+		`{"models":[{"family":"gemini","value":"a"}]}`:                                                                 {0, "gemini", "family"},
+		`{"models":[{"family":"claude","value":"a","efforts":["turbo"]}]}`:                                             {0, "claude", "efforts"},
+		`{"models":[{"family":"pi","value":"a","efforts":["low"]}]}`:                                                   {0, "pi", "efforts"},
+		`{"models":[{"family":"claude","value":"a"},{"family":"claude","value":"b"},{"family":"claude","value":"a"}]}`: {2, "claude", "value"},
+	} {
+		code, out := putCustom(t, h, body)
+		assert.Equal(t, http.StatusBadRequest, code, body)
+		assert.EqualValues(t, want.row, out["row"], body)
+		assert.Equal(t, want.family, out["family"], body)
+		assert.Equal(t, want.field, out["field"], body)
+		assert.NotEmpty(t, out["message"], body)
+		assert.Contains(t, out["error"], "custom model", body)
+		got := getCustom(t, h)["models"].([]any)
+		require.Len(t, got, 1, "the earlier set stands: %s", body)
+		assert.Equal(t, "keep-me", got[0].(map[string]any)["value"])
+	}
+	for _, body := range []string{`not json`, `{"models":"x"}`, `{"models":[` + strings.Repeat(`{"family":"claude","value":"a"},`, 10) + `]}`} {
+		code, _ := putCustom(t, h, body)
+		assert.Equal(t, http.StatusBadRequest, code, body)
+	}
+	assert.Len(t, getCustom(t, h)["models"], 1)
+}
+
+func TestCustomModelsRequestBodyIsCapped(t *testing.T) {
+	h := newSystemHandlerForTest(t)
+	big := `{"models":[{"family":"claude","value":"a","display_name":"` + strings.Repeat("x", 70<<10) + `"}]}`
+	code, _ := putCustom(t, h, big)
+	assert.Equal(t, http.StatusBadRequest, code)
+}
+
+// BOTH catalogs the pickers read carry the customs, after the CLI's own models: the curated list (launch, team, workflow step, defaults) and the CLI's list (the running agent's chip).
+func TestCustomModelsReachBothCatalogs(t *testing.T) {
+	h := customRig(t)
+	code, out := putCustom(t, h, `{"models":[
+		{"family":"claude","value":"global-opus-5-5","display_name":"Global Opus","efforts":["high","max"]},
+		{"family":"claude","value":"claude-opus-5-5","display_name":"My Opus","efforts":["low"]},
+		{"family":"agy","value":"agy-custom"},
+		{"family":"codex","value":"gpt-x","efforts":["minimal"]},
+		{"family":"pi","value":"pi-x"}]}`)
+	require.Equal(t, http.StatusOK, code, out)
+
+	// 1. GET /api/agent-models: ids, the curated ones first.
+	rec := httptest.NewRecorder()
+	h.GetAgentModels(rec, httptest.NewRequest(http.MethodGet, "/api/agent-models", nil))
+	var curated map[string][]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &curated))
+	assert.Equal(t, []string{"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1", "global-opus-5-5"}, curated["claude"], "after the curated ids, once each")
+	assert.Contains(t, curated["codex"], "gpt-x")
+	assert.Contains(t, curated["agy"], "agy-custom")
+	assert.Contains(t, curated["pi"], "pi-x")
+	assert.NotContains(t, curated["claude"], "gpt-x", "another provider's customs are not mixed in")
+	for typ, ids := range curated {
+		assert.NotNil(t, ids, typ)
+	}
+
+	// 2. GET /api/agents/models?type=: the model chip's list, with the flag and the levels the user set.
+	list := func(typ string) []map[string]any {
+		h.models.Get(typ) // starts the stand-in fetch
+		h.models.Wait()
+		rec := httptest.NewRecorder()
+		h.GetAgentCLIModels(rec, httptest.NewRequest(http.MethodGet, "/api/agents/models?type="+typ, nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		var res struct {
+			Models []map[string]any `json:"models"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res))
+		return res.Models
+	}
+	claude := list("claude")
+	byValue := map[string]map[string]any{}
+	for _, m := range claude {
+		byValue[m["value"].(string)] = m
+	}
+	require.Contains(t, byValue, "global-opus-5-5")
+	assert.Equal(t, true, byValue["global-opus-5-5"]["custom"])
+	assert.Equal(t, []any{"high", "max"}, byValue["global-opus-5-5"]["efforts"])
+	assert.Equal(t, "Global Opus", byValue["global-opus-5-5"]["display_name"])
+	assert.Equal(t, "My Opus", byValue["claude-opus-5-5"]["display_name"], "a custom with a built-in id changes name and levels, never the value")
+	assert.Equal(t, "claude-opus-5-5", byValue["claude-opus-5-5"]["value"])
+	assert.Equal(t, claude[len(claude)-1]["value"], "global-opus-5-5", "after the CLI's models")
+	_, hasFlag := byValue["claude-sonnet-5-5"]["custom"]
+	assert.False(t, hasFlag, "a CLI model is not flagged")
+
+	var gemini []string
+	for _, m := range list("gemini") { // gemini runs agy: agy's customs
+		gemini = append(gemini, m["value"].(string))
+	}
+	assert.Contains(t, gemini, "agy-custom")
+	assert.NotContains(t, gemini, "global-opus-5-5")
+
+	// Removing them removes them from both.
+	putCustom(t, h, `{"models":[]}`)
+	rec = httptest.NewRecorder()
+	h.GetAgentModels(rec, httptest.NewRequest(http.MethodGet, "/api/agent-models", nil))
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &curated))
+	assert.NotContains(t, curated["claude"], "global-opus-5-5")
+	for _, m := range list("claude") {
+		assert.NotEqual(t, "global-opus-5-5", m["value"])
+	}
+}
+
+// A stored row is checked again when it is read: one that no longer passes (a hand-edited database) is served by neither catalog.
+func TestACustomModelThatNoLongerPassesIsNeverServed(t *testing.T) {
+	h := customRig(t)
+	require.NoError(t, h.ss.ReplaceCustomModels(t.Context(), []store.CustomModel{
+		{Family: "claude", Value: "fine", DisplayName: "Fine\x00\u202e name", Efforts: []string{"low"}},
+		{Family: "claude", Value: "--dangerously-skip-permissions", DisplayName: "x"},
+		{Family: "claude", Value: "has space"},
+		{Family: "unknown", Value: "x"},
+		{Family: "codex", Value: "bad-level", Efforts: []string{"--yolo"}},
+		{Family: "agy", Value: "ok-agy"},
+	}))
+	got := getCustom(t, h)["models"].([]any)
+	var values []string
+	for _, m := range got {
+		values = append(values, m.(map[string]any)["value"].(string))
+	}
+	assert.Equal(t, []string{"fine", "ok-agy"}, values)
+	assert.Equal(t, "Fine name", got[0].(map[string]any)["display_name"], "a control or direction character in a name is dropped on read too")
+
+	rec := httptest.NewRecorder()
+	h.GetAgentModels(rec, httptest.NewRequest(http.MethodGet, "/api/agent-models", nil))
+	assert.NotContains(t, rec.Body.String(), "dangerously")
+	assert.NotContains(t, rec.Body.String(), "has space")
+	rec = httptest.NewRecorder()
+	h.GetAgentCLIModels(rec, httptest.NewRequest(http.MethodGet, "/api/agents/models?type=claude", nil))
+	assert.NotContains(t, rec.Body.String(), "dangerously")
+	assert.Contains(t, rec.Body.String(), `"fine"`)
+}
+
+// The writes are the operator's, never an agent's, and never through Coral Hub.
+func TestCustomModelRoutesAreTheOperatorsAndNeverThroughTheHub(t *testing.T) {
+	for _, key := range []string{"GET /api/custom-models", "PUT /api/custom-models"} {
+		_, ok := operatorOnlyRoutes[key]
+		assert.True(t, ok, key+" is in the operator-only table")
+	}
+}
+
+// The switcher types "/model <id>" into the agent's terminal: an id with [ ] @ : / + and the longest one are typed exactly, and one that is not an id is refused with nothing typed.
+func TestSwitchTypesACustomModelIdExactlyAndRefusesWhatIsNotAnId(t *testing.T) {
+	for _, model := range []string{"claude-sonnet-4-5[1m]", "vendor/model@2:high+x", "m" + strings.Repeat("a", 127)} {
+		r := newSwitchRig(t, "claude")
+		code, m := r.post(t, map[string]any{"model": model})
+		require.Equal(t, http.StatusAccepted, code, m)
+		r.waitTyped(t, "/model "+model)
+	}
+	r := newSwitchRig(t, "claude")
+	for _, bad := range []string{"--dangerous", "a b", "a\nb", "m" + strings.Repeat("a", 128), "x;y"} {
+		code, out := r.post(t, map[string]any{"model": bad})
+		assert.Equal(t, http.StatusBadRequest, code, "%q: %s", bad, out)
+	}
+	assert.Empty(t, r.typed(), "nothing typed for a refused model")
+}

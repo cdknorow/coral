@@ -124,7 +124,7 @@ func TestLaunchRefusesAThinkingLevelTheTypeDoesNotTake(t *testing.T) {
 	stubCLIPaths(t, ss)
 	for _, c := range []struct{ typ, level string }{
 		{"claude", "ultra"}, {"claude", "HIGH"}, {"claude", "high --model x"}, {"claude", "--yolo"}, {"claude", "off"},
-		{"codex", "high"}, {"agy", "high"}, {"terminal", "high"},
+		{"codex", "max"}, {"agy", "minimal"}, {"gemini", "high"}, {"pi", "high"}, {"terminal", "high"},
 	} {
 		code, out := postThinkingJSON(t, server.URL+"/api/sessions/launch", map[string]any{"working_dir": t.TempDir(), "agent_type": c.typ, "thinking": c.level})
 		assert.Equal(t, http.StatusBadRequest, code, "%s %q: %s", c.typ, c.level, out)
@@ -155,7 +155,7 @@ func TestTeamLaunchThinkingLevel(t *testing.T) {
 	code, out = team(map[string]any{"name": "Bad", "agent_type": "claude", "thinking": "ultra"})
 	assert.Equal(t, http.StatusBadRequest, code, out)
 	assert.Contains(t, out, "thinking must be one of")
-	code, out = team(map[string]any{"name": "Bad", "agent_type": "codex", "thinking": "high"})
+	code, out = team(map[string]any{"name": "Bad", "agent_type": "pi", "thinking": "high"})
 	assert.Equal(t, http.StatusBadRequest, code, out)
 	assert.Equal(t, before, len(term.sentCommands()), "nothing of a refused team starts")
 }
@@ -175,8 +175,11 @@ func TestDefaultThinkingSettingTakesOnlyTheTypesLevels(t *testing.T) {
 	}
 	assert.Equal(t, http.StatusBadRequest, put(`{"default_thinking_claude":"ultra"}`))
 	assert.Equal(t, http.StatusBadRequest, put(`{"default_thinking_claude":5}`))
-	assert.Equal(t, http.StatusBadRequest, put(`{"default_thinking_codex":"high"}`), "a type with no level yet")
-	assert.Equal(t, http.StatusOK, put(`{"default_thinking_codex":""}`))
+	assert.Equal(t, http.StatusBadRequest, put(`{"default_thinking_pi":"high"}`), "a type with no level yet")
+	assert.Equal(t, http.StatusOK, put(`{"default_thinking_pi":""}`))
+	assert.Equal(t, http.StatusOK, put(`{"default_thinking_codex":"minimal"}`), "codex takes its own levels (#5480)")
+	assert.Equal(t, http.StatusBadRequest, put(`{"default_thinking_codex":"max"}`), "claude's level is not codex's")
+	assert.Equal(t, http.StatusOK, put(`{"default_thinking_agy":"max"}`))
 	assert.Equal(t, http.StatusBadRequest, put(`{"default_thinking_nope":"high"}`), "an unknown type")
 }
 

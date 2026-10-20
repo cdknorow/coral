@@ -17,6 +17,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/agentenv"
+	"github.com/cdknorow/coral/internal/agentmodels"
 	"github.com/cdknorow/coral/internal/agentsignin"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/store"
@@ -312,17 +313,21 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 		} else {
 			args = append([]string{"--print", "--no-session-persistence"}, agentCfg.Flags...)
 		}
-		if agentCfg.Model != "" {
-			args = append(args, "--model", agentCfg.Model)
+		modelArgs, merr := agentmodels.ModelArgs(agentCfg.Model)
+		if merr != nil {
+			return fmt.Errorf("step %q: the model %w", step.Name, merr)
 		}
+		args = append(args, modelArgs...)
 		stdin = strings.NewReader(prompt)
 	} else {
 		// Other CLIs: the prompt stays an argument until each one's stdin handling is
 		// verified against the real CLI (#3521 follow-up). These flags are Claude's.
 		args = []string{"--print", "--no-session-persistence"}
-		if agentCfg.Model != "" {
-			args = append(args, "--model", agentCfg.Model)
+		modelArgs, merr := agentmodels.ModelArgs(agentCfg.Model)
+		if merr != nil {
+			return fmt.Errorf("step %q: the model %w", step.Name, merr)
 		}
+		args = append(args, modelArgs...)
 		args = append(args, agentCfg.Flags...)
 		args = append(args, prompt)
 	}
@@ -396,10 +401,11 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 // executeAgentInteractive launches an agent in a tmux session (interactive mode).
 // The session is tagged with workflow metadata for frontend grouping.
 func (wr *WorkflowRunner) executeAgentInteractive(ctx context.Context, runID int64, step StepDef, stepDir, repoPath string, env []string, agentCfg *AgentStepConfig, prompt string, result *StepResult) error {
-	var flags []string
-	if agentCfg.Model != "" {
-		flags = append(flags, "--model", agentCfg.Model)
+	modelArgs, merr := agentmodels.ModelArgs(agentCfg.Model)
+	if merr != nil {
+		return fmt.Errorf("step %q: the model %w", step.Name, merr)
 	}
+	flags := append([]string{}, modelArgs...)
 	flags = append(flags, agentCfg.Flags...)
 
 	displayName := fmt.Sprintf("workflow-run-%d-step-%s", runID, step.Name)

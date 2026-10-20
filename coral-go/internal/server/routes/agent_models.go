@@ -33,7 +33,12 @@ func (h *SystemHandler) GetAgentCLIModels(w http.ResponseWriter, r *http.Request
 		errBadRequest(w, "type must be one of claude, codex, agy, antigravity, gemini, pi")
 		return
 	}
-	writeJSON(w, http.StatusOK, h.models.Get(typ))
+	res := h.models.Get(typ)
+	// The operator's custom models (#5480) follow the CLI's own, after them; a copy, so the cached list is never changed.
+	if custom, err := h.loadCustomModels(r.Context()); err == nil {
+		res.Models = agentmodels.MergeCustom(res.Models, typ, custom)
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 // RefreshAgentCLIModels fetches an agent type's list now, in the background (the Operator's

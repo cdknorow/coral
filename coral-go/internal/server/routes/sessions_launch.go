@@ -138,8 +138,8 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 
 	// Add model flag if resolved to non-empty
 	launchFlags := body.Flags
-	if effectiveModel != "" {
-		launchFlags = append(append([]string{}, body.Flags...), "--model", effectiveModel)
+	if modelArgs, _ := agentmodels.ModelArgs(effectiveModel); modelArgs != nil { // checked above
+		launchFlags = append(append([]string{}, body.Flags...), modelArgs...)
 	}
 	// Everything before this could be refused with nothing made; from here the terminal is made and the agent started whatever the request does (#5213).
 	lctx, cancel := lifecycleCtx(r.Context())

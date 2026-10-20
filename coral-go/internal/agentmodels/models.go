@@ -29,6 +29,8 @@ type Model struct {
 	DisplayName string   `json:"display_name"`
 	Description string   `json:"description,omitempty"`
 	Efforts     []string `json:"efforts,omitempty"`
+	// Custom marks a model the operator added in Settings > Custom models (#5480); its Efforts are the levels they set for it.
+	Custom bool `json:"custom,omitempty"`
 }
 
 const (
@@ -46,6 +48,22 @@ var validValue = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@\[\]+-]{0,127}$`
 // ValidModelValue reports whether v can be passed as --model's one argument (#4065, Security's
 // condition 3): a model from a list or typed by hand.
 func ValidModelValue(v string) bool { return validValue.MatchString(v) }
+
+// ModelArgs is the command-line arguments that give a CLI the model: "--model" and the value, nil for "". It is the ONLY way a model that came from outside (a request, a saved
+// setting, a workflow step, a custom model) becomes a command-line argument (a test holds that no code builds "--model", value itself): a value that does not pass ValidModelValue,
+// one that could be read as a flag or hold a space or a control character, is an error and no argument is made.
+func ModelArgs(model string) ([]string, error) {
+	if model == "" {
+		return nil, nil
+	}
+	if !ValidModelValue(model) {
+		return nil, ErrInvalidModel
+	}
+	return []string{"--model", model}, nil
+}
+
+// ErrInvalidModel is a model value that cannot be one argument of --model.
+var ErrInvalidModel = errors.New("the model is not a valid model id")
 
 // clean drops entries whose value isn't a model id and duplicates, and bounds the text, so
 // what a CLI prints can't put anything else into Coral's list.

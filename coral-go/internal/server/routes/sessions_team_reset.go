@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentmodels"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -140,8 +141,10 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// Add model flag if stored
-		if modelStr != "" {
-			flags = append(flags, "--model", modelStr)
+		if modelArgs, err := agentmodels.ModelArgs(modelStr); err != nil {
+			log.Printf("[reset-team] stored model of agent %s is not a valid model id; it starts with the CLI's default", displayName)
+		} else {
+			flags = append(flags, modelArgs...)
 		}
 		storedPermMode := ""
 		if cfg.PermissionMode != nil && *cfg.PermissionMode != "" {

@@ -88,6 +88,7 @@ c GET /api/board/{project}/working-mode
 c GET /api/board/{project}/working-mode/presets
 c GET /api/call-metrics/summary
 c GET /api/cloud/status
+b GET /api/custom-models
 c GET /api/filesystem/is-git
 c GET /api/filesystem/list
 c GET /api/folder-tags
@@ -365,6 +366,7 @@ b PUT /api/cloud/hub-relaunch
 b PUT /api/cloud/max-mode
 b PUT /api/cloud/redact-tokens
 b PUT /api/cloud/share-pasted-images
+b PUT /api/custom-models
 b PUT /api/system/identity-actor
 b PUT /api/remote/{server}/*
 b PUT /api/scheduled/jobs/{jobID}

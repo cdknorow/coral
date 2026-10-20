@@ -567,8 +567,8 @@ func restartFlags(stored []string, model, extra string) []string {
 		}
 		flags = append(flags, flag)
 	}
-	if model != "" {
-		flags = append(flags, "--model", model)
+	if modelArgs, err := agentmodels.ModelArgs(model); err == nil { // a model that is not a valid id (a hand-edited store) is not put on the command line
+		flags = append(flags, modelArgs...)
 	}
 	cleanExtra := stripAgentPermissionFlags(strings.Fields(extra))
 	return append(flags, cleanExtra...)

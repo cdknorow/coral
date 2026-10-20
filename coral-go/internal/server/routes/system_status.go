@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentmodels"
 	"github.com/cdknorow/coral/internal/agentsignin"
 	"github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/background"
@@ -65,12 +66,18 @@ func (h *SystemHandler) GetDefaultPrompts(w http.ResponseWriter, r *http.Request
 // model strings — this list is only the curated suggestions.
 // GET /api/agent-models
 func (h *SystemHandler) GetAgentModels(w http.ResponseWriter, r *http.Request) {
+	// The operator's custom models (#5480) follow the curated ids of their provider's types, once each.
+	custom, _ := h.loadCustomModels(r.Context()) // unreadable: the curated list alone
 	out := make(map[string][]string, len(agenttypes.AgentTypeModels))
 	for k, v := range agenttypes.AgentTypeModels {
-		if v == nil {
-			out[k] = []string{}
-		} else {
-			out[k] = v
+		out[k] = agentmodels.MergeCustomValues(v, k, custom)
+	}
+	// A provider with no curated entry (Pi) still gets the customs added for it, under its main type.
+	for _, c := range custom {
+		if types := agentmodels.FamilyTypes(c.Family); len(types) > 0 {
+			if _, ok := out[types[0]]; !ok {
+				out[types[0]] = agentmodels.MergeCustomValues(nil, types[0], custom)
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, out)

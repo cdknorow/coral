@@ -122,6 +122,17 @@ The refresh fetches now (202). It is the Operator's (not an agent token, not Cor
 
 A launch's `model` must be a model id: letters, digits and `. _ : / @ [ ] + -`, at most 128 characters, not starting with `-`. Anything else is answered 400.
 
+### Custom models (Settings > Custom models, #5480)
+
+```
+GET /api/custom-models
+PUT /api/custom-models   {"models": [{"family", "value", "display_name"?, "efforts"?}]}
+```
+
+Model ids the Operator adds per provider (`family`: `claude`, `codex`, `agy` (also antigravity and gemini) or `pi`), with the thinking levels each takes. Both routes are the Operator's (an agent token and Coral Hub are refused). The PUT replaces the whole set: it is checked as a whole, stored in one transaction, and an error (400) names the `row`, `family` and `field` and changes nothing. The GET answers `{models, limits}` (the PUT answers the same): `limits` holds the caps (50 per provider, 200 in all, 128 characters for an id, 80 for a name) and `efforts`, the levels each provider's CLI takes: Claude and agy `low`, `medium`, `high`, `xhigh`, `max` (`--effort`); Codex `minimal`, `low`, `medium`, `high`, `xhigh` (`-c model_reasoning_effort=...`); Pi none (its CLI is not checked yet), and a provider with no levels takes none. Gemini has none.
+
+An id is a model id as above (never flag-shaped), is checked again whenever it is read, and reaches a CLI only through one function that checks it (a test holds that no code builds `--model <value>` itself). The customs are added at read time, after the CLI's own models, to both catalogs the pickers read: `GET /api/agent-models` (ids) and `GET /api/agents/models?type=` (each with `custom: true` and the levels the Operator set as `efforts`). A custom id that the CLI lists too keeps its place and takes the Operator's name and levels.
+
 The session list and `GET /api/sessions/live/{name}/info` carry `model`, the model the agent actually uses as its own transcript records it (Claude Code's assistant entries, Codex's `turn_context`), so it follows a `/model` switch: `model_source: "transcript"`. Until a turn has been read, and for agy, whose transcript doesn't name the model, it is the launch's model (`model_source: "launch"`).
 
 ---

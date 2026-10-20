@@ -415,6 +415,17 @@ CREATE TABLE IF NOT EXISTS pinned_folders (
 
 -- Messages the Operator saved for later (#4510): a bookmark on one message of an agent's chat or a board, with a snippet, until it is removed.
 -- msg_key is the message's stable key (the chat route's "key", a board message's id), so a bookmark survives a reload and transcript paging.
+-- Custom models (#5480): a model id the operator adds for a provider (family: claude, codex, agy, pi) with the thinking levels it takes (efforts, a JSON array). The set is
+-- replaced as a whole (position keeps the order sent); validation is agentmodels.ValidateCustomSet, and a row read back is checked again.
+CREATE TABLE IF NOT EXISTS custom_models (
+	family       TEXT NOT NULL,
+	value        TEXT NOT NULL,
+	display_name TEXT NOT NULL DEFAULT '',
+	efforts      TEXT NOT NULL DEFAULT '[]',
+	position     INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (family, value)
+);
+
 CREATE TABLE IF NOT EXISTS saved_messages (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	kind       TEXT NOT NULL,

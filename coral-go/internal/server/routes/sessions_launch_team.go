@@ -355,8 +355,8 @@ func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamR
 		// Only a saved default can get here (each member's own model was checked above).
 		return map[string]any{"name": def.Name, "error": "the default model in Settings: " + errInvalidModel}, ""
 	}
-	if effectiveModel != "" {
-		agentFlags = append(agentFlags, "--model", effectiveModel)
+	if modelArgs, _ := agentmodels.ModelArgs(effectiveModel); modelArgs != nil { // checked above
+		agentFlags = append(agentFlags, modelArgs...)
 	}
 	effectiveThinking := defaultThinkingFromSettings(userSettings, agentType, def.Thinking)
 	result, err := h.launchSession(ctx, launchSpec{

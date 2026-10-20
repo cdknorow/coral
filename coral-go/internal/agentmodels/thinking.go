@@ -7,8 +7,16 @@ import "strings"
 // here: others are added as each is checked by hand.
 //
 //   - claude: --effort low|medium|high|xhigh|max (claude --help).
+//   - agy (also antigravity): --effort low|medium|high|xhigh|max (agy --help says "Reasoning effort for the current CLI session").
+//   - codex: the config override -c model_reasoning_effort=<level> (codex --help documents -c key=value; the key and the levels minimal, low, medium, high and xhigh are the
+//     ones its own config reads). The live /effort switch is Claude's only: the others take the level at launch.
+//
+// Gemini is not listed (its CLI has no such option) and Pi is not installed to check: a provider with no levels takes none.
 var thinkingLevels = map[string][]string{
-	"claude": {"low", "medium", "high", "xhigh", "max"},
+	"claude":      {"low", "medium", "high", "xhigh", "max"},
+	"agy":         {"low", "medium", "high", "xhigh", "max"},
+	"antigravity": {"low", "medium", "high", "xhigh", "max"},
+	"codex":       {"minimal", "low", "medium", "high", "xhigh"},
 }
 
 // ThinkingLevels returns the levels Coral passes to agentType's CLI, nil when that type has none yet. The slice is a copy: a caller that changes it (a sort, an append) cannot change what the server accepts.
@@ -38,14 +46,26 @@ func ThinkingArgs(agentType, level string) []string {
 	if level == "" || !ValidThinking(agentType, level) {
 		return nil
 	}
+	// What reaches the command line is the allowlist's own constant, never the string that was given (a stored or sent level cannot carry anything else into an argument, #5480).
+	for _, l := range thinkingLevels[agentType] {
+		if l == level {
+			level = l
+			break
+		}
+	}
 	switch agentType {
-	case "claude":
+	case "claude", "agy", "antigravity":
 		return []string{"--effort", level}
+	case "codex":
+		return []string{"-c", codexEffortKey + "=" + level}
 	}
 	return nil
 }
 
-// StripThinkingFlags removes a stored --effort flag and its value, so a restart puts back the level it was asked to start with and
+// codexEffortKey is the codex config key the level is given under.
+const codexEffortKey = "model_reasoning_effort"
+
+// StripThinkingFlags removes a stored --effort flag and its value (and codex's -c model_reasoning_effort=<level>), so a restart puts back the level it was asked to start with and
 // never two (the stored flags of an agent hold the flags it was launched with).
 func StripThinkingFlags(flags []string) []string {
 	out := make([]string, 0, len(flags))
@@ -58,6 +78,10 @@ func StripThinkingFlags(flags []string) []string {
 			continue
 		}
 		if strings.HasPrefix(f, "--effort=") {
+			continue
+		}
+		if f == "-c" && i+1 < len(flags) && strings.HasPrefix(flags[i+1], codexEffortKey+"=") {
+			i++ // codex's level, given as -c model_reasoning_effort=<level>
 			continue
 		}
 		out = append(out, f)
