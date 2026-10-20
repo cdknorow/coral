@@ -21,6 +21,7 @@ for f in "${FILES[@]}"; do
   if [ "$have" = "$want" ]; then :; elif [ "$have" = "$b" ]; then SYNC+=("$f"); else die "someone else's edit in the shared tree: $f"; fi
 done
 echo "files: ${#FILES[@]}, to sync: ${#SYNC[@]}"
+check_binaries "$base" "$C"   # the landing refuses a program or a 5 MB file (#5444)
 git push -q origin "$C:refs/heads/main"
 git update-ref refs/heads/main "$C" "$base"
 for f in "${SYNC[@]}"; do

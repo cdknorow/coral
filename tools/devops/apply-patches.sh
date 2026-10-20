@@ -3,7 +3,7 @@
 # --keep-cr keeps carriage returns in raw terminal captures (plain git am strips them; v1.4.87 lost six PTY fixtures).
 # Each patch is scanned first (personal data, binaries; set CORAL_ALLOW_BINARY=1 for a patch whose binaries are known).
 # A conflict on tests/frontend/package.json's test:cloud line is resolved as the union of both sides; any other conflict
-# stops the run with the files listed. After each patch: no conflict markers.
+# stops the run with the files listed. After each patch: no conflict markers, no program and no file over 5 MB (#5444).
 set -o pipefail
 W=$(cd "${1:?usage: apply-patches.sh WORKTREE PATCH...}" && pwd); shift
 cd "$W" && . "$W/tools/devops/lib.sh"
@@ -12,6 +12,7 @@ cd "$W" && . "$W/tools/devops/lib.sh"
 for f in "$@"; do
   if [ -n "${CORAL_ALLOW_BINARY:-}" ]; then CORAL_SCAN_PATTERN='/Users/[^/ ]+/' scan_patch "$f" || die "scan refused $f"
   else scan_patch "$f" || die "scan refused $f"; fi
+  BEFORE=$(git rev-parse HEAD)
   if ! git "${IDENT[@]}" am -q --3way --keep-cr "$f"; then
     U=$(git diff --name-only --diff-filter=U)
     [ "$U" = tests/frontend/package.json ] || die "conflict in $f: $U (resolve by hand, then git am --continue)"
@@ -19,5 +20,6 @@ for f in "$@"; do
     git add "$U" && GIT_EDITOR=true git "${IDENT[@]}" am --continue || die "am --continue failed"
   fi
   ! git grep -nE '^(<<<<<<<|>>>>>>>)' -- . ':!*.md' || die "conflict markers after $f"
+  check_binaries "$BEFORE" HEAD   # a program or a 5 MB file in what was just applied stops the run (#5444)
   echo "applied $(basename "$f") -> $(git rev-parse --short HEAD)"
 done

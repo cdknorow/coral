@@ -1,0 +1,5 @@
+# Paths check_binaries.py lets through: files already in the tree on purpose (#5444). A new path here is a reviewed edit.
+# The three app icons are larger than 5 MB source images.
+assets/icons/corral.png
+assets/icons/corral_dark.png
+assets/icons/corral_simple.png

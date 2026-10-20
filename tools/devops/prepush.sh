@@ -10,6 +10,7 @@ unset CORAL_CLOUD_URL
 LOGS=$(dirname "$W")/prepush-$(basename "$W"); mkdir -p "$LOGS"
 T=$(mktemp -d /tmp/x.XXXX); T2=$(mktemp -d /tmp/x.XXXX)
 trap 'rm -rf "$T" "$T2"; [ -L "$W/tests/frontend/node_modules" ] && rm "$W/tests/frontend/node_modules"' EXIT INT TERM
+check_binaries "$(git merge-base origin/main HEAD)" HEAD; echo no-binaries-ok   # (#5444)
 cd "$W/coral-go" || exit 1
 F=$("$(go env GOROOT)/bin/gofmt" -l .); [ -z "$F" ] || die "gofmt: $F"; echo gofmt-ok
 go build -o /dev/null ./... && go vet ./... && go vet -tags 'dev fts5' ./... && GOOS=windows go vet ./... || die "build/vet failed"; echo build-vet-ok

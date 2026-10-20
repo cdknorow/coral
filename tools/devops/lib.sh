@@ -42,3 +42,7 @@ scan_patch() {
   hits=$(grep -nE "${CORAL_SCAN_PATTERN:-/Users/[^/ ]+/|^Binary files .* differ$|^GIT binary patch}" "$1" | grep -vE '/Users/(someone|alice|bob|me|user)/' || true)
   [ -z "$hits" ] || { echo "$hits" | head -5; return 1; }
 }
+
+# ---- no built programs, no big files (#5444) ----
+# check_binaries BASE TIP: die when a commit in BASE..TIP adds a file over 5 MB or an ELF, Mach-O or PE program (tools/devops/check_binaries.py).
+check_binaries() { python3 -I "$(dirname "${BASH_SOURCE[0]}")/check_binaries.py" "$1" "$2" || die "refused: $1..$2 adds a program or a big file (#5444)"; }

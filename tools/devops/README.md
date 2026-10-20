@@ -129,3 +129,7 @@ script, sets `CORAL_TELEMETRY_DISABLED=1`. CI's own builds carry no PostHog key 
 - The landing identity is set per command (`CORAL_LAND_NAME` and `CORAL_LAND_EMAIL`, by default "Coral DevOps
   stack"). The global git identity is never used.
 - Stage by explicit path, never amend or rebase `main`, and remove temp folders by exact path.
+
+## No programs and no big files (#5444)
+
+A built program carries the build machine's paths and account name, so one committed by mistake is a leak in a public repository. `tools/devops/check_binaries.py BASE TIP` refuses a range in which any commit (each on its own) adds or changes a file over 5 MB or one that starts with an ELF, Mach-O or PE header, except the paths in `tools/devops/binary-allowlist.txt` (icons today). `apply-patches.sh` runs it after each patch, `land-main.sh` before it pushes, `prepush.sh` before a gate, and `install-pre-push-hook.sh` installs `pre-push-hook.sh` as the shared git hook so that any worktree's `git push` is checked (`--no-verify` skips it, as for any hook). Tests: `tests/release/check_binaries_test.sh`, `tests/release/pre_push_hook_test.sh`.
