@@ -70,6 +70,9 @@ func downloadArtifact(base, ref, output string) (string, error) {
 		src, mediaType, localObject = f, mt, f.Name()
 	} else {
 		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			return "", fmt.Errorf("artifact download failed: HTTP 404: this artifact is not on this computer. It may live on another Coral (a link from a message sent by another team or computer is only a name here): ask the sender to attach the file with coral-board send --attach coral://artifacts/<id>")
+		}
 		if resp.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("artifact download failed: HTTP %d", resp.StatusCode)
 		}

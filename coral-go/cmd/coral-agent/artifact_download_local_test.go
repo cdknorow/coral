@@ -142,3 +142,19 @@ func TestDownloadDoesNotFallBackWhenCoralAnswers(t *testing.T) {
 		}
 	}
 }
+
+// #5499: a link that names an artifact this computer does not have (it lives on another Coral) says so and what to do.
+func TestDownloadOfAMissingArtifactSaysItMayLiveOnAnotherCoral(t *testing.T) {
+	isolated(t)
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	_, err := downloadArtifact(server.URL, "coral://artifacts/"+strings.Repeat("d", 64), "")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, want := range []string{"HTTP 404", "not on this computer", "another Coral", "coral-board send --attach"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in %v", want, err)
+		}
+	}
+}

@@ -394,6 +394,11 @@ func (h *BoardHandler) relayDelivered(w http.ResponseWriter, ctx context.Context
 		h.notifyFn(project)
 	}
 	out := map[string]any{"ok": true, "duplicate": ans.Duplicate, "message_id": messageID, "target_message_id": target, "mirror": mirror}
+	// A coral://artifacts link in the text that was not attached is a file on THIS computer only: the other Coral cannot open it (#5499). The message is still sent; the reply names the links.
+	if links := unattachedArtifactLinks(b.Content, prepared); len(links) > 0 {
+		out["warnings"] = []string{"unattached_artifact_links"}
+		out["unattached_links"] = links
+	}
 	if prepared != nil {
 		// The shared rows only now: the hub has the files and the message.
 		h.recordSharedAttachments(prepared.atts, project, server, team, b.SubscriberID, mirror.ID, time.Now().UTC().Format(time.RFC3339))
@@ -475,4 +480,33 @@ func (h *BoardHandler) ListRelayTargets(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "targets": out})
+}
+
+// artifactLinkRe is a coral://artifacts link as an agent writes it: the lower-case SHA-256, not part of a longer hex run.
+var artifactLinkRe = regexp.MustCompile(`coral://artifacts/([0-9a-f]{64})(?:[^0-9a-fA-F]|$)`)
+
+// maxUnattachedLinksNamed bounds the reply: a message with a hundred links names the first few.
+const maxUnattachedLinksNamed = 10
+
+// unattachedArtifactLinks are the coral://artifacts links in text that were not sent as attachments with it, in order, once each: such a link means nothing on another computer.
+func unattachedArtifactLinks(text string, prepared *attachPrepared) []string {
+	attached := map[string]bool{}
+	if prepared != nil {
+		for _, a := range prepared.atts {
+			attached[a.ID] = true
+		}
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range artifactLinkRe.FindAllStringSubmatch(text, -1) {
+		id := m[1]
+		if attached[id] || seen[id] {
+			continue
+		}
+		seen[id] = true
+		if len(out) < maxUnattachedLinksNamed {
+			out = append(out, "coral://artifacts/"+id)
+		}
+	}
+	return out
 }

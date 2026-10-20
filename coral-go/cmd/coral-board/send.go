@@ -201,6 +201,7 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 		TargetMessageID int64    `json:"target_message_id"`
 		Duplicate       bool     `json:"duplicate"`
 		Attached        []string `json:"attached"`
+		Unattached      []string `json:"unattached_links"`
 	}
 	_ = json.Unmarshal(data, &result)
 	if status != http.StatusOK {
@@ -230,7 +231,21 @@ func runRelaySend(id sendIdentity, address, replyTo, messageID, message string, 
 	if len(result.Attached) > 0 {
 		fmt.Fprintf(out, "Attached %d file(s): %s\n", len(result.Attached), strings.Join(result.Attached, ", "))
 	}
+	if len(result.Unattached) > 0 {
+		fmt.Fprintf(out, "Warning: the message names %d %s that %s not attached. A coral://artifacts link is a file on this computer only: the other Coral cannot open it. Send again with --attach coral://artifacts/<id> for each (at most 4 files).\n",
+			len(result.Unattached), plural(len(result.Unattached), "link", "links"), plural(len(result.Unattached), "is", "are"))
+		for _, l := range result.Unattached {
+			fmt.Fprintf(out, "  not attached: %s\n", l)
+		}
+	}
 	return nil
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // cmdTargets lists the other Corals' teams this board may message through Coral Hub.
