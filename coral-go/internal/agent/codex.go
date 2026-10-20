@@ -210,6 +210,24 @@ func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 	return files.done(ShellJoin(parts, raw...))
 }
 
+// CodexSessionSaved reports whether Codex has a saved session to resume for a Coral session: the thread its link names (or, with no link, the id itself) has a
+// rollout file under <CODEX_HOME>/sessions. Codex writes one only once a turn has been taken: an agent that never completed one (no credits, a prompt that
+// failed, one killed at its start) has none, and "codex resume <id>" ends at "No saved session found" and a bare shell (#5222).
+func CodexSessionSaved(coralSessionID string) bool {
+	thread := coralSessionID
+	if link := transcriptlink.Codex(coralSessionID); link.ThreadID != "" {
+		if link.Path != "" { // the link's own rollout file, checked by the link reader
+			return true
+		}
+		thread = link.ThreadID
+	}
+	if !transcriptlink.IsSessionID(thread) { // joined into a glob below: only a UUID
+		return false
+	}
+	found, _ := filepath.Glob(filepath.Join((&CodexAgent{}).HistoryBasePath(), "*", "*", "*", "rollout-*-"+thread+".jsonl"))
+	return len(found) > 0
+}
+
 // codexStart is the command's start: Coral's environment exported, so child processes (coral-board, hooks)
 // inherit it, then the binary, resuming the conversation's own Codex thread when it is known. The exports are raw
 // shell syntax (formatEnvExport quotes their values for the platform's shell, so it never expands them).

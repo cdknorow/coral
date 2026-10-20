@@ -166,6 +166,9 @@ func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// codexSessionSaved is agent.CodexSessionSaved (a variable so a test can say).
+var codexSessionSaved = agent.CodexSessionSaved
+
 // wakeExistingSession recreates the tmux/pty session for a sleeping agent
 // using the EXISTING session ID. Preserves display name, board subscriptions, and history.
 func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.LiveSession) (err error) {
@@ -264,6 +267,13 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
+	}
+
+	// A Codex agent that never completed a turn has no saved session: "codex resume" would end at "No saved session found" and a bare shell. It starts a new one
+	// (a wake is asked to bring the agent back, not to resume a particular conversation) (#5222).
+	if ls.AgentType == at.Codex && !codexSessionSaved(ls.SessionID) {
+		log.Printf("[wake] session=%s: Codex has no saved session for it (it never completed a turn); starting a new one", sessionName)
+		launchParams.ResumeSessionID = ""
 	}
 
 	// If the session is still running (e.g. it was marked sleeping by a false

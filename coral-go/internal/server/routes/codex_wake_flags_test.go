@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -61,4 +62,39 @@ func flagsOnly(cmd string) string {
 		}
 	}
 	return strings.Join(out, " ")
+}
+
+// A Codex agent that never completed a turn has no saved session ("codex resume" ends at "No saved session found" and a bare shell, found with real Codex): its wake
+// starts a new one. One that has a saved session is resumed.
+func TestWakeOfACodexAgentWithNoSavedSessionStartsANewOne(t *testing.T) {
+	for _, saved := range []bool{false, true} {
+		name := map[bool]string{false: "no saved session: a new one", true: "a saved session: resumed"}[saved]
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("CODEX_HOME", home)
+			_, h, term, ss := setupSessionsTestServer(t)
+			ctx := context.Background()
+			const id = "33333333-2222-3333-4444-555555555555"
+			if saved {
+				dir := home + "/sessions/2026/10/19"
+				require.NoError(t, os.MkdirAll(dir, 0o700))
+				require.NoError(t, os.WriteFile(dir+"/rollout-2026-10-19T10-00-00-"+id+".jsonl", []byte(`{"type":"session_meta"}`+"\n"), 0o600))
+			}
+			require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: id, AgentType: "codex", AgentName: "coral-go", WorkingDir: t.TempDir(), PermissionMode: ptr.NonEmpty("auto")}))
+			require.NoError(t, ss.SetSessionSleeping(ctx, id, true))
+			req := dropAt2(httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+id+"/wake", nil), map[string]string{"sessionID": id})
+			rec := httptest.NewRecorder()
+			h.WakeSession(rec, req)
+			require.Contains(t, rec.Body.String(), `"ok":true`, rec.Body.String())
+			cmds := term.sentCommands()
+			require.NotEmpty(t, cmds)
+			cmd := cmds[len(cmds)-1]
+			if saved {
+				assert.Contains(t, cmd, " resume "+id, "resumed")
+			} else {
+				assert.NotContains(t, cmd, " resume ", "a new agent, not a resume of nothing")
+			}
+			assert.Contains(t, cmd, "--sandbox workspace-write -a never", "the permission mode is kept either way")
+		})
+	}
 }
