@@ -16,7 +16,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -178,17 +178,36 @@ func hubDisplayText(s string) string {
 // pasted image, <path> is an absolute path in the uploads folder, and when that folder is under the home directory the path names the OS account; the text comes back
 // in the chat fields that are shown as written. Only this one folder is rewritten (each home form it can be spelled with), so other free text is still left alone.
 func hubUploadText(s string) string {
-	if uploadDir == "" || !strings.Contains(s, "/") {
+	if uploadDir == "" || !strings.ContainsAny(s, `/\`) {
 		return s
 	}
-	disp := hubDisplayPath(uploadDir)
-	rest, ok := strings.CutPrefix(filepath.ToSlash(disp), "~/")
+	norm := func(x string) string {
+		if hubSlashes {
+			x = strings.ReplaceAll(x, `\`, "/")
+		}
+		return x
+	}
+	rest, ok := strings.CutPrefix(norm(hubDisplayPath(uploadDir)), "~/")
 	if !ok {
 		return s // the uploads folder is not under the home directory: nothing in its path names the account
 	}
+	// A path is typed as the OS spells it: on Windows with "\" (or "/"), in any letter case, so "/" matches both separators there and the match
+	// ignores ASCII case where the file system does (the same rules as hubDisplayPath: hubSlashes, hubFold).
+	sep := "/"
+	if hubSlashes {
+		sep = `[/\\]`
+	}
 	for _, h := range hubHomes() {
-		if p := filepath.ToSlash(h) + "/" + rest; strings.Contains(s, p) {
-			s = strings.ReplaceAll(s, p, "~/"+rest)
+		parts := strings.Split(norm(h)+"/"+rest, "/")
+		for i := range parts {
+			parts[i] = regexp.QuoteMeta(parts[i])
+		}
+		expr := strings.Join(parts, sep)
+		if hubFold {
+			expr = "(?i)" + expr
+		}
+		if re, err := regexp.Compile(expr); err == nil {
+			s = re.ReplaceAllLiteralString(s, "~/"+rest)
 		}
 	}
 	return s
