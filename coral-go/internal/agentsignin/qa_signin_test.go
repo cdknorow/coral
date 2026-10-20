@@ -1,3 +1,7 @@
+//go:build !windows
+
+// These checks use signals and process groups (syscall.Kill): the Unix platforms only.
+
 package agentsignin
 
 import (
@@ -34,7 +38,7 @@ func TestManyCallersAtOnceShareOneCheck(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	assert.Less(t, time.Since(start), 5*time.Second, "all 20 are answered within a deadline and a bit")
+	assert.Less(t, time.Since(start), checkTimeout+2*time.Second, "all 20 are answered within the check's deadline and a bit") // the first deadline is 6 s (#5469), not the 5 s it was
 	for i, err := range errs {
 		assert.True(t, IsNotSignedIn(err), "caller %d: %v", i, err)
 	}
