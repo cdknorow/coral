@@ -54,11 +54,10 @@ var startsCoral = regexp.MustCompile(`coral-tray|coral-board|coral-agent|launch-
 // the flag.
 var notAStarter = map[string]string{
 	// Build / generate / download tools: they build or fetch, they do not run Coral.
-	"tools/build_windows.ps1":          "builds the Windows binaries",
-	"tools/gen_route_queries.py":       "code generator",
-	"tools/gen_windows_resources.sh":   "resource generator",
-	"tools/make_windows_icon.py":       "icon generator",
-	"tools/devops/download-release.sh": "downloads release assets, does not run them",
+	"tools/build_windows.ps1":        "builds the Windows binaries",
+	"tools/gen_route_queries.py":     "code generator",
+	"tools/gen_windows_resources.sh": "resource generator",
+	"tools/make_windows_icon.py":     "icon generator",
 	// Inspect the bundle's files; do not execute Coral (file/otool/readelf, or a self-test on a
 	// from-source, keyless build so it cannot send).
 	"tests/release/verify_standard_bundle.sh":   "inspects the package (file, lists expected binaries); does not run Coral",

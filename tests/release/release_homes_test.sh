@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The per-tag release home (tools/release-homes.sh, #5299): a tag is checked against the repository that built it.
 set -euo pipefail
+export CORAL_TELEMETRY_DISABLED=1 # nothing here runs Coral, but the telemetry census wants it on every script that names the repository
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/../../tools/release-homes.sh"
 fail=0
