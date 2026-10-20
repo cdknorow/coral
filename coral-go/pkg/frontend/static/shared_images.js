@@ -1,18 +1,31 @@
-/* Images pasted or attached in the dashboard are artifacts too (#5284): what the browser does about it, in one place.
- *  - splitSharedImages: the "<path> coral://artifacts/<hex>" pairs at the start of a user turn (what Send types into the agent for each image), exactly: an upload path (a folder named uploads, then a
- *    file) followed by whitespace and a 64-hex link, repeated. A user's own text that starts with a link, or has a link with no upload path before it, is never taken for one.
+/* Images pasted or attached in the dashboard are artifacts too (#5284). What Send types into the agent for them (#5481): ONLY each image's coral://artifacts/<hex> link, then one short hint the agent can
+ * act on (fetch the link with coral-agent artifact download, then open the path it prints); never the local uploads path. The chat shows the images as artifact thumbnails, not as that text.
+ *  - sharedImagesPrefix / attachmentsLead: what Send puts before the person's own text for the pending attachments;
+ *  - splitSharedImages: the leading images of a user turn and the text after them. Two shapes: today's "<link> <link> <hint>" and the one before #5481, "<path> coral://artifacts/<hex>" pairs (an upload
+ *    path, whitespace, a 64-hex link, repeated), which older turns in a session's history still have. A user's own text that starts with a link (no hint after it), or a link with no upload path before it, is never
+ *    taken for one.
  *  - the notice before the first paste after each Coral Hub connect (the images are visible to Hub viewers and cannot be hidden), with the way to turn sharing off;
  *  - the call that removes one image's shared copy. */
 import { serverFetch } from './server_base.js';
 import { browserSession } from './safe_storage.js';
 
+/** The one hint typed after the image links: the same words every time, so the chat can tell them from a person's text. */
+export const IMAGE_HINT = '(Image link(s) above: run coral-agent artifact download <link> and open the path it prints before reading the image.)';
+
+const LINK = String.raw`coral:\/\/artifacts\/[0-9a-f]{64}(?![0-9a-f])`;
+const NEW_LEADING = new RegExp(String.raw`^\s*((?:${LINK}\s+)+)${IMAGE_HINT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\s+|$)`);
 const PAIR = String.raw`(?:(?:\/|[A-Za-z]:[\\\/])[^\n]*?[\\\/]uploads[\\\/]\S+)\s+coral:\/\/artifacts\/[0-9a-f]{64}(?![0-9a-f])`;
 const LEADING = new RegExp(String.raw`^\s*(?:${PAIR}(?:\s+|$))+`);
 const ONE = new RegExp(String.raw`((?:\/|[A-Za-z]:[\\\/])[^\n]*?[\\\/]uploads[\\\/]\S+)\s+coral:\/\/artifacts\/([0-9a-f]{64})(?![0-9a-f])`, 'g');
 
-/** The leading image pairs of a user turn and the text after them: { images: [{ path, name, hex }], rest }. No pairs: { images: [], rest: text }. */
+/** The leading images of a user turn and the text after them: { images: [{ path, name, hex }], rest }. None: { images: [], rest: text }. */
 export function splitSharedImages(text) {
     const s = String(text == null ? '' : text);
+    const n = NEW_LEADING.exec(s);
+    if (n) {
+        const hexes = [...n[1].matchAll(/coral:\/\/artifacts\/([0-9a-f]{64})/g)].map(m => m[1]);
+        return { images: hexes.map((hex, i) => ({ path: '', name: hexes.length > 1 ? `Pasted image ${i + 1}` : 'Pasted image', hex })), rest: s.slice(n[0].length).trim() };
+    }
     const m = LEADING.exec(s);
     if (!m) return { images: [], rest: s };
     const images = [];
@@ -20,9 +33,16 @@ export function splitSharedImages(text) {
     return { images, rest: s.slice(m[0].length).trim() };
 }
 
-/** What the message typed into the agent says for one pending attachment: its path, and its link when it has an artifact. */
+/** What Send types for one pending attachment: its artifact link; the local path only when it has no artifact (nothing else to name it by). */
 export function attachmentText(att) {
-    return att.artifact && att.artifact.uri ? `${att.path} ${att.artifact.uri}` : att.path;
+    return att.artifact && att.artifact.uri ? att.artifact.uri : att.path;
+}
+
+/** The parts Send types before the person's text, for the pending attachments: each image's text, then the one hint when any of them is a link. */
+export function attachmentsLead(atts) {
+    const parts = atts.map(attachmentText);
+    if (atts.some(a => a.artifact && a.artifact.uri)) parts.push(IMAGE_HINT);
+    return parts;
 }
 
 const NOTICE_KEY = 'coral-share-notice-connect';

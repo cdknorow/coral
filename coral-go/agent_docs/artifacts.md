@@ -175,6 +175,13 @@ coral-agent artifact download coral://artifacts/<hex> [--output FILE]   # flags 
 # prints a verified local path; open it with your file or image tool
 ```
 
+### Images the person pastes or attaches (#5481)
+
+An image pasted or attached in the dashboard is an artifact. Send types **only its `coral://artifacts/<hex>` link** into the agent (one per image) and, once, a hint:
+`(Image link(s) above: run coral-agent artifact download <link> and open the path it prints before reading the image.)`, then the person's own text. The agent never gets the local uploads path.
+Every agent type (Claude, Codex, Antigravity, Pi) reads the same: run `coral-agent artifact download coral://artifacts/<hex>`, then open the path it prints with the image or file tool before describing the image;
+the link alone is not the image. An image that has no artifact (the dashboard could not make one) is typed as its local path, with no hint. The chat shows the images as thumbnails from the artifact, as before.
+
 ## Comments on an artifact (#5176)
 
 The person at the dashboard can comment on a text-like artifact (Markdown, text, code, JSON, YAML, HTML source) in the artifact viewer: a comment on selected text or on the whole document, one level of replies, edit and delete your own, resolve and reopen a thread. A comment belongs to that exact artifact (its 64-hex digest), so deleting or pruning the artifact removes its comments.

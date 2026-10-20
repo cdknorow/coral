@@ -56,11 +56,13 @@ async function httpJson(method, p, body, headers = {}) {
             check(`${tag}: the upload answers with the path and an artifact`, up && up.ok && up.path && up.artifact && /^coral:\/\/artifacts\/[0-9a-f]{64}$/.test(up.artifact.uri) && up.artifact.inline === true && !up.artifact_error, JSON.stringify(up).slice(0, 200));
             check(`${tag}: the composer shows the attachment`, await ev(`document.querySelectorAll('#image-attachments .image-attachment').length === 1`));
 
-            // 2. Send types the path AND the link, then the text
+            // 2. Send types ONLY the link and one hint (never the uploads path), then the text (#5481)
             await ev(`document.getElementById('command-input').value = 'what is this'; import(${S} + 'controls.js').then(m => m.sendCommand())`);
             await waitFor(`window.__rec.sends.length === 1`, 'the send', { timeout: 8000 });
             const typed = await ev(`window.__rec.sends[0].command`);
-            check(`${tag}: the agent gets the path and the link, then the text`, typed === `${up.path} ${up.artifact.uri} what is this`, typed);
+            const HINT = await ev(`import(${S} + 'shared_images.js').then(m => m.IMAGE_HINT)`);
+            check(`${tag}: the agent gets the link and the hint to fetch it, then the text`, typed === `${up.artifact.uri} ${HINT} what is this`, typed);
+            check(`${tag}: the local uploads path never reaches the agent`, !typed.includes(up.path) && !/uploads/.test(typed) && /coral-agent artifact download/.test(typed), typed);
 
             // 3. the chat: a thumbnail from the artifact, the name as a chip, the text alone
             const render = (msgs) => ev(`import(${S} + 'live_chat.js').then(m => { document.getElementById('pia-box')?.remove(); const box = document.createElement('div'); box.id = 'pia-box'; box.className = 'chat-messages chat-prose';
@@ -69,10 +71,13 @@ async function httpJson(method, p, body, headers = {}) {
             await waitFor(`(() => { const t = document.querySelector('#pia-box .chat-attachment-thumb[data-artifact]'); return t && !t.hidden && t.querySelector('img').naturalWidth > 0; })()`, `${tag}: the thumbnail loads from the artifact route`, { timeout: 10000 });
             const bub = await ev(`(() => { const b = document.querySelector('#pia-box .chat-bubble.human'); const t = b.querySelector('.chat-attachment-thumb'); const x = b.querySelector('.chat-attachment-unshare'); const xr = x && x.getBoundingClientRect();
                 return { text: b.querySelector('.message-text').innerText.trim(), chip: (b.querySelector('.chat-attachment-chip') || {}).textContent, art: t.dataset.artifact, unshare: !!x && !x.hidden, unshareH: xr && Math.round(xr.height), raw: b.innerHTML.includes('coral://artifacts') || b.innerHTML.includes('/uploads/') }; })()`);
-            check(`${tag}: the bubble shows the typed text alone, the file's name as a chip, a thumbnail of the artifact`, bub.text === 'what is this' && bub.chip === up.path.split('/').pop() && bub.art === up.artifact.id && !bub.raw, JSON.stringify(bub));
+            check(`${tag}: the bubble shows the typed text alone, the file's name as a chip, a thumbnail of the artifact`, bub.text === 'what is this' && bub.chip === 'Pasted image' && bub.art === up.artifact.id && !bub.raw, JSON.stringify(bub));
             check(`${tag}: a "Remove shared copy" button is there${mobile ? ' and 44 px' : ''}`, bub.unshare && (!mobile || bub.unshareH >= 44), JSON.stringify(bub));
 
             // 4. old messages and a user's own link are left as they were
+            // (a session's history from before #5481 has "<path> <link>" pairs: they still show as a thumbnail)
+            await render([{ type: 'user', content: `${up.path} ${up.artifact.uri} older`, key: 'k0', timestamp: '2026-10-18T00:00:00Z' }]);
+            await waitFor(`(() => { const t = document.querySelector('#pia-box .chat-attachment-thumb[data-artifact]'); return !!t && t.dataset.artifact === ${JSON.stringify(up.artifact.id)}; })()`, `${tag}: an older path-and-link message still shows its thumbnail`, { timeout: 10000 });
             await render([{ type: 'user', content: `${up.path} hello`, key: 'k2', timestamp: '2026-10-19T00:01:00Z' }, { type: 'user', content: `coral://artifacts/${up.artifact.id} what is this`, key: 'k3', timestamp: '2026-10-19T00:02:00Z' },
                 { type: 'user', content: 'look at it', attachments: [{ name: '[Image #1]', file: up.path.split('/').pop() }], key: 'k4', timestamp: '2026-10-19T00:03:00Z' }]);
             await waitFor(`!!document.querySelector('#pia-box .chat-attachment-thumb[data-upload]:not([hidden])')`, `${tag}: an old-style attachment still gets its thumbnail by file name`, { timeout: 10000 });
@@ -97,7 +102,7 @@ async function httpJson(method, p, body, headers = {}) {
             check(`${tag}: removing asks first and says what is lost`, /Coral Hub viewers lose/.test(await ev(`document.getElementById('confirm-modal-message').textContent`)));
             await ev(`document.getElementById('confirm-modal-yes').click(); true`);
             await waitFor(`window.__rec.deletes.length === 1 && document.querySelector('#pia-box .chat-attachment-thumb').hidden === true`, `${tag}: the thumbnail turns back into the chip`, { timeout: 8000 });
-            check(`${tag}: the chip with the file name stays`, (await ev(`(document.querySelector('#pia-box .chat-attachment-chip') || {}).textContent`)) === up.path.split('/').pop());
+            check(`${tag}: the chip ("Pasted image") stays`, (await ev(`(document.querySelector('#pia-box .chat-attachment-chip') || {}).textContent`)) === 'Pasted image');
             check(`${tag}: the shared copy is gone from the artifact route (asked past the browser's cache: an artifact is cached for good)`, (await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2', { cache: 'no-store' }).then(r => r.status)`)) === 404, JSON.stringify(await ev(`window.__rec.deletes`)));
 
             // 7. the notice: once for each Coral Hub connect, with the way to turn sharing off

@@ -1595,6 +1595,27 @@ func TestPublishArtifactGuidanceDefaultsToCoralVisible(t *testing.T) {
 	}
 }
 
+// A pasted or attached image reaches every agent type as a coral://artifacts link alone (#5481): the one canonical prompt, which Claude, Codex, Antigravity and Pi all receive, says to fetch it
+// with coral-agent artifact download and open the printed path before reading it.
+func TestPastedImageGuidanceIsInTheCanonicalPrompt(t *testing.T) {
+	for name, prompt := range map[string]string{
+		"orchestrator system prompt": DefaultOrchestratorSystemPrompt,
+		"worker system prompt":       DefaultWorkerSystemPrompt,
+		"task workflow guidance":     DefaultTaskWorkflowGuidance,
+	} {
+		for _, want := range []string{
+			"pastes or attaches in the dashboard reaches you as a coral://artifacts link alone",
+			"a one-line hint and no local path: fetch it first the same way",
+			"coral-agent artifact download <uri>",
+			"open that path with your image-viewing tool before reviewing the image",
+		} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("%s missing %q", name, want)
+			}
+		}
+	}
+}
+
 func TestPublishArtifactGuidanceSentenceSpacingAndNoStaleClaims(t *testing.T) {
 	// The new paragraph must be separated from the preceding sentence.
 	if !strings.Contains(DefaultTaskWorkflowGuidance, "is not visual evidence. \"Publish\"") {

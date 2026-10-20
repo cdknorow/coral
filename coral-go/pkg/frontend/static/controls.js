@@ -16,7 +16,7 @@ import { addPendingMessage, confirmPendingMessage, removePendingMessage, resetLi
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked } from './hub_access.js';
-import { attachmentText, ensureShareNotice } from './shared_images.js';
+import { attachmentsLead, ensureShareNotice } from './shared_images.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
 import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends } from './terminal_gone.js';
@@ -110,10 +110,7 @@ export async function sendCommand({ nudge = false } = {}) {
 
         // Build the full command: image paths + text, space-separated
         const sessionAttachments = getPendingAttachments(targetSession);
-        const parts = [];
-        for (const att of sessionAttachments) {
-            parts.push(attachmentText(att)); // the path the agent reads, and the link of its artifact when it has one (#5284)
-        }
+        const parts = attachmentsLead(sessionAttachments); // each image's artifact link and one hint to fetch them, never the local path (#5481); the path only for an image with no artifact
         if (textPart) parts.push(textPart);
 
         const command = parts.join(" ");

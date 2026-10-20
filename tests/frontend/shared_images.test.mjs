@@ -1,9 +1,10 @@
-// The leading "<path> coral://artifacts/<hex>" pairs of a user turn (#5284): exactly an upload path followed by a 64-hex link, repeated; a user's own text is never eaten.
+// The images leading a user turn (#5284, #5481): Send types only each image's coral://artifacts link and one hint (never the local path); the older "<path> coral://artifacts/<hex>" pairs still parse (a session's history has them);
+// a user's own text is never eaten.
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
-const { splitSharedImages, attachmentText } = await import(path.resolve(here, '../../coral-go/pkg/frontend/static/shared_images.js'));
+const { splitSharedImages, attachmentText, attachmentsLead, IMAGE_HINT } = await import(path.resolve(here, '../../coral-go/pkg/frontend/static/shared_images.js'));
 
 const H1 = 'a'.repeat(64), H2 = 'b1'.repeat(32);
 const P1 = '/home/dev/.coral/uploads/screenshot_20261019_101500_ab12.png';
@@ -41,8 +42,28 @@ for (const own of [
 }
 assert.deepEqual(splitSharedImages(null), { images: [], rest: '' });
 
-// the text Send types into the agent
-assert.equal(attachmentText({ path: P1, artifact: { uri: `coral://artifacts/${H1}` } }), `${P1} coral://artifacts/${H1}`);
-assert.equal(attachmentText({ path: P1, artifact: null }), P1);
+// today's shape: links, one hint, the text
+const L1 = `coral://artifacts/${H1}`, L2 = `coral://artifacts/${H2}`;
+r = splitSharedImages(`${L1} ${IMAGE_HINT} what is this?`);
+assert.deepEqual(r.images, [{ path: '', name: 'Pasted image', hex: H1 }]); assert.equal(r.rest, 'what is this?');
+r = splitSharedImages(`${L1} ${L2} ${IMAGE_HINT} and the text`);
+assert.deepEqual(r.images.map(i => [i.name, i.hex]), [['Pasted image 1', H1], ['Pasted image 2', H2]]); assert.equal(r.rest, 'and the text');
+r = splitSharedImages(`${L1} ${IMAGE_HINT}`); assert.equal(r.images.length, 1); assert.equal(r.rest, '', 'images only');
+r = splitSharedImages(`  ${L1}\n${IMAGE_HINT}\n\nthe text`); assert.equal(r.images.length, 1, 'whitespace between is any whitespace'); assert.equal(r.rest, 'the text');
+// links with no hint, a changed hint, a link after text, a short or upper-case digest: the person's own text
+for (const own of [`${L1} ${L2} what are these`, `${L1} ${IMAGE_HINT.replace('download', 'fetch')} x`, `look ${L1} ${IMAGE_HINT}`, `coral://artifacts/${H1.slice(0, 63)} ${IMAGE_HINT}`, `coral://artifacts/${H1.toUpperCase()} ${IMAGE_HINT}`, `${H1} ${IMAGE_HINT}`]) {
+    const o = splitSharedImages(own); assert.deepEqual(o.images, [], `not an image: ${own.slice(0, 50)}`); assert.equal(o.rest, own);
+}
+
+// the text Send types into the agent: the link only, and the hint once
+assert.equal(attachmentText({ path: P1, artifact: { uri: L1 } }), L1, 'the link, never the path');
+assert.equal(attachmentText({ path: P1, artifact: null }), P1, 'no artifact: the path is all there is');
 assert.equal(attachmentText({ path: P1 }), P1);
+assert.deepEqual(attachmentsLead([{ path: P1, artifact: { uri: L1 } }]), [L1, IMAGE_HINT]);
+assert.deepEqual(attachmentsLead([{ path: P1, artifact: { uri: L1 } }, { path: P2, artifact: { uri: L2 } }]), [L1, L2, IMAGE_HINT], 'one hint for two images');
+assert.deepEqual(attachmentsLead([{ path: P1, artifact: null }]), [P1], 'no link, no hint');
+assert.ok(!attachmentsLead([{ path: P1, artifact: { uri: L1 } }]).join(' ').includes('uploads'), 'the uploads path never reaches the agent');
+// what Send types comes back as the same images in the chat
+r = splitSharedImages([...attachmentsLead([{ path: P1, artifact: { uri: L1 } }, { path: P2, artifact: { uri: L2 } }]), 'and the question'].join(' '));
+assert.deepEqual(r.images.map(i => i.hex), [H1, H2]); assert.equal(r.rest, 'and the question');
 console.log('shared_images: ok');
