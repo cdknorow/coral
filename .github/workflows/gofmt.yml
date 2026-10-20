@@ -1,5 +1,5 @@
 name: gofmt
-# Every Go file under coral-go/ stays gofmt-clean. Runs on pushes to main (most changes land there
+# Every Go file under coral-go/ stays gofmt-clean, and every workflow keeps the rules of tests/release/workflows_lint.py (#5369). Runs on pushes to main (most changes land there
 # directly), on pushes to ci/** (the landing agent's gate branches, so a batch fails here before it lands,
 # #4605) and on pull requests. Fix locally with: cd coral-go && gofmt -w <files listed>.
 on:
@@ -7,11 +7,13 @@ on:
     branches: [main, "ci/**"]
     paths:
       - "coral-go/**.go"
-      - ".github/workflows/gofmt.yml"
+      - ".github/workflows/**"
+      - "tests/release/workflows_lint.py"
   pull_request:
     paths:
       - "coral-go/**.go"
-      - ".github/workflows/gofmt.yml"
+      - ".github/workflows/**"
+      - "tests/release/workflows_lint.py"
   workflow_dispatch:
 
 permissions:
@@ -37,3 +39,5 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+      - name: workflows lint (pinned actions, no credentials kept, no input in a script)
+        run: python3 -I tests/release/workflows_lint.py
