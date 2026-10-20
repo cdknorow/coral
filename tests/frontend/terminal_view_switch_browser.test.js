@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
 const THROTTLE = Number(process.env.THROTTLE || 1);
 const ROUNDS = Number(process.env.ROUNDS || 40), STEP_MS = Number(process.env.TERMINAL_STEP_MS || 15000);
-const wait = ms => new Promise(r => setTimeout(r, ms)); // a settle for the page's own debounces, not a condition
+const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: the page's own debounces and frames; there is no event for "nothing more will resize"
 
 const logs = []; const say = (...a) => { const l = a.join(' '); logs.push(l); console.log(l); if (process.env.TV_OUT) fs.appendFileSync(process.env.TV_OUT, l + '\n'); };
 (async () => {
@@ -46,8 +46,11 @@ const logs = []; const say = (...a) => { const l = a.join(' '); logs.push(l); co
         for (let n = 0; n < ROUNDS; n++) {
             round = n;
             await ev(`(() => { const s = T.state.liveSessions[${n} % 3]; window.selectLiveSession(s.name, 'claude', s.session_id, ''); return true; })()`);
-            for (const v of ['chat', 'terminal', 'chat']) { const t0 = Date.now(); await ev(`window.setLiveViewMode(${JSON.stringify(v)}); true`); const dt = Date.now() - t0; if (dt > 500) slow.push(`round ${n} ${v} ${dt} ms`); await wait(15); }
-            if (n === 0 || n === 1) await rawEv(`(() => { const t = window.__coralTest.getTerminal(); if (!t || t.__wrapped) return false; t.__wrapped = true; window.__tt = window.__tt || []; for (const k of ['resize', 'refresh', 'clear', 'reset']) { const f = t[k].bind(t); t[k] = (...a) => { const s = performance.now(); const r = f(...a); window.__tt.push(k + ' ' + a.join(',') + ' ' + Math.round(performance.now() - s) + 'ms'); return r; }; } return true; })()`);
+            for (const v of ['chat', 'terminal', 'chat']) { if (v === 'terminal') await rawEv(`window.__rz = []; true`); const t0 = Date.now(); await ev(`window.setLiveViewMode(${JSON.stringify(v)}); true`); const dt = Date.now() - t0; if (dt > 500) slow.push(`round ${n} ${v} ${dt} ms`); if (v === 'terminal' && n > 0) { await settle(250); const rz = await ev(`window.__rz.slice()`), settled = await ev(`window.__coralTest.getTerminal().rows`);
+                    // the first fit after the switch asks for the rows the terminal settles at (#5407): no overshoot (a row height read a frame late asked for 2,339 and 113,987), no collapse to a row
+                    if (rz.length && (rz[0] !== settled || Math.max(...rz) > settled || Math.min(...rz) < Math.min(settled, 2))) throw new Error(`round ${n}: the fits after the switch asked for ${JSON.stringify(rz)} rows and the terminal settled at ${settled}`); }
+                await settle(15); }
+            await rawEv(`(() => { const t = window.__coralTest.getTerminal(); if (!t || t.__wrapped) return false; t.__wrapped = true; window.__tt = window.__tt || []; window.__rz = []; const f = t.resize.bind(t); t.resize = (...a) => { window.__rz.push(a[1]); return f(...a); }; return true; })()`);
             const sizes = await ev(`(() => { const t = window.__coralTest && window.__coralTest.getTerminal ? window.__coralTest.getTerminal() : null; return t ? t.cols + 'x' + t.rows + ' scrollback ' + t.options.scrollback + ' calls ' + JSON.stringify((window.__tt || []).splice(0).slice(-6)) : 'no terminal'; })()`); say(`round ${n}: terminal ${sizes}`);
             // a terminal is never taller or wider than its window can show (xterm_renderer's fit caps it): the stall was a fit that grew it to 113,987 rows
             const dim = await ev(`(() => { const t = window.__coralTest.getTerminal(); return t ? { rows: t.rows, cols: t.cols, maxRows: Math.ceil(innerHeight / 6) + 2, maxCols: Math.ceil(innerWidth / 3) + 2 } : null; })()`);
