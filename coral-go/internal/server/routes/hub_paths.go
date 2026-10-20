@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -173,6 +174,26 @@ func hubDisplayText(s string) string {
 	return s
 }
 
+// hubUploadText shows this computer's uploads folder as "~/..." inside free text (#5400). The dashboard types "<path> coral://artifacts/<id>" into the agent for a
+// pasted image, <path> is an absolute path in the uploads folder, and when that folder is under the home directory the path names the OS account; the text comes back
+// in the chat fields that are shown as written. Only this one folder is rewritten (each home form it can be spelled with), so other free text is still left alone.
+func hubUploadText(s string) string {
+	if uploadDir == "" || !strings.Contains(s, "/") {
+		return s
+	}
+	disp := hubDisplayPath(uploadDir)
+	rest, ok := strings.CutPrefix(filepath.ToSlash(disp), "~/")
+	if !ok {
+		return s // the uploads folder is not under the home directory: nothing in its path names the account
+	}
+	for _, h := range hubHomes() {
+		if p := filepath.ToSlash(h) + "/" + rest; strings.Contains(s, p) {
+			s = strings.ReplaceAll(s, p, "~/"+rest)
+		}
+	}
+	return s
+}
+
 // hubPathChar: a byte that can continue a file name.
 func hubPathChar(c byte) bool {
 	return c == '.' || c == '-' || c == '_' || c == '/' || c == '\\' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
@@ -213,7 +234,9 @@ func hubRewrite(v any, f func(string) string, drop bool) {
 				case hubTextFields[k], hubCommandFields[k]:
 					x[k] = hubDisplayText(s)
 				case !hubLongText[k]:
-					x[k] = hubWholePath(s)
+					x[k] = hubUploadText(hubWholePath(s))
+				default: // free text is shown as written, except for the uploads folder's path (#5400)
+					x[k] = hubUploadText(s)
 				}
 				continue
 			}
@@ -230,7 +253,7 @@ func hubRewrite(v any, f func(string) string, drop bool) {
 		for i, val := range x {
 			if s, ok := val.(string); ok {
 				if drop {
-					x[i] = hubWholePath(s)
+					x[i] = hubUploadText(hubWholePath(s))
 				}
 				continue
 			}
