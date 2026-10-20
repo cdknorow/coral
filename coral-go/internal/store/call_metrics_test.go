@@ -258,3 +258,38 @@ func (s *syncBuffer) String() string {
 	defer s.mu.Unlock()
 	return s.b.String()
 }
+
+// Past callMetricMaxRows new metrics are counted and not written; rows already stored stay (#5359).
+func TestCallMetricRowCapDropsNewRowsOnly(t *testing.T) {
+	setCallMetricLimits(t, time.Hour, 1000, 1000)
+	old := callMetricMaxRows
+	callMetricMaxRows = 5
+	t.Cleanup(func() { callMetricMaxRows = old })
+	db := openTestDB(t)
+	ctx := context.Background()
+	for i := 0; i < 4; i++ {
+		db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/x"})
+	}
+	require.NoError(t, db.FlushCallMetrics(ctx))
+	assert.Equal(t, 4, countCallMetrics(t, db))
+	assert.EqualValues(t, 0, db.CallMetricsCapDropped())
+
+	for i := 0; i < 4; i++ { // room for one
+		db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/x"})
+	}
+	require.NoError(t, db.FlushCallMetrics(ctx))
+	assert.Equal(t, 5, countCallMetrics(t, db), "filled to the cap, nothing stored was removed")
+	assert.EqualValues(t, 3, db.CallMetricsCapDropped())
+
+	db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/x"})
+	require.NoError(t, db.FlushCallMetrics(ctx))
+	assert.Equal(t, 5, countCallMetrics(t, db))
+	assert.EqualValues(t, 4, db.CallMetricsCapDropped())
+
+	// Room again (the roll-up deleted the oldest): writing resumes.
+	_, err := db.Exec(`DELETE FROM call_metrics WHERE id <= 3`)
+	require.NoError(t, err)
+	db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/x"})
+	require.NoError(t, db.FlushCallMetrics(ctx))
+	assert.Equal(t, 3, countCallMetrics(t, db))
+}

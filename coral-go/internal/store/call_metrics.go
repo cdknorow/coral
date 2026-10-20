@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -48,6 +49,11 @@ var (
 	callMetricFlushInterval = 10 * time.Second
 	callMetricFlushBatch    = 500    // pending rows that trigger an early flush
 	callMetricMaxPending    = 20_000 // beyond this, new metrics are dropped
+	// callMetricMaxRows bounds the raw rows (#5359): the summary reads them all, at ~2 us a row,
+	// and the roll-up only moves rows older than callMetricRawHours. Past it new metrics are not
+	// written (counted and logged, once per run of drops) until the roll-up makes room; rows
+	// already stored are never touched.
+	callMetricMaxRows int64 = 500_000
 )
 
 type callMetricBuffer struct {
@@ -55,6 +61,9 @@ type callMetricBuffer struct {
 	pending []*CallMetric
 	dropped int64
 	closed  bool
+
+	capDropped atomic.Int64 // metrics not written because the table is at callMetricMaxRows (#5359)
+	capLogged  atomic.Bool
 
 	flushMu sync.Mutex // serializes flushes so rows are written in order
 	kick    chan struct{}
@@ -192,6 +201,10 @@ func (d *DB) writeCallMetrics(ctx context.Context, batch []*CallMetric) error {
 		return err
 	}
 	defer tx.Rollback()
+	batch, err = d.trimToRowCap(ctx, tx, batch)
+	if err != nil || len(batch) == 0 {
+		return err
+	}
 	stmt, err := tx.PreparexContext(ctx, `INSERT INTO call_metrics(call_type,operation,agent_name,session_id,team_id,board_name,method,status_code,duration_ms,is_error,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return err
@@ -210,6 +223,32 @@ func (d *DB) writeCallMetrics(ctx context.Context, batch []*CallMetric) error {
 	}
 	return tx.Commit()
 }
+
+// trimToRowCap keeps as many of batch as fit under callMetricMaxRows. The stored count is the
+// span of ids (MAX-MIN+1, two index probes, not a COUNT scan): the roll-up deletes whole hours
+// from the old end, so the span stays close to the count and errs toward dropping early.
+func (d *DB) trimToRowCap(ctx context.Context, tx *sqlx.Tx, batch []*CallMetric) ([]*CallMetric, error) {
+	var span int64
+	if err := tx.GetContext(ctx, &span, `SELECT COALESCE(MAX(id) - MIN(id) + 1, 0) FROM call_metrics`); err != nil {
+		return nil, err
+	}
+	room := callMetricMaxRows - span
+	if room >= int64(len(batch)) {
+		d.callMetricBuf().capLogged.Store(false)
+		return batch, nil
+	}
+	room = max(room, 0)
+	lost := int64(len(batch)) - room
+	b := d.callMetricBuf()
+	b.capDropped.Add(lost)
+	if b.capLogged.CompareAndSwap(false, true) {
+		log.Printf("[call-metrics] %d raw rows stored (cap %d): new metrics are not written until the roll-up makes room", span, callMetricMaxRows)
+	}
+	return batch[:int(room)], nil
+}
+
+// CallMetricsCapDropped is how many metrics were not written because of callMetricMaxRows.
+func (d *DB) CallMetricsCapDropped() int64 { return d.callMetricBuf().capDropped.Load() }
 
 // liveDisplayNames maps each distinct session ID in batch to its live
 // session's display name (or agent name), with one query per 500 IDs.
