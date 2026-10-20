@@ -1,5 +1,28 @@
 # Release Notes
 
+## v1.4.127 — Shorter secrets after a key-named header are redacted, the light theme is readable at 320 px, and the Artifacts tabs have a cleaner layout
+
+### Security
+
+- **A value of 8 to 15 characters after a key-named header is now redacted on every path:** `X-Service-Key: <10 characters>` and `X-Custom-Auth-Token: <12 characters>` stayed readable because the header rule needed 16 or more. It now takes 8 or more; from 8 to 15 it applies only when the value is not a plain word, not a template and not one repeated character (`X-Api-Key: required` is a sentence, `X-Api-Key: Zq8Lm2Xv9` is a key). The header names are the listed ones plus any `X-` header whose last word is key, token or secret.
+
+### Changes
+
+- **The Artifacts tabs:** *Details* is an (i) icon in the Actions column (named, 44 px on touch, and the rows you opened stay open across a refresh), *Refresh* is a reload icon, and an agent on a team gets the same search, Filters and Sort as Team Artifacts, kept per agent.
+
+### Fixes
+
+- **The light theme at 320 px:** code in a chat bubble was 1.6 to 2.1:1 on its chip (the highlight theme was the dark one) and now uses a light palette; a file path in a chat bubble and a link in a board post were 4.0 and 4.4:1 and now use a darker link colour in the light theme; the Yes button of the confirm dialog was 4.2:1 (an unscoped rule reached every dialog); and the copy button on a code block is a 44 px target on a phone.
+
+### Internal
+
+- Dead code removed: four functions and one test-only wrapper that nothing calls, found by the `deadcode` tool on both tag sets.
+- A script, `tests/release/smoke_macos.sh`, runs the released macOS app from its DMG in an isolated folder with a stand-in agent: the digest and signature, the loopback bind, analytics off honoured by the tray, a comment, the multi-select question and the settings read. It is run after the release verification.
+
+### Tests
+
+- The text200 suites and the board links check follow the light-theme work (the page scan moved to a shared helper, and the link colour is a token).
+
 ## v1.4.126 — Artifact comments no longer freeze the viewer on a large file, and the comments are reachable from the keyboard
 
 ### Fixes
