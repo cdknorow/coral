@@ -1,6 +1,6 @@
 /* Live updates to the open agent's header: its folder, branch, waiting state, goal and status (moved out of render.js, #4996; no behaviour change). */
 import { _shortPath, _gitStateSummary, _repoBranch, deriveSessionState } from './session_state.js';
-import { setText, setHidden, setTitle, setHtml, setDisplay, setClassName } from './dom_write.js';
+import { setText, setHidden, setTitle, setHtml, setDisplay, setClassName, setPill } from './dom_write.js';
 
 export function updateSessionStatus(status) {
     const el = document.getElementById("session-status");
@@ -88,15 +88,16 @@ export function updateWaitingIndicator(s) {
         // Same resolver as the rows: the banner follows the WINNING state, so a
         // sleeping or stuck agent with a stale waiting flag never shows it.
         const bannerKey = deriveSessionState(s);
-        setDisplay(banner, (bannerKey === 'needs_input' || bannerKey === 'check_terminal') ? "" : "none");
+        // An overlay pill (#5287): no layout space, shown after a delay so a state that comes and goes at once never flashes it, gone at once.
+        let text = "";
         if (bannerKey === 'needs_input') {
             setClassName(banner, "waiting-banner");
-            setText(banner, s.waiting_kind === 'login' ? "⏳ Agent needs you to sign in (in its terminal)" : "⏳ Agent is waiting for input");
+            text = s.waiting_kind === 'login' ? "⏳ Agent needs you to sign in (in its terminal)" : "⏳ Agent is waiting for input";
         } else if (bannerKey === 'check_terminal') {
             setClassName(banner, "waiting-banner waiting-banner-not-started");
-            setText(banner,
-                "⏳ This agent hasn't done anything yet — check the terminal below. Some agents ask permission to trust a folder the first time they run in it.");
+            text = "⏳ This agent hasn't done anything yet — check the terminal below. Some agents ask permission to trust a folder the first time they run in it.";
         }
+        setPill(banner, bannerKey === 'needs_input' || bannerKey === 'check_terminal', text);
     }
 }
 

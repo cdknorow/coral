@@ -29,14 +29,8 @@
                     </div>
                 </div>
 
-                <div id="waiting-banner" class="waiting-banner" role="status" aria-live="assertive" style="display:none">
-                    Agent is waiting for input
-                </div>
-
                 <div class="live-body">
                     <div class="live-left-column">
-                        <!-- The agent's server is unreachable (#3151): filled by hub_access.syncUnreachableBanner -->
-                        <div id="server-unreachable-banner" class="server-unreachable-banner" role="status" hidden></div>
                         <div id="capture-wrapper" class="capture-wrapper">
                             <div class="terminal-header">
                                     <!-- Center view toggle: raw terminal vs. rendered chat transcript -->
@@ -86,6 +80,14 @@
                                     <button class="terminal-header-btn session-panel-toggle-btn" id="popout-panel-toggle-btn" type="button" data-on-click="agentic-panel-toggle" title="Toggle side panel" aria-label="Toggle side panel" aria-pressed="false">
                                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M10 2.5v11"/></svg>
                                     </button>
+                                </div>
+                            </div>
+                            <!-- Notices over the top of the agent view (#5287): pills under the terminal header that take no layout space and show after a delay
+                                 (dom_write.setPill). The agent's server is unreachable (#3151): hub_access.syncUnreachableBanner. The agent is waiting: session_header_updates. -->
+                            <div class="live-pills">
+                                <div class="live-pills-stack">
+                                    <div id="server-unreachable-banner" class="server-unreachable-banner" role="status" aria-live="polite" hidden></div>
+                                    <div id="waiting-banner" class="waiting-banner" role="status" aria-live="polite" hidden>Agent is waiting for input</div>
                                 </div>
                             </div>
                             <!-- Semantic blocks view (existing) -->

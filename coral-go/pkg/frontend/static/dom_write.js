@@ -39,6 +39,30 @@ export function setData(el, key, value) {
     if (el && el.dataset[key] !== value) el.dataset[key] = value;
 }
 
+// An overlay pill (the "waiting for input" and "server unreachable" notices, #5287): it takes no layout space (css .live-pills), appears only after
+// PILL_SHOW_DELAY_MS of being wanted, and goes at once when it is not. The wait is not restarted by the feed updates that repeat the same state, so a
+// quick drop and return never flashes it, and a lasting one shows once. The text is read when it shows, and set at once while it is shown.
+export const PILL_SHOW_DELAY_MS = 1500;
+const _pills = new WeakMap();
+export function setPill(el, show, text) {
+    if (!el) return;
+    let st = _pills.get(el);
+    if (!st) _pills.set(el, st = { timer: null, text: '' });
+    st.text = text;
+    if (!show) {
+        if (st.timer !== null) { clearTimeout(st.timer); st.timer = null; }
+        setHidden(el, true);
+        return;
+    }
+    if (!el.hidden) { setText(el, text); return; }
+    if (st.timer !== null) return; // already counting: a repeat of the same state does not restart it
+    st.timer = setTimeout(() => {
+        st.timer = null;
+        setText(el, st.text);
+        setHidden(el, false);
+    }, PILL_SHOW_DELAY_MS);
+}
+
 /** Replace `container`'s content with one placeholder line (#5162): <tag class="className">text</tag>, "No usage data yet" in the cost tables, "No messages yet" on the board. The text is text, never markup. */
 export function emptyState(container, text, className = 'empty-state', tag = 'div') {
     const el = document.createElement(tag);
