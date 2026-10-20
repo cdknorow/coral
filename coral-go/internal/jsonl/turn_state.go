@@ -80,16 +80,6 @@ func updateCodexTurnState(state *codexTurnCache, line []byte) {
 	}
 }
 
-func agyTurnLines(candidates [][]byte) (event string, at time.Time, summary string) {
-	for _, line := range candidates {
-		e, t, s, _ := agyTurnLineWithErr(line)
-		if e != "" {
-			event, at, summary = e, t, s
-		}
-	}
-	return
-}
-
 func agyTurnLineWithErr(line []byte) (event string, at time.Time, summary, apiErr string) {
 	line = bytes.TrimSpace(line)
 	if len(line) == 0 {

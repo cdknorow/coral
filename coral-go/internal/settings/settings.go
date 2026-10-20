@@ -156,9 +156,6 @@ func All() []Spec {
 	return out
 }
 
-// Families is every family (a copy).
-func Families() []Family { return append([]Family(nil), families...) }
-
 func must(key string, want ...Kind) Spec {
 	s, ok := Lookup(key)
 	if !ok {

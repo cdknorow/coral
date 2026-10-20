@@ -13,18 +13,11 @@ import (
 // decodedLines counts the lines decodeLines has decoded (tests: concurrent readers share a read).
 var decodedLines atomic.Int64
 
-// parallelDecodeMin is the read size from which decodeLines decodes on every CPU (a var for tests).
+// parallelDecodeMin is the read size from which decodeLinesEnds decodes on every CPU (a var for tests).
 var parallelDecodeMin = 1 << 20
 
-// decodeLines decodes each non-blank line of data as a JSON object, in order; a line that isn't
-// one is nil. Large data is decoded by one worker per CPU, each on a contiguous run of lines.
-func decodeLines(data []byte) []map[string]any {
-	out, _ := decodeLinesEnds(data, false)
-	return out
-}
-
-// decodeLinesEnds is decodeLines and, when wantEnds is set, the offset in data at which each decoded
-// line ends, newline included: where a reader of a long transcript may cut it between two lines.
+// decodeLinesEnds decodes each non-blank line of data as a JSON object, in order (a line that isn't one is nil; large data is decoded by one worker per CPU, each on a contiguous run of lines) and, when
+// wantEnds is set, gives the offset in data at which each decoded line ends, newline included: where a reader of a long transcript may cut it between two lines.
 func decodeLinesEnds(data []byte, wantEnds bool) ([]map[string]any, []int) {
 	var lines [][]byte
 	var ends []int
