@@ -55,6 +55,17 @@ const (
 	reasonUnsupported = "unsupported_install"
 	reasonApplying    = "applying"
 
+	// install_kind: how this Coral was installed, as the updater found it (#5388).
+	installApp        = "app"
+	installMSI        = "msi"
+	installPortable   = "portable"
+	installTarball    = "tarball"
+	installHomebrew   = "homebrew"
+	installUnwritable = "unwritable"
+
+	// upgradeCommandHomebrew is what a Homebrew install is told to run: fixed text, never from the updater's record.
+	upgradeCommandHomebrew = "brew upgrade --cask coral"
+
 	resultRelaunched = "relaunched"
 	resultRefused    = "refused"
 	resultRolledBack = "failed_rolled_back"
@@ -90,6 +101,21 @@ type UpdateTrust struct {
 	PromotedAt, ExpireAt time.Time
 }
 
+// installKinds, notReadyReasons and rollbackReasons are the vocabularies the status sends for the #5388 fields: anything else is not sent (or, for a roll-back's reason, is "other").
+var (
+	installKinds     = map[string]bool{installApp: true, installMSI: true, installPortable: true, installTarball: true, installHomebrew: true, installUnwritable: true}
+	notReadyReasons  = map[string]bool{"not_checked": true, "up_to_date": true, "not_promoted": true, "backoff": true, "check_failed": true, "unsupported_install": true, "switch_off": true, "applying": true}
+	rollbackReasons  = map[string]bool{"did_not_start": true, "not_healthy": true, "swap_failed": true, "verify_failed": true}
+	rollbackOtherTag = "other"
+)
+
+// UpdateRollback is the last apply that was rolled back: the previous version was put back.
+type UpdateRollback struct {
+	At       time.Time
+	From, To string
+	Reason   string // one of rollbackReasons, else shown as "other"
+}
+
 // UpdateResult is the last relaunch's outcome.
 type UpdateResult struct {
 	At       time.Time
@@ -113,6 +139,13 @@ type UpdaterRecord struct {
 	HubRelaunched   string
 	LastHubRelaunch time.Time
 	LastResult      *UpdateResult
+	// The fields of the #5388 status: when the last check ran (a failed one counts), how Coral was installed, why nothing is staged
+	// (one of notReadyReasons) with the newer version when one is known, and the last roll-back. Zero or empty: not sent.
+	CheckedAt    time.Time
+	InstallKind  string
+	NotReady     string
+	Latest       string
+	LastRollback *UpdateRollback
 }
 
 // RestartAgent is one pty agent a relaunch would restart.
@@ -554,7 +587,35 @@ func (h *UpdateRelaunchHandler) statusJSON(id callerIdentity, v relaunchView, ke
 		(lr.Result == resultRelaunched || lr.Result == resultRefused || lr.Result == resultRolledBack) {
 		out["last_result"] = map[string]any{"at": lr.At.UTC().Format(time.RFC3339), "from": lr.From, "to": lr.To, "result": lr.Result, "by": lr.By}
 	}
+	h.addUpdateFacts(out, rec)
 	return out, nil
+}
+
+// addUpdateFacts adds the fields the screens and the docs need beyond the design's (#5388), each only when known and only in its fixed vocabulary:
+// no free text, path or URL from the updater's record reaches the reply.
+func (h *UpdateRelaunchHandler) addUpdateFacts(out map[string]any, rec UpdaterRecord) {
+	if !rec.CheckedAt.IsZero() {
+		out["checked_at"] = rec.CheckedAt.UTC().Format(time.RFC3339)
+	}
+	if installKinds[rec.InstallKind] {
+		out["install_kind"] = rec.InstallKind
+		if rec.InstallKind == installHomebrew {
+			out["upgrade_command"] = upgradeCommandHomebrew
+		}
+	}
+	if rec.Staged == nil && notReadyReasons[rec.NotReady] {
+		out["not_ready_reason"] = rec.NotReady
+		if updateVersionRe.MatchString(rec.Latest) {
+			out["latest"] = rec.Latest
+		}
+	}
+	if rb := rec.LastRollback; rb != nil && !rb.At.IsZero() && updateVersionRe.MatchString(rb.From) && updateVersionRe.MatchString(rb.To) {
+		reason := rollbackOtherTag
+		if rollbackReasons[rb.Reason] {
+			reason = rb.Reason
+		}
+		out["last_rollback"] = map[string]any{"at": rb.At.UTC().Format(time.RFC3339), "from": rb.From, "to": rb.To, "reason": reason}
+	}
 }
 
 // Status: GET /api/system/update.
