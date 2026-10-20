@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.4.128 — Faster board search, and the first inert parts of automatic updates
+
+### Changes
+
+- **Board search is faster:** a search scanned every message of the board and lower-cased each whole message to compare it. An ASCII search term against ASCII text is now compared in place, with the same matches as before (a test pins that, including the Kelvin sign that folds to `k`).
+
+### Internal
+
+- **Automatic updates, the first parts, none of them on:** the web half (the "Relaunch to update" control, its confirmation, Settings > Updates and the failure notice) is behind a flag that is off, so nothing is shown, fetched or added to Settings; the update verifier (promote manifest, release checksums and their Sigstore bundle, the package; downgrade, replay and expiry rules) is a package that only the future `coral-update` program links, and a test holds that it is not in `coral`; and the machine half of the Coral Hub relaunch (`GET /api/system/update` at view tier and `POST /api/system/update/relaunch` at launch tier, owner only, behind an off switch) is in but has no updater to call. Nothing in this release downloads, stages or installs an update.
+- Dependencies: adds github.com/sigstore/sigstore-go v1.3.0 and its modules, used only by the update verifier (not linked into coral).
+- A temporary workflow (`sigstore-cert-probe`, started by hand) signs a dummy file and prints the certificate Sigstore issues to a manually started run; it will be removed in a later release.
+
+### Tests
+
+- The tests that change timings under the input gate's loop are race-safe, and the real v1.4.120 release bundle's fixtures are kept byte for byte on a Windows checkout.
+
 ## v1.4.127 — Shorter secrets after a key-named header are redacted, the light theme is readable at 320 px, and the Artifacts tabs have a cleaner layout
 
 ### Security
