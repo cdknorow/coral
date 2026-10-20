@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -175,11 +176,44 @@ func maskCodeReferences(data []byte) []byte {
 	}
 	out := append([]byte(nil), data...)
 	for _, m := range locs {
+		if passwordLikeName(data, m[2]) && !hasIdentifierShape(data[m[4]:m[5]]) {
+			continue // a dotted-words passphrase (correct.horse.battery.staple) is what the name says it is
+		}
 		for i := m[4]; i < m[5]; i++ {
 			out[i] = 'a'
 		}
 	}
 	return out
+}
+
+// passwordLikeName reports whether the name just before the separator at p is a password or secret name (password, passwd, passphrase, pwd, secret, client_secret and the like). A value after one is
+// not masked unless it looks like an identifier (hasIdentifierShape): a passphrase of dotted lowercase words has the shape of a code reference and is a real secret.
+func passwordLikeName(data []byte, p int) bool {
+	i := p
+	for i > 0 && strings.IndexByte(" \t\"'`", data[i-1]) >= 0 {
+		i--
+	}
+	j := i
+	for j > 0 && i-j < 40 && (data[j-1] == '_' || data[j-1] == '-' || data[j-1] >= '0' && data[j-1] <= '9' || data[j-1] >= 'a' && data[j-1] <= 'z' || data[j-1] >= 'A' && data[j-1] <= 'Z') {
+		j--
+	}
+	name := strings.ToLower(string(data[j:i]))
+	for _, w := range []string{"password", "passwd", "passphrase", "pwd", "secret"} {
+		if strings.Contains(name, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasIdentifierShape is true when a dotted value has a capital letter or an underscore after its first byte (clientSecret, _modelToken, Api_Key): code, where a passphrase is lowercase words.
+func hasIdentifierShape(v []byte) bool {
+	for i, c := range v {
+		if i > 0 && (c == '_' || c >= 'A' && c <= 'Z') {
+			return true
+		}
+	}
+	return false
 }
 
 func scanWithWhy(env scanEnv, data []byte, budgetFor func(n int) time.Duration) (scanOutcome, scanWhy) {

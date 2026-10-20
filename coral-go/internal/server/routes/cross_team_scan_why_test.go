@@ -78,3 +78,45 @@ func TestCodeReferencesAreNotTakenForSecrets(t *testing.T) {
 	assert.Equal(t, "a := aaaaaaaaaaaaaaaaa\nb = 1", string(masked))
 	assert.Equal(t, "x = y", string(maskCodeReferences([]byte("x = y"))), "no reference: the same bytes")
 }
+
+// #5212 round 2: a dotted-words value after a password or secret name is a passphrase, not a code reference, and is still refused; the code-reference shapes still pass.
+func TestPassphraseAfterPasswordNameIsStillRefused(t *testing.T) {
+	require.NoError(t, secrets.Init())
+	t.Setenv(secrets.KeywordsEnv, "")
+	SetKeywordSwitch(nil)
+	for _, text := range []string{
+		"password = correct.horse.battery.staple",
+		"db_password: staple.horse.battery",
+		"client_secret=lemon.drizzle.cake",
+		"passwd = lemon.drizzle.cake\n",
+		"passphrase: lemon.drizzle.cake",
+		`"secret": "lemon.drizzle.cake"`,
+		"secret = lemon.drizzle.cake",
+	} {
+		got, why := scanMessageTextWhy([]byte(text))
+		assert.Equal(t, scanFound, got, "a passphrase is refused: %q", text)
+		assert.Equal(t, 1, why.line)
+	}
+	for _, code := range []string{
+		"token: container._modelToken",
+		"prevKey := config.PostHogKey",
+		"secret = this.options.clientSecret,",
+		"client_secret = os.environ_map",
+	} {
+		got, why := scanMessageTextWhy([]byte(code))
+		assert.Equal(t, scanClean, got, "a code reference stays clean: %q (%s)", code, why.where())
+	}
+}
+
+// the refusal text carries the name before the value, never a token-looking prefix of a name chain
+func TestRefusalNameChainCarriesNoToken(t *testing.T) {
+	require.NoError(t, secrets.Init())
+	t.Setenv(secrets.KeywordsEnv, "")
+	SetKeywordSwitch(nil)
+	prefix := "ghp_" + strings.Repeat("aB3dE5gH7j", 3) + "K9mN1p"
+	got, why := scanMessageTextWhy([]byte("x " + prefix + "_token=" + keywordValue + "\n"))
+	require.Equal(t, scanFound, got)
+	assert.NotContains(t, why.where(), prefix)
+	assert.NotContains(t, why.where(), "ghp_")
+	assert.NotContains(t, why.where(), keywordValue)
+}
