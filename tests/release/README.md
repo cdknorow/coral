@@ -53,3 +53,11 @@ Needs Linux, bash, curl, python3 and tar. The stand-in ends when its terminal go
 (its parent shell is killed, it is orphaned and ignores the SIGHUP the server's own `signal.Ignore` handed down), which is not a failure of this check.
 
 **A smoke failure on a tag is fixed forward in the next version** (#5306): the failing item names what to fix, the tag is never re-used or re-tagged (the `v*` tags cannot be moved), and the step is never re-run by hand to get past it.
+
+## smoke_windows.ps1: the release smoke of the Windows build
+
+`tests/release/smoke_windows.ps1 -Zip Coral-<version>-x64-portable.zip [-Msi Coral-<version>-x64.msi] -Version <version> [-StandIn <exe>]` runs the shipped programs from the portable ZIP in an isolated data folder under strict local auth with `--cloud-url off`: `/api/health` is 200 and a request with no credential is 401, `coral api-key` and a keyed request, `coral-board` joins, posts and reads as a person, `coral setup-code` prints a code, the ZIP holds every program of `commands.txt` and `gui_commands.txt` (each a 64-bit Windows executable) and `coral.exe --version` prints the version, with `-StandIn` a launch starts the stand-in under the pty backend and its process runs, and with `-Msi` the MSI is installed silently into a scratch folder, holds the programs, runs, and uninstalls. The server is stopped with Ctrl+C first, its port closes and no agent process is left. The release workflow runs it on the Windows build and `windows-runner-dryrun.yml` runs it by hand.
+
+**Run it only on an ephemeral CI runner.** The MSI step changes the machine's PATH and writes the EULA marker (it removes both again), so it is not for a developer's own computer; the ZIP-only checks have no such effect.
+
+As with the macOS and Linux smokes, a failure on a tag is fixed forward in the next version (#5306): the tag is never re-used and the step is never re-run by hand to get past it.
