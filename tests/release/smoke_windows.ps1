@@ -299,11 +299,8 @@ try {
             $listed = $false
             for ($i = 0; $i -lt 40 -and -not $listed; $i++) {
                 $live = Get-Status "$base/api/sessions/live" $h
-                try {
-                    $d = $live.Body | ConvertFrom-Json
-                    $rows = if ($d -is [array]) { $d } else { @($d.sessions) }
-                    $listed = [bool]($rows | Where-Object { $_.session_id -eq $sid })
-                } catch { }
+                # the raw body: PowerShell's ConvertFrom-Json refuses the live list (it did on the Windows runner)
+                $listed = $live.Code -eq 200 -and $live.Body -match ('"session_id"\s*:\s*"' + [regex]::Escape($sid) + '"')
                 if (-not $listed) { Start-Sleep -Milliseconds 500 }
             }
             $standName = [System.IO.Path]::GetFileName($StandIn)
@@ -315,8 +312,7 @@ try {
             }
             if ($listed -and $running) { Pass "launch: the stand-in CLI started under pty, is on the live list, and its process runs ($($agentPids.Count) process(es) carry the session id)" }
             else {
-                $shape = ''
-                try { $d = $live.Body | ConvertFrom-Json; $rows = if ($d -is [array]) { $d } else { @($d.sessions) }; $shape = "rows=$($rows.Count) ids=$(($rows | ForEach-Object { $_.session_id }) -join ',')" } catch { $shape = "unparsed: $($live.Body.Substring(0, [Math]::Min(120, $live.Body.Length)))" }
+                $shape = "body " + $live.Body.Length + " bytes"
                 Fail "launch: on the live list: $listed (last list: HTTP $($live.Code), $shape; launched $sid); $standName running: $running"
             }
         }
