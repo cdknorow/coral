@@ -1,0 +1,8 @@
+{
+ "status": 502,
+ "body": {
+  "code": "update_status_unavailable",
+  "relaunching": true
+ },
+ "badge": false
+}

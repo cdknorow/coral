@@ -1,0 +1,8 @@
+{
+ "status": 200,
+ "body": {
+  "enabled": true,
+  "relaunching": 1
+ },
+ "badge": false
+}

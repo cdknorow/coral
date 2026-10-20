@@ -1,0 +1,13 @@
+{
+ "status": 200,
+ "body": {
+  "enabled": true,
+  "relaunch": {
+   "relaunching": true
+  },
+  "state": {
+   "relaunching": true
+  }
+ },
+ "badge": false
+}

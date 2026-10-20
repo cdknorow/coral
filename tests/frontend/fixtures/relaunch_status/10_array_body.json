@@ -1,0 +1,9 @@
+{
+ "status": 200,
+ "body": [
+  {
+   "relaunching": true
+  }
+ ],
+ "badge": false
+}

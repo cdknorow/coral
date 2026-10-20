@@ -1,0 +1,16 @@
+{
+ "status": 200,
+ "body": {
+  "enabled": true,
+  "installed": "1.4.131",
+  "state": "none",
+  "last_result": {
+   "at": "2026-10-20T08:21:00Z",
+   "from": "1.4.130",
+   "to": "1.4.131",
+   "result": "relaunched",
+   "by": "hub:Dana"
+  }
+ },
+ "badge": false
+}

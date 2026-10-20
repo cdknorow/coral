@@ -9,6 +9,10 @@
  *     checked_at?, install_kind? (homebrew|unsupported), upgrade_command?, auto? }
  * The fields marked ? are not in the design yet; the UI treats each as absent when it is not sent. */
 
+import { serverBase, isLocalServer } from './server_base.js';
+import { importOnce } from './import_once.js';
+const { noteRelaunchSent } = await importOnce('./relaunch_badge.js'); // lazy modules load the others they need through importOnce
+
 const ROUTES = {
     status: '/api/system/update',
     relaunch: '/api/system/update/relaunch',
@@ -91,9 +95,10 @@ export async function fetchUpdateStatus() {
 }
 
 /** Relaunch to install the staged update, acknowledging the agents the user saw. Resolves { ok, status, code, error, relaunch }: relaunch is the server's current list when it answered 409 stale_ack. */
-export async function requestRelaunch(ack) {
+export async function requestRelaunch(ack, { server = '' } = {}) {
     try {
-        const resp = await fetch(ROUTES.relaunch, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ack }) });
+        const resp = await fetch(serverBase(server) + ROUTES.relaunch, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ack }) });
+        if (resp.status === 202 && !isLocalServer(server)) noteRelaunchSent(server); // a machine behind the hub was told to relaunch: its Servers row says Updating (#5355)
         let body = {};
         try { body = await resp.json(); } catch { /* an empty body */ }
         // the hub says why in `reason` (reauth_required, mode_too_low), the machine in `code`; error text is never shown (a reason this build does not know is "Unavailable")

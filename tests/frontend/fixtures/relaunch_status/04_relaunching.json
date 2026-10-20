@@ -1,0 +1,16 @@
+{
+ "status": 200,
+ "body": {
+  "enabled": true,
+  "installed": "1.4.130",
+  "state": "staged",
+  "relaunching": true,
+  "relaunch": {
+   "available": false,
+   "reason": "applying",
+   "restarts": [],
+   "ack": ""
+  }
+ },
+ "badge": true
+}

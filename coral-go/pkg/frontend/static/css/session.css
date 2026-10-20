@@ -1928,6 +1928,8 @@
 .server-update-badge.server-update-required { color: var(--warning); }
 .server-update-badge:hover { text-decoration: underline; }
 .cs-update-required { color: var(--warning); }
+/* The hub relaunch's "Updating" badge (#5355): read-only, a word, not a link or a control; the row keeps its height. */
+.server-relaunch-badge { margin-left: var(--space-xs); padding: 0 var(--space-sm); border-radius: var(--radius-sm, 4px); font-size: var(--fs-sm, 11px); font-weight: 600; white-space: nowrap; color: var(--text-primary); background: var(--bg-hover); border: 1px solid var(--border); cursor: default; }
 
 /* Agents on an unreachable server: last-known data, not actionable. */
 .session-group-item.session-stale {

@@ -23,6 +23,7 @@ import { accessBlockedMessage, accessChanged } from './hub_access.js';
 import { pollEvery } from './overload.js';
 import { healthDot, healthCard } from './machine_health.js';
 // This module is loaded lazily, so its search box is loaded the same way (a static import of a module not loaded at startup could not be retried: import_hygiene).
+const { syncRelaunchReads, resetRelaunchReads, relaunchBadge } = await importOnce('./relaunch_badge.js'); // the "Updating" badge of a hub relaunch (#5355, behind the update flag)
 const { syncServersBar, serverVisible, serversFiltered, resetServersBar } = await importOnce('./server_search.js');
 
 // The Servers tab (#3070) hosts this list; there is no separate dialog.
@@ -44,6 +45,7 @@ export async function showCloudServers(focusId) {
 export async function renderCloudServersInto(el) {
     host = el;
     confirming = null; renaming = null; loadError = '';
+    resetRelaunchReads(); // the first list of a visit reads each online machine's relaunch status once
     render();
     await load();
     clearInterval(timer);
@@ -65,6 +67,7 @@ async function load() {
             const d = await r.json();
             servers = Array.isArray(d && d.servers) ? d.servers : [];
             loadError = '';
+            syncRelaunchReads(servers, render);
         }
     } catch { loadError = 'Could not reach the hub.'; }
     render();
@@ -274,7 +277,8 @@ function row(s) {
             // The machine's health (#3446): the hub relays it while the machine is connected;
             // without it (offline, held, reconnecting) the dot says unknown, never a stale ok.
             healthDot(online ? live.machine_health : null, s.label || 'Server'),
-            updateBadge(live));
+            updateBadge(live),
+            relaunchBadge(h, s.id));
     const version = serverVersion(live);
     const agents = serverAgentCount(live);
     const meta = h('div', { className: 'cs-meta', text: [online ? 'Online' : 'Offline', version ? `Coral ${version}` : '', `${agents} agent${agents === 1 ? '' : 's'}`, online ? '' : `last contact ${formatLastSeen(s.last_seen)}`].filter(Boolean).join(' · ') });

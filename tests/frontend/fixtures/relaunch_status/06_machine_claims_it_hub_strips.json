@@ -1,0 +1,15 @@
+{
+ "status": 200,
+ "body": {
+  "enabled": true,
+  "installed": "1.4.130",
+  "state": "staged",
+  "relaunch": {
+   "available": true,
+   "restarts": [],
+   "ack": "a2"
+  },
+  "machine_label": "<img src=x onerror=window.__pwned=1>"
+ },
+ "badge": false
+}

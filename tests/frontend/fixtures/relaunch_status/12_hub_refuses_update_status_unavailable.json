@@ -1,0 +1,7 @@
+{
+ "status": 502,
+ "body": {
+  "error": "update_status_unavailable"
+ },
+ "badge": false
+}

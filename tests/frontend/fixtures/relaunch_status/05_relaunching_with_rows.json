@@ -1,0 +1,23 @@
+{
+ "status": 200,
+ "body": {
+  "enabled": true,
+  "installed": "1.4.130",
+  "state": "applying",
+  "relaunching": true,
+  "relaunch": {
+   "available": false,
+   "reason": "applying",
+   "restarts": [
+    {
+     "session_id": "s1",
+     "name": "<img src=x onerror=window.__pwned=1>",
+     "backend": "pty",
+     "state": "running"
+    }
+   ],
+   "ack": ""
+  }
+ },
+ "badge": true
+}
