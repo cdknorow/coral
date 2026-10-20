@@ -2032,14 +2032,19 @@
 .session-group-header[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-md); }
 .server-group-toggle .session-group-count { margin-left: auto; }
 .server-group-more > summary.sidebar-kebab-btn { display: block; } /* a <summary> sized and placed as the other headers' kebab buttons */
-.server-launch-actions { display: flex; flex-direction: column; margin: 0 0 var(--space-md); padding-bottom: var(--space-sm); border-bottom: 1px solid var(--border); }
+/* The machine menu's launch row (#5487): Launch agent first, Launch team, Open folder on the hub's own machine, and Open in Servers as a text link so the row stays one line at about 380 px. */
+.server-launch-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); margin: 0 0 var(--space-sm); }
 .server-launch-btn {
-    display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 6px var(--space-sm);
-    border: 0; border-radius: var(--radius-sm, 4px); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+    padding: 5px var(--space-lg); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-tertiary, var(--bg-hover)); color: var(--text-primary);
+    font: inherit; font-size: 0.875rem; cursor: pointer;
 }
 .server-launch-btn:hover:not(:disabled), .server-launch-btn:focus-visible { background: var(--bg-hover); }
-.server-launch-btn:disabled { cursor: not-allowed; color: var(--text-muted); }
-.server-launch-why { font-size: 0.85em; color: var(--text-secondary); white-space: normal; }
+.server-launch-btn.server-launch-primary { background: var(--accent-dim, var(--accent)); border-color: var(--accent-dim, var(--accent)); color: var(--text-on-accent); font-weight: 600; }
+.server-launch-btn:disabled { cursor: not-allowed; color: var(--text-muted); background: none; }
+.server-open-btn { margin-left: auto; padding: 5px 2px; border: 0; background: none; color: var(--link-text, var(--accent)); font: inherit; font-size: 0.875rem; text-decoration: underline; cursor: pointer; }
+.server-launch-note, .server-launch-hint { margin: 0 0 var(--space-md); color: var(--text-secondary); font-size: 0.8125rem; }
+.server-version { justify-self: start; cursor: help; border-bottom: 1px dotted var(--text-secondary); }
+.server-details-update:not(.server-below-minimum) { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border); }
 /* 'Show server': the server before a team/folder name, "pro-coral-hub", server in italics (#3507). */
 .row-name-with-server { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-server-prefix { font-style: italic; font-weight: 500; opacity: 0.7; white-space: nowrap; }
@@ -2050,9 +2055,10 @@
     .sidebar-header.sidebar-header, .mobile-list-header.mobile-list-header { --ctl-h: var(--control-touch-height, 44px); }
     .list-display-option, .agent-list-summary-clear { min-height: var(--control-touch-height, 44px); }
     .agent-list-summary-clear { min-width: var(--control-touch-height, 44px); }
+    .server-details-update .server-update-badge { display: inline-flex; align-items: center; justify-content: center; min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); } /* the one Update control of a machine's menu (#5487) */
 }
 @media (pointer: coarse) {
-    .server-group-toggle, .server-launch-btn, .list-display-option {
+    .server-group-toggle, .server-launch-btn, .server-open-btn, .list-display-option {
         min-height: var(--control-touch-height, 44px);
     }
     .server-group-more > summary.sidebar-kebab-btn { display: inline-flex; align-items: center; justify-content: center; } /* the kebab's own touch size (touch.css) */
@@ -2122,3 +2128,5 @@
 /* The phone's Search agents box, under the list header's controls (#4624) */
 .mobile-list-header .mobile-search-row { flex: 1 0 100%; }
 .mobile-list-header .mobile-search-input { width: 100%; box-sizing: border-box; height: var(--ctl-h); padding-left: 12px; }
+.server-details-update:not(.server-below-minimum) { flex-wrap: wrap; } /* #5487 review: the long "Update required" sentence and its badge wrap instead of squeezing the badge out of the panel */
+.server-details-update .server-update-badge { flex: none; white-space: nowrap; }

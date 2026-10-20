@@ -25,7 +25,7 @@ const SERVERS = [
     { id: 'srv-hostile', label: 'Hostile', status: 'online', update: 'required', coral_version: HOSTILE_V, latest_coral: HOSTILE_L },
 ];
 const EXPECT = {
-    'srv-avail': { level: 'available', label: 'Update', text: 'Update available: 1.5.0' },
+    'srv-avail': { level: 'available', label: 'Update', text: 'Update available: 1.5.0', shown: 'Update to 1.5.0' }, // the panel says "Update to 1.5.0" beside the one Update button (#5487); the badge's title, the tooltip and the header keep the full notice
     'srv-avail-bare': { level: 'available', label: 'Update', text: 'Update available' },
     'srv-req': { level: 'required', label: 'Update required', text: 'Update required: this Coral (1.3.9) is too old for some Coral Hub features. Update to 1.5.0.' },
     'srv-req-bare': { level: 'required', label: 'Update required', text: 'Update required: this Coral is too old for some Coral Hub features. Update to the latest release.' },
@@ -75,7 +75,7 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
             const g = n.groups[id];
             assert.equal(g.marker, `server-update-marker server-update-${want.level}`, `${where}: ${id} header marker`);
             assert.equal(g.markerText, want.label, `${where}: ${id} header marker text`);
-            assert.equal(g.updText, want.text, `${where}: ${id} details show the exact notice`);
+            assert.equal(g.updText, want.shown || want.text, `${where}: ${id} details show the notice ("Update to <version>" when there is one)`);
             assert.ok(g.badge, `${where}: ${id} details carry the release link`);
             assert.equal(g.badge.cls, `server-update-badge server-update-${want.level}`);
             assert.equal(g.badge.title, want.text); assert.equal(g.badge.aria, want.text);

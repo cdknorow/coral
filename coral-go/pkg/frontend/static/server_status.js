@@ -191,42 +191,57 @@ export function belowMinimumText(e) {
     return min ? `Update Coral to ${min}` : 'Update Coral';
 }
 
-/** The details panel shared by the Servers list and the group headers (#4932: the search-row pill was removed). */
+/** The version without its build suffix: 1.4.129-dev+f9fef71f.dirty reads 1.4.129-dev (a release build is just 1.4.134). */
+export function shortVersion(v) {
+    const t = String(v || '').trim();
+    const i = t.indexOf('+');
+    return i > 0 ? t.slice(0, i) : t;
+}
+
+/** The details panel shared by the Servers list and the group headers (#4932: the search-row pill was removed). A two-column grid with muted labels; the version is cut before "+", with the full string
+ *  in its tooltip and accessible name; the one Update control sits at the bottom (the header only carries a chip that says an update exists). */
 export function serverDetailsHtml(e) {
     const m = statusMeta(e.status);
     const local = normServer(e.id) === LOCAL_SERVER;
     const count = serverAgentCount(e);
+    const full = !local ? serverVersion(e) : '';
     const rows = [
         ['Status', m.label],
         ['Name', e.label || e.id],
         local ? ['Server', 'This server (the hub)'] : (e.url ? ['Address', e.url] : null),
         ['Agents', String(count)],
-        !local && serverVersion(e) ? ['Version', serverVersion(e)] : null,
+        full ? ['Version', shortVersion(full), full] : null,
         !local ? ['Last contact', formatLastSeen(e.last_seen)] : null,
         !local && e.status !== 'online' && e.last_error ? ['Error', e.last_error] : null,
     ].filter(Boolean);
+    const dd = ([k, v, fullText]) => (fullText && fullText !== v
+        ? `<dd class="server-version" tabindex="0" title="${escHtml(fullText)}" aria-label="${escHtml(`${k} ${v}, full build ${fullText}`)}">${escHtml(v)}</dd>`
+        : `<dd>${escHtml(v)}</dd>`);
     const notice = local ? null : updateNotice(e);
-    return `<dl class="server-details-list">${rows.map(([k, v]) => `<dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd>`).join('')}</dl>`
-        + (notice ? `<p class="server-details-update">${escHtml(notice.text)} ${updateBadgeHtml(e)}</p>` : '')
+    const latestText = notice && notice.level === 'available' ? (/^Update available: (.+)$/.exec(notice.text) || [])[1] || '' : '';
+    return `<dl class="server-details-list">${rows.map(r => `<dt>${escHtml(r[0])}</dt>${dd(r)}`).join('')}</dl>`
+        + (notice ? `<p class="server-details-update">${notice.level === 'available' && latestText ? `<span>Update to <strong>${escHtml(latestText)}</strong></span>` : `<span>${escHtml(notice.text)}</span>`} ${updateBadgeHtml(e)}</p>` : '')
         + (!local && belowMinimumText(e) ? `<p class="server-details-update server-below-minimum">${escHtml(belowMinimumText(e))}</p>` : '')
         + (!local && e.status !== 'online' ? `<p class="server-details-hint">${escHtml(m.hint)}</p>` : '');
 }
 
-/** Launch team / Open folder / Launch agent at the top of a server's menu. Each opens the launch flow with this server chosen;
- *  one that cannot run is disabled with its reason shown (launch_server.js decides: offline, key rejected, no hub). A pinned
- *  folder lives on this Coral (pinned_folders.js), so Open folder is for the hub itself only. */
+/** One row at the top of a server's menu: Launch agent, Launch team, and Open in Servers (a text link when the row is narrow); Open folder is a fourth button on the hub's own machine only (a pinned folder lives
+ *  on this Coral, pinned_folders.js), and elsewhere a one-line hint says to choose the folder when launching an agent. Each launch opens the launch flow with this server chosen; one that cannot run is disabled
+ *  and the reason is said once under the row (launch_server.js decides: offline, key rejected, no hub). */
 function serverLaunchActionsHtml(e) {
     const id = normServer(e.id);
+    const local = id === LOCAL_SERVER;
     const blocked = launchBlockReason(id, isHub(), state.servers);
-    const actions = [
-        ['team', 'Launch team', blocked],
-        ['folder', 'Open folder', blocked || (id === LOCAL_SERVER ? '' : 'Pinned folders live on this Coral: launch an agent here and choose its folder')],
-        ['agent', 'Launch agent', blocked],
-    ];
+    const actions = [['agent', 'Launch agent'], ['team', 'Launch team']];
+    if (local) actions.push(['folder', 'Open folder']);
+    const btn = ([kind, label]) => `<button type="button" class="server-launch-btn${kind === 'agent' ? ' server-launch-primary' : ''}" data-server-launch="${escHtml(kind)}" data-server-id="${escHtml(e.id)}"`
+        + (blocked ? ` disabled aria-disabled="true" title="${escHtml(blocked)}"` : '') + `>${label}</button>`;
     return `<div class="server-launch-actions" role="group" aria-label="${escHtml(`Launch on ${e.label || e.id}`)}">`
-        + actions.map(([kind, label, why]) => `<button type="button" class="server-launch-btn" data-server-launch="${escHtml(kind)}" data-server-id="${escHtml(e.id)}"`
-            + (why ? ` disabled aria-disabled="true" title="${escHtml(why)}"` : '') + `>${label}${why ? `<span class="server-launch-why">${escHtml(why)}</span>` : ''}</button>`).join('')
-        + `</div>`;
+        + actions.map(btn).join('')
+        + `<button type="button" class="server-open-btn" data-server-open="${escHtml(e.id)}">Open in Servers</button>`
+        + `</div>`
+        + (blocked ? `<p class="server-launch-note">${escHtml(blocked)}</p>` : '')
+        + (!local && !blocked ? `<p class="server-launch-hint">To use a folder, choose it when you launch an agent.</p>` : '');
 }
 
 /** A collapsible server group header for the agent list (2+ servers). */
@@ -252,9 +267,7 @@ export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) 
         + `<span class="session-group-count">${count}</span></button>`
         + `<details class="server-group-more sidebar-kebab-wrapper group-kebab" data-server-details="${escHtml(e.id)}"${detailsOpen ? ' open' : ''}>`
         + `<summary class="server-group-more-btn sidebar-kebab-btn group-kebab-btn" aria-label="${escHtml(`Details for ${e.label || e.id}`)}" title="${escHtml(serverHoverText(e.id))}">⋮</summary>`
-        + `<div class="server-switcher-panel">${serverLaunchActionsHtml(e)}${serverDetailsHtml(e)}`
-        + `<button type="button" class="btn btn-small server-open-btn" data-server-open="${escHtml(e.id)}">Open in Servers</button>`
-        + `<button type="button" class="btn btn-small" data-server-toggle="${escHtml(e.id)}">${collapsed ? 'Expand' : 'Collapse'}</button></div></details>`
+        + `<div class="server-switcher-panel">${serverLaunchActionsHtml(e)}${serverDetailsHtml(e)}</div></details>`
         + `</li>`;
 }
 

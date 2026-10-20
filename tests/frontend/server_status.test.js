@@ -97,5 +97,26 @@ const { pathToFileURL } = require('url');
     assert.strictEqual(m.formatLastSeen('2026-01-01T00:00:00Z', Date.parse('2026-01-01T00:05:00Z')), '5m ago');
     assert.ok(m.isValidServerId('work-1') && !m.isValidServerId('local') && !m.isValidServerId('A') && !m.isValidServerId(''));
 
+    // The machine menu's details (#5487): the version is cut before "+", its full string is the tooltip and the accessible name; one Update control, "Update to <version>"; no Collapse button here.
+    assert.strictEqual(m.shortVersion('1.4.129-dev+f9fef71f.dirty'), '1.4.129-dev');
+    assert.strictEqual(m.shortVersion('1.4.134'), '1.4.134');
+    assert.strictEqual(m.shortVersion('+odd'), '+odd', 'a leading plus is not a build suffix');
+    assert.strictEqual(m.shortVersion(''), '');
+    {
+        state.hub = true; state.servers = [{ id: 'm1', label: 'pro', status: 'online', version: '1.4.129-dev+f9fef71f.dirty', url: 'http://x', last_seen: '2026-10-20T00:00:00Z', update: 'available', latest_coral: '1.4.134' }];
+        const html = m.serverDetailsHtml(state.servers[0]);
+        assert.ok(/<dd class="server-version"[^>]*title="1\.4\.129-dev\+f9fef71f\.dirty"[^>]*aria-label="Version 1\.4\.129-dev, full build 1\.4\.129-dev\+f9fef71f\.dirty"[^>]*>1\.4\.129-dev<\/dd>/.test(html), 'short version with the full build as title and name: ' + html);
+        assert.ok(/<span>Update to <strong>1\.4\.134<\/strong><\/span>/.test(html), 'the update row says what it updates to');
+        assert.strictEqual((html.match(/server-update-badge/g) || []).length, 1, 'one Update control in the details');
+        const header = m.serverGroupHeaderHtml(state.servers[0], 3, false, true);
+        assert.ok(!/>(Collapse|Expand)</.test(header), 'no Collapse or Expand button in the menu');
+        assert.ok(/aria-expanded="true"/.test(header), 'the header toggles the group and says so');
+        assert.strictEqual((header.match(/server-open-btn/g) || []).length, 1, 'Open in Servers once, in the launch row');
+        assert.ok(!/data-server-launch="folder"/.test(header) && /To use a folder, choose it when you launch an agent\./.test(header), 'a remote has no Open folder, only the hint');
+        const rel = m.serverDetailsHtml({ id: 'm2', label: 'rel', status: 'online', version: '1.4.134', last_seen: '2026-10-20T00:00:00Z' });
+        assert.ok(/<dd>1\.4\.134<\/dd>/.test(rel) && !/server-version/.test(rel), 'a release version has no build suffix and no tooltip');
+        state.servers = []; state.hub = false;
+    }
+
     console.log('server_status.test.js: ok');
 })().catch(e => { console.error(e); process.exit(1); });

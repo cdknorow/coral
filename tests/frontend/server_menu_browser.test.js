@@ -81,15 +81,18 @@ const SERVERS = [
         for (const a of ['teamAgent', 'folderAgent']) assert.ok(Math.abs(centre(k[a]) - centre(k.server)) <= 1, `${a} kebab centre ${centre(k[a])} vs server ${centre(k.server)}`);
         console.log(`   ✓ x ${k.server.left}, ${k.server.width} x ${k.server.height} px for all three`);
 
-        console.log('2. The menu opens with Launch team, Open folder, Launch agent, then the details');
+        console.log('2. The menu opens with one launch row (Launch agent, Launch team, Open in Servers), a hint for the folder, then the details');
         await openMenu('m1');
         const menu = await ev(`(() => { const p = document.querySelector('#live-sessions-list li.server-group-header[data-server-group="m1"] .server-switcher-panel');
-            return { first: [...p.children].map(c => c.className.split(' ')[0]), actions: [...p.querySelectorAll('[data-server-launch]')].map(b => ({ kind: b.dataset.serverLaunch, label: b.firstChild.textContent.trim(), disabled: b.disabled })), hasDetails: !!p.querySelector('.server-details-list') }; })()`);
+            return { first: [...p.children].map(c => c.className.split(' ')[0]), actions: [...p.querySelectorAll('[data-server-launch]')].map(b => ({ kind: b.dataset.serverLaunch, label: b.firstChild.textContent.trim(), disabled: b.disabled })), row: [...p.querySelector('.server-launch-actions').children].map(b => b.textContent.trim()), hint: (p.querySelector('.server-launch-hint') || {}).textContent || '', collapse: [...p.querySelectorAll('button')].some(b => /^(Collapse|Expand)$/.test(b.textContent.trim())), hasDetails: !!p.querySelector('.server-details-list') }; })()`);
         assert.equal(menu.first[0], 'server-launch-actions', `the launch actions come first (${menu.first})`);
-        assert.deepEqual(menu.actions.map(a => a.label), ['Launch team', 'Open folder', 'Launch agent']);
-        assert.deepEqual(menu.actions.map(a => a.kind), ['team', 'folder', 'agent']);
+        assert.deepEqual(menu.actions.map(a => a.label), ['Launch agent', 'Launch team']);
+        assert.deepEqual(menu.actions.map(a => a.kind), ['agent', 'team']);
+        assert.deepEqual(menu.row, ['Launch agent', 'Launch team', 'Open in Servers'], 'one row: the two launches and Open in Servers as its last item');
+        assert.equal(menu.hint, 'To use a folder, choose it when you launch an agent.', 'a remote has no Open folder: a one-line hint says where the folder is chosen');
+        assert.equal(menu.collapse, false, 'no Collapse button in the menu: the header toggles the group');
         assert.ok(menu.hasDetails, 'the details stay');
-        console.log('   ✓ team, folder, agent first; details after');
+        console.log('   ✓ agent, team and Open in Servers in one row, the folder hint, no Collapse; details after');
 
         console.log('3. Launch team and Launch agent open the launch flow with that server chosen');
         await click('m1', 'team');
@@ -104,21 +107,22 @@ const SERVERS = [
         await closeFlows();
         console.log('   ✓ team on m1, agent on m2: the dropdown shows the chosen server, past the chooser');
 
-        console.log('4. A server that cannot launch has the actions disabled with the reason; a click does nothing');
+        console.log('4. A server that cannot launch has the launches disabled and the reason said once; a click does nothing');
         await openMenu('m3');
-        const off = await ev(`[...document.querySelectorAll('#live-sessions-list li.server-group-header[data-server-group="m3"] [data-server-launch]')].map(b => ({ kind: b.dataset.serverLaunch, disabled: b.disabled, aria: b.getAttribute('aria-disabled'), why: b.querySelector('.server-launch-why')?.textContent || '' }))`);
-        assert.equal(off.length, 3);
-        assert.ok(off.every(o => o.disabled && o.aria === 'true' && /unavailable \(offline\)/.test(o.why)), `all three disabled, with the reason (${JSON.stringify(off)})`);
+        const off = await ev(`[...document.querySelectorAll('#live-sessions-list li.server-group-header[data-server-group="m3"] [data-server-launch]')].map(b => ({ kind: b.dataset.serverLaunch, disabled: b.disabled, aria: b.getAttribute('aria-disabled'), why: b.getAttribute('title') || '' }))`);
+        assert.equal(off.length, 2);
+        assert.ok(off.every(o => o.disabled && o.aria === 'true' && /unavailable \(offline\)/.test(o.why)), `both launches disabled, with the reason (${JSON.stringify(off)})`);
+        assert.match(await ev(`document.querySelector('#live-sessions-list li.server-group-header[data-server-group="m3"] .server-launch-note').textContent`), /unavailable \(offline\)/, 'the reason is said once under the row');
+        assert.equal(await ev(`document.querySelector('#live-sessions-list li.server-group-header[data-server-group="m3"] .server-open-btn').disabled`), false, 'Open in Servers still works for an offline server');
         await ev(`document.querySelector('#live-sessions-list li.server-group-header[data-server-group="m3"] [data-server-launch="team"]').click(); true`);
         st = await launchState();
         assert.equal(st.launch, false, 'nothing opened');
-        // Open folder for a remote: pins live on the hub, so it is disabled with its own reason even when the server is online.
+        // Open folder is not offered for a remote: pins live on the hub, so a hint replaces the button even when the server is online.
         await closeFlows();
         await openMenu('m1');
-        const rf = await ev(`(() => { const b = document.querySelector('#live-sessions-list li.server-group-header[data-server-group="m1"] [data-server-launch="folder"]'); return { disabled: b.disabled, why: b.querySelector('.server-launch-why').textContent }; })()`);
-        assert.equal(rf.disabled, true); assert.match(rf.why, /Pinned folders live on this Coral/);
+        assert.equal(await ev(`document.querySelector('#live-sessions-list li.server-group-header[data-server-group="m1"] [data-server-launch="folder"]')`), null, 'no Open folder on a remote');
         await closeFlows();
-        console.log('   ✓ offline server: all three disabled, "unavailable (offline)"; Open folder on a remote says why');
+        console.log('   ✓ offline server: both launches disabled, the reason once; no Open folder on a remote');
 
         console.log('5. The hub itself: Open folder opens the folder dialog; Launch team preselects it');
         await scene(false);
@@ -159,7 +163,7 @@ const SERVERS = [
             return { left: p.left, right: p.right, vw: innerWidth, btns, overflow: document.documentElement.scrollWidth - innerWidth };
         })()`);
         assert.ok(fit.left >= 0 && fit.right <= fit.vw, `phone: the menu is on screen (${JSON.stringify(fit)})`);
-        assert.ok(fit.btns.length === 3 && fit.btns.every(h => h >= 44), `phone: each action is 44 px tall (${fit.btns})`);
+        assert.ok(fit.btns.length === 2 && fit.btns.every(h => h >= 44), `phone: each action is 44 px tall (${fit.btns})`);
         assert.equal(fit.overflow, 0, 'phone: no horizontal overflow');
         await Emulation.setTouchEmulationEnabled({ enabled: false });
         await Emulation.clearDeviceMetricsOverride();

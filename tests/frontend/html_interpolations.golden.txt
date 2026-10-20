@@ -386,11 +386,12 @@
 1	scheduler.js	typeIcon
 1	scheduler.js	workflows.map(w => `<option value="${Number(w.id)}">${escapeHtml(w.name)}${w.description ? ' — ' + escapeHtml(
 1	server_status.js	count
+1	server_status.js	dd(r)
 1	server_status.js	extraClass ? ' ' + extraClass : ''
 3	server_status.js	m.cls
 2	server_status.js	n.level
 1	server_status.js	rows
-1	server_status.js	rows.map(([k, v]) => `<dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd>`).join('')
+1	server_status.js	rows.map(r => `<dt>${escHtml(r[0])}</dt>${dd(r)}`).join('')
 1	server_status.js	serverDetailsHtml(e)
 1	server_status.js	serverLaunchActionsHtml(e)
 1	server_status.js	updateBadgeHtml(e)
