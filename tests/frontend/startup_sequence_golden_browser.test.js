@@ -13,7 +13,8 @@ const RECORDER = `(() => {
     const log = window.__boot = [], known = new Set(Object.getOwnPropertyNames(window));
     window.__bootKnown = known;
     let tell = () => {}; // set below: tells the document changes made so far before an event is logged, so the two are in the order they happened
-    const push = s => { tell(); log.push(s); };
+    let outside = 0; // > 0 while a frame, timer or observer callback runs: what it does is not the handler's step, and lands in the handler's span where the CPU's speed puts it, so it is logged with a ~ and left out of the comparison
+    const push = s => { tell(); log.push(outside ? '~' + s : s); };
     const desc = t => t === window ? 'window' : t === document ? 'document' : t instanceof Element
         ? (t.id ? '#' + t.id : t.tagName.toLowerCase() + (typeof t.className === 'string' && t.className.trim() ? '.' + t.className.trim().split(/\\s+/).join('.') : '')) : ((t && t.constructor && t.constructor.name) || 'other');
     const pathOf = u => { try { const x = new URL(String(u && u.url ? u.url : u), location.href); return x.pathname; } catch { return String(u).slice(0, 80); } };
@@ -22,8 +23,8 @@ const RECORDER = `(() => {
     const mdesc = n => n.nodeType === 1 ? desc(n) : n.nodeType === 3 ? '#text' : '#' + n.nodeName;
     tell = () => { if (observing) flush('now'); }; let observing = false;
     const flush = why => { const recs = pending.splice(0).concat(obs.takeRecords()); for (const r of recs) {
-        if (r.type === 'attributes') { const v = r.attributeName === 'style' ? '' : String(r.target.getAttribute(r.attributeName) || '').slice(0, 40); log.push('mutation ' + why + ' attr ' + desc(r.target) + ' ' + r.attributeName + '=' + v); }
-        else log.push('mutation ' + why + ' children of ' + desc(r.target) + ' +' + [...r.addedNodes].map(mdesc).join(',') + ' -' + [...r.removedNodes].map(mdesc).join(',')); } };
+        if (r.type === 'attributes') { const v = r.attributeName === 'style' ? '' : String(r.target.getAttribute(r.attributeName) || '').slice(0, 40); log.push((outside ? '~' : '') + 'mutation ' + why + ' attr ' + desc(r.target) + ' ' + r.attributeName + '=' + v); }
+        else log.push((outside ? '~' : '') + 'mutation ' + why + ' children of ' + desc(r.target) + ' +' + [...r.addedNodes].map(mdesc).join(',') + ' -' + [...r.removedNodes].map(mdesc).join(',')); } };
     const add = EventTarget.prototype.addEventListener; let dcl = 0;
     EventTarget.prototype.addEventListener = function (type, fn, o) {
         if (type === 'DOMContentLoaded' && this === document && typeof fn === 'function') {
@@ -38,8 +39,11 @@ const RECORDER = `(() => {
     // (a wrapper is told by the shape of its code, not its names: a build renames them)
     cur = mine; Object.defineProperty(window, 'fetch', { configurable: true, get: () => cur, set: v => { push('window.fetch is replaced by ' + String(v).replace(/[A-Za-z_$][\\w$]*/g, w => /^(async|function|await|let|const|var|return|if|else|new|this|throw|try|catch|true|false|null|undefined|typeof)$/.test(w) ? w : '_').replace(/\\s+/g, '').slice(0, 90)); cur = v; } });
     const RW = window.WebSocket; window.WebSocket = function (u, p) { push('websocket ' + pathOf(u)); return p === undefined ? new RW(u) : new RW(u, p); }; Object.assign(window.WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 }); window.WebSocket.prototype = RW.prototype;
-    const si = window.setInterval; window.setInterval = function (f, ms, ...r) { push('setInterval ' + ms); return si.call(this, f, ms, ...r); };
-    const st = window.setTimeout; window.setTimeout = function (f, ms, ...r) { push('setTimeout ' + (ms || 0)); return st.call(this, f, ms, ...r); };
+    const away = fn => typeof fn !== 'function' ? fn : function (...a) { tell(); outside++; try { return fn.apply(this, a); } finally { tell(); outside--; } };
+    const raf = window.requestAnimationFrame; window.requestAnimationFrame = function (f) { return raf.call(this, away(f)); }; // raf-ok: the page's own frames are wrapped, not waited for
+    for (const name of ['ResizeObserver', 'IntersectionObserver']) { const O = window[name]; if (O) window[name] = class extends O { constructor(f, ...r) { super(away(f), ...r); } }; }
+    const si = window.setInterval; window.setInterval = function (f, ms, ...r) { push('setInterval ' + ms); return si.call(this, away(f), ms, ...r); };
+    const st = window.setTimeout; window.setTimeout = function (f, ms, ...r) { push('setTimeout ' + (ms || 0)); return st.call(this, away(f), ms, ...r); };
     window.addEventListener('coral:ready', () => push('coral:ready'));
 })()`;
 
@@ -58,7 +62,7 @@ const RECORDER = `(() => {
                 modules: performance.getEntriesByType('resource').map(e => new URL(e.name).pathname).filter(p => /\\.js$/.test(p) && p.includes('/static/')).map(p => p.replace(/^.*\\/static\\//, '')).sort() };
         })()`);
         // sections: the log is cut at the handlers' markers
-        const log = got.log;
+        const log = got.log.filter(l => !l.startsWith('~')); // (the callbacks' own lines are left out, see the recorder)
         const handlerStarts = log.map((l, i) => /^DOMContentLoaded handler \d+ starts$/.test(l) ? i : -1).filter(i => i >= 0);
         const handlerEnds = log.map((l, i) => /^DOMContentLoaded handler \d+ (ends|failed|threw)$/.test(l) ? i : -1).filter(i => i >= 0);
         const cases = {};
