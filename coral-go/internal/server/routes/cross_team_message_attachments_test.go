@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -160,4 +161,26 @@ func TestLocalCrossTeamMessageListsItsAttachedFiles(t *testing.T) {
 	assert.Equal(t, d, env.Attachments[0].ID)
 	assert.NotEmpty(t, env.Attachments[0].Name)
 	assert.Positive(t, env.Attachments[0].Size)
+}
+
+// #5507 (Security): the name an agent gave its upload is free text. On the same-Coral path it reaches the receiving message's envelope (and the dashboard and the hub) unless it is cleaned.
+func TestLocalCrossTeamMessageListsAnUploadNameCleaned(t *testing.T) {
+	e := newAttachEnv(t, true)
+	hostile := "re‮port\x1b[31m\n\x00" + strings.Repeat("x", 500) + ".md"
+	d := writeUpload(t, e.coralDir, alphaOrchSID, "alpha's report", hostile, afterJoin())
+	code, out := e.send("alpha", "beta", alphaOrchSID, uri(d))
+	require.Equal(t, http.StatusOK, code, out)
+	msg := out["message"].(map[string]any)
+	m, err := e.h.bs.GetMessageByID(t.Context(), "beta", int64(msg["id"].(float64)))
+	require.NoError(t, err)
+	var env struct {
+		Attachments []envelopeAttachment `json:"attachments"`
+	}
+	require.NoError(t, json.Unmarshal(m.External, &env))
+	require.Len(t, env.Attachments, 1)
+	name := env.Attachments[0].Name
+	for _, r := range name {
+		assert.False(t, unicode.IsControl(r) || unicode.Is(unicode.Cf, r), "no control or format character in the listed name: %q", name)
+	}
+	assert.LessOrEqual(t, len(name), 200, "the listed name is bounded")
 }

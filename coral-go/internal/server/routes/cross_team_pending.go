@@ -183,6 +183,12 @@ func (h *BoardHandler) listAttachmentsOnMessage(project string, id int64, atts [
 	if len(atts) == 0 || h.bs == nil {
 		return
 	}
+	// The name is text another party chose (a received file's name, or an upload's on this Coral): no control or format character and at most 200 bytes reach the envelope, the dashboard and
+	// Coral Hub, the same cleaning the message text's own file lines get (#5507 review).
+	atts = append([]board.MessageAttachment(nil), atts...)
+	for i := range atts {
+		atts[i].Name = relayFileName(atts[i].Name)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := h.bs.SetInboundAttachments(ctx, project, id, atts); err != nil {
