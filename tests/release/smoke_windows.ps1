@@ -314,7 +314,11 @@ try {
                 if (-not $running) { Start-Sleep -Milliseconds 500 }
             }
             if ($listed -and $running) { Pass "launch: the stand-in CLI started under pty, is on the live list, and its process runs ($($agentPids.Count) process(es) carry the session id)" }
-            else { Fail "launch: on the live list: $listed; $standName running: $running" }
+            else {
+                $shape = ''
+                try { $d = $live.Body | ConvertFrom-Json; $rows = if ($d -is [array]) { $d } else { @($d.sessions) }; $shape = "rows=$($rows.Count) ids=$(($rows | ForEach-Object { $_.session_id }) -join ',')" } catch { $shape = "unparsed: $($live.Body.Substring(0, [Math]::Min(120, $live.Body.Length)))" }
+                Fail "launch: on the live list: $listed (last list: HTTP $($live.Code), $shape; launched $sid); $standName running: $running"
+            }
         }
     } else { Info "no -StandIn (or no key): the launch is not checked" }
 
