@@ -4,11 +4,12 @@
 import { importOnce } from './import_once.js';
 import { copyText, showToast } from './utils.js';
 import { isCloud } from './server_base.js';
-const { ageTier, reasonText, requestCheckNow, savePrefs } = await importOnce('./update_api.js');
+const { ageTier, reasonText, fetchHubRelaunch, requestCheckNow, savePrefs, serverHas } = await importOnce('./update_api.js');
 const { failureNotice, getUpdateStatus, refreshUpdateStatus, relaunchOffered } = await importOnce('./update_ui.js');
 
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+let hubOn = null; // the hub switch as the server has it (GET /api/cloud/status), null when unknown
 const body = () => document.getElementById('update-pane-body');
 
 function stamp(iso) {
@@ -31,8 +32,9 @@ function card(s) {
         title.textContent = 'Updating Coral…'; sub.textContent = 'The update is being installed. Coral restarts when it is done.'; dot.dataset.k = 'warm'; c.dataset.k = 'warm';
     } else if (notice) {
         title.textContent = notice.lead; sub.textContent = notice.rest.trim(); dot.dataset.k = 'bad'; c.dataset.k = 'bad';
-        act = mk('button', 'btn update-act', 'Try again'); act.type = 'button';
-        act.addEventListener('click', async () => { act.disabled = true; await requestCheckNow(); await refreshUpdateStatus(); showUpdatesPane(); });
+        if (serverHas.check) act = mk('button', 'btn update-act', 'Try again'); // no server route to check now, no button
+        if (act) act.type = 'button';
+        if (act) act.addEventListener('click', async () => { act.disabled = true; await requestCheckNow(); await refreshUpdateStatus(); showUpdatesPane(); });
     } else if (relaunchOffered(s)) {
         const days = s.staged.days, tier = ageTier(days);
         title.textContent = `Coral ${s.staged.version} is ready`;
@@ -48,8 +50,9 @@ function card(s) {
         const fill = mk('span'); fill.style.width = `${s.progress}%`; bar.append(fill); text.append(bar);
     } else {
         title.textContent = 'Coral is up to date'; sub.textContent = `You are on ${s.installed}.`; dot.dataset.k = 'ok'; c.dataset.k = 'ok';
-        act = mk('button', 'btn update-act', 'Check now'); act.type = 'button';
-        act.addEventListener('click', async () => { act.disabled = true; const ok = await requestCheckNow(); await refreshUpdateStatus(); showUpdatesPane(); if (!ok) showToast('Could not check for updates.', true); });
+        if (serverHas.check) act = mk('button', 'btn update-act', 'Check now');
+        if (act) act.type = 'button';
+        if (act) act.addEventListener('click', async () => { act.disabled = true; const ok = await requestCheckNow(); await refreshUpdateStatus(); showUpdatesPane(); if (!ok) showToast('Could not check for updates.', true); });
     }
     c.append(dot, text); if (act) c.append(act);
     return c;
@@ -86,6 +89,7 @@ export async function showUpdatesPane() {
     const host = body();
     if (!host) return;
     const s = getUpdateStatus() || await refreshUpdateStatus();
+    hubOn = await fetchHubRelaunch();
     host.replaceChildren();
     if (!s || !s.enabled) { host.append(mk('p', 'update-calm', 'Updates are not available in this Coral.')); return; }
     const unmanaged = s.installKind !== '';
@@ -93,8 +97,8 @@ export async function showUpdatesPane() {
     // Through Coral Hub the switches are not the hub's to change (the machine's owner sets them on that computer), so they are not drawn there
     const grid = mk('dl', 'info-grid settings-grid');
     const reason = unmanaged ? (s.installKind === 'homebrew' ? 'Homebrew manages updates.' : 'This install cannot update itself.') : '';
-    grid.append(row('settings-update-auto', 'Download updates automatically', unmanaged ? reason : 'Downloads in the background and checks the release is genuine. The update installs the next time Coral starts, never while you work. Only the latest releases of Coral\'s own GitHub repository are used.', unmanaged ? false : s.auto !== false, unmanaged));
-    if (s.hubRelaunch !== null) grid.append(row('settings-update-hub', 'Let Coral Hub relaunch this Coral to install updates', unmanaged ? reason : 'Coral Hub can ask for the relaunch only; it cannot choose a version, and cannot change this setting.', unmanaged ? false : s.hubRelaunch, unmanaged));
+    if (serverHas.autoPref) grid.append(row('settings-update-auto', 'Download updates automatically', unmanaged ? reason : 'Downloads in the background and checks the release is genuine. The update installs the next time Coral starts, never while you work. Only the latest releases of Coral\'s own GitHub repository are used.', unmanaged ? false : s.auto !== false, unmanaged));
+    if (hubOn !== null) grid.append(row('settings-update-hub', 'Let Coral Hub relaunch this Coral to install updates', unmanaged ? reason : 'Coral Hub can ask for the relaunch only; it cannot choose a version, and cannot change this setting.', unmanaged ? false : hubOn, unmanaged));
     if (!isCloud()) host.append(grid);
     const facts = mk('dl', 'info-grid settings-grid update-facts');
     const fact = (k, v) => { const r = mk('div', 'settings-row'); r.append(mk('dt', null, k), mk('dd', null, v)); facts.append(r); };
@@ -109,9 +113,9 @@ export async function showUpdatesPane() {
 export async function applyUpdatePrefs() {
     const auto = document.getElementById('settings-update-auto'), hub = document.getElementById('settings-update-hub');
     const s = getUpdateStatus();
-    if (isCloud() || !s || !auto || auto.disabled) return;
-    const next = { auto: auto.checked, hubRelaunch: hub ? hub.checked : !!s.hubRelaunch };
-    if (next.auto === (s.auto !== false) && (!hub || hub.checked === !!s.hubRelaunch)) return;
-    await savePrefs(next);
+    if (isCloud() || !s || (!auto && !hub) || (auto || hub).disabled) return;
+    const next = { auto: auto ? auto.checked : undefined, hubRelaunch: hub ? hub.checked : undefined };
+    if ((!auto || next.auto === (s.auto !== false)) && (!hub || hub.checked === hubOn)) return;
+    await savePrefs(next, { auto: s.auto, hubRelaunch: hubOn });
     await refreshUpdateStatus();
 }

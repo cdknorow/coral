@@ -11,8 +11,8 @@ const { guardSettings } = require('./helpers/settings_guard');
 const BASE = require('./test_base').BASE;
 
 const agents = (n, extra = {}) => Array.from({ length: n }, (_, i) => ({ session_id: `sid-${i}`, name: ['api-worker', 'review-1', 'docs-2'][i] || `agent-${i}`, backend: 'pty', state: ['working', 'waiting', 'idle'][i % 3], ...(i === 0 ? { resumes: true } : i === 2 ? { resumes: false } : {}), ...extra }));
-const staged = (days, restarts = agents(3), over = {}) => ({ enabled: true, installed: '1.4.125', state: 'staged', staged: { version: '1.4.126', staged_at: '2026-10-17T03:00:00Z', days_ready: days, verified: true }, relaunch: { available: true, reason: '', hub_allowed: true, restarts, tmux_agents_restart: false, ack: 'ack-1' }, last_result: null, checked_at: new Date().toISOString(), auto: true, hub_relaunch: true, ...over });
-const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null, relaunch: { available: false, reason: 'nothing_staged', restarts: [], ack: '' }, last_result: null, checked_at: new Date().toISOString(), auto: true, hub_relaunch: true };
+const staged = (days, restarts = agents(3), over = {}) => ({ enabled: true, installed: '1.4.125', state: 'staged', staged: { version: '1.4.126', staged_at: '2026-10-17T03:00:00Z', days_ready: days, verified: true }, relaunch: { available: true, reason: '', hub_allowed: true, restarts, tmux_agents_restart: false, ack: 'ack-1' }, last_result: null, checked_at: new Date().toISOString(), auto: true, ...over });
+const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null, relaunch: { available: false, reason: 'nothing_staged', restarts: [], ack: '' }, last_result: null, checked_at: new Date().toISOString(), auto: true };
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -25,24 +25,26 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
     const press = async (key, code, vk) => { const text = key === 'Enter' ? '\r' : undefined; await Input.dispatchKeyEvent({ type: text ? 'keyDown' : 'rawKeyDown', key, code, windowsVirtualKeyCode: vk, text }); await Input.dispatchKeyEvent({ type: 'keyUp', key, code, windowsVirtualKeyCode: vk }); await settle(80); };
     const focused = () => ev(`(() => { const a = document.activeElement; return a ? { id: a.id || '', cls: String(a.className || '').split(' ').slice(0, 3).join('.'), text: (a.getAttribute('aria-label') || a.textContent || '').trim().slice(0, 40) } : null; })()`);
 
-    // the stub: the status, and what each route answers; it records every request to /api/updates
+    // the stub: the status, and what each route answers; it records every request to /api/system/update
     const STUB = `(() => {
         const real = window.fetch;
-        window.__upd = window.__upd || { status: null, calls: [], relaunch: { status: 202, body: { ok: true, operation: 'op-1' } }, checkOk: true };
+        window.__upd = window.__upd || { hub: true, status: null, calls: [], relaunch: { status: 202, body: { ok: true, operation: 'op-1' } }, checkOk: true };
         const json = (o, status) => Promise.resolve(new Response(JSON.stringify(o), { status: status || 200, headers: { 'Content-Type': 'application/json' } }));
         window.fetch = (u, o) => {
             const url = String(u), method = (o && o.method) || 'GET';
-            if (url.startsWith('/api/updates/') || url.includes('/api/updates/')) {
-                const u2 = window.__upd; u2.calls.push({ method, url: url.replace(/^.*\\/api\\/updates/, ''), body: o && o.body ? JSON.parse(o.body) : null });
-                if (url.endsWith('/status')) return u2.status ? json(u2.status) : json({ error: 'none' }, 404);
-                if (url.endsWith('/relaunch')) return json(u2.relaunch.body, u2.relaunch.status);
+            if (url.includes('/api/cloud/status')) return json({ connected: false, hub_relaunch_updates: window.__upd.hub }); // the connector's status: the saved switch is here, not in the update status
+            if (url.includes('/api/cloud/hub-relaunch')) { window.__upd.calls.push({ method, url: '/hub-relaunch', body: o && o.body ? JSON.parse(o.body) : null }); return json({ ok: true }); }
+            if (url.includes('/api/system/update')) {
+                const u2 = window.__upd; u2.calls.push({ method, url: url.replace(/^.*\\/api\\/system\\/update/, '') || '/status', body: o && o.body ? JSON.parse(o.body) : null });
+                if (url.endsWith('/api/system/update')) return u2.status ? json(u2.status) : json({ error: 'none' }, 404);
+                if (url.endsWith('/relaunch')) { const keys = Object.keys(u2.calls[u2.calls.length - 1].body || {}); if (method !== 'POST' || keys.join() !== 'ack') return json({ error: 'bad body' }, 400); /* the server's body is exactly {ack} */ return json(u2.relaunch.body, u2.relaunch.status); }
                 if (url.endsWith('/check')) return json({ ok: true }, u2.checkOk ? 200 : 500);
                 if (url.endsWith('/settings')) return json({ ok: true });
             }
             return real(u, o);
         };
         return true; })()`;
-    const load = async (view, { flag = true, status = null } = {}) => {
+    const load = async (view, { flag = true, status = null, routes = true } = {}) => {
         await Emulation.setDeviceMetricsOverride({ width: view.w, height: view.h, deviceScaleFactor: 1, mobile: view.phone });
         await Emulation.setTouchEmulationEnabled({ enabled: view.phone });
         await Emulation.setEmulatedMedia({ features: [{ name: 'prefers-color-scheme', value: view.theme }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
@@ -52,6 +54,8 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
         await ev(`window.__coralReady.then(() => true)`);
         await installAudit(ev); await setTheme(ev, view.theme);
         await ev(STUB);
+        // Check now and the auto switch exist only once the server has routes for them (QA, #5302): on here so their code stays covered; routes:false is the server as it is today
+        if (routes) await ev(`import(${S} + 'update_api.js').then(m => { m.serverHas.check = true; m.serverHas.autoPref = true; return true; })`);
         if (status) await setStatus(status);
     };
     const setStatus = async (st) => { await ev(`window.__upd.status = ${JSON.stringify(st)}; import(${S} + 'update_ui.js').then(m => m.startUpdateUi && m.startUpdateUi()).then(() => import(${S} + 'update_ui.js')).then(m => m.refreshUpdateStatus()).then(() => true)`); await settle(150); };
@@ -78,7 +82,7 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
             await load(view, { flag: false });
             await ev(`window.__upd.status = ${JSON.stringify(staged(3))}; true`); await settle(600);
             let p = await pill();
-            check(`${tag}: flag off: the control is not shown and nothing asked /api/updates (${JSON.stringify(await ev('window.__upd.calls'))})`, p && p.hidden && (await ev('window.__upd.calls.length')) === 0);
+            check(`${tag}: flag off: the control is not shown and nothing asked /api/system/update (${JSON.stringify(await ev('window.__upd.calls'))})`, p && p.hidden && (await ev('window.__upd.calls.length')) === 0);
             await ev(`window.showSettingsModal(); true`); await waitFor(`!!document.getElementById('settings-tabs') && document.getElementById('settings-tabs').childElementCount > 0`, 'the settings tabs', 8000);
             check(`${tag}: flag off: Settings has no Updates tab`, await ev(`!document.getElementById('settings-tab-updates') && !document.getElementById('settings-pane-updates')`));
             await ev(`window.hideSettingsModal(); true`);
@@ -214,7 +218,7 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
             check(`${tag}: a switch is not saved until Apply (${JSON.stringify(await ev('window.__upd.calls.filter(c => c.method === "PUT")'))})`, (await ev('window.__upd.calls.filter(c => c.method === "PUT").length')) === 0);
             await ev(`window.applySettings(); true`); await waitFor(`window.__upd.calls.some(c => c.method === 'PUT')`, `${tag}: the save`, 6000);
             const put = await ev(`window.__upd.calls.filter(c => c.method === 'PUT')`);
-            check(`${tag}: Apply saves the two switches (${JSON.stringify(put)})`, put.length === 1 && put[0].url === '/settings' && JSON.stringify(put[0].body) === '{"auto":false,"hub_relaunch":true}');
+            check(`${tag}: Apply saves the auto switch to its route (${JSON.stringify(put)})`, put.length === 1 && put[0].url === '/settings' && JSON.stringify(put[0].body) === '{"auto":false}');
             // the card's states (Apply closed the dialog: open it again, or the audits below would look at nothing)
             await setStatus(staged(3)); await open();
             for (const [what, st, expect] of [
@@ -250,6 +254,19 @@ const idle = { enabled: true, installed: '1.4.125', state: 'none', staged: null,
             check(`${tag}: a new failure shows again, and a rollback says the agents are unaffected (${b.text})`, !b.hidden && /The update to 1\.4\.127 was undone\..*went back to 1\.4\.125\. Your agents are unaffected\./.test(b.text));
             // nothing sideways on a phone
             check(`${tag}: nothing wider than the screen`, (await ev(`document.documentElement.scrollWidth - document.documentElement.clientWidth`)) <= 0);
+
+            // ═══ the server as it is today: no route to check now or to save the auto switch (QA, #5302), so neither is drawn or sent; the hub switch has its own route
+            await load(view, { routes: false });
+            await setStatus(staged(3));
+            await ev(`window.showSettingsModal('updates'); true`); await waitFor(`!!document.querySelector('#update-pane-body .update-status')`, `${tag}: the pane`, 6000);
+            let bare = await ev(`({ auto: !!document.getElementById('settings-update-auto'), hub: !!document.getElementById('settings-update-hub'), check: !![...document.querySelectorAll('.update-act')].find(b => /Check now|Try again/.test(b.textContent)) })`);
+            check(`${tag}: without server routes the auto switch is not drawn, the hub switch is (${JSON.stringify(bare)})`, !bare.auto && bare.hub);
+            await setStatus(idle); await ev(`import(${S} + 'update_settings.js').then(m => m.showUpdatesPane())`); await settle(300);
+            bare = await ev(`({ check: !![...document.querySelectorAll('.update-act')].find(b => /Check now|Try again/.test(b.textContent)), title: (document.querySelector('.update-status-text b') || {}).textContent })`);
+            check(`${tag}: and Check now is not offered (${JSON.stringify(bare)})`, !bare.check && bare.title === 'Coral is up to date');
+            await ev(`window.__upd.calls.length = 0; document.getElementById('settings-update-hub').click(); window.applySettings(); true`); await waitFor(`window.__upd.calls.some(c => c.method === 'PUT')`, `${tag}: the hub save`, 6000);
+            const hubPut = await ev(`window.__upd.calls.filter(c => c.method !== 'GET')`);
+            check(`${tag}: the hub switch saves to PUT /api/cloud/hub-relaunch {allow} and nothing goes to a path the server lacks (${JSON.stringify(hubPut)})`, hubPut.length === 1 && hubPut[0].url === '/hub-relaunch' && JSON.stringify(hubPut[0].body) === '{"allow":false}');
         }
         const failed = results.filter(r => !r).length;
         console.log(`${results.length - failed} of ${results.length} checks passed`);

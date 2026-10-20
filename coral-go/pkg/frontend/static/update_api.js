@@ -1,20 +1,25 @@
 /* Everything the auto-update UI says to the server, in one place (#5275), so the final route names drop in here and nowhere else. The two routes of the design (Security's section 13 of #5231) are
- * GET /api/updates/status and POST /api/updates/relaunch {ack}; the two below them are PROVISIONAL (the design has no local route to check now or to save the two switches yet).
+ * GET /api/system/update and POST /api/system/update/relaunch {ack}; the two below them are PROVISIONAL (the design has no local route to check now or to save the two switches yet).
  *
  * The status, as the server sends it:
  *   { enabled, installed, state: none|staged|applying|failed,
  *     staged: { version, staged_at, days_ready, verified },
  *     relaunch: { available, reason, hub_allowed, restarts: [{ session_id, name, backend, state, resumes? }], tmux_agents_restart, ack },
  *     last_result: { at, from, to, result: relaunched|refused|failed_rolled_back, by },
- *     checked_at?, install_kind? (homebrew|unsupported), upgrade_command?, auto?, hub_relaunch? }
+ *     checked_at?, install_kind? (homebrew|unsupported), upgrade_command?, auto? }
  * The fields marked ? are not in the design yet; the UI treats each as absent when it is not sent. */
 
 const ROUTES = {
-    status: '/api/updates/status',
-    relaunch: '/api/updates/relaunch',
-    check: '/api/updates/check', // provisional: ask the updater to look now
-    prefs: '/api/updates/settings', // provisional: the two switches
+    status: '/api/system/update',
+    relaunch: '/api/system/update/relaunch',
+    cloudStatus: '/api/cloud/status', // GET: hub_relaunch_updates is where the saved switch is read
+    hubRelaunch: '/api/cloud/hub-relaunch', // PUT {allow}: the switch Coral Hub may relaunch this Coral (#5280)
+    check: '/api/system/update/check', // no server route yet: used only when serverHas.check is on
+    prefs: '/api/system/update/settings', // no server route yet: used only when serverHas.autoPref is on
 };
+
+/** What the server serves beyond the status, the relaunch and the hub switch. Both are off until a route is registered (QA, #5302): Check now and the auto switch are not drawn, and nothing is sent to a path that answers 404. */
+export const serverHas = { check: false, autoPref: false };
 
 const str = (v) => (typeof v === 'string' ? v : '');
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -36,7 +41,6 @@ export function normalizeStatus(raw) {
         installKind: ['homebrew', 'unsupported'].includes(raw.install_kind) ? raw.install_kind : '',
         upgradeCommand: str(raw.upgrade_command),
         auto: typeof raw.auto === 'boolean' ? raw.auto : null,
-        hubRelaunch: typeof raw.hub_relaunch === 'boolean' ? raw.hub_relaunch : null,
         progress: Number.isFinite(Number(raw.progress)) ? Math.min(100, Math.max(0, Math.round(Number(raw.progress)))) : null, // provisional: percent of a download in progress
     };
 }
@@ -97,15 +101,30 @@ export async function requestRelaunch(ack) {
     } catch (e) { return { ok: false, status: 0, code: 'network', signInUrl: '', relaunch: null }; }
 }
 
-/** Ask the updater to look for a release now (provisional). */
+/** The saved "Coral Hub may relaunch this Coral" switch, or null when it can't be read (the status of the update has no such field; the connector's does). */
+export async function fetchHubRelaunch() {
+    try {
+        const resp = await fetch(ROUTES.cloudStatus);
+        if (!resp.ok) return null;
+        const v = (await resp.json()).hub_relaunch_updates;
+        return typeof v === 'boolean' ? v : null;
+    } catch { return null; }
+}
+
+/** Ask the updater to look for a release now (false when the server has no such route). */
 export async function requestCheckNow() {
+    if (!serverHas.check) return false;
     try { return (await fetch(ROUTES.check, { method: 'POST' })).ok; } catch { return false; }
 }
 
-/** Save the two switches (provisional): auto download, and whether Coral Hub may relaunch this Coral. */
-export async function savePrefs({ auto, hubRelaunch }) {
-    const resp = await fetch(ROUTES.prefs, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto: !!auto, hub_relaunch: !!hubRelaunch }) });
-    if (!resp.ok) throw new Error('Could not save the update settings.');
+/** Save the switches that changed: whether Coral Hub may relaunch this Coral (its own route), and auto download (only when the server has a route for it). */
+export async function savePrefs({ auto, hubRelaunch }, was = {}) {
+    const put = async (url, body) => {
+        const resp = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!resp.ok) throw new Error('Could not save the update settings.');
+    };
+    if (hubRelaunch !== undefined && !!hubRelaunch !== !!was.hubRelaunch) await put(ROUTES.hubRelaunch, { allow: !!hubRelaunch });
+    if (serverHas.autoPref && auto !== undefined && !!auto !== (was.auto !== false)) await put(ROUTES.prefs, { auto: !!auto });
 }
 
 /** How long an update has been ready, as the three states of the control. */
