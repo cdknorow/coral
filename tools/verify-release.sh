@@ -159,6 +159,13 @@ fi
 # ---- 2. the notes ----
 if [ -n "$meta" ]; then
   body="$(jq -r .body <<<"$meta")"
+  # A release from 1.4.134 on starts with the Download section (#5467: finish-release.sh puts it above the notes, "### Download" up to its "---" line):
+  # it is checked on its own below, and the notes are compared without it.
+  dlsec=""
+  if [ "$(head -n 1 <<<"$body")" = "### Download" ]; then
+    dlsec="$(awk 'NR==1{next} /^---$/{exit} {print}' <<<"$body")"
+    body="$(awk 'st==0 && NR==1 && $0=="### Download"{st=1; next} st==1{ if ($0=="---") st=2; next } st==2{ st=3; if ($0=="") next } {print}' <<<"$body")"
+  fi
   notes="$(gh api "repos/$REPO/contents/RELEASE_NOTES.md?ref=$TAG" -q .content 2>/dev/null | base64 -d 2>/dev/null)"
   if [ -z "$notes" ]; then
     fail notes "RELEASE_NOTES.md at $TAG" "could not be read"
@@ -176,6 +183,19 @@ if [ -n "$meta" ]; then
         firstdiff="$(diff <(printf '%s\n' "$section") <(printf '%s\n' "$body" | head -n "$nlines") | sed -n '2p' | cut -c1-70)"
         fail notes "body starts with the notes" "differs from RELEASE_NOTES.md at the tag; first difference (notes line): ${firstdiff:-body is shorter}"
       fi
+    fi
+  fi
+  # The Download section (#5467), from 1.4.134 on: the five stable-name files of this tag, named by the release home, and the Homebrew line.
+  if [ "$(printf '%s\n%s\n' 1.4.134 "${want_ver%%-*}" | sort -V | head -1)" = 1.4.134 ]; then
+    if [ -z "$dlsec" ]; then
+      fail notes "Download section" "the body does not start with '### Download'"
+    else
+      dlhome="$(release_home_for_tag "$TAG")"; dlbase="https://github.com/$dlhome/releases/download/$TAG"; dlmiss=""
+      for f in Coral.dmg Coral-x64.msi Coral-x64-portable.zip coral-linux-amd64.tar.gz coral-linux-arm64.tar.gz; do
+        grep -qF "($dlbase/$f)" <<<"$dlsec" || dlmiss="$dlmiss $f"
+      done
+      grep -qF "brew install --cask ${dlhome%%/*}/coral/coral" <<<"$dlsec" || dlmiss="$dlmiss brew-line"
+      [ -z "$dlmiss" ] && pass notes "Download section" "the five stable files of $TAG and the Homebrew line" || fail notes "Download section" "missing:$dlmiss"
     fi
   fi
 fi
