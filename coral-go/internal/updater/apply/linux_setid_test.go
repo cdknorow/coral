@@ -27,8 +27,16 @@ func TestAPlainTreeRefusesASetIDFileAndALink(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"go/a/LICENSE"}, files)
 
+	// A host may drop a bit the user is not entitled to (macOS drops setgid on a file whose group the user is not in): a bit that did not stick
+	// is not a test of this walk, so it is skipped by name, and the test as a whole is skipped when none stuck, never passed for nothing.
+	exercised := 0
 	for name, mode := range map[string]os.FileMode{"setuid": os.ModeSetuid | 0o755, "setgid": os.ModeSetgid | 0o755, "sticky": os.ModeSticky | 0o644} {
 		require.NoError(t, os.Chmod(f, mode), name)
+		if fi, serr := os.Lstat(f); serr != nil || fi.Mode()&mode&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) == 0 {
+			t.Logf("%s did not stick on this host: not tested here", name)
+			continue
+		}
+		exercised++
 		_, err = plainTree(root)
 		assert.Error(t, err, name)
 	}
@@ -36,4 +44,7 @@ func TestAPlainTreeRefusesASetIDFileAndALink(t *testing.T) {
 	require.NoError(t, os.Symlink("/etc/passwd", filepath.Join(root, "go", "link")))
 	_, err = plainTree(root)
 	assert.Error(t, err, "a link")
+	if exercised == 0 { // the link was tested; the set-id bits could not be on this host
+		t.Skip("this host keeps none of the set-id bits on a file")
+	}
 }
