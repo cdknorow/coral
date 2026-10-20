@@ -146,6 +146,7 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 	questionAt := -1
 	sawContinuation := false
 	boxes := 0
+	firstAt := end
 	var submit *promptSubmit
 	for j := end + 1; j < len(lines); j++ {
 		t := strings.TrimSpace(lines[j])
@@ -178,6 +179,7 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 				Wrapped:  sawContinuation,
 				Checked:  checked,
 			}}, opts...)
+			firstAt = i
 			sawContinuation = false
 			continue
 		}
@@ -225,6 +227,9 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 	if len(opts) < 2 {
 		return promptScreen{}, false
 	}
+	if draftInInputBox(lines, firstAt, end) {
+		return promptScreen{}, false
+	}
 	selected := false
 	for i, o := range opts {
 		if o.N != i+1 {
@@ -248,6 +253,37 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 		}
 	}
 	return promptScreen{Question: question, Options: opts, Review: parseReview(lines, questionAt), Multi: multi, Submit: submit, boxes: boxes, context: promptContext(lines, questionAt)}, true
+}
+
+var (
+	// What an agent draws under its input box, never under a menu that replaces it: Claude's hint and mode line, Codex's status line
+	composerFooterRe = regexp.MustCompile(`(?i)\? for shortcuts|\bcontext left\b|shift\+tab to cycle|bypass permissions on|accept edits on`)
+	// A rule as wide as an input box's border (a menu's own separators are short or sit between its options)
+	boxRuleRe = regexp.MustCompile(`^\s*[─━]{20,}\s*$`)
+)
+
+// draftInInputBox reports whether the numbered lines first..last are what a person typed into the agent's input box (a draft that is itself
+// a numbered list, "❯ 1. buy milk"), not a menu: the box sits between two full-width rules with no question between them and the options
+// (Claude Code), or the agent's footer is under it and no menu footer is (Codex). Answering that would type a digit into the draft, or an
+// Enter that sends it (#5254).
+func draftInInputBox(lines []string, first, last int) bool {
+	above := first - 1
+	for above >= 0 && strings.TrimSpace(lines[above]) == "" {
+		above--
+	}
+	below := last + 1
+	for below < len(lines) && strings.TrimSpace(lines[below]) == "" {
+		below++
+	}
+	if above >= 0 && below < len(lines) && boxRuleRe.MatchString(lines[above]) && boxRuleRe.MatchString(lines[below]) {
+		return true
+	}
+	footer, menu := false, false
+	for _, l := range lines[last+1:] {
+		footer = footer || composerFooterRe.MatchString(l)
+		menu = menu || menuFooterRe.MatchString(l)
+	}
+	return footer && !menu
 }
 
 var (
