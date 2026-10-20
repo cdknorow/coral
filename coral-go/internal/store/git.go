@@ -70,42 +70,60 @@ func NewGitStore(db *DB) *GitStore {
 	return &GitStore{db: db}
 }
 
-// UpsertGitSnapshot inserts or updates a git snapshot.
+// UpsertGitSnapshot inserts or updates a git snapshot. The two statements run in one transaction: a snapshot is either recorded and refreshed or not at all.
+//
+// A snapshot is one row per (session_id, commit_hash). SQLite's UNIQUE treats NULL as distinct, so for an agent with no session id the table's constraint never
+// matched and every poll (every 15 seconds or more) inserted another identical row for as long as the agent ran, a table that only grew (#5318). Such a snapshot
+// is looked up by (agent_name, commit_hash) with IS NULL instead.
 func (s *GitStore) UpsertGitSnapshot(ctx context.Context, snap *GitSnapshot) error {
 	now := nowUTC()
 	snap.RecordedAt = now
-
-	// Insert or ignore (dedup on session_id + commit_hash)
-	_, err := s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO git_snapshots
-		 (agent_name, agent_type, working_directory, branch, commit_hash,
+	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		const cols = `agent_name, agent_type, working_directory, branch, commit_hash,
 		  commit_subject, commit_timestamp, session_id, remote_url, recorded_at, pr_number,
-		  is_worktree, base_branch, ahead, behind, dirty_count)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		snap.AgentName, snap.AgentType, snap.WorkingDirectory, snap.Branch,
-		snap.CommitHash, snap.CommitSubject, snap.CommitTimestamp,
-		snap.SessionID, snap.RemoteURL, now, snap.PRNumber,
-		snap.Worktree, snap.BaseBranch, snap.Ahead, snap.Behind, snap.DirtyCount)
-	if err != nil {
+		  is_worktree, base_branch, ahead, behind, dirty_count`
+		args := []interface{}{snap.AgentName, snap.AgentType, snap.WorkingDirectory, snap.Branch,
+			snap.CommitHash, snap.CommitSubject, snap.CommitTimestamp,
+			snap.SessionID, snap.RemoteURL, now, snap.PRNumber,
+			snap.Worktree, snap.BaseBranch, snap.Ahead, snap.Behind, snap.DirtyCount}
+		var err error
+		if snap.SessionID == nil {
+			_, err = tx.ExecContext(ctx,
+				`INSERT INTO git_snapshots (`+cols+`)
+				 SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+				 WHERE NOT EXISTS (SELECT 1 FROM git_snapshots WHERE session_id IS NULL AND agent_name = ? AND commit_hash = ?)`,
+				append(args, snap.AgentName, snap.CommitHash)...)
+		} else {
+			// Insert or ignore (dedup on session_id + commit_hash)
+			_, err = tx.ExecContext(ctx,
+				`INSERT OR IGNORE INTO git_snapshots (`+cols+`)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+		}
+		if err != nil {
+			return err
+		}
+
+		// Always update branch/working_directory on the latest row for this session
+		updateSQL := "UPDATE git_snapshots SET branch = ?, working_directory = ?, recorded_at = ?, is_worktree = ?, base_branch = ?, ahead = ?, behind = ?, dirty_count = ?"
+		uargs := []interface{}{snap.Branch, snap.WorkingDirectory, now, snap.Worktree, snap.BaseBranch, snap.Ahead, snap.Behind, snap.DirtyCount}
+		if snap.RemoteURL != nil {
+			updateSQL += ", remote_url = ?"
+			uargs = append(uargs, *snap.RemoteURL)
+		}
+		if snap.PRNumber > 0 {
+			updateSQL += ", pr_number = ?"
+			uargs = append(uargs, snap.PRNumber)
+		}
+		if snap.SessionID == nil {
+			updateSQL += " WHERE session_id IS NULL AND agent_name = ? AND commit_hash = ?"
+			uargs = append(uargs, snap.AgentName, snap.CommitHash)
+		} else {
+			updateSQL += " WHERE session_id = ? AND commit_hash = ?"
+			uargs = append(uargs, snap.SessionID, snap.CommitHash)
+		}
+		_, err = tx.ExecContext(ctx, updateSQL, uargs...)
 		return err
-	}
-
-	// Always update branch/working_directory on the latest row for this session
-	updateSQL := "UPDATE git_snapshots SET branch = ?, working_directory = ?, recorded_at = ?, is_worktree = ?, base_branch = ?, ahead = ?, behind = ?, dirty_count = ?"
-	args := []interface{}{snap.Branch, snap.WorkingDirectory, now, snap.Worktree, snap.BaseBranch, snap.Ahead, snap.Behind, snap.DirtyCount}
-	if snap.RemoteURL != nil {
-		updateSQL += ", remote_url = ?"
-		args = append(args, *snap.RemoteURL)
-	}
-	if snap.PRNumber > 0 {
-		updateSQL += ", pr_number = ?"
-		args = append(args, snap.PRNumber)
-	}
-	updateSQL += " WHERE session_id = ? AND commit_hash = ?"
-	args = append(args, snap.SessionID, snap.CommitHash)
-
-	_, err = s.db.ExecContext(ctx, updateSQL, args...)
-	return err
+	})
 }
 
 // GetRecentGitSnapshots returns recent snapshots across all agents, optionally filtered by time.

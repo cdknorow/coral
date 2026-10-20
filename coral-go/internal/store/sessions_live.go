@@ -470,6 +470,9 @@ func (s *SessionStore) GetIcons(ctx context.Context, sessionIDs []string) (map[s
 			result[sid] = icon
 		}
 	}
+	if err := rows.Err(); err != nil { // an error mid-iteration is an error, not a short map (#5318)
+		return nil, err
+	}
 	return result, nil
 }
 
