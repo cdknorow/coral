@@ -60,9 +60,9 @@ async function httpJson(method, p, body, headers = {}) {
             await ev(`document.getElementById('command-input').value = 'what is this'; import(${S} + 'controls.js').then(m => m.sendCommand())`);
             await waitFor(`window.__rec.sends.length === 1`, 'the send', { timeout: 8000 });
             const typed = await ev(`window.__rec.sends[0].command`);
-            const HINT = await ev(`import(${S} + 'shared_images.js').then(m => m.IMAGE_HINT)`);
+            const HINT = await ev(`import(${S} + 'shared_images.js').then(m => m.imageHint(${JSON.stringify([up.artifact.uri])}))`);
             check(`${tag}: the agent gets the link and the hint to fetch it, then the text`, typed === `${up.artifact.uri} ${HINT} what is this`, typed);
-            check(`${tag}: the local uploads path never reaches the agent`, !typed.includes(up.path) && !/uploads/.test(typed) && /coral-agent artifact download/.test(typed), typed);
+            check(`${tag}: the local uploads path never reaches the agent`, !typed.includes(up.path) && !/uploads/.test(typed) && typed.includes(`coral-agent artifact download ${up.artifact.uri}`), typed);
 
             // 3. the chat: a thumbnail from the artifact, the name as a chip, the text alone
             const render = (msgs) => ev(`import(${S} + 'live_chat.js').then(m => { document.getElementById('pia-box')?.remove(); const box = document.createElement('div'); box.id = 'pia-box'; box.className = 'chat-messages chat-prose';

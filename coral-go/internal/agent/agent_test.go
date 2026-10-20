@@ -1604,8 +1604,10 @@ func TestPastedImageGuidanceIsInTheCanonicalPrompt(t *testing.T) {
 		"task workflow guidance":     DefaultTaskWorkflowGuidance,
 	} {
 		for _, want := range []string{
-			"pastes or attaches in the dashboard reaches you as a coral://artifacts link alone",
-			"a one-line hint and no local path: fetch it first the same way",
+			"is not a file path or a web address",
+			"the only way to get it is coral-agent artifact download coral://artifacts/<digest>",
+			"never guess a path, and never try to open the link itself",
+			"pastes or attaches in the dashboard reaches you as that link alone, followed by the exact download command to run: run it first",
 			"coral-agent artifact download <uri>",
 			"open that path with your image-viewing tool before reviewing the image",
 		} {

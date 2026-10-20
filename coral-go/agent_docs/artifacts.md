@@ -177,10 +177,14 @@ coral-agent artifact download coral://artifacts/<hex> [--output FILE]   # flags 
 
 ### Images the person pastes or attaches (#5481)
 
-An image pasted or attached in the dashboard is an artifact. Send types **only its `coral://artifacts/<hex>` link** into the agent (one per image) and, once, a hint:
-`(Image link(s) above: run coral-agent artifact download <link> and open the path it prints before reading the image.)`, then the person's own text. The agent never gets the local uploads path.
-Every agent type (Claude, Codex, Antigravity, Pi) reads the same: run `coral-agent artifact download coral://artifacts/<hex>`, then open the path it prints with the image or file tool before describing the image;
-the link alone is not the image. An image that has no artifact (the dashboard could not make one) is typed as its local path, with no hint. The chat shows the images as thumbnails from the artifact, as before.
+An image pasted or attached in the dashboard is an artifact. Send types **only its `coral://artifacts/<hex>` link** into the agent (one per image) and, once, a hint that carries the exact command for each link, with the real link filled in (#5496):
+`(To read the image(s) above, run first: coral-agent artifact download coral://artifacts/<hex> and open the path each prints.)` (two images: the two commands, joined by ` ; `), then the person's own text. The agent never gets the local uploads path.
+Every agent type (Claude, Codex, Antigravity, Pi) reads the same, and so does the canonical agent prompt: a `coral://artifacts/<hex>` link is not a file path or a web address; run `coral-agent artifact download coral://artifacts/<hex>`, then open the path it prints with the image or file tool before describing the image;
+the link alone is not the image, and a path is never guessed. An image that has no artifact (the dashboard could not make one) is typed as its local path, with no hint. The chat shows the images as thumbnails from the artifact, as before.
+
+A coral:// link that reaches an agent some other way (a board post, a task result, a message from another Coral) is fetched the same way. An image pasted through Coral Hub into an agent on another computer is stored by THAT computer's Coral and reaches its agent as the same link, so the command works there with no path from the sender's machine.
+
+**Fetching from each agent type's sandbox (#5496).** `coral-agent` must be on the agent's PATH (Coral adds its own folder at launch) and, by default, reaches Coral over HTTP on this computer. Claude Code and Pi run commands with the user's own permissions; Antigravity (agy) does too unless it was launched read-only (`--sandbox`). Codex's default sandbox (`workspace-write`, and `read-only`) blocks connections to localhost: `coral-agent artifact download` then cannot reach Coral over HTTP, and (checked with `codex sandbox`) the same is true of every command that needs Coral's address. In that case `coral-agent artifact download` falls back to reading the artifact's stored file in Coral's data folder directly (read access is allowed there), checks its SHA-256 against the link, and writes the copy to its output path or the temp folder; if the sandbox allows no write there, approve the command when Codex asks to run it outside the sandbox, or give that agent full access or network access (`-c sandbox_workspace_write.network_access=true`).
 
 ## Comments on an artifact (#5176)
 

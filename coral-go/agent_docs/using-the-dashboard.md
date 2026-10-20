@@ -72,7 +72,7 @@ The ☰ **Display** button under the search box opens a panel in place (not a po
 
 ## Pasted images show a thumbnail
 
-When you paste or attach an image in the message box and send it, its chip in the chat shows a small thumbnail (48 px) next to the file name. Click it to open the image in the Preview pane. The agent is typed the image's `coral://artifacts/<hex>` link (never the local path) and one hint to fetch it with `coral-agent artifact download` before reading it; the chat's chip then reads "Pasted image".
+When you paste or attach an image in the message box and send it, its chip in the chat shows a small thumbnail (48 px) next to the file name. Click it to open the image in the Preview pane. The agent is typed the image's `coral://artifacts/<hex>` link (never the local path) and one hint with the exact `coral-agent artifact download <link>` command to run before reading it; the chat's chip then reads "Pasted image".
 
 - It is shown for images Coral stored in its uploads folder on the agent's computer, and for images pasted into a Claude or Codex conversation, which Coral reads from the agent's own transcript (PNG, JPEG, GIF and WebP). A file the agent only names stays a plain name.
 - **Local only:** never through Coral Hub, where the chip keeps its name. An agent token reads only its own session's and its board's chat images.

@@ -4,8 +4,11 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"net/url"
@@ -14,6 +17,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/secfile"
 )
 
 // linkVersion is the query of a versioned artifact link (/api/artifacts/<digest>?v=2).
@@ -50,16 +56,27 @@ func downloadArtifact(base, ref, output string) (string, error) {
 		return "", err
 	}
 	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return fmt.Errorf("artifact redirects are not supported") }}
+	var src io.Reader
+	var mediaType, localObject string
 	resp, err := client.Get(strings.TrimRight(base, "/") + "/api/artifacts/" + id)
 	if err != nil {
-		return "", err
+		// Coral could not be reached: some agent sandboxes (Codex's default one) block connections to localhost. The artifact is a file in this user's Coral data folder, which such a
+		// sandbox lets the agent read: read it there; the SHA-256 check below proves it is the artifact the link names (#5496). A server that answered (any status) is never second-guessed.
+		f, mt, lerr := openLocalArtifact(id)
+		if lerr != nil {
+			return "", fmt.Errorf("%w (and the artifact's file could not be read in Coral's data folder either: %v; if this agent runs in a sandbox that blocks localhost, approve the command to run outside it)", err, lerr)
+		}
+		defer f.Close()
+		src, mediaType, localObject = f, mt, f.Name()
+	} else {
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("artifact download failed: HTTP %d", resp.StatusCode)
+		}
+		mediaType, _, _ = mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		src = resp.Body
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("artifact download failed: HTTP %d", resp.StatusCode)
-	}
-	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	body := bufio.NewReader(resp.Body)
+	body := bufio.NewReader(src)
 	if mediaType == "" || mediaType == "application/octet-stream" {
 		prefix, _ := body.Peek(512)
 		mediaType, _, _ = mime.ParseMediaType(http.DetectContentType(prefix))
@@ -78,6 +95,14 @@ func downloadArtifact(base, ref, output string) (string, error) {
 	}
 	f, err := os.CreateTemp(dir, "coral-artifact-*"+ext)
 	if err != nil {
+		// A read-only sandbox lets the agent read the stored file but not write a copy: after the same SHA-256 proof, the stored file's own path is the answer (it has no extension).
+		if localObject != "" && output == "" && errors.Is(err, fs.ErrPermission) {
+			if verr := verifyObject(localObject, id); verr != nil {
+				return "", verr
+			}
+			fmt.Fprintln(os.Stderr, "note: this sandbox cannot write a copy; the path printed is Coral's own stored file (checked against the link's SHA-256, no file extension): read it, do not write to it")
+			return filepath.Abs(localObject)
+		}
 		return "", err
 	}
 	keep := false
@@ -111,4 +136,45 @@ func downloadArtifact(base, ref, output string) (string, error) {
 	}
 	keep = true
 	return filepath.Abs(f.Name())
+}
+
+// openLocalArtifact opens the stored copy of artifact id in this user's Coral data folder (CORAL_DATA_DIR, else ~/.coral): artifacts/objects/<digest>, a regular file opened without
+// following a link, and its recorded media type from the sidecar when there is one. The caller checks the SHA-256 of what it reads.
+func openLocalArtifact(id string) (*os.File, string, error) {
+	object := filepath.Join(config.ResolveCoralDir(""), "artifacts", "objects", id)
+	f, err := secfile.OpenNoFollow(object, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, "", err
+	}
+	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, "", fmt.Errorf("not a regular file")
+	}
+	mediaType := ""
+	if side, err := os.ReadFile(object + ".json"); err == nil && len(side) < 64<<10 {
+		var m struct {
+			MediaType string `json:"media_type"`
+		}
+		if json.Unmarshal(side, &m) == nil {
+			mediaType, _, _ = mime.ParseMediaType(m.MediaType)
+		}
+	}
+	return f, mediaType, nil
+}
+
+// verifyObject reports whether the file at path holds exactly the bytes whose SHA-256 is id.
+func verifyObject(path, id string) error {
+	f, err := secfile.OpenNoFollow(path, os.O_RDONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if n, err := io.Copy(h, io.LimitReader(f, 64<<20+1)); err != nil || n > 64<<20 {
+		return fmt.Errorf("unreadable or too large")
+	}
+	if hex.EncodeToString(h.Sum(nil)) != id {
+		return fmt.Errorf("artifact SHA-256 mismatch")
+	}
+	return nil
 }
