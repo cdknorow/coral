@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/sigstore/sigstore-go/pkg/root"
@@ -56,7 +57,9 @@ func TestLoadTrustPrefersTUFThenItsCacheThenTheSnapshotOnAFirstRun(t *testing.T)
 	assert.NotEmpty(t, o.Root, "TUF starts from the embedded root")
 	fi, err := os.Stat(dir)
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o700), fi.Mode().Perm())
+	if runtime.GOOS != "windows" { // Windows reports 0777 for every folder: its protection is the access list (secfile), not mode bits
+		assert.Equal(t, os.FileMode(0o700), fi.Mode().Perm())
+	}
 
 	// Offline, with an earlier fetch's cache: the cache is used while its metadata is valid.
 	calls = fakeFetch(t, down, nil, tuftrust)

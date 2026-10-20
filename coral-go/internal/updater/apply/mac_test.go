@@ -1,3 +1,7 @@
+//go:build !windows
+
+// Not built on Windows: these test the Linux and macOS apply (POSIX file modes, renames over open files, symlinks, a staged record read back by path); the Windows apply is a separate piece (journal, MSI hand-off), #5395.
+
 package apply
 
 import (
