@@ -3,6 +3,7 @@ package routes
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -63,6 +64,13 @@ func TestCrossTeamRecordHelpersRefuseAnIdThatIsAPath(t *testing.T) {
 func TestATeamWorktreeFolderIsOneName(t *testing.T) {
 	_, h, _, _ := setupSessionsTestServerWithConfig(t, config.Load(t.TempDir()))
 	work := t.TempDir()
+	// A real repository with a commit, so a name that is let through would make a worktree outside the folder.
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "x"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = work
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
 	for _, name := range []string{"../escape", "a/b", "..", `..\x`, ""} {
 		wd, path, failure := h.createTeamWorktree(t.Context(), launchTeamRequest{BoardName: name, WorkingDir: work, Worktree: true})
 		assert.Empty(t, wd, "%q", name)
