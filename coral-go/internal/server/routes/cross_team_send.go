@@ -483,7 +483,8 @@ func (h *BoardHandler) ListRelayTargets(w http.ResponseWriter, r *http.Request) 
 }
 
 // artifactLinkRe is a coral://artifacts link as an agent writes it: the lower-case SHA-256, not part of a longer hex run.
-var artifactLinkRe = regexp.MustCompile(`coral://artifacts/([0-9a-f]{64})(?:[^0-9a-fA-F]|$)`)
+// The /api/artifacts/<hex> form (what an upload's "url" and a copied dashboard link look like) names the same file on this computer and means just as little elsewhere (#5500).
+var artifactLinkRe = regexp.MustCompile(`(?:coral://artifacts/|/api/artifacts/)([0-9a-f]{64})(?:[^0-9a-fA-F]|$)`)
 
 // maxUnattachedLinksNamed bounds the reply: a message with a hundred links names the first few.
 const maxUnattachedLinksNamed = 10

@@ -55,7 +55,10 @@ func TestUnattachedArtifactLinksAreOnlyRealLinks(t *testing.T) {
 		"coral://artifacts/" + strings.ToUpper(h):       nil, // ids are lower case
 		"http://x/coral://artifacts/" + h + "?v=2":      {"coral://artifacts/" + h},
 		"coral:/artifacts/" + h + " and artifacts/" + h: nil,
-		"": nil,
+		"see /api/artifacts/" + h + "?v=2 for it":       {"coral://artifacts/" + h}, // the upload's own url form (#5500 review)
+		"/api/artifacts/" + h + "0":                     nil,
+		"/api/artifacts/" + strings.ToUpper(h):          nil,
+		"":                                              nil,
 	} {
 		assert.Equal(t, want, unattachedArtifactLinks(text, nil), text)
 	}
