@@ -67,8 +67,10 @@ type Release struct {
 type Spec struct {
 	Version  string
 	Sequence int64
-	// Files are the package's contents (name to bytes); nil is one small file.
-	Files map[string][]byte
+	// Files are the package's contents (name to bytes); nil is one small file. Package, when it is set, is the package itself (a tarball built elsewhere) and
+	// Files is not used.
+	Files   map[string][]byte
+	Package []byte
 	// Manifest fields, changed to make the manifest wrong (zero values are the good ones).
 	ManifestRepo string
 	Prerelease   bool
@@ -135,7 +137,10 @@ func (s *Signer) NewRelease(sp Spec) (*Release, error) {
 	if files == nil {
 		files = map[string][]byte{"coral": []byte("coral " + sp.Version + "\n")}
 	}
-	r := &Release{Version: sp.Version, Tag: tag, Package: tarGz(files)}
+	r := &Release{Version: sp.Version, Tag: tag, Package: sp.Package}
+	if r.Package == nil {
+		r.Package = tarGz(files)
+	}
 	digest := sum(r.Package)
 	var sums bytes.Buffer
 	if !sp.NoAssetInSums {

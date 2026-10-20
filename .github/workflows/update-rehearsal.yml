@@ -1,0 +1,37 @@
+name: Update rehearsal
+
+# The update chain run for real on a Linux runner without a promoted release (#5401): two releases built from this source, the real server of the older one,
+# and the updater's real code (stage.Check and apply.Run) against a fake GitHub and a fake Sigstore, through a program of the rehearsal's own
+# (internal/updater/testrig/cmd/rehearsal-update) that no release builds. tests/release/update_rehearsal.sh is the whole of it. GitHub-hosted runner only; no secrets,
+# nothing published, no network beyond loopback.
+on:
+  workflow_dispatch:
+  # A push to a trial/update-rehearsal-* branch runs it (a new workflow file cannot be dispatched until it is on the default branch).
+  push:
+    branches: ["trial/update-rehearsal-*"]
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  rehearsal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache-dependency-path: coral-go/go.sum
+
+      - name: Rehearse the update chain
+        run: bash tests/release/update_rehearsal.sh
+
+      # The in-process half needs no runner of its own kind, but it is cheap here and proves the rig on Linux too.
+      - name: The rig's own tests (fake Sigstore, tamper matrix, guards)
+        working-directory: coral-go
+        run: go test -count=1 ./internal/updater/testrig/...
