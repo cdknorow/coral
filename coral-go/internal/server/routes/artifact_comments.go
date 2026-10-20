@@ -283,6 +283,10 @@ func (h *SessionsHandler) listArtifactComments(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
+	if h.hubMayNotSeePastedImage(r, id) { // the owner's switch hides a pasted image's comments from the Hub too (#5284)
+		errNotFound(w, "artifact not found")
+		return
+	}
 	state := r.URL.Query().Get("state")
 	switch state {
 	case "", "all":
