@@ -5,7 +5,7 @@ It does what Claude Code does for a multi-select question, and nothing else: it 
 its --settings file (PreToolUse, PermissionRequest for AskUserQuestion), draws the question on its terminal
 (five options with boxes, an unnumbered Submit row), toggles a box on a digit, moves with Down/Up (both arrow
 encodings), takes Submit with Enter, fires PostToolUse, writes the boxes that were ticked to standin-answer.txt
-in its working folder, and then idles. It never talks to the network and is not an agent.
+in its working folder, and then idles. Its terminal closing ends it, as it ends a real CLI. It never talks to the network and is not an agent.
 """
 import json
 import os
@@ -13,7 +13,6 @@ import re
 import subprocess
 import sys
 import termios
-import time
 import tty
 
 LABELS = ["Feels like a slideshow", "Doesn't show the game", "Tone/story is off", "Looks cheap/amateur", "Type something"]
@@ -86,4 +85,10 @@ hooks("PostToolUse", {"tool_response": {"answers": {}}})
 open("standin-answer.txt", "w").write(json.dumps([LABELS[i] for i in range(5) if checked[i]]))
 sys.stdout.write("\x1b[2J\x1b[H● Working on it…\r\n\r\n❯ \r\n")
 sys.stdout.flush()
-time.sleep(3600)
+# then wait for input like a real CLI does: when the terminal goes (EOF or an I/O error on a closed pty) it exits, instead of lingering with nothing to read
+try:
+    tty.setraw(fd)
+    while os.read(fd, 1024):
+        pass
+except OSError:
+    pass

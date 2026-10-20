@@ -33,3 +33,21 @@ Item 3 fails if its own control sees nothing, so a proxy that cannot see the ana
 Not covered here: how the dashboard draws the card and the comments panel (a browser is needed). That is
 `tests/frontend` (the CDP suites). This smoke covers the released binaries and the server's side of both.
 Needs macOS, `curl`, `sqlite3`, `lsof`, `python3`, `hdiutil`, `codesign`, `spctl`, and `gh` for a TAG.
+
+## smoke_linux.sh: the release smoke of a Linux tarball
+
+release.yml runs it on each architecture's own native runner right after the tarball is made, so the file that is published is the file that is tested
+(`linux-runner-dryrun.yml` runs it on the dry-run tarball); by hand: `tests/release/smoke_linux.sh dist/coral-linux-amd64-1.4.130.tar.gz --version 1.4.130 [--keep]`.
+Like the macOS smoke it uses a fresh HOME and data folder under `/tmp/coral-linsmoke.*`, a random port, `CORAL_CLOUD_URL=off`, the stand-in CLI
+(`smoke_macos/standin_cli.py`, shared), the PIDs it recorded for every stop, one table and a non-zero exit naming the failing item.
+
+| Item | What it checks |
+|---|---|
+| 1 package | the tarball unpacks inside its folder (no absolute or `..` names); every program of `commands.txt` is there, executable, and an ELF for this machine (amd64 or arm64) |
+| 2 version | `coral --version` prints the version given with `--version` |
+| 3 serve | `/api/health` and the dashboard page answer, the live list answers 200 with the key and 401 without, and the port listens on loopback only |
+| 4 launch | a launch with no agent type starts the stand-in under the pty backend; its hooks make it `waiting: question`; the question is answered through the API (toggles read back from its terminal, Submit); it received exactly the boxes ticked |
+| 5 stop | SIGTERM stops the server within 20 s (exit status 0 or 143), its port is closed, and the stand-in, which exits when its terminal closes as a real CLI does, is gone within 5 s |
+
+Needs Linux, bash, curl, python3 and tar. The stand-in ends when its terminal goes: an agent that never reads its terminal can outlive a stopped server
+(its parent shell is killed, it is orphaned and ignores the SIGHUP the server's own `signal.Ignore` handed down), which is not a failure of this check.

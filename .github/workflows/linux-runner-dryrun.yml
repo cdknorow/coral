@@ -79,3 +79,7 @@ jobs:
 
       - name: Create tarball
         run: tar czf "dist/coral-linux-${{ inputs.arch }}-dryrun.tar.gz" -C dist/linux .
+
+      # As release.yml's "Smoke test the tarball" (#5306): the dry-run tarball unpacked and run on this runner.
+      - name: Smoke test the tarball
+        run: tests/release/smoke_linux.sh "dist/coral-linux-${{ inputs.arch }}-dryrun.tar.gz" --version 0.0.0-dryrun

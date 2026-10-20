@@ -125,6 +125,14 @@ jobs:
           cd dist/linux
           tar czf "../coral-linux-${ARCH}-${VERSION}.tar.gz" .
 
+      # The file that is published, unpacked and run on this architecture's own runner: version, dashboard, a stand-in agent launch and answer,
+      # a clean stop (tests/release/smoke_linux.sh, #5306). Nothing leaves the machine; it fails the build with the item named.
+      - name: Smoke test the tarball
+        env:
+          ARCH: ${{ matrix.arch }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: tests/release/smoke_linux.sh "dist/coral-linux-${ARCH}-${GITHUB_REF_NAME#v}.tar.gz" --version "$VERSION"
+
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
