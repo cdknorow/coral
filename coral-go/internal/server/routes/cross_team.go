@@ -79,6 +79,9 @@ type crossTeamLimiter struct {
 	mu   sync.Mutex
 	tats map[string]time.Time
 	now  func() time.Time // tests inject a clock
+	// burst and refill override crossTeamBurst and crossTeamRefill when set (the coarse relay limiters, #5514).
+	burst  int
+	refill time.Duration
 }
 
 // allow admits one message for key, or returns how long until one would be.
@@ -103,10 +106,14 @@ func (l *crossTeamLimiter) allow(key string) (bool, time.Duration) {
 	if tat.Before(now) {
 		tat = now
 	}
-	if wait := tat.Sub(now) - (crossTeamBurst-1)*crossTeamRefill; wait > 0 {
+	burst, refill := int64(crossTeamBurst), crossTeamRefill
+	if l.burst > 0 && l.refill > 0 {
+		burst, refill = int64(l.burst), l.refill
+	}
+	if wait := tat.Sub(now) - time.Duration(burst-1)*refill; wait > 0 {
 		return false, wait
 	}
-	l.tats[key] = tat.Add(crossTeamRefill)
+	l.tats[key] = tat.Add(refill)
 	return true, 0
 }
 
@@ -608,7 +615,7 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 	if h.allowlistOn(ctx) {
 		// The allowlist is in force (#5508): the rate token first (taken by a refused send as by an accepted one), then the one door, with the sending Coral's board id as a claim checked for its shape
 		// before it is compared. Every refusal is the same bytes; a relayed sender is never the local Operator, whatever it says its role is.
-		if ok, wait := h.crossTeam.allow("relay\x00" + src + "\x00" + body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); !ok {
+		if ok, wait := h.relayRateAllow(src, body.FromBoard, body.SubscriberID, target); !ok {
 			secs := int(math.Ceil(wait.Seconds()))
 			httputil.WriteActionLimitBody(w, secs, map[string]any{"ok": false, "error": "rate_limited", "message": fmt.Sprintf("retry in %ds", secs)})
 			return
@@ -652,7 +659,7 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 			relayRefuse(w, http.StatusConflict, "no_orchestrator", "no active Orchestrator to receive the message")
 			return
 		}
-		if ok, wait := h.crossTeam.allow("relay\x00" + src + "\x00" + body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); !ok {
+		if ok, wait := h.relayRateAllow(src, body.FromBoard, body.SubscriberID, target); !ok {
 			secs := int(math.Ceil(wait.Seconds()))
 			// A limit on this sender's messages, not a busy server (#3434).
 			httputil.WriteActionLimitBody(w, secs, map[string]any{"ok": false, "error": "rate_limited", "message": fmt.Sprintf("retry in %ds", secs)})

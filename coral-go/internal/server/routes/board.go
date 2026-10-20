@@ -58,6 +58,8 @@ type BoardHandler struct {
 	allowlistFlag func(ctx context.Context) bool
 	// listEdits limits how often one owner session edits a board's list (#5508).
 	listEdits editLimiter
+	// relayCoarse are the coarse limits on what one source Coral can push (#5514).
+	relayCoarse relayCoarseLimits
 	// relay sends a cross-team message to another Coral through Coral Hub (#3489).
 	relay RelaySender
 	// relayArtifact sends a file to another Coral through Coral Hub (cross-team artifacts).
@@ -195,4 +197,11 @@ func (h *BoardHandler) goBG(f func()) {
 // misuse.
 func (h *BoardHandler) WaitBackground() {
 	h.background.Wait()
+}
+
+// relayCoarseLimits are the per-source-and-target and per-source limiters of relayed messages, built on first use so that they share the handler's test clock.
+type relayCoarseLimits struct {
+	once      sync.Once
+	perTarget crossTeamLimiter
+	perSource crossTeamLimiter
 }

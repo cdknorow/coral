@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // The checks a local cross-team message (PostExternalMessage) and a message to another Coral
@@ -77,4 +78,36 @@ func (h *BoardHandler) attachSenderFor(ctx context.Context, r *http.Request, boa
 		}
 	}
 	return sender
+}
+
+// The coarse relay limits (#5514). A relayed sender names its own board and subscriber strings, so the per-(source, sender board, sender, target) limit alone is dodged by varying them: a limit
+// per source Coral and target board, and one per source Coral overall, which no string the sender chooses changes, bound what one Coral can push whatever it calls its senders. They are far
+// above what a team sends (30 messages at once and one every 2 seconds to one board; 120 at once and one a second in all), so they only ever stop a sender that varies its names.
+const (
+	relayTargetBurst  = 30
+	relayTargetRefill = 2 * time.Second
+	relaySourceBurst  = 120
+	relaySourceRefill = time.Second
+)
+
+// relayRateAllow takes one message from the relayed sender's limits: the coarse ones first (per source Coral and target board, per source Coral), then the fine one per (source, sender board,
+// sender, target). It reports the longest wait when one refuses; a refusal at an earlier limit gives back nothing it took (each limit only counts what it admitted).
+func (h *BoardHandler) relayRateAllow(src, fromBoard, subscriber, target string) (bool, time.Duration) {
+	h.relayCoarse.once.Do(func() {
+		clock := func() time.Time { // the handler's own clock, read each time (tests move it)
+			if h.crossTeam.now != nil {
+				return h.crossTeam.now()
+			}
+			return time.Now()
+		}
+		h.relayCoarse.perTarget = crossTeamLimiter{burst: relayTargetBurst, refill: relayTargetRefill, now: clock}
+		h.relayCoarse.perSource = crossTeamLimiter{burst: relaySourceBurst, refill: relaySourceRefill, now: clock}
+	})
+	if ok, wait := h.relayCoarse.perSource.allow("src\x00" + src); !ok {
+		return false, wait
+	}
+	if ok, wait := h.relayCoarse.perTarget.allow("src-target\x00" + src + "\x00" + target); !ok {
+		return false, wait
+	}
+	return h.crossTeam.allow("relay\x00" + src + "\x00" + fromBoard + "\x00" + subscriber + "\x00" + target)
 }
