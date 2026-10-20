@@ -411,6 +411,12 @@
     color: var(--text-on-accent);
 }
 
+/* The board panel's Pause and Export are icon buttons (#5491): a square target, the icon the only content; a paused board's play icon is in the warning colour. */
+.board-chat-header .board-icon-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; padding: 0 var(--space-sm); }
+.board-chat-header .board-icon-btn .material-icons { font-size: 1.25rem; line-height: 1; }
+.board-chat-header .board-icon-btn.mb-action-danger { color: var(--warning); }
+@media (max-width: 767px), (pointer: coarse) { .board-chat-header .board-icon-btn { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); } }
+
 /* Message board markdown content */
 /* Links in a post and a subscriber's name: the theme's link colour, not the browser's #0000ee,
    which is unreadable on the dark theme (#3548); underlined on hover; the focus ring is the

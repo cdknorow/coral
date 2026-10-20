@@ -7,6 +7,7 @@ import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js'
 import { pollEvery } from './overload.js';
 import { resolveBoardArtifacts } from './board_artifacts.js';
 import { browserLocal } from './safe_storage.js';
+import { paintPauseButton as _paintPauseButton } from './board_pause_button.js';
 
 // ── Board Chat (right-panel tab) ──────────────────────────────────────
 let _boardChatTimer = null;
@@ -37,7 +38,7 @@ let _boardChatSelectedIds = new Set();
 function _resetBoardPanelForSwitch(panel, boardName) {
     if (_boardChatSelectMode) {
         const btn = panel.querySelector('.board-select-btn');
-        if (btn) btn.classList.remove('active');
+        if (btn) { btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false'); }
         const inputPane = document.getElementById('board-chat-input-pane');
         if (inputPane) inputPane.style.display = '';
         const bar = document.getElementById('board-chat-select-bar');
@@ -73,8 +74,8 @@ export function showBoardChatTab(boardName) {
         panel.innerHTML = `
             <div class="board-chat-header">
                 <a class="board-chat-title" href="#" data-on-click="board-chat-open" data-board="${escapeAttr(boardName)}" title="Open full board view">${escapeHtml(keyLabel(boardName))}</a>
-                <button class="btn-nav" id="board-chat-pause-btn" data-on-click="board-chat-pause" data-board="${escapeAttr(boardName)}" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
-                <button class="btn-nav board-select-btn" data-on-click="board-chat-select" title="Export — select messages to export as Markdown">Export</button>
+                <button class="btn-nav board-icon-btn" id="board-chat-pause-btn" data-on-click="board-chat-pause" data-board="${escapeAttr(boardName)}" aria-label="Pause board" title="Pause board: stops agents from receiving new messages until resumed"><span class="material-icons" aria-hidden="true">pause</span></button>
+                <button class="btn-nav board-select-btn board-icon-btn" data-on-click="board-chat-select" aria-label="Export messages" aria-pressed="false" title="Export: select messages to export as Markdown"><span class="material-icons" aria-hidden="true">download</span></button>
             </div>
             <div class="board-paused-banner" id="board-chat-paused-banner" style="display:none">Board reads are paused — agents cannot see new messages</div>
             <div class="board-chat-messages" id="board-panel-msgs"></div>
@@ -314,7 +315,7 @@ function _toggleBoardChatSelect() {
     _boardChatSelectMode = !_boardChatSelectMode;
     _boardChatSelectedIds.clear();
     const btn = document.querySelector('.board-select-btn');
-    if (btn) btn.classList.toggle('active', _boardChatSelectMode);
+    if (btn) { btn.classList.toggle('active', _boardChatSelectMode); btn.setAttribute('aria-pressed', String(_boardChatSelectMode)); }
     // Hide chat input when in select mode
     const inputPane = document.getElementById('board-chat-input-pane');
     if (inputPane) inputPane.style.display = _boardChatSelectMode ? 'none' : '';
@@ -351,7 +352,7 @@ export function _cancelBoardChatSelect() {
     _boardChatSelectMode = false;
     _boardChatSelectedIds.clear();
     const btn = document.querySelector('.board-select-btn');
-    if (btn) btn.classList.remove('active');
+    if (btn) { btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false'); }
     // Restore chat input
     const inputPane = document.getElementById('board-chat-input-pane');
     if (inputPane) inputPane.style.display = '';
@@ -444,15 +445,7 @@ export async function _toggleBoardChatPause(boardName) {
     const endpoint = wasPaused ? 'resume' : 'pause';
     try {
         await boardFetch(boardName, `/${endpoint}`, { method: 'POST' });
-        if (btn) {
-            if (wasPaused) {
-                btn.textContent = 'Pause Board';
-                btn.classList.remove('mb-action-danger');
-            } else {
-                btn.textContent = 'Resume Board';
-                btn.classList.add('mb-action-danger');
-            }
-        }
+        _paintPauseButton(btn, !wasPaused);
         if (banner) {
             banner.style.display = wasPaused ? 'none' : '';
         }
@@ -465,15 +458,7 @@ async function _checkBoardPauseState(boardName) {
         const data = await resp.json();
         const btn = document.getElementById('board-chat-pause-btn');
         const banner = document.getElementById('board-chat-paused-banner');
-        if (btn) {
-            if (data.paused) {
-                btn.textContent = 'Resume Board';
-                btn.classList.add('mb-action-danger');
-            } else {
-                btn.textContent = 'Pause Board';
-                btn.classList.remove('mb-action-danger');
-            }
-        }
+        _paintPauseButton(btn, !!data.paused);
         if (banner) {
             banner.style.display = data.paused ? '' : 'none';
         }

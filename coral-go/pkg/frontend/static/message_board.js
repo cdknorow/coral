@@ -10,6 +10,7 @@ import { resolveBoardArtifacts } from './board_artifacts.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { platform } from './platform/detect.js';
 import { BOARD_SAVE_BUTTON } from './saved_marks.js';
+import { paintPauseButton } from './board_pause_button.js';
 import { pathId, keyLabel, noteBoardLabel, hasBoardLabel, onBoardLabelsChanged, splitKey, boardFetch, teamFetch, isCloud, inTeam } from './server_base.js';
 import { launchBlockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
@@ -702,20 +703,12 @@ async function loadPausedState(project) {
 }
 
 function updatePauseButton() {
-    const buttons = [
-        document.getElementById('mb-pause-btn'),
-        document.getElementById('board-chat-pause-btn'),
-    ];
-    for (const btn of buttons) {
-        if (!btn) continue;
-        if (isPaused) {
-            btn.textContent = 'Resume Board';
-            btn.classList.add('mb-action-danger');
-        } else {
-            btn.textContent = 'Pause Board';
-            btn.classList.remove('mb-action-danger');
-        }
-    }
+    // the page's own item is text; the team panel's button is an icon that one function paints (#5491)
+    paintPauseButton(document.getElementById('board-chat-pause-btn'), isPaused);
+    const btn = document.getElementById('mb-pause-btn');
+    if (!btn) return;
+    btn.textContent = isPaused ? 'Resume Board' : 'Pause Board';
+    btn.classList.toggle('mb-action-danger', isPaused);
 }
 
 export async function toggleBoardPause() {
