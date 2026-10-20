@@ -399,6 +399,8 @@ func TestANewVersionThatDoesNotComeUpIsRolledBack(t *testing.T) {
 		assert.NotEqual(t, "1.4.130", st.Version, name+": the high-water mark did not move")
 		require.NotEmpty(t, st.History, name)
 		assert.Equal(t, "failed_rolled_back", st.History[len(st.History)-1].Result, name)
+		assert.Equal(t, res.FailedStage, st.History[len(st.History)-1].Reason, name+": the history keeps the stage it stopped at, for coral-update status (#5420)")
+		assert.NotEmpty(t, res.FailedStage, name)
 		require.NotNil(t, st.LastFailure, name)
 		_, err := os.Stat(filepath.Join(r.plat.root, ".Coral.app.new"))
 		assert.ErrorIs(t, err, os.ErrNotExist, name+": the failed new install is removed")

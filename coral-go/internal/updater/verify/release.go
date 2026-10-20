@@ -77,6 +77,8 @@ type HistoryEntry struct {
 	By     string   `json:"by"`
 	Agents []string `json:"agents,omitempty"`
 	Result string   `json:"result"`
+	// Reason is the stage a failed or rolled-back attempt stopped at (a fixed word of the apply, never text from outside): coral-update status says it.
+	Reason string `json:"reason,omitempty"`
 }
 
 // Candidate is what was fetched for a release: nothing in it is trusted until it has been verified.

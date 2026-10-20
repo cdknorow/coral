@@ -1,0 +1,217 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/updater/runrecord"
+	"github.com/cdknorow/coral/internal/updater/verify"
+)
+
+func statusRun(t *testing.T, env map[string]string, args ...string) (int, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	code := run(args, func(k string) string { return env[k] }, &buf)
+	return code, buf.String()
+}
+
+func statusJSON(t *testing.T, env map[string]string) map[string]any {
+	t.Helper()
+	code, out := statusRun(t, env, "status", "--json")
+	require.Equal(t, 0, code)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal([]byte(out), &m), out)
+	return m
+}
+
+func withVersion(t *testing.T, v string) string {
+	t.Helper()
+	old := config.Version
+	t.Cleanup(func() { config.Version = old })
+	config.Version = v
+	dir := t.TempDir()
+	t.Setenv("CORAL_DATA_DIR", dir)
+	return dir
+}
+
+func TestStatusArgvIsFixedToo(t *testing.T) {
+	withVersion(t, "1.4.130")
+	for _, args := range [][]string{{"status", "extra"}, {"status", "--url=http://x"}, {"--json", "status"}, {"status", "--json", "x"}, {"STATUS"}, {"status", ""}} {
+		code, out := statusRun(t, nil, args...)
+		assert.Equal(t, 2, code, "%v", args)
+		assert.Empty(t, out, "%v", args)
+	}
+	for _, args := range [][]string{{"status"}, {"status", "--json"}} {
+		code, out := statusRun(t, nil, args...)
+		assert.Equal(t, 0, code, "%v", args)
+		assert.NotEmpty(t, out)
+	}
+}
+
+// A data folder where the updater never ran: it says so, in words and as JSON, and reads only: nothing is created (no updates folder, no trusted-root cache).
+func TestStatusOfAFolderTheUpdaterNeverUsedWritesNothing(t *testing.T) {
+	dir := withVersion(t, "1.4.130")
+	code, out := statusRun(t, nil, "status")
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "has not run yet")
+	assert.Contains(t, out, "Installed version: 1.4.130")
+	assert.Contains(t, out, "Last check: unknown")
+	assert.Contains(t, out, "Last install attempt: none")
+	assert.Contains(t, out, "not there")
+	m := statusJSON(t, nil)
+	assert.Equal(t, "missing", m["state_file"])
+	assert.Equal(t, "missing", m["run_record"])
+	assert.Equal(t, "1.4.130", m["installed"])
+	assert.NotContains(t, m, "staged")
+	assert.NotContains(t, m, "last_apply")
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "status wrote nothing")
+}
+
+func writeState(t *testing.T, dir string, st verify.State) {
+	t.Helper()
+	require.NoError(t, verify.SaveState(filepath.Join(dir, "updates"), st))
+}
+
+func TestStatusSaysWhatTheUpdaterKnows(t *testing.T) {
+	dir := withVersion(t, "1.4.130")
+	future := time.Now().Add(40 * time.Minute).UTC().Format(time.RFC3339)
+	writeState(t, dir, verify.State{
+		Version: "1.4.129", Sequence: 7, Revoked: []string{"1.4.100", "1.4.101"},
+		LastCheck:   "2026-10-20T11:00:00Z",
+		LastFailure: &verify.FailureRecord{Version: "1.4.131", Stage: "sums_signature", Reason: "the release was not signed by the pinned identity", At: "2026-10-20T11:00:00Z"},
+		Stage:       &verify.StageState{Staged: "1.4.131", StagedAt: "2026-10-20T10:00:00Z", Version: "1.4.132", Attempts: 2, NextAttempt: future, ErrorKind: "network"},
+		History: []verify.HistoryEntry{
+			{At: "2026-10-19T09:00:00Z", From: "1.4.128", To: "1.4.129", By: "local", Result: "relaunched"},
+			{At: "2026-10-20T08:00:00Z", From: "1.4.129", To: "1.4.130", By: "local", Result: "failed_rolled_back", Reason: "not_healthy"},
+			{At: "2026-10-20T09:00:00Z", From: "1.4.129", To: "1.4.131", By: "hub:hub-user-1234abcd", Result: "refused", Reason: "sums_signature"},
+		},
+	})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "updates", runrecord.File), []byte(`{"argv":["/opt/coral/coral","--port","8420"],"cwd":"/srv"}`), 0o600))
+
+	m := statusJSON(t, nil)
+	wantFeature := "on"
+	if !config.TierChecksForUpdates { // a dev, beta or dropboxers build says it is off, and still says everything else
+		wantFeature = "off"
+	}
+	assert.Equal(t, wantFeature, m["feature"])
+	assert.Equal(t, false, m["apply_enabled"])
+	assert.Equal(t, "present", m["state_file"])
+	assert.Equal(t, "present", m["run_record"])
+	assert.Equal(t, map[string]any{"version": "1.4.129", "sequence": float64(7)}, m["accepted"])
+	assert.EqualValues(t, 2, m["revoked"])
+	assert.Equal(t, map[string]any{"version": "1.4.131", "staged_at": "2026-10-20T10:00:00Z"}, m["staged"])
+	assert.Equal(t, "2026-10-20T11:00:00Z", m["last_check"])
+	assert.Equal(t, map[string]any{"version": "1.4.131", "stage": "sums_signature", "reason": "the release was not signed by the pinned identity", "at": "2026-10-20T11:00:00Z"}, m["last_failure"])
+	assert.Equal(t, map[string]any{"version": "1.4.132", "until": future, "waiting": true, "attempts": float64(2), "kind": "network"}, m["backoff"])
+	assert.Equal(t, map[string]any{"at": "2026-10-20T09:00:00Z", "from": "1.4.129", "to": "1.4.131", "by": "hub:hub-user-1234abcd", "result": "refused", "reason": "sums_signature"}, m["last_apply"])
+	assert.Equal(t, map[string]any{"at": "2026-10-20T08:00:00Z", "from": "1.4.129", "to": "1.4.130", "by": "local", "result": "failed_rolled_back", "reason": "not_healthy"}, m["last_rollback"])
+	b, _ := json.Marshal(m)
+	for _, bad := range []string{"/opt/coral", "8420", "/srv"} {
+		assert.NotContains(t, string(b), bad, "the run record's content is not shown, only that it is there")
+	}
+
+	_, out := statusRun(t, nil, "status")
+	for _, want := range []string{"Automatic updates: " + wantFeature, "not enabled yet", "Installed version: 1.4.130", "accepted: 1.4.129 (promote sequence 7)", "Versions revoked: 2",
+		"Ready to install: 1.4.131", "Last check: 2026-10-20T11:00:00Z", "Last refusal: version 1.4.131 stopped at sums_signature", "Waiting before trying version 1.4.132 again until " + future,
+		"Last install attempt: 1.4.129 -> 1.4.131, refused", "Last roll-back: version 1.4.130 did not come up", "stopped at: not_healthy", ": present"} {
+		assert.Contains(t, out, want)
+	}
+}
+
+func TestStatusBackoffThatEndedIsSaidToHaveEnded(t *testing.T) {
+	dir := withVersion(t, "1.4.130")
+	writeState(t, dir, verify.State{Stage: &verify.StageState{Version: "1.4.131", Attempts: 1, NextAttempt: "2026-01-01T00:00:00Z", ErrorKind: "verify"}})
+	m := statusJSON(t, nil)
+	assert.Equal(t, false, m["backoff"].(map[string]any)["waiting"])
+	_, out := statusRun(t, nil, "status")
+	assert.Contains(t, out, "The wait before trying version 1.4.131 again ended at 2026-01-01T00:00:00Z")
+}
+
+// It answers with the feature off, and says why, for each way of being off.
+func TestStatusAnswersWhenTheFeatureIsOff(t *testing.T) {
+	withVersion(t, "1.4.130")
+	// The build's tier is checked first: a dev, beta or dropboxers build is off for that reason whatever else is set.
+	reason := func(other string) string {
+		if !config.TierChecksForUpdates {
+			return "build_tier"
+		}
+		return other
+	}
+	m := statusJSON(t, map[string]string{"CORAL_AUTO_UPDATE": "off"})
+	assert.Equal(t, "off", m["feature"])
+	assert.Equal(t, reason("env_switch"), m["off_reason"])
+	_, out := statusRun(t, map[string]string{"CORAL_AUTO_UPDATE": "off"}, "status")
+	assert.Contains(t, out, "Automatic updates: off (")
+	if config.TierChecksForUpdates {
+		assert.Contains(t, out, "CORAL_AUTO_UPDATE=off")
+	}
+
+	config.Version = ""
+	m = statusJSON(t, nil)
+	assert.Equal(t, "off", m["feature"])
+	assert.Equal(t, reason("no_version"), m["off_reason"])
+	assert.NotContains(t, m, "installed")
+}
+
+func TestStatusOfAnUnreadableRecordClaimsNothing(t *testing.T) {
+	dir := withVersion(t, "1.4.130")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "updates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "updates", "state.json"), []byte("{ not json"), 0o600))
+	m := statusJSON(t, nil)
+	assert.Equal(t, "unreadable", m["state_file"])
+	assert.NotContains(t, m, "accepted")
+	assert.NotContains(t, m, "last_apply")
+	_, out := statusRun(t, nil, "status")
+	assert.Contains(t, out, "cannot be read")
+
+	// a run record that is not a regular file (a folder, a link) is unreadable, never followed
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "updates", "run.json"), 0o700))
+	assert.Equal(t, "unreadable", statusJSON(t, nil)["run_record"])
+	require.NoError(t, os.Remove(filepath.Join(dir, "updates", "run.json")))
+	require.NoError(t, os.Symlink(filepath.Join(dir, "elsewhere"), filepath.Join(dir, "updates", "run.json")))
+	assert.Equal(t, "unreadable", statusJSON(t, nil)["run_record"])
+}
+
+// What the state holds is shown as bounded printable text: no escape sequence, no line break, no long text, no time that is not a time.
+func TestStatusShowsTextFromTheStateOnlyAsBoundedPrintableText(t *testing.T) {
+	dir := withVersion(t, "1.4.130")
+	writeState(t, dir, verify.State{
+		LastCheck:   "yesterday",
+		LastFailure: &verify.FailureRecord{Version: "1.4.131", Stage: "x\x1b[31mred\x1b[0m", Reason: "line one\nline two\u202e" + strings.Repeat("a", 500), At: "not a time"},
+	})
+	m := statusJSON(t, nil)
+	assert.NotContains(t, m, "last_check", "a time that is not RFC 3339 is not shown")
+	f := m["last_failure"].(map[string]any)
+	assert.NotContains(t, f["stage"], "\x1b")
+	assert.NotContains(t, f["reason"], "\n")
+	assert.NotContains(t, f["reason"], "\u202e")
+	assert.LessOrEqual(t, len([]rune(f["reason"].(string))), maxStatusText+3)
+	assert.NotContains(t, f, "at")
+	_, out := statusRun(t, nil, "status")
+	assert.NotContains(t, out, "\x1b")
+	assert.Equal(t, 1, strings.Count(out, "Last refusal:"), "one line")
+}
+
+// It makes no request: with the network refused outright it still answers at once (the trusted root is not loaded, nothing is fetched).
+func TestStatusDoesNotTouchTheNetwork(t *testing.T) {
+	dir := withVersion(t, "1.4.130")
+	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
+	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
+	start := time.Now()
+	statusRun(t, nil, "status")
+	statusRun(t, nil, "status", "--json")
+	assert.Less(t, time.Since(start), 2*time.Second)
+	_, err := os.Stat(filepath.Join(dir, "updates", "tuf"))
+	assert.ErrorIs(t, err, os.ErrNotExist, "no trusted-root cache was made")
+}

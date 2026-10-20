@@ -171,8 +171,8 @@ func freshDir(dir string) error {
 	return verify.EnsureDir(dir)
 }
 
-func (c *Config) history(st *verify.State, from, to, result string) {
-	st.History = append(st.History, verify.HistoryEntry{At: c.now().UTC().Format(time.RFC3339), From: from, To: to, By: "local", Result: result})
+func (c *Config) history(st *verify.State, from, to, result, reason string) {
+	st.History = append(st.History, verify.HistoryEntry{At: c.now().UTC().Format(time.RFC3339), From: from, To: to, By: "local", Result: result, Reason: reason})
 }
 
 // Run applies the staged update. It never returns an error: every outcome is a Result, and a refusal is also recorded in the state for Settings.
@@ -234,7 +234,7 @@ func Run(ctx context.Context, cfg Config) Result {
 		var f *verify.Failure
 		if errors.As(err, &f) {
 			st.Refuse(staged.Version, f, now)
-			cfg.history(&st, cfg.Installed, staged.Version, "refused")
+			cfg.history(&st, cfg.Installed, staged.Version, "refused", f.Stage)
 			_ = verify.SaveState(dir, st)
 			res.Result, res.FailedStage = ResultRefused, f.Stage
 			return res
@@ -283,7 +283,7 @@ func Run(ctx context.Context, cfg Config) Result {
 	if err := cfg.Platform.Verify(ctx, newPath, rec.Version); err != nil {
 		_ = os.RemoveAll(newPath)
 		st.Refuse(staged.Version, &verify.Failure{Stage: "platform_signature", Reason: err.Error()}, now)
-		cfg.history(&st, cfg.Installed, rec.Version, "refused")
+		cfg.history(&st, cfg.Installed, rec.Version, "refused", "platform_signature")
 		_ = verify.SaveState(dir, st)
 		res.Result, res.FailedStage = ResultRefused, "platform_signature"
 		return res
@@ -337,7 +337,7 @@ func Run(ctx context.Context, cfg Config) Result {
 	if err := st.Accept(rec); err == nil {
 		st.Stage = &verify.StageState{}
 	}
-	cfg.history(&st, cfg.Installed, rec.Version, "relaunched")
+	cfg.history(&st, cfg.Installed, rec.Version, "relaunched", "")
 	_ = verify.SaveState(dir, st)
 	_ = os.RemoveAll(filepath.Join(dir, stage.StagingDir, rec.Version))
 	res.Result = ResultRelaunched
@@ -354,7 +354,7 @@ func rollBack(ctx context.Context, cfg Config, dir string, st *verify.State, ins
 	removeJournal(dir)
 	_ = os.RemoveAll(other)
 	_ = cfg.Platform.Start(ctx, install)
-	cfg.history(st, cfg.Installed, to, "failed_rolled_back")
+	cfg.history(st, cfg.Installed, to, "failed_rolled_back", why)
 	st.Refuse(to, &verify.Failure{Stage: why, Reason: "the new version did not come up; the previous one is back"}, cfg.now())
 	_ = verify.SaveState(dir, *st)
 	return res
@@ -396,7 +396,7 @@ func recoverInterrupted(ctx context.Context, cfg Config, dir, install string) (R
 		if err := st.Accept(j.Record); err == nil {
 			st.Stage = &verify.StageState{}
 		}
-		cfg.history(&st, j.From, j.To, "relaunched")
+		cfg.history(&st, j.From, j.To, "relaunched", "")
 		_ = verify.SaveState(dir, st)
 		_ = os.RemoveAll(filepath.Join(dir, stage.StagingDir, sr.Version)) // the staged record's own version folder, not the journal's text
 		return Result{Result: ResultRelaunched, From: j.From, To: j.To}, true

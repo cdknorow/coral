@@ -78,8 +78,12 @@ func print(w io.Writer, o output) {
 
 // run is main without the process: args after the program name, the environment, and where the JSON goes. It returns the exit code.
 func run(args []string, getenv func(string) string, stdout io.Writer) int {
+	// status only reads the updater's own files: no network, and it answers when the feature is off.
+	if (len(args) == 1 && args[0] == "status") || (len(args) == 2 && args[0] == "status" && args[1] == "--json") {
+		return runStatus(args, getenv, stdout)
+	}
 	if len(args) != 1 || (args[0] != "check" && args[0] != "apply") {
-		fmt.Fprintln(os.Stderr, "usage: coral-update check|apply")
+		fmt.Fprintln(os.Stderr, "usage: coral-update check|apply|status [--json]")
 		return 2
 	}
 	// Only a prod release build updates itself: a dev, beta or dropboxers build, a build with no version, and an install turned off say so.

@@ -33,6 +33,7 @@ type joinEntry struct {
 
 // joinSites is "file<TAB>function" -> its joins, by file relative to coral-go.
 var joinSites = map[string]joinEntry{
+	"cmd/coral-update/status.go\tcollectStatus":                                              {3, joinOwn, "the updater's own files under the data folder: the updates folder, state.json and run.json, constant names, only read (Lstat, a no-follow private read), nothing written"},
 	"cmd/coral-update/main.go\trun":                                                          {1, joinOwn, "the updates folder: a constant name under the data folder, plus the constant \"tuf\""},
 	"internal/updater/apply/apply.go\tRun":                                                   {2, joinID, "the updates and apply folders are constants; the staged version folder is the verified record's version (verify.ParseVersion)"},
 	"internal/updater/apply/apply.go\tcopyVerified":                                          {1, joinID, "joins the private work folder with the record's asset name, which LoadStaged checked to be a plain file name"},
