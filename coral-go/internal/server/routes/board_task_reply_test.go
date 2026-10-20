@@ -116,7 +116,7 @@ func TestAReplyIsALinkedMessageThatNotifiesTheCreator(t *testing.T) {
 
 	msgs := e.messages("p", "?task_id="+itoa(id))
 	require.Len(t, msgs, 1)
-	assert.Equal(t, "@Backend Dev on it, ETA tomorrow", msgs[0].Content)
+	assert.Equal(t, "@Backend Dev: on it, ETA tomorrow", msgs[0].Content)
 	assert.Equal(t, "Frontend Dev", msgs[0].SubscriberID, "the sender is the verified actor")
 	require.NotNil(t, msgs[0].TaskID)
 	assert.Equal(t, id, *msgs[0].TaskID)
@@ -183,7 +183,7 @@ func TestAHubUserRepliesAsItselfWhateverTheBodySays(t *testing.T) {
 	assert.Equal(t, board.OriginHubUser, *msgs[0].Origin)
 	require.NotNil(t, msgs[0].HubUser)
 	assert.Equal(t, "hub-user-1234abcd", *msgs[0].HubUser)
-	assert.True(t, strings.HasPrefix(msgs[0].Content, "@Backend Dev "))
+	assert.True(t, strings.HasPrefix(msgs[0].Content, "@Backend Dev: "))
 	assert.NotContains(t, msgs[0].Content, "Operator")
 
 	// Even where Coral Hub may act as the Operator for a post, a reply is never sent as the Operator: its body has no sender to ask with (a hub operator reply is a decision for later).
@@ -236,7 +236,7 @@ func TestARepliesToAnOperatorTaskAreMentionedForTheDashboard(t *testing.T) {
 	assert.Equal(t, []any{"Operator"}, out["notified"])
 	msgs := e.messages("p", "?task_id="+itoa(id))
 	require.Len(t, msgs, 1)
-	assert.Equal(t, "@Operator done, please look", msgs[0].Content, "@Operator is what the dashboard's notifications read")
+	assert.Equal(t, "@Operator: done, please look", msgs[0].Content, "@Operator is what the dashboard's notifications read")
 }
 
 func TestAReplyWithNoVerifiedSenderOrNoTextIsRefused(t *testing.T) {

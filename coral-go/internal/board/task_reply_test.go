@@ -37,7 +37,7 @@ func TestTaskReplyMentionTagsExactlyTheCreatorOrNobody(t *testing.T) {
 		s := replyStore(t)
 		join(t, s, "p", "Backend Dev", "Frontend Dev")
 		m := s.TaskReplyMention(ctx, "p", "Backend Dev")
-		assert.Equal(t, "@Backend Dev ", m.Prefix)
+		assert.Equal(t, "@Backend Dev: ", m.Prefix)
 		assert.Equal(t, []string{"Backend Dev"}, m.Notified)
 		msg, err := s.PostMessageForTask(ctx, "p", "Frontend Dev", m.Prefix+"on it", nil, "", int64p(7))
 		require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestTaskReplyMentionTagsExactlyTheCreatorOrNobody(t *testing.T) {
 		_, err = s.Subscribe(ctx, "p", "Backend Dev 2", "Backend Dev 2", "claude-x", nil, "mentions")
 		require.NoError(t, err)
 		m = s.TaskReplyMention(ctx, "p", "Backend Dev 2")
-		assert.Equal(t, "@Backend Dev 2 ", m.Prefix)
+		assert.Equal(t, "@Backend Dev 2: ", m.Prefix)
 		assert.Equal(t, []string{"Backend Dev 2"}, m.Notified)
 	})
 
@@ -87,7 +87,7 @@ func TestTaskReplyMentionTagsExactlyTheCreatorOrNobody(t *testing.T) {
 		assert.Empty(t, s.TaskReplyMention(ctx, "p", "BackendDev").Prefix, "'@BackendDev ' is also the spaceless form of 'Backend Dev'")
 		s2 := replyStore(t)
 		join(t, s2, "p", "BackendDev", "Frontend Dev")
-		assert.Equal(t, "@BackendDev ", s2.TaskReplyMention(ctx, "p", "BackendDev").Prefix, "alone it is fine")
+		assert.Equal(t, "@BackendDev: ", s2.TaskReplyMention(ctx, "p", "BackendDev").Prefix, "alone it is fine")
 	})
 
 	t.Run("a name that is not plain text, or a broadcast name, is never mentioned", func(t *testing.T) {
@@ -104,7 +104,7 @@ func TestTaskReplyMentionTagsExactlyTheCreatorOrNobody(t *testing.T) {
 		s := replyStore(t)
 		join(t, s, "p", "Backend Dev")
 		m := s.TaskReplyMention(ctx, "p", "Operator")
-		assert.Equal(t, "@Operator ", m.Prefix)
+		assert.Equal(t, "@Operator: ", m.Prefix)
 		assert.Equal(t, []string{"Operator"}, m.Notified)
 		// but never when the text would also tag a member (an 'Operator' job title on another member)
 		_, err := s.Subscribe(ctx, "p", "Agent 3", "Operator", "claude-3", nil, "mentions")
@@ -232,4 +232,22 @@ func TestAnOldBoardDatabaseGetsTheTaskColumnAndKeepsItsRows(t *testing.T) {
 			assert.Equal(t, reply.ID, again[0].ID)
 		})
 	}
+}
+
+// #5466 (Security): the reply's own text must not change who the creator's mention tags. A reply that began with a digit turned "@Backend Dev " into "@Backend Dev 2" and
+// notified the numbered agent instead of the creator.
+func TestTheRepliesOwnTextCannotRedirectTheCreatorsMention(t *testing.T) {
+	ctx := context.Background()
+	s := replyStore(t)
+	join(t, s, "p", "Backend Dev", "Backend Dev 2", "Frontend Dev")
+	m := s.TaskReplyMention(ctx, "p", "Backend Dev")
+	require.NotEmpty(t, m.Prefix)
+	_, err := s.PostMessageForTask(ctx, "p", "Frontend Dev", m.Prefix+"2 tasks are ready", nil, "", int64p(7))
+	require.NoError(t, err)
+	creator, err := s.ReadMessages(ctx, "p", "Backend Dev", 10)
+	require.NoError(t, err)
+	other, err := s.ReadMessages(ctx, "p", "Backend Dev 2", 10)
+	require.NoError(t, err)
+	assert.Len(t, creator, 1, "the creator is notified")
+	assert.Empty(t, other, "the numbered agent is not")
 }
