@@ -17,7 +17,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
@@ -193,7 +193,7 @@ func TestLaunchTeamCapsAgentsPerRequest(t *testing.T) {
 	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
-	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+	bs, err := boardtest.Open(filepath.Join(t.TempDir(), "board.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	cfg := &config.Config{LogDir: t.TempDir()}

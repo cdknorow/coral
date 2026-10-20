@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
@@ -100,7 +101,7 @@ func runRelayOracle(t *testing.T, seed int64, counts map[string]int) {
 	var sides [2]side
 	var notified [2][]string // the boards each side asked to notify
 	for i := range sides {
-		bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
+		bs, err := boardtest.Open(t.TempDir() + "/board.db")
 		require.NoError(t, err)
 		t.Cleanup(func() { bs.Close() })
 		h := NewBoardHandler(bs)

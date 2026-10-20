@@ -15,12 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 )
 
 // boundsRig: the task and wait routes with an agent token's identity ("Lead", an Orchestrator of "team") and a store to preload.
 func boundsRig(t *testing.T) (call func(method, path string, body any) (int, map[string]any), bs *board.Store) {
 	t.Helper()
-	bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
+	bs, err := boardtest.Open(t.TempDir() + "/board.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	h := NewBoardHandler(bs)

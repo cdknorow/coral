@@ -20,6 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -34,7 +35,7 @@ type tqEnv struct {
 func newTQEnv(t *testing.T) *tqEnv {
 	t.Helper()
 	dbPath := t.TempDir() + "/b.db"
-	bs, err := board.NewStoreWithKey(dbPath, "")
+	bs, err := boardtest.Open(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	h := NewBoardHandler(bs)

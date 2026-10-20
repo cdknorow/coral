@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -28,7 +28,7 @@ type crossTeamEnv struct {
 
 func newCrossTeamEnv(t *testing.T) *crossTeamEnv {
 	t.Helper()
-	bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
+	bs, err := boardtest.Open(t.TempDir() + "/board.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	e := &crossTeamEnv{t: t, h: NewBoardHandler(bs), now: time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)}

@@ -15,12 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 )
 
 func setupTask1670Server(t *testing.T) (*httptest.Server, *BoardHandler, *board.Store) {
 	t.Helper()
 	dbPath := t.TempDir() + "/task1670_board.db"
-	bs, err := board.NewStoreWithKey(dbPath, "")
+	bs, err := boardtest.Open(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 

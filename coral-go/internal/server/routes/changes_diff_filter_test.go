@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -163,7 +163,7 @@ func TestChangesDiffDedupe(t *testing.T) {
 // in it) served through Coral Hub carries none of their bytes; locally it's served whole.
 // A tunneled live diff has no X-Coral-Working-Directory.
 func TestTunneledDiffsAreFiltered(t *testing.T) {
-	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+	bs, err := boardtest.Open(filepath.Join(t.TempDir(), "board.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	coral := t.TempDir()

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -59,7 +60,7 @@ type sendEnv struct {
 
 func newSendEnv(t *testing.T) *sendEnv {
 	t.Helper()
-	bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
+	bs, err := boardtest.Open(t.TempDir() + "/board.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	e := &sendEnv{t: t, h: NewBoardHandler(bs), bs: bs, hub: &fakeHub{}}

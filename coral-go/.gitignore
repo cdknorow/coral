@@ -9,3 +9,7 @@ cli-token
 /coral-coordination-report
 /coral-hook-session-start
 /mock-agent
+
+# go test -c and -cpuprofile leave the compiled test binary in the package folder (it embeds the builder's build paths): never commit it.
+*.test
+*.prof

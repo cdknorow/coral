@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
@@ -185,7 +185,7 @@ func BenchmarkBoardStatus(b *testing.B) {
 	db, err := storetest.Open(b, filepath.Join(b.TempDir(), "s.db"))
 	require.NoError(b, err)
 	defer db.Close()
-	bs, err := board.NewStoreWithKey(filepath.Join(b.TempDir(), "board.db"), "")
+	bs, err := boardtest.Open(filepath.Join(b.TempDir(), "board.db"))
 	require.NoError(b, err)
 	defer bs.Close()
 	h := NewSessionsHandler(db, &config.Config{LogDir: b.TempDir()}, nil, newMockTerminal(), bs)

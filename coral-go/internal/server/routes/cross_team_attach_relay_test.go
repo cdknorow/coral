@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
@@ -95,7 +96,7 @@ type relayAttachEnv struct {
 
 func newRelayAttachEnv(t *testing.T, artifactsOn bool) *relayAttachEnv {
 	t.Helper()
-	bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
+	bs, err := boardtest.Open(t.TempDir() + "/board.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	e := &relayAttachEnv{attachEnv: &attachEnv{t: t, h: NewBoardHandler(bs), coralDir: t.TempDir()}, wire: &hubWire{}}

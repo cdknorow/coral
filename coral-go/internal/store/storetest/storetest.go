@@ -71,6 +71,13 @@ func Open(tb testing.TB, path string) (*store.DB, error) {
 		if err := os.WriteFile(path, img, 0o644); err != nil {
 			return nil, err
 		}
+		// A copy of the migrated template: the schema is not parsed and run again.
+		db, err := store.OpenPrepared(context.Background(), path)
+		if err != nil {
+			return nil, err
+		}
+		tb.Cleanup(func() { db.Close() })
+		return db, nil
 	}
 	db, err := store.OpenWithKey(context.Background(), path, "")
 	if err != nil {

@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -36,7 +36,7 @@ type artifactEnv struct {
 
 func newArtifactEnv(t *testing.T) *artifactEnv {
 	t.Helper()
-	bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
+	bs, err := boardtest.Open(t.TempDir() + "/board.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	e := &artifactEnv{t: t, h: NewBoardHandler(bs), dir: t.TempDir(), now: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)}

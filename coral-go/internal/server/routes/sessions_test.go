@@ -27,7 +27,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/ptr"
@@ -1314,7 +1314,7 @@ func TestSessionsLaunchTeam_PreservesToolsAndNeverMCP(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 
 	boardDBPath := t.TempDir() + "/board.db"
-	bs, err := board.NewStoreWithKey(boardDBPath, "")
+	bs, err := boardtest.Open(boardDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 
@@ -2536,7 +2536,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	t.Cleanup(func() { db.Close() })
 
 	boardDBPath := t.TempDir() + "/board.db"
-	bs, err := board.NewStoreWithKey(boardDBPath, "")
+	bs, err := boardtest.Open(boardDBPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 
@@ -2661,6 +2661,7 @@ func TestNoAgentLimit_LaunchPastOldDemoCap(t *testing.T) {
 func TestKill_SleepingSession_RemovedFromDB(t *testing.T) {
 	server, handler, terminal, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
+	workdir := t.TempDir() // a folder of its own: "/tmp" holds whatever the machine has there, and finding the git root looks into every folder of it
 
 	// Set up board handler so board pause clearing works
 	bh := NewBoardHandler(handler.bs)
@@ -2669,7 +2670,7 @@ func TestKill_SleepingSession_RemovedFromDB(t *testing.T) {
 	board := "test-board"
 	terminal.addSession("claude-sleeping-1", "/tmp/test")
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
-		AgentName: "claude-sleeping-1", AgentType: "claude", WorkingDir: "/tmp",
+		AgentName: "claude-sleeping-1", AgentType: "claude", WorkingDir: workdir,
 		SessionID: "sleep-sid-1", BoardName: &board, IsSleeping: 1,
 	})
 
@@ -2694,6 +2695,7 @@ func TestKill_SleepingSession_RemovedFromDB(t *testing.T) {
 func TestKill_LastSessionOnBoard_ClearsPauseState(t *testing.T) {
 	server, handler, terminal, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
+	workdir := t.TempDir() // a folder of its own: "/tmp" holds whatever the machine has there, and finding the git root looks into every folder of it
 
 	bh := NewBoardHandler(handler.bs)
 	handler.SetBoardHandler(bh)
@@ -2705,7 +2707,7 @@ func TestKill_LastSessionOnBoard_ClearsPauseState(t *testing.T) {
 
 	terminal.addSession("claude-paused-1", "/tmp/test")
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
-		AgentName: "claude-paused-1", AgentType: "claude", WorkingDir: "/tmp",
+		AgentName: "claude-paused-1", AgentType: "claude", WorkingDir: workdir,
 		SessionID: "paused-sid-1", BoardName: &boardName, IsSleeping: 1,
 	})
 
@@ -2723,6 +2725,7 @@ func TestKill_LastSessionOnBoard_ClearsPauseState(t *testing.T) {
 func TestKill_NotLastSessionOnBoard_KeepsPauseState(t *testing.T) {
 	server, handler, terminal, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
+	workdir := t.TempDir() // a folder of its own: "/tmp" holds whatever the machine has there, and finding the git root looks into every folder of it
 
 	bh := NewBoardHandler(handler.bs)
 	handler.SetBoardHandler(bh)
@@ -2733,12 +2736,12 @@ func TestKill_NotLastSessionOnBoard_KeepsPauseState(t *testing.T) {
 	// Register 2 sessions on the same board
 	terminal.addSession("claude-multi-1", "/tmp/test")
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
-		AgentName: "claude-multi-1", AgentType: "claude", WorkingDir: "/tmp",
+		AgentName: "claude-multi-1", AgentType: "claude", WorkingDir: workdir,
 		SessionID: "multi-sid-1", BoardName: &boardName, IsSleeping: 1,
 	})
 	terminal.addSession("claude-multi-2", "/tmp/test")
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
-		AgentName: "claude-multi-2", AgentType: "claude", WorkingDir: "/tmp",
+		AgentName: "claude-multi-2", AgentType: "claude", WorkingDir: workdir,
 		SessionID: "multi-sid-2", BoardName: &boardName, IsSleeping: 1,
 	})
 
@@ -2761,6 +2764,7 @@ func TestKill_NotLastSessionOnBoard_KeepsPauseState(t *testing.T) {
 func TestKill_SleepingSession_AwakeRemains_UnpausesBoard(t *testing.T) {
 	server, handler, terminal, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
+	workdir := t.TempDir() // a folder of its own: "/tmp" holds whatever the machine has there, and finding the git root looks into every folder of it
 
 	bh := NewBoardHandler(handler.bs)
 	handler.SetBoardHandler(bh)
@@ -2771,12 +2775,12 @@ func TestKill_SleepingSession_AwakeRemains_UnpausesBoard(t *testing.T) {
 	// Register one sleeping session and one awake session on the same board
 	terminal.addSession("claude-sleeping-1", "/tmp/test")
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
-		AgentName: "claude-sleeping-1", AgentType: "claude", WorkingDir: "/tmp",
+		AgentName: "claude-sleeping-1", AgentType: "claude", WorkingDir: workdir,
 		SessionID: "sleeping-sid-1", BoardName: &boardName, IsSleeping: 1,
 	})
 	terminal.addSession("claude-awake-1", "/tmp/test")
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
-		AgentName: "claude-awake-1", AgentType: "claude", WorkingDir: "/tmp",
+		AgentName: "claude-awake-1", AgentType: "claude", WorkingDir: workdir,
 		SessionID: "awake-sid-1", BoardName: &boardName, IsSleeping: 0,
 	})
 
@@ -2802,6 +2806,7 @@ func TestKill_SleepingSession_AwakeRemains_UnpausesBoard(t *testing.T) {
 func TestKill_SleepingSession_SkipsTmuxKill(t *testing.T) {
 	server, handler, terminal, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
+	workdir := t.TempDir() // a folder of its own: "/tmp" holds whatever the machine has there, and finding the git root looks into every folder of it
 
 	bh := NewBoardHandler(handler.bs)
 	handler.SetBoardHandler(bh)
@@ -2810,7 +2815,7 @@ func TestKill_SleepingSession_SkipsTmuxKill(t *testing.T) {
 
 	// Register a sleeping session (no tmux session exists for sleeping agents)
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
-		AgentName: "claude-sleeping-1", AgentType: "claude", WorkingDir: "/tmp",
+		AgentName: "claude-sleeping-1", AgentType: "claude", WorkingDir: workdir,
 		SessionID: "sleeping-sid-1", BoardName: &boardName, IsSleeping: 1,
 	})
 
@@ -2838,6 +2843,7 @@ func TestKill_SleepingSession_SkipsTmuxKill(t *testing.T) {
 func TestKill_SleepingBoard_AllSessionsRemoved_NoPTY(t *testing.T) {
 	server, handler, _, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
+	workdir := t.TempDir() // a folder of its own: "/tmp" holds whatever the machine has there, and finding the git root looks into every folder of it
 
 	bh := NewBoardHandler(handler.bs)
 	handler.SetBoardHandler(bh)
@@ -2847,11 +2853,11 @@ func TestKill_SleepingBoard_AllSessionsRemoved_NoPTY(t *testing.T) {
 
 	// Register 2 sleeping sessions — no terminal sessions exist (sleeping team)
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
-		AgentName: "agent-1", AgentType: "claude", WorkingDir: "/tmp",
+		AgentName: "agent-1", AgentType: "claude", WorkingDir: workdir,
 		SessionID: "sleep-1", BoardName: &boardName, IsSleeping: 1,
 	})
 	ss.RegisterLiveSession(ctx, &store.LiveSession{
-		AgentName: "agent-2", AgentType: "claude", WorkingDir: "/tmp",
+		AgentName: "agent-2", AgentType: "claude", WorkingDir: workdir,
 		SessionID: "sleep-2", BoardName: &boardName, IsSleeping: 1,
 	})
 

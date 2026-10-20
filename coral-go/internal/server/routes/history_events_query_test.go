@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
@@ -35,7 +35,7 @@ func setupHistoryEventsServer(t *testing.T) *histEventsServer {
 	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
-	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+	bs, err := boardtest.Open(filepath.Join(t.TempDir(), "board.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	h := NewHistoryHandler(db, &config.Config{}, bs)

@@ -89,6 +89,17 @@ func (s *Store) CompletionChecksEnabled() bool { return s.completionChecksEnable
 
 // NewStoreWithKey opens the board database with SQLCipher when key is set.
 func NewStoreWithKey(dbPath, key string) (*Store, error) {
+	return newStore(dbPath, key, false)
+}
+
+// NewStorePrepared opens a board database file that is a copy of one this build already migrated (boardtest makes it): the schema step is not run again. It is for tests,
+// which open hundreds of stores: parsing the whole schema each time was a third of a heavy test's CPU. A file that is not a copy of this build's migrated database must not be
+// opened with it.
+func NewStorePrepared(dbPath string) (*Store, error) {
+	return newStore(dbPath, "", true)
+}
+
+func newStore(dbPath, key string, schemaDone bool) (*Store, error) {
 	testguard.CheckDataPath(dbPath)
 	if key == "" {
 		if err := dbcrypt.RejectEncryptedFile(dbPath); err != nil {
@@ -120,9 +131,11 @@ func NewStoreWithKey(dbPath, key string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 
 	s := &Store{db: db, completionCheckRunner: NewLocalRegisteredCheckRunner(os.Getenv("CORAL_CHECK_WORKDIR")), completionChecksEnabled: completionChecksEnabledFromEnv()}
-	if err := s.ensureSchema(context.Background()); err != nil {
-		db.Close()
-		return nil, err
+	if !schemaDone {
+		if err := s.ensureSchema(context.Background()); err != nil {
+			db.Close()
+			return nil, err
+		}
 	}
 	if err := s.recoverTaskReadiness(context.Background()); err != nil {
 		db.Close()

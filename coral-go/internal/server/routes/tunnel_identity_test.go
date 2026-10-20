@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
@@ -509,7 +510,7 @@ func TestHubOperatorSetting(t *testing.T) {
 	defer db.Close()
 	ss := store.NewSessionStore(db)
 	h := NewCloudHandler(ss, t.TempDir())
-	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "b.db"), "")
+	bs, err := boardtest.Open(filepath.Join(t.TempDir(), "b.db"))
 	require.NoError(t, err)
 	defer bs.Close()
 	h.SetBoardStore(bs)

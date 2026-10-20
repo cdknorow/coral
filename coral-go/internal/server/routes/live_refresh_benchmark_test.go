@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
@@ -26,7 +26,7 @@ func BenchmarkLiveRefreshList(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer db.Close()
-	bs, err := board.NewStoreWithKey(filepath.Join(root, "board.db"), "")
+	bs, err := boardtest.Open(filepath.Join(root, "board.db"))
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -42,7 +43,7 @@ type attachEnv struct {
 // X-Test-Session (an agent's verified session id; its tmux name is "claude-<id>") or X-Test-Operator.
 func newAttachEnv(t *testing.T, artifactsOn bool) *attachEnv {
 	t.Helper()
-	bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
+	bs, err := boardtest.Open(t.TempDir() + "/board.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	e := &attachEnv{t: t, h: NewBoardHandler(bs), coralDir: t.TempDir()}

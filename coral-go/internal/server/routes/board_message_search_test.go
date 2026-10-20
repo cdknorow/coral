@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -27,7 +28,7 @@ type msEnv struct {
 
 func newMSEnv(t *testing.T) *msEnv {
 	t.Helper()
-	bs, err := board.NewStoreWithKey(t.TempDir()+"/b.db", "")
+	bs, err := boardtest.Open(t.TempDir() + "/b.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	h := NewBoardHandler(bs)

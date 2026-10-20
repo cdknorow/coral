@@ -66,10 +66,17 @@ func (d *DB) Close() error {
 // database when key is present. The caller must resolve the key before this
 // function is called so no startup path can silently fall back to plaintext.
 func OpenWithKey(ctx context.Context, dbPath, key string) (*DB, error) {
-	return openWithDriver(ctx, dbPath, key)
+	return openWithDriver(ctx, dbPath, key, false)
 }
 
-func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
+// OpenPrepared opens a plaintext sessions database file that is a copy of one this build already migrated (storetest makes it): the schema step is not run again. It is for
+// tests, which open hundreds of databases: parsing the whole schema each time was a large part of a heavy test's CPU. A file that is not a copy of this build's migrated
+// database must not be opened with it.
+func OpenPrepared(ctx context.Context, dbPath string) (*DB, error) {
+	return openWithDriver(ctx, dbPath, "", true)
+}
+
+func openWithDriver(ctx context.Context, dbPath, key string, schemaDone bool) (*DB, error) {
 	testguard.CheckDataPath(dbPath)
 	if key == "" {
 		if err := dbcrypt.RejectEncryptedFile(dbPath); err != nil {
@@ -107,9 +114,11 @@ func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
 		DB: db,
 	}
 
-	if err := d.ensureSchema(ctx); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("ensure schema: %w", err)
+	if !schemaDone {
+		if err := d.ensureSchema(ctx); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("ensure schema: %w", err)
+		}
 	}
 	scrubRemoteURLCredentials(ctx, d)
 	if err := d.initAgentTaskEngine(ctx); err != nil {

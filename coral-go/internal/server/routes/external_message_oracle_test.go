@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
@@ -83,7 +84,7 @@ func runExternalMessageOracle(t *testing.T, seed int64, counts map[string]int) {
 	var sides [2]externalSide
 	var uploads []string
 	for i := range sides {
-		bs, err := board.NewStoreWithKey(t.TempDir()+"/board.db", "")
+		bs, err := boardtest.Open(t.TempDir() + "/board.db")
 		require.NoError(t, err)
 		t.Cleanup(func() { bs.Close() })
 		h := NewBoardHandler(bs)

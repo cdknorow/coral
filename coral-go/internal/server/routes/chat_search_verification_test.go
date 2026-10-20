@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
@@ -25,7 +26,7 @@ func setupChatSearchTestEnv(t *testing.T) (*store.DB, *store.SessionStore, *boar
 	require.NoError(t, err)
 
 	boardDBPath := filepath.Join(dir, "board.db")
-	bs, err := board.NewStoreWithKey(boardDBPath, "")
+	bs, err := boardtest.Open(boardDBPath)
 	require.NoError(t, err)
 
 	ss := store.NewSessionStore(db)

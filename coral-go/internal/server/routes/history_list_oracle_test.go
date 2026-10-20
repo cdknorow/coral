@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/ptr"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -61,7 +61,7 @@ func historyListOracleServer(t *testing.T, seed bool) *httptest.Server {
 	ctx := context.Background()
 	// The boards in a store at a known path, so the fixture can set message times the store itself only stamps now.
 	boardPath := filepath.Join(t.TempDir(), "board.db")
-	bs, err := board.NewStoreWithKey(boardPath, "")
+	bs, err := boardtest.Open(boardPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	h.bs = bs

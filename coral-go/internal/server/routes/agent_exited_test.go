@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
@@ -64,7 +64,7 @@ const exitedTestSID = "6a7b8c9d-0e1f-4a2b-8c3d-4e5f6a7b8c9d"
 // board notices go only into a board's own sessions (#3864).
 func noticeBoard(t *testing.T, term ptymanager.SessionTerminal, name string) *BoardHandler {
 	t.Helper()
-	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+	bs, err := boardtest.Open(filepath.Join(t.TempDir(), "board.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	_, err = bs.Subscribe(context.Background(), "team", "Dev", "Dev", name, nil, "")

@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
@@ -64,7 +64,7 @@ func TestBoardStatusLoad(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	boardPath := filepath.Join(dataDir, "messageboard.db")
-	bs, err := board.NewStoreWithKey(boardPath, "")
+	bs, err := boardtest.Open(boardPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	terminal := newMockTerminal()

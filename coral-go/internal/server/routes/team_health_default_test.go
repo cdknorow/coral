@@ -11,13 +11,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 func healthTestStore(t *testing.T) *board.Store {
 	t.Helper()
-	bs, err := board.NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+	bs, err := boardtest.Open(filepath.Join(t.TempDir(), "board.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = bs.Close() })
 	return bs

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
@@ -29,7 +29,7 @@ func setupHistoryVerificationServer(t *testing.T) (*httptest.Server, *HistoryHan
 	t.Cleanup(func() { db.Close() })
 
 	boardDBDir := t.TempDir()
-	bs, err := board.NewStoreWithKey(filepath.Join(boardDBDir, "board.db"), "")
+	bs, err := boardtest.Open(filepath.Join(boardDBDir, "board.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 

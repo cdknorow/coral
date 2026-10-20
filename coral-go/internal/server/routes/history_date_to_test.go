@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store/storetest"
 )
@@ -27,7 +27,7 @@ func TestHistoryBoardDateToIncludesTheWholeDay(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	boardPath := filepath.Join(t.TempDir(), "board.db")
-	bs, err := board.NewStoreWithKey(boardPath, "")
+	bs, err := boardtest.Open(boardPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	raw, err := sqlx.Open("sqlite", boardPath+"?_pragma=busy_timeout(30000)")

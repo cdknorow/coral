@@ -19,7 +19,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
@@ -47,7 +47,7 @@ func TestSessionListPerf(t *testing.T) {
 	db, err := store.OpenWithKey(context.Background(), filepath.Join(dir, "sessions.db"), "")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
-	bs, err := board.NewStoreWithKey(filepath.Join(dir, "messageboard.db"), "")
+	bs, err := boardtest.Open(filepath.Join(dir, "messageboard.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { bs.Close() })
 	logDir := filepath.Join(dir, "logs")
