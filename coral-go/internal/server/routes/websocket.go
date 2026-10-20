@@ -96,6 +96,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("ws/coral accept failed", "error", err)
 		return
 	}
+	remove, ok := wsOpen.add(conn)
+	if !ok {
+		conn.Close(websocket.StatusGoingAway, "Coral is stopping")
+		return
+	}
+	defer remove()
 	defer func() {
 		if debugEnabled() {
 			slog.Info("[debug] ws/coral disconnected", "remote", r.RemoteAddr)
@@ -481,6 +487,12 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("ws/terminal accept failed", "error", err)
 		return
 	}
+	remove, ok := wsOpen.add(conn)
+	if !ok {
+		conn.Close(websocket.StatusGoingAway, "Coral is stopping")
+		return
+	}
+	defer remove()
 	conn.SetReadLimit(terminalFrameMax)
 	defer func() {
 		if debugEnabled() {

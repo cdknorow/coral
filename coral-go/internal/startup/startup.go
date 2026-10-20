@@ -22,6 +22,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/cdknorow/coral/internal/server"
+	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -111,6 +112,8 @@ func (rs *RunningServer) NewLoginLink(port int) (string, error) {
 func (rs *RunningServer) Shutdown(timeout time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	// Open sockets are hijacked connections, which Shutdown below neither waits for nor ends (#5366).
+	routes.CloseWebsockets()
 	if err := rs.HTTPServer.Shutdown(ctx); err != nil {
 		log.Printf("Shutdown error: %v", err)
 	}
