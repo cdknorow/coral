@@ -110,7 +110,7 @@ func TestAgySurveyIsDismissedWithZeroThenTheNudgeIsDelivered(t *testing.T) {
 	surveyGate(t, time.Hour)
 	term := &agyTerm{surveyTerm: newSurveyTerm(true, false)}
 	name := uniqueName("agy-survey-dismiss")
-	t.Cleanup(func() { DropHeld(name, "test") })
+	t.Cleanup(func() { DropHeld(name, "test"); waitHeldLoopEnd(t) })
 	text := "2 unread messages on the message board."
 	_, _ = DeliverAutomated(context.Background(), agyInput(term, name, text))
 	waitFor(t, "the nudge is typed after the survey is gone", func() bool {
@@ -132,8 +132,20 @@ func TestAgySurveyIsLeftAloneOverADraft(t *testing.T) {
 	surveyGate(t, time.Hour)
 	term := &agyTerm{surveyTerm: newSurveyTerm(true, false), box: "deploy the fix"}
 	name := uniqueName("agy-survey-draft")
-	t.Cleanup(func() { DropHeld(name, "test") })
+	t.Cleanup(func() { DropHeld(name, "test"); waitHeldLoopEnd(t) })
 	_, _ = DeliverAutomated(context.Background(), agyInput(term, name, "a nudge"))
 	time.Sleep(200 * time.Millisecond)
 	assert.Empty(t, term.keys(), "no key into a draft")
+}
+
+// waitHeldLoopEnd waits for the gate's retry loop to end after the last held send was dropped. DropHeld does not wait for it: a loop still in the middle of a retry reads the
+// paste timings (pasteAndEnter) while the gate's own cleanup puts them back, which the race detector reports (#5229). Registered after the gate helper, so it runs before the
+// helper's cleanup.
+func waitHeldLoopEnd(t *testing.T) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		gate.mu.Lock()
+		defer gate.mu.Unlock()
+		return !gate.running
+	}, 5*time.Second, 5*time.Millisecond, "the gate's loop ends once nothing is held")
 }
