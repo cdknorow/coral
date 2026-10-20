@@ -36,9 +36,13 @@ const idle = (over = {}) => ({ enabled: true, installed: '1.4.125', state: 'none
         const words = await ev(`import(${S} + 'update_api.js').then(m => ({ r: ${JSON.stringify(REASONS)}.map(x => m.reasonText(x)), unknown: m.reasonText('who_knows'), proto: m.reasonText('constructor'), na: m.notAvailable('busy') }))`);
         check(`the ten reasons are not "Unavailable" (${JSON.stringify(words.r.map(w => w.slice(0, 28)))})`, words.r.every(w => w && w !== 'Unavailable'));
         check('switch_off says where the switch is', /Settings > Network and Hub/.test(words.r[2]));
-        check(`no_run_record says Coral could not be restarted automatically (${words.r[9]})`, /^Coral could not be restarted automatically on this computer/.test(words.r[9]));
+        check(`no_run_record says it cannot relaunch itself here (${words.r[9]})`, words.r[9] === 'Coral could not be restarted automatically on this computer, so it cannot relaunch itself here.');
         check(`an unknown reason, and "constructor", are Unavailable (${words.unknown}, ${words.proto})`, words.unknown === 'Unavailable' && words.proto === 'Unavailable');
         check(`one wording: "${words.na}"`, words.na === 'Not available right now: Another relaunch is already running.');
+        await setStatus(staged({}, { available: false, reason: 'no_run_record' }));
+        const nrPill = await ev(`(() => { const p = document.getElementById('update-pill'); return !p || p.hidden || getComputedStyle(p).display === 'none'; })()`);
+        const nrPane = await pane();
+        check(`no_run_record: no control in the top bar, and Settings carries the sentence (${nrPill}: ${nrPane.text.slice(0, 200)})`, nrPill === true && /could not be restarted automatically on this computer, so it cannot relaunch itself here\./.test(nrPane.text));
         await setStatus(staged({}, { available: false, reason: 'busy' }));
         const pillName = await ev(`document.getElementById('update-pill').getAttribute('aria-label')`);
         const p1 = await pane();

@@ -87,7 +87,7 @@ const REASON_TEXT = {
     too_soon: 'Try again in a few minutes.',
     label_missing: 'This machine is not set up for relaunching from Coral Hub.',
     reauth_required: 'Sign in again to relaunch this Coral.',
-    no_run_record: 'Coral could not be restarted automatically on this computer, so it is not relaunched from here: the update would stop it and not start it again.', // #5419
+    no_run_record: 'Coral could not be restarted automatically on this computer, so it cannot relaunch itself here.', // #5419
 };
 /** Set while the person is away signing in again (the hub's 401 reauth_required): on return the dashboard reads the status afresh and shows the dialog again. */
 export const RESUME_KEY = 'coral-update-resume';

@@ -47,7 +47,7 @@ function placePill() {
 function renderPill() {
     const pill = $('update-pill');
     if (!pill) return;
-    const on = relaunchOffered(status);
+    const on = relaunchOffered(status) && status.relaunch.reason !== 'no_run_record'; // no_run_record: Settings carries the sentence, the top bar has nothing to offer (like unsupported_install)
     pill.hidden = !on;
     placePill();
     if (!on) return;
