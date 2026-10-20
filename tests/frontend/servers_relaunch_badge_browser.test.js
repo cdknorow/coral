@@ -3,7 +3,7 @@
 // badge). Fifteen replies (fixtures/relaunch_status/): the badge shows for 04, 05 and 14 (an older last_result does not end it), not for the other twelve (the hub refusing as a whole, a string, a number, null, an
 // array, a nested flag, the flag dropped with this relaunch's own last_result). Failing reads (401, 403, 404, 503, a network error) show nothing and no error. Reads happen when the tab opens and when a machine
 // comes back online, never for an offline machine and not on every poll; the dashboard that sent the Relaunch keeps the badge across the machine's offline gap for at most five minutes and drops it at the first
-// read with no flag. The badge is not a control, is named by the spec's sentence, adds no height to the row, and does not animate. Drives Chrome over CDP against the isolated dev server.
+// read with no flag. The badge is not a control, is named by the spec's sentence after the visible word, adds no height to the row, and does not animate. Drives Chrome over CDP against the isolated dev server.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -59,7 +59,7 @@ const TIP = 'Coral on this machine is restarting into an update. It reconnects o
             check(`${c.name}: the badge is ${c.badge ? 'shown as "Updating"' : 'not shown'} (${b})`, c.badge ? b === 'Updating' : b === null);
             if (c.badge) {
                 const d = await ev(`(() => { const e = document.querySelector('#rb-host .server-relaunch-badge'); return { role: e.getAttribute('role'), name: e.getAttribute('aria-label'), title: e.title, html: e.outerHTML, tab: e.tabIndex, focusable: e.matches('a, button, [tabindex]:not([tabindex="-1"])'), anim: getComputedStyle(e).animationName }; })()`);
-                check(`${c.name}: named by the spec's sentence, not a control, no animation, nothing of the payload in it`, d.name === TIP && d.title === TIP && !d.focusable && d.anim === 'none' && !/<img|onerror|Dana|rows/.test(d.html));
+                check(`${c.name}: named by the spec's sentence, not a control, no animation, nothing of the payload in it`, d.name === 'Updating: ' + TIP && d.name.startsWith('Updating') && d.title === TIP && !d.focusable && d.anim === 'none' && !/<img|onerror|Dana|rows/.test(d.html));
             }
             check(`${c.name}: no error shown and no script ran from the payload`, (await ev(`!document.querySelector('#rb-host [role=alert]') && !window.__pwned`)));
             await close();

@@ -19,6 +19,7 @@ import { updatesUiOn } from './update_flag.js';
 import { serverBase } from './server_base.js';
 
 export const BADGE_TEXT = 'Updating';
+export const BADGE_NAME = 'Updating: Coral on this machine is restarting into an update. It reconnects on its own.'; // the accessible name starts with the visible word (UI/UX on #5355: label in name)
 export const BADGE_TIP = 'Coral on this machine is restarting into an update. It reconnects on its own.';
 export const AGE_OUT_MS = 5 * 60 * 1000;
 
@@ -99,5 +100,5 @@ export function resetRelaunchReads() { seenTab = false; }
 /** The badge element for machine `id`, or null. `h` is the page's element builder; the words are this module's constants. */
 export function relaunchBadge(h, id) {
     if (!badgeShown(id)) return null;
-    return h('span', { className: 'server-relaunch-badge', role: 'img', 'aria-label': BADGE_TIP, title: BADGE_TIP, text: BADGE_TEXT });
+    return h('span', { className: 'server-relaunch-badge', role: 'img', 'aria-label': BADGE_NAME, title: BADGE_TIP, text: BADGE_TEXT });
 }
