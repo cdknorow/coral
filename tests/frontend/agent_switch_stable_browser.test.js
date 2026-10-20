@@ -4,6 +4,7 @@
 // installed before the page loads. Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { framesJs } = require('./helpers/wait');
 
 const COUNTERS = `(() => {
     const S = window.__soak = { intervals: new Set(), timeouts: new Set(), listeners: new Map(), ws: [], obs: [] };
@@ -43,12 +44,13 @@ const COUNTERS = `(() => {
         const select = i => ev(`window.selectLiveSession('stab-${i % 8}', 'claude', 'stab-${i % 8}-id', 'local'); true`);
         let n = 0;
         const round = async () => {
-            await select(n++); await sleep(180); // sleep-ok: a round's async work has no single completion event
-            if (n % 4 === 0) { await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`); await sleep(250); await ev(`window.hideSettingsModal(); true`); } // sleep-ok: a round's async work has no single completion event
-            if (n % 5 === 0) { await ev(`window.switchAgenticTab('tasks', 'top'); true`); await sleep(120); await ev(`window.switchAgenticTab('files', 'top'); true`); } // sleep-ok: a round's async work has no single completion event
+            await select(n++); await ev(`${framesJs(4)}`); // the selection's redraws are painted before the next round (the rounds' async tails overlap a little, which is only harder on the page; the samples wait for them)
+            if (n % 4 === 0) { await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'modals.js'); await m.showSettingsModal(); return true; })()`); await ev(`${framesJs(4)}`); await ev(`window.hideSettingsModal(); true`); }
+            if (n % 5 === 0) { await ev(`window.switchAgenticTab('tasks', 'top'); true`); await ev(`${framesJs(3)}`); await ev(`window.switchAgenticTab('files', 'top'); true`); }
         };
         const sample = async () => {
-            for (let i = 0; i < 3; i++) { await HeapProfiler.collectGarbage(); await sleep(200); } // sleep-ok: a round's async work has no single completion event
+            await sleep(400); // sleep-ok: the last rounds' history fetches and redraws have no single completion event; the collections below start after them
+            for (let i = 0; i < 3; i++) { await HeapProfiler.collectGarbage(); await sleep(100); } // sleep-ok: finalizers run between collections; there is no event for them
             const m = Object.fromEntries((await Performance.getMetrics()).metrics.map(x => [x.name, x.value]));
             return { nodes: m.Nodes, listeners: m.JSEventListeners, ...(await ev(`window.__soak.snapshot()`)) };
         };

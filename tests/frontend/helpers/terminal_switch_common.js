@@ -11,8 +11,9 @@
 //     have to be, and is only reported.
 //  4. A switch to Terminal and straight back to Chat while xterm.js is still downloading opens no terminal socket in Chat view (it used to
 //     attach once the download finished); the next switch to Terminal does attach and shows text.
-// Run against an isolated dev server and headless Chrome via CDP. The suite is three files so the shards run them side by side (#5027): terminal_switch_desktop
-// (1 and 2 at 1280 px), terminal_switch_phone (1 and 2 at 390 px) and terminal_switch_cold (3 and 4); this module is their body, `parts` says which to run.
+// Run against an isolated dev server and headless Chrome via CDP. The suite is seven files so the shards run them side by side (#5027, #5443): terminal_switch_<desktop|phone>
+// (1 at 1280 px / 390 px, the idle agent), ..._stream (2, output streaming), ..._agent (after switching to another agent, and the switch made in Terminal view) and
+// terminal_switch_cold (3 and 4); this module is their body, `parts` says which to run ('desktop:idle', 'phone:stream', 'desktop:agent', 'cold' ...).
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 const BASE = require('../test_base').BASE;
@@ -67,7 +68,7 @@ module.exports = parts => (async () => {
         return -1;
     };
     try {
-        for (const name of ['Switch A', 'Switch B']) {
+        for (const name of ['Switch A', 'Switch B'].slice(0, parts.some(x => x.endsWith(':agent')) ? 2 : 1)) { // only the 'agent' scenarios switch between two
             const si = await launchStandIn(httpJson, { displayName: name });
             standIns.push(si); // before the check: a stand-in that never got a session has still pointed cli_path_claude at its script, and only its stop() puts that back
             if (!si.sid) throw new Error('no stand-in agent: ' + si.diag);
@@ -89,23 +90,29 @@ module.exports = parts => (async () => {
             check(`${label}: all 20 switches show text within ${BUDGET_MS} ms`, ms.every(v => v >= 0 && v <= BUDGET_MS), `worst ${worst} ms, ${ms.join(' ')}`);
         };
 
-        // 1 and 2: warm switches, desktop then phone width.
-        for (const vp of [{ width: 1280, height: 800, part: 'desktop' }, { width: 390, height: 800, part: 'phone' }].filter(v => parts.includes(v.part))) {
+        // 1 and 2: warm switches at desktop or phone width; each part is one scenario at one width: 'desktop:idle', 'phone:stream', 'desktop:agent' ...
+        for (const part of parts.filter(x => x !== 'cold')) {
+            const [width, scenario] = part.split(':');
+            const vp = { width: width === 'phone' ? 390 : 1280, height: 800 };
             await setup(vp);
-            await select(standIns[0]);
-            await sleep(1200);   // sleep-ok: lets the selected agent settle in Chat view before the timed switches; there is no completion event for "idle"
-            await toggles(`${vp.width} px, idle agent`);
-            await toggles(`${vp.width} px, output streaming`, standIns[0]);
-            await select(standIns[1]);
-            await sleep(1200);   // sleep-ok: lets the selected agent settle in Chat view before the timed switches; there is no completion event for "idle"
-            await toggles(`${vp.width} px, after switching to another agent`);
-            // An agent switch made while the Terminal view is showing paints the new agent's terminal too.
-            await ev(`window.setLiveViewMode('terminal'); true`);
-            await sleep(600);   // sleep-ok: the agent switch must happen with the Terminal view already settled; a window for nothing to change, not a condition
-            await select(standIns[0]);
-            let t = -1;
-            for (let k = 0; k < 100 && t < 0; k++) { if ((await ev(CHARS)) > 0 && (await ev(INK)) > 50) t = k * 5; else await sleep(5); }
-            check(`${vp.width} px: selecting an agent while the Terminal view shows paints its terminal`, t >= 0 && t <= BUDGET_MS, `${t} ms`);
+            if (scenario === 'idle' || scenario === 'stream') {
+                await select(standIns[0]);
+                await sleep(1200);   // sleep-ok: lets the selected agent settle in Chat view before the timed switches; there is no completion event for "idle"
+                if (scenario === 'idle') await toggles(`${vp.width} px, idle agent`);
+                else await toggles(`${vp.width} px, output streaming`, standIns[0]);
+            } else {
+                await select(standIns[0]);
+                await select(standIns[1]);
+                await sleep(1200);   // sleep-ok: lets the selected agent settle in Chat view before the timed switches; there is no completion event for "idle"
+                await toggles(`${vp.width} px, after switching to another agent`);
+                // An agent switch made while the Terminal view is showing paints the new agent's terminal too.
+                await ev(`window.setLiveViewMode('terminal'); true`);
+                await sleep(600);   // sleep-ok: the agent switch must happen with the Terminal view already settled; a window for nothing to change, not a condition
+                await select(standIns[0]);
+                let t = -1;
+                for (let k = 0; k < 100 && t < 0; k++) { if ((await ev(CHARS)) > 0 && (await ev(INK)) > 50) t = k * 5; else await sleep(5); }
+                check(`${vp.width} px: selecting an agent while the Terminal view shows paints its terminal`, t >= 0 && t <= BUDGET_MS, `${t} ms`);
+            }
         }
 
         if (parts.includes('cold')) {
