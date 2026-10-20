@@ -80,3 +80,74 @@ func TestATeamWorktreeFolderIsOneName(t *testing.T) {
 	_, err := os.Stat(filepath.Join(h.cfg.CoralDir(), "escape"))
 	assert.True(t, os.IsNotExist(err))
 }
+
+// One table over every id-checked site (#5305, QA's follow-up): each is called with an id that is a path, with a file outside the folder it would reach if the id were joined as
+// it is. Each case fails by itself when its own check is deleted (mutated one by one), because each plants what that function would read, remove or report.
+func TestEveryIdCheckedSiteRefusesAPathForAnId(t *testing.T) {
+	_, h := setupBoardTestServer(t)
+	coralDir := t.TempDir()
+	h.SetTaskArtifactWriter(coralDir, nil)
+	art := filepath.Join(coralDir, "artifacts")
+	objects := filepath.Join(art, "objects")
+	require.NoError(t, os.MkdirAll(objects, 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(art, "uploads", "s1"), 0o700))
+	const sentinelBody = "sentinel bytes outside the objects folder"
+	sentinel := filepath.Join(art, "sentinel") // objects/../sentinel
+	require.NoError(t, os.WriteFile(sentinel, []byte(sentinelBody), 0o600))
+	require.NoError(t, os.WriteFile(sentinel+".json", []byte(`{"name":"outside","media_type":"text/plain","size":41,"digest":"sha256:../sentinel"}`), 0o600))
+	// uploads/s1/../x.json: an upload record outside any session folder.
+	require.NoError(t, os.WriteFile(filepath.Join(art, "uploads", "x.json"), []byte(`{"name":"x","created_at":"2026-10-20T10:00:00Z"}`), 0o600))
+	// A cross-team record outside the board's folder.
+	recDir := h.boardRecordDir("received", "alpha")
+	require.NoError(t, os.MkdirAll(recDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(recDir), "planted.json"), []byte(`{"id":"../planted","board":"alpha","name":"planted"}`), 0o600))
+
+	const asObject, asUpload, asRecord = "../sentinel", "../x", "../planted"
+	cases := []struct {
+		site string
+		call func(t *testing.T)
+	}{
+		{"objectMeta", func(t *testing.T) { _, ok := h.objectMeta(asObject); assert.False(t, ok) }},
+		{"objectIsStored", func(t *testing.T) { assert.False(t, h.objectIsStored(asObject)) }},
+		{"objectSidecarDigest", func(t *testing.T) { assert.Empty(t, h.objectSidecarDigest(asObject)) }},
+		{"crossTeamRecord", func(t *testing.T) { _, ok := h.crossTeamRecord("received", "alpha", asRecord); assert.False(t, ok) }},
+		{"readAttachment", func(t *testing.T) {
+			_, refusal := h.readAttachment(objects, asObject, "coral://artifacts/"+asObject, attachSender{person: true}, agentUploadRecord{})
+			assert.NotNil(t, refusal, "the sentinel was not opened as an attachment")
+		}},
+		{"loadAttachment", func(t *testing.T) {
+			data, refusal := h.loadAttachment(attachedArtifact{ID: asObject, Size: int64(len(sentinelBody)), Name: "n", MediaType: "text/plain"})
+			assert.NotNil(t, refusal)
+			assert.Empty(t, data, "the sentinel's bytes were not read")
+		}},
+		{"writeCrossTeamRecord", func(t *testing.T) {
+			assert.Error(t, h.writeCrossTeamRecord("received", crossTeamArtifactRecord{ID: "../escaped", Board: "alpha"}))
+			_, err := os.Stat(filepath.Join(filepath.Dir(recDir), "escaped.json"))
+			assert.True(t, os.IsNotExist(err), "nothing was written outside the board's folder")
+		}},
+		{"writePendingReceipt", func(t *testing.T) {
+			err := h.writePendingReceipt("srv", "relay-1", crossTeamArtifactRecord{ID: "../escaped", Board: "alpha"})
+			assert.EqualError(t, err, "not an artifact id")
+		}},
+		{"enrichTeamArtifact", func(t *testing.T) {
+			it := &teamArtifact{managed: asObject}
+			enrichTeamArtifact(it, objects)
+			assert.False(t, it.Available, "the sentinel was not reported as a stored artifact")
+		}},
+		{"deleteArtifactFilesLocked", func(t *testing.T) {
+			_, _, found, err := deleteArtifactFilesLocked(coralDir, asObject)
+			assert.Error(t, err)
+			assert.False(t, found)
+			_, statErr := os.Stat(sentinel)
+			assert.NoError(t, statErr, "the sentinel was not removed")
+		}},
+		{"newestRecordFor", func(t *testing.T) { assert.Empty(t, newestRecordFor(coralDir, asUpload)) }},
+		{"objectNewestUse", func(t *testing.T) {
+			assert.True(t, objectNewestUse(coralDir, asObject, nil).IsZero(), "the sentinel's mtime was not reported")
+		}},
+		{"hasUploadRecord", func(t *testing.T) { assert.False(t, hasUploadRecord(coralDir, asUpload)) }},
+	}
+	for _, c := range cases {
+		t.Run(c.site, c.call)
+	}
+}

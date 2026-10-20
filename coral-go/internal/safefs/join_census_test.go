@@ -33,6 +33,12 @@ type joinEntry struct {
 
 // joinSites is "file<TAB>function" -> its joins, by file relative to coral-go.
 var joinSites = map[string]joinEntry{
+	"internal/server/routes/system_update_relaunch.go\tUpdateRelaunchHandler.readPrivate":    {1, joinOwn, "a state file name the handler passes as a constant (ack.key, ack_used.json) in its own updates folder"},
+	"internal/server/routes/system_update_relaunch.go\tUpdateRelaunchHandler.writePrivate":   {1, joinOwn, "a state file name the handler passes as a constant (ack.key, ack_used.json) in its own updates folder"},
+	"internal/server/routes/system_update_relaunch_wire.go\tNewUpdateRelaunchHandler":        {1, joinOwn, "the updates folder name, a constant, under the data folder"},
+	"internal/updater/verify/state.go\tAckStore.Use":                                         {1, joinOwn, "the used-token file name, a constant, in the updater's folder"},
+	"internal/updater/verify/state.go\tLoadState":                                            {1, joinOwn, "the state file name, a constant, in the updater's folder"},
+	"internal/updater/verify/state.go\tSaveState":                                            {1, joinOwn, "the state file name, a constant, in the updater's folder"},
 	"cmd/coral-app/loghint.go\tserverLogPath":                                                {2, joinOwn, "a program-made or constant name in its own folder (mock-agent is a test tool; launch-coral builds names from checked ids)"},
 	"cmd/coral-board/state.go\tstateFilePath":                                                {1, joinOwn, "the session name goes through hooks.BoardStateFileName, which makes every path separator \"_\""},
 	"cmd/coral-board/task.go\tseenRoundsPath":                                                {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
