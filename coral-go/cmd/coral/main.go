@@ -243,6 +243,7 @@ func main() {
 		logexit.Fatalf("Failed to start: %v", err)
 	}
 	defer rs.Close()
+	recordRun(cfg.CoralDir(), os.Args)
 
 	// Anonymous install/upgrade tracking (non-blocking)
 	tracking.TrackInstallAsync()
