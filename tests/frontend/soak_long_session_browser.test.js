@@ -2,7 +2,7 @@
 // output), the page cycling chat -> terminal -> board -> artifacts every SOAK_CYCLE_S (30 s) on the next agent, and every SOAK_SAMPLE_MIN (5) minutes a sample after a forced GC: JS heap, DOM nodes,
 // event listeners, documents, live timers and sockets, the xterm elements and the terminal's buffer, and what the chat, the board and the artifact list hold. The curve goes to the log as one JSON line per
 // sample and to SOAK_OUT=file; the guard compares the last sample with the one at a quarter of the run (the page's caches have filled by then) and fails on growth past the bounds below.
-//   not run in the push gate (it skips at once). SOAK=1 runs a 45 s smoke of the same loop, no guard (too few samples); the dispatch of cdp-gate.yml (workflow_dispatch) is the hour: 60 min; SOAK_MINUTES=n overrides either.
+//   not run in the push gate (it skips at once). SOAK=1 runs a 45 s smoke of the same loop, no guard (too few samples); a dispatch of cdp-gate.yml whose suites input names it is the hour: 60 min; SOAK_MINUTES=n overrides either.
 //   SOAK_LEAK_SELFTEST=1 adds a deliberate leak per cycle (a node, a listener and a retained string): the guard must catch it.
 // Drives Chrome over CDP through agent_view_harness.js against the isolated dev server.
 const fs = require('node:fs');
@@ -14,8 +14,10 @@ const { removeBoards, removeTeams } = require('./helpers/board_cleanup');
 const { framesJs } = require('./helpers/wait');
 
 const DISPATCH = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch';
-// It runs only when asked for: a dispatch of the workflow (the hour) or SOAK=1 (a local smoke run). The push gate skips it in no time: six agents and 45 s there would undo the CI-speed work (#5443).
-if (!DISPATCH && process.env.SOAK !== '1') { console.log('soak_long_session: skipped (it runs when the workflow is dispatched, or with SOAK=1)'); process.exit(0); }
+// It runs only when asked for: SOAK=1 (a local smoke run), or a dispatch of the workflow whose suites input names it (the repeat job passes that input as SUITES). The push gate, and a whole-gate
+// dispatch, skip it in no time: six agents and 45 s there would undo the CI-speed work (#5443), and an hour would stall the gate.
+const NAMED = DISPATCH && String(process.env.SUITES || '').split(',').some(x => x.trim() && 'soak_long_session_browser.test.js'.includes(x.trim()));
+if (!NAMED && process.env.SOAK !== '1') { console.log('soak_long_session: skipped (it runs with SOAK=1, or when a workflow dispatch names it in suites)'); process.exit(0); }
 const MINUTES = Number(process.env.SOAK_MINUTES || (DISPATCH ? 60 : 0.75));
 const CYCLE_S = Number(process.env.SOAK_CYCLE_S || (MINUTES >= 10 ? 30 : 5));
 const SAMPLE_MIN = Number(process.env.SOAK_SAMPLE_MIN || (MINUTES >= 10 ? 5 : MINUTES / 3));
