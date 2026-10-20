@@ -102,6 +102,8 @@ func TestEveryIdCheckedSiteRefusesAPathForAnId(t *testing.T) {
 	require.NoError(t, os.MkdirAll(recDir, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(recDir), "planted.json"), []byte(`{"id":"../planted","board":"alpha","name":"planted"}`), 0o600))
 
+	// readAttachment and loadAttachment are guarded twice: by their own check and by objectSidecarDigest's, which they call before they read anything. Deleting either one alone is
+	// not observable (the other still refuses); deleting both fails these cases (mutated), and objectSidecarDigest has its own.
 	const asObject, asUpload, asRecord = "../sentinel", "../x", "../planted"
 	cases := []struct {
 		site string
@@ -112,13 +114,23 @@ func TestEveryIdCheckedSiteRefusesAPathForAnId(t *testing.T) {
 		{"objectSidecarDigest", func(t *testing.T) { assert.Empty(t, h.objectSidecarDigest(asObject)) }},
 		{"crossTeamRecord", func(t *testing.T) { _, ok := h.crossTeamRecord("received", "alpha", asRecord); assert.False(t, ok) }},
 		{"readAttachment", func(t *testing.T) {
+			opened := ""
+			old := attachBeforeHash
+			attachBeforeHash = func(path string) { opened = path }
+			defer func() { attachBeforeHash = old }()
 			_, refusal := h.readAttachment(objects, asObject, "coral://artifacts/"+asObject, attachSender{person: true}, agentUploadRecord{})
-			assert.NotNil(t, refusal, "the sentinel was not opened as an attachment")
+			assert.NotNil(t, refusal)
+			assert.Empty(t, opened, "the sentinel was not opened as an attachment")
 		}},
 		{"loadAttachment", func(t *testing.T) {
+			opened := ""
+			old := attachBeforeLoad
+			attachBeforeLoad = func(path string) { opened = path }
+			defer func() { attachBeforeLoad = old }()
 			data, refusal := h.loadAttachment(attachedArtifact{ID: asObject, Size: int64(len(sentinelBody)), Name: "n", MediaType: "text/plain"})
 			assert.NotNil(t, refusal)
 			assert.Empty(t, data, "the sentinel's bytes were not read")
+			assert.Empty(t, opened, "the sentinel was not opened for sending")
 		}},
 		{"writeCrossTeamRecord", func(t *testing.T) {
 			assert.Error(t, h.writeCrossTeamRecord("received", crossTeamArtifactRecord{ID: "../escaped", Board: "alpha"}))
