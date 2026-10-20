@@ -17,6 +17,7 @@ const (
 	StateWorking = "working" // in a turn
 	StateWaiting = "waiting" // parked in coral-board wait
 	StatePrompt  = "prompt"  // stopped at a prompt that needs input
+	StateBlocked = "blocked" // stopped by a usage limit (its quota is used up): nothing to do until it resets (#5229)
 	StateIdle    = "idle"    // awake, in no turn and in no wait
 	StateAsleep  = "asleep"  // its session is asleep
 	StateOffline = "offline" // it has a session but nothing is running
@@ -38,6 +39,12 @@ type WaitGroup struct {
 	Waiters []WaitEntry
 }
 
+// BlockedEntry is an agent stopped by a usage limit; Resets is how long until it resets, 0 when the CLI did not say.
+type BlockedEntry struct {
+	Name   string
+	Resets time.Duration
+}
+
 // AsleepUnread is a sleeping agent with messages tagged to it that it has not read.
 type AsleepUnread struct {
 	Name  string
@@ -51,12 +58,13 @@ type Roster struct {
 	Counts    map[string]int
 	Claimable int // pending tasks nobody holds, that can be claimed
 	Waits     []WaitGroup
+	Blocked   []BlockedEntry
 	Asleep    []AsleepUnread
 }
 
 // Awake is how many agents are awake (every state but asleep and offline).
 func (r *Roster) Awake() int {
-	return r.Counts[StateWorking] + r.Counts[StateWaiting] + r.Counts[StatePrompt] + r.Counts[StateIdle] + r.Counts[StateUnknown]
+	return r.Counts[StateWorking] + r.Counts[StateWaiting] + r.Counts[StatePrompt] + r.Counts[StateBlocked] + r.Counts[StateIdle] + r.Counts[StateUnknown]
 }
 
 // AllWorking: every awake agent is in a turn (and there is at least one): the only case the check says nobody is stuck.
@@ -66,7 +74,7 @@ func (r *Roster) AllWorking() bool {
 
 // NeedsAttention: something in the roster is for the reader: a wait, a prompt, an idle agent or a sleeper with tags unread.
 func (r *Roster) NeedsAttention() bool {
-	return len(r.Waits) > 0 || len(r.Asleep) > 0 || r.Counts[StatePrompt] > 0 || r.Counts[StateIdle] > 0 || r.Counts[StateUnknown] > 0
+	return len(r.Waits) > 0 || len(r.Asleep) > 0 || r.Counts[StatePrompt] > 0 || r.Counts[StateBlocked] > 0 || r.Counts[StateIdle] > 0 || r.Counts[StateUnknown] > 0
 }
 
 // maxWaiters is how many agents one wait group lists before counting the rest.
@@ -79,6 +87,9 @@ func (r *Roster) headerCounts() string {
 	}
 	if n := r.Counts[StatePrompt]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d at a prompt", n))
+	}
+	if n := r.Counts[StateBlocked]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d BLOCKED by a usage limit", n))
 	}
 	if n := r.Counts[StateIdle]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d idle", n))
@@ -144,6 +155,28 @@ func staleWho(g WaitGroup) string {
 	return g.On
 }
 
+// blockedLine: who is stopped by a usage limit, and when it resets (the CLI's own reset time, as a duration; never its text).
+func (r *Roster) blockedLine() string {
+	if len(r.Blocked) == 0 {
+		return ""
+	}
+	bs := append([]BlockedEntry(nil), r.Blocked...)
+	sort.SliceStable(bs, func(i, j int) bool { return bs[i].Name < bs[j].Name })
+	var parts []string
+	for i, b := range bs {
+		if i == maxWaiters {
+			parts = append(parts, fmt.Sprintf("…+%d more", len(bs)-maxWaiters))
+			break
+		}
+		if b.Resets > 0 {
+			parts = append(parts, fmt.Sprintf("%s (resets in %s)", b.Name, Age(b.Resets)))
+		} else {
+			parts = append(parts, b.Name+" (reset time not shown)")
+		}
+	}
+	return fmt.Sprintf("Blocked by a usage limit, %d: %s. Nothing to nudge: it cannot work until the limit resets or its plan changes.", len(bs), strings.Join(parts, ", "))
+}
+
 func (r *Roster) asleepLine() string {
 	if len(r.Asleep) == 0 {
 		return ""
@@ -183,6 +216,9 @@ func ComposeLines(in CheckInput) []string {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("[Coral health check] %s · %s", in.Now.UTC().Format("15:04Z"), r.headerCounts()))
 	lines = append(lines, r.waitLines()...)
+	if l := r.blockedLine(); l != "" {
+		lines = append(lines, l)
+	}
 	if l := r.asleepLine(); l != "" {
 		lines = append(lines, l)
 	}

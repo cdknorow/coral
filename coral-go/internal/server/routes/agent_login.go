@@ -156,7 +156,7 @@ func (h *SessionsHandler) usageLimitText(agentType, sessionID, workingDir string
 }
 
 // agyLimitRe: Antigravity's rate-limit, resource-exhausted and quota messages, from real 1.4.2 CLI output.
-var agyLimitRe = regexp.MustCompile(`(?i)^[\s\x{25A0}\x{2022}\x{258C}\x{2502}>\x{25CB}\x{25CF}\x{2503}!\-–—*]*(resource has been exhausted\b.*|you have exhausted your quota\b.*|you've exceeded your current quota\b.*|quota exceeded\b.*|allocation quota reached\b.*|individual quota reached\b.*|rate limit (?:reached|exceeded)\b.*|rate limit\b.*|too many requests\b.*)`)
+var agyLimitRe = regexp.MustCompile(`(?i)^[\s\x{25A0}\x{2022}\x{258C}\x{2502}>\x{25CB}\x{25CF}\x{2503}\x{26A0}\x{FE0F}!\-–—*]*(resource has been exhausted\b.*|you have exhausted your quota\b.*|you've exceeded your current quota\b.*|quota exceeded\b.*|allocation quota reached\b.*|individual quota reached\b.*|rate limit (?:reached|exceeded)\b.*|rate limit\b.*|too many requests\b.*)`)
 
 var agyEventLimitRe = regexp.MustCompile(`(?i)\b(quota[ _]?exceeded|resource[ _]?exhausted|rate[ _]?limit[ _]?exceeded|stop_reason_quota_exhausted)\b`)
 
@@ -248,11 +248,19 @@ func agyScreenLimitText(logInfo map[string]any) string {
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
 		if m := agyLimitRe.FindStringSubmatch(lines[i]); m != nil {
-			return capCLIText(strings.TrimSpace(m[1]))
+			text := strings.TrimSpace(m[1])
+			// At a narrow width the CLI wraps the reset time ("... Resets in" / "103h13m54s."): it belongs to the notice.
+			if i+1 < len(lines) && agyResetTailRe.MatchString(lines[i+1]) {
+				text += " " + strings.TrimSpace(lines[i+1])
+			}
+			return capCLIText(text)
 		}
 	}
 	return ""
 }
+
+// agyResetTailRe is the wrapped end of agy's quota notice: only the reset time, "103h13m54s.".
+var agyResetTailRe = regexp.MustCompile(`^\s*(?:\d+[hms])+\.?\s*$`)
 
 // claudeLimitText is a rate-limit error's text for the notice. Older CLIs wrote "Claude AI usage
 // limit reached|<unix time>".

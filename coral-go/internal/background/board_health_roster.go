@@ -154,6 +154,12 @@ func (m *BoardHealthMonitor) buildRoster(ctx context.Context, in rosterInputs) (
 			case sig.InTurn:
 				r.Counts[teamhealth.StateWorking]++
 			default:
+				if resets, blocked := m.blockedByLimit(ctx, a); blocked {
+					r.Counts[teamhealth.StateBlocked]++
+					r.Blocked = append(r.Blocked, teamhealth.BlockedEntry{Name: name, Resets: resets})
+					attention++
+					break
+				}
 				r.Counts[teamhealth.StateIdle]++
 				attention++
 			}

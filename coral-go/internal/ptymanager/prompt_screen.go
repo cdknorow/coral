@@ -149,6 +149,10 @@ func PromptOnScreen(screen string) (bool, string) {
 	if choices := dialogAboveInputBox(all); choices != "" {
 		return true, dialogWhy + "a dialog is open above the input box (" + choices + ")"
 	}
+	if agySurveyOnlyOnScreen(screen) {
+		// Antigravity's feedback survey takes a digit key too (#5229): held as a dialog, and dismissed like Claude's.
+		return true, dialogWhy + "a dialog is open above the input box (" + agySurveyChoices + ")"
+	}
 	if unnumberedMenu(all) {
 		return true, "selection menu"
 	}

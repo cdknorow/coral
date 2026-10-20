@@ -2,6 +2,7 @@ package ptymanager
 
 import (
 	"context"
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -107,6 +108,16 @@ var (
 	surveyRetryGap = 30 * time.Second
 )
 
+// surveyOnScreen is the survey check for agentType's CLI: Claude Code's session survey, or Antigravity's feedback survey (#5229).
+func surveyOnScreen(agentType, screen string) bool {
+	if isAgyType(agentType) {
+		return agySurveyOnlyOnScreen(screen)
+	}
+	return surveyOnlyOnScreen(screen)
+}
+
+func isAgyType(agentType string) bool { return agentType == at.Agy || agentType == at.Antigravity }
+
 // dismissSurvey sends one 0 to name's terminal when the survey is the only thing open, waits for it to be gone from
 // the screen, and reports whether it was: the held send is then looked at again, and typed only if nothing else holds
 // it. It sends nothing for any other screen, over a draft in the input box (draftInBox), from a terminal that cannot type a key or show its screen, or again
@@ -121,10 +132,10 @@ func (g *inputGate) dismissSurvey(ctx context.Context, in AutomatedInput) bool {
 		return false
 	}
 	screen, err := reader.AgentScreen(ctx, in.Name, in.AgentType, in.SessionID)
-	if err != nil || !surveyOnlyOnScreen(screen) {
+	if err != nil || !surveyOnScreen(in.AgentType, screen) {
 		return false
 	}
-	if in.draftInBox(ctx, screen) {
+	if !isAgyType(in.AgentType) && in.draftInBox(ctx, screen) { // agy's check (agySurveyOnlyOnScreen) already needs an empty box
 		return false // a person is typing: a digit now joins their message, it does not answer the survey
 	}
 	g.mu.Lock()
@@ -138,17 +149,17 @@ func (g *inputGate) dismissSurvey(ctx context.Context, in AutomatedInput) bool {
 	g.surveyTried[in.Name] = g.now()
 	g.mu.Unlock()
 	if err := keys.SendRawInput(ctx, in.Name, []string{"0"}, in.AgentType, in.SessionID); err != nil {
-		slog.Warn("automated input: could not dismiss Claude's session survey", "session", in.Name, "error", err)
+		slog.Warn("automated input: could not dismiss the agent's session survey", "session", in.Name, "error", err)
 		return false
 	}
-	slog.Info("automated input: dismissed Claude's session survey with 0 (never a rating)", "session", in.Name)
+	slog.Info("automated input: dismissed the agent's session survey with 0 (never a rating)", "session", in.Name)
 	deadline := time.Now().Add(surveyGoneWait)
 	for {
-		if screen, err := reader.AgentScreen(ctx, in.Name, in.AgentType, in.SessionID); err == nil && !surveyOnlyOnScreen(screen) {
+		if screen, err := reader.AgentScreen(ctx, in.Name, in.AgentType, in.SessionID); err == nil && !surveyOnScreen(in.AgentType, screen) {
 			return true
 		}
 		if time.Now().After(deadline) || ctx.Err() != nil {
-			slog.Warn("automated input: Claude's session survey is still on screen after the 0; the send stays held", "session", in.Name)
+			slog.Warn("automated input: the agent's session survey is still on screen after the 0; the send stays held", "session", in.Name)
 			return false
 		}
 		time.Sleep(surveyPoll)

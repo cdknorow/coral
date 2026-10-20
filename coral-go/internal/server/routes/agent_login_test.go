@@ -245,3 +245,30 @@ func TestCapCLIText(t *testing.T) {
 	assert.True(t, utf8.ValidString(got))
 	assert.Len(t, capCLIText(strings.Repeat("b", 5000)), maxCLIText)
 }
+
+// #5229: the quota notice of the real Antigravity v1.4.2 CLI (a peek of an agent that had used up its quota): it starts with ⚠, the reset time wraps onto the next line, and
+// the feedback survey and the status line follow it. The Error ID is zeroed.
+func TestAgyQuotaNoticeFromTheLiveScreen(t *testing.T) {
+	h := &SessionsHandler{}
+	screen := []string{
+		"● Ran 62 commands (+60 · coral-board read --id 1 2>&1 || true) (ctrl+o to expand)",
+		"",
+		"⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in",
+		"103h13m54s.",
+		"Error ID: 00000000-0000-0000-0000-000000000000-0000",
+		"",
+		" How's the CLI experience so far? Help us improve:",
+		" [1] Good  [2] Fine  [3] Bad  [0] Skip",
+		"",
+		"? for shortcuts                                                           Gemini 3.8 Flash · high",
+	}
+	got := h.usageLimitText(at.Agy, "", "", map[string]any{"recent_lines": screen})
+	assert.Equal(t, "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 103h13m54s.", got)
+	// The same notice at a wide width, on one line.
+	wide := append([]string{}, screen...)
+	wide[2] = "⚠ Individual quota reached. Resets in 103h13m54s."
+	wide = append(wide[:3], wide[4:]...)
+	assert.Equal(t, "Individual quota reached. Resets in 103h13m54s.", h.usageLimitText(at.Agy, "", "", map[string]any{"recent_lines": wide}))
+	// Nothing about a quota: no notice.
+	assert.Empty(t, h.usageLimitText(at.Agy, "", "", map[string]any{"recent_lines": []string{"● Done.", "", "> ", "? for shortcuts      Gemini 3.8 Flash · high"}}))
+}

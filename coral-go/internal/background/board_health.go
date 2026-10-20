@@ -31,6 +31,8 @@ type BoardHealthMonitor struct {
 	discover func(ctx context.Context) ([]AgentInfo, error)
 	signal   func(ctx context.Context, sessionID string) (agentSignal, bool)
 	deliver  func(ctx context.Context, a AgentInfo, key, text string) error
+	// limit says whether a live agent is stopped by a usage limit, and how long until it resets (0 if not shown); nil: nothing is.
+	limit func(ctx context.Context, a AgentInfo) (resets time.Duration, blocked bool)
 
 	mu        sync.Mutex
 	lastCheck map[string]time.Time // per board
@@ -48,6 +50,7 @@ func NewBoardHealthMonitor(store *board.Store, interval time.Duration) *BoardHea
 func (m *BoardHealthMonitor) SetAgents(ts *store.TaskStore, rt AgentRuntime, discover func(context.Context) ([]AgentInfo, error)) {
 	m.discover = discover
 	m.signal = hookSignal(ts)
+	m.limit = screenLimit(rt)
 	m.deliver = func(ctx context.Context, a AgentInfo, key, text string) error {
 		_, err := deliverAutomated(ctx, rt, m.logger, naming.SessionName(a.AgentType, a.SessionID), a.AgentType, a.SessionID, key, board.OneLine(text), "health check", false, false)
 		return err
@@ -269,6 +272,9 @@ func (m *BoardHealthMonitor) idleItems(ctx context.Context, subs []board.Subscri
 		sig, known := m.signal(ctx, a.SessionID)
 		if !known || sig.InTurn || sig.NeedsInput || sig.Since.IsZero() || now.Sub(sig.Since) < m.idleAfter {
 			continue
+		}
+		if _, blocked := m.blockedByLimit(ctx, a); blocked {
+			continue // stopped by a usage limit (the roster says so): it does not need work, it cannot take it
 		}
 		idleNoWork[sub.SubscriberID] = true
 		items = append(items, teamhealth.Item{Rank: 2, Agent: teamhealth.Name(sub.SubscriberID),
