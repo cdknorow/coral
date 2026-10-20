@@ -85,9 +85,11 @@
                             <!-- Notices over the top of the agent view (#5287): pills under the terminal header that take no layout space and show after a delay
                                  (dom_write.setPill). The agent's server is unreachable (#3151): hub_access.syncUnreachableBanner. The agent is waiting: session_header_updates. -->
                             <div class="live-pills">
-                                <div class="live-pills-stack">
-                                    <div id="server-unreachable-banner" class="server-unreachable-banner" role="status" aria-live="polite" hidden></div>
-                                    <div id="waiting-banner" class="waiting-banner" role="status" aria-live="polite" hidden>Agent is waiting for input</div>
+                                <!-- The live region is this stack, rendered from the start: a region that appears already filled is not reliably announced, so the pills
+                                     inside are plain blocks and their text is what the stack announces when one shows. -->
+                                <div class="live-pills-stack" role="status" aria-live="polite">
+                                    <div id="server-unreachable-banner" class="server-unreachable-banner" hidden></div>
+                                    <div id="waiting-banner" class="waiting-banner" hidden>Agent is waiting for input</div>
                                 </div>
                             </div>
                             <!-- Semantic blocks view (existing) -->

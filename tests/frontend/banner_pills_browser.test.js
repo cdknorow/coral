@@ -49,7 +49,7 @@ const STUB = `(() => {
         return true;
     })()`);
     const pill = id => ev(`(() => { const b = document.getElementById('${id}'); const r = b.getBoundingClientRect(); const c = getComputedStyle(b);
-        return { shown: !b.hidden && b.getClientRects().length > 0, text: b.textContent, role: b.getAttribute('role'), live: b.getAttribute('aria-live'), pos: getComputedStyle(b.parentElement).position, ptr: c.pointerEvents, inTop: r.top, h: r.height,
+        return { shown: !b.hidden && b.getClientRects().length > 0, text: b.textContent, role: b.parentElement.getAttribute('role'), live: b.parentElement.getAttribute('aria-live'), own: b.getAttribute('role') || b.getAttribute('aria-live') || '', pos: getComputedStyle(b.parentElement).position, ptr: c.pointerEvents, inTop: r.top, h: r.height,
                  column: (() => { const col = document.querySelector('.live-left-column').getBoundingClientRect(); return { top: col.top, left: col.left, right: col.right }; })(), left: r.left, right: r.right }; })()`);
     // The agent view's geometry: the terminal header and the capture area must not move when a pill appears or goes.
     const geometry = () => ev(`(() => { const r = s => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return [Math.round(b.top * 10) / 10, Math.round(b.left * 10) / 10, Math.round(b.width * 10) / 10, Math.round(b.height * 10) / 10]; };
@@ -99,7 +99,8 @@ const STUB = `(() => {
             assert.ok(dt >= 1400 && dt < 2600, `${tag}: shown after about 1.5 s (${dt} ms)`);
             const p1 = await pill('server-unreachable-banner');
             assert.ok(/box-b\.lan is unreachable/.test(p1.text), `${tag}: it says why: ${p1.text}`);
-            assert.equal(p1.role, 'status'); assert.equal(p1.live, 'polite', `${tag}: aria-live polite`);
+            assert.equal(p1.role, 'status'); assert.equal(p1.live, 'polite', `${tag}: the stack the pill is in is the polite live region (always rendered, so a pill that shows already filled is announced)`);
+            assert.equal(p1.own, '', `${tag}: the pill itself is not a second live region`);
             assert.equal(p1.pos, 'absolute', `${tag}: an overlay, not in the flow`); assert.equal(p1.ptr, 'none', `${tag}: clicks pass through`);
             assert.ok(p1.left >= p1.column.left - 1 && p1.right <= p1.column.right + 1 && p1.inTop >= g0.header[0] + g0.header[3] - 0.5, `${tag}: the pill is over the agent view, under the header (the Chat/Terminal toggle stays uncovered): ` + JSON.stringify(p1));
             assert.deepEqual(await geometry(), g0, `${tag}: showing the pill moved nothing`);
