@@ -1,5 +1,22 @@
 # Release Notes
 
+## v1.4.134 — Replies to a task from Coral Hub, and a Download section at the top of every release's notes
+
+### Features
+
+- **Reply to a task (for Coral Hub):** `POST /api/board/{project}/tasks/{taskID}/reply` with `{"content": "..."}` stores a board message linked to that task, written as the signed-in hub user exactly as a normal board post is (the same size limit, cleaning, hub rules and write budget). The task's creator gets an `@` mention at the start of the reply when the name tags exactly that one member; if the creator has left, shares a name with another member, or is not a board member (a task made from the hub), the reply is stored with no mention and the answer says `creator_not_reachable`. The reply never changes the task. A task that is not on that board answers 404 before anything is written. Messages read back carry `task_id` when they are replies, and `GET /api/board/{project}/messages/all?task_id=N` lists the replies to one task, oldest first.
+
+### Changes
+
+- **Every release's notes start with a Download section:** direct links to that release's stable-name files (macOS, Windows installer, Windows portable, Linux x86-64 and ARM64) and the Homebrew line, because GitHub hides the disk image behind "Show more assets". The section is added when the release is finished and each link is checked first.
+
+### Internal
+
+- **A test-only build option for Coral Hub's relaunch tests (the `relaunchfixture` build tag):** it exists so the Coral Hub team can build a throwaway copy of Coral whose update-relaunch routes are switched on against a fixture updater, and test their half end to end. A build made with the tag listens on this computer only, refuses `--remote` and any non-loopback `--host`, connects to no hub unless the test names one, refuses the default data folder (`~/.coral`), and reports `+relaunchfixture` after its version. **No release contains it:** the release workflow does not use the tag, the relaunch routes still answer 404 in every build that ships, and a release's `coral --version` carries no suffix.
+- **The Go tests run faster:** the heavy routes tests open a migrated copy of the board and sessions databases instead of parsing the schema again (two helpers, `NewStorePrepared` and `OpenPrepared`, for tests only), and the Kill tests use a folder of their own. Two guards fail if a file outside the test helpers imports them.
+- The board database gains a nullable `task_id` column on messages and a partial index of the replies (it touches no existing row).
+- Tests and tooling: a long-session soak check that runs only when asked for, faster browser checks, a check that refuses a commit that adds a built program or a file over 5 MB, and the real-Coral restart test waits for the run record the server writes just after it starts listening.
+
 ## v1.4.133 — Settings labels in sentence case, one spelling of "CLI paths", board reads that carry the board's identity, a stage lock that fails safe on Windows
 
 ### Changes
