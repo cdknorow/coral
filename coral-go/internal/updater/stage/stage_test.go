@@ -27,7 +27,6 @@ import (
 // the commit the release was built from; verifying fails when either differs, or when the signer is told to refuse.
 type fakeSigner struct {
 	mu      sync.Mutex
-	refuse  string // a stage's artifact to refuse: "manifest" or "sums"
 	verdict error
 }
 

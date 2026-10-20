@@ -125,8 +125,7 @@ func allowAll(_, _ string) bool { return true }
 // origin may open WebSockets. extra tweaks the options (nil for none).
 func cloudHub(t *testing.T, res Resolver, extra func(*Options)) *httptest.Server {
 	t.Helper()
-	var hub *httptest.Server
-	hub = httptest.NewUnstartedServer(nil)
+	hub := httptest.NewUnstartedServer(nil)
 	opts := Options{AllowedOrigins: []string{hub.Listener.Addr().String()}}
 	if extra != nil {
 		extra(&opts)

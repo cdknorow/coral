@@ -40,8 +40,8 @@ func okBody() []byte { return []byte(`{"ok":true}`) }
 
 // patternReader yields n bytes of a repeating pattern without ever holding them, and counts what it gave.
 type patternReader struct {
-	n, given atomic.Int64
-	limit    int64
+	given atomic.Int64
+	limit int64
 }
 
 func newPattern(n int64) *patternReader { return &patternReader{limit: n} }

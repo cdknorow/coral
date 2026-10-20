@@ -220,10 +220,7 @@ func TestSession_ConcurrentSubscribeUnsubscribe(t *testing.T) {
 			s.unsubscribe(subID)
 			// Channel should be closed after unsubscribe
 			select {
-			case _, ok := <-ch:
-				if ok {
-					// Data received before close — that's fine
-				}
+			case <-ch: // data received before the close is fine
 			case <-time.After(time.Second):
 				// Already closed or no data
 			}

@@ -81,12 +81,6 @@ var eventShownTest = func() func(string) string {
 	return func(s string) string { return re.ReplaceAllString(s, "[redacted token]") }
 }()
 
-type eventRow struct {
-	ID                                  int64
-	Agent, Session, Type, Tool, Summary string
-	At                                  string
-}
-
 func seedEvents(t *testing.T, db *DB, rng *rand.Rand, n int) {
 	t.Helper()
 	ctx := context.Background()

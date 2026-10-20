@@ -150,9 +150,7 @@ func TestDashboardSettingKeysAreRegistered(t *testing.T) {
 	hs := strings.Index(hub, "HUB_SETTING_KEYS = new Set([")
 	require.Positive(t, hs)
 	he := strings.Index(hub[hs:], "]);")
-	for _, m := range regexp.MustCompile(`'([a-z_]+)'`).FindAllStringSubmatch(hub[hs:hs+he], -1) {
-		keys = append(keys, m)
-	}
+	keys = append(keys, regexp.MustCompile(`'([a-z_]+)'`).FindAllStringSubmatch(hub[hs:hs+he], -1)...)
 	for _, m := range keys {
 		_, ok := lookupSetting(m[1])
 		assert.True(t, ok, "%s is sent by the dashboard but not in the registry", m[1])

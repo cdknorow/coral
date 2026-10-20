@@ -29,10 +29,8 @@ func TestListSessionsPagedAgreesWithBefore4756(t *testing.T) {
 		require.NoError(t, err)
 		tagIDs = append(tagIDs, tag.ID)
 	}
-	var ids []string
 	for i := 0; i < 40; i++ {
 		id := fmt.Sprintf("4756%04d-0000-4000-8000-%012d", i, i)
-		ids = append(ids, id)
 		last := lasts[rng.Intn(len(lasts))]
 		first := last[:11] + "0" + fmt.Sprint(rng.Intn(9)) + ":00:00Z" // the same day, earlier (or the same hour)
 		idx := &SessionIndex{SessionID: id, SourceType: []string{"claude", "codex", "agy"}[rng.Intn(3)], SourceFile: "/f/" + id,

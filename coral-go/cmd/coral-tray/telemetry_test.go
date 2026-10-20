@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -113,7 +112,7 @@ func TestTrayWithTelemetryOffPostsNothing(t *testing.T) {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestHelperTrayTelemetry$")
 		cmd.Env = append(os.Environ(), "TRAY_TELEMETRY_MODE="+mode, "TRAY_TELEMETRY_DIR="+t.TempDir(), "CORAL_TELEMETRY_TEST_SINK="+sink.URL, "CORAL_TELEMETRY_DISABLED=")
 		out, err := cmd.CombinedOutput()
-		require.NoError(t, err, fmt.Sprintf("%s", out))
+		require.NoError(t, err, string(out))
 		return hits.Load()
 	}
 	assert.Zero(t, run("off"), "a tray told Usage analytics are off sends nothing")

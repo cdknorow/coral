@@ -28,9 +28,6 @@ const (
 	gateTextProbe = 8 << 10
 )
 
-// errTypeRefused is the gate's refusal; its text is a fixed reason, never anything from the file.
-var errTypeRefused = errors.New("type_refused")
-
 // gateResult is what an accepted file is.
 type gateResult struct {
 	MediaType string // the sniffed media type (what it is served as)

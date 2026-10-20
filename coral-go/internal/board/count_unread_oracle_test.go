@@ -277,11 +277,9 @@ func TestCountUnreadAgreesWithBefore4599(t *testing.T) {
 						for _, k := range cuKinds(t, b, cacheBefore, got) {
 							kind(k)
 						}
-						if sessions != nil {
-							for _, sn := range sessions {
-								if _, ok := got[sn]; !ok {
-									kind("an unknown session left out")
-								}
+						for _, sn := range sessions {
+							if _, ok := got[sn]; !ok {
+								kind("an unknown session left out")
 							}
 						}
 					}

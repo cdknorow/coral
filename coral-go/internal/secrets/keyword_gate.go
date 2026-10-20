@@ -139,10 +139,6 @@ func (g *gateScan) trueLineStart(p int) int {
 	return 0
 }
 
-func isAlnum(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
-}
-
 // lineEnd is where p's line ends (the newline, or the end of the text).
 func (g *gateScan) lineEnd(p int) int {
 	g.buildNewlines()

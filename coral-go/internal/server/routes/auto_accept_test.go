@@ -212,12 +212,6 @@ func (r *autoAcceptRig) enters(agentType, sid string) int {
 	return r.term.enters[naming.SessionName(agentType, sid)]
 }
 
-func (r *autoAcceptRig) arrows(agentType, sid string) []string {
-	r.term.mu.Lock()
-	defer r.term.mu.Unlock()
-	return append([]string(nil), r.term.arrows[naming.SessionName(agentType, sid)]...)
-}
-
 // The dashboard's fetch: same-origin, from this computer.
 var dashboardHdr = map[string]string{"Sec-Fetch-Site": "same-origin"}
 

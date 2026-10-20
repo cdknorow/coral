@@ -45,7 +45,6 @@ type hubWire struct {
 	msgs   int
 	// fileAnswer decides the answer to the i-th file (0-based); default accepts.
 	fileAnswer func(i int, f sentFile) (tunnel.RelayResponse, error)
-	failMsg    bool
 }
 
 func (w *hubWire) artifact(_ context.Context, n int64, body io.Reader) (tunnel.RelayResponse, error) {

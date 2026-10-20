@@ -542,10 +542,6 @@ func WriteKnowledgeIndex(coralDir, teamName, content string) error {
 }
 
 const (
-	// defaultKnowledgeCallTimeout is the maximum time a single Claude CLI
-	// call may run during knowledge distillation.
-	defaultKnowledgeCallTimeout = 2 * time.Minute
-
 	// KnowledgeTimeoutSettingKey is the user setting for the per-call
 	// timeout in seconds. Minimum 30s.
 	KnowledgeTimeoutSettingKey = setreg.KnowledgeTimeoutS
