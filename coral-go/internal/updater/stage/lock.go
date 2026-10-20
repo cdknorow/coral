@@ -54,32 +54,106 @@ func live(b []byte, modified, now time.Time) bool {
 	return pidAlive(l.PID)
 }
 
+// afterStaleJudged is a test seam: it runs after a check has read a lock as stale and before it acts on that, where another check can run.
+var afterStaleJudged func()
+
+// takeoverStale is how long a takeover lock may stand before it is taken to be left by a check that died in the middle of one.
+const takeoverStale = time.Minute
+
 // takeLock creates dir/name exclusively. It returns the release function.
+//
+// A stale lock (its owner is gone, or it is too old) is taken over under a second lock, name.takeover, that only one check can hold: the check
+// that holds it reads the lock again, and when it is still stale replaces it in one rename of its own lock over it (#5303). The path is never
+// empty in between, so no other check can create a lock in the gap, and no check ever removes a lock it has not just read as stale while
+// holding the takeover lock (a remove-then-create takeover let two checks that had read the same stale lock each remove the other's new one).
 func takeLock(dir, name string, now time.Time) (func(), error) {
 	path := filepath.Join(dir, name)
 	body, _ := json.Marshal(lockBody{PID: os.Getpid(), Taken: now.Unix()})
+	release := func() { os.Remove(path) }
 	for attempt := 0; attempt < 2; attempt++ {
 		err := createLock(dir, path, body)
 		if err == nil {
-			return func() { os.Remove(path) }, nil
+			return release, nil
 		}
 		if !errors.Is(err, fs.ErrExist) {
 			return nil, err
 		}
 		fi, lerr := os.Lstat(path)
-		if lerr != nil || !fi.Mode().IsRegular() {
+		if lerr != nil {
+			continue // released meanwhile: try to create it
+		}
+		if !fi.Mode().IsRegular() {
 			return nil, ErrBusy // a lock that is not a plain file is not ours to remove
 		}
 		b, rerr := os.ReadFile(path)
 		if rerr == nil && live(b, fi.ModTime(), now) {
 			return nil, ErrBusy
 		}
-		// Stale: its owner is gone or it is too old. Take it over once.
-		if rmErr := os.Remove(path); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
-			return nil, ErrBusy
+		if afterStaleJudged != nil {
+			afterStaleJudged()
 		}
+		switch takeOver(dir, path, body, now) {
+		case tookOver:
+			return release, nil
+		case lockReleased:
+			continue
+		}
+		return nil, ErrBusy
 	}
 	return nil, ErrBusy
+}
+
+type takeoverResult int
+
+const (
+	tookOver     takeoverResult = iota // the stale lock is replaced by ours
+	lockReleased                       // there is no lock any more: create one
+	takeoverBusy                       // another check is taking over, or the lock is live
+)
+
+// takeOver replaces the stale lock at path with one holding body, under name.takeover.
+func takeOver(dir, path string, body []byte, now time.Time) takeoverResult {
+	mutex := path + ".takeover"
+	if err := createLock(dir, mutex, body); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			// Another check is taking over. One left by a check that died is removed (it guards nothing but this), and the next check goes on.
+			if fi, lerr := os.Lstat(mutex); lerr == nil && fi.Mode().IsRegular() {
+				mb, _ := os.ReadFile(mutex)
+				if !live(mb, fi.ModTime(), now) || time.Since(fi.ModTime()) > takeoverStale {
+					os.Remove(mutex)
+				}
+			}
+		}
+		return takeoverBusy
+	}
+	defer os.Remove(mutex)
+	// Read again, now that no other check can be taking over.
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return lockReleased
+	}
+	if !fi.Mode().IsRegular() {
+		return takeoverBusy
+	}
+	b, rerr := os.ReadFile(path)
+	if rerr == nil && live(b, fi.ModTime(), now) {
+		return takeoverBusy
+	}
+	tmp, err := os.CreateTemp(dir, ".lock-*")
+	if err != nil {
+		return takeoverBusy
+	}
+	name := tmp.Name()
+	_, werr := tmp.Write(body)
+	if cerr := tmp.Close(); werr != nil || cerr != nil {
+		os.Remove(name)
+		return takeoverBusy
+	}
+	if err := os.Rename(name, path); err != nil { // atomic: the path holds the stale lock, then ours
+		os.Remove(name)
+		return takeoverBusy
+	}
+	return tookOver
 }
 
 // createLock makes path with body in it or fails with fs.ErrExist: the body is written to a temp file first and hard-linked into place, so no other

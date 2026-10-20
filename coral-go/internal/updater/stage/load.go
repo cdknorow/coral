@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/cdknorow/coral/internal/updater/verify"
 )
 
@@ -25,16 +26,31 @@ type Staged struct {
 	Record      *verify.Record
 }
 
-// readPlain reads a plain file of at most max bytes: a symlink, junction or anything that is not a regular file is refused.
-func readPlain(path string, max int64) ([]byte, error) {
-	fi, err := os.Lstat(path)
+// beforeOpen is a test seam: it runs just before a staged file is opened, where a racing process could swap the file for a link.
+var beforeOpen func(path string)
+
+// OpenPlain opens a staged file for reading without following a link at the path: the open itself refuses a symbolic link, a junction and a
+// folder (secfile.OpenNoFollow), and what was opened is then checked to be a regular file (a FIFO or a device is not). There is no check before
+// the open that a swap could outrun (#5303; it was Lstat, then Open). The caller holds the returned file for as long as it relies on it.
+func OpenPlain(path string) (*os.File, error) {
+	if beforeOpen != nil {
+		beforeOpen(path)
+	}
+	f, err := secfile.OpenNoFollow(path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
-	if !fi.Mode().IsRegular() {
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		f.Close()
 		return nil, fmt.Errorf("%s is not a plain file", filepath.Base(path))
 	}
-	f, err := os.Open(path)
+	return f, nil
+}
+
+// readPlain reads a plain file of at most max bytes: a symlink, junction or anything that is not a regular file is refused.
+func readPlain(path string, max int64) ([]byte, error) {
+	f, err := OpenPlain(path)
 	if err != nil {
 		return nil, err
 	}
@@ -104,9 +120,11 @@ func LoadStaged(dataDir string) (*Staged, error) {
 		}
 		*f.dst = b
 	}
-	if pfi, err := os.Lstat(s.PackagePath); err != nil || !pfi.Mode().IsRegular() {
+	pf, err := OpenPlain(s.PackagePath)
+	if err != nil {
 		return nil, ErrNoStaged
 	}
+	pf.Close()
 	return s, nil
 }
 
@@ -120,7 +138,7 @@ func Reverify(v verify.BundleVerifier, pins verify.Pins, s *Staged, asset func(s
 	if rec.Version != s.Version || filepath.Join(s.Dir, rec.Asset) != s.PackagePath {
 		return nil, &verify.Failure{Stage: verify.StagePackage, Reason: "the staged folder is not the verified release's"}
 	}
-	f, err := os.Open(s.PackagePath)
+	f, err := OpenPlain(s.PackagePath)
 	if err != nil {
 		return nil, &verify.Failure{Stage: verify.StagePackage, Reason: "the staged package cannot be opened"}
 	}

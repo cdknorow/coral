@@ -267,7 +267,7 @@ func (c *checker) alreadyStaged(rec *verify.Record) bool {
 	if err != nil || s.Record.Version != rec.Version || s.Record.PackageSHA256 != rec.PackageSHA256 || s.Record.SumsSHA256 != rec.SumsSHA256 {
 		return false
 	}
-	f, err := os.Open(s.PackagePath)
+	f, err := OpenPlain(s.PackagePath)
 	if err != nil {
 		return false
 	}

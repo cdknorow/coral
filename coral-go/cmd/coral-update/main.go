@@ -31,6 +31,8 @@ type output struct {
 	Version     string `json:"version,omitempty"`
 	FailedStage string `json:"failed_stage,omitempty"`
 	NextAttempt string `json:"next_attempt,omitempty"`
+	// Trust is where the Sigstore trusted root came from: tuf, tuf_cache or embedded.
+	Trust string `json:"trust,omitempty"`
 }
 
 func main() {
@@ -85,7 +87,11 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 		print(stdout, output{Result: "not_enabled", Installed: config.Version})
 		return 0
 	}
-	trust, err := verify.EmbeddedTrust()
+	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
+	defer cancel()
+	// The Sigstore trusted root, through TUF from the embedded starting root, refreshed at most daily (#5303).
+	dataDir := config.ResolveCoralDir("")
+	trust, source, err := verify.LoadTrust(ctx, filepath.Join(dataDir, stage.UpdatesDir, "tuf"))
 	if err != nil {
 		print(stdout, output{Result: stage.ResultFailed, Installed: config.Version, FailedStage: "trusted_root"})
 		return 0
@@ -96,10 +102,8 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 			portable = writableFolder(filepath.Dir(real))
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
-	defer cancel()
 	res := stage.Check(ctx, stage.Config{
-		DataDir:        config.ResolveCoralDir(""),
+		DataDir:        dataDir,
 		Installed:      config.Version,
 		Pins:           verify.DefaultPins(),
 		Verifier:       verify.Sigstore{Trust: trust},
@@ -107,6 +111,6 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 		Asset:          assetName(runtime.GOOS, runtime.GOARCH, portable),
 		BytesPerSecond: bytesPerSecond,
 	})
-	print(stdout, output{Result: res.Result, Installed: res.Installed, Version: res.Version, FailedStage: res.FailedStage, NextAttempt: res.NextAttempt})
+	print(stdout, output{Result: res.Result, Installed: res.Installed, Version: res.Version, FailedStage: res.FailedStage, NextAttempt: res.NextAttempt, Trust: string(source)})
 	return 0
 }
