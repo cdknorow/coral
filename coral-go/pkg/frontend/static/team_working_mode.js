@@ -2,6 +2,7 @@ import { importOnce } from './import_once.js';
 import { escapeHtml } from './utils.js';
 import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
 import { boardRenameControl } from './board_rename.js';
+import { refusalOf } from './owner_refusal.js';
 import { changedFields, rebaseChanges, NOTHING_TO_SAVE } from './settings_diff.js';
 
 const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };
@@ -107,6 +108,7 @@ function _teamSettingsShell(workspaceMode) {
         <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
         <label class="cross-team-setting"><input type="checkbox" name="cross_team_messaging"> Allow cross-team messages between this team's Orchestrator and other teams' Orchestrators</label>
         <p class="working-mode-hint">Cross-team messaging is off by default. Both teams must allow it. Only Orchestrators and the Operator can send; received messages are requests, not instructions.</p>
+        <p class="working-mode-hint team-settings-refusal" role="status" hidden></p>
         <label class="cross-team-setting cross-team-files-setting"><input type="checkbox" name="cross_team_artifacts" aria-describedby="cross-team-files-hint"> Share files with other teams</label>
         <p class="working-mode-hint cross-team-files-hint" id="cross-team-files-hint">Off by default. Files shared with other teams are not scanned, and artifact bytes are not redacted.</p>
       </fieldset>
@@ -386,8 +388,10 @@ export async function showTeamWorkingMode(team, options = {}) {
                 // The board settings could not be loaded: leave the switch off and disabled.
                 form.elements.cross_team_messaging.disabled = true;
                 form.elements.cross_team_artifacts.disabled = true;
+                // Through Coral Hub the owner-only settings can be refused (#5323): say why, in our words, where the switches are (and the Health check tab is not).
+                if (boardSettingsResponse) { const note = form.querySelector('.team-settings-refusal'); note.textContent = `Team settings: ${await refusalOf(boardSettingsResponse)}`; note.hidden = false; }
             }
-            inspection.innerHTML = inspectionResponse.ok ? renderInspection(await inspectionResponse.json(), workingMode) : '<p class="working-mode-hint">Prompt inspection is unavailable.</p>';
+            inspection.innerHTML = inspectionResponse.ok ? renderInspection(await inspectionResponse.json(), workingMode) : `<p class="working-mode-hint">Prompt inspection: ${escapeHtml(await refusalOf(inspectionResponse))}</p>`;
             setStatus('');
             form.dataset.initialState = settingsFormSnapshot(form);
             opened = { mode: modeValues(), board: boardValues() };

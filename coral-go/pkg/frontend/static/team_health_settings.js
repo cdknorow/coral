@@ -10,6 +10,7 @@
 import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch } from './server_base.js';
 import { rebaseChanges } from './settings_diff.js';
+import { refusalOf } from './owner_refusal.js';
 
 const HEALTH_LIMITS = { minutes: [5, 1440], nudges: [1, 5], reviewers: 8 };
 
@@ -160,14 +161,10 @@ function bind(host, team, base, members, said) {
         try {
             const now = await boardFetch(team, '/settings');
             const fresh = now.ok ? (await now.json()).health : null;
-            if (!fresh || typeof fresh !== 'object') { say('Could not read the current health check to save it. Try again.', true); save.disabled = false; return; }
+            if (!fresh || typeof fresh !== 'object') { say(`Could not read the current health check to save it. ${now.ok ? 'Try again.' : await refusalOf(now)}`, true); save.disabled = false; return; }
             const health = rebaseChanges(base, readHealth(form, base), fresh);
             const resp = await boardFetch(team, '/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', health }) });
-            if (!resp.ok) {
-                let msg = 'Could not save the health check.';
-                try { const body = await resp.json(); msg = body.error || body.message || msg; } catch { /* keep the generic text */ }
-                say(msg, true); save.disabled = false; return;
-            }
+            if (!resp.ok) { say(`Could not save the health check. ${await refusalOf(resp)}`, true); save.disabled = false; return; } // the refusal in our words, never the server's (#5323)
             const saved = (await resp.json()).health;
             // Drawn again from what the server kept: it clamps every value.
             bind(host, team, saved ? JSON.parse(JSON.stringify(saved)) : readHealth(form, base), members, 'Saved.');
