@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentsignin"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/safefs"
@@ -568,6 +569,10 @@ func checkClaudeCLI(ctx context.Context, settings map[string]string) (string, er
 	if err != nil {
 		return "", fmt.Errorf("claude CLI not ready (may need authentication): %s", strings.TrimSpace(string(out)))
 	}
+	// Signed out: the run ends at once, before any call (#5469). Fresh, so a person who has just signed in is not refused on an old answer.
+	if err := agentsignin.RequireFresh(ctx, at.Claude, claudePath); err != nil {
+		return "", err
+	}
 	return claudePath, nil
 }
 
@@ -582,6 +587,9 @@ func callClaudeForKnowledge(ctx context.Context, claudePath string, timeout time
 		input = systemPrompt + "\n\n---\n\nSession transcript:\n\n" + content
 	}
 
+	if err := agentsignin.Require(ctx, at.Claude, claudePath); err != nil {
+		return "", err
+	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 

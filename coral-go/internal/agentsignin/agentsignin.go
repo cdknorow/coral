@@ -1,0 +1,335 @@
+// Package agentsignin answers one question before Coral runs an agent CLI in the background: is it signed in? A background caller (a cron or workflow step, the
+// summarizer, the goal and knowledge generators, team and theme generation, the model list) that starts "claude --print" while Claude is signed out would start Claude's
+// own sign-in flow, which holds the login and blocks the person who is trying to sign in. So every such caller asks here first, and a signed-out CLI is never started:
+// the job fails at once with "Claude is not signed in" (#5469, the operator's rule). Nothing here tries to sign in, and nothing waits for a person.
+//
+// The check is the CLI's own non-interactive status command: "claude auth status --json" (signed out: loggedIn false and exit 1) and "codex login status" (exit 1 when
+// signed out). It runs with no stdin and no terminal, from the temp folder, under a deadline. Antigravity (agy), Gemini and Pi have no such command, so they are not
+// checked (Supports reports it); an answer that cannot be read (an old CLI without the command, a timeout) is Unknown and the caller goes on as before, because a CLI that
+// cannot be asked must not be locked out for good.
+package agentsignin
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/cdknorow/coral/internal/agentenv"
+	"github.com/cdknorow/coral/internal/executil"
+)
+
+// State is what a status check found.
+type State int
+
+const (
+	// Unknown: the CLI could not be asked, or its answer was not understood. Callers go on.
+	Unknown State = iota
+	SignedIn
+	SignedOut
+)
+
+func (s State) String() string {
+	switch s {
+	case SignedIn:
+		return "signed in"
+	case SignedOut:
+		return "signed out"
+	}
+	return "unknown"
+}
+
+// NotSignedInError is why a background job did not start: the CLI is signed out.
+type NotSignedInError struct{ Agent string }
+
+// Error is the sentence the job's history shows: "Claude is not signed in".
+func (e *NotSignedInError) Error() string { return displayName(e.Agent) + " is not signed in" }
+
+// IsNotSignedIn reports whether err is (or wraps) a NotSignedInError.
+func IsNotSignedIn(err error) bool {
+	var e *NotSignedInError
+	return errors.As(err, &e)
+}
+
+func displayName(agentType string) string {
+	switch agentType {
+	case "claude":
+		return "Claude"
+	case "codex":
+		return "Codex"
+	}
+	return agentType
+}
+
+// spec is how one CLI is asked.
+type spec struct {
+	args  []string
+	state func(out, errOut []byte, runErr error) State
+}
+
+var specs = map[string]spec{
+	"claude": {args: []string{"auth", "status", "--json"}, state: claudeState},
+	"codex":  {args: []string{"login", "status"}, state: codexState},
+}
+
+// Supports reports whether agentType has a non-interactive way to tell whether it is signed in. agy, gemini and pi do not, and are never checked.
+func Supports(agentType string) bool {
+	_, ok := specs[agentType]
+	return ok
+}
+
+// claudeState reads "claude auth status --json": {"loggedIn": true|false, ...}. Signed out exits 1 with loggedIn false. Without readable JSON, a failing run that says it is not
+// logged in (the CLI's own words) is signed out too; any other answer (an old CLI with no such command, garbage) is Unknown.
+func claudeState(out, errOut []byte, runErr error) State {
+	var v struct {
+		LoggedIn *bool `json:"loggedIn"`
+	}
+	if json.Unmarshal(bytes.TrimSpace(out), &v) == nil && v.LoggedIn != nil {
+		if *v.LoggedIn {
+			return SignedIn
+		}
+		return SignedOut
+	}
+	if runErr != nil {
+		said := strings.ToLower(string(out) + " " + string(errOut))
+		if strings.Contains(said, "not logged in") || strings.Contains(said, "not signed in") {
+			return SignedOut
+		}
+	}
+	return Unknown
+}
+
+// codexState reads "codex login status": exit 0 is signed in, exit status 1 is signed out; any other failure (not found, a timeout, a signal) is Unknown.
+func codexState(_, _ []byte, runErr error) State {
+	if runErr == nil {
+		return SignedIn
+	}
+	var exit *exec.ExitError
+	if errors.As(runErr, &exit) && exit.ExitCode() == 1 {
+		return SignedOut
+	}
+	return Unknown
+}
+
+// Variables the tests change.
+var (
+	// checkTimeout is how long the status command may take. The command normally answers in well under a second; one that does not answer is waiting on something (the sign-in
+	// flow another claude holds), and starting a second claude behind it would be the very thing this package prevents, so a check that times out counts as not signed in.
+	checkTimeout = 2 * time.Second
+	now          = time.Now
+	// positiveTTL is how long a "signed in" (or Unknown) answer is reused by Require: background jobs run often and the check starts a process.
+	positiveTTL = time.Minute
+	// backoffMin and backoffMax bound how long a "signed out" answer is reused by Require: it doubles with each signed-out answer in a row, so a signed-out Claude is asked
+	// about a few times an hour, not by every job.
+	backoffMin = 2 * time.Second
+	backoffMax = 5 * time.Minute
+)
+
+const maxStatusOutput = 64 << 10
+
+// Check asks the CLI at bin now, whatever was answered before. It never signs in: stdin is empty, there is no terminal, and the call ends at checkTimeout.
+func Check(ctx context.Context, agentType, bin string) State {
+	sp, ok := specs[agentType]
+	if !ok || bin == "" {
+		return Unknown
+	}
+	if agentType == "claude" && credentialedOutsideLogin() {
+		return Unknown // signed in by an API key, a token, a key helper or a cloud provider: no login to ask about, and none to refuse
+	}
+	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	cmd := executil.Command(cctx, bin, sp.args...)
+	cmd.Stdin = nil // the null device: a prompt gets end of input
+	cmd.Dir = os.TempDir()
+	cmd.Env = agentenv.Filter(os.Environ())
+	cmd.WaitDelay = 2 * time.Second // a child that holds the pipes open cannot hold this call
+	var out, errOut limited
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	err := cmd.Run()
+	if cctx.Err() != nil {
+		if ctx.Err() != nil {
+			return Unknown // the caller gave up, not the CLI
+		}
+		return SignedOut
+	}
+	return sp.state(out.b.Bytes(), errOut.b.Bytes(), err)
+}
+
+// limited keeps the first maxStatusOutput bytes and drops the rest.
+type limited struct{ b bytes.Buffer }
+
+func (l *limited) Write(p []byte) (int, error) {
+	if room := maxStatusOutput - l.b.Len(); room > 0 {
+		if len(p) < room {
+			room = len(p)
+		}
+		l.b.Write(p[:room])
+	}
+	return len(p), nil
+}
+
+type entry struct {
+	mu        sync.Mutex // held while the CLI is asked: callers that arrive meanwhile share the answer
+	state     State
+	until     time.Time
+	signedOut int // answers of "signed out" in a row
+	checkedAt time.Time
+	valid     bool
+}
+
+var (
+	cacheMu sync.Mutex
+	cache   = map[string]*entry{}
+)
+
+func entryFor(agentType, bin string) *entry {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	k := agentType + "\x00" + bin
+	e := cache[k]
+	if e == nil {
+		e = &entry{}
+		cache[k] = e
+	}
+	return e
+}
+
+// Require is the check every background caller makes before it starts agentType's CLI at bin: nil to go on (signed in, Unknown, or an agent with no check), a
+// *NotSignedInError to skip. A recent answer is reused (a minute for signed in, a backoff that starts at two seconds and doubles to five minutes for signed out), so a signed-out CLI is asked about a dozen times an hour once the backoff has grown, not
+// by every job. It logs once per backoff window that jobs are being skipped.
+func Require(ctx context.Context, agentType, bin string) error {
+	return ask(ctx, agentType, bin, false)
+}
+
+// RequireFresh is Require without the reused answer: a workflow run asks once, before its first step, so a person who has just signed in is not refused on a stale answer.
+func RequireFresh(ctx context.Context, agentType, bin string) error {
+	return ask(ctx, agentType, bin, true)
+}
+
+func ask(ctx context.Context, agentType, bin string, fresh bool) error {
+	if !Supports(agentType) || bin == "" {
+		return nil
+	}
+	e := entryFor(agentType, bin)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !fresh && e.valid && now().Before(e.until) {
+		return e.verdict(agentType)
+	}
+	st := Check(ctx, agentType, bin)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	e.valid = true
+	e.state = st
+	e.checkedAt = now()
+	switch st {
+	case SignedOut:
+		e.signedOut++
+		wait := backoffMin << min(e.signedOut-1, 10)
+		if wait > backoffMax || wait <= 0 {
+			wait = backoffMax
+		}
+		e.until = now().Add(wait)
+		slog.Warn("[signin] "+displayName(agentType)+" is not signed in: its background jobs are skipped and it is checked again later", "agent", agentType, "next_check_in", wait.String())
+	default:
+		e.signedOut = 0
+		e.until = now().Add(positiveTTL)
+	}
+	return e.verdict(agentType)
+}
+
+func (e *entry) verdict(agentType string) error {
+	if e.state == SignedOut {
+		return &NotSignedInError{Agent: agentType}
+	}
+	return nil
+}
+
+// Forget drops what was learned about bin, for a caller that knows the sign-in just changed.
+func Forget(agentType, bin string) {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	delete(cache, agentType+"\x00"+bin)
+}
+
+// Describe is "Claude is not signed in" for an agent type, for messages that name the state without an error value.
+func Describe(agentType string) string { return fmt.Sprint(&NotSignedInError{Agent: agentType}) }
+
+// Status is what the last check of an agent CLI found, for the dashboard's one quiet line.
+type Status struct {
+	SignedIn  bool
+	CheckedAt time.Time
+}
+
+// Snapshot is the newest answer for agentType over every CLI path asked about: ok is false when no check has been made (nothing to say). A signed-out answer stands until a
+// later check finds the CLI signed in, so the line clears itself within the backoff (five minutes at most) of the person signing in, or at once when a workflow run, a distill
+// or a theme or team generation asks.
+func Snapshot(agentType string) (st Status, ok bool) {
+	cacheMu.Lock()
+	entries := make([]*entry, 0, len(cache))
+	for k, e := range cache {
+		if strings.HasPrefix(k, agentType+"\x00") {
+			entries = append(entries, e)
+		}
+	}
+	cacheMu.Unlock()
+	for _, e := range entries {
+		e.mu.Lock()
+		if e.valid && e.state != Unknown && (!ok || e.checkedAt.After(st.CheckedAt)) {
+			st, ok = Status{SignedIn: e.state == SignedIn, CheckedAt: e.checkedAt}, true
+		}
+		e.mu.Unlock()
+	}
+	return st, ok
+}
+
+// credentialEnv are the variables that sign Claude in without an OAuth login: an API key, a token, or a cloud provider.
+var credentialEnv = []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"}
+
+// credentialedOutsideLogin reports whether Claude gets its credentials some way other than its own sign-in: one of credentialEnv set in the environment, or an apiKeyHelper or one of
+// those variables in the user settings file. Such a user is never refused (and never asked about): "auth status" speaks for the OAuth login only.
+func credentialedOutsideLogin() bool {
+	for _, k := range credentialEnv {
+		if os.Getenv(k) != "" {
+			return true
+		}
+	}
+	dir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		dir = filepath.Join(home, ".claude")
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "settings.json"))
+	if err != nil || len(data) > 1<<20 {
+		return false
+	}
+	var settings struct {
+		APIKeyHelper string            `json:"apiKeyHelper"`
+		Env          map[string]string `json:"env"`
+	}
+	if json.Unmarshal(data, &settings) != nil {
+		return false
+	}
+	if settings.APIKeyHelper != "" {
+		return true
+	}
+	for _, k := range credentialEnv {
+		if settings.Env[k] != "" {
+			return true
+		}
+	}
+	return false
+}

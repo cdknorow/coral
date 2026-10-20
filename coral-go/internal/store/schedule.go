@@ -46,6 +46,8 @@ type ScheduledRun struct {
 	FinishedAt        *string `db:"finished_at" json:"finished_at"`
 	ExitReason        *string `db:"exit_reason" json:"exit_reason"`
 	ErrorMsg          *string `db:"error_msg" json:"error_msg"`
+	ErrorCode         *string `db:"error_code" json:"error_code,omitempty"` // a fixed word for why the run failed ("not_signed_in", #5469)
+	AgentType         *string `db:"agent_type" json:"agent_type,omitempty"` // the agent CLI the error code is about
 	TriggerType       *string `db:"trigger_type" json:"trigger_type"`
 	WebhookURL        *string `db:"webhook_url" json:"-"` // unused: webhooks were removed (#3646); kept for SELECT *, wiped at start
 	DisplayName       *string `db:"display_name" json:"display_name"`
@@ -193,6 +195,7 @@ func (s *ScheduleStore) UpdateScheduledRun(ctx context.Context, runID int64, fie
 	return dynamicUpdate(ctx, s.db, "scheduled_runs", runID, fields, map[string]bool{
 		"session_id": true, "worktree_path": true, "status": true,
 		"started_at": true, "finished_at": true, "exit_reason": true, "error_msg": true,
+		"error_code": true, "agent_type": true,
 	}, nil, false)
 }
 

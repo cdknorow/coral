@@ -54,7 +54,10 @@ type WorkflowRun struct {
 	StartedAt      *string `db:"started_at" json:"started_at,omitempty"`
 	FinishedAt     *string `db:"finished_at" json:"finished_at,omitempty"`
 	ErrorMsg       *string `db:"error_msg" json:"error_msg,omitempty"`
-	CreatedAt      string  `db:"created_at" json:"created_at"`
+	// ErrorCode is a fixed word for why the run failed ("not_signed_in", #5469) and AgentType the agent CLI it is about; both are left out of every other run.
+	ErrorCode *string `db:"error_code" json:"error_code,omitempty"`
+	AgentType *string `db:"agent_type" json:"agent_type,omitempty"`
+	CreatedAt string  `db:"created_at" json:"created_at"`
 
 	// Computed fields populated by queries
 	WorkflowName *string           `db:"workflow_name" json:"workflow_name,omitempty"`
@@ -329,7 +332,7 @@ func (s *WorkflowStore) UpdateWorkflowRun(ctx context.Context, runID int64, fiel
 	return dynamicUpdate(ctx, s.db, "workflow_runs", runID, fields, map[string]bool{
 		"status": true, "current_step": true, "step_results": true,
 		"worktree_path": true, "started_at": true, "finished_at": true,
-		"error_msg": true,
+		"error_msg": true, "error_code": true, "agent_type": true,
 	}, nil, false)
 }
 
@@ -436,6 +439,17 @@ func (s *WorkflowStore) SetRunStatus(ctx context.Context, runID int64, status st
 		}
 		return s.UpdateWorkflowRun(ctx, runID, fields)
 	}
+}
+
+// ErrorCodeNotSignedIn is the error_code of a run refused because its agent CLI is not signed in (#5469).
+const ErrorCodeNotSignedIn = "not_signed_in"
+
+// SetRunNotSignedIn fails a run that was refused because agentType's CLI is signed out: status failed, the plain sentence in error_msg, the fixed code and the CLI named.
+func (s *WorkflowStore) SetRunNotSignedIn(ctx context.Context, runID int64, errorMsg, agentType string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE workflow_runs SET status = 'failed', finished_at = COALESCE(finished_at, ?), error_msg = ?, error_code = ?, agent_type = ? WHERE id = ?`,
+		nowUTC(), errorMsg, ErrorCodeNotSignedIn, agentType, runID)
+	return err
 }
 
 // UpdateStepResults updates the step_results JSON and current_step for a run.

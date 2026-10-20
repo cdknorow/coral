@@ -7,6 +7,8 @@ Scheduled jobs support two execution modes:
 - `prompt` jobs launch a one-shot agent task on a cron schedule.
 - `workflow` jobs trigger a saved workflow on a cron schedule.
 
+A run refused because the job's agent CLI (Claude or Codex) is signed out is `failed` at once, before a worktree is made or anything is launched: its `error_msg` is `Claude is not signed in`, its `error_code` is `not_signed_in` and its `agent_type` names the CLI (a workflow job copies them from its workflow run; see [Workflows](workflows.md)). Such runs do not count toward the pause after three failed runs in a row; the job runs again on its schedule once the CLI is signed in.
+
 For one-off launches, see the [Jobs API](jobs.md). For reusable multi-step automations, see the [Workflows API](workflows.md).
 
 > **Every `/api/scheduled/…` route is the Operator's, reads included** (list, get, a job's runs, recent runs, validate-cron, and create, change, delete, toggle): the dashboard, an API key or the Operator's signed command line. An agent's session token gets 403 `forbidden_for_agent`. A job's prompt and flags are the Operator's and may hold a credential.

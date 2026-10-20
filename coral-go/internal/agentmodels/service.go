@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/agentsignin"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/safego"
@@ -237,7 +238,10 @@ func (s *Service) runFetch(family, path, key string) {
 // describe is a failure in Coral's words: never the CLI's own output.
 func describe(err error) string {
 	var exitErr *exec.ExitError
+	var notSignedIn *agentsignin.NotSignedInError
 	switch {
+	case errors.As(err, &notSignedIn):
+		return notSignedIn.Error() // Coral's own sentence (#5469): "Claude is not signed in"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "the CLI didn't answer in time"
 	case errors.Is(err, ErrNoModels):
@@ -260,6 +264,9 @@ func FetchFromCLI(ctx context.Context, family, path string) ([]Model, string, er
 	defer os.RemoveAll(dir)
 	switch family {
 	case "claude":
+		if err := agentsignin.Require(ctx, "claude", path); err != nil { // signed out: Claude is not started, its sign-in flow would hold the login (#5469)
+			return nil, "", err
+		}
 		m, err := fetchClaude(ctx, path, dir)
 		return m, "account", err
 	case "codex":

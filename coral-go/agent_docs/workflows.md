@@ -362,6 +362,8 @@ curl -X POST http://localhost:8420/api/workflows/by-name/nightly-release/trigger
 
 If the workflow is disabled, returns `{"error": "workflow is disabled"}, 409`.
 
+**Signed-in check (#5469).** Before a run's first step Coral asks each agent CLI the run's agent steps use (print or interactive) whether it is signed in, with the CLI's own status command (`claude auth status --json`, `codex login status`; agy, Gemini and Pi have none and are not checked). If one is signed out the whole run fails at once: its status is `failed`, its `error_msg` is `Claude is not signed in` (or `Codex is not signed in`), its `error_code` is `not_signed_in` and its `agent_type` names the CLI (`claude` or `codex`; both fields are left out of every other run), every step is `skipped`, and no step (shell steps included) starts. Coral never tries to sign in, and never waits for a person. A CLI that cannot be asked (an old version without the command, a timeout) does not stop the run. A workflow with no agent step is not checked. The same rule holds for Coral's other background Claude jobs (session summaries, goals, knowledge distill, team and theme generation, the model list): a signed-out Claude is never started; they wait and ask again later (asked again after 2 seconds, then 4, 8 and so on up to every 5 minutes while it stays signed out). `GET /api/system/status` carries `claude_signed_in` and `claude_checked_at` once a check has been made (`false` while the last check found Claude signed out; it clears when a check finds it signed in).
+
 ---
 
 ## List runs for one workflow

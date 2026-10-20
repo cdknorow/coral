@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentsignin"
 	"github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/httputil"
@@ -311,6 +312,10 @@ func (h *SystemHandler) GenerateTeamStatus(w http.ResponseWriter, r *http.Reques
 // runTeamGeneration executes Claude CLI and parses/validates the response.
 // Returns (result, errorMessage). If errorMessage is non-empty, result is nil.
 func runTeamGeneration(ctx context.Context, claudePath, prompt, coralDir string) (map[string]any, string) {
+	// Signed out: the job ends at once with that sentence and Claude's sign-in flow is never started (#5469). Fresh, so a sign-in that just happened is seen.
+	if err := agentsignin.RequireFresh(ctx, "claude", claudePath); err != nil {
+		return nil, err.Error()
+	}
 	cmd := executil.Command(ctx, claudePath,
 		"--print",
 		"--model", "opus",

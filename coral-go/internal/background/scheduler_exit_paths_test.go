@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -38,6 +39,8 @@ func newExitEnv(t *testing.T, sid string) *exitEnv {
 	e.s = NewJobScheduler(e.ss, time.Minute)
 	e.s.SetRuntime(e.rt)
 	e.s.SetSessionStore(e.sess)
+	// A scheduled run asks its CLI whether it is signed in (#5469): these tests never reach a real claude, a configured path that cannot be run is "not asked".
+	require.NoError(t, e.sess.SetSetting(ctx, agent.CLIPathSettingKey("claude"), filepath.Join(t.TempDir(), "no-claude")))
 	e.s.SetWorktreeRoot(t.TempDir())
 	job, err := e.ss.CreateScheduledJob(ctx, &store.ScheduledJob{Name: "exit", CronExpr: "0 * * * *", AgentType: "claude", Prompt: "p"})
 	require.NoError(t, err)

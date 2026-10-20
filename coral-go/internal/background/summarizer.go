@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentsignin"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/store"
@@ -47,6 +48,9 @@ func BuildSummarizeFn(sessionStore *store.SessionStore) func(ctx context.Context
 			err = fmt.Errorf("reading Coral's settings: %w", serr)
 		} else {
 			summary, err = callClaude(ctx, settings, transcript)
+		}
+		if agentsignin.IsNotSignedIn(err) {
+			return err // left pending: the batch loop waits, and the summary is made once Claude is signed in (#5469)
 		}
 		if err != nil {
 			summary = fmt.Sprintf("*Auto-summarization failed: %v*", err)
@@ -212,6 +216,9 @@ func callClaude(ctx context.Context, settings map[string]string, transcript stri
 	claudePath, err := agent.FindCLI(settings, at.Claude)
 	if err != nil {
 		return fallbackSummary(transcript), nil
+	}
+	if err := agentsignin.Require(ctx, at.Claude, claudePath); err != nil {
+		return "", err // not signed in (#5469): the summary is left pending, never saved as a failure
 	}
 
 	prompt := summarizerPrompt + "\n\nPlease summarize this coding session:\n\n" + transcript

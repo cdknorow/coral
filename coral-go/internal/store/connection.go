@@ -239,6 +239,11 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 var columnMigrations = []struct {
 	table, column, definition string
 }{
+	// Why a run failed, as a fixed word, and the agent CLI it concerns (#5469): "not_signed_in" and "claude". NULL on every other run.
+	{"workflow_runs", "error_code", "TEXT"},
+	{"workflow_runs", "agent_type", "TEXT"},
+	{"scheduled_runs", "error_code", "TEXT"},
+	{"scheduled_runs", "agent_type", "TEXT"},
 	// Existing views have unknown provenance, so they migrate as "api": the dashboard asks once before running them.
 	{"custom_views", "created_via", "TEXT NOT NULL DEFAULT 'api'"},
 	// Where a bookmark belongs (#4792): its team (the board), and for a board message who wrote it (NULL: not looked up yet).

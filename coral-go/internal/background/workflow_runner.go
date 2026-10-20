@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentsignin"
 	"github.com/cdknorow/coral/internal/safego"
 
 	"github.com/cdknorow/coral/internal/store"
@@ -322,6 +324,15 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 		return
 	}
 	defer rf.Close()
+	// Before the first step (#5469): when an agent step needs a CLI that is signed out, the whole run fails at once, no step starts, and nothing tries to sign in.
+	if nsi := wr.signInPreflight(ctx, steps, defaultAgent); nsi != nil {
+		for i := range results {
+			results[i].Status = "skipped"
+		}
+		wr.persistResults(context.Background(), runID, 0, results)
+		wr.store.SetRunNotSignedIn(context.Background(), runID, nsi.Error(), nsi.Agent)
+		return
+	}
 	for i, step := range steps {
 		if ctx.Err() != nil {
 			wr.endCancelledRun(ctx, runID, i, results)
@@ -519,4 +530,41 @@ func (wr *WorkflowRunner) IsRunActive(runID int64) bool {
 	defer wr.mu.Unlock()
 	_, ok := wr.runCancels[runID]
 	return ok
+}
+
+// signInPreflight is the run's one sign-in check (#5469): for each agent CLI the run's agent steps use (print or interactive) that has a non-interactive status command
+// (agentsignin.Supports: Claude and Codex; agy, Gemini and Pi have none), it asks the CLI itself, fresh. It returns the sentence for the run history ("Claude is not signed in")
+// as an error (the agent named) when one is signed out, nil when the run may start. An agent CLI that cannot be found or asked does not stop the run here: its step fails or goes on as it did before.
+func (wr *WorkflowRunner) signInPreflight(ctx context.Context, steps []StepDef, defaultAgent *AgentStepConfig) *agentsignin.NotSignedInError {
+	var types []string
+	seen := map[string]bool{}
+	for _, step := range steps {
+		if step.Type != "agent" {
+			continue
+		}
+		cfg := mergeAgentConfig(defaultAgent, step.Agent)
+		if cfg == nil || !agentsignin.Supports(cfg.AgentType) || seen[cfg.AgentType] {
+			continue
+		}
+		seen[cfg.AgentType] = true
+		types = append(types, cfg.AgentType)
+	}
+	if len(types) == 0 {
+		return nil
+	}
+	settings, err := wr.settings(ctx)
+	if err != nil {
+		return nil // the step reports the unreadable settings itself
+	}
+	for _, t := range types {
+		bin, err := agent.FindCLI(settings, t)
+		if err != nil {
+			continue
+		}
+		var nsi *agentsignin.NotSignedInError
+		if err := agentsignin.RequireFresh(ctx, t, bin); errors.As(err, &nsi) {
+			return nsi
+		}
+	}
+	return nil
 }

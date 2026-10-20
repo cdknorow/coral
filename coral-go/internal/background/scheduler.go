@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentsignin"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/safego"
@@ -81,6 +84,10 @@ func (s *JobScheduler) pauseIfFailing(ctx context.Context, job store.ScheduledJo
 	}
 	for _, r := range runs {
 		if r.Status != "failed" {
+			return false
+		}
+		// A run refused because the agent CLI was signed out says nothing about the job: it does not count toward the pause, and the job runs again once signed in (#5469).
+		if r.ErrorCode != nil && *r.ErrorCode == store.ErrorCodeNotSignedIn {
 			return false
 		}
 		// A run from before the job was resumed does not count: the user fixed
@@ -445,10 +452,17 @@ func (s *JobScheduler) triggerWorkflowForJob(runID int64, job store.ScheduledJob
 				if run.ErrorMsg != nil {
 					errMsg = *run.ErrorMsg
 				}
-				s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
+				fields := map[string]interface{}{
 					"status": run.Status, "error_msg": errMsg,
 					"finished_at": time.Now().UTC().Format(store.ISOFormat),
-				})
+				}
+				if run.ErrorCode != nil { // the workflow run's fixed code and CLI (#5469) are the scheduled run's too
+					fields["error_code"] = *run.ErrorCode
+				}
+				if run.AgentType != nil {
+					fields["agent_type"] = *run.AgentType
+				}
+				s.store.UpdateScheduledRun(ctx, runID, fields)
 				return
 			}
 			// Still pending/running — continue polling
@@ -639,6 +653,11 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		s.runningMu.Unlock()
 	}()
 
+	// A scheduled run of a signed-out agent CLI is refused before anything is made for it (#5469): no worktree, no launch, and no sign-in flow in a tmux pane nobody watches.
+	if rc.tag == "scheduled" && s.refuseIfNotSignedIn(ctx, runID, job) {
+		return
+	}
+
 	wt, ok := s.prepareRunWorktree(ctx, watchCtx, runID, rc)
 	if !ok {
 		return
@@ -674,6 +693,33 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	if rc.autoAccept {
 		s.unregisterAutoAccept(ctx, runID)
 	}
+}
+
+// refuseIfNotSignedIn fails the scheduled run at once, with the sentence, the fixed error_code and the CLI named, when the job's agent CLI has a status command and is signed out. It
+// reports whether it did. A CLI that cannot be found or asked does not stop the run here.
+func (s *JobScheduler) refuseIfNotSignedIn(ctx context.Context, runID int64, job store.ScheduledJob) bool {
+	if s.sessionStore == nil || !agentsignin.Supports(job.AgentType) {
+		return false
+	}
+	settings, err := s.sessionStore.GetSettingsForCLI(ctx)
+	if err != nil {
+		return false
+	}
+	bin, err := agent.FindCLI(settings, job.AgentType)
+	if err != nil {
+		return false
+	}
+	var nsi *agentsignin.NotSignedInError
+	if err := agentsignin.RequireFresh(ctx, job.AgentType, bin); !errors.As(err, &nsi) {
+		return false
+	}
+	s.logger.Warn("scheduled run not started: "+nsi.Error(), "job", job.Name, "run_id", runID)
+	s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
+		"status": "failed", "error_msg": nsi.Error(), "exit_reason": nsi.Error(),
+		"error_code": store.ErrorCodeNotSignedIn, "agent_type": nsi.Agent,
+		"finished_at": time.Now().UTC().Format(store.ISOFormat),
+	})
+	return true
 }
 
 // runWorktree is where a run's agent works: the repository, or a worktree made for the run on its own branch.

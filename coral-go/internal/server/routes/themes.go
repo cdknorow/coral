@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentsignin"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/safefs"
@@ -519,9 +520,14 @@ func (h *ThemesHandler) GenerateTheme(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	cliPath, cliArgs := resolveThemeCLI(settings, body.AgentType)
+	cliPath, cliArgs, cliAgent := resolveThemeCLIAgent(settings, body.AgentType)
 	if cliPath == "" {
 		errInternalServer(w, "No LLM CLI found — install Claude Code (npm install -g @anthropic-ai/claude-code) or Antigravity CLI (agy)")
+		return
+	}
+	// A signed-out Claude (or Codex) is not started: its sign-in flow would hold the login (#5469).
+	if err := agentsignin.RequireFresh(r.Context(), cliAgent, cliPath); err != nil {
+		writeError(w, http.StatusConflict, "not_signed_in", err.Error())
 		return
 	}
 
@@ -586,6 +592,12 @@ func (h *ThemesHandler) GenerateTheme(w http.ResponseWriter, r *http.Request) {
 // one is set, and a set path that cannot be run skips that CLI rather than running the one on
 // PATH (#4354). Only a CLI with no configured path is looked up on PATH.
 func resolveThemeCLI(settings map[string]string, agentType string) (path string, args []string) {
+	path, args, _ = resolveThemeCLIAgent(settings, agentType)
+	return path, args
+}
+
+// resolveThemeCLIAgent is resolveThemeCLI that also names the agent the CLI is ("claude", "agy", ...), for the sign-in check (#5469).
+func resolveThemeCLIAgent(settings map[string]string, agentType string) (path string, args []string, binary string) {
 	find := func(binary string) (string, bool) {
 		p, err := agent.FindCLI(settings, binary)
 		return p, err == nil
@@ -613,7 +625,7 @@ func resolveThemeCLI(settings map[string]string, agentType string) (path string,
 			for _, opt := range options {
 				if opt.binary == target {
 					if p, ok := find(opt.binary); ok {
-						return p, opt.args
+						return p, opt.args, opt.binary
 					}
 				}
 			}
@@ -623,10 +635,10 @@ func resolveThemeCLI(settings map[string]string, agentType string) (path string,
 	// Fall back to any available CLI
 	for _, opt := range options {
 		if p, ok := find(opt.binary); ok {
-			return p, opt.args
+			return p, opt.args, opt.binary
 		}
 	}
-	return "", nil
+	return "", nil, ""
 }
 
 const generatePrompt = `You are a UI theme designer. Given a description of a color theme, generate a complete set of CSS color values for a web dashboard.

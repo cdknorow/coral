@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentsignin"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -167,6 +168,9 @@ type BatchSummarizer struct {
 }
 
 // NewBatchSummarizer creates a new BatchSummarizer.
+// signedOutWait is how long the batch summarizer leaves its pending sessions alone when Claude is not signed in.
+var signedOutWait = 5 * time.Minute
+
 // The summarizeFn is called for each pending session.
 func NewBatchSummarizer(sessionStore *store.SessionStore, summarizeFn func(ctx context.Context, sessionID string) error) *BatchSummarizer {
 	return &BatchSummarizer{
@@ -207,6 +211,14 @@ func (bs *BatchSummarizer) Run(ctx context.Context) error {
 
 		for _, sessionID := range pending {
 			if err := bs.summarizeFn(ctx, sessionID); err != nil {
+				if agentsignin.IsNotSignedIn(err) { // Claude is signed out (#5469): nothing is marked failed, and the batch waits before it asks again
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(signedOutWait):
+					}
+					break
+				}
 				bs.logger.Warn("summarization failed", "session", sessionID, "error", err)
 				errMsg := err.Error()
 				bs.store.MarkSummarized(ctx, sessionID, "failed", &errMsg)

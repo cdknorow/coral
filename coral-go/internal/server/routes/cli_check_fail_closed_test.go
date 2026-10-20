@@ -175,6 +175,9 @@ func TestNoCodeRunsAnAgentCLIByBareName(t *testing.T) {
 	}
 	for _, root := range []string{"../../../cmd", "../..", "../../../pkg"} {
 		require.NoError(t, filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err == nil && info.IsDir() && filepath.Base(path) == "claudestub" {
+				return filepath.SkipDir // test support (#5475): its LookPath("claude") is how it finds out whether a real CLI is reachable, so as to refuse to run there
+			}
 			if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 				return err
 			}

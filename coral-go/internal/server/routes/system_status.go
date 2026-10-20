@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentsignin"
 	"github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/config"
@@ -86,7 +87,7 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		tmuxStatus = tracking.PrereqAvailable
 	}
 	tracking.TrackPrerequisite(tracking.ToolTmux, tmuxStatus, tracking.SourceSystemStatus)
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"startup_complete":  true,
 		"version":           config.Version,
 		"tier_name":         config.TierName,
@@ -104,7 +105,14 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		"security_warning": dataDirWarning(h.cfg.CoralDir()),
 		// Damage the integrity check found a minute after start (#4157); "" when none.
 		"database_warning": background.DatabaseWarning(),
-	})
+	}
+	// Claude's sign-in as the last background check found it (#5469): present only once a check was made. false is the dashboard's one quiet line, "Claude is not signed in:
+	// background jobs are waiting"; it clears itself once a check finds Claude signed in.
+	if st, ok := agentsignin.Snapshot("claude"); ok {
+		out["claude_signed_in"] = st.SignedIn
+		out["claude_checked_at"] = st.CheckedAt.UTC().Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // dataDirWarning is config.DataDirWarning (a variable so a test can stand in for a Windows

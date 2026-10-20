@@ -12,14 +12,30 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/claudestub"
 )
 
-// script writes an executable shell script standing for a CLI.
+// script writes an executable shell script standing for a CLI. It answers the sign-in status command ("claude auth status", #5469) as signed in, so the body is only
+// what the test is about.
 func script(t *testing.T, body string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "cli")
-	require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\n"+body), 0o755))
+	require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\nif [ \"$1\" = auth ]; then echo '{\"loggedIn\":true}'; exit 0; fi\n"+body), 0o755))
 	return p
+}
+
+// A signed-out Claude is not started for its model list (#5469): the error is the sentence, and only the status command ran.
+func TestFetchClaudeDoesNotStartASignedOutClaude(t *testing.T) {
+	claudestub.Isolate(t)
+	ran := filepath.Join(t.TempDir(), "ran")
+	p := filepath.Join(t.TempDir(), "cli")
+	require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\nif [ \"$1\" = auth ]; then echo '{\"loggedIn\":false}'; exit 1; fi\necho started > '"+ran+"'\n"), 0o755))
+	_, _, err := FetchFromCLI(context.Background(), "claude", p)
+	require.Error(t, err)
+	assert.Equal(t, "Claude is not signed in", err.Error())
+	_, statErr := os.Stat(ran)
+	assert.True(t, os.IsNotExist(statErr), "the CLI was never started for the list")
 }
 
 // Claude's list comes from its initialize reply: the fake CLI checks it was asked exactly the

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentsignin"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/jsonl"
@@ -480,6 +481,19 @@ func (g *GoalGenerator) pollOnce(ctx context.Context) {
 	g.noCLI = false
 	g.mu.Unlock()
 
+	// A signed-out Claude is never started (#5469): its sign-in flow would hold the login. The goals wait (no attempt recorded, no failure counted) and are due again on a
+	// later tick; agentsignin asks the CLI only now and then and says once per wait that jobs are skipped.
+	if err := agentsignin.Require(ctx, at.Claude, bin); err != nil {
+		g.mu.Lock()
+		for _, ls := range due {
+			if st := g.states[ls.SessionID]; st != nil {
+				st.inFlight = false
+			}
+		}
+		g.mu.Unlock()
+		return
+	}
+
 	for _, ls := range due {
 		ls := ls
 		g.wg.Add(1)
@@ -749,6 +763,9 @@ func resolveClaudeCLI(settings map[string]string) string {
 // with the tmux/Coral variables removed, so Coral's session detection never
 // sees it.
 func runGoalCLI(ctx context.Context, bin, prompt string) (goalCLIResult, error) {
+	if err := agentsignin.Require(ctx, at.Claude, bin); err != nil {
+		return goalCLIResult{}, err
+	}
 	cmd := executil.Command(ctx, bin,
 		"--print",
 		"--model", "haiku",
