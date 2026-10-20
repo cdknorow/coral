@@ -202,20 +202,6 @@ func (wr *WorkflowRunner) Shutdown(ctx context.Context) {
 	waitChildKills(ctx)
 }
 
-// waitGroupOrContext waits for wg, or for ctx.
-func waitGroupOrContext(ctx context.Context, wg *sync.WaitGroup) {
-	done := make(chan struct{})
-	go func() {
-		defer safego.Recover("background/workflow_runner:waitGroupOrContext")
-		wg.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-ctx.Done():
-	}
-}
-
 // WorkflowRunsKept is how many runs (records and run directories) each
 // workflow keeps; older finished runs are removed when a new one starts.
 const WorkflowRunsKept = 50

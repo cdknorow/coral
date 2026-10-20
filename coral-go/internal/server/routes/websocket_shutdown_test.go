@@ -105,3 +105,46 @@ func TestWSShutdown_AnUnresponsivePeerIsDroppedAfterTheGrace(t *testing.T) {
 	assert.GreaterOrEqual(t, time.Since(start), grace, "it did wait for them first")
 	close(released)
 }
+
+// closeAll returns when the handlers have returned, not when the close frames were sent: a handler that is slow to leave holds it (up to the grace), so the
+// database is not closed under a handler that is still running.
+func TestWSShutdown_CloseAllWaitsForTheHandlersToReturn(t *testing.T) {
+	g := &wsRegistry{conns: map[*websocket.Conn]struct{}{}}
+	const leaveAfter = 300 * time.Millisecond
+	left := make(chan time.Time, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+		if err != nil {
+			return
+		}
+		remove, ok := g.add(c)
+		require.True(t, ok)
+		defer func() { left <- time.Now() }()
+		defer remove()
+		<-c.CloseRead(r.Context()).Done() // answers the close frame; the handler itself is slow to leave
+		time.Sleep(leaveAfter)
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	client, _, err := websocket.Dial(ctx, "ws"+srv.URL[4:], nil)
+	require.NoError(t, err)
+	defer client.CloseNow()
+	go func() {
+		for {
+			if _, _, err := client.Read(ctx); err != nil {
+				return
+			}
+		}
+	}()
+	require.Eventually(t, func() bool { g.mu.Lock(); defer g.mu.Unlock(); return len(g.conns) == 1 }, 5*time.Second, 10*time.Millisecond)
+
+	g.closeAll(2 * time.Second)
+	returned := time.Now()
+	select {
+	case at := <-left:
+		assert.False(t, returned.Before(at), "closeAll returned before the handler had")
+	default:
+		t.Fatal("closeAll returned while its handler was still running")
+	}
+}

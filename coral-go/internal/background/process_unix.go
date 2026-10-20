@@ -27,8 +27,13 @@ func configureChildProcess(cmd *exec.Cmd) {
 // childKillGrace is how long a process group has to end after SIGTERM before it gets SIGKILL.
 var childKillGrace = 5 * time.Second
 
-// killEscalations counts the SIGKILL escalations under way, so a shutdown can wait for them: Coral exiting before one fires left a step that ignores SIGTERM running (#5366).
-var killEscalations sync.WaitGroup
+// killEscalations holds the SIGKILL escalations under way (each a channel closed when it ends), so a shutdown can wait for them: Coral exiting before one fires left a step
+// that ignores SIGTERM running (#5366). A set and not a sync.WaitGroup: a step's cancel can start an escalation while a shutdown is waiting, and a WaitGroup's Add must not
+// race with its Wait.
+var (
+	killEscalationsMu sync.Mutex
+	killEscalations   = map[chan struct{}]struct{}{}
+)
 
 // killChildProcess sends SIGTERM to cmd's process group, then SIGKILL to whatever is left of it
 // after childKillGrace. The escalation ends as soon as the group is gone.
@@ -38,9 +43,17 @@ func killChildProcess(cmd *exec.Cmd) {
 		pgid = cmd.Process.Pid
 	}
 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
-	killEscalations.Add(1)
+	ended := make(chan struct{})
+	killEscalationsMu.Lock()
+	killEscalations[ended] = struct{}{}
+	killEscalationsMu.Unlock()
 	go func() {
-		defer killEscalations.Done()
+		defer func() {
+			killEscalationsMu.Lock()
+			delete(killEscalations, ended)
+			killEscalationsMu.Unlock()
+			close(ended)
+		}()
 		defer safego.Recover("background/process_unix:31")
 		for deadline := time.Now().Add(childKillGrace); time.Now().Before(deadline); time.Sleep(25 * time.Millisecond) {
 			if syscall.Kill(-pgid, 0) != nil {
@@ -55,7 +68,19 @@ func killChildProcess(cmd *exec.Cmd) {
 
 // waitChildKills waits for the SIGKILL escalations of killChildProcess, or for ctx: a shutdown calls it so that a step ignoring SIGTERM is killed before Coral exits.
 func waitChildKills(ctx context.Context) {
-	waitGroupOrContext(ctx, &killEscalations)
+	killEscalationsMu.Lock()
+	pending := make([]chan struct{}, 0, len(killEscalations))
+	for c := range killEscalations {
+		pending = append(pending, c)
+	}
+	killEscalationsMu.Unlock()
+	for _, c := range pending {
+		select {
+		case <-c:
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // trackChildProcess and releaseChildProcess are Windows' job object (process_windows.go); the
