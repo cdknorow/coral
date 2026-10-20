@@ -69,7 +69,7 @@ func TestHeaderKeyRuleLeavesOrdinaryTextAlone(t *testing.T) {
 	}
 }
 
-// Ordinary text does not change: the repository's own documents and sources have no header key but two test secrets, so the rule finds nothing else in them.
+// Ordinary text does not change: the repository's own documents and sources have no header key but a few test fixtures (a bogus X-Coral-Session-Token among them), so the rule finds nothing else in them.
 func TestHeaderKeyRuleFindsNothingInTheRepositorysOwnText(t *testing.T) {
 	var found []string
 	root := filepath.Join("..", "..")
@@ -89,13 +89,18 @@ func TestHeaderKeyRuleFindsNothingInTheRepositorysOwnText(t *testing.T) {
 		if err != nil || len(b) > 2<<20 {
 			return nil
 		}
-		for _, m := range extraRules[headerKeyRuleIndex()].re.FindAllStringSubmatch(string(b), -1) {
+		rule := extraRules[headerKeyRuleIndex()]
+		for _, m := range rule.re.FindAllStringSubmatch(string(b), -1) {
+			if rule.ok != nil && !rule.ok(m[rule.group]) {
+				continue // not a secret by the rule's own filter (a plain word, a template)
+			}
 			found = append(found, filepath.ToSlash(path)+": "+m[0])
 		}
 		return nil
 	})
 	for _, f := range found {
-		assert.True(t, strings.Contains(f, "page_secrets_test.go") || strings.Contains(f, "header_key_test.go") || strings.Contains(f, "keyword_gate_test.go"), "an unexpected header key in ordinary text: %s", f)
+		assert.True(t, strings.Contains(f, "page_secrets_test.go") || strings.Contains(f, "header_key_test.go") || strings.Contains(f, "keyword_gate_test.go") ||
+			strings.Contains(f, "artifact_comments_test.go"), "an unexpected header key in ordinary text: %s", f)
 	}
 }
 
@@ -107,4 +112,56 @@ func headerKeyRuleIndex() int {
 		}
 	}
 	return -1
+}
+
+// #5263: the floor is 8 for a key-named header (coral-hub's layer reads 8 for key and token), so "X-Service-Key: <10 characters>" is no longer shown. 2000 samples per header name, values of 8 to 15
+// characters that are not a plain word (a digit is always in them), in four frames; the generic X-...-Key, -Token and -Secret names are covered as well as the listed ones.
+func TestAHeaderNamedKeyOfEightToFifteenCharactersIsRedacted(t *testing.T) {
+	require.NoError(t, Init())
+	names := append(append([]string{}, headerNames...), "X-Service-Key", "X-Custom-Auth-Token", "x-internal-secret", "X-Foo-Bar-Baz-Token", "X-Tenant-Api-Key", "X-Session-Token")
+	frames := []string{"%s: %s", `curl -H '%s: %s' https://api.example.test/v1`, `{"headers": {"%s": "%s"}}`, "GET /v1/things HTTP/1.1\nHost: api.example.test\n%s: %s\nAccept: */*\n"}
+	for _, name := range names {
+		r := rand.New(rand.NewSource(5263))
+		misses := 0
+		first := ""
+		for i := 0; i < 2000; i++ {
+			body := make([]byte, 8+r.Intn(8))
+			for k := range body {
+				body[k] = alnumAZ[r.Intn(len(alnumAZ))]
+			}
+			body[r.Intn(len(body))] = "0123456789"[r.Intn(10)] // never a plain word
+			text := fmt.Sprintf(frames[i%len(frames)], name, string(body))
+			out, err := Redactor().Text([]byte(text))
+			require.NoError(t, err)
+			if strings.Contains(string(out), string(body)) {
+				misses++
+				if first == "" {
+					first = text
+				}
+			}
+		}
+		assert.Zero(t, misses, "%s: %d of 2000 left showing, the first: %q", name, misses, first)
+	}
+}
+
+// What stays readable at the lower floor: a plain word (a sentence about the header), 7 characters or fewer, a template or one repeated character, a header that is not key-named, a word that only
+// starts with key (X-Keyboard), and a longer plain word is still a secret from 16 characters on, as before.
+func TestHeaderKeyFloorOfEightLeavesOrdinaryTextAlone(t *testing.T) {
+	require.NoError(t, Init())
+	for _, text := range []string{
+		"X-Api-Key: required", "X-Service-Key: optional", "X-Custom-Auth-Token: mandatory", "X-Auth-Token: sessions", // plain words of 8 to 15 letters
+		"X-Service-Key: abc1234", "X-Api-Key: 1234567", // 7 characters
+		"X-Api-Key: xxxxxxxxxx", "X-Service-Key: 0000000000", "X-Api-Key: ${API_KEY}", "X-Service-Key: <your key>", "X-Api-Key: $API_KEY_VALUE",
+		"X-Request-Id: 8f2c1a77b40", "X-Forwarded-For: 192.168.10.12", "X-Frame-Options: sameorigin", "X-Keyboard: abc12345ef", "X-Total-Count: 123456789",
+		"X-Keys-Count: abc12345ef", "X-Tokenizer: abc12345ef", "Content-Length: 1234567890",
+		"the X-Service-Key header: described below in prose",
+	} {
+		out, err := Redactor().Text([]byte(text))
+		require.NoError(t, err)
+		assert.Equal(t, text, string(out), "left as it is")
+	}
+	// A plain word of 16 or more letters after one of these names is still the secret.
+	out, err := Redactor().Text([]byte("X-Service-Key: abcdefghijklmnopqrst"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(out), "abcdefghijklmnop")
 }

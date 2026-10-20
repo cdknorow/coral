@@ -55,11 +55,22 @@ var extraRules = []extraRule{
 	{re: regexp.MustCompile(`(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----`)},
 	// A key in an HTTP header or its JSON form, named by the header: X-Api-Key: <value>, "X-Auth-Token": "<value>" (#5190). betterleaks' generic rule drops a value whose text holds a common word
 	// (house, table, apple, false...) or reads as words, as a false positive, and a 32-character key that holds one was shown whole; the header's name already says what the value is, so a value of 16
-	// characters or more after one of these names is the secret, whatever it looks like. Only these header names: ordinary text has none (the repository's own docs and sources hold two, both test secrets).
-	{re: regexp.MustCompile(`(?i)\b(?:x-?api-?key|api-?key|x-?api-?token|x-?auth-?token|x-?access-?token|x-?auth-?key|x-?secret(?:-?key)?|x-?api-?secret|private-?token)\b["']?[ \t]*:[ \t]*["']?([A-Za-z0-9._~+/=-]{16,})`), group: 1},
+	// characters or more after one of these names is the secret, whatever it looks like; from 8 to 15 when it is not a plain word (#5263: coral-hub's layer reads 8 for the words key and token, and a
+	// 10-character key after X-Service-Key was shown). The names: the ones listed, and any X- header whose last word is key, token or secret (X-Service-Key, X-Custom-Auth-Token). Only these header
+	// names: ordinary text has none (the repository's own docs and sources hold two, both test secrets).
+	{re: regexp.MustCompile(`(?i)\b(?:x-?api-?key|api-?key|x-?api-?token|x-?auth-?token|x-?access-?token|x-?auth-?key|x-?secret(?:-?key)?|x-?api-?secret|private-?token|x-(?:[a-z0-9]+-)*(?:key|token|secret))\b["']?[ \t]*:[ \t]*["']?([A-Za-z0-9._~+/=-]{8,})`), group: 1, ok: headerKeyValueOK},
 	// AWS access key IDs: AKIA (long-term), ASIA (temporary) and the other IAM prefixes. Amazon's
 	// documentation example (...EXAMPLE) is not a secret, as betterleaks also treats it.
 	{re: regexp.MustCompile(`\b(?:AKIA|ASIA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ABIA|ACCA)[A-Z0-9]{16}\b`), ok: notDocumentationKey},
+}
+
+// headerKeyValueOK: a value after a key-named header is the secret from 16 characters on, whatever it looks like; from 8 to 15 only when it is not a plain word (X-Api-Key: required is a
+// sentence, a short value with digits in it is a key) and not one repeated character or a template.
+func headerKeyValueOK(v string) bool {
+	if placeholderValue(v) {
+		return false
+	}
+	return len(v) >= minKeyLen || !lettersOnly(v)
 }
 
 func mixesLettersAndDigits(s string) bool {
