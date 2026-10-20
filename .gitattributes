@@ -28,3 +28,5 @@ coral-go/internal/agentmodels/testdata/** -text
 coral-go/cmd/coral-hook-agentic-state/testdata/** -text
 # The updater verifier's real release fixtures (a SHA256SUMS.txt and its Sigstore bundle) are byte-exact: a CRLF checkout on Windows breaks the signature (#5279).
 coral-go/internal/updater/verify/testdata/** -text
+# The embedded Sigstore trusted root is trust material: byte for byte on every checkout (a Windows CRLF copy differs from the tested copy in testdata, #5279).
+coral-go/internal/updater/verify/trusted_root.json -text
