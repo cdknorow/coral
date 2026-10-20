@@ -53,7 +53,7 @@ const HEX = 'c'.repeat(64);
             await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars(); m.applyTheme('${theme}'); return true; })()`);
             await ev(`new Promise(r => setTimeout(() => r(true), 250))`); // sleep-ok: the 0.15 s colour transitions
             return ev(`(() => {
-                const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+                const accent = getComputedStyle(document.documentElement).getPropertyValue('--link-text').trim(); // the light theme's link text is darker than its accent (#5273)
                 const h = accent.replace('#', ''); const want = 'rgb(' + [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')';
                 const links = [...document.querySelectorAll('${POST} a')].map(a => ({ text: a.textContent, color: getComputedStyle(a).color }));
                 const sub = document.querySelector('#mb-subscribers-list .subscriber-history-link');

@@ -5,8 +5,7 @@
 // Also the header's glyph buttons (the svg icons and the Chat/Terminal toggle) scale. Run against an isolated dev server.
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
-const src = fs.readFileSync(__dirname + '/phone_layout_browser.test.js', 'utf8');
-const SCAN = eval(src.match(/const SCAN = (`[\s\S]*?`);/)[1]);
+const { SCAN } = require('./helpers/phone_scan'); // the page scan the phone suites share (#5273 moved it out of phone_layout_browser)
 const FONTS = stage => `(() => { const out = []; const vis = e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden';
     const root = window.__scanRoot ? document.querySelector(window.__scanRoot) : document.body;
     for (const e of root.querySelectorAll('svg[width][height]')) { if (!vis(e) || !/^[0-9.]+$/.test(e.getAttribute('width'))) continue; const w = e.getBoundingClientRect().width; if ('${stage}' === 'a') e.__w16 = w; else if (e.__w16 && w / e.__w16 < 1.6 && e.__w16 > 0) out.push('svg[' + e.getAttribute('width') + '] in ' + (e.parentElement.id ? '#' + e.parentElement.id : e.parentElement.tagName.toLowerCase() + '.' + String(e.parentElement.className).trim().split(/\\s+/)[0]) + ' ' + Math.round(e.__w16) + '->' + Math.round(w)); }
