@@ -32,6 +32,14 @@ export function attachComments(dialog, body, host) {
     const selBtn = btn('ac-selbtn', 'Comment', 'Comment on the selected text'); selBtn.hidden = true;
     host.append(panel); dialog.querySelector('.artifact-viewer-header')?.insertBefore(toggle, dialog.querySelector('.artifact-viewer-download'));
     dialog.append(selBtn);
+    // A live region for what the panel does (a comment posted, resolved, the one stepped to): outside the panel, which is out of the accessibility tree while the phone's sheet is shut.
+    const live = el('div', 'ac-live'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true');
+    dialog.append(live);
+    let liveFlip = false;
+    const announce = (msg) => { liveFlip = !liveFlip; live.textContent = msg + (liveFlip ? '' : '\u00a0'); }; // the same words twice are still a change
+    // The document is a region a keyboard reaches; ] and [ step through the comments from it.
+    body.tabIndex = 0; body.setAttribute('role', 'region'); body.setAttribute('aria-label', 'Document'); body.setAttribute('aria-keyshortcuts', '] [');
+    const phone = window.matchMedia('(max-width: 767px)');
 
     // ── the data
     const threads = () => {
@@ -97,7 +105,23 @@ export function attachComments(dialog, body, host) {
     }
 
     // ── the panel
+    // What has focus in the panel, so a redraw (every action redraws it) puts it back on the same control, or, when that control is gone (a posted comment's composer), on the current card.
+    function focusKey() {
+        const a = document.activeElement;
+        if (!a || !panel.contains(a)) return null;
+        const card = a.closest('.ac-card, .ac-reply');
+        const cls = [...a.classList].find(c => c.startsWith('ac-')) || a.tagName;
+        return { card: card ? card.dataset.id : '', cls, text: (a.textContent || '').trim(), isCard: a.classList.contains('ac-card') };
+    }
+    function restoreFocus(k) {
+        if (!k) return;
+        const scope = k.card ? panel.querySelector(`.ac-card[data-id="${k.card}"], .ac-reply[data-id="${k.card}"]`) : panel;
+        const cand = scope ? [...scope.querySelectorAll('button, textarea, a')].filter(n => n.classList.contains(k.cls) && (n.textContent || '').trim() === k.text) : [];
+        const target = cand[0] || panel.querySelector('.ac-card.ac-active') || panel.querySelector('.ac-filter[aria-pressed="true"]');
+        if (target) { if (!target.matches('button, textarea, a')) target.tabIndex = -1; target.focus({ preventScroll: true }); }
+    }
     function render() {
+        const kept = focusKey();
         panel.replaceChildren();
         const show = st.text && !st.gone && !!st.data;
         panel.hidden = !show; toggle.hidden = !show;
@@ -114,7 +138,7 @@ export function attachComments(dialog, body, host) {
             filters.append(b);
         }
         head.append(h, filters);
-        const close = btn('ac-sheet-close', '✕', 'Hide the comments'); close.addEventListener('click', () => setSheet(false)); head.append(close);
+        const close = btn('ac-sheet-close', '✕', 'Hide the comments'); close.addEventListener('click', () => { setSheet(false); toggle.focus(); }); head.append(close);
         panel.append(head);
         const d = st.data;
         if (d.locked) panel.append(el('p', 'ac-note ac-locked', 'Comments are locked: read only.'));
@@ -135,6 +159,8 @@ export function attachComments(dialog, body, host) {
             panel.append(whole);
         }
         const act = panel.querySelector('.ac-card.ac-active'); if (act && st.scrollCard) { st.scrollCard = false; act.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }); }
+        syncInert();
+        restoreFocus(kept);
     }
 
     function meta(c, extra) {
@@ -147,7 +173,7 @@ export function attachComments(dialog, body, host) {
         return m;
     }
     function card({ c, replies }) {
-        const li = el('li', 'ac-card' + (st.active === c.id ? ' ac-active' : '') + (c.resolved ? ' ac-resolved' : '')); li.dataset.id = String(c.id);
+        const li = el('li', 'ac-card' + (st.active === c.id ? ' ac-active' : '') + (c.resolved ? ' ac-resolved' : '')); li.dataset.id = String(c.id); li.setAttribute('aria-label', `Comment by ${c.authorName || c.authorId || 'unknown'}`); li.setAttribute('role', 'group');
         const a = c.anchor || {};
         const q = el('blockquote', 'ac-quote' + (st.orphan.has(c.id) ? ' ac-orphan' : ''), a.whole ? 'The whole document' : a.quote || '');
         li.append(q);
@@ -171,17 +197,19 @@ export function attachComments(dialog, body, host) {
         const row = el('div', 'ac-actions');
         if (c.deleted) return row;
         if (top && c.can.reply) row.append(act('Reply', () => { st.composing = { parentId: c.id }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); }));
-        if (top && c.can.resolve) row.append(act(c.resolved ? 'Reopen' : 'Resolve', () => run(() => (c.resolved ? api.reopenComment : api.resolveComment)(st.hex, st.server, c.id))));
+        if (top && c.can.resolve) row.append(act(c.resolved ? 'Reopen' : 'Resolve', () => run(() => (c.resolved ? api.reopenComment : api.resolveComment)(st.hex, st.server, c.id), c.resolved ? 'Comment reopened' : 'Comment resolved')));
         if (c.can.edit) row.append(act('Edit', () => { st.composing = { editId: c.id }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); }));
-        if (c.can.delete) row.append(act('Delete', () => confirmThen('Delete this comment?', () => run(() => api.deleteComment(st.hex, st.server, c.id)))));
+        if (c.can.delete) row.append(act('Delete', () => confirmThen('Delete this comment?', () => run(() => api.deleteComment(st.hex, st.server, c.id), 'Comment deleted'))));
+        // not an .ac-act: it writes nothing, so a read-only viewer has it too
+        if (top && st.ranges.has(c.id)) { const j = btn('ac-jump', 'Show in text', 'Show this comment\'s text in the document'); j.addEventListener('click', () => jumpTo(c.id)); row.append(j); }
         return row;
     }
     const act = (text, fn) => { const b = btn('ac-act', text); b.addEventListener('click', fn); return b; };
     function confirmThen(msg, fn) { if (window.showConfirmModal) window.showConfirmModal('Delete comment', msg, fn); else fn(); }
-    async function run(fn) {
+    async function run(fn, said) {
         if (st.busy) return;
         st.busy = true;
-        try { await fn(); st.error = ''; st.composing = null; await refresh(); }
+        try { await fn(); st.error = ''; st.composing = null; await refresh(); if (said) announce(said); }
         catch (e) { st.error = e.message || 'The change was refused.'; showToast(st.error, true); render(); }
         finally { st.busy = false; }
     }
@@ -209,12 +237,39 @@ export function attachComments(dialog, body, host) {
             const text = ta.value.trim();
             if (!text) { st.error = 'Write something first.'; err.textContent = st.error; err.hidden = false; return; }
             send.disabled = true;
-            if (editOf) run(() => api.editComment(st.hex, st.server, editOf.id, text));
-            else run(async () => { const c = await api.createComment(st.hex, st.server, { body: text, anchor: cm.anchor, parentId: cm.parentId, board: st.board }); st.active = c.id; st.scrollCard = true; });
+            if (editOf) run(() => api.editComment(st.hex, st.server, editOf.id, text), 'Comment saved');
+            else run(async () => { const c = await api.createComment(st.hex, st.server, { body: text, anchor: cm.anchor, parentId: cm.parentId, board: st.board }); st.active = c.id; st.scrollCard = true; }, cm.parentId != null ? 'Reply posted' : 'Comment posted');
         });
         ta.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); cancel.click(); } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) box.requestSubmit(); });
         return box;
     }
+
+    // ── a comment's text from its card, and the next or previous comment from the document, by keyboard
+    function jumpTo(id) {
+        activate(id, true);
+        if (phone.matches) setSheet(false);
+        body.focus({ preventScroll: true });
+    }
+    function step(dir) {
+        const ids = [...panel.querySelectorAll('.ac-card')].map(c => Number(c.dataset.id)).filter(id => st.ranges.has(id));
+        if (!ids.length) { announce('No comments on this text'); return; }
+        const at = ids.indexOf(st.active);
+        const id = ids[at < 0 ? (dir > 0 ? 0 : ids.length - 1) : (at + dir + ids.length) % ids.length];
+        activate(id, true); st.scrollCard = true; paint();
+        const c = threads().find(t => t.c.id === id);
+        announce(`Comment ${ids.indexOf(id) + 1} of ${ids.length}: ${c ? c.c.body.slice(0, 80) : ''}`);
+    }
+    body.addEventListener('keydown', (e) => {
+        if (e.target !== body || e.ctrlKey || e.metaKey || e.altKey || !st.data) return;
+        if (e.key === ']') { e.preventDefault(); step(1); } else if (e.key === '[') { e.preventDefault(); step(-1); }
+    });
+    // A shut sheet on a phone, and the document behind an open one, are out of reach: no Tab, no screen reader.
+    function syncInert() {
+        const open = panel.classList.contains('ac-sheet-open');
+        panel.inert = phone.matches && !open;
+        body.inert = phone.matches && open;
+    }
+    phone.addEventListener('change', syncInert);
 
     // ── a card or a highlight is made current, and the other follows
     function activate(id, fromCard) {
@@ -267,6 +322,7 @@ export function attachComments(dialog, body, host) {
     function setSheet(open, { popped = false } = {}) {
         if (open === panel.classList.contains('ac-sheet-open')) return;
         panel.classList.toggle('ac-sheet-open', open);
+        syncInert();
         paintToggle();
         if (open && !sheetOverlay && window.innerWidth <= 767) sheetOverlay = pushOverlay(() => setSheet(false, { popped: true }));
         else if (!open && sheetOverlay) { const id = sheetOverlay; sheetOverlay = 0; if (!popped) popOverlay(id); }

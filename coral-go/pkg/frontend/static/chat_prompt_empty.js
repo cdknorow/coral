@@ -6,7 +6,7 @@ import { showToast } from './utils.js';
 import { serverFetch, sessionServer } from './server_base.js';
 import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
-import { promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
+import { announcePrompt, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 
 // What a brand-new agent's empty chat says, by what the agent is doing: a title, and a hint on what to do next.
 function emptyStateWords(session) {
@@ -47,7 +47,10 @@ export async function sendPromptAnswer(card, n, label, action, text) {
     const session = state.currentSession;
     if (!session || session.type !== "live") return false;
     const controls = card ? Array.from(card.querySelectorAll(".cni-answer, .cni-text-form button, .cni-text-form input")) : [];
+    // A disabled control loses focus: remember which one had it, and put it back (a toggle keeps it) or, when the card goes with the answer, move it to the message box (#5252).
+    const hadFocus = card && card.contains(document.activeElement) ? document.activeElement : null;
     controls.forEach(c => { c.disabled = true; });
+    const giveFocusBack = (to) => { if (hadFocus && to && to.isConnected) to.focus({ preventScroll: true }); };
     try {
         const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/answer-prompt`, {
             method: "POST",
@@ -60,6 +63,7 @@ export async function sendPromptAnswer(card, n, label, action, text) {
             const { text, code } = await responseError(resp, sessionServer(session), "Could not send the answer. Use the terminal.");
             reportSendError(session, text, code); // under the composer (#3218)
             controls.forEach(c => { c.disabled = false; });
+            giveFocusBack(hadFocus);
             return false;
         }
         if (action === "toggle") {
@@ -70,11 +74,16 @@ export async function sendPromptAnswer(card, n, label, action, text) {
             const container = document.getElementById("live-history-messages");
             if (container) syncNeedsInputCard(container, session);
             controls.forEach(c => { c.disabled = false; });
+            giveFocusBack(hadFocus);
+            const row = ((po && po.options) || []).find(o => Number(o.n) === n);
+            if (row) announcePrompt(`${row.label}, ${row.checked ? "checked" : "not checked"}`);
             return true;
         }
         // The card refreshes from the terminal: the next question, the review
         // step, or gone once the tool runs.
         promptOptionsBySession.delete(session.session_id);
+        if (action === "submit") announcePrompt("Answer sent");
+        if (action !== "chat") giveFocusBack(document.getElementById("command-input")); // the card goes with its answer: focus goes to the message box
         if (action === "chat") {
             const input = document.getElementById("command-input");
             if (input) input.focus();

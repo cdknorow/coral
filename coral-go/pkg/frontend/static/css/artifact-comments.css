@@ -33,9 +33,9 @@
 .ac-body { margin: 4px 0 0; font-size: var(--fs-md, 0.875rem); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-primary); }
 .ac-reply { margin: 8px 0 0 10px; padding-left: 10px; border-left: 2px solid var(--border); }
 .ac-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.ac-act, .ac-whole, .ac-lock, .ac-cancel, .ac-send { font-size: var(--fs-sm, 0.8125rem); }
-.ac-act { background: none; border: 0; color: var(--text-secondary); padding: 2px 6px; cursor: pointer; }
-.ac-act:hover { color: var(--text-primary); text-decoration: underline; }
+.ac-act, .ac-jump, .ac-whole, .ac-lock, .ac-cancel, .ac-send { font-size: var(--fs-sm, 0.8125rem); }
+.ac-act, .ac-jump { background: none; border: 0; color: var(--text-secondary); padding: 2px 6px; cursor: pointer; }
+.ac-act:hover, .ac-jump:hover { color: var(--text-primary); text-decoration: underline; }
 .ac-composer { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .ac-input { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .ac-composer-row { display: flex; align-items: center; gap: 8px; }
@@ -70,7 +70,12 @@
     body.keyboard-open .ac-title { display: none; }
     body.keyboard-open .ac-filters { order: 1; flex: 1 1 0; }
     body.keyboard-open .ac-sheet-close { order: 2; }
-    .ac-filter, .ac-act, .ac-whole, .ac-lock, .ac-cancel, .ac-send { min-height: 44px; }
-    .ac-act { padding: 2px 12px; }
+    .ac-filter, .ac-act, .ac-jump, .ac-whole, .ac-lock, .ac-cancel, .ac-send { min-height: 44px; }
+    .ac-act, .ac-jump { padding: 2px 12px; }
 }
 .ac-deleted { color: var(--text-muted); font-style: italic; }
+
+/* a11y (#5252): the live region is for screen readers only; the document region shows where keyboard focus is */
+.ac-live { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.artifact-viewer-body:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ac-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

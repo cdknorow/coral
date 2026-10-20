@@ -1629,3 +1629,6 @@
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
+
+/* the page's polite live region for the prompt card: for screen readers only (#5252) */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

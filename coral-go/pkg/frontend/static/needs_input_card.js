@@ -231,6 +231,23 @@ export function ownPromptCard(control) {
     return card;
 }
 
+// What the card does that a screen reader should say (a box ticked, an answer sent): one polite live region for the page, made with the first card. The card itself is an alert, read out
+// whole when it appears; a box that is ticked changes in place (below) so that it is not read out whole again, and this says the change.
+let _live = null, _liveFlip = false;
+function promptLive() {
+    if (_live && _live.isConnected) return _live;
+    _live = document.createElement("div");
+    _live.id = "coral-prompt-live"; _live.className = "sr-only";
+    _live.setAttribute("role", "status"); _live.setAttribute("aria-live", "polite"); _live.setAttribute("aria-atomic", "true");
+    document.body.appendChild(_live);
+    return _live;
+}
+/** Say `message` to a screen reader, once. */
+export function announcePrompt(message) {
+    _liveFlip = !_liveFlip;
+    promptLive().textContent = message + (_liveFlip ? "" : "\u00a0"); // the same words twice are still a change
+}
+
 export function syncNeedsInputCard(container, session) {
     const info = needsInputInfo(session);
     let el = container.querySelector(":scope > .chat-needs-input");
@@ -239,17 +256,30 @@ export function syncNeedsInputCard(container, session) {
         return;
     }
     const key = JSON.stringify(info);
+    const shape = JSON.stringify(info, (k, v) => (k === "checked" ? undefined : v)); // the card but for its boxes' marks
+    promptLive();
     if (!el) {
         el = document.createElement("div");
         el.className = "chat-needs-input";
         el.setAttribute("role", "alert");
         ownPromptCards.add(el);
     }
-    if (el.dataset.key !== key) {
+    if (el.dataset.key !== key && el._shape === shape && info.screen && info.screen.multi) {
+        // Only a box's mark changed (a multi-select toggle): change it in place, so the control that has focus keeps it and the alert is not read out again.
+        for (const o of info.screen.options || []) {
+            const b = el.querySelector(`.cni-check[data-n="${Number(o.n)}"]`);
+            if (!b) continue;
+            b.classList.toggle("is-checked", !!o.checked);
+            b.setAttribute("aria-checked", o.checked ? "true" : "false");
+            const box = b.querySelector(".cni-box");
+            if (box) box.textContent = o.checked ? "\u2714" : "";
+        }
+        el.dataset.key = key;
+    } else if (el.dataset.key !== key) {
         // Keep an answer being typed if the card re-renders
         const open = Array.from(el.querySelectorAll(".cni-text-form")).find(f => f.querySelector("input").value || document.activeElement === f.querySelector("input"));
         const typing = open ? { n: open.dataset.n, value: open.querySelector("input").value, focused: document.activeElement === open.querySelector("input") } : null;
-        el.dataset.key = key;
+        el.dataset.key = key; el._shape = shape;
         el.innerHTML = needsInputHtml(info, session);
         const form = typing && el.querySelector(`.cni-text-form[data-n="${typing.n}"]`);
         if (form) {
