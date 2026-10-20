@@ -274,8 +274,19 @@ body.panel-dragging .preview-pane {
     height: 100%;
 }
 
+/* The document and its comments (#5311): a row; the panel is a bottom sheet over the document when the pane is narrower than 720 px (the container query in artifact-comments.css). */
+.preview-main {
+    flex: 1 1 auto;
+    display: flex;
+    min-height: 0;
+    min-width: 0;
+    position: relative;
+    container: pv / inline-size;
+}
+
 .preview-body {
     flex: 1;
+    min-width: 0;
     overflow: auto;
     background: var(--bg-primary);
     min-height: 0;

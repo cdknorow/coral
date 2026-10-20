@@ -159,7 +159,10 @@
                     <button class="preview-dock-btn" id="preview-dock-btn" type="button"></button>
                 </div>
                 <div class="preview-toolbar" id="preview-toolbar"></div>
-                <div class="preview-body" id="preview-body"></div>
+                <!-- the document, and beside it (or over it as a sheet, by the width) an artifact's comments (#5311, artifact_comments.js) -->
+                <div class="preview-main" id="preview-main">
+                    <div class="preview-body" id="preview-body"></div>
+                </div>
             </div>
         </div>
 {{ end }}

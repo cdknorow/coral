@@ -138,21 +138,21 @@ const LONG = 'worktree-agent-a1b2c3d4e5f60718/feature/calm-the-dashboard-remove-
             await audit(`${tag} the viewer, sheet shut`, '#artifact-viewer');
             const title = await ev(`(() => { const t = document.querySelector('.artifact-viewer-title'); return { w: t.clientWidth, clipped: t.scrollWidth > t.clientWidth + 1, text: t.textContent }; })()`);
             check(`${tag}: the viewer's title is readable (${title.w} px wide, "${title.text}" whole)`, title.w >= 120 && !title.clipped, JSON.stringify(title));
-            await tapSel('.ac-toggle');
+            await tapSel('#artifact-viewer .ac-toggle');
             await audit(`${tag} the comments sheet`, '#artifact-viewer');
-            const head = await ev(`(() => { const t = document.querySelector('.ac-title').getBoundingClientRect(), x = document.querySelector('.ac-sheet-close').getBoundingClientRect(), f = document.querySelector('.ac-filters').getBoundingClientRect(); return { sameRow: Math.abs((t.top + t.height / 2) - (x.top + x.height / 2)) < 12, filtersBelow: f.top >= t.bottom - 2 }; })()`);
+            const head = await ev(`(() => { const t = document.querySelector('#artifact-viewer .ac-title').getBoundingClientRect(), x = document.querySelector('#artifact-viewer .ac-sheet-close').getBoundingClientRect(), f = document.querySelector('#artifact-viewer .ac-filters').getBoundingClientRect(); return { sameRow: Math.abs((t.top + t.height / 2) - (x.top + x.height / 2)) < 12, filtersBelow: f.top >= t.bottom - 2 }; })()`);
             check(`${tag}: the sheet's close button is on the title's row and the filters have a row of their own`, head.sameRow && head.filtersBelow, JSON.stringify(head));
-            await ev(`document.querySelector('.ac-whole').click(); true`); await settle(400);
-            await ev(`document.querySelector('.ac-composer .ac-input').focus(); true`);
+            await ev(`document.querySelector('#artifact-viewer .ac-whole').click(); true`); await settle(400);
+            await ev(`document.querySelector('#artifact-viewer .ac-composer .ac-input').focus(); true`);
             await audit(`${tag} the comment composer`, '#artifact-viewer');
             // the keyboard: the visual viewport shrinks to 55% of the screen; the sheet and its composer stay inside what is left
             const kbH = Math.round(h * 0.55);
             await ev(`window.__vv.set(${kbH}); true`); await settle(500);
-            const kb = await ev(`(() => { const v = document.getElementById('artifact-viewer').getBoundingClientRect(), p = document.querySelector('.ac-panel').getBoundingClientRect(), t = document.querySelector('.ac-composer .ac-input').getBoundingClientRect(), s = document.querySelector('.ac-composer .ac-send').getBoundingClientRect(); return { viewerH: Math.round(v.height), panelBottom: Math.round(p.bottom), inputBottom: Math.round(t.bottom), sendBottom: Math.round(s.bottom), inputTop: Math.round(t.top), sendTop: Math.round(s.top), panelTop: Math.round(p.top) }; })()`);
+            const kb = await ev(`(() => { const v = document.getElementById('artifact-viewer').getBoundingClientRect(), p = document.querySelector('#artifact-viewer .ac-panel').getBoundingClientRect(), t = document.querySelector('#artifact-viewer .ac-composer .ac-input').getBoundingClientRect(), s = document.querySelector('#artifact-viewer .ac-composer .ac-send').getBoundingClientRect(); return { viewerH: Math.round(v.height), panelBottom: Math.round(p.bottom), inputBottom: Math.round(t.bottom), sendBottom: Math.round(s.bottom), inputTop: Math.round(t.top), sendTop: Math.round(s.top), panelTop: Math.round(p.top) }; })()`);
             check(`${tag}: with the keyboard up (${kbH} px left) the viewer fits it, and the sheet and the composer's input and Comment button are inside it`, kb.viewerH <= kbH + 1 && kb.panelBottom <= kbH + 1 && kb.sendBottom <= kbH + 1 && kb.inputTop >= kb.panelTop && kb.sendTop >= 0, JSON.stringify(kb));
             // the filters (Open / Resolved / All) stay visible above the composer: none is under it, and each is what a tap at its centre reaches
-            const flt = await ev(`(() => { const comp = document.querySelector('.ac-composer').getBoundingClientRect(), p = document.querySelector('.ac-panel').getBoundingClientRect();
-                const fs = [...document.querySelectorAll('.ac-filter')].map(f => { const r = f.getBoundingClientRect(), top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { w: Math.round(r.width), h: Math.round(r.height), above: r.bottom <= comp.top + 1, reached: !!top && (top === f || f.contains(top)), inPanel: r.top >= p.top - 1 }; });
+            const flt = await ev(`(() => { const comp = document.querySelector('#artifact-viewer .ac-composer').getBoundingClientRect(), p = document.querySelector('#artifact-viewer .ac-panel').getBoundingClientRect();
+                const fs = [...document.querySelectorAll('#artifact-viewer .ac-filter')].map(f => { const r = f.getBoundingClientRect(), top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { w: Math.round(r.width), h: Math.round(r.height), above: r.bottom <= comp.top + 1, reached: !!top && (top === f || f.contains(top)), inPanel: r.top >= p.top - 1 }; });
                 return { fs, n: fs.length }; })()`);
             check(`${tag}: with the keyboard up the Open / Resolved / All row is above the composer and reachable (${JSON.stringify(flt.fs)})`, flt.n === 3 && flt.fs.every(f => f.above && f.reached && f.inPanel && f.h >= 44 && f.w >= 44), JSON.stringify(flt));
             await shot(`${tag} the composer with the keyboard`);
@@ -161,8 +161,8 @@ const LONG = 'worktree-agent-a1b2c3d4e5f60718/feature/calm-the-dashboard-remove-
             await setup(w, h, theme); await scene(); await settle(500); await openPreview();
             await tapSel('#preview-max-btn');
             await openViewer();
-            await tapSel('.ac-toggle');
-            const st = () => ev(`({ sheet: document.querySelector('.ac-panel').classList.contains('ac-sheet-open'), viewer: !document.getElementById('artifact-viewer').hidden, full: document.getElementById('preview-pane').classList.contains('preview-phone-full'), depth: (history.state && history.state.coralOverlay) || 0 })`);
+            await tapSel('#artifact-viewer .ac-toggle');
+            const st = () => ev(`({ sheet: document.querySelector('#artifact-viewer .ac-panel').classList.contains('ac-sheet-open'), viewer: !document.getElementById('artifact-viewer').hidden, full: document.getElementById('preview-pane').classList.contains('preview-phone-full'), depth: (history.state && history.state.coralOverlay) || 0 })`);
             let s = await st();
             check(`${tag}: three overlays are open, three history entries (${JSON.stringify(s)})`, s.sheet && s.viewer && s.full && s.depth === 3);
             const back = async () => { await ev(`history.back(); true`); await settle(500); return st(); };
@@ -170,7 +170,7 @@ const LONG = 'worktree-agent-a1b2c3d4e5f60718/feature/calm-the-dashboard-remove-
             s = await back(); check(`${tag}: the second closes the viewer and leaves the preview (${JSON.stringify(s)})`, !s.viewer && s.full);
             s = await back(); check(`${tag}: the third closes the preview's full screen (${JSON.stringify(s)})`, !s.full && s.depth === 0);
             // closed by their own buttons: no entry is left behind
-            await openViewer(); await tapSel('.ac-toggle'); await tapSel('.ac-sheet-close'); await tapSel('.artifact-viewer-close');
+            await openViewer(); await tapSel('#artifact-viewer .ac-toggle'); await tapSel('#artifact-viewer .ac-sheet-close'); await tapSel('.artifact-viewer-close');
             s = await st(); check(`${tag}: closing by the buttons leaves no history entry (${JSON.stringify(s)})`, !s.sheet && !s.viewer && s.depth === 0);
         }
     } catch (e) {

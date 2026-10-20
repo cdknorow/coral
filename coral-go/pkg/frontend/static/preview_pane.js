@@ -17,6 +17,7 @@ import { agentName, apiQs } from './agent_file_api.js';
 import { trapTab } from './dialog_focus.js';
 import { pushOverlay, popOverlay } from './overlay_history.js';
 import { browserLocal } from './safe_storage.js';
+import { importOnce } from './import_once.js';
 
 const ICON_MAP = {
     javascript: '{ }', typescript: '{ }', jsx: '{ }', tsx: '{ }',
@@ -310,6 +311,7 @@ function _showPane() {
 }
 
 function _hidePane() {
+    _comments?.close(); // no tab, no comments (#5311)
     _placePane();
 }
 
@@ -586,6 +588,19 @@ function _setBody(html) {
     if (body) body.innerHTML = html;
 }
 
+// The comments of a Coral artifact on show in the pane (#5311): the viewer's own component (artifact_comments.js), one instance for the pane, opened for the artifact tab that is showing and closed for
+// any other tab, or none. Beside the document when the pane is 720 px wide or more (maximised, or a column), a bottom sheet over it below that, as on a phone.
+const SHEET_BELOW = 720; // px: the same number as the container query in artifact-comments.css
+const ARTIFACT_URI = /^coral:\/\/artifacts\/([0-9a-f]{64})$/;
+let _comments = null;
+async function _commentsApi() {
+    if (_comments) return _comments;
+    const { attachComments } = await importOnce('./artifact_comments.js');
+    const pane = document.getElementById('preview-pane'), main = document.getElementById('preview-main'), body = _body();
+    if (_comments || !pane || !main || !body) return _comments;
+    return (_comments = attachComments(pane, body, main, { toggleHost: true, observe: main, sheet: () => main.clientWidth < SHEET_BELOW, shown: () => pane.style.display !== 'none' }));
+}
+
 async function _render(tab) {
     const body = _body();
     if (!body) return;
@@ -593,17 +608,32 @@ async function _render(tab) {
     const gen = ++tab.renderGen;
     const current = () => _activeId === tab.id && tab.renderGen === gen;
     _renderToolbar(tab);
+    const hex = tab.kind === 'artifact' ? (ARTIFACT_URI.exec(tab.filepath || '') || [])[1] : '';
+    if (!hex) _comments?.close(); // this tab has no comments (a file, an image, a linked page)
 
     if (tab.kind === 'artifact') {
         tab.abort?.abort();
         tab.abort = new AbortController();
+        let comments = null;
+        if (hex) {
+            try {
+                comments = await _commentsApi();
+                const { commentBoard } = await importOnce('./artifact_comments.js');
+                if (comments && current()) {
+                    comments.open(hex, tab.options && tab.options.server, commentBoard(tab.options));
+                    document.getElementById('preview-toolbar')?.append(comments.toggle);
+                } else comments = null;
+            } catch (e) { comments = null; console.error('[coral] comments', e); } // the document is shown without them
+        }
         await renderArtifact(body, tab.filepath, tab.options, {
             signal: tab.abort.signal,
             isStale: () => !current(),
             // An artifact is a file an agent wrote: its Markdown uses the strict renderer (raw HTML shown as text, #3540).
-            renderContent: (el, content, path) => (getLangFromPath(path) === 'markdown'
-                ? (el.innerHTML = `<div class="preview-pane-markdown">${renderMarkdownStrict(content)}</div>`, highlightCodeIn(el), keepFragmentsInside(el))
-                : _renderContentView(el, content, path, 0, false)),
+            renderContent: (el, content, path) => {
+                if (getLangFromPath(path) === 'markdown') (el.innerHTML = `<div class="preview-pane-markdown">${renderMarkdownStrict(content)}</div>`, highlightCodeIn(el), keepFragmentsInside(el));
+                else _renderContentView(el, content, path, 0, false);
+                if (comments && current()) comments.docRendered(content, true); // text the comments apply to (#5311)
+            },
             openEntry: (entry) => openArtifactTab(entry.uri, { filename: entry.name, mediaType: entry.media_type }),
             setMeta: ({ title }) => { tab.title = title; _renderTabs(); },
         });

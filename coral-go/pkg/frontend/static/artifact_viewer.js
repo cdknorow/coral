@@ -5,16 +5,14 @@
  * and Markdown by the strict renderer (raw HTML shown as text, then the sanitizer). The
  * Download button keeps the original bytes one click away, through Coral Hub too. */
 import { escapeHtml, renderMarkdownStrict, highlightCodeIn, keepFragmentsInside } from './utils.js';
-import { serverUrl, artifactPath, isCloud, boardKeyName, sessionTeamKey } from './server_base.js';
-import { state } from './state.js';
-import { boardOfPage } from './dock_page.js';
+import { serverUrl, artifactPath, isCloud } from './server_base.js';
 import { renderArtifact } from './artifact_preview.js';
 import { downloadArtifact, sanitizeDownloadName } from './artifact_download.js';
 import { trapTab } from './dialog_focus.js';
 import { importOnce } from './import_once.js';
 import { pushOverlay, popOverlay } from './overlay_history.js';
 // Asked for when used, not imported: this module loads lazily and may only import startup modules statically.
-const { attachComments } = await importOnce('./artifact_comments.js');
+const { attachComments, commentBoard } = await importOnce('./artifact_comments.js');
 
 const HEX_RE = /^[a-f0-9]{64}$/;
 let _dialog = null;
@@ -24,13 +22,6 @@ let _returnFocus = null;
 let _server = undefined; // the server of the artifact on show, for the artifacts it links
 let _comments = null;    // the comments panel of the viewer (#5182)
 let _overlay = 0;        // its entry in overlay_history.js while it is open on a phone (#5219)
-
-/** The team the viewer is opened from, as the bare board name the comments routes take: the team's page, the board page, or the open agent's own team; none otherwise (#5182). */
-function teamContext(opts) {
-    if (opts && opts.board) return opts.board;
-    const key = state.selectedTeam || boardOfPage() || sessionTeamKey(state.currentSession);
-    return key ? boardKeyName(key) : undefined;
-}
 
 /** Render an artifact's text: Markdown through the strict renderer, anything else as plain text. */
  function renderArtifactText(el, content, path) {
@@ -105,7 +96,7 @@ export function openArtifactViewer(hex, opts = {}) {
     const wasOpen = !d.hidden;
     d.hidden = false;
     if (!wasOpen && window.innerWidth <= 767 && !_overlay) _overlay = pushOverlay(() => closeArtifactViewer({ popped: true })); // Back closes it, above the preview's full screen, under its comments sheet
-    _comments.open(hex, opts.server, teamContext(opts));
+    _comments.open(hex, opts.server, commentBoard(opts));
     d.querySelector('.artifact-viewer-close').focus();
     renderArtifact(body, `coral://artifacts/${hex}`, { server: opts.server, filename: opts.filename, mediaType: opts.mediaType }, {
         signal: _abort.signal,
