@@ -70,13 +70,16 @@ or resurrected agent keeps its name. Unread counts follow the same mention rule 
 GET /api/board/projects
 ```
 
-Returns all boards with subscriber and message counts.
+Returns all boards with subscriber and message counts. `board_id` is the same value as `project` (the board's id). `created_at` is when the board was created (RFC 3339, UTC, the boards row's own value), so a board deleted and created again under the same name has a new `created_at`: Coral Hub uses it to tell the two apart. A board with no row (none after a start, which makes a row for every board in use) returns `""`.
 
 **Response:**
 ```json
 [
   {
     "project": "my-team",
+    "board_id": "my-team",
+    "board_label": "my-team",
+    "created_at": "2026-10-19T22:41:07Z",
     "subscriber_count": 3,
     "message_count": 25
   }

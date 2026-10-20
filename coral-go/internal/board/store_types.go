@@ -113,7 +113,9 @@ type Message struct {
 // ProjectInfo holds project summary info.
 type ProjectInfo struct {
 	Project         string `db:"project" json:"project"`
-	BoardLabel      string `db:"-" json:"board_label"` // the board's display name (#3536)
+	BoardID         string `db:"-" json:"board_id"`            // the same value as project (the board's id); the name the hub's board model uses (#5236)
+	CreatedAt       string `db:"created_at" json:"created_at"` // the boards row's created_at, RFC3339 UTC; "" for a board with no row (none after a start, which makes one for every board in use)
+	BoardLabel      string `db:"-" json:"board_label"`         // the board's display name (#3536)
 	SubscriberCount int    `db:"subscriber_count" json:"subscriber_count"`
 	MessageCount    int    `db:"message_count" json:"message_count"`
 }

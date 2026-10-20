@@ -85,6 +85,7 @@ func (s *Store) ListProjects(ctx context.Context) ([]ProjectInfo, error) {
 	var projects []ProjectInfo
 	err := s.reader().SelectContext(ctx, &projects,
 		`SELECT project,
+		        COALESCE((SELECT b.created_at FROM boards b WHERE b.id = p.project), '') as created_at,
 		        (SELECT COUNT(*) FROM board_subscribers s WHERE s.project = p.project AND s.is_active = 1) as subscriber_count,
 		        (SELECT COUNT(*) FROM board_messages m WHERE m.project = p.project) as message_count
 		 FROM (
@@ -100,6 +101,7 @@ func (s *Store) ListProjects(ctx context.Context) ([]ProjectInfo, error) {
 		labels := s.BoardLabels(ctx, ids)
 		for i := range projects {
 			projects[i].BoardLabel = labels[projects[i].Project]
+			projects[i].BoardID = projects[i].Project
 		}
 	}
 	return projects, err
