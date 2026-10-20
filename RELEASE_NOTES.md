@@ -1,5 +1,17 @@
 # Release Notes
 
+## v1.4.126 — Artifact comments no longer freeze the viewer on a large file, and the comments are reachable from the keyboard
+
+### Fixes
+
+- **Artifact comments no longer freeze the viewer on a megabyte:** with 500 comments on a 1 MB Markdown file the viewer froze for about 5.9 seconds when it opened, on every click on a comment card, every posted comment and every text selection (the phone made it worse). Opening takes about 0.2 seconds now, a click 0.03, a post 0.13 and a selection 0.14 (measured on a 1 MB file; a 5,000-line code file opens in 0.08 seconds).
+- **Accessibility of the new comments, the question card and the full-screen preview:** a shut comments sheet on a phone was still in the Tab order and the screen reader's tree (it is now inert, as is the page behind an open sheet); a comment is reachable from the document and the document from its comment (a "Show in text" button, and `]` and `[` step through the comments); posted, saved, resolved, reopened and deleted comments are announced; and keyboard focus is kept after an action instead of dropping to the page, so Escape still closes the viewer.
+- **A late event from an earlier tool no longer ends the wait for the one still pending:** a stale tool event could make a real question look closed and the answer be refused.
+
+### Internal
+
+- Routes write errors and read request bodies through one helper each (`writeError`, `decodeJSON`), with a check that fails on a new hand-written error literal or a raw JSON decoder; no response changes (the same bytes, status and content type).
+
 ## v1.4.125 — A numbered-menu draft is not answered as a prompt, and a team reset keeps its permission mode
 
 ### Fixes
