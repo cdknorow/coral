@@ -154,6 +154,7 @@ func TestMacVerifyChecksTheSignatureTheSignerTheTicketAndTheVersionOfTheCopyInPl
 		"/usr/bin/codesign --verify --deep --strict --verbose=2 " + newPath,
 		"/usr/sbin/spctl --assess --type execute " + newPath,
 		"/usr/bin/codesign -dv --verbose=4 " + newPath,
+		"/usr/bin/codesign --verify --deep --strict -R =anchor apple generic and (certificate leaf[subject.OU] = \"ABCDE12345\") " + newPath,
 		"/usr/bin/xcrun stapler validate " + newPath,
 		"/usr/libexec/PlistBuddy -c Print :CFBundleShortVersionString " + filepath.Join(newPath, "Contents", "Info.plist"),
 	}, fr.cmds, "each check runs on the copy, where it will run")
@@ -167,6 +168,12 @@ func TestMacVerifyChecksTheSignatureTheSignerTheTicketAndTheVersionOfTheCopyInPl
 		"no team is named":       func(m *Mac, fr *fakeRunner) { fr.answers["/usr/bin/codesign -dv"] = "Signature=adhoc\n" },
 		"a team named in a comment": func(m *Mac, fr *fakeRunner) {
 			fr.answers["/usr/bin/codesign -dv"] = "Authority=x TeamIdentifier=ABCDE12345\n"
+		},
+		"two team lines (a signing identifier with a newline in it)": func(m *Mac, fr *fakeRunner) {
+			fr.answers["/usr/bin/codesign -dv"] = "Identifier=x\nTeamIdentifier=ABCDE12345\nTeamIdentifier=ZZZZZ99999\n"
+		},
+		"the certificate is not a pinned team's": func(m *Mac, fr *fakeRunner) {
+			fr.fail = map[string]error{"/usr/bin/codesign --verify --deep --strict -R": errors.New("failed to satisfy the requirement")}
 		},
 		"the ticket is not stapled": func(m *Mac, fr *fakeRunner) { fr.fail = map[string]error{"/usr/bin/xcrun": errors.New("no ticket")} },
 		"it is another version":     func(m *Mac, fr *fakeRunner) { fr.answers["/usr/libexec/PlistBuddy"] = "1.4.129\n" },

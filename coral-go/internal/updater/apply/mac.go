@@ -170,6 +170,23 @@ func (m *Mac) Build(ctx context.Context, pkg, install, work string) (string, fun
 	return dst, func() { detach() }, nil
 }
 
+var teamID = regexp.MustCompile(`^[A-Z0-9]{10}$`)
+
+// teamRequirement is the code requirement "signed by an Apple-anchored Developer ID certificate whose organizational unit is one of teamIDs".
+func teamRequirement(teamIDs []string) (string, error) {
+	var ou []string
+	for _, id := range teamIDs {
+		if !teamID.MatchString(id) {
+			return "", fmt.Errorf("%q is not a team identifier", id)
+		}
+		ou = append(ou, `certificate leaf[subject.OU] = "`+id+`"`)
+	}
+	if len(ou) == 0 {
+		return "", errors.New("no team is pinned")
+	}
+	return "=anchor apple generic and (" + strings.Join(ou, " or ") + ")", nil
+}
+
 var teamIDLine = regexp.MustCompile(`(?m)^TeamIdentifier=([A-Z0-9]{10})$`)
 
 // Verify checks the copy where it will run (#5231 section 4): the signature seals every file of the bundle (--deep --strict refuses an extra
@@ -185,18 +202,28 @@ func (m *Mac) Verify(ctx context.Context, newPath, version string) error {
 	if err != nil {
 		return fmt.Errorf("codesign -dv: %w", err)
 	}
-	sm := teamIDLine.FindStringSubmatch(out)
-	if sm == nil {
-		return errors.New("the app names no team identifier")
+	// The team is decided by the system's own requirement check on the certificate (never by what the display text says: the signing identifier is
+	// free text, and one that holds a newline and "TeamIdentifier=<a pinned team>" puts that line into this output, #5338). The text is only
+	// read as a second opinion, and two team lines are refused.
+	req, err := teamRequirement(m.TeamIDs)
+	if err != nil {
+		return err
+	}
+	if _, err := m.Run.Run(ctx, codesign, "--verify", "--deep", "--strict", "-R", req, newPath); err != nil {
+		return fmt.Errorf("the app is not signed by a pinned team: %w", err)
+	}
+	all := teamIDLine.FindAllStringSubmatch(out, -1)
+	if len(all) != 1 {
+		return fmt.Errorf("the app names %d team identifiers, not one", len(all))
 	}
 	pinned := false
 	for _, id := range m.TeamIDs {
-		if id == sm[1] {
+		if id == all[0][1] {
 			pinned = true
 		}
 	}
 	if !pinned {
-		return fmt.Errorf("the app is signed by team %s, which is not pinned", sm[1])
+		return fmt.Errorf("the app is signed by team %s, which is not pinned", all[0][1])
 	}
 	if _, err := m.Run.Run(ctx, xcrun, "stapler", "validate", newPath); err != nil {
 		return fmt.Errorf("the notarization ticket is not stapled: %w", err)

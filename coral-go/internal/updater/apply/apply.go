@@ -289,6 +289,13 @@ func Run(ctx context.Context, cfg Config) Result {
 	if cfg.BeforeSwap != nil {
 		cfg.BeforeSwap()
 	}
+	// Coral may have been started again while the package was copied and checked (minutes): the first wait proves nothing about now. Ask again
+	// just before the swap; a Coral that is up now is waited for the same way (never stopped), and when it does not end nothing is swapped.
+	if !cfg.Platform.WaitCoralGone(ctx, install) {
+		_ = os.RemoveAll(newPath)
+		res.Result = ResultCoralRunning
+		return res
+	}
 	if err := writeJournal(dir, journal{Phase: "swapping", From: cfg.Installed, To: rec.Version, NewPath: newPath, Install: install}); err != nil {
 		_ = os.RemoveAll(newPath)
 		res.Result, res.FailedStage = ResultFailed, "journal"
@@ -349,10 +356,18 @@ func recoverInterrupted(ctx context.Context, cfg Config, dir, install string) (R
 		return Result{}, false
 	}
 	defer removeJournal(dir)
+	// The journal is a file; what it names is not trusted beyond what this run can derive: the other install is a sibling of the install this
+	// program runs from, and a copy that was never swapped is the only thing removed without a rollback (#5338).
+	if j.Install != install || filepath.Dir(j.NewPath) != filepath.Dir(install) || j.NewPath == install {
+		return Result{}, false
+	}
 	now, err := cfg.Platform.Version(install)
 	if err != nil || now != j.To {
-		// The old install (or one we cannot read) is in place: whatever is at the other path is a leftover copy.
-		_ = os.RemoveAll(j.NewPath)
+		// The old install is in place. Only a journal written before the swap says what is at the other path is a leftover copy: after the swap an
+		// install that cannot be read is the NEW one, and the other path then holds the old, which is the rollback.
+		if j.Phase == "swapping" {
+			_ = os.RemoveAll(j.NewPath)
+		}
 		return Result{}, false
 	}
 	if _, err := os.Lstat(j.NewPath); err != nil {

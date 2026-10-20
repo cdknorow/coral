@@ -73,6 +73,7 @@ type fakePlatform struct {
 	swaps     [][2]string
 	swapHook  func()
 	rollErr   error
+	waitHook  func() bool
 }
 
 func (f *fakePlatform) rec(s string) { f.calls = append(f.calls, s) }
@@ -85,6 +86,9 @@ func (f *fakePlatform) Unsupported(string) string { return f.unsupport }
 func (f *fakePlatform) Writable(string) bool      { return f.writable }
 func (f *fakePlatform) WaitCoralGone(context.Context, string) bool {
 	f.rec("wait")
+	if f.waitHook != nil {
+		return f.waitHook()
+	}
 	return f.coralGone
 }
 func (f *fakePlatform) Version(path string) (string, error) {
@@ -221,7 +225,7 @@ func TestAnUpdateIsAppliedInTheOrderOfTheDesign(t *testing.T) {
 	res := r.run()
 	require.Equal(t, ResultRelaunched, res.Result, "%+v", res)
 	assert.Equal(t, "1.4.130", res.To)
-	assert.Equal(t, []string{"wait", "build", "verify", "swap", "start", "healthy", "cleanup"}, r.plat.calls)
+	assert.Equal(t, []string{"wait", "build", "verify", "wait", "swap", "start", "healthy", "cleanup"}, r.plat.calls)
 	assert.Equal(t, "new", r.installMarker(), "the new install is in place")
 	_, err := os.Stat(filepath.Join(r.plat.root, ".Coral.app.new"))
 	assert.ErrorIs(t, err, os.ErrNotExist, "the old install goes only after the new one is up")
@@ -434,4 +438,44 @@ func TestAnInterruptedApplyIsPutRightAtTheNextOne(t *testing.T) {
 	res = r.run()
 	assert.Equal(t, ResultRelaunched, res.Result, "%+v", res)
 	assert.Equal(t, "new", r.installMarker())
+}
+
+// #5338: Coral started again while the package was being copied and checked: nothing is swapped, and the copy is removed.
+func TestACoralStartedDuringTheBuildIsNotSwappedUnderAndTheCopyIsRemoved(t *testing.T) {
+	r := newRig(t)
+	waits := 0
+	r.plat.waitHook = func() bool { waits++; return waits < 2 }
+	res := r.run()
+	assert.Equal(t, ResultCoralRunning, res.Result)
+	assert.NotContains(t, r.plat.calls, "swap")
+	assert.Equal(t, "old", r.installMarker())
+	_, err := os.Stat(filepath.Join(r.plat.root, ".Coral.app.new"))
+	assert.ErrorIs(t, err, os.ErrNotExist, "the copy is removed")
+	assert.NotNil(t, r.staged(), "the staged update is kept")
+}
+
+// #5338: a journal is not trusted for paths, and after the swap an unreadable install is not a reason to delete the rollback.
+func TestAJournalDoesNotChooseWhatIsRemovedAndASwappedInstallIsNeverTakenForALeftoverCopy(t *testing.T) {
+	r := newRig(t)
+	dir := filepath.Join(r.data, stage.UpdatesDir)
+	victim := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(victim, "keep"), []byte("x"), 0o600))
+	install := filepath.Join(r.plat.root, "Coral.app")
+	require.NoError(t, writeJournal(dir, journal{Phase: "swapping", From: "1.4.125", To: "1.4.130", NewPath: victim, Install: install}))
+	_ = r.run()
+	_, err := os.Stat(filepath.Join(victim, "keep"))
+	assert.NoError(t, err, "a journal naming another folder removes nothing")
+
+	// Swapped, the new install cannot be read: the other path is the old install, the rollback, and stays.
+	r = newRig(t)
+	dir = filepath.Join(r.data, stage.UpdatesDir)
+	other := filepath.Join(r.plat.root, ".Coral.app.new")
+	require.NoError(t, os.MkdirAll(other, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(other, "marker"), []byte("old"), 0o644))
+	delete(r.plat.version, filepath.Join(r.plat.root, "Coral.app")) // unreadable
+	install = filepath.Join(r.plat.root, "Coral.app")
+	require.NoError(t, writeJournal(dir, journal{Phase: "swapped", From: "1.4.125", To: "1.4.130", NewPath: other, Install: install}))
+	_, _ = recoverInterrupted(context.Background(), r.cfg, dir, install)
+	_, err = os.Stat(filepath.Join(other, "marker"))
+	assert.NoError(t, err, "the old install is not deleted because the new one cannot be read")
 }
