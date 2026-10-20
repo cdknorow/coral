@@ -154,6 +154,9 @@ func pendingRecordPaths(coralDir, id string) []string {
 
 // hasUploadRecord reports whether an agent on this Coral uploaded these bytes (the same object may be both received and uploaded here).
 func hasUploadRecord(coralDir, id string) bool {
+	if !objectNameRe.MatchString(id) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return false
+	}
 	sessions, err := os.ReadDir(filepath.Join(coralDir, "artifacts", "uploads"))
 	if err != nil {
 		return false

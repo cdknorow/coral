@@ -635,6 +635,9 @@ func deleteArtifactFiles(coralDir, id string) (freed int64, records int, found b
 // deleteArtifactFilesLocked is deleteArtifactFiles for a caller that already holds id's lock
 // (#3554's prune re-checks a candidate under the lock, then deletes it).
 func deleteArtifactFilesLocked(coralDir, id string) (freed int64, records int, found bool, err error) {
+	if !objectNameRe.MatchString(id) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return 0, 0, false, errors.New("not an artifact id")
+	}
 	objectPath := filepath.Join(coralDir, "artifacts", "objects", id)
 	info, statErr := os.Stat(objectPath)
 	_, sideErr := os.Stat(objectPath + ".json")

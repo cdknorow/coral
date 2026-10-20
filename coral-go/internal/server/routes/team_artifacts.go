@@ -287,7 +287,7 @@ func enrichTeamArtifact(it *teamArtifact, objectDir string) {
 	case it.managed != "":
 		it.PreviewURL = artifactURL(it.managed)
 		it.DownloadURL = it.PreviewURL
-		if objectDir == "" {
+		if objectDir == "" || !objectNameRe.MatchString(it.managed) { // a managed id is a 64-digit hex name before it is joined onto the objects folder (#5305)
 			return
 		}
 		path := filepath.Join(objectDir, it.managed)

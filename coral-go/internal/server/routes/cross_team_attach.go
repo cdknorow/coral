@@ -139,6 +139,9 @@ func (h *BoardHandler) resolveAttachments(raw []string, s attachSender) ([]attac
 
 // readAttachment opens id once and checks it through that handle (see resolveAttachments).
 func (h *BoardHandler) readAttachment(dir, id, shown string, s attachSender, rec agentUploadRecord) (attachedArtifact, *attachRefusal) {
+	if !objectNameRe.MatchString(id) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return attachedArtifact{}, notYours(shown)
+	}
 	missing := func() *attachRefusal {
 		if s.person {
 			return &attachRefusal{http.StatusNotFound, "attach_not_found", fmt.Sprintf("%s is not in this Coral's artifact store", shown)}
@@ -219,6 +222,9 @@ func (h *BoardHandler) teamSessions(ctx context.Context, project string) map[str
 
 // objectMeta is an object's sidecar metadata.
 func (h *BoardHandler) objectMeta(id string) (agentArtifactMeta, bool) {
+	if !objectNameRe.MatchString(id) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return agentArtifactMeta{}, false
+	}
 	var meta agentArtifactMeta
 	dir := h.artifactObjectDir()
 	if dir == "" {
@@ -304,6 +310,9 @@ func (h *BoardHandler) boardRecordDir(kind, board string) string {
 // same object; a received row is write-once (Security's C1 review (b)): the first receipt's
 // provenance stands, and a later one never rewrites where the file came from.
 func (h *BoardHandler) writeCrossTeamRecord(kind string, rec crossTeamArtifactRecord) error {
+	if !objectNameRe.MatchString(rec.ID) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return errors.New("not an artifact id")
+	}
 	dir := h.boardRecordDir(kind, rec.Board)
 	if dir == "" {
 		return errors.New("no data folder")
@@ -426,6 +435,9 @@ func (h *BoardHandler) mergeCrossTeamRows(items []teamArtifact, project string) 
 
 // crossTeamRecord is board's record of id, of one kind, when there is a well-formed one for it.
 func (h *BoardHandler) crossTeamRecord(kind, board, id string) (crossTeamArtifactRecord, bool) {
+	if !objectNameRe.MatchString(id) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return crossTeamArtifactRecord{}, false
+	}
 	var rec crossTeamArtifactRecord
 	dir := h.boardRecordDir(kind, board)
 	if dir == "" {

@@ -65,6 +65,9 @@ var attachAfterRead func(path string)
 // equal to the id, and the name still the same file afterwards. Anything else is attach_changed: the file was swapped or removed after the first check,
 // and nothing is sent.
 func (h *BoardHandler) loadAttachment(a attachedArtifact) ([]byte, *attachRefusal) {
+	if !objectNameRe.MatchString(a.ID) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return nil, &attachRefusal{http.StatusConflict, "attach_changed", "coral://artifacts/ is not an artifact id"}
+	}
 	shown := "coral://artifacts/" + a.ID
 	changed := &attachRefusal{http.StatusConflict, "attach_changed", fmt.Sprintf("%s changed while the send was being prepared; nothing was sent", shown)}
 	dir := h.artifactObjectDir()

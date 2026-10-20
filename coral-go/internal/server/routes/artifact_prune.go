@@ -410,6 +410,9 @@ func recordTime(path string) time.Time {
 
 // objectNewestUse: an object's newest upload record, else its file time.
 func objectNewestUse(coralDir, id string, records map[string]time.Time) time.Time {
+	if !objectNameRe.MatchString(id) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return time.Time{}
+	}
 	if t, ok := records[id]; ok {
 		return t
 	}
@@ -784,6 +787,9 @@ func (h *SessionsHandler) deleteObjectIfStillUnused(ctx context.Context, coralDi
 
 // newestRecordFor reads one artifact's upload records only.
 func newestRecordFor(coralDir, id string) map[string]time.Time {
+	if !objectNameRe.MatchString(id) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return nil
+	}
 	out := map[string]time.Time{}
 	sessions, err := os.ReadDir(filepath.Join(coralDir, "artifacts", "uploads"))
 	if err != nil {

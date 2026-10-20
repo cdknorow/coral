@@ -1,0 +1,287 @@
+package safefs
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// A name that is not the program's own (read from a file in the data folder, a database row, a message from another Coral, a request or an agent-written file) must
+// not be joined onto a folder and opened without being checked: "../../x" leaves the folder (#5305, the class behind LoadStaged's asset name, a pending record's id,
+// a team worktree's board name). This census holds every function of the module that joins a non-literal name with filepath.Join or path.Join, with how its name
+// is made safe. A new function, or a new join in one, fails until it is reviewed and added here: check the name (safefs.CheckName, IsSafeID, objectNameRe, a UUID),
+// resolve and contain it (safefs.Within, Resolve, OpenRoot, os.Root), or say why it is the program's own.
+type joinClass string
+
+const (
+	joinFixed     joinClass = "fixed"     // names from a directory listing, or numbers and hashes the program makes
+	joinID        joinClass = "id"        // an id checked (objectNameRe, IsSafeID, IsSessionID, a canonical UUID) before the join
+	joinContained joinClass = "contained" // resolved and compared with the folder it must stay in, or opened through a Root
+	joinOwn       joinClass = "own"       // a name the program makes or checks itself (a constant, a slug, a sanitised name)
+)
+
+type joinEntry struct {
+	n     int // how many non-literal joins the function holds
+	class joinClass
+	why   string
+}
+
+// joinSites is "file<TAB>function" -> its joins, by file relative to coral-go.
+var joinSites = map[string]joinEntry{
+	"cmd/coral-app/loghint.go\tserverLogPath":                                                {2, joinOwn, "a program-made or constant name in its own folder (mock-agent is a test tool; launch-coral builds names from checked ids)"},
+	"cmd/coral-board/state.go\tstateFilePath":                                                {1, joinOwn, "the session name goes through hooks.BoardStateFileName, which makes every path separator \"_\""},
+	"cmd/coral-board/task.go\tseenRoundsPath":                                                {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"cmd/coral-hook-agentic-state/main.go\tagyStepOutputResult":                              {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"cmd/coral-hook-message-check/main.go\tloadBoardState":                                   {1, joinOwn, "the session name goes through hooks.BoardStateFileName, which makes every path separator \"_\""},
+	"cmd/coral/password.go\tresetOffline":                                                    {1, joinOwn, "a program-made or constant name in its own folder (mock-agent is a test tool; launch-coral builds names from checked ids)"},
+	"cmd/launch-coral/main.go\tlaunchAgentSessions":                                          {2, joinOwn, "a program-made or constant name in its own folder (mock-agent is a test tool; launch-coral builds names from checked ids)"},
+	"cmd/mock-agent/main.go\tcoralBoard":                                                     {1, joinOwn, "a program-made or constant name in its own folder (mock-agent is a test tool; launch-coral builds names from checked ids)"},
+	"cmd/mock-agent/main.go\tmain":                                                           {4, joinOwn, "a program-made or constant name in its own folder (mock-agent is a test tool; launch-coral builds names from checked ids)"},
+	"cmd/mock-agent/transcript.go\tnewTranscript":                                            {2, joinOwn, "a program-made or constant name in its own folder (mock-agent is a test tool; launch-coral builds names from checked ids)"},
+	"internal/agent/agent.go\tCleanupTempFiles":                                              {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/agent/agy.go\tAgyAgent.ExtractSessions":                                        {2, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/agent/claude.go\tClaudeAgent.ExtractSessions":                                  {2, joinID, "the session id is checked (IsResumeID, a canonical UUID) before it is joined; the project folder name has its separators replaced"},
+	"internal/agent/claude.go\tClaudeAgent.PrepareResume":                                    {5, joinID, "the session id is checked (IsResumeID, a canonical UUID) before it is joined; the project folder name has its separators replaced"},
+	"internal/agent/claude.go\tcopyDir":                                                      {2, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/agent/codex.go\tCodexSessionSaved":                                             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/agent/hookcmd.go\tResolveHookCommand":                                          {1, joinOwn, "a CLI or tool name constant"},
+	"internal/agent/pi.go\tPiAgent.LaunchCommand":                                            {1, joinID, "the session id is checked (IsResumeID, a canonical UUID) before it is joined; the project folder name has its separators replaced"},
+	"internal/agent/shell.go\tFindCLIInCommonPaths":                                          {7, joinOwn, "a CLI or tool name constant"},
+	"internal/agent/tempsweep.go\tSweepStaleTempFiles":                                       {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/auth/login_token.go\tKeyStore.WriteLoginTokenFile":                             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/auth/login_token.go\tRemoveLoginTokenFile":                                     {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/auth/password.go\tCreatePasswordHash":                                          {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/auth/password.go\tReadPasswordHash":                                            {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/auth/password.go\tRemovePasswordHash":                                          {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/auth/password.go\tWritePasswordHash":                                           {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/auth/password_startup.go\tKeyStore.ApplyRevokeMarker":                          {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/background/git_poller.go\tqueryChangedFilesFrom":                               {1, joinContained, "a path git printed, relative to the working directory, only stat-ed"},
+	"internal/background/knowledge.go\tLoadAgentKnowledge":                                   {1, joinOwn, "slugify or ValidKnowledgeTeam: a plain name, no separator, no device name"},
+	"internal/background/knowledge.go\tReadKnowledgeBundle":                                  {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/background/knowledge.go\tWriteKnowledgeFile":                                   {1, joinOwn, "slugify or ValidKnowledgeTeam: a plain name, no separator, no device name"},
+	"internal/background/knowledge.go\tknowledgeTeamDir":                                     {1, joinOwn, "slugify or ValidKnowledgeTeam: a plain name, no separator, no device name"},
+	"internal/background/knowledge.go\twriteKnowledgeBundle":                                 {1, joinOwn, "slugify or ValidKnowledgeTeam: a plain name, no separator, no device name"},
+	"internal/background/scheduler.go\tJobScheduler.runWorktreeDir":                          {1, joinOwn, "a run id number and the base name of the repo path"},
+	"internal/background/token_poller.go\tresolveClaudeTranscriptPath":                       {2, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
+	"internal/background/token_poller.go\tresolvePiSessionPath":                              {1, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
+	"internal/background/workflow_runfolder.go\topenRunFolder":                               {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/background/workflow_runfolder.go\trunFiles.step":                               {1, joinContained, "opened through an os.Root over the run folder"},
+	"internal/background/workflow_runfolder.go\tstepFiles.appendNote":                        {1, joinContained, "opened through an os.Root over the run folder"},
+	"internal/background/workflow_runfolder.go\tstepFiles.create":                            {1, joinContained, "opened through an os.Root over the run folder"},
+	"internal/background/workflow_runfolder.go\tstepFiles.open":                              {1, joinContained, "opened through an os.Root over the run folder"},
+	"internal/background/workflow_runfolder.go\tstepFiles.writeArtifact":                     {1, joinContained, "opened through an os.Root over the run folder"},
+	"internal/background/workflow_runfolder.go\tstepFiles.writeNew":                          {1, joinContained, "opened through an os.Root over the run folder"},
+	"internal/background/workflow_runner.go\tRemoveRunDirs":                                  {2, joinOwn, "run and step numbers; files named by the step are under the step folder"},
+	"internal/background/workflow_templates.go\tWorkflowRunner.buildStepEnv":                 {3, joinOwn, "run and step numbers; files named by the step are under the step folder"},
+	"internal/cliauth/transport.go\tReadToken":                                               {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/cloud/clitoken.go\tReadCLIToken":                                               {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/cloud/clitoken.go\tRemoveCLIToken":                                             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/cloud/clitoken.go\tWriteCLIToken":                                              {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/cmdhandoff/sweep.go\tsweepDir":                                                 {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/dbcrypt/dbcrypt.go\tLoad":                                                      {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/dbcrypt/dbcrypt.go\tMigrationRecoveryPath":                                     {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/dbcrypt/dbcrypt.go\tSave":                                                      {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/dbcrypt/dbcrypt.go\tkeyPath":                                                   {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/executil/editor.go\tEditor.macApp":                                             {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/executil/editor.go\teditorCommand":                                             {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/gitutil/gitutil.go\tResolveGitRoot":                                            {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/hooks/cache.go\tTaskCacheWrite":                                                {1, joinOwn, "taskCacheName: a validated task id"},
+	"internal/hooks/cache.go\topenCacheFile":                                                 {1, joinOwn, "taskCacheName: a validated task id"},
+	"internal/hooks/cache.go\tpruneTaskCache":                                                {1, joinOwn, "taskCacheName: a validated task id"},
+	"internal/inputlog/inputlog.go\tSetup":                                                   {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/jsonl/transcript_paths.go\tresolveAgyTranscriptFromHistory":                    {1, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
+	"internal/jsonl/transcript_paths.go\tresolveAgyTranscriptMode":                           {3, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
+	"internal/jsonl/transcript_paths.go\tresolveClaudeTranscript":                            {2, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
+	"internal/jsonl/transcript_paths.go\tresolveCodexTranscript":                             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/naming/naming.go\tLogFile":                                                     {1, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
+	"internal/peercred/peercred.go\tlookup":                                                  {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/safefs/safefs.go\tRoot.WriteFileUnless":                                        {2, joinContained, "the containment code itself"},
+	"internal/safefs/safefs.go\tWithin":                                                      {1, joinContained, "the containment code itself"},
+	"internal/safefs/safefs.go\tresolveExisting":                                             {2, joinContained, "the containment code itself"},
+	"internal/server/data_perms.go\ttightenDataPermissions":                                  {2, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/server/routes/agent_docs.go\tAgentDocsHandler.Get":                             {1, joinContained, "an embedded fs.FS, which refuses a name that is not a valid path"},
+	"internal/server/routes/artifact_comments.go\tSessionsHandler.commentArtifact":           {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifact_prune.go\tSessionsHandler.closedDiffs":                  {2, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/artifact_prune.go\tSessionsHandler.keepArtifactRoute":            {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifact_prune.go\tSessionsHandler.objectCandidates":             {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifact_prune.go\tSessionsHandler.sweepDiffObjects":             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/artifact_prune.go\tdiffObjectInodes":                             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/artifact_prune.go\tnewestRecordFor":                              {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifact_prune.go\tobjectNewestUse":                              {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifact_prune.go\tscanCrossTeamRecordRefs":                      {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifact_prune.go\tuploadRecordTimes":                            {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/artifact_storage.go\tSessionsHandler.allDiffs":                   {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifact_store.go\tartifactStore.measureLocked":                  {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifacts.go\tSessionsHandler.getAgentArtifact":                  {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifacts.go\tdeleteArtifactFilesLocked":                         {4, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifacts.go\tstoreArtifact":                                     {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifacts.go\tstoreArtifactFile":                                 {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/artifacts.go\tuploadsDir":                                        {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/auto_accept_risk.go\tchangeDir":                                  {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/auto_accept_risk.go\tfromDir":                                    {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/auto_accept_risk.go\tpathInside":                                 {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/auto_accept_risk.go\tresolvePath":                                {2, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/auto_attach.go\tAutoAttacher.load":                               {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/board.go\tBoardHandler.taskArtifactPath":                         {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/changes_diff_filter.go\tSessionsHandler.generatePersistedDiff":   {2, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/cross_team_attach.go\tBoardHandler.boardRecordDir":               {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/cross_team_attach.go\tBoardHandler.crossTeamRecord":              {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/cross_team_attach.go\tBoardHandler.objectMeta":                   {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/cross_team_attach.go\tBoardHandler.readAttachment":               {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/cross_team_attach.go\tBoardHandler.writeCrossTeamRecord":         {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/cross_team_attach_relay.go\tBoardHandler.loadAttachment":         {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/cross_team_pending.go\tBoardHandler.noteAlsoReceived":            {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/cross_team_pending.go\tBoardHandler.promotePending":              {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/cross_team_pending.go\tBoardHandler.sweepPending":                {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/cross_team_pending.go\tBoardHandler.writePendingReceipt":         {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/file_bounds.go\tSessionsHandler.inHooksPath":                     {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/file_bounds.go\tinAgentHomeDir":                                  {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/file_bounds.go\tlistingVisible":                                  {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/file_explorer.go\tserveExplorerDirectory":                        {2, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/message_key.go\tloadOrCreateKeySecret":                           {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/server/routes/pinned_folders.go\tpinnedPath":                                   {1, joinContained, "the Operator's folder picker: operator-only, and only listed"},
+	"internal/server/routes/received_cap.go\thasUploadRecord":                                {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/received_cap.go\tpendingRecordPaths":                             {2, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/received_cap.go\treceivedUsage":                                  {3, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/sessions_changes.go\tSessionsHandler.Diff":                       {2, joinContained, "resolved and compared with the folder it must stay in before it is opened"},
+	"internal/server/routes/sessions_changes.go\tSessionsHandler.sessionChangesArtifactPath": {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/sessions_changes.go\tstoreDiffObject":                            {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/sessions_files_content.go\tSessionsHandler.GetFileContent":       {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/sessions_files_content.go\tSessionsHandler.GetFileOriginal":      {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/sessions_files_content.go\tSessionsHandler.SaveFileContent":      {3, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/sessions_files_resolve.go\tSessionsHandler.resolveFileRef":       {4, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/sessions_files_search.go\tSessionsHandler.searchFilesDir":        {1, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/server/routes/sessions_launch_board.go\tremoveBoardStateFile":                  {1, joinOwn, "the session name goes through hooks.BoardStateFileName, which makes every path separator \"_\""},
+	"internal/server/routes/sessions_launch_board.go\twriteBoardStateFile":                   {1, joinOwn, "the session name goes through hooks.BoardStateFileName, which makes every path separator \"_\""},
+	"internal/server/routes/sessions_launch_team.go\tSessionsHandler.createTeamWorktree":     {1, joinOwn, "the board name is checked with ValidKnowledgeTeam before it names the worktree folder (#5305)"},
+	"internal/server/routes/system_filesystem.go\texpandHome":                                {1, joinContained, "the Operator's folder picker: operator-only, and only listed"},
+	"internal/server/routes/system_security.go\tSystemHandler.DatabaseSecurityStatus":        {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/server/routes/system_team_import.go\tSystemHandler.ImportTeam":                 {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/task_artifact_vet.go\tBoardHandler.objectIsStored":               {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/task_artifact_vet.go\tBoardHandler.objectSidecarDigest":          {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/team_artifacts.go\tenrichTeamArtifact":                           {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
+	"internal/server/routes/team_artifacts.go\tuploadDirCache.list":                          {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/themes.go\tThemesHandler.ImportTheme":                            {1, joinOwn, "a name made safe (base name, safeNameRE, safefs.CheckName) before the join"},
+	"internal/server/routes/themes.go\tThemesHandler.ListThemes":                             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/themes.go\tThemesHandler.SeedBundledThemes":                      {1, joinOwn, "a name made safe (base name, safeNameRE, safefs.CheckName) before the join"},
+	"internal/server/routes/themes.go\tThemesHandler.safePath":                               {1, joinOwn, "a name made safe (base name, safeNameRE, safefs.CheckName) before the join"},
+	"internal/server/routes/tracking.go\ttelemetryDisplayPath":                               {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/server/routes/uploads.go\tUploadFile":                                          {1, joinOwn, "a name made safe (base name, safeNameRE, safefs.CheckName) before the join"},
+	"internal/server/routes/workflow.go\tWorkflowHandler.GetStepFile":                        {2, joinContained, "resolved and compared with the folder it must stay in (safefs.Within, Resolve, os.Root or a resolved-prefix test) before it is opened"},
+	"internal/stallwatch/stallwatch.go\tWatchdog.dump":                                       {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/stallwatch/stallwatch.go\tWatchdog.prune":                                      {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/startup/compact.go\tCompact":                                                   {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/startup/orphan_files.go\tremoveOrphanProxyCA":                                  {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/startup/rebuild_search.go\tRebuildSearch":                                      {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/startup/session_state_sweep.go\tsweepSessionStateFiles":                        {2, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/startup/session_tokens.go\tsetupSessionTokens":                                 {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/startup/startup_data.go\trefuseKeyFileReplacement":                             {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/startup/startup_data.go\tresolveDatabaseKey":                                   {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/startup/strict_local_auth.go\tstrictLocalAuth":                                 {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/subagent/transcript.go\tDiscover":                                              {2, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/testguard/env.go\tisolateDataDir":                                              {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/tmux/socket_path.go\tdefaultServerMayRun":                                      {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/tracking/milestones.go\tdisclosurePath":                                        {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/tracking/milestones.go\tmilestonesPath":                                        {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/transcriptlink/codex.go\tBindCodex":                                            {2, joinContained, "safefs.Within and Resolve against the sessions folder; the thread id is a canonical UUID"},
+	"internal/transcriptlink/codex.go\trolloutPath":                                          {1, joinContained, "safefs.Within and Resolve against the sessions folder; the thread id is a canonical UUID"},
+	"internal/uploads/uploads.go\tDelete":                                                    {1, joinOwn, "a name made safe (base name, safeNameRE, safefs.CheckName) before the join"},
+	"internal/uploads/uploads.go\tlist":                                                      {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"pkg/frontend/bundle.go\tembeddedFiles":                                                  {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"pkg/frontend/startup_modules.go\tmoduleGraph":                                           {1, joinOwn, "a fixed or program-made name in its own folder"},
+	"pkg/secretbox/secretbox.go\tKeyFilePath":                                                {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+}
+
+func TestEveryJoinOfAVariableNameIsReviewed(t *testing.T) {
+	root := filepath.Join("..", "..") // coral-go
+	got := map[string]int{}
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && (d.Name() == "node_modules" || d.Name() == "testdata" || strings.HasPrefix(d.Name(), ".")) && p != root {
+			return filepath.SkipDir
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), p, nil, 0)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
+		for _, decl := range f.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || fd.Body == nil {
+				continue
+			}
+			ast.Inspect(fd.Body, func(n ast.Node) bool {
+				c, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := c.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "Join" {
+					return true
+				}
+				if x, ok := sel.X.(*ast.Ident); !ok || (x.Name != "filepath" && x.Name != "path") {
+					return true
+				}
+				for _, a := range c.Args[min(1, len(c.Args)):] {
+					if _, lit := a.(*ast.BasicLit); !lit {
+						got[rel+"\t"+joinFuncName(fd)]++
+						break
+					}
+				}
+				return true
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Counted per join with a non-literal name after the first argument: two joins in one function count twice.
+	var problems []string
+	for key, n := range got {
+		e, ok := joinSites[key]
+		switch {
+		case !ok:
+			problems = append(problems, "unreviewed join of a variable name: "+strings.ReplaceAll(key, "\t", " ")+": check the name, contain it, or say why it is the program's own, and add it to joinSites")
+		case e.n != n:
+			problems = append(problems, strings.ReplaceAll(key, "\t", " ")+": the function holds a different number of such joins than reviewed; review the new one and update joinSites")
+		}
+	}
+	for key, e := range joinSites {
+		if _, ok := got[key]; !ok {
+			problems = append(problems, "joinSites entry matches no join any more (remove it): "+strings.ReplaceAll(key, "\t", " "))
+		}
+		if e.class == "" || e.why == "" {
+			problems = append(problems, "joinSites entry has no class or reason: "+strings.ReplaceAll(key, "\t", " "))
+		}
+	}
+	sort.Strings(problems)
+	for _, p := range problems {
+		t.Error(p)
+	}
+}
+
+func joinFuncName(fd *ast.FuncDecl) string {
+	if fd.Recv == nil || len(fd.Recv.List) == 0 {
+		return fd.Name.Name
+	}
+	t := fd.Recv.List[0].Type
+	if s, ok := t.(*ast.StarExpr); ok {
+		t = s.X
+	}
+	if id, ok := t.(*ast.Ident); ok {
+		return id.Name + "." + fd.Name.Name
+	}
+	return fd.Name.Name
+}

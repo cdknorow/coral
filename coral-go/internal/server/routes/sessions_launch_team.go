@@ -285,6 +285,10 @@ func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTea
 	if branch == "" {
 		branch = "main"
 	}
+	// The board's name is one folder name under worktrees/: never a path out of it (#5305).
+	if !background.ValidKnowledgeTeam(body.BoardName) {
+		return "", "", "the board name cannot name a worktree folder"
+	}
 	worktreeDir := filepath.Join(h.cfg.CoralDir(), "worktrees")
 	os.MkdirAll(worktreeDir, 0755)
 	worktreePath = filepath.Join(worktreeDir, body.BoardName)

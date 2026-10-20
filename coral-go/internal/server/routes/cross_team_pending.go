@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -43,6 +44,9 @@ func (h *BoardHandler) pendingNow() time.Time {
 // writePendingReceipt records a receipt of rec.ID for the message relayID from src, replacing an earlier
 // receipt of the same file for the same message (a retry), and drops this board's expired ones.
 func (h *BoardHandler) writePendingReceipt(src, relayID string, rec crossTeamArtifactRecord) error {
+	if !objectNameRe.MatchString(rec.ID) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return errors.New("not an artifact id")
+	}
 	dir := h.boardRecordDir("pending", rec.Board)
 	if dir == "" {
 		return os.ErrInvalid
@@ -78,8 +82,8 @@ func readPending(path string) (pendingReceipt, bool) {
 		return p, false
 	}
 	data, err := os.ReadFile(path)
-	if err != nil || json.Unmarshal(data, &p) != nil || p.Rec.ID == "" || p.Source == "" || p.RelayID == "" {
-		return pendingReceipt{}, false
+	if err != nil || json.Unmarshal(data, &p) != nil || !objectNameRe.MatchString(p.Rec.ID) || p.Source == "" || p.RelayID == "" {
+		return pendingReceipt{}, false // the id is a name joined onto the objects folder: a pending record that names anything else is not one (#5305)
 	}
 	return p, true
 }

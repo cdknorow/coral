@@ -84,6 +84,9 @@ func (h *BoardHandler) vetTaskArtifacts(r *http.Request, project string, artifac
 
 // objectIsStored reports whether the store holds id as a regular file (not a link to one).
 func (h *BoardHandler) objectIsStored(id string) bool {
+	if !objectNameRe.MatchString(id) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return false
+	}
 	dir := h.artifactObjectDir()
 	if dir == "" {
 		return false
@@ -94,6 +97,9 @@ func (h *BoardHandler) objectIsStored(id string) bool {
 
 // objectSidecarDigest is the digest the object's metadata sidecar records ("" when unreadable).
 func (h *BoardHandler) objectSidecarDigest(id string) string {
+	if !objectNameRe.MatchString(id) { // an id read from a file or a message is a 64-digit hex name before it is joined onto a folder (#5305)
+		return ""
+	}
 	dir := h.artifactObjectDir()
 	if dir == "" {
 		return ""
