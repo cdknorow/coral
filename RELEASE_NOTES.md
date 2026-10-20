@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.4.124 — A woken Codex agent no longer ends at a bare shell, and six more shapes of secret are redacted for Coral Hub
+
+### Security
+
+- **More ways a value after a name is redacted for Coral Hub:** an HTML-entity-encoded `=` or `:` (`password&#61;VALUE`, `&#x3d;`, `&equals;`, zero-padded or escaped again; `&#58;`, `&#x3a;`, `&colon;`), `npm config set //registry.npmjs.org/:_authToken VALUE` with a space and no equals (`_auth`, `_password`, yarn's `npmAuthToken` and pnpm too), an `.npmrc` line `_auth=BASE64` or `//host/:_password=BASE64` anywhere in the text, and a `pwd` name (`pwd=VALUE`, `DB_PWD=`; a value that is a path is left alone). Each had 0 of 2,000 samples survive in the hub's test harness.
+
+### Fixes
+
+- **A Codex agent woken after an earlier restart or resume ended at a bare shell:** in mode auto, dontAsk, acceptEdits or plan the wake typed `--sandbox workspace-write -a never` twice, and Codex refuses either flag twice. The launch command now keeps the last `--sandbox` and the last `-a`, so the mode's replaces a stored one. A capabilities preset's sandbox and approval flags also win over a stored flag.
+- **Waking a Codex agent that never completed a turn starts a new one instead of resuming nothing:** Codex saves a session only after a turn, so `codex resume <id>` ended at "No saved session found" and a bare shell. A wake of such an agent now starts a new session (the permission mode and flags as before); an explicit Resume request is left as it is.
+- **An agy agent whose quota is used up shows as blocked, with its reset time,** instead of idle, and agy's feedback survey ("How's the CLI experience so far?") is dismissed with `0` like Claude's, only when it is the last thing on screen and the input box is empty.
+
+### Tests
+
+- The two agy tests wait for the held-send loop to end before their cleanup restores the timings (a data race under `-race`).
+
 ## v1.4.123 — A multi-select question has a Submit button, and a secret in a key-named header is redacted whatever it looks like
 
 ### Security
