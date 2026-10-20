@@ -4284,3 +4284,6 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 
 /* The Inbox's live region for the agents that start waiting (#4926): read aloud, never drawn. */
 .inbox-live { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* The control that was clicked while its module is still loading, on a slow link only (lazy_panels.js, #5377): a progress cursor and a dimmed row, nothing that moves. */
+.lazy-loading { cursor: progress; opacity: 0.6; }

@@ -50,11 +50,29 @@ export const loadDefaultPromptsDialog = panel('this dialog', './default_prompts_
  *  through its loader), every stub of it on window becomes the real function,
  *  so later calls are direct and synchronous. A failed
  *  load resolves to undefined: the toast already told the user. */
+// The first use of a lazy module waits for its request. On a slow link that is a pause with nothing to say it is working: after BUSY_AFTER_MS the control that was clicked is marked busy
+// (aria-busy, and .lazy-loading: a progress cursor and a dimmed row, no animation) until the module has loaded or failed. On a fast link it never shows. The control is the click's own
+// [data-on-click] element: the stub runs inside the click's dispatch, so window.event is the click (a call from elsewhere has no control to mark and marks none).
+export const BUSY_AFTER_MS = 150;
+function markBusyWhile(promise) {
+    const ev = window.event;
+    const host = ev && ev.target && ev.target.closest ? ev.target.closest('[data-on-click]') : null;
+    if (!host || host.hasAttribute('aria-busy')) return;
+    const timer = setTimeout(() => { host.classList.add('lazy-loading'); host.setAttribute('aria-busy', 'true'); }, BUSY_AFTER_MS);
+    const done = () => { clearTimeout(timer); host.classList.remove('lazy-loading'); host.removeAttribute('aria-busy'); };
+    promise.then(done, done);
+}
+
 export function lazyFns(load, names) {
     const stubs = {};
     for (const name of names) {
         // once the module is loaded a call goes straight to it, synchronously, as when the module was a static import; the first call waits for the load
-        stubs[name] = (...args) => (load.module ? load.module[name](...args) : load().then(m => m[name](...args), () => undefined));
+        stubs[name] = (...args) => {
+            if (load.module) return load.module[name](...args);
+            const loading = load();
+            markBusyWhile(loading);
+            return loading.then(m => m[name](...args), () => undefined);
+        };
     }
     load.loaded.push(m => {
         for (const n of names) if (window[n] === stubs[n] && typeof m[n] === 'function') window[n] = m[n];
