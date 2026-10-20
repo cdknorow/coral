@@ -180,7 +180,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         check('the dock\'s Saved tab on the same page is still the agent\'s: scoped, in the right sidebar', !s.inbox && s.uiIn === 'agentic-panel-saved' && s.dockShown && s.heading === 'Saved: QA Alpha' && JSON.stringify(s.rows) === JSON.stringify(['qa-a chat', 'team-a board, by the QA Engineer']), JSON.stringify([s.inbox, s.uiIn, s.dockShown, s.heading, s.rows]));
         check('its tab says 2, the top bar still 6, and the Inbox tab counts the agents waiting (1)', s.navBadge === '1' && (await ev(`document.getElementById('saved-tab-count').textContent`)) === '2' && (await badge()) === '6', JSON.stringify([s.navBadge, await badge()]));
         await shot('inbox-scoped-agent-desktop');
-        await ev(`window.enterTeamContext('team-a', { tab: 'team-view' }); true`);
+        await ev(`Promise.resolve(window.enterTeamContext('team-a', { tab: 'team-view' })).then(() => true)`); // (the team view is a lazy module, #5364: the first call loads it, so wait for it)
         await settle(`document.getElementById('saved-btn').getAttribute('aria-label') === 'Saved for later, 6 open'`, 'the count on the team page');
         check('on a team\'s page the top bar badge is the count of everything (6)', (await badge()) === '6', await badge());
         await ev(`document.getElementById('saved-btn').click(); true`);

@@ -1,8 +1,8 @@
 import { importOnce } from './import_once.js';
 import { escapeHtml } from './utils.js';
 import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
-import { boardRenameControl } from './board_rename.js';
-import { refusalOf, answeredLocally } from './owner_refusal.js';
+const { boardRenameControl } = await importOnce('./board_rename.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
+const { refusalOf, answeredLocally } = await importOnce('./owner_refusal.js');
 import { changedFields, rebaseChanges, NOTHING_TO_SAVE } from './settings_diff.js';
 
 const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };

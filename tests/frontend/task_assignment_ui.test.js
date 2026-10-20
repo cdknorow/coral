@@ -16,7 +16,7 @@ if (!base || !/^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(base) || /:8420\
         await c.Page.navigate({url:base}); await c.Page.loadEventFired();
         await ev(`(async()=>{
             window.s=(await import((window.__coralStatic||'/static/')+'state.js')).state;
-            window.t=await import((window.__coralStatic||'/static/')+'tasks.js');
+            window.t=await import((window.__coralStatic||'/static/')+'tasks.js'); await (await import((window.__coralStatic||'/static/')+'lazy_panels.js')).loadTaskDetail(); /* the task dialog is a lazy module (#5364): loaded once, then its functions answer synchronously */ 
             s.currentSession={name:'fixture',board_project:'fixture',type:'live'};
             s.currentBoardTasks=[{id:1,title:'Assigned task',body:'',priority:'medium',status:'pending',assigned_to:'Orchestrator',workflow:{}},
                 {id:2,title:'Second task',body:'',priority:'medium',status:'pending',assigned_to:'UI',workflow:{}}];

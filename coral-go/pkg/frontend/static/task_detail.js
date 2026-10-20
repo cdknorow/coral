@@ -1,9 +1,10 @@
 /* A task's detail dialog, editing it, and completing, cancelling or publishing it (moved out of tasks.js, #5082; no behaviour change). */
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { _getBoardProject } from './task_board_context.js';
 import { escapeAttr, escapeHtml, showToast } from './utils.js';
 import { clearOpenSubagent } from './subagents.js';
-import { _taskDetailHtml } from './task_detail_html.js';
+const { _taskDetailHtml } = await importOnce('./task_detail_html.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
 import { _agentTaskStatus } from './task_format.js';
 import { closeOnBackdropAndEscape, releaseEscape } from './dialog_close.js';
 import { boardFetch, pathId, serverFetch, currentServer } from './server_base.js';

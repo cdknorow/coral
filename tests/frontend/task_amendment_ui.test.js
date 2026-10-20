@@ -17,7 +17,7 @@ const BASE = require('./test_base').BASE;
         await Page.navigate({ url: BASE }); await Page.loadEventFired();
         await ev(`(async () => {
             const {state} = await import((window.__coralStatic||'/static/')+'state.js');
-            const tasks = await import((window.__coralStatic||'/static/')+'tasks.js');
+            const tasks = await import((window.__coralStatic||'/static/')+'tasks.js'); await (await import((window.__coralStatic||'/static/')+'lazy_panels.js')).loadTaskDetail(); /* the task dialog is a lazy module (#5364): loaded once, then its functions answer synchronously */ 
             window.testState = state; window.testTasks = tasks;
             state.currentSession = {name:'amendment-fixture', board_project:'amendment-fixture', type:'live'};
             state.currentAgentTasks = []; state.currentSubagents = [];

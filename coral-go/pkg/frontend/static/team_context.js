@@ -7,11 +7,12 @@
  * Selecting an agent leaves the team context. The agent's chat stays mounted
  * underneath, so closing the team view returns to it unchanged.
  */
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { sessionTeamKey, splitKey } from './server_base.js';
 import { showView } from './utils.js';
 import { showTeamAvailability } from './team_availability.js';
-import { showTeamWorkingMode, hasUnsavedTeamSettings, confirmTeamWorkspaceChange } from './team_working_mode.js';
+const { showTeamWorkingMode, hasUnsavedTeamSettings, confirmTeamWorkspaceChange } = await importOnce('./team_working_mode.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
 import { syncFilesSourceTeam } from './team_artifacts.js';
 import { setPreviewSession } from './preview_pane.js';
 import { renderLiveSessions, showBoardChatTab, hideBoardChatTab, getActiveBoardChat } from './render.js';

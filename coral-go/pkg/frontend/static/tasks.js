@@ -23,13 +23,15 @@ import './task_filters.js';
 import './task_board_context.js';
 import './task_verify_marks.js';
 import { _updateDepTags } from './task_dep_picker.js';
-import './task_detail_html.js';
 import './task_reminders.js';
 import { _boardTaskPollTick, _boardTaskPollTimer, _toggleHideCompleted, _toggleTaskSort, renderBoardTaskList } from './task_list.js';
-import { hideTaskDetailModal } from './task_detail.js';
+import { lazyFns, loadTaskDetail } from './lazy_panels.js';
 export { boardTaskFetchHooks, boardTaskPollHooks, loadAgentTasks, loadBoardTasks, loadMoreBoardTasks, renderBoardTaskList, renderTaskList, startBoardTaskPoll, stopBoardTaskPoll } from './task_list.js';
 export { hideCreateTaskModal, showCreateTaskModal, submitCreateTask } from './task_create.js';
-export { _doCancelTask, _doCompleteTask, _restoreTaskFooter, cancelBoardTask, cancelTaskEdit, completeBoardTask, enableTaskEditMode, hideTaskDetailModal, publishBoardTask, saveTaskEdit, showAgentTaskDetailModal, showTaskDetailModal } from './task_detail.js';
+// The task detail dialog is loaded the first time a task is opened (#5364: 43 KB the page does not need to start). Its functions are stubs until then (lazy_panels.js); closing one that was never opened has nothing to do.
+const detail = lazyFns(loadTaskDetail, ['_doCancelTask', '_doCompleteTask', '_restoreTaskFooter', 'cancelBoardTask', 'cancelTaskEdit', 'completeBoardTask', 'enableTaskEditMode', 'publishBoardTask', 'saveTaskEdit', 'showAgentTaskDetailModal', 'showTaskDetailModal']);
+export const { _doCancelTask, _doCompleteTask, _restoreTaskFooter, cancelBoardTask, cancelTaskEdit, completeBoardTask, enableTaskEditMode, publishBoardTask, saveTaskEdit, showAgentTaskDetailModal, showTaskDetailModal } = detail;
+export const hideTaskDetailModal = (...a) => (loadTaskDetail.module ? loadTaskDetail.module.hideTaskDetailModal(...a) : undefined);
 export { nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './task_reminders.js';
 export { clearOpenSubagent, loadSubagents } from './subagents.js';
 

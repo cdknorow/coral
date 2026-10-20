@@ -117,7 +117,7 @@ const hex = i => i.toString(16).padStart(20, '0');
 
             // a team
             await toAgents();
-            await ev(`window.enterTeamContext('team-a', { tab: 'team-view' }); true`);
+            await ev(`Promise.resolve(window.enterTeamContext('team-a', { tab: 'team-view' })).then(() => true)`); // (the team view is a lazy module, #5364: the first call loads it, so wait for it)
             await openSaved(); // the team page opens on its own tab: the Saved tab is shown beside it // on a phone the panel is an overlay that gives way when another page is chosen: it is opened again
             await rowsAre('Saved: team-a', ['fe-a chat', 'qa-a chat', 'team-a board, by the Orchestrator', 'team-a board, by the QA Engineer'], ['(4)', '(1)'], `${dev}: team-a: its board's messages and its agents' chats, nothing of team-b`);
             await shotSaved(`saved-scope-team-${dev}`);

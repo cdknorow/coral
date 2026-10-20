@@ -15,7 +15,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await Page.navigate({ url: BASE }); await Page.loadEventFired();
         await ev(`(async () => {
             const {state} = await import((window.__coralStatic||'/static/')+'state.js');
-            const tasks = await import((window.__coralStatic||'/static/')+'tasks.js');
+            const tasks = await import((window.__coralStatic||'/static/')+'tasks.js'); await (await import((window.__coralStatic||'/static/')+'lazy_panels.js')).loadTaskDetail(); /* the task dialog is a lazy module (#5364): loaded once, then its functions answer synchronously */ 
             window.testTasks = tasks;
             state.currentSession = {name:'workflow-browser', board_project:'workflow-browser', type:'live'};
             await tasks.showCreateTaskModal();

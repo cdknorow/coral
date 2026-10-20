@@ -33,6 +33,11 @@ export const loadDocs = panel('Docs', './docs.js');
 export const loadThemeConfig = panel('the theme editor', './theme_config.js');
 export const loadTemplateBrowser = panel('the template browser', './template_browser.js');
 export const loadChatSearch = panel('chat search', './chat_search.js');
+// The team view and the team's settings (with its Health check tab): opened from a team's button, not needed to start (#5364).
+export const loadTeamContext = panel('the team view', './team_context.js');
+export const loadTeamSettings = panel('the team settings', './team_working_mode.js');
+// The task detail dialog and its editing, completing and cancelling (#5364): opened from a task row.
+export const loadTaskDetail = panel('the task', './task_detail.js');
 // The launch, settings, resume, info and team dialogs (#3140). settings_core.js keeps
 // what runs at startup (loadSettings, the theme).
 export const loadModals = panel('this dialog', './modals.js');
@@ -48,7 +53,8 @@ export const loadDefaultPromptsDialog = panel('this dialog', './default_prompts_
 export function lazyFns(load, names) {
     const stubs = {};
     for (const name of names) {
-        stubs[name] = (...args) => load().then(m => m[name](...args), () => undefined);
+        // once the module is loaded a call goes straight to it, synchronously, as when the module was a static import; the first call waits for the load
+        stubs[name] = (...args) => (load.module ? load.module[name](...args) : load().then(m => m[name](...args), () => undefined));
     }
     load.loaded.push(m => {
         for (const n of names) if (window[n] === stubs[n] && typeof m[n] === 'function') window[n] = m[n];

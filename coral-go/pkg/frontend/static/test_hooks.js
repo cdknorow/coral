@@ -3,6 +3,7 @@
  * installed only when the page's boot data says testHooks (a dev build started with CORAL_TEST_HOOKS=1, which the suites' runner sets; a release build
  * never asks for it). The window functions the suites used to call (window.sendCommand ...) are also set on window from here, for the suites that have
  * not moved to the namespace yet. Taking the hooks out of a build is deleting this file and the one line in app.js that imports it. */
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { testHooksOn } from './server_base.js';
 import { handleCoralMessage, _resetWaitingSeedForTests } from './websocket.js';
@@ -20,7 +21,7 @@ import { hideServersModal } from './servers.js';
 import { cancelSelectMode, deleteMessageBoardProject, showExportBoardModal, showMessageBoardProjects, postBoardMessage, toggleSelectMode } from './message_board.js';
 import { hideFolderTagDropdown } from './folder_tags.js';
 import { showTeamAvailability } from './team_availability.js';
-import { showTeamWorkingMode } from './team_working_mode.js';
+const showTeamWorkingMode = (...a) => importOnce('./team_working_mode.js').then(m => m.showTeamWorkingMode(...a)); // the team settings module is loaded when first used (#5364), not at startup
 import { lazyFns, loadWorkflows, loadTemplateBrowser, loadChatSearch, loadModals, loadResumeDialog } from './lazy_panels.js';
 import { hasAction } from './actions.js';
 import { boardSearchState } from './board_search.js';

@@ -12,9 +12,7 @@ import { initPrerequisiteChecks } from './prerequisites.js';
 import './system_status.js';
 import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardFailed } from './dashboard_analytics.js';
 import { initAgentUI } from './agent_ui.js';
-import { showTeamWorkingModeWorkspace, showTeamHealthSettings } from './team_working_mode.js';
 import { showTeamAvailabilityWorkspace } from './team_availability.js';
-import { enterTeamContext, exitTeamContext, renderTeamSettingsTab } from './team_context.js';
 /* Coral Dashboard — Entry Point */
 
 import { state } from './state.js';
@@ -75,7 +73,7 @@ import { toggleAllGroups } from './group_collapse.js'; // the list header's one 
 import { toggleDisplayPanel, displayPanelKey } from './display_panel.js'; // the Display expander
 import { registerActions, tokenOf } from './actions.js'; // delegated data-on-* handlers, replacing inline ones (#3645)
 import { markReady } from './ready.js';
-import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadModals, loadResumeDialog, loadDefaultPromptsDialog } from './lazy_panels.js';
+import { lazyFns, lazyWindowFns, loadTeamContext, loadTeamSettings, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadModals, loadResumeDialog, loadDefaultPromptsDialog } from './lazy_panels.js';
 
 // Panels off the landing view load on first use (#3083 phase 2, lazy_panels.js).
 const {
@@ -283,6 +281,9 @@ registerActions({
     'cost-refresh': () => _refreshCostDashboard(),
 });
 // Runs on every tab switch: there is nothing to stop until the dashboard has loaded.
+// The team view and its settings (with the Health check tab) load the first time a team is opened (#5364): about 40 KB of source the page does not need to start.
+const { enterTeamContext, exitTeamContext, renderTeamSettingsTab } = lazyFns(loadTeamContext, ['enterTeamContext', 'exitTeamContext', 'renderTeamSettingsTab']);
+const { showTeamWorkingModeWorkspace, showTeamHealthSettings } = lazyFns(loadTeamSettings, ['showTeamWorkingModeWorkspace', 'showTeamHealthSettings']);
 const stopCostDashboard = () => { loadCostDashboard.module?.stopCostDashboard(); };
 const { showDocsTab, selectDoc } = lazyFns(loadDocs, ['showDocsTab', 'selectDoc']);
 const { showThemeConfigurator, hideThemeConfigurator } = lazyFns(loadThemeConfig, ['showThemeConfigurator', 'hideThemeConfigurator']);
