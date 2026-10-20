@@ -33,6 +33,7 @@ import (
 	"unicode"
 
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/secfile"
 	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/cdknorow/coral/pkg/tunnel"
@@ -724,7 +725,10 @@ func (h *UpdateRelaunchHandler) Relaunch(w http.ResponseWriter, r *http.Request)
 		h.refuse(w, r, id, &v, http.StatusConflict, reasonBusy, "an update is being applied", nil)
 		return
 	case reasonTooSoon:
-		h.refuse(w, r, id, &v, http.StatusTooManyRequests, reasonTooSoon, "a relaunch was started a moment ago", nil)
+		// A per-action limit: marked, so the dashboard does not take it for an overloaded server.
+		h.audit(r.Context(), id, &v, reasonTooSoon)
+		wait := int((relaunchSpacing - h.now().Sub(v.rec.LastHubRelaunch)) / time.Second)
+		httputil.WriteActionLimit(w, max(wait, 1), reasonTooSoon, "a relaunch was started a moment ago")
 		return
 	default:
 		h.refuse(w, r, id, &v, http.StatusConflict, v.code, "there is no verified update this computer can relaunch into", nil)
