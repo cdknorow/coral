@@ -195,11 +195,12 @@ func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 	// coral-board handles this via board_state file fallback (reads job_title
 	// from ~/.coral/board_state_{session}.json when CORAL_SUBSCRIBER_ID is unavailable).
 	parts, bypassSandbox, permissionApplied := codexCapabilityFlags(parts, params.Capabilities)
+	presetApplied := permissionApplied
 	parts, bypassSandbox, permissionApplied = codexUserFlags(parts, params.Flags, bypassSandbox, permissionApplied)
 	if !permissionApplied {
 		parts, _, _ = appendCodexPermissionMode(parts, bypassSandbox, params.PermissionMode)
 	}
-	parts = collapseCodexSandboxFlags(parts)
+	parts = collapseCodexSandboxFlags(parts, presetApplied)
 	if arg := codexActionPrompt(files, params); arg != "" {
 		raw = append(raw, arg)
 		// "--": a prompt that is only a flag ("--dangerously-skip-permissions") is the
@@ -378,7 +379,9 @@ func codexActionPrompt(files *launchFiles, params LaunchParams) string {
 
 // collapseCodexSandboxFlags keeps the last --sandbox and the last -a of the command: Codex refuses either given twice ("the argument '--sandbox <SANDBOX_MODE>' cannot be used
 // multiple times"), and the same pair reaching the builder twice (stored by a restart, added again by a wake) left the agent at a bare shell (#5222). The later one is the newer.
-func collapseCodexSandboxFlags(parts []string) []string {
+//
+// keepFirst: the capabilities preset typed them first, and a flag stored from an earlier launch (or typed by hand) must not widen it: the preset's pair wins (#5247).
+func collapseCodexSandboxFlags(parts []string, keepFirst bool) []string {
 	// A flag has a value when the next token is not itself a flag ("--sandbox -a=never" has none: passed as it is).
 	hasValue := func(i int) bool {
 		return (parts[i] == "--sandbox" || parts[i] == "-a") && i+1 < len(parts) && !strings.HasPrefix(parts[i+1], "-")
@@ -388,9 +391,9 @@ func collapseCodexSandboxFlags(parts []string) []string {
 		if !hasValue(i) {
 			continue
 		}
-		if parts[i] == "--sandbox" {
+		if parts[i] == "--sandbox" && (!keepFirst || lastSandbox < 0) {
 			lastSandbox = i
-		} else {
+		} else if parts[i] == "-a" && (!keepFirst || lastApproval < 0) {
 			lastApproval = i
 		}
 	}
