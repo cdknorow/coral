@@ -1,5 +1,5 @@
 // The first click on something that needs a lazy module (a task row, a team's button) shows it is working when the link is slow (#5377, UI/UX's note on #5364): after 150 ms the clicked control
-// is marked busy (aria-busy, .lazy-loading) until the module has loaded; on a fast link it never flickers; nothing moves and the busy state ends when the load fails. Tested at a throttled
+// is marked busy (aria-busy, .lazy-loading: a progress cursor, no dimming) until the module has loaded; on a fast link it never flickers; nothing moves and the busy state ends when the load fails. Tested at a throttled
 // network (CDP Network.emulateNetworkConditions: every request waits 900 ms) against the isolated dev server, with a bundled page (the lazy modules are separate requests).
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -29,7 +29,7 @@ const SLOW = { offline: false, latency: 900, downloadThroughput: 200 * 1024, upl
         check(`at once, nothing shows (${JSON.stringify(early)})`, early.busy === null && !early.cls);
         await settle(400);
         const mid = await state();
-        check(`400 ms in, the row says it is working: aria-busy, a progress cursor, dimmed (${JSON.stringify(mid)})`, mid.busy === 'true' && mid.cls && mid.cursor === 'progress' && Number(mid.opacity) < 1);
+        check(`400 ms in, the row says it is working: aria-busy and a progress cursor, and its text is not dimmed (${JSON.stringify(mid)})`, mid.busy === 'true' && mid.cls && mid.cursor === 'progress' && mid.opacity === '1');
         await waitFor(`!document.getElementById('lb-row').hasAttribute('aria-busy') && !!document.querySelector('#task-detail-modal, .task-detail-modal, [id*=task-detail]')`, 'the module to load and the dialog to open', 40000);
         const after = await state();
         check(`when the module has loaded the row is as it was (${JSON.stringify(after)})`, after.busy === null && !after.cls && after.opacity === '1');
