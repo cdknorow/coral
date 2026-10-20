@@ -198,6 +198,22 @@ func (wr *WorkflowRunner) Shutdown(ctx context.Context) {
 	case <-ctx.Done():
 		wr.logger.Warn("workflow runs still finishing at shutdown", "runs", len(ids))
 	}
+	// A step that ignores SIGTERM is killed by the escalation, which must run before Coral exits (#5366).
+	waitChildKills(ctx)
+}
+
+// waitGroupOrContext waits for wg, or for ctx.
+func waitGroupOrContext(ctx context.Context, wg *sync.WaitGroup) {
+	done := make(chan struct{})
+	go func() {
+		defer safego.Recover("background/workflow_runner:waitGroupOrContext")
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
 }
 
 // WorkflowRunsKept is how many runs (records and run directories) each

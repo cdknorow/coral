@@ -3,7 +3,9 @@
 package background
 
 import (
+	"context"
 	"os/exec"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,21 +24,38 @@ func configureChildProcess(cmd *exec.Cmd) {
 	}
 }
 
-// killChildProcess sends SIGTERM to cmd's process group, then SIGKILL after 5 s
-// to whatever is left of it.
+// childKillGrace is how long a process group has to end after SIGTERM before it gets SIGKILL.
+var childKillGrace = 5 * time.Second
+
+// killEscalations counts the SIGKILL escalations under way, so a shutdown can wait for them: Coral exiting before one fires left a step that ignores SIGTERM running (#5366).
+var killEscalations sync.WaitGroup
+
+// killChildProcess sends SIGTERM to cmd's process group, then SIGKILL to whatever is left of it
+// after childKillGrace. The escalation ends as soon as the group is gone.
 func killChildProcess(cmd *exec.Cmd) {
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err != nil {
 		pgid = cmd.Process.Pid
 	}
 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	killEscalations.Add(1)
 	go func() {
+		defer killEscalations.Done()
 		defer safego.Recover("background/process_unix:31")
-		time.Sleep(5 * time.Second)
+		for deadline := time.Now().Add(childKillGrace); time.Now().Before(deadline); time.Sleep(25 * time.Millisecond) {
+			if syscall.Kill(-pgid, 0) != nil {
+				return
+			}
+		}
 		if err := syscall.Kill(-pgid, 0); err == nil {
 			_ = syscall.Kill(-pgid, syscall.SIGKILL)
 		}
 	}()
+}
+
+// waitChildKills waits for the SIGKILL escalations of killChildProcess, or for ctx: a shutdown calls it so that a step ignoring SIGTERM is killed before Coral exits.
+func waitChildKills(ctx context.Context) {
+	waitGroupOrContext(ctx, &killEscalations)
 }
 
 // trackChildProcess and releaseChildProcess are Windows' job object (process_windows.go); the

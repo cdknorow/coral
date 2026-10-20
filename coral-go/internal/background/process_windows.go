@@ -3,6 +3,7 @@
 package background
 
 import (
+	"context"
 	"os/exec"
 	"sync"
 	"unsafe"
@@ -72,6 +73,9 @@ func releaseChildProcess(cmd *exec.Cmd) {
 		windows.CloseHandle(job)
 	}
 }
+
+// waitChildKills: a job object ends the step whole, so there is no escalation to wait for.
+func waitChildKills(context.Context) {}
 
 // killChildProcess ends the step's job (sh and everything it started), else sh.
 func killChildProcess(cmd *exec.Cmd) {
