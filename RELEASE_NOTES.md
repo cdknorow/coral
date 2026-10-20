@@ -1,5 +1,30 @@
 # Release Notes
 
+## v1.4.132 — Pasted JPEGs lose their embedded thumbnails, a terminal freeze fixed, smaller startup, keyboard and phone passes
+
+### Fixes
+
+- **Pasted JPEGs no longer keep an embedded thumbnail or free-text APP segments:** a JFIF or JFXX thumbnail (which can show the uncropped original) and the free text in APP0 and APP14 are now removed, along with the location and camera data that were already removed. Only the JFIF and Adobe headers stay. A JPEG pasted before this update is unchanged.
+- **The terminal no longer freezes when you switch from chat to the terminal and back:** a fit loop could grow the terminal to over 100,000 rows and leave the page unresponsive for seconds. A fit now never makes the terminal taller or wider than its window, a row's height is the renderer's own measurement, and the first fit after a switch asks for the rows the terminal settles at.
+- **The live feed no longer stacks sockets:** reconnecting closes and detaches the previous feed socket first, so a second call cannot open another or schedule a second reconnect.
+- **Stopping Coral closes the dashboard and terminal sockets cleanly** (close code 1001, "Coral is stopping", up to about a second) instead of leaving them to drop with the process, and a workflow step that ignores SIGTERM is killed before Coral exits.
+
+### Changes
+
+- **Smaller startup:** the team view, team settings and the task detail dialog load the first time they are used (49 KB less in the startup bundle); when that first load is slow the clicked control shows it is working.
+- **Keyboard and screen-reader pass:** Escape closes the preview's comments sheet and returns focus to its toggle, and the toggle's accessible name starts with its visible words.
+- **Phone and theme pass:** a 44 px Comments toggle on a phone, docs-link contrast in the light theme, and checks at 320 and 390 px in both themes. Every bare colour and radius in the stylesheets is now a theme token.
+- **The cost dashboard shows how many metrics were not stored** because the raw rows were at their 500,000 cap (`cap_dropped` in the call metrics summary).
+- **Update screens** (still behind the update flag, which is off) say what the server sends: the words for each reason a relaunch is unavailable, Homebrew and unwritable installs, why nothing is ready yet, and how a roll-back is reported.
+- **The server records how it was started** in the updates folder of its data folder (owner-only; a URL with a password is never recorded, and only an allowlisted part of the environment is kept), so an update can start it again. Nothing uses it until updates are turned on.
+
+### Internal
+
+- The automatic-update work continues without turning anything on: `coral-update status` (what the updater knows, read-only, no network), an apply that checks Coral can be started again before it begins, roll-back reporting, and `GET /api/system/update` carrying `checked_at`, `install_kind`, `upgrade_command`, `not_ready_reason`, `latest` and `last_rollback`. `coral-update` is in the source and in no package.
+- An update rehearsal rig (a fake Sigstore, a fake GitHub, a tamper matrix and a script that replaces a real server by the next version) runs the real check and apply end to end; it is test code and no released program links it.
+- CI: every checkout drops its token, a lint keeps actions pinned and workflow inputs out of scripts, a fuzz job (paste sanitiser, board key, comment anchor, `SHA256SUMS.txt`, `promote.json`) runs 2 minutes per target each night, and a fuzz finding is fixed (`SHA256SUMS.txt` parsing refuses a file name with a control character).
+- Tests: a Windows release smoke (package list, version, MSI install and uninstall, a launched stand-in, a clean stop), a migration chain test from the 1.4.80 and 1.4.110 databases, startup-order and xterm-internals checks, and cleanup of unused code.
+
 ## v1.4.131 — A pasted image's path no longer shows your account name through Coral Hub, faster long artifact lists and replies
 
 ### Features
