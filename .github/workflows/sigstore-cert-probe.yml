@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+# Like every CI workflow (the telemetry census): nothing here runs Coral, but the rule has no exceptions for new workflows.
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
 jobs:
   probe:
     runs-on: ubuntu-24.04
