@@ -10,6 +10,7 @@ import { hubBlocksKeystrokes, applyHubReadOnlyFrame } from './hub_access.js';
 import { feedRetryDelay } from './feed_pacing.js';
 import { isSignedOut } from './overload.js';
 import { browserLocal } from './safe_storage.js';
+import { cellHeight, clearRenderer, onUserInput, screenElement } from './xterm_internals.js'; // the only place that reads what xterm does not document (#5411)
 
 let terminal = null;
 let fitAddon = null;
@@ -63,7 +64,7 @@ function _availWidth() {
 
 // The xterm's drawn width at the current font, and what it would be at the Settings font.
 function _screenWidth() {
-    const screen = terminal && terminal.element && terminal.element.querySelector('.xterm-screen');
+    const screen = screenElement(terminal);
     return screen ? screen.getBoundingClientRect().width : 0;
 }
 
@@ -172,7 +173,7 @@ let _revealScroll = null;
 let _cursorDisposable = null;
 
 function _cursorBox(el) {
-    const screen = terminal && terminal.element && terminal.element.querySelector('.xterm-screen');
+    const screen = screenElement(terminal);
     if (!screen || !(terminal.rows > 0)) return null;
     const sr = screen.getBoundingClientRect(), cr = el.getBoundingClientRect();
     const cell = sr.height / terminal.rows;
@@ -219,9 +220,8 @@ function _fit() {
     // The height of one row: the renderer's own measurement (what the addon's proposal uses). Dividing the screen element's height by the row count looked the same but is not: the screen's height
     // is set by the renderer a frame after a resize, so right after one (or when the view has just been shown) it is the OLD height over the NEW row count, a cell a fraction of its size, and the
     // rows counted from it are many times too many; the next fit multiplied them again (74 x 48 -> 2,339 -> 113,987, #5396). The DOM figure is only the fallback, and only when it is a plausible cell.
-    const rs = terminal._core && terminal._core._renderService;
-    const measured = rs && rs.dimensions && rs.dimensions.css && rs.dimensions.css.cell ? rs.dimensions.css.cell.height : 0;
-    const screen = terminal.element && terminal.element.querySelector('.xterm-screen');
+    const measured = cellHeight(terminal);
+    const screen = screenElement(terminal);
     const fromDom = screen && terminal.rows > 0 ? screen.getBoundingClientRect().height / terminal.rows : 0;
     const cell = measured > 0 ? measured : (fromDom >= 6 && fromDom <= 120 ? fromDom : 0);
     if (_containerEl && cell > 0) {
@@ -230,7 +230,7 @@ function _fit() {
         rows = Math.min(maxRows, Math.max(1, Math.floor((parseFloat(cs.height) - pad) / cell + 0.001)));
     }
     if (cols === terminal.cols && rows === terminal.rows) return;
-    if (terminal._core && terminal._core._renderService) terminal._core._renderService.clear(); // as FitAddon.fit() does
+    clearRenderer(terminal); // as FitAddon.fit() does
     terminal.resize(cols, rows);
 }
 
@@ -523,14 +523,11 @@ function _wireTerminalInput() {
     // those. That is xterm's internal API (the vendored 5.5.0); without it, input is forwarded as
     // before and terminal_escape_browser's query check fails, so an upgrade can't drop this quietly.
     let _userInput = false;
-    const _coreService = terminal._core && terminal._core.coreService;
-    const _marksInput = !!(_coreService && typeof _coreService.onUserInput === 'function');
-    if (_marksInput) {
-        _coreService.onUserInput(() => {
-            _userInput = true;
-            queueMicrotask(() => { _userInput = false; }); // onData follows in the same call
-        });
-    } else {
+    const _marksInput = onUserInput(terminal, () => {
+        _userInput = true;
+        queueMicrotask(() => { _userInput = false; }); // onData follows in the same call
+    });
+    if (!_marksInput) {
         console.warn('[coral] xterm does not mark user input: its query replies reach the pane');
     }
 
