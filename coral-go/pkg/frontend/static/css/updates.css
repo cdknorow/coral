@@ -41,7 +41,8 @@
 .update-managed { display: flex; gap: var(--space-lg, 12px); padding: var(--space-lg, 12px); margin: 0 0 var(--space-lg, 12px); border-radius: var(--radius-lg, 8px); border: 1px solid var(--border); background: var(--bg-secondary); }
 .update-managed .material-icons { color: var(--text-secondary); flex: none; } .update-managed p { margin: 4px 0; color: var(--text-secondary); }
 .update-cmd { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 6px; background: var(--bg-primary); border: 1px solid var(--border); }
-.update-cmd code { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
+.update-managed > div, .update-cmd { min-width: 0; } /* so the command can scroll inside the pane instead of widening the page */
+.update-cmd code { font-family: var(--font-mono, monospace); white-space: nowrap; overflow-x: auto; min-width: 0; } /* the command stays on one line (scrolls sideways on a phone): a wrapped command is copied wrong by eye */
 .update-link { color: var(--accent); } .update-privacy { margin-top: var(--space-lg, 12px); }
 @media (max-width: 767px) { .update-status { flex-wrap: wrap; } .update-status-text { flex-basis: calc(100% - 28px); } .update-act { margin-left: 22px; min-height: 44px; } .update-dismiss { min-width: 44px; min-height: 44px; } }
 .update-dismiss { background: none; border: 0; color: var(--text-secondary); }

@@ -76,6 +76,7 @@ async function sendRelaunch(go, later) {
     if (res.ok) {
         const body = dialog.querySelector('.modal-body');
         const p = mk('p', 'update-note', AFTER[current.installKind] || AFTER_DEFAULT); p.setAttribute('role', 'status');
+        body.querySelector('.update-later-note')?.remove(); // sent: "Not now?" no longer applies
         body.append(p); later.textContent = 'Close'; later.disabled = false; go.hidden = true;
         return;
     }

@@ -76,6 +76,12 @@ const idle = (over = {}) => ({ enabled: true, installed: '1.4.125', state: 'none
             await setStatus(st); const p = await pane();
             check(`${name}: "${p.title}", ${wantCmd ? 'the command ' + p.cmd : 'no command'}, never "up to date"`, p.title === wantTitle && p.cmd === wantCmd && !/up to date/i.test(p.text));
         }
+        // the command is one line on a phone (it scrolls sideways, it does not wrap)
+        await setStatus(idle({ install_kind: 'homebrew', upgrade_command: 'brew upgrade --cask coral', relaunch: { available: false, reason: 'unsupported_install', restarts: [], ack: '' } }));
+        await Emulation.setDeviceMetricsOverride({ width: 320, height: 700, deviceScaleFactor: 1, mobile: true }); await pane();
+        const cmdBox = await ev(`(() => { const c = document.querySelector('#update-pane-body .update-cmd code'); const cs = getComputedStyle(c); const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4; return { ws: cs.whiteSpace, ox: cs.overflowX, oneLine: c.getBoundingClientRect().height < lh * 1.6, fits: c.getBoundingClientRect().right <= innerWidth }; })()`);
+        check(`the brew command stays on one line at 320 px and scrolls sideways if it must (${JSON.stringify(cmdBox)})`, cmdBox.ws === 'nowrap' && cmdBox.ox === 'auto' && cmdBox.oneLine && cmdBox.fits);
+        await Emulation.setDeviceMetricsOverride({ width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 
         console.log('5. what a hub relaunch and a roll-back say');
         await setStatus(idle({ not_ready_reason: 'up_to_date', last_result: { at: '2026-10-20T08:21:00Z', from: '1.4.130', to: '1.4.131', result: 'relaunched', by: 'hub:Dana Q' } }));
@@ -102,7 +108,7 @@ const idle = (over = {}) => ({ enabled: true, installed: '1.4.125', state: 'none
             await ev(`document.querySelector('#update-confirm-modal .update-go').click(); true`);
             await waitFor(`!!document.querySelector('#update-confirm-modal .update-note')`, `${kind || 'unknown'}: the note`, 6000);
             const note = await ev(`document.querySelector('#update-confirm-modal .update-note').textContent`);
-            check(`${kind || '(no kind)'}: "${note}"`, want.test(note) && !/reconnects when Coral is back/.test(note));
+            check(`${kind || '(no kind)'}: "${note}"; "Not now?" is gone once it is sent`, want.test(note) && !/reconnects when Coral is back/.test(note) && (await ev(`!document.querySelector('#update-confirm-modal .update-later-note')`)));
             await ev(`document.querySelector('#update-confirm-modal .update-later').click(); true`); await settle(100);
         }
         const failed = results.filter(r => !r).length;
