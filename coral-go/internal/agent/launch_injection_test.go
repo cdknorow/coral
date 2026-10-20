@@ -20,6 +20,9 @@ import (
 func TestLaunchCommandNeverRunsInjectedShell(t *testing.T) {
 	t.Setenv("SHELL", "/bin/sh")
 	dir := t.TempDir()
+	// A payload used as coral_dir becomes a relative path the pi launch MkdirAlls
+	// (pi-sessions/<id>), so run from the temp dir: the package directory gets no strays.
+	t.Chdir(dir)
 	stub := filepath.Join(dir, "agent-cli")
 	require.NoError(t, os.WriteFile(stub, []byte("#!/bin/sh\nexit 0\n"), 0o755))
 
