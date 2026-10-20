@@ -243,12 +243,16 @@ func TestTheOwnersSaveIsStrictAndTheRepliesAreNotCacheable(t *testing.T) {
 		"trailing text":         `{"subscriber_id":"Operator","health":{"on":false}} x`,
 		"not an object":         `[1]`,
 		"empty":                 ``,
-		"oversize (valid JSON)": `{"subscriber_id":"Operator","health":{"on":false}}` + strings.Repeat(" ", boardSettingsHubMax),
 	} {
 		rec := boardCallRaw(t, h, http.MethodPut, body, ownerHeaders(ownerLabel))
 		assert.Equal(t, 400, rec.Code, name)
 		assert.True(t, h.bs.GetHealthSettings(ctx, "team").On, name+": nothing was saved")
 	}
+	// Too large is its own answer (413 too_large), whatever is in the body.
+	big := boardCallRaw(t, h, http.MethodPut, `{"subscriber_id":"Operator","health":{"on":false}}`+strings.Repeat(" ", boardSettingsHubMax), ownerHeaders(ownerLabel))
+	assert.Equal(t, 413, big.Code)
+	assert.Contains(t, big.Body.String(), `"too_large"`)
+	assert.True(t, h.bs.GetHealthSettings(ctx, "team").On, "oversize: nothing was saved")
 	// The same strict body is not asked of this computer's dashboard.
 	assert.Equal(t, 200, boardCallRaw(t, h, http.MethodPut, `{"subscriber_id":"Operator","health":{"on":true},"extra":1}`, nil).Code)
 

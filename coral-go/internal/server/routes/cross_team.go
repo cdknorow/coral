@@ -170,7 +170,12 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		w.Header().Set("Cache-Control", "no-store")
 		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, boardSettingsHubMax))
 		if err != nil {
-			errBadRequest(w, "the body is too large or unreadable")
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"code": "too_large", "error": "the body is larger than the 16 KB a board settings save accepts through Coral Hub"})
+				return
+			}
+			errBadRequest(w, "the body is unreadable")
 			return
 		}
 		dec := json.NewDecoder(bytes.NewReader(raw))
