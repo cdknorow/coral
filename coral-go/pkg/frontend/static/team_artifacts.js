@@ -136,6 +136,14 @@ function el(tag, className, text) {
     return node;
 }
 
+// An icon is parsed once and cloned after that: a list of 300 rows used to parse six SVG strings per row with innerHTML, the biggest cost of building it (#5329).
+const iconTemplates = new Map();
+function setIcon(node, html) {
+    let tpl = iconTemplates.get(html);
+    if (!tpl) { tpl = document.createElement('template'); tpl.innerHTML = html; iconTemplates.set(html, tpl); }
+    node.replaceChildren(tpl.content.cloneNode(true));
+}
+
 function readableName(item) {
     const name = String(item.name || '').trim();
     if (name && !/^(?:coral:\/\/artifacts\/)?[a-f0-9]{64}(?:\.[a-z0-9]+)?$/i.test(name)) return name;
@@ -205,15 +213,15 @@ const COPY_ICONS = {
 function copyLinkButton(url, name) {
     const button = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-copy-link');
     button.type = 'button';
-    button.innerHTML = COPY_ICONS.copy;
+    setIcon(button, COPY_ICONS.copy);
     button.title = 'Copy link';
     button.setAttribute('aria-label', `Copy link to ${name}`);
     button.addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(new URL(url, location.href).href);
-            button.innerHTML = COPY_ICONS.done;
-        } catch { button.innerHTML = COPY_ICONS.failed; }
-        setTimeout(() => { button.innerHTML = COPY_ICONS.copy; }, 1500);
+            setIcon(button, COPY_ICONS.done);
+        } catch { setIcon(button, COPY_ICONS.failed); }
+        setTimeout(() => { setIcon(button, COPY_ICONS.copy); }, 1500);
     });
     return button;
 }
@@ -411,7 +419,7 @@ function buildRow(item) {
     const actionCell = el('td', 'team-artifact-col-actions');row.append(actionCell);
     const actions = el('div', 'team-artifact-actions');
     const infoBtn = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-info-btn');
-    infoBtn.type = 'button'; infoBtn.innerHTML = INFO_ICON;
+    infoBtn.type = 'button'; setIcon(infoBtn, INFO_ICON);
     infoBtn.title = 'Details'; infoBtn.setAttribute('aria-label', `Details for ${name}`);
     infoBtn.setAttribute('aria-controls', details.id); infoBtn.setAttribute('aria-expanded', String(!details.hidden));
     infoBtn.addEventListener('click', () => {
@@ -424,7 +432,7 @@ function buildRow(item) {
     if (link) {
         const preview = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-preview');
         preview.type = 'button';
-        preview.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/></svg>';
+        setIcon(preview, '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/></svg>');
         preview.title = 'Preview';
         preview.setAttribute('aria-label', `Preview ${name}`);
         preview.addEventListener('click', doPreview);
@@ -433,11 +441,11 @@ function buildRow(item) {
         download.href = link.url;
         if (link.preview) {
             download.download = name;
-            download.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3h12v-3"/><path d="M8 2v8m-3-3 3 3 3-3"/></svg>';
+            setIcon(download, '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3h12v-3"/><path d="M8 2v8m-3-3 3 3 3-3"/></svg>');
             download.title = 'Download';
         } else {
             download.target = '_blank'; download.rel = 'noopener noreferrer';
-            download.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v4"/><path d="M14 2 7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>';
+            setIcon(download, '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v4"/><path d="M14 2 7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>');
             download.title = 'Open link';
         }
         if (link.preview) bindDownload(download, link.url, name);
@@ -447,13 +455,13 @@ function buildRow(item) {
             const hex = /([a-f0-9]{64})/.exec(link.url)[1];
             const del = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-delete');
             del.type = 'button';
-            del.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4"/></svg>';
+            setIcon(del, '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4"/></svg>');
             del.title = 'Delete';
             del.setAttribute('aria-label', `Delete ${name}`);
             del.addEventListener('click', () => deleteArtifact(hex, name, sizeLabel(item.size)));
             const keep = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-keep');
             keep.type = 'button';
-            keep.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>';
+            setIcon(keep, '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h8v11L8 10.5l-4 3z"/></svg>');
             const isKept = !!kept?.has(hex);
             keep.setAttribute('aria-pressed', String(isKept));
             keep.setAttribute('aria-label', `Keep ${name}`);
@@ -466,8 +474,13 @@ function buildRow(item) {
     return row;
 }
 
+const FIRST_ROWS = 40, ROWS_PER_FRAME = 60;
+// The next chunk waits for a frame; a page nobody is looking at gets no frames, so it goes on a timer there.
+const later = fn => (document.hidden ? setTimeout(fn, 16) : requestAnimationFrame(fn));
+const scrollSeen = new WeakMap(); // panel root -> its scrollTop as of the last scroll event
+
 /** The table of artifacts, in a scrolling box. */
-function buildList(items, personal) {
+function buildList(items, personal, scrolled = false) {
     // The table fits its panel at any width: Size and Task live in each row's
     // Details, and a narrow panel drops Type and Created (also in Details).
     const scroll = el('div', 'team-artifacts-scroll');
@@ -482,7 +495,20 @@ function buildList(items, personal) {
     }
     head.append(headers);list.append(head);
     const rows = el('tbody');list.append(rows);
-    for (const item of items) rows.append(buildRow(item));
+    // A long list draws its first rows at once and the rest a few frames later: 300 rows were one 160 ms stall on a slow computer (#5329). A list a person is mid-action in (focus on a row far down, a
+    // delete or a retry just done, or the box is scrolled) is drawn whole, so what the focus goes back to is there and the scroll position is kept.
+    const chunked = items.length > FIRST_ROWS && !scrolled && !(focusKey && focusKey.row >= FIRST_ROWS) && afterDeleteRow === null && !afterRetry;
+    const now = chunked ? FIRST_ROWS : items.length;
+    for (let i = 0; i < now; i++) rows.append(buildRow(items[i]));
+    if (chunked) {
+        let at = now;
+        const more = () => {
+            if (!rows.isConnected) return; // the panel was drawn again: this list is gone
+            for (const stop = Math.min(items.length, at + ROWS_PER_FRAME); at < stop; at++) rows.append(buildRow(items[at]));
+            if (at < items.length) later(more);
+        };
+        later(more);
+    }
     scroll.append(list);
     return scroll;
 }
@@ -501,6 +527,10 @@ function render() {
     if (!v.bar) v.bar = buildBar(next => setFilters(scope, next), { personal, hooks: { onPanel: open => savePanelOpen(scope, views[scope].key, open), onExpandAll: next => setAllDetails(next === 'expand') } });
     const bar = v.bar, filters = v.filters, counts = caches[source].counts;
     if (v.panelKey !== v.key) { v.panelKey = v.key; bar.setOpen(loadPanelOpen(scope, v.key)); } // the filter panel is left as it was for this board or agent (#5293)
+    // Where the box is scrolled, as the last scroll event said: a list drawn in chunks over a scrolled box would shorten it under the scroll position and the browser would clamp it to the top (QA, #5331), so a
+    // scrolled list is drawn whole. (Reading scrollTop here would itself force the layout that clamps it, in the middle of a redraw.)
+    if (!scrollSeen.has(root)) { scrollSeen.set(root, 0); root.addEventListener('scroll', () => scrollSeen.set(root, root.scrollTop), { passive: true }); }
+    const scrolled = scrollSeen.get(root) > 0;
     for (const c of [...root.children]) if (c !== bar.node) c.remove();
     if (showBar) { if (bar.node.parentElement !== root) root.append(bar.node); } else bar.node.remove();
     const before = node => (showBar ? root.insertBefore(node, bar.node) : root.append(node));
@@ -517,7 +547,7 @@ function render() {
     const status = buildStatus({ personal, items, busy, error, truncated });
     root.append(status);
     if (error) root.append(buildRetry(items));
-    if (items.length) root.append(buildList(items, personal)); // no header over nothing: an empty list or a failed load shows its line only
+    if (items.length) root.append(buildList(items, personal, scrolled)); // no header over nothing: an empty list or a failed load shows its line only
     if (hasMore) root.append(buildMore(busy));
     if (truncated) root.append(el('div', 'team-artifacts-status', 'Some older artifacts are not included in this list.'));
     if (showBar) {
