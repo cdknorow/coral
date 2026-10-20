@@ -12,7 +12,7 @@ import (
 
 // PostMessage posts a new message to a project board.
 func (s *Store) PostMessage(ctx context.Context, project, subscriberID, content string, targetGroupID *string) (*Message, error) {
-	return s.postMessage(ctx, project, subscriberID, content, targetGroupID, "", "", false)
+	return s.postMessage(ctx, project, subscriberID, content, targetGroupID, "", "", false, nil)
 }
 
 // OriginHubUser marks a chat post a Coral Hub user made through the tunnel (#3377).
@@ -33,32 +33,42 @@ const OriginHubNotice = "hub_notice"
 // PostHubNotice posts a notice Coral Hub asked for, as "Coral Hub" with origin hub_notice,
 // marked as one of Coral's own messages. content is built by Coral from a fixed template.
 func (s *Store) PostHubNotice(ctx context.Context, project, content string) (*Message, error) {
-	return s.postMessage(ctx, project, HubUnknownSender, content, nil, OriginHubNotice, "", true)
+	return s.postMessage(ctx, project, HubUnknownSender, content, nil, OriginHubNotice, "", true, nil)
 }
 
 // PostMessageWithOrigin is PostMessage with a server-set origin ("" for none).
 func (s *Store) PostMessageWithOrigin(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin string) (*Message, error) {
-	return s.postMessage(ctx, project, subscriberID, content, targetGroupID, origin, "", false)
+	return s.postMessage(ctx, project, subscriberID, content, targetGroupID, origin, "", false, nil)
 }
 
 // PostHubMessage posts a chat message a Coral Hub user made through the tunnel, with the
 // validated Hub user recorded (#3404): sent as that user with origin hub_user, or, when
 // asOperator, as the Operator with origin hub_operator.
 func (s *Store) PostHubMessage(ctx context.Context, project, hubUser, content string, targetGroupID *string, asOperator bool) (*Message, error) {
+	return s.PostHubMessageForTask(ctx, project, hubUser, content, targetGroupID, asOperator, nil)
+}
+
+// PostHubMessageForTask is PostHubMessage for a reply to a task (taskID, #5463); nil for a plain post.
+func (s *Store) PostHubMessageForTask(ctx context.Context, project, hubUser, content string, targetGroupID *string, asOperator bool, taskID *int64) (*Message, error) {
 	sender, origin := hubUser, OriginHubUser
 	if asOperator {
 		sender, origin = "Operator", OriginHubOperator
 	}
-	return s.postMessage(ctx, project, sender, content, targetGroupID, origin, hubUser, false)
+	return s.postMessage(ctx, project, sender, content, targetGroupID, origin, hubUser, false, taskID)
+}
+
+// PostMessageForTask is PostMessageWithOrigin for a reply to a task (taskID, #5463); nil for a plain post.
+func (s *Store) PostMessageForTask(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin string, taskID *int64) (*Message, error) {
+	return s.postMessage(ctx, project, subscriberID, content, targetGroupID, origin, "", false, taskID)
 }
 
 // PostSystemMessage posts as one of Coral's own senders (the task queue, the health
 // monitor) and marks the message is_system (#3387). Only server code calls it.
 func (s *Store) PostSystemMessage(ctx context.Context, project, sender, content string, targetGroupID *string) (*Message, error) {
-	return s.postMessage(ctx, project, sender, content, targetGroupID, "", "", true)
+	return s.postMessage(ctx, project, sender, content, targetGroupID, "", "", true, nil)
 }
 
-func (s *Store) postMessage(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin, hubUser string, system bool) (*Message, error) {
+func (s *Store) postMessage(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin, hubUser string, system bool, taskID *int64) (*Message, error) {
 	// No terminal control is stored (#3580): a post is printed in agents' terminals by
 	// coral-board, and system posts quote task titles agents wrote.
 	content = clitext.Clean(content)
@@ -71,14 +81,14 @@ func (s *Store) postMessage(ctx context.Context, project, subscriberID, content 
 		hubUserVal = &hubUser
 	}
 	result, err := s.db.ExecContext(ctx,
-		"INSERT INTO board_messages (project, session_id, subscriber_id, content, target_group_id, created_at, origin, hub_user, is_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		project, subscriberID, subscriberID, content, targetGroupID, now, originVal, hubUserVal, system)
+		"INSERT INTO board_messages (project, session_id, subscriber_id, content, target_group_id, created_at, origin, hub_user, is_system, task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		project, subscriberID, subscriberID, content, targetGroupID, now, originVal, hubUserVal, system, taskID)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := result.LastInsertId()
 	s.ensureBoardRow(ctx, project)
-	msg := &Message{ID: id, Project: project, SubscriberID: subscriberID, Content: content, CreatedAt: now, Origin: originVal, HubUser: hubUserVal, IsSystem: system}
+	msg := &Message{ID: id, Project: project, SubscriberID: subscriberID, Content: content, CreatedAt: now, Origin: originVal, HubUser: hubUserVal, IsSystem: system, TaskID: taskID}
 	if targetGroupID != nil {
 		msg.TargetGroupID = targetGroupID
 	}
@@ -145,7 +155,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 		}
 	} else {
 		err = s.reader().SelectContext(ctx, &messages,
-			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.created_at,
+			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.task_id, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
@@ -226,7 +236,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 		err = s.reader().SelectContext(ctx, &messages,
 			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-			        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
+			        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.task_id
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 			 WHERE m.project = ? AND m.id < ?
@@ -237,7 +247,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 		err = s.reader().SelectContext(ctx, &messages,
 			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-			        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
+			        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.task_id
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 			 WHERE m.project = ?
@@ -249,7 +259,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 			`SELECT * FROM (
 			    SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			           COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-			           m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
+			           m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.task_id
 			    FROM board_messages m
 			    LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 			    WHERE m.project = ?
@@ -263,7 +273,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 // listMessagesSelect is the dashboard message row; callers append the WHERE.
 const listMessagesSelect = `SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 	        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-	        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
+	        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.task_id
 	 FROM board_messages m
 	 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id`
 
@@ -335,7 +345,7 @@ func (s *Store) GetMessageByID(ctx context.Context, project string, id int64) (*
 	err := s.reader().GetContext(ctx, &msg,
 		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 		        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-		        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
+		        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.task_id
 		 FROM board_messages m
 		 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 		 WHERE m.id = ? AND m.project = ?`, id, project)
@@ -358,7 +368,7 @@ func (s *Store) SearchMessageHits(ctx context.Context, query string, limit int) 
 	err := s.reader().SelectContext(ctx, &messages,
 		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 		        COALESCE(bs.job_title, m.subscriber_id, 'Unknown') as job_title,
-		        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
+		        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.task_id
 		 FROM board_messages m
 		 LEFT JOIN board_subscribers bs ON m.project = bs.project AND m.subscriber_id = bs.subscriber_id
 		 WHERE m.content LIKE ? COLLATE NOCASE

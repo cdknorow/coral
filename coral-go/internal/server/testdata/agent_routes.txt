@@ -259,6 +259,7 @@ a POST /api/board/{project}/tasks/{taskID}/approve
 a POST /api/board/{project}/tasks/{taskID}/cancel
 a POST /api/board/{project}/tasks/{taskID}/complete
 a POST /api/board/{project}/tasks/{taskID}/nudge
+a POST /api/board/{project}/tasks/{taskID}/reply
 a POST /api/board/{project}/tasks/{taskID}/park
 a POST /api/board/{project}/tasks/{taskID}/publish
 a POST /api/board/{project}/tasks/{taskID}/reassign

@@ -259,6 +259,8 @@ var routeTable = cat(
 		// (Security's #3725 review), so they stay off this table and are refused.
 		"/api/board/{project}/tasks/{id}/cancel",
 		"/api/board/{project}/tasks/{id}/nudge",
+		// A reply to a task (#5463): a board message linked to it, written as the stamped hub user like POST .../messages; the creator is mentioned, nothing else changes.
+		"/api/board/{project}/tasks/{id}/reply",
 		"/api/board/{project}/tasks/{id}/reminder",
 		"/api/board/{project}/tasks/{id}/publish",
 		"/api/board/{project}/working-mode/presets",

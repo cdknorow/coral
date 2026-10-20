@@ -293,7 +293,7 @@ func (s *Store) likeMentionCandidates(ctx context.Context, project, subscriberID
 	}
 	args = append(args, fetchLimit)
 	query := fmt.Sprintf(
-		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.created_at,
+		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.task_id, m.created_at,
 		        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
 		 FROM board_messages m
 		 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id

@@ -106,6 +106,8 @@ type Message struct {
 	// health monitor), never inferred from the sender's name (#3387). The chat
 	// collapses these (#3343).
 	IsSystem bool `db:"is_system" json:"is_system"`
+	// TaskID is the task this message replies to (POST .../tasks/{id}/reply, #5463): set by the server only, absent for every other message.
+	TaskID *int64 `db:"task_id" json:"task_id,omitempty"`
 	// Legacy column — kept for DB compat, mirrors SubscriberID for new rows.
 	SessionID string `db:"session_id" json:"-"`
 }

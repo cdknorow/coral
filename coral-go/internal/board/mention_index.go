@@ -252,7 +252,7 @@ func (s *Store) indexMentionChunk(ctx context.Context, limit int) (int, error) {
 
 // mentionCandidateQuery is the one query text for every subscriber: the messages after a cursor, from others,
 // that have one of the tokens (a JSON array of them), oldest first.
-const mentionCandidateQuery = `SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.created_at,
+const mentionCandidateQuery = `SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.task_id, m.created_at,
 	        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
 	 FROM board_messages m
 	 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id

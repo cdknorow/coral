@@ -32,6 +32,7 @@ var agentWriteRoutes = []struct {
 }{
 	{http.MethodPost, regexp.MustCompile(`^/api/board/[^/]+/messages$`)},
 	{http.MethodPost, regexp.MustCompile(`^/api/board/[^/]+/tasks$`)},
+	{http.MethodPost, regexp.MustCompile(`^/api/board/[^/]+/tasks/[^/]+/reply$`)}, // a reply is a post: the same budget (#5463)
 	{http.MethodPost, regexp.MustCompile(`^/api/agent/tasks$`)},
 	{http.MethodPost, regexp.MustCompile(`^/api/board/[^/]+/waits$`)},
 	{http.MethodPost, regexp.MustCompile(`^/api/notifications$`)},

@@ -135,6 +135,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"ALTER TABLE board_messages ADD COLUMN origin TEXT",
 		"ALTER TABLE board_messages ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0",
 		"ALTER TABLE board_messages ADD COLUMN hub_user TEXT",
+		"ALTER TABLE board_messages ADD COLUMN task_id INTEGER", // the task a reply answers (#5463): null for every message that is not a reply to a task
 		"ALTER TABLE board_tasks ADD COLUMN parked_reason TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN parked_until TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN remind_at TEXT",
@@ -200,6 +201,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		// The sender of a board's messages by id (#5354): "has the health monitor posted since I read?" is a seek, not a scan of the unread tail.
 		// subscriber_id is a migrated column, so this index follows its ALTER too.
 		"CREATE INDEX IF NOT EXISTS idx_board_messages_sender ON board_messages(project, subscriber_id, id)",
+		// Only the replies to a task are in it, so building it touches no old row (#5463).
+		"CREATE INDEX IF NOT EXISTS idx_board_messages_task ON board_messages(project, task_id, id) WHERE task_id IS NOT NULL",
 	} {
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
 			log.Printf("[board] index warning: %v", err)
