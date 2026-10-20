@@ -92,7 +92,7 @@ const HEX = n => String(n).repeat(64).slice(0, 64);
         await press(' ', 'Space', 32);
         await waitFor(`document.querySelector('#agentic-panel-team-artifacts-view .team-artifact-row:nth-child(2) .team-artifact-keep').getAttribute('aria-pressed') === 'true'`, 'Keep to toggle', 4000);
         a = await active(); assert.match(a.cls, /team-artifact-keep/, 'Keep keeps the focus');
-        await ev(`document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-heading button').focus(); true`);
+        await ev(`document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-refresh').focus(); true`);
         await press('Enter', 'Enter', 13);
         await waitFor(`document.getElementById('agentic-panel-team-artifacts-view').getAttribute('aria-busy') === 'false' && document.querySelectorAll('#agentic-panel-team-artifacts-view .team-artifact-row').length === 3`, 'the reload', 6000);
         await sleep(300); // sleep-ok: a redraw and a layout settle over frames; no completion event

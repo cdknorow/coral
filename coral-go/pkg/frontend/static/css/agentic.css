@@ -2318,6 +2318,18 @@ body.panel-dragging .agentic-state {
 @media (max-width: 767px), (pointer: coarse) {
     .agent-list-bar .list-bar-filter-btn, .agent-list-bar .list-bar-select, .agent-list-bar .list-bar-chip, .agent-list-bar .list-bar-clear-all, .agent-list-bar .list-bar-menu input, .agent-list-bar .list-bar-menu select { min-height: var(--control-touch-height, 44px); }
 }
+.list-bar-lead, .list-bar-tail { display: contents; }
+/* The artifact lists' one row (#5315): title, the search box taking what is left, the count and filter icons, then Refresh and Copy at the right. A narrow list gives the title a line of its own. */
+.list-bar-has-header { padding-top: 6px; }
+.list-bar-has-header .team-artifacts-title { flex: 0 1 auto; max-width: 40%; font-size: 0.75rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-bar-has-header .team-artifacts-action { flex: none; }
+@container (max-width: 560px) { .list-bar-has-header .team-artifacts-title { flex: 1 1 100%; max-width: none; } .list-bar-has-header .list-bar-count { display: none; } } /* the status line under the bar says the count */
+/* A very narrow list (320 px): five icons and a search box no longer fit on a line, and one would drop alone. Refresh and Copy go up to the title's line, at the right; the search and the two filter icons take the line below. */
+@container (max-width: 380px) {
+    .list-bar-has-header .team-artifacts-title { flex: 1 1 0; min-width: 0; max-width: none; }
+    .list-bar-has-header .list-bar-lead::after { content: ''; flex: 0 0 100%; order: 1; height: 0; }
+    .list-bar-has-header .list-bar-search-wrap, .list-bar-has-header .list-bar-toggle, .list-bar-has-header .list-bar-expand-all { order: 2; }
+}
 .list-bar-search-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .list-bar-search-wrap { position: relative; flex: 1 1 12em; min-width: 0; }
 .list-bar-search { width: 100%; box-sizing: border-box; padding: 6px 28px 6px 8px; font-size: 0.8125rem; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--control-border); border-radius: 6px; }

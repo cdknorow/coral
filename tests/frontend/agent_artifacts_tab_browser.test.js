@@ -80,7 +80,7 @@ const STUB = `(() => {
     try {
         await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
-        for (const view of [{ name: 'desktop', w: 1280, h: 900, phone: false, theme: 'dark' }, { name: 'desktop', w: 1280, h: 900, phone: false, theme: 'light' }, { name: '390px', w: 390, h: 844, phone: true, theme: 'dark' }, { name: '390px', w: 390, h: 844, phone: true, theme: 'light' }]) {
+        for (const view of [{ name: 'desktop', w: 1280, h: 900, phone: false, theme: 'dark' }, { name: 'desktop', w: 1280, h: 900, phone: false, theme: 'light' }, { name: '390px', w: 390, h: 844, phone: true, theme: 'dark' }, { name: '390px', w: 390, h: 844, phone: true, theme: 'light' }, { name: '320px', w: 320, h: 700, phone: true, theme: 'light' }, { name: '320px', w: 320, h: 700, phone: true, theme: 'dark' }]) {
             const tag = `${view.name} ${view.theme}`; console.log(tag);
             await open(view);
             // ═══ an agent on a team: the search bar is its own, scoped to the agent
@@ -106,6 +106,19 @@ const STUB = `(() => {
             for (const tab of ['artifacts', 'team-artifacts']) {
                 if (tab === 'team-artifacts') { await ev(`window.switchAgenticTab('team-artifacts', 'top'); true`); await settled('team-artifacts'); }
                 const sec = `${tab}: `;
+                // #5315 (operator): the list's header is ONE row: the title, then the search box taking what is left, the filter icons, and Refresh and Copy at the right; no separate heading above the bar
+                const row = await ev(`(() => { const p = document.querySelector('${panel(tab)}'); const g = s => { const e = p.querySelector(s); if (!e || !e.getClientRects().length) return null; const r = e.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), cy: Math.round(r.top + r.height / 2), w: Math.round(r.width) }; };
+                    const view = p.querySelector('.team-artifacts-view') || p; const v = view.getBoundingClientRect();
+                    return { title: g('.team-artifacts-title'), text: (p.querySelector('.team-artifacts-title') || {}).textContent, search: g('.list-bar-search'), tog: g('.list-bar-toggle'), exp: g('.list-bar-expand-all'), refresh: g('.team-artifacts-refresh'), copy: g('.team-artifacts-help'), heading: !!p.querySelector('.team-artifacts-heading'), viewRight: Math.round(v.right), overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
+                const lineOf = e => e && e.cy;
+                const rest = [row.search, row.tog, row.exp, row.refresh, row.copy];
+                const narrow = view.w <= 380; // a 320 px list: Refresh and Copy go up to the title's line, the search and the two filter icons take the one below (nothing wraps alone)
+                const same = (...xs) => Math.max(...xs.map(lineOf)) - Math.min(...xs.map(lineOf)) <= 6;
+                check(`${tag}: ${sec}one header row: ${narrow ? 'the title, Refresh and Copy on one line, the search, filter and expand icons on the next' : 'search, filter icon, expand icon, Refresh and Copy share a line' + (view.phone ? ' (a phone gives the title a line above)' : ' with the title')} (${JSON.stringify(row)})`,
+                    row.title && rest.every(Boolean) && !row.heading && (narrow ? same(row.title, row.refresh, row.copy) && same(row.search, row.tog, row.exp) && row.search.cy > row.title.cy + 8 : same(...rest) && (view.phone ? row.title.cy < row.search.cy - 8 : same(row.title, row.search))));
+                check(`${tag}: ${sec}in that order, the search taking the width, Refresh and Copy at the right edge, nothing wider than the screen (${row.text})`,
+                    (view.phone || row.title.r <= row.search.l) && row.search.r <= row.tog.l && row.tog.r <= row.exp.l + 1 && (narrow ? row.title.r <= row.refresh.l + 1 : row.exp.r <= row.refresh.l + 1) && row.refresh.r <= row.copy.l + 1 && row.viewRight - row.copy.r <= 24 && row.search.w >= (narrow ? 150 : view.phone ? 100 : 160) && row.overflow <= 0 && /^(Team )?Artifacts · /.test(row.text));
+                await shot(`artifacts-header-${tab}-${view.name}-${view.theme}`);
                 const ref = await ev(`(() => { const b = document.querySelector('${panel(tab)} .team-artifacts-refresh'); if (!b) return null; const r = b.getBoundingClientRect(); return { label: b.getAttribute('aria-label'), title: b.title, text: b.textContent.trim(), svg: !!b.querySelector('svg'), w: Math.round(r.width), h: Math.round(r.height), tag: b.tagName, anyText: [...document.querySelectorAll('${panel(tab)}-view .team-artifacts-action')].some(x => x.textContent.trim() === 'Refresh') }; })()`);
                 check(`${tag}: ${sec}Refresh is a reload icon button, named, with a tooltip, no text (${JSON.stringify(ref)})`, ref && ref.tag === 'BUTTON' && ref.label === 'Refresh' && ref.title === 'Refresh' && ref.text === '' && ref.svg && !ref.anyText && (!view.phone || (ref.w >= 44 && ref.h >= 44)));
                 const before = await ev('window.__req.length');

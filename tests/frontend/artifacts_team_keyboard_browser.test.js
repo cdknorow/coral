@@ -67,7 +67,7 @@ const HEX = n => String(n).repeat(64).slice(0, 64);
         let a = await active(); assert.match(a.cls, /team-artifact-keep/, 'the focus stays on the Keep button: ' + JSON.stringify(a)); assert.equal(a.row, 1);
 
         console.log('4. Refresh by Enter keeps the focus on Refresh');
-        await ev(`document.querySelector('#agentic-panel-artifacts-view .team-artifacts-heading button').focus(); true`);
+        await ev(`document.querySelector('#agentic-panel-artifacts-view .team-artifacts-refresh').focus(); true`);
         await press('Enter', 'Enter', 13);
         await waitFor(`document.querySelectorAll('#agentic-panel-artifacts-view .team-artifact-row').length === 3 && document.getElementById('agentic-panel-artifacts-view').getAttribute('aria-busy') === 'false'`, 'the reload', 6000);
         await sleep(300); // sleep-ok: a redraw and a layout settle over frames; no completion event

@@ -231,7 +231,7 @@ function focusKeyOf(root) {
 let afterRetry = false;
 function focusAfterAction(root) {
     const rows = [...root.querySelectorAll('tr.team-artifact-row')];
-    const refresh = root.querySelector('.team-artifacts-heading .team-artifacts-action');
+    const refresh = root.querySelector('.team-artifacts-refresh');
     if (afterDeleteRow !== null) {
         const at = afterDeleteRow; afterDeleteRow = null;
         const target = at >= 0 ? (rows[at] || rows[at - 1] || null) : null;
@@ -260,17 +260,20 @@ function restoreFocus(root) {
         if (first) first.focus();
         return;
     }
-    const pool = focusKey.row >= 0 ? (root.querySelectorAll('tr.team-artifact-row')[focusKey.row]?.querySelectorAll('button, a[href], summary') || []) : root.querySelectorAll('.team-artifacts-heading button, .team-artifacts-status ~ button, .team-artifacts-more');
+    const pool = focusKey.row >= 0 ? (root.querySelectorAll('tr.team-artifact-row')[focusKey.row]?.querySelectorAll('button, a[href], summary') || []) : root.querySelectorAll('.team-artifacts-heading button, .list-bar-tail button, .team-artifacts-status ~ button, .team-artifacts-more');
     const hit = [...pool].find(e => (e.getAttribute('aria-label') || e.textContent || '').trim() === focusKey.label);
     if (!hit) { focusKey = null; return; }   // the row or the control is gone
     if (hit.disabled) return;                 // back when it is enabled again
     hit.focus(); focusKey = null;
 }
 
-/** The panel's heading: its title, Refresh, and the button that copies how an agent publishes an artifact. */
-function buildHeading({ personal, scopeName, busy }) {
+/** The panel's heading: its title, Refresh, and the button that copies how an agent publishes an artifact. With a search bar they go on the bar's one row (the title before the box, the two
+ *  icons after the filter icons, #5315); without one (a standalone agent's list) they are a heading of their own. */
+function buildHeading({ personal, scopeName, busy }, bar) {
     const heading = el('div', 'team-artifacts-heading');
-    heading.append(el('span', '', (personal || team) ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts'));
+    const title = el('span', 'team-artifacts-title', (personal || team) ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts');
+    title.title = title.textContent;
+    heading.append(title);
     const refresh = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifacts-refresh');
     refresh.type = 'button'; refresh.disabled = personal ? !sessionID : !team;
     refresh.innerHTML = RELOAD_ICON;
@@ -291,6 +294,7 @@ function buildHeading({ personal, scopeName, busy }) {
         } catch { helpIcon.textContent = 'error_outline'; }
         setTimeout(() => { helpIcon.textContent = 'content_copy'; }, 1500);
     });
+    if (bar) { bar.setHeader(title, [refresh, help]); return null; }
     heading.append(refresh, help);
     return heading;
 }
@@ -500,7 +504,8 @@ function render() {
     if (showBar) { if (bar.node.parentElement !== root) root.append(bar.node); } else bar.node.remove();
     const before = node => (showBar ? root.insertBefore(node, bar.node) : root.append(node));
     root.setAttribute('aria-busy', String(busy));
-    before(buildHeading({ personal, scopeName, busy }));
+    const heading = buildHeading({ personal, scopeName, busy }, showBar ? bar : null);
+    if (heading) before(heading);
     if (notice) {
         before(buildNotice(notice));
         // The visible line is for the eye; screen readers get it from the live region that is always in the page (a region that appears with its text is often missed).

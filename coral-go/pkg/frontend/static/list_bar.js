@@ -97,7 +97,9 @@ export function buildListBar(spec, onChange, hooks = {}) {
             chev.title = spec.expandAll.expand; chev.setAttribute('aria-label', spec.expandAll.expand);
         }
     }
-    if (noSearch) searchRow.hidden = true; else searchRow.append(wrap, count, ...(tog ? [tog] : []), ...(chev ? [chev] : []));
+    // spec.headerSlots (#5315): the owner's title goes before the search box and its action icons after the filter icon, on this one row (setHeader). The slots are display: contents, so their children are the row's own.
+    const lead = spec.headerSlots ? make('span', 'list-bar-lead') : null, tail = spec.headerSlots ? make('span', 'list-bar-tail') : null;
+    if (noSearch) searchRow.hidden = true; else searchRow.append(...(lead ? [lead] : []), wrap, count, ...(tog ? [tog] : []), ...(chev ? [chev] : []), ...(tail ? [tail] : []));
 
     const controls = make('div', 'list-bar-controls');
     const filterBtn = make('button', 'list-bar-filter-btn', 'Filters'); filterBtn.type = 'button';
@@ -123,6 +125,7 @@ export function buildListBar(spec, onChange, hooks = {}) {
     if (noSearch) node.classList.add('list-bar-nosearch');
     node.append(...(noSearch ? [] : [searchRow]), ...(controls.children.length ? [controls] : []), ...(hasFilters ? [menu] : []), ...(inline ? [] : [chipList]), live);
     if (collapsible) node.classList.add('list-bar-collapsible');
+    if (lead) node.classList.add('list-bar-has-header');
 
     // Whatever a panel's model does with a text, the bar sends it trimmed: a tab or a space pasted at either end is a request the server refuses (#4806), and no panel can forget it.
     const textKeys = ['q', ...spec.fields.filter(x => x.type === 'text').map(x => x.key)];
@@ -228,6 +231,8 @@ export function buildListBar(spec, onChange, hooks = {}) {
         isOpen: () => !menu.hidden,
         /** The expand-all icon: what pressing it will do next ('expand' or 'collapse'). */
         setExpandNext(next) { if (!chev) return; chev.dataset.next = next; const word = spec.expandAll[next]; chev.title = word; chev.setAttribute('aria-label', word); },
+        /** A bar with headerSlots: the title (a node) before the search box, and the action icons (nodes) after the filter icons. */
+        setHeader(title, tools = []) { if (!lead) return; lead.replaceChildren(...(title ? [title] : [])); tail.replaceChildren(...tools); },
         /** A bar that is replaced (a panel rebuilt for another board) lets go of the page's click listener and any search still waiting. */
         dispose() { document.removeEventListener('click', outside); clearTimeout(timer); clearTimeout(liveTimer); node.remove(); },
     };

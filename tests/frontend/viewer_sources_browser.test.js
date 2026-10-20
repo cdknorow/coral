@@ -88,7 +88,7 @@ const base=require('./test_base').BASE;
  await click('.team-artifact-preview');assert.match(await ev(`document.getElementById('preview-body').textContent`),/Artifact body/);await ev('window.closeAllPreviewTabs()');await settle();assert.equal(await ev(`document.getElementById('agentic-tab-artifacts').classList.contains('active')`),true);
  await tab('team-artifacts');assert.match(await ev(`document.querySelector('#agentic-panel-team-artifacts-view').textContent`),/Team shared/);
  await tab('artifacts');assert.equal(await ev(`calls.filter(x=>x.includes('/artifacts?')).length`),2);
- await ev(`window.defer=true;document.querySelector('#agentic-panel-artifacts-view .team-artifacts-heading button').click()`);await settle();
+ await ev(`window.defer=true;document.querySelector('#agentic-panel-artifacts-view .team-artifacts-refresh').click()`);await settle();
  await ev(`window.defer=false;s.currentSession={...s.currentSession,session_id:'b',working_directory:'/repo-b/subdir'};f.syncFilesViewerSession();pending.splice(0).forEach(r=>r())`);await settle();
  assert.match(await ev(`document.querySelector('#agentic-panel-artifacts-view').textContent`),/Personal b/);assert.doesNotMatch(await ev(`document.querySelector('#agentic-panel-artifacts-view').textContent`),/Personal a/);
  await tab('team-artifacts');assert.equal(await ev(`calls.filter(x=>x.includes('/artifacts?')&&!x.includes('session_id')).length`),1,'same-team cache retained');

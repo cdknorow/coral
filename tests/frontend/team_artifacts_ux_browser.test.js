@@ -58,9 +58,9 @@ const HEX = c => c.repeat(64);
 
         console.log('2. A singular count, the live region and a dd gap');
         await ev(`window.__items = [window.__items[0]]; window.switchAgenticTab && 0; true`);
-        await ev(`document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-heading .team-artifacts-action').click(); true`);
+        await ev(`document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-refresh').click(); true`);
         await waitFor(`/^1 artifact$/.test((document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-status') || {}).textContent || '')`, '"1 artifact"', 8000);
-        await ev(`window.__items = ${JSON.stringify(ITEMS)}; document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-heading .team-artifacts-action').click(); true`);
+        await ev(`window.__items = ${JSON.stringify(ITEMS)}; document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-refresh').click(); true`);
         await waitFor(`document.querySelectorAll('tr.team-artifact-row').length === 3`, 'three rows again', 8000);
         assert.equal(await ev(`(() => { const dl = document.createElement('dl'); const w = document.createElement('div'); w.className = 'team-artifact-details'; w.append(dl); for (const t of ['Also received from', 'a', 'b']) { const e = document.createElement(t === 'Also received from' ? 'dt' : 'dd'); e.textContent = t; dl.append(e); } document.body.append(w);
             const gap = parseFloat(getComputedStyle(dl.querySelectorAll('dd')[1]).marginTop); w.remove(); return gap > 0; })()`), true, 'the second sender line has a gap above it');
@@ -88,7 +88,7 @@ const HEX = c => c.repeat(64);
         assert.equal(await ev(`!!document.querySelector('.team-artifacts-list')`), false, 'an empty list is its line, with no table header over nothing');
 
         console.log('4. An error is red, has no table, and Retry keeps the focus on the panel; Refresh keeps it while loading');
-        await ev(`window.__mode = 'error'; document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-heading .team-artifacts-action').click(); true`);
+        await ev(`window.__mode = 'error'; document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-refresh').click(); true`);
         await waitFor(`!!document.querySelector('.team-artifacts-retry')`, 'the error with Retry', 8000);
         const err = await ev(`(() => { const s = document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-status'); const calm = document.createElement('div'); calm.className = 'team-artifacts-status'; document.querySelector('#agentic-panel-team-artifacts-view').append(calm); const c = getComputedStyle(calm).color; calm.remove();
             return { state: s.dataset.state, color: getComputedStyle(s).color, calm: c, role: s.getAttribute('role'), table: !!document.querySelector('.team-artifacts-list') }; })()`);
@@ -100,7 +100,7 @@ const HEX = c => c.repeat(64);
         a = await active();
         assert.equal(a.body, undefined, 'after Retry the focus is on the panel: ' + JSON.stringify(a)); assert.equal(a.row, 0, 'on the first row\'s first control');
         // Refresh while the list loads: the focus stays on it, and a second press does not start a second load.
-        await ev(`window.__mode = 'deferred'; window.__lists = 0; document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-heading .team-artifacts-action').focus(); true`);
+        await ev(`window.__mode = 'deferred'; window.__lists = 0; document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-refresh').focus(); true`);
         await press('Enter', 'Enter', 13);
         await waitFor(`window.__lists === 1 && !!window.__release`, 'the load to start', 8000);
         a = await active();
@@ -109,7 +109,7 @@ const HEX = c => c.repeat(64);
         await press('Enter', 'Enter', 13); await sleep(200); // sleep-ok: shows that a second press does nothing
         assert.equal(await ev(`window.__lists`), 1, 'a second press starts no second load');
         await ev(`window.__release(); true`);
-        await waitFor(`document.querySelectorAll('tr.team-artifact-row').length === 3 && !document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-heading .team-artifacts-action').hasAttribute('aria-disabled')`, 'the load to end', 8000);
+        await waitFor(`document.querySelectorAll('tr.team-artifact-row').length === 3 && !document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-refresh').hasAttribute('aria-disabled')`, 'the load to end', 8000);
         await ev(`window.__mode = 'normal'; true`);
 
         console.log('5. A touch phone at 100% and 200% text: 44 px targets, icons wrapped, nothing over the name, one-line chip');
@@ -120,7 +120,7 @@ const HEX = c => c.repeat(64);
         await ev(`window.switchAgenticTab('team-artifacts', 'top'); true`); await sleep(300); // sleep-ok: the tab shows over frames
         for (const size of ['', '32px']) {
             await ev(`document.documentElement.style.fontSize = '${size}'; document.getElementById('agentic-state').style.width = ''; true`);
-            await ev(`document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-heading .team-artifacts-action').click(); true`);
+            await ev(`document.querySelector('#agentic-panel-team-artifacts-view .team-artifacts-refresh').click(); true`);
             await waitFor(`document.querySelectorAll('tr.team-artifact-row').length === 3`, 'the rows on the phone', 8000);
             await sleep(400); // sleep-ok: layout settles
             const m = await ev(`(() => { const hit = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1; const small = [], over = [];

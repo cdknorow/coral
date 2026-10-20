@@ -12,6 +12,7 @@ const specFor = (personal) => {
         label: personal ? 'Search and filter this agent\'s artifacts' : 'Search and filter team artifacts',
         searchLabel: personal ? 'Search this agent\'s artifacts' : 'Search team artifacts',
         placeholder: 'Search artifacts',
+        headerSlots: true, // the panel's title and its Refresh and Copy icons sit on the search row (#5315)
         collapsible: true, // the agents tab's pattern (#5293): one icon opens Filters and Sort; the second icon opens or closes every row's details
         expandAll: { expand: 'Expand all details', collapse: 'Collapse all details' },
         sorts: { values: SORTS, labels: SORT_LABEL, aria: 'Sort artifacts' },

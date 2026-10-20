@@ -153,7 +153,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         assert.equal(await ev(`document.querySelector('.team-artifact-row:nth-child(5) a').title`),'Open link');
         // Extensionless declared HTML must render, even when served text/plain.
         await ev(`window.__originalItems=window.__items;window.__htmlContent='<style>body{font:18px sans-serif;background:#edf7f3;padding:32px;color:#143c32}</style><h1>Logo system</h1><p>Rendered HTML artifact</p><script>parent.postMessage("artifact-script-ran","*")<\/script><img src="https://example.com/should-not-load.png">';window.__items=[{name:'logo-system',media_type:'text/html',task_id:2176,inline:true,available:true,content_url:'/api/board/design-team/tasks/2176/artifact-content?source=completion&index=0'}]`);
-        await click('.team-artifacts-heading button'); await settle();
+        await click('.team-artifacts-refresh'); await settle();
         await click('.team-artifact-preview'); await settle();
         assert.equal(await ev(`document.querySelector('#preview-body iframe').getAttribute('sandbox')`),'');
         assert.match(await ev(`document.querySelector('#preview-body iframe').srcdoc`),/default-src 'none'/);
@@ -165,7 +165,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         await shot('team-artifacts-html-preview');
         await ev('window.closeAllPreviewTabs()'); await settle();
         await ev(`window.__items=[{name:'managed-logo-system',media_type:'text/html',available:true,uri:'coral://artifacts/'+'c'.repeat(64)}]`);
-        await click('.team-artifacts-heading button'); await settle();
+        await click('.team-artifacts-refresh'); await settle();
         await click('.team-artifact-preview'); await settle();
         assert.match(await ev(`document.querySelector('#preview-body iframe').srcdoc`),/Logo system/);
         assert.equal(await ev('window.__frameMessages'),0);
@@ -181,7 +181,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
             ['plain', 'text/plain', {name:'acceptance_report',media_type:'text/plain',task_id:2176,inline:true,available:true,content_url:'/api/board/design-team/tasks/2176/artifact-content?source=completion&index=0'}, false],
         ]) {
             await ev(`window.__previewFixture=${JSON.stringify({content:markdown,type})};window.__items=[${JSON.stringify(item)}]`);
-            await click('.team-artifacts-heading button'); await settle();
+            await click('.team-artifacts-refresh'); await settle();
             await click('.team-artifact-preview'); await settle();
             const result = await ev(`(()=>{const body=document.getElementById('preview-body');return {heading:body.querySelector('h1')?.textContent||'',strong:body.querySelector('strong')?.textContent||'',items:[...body.querySelectorAll('li')].map(x=>x.textContent),text:body.textContent}})()`);
             if (rendered) {
@@ -213,7 +213,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         ]) {
             const label='media-latency-audit-2026-10-05';
             await ev(`window.__previewFixture=${JSON.stringify({content:'# Image delivery latency, 2026-10-05\n\n- Preview rendered\n- Download retained\n',type:'application/octet-stream',disposition,size})};window.__items=[{name:${JSON.stringify(label)},media_type:'application/octet-stream',available:true,uri:'coral://artifacts/f8740cb4db8190d1ea14f5a7c9442d61c6ec92452dde8fb5ad825054ebce8474'}]`);
-            await click('.team-artifacts-heading button'); await settle();
+            await click('.team-artifacts-refresh'); await settle();
             await click('.team-artifact-preview'); await settle();
             const view=await ev(`(()=>{const b=document.getElementById('preview-body');return {text:b.textContent,heading:b.querySelector('h1')?.textContent,items:[...b.querySelectorAll('li')].map(x=>x.textContent)}})()`);
             if(expected==='markdown') {
@@ -230,14 +230,14 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         }
         await ev(`window.__previewFixture=null;window.__items=window.__originalItems`);
         // Empty, error and retry states.
-        await ev(`window.__mode='empty'`); await click('.team-artifacts-heading button'); await settle();
+        await ev(`window.__mode='empty'`); await click('.team-artifacts-refresh'); await settle();
         assert.match(await text(), /No artifacts shared/);
-        await ev(`window.__mode='error'`); await click('.team-artifacts-heading button'); await settle();
+        await ev(`window.__mode='error'`); await click('.team-artifacts-refresh'); await settle();
         assert.match(await text(), /Unable to load team artifacts \(503\)/);
         await ev(`window.__mode='normal'`); await click('#agentic-panel-team-artifacts-view > button'); await settle();
         assert.match(await text(), /Design review/);
         // Pagination appends metadata only and reports bounded server scans.
-        await ev(`window.__mode='paged'`); await click('.team-artifacts-heading button'); await settle();
+        await ev(`window.__mode='paged'`); await click('.team-artifacts-refresh'); await settle();
         assert.match(await text(), /Some older artifacts/);
         await click('.team-artifacts-more'); await settle();
         assert.ok((await ev('window.__calls')).some(u => u.endsWith('offset=6')));

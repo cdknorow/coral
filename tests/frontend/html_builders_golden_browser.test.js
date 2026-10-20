@@ -56,7 +56,7 @@ const HEX = c => c.repeat(64);
         const snap = async id => ev(`(() => { const r = ${ROOT(id)}; return r.outerHTML + '\\n<!-- listeners\\n' + [...new Set(window.__listeners.filter(l => !/^(window|document|other):/.test(l)))].sort().join('\\n') + '\\n-->'; })()`);
         const settled = id => waitFor(`${ROOT(id)}.getAttribute('aria-busy') === 'false'`, 'the panel to settle: ' + id, 8000);
         const teamState = (t, session) => ev(`(() => { window.ST.selectedTeam = ${JSON.stringify(t)}; window.ST.currentSession = ${JSON.stringify(session)}; window.TA.syncFilesSourceTeam(); return true; })()`);
-        const refresh = id => ev(`window.__listeners.length = 0; ${ROOT(id)}.querySelector('.team-artifacts-heading .team-artifacts-action').click(); true`);
+        const refresh = id => ev(`window.__listeners.length = 0; ${ROOT(id)}.querySelector('.team-artifacts-refresh').click(); true`);
         const SESSION = { type: 'live', name: 'golden-agent', session_id: 'golden-sid', board_project: TEAM };
 
         // no team: the line says to pick one
