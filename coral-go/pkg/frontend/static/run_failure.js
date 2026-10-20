@@ -9,7 +9,9 @@ const CLI = { claude: ['Claude', 'claude'], codex: ['Codex', 'codex'], agy: ['An
 /** { text, short, hint } for a run record that failed for want of a sign-in, else null (a stranger code is not one). */
 export function runFailure(rec) {
     if (!rec || rec.error_code !== 'not_signed_in') return null;
-    const [name, cmd] = Object.hasOwn(CLI, rec.agent_type) ? CLI[rec.agent_type] : CLI.claude;
+    // an agent_type this build does not know is never guessed at (it would send the person to the wrong tool): the words stay neutral
+    if (!Object.hasOwn(CLI, rec.agent_type)) return { text: "The agent's CLI is not signed in", short: 'not signed in', hint: 'Sign in to it in a terminal, then run this again.' };
+    const [name, cmd] = CLI[rec.agent_type];
     return { text: `${name} is not signed in`, short: 'not signed in', hint: `Sign in with ${cmd} in a terminal, then run this again.` };
 }
 

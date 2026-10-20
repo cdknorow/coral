@@ -9,7 +9,7 @@ const T0 = '2026-10-20T10:00:00Z', T1 = '2026-10-20T10:00:01Z';
 const run = (id, over = {}) => ({ id, workflow_id: 7, workflow_name: 'Nightly', status: 'failed', trigger_type: 'schedule', started_at: T0, finished_at: T1, error_msg: 'Claude is not signed in', error_code: 'not_signed_in', agent_type: 'claude',
     steps: [{ index: 0, name: 'review', type: 'agent', status: 'skipped' }], ...over });
 const RUNS = { 91: run(91), 92: run(92, { error_msg: 'Codex is not signed in', agent_type: 'codex' }), 93: run(93, { error_code: 'some_future_code', error_msg: 'something else broke', agent_type: undefined }),
-    95: run(95, { error_msg: 'Antigravity is not signed in', agent_type: 'agy' }), 96: run(96, { error_msg: 'x', agent_type: 'gemini' }), 94: run(94, { error_code: undefined, agent_type: undefined, error_msg: 'step build failed' }) };
+    95: run(95, { error_msg: 'Antigravity is not signed in', agent_type: 'agy' }), 96: run(96, { error_msg: 'x', agent_type: 'gemini' }), 97: run(97, { error_msg: 'x', agent_type: 'pi' }), 98: run(98, { error_msg: 'x', agent_type: undefined }), 94: run(94, { error_code: undefined, agent_type: undefined, error_msg: 'step build failed' }) };
 const JOB = { id: 5, name: 'Nightly review', enabled: true, cron_expr: '0 3 * * *', timezone: 'UTC', repo_path: '/tmp/r', max_duration_s: 600, job_type: 'workflow', workflow_id: 7, consecutive_failures: 0,
     last_run: { id: 91, status: 'failed', error_msg: 'Claude is not signed in', error_code: 'not_signed_in', agent_type: 'claude' }, workflow_runs: [RUNS[91], RUNS[94]] };
 
@@ -49,6 +49,10 @@ const JOB = { id: 5, name: 'Nightly review', enabled: true, cron_expr: '0 3 * * 
         check(`an agy run says Antigravity and agy (${t})`, /Antigravity is not signed in\./.test(t) && /Sign in with agy in a terminal/.test(t));
         t = await view(96);
         check('the old gemini type is Antigravity too', /Antigravity is not signed in\./.test(t) && /Sign in with agy/.test(t));
+        t = await view(97);
+        check(`an agent type this build does not know stays neutral (${t})`, /The agent's CLI is not signed in\. Sign in to it in a terminal, then run this again\./.test(t) && !/Claude|claude/.test(t));
+        t = await view(98);
+        check('and so does a record with no agent_type', /The agent's CLI is not signed in\./.test(t) && !/Claude|claude/.test(t));
         t = await view(93);
         check(`a code this build does not know shows the server's text as before (${t})`, /something else broke/.test(t) && !/Sign in with/.test(t));
         t = await view(94);
