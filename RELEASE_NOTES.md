@@ -1,5 +1,30 @@
 # Release Notes
 
+## v1.4.131 — A pasted image's path no longer shows your account name through Coral Hub, faster long artifact lists and replies
+
+### Features
+
+- **Servers tab: an "Updating" badge** for a server the hub is relaunching, read from the hub's typed status. It sits behind the update flag, which is off, so nothing changes yet.
+
+### Changes
+
+- **Long artifact lists draw faster:** the first 40 rows appear at once, the rest a few frames later, and the file-type icons are cloned instead of parsed per row.
+- **Owner-only team settings refused through Coral Hub** (the health check, the team settings and the prompt inspection) now say so in plain words, and a plain refusal message from the server is shown only when it came from this computer.
+- **Faster replies and searches:** compressed JSON replies reuse their gzip writer and encode buffer, and the board has a sender index and a per-board early exit for the all-boards search.
+
+### Fixes
+
+- **Through Coral Hub, a pasted image's path no longer shows this computer's account name in the chat (it reads `~/...`); since 1.4.129 it did.** This also covers Windows spellings of the path (backslashes, mixed separators, another letter case).
+- **Claude project folder names match the Claude CLI's:** every non-alphanumeric character becomes a dash, and a name over 200 characters is cut and hashed, so sessions are found for folders with unusual names.
+- **Call metrics no longer grow without limit:** past 500,000 raw rows, new rows are counted and dropped until the hourly roll-up makes room; existing rows are kept.
+
+### Internal
+
+- Dependencies: grpc 1.83.2 (GO-2026-6443, a server panic in grpc's xDS server routing; no shipped Coral program calls that path).
+- The automatic-update work continues without turning anything on: `coral-update` gains hardening (the Sigstore root refresh, safer lock handling) and an apply step for macOS and Linux. It is in the source and in no package, and nothing calls it.
+- Release checks: the stable-name copies of the packages are also a run artifact, so `verify-release.sh` checks them without downloading.
+- Test and gate fixes: the teardown check, the live-feed reconnect test, the cancellation, gzip-budget and Windows updater tests, and the flake census.
+
 ## v1.4.130 — Artifact lists read like the agents tab, comments in the docked preview, and every release also publishes stable download names
 
 ### Features
