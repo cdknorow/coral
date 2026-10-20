@@ -398,7 +398,7 @@ func recoverInterrupted(ctx context.Context, cfg Config, dir, install string) (R
 		}
 		cfg.history(&st, j.From, j.To, "relaunched")
 		_ = verify.SaveState(dir, st)
-		_ = os.RemoveAll(filepath.Join(dir, stage.StagingDir, j.To))
+		_ = os.RemoveAll(filepath.Join(dir, stage.StagingDir, sr.Version)) // the staged record's own version folder, not the journal's text
 		return Result{Result: ResultRelaunched, From: j.From, To: j.To}, true
 	}
 	return rollBack(ctx, cfg, dir, &st, install, j.NewPath, j.To, "interrupted"), true
