@@ -1,5 +1,33 @@
 # Release Notes
 
+## v1.4.130 — Artifact lists read like the agents tab, comments in the docked preview, and every release also publishes stable download names
+
+### Features
+
+- **Every release also publishes stable-name copies of its packages:** `Coral.dmg`, `coral-linux-amd64.tar.gz`, `coral-linux-arm64.tar.gz`, `Coral-x64.msi` and `Coral-x64-portable.zip` are byte-identical copies of the versioned files, listed in `SHA256SUMS.txt` under both names, so `/releases/latest/download/<name>` never goes stale. The Linux tarballs' Sigstore bundles are copied under the stable names too.
+- **Artifact comments in the docked preview pane:** the preview beside the chat has a Comments button (or a panel beside the document) and the Comment button by a selection, as the full artifact viewer does.
+
+### Changes
+
+- **Artifact lists:** the header is one row (title, the search box, the filter icons, then Refresh and Copy at the right), and each name has the Browse tab's file-type icon, chosen by the name or, for a name with no extension, by its media type.
+- **Through Coral Hub, the machine's owner can now see and save a team's health check settings and read the prompt inspection** (the owner's alone: the hub sends a marker the machine checks, the save is strict and size-capped, and an oversize body is refused with 413); the matching tunnel rows move from never to launch.
+
+### Fixes
+
+- **Preview no longer says "Coral was updated":** an artifact's bytes answer carries no build header, and a year-cached answer from an older build could trigger the banner; the banner now ignores a build header on an artifact's content path.
+- **A name read from a file, a message or a request is one folder name before it is joined onto a folder:** artifact and cross-team ids are 64 hex digits (a pending record's id, a record's id, an attachment's id, the object and sidecar reads) and a team worktree's board name is one folder name. A census of every join of a variable name fails the build when a new one is not reviewed.
+- **Git snapshots record an agent with no session id once per commit, not once per poll,** and a board settings update of several settings is one transaction. Existing duplicate rows are left in place.
+
+### Internal
+
+- Dependencies: the dependency scan found six advisories in x/net 0.57.0 and grpc 1.82.1 in the repository's tunnel library; no shipped Coral program contains that code, so none affected Coral 1.4.129. Both are updated in 1.4.130 anyway (x/net 0.60.0, grpc 1.83.1, x/crypto 0.57.0, x/text 0.42.0).
+- The automatic-update work continues without turning anything on: the `coral-update` program (check, download and stage a verified release; no apply yet) is in the source and is not in any package; the update screens behind the off flag handle the hub's answers and use the final route names; a verified manifest's revocations are kept at once.
+- Release checks: `verify-release.sh` verifies a release against the repository that built it (a table of homes by first tag, one today), a smoke test of the Linux tarball runs on each architecture's own runner in the release build (a smoke failure on a tag is fixed forward in the next version, never re-tagged), and `mock-agent` answers `--version` and `--help` so Coral's version probe no longer leaves a mock running.
+
+### Tests
+
+- A 50-round teardown check (nothing is left running after Settings, the artifact viewer, agent switching, list rebuilds, preview tabs and every dialog).
+
 ## v1.4.129 — Pasted images become artifacts you can see over Coral Hub, steadier banners, and one filter icon on the lists
 
 ### Features
