@@ -104,7 +104,15 @@ const SPECIAL_NAMES = {
     license: ['license', '#DA5B0B'], licence: ['license', '#DA5B0B'], readme: ['md', '#519ABA'],
 };
 
-function getFileType(name) {
+// A file named without an extension (an artifact saved without a suffix) takes its icon from its media type (#5314).
+const MEDIA_EXT = { 'application/pdf': 'pdf', 'application/json': 'json', 'application/xml': 'xml', 'application/yaml': 'yml', 'application/x-yaml': 'yml', 'application/x-sh': 'sh', 'application/sql': 'sql',
+    'application/javascript': 'js', 'text/javascript': 'js', 'text/markdown': 'md', 'text/x-markdown': 'md', 'text/html': 'html', 'text/css': 'css', 'text/csv': 'csv', 'text/plain': 'txt', 'text/xml': 'xml', 'image/svg+xml': 'svg' };
+function mediaExt(mediaType) {
+    const t = String(mediaType || '').split(';')[0].trim().toLowerCase();
+    return MEDIA_EXT[t] || (t.startsWith('image/') ? 'png' : t.startsWith('video/') ? 'mp4' : t.startsWith('audio/') ? 'mp3' : t.startsWith('text/') ? 'txt' : '');
+}
+
+function getFileType(name, mediaType) {
     const lower = name.toLowerCase();
     const base = lower.replace(/\.[^.]*$/, '');
     if (SPECIAL_NAMES[base]) return SPECIAL_NAMES[base];
@@ -112,10 +120,11 @@ function getFileType(name) {
     if (lower.startsWith('.docker') || lower.startsWith('.compose')) return ['docker', '#384D54'];
     if (lower.startsWith('.eslint') || lower.startsWith('.prettier') || lower.startsWith('.editorconfig')) return ['config', '#4B32C3'];
     const ext = lower.includes('.') ? lower.split('.').pop() : '';
-    return FILE_TYPES[ext] || ['generic', '#8B8B8B'];
+    if (FILE_TYPES[ext]) return FILE_TYPES[ext];
+    return (!ext && FILE_TYPES[mediaExt(mediaType)]) || ['generic', '#8B8B8B'];
 }
 
-function createFileIcon(name, isDir, isExpanded) {
+function createFileIcon(name, isDir, isExpanded, mediaType) {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('width', '16');
@@ -128,7 +137,7 @@ function createFileIcon(name, isDir, isExpanded) {
             ? '<path d="M.5 3h5l1 1H14v1.5H6.5l-2.5 7H.5zm6 2.5H15l-2.5 7H4z" fill="#888"/>'
             : '<path d="M.5 3h5l1 1H14v9.5H.5z" fill="#888"/>';
     } else {
-        const [shape, color] = getFileType(name);
+        const [shape, color] = getFileType(name, mediaType);
         svg.innerHTML = (ICON_SHAPES[shape] || ICON_SHAPES.generic).replace(/CCC/g, color);
     }
     return svg;
@@ -137,6 +146,11 @@ function createFileIcon(name, isDir, isExpanded) {
 /** Markup for a file's type icon, shared with the changed-files list. */
 export function fileIconHtml(name) {
     return createFileIcon(name, false, false).outerHTML;
+}
+
+/** The same icon as a node, for a file known by its name and, when the name has no extension, its media type (the artifact lists, #5314). */
+export function fileIconFor(name, mediaType) {
+    return createFileIcon(String(name || ''), false, false, mediaType);
 }
 
 function reset() {

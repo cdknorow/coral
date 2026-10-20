@@ -5,7 +5,7 @@ import { boardOfPage } from './dock_page.js';
 import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { bindDownload } from './artifact_download.js';
-import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
+import { fileIconFor, mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath, isCloud, keyLabel } from './server_base.js';
 import { refreshDistill, startDistill, distillJob } from './knowledge_distill.js';
 import { browserLocal } from './safe_storage.js';
@@ -367,6 +367,7 @@ function buildRow(item) {
         title.type = 'button';
         title.addEventListener('click', doPreview);
     }
+    title.prepend(fileIconFor(name, item.media_type)); // the Browse tab's icon for this name, or for the media type when the name has no extension (#5314)
     title.title = name;
     info.append(title);
     if (badge) {
