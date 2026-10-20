@@ -320,3 +320,50 @@ func TestLinuxHealthNeedsTheNewInstallToStayUp(t *testing.T) {
 	assert.True(t, l.Pinned())
 	assert.Error(t, l.Show(context.Background(), "/p.tar.gz"))
 }
+
+// The real package carries a licenses/ tree: it is Coral's own (an install is not "shared" because of it), a link or device in it is not, and the
+// folder checks and the hash recheck cover the tree.
+func TestLinuxLicensesTreeIsCoralsOwnAndCheckedLikeTheRest(t *testing.T) {
+	l := newLinux(t)
+	install := linuxInstall(t, linuxPrograms, emX86_64)
+	require.NoError(t, os.MkdirAll(filepath.Join(install, "licenses", "go", "mod@v1.0.0"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(install, "licenses", "go", "mod@v1.0.0", "LICENSE"), []byte("text"), 0o444))
+	require.NoError(t, os.WriteFile(filepath.Join(install, "licenses", "THIRD_PARTY_NOTICES_MPL.md"), []byte("x"), 0o644))
+	assert.Empty(t, l.Unsupported(install), "a tarball install with its licenses folder")
+
+	require.NoError(t, os.Symlink("/etc/passwd", filepath.Join(install, "licenses", "go", "evil")))
+	assert.Equal(t, "shared_folder", l.Unsupported(install), "a link inside licenses is not Coral's")
+	require.NoError(t, os.Remove(filepath.Join(install, "licenses", "go", "evil")))
+	assert.Empty(t, l.Unsupported(install))
+
+	// A file called licenses, or a folder with another name, is not.
+	other := linuxInstall(t, linuxPrograms, emX86_64)
+	require.NoError(t, os.WriteFile(filepath.Join(other, "licenses"), []byte("x"), 0o644))
+	assert.Equal(t, "shared_folder", l.Unsupported(other))
+	other2 := linuxInstall(t, linuxPrograms, emX86_64)
+	require.NoError(t, os.MkdirAll(filepath.Join(other2, "docs"), 0o755))
+	assert.Equal(t, "shared_folder", l.Unsupported(other2))
+
+	// Build and Verify with a tree: every file counts.
+	var entries []tarEntry
+	for _, p := range linuxPrograms {
+		entries = append(entries, tarEntry{name: p, body: string(elfHeader(emX86_64, 2)), mode: 0o755})
+	}
+	entries = append(entries, tarEntry{name: "licenses/", typ: tar.TypeDir}, tarEntry{name: "licenses/go/", typ: tar.TypeDir},
+		tarEntry{name: "licenses/go/a/", typ: tar.TypeDir}, tarEntry{name: "licenses/go/a/LICENSE", body: "mit", mode: 0o444},
+		tarEntry{name: "licenses/NOTICE.md", body: "n", mode: 0o644})
+	newPath, cleanup, err := l.Build(context.Background(), makeTarGz(t, entries...), install, t.TempDir())
+	require.NoError(t, err)
+	defer cleanup()
+	require.NoError(t, l.Verify(context.Background(), newPath, "1.4.130"))
+	lic := filepath.Join(newPath, "licenses", "go", "a", "LICENSE")
+	require.NoError(t, os.WriteFile(lic, []byte("changed"), 0o644))
+	assert.Error(t, l.Verify(context.Background(), newPath, "1.4.130"), "a licence file changed after the unpack")
+	require.NoError(t, os.WriteFile(lic, []byte("mit"), 0o644))
+	require.NoError(t, l.Verify(context.Background(), newPath, "1.4.130"))
+	require.NoError(t, os.WriteFile(filepath.Join(newPath, "licenses", "extra"), []byte("x"), 0o644))
+	assert.Error(t, l.Verify(context.Background(), newPath, "1.4.130"), "a file added to the tree")
+	require.NoError(t, os.Remove(filepath.Join(newPath, "licenses", "extra")))
+	require.NoError(t, os.Symlink("/etc/passwd", filepath.Join(newPath, "licenses", "go", "link")))
+	assert.Error(t, l.Verify(context.Background(), newPath, "1.4.130"), "a link in the tree")
+}

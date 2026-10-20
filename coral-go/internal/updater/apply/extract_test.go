@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,4 +125,99 @@ func TestExtractHasLimits(t *testing.T) {
 	require.NoError(t, os.WriteFile(bad, full[:len(full)/2], 0o600))
 	_, _, err = extractTarGz(bad, t.TempDir(), allowCoral, DefaultExtractLimits)
 	assert.Error(t, err, "a truncated archive")
+}
+
+// The real package has a licenses/ tree beside its programs (v1.4.129: 187 folders, 147 files, 8 levels deep, 88 of them read-only): it unpacks, with
+// safe modes and the hash of every file.
+func TestExtractUnpacksTheLicensesTreeOfARealisticPackage(t *testing.T) {
+	entries := []tarEntry{{name: "./", typ: tar.TypeDir, mode: 0o755}, {name: "./coral", body: "prog", mode: 0o755}}
+	entries = append(entries, tarEntry{name: "./licenses/", typ: tar.TypeDir, mode: 0o755})
+	deep := "licenses"
+	var wantFiles []string
+	for i := 0; i < 7; i++ {
+		deep += fmt.Sprintf("/d%d", i)
+		entries = append(entries, tarEntry{name: "./" + deep + "/", typ: tar.TypeDir, mode: 0o755})
+		f := deep + "/LICENSE"
+		entries = append(entries, tarEntry{name: "./" + f, body: "licence text " + f, mode: 0o444})
+		wantFiles = append(wantFiles, f)
+	}
+	for i := 0; i < 150; i++ {
+		d := fmt.Sprintf("licenses/go/mod%03d@v1.0.%d", i, i)
+		entries = append(entries, tarEntry{name: "./" + d + "/", typ: tar.TypeDir, mode: 0o755}, tarEntry{name: "./" + d + "/LICENSE", body: "x", mode: 0o755 /* even an executable bit */})
+		wantFiles = append(wantFiles, d+"/LICENSE")
+	}
+	dst := t.TempDir()
+	names, hashes, err := extractTarGz(makeTarGz(t, entries...), dst, allowCoral, DefaultExtractLimits)
+	require.NoError(t, err)
+	assert.Contains(t, names, "coral")
+	for _, f := range wantFiles {
+		assert.Contains(t, names, f)
+		assert.NotEmpty(t, hashes[f], f)
+		fi, err := os.Stat(filepath.Join(dst, filepath.FromSlash(f)))
+		require.NoError(t, err, f)
+		assert.Equal(t, os.FileMode(0o644), fi.Mode(), f+": read-only or executable in the archive, 0644 here")
+	}
+	di, err := os.Stat(filepath.Join(dst, "licenses", "go"))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755)|os.ModeDir, di.Mode())
+	tree, err := plainTree(filepath.Join(dst, "licenses"))
+	require.NoError(t, err)
+	assert.Len(t, tree, len(wantFiles))
+}
+
+func TestExtractRefusesWhatIsNotARightLicensesTree(t *testing.T) {
+	for name, entries := range map[string][]tarEntry{
+		"a folder that is not licenses":         {{name: "docs/", typ: tar.TypeDir}},
+		"a file in a folder that is not":        {{name: "docs/README", body: "x"}},
+		"a symlink in licenses":                 {{name: "licenses/x", typ: tar.TypeSymlink, linkname: "/etc/passwd"}},
+		"a hard link in licenses":               {{name: "licenses/x", typ: tar.TypeLink, linkname: "coral"}},
+		"a FIFO in licenses":                    {{name: "licenses/x", typ: tar.TypeFifo}},
+		"a dot dot in licenses":                 {{name: "licenses/../coral", body: "x", mode: 0o755}},
+		"a dot dot folder":                      {{name: "licenses/../", typ: tar.TypeDir}},
+		"an absolute licenses":                  {{name: "/licenses/x", body: "x"}},
+		"a backslash in licenses":               {{name: `licenses/a\b`, body: "x"}},
+		"a drive in licenses":                   {{name: "licenses/C:x", body: "x"}},
+		"licenses as a file":                    {{name: "licenses", body: "x"}},
+		"a file then a folder of the same name": {{name: "licenses/a", body: "x"}, {name: "licenses/a/b", body: "y"}},
+		"a file twice":                          {{name: "licenses/a/b", body: "x"}, {name: "licenses/a/b", body: "y"}},
+		"nested too deep":                       {{name: strings.Repeat("licenses/", 1) + strings.Repeat("d/", 14) + "f", body: "x"}},
+	} {
+		dst := t.TempDir()
+		_, _, err := extractTarGz(makeTarGz(t, entries...), dst, allowCoral, DefaultExtractLimits)
+		assert.Error(t, err, name)
+		_, serr := os.Stat(filepath.Join(filepath.Dir(dst), "coral"))
+		assert.Error(t, serr, name+": nothing outside dst")
+	}
+	// Entry counts are limited too.
+	var many []tarEntry
+	for i := 0; i < 5; i++ {
+		many = append(many, tarEntry{name: fmt.Sprintf("licenses/d%d/", i), typ: tar.TypeDir}, tarEntry{name: fmt.Sprintf("licenses/d%d/f", i), body: "x"})
+	}
+	_, _, err := extractTarGz(makeTarGz(t, many...), t.TempDir(), allowCoral, ExtractLimits{MaxFiles: 100, MaxDirs: 3, MaxDepth: 8, MaxFile: 50, MaxTotal: 1000})
+	assert.Error(t, err, "more folders than allowed")
+	_, _, err = extractTarGz(makeTarGz(t, many...), t.TempDir(), allowCoral, ExtractLimits{MaxFiles: 3, MaxDirs: 100, MaxDepth: 8, MaxFile: 50, MaxTotal: 1000})
+	assert.Error(t, err, "more files than allowed")
+}
+
+// The release tarball as published (tests/release/upgrade_linux.sh and CORAL_APPLY_NEW_TARBALL give its path; a developer can point it at any
+// coral-linux-<arch>-<version>.tar.gz): it unpacks under the real limits and the folder it makes passes the folder checks.
+func TestTheRealReleaseTarballUnpacksAndIsCorals(t *testing.T) {
+	pkg := os.Getenv("CORAL_APPLY_REAL_TARBALL")
+	if pkg == "" {
+		pkg = os.Getenv("CORAL_APPLY_NEW_TARBALL")
+	}
+	if pkg == "" {
+		t.Skip("set CORAL_APPLY_REAL_TARBALL to a published coral-linux tarball")
+	}
+	dst := filepath.Join(t.TempDir(), "coral-bin")
+	require.NoError(t, os.Mkdir(dst, 0o755))
+	names, hashes, err := extractTarGz(pkg, dst, allowedName, DefaultExtractLimits)
+	require.NoError(t, err, "the strict unpack accepts the real package")
+	assert.Contains(t, names, "coral")
+	assert.Len(t, hashes, len(names))
+	l := &Linux{ManagedPrefixes: []string{}, SwapSupported: func(string) bool { return true }}
+	assert.Empty(t, l.Unsupported(dst), "a real tarball install is Coral's own folder, licenses/ included")
+	tree, err := plainTree(filepath.Join(dst, licensesDir))
+	require.NoError(t, err)
+	assert.NotEmpty(t, tree)
 }

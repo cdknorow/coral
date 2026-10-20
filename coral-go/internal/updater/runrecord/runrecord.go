@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 // File is the record's name in <data dir>/updates.
@@ -21,10 +22,22 @@ type Record struct {
 
 const maxSize = 64 << 10
 
-// Write records argv and the working directory for the data folder, atomically, 0600.
+// ErrSecretFlag is returned for a command line with a flag that carries a secret: it is not recorded (the record is a file; a restart without
+// the record is refused, not done without the flag). Start Coral with the secret in its environment or a file instead.
+var ErrSecretFlag = errors.New("the command line carries a secret in a flag, so it is not recorded")
+
+var secretFlag = regexp.MustCompile(`(?i)^--?[a-z0-9_-]*(token|secret|password|passwd|api[-_]?key|credential|private[-_]?key)[a-z0-9_-]*(=|$)`)
+
+// Write records argv and the working directory for the data folder, atomically, 0600. A flag named for a secret (--token, --api-key=...,
+// --password) makes it refuse: the record must not hold one (Security's #5341 LOW 1).
 func Write(dataDir string, argv []string, cwd string) error {
 	if len(argv) == 0 {
 		return errors.New("no command line")
+	}
+	for _, a := range argv[1:] {
+		if secretFlag.MatchString(a) {
+			return ErrSecretFlag
+		}
 	}
 	dir := filepath.Join(dataDir, "updates")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

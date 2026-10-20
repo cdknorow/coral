@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -175,6 +176,12 @@ func (l *Linux) Unsupported(install string) string {
 		if e.Name() == "coral" {
 			hasCoral = true
 		}
+		if e.Name() == licensesDir && e.IsDir() {
+			if _, err := plainTree(filepath.Join(install, licensesDir)); err != nil {
+				return "shared_folder"
+			}
+			continue
+		}
 		if !e.Type().IsRegular() || !allowedName(e.Name()) {
 			return "shared_folder"
 		}
@@ -287,7 +294,20 @@ func (l *Linux) Verify(ctx context.Context, newPath, version string) error {
 	have := map[string]bool{}
 	for _, e := range entries {
 		fi, err := os.Lstat(filepath.Join(newPath, e.Name()))
-		if err != nil || !fi.Mode().IsRegular() {
+		if err != nil {
+			return err
+		}
+		if e.Name() == licensesDir && fi.IsDir() {
+			files, err := plainTree(filepath.Join(newPath, licensesDir))
+			if err != nil {
+				return err
+			}
+			for _, f := range files {
+				have[licensesDir+"/"+f] = true
+			}
+			continue
+		}
+		if !fi.Mode().IsRegular() {
 			return fmt.Errorf("%s is not a plain file", e.Name())
 		}
 		if fi.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
@@ -340,7 +360,10 @@ func (l *Linux) sameAsUnpacked(newPath string, have map[string]bool) error {
 		return errors.New("the files of the new folder are not the ones unpacked")
 	}
 	for name, sum := range want {
-		f, err := os.Open(filepath.Join(newPath, name))
+		if !have[name] {
+			return fmt.Errorf("%s is missing from the new folder", name)
+		}
+		f, err := os.Open(filepath.Join(newPath, filepath.FromSlash(name)))
 		if err != nil {
 			return err
 		}
@@ -488,4 +511,35 @@ func (l *Linux) WaitCoralGone(ctx context.Context, install string) bool {
 		}
 		l.sleep(time.Second)
 	}
+}
+
+// plainTree walks a folder and returns the relative paths ("go/x/LICENSE") of its files, or an error when anything in it is not a plain folder or a
+// plain, not set-id regular file: a link, a device, a FIFO, a socket.
+func plainTree(root string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == root {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, path)
+		switch {
+		case info.IsDir():
+			return nil
+		case info.Mode().IsRegular():
+			if info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+				return fmt.Errorf("%s is set-id", rel)
+			}
+			files = append(files, filepath.ToSlash(rel))
+			return nil
+		}
+		return fmt.Errorf("%s is not a plain file or folder", rel)
+	})
+	return files, err
 }
