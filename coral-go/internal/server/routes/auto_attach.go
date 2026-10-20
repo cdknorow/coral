@@ -706,14 +706,14 @@ const (
 	stripMaxElements = 1 << 20  // JPEG segments, PNG chunks or GIF blocks in one file
 )
 
-// jpegKeep reports whether a JPEG marker segment is kept: APP0 (JFIF), APP2 only with an
-// ICC profile, APP14 (Adobe colour transform), and the table, frame, restart-interval and
-// scan segments. Everything else (APP1 EXIF/XMP, APP3-13 incl. IPTC, MPF thumbnails in
-// APP2, APP11 C2PA, APP15, COM, ...) is dropped.
+// jpegKeep reports whether a JPEG marker segment is kept whole: APP2 only with an ICC profile,
+// and the table, frame, restart-interval and scan segments. Everything else (APP1 EXIF/XMP,
+// APP3-13 incl. IPTC, MPF thumbnails in APP2, APP11 C2PA, APP15, COM, ...) is dropped.
+// APP0 (JFIF) and APP14 (Adobe colour transform) are not kept whole either: jpegHeaderOnly
+// keeps just their fixed header, since both can carry more than that (a JFIF thumbnail, a
+// JFXX thumbnail, free text; #5393).
 func jpegKeep(marker byte, payload []byte) bool {
 	switch {
-	case marker == 0xE0, marker == 0xEE: // APP0, APP14
-		return true
 	case marker == 0xE2: // APP2: only an ICC profile
 		return bytes.HasPrefix(payload, []byte("ICC_PROFILE\x00"))
 	case marker == 0xDB, marker == 0xC4, marker == 0xCC, marker == 0xDD, marker == 0xDA: // DQT, DHT, DAC, DRI, SOS
@@ -722,6 +722,20 @@ func jpegKeep(marker byte, payload []byte) bool {
 		return marker != 0xC8
 	}
 	return false
+}
+
+// jpegHeaderOnly is what is kept of an APP0 or APP14 segment, or nil when none of it is: a JFIF header (its identifier, version, density
+// units and density: 12 bytes) with the thumbnail size set to 0 x 0 and no thumbnail data after it (a JFIF thumbnail is a small copy of the picture
+// as it was, which a cropped or redacted photo must not keep); an Adobe segment's 12 fixed bytes. A JFXX extension (a thumbnail in JPEG or
+// palette form), any other APP0 and an APP14 of another kind are dropped. Nothing of the picture itself is touched.
+func jpegHeaderOnly(marker byte, payload []byte) []byte {
+	switch {
+	case marker == 0xE0 && len(payload) >= 14 && bytes.HasPrefix(payload, []byte("JFIF\x00")):
+		return append(append(make([]byte, 0, 14), payload[:12]...), 0, 0)
+	case marker == 0xEE && len(payload) >= 12 && bytes.HasPrefix(payload, []byte("Adobe")):
+		return payload[:12:12]
+	}
+	return nil
 }
 
 // jpegExifOrientation is the Orientation tag (0x0112) of the EXIF block in an APP1 payload, 2 to 8, or 0 when there is none, it is 1 (upright) or the block cannot be read.
@@ -826,7 +840,10 @@ func stripJPEG(d []byte) ([]byte, error) {
 		if marker == 0xE1 && orientation == 0 {
 			orientation = jpegExifOrientation(d[i+4 : i+2+n])
 		}
-		if jpegKeep(marker, d[i+4:i+2+n]) {
+		if hdr := jpegHeaderOnly(marker, d[i+4:i+2+n]); hdr != nil {
+			out = append(out, 0xFF, marker, byte((len(hdr)+2)>>8), byte(len(hdr)+2))
+			out = append(out, hdr...)
+		} else if jpegKeep(marker, d[i+4:i+2+n]) {
 			out = append(out, seg...)
 		}
 		i += 2 + n

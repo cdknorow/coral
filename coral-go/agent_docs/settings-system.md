@@ -276,6 +276,9 @@ POST /api/upload
 Send multipart form field `file`, and `session_id` (the agent the image is for). PNG, JPEG, GIF, WebP, BMP, TIFF and SVG
 images up to 20 MiB are stored under Coral's uploads directory. A JPEG, PNG or GIF is saved without its metadata
 (GPS, camera, thumbnail; no re-encoding; a JPEG keeps its Orientation tag so a portrait photo is not on its side).
+HEIC is not converted or stripped: a file named `.heic` is refused as an unsupported type, and HEIC bytes that arrive under an
+allowed name are saved for the agent unchanged, metadata included, and get no artifact. A WebP, TIFF or BMP is also saved for the
+agent unchanged; the artifact step refuses a WebP or TIFF that carries metadata (`artifact_error`).
 The response contains `ok`, absolute `path`, original `filename`, and byte `size`.
 
 The Operator's only (an agent's token is refused). The image is also stored as an artifact on that agent's session
