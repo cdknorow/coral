@@ -112,7 +112,7 @@ func TestStatusSaysWhatTheUpdaterKnows(t *testing.T) {
 	assert.EqualValues(t, 2, m["revoked"])
 	assert.Equal(t, map[string]any{"version": "1.4.131", "staged_at": "2026-10-20T10:00:00Z"}, m["staged"])
 	assert.Equal(t, "2026-10-20T11:00:00Z", m["last_check"])
-	assert.Equal(t, map[string]any{"version": "1.4.131", "stage": "sums_signature", "reason": "the release was not signed by the pinned identity", "at": "2026-10-20T11:00:00Z"}, m["last_failure"])
+	assert.Equal(t, map[string]any{"version": "1.4.131", "stage": "sums_signature", "at": "2026-10-20T11:00:00Z"}, m["last_failure"], "the JSON has the stage word, not the stored text")
 	assert.Equal(t, map[string]any{"version": "1.4.132", "until": future, "waiting": true, "attempts": float64(2), "kind": "network"}, m["backoff"])
 	assert.Equal(t, map[string]any{"at": "2026-10-20T09:00:00Z", "from": "1.4.129", "to": "1.4.131", "by": "hub:hub-user-1234abcd", "result": "refused", "reason": "sums_signature"}, m["last_apply"])
 	assert.Equal(t, map[string]any{"at": "2026-10-20T08:00:00Z", "from": "1.4.129", "to": "1.4.130", "by": "local", "result": "failed_rolled_back", "reason": "not_healthy"}, m["last_rollback"])
@@ -123,7 +123,7 @@ func TestStatusSaysWhatTheUpdaterKnows(t *testing.T) {
 
 	_, out := statusRun(t, nil, "status")
 	for _, want := range []string{"Automatic updates: " + wantFeature, "not enabled yet", "Installed version: 1.4.130", "accepted: 1.4.129 (promote sequence 7)", "Versions revoked: 2",
-		"Ready to install: 1.4.131", "Last check: 2026-10-20T11:00:00Z", "Last refusal: version 1.4.131 stopped at sums_signature", "Waiting before trying version 1.4.132 again until " + future,
+		"Ready to install: 1.4.131", "Last check: 2026-10-20T11:00:00Z", "Last refusal: version 1.4.131 stopped at sums_signature", "the release was not signed by the pinned identity", "Waiting before trying version 1.4.132 again until " + future,
 		"Last install attempt: 1.4.129 -> 1.4.131, refused", "Last roll-back: version 1.4.130 did not come up", "stopped at: not_healthy", ": present"} {
 		assert.Contains(t, out, want)
 	}
@@ -193,10 +193,8 @@ func TestStatusShowsTextFromTheStateOnlyAsBoundedPrintableText(t *testing.T) {
 	m := statusJSON(t, nil)
 	assert.NotContains(t, m, "last_check", "a time that is not RFC 3339 is not shown")
 	f := m["last_failure"].(map[string]any)
-	assert.NotContains(t, f["stage"], "\x1b")
-	assert.NotContains(t, f["reason"], "\n")
-	assert.NotContains(t, f["reason"], "\u202e")
-	assert.LessOrEqual(t, len([]rune(f["reason"].(string))), maxStatusText+3)
+	assert.Equal(t, "other", f["stage"], "a stage that is not a fixed word is shown as other")
+	assert.NotContains(t, f, "reason")
 	assert.NotContains(t, f, "at")
 	_, out := statusRun(t, nil, "status")
 	assert.NotContains(t, out, "\x1b")
@@ -229,4 +227,32 @@ func TestStatusShowsARollbackWhoseRestartFailed(t *testing.T) {
 	_, out := statusRun(t, nil, "status")
 	assert.Contains(t, out, "Coral could NOT be started again")
 	assert.Contains(t, out, "version 1.4.131 did not come up")
+}
+
+// #5424: the stored text of a refusal (a Go error: a home path, a hash, a URL) never reaches the JSON; the plain text, for the person's own terminal, may show it.
+func TestStatusJSONNeverCarriesTheStoredErrorText(t *testing.T) {
+	dir := withVersion(t, "1.4.130")
+	hash := strings.Repeat("ab", 32)
+	text := "open /home/someone/.coral/updates/staging/x: permission denied; sha256 " + hash + " from https://github.com/cdknorow/coral/releases/download/v1.4.131/SHA256SUMS.txt"
+	writeState(t, dir, verify.State{
+		LastFailure: &verify.FailureRecord{Version: "1.4.131", Stage: "package", Reason: text, At: "2026-10-20T11:00:00Z"},
+		History: []verify.HistoryEntry{
+			{At: "2026-10-20T11:00:00Z", From: "1.4.130", To: "1.4.131", By: "local", Result: "failed_rolled_back", Reason: "/home/someone/secret"},
+			{At: "2026-10-20T12:00:00Z", From: "1.4.130", To: "1.4.131", By: "local", Result: "https://evil.example/x", Reason: "not_healthy"},
+		},
+		Stage: &verify.StageState{Version: "1.4.131", Attempts: 1, NextAttempt: "2999-01-01T00:00:00Z", ErrorKind: "C:\\Users\\x"},
+	})
+	_, js := statusRun(t, nil, "status", "--json")
+	for _, bad := range []string{"/home/", "someone", hash, "https://", "github.com", "evil.example", "permission denied", "C:", "Users"} {
+		assert.NotContains(t, js, bad, "the JSON holds words, versions and times only")
+	}
+	m := statusJSON(t, nil)
+	assert.Equal(t, "package", m["last_failure"].(map[string]any)["stage"])
+	assert.NotContains(t, m["last_failure"], "reason")
+	assert.Equal(t, "other", m["last_rollback"].(map[string]any)["reason"])
+	assert.Equal(t, "other", m["last_apply"].(map[string]any)["result"])
+	assert.Equal(t, "other", m["backoff"].(map[string]any)["kind"])
+	_, plain := statusRun(t, nil, "status")
+	assert.Contains(t, plain, "permission denied", "the plain text keeps the detail for the person at their terminal")
+	assert.Equal(t, 1, strings.Count(plain, "Last refusal:"))
 }

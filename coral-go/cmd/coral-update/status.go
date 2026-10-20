@@ -20,7 +20,9 @@ import (
 
 // "coral-update status [--json]" says what the updater knows (#5420), for the rollout and for a person asking why nothing happened. It only reads: the state file and the
 // run record in <data dir>/updates, no network, no trusted root, nothing written, and it answers with the feature switched off too (it says it is off, and why).
-// Nothing in it is a path, a URL or a hash; a reason from the state is shown only as printable text of bounded length.
+// The JSON holds words, versions and times only: a stage or a result is a fixed word (anything else is "other"), and the stored text of a refusal (a Go error message, which
+// can carry a home path, a hash or a URL) is NOT in it. The plain text, which is for the person at their own terminal, may show that stored text, as printable text of
+// bounded length.
 
 type statusOut struct {
 	Feature      string `json:"feature"`              // on or off
@@ -50,7 +52,7 @@ type statusStage struct {
 type statusFail struct {
 	Version string `json:"version,omitempty"`
 	Stage   string `json:"stage"`
-	Reason  string `json:"reason,omitempty"`
+	Reason  string `json:"-"` // the stored text: plain output only, never the JSON
 	At      string `json:"at,omitempty"`
 }
 
@@ -86,6 +88,22 @@ func text(s string) string {
 		return string(r[:maxStatusText]) + "..."
 	}
 	return strings.TrimSpace(s)
+}
+
+// word keeps a fixed word (lower-case letters, digits and underscores, at most 40): a stage, a result, a kind. Anything else is "other".
+func word(s string) string {
+	if s == "" {
+		return ""
+	}
+	if len(s) > 40 {
+		return "other"
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_') {
+			return "other"
+		}
+	}
+	return s
 }
 
 // timeText keeps an RFC 3339 time as written, or nothing when it is not one.
@@ -127,7 +145,7 @@ func collectStatus(getenv func(string) string, dataDir string, now time.Time) st
 	out.Revoked = len(st.Revoked)
 	out.LastCheck = timeText(st.LastCheck)
 	if f := st.LastFailure; f != nil {
-		out.LastFailure = &statusFail{Version: text(f.Version), Stage: text(f.Stage), Reason: text(f.Reason), At: timeText(f.At)}
+		out.LastFailure = &statusFail{Version: text(f.Version), Stage: word(f.Stage), Reason: text(f.Reason), At: timeText(f.At)}
 	}
 	if s := st.Stage; s != nil {
 		if s.Staged != "" {
@@ -135,12 +153,12 @@ func collectStatus(getenv func(string) string, dataDir string, now time.Time) st
 		}
 		if until := timeText(s.NextAttempt); until != "" {
 			t, _ := time.Parse(time.RFC3339, until)
-			out.Backoff = &statusBack{Version: text(s.Version), Until: until, Waiting: t.After(now), Attempts: s.Attempts, Kind: text(s.ErrorKind)}
+			out.Backoff = &statusBack{Version: text(s.Version), Until: until, Waiting: t.After(now), Attempts: s.Attempts, Kind: word(s.ErrorKind)}
 		}
 	}
 	for i := len(st.History) - 1; i >= 0; i-- {
 		h := st.History[i]
-		a := &statusApply{At: timeText(h.At), From: text(h.From), To: text(h.To), By: text(h.By), Result: text(h.Result), Reason: text(h.Reason)}
+		a := &statusApply{At: timeText(h.At), From: text(h.From), To: text(h.To), By: text(h.By), Result: word(h.Result), Reason: word(h.Reason)}
 		if out.LastApply == nil {
 			out.LastApply = a
 		}
