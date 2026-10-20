@@ -23,6 +23,7 @@ import (
 // every task in full, as before pagination, for callers that need it.
 func (h *BoardHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
+	h.setBoardIdentity(w, r, project)
 	q := r.URL.Query()
 	if q.Get("full") == "1" {
 		// Every task in full, but not without end: a viewer or an agent can ask for it (#4602). Past maxFullTaskRows the reply

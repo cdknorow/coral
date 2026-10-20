@@ -262,6 +262,7 @@ func tunnelHubUser(r *http.Request, bs *board.Store, project string) (user strin
 // GET /api/board/{project}/messages
 func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
+	h.setBoardIdentity(w, r, project)
 	if h.isPaused(project) {
 		writeJSON(w, http.StatusOK, []board.Message{})
 		return
@@ -298,6 +299,7 @@ func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
 // GET /api/board/{project}/messages/all
 // Pass ?id=N to fetch a single message by ID (does not advance cursor).
 func (h *BoardHandler) ListAllMessages(w http.ResponseWriter, r *http.Request) {
+	h.setBoardIdentity(w, r, urlParam(r, "project"))
 	// Single message lookup by ID
 	if idStr := r.URL.Query().Get("id"); idStr != "" {
 		msgID, err := strconv.ParseInt(idStr, 10, 64)

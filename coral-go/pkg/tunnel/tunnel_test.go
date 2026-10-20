@@ -829,3 +829,19 @@ func TestConnectorStampsItsViaValue(t *testing.T) {
 	resp.Body.Close()
 	assert.Equal(t, "s3cret", got)
 }
+
+// #5435: the board id and creation time headers of a board read reach Coral Hub with the reply (a response header the machine sets is forwarded as it is).
+func TestBoardIdentityHeadersReachTheHub(t *testing.T) {
+	hub := newHub(t, fastCfg())
+	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Coral-Board-Id", "b-1234abcd")
+		w.Header().Set("X-Coral-Board-Created-At", "2026-10-20T10:00:00Z")
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, "[]")
+	}), nil)
+	resp := do(t, sess, "GET", "/api/board/b-1234abcd/messages/all", "", nil, nil)
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+	assert.Equal(t, "b-1234abcd", resp.Header.Get("X-Coral-Board-Id"))
+	assert.Equal(t, "2026-10-20T10:00:00Z", resp.Header.Get("X-Coral-Board-Created-At"))
+}
