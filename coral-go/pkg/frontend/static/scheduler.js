@@ -142,7 +142,7 @@ function renderJobDetail(job, runs) {
     const failBanner = noSignIn
         ? `<div class="sched-fail-banner" role="status">
              <strong>The last run did not start: ${escapeHtml(noSignIn.text)}.</strong>
-             ${escapeHtml(noSignIn.hint)} This job keeps its schedule and runs again once you are signed in.
+             ${escapeHtml(noSignIn.hint)} This job keeps its schedule and ${escapeHtml(noSignIn.again)}.
            </div>`
         : fails >= 1
         ? `<div class="sched-fail-banner" role="status">
