@@ -16,7 +16,7 @@ const BOUNDS = { listeners: 30, nodes: 60, documents: 0, intervals: 0, timeouts:
 const wait = ms => new Promise(r => setTimeout(r, ms)); // a settle for the page's own debounces, not a condition
 
 (async () => {
-    const { client, Page, Emulation, ev, PRELOAD, install } = await connect();
+    const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
     const { HeapProfiler, Performance } = client;
     const S = `(window.__coralStatic || '/static/')`;
     try {
@@ -51,7 +51,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms)); // a settle for the page
         const cycle = async n => {
             for (const p of PANES) { await ev(`window.showSettingsModal(${JSON.stringify(p)}); true`); await wait(10); }
             await ev(`window.hideSettingsModal(); true`);
-            await ev(`import(${S} + 'artifact_viewer.js').then(m => m.openArtifactViewer(${JSON.stringify(HEX)}, { filename: 'a.md' })); true`); await wait(40);
+            // (the import is awaited and the viewer waited for: the first import is a request, slower on a CI runner than the 40 ms a fire-and-forget gave it, #5310 on the 130 gate)
+            await ev(`import(${S} + 'artifact_viewer.js').then(m => m.openArtifactViewer(${JSON.stringify(HEX)}, { filename: 'a.md' }))`);
+            await waitFor(`!!document.querySelector('.artifact-viewer-close') && !document.querySelector('.artifact-viewer-close').closest('[hidden]')`, 'the artifact viewer', 8000);
             await ev(`document.querySelector('.artifact-viewer-close').click(); true`);
             await ev(`(() => { const s = T.state.liveSessions[${n} % 6]; window.selectLiveSession(s.name, 'claude', s.session_id, ''); return true; })()`);
             for (const v of ['chat', 'terminal', 'chat']) { await ev(`window.setLiveViewMode(${JSON.stringify(v)}); true`); await wait(15); }
