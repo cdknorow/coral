@@ -199,6 +199,7 @@ func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 	if !permissionApplied {
 		parts, _, _ = appendCodexPermissionMode(parts, bypassSandbox, params.PermissionMode)
 	}
+	parts = collapseCodexSandboxFlags(parts)
 	if arg := codexActionPrompt(files, params); arg != "" {
 		raw = append(raw, arg)
 		// "--": a prompt that is only a flag ("--dangerously-skip-permissions") is the
@@ -355,6 +356,35 @@ func codexActionPrompt(files *launchFiles, params LaunchParams) string {
 		return ""
 	}
 	return FormatPromptFileArg(files.write("codex_prompt", params.SessionID, "txt", []byte(actionPrompt)))
+}
+
+// collapseCodexSandboxFlags keeps the last --sandbox and the last -a of the command: Codex refuses either given twice ("the argument '--sandbox <SANDBOX_MODE>' cannot be used
+// multiple times"), and the same pair reaching the builder twice (stored by a restart, added again by a wake) left the agent at a bare shell (#5222). The later one is the newer.
+func collapseCodexSandboxFlags(parts []string) []string {
+	// A flag has a value when the next token is not itself a flag ("--sandbox -a=never" has none: passed as it is).
+	hasValue := func(i int) bool {
+		return (parts[i] == "--sandbox" || parts[i] == "-a") && i+1 < len(parts) && !strings.HasPrefix(parts[i+1], "-")
+	}
+	lastSandbox, lastApproval := -1, -1
+	for i := 0; i < len(parts)-1; i++ {
+		if !hasValue(i) {
+			continue
+		}
+		if parts[i] == "--sandbox" {
+			lastSandbox = i
+		} else {
+			lastApproval = i
+		}
+	}
+	out := make([]string, 0, len(parts))
+	for i := 0; i < len(parts); i++ {
+		if hasValue(i) && ((parts[i] == "--sandbox" && i != lastSandbox) || (parts[i] == "-a" && i != lastApproval)) {
+			i++ // an earlier one: dropped with its value
+			continue
+		}
+		out = append(out, parts[i])
+	}
+	return out
 }
 
 func normalizeCodexApprovalPolicy(policy string) string {
