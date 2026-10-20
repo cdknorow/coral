@@ -26,8 +26,11 @@ func TestCancellationLeavesPoolUsable(t *testing.T) {
 	}
 	rng := rand.New(rand.NewSource(1))
 	deadline := time.Now().Add(15 * time.Second)
+	const minCancelled = 20
 	cancelled, rounds := 0, 0
-	for i := 0; i < 20000 && time.Now().Before(deadline); i++ {
+	// A timer that fires within 60 us is a coin flip on a runner whose timers tick every millisecond or more (Windows: 17 of 20000 rounds, #5354 gate), so the loop goes on past
+	// 20000 rounds, up to the deadline, until enough queries were cancelled.
+	for i := 0; (i < 20000 || cancelled < minCancelled) && time.Now().Before(deadline); i++ {
 		rounds++
 		ctx, cancel := context.WithCancel(context.Background())
 		timer := time.AfterFunc(time.Duration(rng.Intn(60))*time.Microsecond, cancel)
@@ -47,7 +50,7 @@ func TestCancellationLeavesPoolUsable(t *testing.T) {
 		}
 	}
 	t.Logf("%d rounds, %d queries cancelled", rounds, cancelled)
-	if cancelled < 20 {
+	if cancelled < minCancelled {
 		t.Fatalf("only %d queries were cancelled; the test exercised too little", cancelled)
 	}
 	if _, err := db.Exec(`INSERT INTO cancellation_probe VALUES ('still writable')`); err != nil {
