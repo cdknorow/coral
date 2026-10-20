@@ -190,25 +190,10 @@ func TestRoundFourIsLinearOnAdversarialText(t *testing.T) {
 		"pwd repeated":           func(n int) string { return strings.Repeat("pwd=", n/4) },
 		"pwd name chain":         func(n int) string { return strings.Repeat("a_", n/2) + "pwd=" },
 	}
-	timeIt := func(text string) time.Duration {
-		best := time.Hour
-		for i := 0; i < 3; i++ {
-			start := time.Now()
-			moreKeywordSpans(text)
-			if d := time.Since(start); d < best {
-				best = d
-			}
-		}
-		return best
-	}
 	const small, large = 250_000, 1_000_000
 	for name, mk := range shapes {
 		t.Run(name, func(t *testing.T) {
-			ds, dl := timeIt(mk(small)), timeIt(mk(large))
-			if dl > 150*time.Millisecond {
-				require.Less(t, float64(dl)/float64(max(ds, 5*time.Millisecond)), 9.0, "%s: %v for %d bytes, %v for %d", name, ds, small, dl, large)
-			}
-			require.Less(t, dl, 10*time.Second, "%s: %v for %d bytes", name, dl, large)
+			requireLinear(t, name, mk, func(text string) { moreKeywordSpans(text) }, small, large)
 			start := time.Now()
 			_, err := hubRedactor().Text([]byte(mk(small)))
 			require.NoError(t, err, "within the redactor's budget")

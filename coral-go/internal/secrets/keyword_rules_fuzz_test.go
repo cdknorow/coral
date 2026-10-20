@@ -71,27 +71,10 @@ func TestKeywordRulesAreLinearOnAdversarialText(t *testing.T) {
 		"full-width":               func(n int) string { return strings.Repeat("token\uFF1D\uFF1A", n/8) },
 		"authorization repeated":   func(n int) string { return strings.Repeat("authorization: bearer ", n/22) },
 	}
-	timeIt := func(text string) time.Duration {
-		best := time.Hour
-		for i := 0; i < 3; i++ {
-			start := time.Now()
-			keywordSpans(text)
-			if d := time.Since(start); d < best {
-				best = d
-			}
-		}
-		return best
-	}
 	const small, large = 250_000, 1_000_000
 	for name, mk := range shapes {
 		t.Run(name, func(t *testing.T) {
-			ds, dl := timeIt(mk(small)), timeIt(mk(large))
-			// linear is about 4; quadratic would be about 16. A generous floor keeps a fast small run from making the ratio noise.
-			if dl > 150*time.Millisecond {
-				require.Less(t, float64(dl)/float64(max(ds, 5*time.Millisecond)), 9.0, "%s: %v for %d bytes, %v for %d", name, ds, small, dl, large)
-			}
-			// the floor only catches a blow-up: a shared CI runner is several times slower than a laptop
-			require.Less(t, dl, 10*time.Second, "%s: %v for %d bytes", name, dl, large)
+			requireLinear(t, name, mk, func(text string) { keywordSpans(text) }, small, large)
 			start := time.Now()
 			_, err := hubRedactor().Text([]byte(mk(small)))
 			require.NoError(t, err, "within the redactor's budget")
