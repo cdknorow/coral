@@ -25,10 +25,10 @@ func ownerOf(fi os.FileInfo) (int, bool) {
 	return 0, false
 }
 
-func spawnDetached(argv []string, cwd string) error {
+func spawnDetached(argv, env []string, cwd string) error {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = cwd
-	cmd.Env = os.Environ()
+	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {

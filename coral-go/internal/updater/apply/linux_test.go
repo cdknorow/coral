@@ -270,9 +270,9 @@ func TestLinuxWaitsForCoralAndNeverStopsIt(t *testing.T) {
 func TestLinuxStartRestartsCoralTheWayTheServerRecordedItOrLeavesItToTheManager(t *testing.T) {
 	l := newLinux(t)
 	install := linuxInstall(t, linuxPrograms, emX86_64)
-	var spawned []string
+	var spawned, spawnedEnv []string
 	var cwd string
-	l.Spawn = func(argv []string, c string) error { spawned, cwd = argv, c; return nil }
+	l.Spawn = func(argv, env []string, c string) error { spawned, spawnedEnv, cwd = argv, env, c; return nil }
 
 	// A service manager restarts Coral itself: nothing is started.
 	l.Manager = func() bool { return true }
@@ -292,6 +292,12 @@ func TestLinuxStartRestartsCoralTheWayTheServerRecordedItOrLeavesItToTheManager(
 	require.NoError(t, l.Start(context.Background(), install))
 	assert.Equal(t, []string{install + "/coral", "--port", "8420"}, spawned)
 	assert.Equal(t, "/srv/coral", cwd)
+	assert.Equal(t, os.Environ(), spawnedEnv, "a record without an environment: the updater's own")
+
+	// A record with one: exactly that environment, nothing of the updater's own (#5410).
+	write(`{"argv":["` + install + `/coral"],"env":["CORAL_DATA_DIR=/srv/data","PATH=/usr/bin"],"cwd":"/srv/coral"}`)
+	require.NoError(t, l.Start(context.Background(), install))
+	assert.Equal(t, []string{"CORAL_DATA_DIR=/srv/data", "PATH=/usr/bin"}, spawnedEnv)
 
 	// A record that names anything else is not run.
 	spawned = nil

@@ -12,4 +12,4 @@ func pidAlive(int) bool { return false }
 
 func ownerOf(os.FileInfo) (int, bool) { return 0, false }
 
-func spawnDetached([]string, string) error { return errors.New("not built for Windows") }
+func spawnDetached([]string, []string, string) error { return errors.New("not built for Windows") }

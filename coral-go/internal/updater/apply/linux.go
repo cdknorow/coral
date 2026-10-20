@@ -72,7 +72,7 @@ type Linux struct {
 	Arch string
 	// Exec runs a program with exactly the given environment (a test replaces it); Spawn starts Coral detached.
 	Exec  func(ctx context.Context, env []string, name string, args ...string) (string, error)
-	Spawn func(argv []string, cwd string) error
+	Spawn func(argv, env []string, cwd string) error
 	// Manager reports that a service manager restarts Coral itself (systemd: INVOCATION_ID is set).
 	Manager func() bool
 	// ProcDir is /proc; Uid is the user's id (tests replace them).
@@ -440,7 +440,11 @@ func (l *Linux) Start(ctx context.Context, install string) error {
 	if spawn == nil {
 		spawn = spawnDetached
 	}
-	return spawn(rr.Argv, rr.Cwd)
+	env := rr.Env
+	if len(env) == 0 { // a record without one (made before it was recorded): the updater's own
+		env = os.Environ()
+	}
+	return spawn(rr.Argv, env, rr.Cwd)
 }
 
 // running counts the processes whose executable is a file of the install.

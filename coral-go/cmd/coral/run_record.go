@@ -27,7 +27,7 @@ func recordRun(dataDir string, args []string) {
 		return
 	}
 	argv := append([]string{exe}, args[min(1, len(args)):]...)
-	if err := runrecord.Write(dataDir, argv, cwd); err != nil {
+	if err := runrecord.Write(dataDir, argv, os.Environ(), cwd); err != nil {
 		log.Printf("[update] how Coral was started is not recorded (a Linux update will not be able to restart it): %v", err)
 	}
 }

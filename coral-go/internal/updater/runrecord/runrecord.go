@@ -9,15 +9,47 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // File is the record's name in <data dir>/updates.
 const File = "run.json"
 
-// Record is what is kept.
+// Record is what is kept. Env is the allowlisted part of the server's environment (AllowedEnv), as NAME=value: the restarted Coral gets exactly that, never the
+// updater's own environment (an agent's variables, a token) and never a variable the allowlist does not name.
 type Record struct {
 	Argv []string `json:"argv"`
+	Env  []string `json:"env,omitempty"`
 	Cwd  string   `json:"cwd"`
+}
+
+// envAllowed are the variables that decide how Coral runs (where its data is, how it listens, its mode) and the ones any program needs to find its tools, a home and a
+// language. Each is a name, a path, a flag or a mode, never a secret: a key or a token is read from a file or the keyring, not from here. Nothing else is recorded.
+var envAllowed = map[string]bool{
+	"CORAL_DATA_DIR": true, "CORAL_DIR": true, "CORAL_HOST": true, "CORAL_HUB": true, "CORAL_STRICT_LOCAL_AUTH": true, "CORAL_DB_ENCRYPTION": true,
+	"CORAL_CLOUD_URL": true, "CORAL_CLOUD_CONNECT": true, "CORAL_CLOUD_MAX_MODE": true, "CORAL_TLS_CERT": true, "CORAL_TLS_KEY": true, "CORAL_TMUX_BIN": true,
+	"CORAL_NO_AUTO_LOOPBACK": true, "CORAL_STALL_WATCHDOG": true,
+	"PATH": true, "HOME": true, "USER": true, "LOGNAME": true, "SHELL": true, "LANG": true, "LC_ALL": true, "TZ": true, "TMPDIR": true, "TERM": true,
+	"XDG_RUNTIME_DIR": true, "XDG_DATA_HOME": true, "XDG_CONFIG_HOME": true, "XDG_STATE_HOME": true,
+}
+
+// maxEnvValue bounds one recorded value (a PATH can be long, a record is not for payloads).
+const maxEnvValue = 4096
+
+// AllowedEnv returns the entries of environ (NAME=value) whose name is on the allowlist, in their order, once each, with a value that is not empty and not over
+// maxEnvValue.
+func AllowedEnv(environ []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, kv := range environ {
+		name, val, ok := strings.Cut(kv, "=")
+		if !ok || !envAllowed[name] || val == "" || len(val) > maxEnvValue || seen[name] || strings.ContainsAny(kv, "\x00\n") {
+			continue
+		}
+		seen[name] = true
+		out = append(out, kv)
+	}
+	return out
 }
 
 const maxSize = 64 << 10
@@ -28,9 +60,9 @@ var ErrSecretFlag = errors.New("the command line carries a secret in a flag, so 
 
 var secretFlag = regexp.MustCompile(`(?i)^--?[a-z0-9_-]*(token|secret|password|passwd|api[-_]?key|credential|private[-_]?key)[a-z0-9_-]*(=|$)`)
 
-// Write records argv and the working directory for the data folder, atomically, 0600. A flag named for a secret (--token, --api-key=...,
-// --password) makes it refuse: the record must not hold one (Security's #5341 LOW 1).
-func Write(dataDir string, argv []string, cwd string) error {
+// Write records argv, the allowlisted part of environ and the working directory for the data folder, atomically, 0600. A flag named for a secret (--token,
+// --api-key=..., --password) makes it refuse: the record must not hold one (Security's #5341 LOW 1).
+func Write(dataDir string, argv, environ []string, cwd string) error {
 	if len(argv) == 0 {
 		return errors.New("no command line")
 	}
@@ -43,7 +75,7 @@ func Write(dataDir string, argv []string, cwd string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	b, err := json.Marshal(Record{Argv: argv, Cwd: cwd})
+	b, err := json.Marshal(Record{Argv: argv, Env: AllowedEnv(environ), Cwd: cwd})
 	if err != nil {
 		return err
 	}
