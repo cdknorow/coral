@@ -11,7 +11,7 @@
     color: var(--text-secondary);
     cursor: pointer;
     padding: 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     align-items: center;
     margin-right: 4px;
     transition: color 0.15s, background 0.15s;
@@ -180,7 +180,7 @@
 
     .sidebar.tablet-open {
         transform: translateX(0);
-        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+        box-shadow: 4px 0 20px rgba(var(--black-rgb), 0.3);
     }
 
     /* Hide resize handle on tablet */
@@ -201,7 +201,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0, 0, 0, 0.4);
+        background: rgba(var(--black-rgb), 0.4);
         z-index: 49;
     }
 
@@ -309,7 +309,7 @@
         padding: 0 12px;
         background: var(--bg-tertiary);
         border: 1px solid var(--control-border);
-        border-radius: 10px;
+        border-radius: var(--radius-ml);
         color: var(--text-primary);
         font: inherit;
         font-weight: 600;
@@ -379,7 +379,7 @@
         width: 30px;
         height: 26px;
         padding: 3px;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         border: 1px solid var(--control-border);
         background: var(--bg-secondary);
         color: var(--text-secondary);
@@ -567,9 +567,9 @@
         max-width: calc(100vw - 32px);
         background: var(--bg-secondary);
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         padding: 4px 0;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 8px 24px rgba(var(--black-rgb), 0.3);
         z-index: 1000;
     }
     #messageboard-view .mb-more.open .mb-more-menu { display: flex; }
@@ -721,7 +721,7 @@
 
     .mobile-launch-section {
         border: 1px solid var(--border);
-        border-radius: 10px;
+        border-radius: var(--radius-ml);
         background: var(--bg-tertiary);
         overflow: hidden;
     }
@@ -796,13 +796,13 @@
     #mobile-session-list .session-group-header {
         padding: 10px 12px !important;
         margin: 8px 0 4px;
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.03);
+        border-radius: var(--radius-ml);
+        background: rgba(var(--white-rgb), 0.03);
     }
 
     #mobile-session-list .session-board-card {
         margin: 10px 0 !important;
-        border-radius: 12px;
+        border-radius: var(--radius-xl);
         overflow: hidden;
     }
 
@@ -813,25 +813,25 @@
     #mobile-session-list .session-group-item {
         padding: 12px 12px 12px 14px !important;
         margin: 8px 0;
-        border: 1px solid rgba(255, 255, 255, 0.06);
-        border-radius: 12px;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+        border: 1px solid rgba(var(--white-rgb), 0.06);
+        border-radius: var(--radius-xl);
+        background: linear-gradient(180deg, rgba(var(--white-rgb), 0.04), rgba(var(--white-rgb), 0.02));
         align-items: flex-start;
         gap: 10px;
-        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+        box-shadow: 0 10px 24px rgba(var(--black-rgb), 0.16);
     }
 
     #mobile-session-list .session-group-item.active {
-        border-left: 1px solid rgba(255, 255, 255, 0.06);
+        border-left: 1px solid rgba(var(--white-rgb), 0.06);
         border-color: rgba(var(--accent-rgb), 0.45);
-        box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.18), 0 14px 28px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.18), 0 14px 28px rgba(var(--black-rgb), 0.2);
     }
 
     /* A card that needs the Operator has no amber border or glow of its own (#5123): its flashing dot and the state chip carry it. */
 
     #mobile-session-list .session-group-item.needs-attention .session-dot.waiting,
     #mobile-session-list .session-group-item.needs-attention .session-dot.stuck {
-        box-shadow: 0 0 0 6px rgba(255, 193, 7, 0.12);
+        box-shadow: 0 0 0 6px rgba(var(--fx-yellow-rgb), 0.12);
     }
 
     #mobile-session-list .session-group-item {
@@ -970,7 +970,7 @@
     }
 
     #mobile-session-list .session-mobile-meta-pill {
-        background: rgba(46, 160, 67, 0.14);
+        background: rgba(var(--fx-green-deep-rgb), 0.14);
         color: #7ee787;
     }
 
@@ -1072,7 +1072,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         border: none;
         background: transparent;
         color: var(--text-secondary);

@@ -73,7 +73,7 @@
     padding: 8px 12px;
     background: var(--bg-tertiary);
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     font-size: 0.8125rem;   /* 13px; rem so it follows the text size */
     font-family: var(--font-sans); /* the same on a phone as in the desktop card (#3218) */
@@ -128,7 +128,7 @@
 }
 
 .macro-delete-btn:hover {
-    background: rgba(248, 81, 73, 0.2);
+    background: rgba(var(--fx-red-rgb), 0.2);
     border-color: var(--error);
     color: var(--error);
 }
@@ -144,7 +144,7 @@
 .btn-add-macro:hover {
     color: var(--accent);
     border-color: var(--accent);
-    background: rgba(31, 111, 235, 0.1);
+    background: rgba(var(--fx-blue-rgb), 0.1);
 }
 
 /* ── Command Hint ──────────────────────────────────────────── */
@@ -160,7 +160,7 @@
 .btn-send-dropdown {
     padding: 4px 5px !important;
     border-radius: 0 6px 6px 0 !important;
-    border-left: 1px solid rgba(255,255,255,0.15);
+    border-left: 1px solid rgba(var(--white-rgb), 0.15);
 }
 
 .send-btn-menu {
@@ -169,8 +169,8 @@
     right: 0;
     background: var(--bg-secondary);
     border: 1px solid var(--control-border);
-    border-radius: 8px;
-    box-shadow: var(--shadow-lg, 0 8px 24px rgba(0,0,0,0.3));
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg, 0 8px 24px rgba(var(--black-rgb), 0.3));
     min-width: 200px;
     z-index: 100;
     padding: 4px;
@@ -188,7 +188,7 @@
     font-size: 0.8125rem;
     font-family: inherit;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     white-space: nowrap;
 }
 
@@ -211,7 +211,7 @@
     color: var(--text-secondary);
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
 }
 
 /* ── Command /mention Dropdown ────────────────────────────── */
@@ -225,8 +225,8 @@
     overflow-y: auto;
     background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 16px rgba(var(--black-rgb), 0.3);
     z-index: 100;
     margin-bottom: 4px;
 }
@@ -245,7 +245,7 @@
 .command-mention-item:hover,
 .command-mention-item.selected {
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
 }
 
 .command-mention-item strong {
@@ -264,8 +264,8 @@
     overflow-y: auto;
     background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 16px rgba(var(--black-rgb), 0.3);
     z-index: 100;
     margin-bottom: 4px;
 }
@@ -284,7 +284,7 @@
 .file-mention-item:hover,
 .file-mention-item.selected {
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
 }
 
 .file-mention-item strong {
@@ -322,7 +322,7 @@
         background: var(--bg-secondary);
         border: 1px solid var(--border);
         border-radius: 16px;
-        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+        box-shadow: 0 4px 18px rgba(var(--black-rgb), 0.18);
         transition: border-color 0.15s;
     }
     #command-pane:focus-within {
@@ -464,7 +464,7 @@
     margin: 6px 12px 0;
     padding: 6px 8px 6px 12px;
     border: 1px solid rgba(var(--error-rgb), 0.5);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: rgba(var(--error-rgb), 0.1);
     color: var(--error);
     font-size: 0.8125rem;
@@ -511,19 +511,19 @@
 .model-chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-chip[data-state="requested"] .model-chip-text { font-style: italic; }
 .model-chip[data-state="pending"] { color: var(--text-primary); border-color: var(--accent); } /* the accent is the border: as text it is 4.1:1 on the chip in the light theme (#5042) */
-.model-chip[data-state="failed"] { color: var(--error-text, #e5484d); border-color: var(--danger, #e5484d); }
+.model-chip[data-state="failed"] { color: var(--error-text, var(--fx-red-hot)); border-color: var(--danger, var(--fx-red-hot)); }
 .model-chip-caret { font-size: 1rem; }
 .model-chip-note { order: 2; font-size: 0.75rem; color: var(--text-muted); }
 .model-chip-note:not(:empty) { padding: 0 16px 10px; margin-top: -4px; }
 /* Empty, the note takes no room but stays in the accessibility tree: a live region that is display:none when its text arrives is not announced (#5042). */
 .model-chip-note:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.model-chip-note[data-state="failed"] { color: var(--error-text, #e5484d); }
+.model-chip-note[data-state="failed"] { color: var(--error-text, var(--fx-red-hot)); }
 .model-chip-menu { position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 30; min-width: 260px; max-width: min(92vw, 360px); max-height: 50vh; overflow-y: auto; padding: 6px;
-    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-ml); box-shadow: 0 8px 24px rgba(var(--black-rgb), 0.35); }
 .model-chip-menu[hidden] { display: none; }
 .model-chip-head { padding: 6px 8px 2px; font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
 .model-chip-how { text-transform: none; letter-spacing: 0; margin-left: 6px; color: var(--accent); }
-.model-chip-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 36px; padding: 6px 8px; border: 0; border-radius: 6px;
+.model-chip-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 36px; padding: 6px 8px; border: 0; border-radius: var(--radius-md);
     background: transparent; color: var(--text-primary); font: inherit; font-size: 0.8125rem; text-align: left; cursor: pointer; }
 .model-chip-item:hover, .model-chip-item:focus-visible { background: var(--bg-tertiary); }
 .model-chip-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; } /* a tint alone is not a focus indicator (#5042) */

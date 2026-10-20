@@ -13,7 +13,7 @@
 .chat-bubble {
     margin-bottom: 16px;
     padding: 12px 16px;
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     font-size: var(--fs-lg);
     line-height: 1.5;
     max-width: 85%;
@@ -91,7 +91,7 @@
 .chat-bubble .message-text code {
     background: var(--code-inline-bg);
     padding: 1px 5px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     font-family: var(--font-mono);
     font-size: 0.75rem;
 }
@@ -99,7 +99,7 @@
 .chat-bubble .message-text pre {
     background: var(--bg-primary);
     padding: 10px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     overflow-x: auto;
     margin: 8px 0;
     border: 1px solid var(--border);
@@ -166,7 +166,7 @@
     border: 1px solid var(--control-border);
     color: var(--text-secondary);
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.6875rem;
     cursor: pointer;
     opacity: 0;
@@ -227,7 +227,7 @@
     gap: 8px;
     padding: 4px 10px;
     border: 1px dashed var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     list-style: none;
     user-select: none;
@@ -293,7 +293,7 @@
 
 .tool-call {
     margin: 0 0 3px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.75rem;
 }
 
@@ -306,7 +306,7 @@
     align-items: center;
     gap: 6px;
     padding: var(--space-sm) var(--space-md);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     list-style: none;
     user-select: none;
@@ -355,7 +355,7 @@
     margin: 2px 0 8px 14px;
     padding: 6px 8px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--bg-secondary);
 }
 
@@ -375,7 +375,7 @@
     margin-top: 6px;
     padding: 6px 10px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--bg-secondary);
     font-size: 0.75rem;
 }
@@ -420,7 +420,7 @@
     flex-direction: column;
     padding: 6px 10px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--bg-primary);
 }
 
@@ -441,7 +441,7 @@
     padding: 6px 8px;
     background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     line-height: 1.4;
@@ -456,7 +456,7 @@
 .diff-content {
     margin-top: 4px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--bg-primary);
     overflow-x: auto;
     max-height: 300px;
@@ -533,7 +533,7 @@
     background: var(--bg-secondary);
     color: var(--text-muted);
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     font-size: 0.75rem; /* rem, not 12px: it grows with the text size (#4327) */
     text-align: center;
@@ -559,7 +559,7 @@
 .live-view-toggle {
     display: flex;
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     margin-right: 4px;
 }
@@ -624,7 +624,7 @@
     --jump-bg: #000;
     --jump-edge: rgba(255, 255, 255, 0.22);
 }
-[data-theme="light"] .chat-jump-latest { --jump-bg: #3a3a3a; --jump-edge: rgba(0, 0, 0, 0.18); }
+[data-theme="light"] .chat-jump-latest { --jump-bg: #3a3a3a; --jump-edge: rgba(var(--black-rgb), 0.18); }
 .capture-wrapper:not(.chat-mode) .chat-jump-latest { display: none; }
 .chat-jump-latest-btn {
     pointer-events: auto;
@@ -635,15 +635,15 @@
     border: 1px solid var(--jump-edge);
     border-radius: 50%;
     background: var(--jump-bg);
-    color: rgba(255, 255, 255, 0.78); /* the arrow faded at rest; the circle stays opaque, so the text under it does not show through */
+    color: rgba(var(--white-rgb), 0.78); /* the arrow faded at rest; the circle stays opaque, so the text under it does not show through */
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 1px 6px rgba(var(--black-rgb), 0.3);
     transition: color 0.15s ease;
 }
-.chat-jump-latest-btn:hover, .chat-jump-latest-btn:focus-visible { color: #fff; }
+.chat-jump-latest-btn:hover, .chat-jump-latest-btn:focus-visible { color: var(--text-on-accent); }
 .chat-jump-latest-btn[hidden] { display: none; }
 .chat-jump-latest-btn:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 .chat-jump-latest-btn svg { position: relative; width: 18px; height: 18px; }
@@ -669,7 +669,7 @@
         border-radius: 50%;
         border: 1px solid var(--jump-edge);
         background: var(--jump-bg);
-        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 1px 6px rgba(var(--black-rgb), 0.3);
     }
     .chat-jump-latest-dot { top: 5px; right: 5px; }
 }
@@ -805,7 +805,7 @@
     position: relative;
     background: var(--chat-code-bg);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     padding: 16px 18px;
     margin: 0 0 16px;
     overflow-x: auto;
@@ -900,7 +900,7 @@
     padding: 4px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-md);
 }
 .chat-file-menu-path {
@@ -921,7 +921,7 @@
     width: 100%;
     padding: 6px 10px;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: none;
     color: var(--text-primary);
     font-size: 0.75rem;
@@ -1071,11 +1071,11 @@
     padding: 16px 18px 12px;
     border: 1px solid var(--border);
     border-left: 3px solid var(--warning);
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     background: var(--bg-secondary);
     font-family: var(--font-sans);
     color: var(--text-primary);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 1px 2px rgba(var(--black-rgb), 0.12);
 }
 .cni-head {
     display: flex;
@@ -1119,7 +1119,7 @@
 .cni-target {
     background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 8px 10px;
     margin: 0 0 12px;
     overflow-x: auto;
@@ -1129,7 +1129,7 @@
     max-height: 300px;
     overflow-y: auto;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 10px 14px;
     margin: 0 0 12px;
     background: var(--bg-primary);
@@ -1183,7 +1183,7 @@
     text-align: left;
     padding: 8px 12px;
     border: 1px solid var(--control-border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--bg-tertiary);
     color: var(--text-primary);
     font: inherit;
@@ -1207,7 +1207,7 @@
     justify-content: center;
     box-sizing: border-box;
     border: 1.5px solid var(--control-border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.75rem;
     line-height: 1;
     color: var(--text-on-accent);
@@ -1236,7 +1236,7 @@
     height: 18px;
     padding: 0 4px;
     border: 1px solid var(--border-light);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     line-height: 16px;
@@ -1271,7 +1271,7 @@
     min-width: 0;
     padding: 7px 10px;
     border: 1px solid var(--control-border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--bg-primary);
     color: var(--text-primary);
     font: inherit;
@@ -1290,7 +1290,7 @@
 .cni-review {
     margin: 0 0 12px;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--bg-primary);
     overflow: hidden;
 }
@@ -1408,7 +1408,7 @@
     height: 22px;
     padding: 0;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: none;
     color: var(--text-muted);
     cursor: pointer;
@@ -1466,7 +1466,7 @@
     height: 26px;
     padding: 0;
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     cursor: pointer;
@@ -1525,8 +1525,8 @@
     padding: 5px 8px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 16px rgba(var(--black-rgb), 0.35);
 }
 .chat-find-bar[hidden] { display: none; }
 .chat-find-input {
@@ -1548,11 +1548,11 @@
     color: var(--text-secondary);
     cursor: pointer;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font: inherit;
     font-size: 0.75rem;
 }
-.chat-find-bar button:hover:not(:disabled) { background: var(--bg-hover, rgba(255, 255, 255, 0.08)); color: var(--text-primary); }
+.chat-find-bar button:hover:not(:disabled) { background: var(--bg-hover, rgba(var(--white-rgb), 0.08)); color: var(--text-primary); }
 .chat-find-older { color: var(--accent) !important; }
 
 /* Terminal view: the xterm accepts input directly, so the bottom command bar
@@ -1579,7 +1579,7 @@
     height: 22px;
     padding: 0;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: none;
     color: var(--text-muted);
     cursor: pointer;
@@ -1609,7 +1609,7 @@
     padding: 0;
     overflow: hidden;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--bg-secondary);
     cursor: pointer;
 }
@@ -1662,7 +1662,7 @@
     min-height: 28px;
     padding: 0 6px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--bg-secondary);
     color: var(--text-secondary);
     cursor: pointer;

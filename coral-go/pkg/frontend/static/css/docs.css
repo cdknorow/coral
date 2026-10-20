@@ -58,7 +58,7 @@
     height: auto;
     margin: 12px 0;
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
 }
 
 .docs-content p {
@@ -70,14 +70,14 @@
 .docs-content code {
     background: var(--bg-tertiary);
     padding: 2px 5px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     font-size: 0.8125rem;
 }
 
 .docs-content pre {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 12px 14px;
     overflow-x: auto;
     font-size: 0.8125rem;

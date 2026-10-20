@@ -22,7 +22,7 @@
     );
     background-size: 200% 100%;
     animation: skeleton-shimmer 1.5s ease-in-out infinite;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 @keyframes skeleton-shimmer {
@@ -229,7 +229,7 @@ body.panel-dragging .preview-pane {
     font-size: 0.875rem;
     line-height: 1;
     padding: 0 2px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     opacity: 0;
     transition: opacity 0.1s, color 0.1s;
     flex-shrink: 0;
@@ -384,7 +384,7 @@ body.panel-dragging .preview-pane {
     color: var(--text-secondary);
     cursor: pointer;
     padding: 2px 4px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     transition: color 0.15s, background 0.15s;
@@ -488,7 +488,7 @@ body.panel-dragging .xterm-container {
 .xterm-container.xterm-focused {
     outline: 1px solid var(--accent-primary);
     outline-offset: -1px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 /* The slim bar that finishes the Terminal view (#4044): state at the left, size, then the typing hint at the right. */
@@ -538,7 +538,7 @@ body.panel-dragging .xterm-container {
     font-size: 0.6875rem;
     font-weight: 600;
     padding: 3px 10px;
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     pointer-events: none;
     opacity: 0.9;
     z-index: 10;
@@ -549,11 +549,11 @@ body.panel-dragging .xterm-container {
     top: 8px;
     left: 12px;
     background: var(--danger);
-    color: #fff;
+    color: var(--text-on-accent);
     font-size: 0.6875rem;
     font-weight: 600;
     padding: 3px 10px;
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     pointer-events: none;
     opacity: 0.9;
     z-index: 10;
@@ -568,7 +568,7 @@ body.panel-dragging .xterm-container {
     justify-content: center;
     background: color-mix(in srgb, var(--bg-primary) 94%, transparent); /* near-solid: the chat's empty-state text must not show through the words (#4481, UX) */
     z-index: 10;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
 }
 
 .session-ended-content {
@@ -601,7 +601,7 @@ body.panel-dragging .xterm-container {
 /* ── Capture Blocks ────────────────────────────────────────── */
 
 .capture-block {
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 8px 12px;
     margin-bottom: 12px;
     border-left: 3px solid transparent;
@@ -640,7 +640,7 @@ body.panel-dragging .xterm-container {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-left: 3px solid var(--border-light);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 6px 12px;
     margin-top: 4px;
     color: var(--text-muted);
@@ -686,7 +686,7 @@ body.panel-dragging .xterm-container {
     border-radius: 2px;
     color: var(--diff-del-color);
     text-decoration: line-through;
-    text-decoration-color: rgba(248, 81, 73, 0.4);
+    text-decoration-color: rgba(var(--fx-red-rgb), 0.4);
 }
 
 .capture-diff-summary {
@@ -725,9 +725,9 @@ body.panel-dragging .xterm-container {
 .drop-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(99, 102, 241, 0.12);
+    background: rgba(var(--fx-indigo-rgb), 0.12);
     border: 2px dashed var(--accent);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -766,7 +766,7 @@ body.panel-dragging .xterm-container {
     gap: 6px;
     background: var(--bg-secondary);
     border: 1px solid var(--border-light);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 4px 8px 4px 4px;
     max-width: 220px;
 }
@@ -775,7 +775,7 @@ body.panel-dragging .xterm-container {
     width: 32px;
     height: 32px;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
 }
 
@@ -844,13 +844,13 @@ body.panel-dragging .xterm-container {
     font-family: var(--font-mono);
     font-size: 0.88em;
     padding: 0.15em 0.4em;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--bg-tertiary);
 }
 .preview-pane-markdown pre {
     padding: 12px 14px;
     overflow-x: auto;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--bg-tertiary);
 }
 .preview-pane-markdown pre code { padding: 0; background: none; }

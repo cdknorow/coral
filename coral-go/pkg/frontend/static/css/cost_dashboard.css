@@ -31,7 +31,7 @@
 .cost-col-filter:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
 }
 
 /* Filter icon inside column header */
@@ -40,7 +40,7 @@
     align-items: center;
     margin-left: 3px;
     padding: 1px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     vertical-align: middle;
     cursor: pointer;
     color: inherit;
@@ -78,7 +78,7 @@
     z-index: 1000;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-light);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
     width: 200px;
     max-height: 320px;
@@ -116,7 +116,7 @@
     border: none;
     cursor: pointer;
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
 }
 
 .cost-filter-action-btn:hover {
@@ -190,7 +190,7 @@
     font-family: var(--font-sans);
     background: var(--bg-secondary);
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     padding: 4px 8px;
     font-size: var(--fs-md);
@@ -211,7 +211,7 @@
     min-width: 120px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 14px 16px;
     display: flex;
     flex-direction: column;
@@ -247,7 +247,7 @@
 
 .cost-table-container {
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     overflow-x: auto; /* a wide table scrolls inside its box on a phone instead of being cut off (#4589) */
     overflow-y: hidden;
 }
@@ -353,22 +353,22 @@
     font-size: var(--fs-base);
     font-weight: 600;
     padding: 1px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     text-transform: uppercase;
 }
 
 .cost-status-ok {
-    background: rgba(63, 185, 80, 0.15);
+    background: rgba(var(--fx-green-rgb), 0.15);
     color: var(--success);
 }
 
 .cost-status-error {
-    background: rgba(248, 81, 73, 0.15);
+    background: rgba(var(--fx-red-rgb), 0.15);
     color: var(--error);
 }
 
 .cost-status-pending {
-    background: rgba(136, 136, 136, 0.12);
+    background: rgba(var(--fx-grey-rgb), 0.12);
     color: var(--text-muted);
 }
 
@@ -441,7 +441,7 @@
 
 .cost-chart-container {
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 12px;
     background: var(--bg-secondary);
     overflow: hidden;
@@ -494,7 +494,7 @@
 
 .cost-share-bar {
     height: 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     background: var(--accent);
     transition: width 0.3s ease;
     min-width: 2px;
@@ -520,9 +520,9 @@
     z-index: 1000;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-light);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 12px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 16px rgba(var(--black-rgb), 0.3);
     pointer-events: none;
 }
 .agent-cost-chart-tooltip .chart-title {

@@ -51,7 +51,7 @@
 }
 
 .btn-warning:hover {
-    background: rgba(210, 153, 34, 0.15);
+    background: rgba(var(--fx-amber-rgb), 0.15);
     border-color: var(--warning);
     color: var(--warning);
 }
@@ -63,7 +63,7 @@
 }
 
 .btn-danger:hover {
-    background: rgba(248, 81, 73, 0.15);
+    background: rgba(var(--fx-red-rgb), 0.15);
     border-color: var(--error);
     color: var(--error);
 }
@@ -75,7 +75,7 @@
 }
 
 .btn-success:hover {
-    background: rgba(63, 185, 80, 0.15);
+    background: rgba(var(--fx-green-rgb), 0.15);
 }
 
 .btn-danger-text {
@@ -107,9 +107,9 @@
 .mb-sleep-banner {
     text-align: center;
     padding: 12px 16px;
-    background: rgba(210, 153, 34, 0.1);
-    border: 1px solid rgba(210, 153, 34, 0.25);
-    border-radius: 8px;
+    background: rgba(var(--fx-amber-rgb), 0.1);
+    border: 1px solid rgba(var(--fx-amber-rgb), 0.25);
+    border-radius: var(--radius-lg);
     color: var(--warning);
     font-size: 0.8125rem;
     margin: 8px 16px 12px;
@@ -168,7 +168,7 @@
     column-gap: 12px;
     padding: 8px 10px;
     position: relative;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
 }
 
 .mb-message:hover {
@@ -192,7 +192,7 @@
     justify-content: center;
     width: 34px;
     height: 34px;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--mb-tint);
     color: var(--mb-color);
     font-weight: 700;
@@ -237,7 +237,7 @@
     gap: 6px;
     min-height: 28px;
     padding: 2px 8px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     list-style: none;
 }
@@ -402,13 +402,13 @@
     padding: 6px 14px;
     font-size: 0.8125rem;
     font-weight: 500;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
 }
 
 #mb-select-btn.active,
 .board-select-btn.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
 }
 
 /* Message board markdown content */
@@ -470,7 +470,7 @@ button.subscriber-history-link {
 .mb-message-body code {
     background: var(--mb-code-bg);
     padding: 1px 5px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.75rem;
     font-family: var(--font-mono);
 }
@@ -478,7 +478,7 @@ button.subscriber-history-link {
 .mb-message-body pre {
     background: var(--mb-code-bg);
     padding: 8px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     overflow-x: auto;
     overflow-wrap: normal;
     max-width: 100%;
@@ -533,12 +533,12 @@ button.subscriber-history-link {
 .btn-enter {
     border-color: var(--accent-dim);
     border-bottom-color: var(--accent-dim);
-    background: rgba(31, 111, 235, 0.15);
+    background: rgba(var(--fx-blue-rgb), 0.15);
     color: var(--accent);
 }
 
 .btn-enter:hover {
-    background: rgba(31, 111, 235, 0.25);
+    background: rgba(var(--fx-blue-rgb), 0.25);
     border-color: var(--accent);
     color: var(--accent);
 }
@@ -559,10 +559,10 @@ button.subscriber-history-link {
 
 .btn-send {
     background: var(--accent) !important;
-    color: #fff !important;
+    color: var(--text-on-accent) !important;
     font-weight: 700;
     padding: 6px 20px;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.25);
     transition: all 0.15s;
     border: none !important;
@@ -575,7 +575,7 @@ button.subscriber-history-link {
     background: var(--accent-light) !important;
     box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.35);
     transform: translateY(-1px);
-    color: #fff !important;
+    color: var(--text-on-accent) !important;
 }
 
 /* ── Badges ────────────────────────────────────────────────── */
@@ -583,7 +583,7 @@ button.subscriber-history-link {
 .badge {
     font-size: 0.6875rem;
     padding: 2px 8px;
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     font-weight: 600;
     text-transform: uppercase;
 }
@@ -891,7 +891,7 @@ button.subscriber-history-link {
 .info-grid dd code {
     background: var(--bg-tertiary);
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: 0.75rem;
 }
@@ -1068,7 +1068,7 @@ button.subscriber-history-link {
     border: 1px solid var(--control-border);
     color: var(--text-secondary);
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: var(--fs-md);
     cursor: pointer;
     white-space: nowrap;
@@ -1077,7 +1077,7 @@ button.subscriber-history-link {
 
 .copy-btn:hover {
     background: var(--accent-dim);
-    color: #fff;
+    color: var(--text-on-accent);
     border-color: var(--accent-dim);
 }
 
@@ -1089,7 +1089,7 @@ button.subscriber-history-link {
     right: 20px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 12px 20px;
     font-size: 0.8125rem;
     color: var(--text-primary);
@@ -1126,7 +1126,7 @@ button.subscriber-history-link {
     flex: none;
     font: inherit;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
 }
 
 .toast-action {
@@ -1165,14 +1165,14 @@ button.subscriber-history-link {
     background: var(--bg-secondary);
     border: 1px solid var(--warning);
     border-left: 4px solid var(--warning);
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     padding: 0;
     font-size: 0.875rem;
     color: var(--text-primary);
     z-index: 300;
     min-width: 300px;
     max-width: 420px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 24px rgba(var(--black-rgb), 0.4);
     animation: slideInFromTop 0.3s ease, fadeOut 0.3s ease 9.7s;
     overflow: hidden;
 }
@@ -1200,7 +1200,7 @@ button.subscriber-history-link {
     line-height: 1.4;
     padding: 6px 8px;
     background: var(--bg-tertiary);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
 }
 
 .notification-toast-link {
@@ -1237,7 +1237,7 @@ button.subscriber-history-link {
 .alert-notification-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(var(--black-rgb), 0.5);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1248,12 +1248,12 @@ button.subscriber-history-link {
 .alert-notification {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     padding: 32px 40px;
     max-width: 440px;
     width: 90%;
     text-align: center;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px rgba(var(--black-rgb), 0.4);
     animation: scaleIn 0.2s ease;
 }
 
@@ -1319,14 +1319,14 @@ button.subscriber-history-link {
     background: var(--bg-secondary);
     border: 1px solid var(--accent-dim);
     border-left: 4px solid var(--accent);
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     padding: 0;
     font-size: 0.8125rem;
     color: var(--text-primary);
     z-index: 300;
     min-width: 320px;
     max-width: 440px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 24px rgba(var(--black-rgb), 0.4);
     animation: slideInFromTop 0.3s ease;
 }
 
@@ -1419,7 +1419,7 @@ button.subscriber-history-link {
     border: 1px solid var(--border-light);
     opacity: 0;
     animation: tooltip-fade-in 0s 1s forwards;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 8px 12px;
     font-size: 0.75rem;
     line-height: 1.4;
@@ -1428,7 +1428,7 @@ button.subscriber-history-link {
     width: 280px;
     word-break: break-word;
     z-index: 9999;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--black-rgb), 0.3);
     pointer-events: none;
 }
 
@@ -1453,8 +1453,8 @@ button.subscriber-history-link {
     max-height: 400px;
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
-    border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-ml);
+    box-shadow: 0 8px 32px rgba(var(--black-rgb), 0.4);
     z-index: 10000;
     display: flex;
     flex-direction: column;
@@ -1473,7 +1473,7 @@ button.subscriber-history-link {
     padding: 6px 10px;
     background: var(--bg-tertiary);
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     font-size: 0.8125rem;
     outline: none;
@@ -1487,7 +1487,7 @@ button.subscriber-history-link {
     padding: 4px 10px;
     background: none;
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--text-muted);
     font-size: 0.6875rem;
     cursor: pointer;
@@ -1530,13 +1530,13 @@ button.subscriber-history-link {
     font-size: 1.25rem;
     background: none;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: background 0.1s;
 }
 
 .emoji-picker-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(var(--white-rgb), 0.1);
 }
 
 /* ── Tags ──────────────────────────────────────────────────── */
@@ -1553,10 +1553,10 @@ button.subscriber-history-link {
     align-items: center;
     gap: 4px;
     padding: 2px 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     font-size: 0.6875rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-on-accent);
     white-space: nowrap;
 }
 
@@ -1593,7 +1593,7 @@ button.subscriber-history-link {
     position: relative;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 12px;
     margin-top: 8px;
     z-index: 50;
@@ -1626,10 +1626,10 @@ button.subscriber-history-link {
     align-items: center;
     gap: 4px;
     padding: 4px 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     font-size: 0.6875rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--text-on-accent);
     cursor: pointer;
     transition: opacity 0.15s;
 }
@@ -1651,7 +1651,7 @@ button.subscriber-history-link {
     padding: 4px 8px;
     background: var(--bg-primary);
     border: 1px solid var(--control-border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-primary);
     font-size: 0.75rem;
     outline: none;
@@ -1665,7 +1665,7 @@ button.subscriber-history-link {
     width: 28px;
     height: 28px;
     border: 1px solid var(--control-border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: none;
     cursor: pointer;
     padding: 0;
@@ -1681,12 +1681,12 @@ button.subscriber-history-link {
     position: fixed;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 12px;
     z-index: 100;
     min-width: 200px;
     max-width: 280px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 16px rgba(var(--black-rgb), 0.3);
 }
 
 .folder-tag-current {
@@ -1755,7 +1755,7 @@ button.subscriber-history-link {
     font-size: 0.6875rem;
     font-family: var(--font-mono);
     padding: 3px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     border: 1px solid var(--control-border);
     background: var(--bg-secondary);
@@ -1770,13 +1770,13 @@ button.subscriber-history-link {
 
 .flag-shortcut-btn.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
     border-color: var(--accent);
 }
 
 .dir-browser {
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--bg-primary);
     margin-bottom: 12px;
     overflow: hidden;
@@ -2033,7 +2033,7 @@ button.subscriber-history-link {
 .overflow-menu-trigger {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--text-secondary);
     cursor: pointer;
     padding: 5px 8px;
@@ -2056,7 +2056,7 @@ button.subscriber-history-link {
     margin-top: 4px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-light);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 4px;
     min-width: 180px;
     box-shadow: var(--shadow-lg);
@@ -2075,7 +2075,7 @@ button.subscriber-history-link {
     font-size: 0.8125rem;
     font-family: inherit;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     transition: background 0.1s;
 }
 
@@ -2085,7 +2085,7 @@ button.subscriber-history-link {
 }
 
 .overflow-menu-item.overflow-menu-danger:hover {
-    background: rgba(248, 81, 73, 0.15);
+    background: rgba(var(--fx-red-rgb), 0.15);
     color: var(--error);
 }
 
@@ -2124,7 +2124,7 @@ button.subscriber-history-link {
 .overflow-menu-tier .tier-label {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.625rem;
     font-weight: 700;
     letter-spacing: 0.5px;
@@ -2172,7 +2172,7 @@ button.subscriber-history-link {
     padding: 18px 14px;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
     color: var(--text-secondary);
@@ -2301,7 +2301,7 @@ button.subscriber-history-link {
 
 .team-agents-container {
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     padding: 12px;
     background: var(--inset-fill);
 }
@@ -2338,7 +2338,7 @@ button.subscriber-history-link {
     width: 100%;
     padding: 10px;
     font-size: 0.8125rem;
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     border: 2px dashed var(--border);
     background: transparent;
     color: var(--accent);
@@ -2394,13 +2394,13 @@ button.subscriber-history-link {
 }
 
 .team-generate-ai-btn {
-    border-color: rgba(99, 102, 241, 0.35) !important;
+    border-color: rgba(var(--fx-indigo-rgb), 0.35) !important;
     color: var(--accent) !important;
-    background: rgba(99, 102, 241, 0.08) !important;
+    background: rgba(var(--fx-indigo-rgb), 0.08) !important;
 }
 
 .team-generate-ai-btn:hover {
-    background: rgba(99, 102, 241, 0.16) !important;
+    background: rgba(var(--fx-indigo-rgb), 0.16) !important;
     border-color: var(--accent) !important;
 }
 
@@ -2419,12 +2419,12 @@ button.subscriber-history-link {
 .team-advanced {
     margin-top: 12px;
     border: 1px solid var(--border);
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.08);
+    border-radius: var(--radius-ml);
+    background: rgba(var(--black-rgb), 0.08);
 }
 
 /* The dark fill above darkens the light theme's panel, taking the labels in it (Agent Configuration, Flags, the optional notes) to 3.4 to 4.4:1: a light fill there (#4673). */
-[data-theme="light"] .team-advanced { background: rgba(255, 255, 255, 0.5); }
+[data-theme="light"] .team-advanced { background: rgba(var(--white-rgb), 0.5); }
 
 .team-advanced summary {
     cursor: pointer;
@@ -2527,7 +2527,7 @@ button.subscriber-history-link {
 .team-wizard-intro-icon {
     width: 40px;
     height: 40px;
-    border-radius: 12px;
+    border-radius: var(--radius-xl);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2558,7 +2558,7 @@ button.subscriber-history-link {
 
 .team-wizard-error {
     padding: 12px 14px;
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     border: 1px solid rgba(255, 107, 107, 0.3);
     background: rgba(255, 107, 107, 0.08);
     color: var(--error);
@@ -2600,9 +2600,9 @@ button.subscriber-history-link {
     gap: 8px;
     padding: 10px 14px;
     margin: 12px 0;
-    border-radius: 8px;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.08));
-    border: 1px solid rgba(99, 102, 241, 0.25);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, rgba(var(--fx-indigo-rgb), 0.12), rgba(168, 85, 247, 0.08));
+    border: 1px solid rgba(var(--fx-indigo-rgb), 0.25);
     color: var(--text-secondary);
     font-size: 0.8125rem;
     line-height: 1.4;
@@ -2617,7 +2617,7 @@ button.subscriber-history-link {
 .team-agent-row {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     margin-bottom: 8px;
     position: relative;
     overflow: hidden;
@@ -2678,7 +2678,7 @@ button.subscriber-history-link {
     color: var(--text-muted);
     cursor: pointer;
     padding: 4px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     line-height: 1;
     transition: color 0.15s;
 }
@@ -2818,7 +2818,7 @@ button.subscriber-history-link {
     padding: 6px 10px;
     background: var(--bg-tertiary);
     border: 1px solid var(--control-border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
     font-size: 0.8125rem;
     outline: none;
@@ -2841,7 +2841,7 @@ button.subscriber-history-link {
     min-height: 0;
     margin-top: 12px;
     background: var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     overflow: hidden;
 }
 
@@ -2876,7 +2876,7 @@ button.subscriber-history-link {
     padding: 6px 10px;
     background: none;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     font-size: var(--fs-md);
     cursor: pointer;
@@ -2885,13 +2885,13 @@ button.subscriber-history-link {
 
 .template-cat-btn:hover,
 .template-item-btn:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--white-rgb), 0.05);
     color: var(--text-primary);
 }
 
 .template-cat-btn.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
 }
 
 .template-browser-empty,
@@ -2924,7 +2924,7 @@ button.subscriber-history-link {
 .template-preview-body {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 12px;
     margin-bottom: 12px;
     max-height: 250px;
@@ -2981,9 +2981,9 @@ button.subscriber-history-link {
         max-width: calc(100vw - 32px);
         background: var(--bg-secondary);
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--radius-lg);
         padding: 4px 0;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 8px 24px rgba(var(--black-rgb), 0.3);
         z-index: 1000;
     }
     body[data-dock-page="board"][data-dock-open="1"] #messageboard-view .mb-more.open .mb-more-menu { display: flex; }
@@ -3031,13 +3031,13 @@ button.subscriber-history-link {
 .mb-action-btn.mb-action-danger {
     color: var(--error);
     opacity: 0.7;
-    border-color: rgba(248, 81, 73, 0.3);
+    border-color: rgba(var(--fx-red-rgb), 0.3);
 }
 
 .mb-action-btn.mb-action-danger:hover {
     opacity: 1;
     color: var(--error);
-    background: rgba(248, 81, 73, 0.1);
+    background: rgba(var(--fx-red-rgb), 0.1);
 }
 
 /* ── Permissions Editor ──────────────────────────────────── */
@@ -3096,7 +3096,7 @@ button.subscriber-history-link {
     font-size: 0.6875rem;
     font-family: var(--font-mono);
     padding: 3px 8px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     border: 1px solid var(--control-border);
     background: var(--bg-secondary);
@@ -3111,7 +3111,7 @@ button.subscriber-history-link {
 
 .perm-chip.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--text-on-accent);
     border-color: var(--accent);
 }
 
@@ -3148,7 +3148,7 @@ button.subscriber-history-link {
     color: var(--text-muted);
     cursor: pointer;
     padding: 2px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     display: flex;
     align-items: center;
     opacity: 0.5;
@@ -3184,9 +3184,9 @@ button.subscriber-history-link {
     z-index: 200;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 10px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 16px rgba(var(--black-rgb), 0.3);
     width: 210px;
 }
 
@@ -3200,7 +3200,7 @@ button.subscriber-history-link {
 .color-swatch {
     width: 28px;
     height: 28px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     border: 2px solid transparent;
     cursor: pointer;
     transition: border-color 0.1s, transform 0.1s;
@@ -3208,7 +3208,7 @@ button.subscriber-history-link {
 
 .color-swatch:hover {
     transform: scale(1.15);
-    border-color: rgba(255, 255, 255, 0.4);
+    border-color: rgba(var(--white-rgb), 0.4);
 }
 
 .color-swatch.active {
@@ -3229,7 +3229,7 @@ button.subscriber-history-link {
     font-family: var(--font-mono);
     background: var(--bg-primary);
     border: 1px solid var(--control-border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     color: var(--text-primary);
     outline: none;
 }
@@ -3326,7 +3326,7 @@ button.subscriber-history-link {
     font-size: 0.8125rem;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 2px 8px rgba(var(--black-rgb), 0.35);
 }
 .mb-new-pill-btn:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 @media (pointer: coarse) { .mb-new-pill-btn { min-height: 44px; padding: 10px 18px; } }
@@ -3343,7 +3343,7 @@ button.subscriber-history-link {
     flex: 1;
     padding: 10px 14px;
     border: 1px solid var(--control-border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     background: var(--bg-secondary);
     color: var(--text-primary);
     font-size: 0.875rem;
@@ -3492,7 +3492,7 @@ button.subscriber-history-link {
 .mobile-connect-url-box {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 14px;
     font-family: var(--font-mono);
     font-size: 0.875rem;
@@ -3517,7 +3517,7 @@ button.subscriber-history-link {
 .mobile-connect-api-key {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 10px;
     font-size: 0.75rem;
     margin-bottom: 12px;
@@ -3596,7 +3596,7 @@ button.subscriber-history-link {
 .tmux-missing-banner-cmd code {
     background: var(--bg-secondary);
     padding: 2px 6px;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.75rem;
 }
@@ -3709,7 +3709,7 @@ input[aria-invalid="true"] {
     flex-shrink: 0;
     margin-left: 4px;
     padding: 0 5px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-size: 0.625rem;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -3731,11 +3731,11 @@ dialog.auto-accept-confirm {
     box-sizing: border-box;
     padding: 20px 22px;
     border: 1px solid rgba(var(--warning-rgb), 0.5);
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     background: var(--bg-secondary);
     color: var(--text-primary);
 }
-dialog.auto-accept-confirm::backdrop { background: rgba(0, 0, 0, 0.55); }
+dialog.auto-accept-confirm::backdrop { background: rgba(var(--black-rgb), 0.55); }
 dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 1rem; }
 .auto-accept-confirm-agent { margin: 0 0 10px; color: var(--text-secondary); font-weight: 600; }
 #auto-accept-confirm-text { margin: 0 0 18px; line-height: 1.5; color: var(--text-secondary); }
@@ -3747,14 +3747,14 @@ dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 1rem; }
 .auto-accept-confirm-enable:hover { filter: brightness(1.08); }
 #stop-all-auto-accept[hidden] { display: none; }
 .auto-accept-confirm-duration { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; color: var(--text-secondary); }
-.auto-accept-confirm-duration select { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--control-border); border-radius: 6px; padding: 4px 8px; font: inherit; }
+.auto-accept-confirm-duration select { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--control-border); border-radius: var(--radius-md); padding: 4px 8px; font: inherit; }
 .settings-cloud-auto-accept { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 #settings-cloud-auto-accept-row[hidden] { display: none; }
 #settings-cloud-hub-operator-row[hidden], #settings-cloud-hub-operator-msg[hidden] { display: none; }
 .settings-cloud-hub-operator { margin-top: 8px; }
-.settings-cloud-hub-operator .settings-error { color: var(--error, #e5534b); }
+.settings-cloud-hub-operator .settings-error { color: var(--error, var(--fx-red)); }
 /* The popout's switch while auto-accept is off (#3182): an outlined, quiet header button. */
-button.auto-accept-header-off { display: inline-flex; align-items: center; margin: 0 4px 0 0; padding: 0 6px; border-radius: 4px; font: inherit; font-size: 0.6875rem; line-height: 18px; background: none; color: var(--text-secondary); border: 1px solid var(--control-border); cursor: pointer; }
+button.auto-accept-header-off { display: inline-flex; align-items: center; margin: 0 4px 0 0; padding: 0 6px; border-radius: var(--radius-sm); font: inherit; font-size: 0.6875rem; line-height: 18px; background: none; color: var(--text-secondary); border: 1px solid var(--control-border); cursor: pointer; }
 button.auto-accept-header-off:hover { color: var(--text-primary); border-color: rgba(var(--warning-rgb), 0.6); }
 button.auto-accept-header-off:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
@@ -3765,7 +3765,7 @@ button.auto-accept-header-off:focus-visible { outline: 2px solid var(--accent); 
     flex-shrink: 0;
     margin-left: 4px;
     padding: 0 5px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font: inherit;
     font-size: 0.625rem;
     font-weight: 700;
@@ -3798,7 +3798,7 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
     margin: 6px 0;
     padding: 8px 10px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--bg-secondary);
 }
 .machine-health-head {
@@ -3944,11 +3944,11 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
 #settings-modal .tb-autowake input[type="number"] { width: 4.5em; min-height: 0; padding: 2px 6px; }
 
 /* "Coral now requires sign-in" (#3939): the modal shown when the page has no sign-in session */
-dialog.signed-out-panel { margin: auto; /* the base reset's margin:0 would pin it top-left */ width: min(460px, calc(100vw - 32px)); box-sizing: border-box; padding: 22px 24px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); }
-dialog.signed-out-panel::backdrop { background: rgba(0, 0, 0, .6); }
+dialog.signed-out-panel { margin: auto; /* the base reset's margin:0 would pin it top-left */ width: min(460px, calc(100vw - 32px)); box-sizing: border-box; padding: 22px 24px; border: 1px solid var(--border); border-radius: var(--radius-ml); background: var(--bg-secondary); color: var(--text-primary); }
+dialog.signed-out-panel::backdrop { background: rgba(var(--black-rgb), .6); }
 dialog.signed-out-panel h2 { margin: 0 0 10px; font-size: var(--fs-lg, 17px); }
 dialog.signed-out-panel p { margin: 0 0 12px; color: var(--text-secondary); font-size: var(--fs-sm, 13px); line-height: 1.5; }
-dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: 4px; color: var(--text-primary); }
+dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px; border-radius: var(--radius-sm); color: var(--text-primary); }
 .signed-out-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 8px; }
 .signed-out-actions .btn { text-decoration: none; }
 .signed-out-status { min-height: 1.2em; margin: 0; }
@@ -3958,19 +3958,19 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .pw-field { display: block; margin: 0 0 12px; font-size: 0.8125rem; }
 .pw-label { display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-primary); }
 .pw-input-row { display: block; position: relative; }
-.pw-input { width: 100%; box-sizing: border-box; padding: 9px 64px 9px 11px; font-size: 0.875rem; border-radius: 8px;
+.pw-input { width: 100%; box-sizing: border-box; padding: 9px 64px 9px 11px; font-size: 0.875rem; border-radius: var(--radius-lg);
     border: 1px solid var(--control-border); background: var(--bg-primary); color: var(--text-primary); }
 .pw-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 [data-theme="light"] .pw-toggle { color: var(--accent-dim); }   /* AA on the light card (#4023) */
 .pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--accent);
     font-size: 0.8125rem; cursor: pointer; padding: 6px 8px; }
-.pw-meter { height: 6px; border-radius: 3px; background: var(--bg-tertiary); overflow: hidden; margin: 2px 0 4px; }
-.pw-meter > i { display: block; height: 100%; width: 0; border-radius: 3px; background: #d4a72c; transition: width .15s; }
-.pw-strength[data-level="strong"] .pw-meter > i { background: #3fb950; }
-.pw-strength[data-level="weak"] .pw-meter > i { background: #e5534b; }
+.pw-meter { height: 6px; border-radius: var(--radius-xs); background: var(--bg-tertiary); overflow: hidden; margin: 2px 0 4px; }
+.pw-meter > i { display: block; height: 100%; width: 0; border-radius: var(--radius-xs); background: #d4a72c; transition: width .15s; }
+.pw-strength[data-level="strong"] .pw-meter > i { background: var(--fx-green); }
+.pw-strength[data-level="weak"] .pw-meter > i { background: var(--fx-red); }
 .pw-hint { font-size: 0.75rem; color: var(--text-secondary); margin: 0 0 12px; min-height: 1.3em; line-height: 1.45; }
 .pw-hint b { color: var(--text-primary); font-weight: 600; }
-.pw-error { color: #e5534b; font-size: 0.8125rem; margin: 0 0 10px; }
+.pw-error { color: var(--fx-red); font-size: 0.8125rem; margin: 0 0 10px; }
 .pw-note { font-size: 0.75rem; color: var(--text-secondary); margin: 8px 0 0; line-height: 1.5; }
 .sec-row details { margin: 10px 0; }
 .sec-row summary { cursor: pointer; font-weight: 600; font-size: 0.8125rem; margin-bottom: 10px; }
@@ -3981,7 +3981,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .sec-item { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
 .sec-who { overflow-wrap: anywhere; }
 .sec-when { color: var(--text-secondary); text-align: right; flex: none; }
-.sec-failed .sec-who { color: #e5534b; }
+.sec-failed .sec-who { color: var(--fx-red); }
 @media (max-width: 480px) { .sec-item { flex-direction: column; gap: 0; } .sec-when { text-align: left; } }
 .sec-gap { margin-top: 14px; }
 .sec-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -3989,7 +3989,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .sec-muted { color: var(--text-secondary); font-weight: 400; }
 #settings-modal .sec-switch { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; font-size: 0.8125rem; margin: 6px 0; cursor: pointer; }
 #settings-modal .sec-switch input[type="checkbox"] { width: 16px; height: 16px; flex: none; margin: 2px 0 0; padding: 0; }
-.sec-warn { display: flex; gap: 8px; align-items: flex-start; background: rgba(212, 167, 44, .13); border: 1px solid rgba(212, 167, 44, .55); border-radius: 8px; padding: 10px 12px; font-size: 0.7812rem; line-height: 1.5; margin: 8px 0; }
+.sec-warn { display: flex; gap: 8px; align-items: flex-start; background: rgba(212, 167, 44, .13); border: 1px solid rgba(212, 167, 44, .55); border-radius: var(--radius-lg); padding: 10px 12px; font-size: 0.7812rem; line-height: 1.5; margin: 8px 0; }
 .sec-add { display: flex; gap: 8px; align-items: center; }
 .sec-add .btn { margin: 0; }
 #settings-modal .sec-sessions .btn { margin: 0; }   /* .btn-small's 20 px side margin pushed these buttons off their row */
@@ -4043,10 +4043,10 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .inbox-tab { background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--text-secondary); font: inherit; font-size: 0.9375rem; font-weight: 600; padding: 10px 14px; min-height: 44px; cursor: pointer; }
 .inbox-tab:hover { color: var(--text-primary); }
 .inbox-tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--accent); }
-.inbox-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+.inbox-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
 .inbox-panel[hidden] { display: none; }
 .inbox-needs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.inbox-needs-item { width: 100%; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; text-align: left; font: inherit; font-size: 0.875rem; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--control-border); border-left: 3px solid var(--warning); border-radius: 10px; padding: 10px 12px; min-height: 44px; cursor: pointer; }
+.inbox-needs-item { width: 100%; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; text-align: left; font: inherit; font-size: 0.875rem; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--control-border); border-left: 3px solid var(--warning); border-radius: var(--radius-ml); padding: 10px 12px; min-height: 44px; cursor: pointer; }
 .inbox-needs-item:hover { background: var(--bg-tertiary); }
 .inbox-needs-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .inbox-needs-name { font-weight: 700; overflow-wrap: anywhere; }
@@ -4069,7 +4069,7 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .saved-scope { margin: 0; padding: 10px 12px 2px; font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saved-tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--border); flex: none; align-items: center; }
 /* A visible way to shut the sidebar the Saved button opened (#4742): the dock's own edge chevron is easy to miss. A phone's overlay has its own close. */
-.saved-close { margin-left: auto; background: none; border: none; color: var(--text-secondary); cursor: pointer; border-radius: 4px; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.saved-close { margin-left: auto; background: none; border: none; color: var(--text-secondary); cursor: pointer; border-radius: var(--radius-sm); width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .saved-close:hover { color: var(--text-primary); background: var(--bg-tertiary); }
 .saved-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .saved-close .material-icons { font-size: 1.125rem; }
@@ -4081,7 +4081,7 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .saved-panel { overflow-y: auto; min-height: 0; flex: 1; }
 .saved-panel:focus { outline: none; }
 .saved-list { list-style: none; margin: 0; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
-.saved-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.saved-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-ml); padding: 10px 12px; }
 .saved-item .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .saved-item .top .material-icons { font-size: 1rem; color: var(--text-muted); flex: none; }
 .saved-item .src { font-size: 0.8125rem; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -4119,7 +4119,7 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 /* The top bar's Saved button: a bookmark with the number open. */
 .saved-top-btn { position: relative; }
 .saved-top-btn.on { color: var(--accent); }
-.saved-top-btn .saved-count { position: absolute; top: -2px; right: -3px; min-width: 14px; padding: 0 4px; border-radius: 8px; background: var(--accent-dim); color: var(--text-on-accent, #fff); font-size: 0.625rem; font-weight: 700; line-height: 14px; text-align: center; }
+.saved-top-btn .saved-count { position: absolute; top: -2px; right: -3px; min-width: 14px; padding: 0 4px; border-radius: var(--radius-lg); background: var(--accent-dim); color: var(--text-on-accent, #fff); font-size: 0.625rem; font-weight: 700; line-height: 14px; text-align: center; }
 .saved-top-btn .saved-count[hidden] { display: none; }
 /* The jump: a slim bar above the conversation, and the "Saved" tag on the message. */
 .jumpbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border); font-size: 0.78125rem; color: var(--text-secondary); flex: none; }
@@ -4127,9 +4127,9 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .jumpbar span { flex: 1; }
 @media (pointer: coarse) { .jumpbar .btn { min-height: 44px; min-width: 44px; } }
 .saved-jump { position: relative; }
-.saved-jump::before { content: "Saved"; position: absolute; left: 0; top: -22px; background: var(--accent-dim); color: var(--text-on-accent, #fff); font-size: 0.625rem; font-weight: 700; border-radius: 8px; padding: 0 7px; line-height: 16px; pointer-events: none; }
+.saved-jump::before { content: "Saved"; position: absolute; left: 0; top: -22px; background: var(--accent-dim); color: var(--text-on-accent, #fff); font-size: 0.625rem; font-weight: 700; border-radius: var(--radius-lg); padding: 0 7px; line-height: 16px; pointer-events: none; }
 .saved-menu-item { display: none; }
-.saved-menu-item .saved-count { margin-left: 6px; min-width: 14px; padding: 0 5px; border-radius: 8px; background: var(--accent-dim); color: var(--text-on-accent, #fff); font-size: 0.6875rem; font-weight: 700; line-height: 16px; text-align: center; }
+.saved-menu-item .saved-count { margin-left: 6px; min-width: 14px; padding: 0 5px; border-radius: var(--radius-lg); background: var(--accent-dim); color: var(--text-on-accent, #fff); font-size: 0.6875rem; font-weight: 700; line-height: 16px; text-align: center; }
 .saved-menu-item .saved-count[hidden] { display: none; }
 /* Large text on a phone: the settings menu has Saved, the top bar does not (see saved_marks.js). */
 .saved-in-menu #saved-btn { display: none; }
@@ -4175,7 +4175,7 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .settings-info-btn { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; padding: 0; flex: none; border: 1px solid var(--control-border); border-radius: 50%; background: none; color: var(--text-secondary); cursor: pointer; }
 .settings-info-btn .material-icons { font-size: 1rem; }
 .settings-info-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.settings-info-btn[aria-expanded="true"] { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; }
+.settings-info-btn[aria-expanded="true"] { background: var(--accent-dim); border-color: var(--accent-dim); color: var(--text-on-accent); }
 .settings-info-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .settings-info-text { grid-column: 1 / -1; background: var(--bg-elevated, var(--bg-tertiary)); border: 1px solid var(--border); border-radius: var(--radius-md); padding: .6rem .8rem; color: var(--text-secondary); font-size: .8125rem; line-height: 1.5; max-width: 46rem; }
 .settings-info-text[hidden] { display: none; }

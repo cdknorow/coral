@@ -35,7 +35,7 @@
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
 }
 
 .wf-header-actions {
@@ -79,7 +79,7 @@
 .wf-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 14px 16px;
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
@@ -112,17 +112,17 @@
 .wf-badge {
     font-size: 0.6875rem;
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     font-weight: 500;
 }
 
 .wf-badge-enabled {
-    background: rgba(46, 160, 67, 0.15);
+    background: rgba(var(--fx-green-deep-rgb), 0.15);
     color: var(--success);
 }
 
 .wf-badge-disabled {
-    background: rgba(139, 148, 158, 0.15);
+    background: rgba(var(--fx-slate-rgb), 0.15);
     color: var(--text-secondary);
 }
 
@@ -240,7 +240,7 @@
     gap: 10px;
     padding: 8px 12px;
     background: var(--bg-tertiary);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 0.8125rem;
 }
 
@@ -267,7 +267,7 @@
 .wf-step-type {
     font-size: 0.6875rem;
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     background: var(--bg-secondary);
     color: var(--text-muted);
     margin-left: auto;
@@ -321,13 +321,13 @@
     flex: 1;
     height: 6px;
     background: var(--bg-tertiary);
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     overflow: hidden;
 }
 
 .wf-progress-fill {
     height: 100%;
-    border-radius: 3px;
+    border-radius: var(--radius-xs);
     transition: width 0.4s ease;
 }
 
@@ -437,7 +437,7 @@
     min-width: 0;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     padding: 10px 14px;
 }
 
@@ -459,12 +459,12 @@
     flex-shrink: 0;
 }
 
-.wf-run-step-status.completed { background: rgba(46, 160, 67, 0.15); color: var(--success); }
+.wf-run-step-status.completed { background: rgba(var(--fx-green-deep-rgb), 0.15); color: var(--success); }
 .wf-run-step-status.running { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
-.wf-run-step-status.failed { background: rgba(248, 81, 73, 0.15); color: var(--error); }
-.wf-run-step-status.killed { background: rgba(210, 153, 34, 0.15); color: var(--warning); }
-.wf-run-step-status.skipped { background: rgba(139, 148, 158, 0.15); color: var(--text-secondary); }
-.wf-run-step-status.pending { background: rgba(139, 148, 158, 0.1); color: var(--text-secondary); }
+.wf-run-step-status.failed { background: rgba(var(--fx-red-rgb), 0.15); color: var(--error); }
+.wf-run-step-status.killed { background: rgba(var(--fx-amber-rgb), 0.15); color: var(--warning); }
+.wf-run-step-status.skipped { background: rgba(var(--fx-slate-rgb), 0.15); color: var(--text-secondary); }
+.wf-run-step-status.pending { background: rgba(var(--fx-slate-rgb), 0.1); color: var(--text-secondary); }
 
 .wf-run-step-name {
     font-weight: 500;
@@ -498,7 +498,7 @@
 
 .wf-run-step-output {
     background: var(--bg-tertiary);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 8px 10px;
     font-family: var(--font-mono);
     font-size: 0.75rem;
@@ -564,7 +564,7 @@
 /* ── Failed step highlight ────────────────────────────────── */
 
 .wf-step-failed {
-    border-color: rgba(248, 81, 73, 0.4);
+    border-color: rgba(var(--fx-red-rgb), 0.4);
 }
 
 /* ── Exit code badge ──────────────────────────────────────── */
@@ -573,17 +573,17 @@
     font-size: 0.6875rem;
     font-family: var(--font-mono);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     font-weight: 500;
 }
 
 .wf-exit-ok {
-    background: rgba(46, 160, 67, 0.12);
+    background: rgba(var(--fx-green-deep-rgb), 0.12);
     color: var(--success);
 }
 
 .wf-exit-err {
-    background: rgba(248, 81, 73, 0.12);
+    background: rgba(var(--fx-red-rgb), 0.12);
     color: var(--error);
 }
 
@@ -601,7 +601,7 @@
 .wf-step-file {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 1px 6px;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
@@ -665,7 +665,7 @@
 .wf-step-editor-item {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 10px;
 }
 
@@ -680,7 +680,7 @@
 .wf-step-editor-top input {
     background: var(--bg-secondary);
     border: 1px solid var(--control-border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 4px 6px;
     font-size: var(--fs-md);
     color: var(--text-primary);
@@ -707,7 +707,7 @@
     width: 100%;
     background: var(--bg-secondary);
     border: 1px solid var(--control-border);
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     padding: 6px 8px;
     font-size: 0.75rem;
     color: var(--text-primary);
@@ -722,10 +722,10 @@
 }
 
 .wf-modal-error {
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
+    background: rgba(var(--fx-red-rgb), 0.1);
+    border: 1px solid rgba(var(--fx-red-rgb), 0.3);
     color: var(--error);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     padding: 8px 10px;
     font-size: 0.8125rem;
     margin-top: 4px;
@@ -739,12 +739,12 @@
     gap: 4px;
     font-size: 0.75rem;
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-ml);
     font-weight: 500;
 }
 
-.wf-status-badge.completed { background: rgba(46, 160, 67, 0.15); color: var(--success); }
+.wf-status-badge.completed { background: rgba(var(--fx-green-deep-rgb), 0.15); color: var(--success); }
 .wf-status-badge.running { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
-.wf-status-badge.failed { background: rgba(248, 81, 73, 0.15); color: var(--error); }
-.wf-status-badge.killed { background: rgba(210, 153, 34, 0.15); color: var(--warning); }
-.wf-status-badge.pending { background: rgba(139, 148, 158, 0.15); color: var(--text-secondary); }
+.wf-status-badge.failed { background: rgba(var(--fx-red-rgb), 0.15); color: var(--error); }
+.wf-status-badge.killed { background: rgba(var(--fx-amber-rgb), 0.15); color: var(--warning); }
+.wf-status-badge.pending { background: rgba(var(--fx-slate-rgb), 0.15); color: var(--text-secondary); }

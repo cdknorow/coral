@@ -364,3 +364,34 @@
     --mb-heading:     #2e7d9c;
     --mb-code-bg:     #e8e8e8;
 }
+
+/* ── Fixed palette (#5375) ──────────────────────────────────────
+   Colours and radii the stylesheets used as bare values, named once. They are the same in both themes (a rule that wants a
+   colour that follows the theme uses the tokens above, not these): the -rgb ones are channel lists for rgba(var(--x-rgb), a),
+   the others whole colours. tests/frontend/css_color_census.test.mjs fails on a new bare colour outside its allowlist: use a
+   token here or above, or add one. */
+:root {
+    --black-rgb:         0, 0, 0;
+    --white-rgb:         255, 255, 255;
+    --fx-red-rgb:        248, 81, 73;
+    --fx-amber-rgb:      210, 153, 34;
+    --fx-green-rgb:      63, 185, 80;
+    --fx-green-deep-rgb: 46, 160, 67;
+    --fx-grey-rgb:       136, 136, 136;
+    --fx-slate-rgb:      139, 148, 158;
+    --fx-steel-rgb:      72, 79, 88;
+    --fx-indigo-rgb:     99, 102, 241;
+    --fx-yellow-rgb:     255, 193, 7;
+    --fx-gold-rgb:       227, 179, 65;
+    --fx-lilac-rgb:      210, 168, 255;
+    --fx-violet-rgb:     163, 113, 247;
+    --fx-blue-rgb:       31, 111, 235;
+    --fx-red:            #e5534b;
+    --fx-red-hot:        #e5484d;
+    --fx-green:          #3fb950;
+    --fx-amber:          #d29922;
+    --fx-navy-line:      #2a3140;
+    --fx-navy-ink:       #0a0e14;
+    --radius-xs:         3px;
+    --radius-ml:         10px;
+}
