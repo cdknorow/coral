@@ -31,13 +31,20 @@ func bestOfThree(f func(string), text string) time.Duration {
 	return best
 }
 
+// tooQuick is the run time under which the real guards read no ratio from a run: a few milliseconds of timer and cache noise would decide it.
+const (
+	tooQuick  = 150 * time.Millisecond
+	smallBase = 5 * time.Millisecond // a faster small run is read as this long, so a few milliseconds of noise cannot make the ratio
+)
+
 // measureLinear times f over mk(small) and mk(large) and says whether it is linear: no more than 9 times as long (a fast small run is floored at 5 ms) in at least one
-// of two measurements, or finished within 150 ms (too quick to read a ratio from).
-func measureLinear(mk func(n int) string, f func(string), small, large int) (ds, dl time.Duration, ok bool) {
+// of two measurements, or finished within quick (a run too quick to read a ratio from). The real guards pass tooQuick and smallBase; a test of the guard itself passes 0 and
+// 1 microsecond, so that its verdict never depends on how fast the machine is.
+func measureLinear(mk func(n int) string, f func(string), small, large int, quick, base time.Duration) (ds, dl time.Duration, ok bool) {
 	text, big := mk(small), mk(large)
 	for attempt := 0; attempt < 2; attempt++ {
 		ds, dl = bestOfThree(f, text), bestOfThree(f, big)
-		if dl <= 150*time.Millisecond || float64(dl)/float64(max(ds, 5*time.Millisecond)) < 9.0 {
+		if dl <= quick || float64(dl)/float64(max(ds, base)) < 9.0 {
 			return ds, dl, true
 		}
 	}
@@ -48,32 +55,34 @@ func measureLinear(mk func(n int) string, f func(string), small, large int) (ds,
 // runner is several times slower than a laptop).
 func requireLinear(t *testing.T, name string, mk func(n int) string, f func(string), small, large int) {
 	t.Helper()
-	ds, dl, ok := measureLinear(mk, f, small, large)
+	ds, dl, ok := measureLinear(mk, f, small, large, tooQuick, smallBase)
 	require.True(t, ok, "%s: %v for %d bytes, %v for %d: more than 9 times as long for 4 times the text", name, ds, small, dl, large)
 	require.Less(t, dl, 10*time.Second, "%s: %v for %d bytes", name, dl, large)
 }
 
-// The guard still guards: a pass that does work for every 250th byte over the whole text (quadratic) is refused, a single pass is accepted. The large run is 640
-// million additions, over 300 ms even at two additions a nanosecond, so it stays above the guard's 150 ms "too quick to read" shortcut (every 500th byte could fall
-// under it on a fast runner and the quadratic pass was accepted, 132 gate).
+// The guard still guards: a pass that does work for every 50th byte over the whole text (quadratic) is refused, a single pass of the same weight is accepted. The "too
+// quick" shortcut and the 5 ms floor are off (0 and 1 microsecond), so the ratio is always read and the verdict does not depend on how fast the machine is (a quadratic
+// stand-in under the 150 ms shortcut was accepted on a fast runner, 132 gate); the input is small, so the test takes well under a second.
 func TestTheLinearGuardRefusesAQuadraticPassAndAcceptsALinearOne(t *testing.T) {
 	mk := func(n int) string { return strings.Repeat("a", n) }
 	var sink byte
 	quadratic := func(text string) {
-		for i := 0; i < len(text); i += 250 {
+		for i := 0; i < len(text); i += 50 {
 			for j := 0; j < len(text); j++ {
 				sink += text[j]
 			}
 		}
 	}
-	linear := func(text string) {
-		for j := 0; j < len(text); j++ {
-			sink += text[j]
+	linear := func(text string) { // as many additions as the quadratic one makes at 20 KB, but in proportion to the length
+		for rep := 0; rep < 400; rep++ {
+			for j := 0; j < len(text); j++ {
+				sink += text[j]
+			}
 		}
 	}
-	_, _, ok := measureLinear(mk, quadratic, 100_000, 400_000)
+	_, _, ok := measureLinear(mk, quadratic, 20_000, 80_000, 0, time.Microsecond)
 	require.False(t, ok, "a quadratic pass must fail the guard")
-	_, _, ok = measureLinear(mk, linear, 100_000, 400_000)
+	_, _, ok = measureLinear(mk, linear, 20_000, 80_000, 0, time.Microsecond)
 	require.True(t, ok, "a single pass must pass it")
 	_ = sink
 }
