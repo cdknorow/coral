@@ -123,8 +123,8 @@ func main() {
 
 	// Only now, with the flags valid and the server really starting: --help, a bad flag
 	// and the self-test print nothing of a server's (#3506).
-	log.Printf("[STARTUP] coral server starting pid=%d go=%s os=%s arch=%s exe=%q path=%q",
-		os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, mustExecutable(), os.Getenv("PATH"))
+	log.Printf("[STARTUP] coral server starting%s pid=%d go=%s os=%s arch=%s exe=%q path=%q",
+		config.FlavorNote(), os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, mustExecutable(), os.Getenv("PATH"))
 
 	cfg := config.Load(*homeDir)
 	// --hub or CORAL_HUB=1 (read by config.Load) force hub mode on; otherwise the saved
@@ -190,6 +190,13 @@ func main() {
 		cfg.HostExplicit = true
 	}
 	cfg.NoAutoLoopback = *noAutoLoopback
+	// A build made with the relaunchfixture tag (#5452) listens on this computer only and connects to no hub unless the test names one; in every other build this does nothing.
+	cloudURLGiven := false
+	flag.Visit(func(f *flag.Flag) { cloudURLGiven = cloudURLGiven || f.Name == "cloud-url" })
+	if err := applyRelaunchFixtureBuild(cfg, *host, remoteAccess, cloudURLGiven); err != nil {
+		fmt.Fprintf(os.Stderr, "coral: %v\n", err)
+		os.Exit(1)
+	}
 	if *port != 0 {
 		cfg.Port = *port
 	}
@@ -440,10 +447,10 @@ func isVersionArg(a string) bool {
 func printVersion(w io.Writer) {
 	v := config.Version
 	if v == "" {
-		fmt.Fprintln(w, "coral (development build)")
+		fmt.Fprintln(w, "coral (development build)"+config.BuildFlavor)
 		return
 	}
-	fmt.Fprintln(w, "coral "+v)
+	fmt.Fprintln(w, "coral "+v+config.BuildFlavor)
 }
 
 // resolveCloudMaxMode is the hub access cap asked for at launch (#3717): the flag when it was

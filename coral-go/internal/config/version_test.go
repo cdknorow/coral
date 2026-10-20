@@ -2,6 +2,7 @@ package config
 
 import (
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,8 +49,9 @@ func TestReportedVersionPrefersReleaseVersion(t *testing.T) {
 	t.Cleanup(func() { Version = prev })
 
 	Version = "1.4.1"
-	assert.Equal(t, "1.4.1", ReportedVersion())
+	assert.Equal(t, "1.4.1"+BuildFlavor, ReportedVersion())
 
 	Version = ""
-	assert.Regexp(t, `^\d+\.\d+\.\d+-dev(\+[0-9a-f]{1,8}(\.dirty)?)?$`, ReportedVersion())
+	// the flavor of a relaunchfixture build (#5452) is the one thing a build adds to it
+	assert.Regexp(t, `^\d+\.\d+\.\d+-dev(\+[0-9a-f]{1,8}(\.dirty)?)?$`, strings.TrimSuffix(ReportedVersion(), BuildFlavor))
 }

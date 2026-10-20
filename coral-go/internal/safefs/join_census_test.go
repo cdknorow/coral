@@ -35,6 +35,8 @@ type joinEntry struct {
 var joinSites = map[string]joinEntry{
 	"cmd/coral-update/status.go\tcollectStatus":                                              {3, joinOwn, "the updater's own files under the data folder: the updates folder, state.json and run.json, constant names, only read (Lstat, a no-follow private read), nothing written"},
 	"internal/updater/runrecord/restart.go\tRead":                                            {1, joinOwn, "the run record's file name, a constant, in the updates folder under the data folder; opened without following a link"},
+	"internal/server/routes/relaunch_fixture.go\treadFixture":                                {1, joinOwn, "the relaunch test seam (#5452, a relaunchfixture build only): the fixed file name relaunch.json in the owner-only folder the test named; opened without following a link, read-only"},
+	"internal/server/routes/relaunch_fixture.go\tfixtureUpdater.Apply":                       {1, joinOwn, "the relaunch test seam (#5452): the fixed marker name in the same owner-only folder, written by rename of a temp file made there"},
 	"cmd/coral-update/main.go\trun":                                                          {1, joinOwn, "the updates folder: a constant name under the data folder, plus the constant \"tuf\""},
 	"internal/updater/apply/apply.go\tRun":                                                   {2, joinID, "the updates and apply folders are constants; the staged version folder is the verified record's version (verify.ParseVersion)"},
 	"internal/updater/apply/apply.go\tcopyVerified":                                          {1, joinID, "joins the private work folder with the record's asset name, which LoadStaged checked to be a plain file name"},

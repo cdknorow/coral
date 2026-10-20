@@ -24,11 +24,11 @@ var (
 // and before the next one. Without DevBase (a plain go build) the base is 0.0.0.
 func ReportedVersion() string {
 	if Version != "" {
-		return Version
+		return Version + BuildFlavor
 	}
 	reportedOnce.Do(func() {
 		info, _ := debug.ReadBuildInfo()
-		reported = devVersion(DevBase, info)
+		reported = devVersion(DevBase, info) + BuildFlavor
 	})
 	return reported
 }
@@ -72,4 +72,12 @@ func devVersion(base string, info *debug.BuildInfo) string {
 		v += ".dirty"
 	}
 	return v
+}
+
+// FlavorNote is the build flavor as a word for a log line: "" in a normal build, " +relaunchfixture" in a test-seam build.
+func FlavorNote() string {
+	if BuildFlavor == "" {
+		return ""
+	}
+	return " " + BuildFlavor
 }
