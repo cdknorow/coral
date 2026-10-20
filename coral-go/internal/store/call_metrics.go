@@ -247,6 +247,13 @@ func (d *DB) trimToRowCap(ctx context.Context, tx *sqlx.Tx, batch []*CallMetric)
 	return batch[:int(room)], nil
 }
 
+// SetCallMetricMaxRowsForTest sets the raw-row cap and returns the func that restores it: the cap is 500k rows, too many for a test of what a full table reports.
+func SetCallMetricMaxRowsForTest(n int64) (restore func()) {
+	old := callMetricMaxRows
+	callMetricMaxRows = n
+	return func() { callMetricMaxRows = old }
+}
+
 // CallMetricsCapDropped is how many metrics were not written because of callMetricMaxRows.
 func (d *DB) CallMetricsCapDropped() int64 { return d.callMetricBuf().capDropped.Load() }
 

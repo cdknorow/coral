@@ -149,3 +149,30 @@ func TestRequestMetricsKeepsWebSocketAndStreamingWorking(t *testing.T) {
 	<-flushed
 	resp.Body.Close()
 }
+
+// #5368: the summary says how many metrics were not stored because the raw rows were at their cap (#5359), so a gap after a burst is not read as quiet.
+func TestCallMetricsSummaryReportsMetricsDroppedAtTheCap(t *testing.T) {
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "metrics.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	defer store.SetCallMetricMaxRowsForTest(2)()
+	h := NewCallMetricsHandler(db)
+	get := func() map[string]any {
+		rec := httptest.NewRecorder()
+		h.Summary(rec, httptest.NewRequest(http.MethodGet, "/api/call-metrics/summary?hours=1", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+		return out
+	}
+
+	require.EqualValues(t, 0, get()["cap_dropped"], "nothing dropped yet: the field is there, and 0")
+	for i := 0; i < 5; i++ {
+		db.EnqueueCallMetric(&store.CallMetric{CallType: "api", Operation: "/api/x", Method: "GET", StatusCode: 200})
+	}
+	out := get() // the summary writes what is queued first
+	require.EqualValues(t, 3, out["cap_dropped"], "5 queued, room for 2")
+	rows := out["rows"].([]any)
+	require.Len(t, rows, 1)
+	require.EqualValues(t, 2, rows[0].(map[string]any)["calls"], "the rows kept are the first 2")
+}

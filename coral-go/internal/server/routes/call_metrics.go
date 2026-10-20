@@ -42,7 +42,8 @@ func (h *CallMetricsHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"hours": hours, "rows": rows})
+	// cap_dropped: metrics not stored since Coral started because the raw rows were at their cap (#5359), so a gap after a burst is visible, not silent (#5368).
+	writeJSON(w, http.StatusOK, map[string]any{"hours": hours, "rows": rows, "cap_dropped": h.db.CallMetricsCapDropped()})
 }
 
 func (h *CallMetricsHandler) Record(w http.ResponseWriter, r *http.Request) {
