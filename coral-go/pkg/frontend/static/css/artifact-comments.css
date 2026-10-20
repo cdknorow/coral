@@ -95,3 +95,4 @@
 }
 /* the Comments button sits in the pane's toolbar; artifact_comments.js hides it unless the panel is a sheet (beside the document it is always there) */
 .preview-toolbar .ac-toggle:not([hidden]) { display: inline-flex; align-items: center; min-height: 28px; margin-left: auto; flex: 0 0 auto; }
+@media (max-width: 767px) { .preview-toolbar .ac-toggle:not([hidden]) { min-height: 44px; min-width: 44px; } } /* a touch target (the rule above is more specific than the phone's own) */
