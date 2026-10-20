@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cdknorow/coral/internal/updater/verify"
@@ -82,6 +83,10 @@ func LoadStaged(dataDir string) (*Staged, error) {
 	}
 	var rec verify.Record
 	if err := json.Unmarshal(rb, &rec); err != nil || rec.Version != version || rec.Asset == "" {
+		return nil, ErrNoStaged
+	}
+	// The record sits in a user-writable folder: its asset name is a plain file name of this folder, never a path out of it.
+	if rec.Asset != filepath.Base(rec.Asset) || rec.Asset == "." || rec.Asset == ".." || strings.ContainsAny(rec.Asset, "/\\\x00") || rec.Asset[0] == '.' {
 		return nil, ErrNoStaged
 	}
 	s := &Staged{Version: version, Dir: dir, Record: &rec, PackagePath: filepath.Join(dir, rec.Asset)}

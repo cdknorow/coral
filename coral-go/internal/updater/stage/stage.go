@@ -244,6 +244,7 @@ func (c *checker) run(ctx context.Context) Result {
 	if err != nil {
 		return c.refused(m.Version, err)
 	}
+	c.st.Observe(rec) // a verified manifest's revocations count from now, not only once it is installed (#5301)
 	if c.alreadyStaged(rec) {
 		c.st.Stage = &verify.StageState{Staged: rec.Version, StagedAt: stagedAtField(c.st)}
 		c.save()
