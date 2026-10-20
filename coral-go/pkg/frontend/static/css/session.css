@@ -1966,6 +1966,8 @@
 .list-display-options { display: flex; flex-direction: column; gap: var(--space-xs); padding: 0 var(--space-xs); }
 .list-display-option { display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: 4px 0; font-size: 0.8125rem; }
 .list-display-option[hidden] { display: none; }
+.list-display-hint { margin: var(--space-xs) var(--space-xs) 0; font-size: var(--fs-sm, 11px); color: var(--text-muted); }
+.list-display-hint[hidden] { display: none; }
 .list-display-panel .agent-list-bar:not([hidden]) + .list-display-options { border-top: 1px solid var(--border); padding-top: var(--space-xs); }
 /* What is on while the panel is shut: a count on the button, and a line under the search saying which filters and which sort. */
 /* A dot on the corner of the button, hanging off it so it never covers the icon (at 200% text too); the count is its data-count, and the button's name says it (agent_list_bar.js). */

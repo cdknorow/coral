@@ -243,11 +243,13 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
     // Directory override now lives in the tooltip (Directory row), not the row.
     const dirChip = "";
 
-    // Branch is shown at folder level, except for agents on their own worktree:
-    // those are on a different branch than the folder, so each row says which.
+    // 'Show branches' (#5117, #5237): the branch of every row that has one. An agent on its own worktree also gets the worktree icon and its ahead/behind summary; one on a shared
+    // checkout gets the branch alone (it used to get no line at all, so the option did nothing for a team that works in shared checkouts).
     const gsWt = s.git_state?.is_worktree ? s.git_state : null;
-    const branchTag = (isBranchShown() && gsWt && s.branch)
-        ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${escapeAttr(gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : '')}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
+    const branchTag = (isBranchShown() && s.branch)
+        ? (gsWt
+            ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${escapeAttr(gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : '')}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
+            : `<div class="session-worktree-line" title="Branch ${escapeAttr(s.branch)}"><span class="wt-branch">${escapeHtml(s.branch)}</span></div>`)
         : "";
     // One pill at most, from the shared state table. The attention states carry a
     // warning pill; "Task assigned · idle" a neutral one (#3227). "Ready for input"
@@ -347,7 +349,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
             </div>
             <div class="session-mobile-meta">${mobileStatusChip}${unreadBoardBadge}</div>
             ${(goalLine || unreadChip) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
-            ${(!isCompact && isAgentTypeShown() && s.model && modelLabel(s.agent_type, s.model, sessionServer(s))) ? `<div class="session-model" title="${escapeAttr(s.model)}">${escapeHtml(modelLabel(s.agent_type, s.model, sessionServer(s)))}</div>` : ''}
+            ${(isAgentTypeShown() && s.model && modelLabel(s.agent_type, s.model, sessionServer(s))) ? `<div class="session-model" title="${escapeAttr(s.model)}">${escapeHtml(modelLabel(s.agent_type, s.model, sessionServer(s)))}</div>` : ''}
             ${branchTag}
         </div>
         <div class="session-tooltip"></div>
@@ -430,6 +432,19 @@ onBuilt('settings-modal', () => applySessionSummaryPref()); // its Show summarie
     try { return browserLocal.get('coral-group-by-server') === 'true'; } catch { return false; }
 }
 
+/** What the Display panel says under its options when 'Show branches' or 'Show agent type' is on and some agents have nothing to show for it (#5237): an option that
+ *  seems to do nothing for a row is explained, not silent. "" when neither option is on or every agent has its data. A terminal has no model, so it is not counted for that. */
+export function displayHintText() {
+    const type = isAgentTypeShown(), branch = isBranchShown();
+    if (!type && !branch) return '';
+    const live = (state.liveSessions || []).filter(s => !s.archived);
+    const parts = [];
+    const count = (n, what) => `${n} ${n === 1 ? 'agent has' : 'agents have'} no ${what} on record`;
+    if (type) { const n = live.filter(s => s.agent_type !== 'terminal' && !(s.model && modelLabel(s.agent_type, s.model, sessionServer(s)))).length; if (n) parts.push(count(n, 'model')); }
+    if (branch) { const n = live.filter(s => !s.branch).length; if (n) parts.push(count(n, 'branch')); }
+    return parts.length ? parts.join('; ') + '.' : '';
+}
+
 /** Sync the ≡ display menu's checkboxes and which options it offers: the sidebar's, and the phone's copy in the agent list
  *  header (#3991, the sidebar is hidden below 768 px). Both are found by data attributes, so each can appear once. It runs on every render of the
  *  list, so it looks only inside the two headers that hold the menu: an attribute selector over the whole document walked every node of the
@@ -438,10 +453,12 @@ onBuilt('settings-modal', () => applySessionSummaryPref()); // its Show summarie
     const n = serversShown().length;
     const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer(), branches: isBranchShown(), agenttype: isAgentTypeShown() };
     const offered = { summary: true, server: n >= 1, group: n >= 2, branches: true, agenttype: true };
+    const hintText = displayHintText();
     for (const header of [...document.getElementsByClassName('sidebar-header'), ...document.getElementsByClassName('mobile-list-header')]) {
         for (const input of header.querySelectorAll('[data-display-input]')) setChecked(input, checked[input.dataset.displayInput] === true);
         for (const row of header.querySelectorAll('[data-display-row]')) setHidden(row, !offered[row.dataset.displayRow]);
         for (const btn of header.querySelectorAll('[data-display-button]')) btn.classList.toggle('active', checked.summary || (n >= 1 && checked.server));
+        for (const hint of header.querySelectorAll('[data-display-hint]')) { hint.textContent = hintText; setHidden(hint, !hintText); }
     }
     syncDisplayPanels(); // the phone's header is built later than the sidebar's: it takes the stored open or shut state here
 }

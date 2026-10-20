@@ -109,6 +109,7 @@ function _listHeader(agentList) {
                     <label class="list-display-option" data-display-row="branches"><input type="checkbox" data-display-input="branches" data-on-change="toggle-show-branches"> Show branches</label>
                     <label class="list-display-option" data-display-row="agenttype"><input type="checkbox" data-display-input="agenttype" data-on-change="toggle-show-agent-type"> Show agent type</label>
                 </div>
+                <p class="list-display-hint" data-display-hint hidden></p>
             </div>
         `;
     agentList.prepend(header);
