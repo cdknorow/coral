@@ -26,15 +26,30 @@ printf 'MZ\x90\x00' > tool.exe; git add -A; git commit -qm pe
 expect "a PE program is refused" 1
 head -c 5300000 /dev/zero > big.dat; git add -A; git commit -qm big
 expect "a file over 5 MB is refused" 1
-printf '\x7fELF\x02' > ok.bin; git add -A; git commit -qm allowed
-printf '# test list\nok.bin\n' > "$T.allow"
-got=0; CORAL_BINARY_ALLOWLIST="$T.allow" python3 -I "$chk" "$base" HEAD >/dev/null 2>&1 || got=1
-[ "$got" = 0 ] && echo "PASS an allowlisted path passes" || { echo "FAIL an allowlisted path"; fail=1; }
-rm -f "$T.allow"
 git reset -q --hard "$base"
 echo q > a.txt; git commit -qam edit
 expect "a modified text file passes" 0
 # the history is what is pushed, not the net diff
 printf '\x7fELF' > p; git add p; git commit -qm addp; git rm -q p; git commit -qm rmp
 expect "a program added in one commit and removed in the next is still refused (it would be pushed with the history)" 1
+# an allowlisted path lifts the size limit only: a program swapped in under it is still refused (#5444 review)
+git reset -q --hard "$base"
+printf '# test list\nicon.png\n' > "$T.allow"
+head -c 5300000 /dev/zero > icon.png; git add -A; git commit -qm bigicon
+got=0; CORAL_BINARY_ALLOWLIST="$T.allow" python3 -I "$chk" "$base" HEAD >/dev/null 2>&1 || got=1
+[ "$got" = 0 ] && echo "PASS an allowlisted big image passes" || { echo "FAIL an allowlisted big image"; fail=1; }
+git reset -q --hard "$base"
+printf '\x7fELF\x02\x01' > icon.png; git add -A; git commit -qm swap
+got=0; CORAL_BINARY_ALLOWLIST="$T.allow" python3 -I "$chk" "$base" HEAD >/dev/null 2>&1 || got=1
+[ "$got" = 1 ] && echo "PASS a program under an allowlisted path is refused" || { echo "FAIL a program under an allowlisted path"; fail=1; }
+rm -f "$T.allow"
+git reset -q --hard "$base"
+# a commit with no parent (a branch of its own history) is checked too: diff-tree prints nothing for it without --root
+git checkout -q --orphan solo; git rm -rfq . ; printf '\x7fELF\x02' > prog; git add prog; git commit -qm solo
+got=0; git rev-list HEAD | python3 -I "$chk" --commits >/dev/null 2>&1 || got=1
+[ "$got" = 1 ] && echo "PASS a program in a root commit is refused" || { echo "FAIL a program in a root commit"; fail=1; }
+git checkout -q -f "$base"
+# fat 64 and byte-swapped universal headers
+printf '\xca\xfe\xba\xbf\x00' > fat64; git add -A; git commit -qm fat64
+expect "a 64-bit universal Mach-O program is refused" 1
 exit "$fail"
