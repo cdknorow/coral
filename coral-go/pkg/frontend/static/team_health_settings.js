@@ -7,10 +7,11 @@
  * main Save bar, and a field the form does not know (a rule the server added) is sent back as it was read. Since PUT replaces the whole
  * object, Save reads it again first and changes only what the person changed (#4423): a rule another client changed while the tab was
  * open keeps that change. */
+import { importOnce } from './import_once.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch } from './server_base.js';
 import { rebaseChanges } from './settings_diff.js';
-import { refusalOf, answeredLocally } from './owner_refusal.js';
+const { refusalOf, answeredLocally } = await importOnce('./owner_refusal.js'); // a lazy module loads the others it needs through importOnce, so a failed load is retried
 
 const HEALTH_LIMITS = { minutes: [5, 1440], nudges: [1, 5], reviewers: 8 };
 
