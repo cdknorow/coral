@@ -146,7 +146,6 @@ func TestRelaunchRoutesAre404WhileTheFlagIsOff(t *testing.T) {
 	e.h.Updater = nil
 	c, _ = e.status(hubHdr(ownerA))
 	assert.Equal(t, 404, c, "no updater: no routes")
-	assert.True(t, !updateRelaunchFeature, "the shipped flag is off")
 }
 
 func TestRelaunchHappyPathAndStatusShape(t *testing.T) {

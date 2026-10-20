@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/cdknorow/coral/internal/config"
@@ -36,9 +38,36 @@ func applyRelaunchFixtureBuild(cfg *config.Config, hostFlag string, remote *bool
 	if !cloudURLGiven {
 		cfg.CloudURL, cfg.CloudURLExplicit = config.CloudURLSetting("", true), false // off: the test connects to a hub only by naming it
 	}
+	// It never runs on the data folder a real Coral uses (~/.coral): a test server has its own CORAL_DATA_DIR or --home, so a fixture build cannot open, migrate or
+	// rewrite anyone's live state (#5452 review).
+	if live := liveDataDir(); live != "" && sameDir(cfg.CoralDir(), live) {
+		return fmt.Errorf("a relaunchfixture build refuses the default data folder %s: give it its own CORAL_DATA_DIR or --home", live)
+	}
 	if err := routes.CheckRelaunchFixture(); err != nil {
 		return fmt.Errorf("a relaunchfixture build needs a valid fixture folder: %w", err)
 	}
 	log.Printf("[STARTUP] relaunchfixture build: relaunch routes ON with a fixture updater from CORAL_RELAUNCH_FIXTURE_DIR; loopback only; no hub unless --cloud-url is given")
 	return nil
+}
+
+// liveDataDir is the default data folder of this user (~/.coral), "" when the home folder is unknown.
+func liveDataDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".coral")
+}
+
+// sameDir reports whether a and b name the same folder, as given or with links resolved.
+func sameDir(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ra, ea := filepath.EvalSymlinks(a)
+	rb, eb := filepath.EvalSymlinks(b)
+	return ea == nil && eb == nil && ra == rb
 }

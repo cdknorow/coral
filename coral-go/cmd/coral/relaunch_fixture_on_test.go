@@ -50,3 +50,29 @@ func TestAFixtureBuildRefusesToBeExposedOrToStartWithoutAFixture(t *testing.T) {
 	require.NoError(t, os.Chmod(dir, 0o770))
 	assert.Error(t, applyRelaunchFixtureBuild(&config.Config{}, "", &no, false), "a folder that is not owner-only: the server does not start")
 }
+
+// #5456: a fixture build never runs on the default data folder (~/.coral), spelled directly or through a link.
+func TestAFixtureBuildRefusesTheDefaultDataFolder(t *testing.T) {
+	goodFixtureFolder(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	live := filepath.Join(home, ".coral")
+	require.NoError(t, os.MkdirAll(live, 0o700))
+	no := false
+
+	cfg := &config.Config{}
+	cfg.UseCoralDir(live)
+	assert.Error(t, applyRelaunchFixtureBuild(cfg, "", &no, false), "the default folder")
+	link := filepath.Join(t.TempDir(), "elsewhere")
+	require.NoError(t, os.Symlink(live, link))
+	cfg = &config.Config{}
+	cfg.UseCoralDir(link)
+	assert.Error(t, applyRelaunchFixtureBuild(cfg, "", &no, false), "the default folder through a link")
+
+	own := filepath.Join(t.TempDir(), "own")
+	require.NoError(t, os.MkdirAll(own, 0o700))
+	cfg = &config.Config{}
+	cfg.UseCoralDir(own)
+	assert.NoError(t, applyRelaunchFixtureBuild(cfg, "", &no, false), "a folder of its own")
+}

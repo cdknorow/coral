@@ -7,6 +7,8 @@
 3. No workflow input, branch, tag, PR text or matrix value is interpolated into a run: script. It goes through env: instead.
    Allowed in a script: github.repository, github.run_id, github.sha, runner.*, matrix.* from a fixed list, steps.*.outputs of our own steps.
 4. No pull_request_target and no workflow_run trigger (a fork's code would run with the repository's token or secrets).
+5. The relaunch test seam's build tag (relaunchfixture, #5452) is named nowhere that builds or ships anything: not in .github/, installers/, tools/, a Makefile or the
+   Homebrew cask, except the files listed in SEAM_ALLOWED (none today: a trial workflow that builds it for coral-hub is added there by a reviewed edit).
 Exits 1 and prints every violation.
 """
 import glob
@@ -32,6 +34,35 @@ def step_blocks(lines):
             i = j
         else:
             i += 1
+
+
+SEAM_TAG = "relaunchfixture"
+SEAM_ALLOWED = set()  # repository paths (from the root) that may name the tag: a reviewed edit adds one
+SEAM_ROOTS = [".github", "installers", "tools", "Casks", "coral-go/Makefile", "Makefile"]
+
+
+def seam_violations():
+    """Files of the places that build or ship anything that name the relaunch seam's build tag."""
+    repo = ROOT
+    bad = []
+    for root in SEAM_ROOTS:
+        p = os.path.join(repo, root)
+        files = []
+        if os.path.isdir(p):
+            for dp, dn, fn in os.walk(p):
+                dn[:] = [d for d in dn if d not in (".git", "node_modules")]
+                files += [os.path.join(dp, f) for f in fn]
+        elif os.path.isfile(p):
+            files = [p]
+        for f in files:
+            rel = os.path.relpath(f, repo).replace(os.sep, "/")
+            try:
+                text = open(f, encoding="utf-8", errors="ignore").read()
+            except OSError:
+                continue
+            if SEAM_TAG in text.lower() and rel not in SEAM_ALLOWED:
+                bad.append(f"{rel}: names the build tag {SEAM_TAG} (the relaunch test seam is never built or shipped by this; see SEAM_ALLOWED)")
+    return bad
 
 
 def main():
@@ -66,6 +97,7 @@ def main():
             for e in re.findall(r"\$\{\{(.*?)\}\}", chunk):
                 if not SAFE_IN_SCRIPT.match(e.strip()):
                     bad.append(f"{name}:{no}: `${{{{ {e.strip()} }}}}` is interpolated into a run: script (pass it through env:)")
+    bad += seam_violations()
     for b in bad:
         print(b)
     print(f"workflows_lint: {len(bad)} violation(s)")

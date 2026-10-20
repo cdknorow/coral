@@ -17,6 +17,7 @@ import (
 // safefs or is reviewed and listed here; a listed site that no longer exists fails too, so the
 // list stays true. Keyed file:function:call, never by line.
 var reviewedFileOpens = map[string]string{
+	"relaunch_fixture.go:readFixture:OpenNoFollow":                             "relaunchfixture builds only: the one fixture file in the owner-only folder named by CORAL_RELAUNCH_FIXTURE_DIR, Lstat-checked regular 0600 own file, 16 KiB cap (#5452)",
 	"system_update_relaunch.go:UpdateRelaunchHandler.readPrivate:OpenNoFollow": "<data dir>/updates/ack.key and ack_used.json: fixed names, Lstat-checked plain files only this user can read (#5280)",
 	"artifact_prune.go:SessionsHandler.shrinkDiffs:ReadFile":                   "server data folder; object names match objectNameRe",
 	"artifact_prune.go:recordTime:ReadFile":                                    "server data folder (a sidecar the server wrote)",

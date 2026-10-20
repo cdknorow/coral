@@ -253,7 +253,9 @@ func (src *routesSource) decodedBodies() []decodedBody {
 
 // nestedIdentityFields are identity keys found inside a decoded request struct below the top level
 // (the identity layer reads only the top level), with why each is not a caller's claim. None today.
-var nestedIdentityFields = map[string]string{}
+var nestedIdentityFields = map[string]string{
+	"relaunch_fixture.go readFixture from": "relaunchfixture builds only: a version string inside the test fixture file, not a request body (#5452)",
+}
 
 func TestNoIdentityFieldIsNestedInADecodedBody(t *testing.T) {
 	canon := map[string]bool{}
