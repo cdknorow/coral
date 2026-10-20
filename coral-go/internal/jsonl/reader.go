@@ -397,7 +397,7 @@ func (r *SessionReader) FirstUserPrompt(sessionID, workingDirectory, agentType s
 		}
 		c.offset += int64(len(line))
 		for _, message := range parseTranscriptEntry(entry, map[string]string{}, agentType) {
-			if message["type"] != "user" {
+			if message["type"] != "user" || message["local_command"] == true { // a slash command the CLI ran is not what the session was asked to do (#5488)
 				continue
 			}
 			content, _ := message["content"].(string)

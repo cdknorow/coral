@@ -27,6 +27,7 @@ import (
 type promptHints struct {
 	mu    sync.Mutex
 	m     map[string]bool        // session_id -> a request to the user is open
+	slash map[string]time.Time   // session_id -> when a slash command was last typed into it by the Operator (#5488)
 	reads map[string]*promptRead // exact target (session_id, name, agent type) -> its latest read
 }
 
@@ -117,10 +118,34 @@ func (p *promptHints) note(sessionID, eventType string) {
 	p.m[sessionID] = waiting
 }
 
+// slashWindow is how long after the Operator types a slash command into an agent its screen is read for a prompt (a var for tests). Claude Code answers some of them ("/model", "/effort") with a
+// confirmation dialog ("Switch model?", "Change effort level?") that sends no hook event, so no hint says a prompt is open and the dialog never reached the chat (#5488).
+var slashWindow = time.Minute
+
+// noteSlash records that the Operator typed a slash command into the session: for slashWindow its prompt may be open, whatever its last hook event said.
+func (p *promptHints) noteSlash(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.slash == nil || len(p.slash) >= promptHintsMax {
+		p.slash = map[string]time.Time{}
+	}
+	p.slash[sessionID] = time.Now()
+	p.forgetLocked(sessionID) // what it shows may be about to change: the next poll reads it afresh
+}
+
 // mayBeOpen reports whether a prompt may be open on the session's terminal.
 func (p *promptHints) mayBeOpen(sessionID string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if at, ok := p.slash[sessionID]; ok {
+		if time.Since(at) < slashWindow {
+			return true
+		}
+		delete(p.slash, sessionID)
+	}
 	waiting, known := p.m[sessionID]
 	return !known || waiting
 }

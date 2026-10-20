@@ -33,8 +33,32 @@ func parseClaudeEntry(entry map[string]any, toolUseNames map[string]string) []ma
 		return parseClaudeAssistantEntry(entry, timestamp, toolUseNames)
 	case "attachment":
 		return parseClaudeAttachmentEntry(entry, timestamp)
+	case "system":
+		return parseClaudeLocalCommandEntry(entry, timestamp)
 	}
 	return nil
+}
+
+// parseClaudeLocalCommandEntry reads a slash command Claude Code ran by itself ("/model sonnet", "/effort high"): the transcript records it as a
+// system entry (subtype local_command) with <command-name> and <command-args>, never as a user turn, so what the person typed did not appear in the
+// chat and its pending bubble waited for ever (#5488). It is a user turn flagged local_command, with the text as it was typed ("/model sonnet"),
+// which the page shows as a small note and which settles the pending message. The output entry (<local-command-stdout>) is not a turn.
+func parseClaudeLocalCommandEntry(entry map[string]any, timestamp string) []map[string]any {
+	if sub, _ := entry["subtype"].(string); sub != "local_command" {
+		return nil
+	}
+	content, _ := entry["content"].(string)
+	m := localCommandNameR.FindStringSubmatch(content)
+	if m == nil {
+		return nil
+	}
+	text := m[1]
+	if a := localCommandArgsR.FindStringSubmatch(content); a != nil {
+		if args := cleanCommandText(a[1], 120); args != "" {
+			text += " " + args
+		}
+	}
+	return []map[string]any{{"type": "user", "timestamp": timestamp, "content": text, "local_command": true}}
 }
 
 // parseClaudeAttachmentEntry reads a message the user sent while the agent was

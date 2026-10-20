@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/ptymanager"
 )
 
@@ -188,6 +189,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	defer func() {
 		if err == nil {
 			ptymanager.NoteOperatorText(name, text) // the chat page then knows this turn is a person's, not a notice by its words (#5482)
+		}
+		if err == nil && agentType == at.Claude && strings.HasPrefix(strings.TrimSpace(text), "/") {
+			h.hints.noteSlash(sessionID) // a command like /model may open a dialog that sends no hook event: the chat reads this screen for a prompt for a while (#5488)
 		}
 		switch {
 		case err == errSendNotSubmit:

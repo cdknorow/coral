@@ -87,6 +87,8 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		send   func(string) *httptest.ResponseRecorder
 		submit func()
 		event  func(typ string) // any event of the agent's (a /clear's SessionStart records session_reset)
+		hints  *promptHints
+		sid    string
 	}
 	setup := func(t *testing.T, agentType string, withEvent bool) harness {
 		_, handler, mock, ss := setupSessionsTestServer(t)
@@ -110,7 +112,7 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		})
 		r := chi.NewRouter()
 		r.Post("/api/sessions/live/{name}/send", handler.Send)
-		return harness{term: term, submit: func() { event("prompt_submit") }, event: event, send: func(text string) *httptest.ResponseRecorder {
+		return harness{term: term, hints: &handler.hints, sid: sid, submit: func() { event("prompt_submit") }, event: event, send: func(text string) *httptest.ResponseRecorder {
 			b, _ := json.Marshal(map[string]any{"command": text, "agent_type": agentType, "session_id": sid})
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/send", bytes.NewReader(b))
 			req = req.WithContext(context.WithValue(req.Context(), callerKindKey{}, callerDashCookie))
@@ -412,6 +414,36 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 			assert.Equal(t, []string{"/clear"}, typed)
 			assert.Zero(t, enters)
 		})
+		if c.agentType == "claude" {
+			// #5488: /model <name> on a conversation that has a cache opens a confirmation dialog, which sends no hook event: the chat must read the screen for it for a while, and the dialog is a numbered prompt the chat can answer.
+			t.Run(c.name+": /model <name> opens its Switch model? dialog: sent at once, and the prompt is looked for on the screen", func(t *testing.T) {
+				h := setup(t, c.agentType, true)
+				humanSendConfirmWait = 2 * time.Second
+				h.term.show(c.ready(t, ""))
+				const dialog = "\n Switch model?\n Your next response will be slower and use more tokens\n\n This conversation is cached for the current model. Switching to Sonnet 4.5 means the full history gets re-read on your next message.\n\n ❯ 1. Yes, switch to Sonnet 4.5\n   2. No, go back\n"
+				h.term.onType = func(string) { h.term.show(dialog) }
+				h.hints.note(h.sid, "stop") // the agent's last hook event says no prompt is open
+				require.False(t, h.hints.mayBeOpen(h.sid))
+				rec := h.send("/model claude-sonnet-4-5")
+				assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+				assert.True(t, h.hints.mayBeOpen(h.sid), "after a slash command typed by the Operator the screen is read for a prompt")
+				ps, ok := parsePromptScreen(dialog)
+				require.True(t, ok, "the dialog is a numbered prompt")
+				require.Len(t, ps.Options, 2)
+				assert.Equal(t, "Yes, switch to Sonnet 4.5", ps.Options[0].Label)
+				assert.True(t, ps.Options[0].Selected)
+				assert.Equal(t, "No, go back", ps.Options[1].Label)
+			})
+			t.Run(c.name+": a message that is not a slash command does not open the window", func(t *testing.T) {
+				h := setup(t, c.agentType, true)
+				h.term.show(c.ready(t, ""))
+				h.term.onType = func(string) { h.submit() }
+				h.hints.note(h.sid, "stop")
+				rec := h.send("please do the thing")
+				assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+				assert.False(t, h.hints.mayBeOpen(h.sid))
+			})
+		}
 		t.Run(c.name+": /model opens its picker: sent at once, and no Enter into the picker", func(t *testing.T) {
 			h := setup(t, c.agentType, true)
 			humanSendConfirmWait = 2 * time.Second

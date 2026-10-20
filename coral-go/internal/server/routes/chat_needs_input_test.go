@@ -300,3 +300,21 @@ func TestChatNamedBySessionIdIsAnsweredAsTheAgentsOwnName(t *testing.T) {
 	mismatch := chatReply(t, server.URL+"/api/sessions/live/"+other, q) // names `other`, asks for sid's session
 	assert.NotEqual(t, 4, options(mismatch), "a name that is not this session's id is not resolved to this agent: no pane borrowed")
 }
+
+// #5488: a slash command typed by the Operator opens a window in which the screen is read for a prompt, whatever the last hook event said; the window ends by itself.
+func TestPromptHintsSlashWindow(t *testing.T) {
+	old := slashWindow
+	slashWindow = 150 * time.Millisecond
+	t.Cleanup(func() { slashWindow = old })
+	var p promptHints
+	p.note("s1", "stop")
+	require.False(t, p.mayBeOpen("s1"), "the agent's last event closes the request")
+	p.noteSlash("s1")
+	assert.True(t, p.mayBeOpen("s1"))
+	p.note("s1", "stop")
+	assert.True(t, p.mayBeOpen("s1"), "an event inside the window does not close it: the dialog sends none")
+	time.Sleep(200 * time.Millisecond) // sleep-ok: the window is a time
+	assert.False(t, p.mayBeOpen("s1"), "the window ends by itself")
+	p.noteSlash("")
+	assert.Empty(t, p.slash, "no session, nothing noted")
+}

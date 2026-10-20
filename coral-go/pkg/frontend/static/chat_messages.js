@@ -57,6 +57,9 @@ function renderOneMessage(msg, container, agentType) {
     const adapter = chatAgentAdapter(agentType);
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
         appendContent(container, makeBubble("chat-note", "Interrupted"));
+    } else if (msg.type === "user" && msg.local_command === true) {
+        // A slash command the CLI ran by itself ("/model sonnet"): a small note of what was typed, not a bubble (#5488). Seeing it here is how the message the person sent is known to be taken.
+        appendContent(container, makeBubble("chat-note chat-local-command", escapeHtml(String(msg.content || ""))));
 	} else if (msg.type === "user" && isCoralDelivery(msg)) {
 		const text = unwrapPastedContent(msg.content);
 		appendCoralNotice(container, normalizeNudgeText(text), isCoralHealthNudge(text));
