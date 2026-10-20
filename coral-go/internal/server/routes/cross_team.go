@@ -476,6 +476,7 @@ func (h *BoardHandler) crossTeamAttachments(ctx context.Context, r *http.Request
 func (h *BoardHandler) recordCrossTeamArtifacts(attached []attachedArtifact, from, target, by string, outboundID, inboundID int64) []string {
 	now := time.Now().UTC().Format(time.RFC3339)
 	var ids []string
+	var listed []board.MessageAttachment
 	for _, a := range attached {
 		base := crossTeamArtifactRecord{ID: a.ID, Name: a.Name, MediaType: a.MediaType, Size: a.Size, Server: "local", By: by, At: now}
 		shared, received := base, base
@@ -488,7 +489,9 @@ func (h *BoardHandler) recordCrossTeamArtifacts(attached []attachedArtifact, fro
 			slog.Warn("cross-team artifact: could not record the received row", "board", target, "id", a.ID, "error", err)
 		}
 		ids = append(ids, "coral://artifacts/"+a.ID)
+		listed = append(listed, board.MessageAttachment{ID: a.ID, Name: a.Name, MediaType: a.MediaType, Size: a.Size})
 	}
+	h.listAttachmentsOnMessage(target, inboundID, listed) // the message's own envelope lists them (#5506)
 	return ids
 }
 

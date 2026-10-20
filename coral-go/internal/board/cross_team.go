@@ -231,6 +231,16 @@ type MessageOrigin struct {
 	// (the de-duplication key) and how many relayed replies led to it.
 	RelayMessageID string `json:"relay_message_id,omitempty"`
 	Hops           int    `json:"hops,omitempty"`
+	// Attachments are the files stored on this computer for an inbound message, in the order the sender attached them (#5506); left out when there are none.
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
+}
+
+// MessageAttachment is one file that came with a cross-team message and is stored here: its artifact id (the 64 hex digits), its name and media type, and its size.
+type MessageAttachment struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	MediaType string `json:"media_type,omitempty"`
+	Size      int64  `json:"size"`
 }
 
 // remote reports whether the message came from another Coral.
@@ -592,4 +602,53 @@ func (p CrossTeamPost) cleaned() CrossTeamPost {
 	}
 	p.Mentions = mentions
 	return p
+}
+
+// maxMessageAttachments bounds what one message's envelope lists.
+const maxMessageAttachments = 16
+
+// SetInboundAttachments records, in the envelope of cross-team message id on board, the files that came with it and are stored here (#5506), in the order given. It changes nothing but the
+// envelope's "attachments" (an empty list removes the key), and only on an inbound message; any other message is left as it is.
+func (s *Store) SetInboundAttachments(ctx context.Context, project string, id int64, atts []MessageAttachment) error {
+	if len(atts) > maxMessageAttachments {
+		atts = atts[:maxMessageAttachments]
+	}
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var raw RawJSON
+	if err := tx.GetContext(ctx, &raw, `SELECT external_json FROM board_messages WHERE id = ? AND project = ? AND external_json IS NOT NULL`, id, project); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	var env map[string]json.RawMessage
+	if json.Unmarshal(raw, &env) != nil {
+		return nil
+	}
+	var direction string
+	_ = json.Unmarshal(env["direction"], &direction)
+	if direction != "inbound" {
+		return nil
+	}
+	if len(atts) == 0 {
+		delete(env, "attachments")
+	} else {
+		b, err := json.Marshal(atts)
+		if err != nil {
+			return err
+		}
+		env["attachments"] = b
+	}
+	out, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE board_messages SET external_json = ? WHERE id = ? AND project = ?`, string(out), id, project); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

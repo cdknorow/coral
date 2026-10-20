@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -8,8 +9,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/board"
 )
 
 // A file that arrives from another Coral is held as pending until the message that names it arrives
@@ -27,6 +31,8 @@ type pendingReceipt struct {
 	Rec     crossTeamArtifactRecord `json:"rec"`
 	Source  string                  `json:"source"`
 	RelayID string                  `json:"relay_id"`
+	// Arrived is when the file came (Unix nanoseconds): the order the sender attached them in, since it pushes them in order (#5506).
+	Arrived int64 `json:"arrived,omitempty"`
 }
 
 func pendingKey(src, relayID string) string {
@@ -55,7 +61,7 @@ func (h *BoardHandler) writePendingReceipt(src, relayID string, rec crossTeamArt
 		return err
 	}
 	h.sweepPending(dir)
-	data, err := json.Marshal(pendingReceipt{Rec: rec, Source: src, RelayID: relayID})
+	data, err := json.Marshal(pendingReceipt{Rec: rec, Source: src, RelayID: relayID, Arrived: h.pendingNow().UnixNano()})
 	if err != nil {
 		return err
 	}
@@ -123,6 +129,11 @@ func (h *BoardHandler) promotePending(target, src, relayID string, inboundID int
 	}
 	prefix := pendingKey(src, relayID) + "-"
 	now := h.pendingNow()
+	type listed struct {
+		arrived int64
+		rec     crossTeamArtifactRecord
+	}
+	var files []listed
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasPrefix(e.Name(), prefix) || !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -143,6 +154,7 @@ func (h *BoardHandler) promotePending(target, src, relayID string, inboundID int
 		if first, have := h.crossTeamRecord("received", target, p.Rec.ID); have {
 			h.noteAlsoReceived(first, p.Rec)
 			_ = os.Remove(path)
+			files = append(files, listed{p.Arrived, p.Rec}) // stored here already, and it came with this message too
 			continue
 		}
 		if err := h.writeCrossTeamRecord("received", p.Rec); err != nil {
@@ -150,6 +162,31 @@ func (h *BoardHandler) promotePending(target, src, relayID string, inboundID int
 			continue
 		}
 		_ = os.Remove(path)
+		files = append(files, listed{p.Arrived, p.Rec})
+	}
+	// The message's own envelope lists them, in the order they arrived (the sender pushes them in the order it attached them), so the dashboard can show each (#5506).
+	sort.SliceStable(files, func(i, j int) bool {
+		if files[i].arrived != files[j].arrived {
+			return files[i].arrived < files[j].arrived
+		}
+		return files[i].rec.At < files[j].rec.At
+	})
+	atts := make([]board.MessageAttachment, 0, len(files))
+	for _, f := range files {
+		atts = append(atts, board.MessageAttachment{ID: f.rec.ID, Name: f.rec.Name, MediaType: f.rec.MediaType, Size: f.rec.Size})
+	}
+	h.listAttachmentsOnMessage(target, inboundID, atts)
+}
+
+// listAttachmentsOnMessage puts atts in the envelope of the inbound message id on board (#5506); a failure is logged, the files are still listed as Received rows.
+func (h *BoardHandler) listAttachmentsOnMessage(project string, id int64, atts []board.MessageAttachment) {
+	if len(atts) == 0 || h.bs == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := h.bs.SetInboundAttachments(ctx, project, id, atts); err != nil {
+		slog.Warn("cross-team artifact: could not list the files on the message", "board", project, "message", id, "error", err)
 	}
 }
 

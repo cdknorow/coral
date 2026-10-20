@@ -57,6 +57,8 @@ Coral Hub answers with a code, never the other board's text: `not_found` (no suc
 
 API: `POST /api/board/{project}/relay-messages` `{"subscriber_id", "session_name", "content", "to_address", "reply_to"?, "message_id"?}` and `GET /api/board/{project}/relay-targets?subscriber_id=...&session_name=...` (this computer only).
 
+**Files on a received message (#5506).** A message that arrived from another Coral (or from another team on this Coral) with files lists the ones stored here in its `external` object: `external.attachments: [{"id": "<64 hex>", "name", "media_type", "size"}]`, in the order the sender attached them; the key is absent when none came. Every board message read returns it. A `coral://artifacts/<hex>` link in the text whose id is not in that list is not on this computer (it was not attached, or was over a limit): the dashboard says so instead of offering a link.
+
 ## Attaching artifacts
 
 An Orchestrator (or the Operator) can attach artifacts to a cross-team send, to a team on this Coral or to a team on another Coral:
