@@ -467,6 +467,13 @@ func (h *SessionsHandler) capturePromptScreen(ctx context.Context, name, agentTy
 // readPromptScreen reads the prompt open on the agent's screen; an error is a screen that couldn't be read,
 // which is not a screen without a prompt.
 func (h *SessionsHandler) readPromptScreen(ctx context.Context, name, agentType, sessionID string) (promptScreen, bool, error) {
+	s, ok, _, err := h.readPromptScreenText(ctx, name, agentType, sessionID)
+	return s, ok, err
+}
+
+// readPromptScreenText is readPromptScreen with the screen's text, for a caller that must tell a screen with no menu on it from a
+// menu it could not parse.
+func (h *SessionsHandler) readPromptScreenText(ctx context.Context, name, agentType, sessionID string) (promptScreen, bool, string, error) {
 	var text string
 	var err error
 	if rs, ok := h.terminal.(ptymanager.RenderedScreenReader); ok {
@@ -475,14 +482,34 @@ func (h *SessionsHandler) readPromptScreen(ctx context.Context, name, agentType,
 		text, err = h.terminal.CaptureOutput(ctx, name, 80, agentType, sessionID)
 	}
 	if err != nil {
-		return promptScreen{}, false, err
+		return promptScreen{}, false, "", err
 	}
 	s, ok := parsePromptScreen(text)
-	return s, ok, nil
+	return s, ok, text, nil
 }
 
+// menuStillDrawn says whether text still shows the menu `before`: at least two of its option labels (or all, for a short
+// menu) are on the screen. A screen that does not parse as a prompt is not a prompt that went while this holds (#58).
+func menuStillDrawn(text string, before promptScreen) bool {
+	if len(before.Options) < 2 {
+		return false
+	}
+	on := normalizeLabel(text)
+	found := 0
+	for _, o := range before.Options {
+		if l := normalizeLabel(o.Label); l != "" && strings.Contains(on, l) {
+			found++
+		}
+	}
+	return found >= 2
+}
+
+// normalizeLabel is a label in lower case, its white space squeezed, without a selection marker (›, >, ❯, ▶) left at
+// its end: a redraw that moved the marker can leave one there, and the menu is the same menu (#58: a menu that only
+// looked changed was reported answered).
 func normalizeLabel(s string) string {
-	return strings.Join(strings.Fields(strings.ToLower(s)), " ")
+	s = strings.Join(strings.Fields(strings.ToLower(s)), " ")
+	return strings.TrimRight(s, "›>❯▶ ")
 }
 
 // AnswerPrompt selects an option of the prompt open in the agent's terminal.
@@ -657,8 +684,8 @@ func (h *SessionsHandler) confirmAnswer(ctx context.Context, name, agentType, se
 	deadline := time.Now().Add(promptClearTimeout)
 	var heldSince time.Time
 	for {
-		now, ok, err := h.readPromptScreen(ctx, name, agentType, sessionID)
-		if err == nil && (!ok || !samePrompt(before, now)) {
+		now, ok, text, err := h.readPromptScreenText(ctx, name, agentType, sessionID)
+		if err == nil && ((!ok && !menuStillDrawn(text, before)) || (ok && !samePrompt(before, now))) {
 			return true, nil
 		}
 		if err == nil && mayConfirm && n <= len(now.Options) && now.Options[n-1].Selected {
