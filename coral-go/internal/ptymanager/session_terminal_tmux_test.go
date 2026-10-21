@@ -194,9 +194,10 @@ func TestTmuxSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
 
 	spawnTmuxSession(t, terminal, "claude-00003687-0003-4000-8000-000000000000", t.TempDir())
 
-	err := terminal.SendInput(ctx, terminalinput.Unclassified, "claude-00003687-0003-4000-8000-000000000000", "echo TMUX_MARKER_42", "", "")
+	err := terminal.SendInput(ctx, terminalinput.Unclassified, "claude-00003687-0003-4000-8000-000000000000", "echo TMUX_MARKER_$((6*7))", "", "")
 	require.NoError(t, err)
 
+	// The marker is what the shell PRINTS (42): the typed line spells it $((6*7)), so a wait for it cannot be satisfied by the echoed command (#5831: the old marker was in the typed text, and the test passed even if the command never ran).
 	output := waitForCapture(t, terminal, "claude-00003687-0003-4000-8000-000000000000", "TMUX_MARKER_42", 5*time.Second)
 	assert.Contains(t, output, "TMUX_MARKER_42", "expected capture to contain marker")
 }
@@ -242,11 +243,12 @@ func TestTmuxSessionTerminal_SendToTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, pane)
 
-	err = terminal.SendToTarget(ctx, terminalinput.Unclassified, pane.Target, "echo TARGET_OK")
+	err = terminal.SendToTarget(ctx, terminalinput.Unclassified, pane.Target, "echo TARGET_$((6*7))")
 	require.NoError(t, err)
 
-	output := waitForCapture(t, terminal, "claude-00003687-0005-4000-8000-000000000000", "TARGET_OK", 5*time.Second)
-	assert.Contains(t, output, "TARGET_OK")
+	// The marker is what the shell PRINTS (42): the typed line spells it $((6*7)), so a wait for it cannot be satisfied by the echoed command (#5831: the old marker was in the typed text, and the test passed even if the command never ran).
+	output := waitForCapture(t, terminal, "claude-00003687-0005-4000-8000-000000000000", "TARGET_42", 5*time.Second)
+	assert.Contains(t, output, "TARGET_42")
 }
 
 func TestTmuxSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
@@ -305,8 +307,10 @@ func TestTmuxSessionTerminal_RestartPane(t *testing.T) {
 	spawnTmuxSession(t, terminal, "claude-00003687-0006-4000-8000-000000000000", t.TempDir())
 
 	// Send a command, then restart
-	terminal.SendInput(ctx, terminalinput.Unclassified, "claude-00003687-0006-4000-8000-000000000000", "echo BEFORE_RESTART", "", "")
-	waitForCapture(t, terminal, "claude-00003687-0006-4000-8000-000000000000", "BEFORE_RESTART", pollWindow)
+	terminal.SendInput(ctx, terminalinput.Unclassified, "claude-00003687-0006-4000-8000-000000000000", "echo BEFORE_RESTART_$((6*7))", "", "")
+	// The marker is what the shell PRINTS (42): the typed line spells it $((6*7)), so a wait for it cannot be satisfied by the echoed command (#5831: the old marker was in the typed text, and the test passed even if the command never ran).
+	before := waitForCapture(t, terminal, "claude-00003687-0006-4000-8000-000000000000", "BEFORE_RESTART_42", pollWindow)
+	assert.Contains(t, before, "BEFORE_RESTART_42", "the command ran before the restart")
 
 	pane, err := terminal.FindSession(ctx, "claude-00003687-0006-4000-8000-000000000000", "", "")
 	require.NoError(t, err)

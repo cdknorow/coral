@@ -176,13 +176,14 @@ func TestPTYSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
 
 	spawnTestSession(t, backend, "io-test")
 
-	err := terminal.SendInput(context.Background(), terminalinput.Unclassified, "io-test", "echo hello-coral", "", "")
+	err := terminal.SendInput(context.Background(), terminalinput.Unclassified, "io-test", "echo hello-coral_$((6*7))", "", "")
 	require.NoError(t, err)
-	waitForPTYOutput(t, backend, "io-test", "hello-coral", pollWindow)
+	// The marker is what the shell PRINTS (42): the typed line spells it $((6*7)), so a wait for it cannot be satisfied by the echoed command (#5831: the old marker was in the typed text, and the test passed even if the command never ran).
+	waitForPTYOutput(t, backend, "io-test", "hello-coral_42", pollWindow)
 
 	output, err := terminal.CaptureOutput(context.Background(), "io-test", 200, "", "")
 	require.NoError(t, err)
-	assert.Contains(t, output, "hello-coral")
+	assert.Contains(t, output, "hello-coral_42")
 }
 
 func TestPTYSessionTerminal_SendRawInput(t *testing.T) {
