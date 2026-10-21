@@ -3,7 +3,7 @@
  * Coral Hub has linked the two teams and the switch is on here, so there is no list to edit on this computer: links are made and removed in Coral Hub (a compiled-in link, never one the server sent).
  *
  * The words of the status line come from the server (GET /api/board/{team}/cross-team-state: status {state: ready|waiting|off|stale|old, text}, links [{server_label, server_id, team_label, refreshed}]) and are shown as text;
- * this module chooses only the dot and the button from status.state. A server that sends no status gets a line made from the switch alone. The switches are saved with PUT /api/board/{team}/settings, only what changed,
+ * this module chooses only the dot and the button from status.state. The owner path adds hub_may_change (the lock: "Coral Hub can change these settings." while true) and last_changed {cross_team_messaging|cross_team_artifacts: {via, by, at, on}} (who changed each switch last). A server that sends no status gets a line made from the switch alone. The switches are saved with PUT /api/board/{team}/settings, only what changed,
  * on this computer and through Coral Hub (the hub's owner; anyone else is refused and told so in our words). */
 import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch, isCloud } from './server_base.js';
@@ -20,6 +20,15 @@ const SERVER_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_LINKS = 50;
 const label = v => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 80); // display text: no control or bidi characters, bounded
 const when = at => { const d = new Date(at); return Number.isNaN(d.getTime()) ? '' : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); };
+// "Turned on by <hub user> via Coral Hub at <time>": from cross-team-state last_changed[key] ({ via: hub|local, by, at, on }); a change made on this computer says so, so the line never names a hub user after the owner changed it here.
+function changedLine(entry) {
+    if (!entry || typeof entry !== 'object') return '';
+    const at = typeof entry.at === 'string' ? when(entry.at) : '';
+    const what = typeof entry.on === 'boolean' ? (entry.on ? 'Turned on' : 'Turned off') : 'Last changed';
+    if (entry.via === 'hub') return `${what} by ${label(entry.by) || 'a Coral Hub user'} via Coral Hub${at ? ' at ' + at : ''}`;
+    if (entry.via === 'local') return `${what} on this computer${at ? ' at ' + at : ''}`;
+    return '';
+}
 const DOT = { ready: 'ok', waiting: 'warm', off: '', stale: 'bad', old: 'bad' }; // a switch that is off by choice is not an alarm
 
 function cleanLinks(list) {
@@ -72,6 +81,8 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         return `<a class="btn btn-primary xt-primary" href="${escapeAttr(HUB_LINKS_URL)}" target="_blank" rel="noopener noreferrer">Link a team on another Coral<span class="sr-only"> (opens Coral Hub in a new tab)</span></a>`;
     };
 
+    const changed = key => { const t = changedLine(state && state.last_changed && state.last_changed[key]); return t ? `<span class="working-mode-hint xt-changed" data-for="${escapeAttr(key)}">${escapeHtml(t)}</span>` : ''; };
+
     function draw(focusSel) {
         const st = status();
         const links = state && st.state !== 'old' ? cleanLinks(state.links) : [];
@@ -80,7 +91,10 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         <div class="xt-row-actions">${buttonFor(st)}</div>
         <div class="xt-switches">
           <label><input type="checkbox" name="cross_team_messaging"${draft.messaging ? ' checked' : ''}${canChange() ? '' : ' disabled'}> Cross-team messaging</label>
+          ${changed('cross_team_messaging')}
           <label><input type="checkbox" name="cross_team_artifacts"${draft.files ? ' checked' : ''}${canChange() ? '' : ' disabled'}> Share files with other teams</label>
+          ${changed('cross_team_artifacts')}
+          ${!hub && state && state.hub_may_change === true ? '<p class="working-mode-hint xt-hub-may">Coral Hub can change these settings.</p>' : ''}
           ${canChange() ? '' : `<p class="working-mode-hint xt-locked">${escapeHtml(lockedText())}</p>`}
         </div>
         ${links.length ? `<div class="xt-links"><h3 class="xt-h">Linked teams that can message this one <a href="${escapeAttr(HUB_LINKS_URL)}" class="update-link" target="_blank" rel="noopener noreferrer">Manage in Coral Hub</a></h3>

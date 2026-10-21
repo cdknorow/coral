@@ -2,7 +2,7 @@
  * screen (#3221) share this one implementation. Each renders into a container whose parts
  * carry data-cloud roles (status, code, link, usercode, connect, cancel, disconnect,
  * command-row, command, copy, mode-row, max-mode, mode-desc, auto-accept-row,
- * allow-auto-accept, hub-operator-row, hub-operator, hub-operator-msg, hub-operator-actions,
+ * allow-auto-accept, hub-cross-team, hub-operator-row, hub-operator, hub-operator-msg, hub-operator-actions,
  * hub-operator-actions-list); a container may
  * leave any of them out.
  *
@@ -180,6 +180,9 @@ class CloudPanel {
         // Relaunching for an update from the hub (#5280, #5383): on unless the owner turned it off here.
         const hubRelaunch = this.part('hub-relaunch');
         if (hubRelaunch) hubRelaunch.checked = st.hub_relaunch_updates !== false;
+        // Cross-team switches from the hub (#5572): the owner may turn a team's messaging and file sharing on or off unless this lock is off (the server reads an unset or unreadable lock as off).
+        const hubCrossTeam = this.part('hub-cross-team');
+        if (hubCrossTeam) hubCrossTeam.checked = st.hub_cross_team_settings !== false;
         // The Hub link came or went (connect, disconnect, revoke): the server clears the
         // Operator setting with it, so read it again.
         const enrolled = ENROLLED.includes(st.state);
@@ -331,6 +334,7 @@ class CloudPanel {
         this.part('allow-auto-accept')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked }));
         this.part('redact-tokens')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/redact-tokens', { redact: e.target.checked }));
         this.part('hub-relaunch')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-relaunch', { allow: e.target.checked }));
+        this.part('hub-cross-team')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/hub-cross-team', { allow: e.target.checked }));
         this.part('hub-operator')?.addEventListener('change', (e) => this.setHubOperator(e.target.checked));
     }
 
