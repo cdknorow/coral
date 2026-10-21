@@ -45,11 +45,30 @@ function shortModelName(id) {
     return s;
 }
 
-/** "Claude · Opus 4.1", or '' when the agent has no model on record. */
-export function modelLabel(agentType, modelId, server) {
+/** The model's name as the list shows it ("Opus 4.1"), or '' when the agent has no model on record or is a terminal. */
+export function modelName(agentType, modelId, server) {
     if (!modelId || agentType === 'terminal') return '';
     const cached = readModelsCache(server, agentType);
     const hit = cached && cached.models.find(m => m && m.value === modelId);
-    const name = (hit && hit.display_name) || shortModelName(modelId);
-    return `${typeName(agentType)} · ${name}`;
+    return (hit && hit.display_name) || shortModelName(modelId);
+}
+
+/** "Claude · Opus 4.1", or '' when the agent has no model on record. */
+export function modelLabel(agentType, modelId, server) {
+    const name = modelName(agentType, modelId, server);
+    return name ? `${typeName(agentType)} · ${name}` : '';
+}
+
+/** The provider's name for an agent type ("Claude"), '' for a terminal (it has none). */
+export function providerName(agentType) { return agentType === 'terminal' ? '' : typeName(agentType); }
+
+export const LEVEL_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+export const levelName = l => LEVEL_NAMES[l] || l;
+
+/** The thinking (effort) level a row has on record: { name, requested } or null. The level the newest turn ran at (thinking_actual, from the transcript) when there is one, else the level the
+ *  agent was started with (thinking), marked requested: the same two fields and the same order as the chat bar's thinking chip. Nothing recorded is null, never a word for it. */
+export function sessionLevel(s) {
+    if (s && s.thinking_actual) return { name: levelName(s.thinking_actual), requested: false };
+    if (s && s.thinking) return { name: levelName(s.thinking), requested: true };
+    return null;
 }

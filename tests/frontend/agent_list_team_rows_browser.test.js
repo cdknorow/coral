@@ -1,11 +1,11 @@
-// #5237 (operator): "Show branches" and "Show agent type" were ticked and the agents of a team group showed neither. Team rows are the compact rows, and the agent type
+// #5237 (operator): "Show branches" and "Show agent type" (now Show provider, Show model and Show thinking level, #5742: this suite starts with the three off and ticks Show model) were ticked and the agents of a team group showed neither. Team rows are the compact rows, and the agent type
 // line was left out of every compact row; the branch line was drawn only for an agent on its own worktree, so the agents of a shared checkout never had one. With either
 // option on, every row that has the data shows its line, in a team group too, toggled live; a row with no branch or model on record shows no line, and the Display panel says
 // how many agents have none. Drives Chrome over CDP through agent_view_harness.js against the isolated dev server.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { connect } = require('./agent_view_harness');
-const BRANCHES = 'coral-show-branches', TYPE = 'coral-show-agent-type';
+const BRANCHES = 'coral-show-branches', TYPES = ['coral-show-provider', 'coral-show-model', 'coral-show-thinking'];
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -49,19 +49,19 @@ const BRANCHES = 'coral-show-branches', TYPE = 'coral-show-agent-type';
         ]) {
             console.log(`${view.name}: a team group, both options, toggled live`);
             await load(view);
-            await ev(`localStorage.removeItem(${JSON.stringify(BRANCHES)}); localStorage.removeItem(${JSON.stringify(TYPE)}); true`);
+            await ev(`localStorage.removeItem(${JSON.stringify(BRANCHES)}); for (const k of ${JSON.stringify(TYPES)}) localStorage.setItem(k, 'false'); true`); // the agent line's options are on unless turned off: start with them off
             assert.equal(await scene(), 4);
             await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' .board-card-agents li.session-group-item')}).length === 4`, `${view.name}: the four team rows`, 4000);
             let s = await rows(view);
             assert.deepEqual(Object.values(s.rows).map(r => r.model + r.branch), ['', '', '', ''], `${view.name}: both options off: no second lines`);
 
             await openPanel(view);
-            await tick(view, 'agenttype');
-            await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' .board-card-agents .session-model')}).length === 3`, `${view.name}: Show agent type brings the line to the team rows that have a model`, 4000);
+            await tick(view, 'model');
+            await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' .board-card-agents .session-model')}).length === 3`, `${view.name}: Show model brings the line to the team rows that have a model`, 4000);
             s = await rows(view);
-            assert.match(s.rows['wt-agent'].model, /Claude · Opus/, JSON.stringify(s.rows));
-            assert.match(s.rows['shared-agent'].model, /Claude · Sonnet/);
-            assert.match(s.rows['nogit-agent'].model, /Claude · Opus/);
+            assert.match(s.rows['wt-agent'].model, /Opus/, JSON.stringify(s.rows));
+            assert.match(s.rows['shared-agent'].model, /Sonnet/);
+            assert.match(s.rows['nogit-agent'].model, /Opus/);
             assert.equal(s.rows['bare-agent'].model, '', 'an agent with no model on record shows no line');
 
             await tick(view, 'branches');
@@ -78,7 +78,7 @@ const BRANCHES = 'coral-show-branches', TYPE = 'coral-show-agent-type';
             assert.match(s.hint, /2 agents have no branch/i, `and how many have no branch: ${s.hint}`);
             assert.equal(s.overflow, 0, 'nothing scrolls sideways');
 
-            await tick(view, 'agenttype');
+            await tick(view, 'model');
             await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' .board-card-agents .session-model')}).length === 0`, `${view.name}: untick: the model lines go at once`, 4000);
             await tick(view, 'branches');
             await waitFor(`document.querySelectorAll(${JSON.stringify(list(view) + ' .board-card-agents .session-worktree-line')}).length === 0`, `${view.name}: untick: the branch lines go at once`, 4000);

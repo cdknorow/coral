@@ -1,5 +1,6 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
 import { modelDisplayName } from './model_names.js';
+import { sessionLevel } from './model_labels.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { formatTokens, formatCost } from './format.js';
 import { getCachedAgentAvailability } from './team_availability.js';
@@ -194,6 +195,9 @@ export function buildSessionTooltip(s) {
     // The model the agent is using now, from the CLI's own signals; no row while it is unknown (#4589).
     const modelName = modelDisplayName(s.model, s.model_display);
     if (modelName) rows.push(`<tr><td class="tt-label">Model</td><td class="tt-value" title="${escapeAttr(typeof s.model === 'string' ? s.model.trim() : '')}">${escapeHtml(modelName)}</td></tr>`);
+    // The thinking (effort) level, as the chat bar's chip says it; "requested" while only the level it was started with is known; no row when none is on record.
+    const level = sessionLevel(s);
+    if (level) rows.push(`<tr><td class="tt-label">Thinking</td><td class="tt-value">${escapeHtml(level.name)}${level.requested ? ' (as started)' : ''}</td></tr>`);
     // Context window usage moved out of the row (AGENT_LIST_COMPACT): explicit
     // null (unknown model) must read "unknown", never 0% or full.
     const ctxText = (s.context_pct === null || s.context_pct === undefined)

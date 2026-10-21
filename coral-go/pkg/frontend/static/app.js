@@ -22,7 +22,7 @@ import { deserializeFromUrl, urlSearchFor } from './search_filters.js';
 import { connectCoralWs } from './websocket.js';
 import { addMacro, hideMacroModal, restartSession, hideRestartModal, confirmRestart, editGoal, refreshGoal, requestGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon } from './sessions.js';
-import { KILL_LOG_NOTE_MANY, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleShowBranches, toggleShowAgentType, toggleGroupByServer, groupHeaderKey } from './render.js';
+import { KILL_LOG_NOTE_MANY, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleShowBranches, toggleShowProvider, toggleShowModel, toggleShowThinking, toggleGroupByServer, groupHeaderKey } from './render.js';
 import './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
@@ -231,7 +231,9 @@ registerActions({
     'display-panel-key': (el, event) => displayPanelKey(event),
     'toggle-show-server': () => window.toggleShowServer(),
     'toggle-show-branches': () => window.toggleShowBranches(),
-    'toggle-show-agent-type': () => window.toggleShowAgentType(),
+    'toggle-show-provider': () => window.toggleShowProvider(),
+    'toggle-show-model': () => window.toggleShowModel(),
+    'toggle-show-thinking': () => window.toggleShowThinking(),
     'toggle-group-by-server': () => window.toggleGroupByServer(),
     'jobs-subtab': el => { if (el.dataset.tab === 'active' || el.dataset.tab === 'scheduled') window.switchJobsSubtab(el.dataset.tab); },
 });
@@ -573,7 +575,7 @@ Object.assign(window, {
     toggleSidebarKebab, closeSidebarKebabs,
     // render (sidebar actions)
     filterLiveAgents, focusAgentSearch, agentSearchKey, toggleSessionSummary, applySessionSummaryPref,
-    toggleShowServer, toggleGroupByServer, toggleShowBranches, toggleShowAgentType,
+    toggleShowServer, toggleGroupByServer, toggleShowBranches, toggleShowProvider, toggleShowModel, toggleShowThinking,
     toggleGroupCollapse, groupHeaderKey, killGroup, moveGroupUp, moveGroupDown,
     copyFolderPath, killBoard, setBoardAccentColor, resetTeam,
     moveSessionUp, moveSessionDown,

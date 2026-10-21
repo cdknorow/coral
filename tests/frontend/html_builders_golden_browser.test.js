@@ -188,8 +188,8 @@ const HEX = c => c.repeat(64);
             ['a display name and a job title', { display_name: 'Release Engineer', board_job_title: 'DevOps', board_project: 'ship-team' }],
             ['a very long name', { name: 'release-engineering-coordinator-agent-number-4-9', display_name: 'release-engineering-coordinator-agent-number-4-9' }],
             ['a terminal (no goal line)', { agent_type: 'terminal' }],
-            ['Codex, with a model', { agent_type: 'codex', model: 'gpt-5-codex' }], // Show agent type is off, as it starts (#5133): no model line
-            ['Codex, with a model, with Show agent type on', { agent_type: 'codex', model: 'gpt-5-codex' }, 'coral-show-agent-type'],
+            ['Codex, with a model', { agent_type: 'codex', model: 'gpt-5-codex' }], // the provider, model and thinking level options are on as it starts (#5742): the agent line is drawn
+            ['Codex, with a model, with the agent line turned off', { agent_type: 'codex', model: 'gpt-5-codex' }, 'coral-show-agent-type=false'], // the old single switch, off: all three options off
             ['Gemini', { agent_type: 'gemini' }],
             ['Antigravity', { agent_type: 'agy' }],
             ['context at 85 percent', { context_pct: 85, context_window: 200000 }],
@@ -197,7 +197,8 @@ const HEX = c => c.repeat(64);
             ['a worktree on its own branch', { branch: 'fix/login', git_state: { is_worktree: true, base_branch: 'main' } }], // Show branches is off, as it starts (#5117): no worktree line
             ['a worktree on its own branch, with Show branches on', { branch: 'fix/login', git_state: { is_worktree: true, base_branch: 'main' } }, 'coral-show-branches'],
             ['a model on a claude agent', { model: 'claude-opus-4-1' }],
-            ['a model on a claude agent, with Show agent type on', { model: 'claude-opus-4-1' }, 'coral-show-agent-type'],
+            ['a model and a thinking level on a claude agent', { model: 'claude-opus-4-1', thinking_actual: 'high' }],
+            ['a thinking level only, with the model option off', { model: 'claude-opus-4-1', thinking: 'medium' }, 'coral-show-model=false'],
             ['an agent with a prompt only (no summary)', { first_prompt: 'Please fix the login bug', summary: '' }],
             ['an agent on a stale server', { server: 'gone-box', stale: true }],
         ];
@@ -205,8 +206,9 @@ const HEX = c => c.repeat(64);
             cases['agent row: ' + name + flavour] = await ev(`(() => { const st = window.ST; const sid = 'row-sid';
                 const s = Object.assign({ session_id: sid, name: 'row-agent', agent_type: 'claude', working_directory: '/tmp/proj', type: 'live' }, ${JSON.stringify(extra)})
                 st.liveSessions = [s]; st.selectedTeam = null; st.currentSession = null;
-                if (${JSON.stringify(setting || '')}) localStorage.setItem(${JSON.stringify(setting || 'x')}, 'true');
-                try { return window.SR._renderSessionItem(s, 'group-a', ${args[0]}, ${args[1]}, '/tmp/proj'); } finally { localStorage.removeItem(${JSON.stringify(setting || 'x')}); } })()`);
+                const [key, value] = ${JSON.stringify(setting || 'x')}.split('=');
+                if (${JSON.stringify(setting || '')}) localStorage.setItem(key, value || 'true');
+                try { return window.SR._renderSessionItem(s, 'group-a', ${args[0]}, ${args[1]}, '/tmp/proj'); } finally { localStorage.removeItem(key); } })()`);
         }
         cases['agent row: the open agent'] = await ev(`(() => { const st = window.ST; const s = { session_id: 'row-sid', name: 'row-agent', agent_type: 'claude', working_directory: '/tmp/proj', type: 'live', summary: 'Open now' };
             st.liveSessions = [s]; st.selectedTeam = null; st.currentSession = s; const html = window.SR._renderSessionItem(s, 'group-a', false, false, '/tmp/proj'); st.currentSession = null; return html; })()`);

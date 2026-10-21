@@ -43,7 +43,7 @@ const { connect } = require('./agent_view_harness');
         assert.deepEqual(v.dupIds, [], 'no id appears twice (the sidebar keeps its ids)');
         await ev(`(() => { const b = document.querySelector('#mobile-agent-list [data-display-button]'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()`);
         v = await view();
-        assert.deepEqual(v.rows.map(r => [r.text, r.shown]), [['Show summaries', true], ['Show server', true], ['Group by server', true], ['Show branches', true], ['Show agent type', true]], 'Show summaries, Show server, Group by server, Show branches and Show agent type are offered with two servers');
+        assert.deepEqual(v.rows.map(r => [r.text, r.shown]), [['Show summaries', true], ['Show server', true], ['Group by server', true], ['Show branches', true], ['Show provider', true], ['Show model', true], ['Show thinking level', true]], 'Show summaries, Show server, Group by server, Show branches, Show provider, Show model and Show thinking level are offered with two servers');
         assert.equal(v.panelFits, true, 'the menu panel fits the 390 px screen');
         assert.equal(v.overflow, 0, 'no horizontal overflow');
         assert.equal(v.headers.length, 0, 'not grouped to begin with');

@@ -7,13 +7,11 @@
 import { serverFetch } from './server_base.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { importOnce } from './import_once.js';
-import { modelLabel, readModelsCache, writeModelsCache } from './model_labels.js';
+import { modelLabel, readModelsCache, writeModelsCache, levelName } from './model_labels.js';
 import { setText, setHidden, setTitle, setData, setAttr } from './dom_write.js';
 
 /** The agent types whose CLI takes /model and /effort in a running session (the server's liveSwitchTypes). */
 const LIVE_SWITCH_TYPES = new Set(['claude']);
-const LEVEL_NAMES = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
-const levelName = l => LEVEL_NAMES[l] || l;
 
 let _cur = null;            // { session, server } the chip shows
 let _data = null;           // the models list for the current agent type: { models, thinking }

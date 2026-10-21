@@ -1,7 +1,7 @@
 /* The agent list's display switches: server names, grouping, summaries, sleeping groups (moved out of render.js, #4996; no behaviour change). */
 import { state } from './state.js';
 import { redrawLiveList } from './list_hooks.js';
-import { isServerShownOnRows, isGroupedByServer, applySessionSummaryPref, isSessionSummaryShown, isBranchShown, isAgentTypeShown } from './session_rows.js';
+import { isServerShownOnRows, isGroupedByServer, applySessionSummaryPref, isSessionSummaryShown, isBranchShown, isAgentLineShown, setAgentLineShown } from './session_rows.js';
 import { browserLocal } from './safe_storage.js';
 
 export async function toggleShowServer() {
@@ -33,10 +33,13 @@ export function toggleShowBranches() {
     redrawLiveList();
 }
 
-export function toggleShowAgentType() {
-    try { browserLocal.set('coral-show-agent-type', isAgentTypeShown() ? 'false' : 'true'); } catch { /* per-viewer only */ }
+export function toggleAgentLine(part) {
+    setAgentLineShown(part, !isAgentLineShown(part));
     redrawLiveList();
 }
+export const toggleShowProvider = () => toggleAgentLine('provider');
+export const toggleShowModel = () => toggleAgentLine('model');
+export const toggleShowThinking = () => toggleAgentLine('thinking');
 
 export async function toggleSessionSummary() {
     const previous = state.settings?.show_session_summary;

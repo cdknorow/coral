@@ -334,10 +334,12 @@
 1	message_board.js	selectedClass
 1	message_board.js	spacing
 1	mobile.js	switchRow({ label: 'Group by server', labelClass: 'list-display-option', labelAttrs: ' data-display-row="group
-1	mobile.js	switchRow({ label: 'Show agent type', labelClass: 'list-display-option', labelAttrs: ' data-display-row="agent
 1	mobile.js	switchRow({ label: 'Show branches', labelClass: 'list-display-option', labelAttrs: ' data-display-row="branche
+1	mobile.js	switchRow({ label: 'Show model', labelClass: 'list-display-option', labelAttrs: ' data-display-row="model"', a
+1	mobile.js	switchRow({ label: 'Show provider', labelClass: 'list-display-option', labelAttrs: ' data-display-row="provide
 1	mobile.js	switchRow({ label: 'Show server', labelClass: 'list-display-option', labelAttrs: ' data-display-row="server" h
 1	mobile.js	switchRow({ label: 'Show summaries', labelClass: 'list-display-option', attrs: ' data-display-input="summary" 
+1	mobile.js	switchRow({ label: 'Show thinking level', labelClass: 'list-display-option', labelAttrs: ' data-display-row="t
 1	model_chip.js	checked
 2	model_chip.js	how
 1	model_chip.js	kind
@@ -428,6 +430,7 @@
 1	session_rows.js	_WORKTREE_ICON
 2	session_rows.js	_archiveItem
 1	session_rows.js	_gitStateSummary(gsWt)
+1	session_rows.js	agentLineHtml(s)
 1	session_rows.js	agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''
 1	session_rows.js	attentionClass
 1	session_rows.js	autoAcceptChip(s)

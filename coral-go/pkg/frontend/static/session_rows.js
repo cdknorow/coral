@@ -10,7 +10,7 @@ import { isStaleSession, staleReason, serversShown } from './server_status.js';
 import { sessionServer, keyLabel, sessionTeamKey } from './server_base.js';
 import { redrawLiveList } from './list_hooks.js';
 import { state } from './state.js';
-import { modelLabel } from './model_labels.js';
+import { modelName, providerName, sessionLevel } from './model_labels.js';
 import { terminalGoneChip } from './terminal_gone.js';
 import { browserLocal } from './safe_storage.js';
 import { onBuilt } from './lazy_dom.js';
@@ -349,7 +349,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
             </div>
             <div class="session-mobile-meta">${mobileStatusChip}${unreadBoardBadge}</div>
             ${(goalLine || unreadChip) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
-            ${(isAgentTypeShown() && s.model && modelLabel(s.agent_type, s.model, sessionServer(s))) ? `<div class="session-model" title="${escapeAttr(s.model)}">${escapeHtml(modelLabel(s.agent_type, s.model, sessionServer(s)))}</div>` : ''}
+            ${agentLineHtml(s)}
             ${branchTag}
         </div>
         <div class="session-tooltip"></div>
@@ -392,10 +392,39 @@ export function _renderAgentListWithSubgroups(agents, teamDefaultDir, isCompact,
 
 // ── Agent summary line (the goal text under each agent name) ──────────
 
-/** 'Show agent type' (#5133): the second line under an agent's name that says its type and model ("Claude · Opus 5.5"). Kept per viewer; off unless turned on. The model stays in the row's tooltip and the agent's header. */
-export function isAgentTypeShown() {
-    try { return browserLocal.get('coral-show-agent-type') === 'true'; }
-    catch { return false; }
+/** The line under an agent's name that says what it runs (#5133, #5742): its provider, its model and its thinking level ("Claude · Opus 5.5 · High"). Three options, each kept per viewer and on
+ *  unless turned off: Show provider, Show model, Show thinking level. A viewer who set the old single "Show agent type" switch keeps that choice for all three until they change one. */
+export const AGENT_LINE_PARTS = ['provider', 'model', 'thinking'];
+export const AGENT_LINE_LABEL = { provider: 'Provider', model: 'Model', thinking: 'Thinking level' };
+const AGENT_LINE_KEY = { provider: 'coral-show-provider', model: 'coral-show-model', thinking: 'coral-show-thinking' };
+export function isAgentLineShown(part) {
+    try {
+        const own = browserLocal.get(AGENT_LINE_KEY[part]);
+        if (own === 'true' || own === 'false') return own === 'true';
+        const legacy = browserLocal.get('coral-show-agent-type');
+        return legacy === 'true' || legacy === 'false' ? legacy === 'true' : true;
+    } catch { return true; }
+}
+export function setAgentLineShown(part, on) {
+    try { browserLocal.set(AGENT_LINE_KEY[part], on ? 'true' : 'false'); } catch { /* per-viewer only */ }
+}
+/** The words of the line for a row, by the options that are on: only what the agent has on record (a terminal has none of the three, an agent with no level shows no level). The provider is the
+ *  start of the line, not a line of its own: a row with no model and no level on record has no line (as before the options, so the list does not grow a line per agent), except that with
+ *  Show model and Show thinking level both off the provider is all that was asked for and is shown. */
+export function agentLineText(s) {
+    const model = isAgentLineShown('model') ? modelName(s.agent_type, s.model, sessionServer(s)) : '';
+    const level = isAgentLineShown('thinking') ? sessionLevel(s) : null;
+    const provider = isAgentLineShown('provider') ? providerName(s.agent_type) : '';
+    const providerOnly = !isAgentLineShown('model') && !isAgentLineShown('thinking');
+    if (!model && !level && !(provider && providerOnly)) return '';
+    return [provider, model, level && level.name].filter(Boolean).join(' \u00b7 ');
+}
+function agentLineHtml(s) {
+    const text = agentLineText(s);
+    if (!text) return '';
+    const lvl = sessionLevel(s);
+    const tip = [s.model, lvl ? `thinking: ${lvl.name}${lvl.requested ? ' (as started)' : ''}` : ''].filter(Boolean).join(', ');
+    return `<div class="session-model"${tip ? ` title="${escapeAttr(tip)}"` : ''}>${escapeHtml(text)}</div>`;
 }
 
 /** 'Show branches' (#5117): the worktree and branch line under an agent's name. Kept per viewer, like Group by server; off unless turned on. The branch stays in the row's tooltip and the agent's header. */
@@ -435,12 +464,13 @@ onBuilt('settings-modal', () => applySessionSummaryPref()); // its Show summarie
 /** What the Display panel says under its options when 'Show branches' or 'Show agent type' is on and some agents have nothing to show for it (#5237): an option that
  *  seems to do nothing for a row is explained, not silent. "" when neither option is on or every agent has its data. A terminal has no model, so it is not counted for that. */
 export function displayHintText() {
-    const type = isAgentTypeShown(), branch = isBranchShown();
-    if (!type && !branch) return '';
+    const model = isAgentLineShown('model'), thinking = isAgentLineShown('thinking'), branch = isBranchShown();
+    if (!model && !thinking && !branch) return '';
     const live = (state.liveSessions || []).filter(s => !s.archived);
     const parts = [];
     const count = (n, what) => `${n} ${n === 1 ? 'agent has' : 'agents have'} no ${what} on record`;
-    if (type) { const n = live.filter(s => s.agent_type !== 'terminal' && !(s.model && modelLabel(s.agent_type, s.model, sessionServer(s)))).length; if (n) parts.push(count(n, 'model')); }
+    if (model) { const n = live.filter(s => s.agent_type !== 'terminal' && !modelName(s.agent_type, s.model, sessionServer(s))).length; if (n) parts.push(count(n, 'model')); }
+    if (thinking) { const n = live.filter(s => s.agent_type !== 'terminal' && !sessionLevel(s)).length; if (n) parts.push(count(n, 'thinking level')); }
     if (branch) { const n = live.filter(s => !s.branch).length; if (n) parts.push(count(n, 'branch')); }
     return parts.length ? parts.join('; ') + '.' : '';
 }
@@ -451,8 +481,8 @@ export function displayHintText() {
  *  page (and of a long chat) each time (#4985). */
  export function syncDisplayMenu() {
     const n = serversShown().length;
-    const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer(), branches: isBranchShown(), agenttype: isAgentTypeShown() };
-    const offered = { summary: true, server: n >= 1, group: n >= 2, branches: true, agenttype: true };
+    const checked = { summary: isSessionSummaryShown(), server: isServerShownOnRows(), group: isGroupedByServer(), branches: isBranchShown(), provider: isAgentLineShown('provider'), model: isAgentLineShown('model'), thinking: isAgentLineShown('thinking') };
+    const offered = { summary: true, server: n >= 1, group: n >= 2, branches: true, provider: true, model: true, thinking: true };
     const hintText = displayHintText();
     for (const header of [...document.getElementsByClassName('sidebar-header'), ...document.getElementsByClassName('mobile-list-header')]) {
         for (const input of header.querySelectorAll('[data-display-input]')) setChecked(input, checked[input.dataset.displayInput] === true);
