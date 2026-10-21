@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -16,6 +17,10 @@ import (
 //	attach <id> --artifacts manifest.json   add patch rows to a task in review (the author's next revision, a reviewer's fix commit)
 //	send-back <id> --note "why"             the orchestrator returns an approved, completed task to its author
 //	mark-landed <id> --digest D [--commit SHA[:subject]]   the orchestrator records that approved patches landed, and the commits
+//
+// digestRe is what --digest takes: 64 hex characters, with the sha256: prefix of an upload's digest or without it (#5793).
+var digestRe = regexp.MustCompile(`^(sha256:)?[0-9a-fA-F]{64}$`)
+
 func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, `Usage: coral-board task attach <id> --artifacts manifest.json | send-back <id> --note "why" | mark-landed <id> --digest D [--commit SHA[:subject]]`)
@@ -56,6 +61,13 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 		if len(digests) == 0 {
 			fmt.Fprintln(os.Stderr, "--digest D is required (repeat it for each patch that landed)")
 			os.Exit(1)
+		}
+		for _, d := range digests {
+			if !digestRe.MatchString(d) {
+				fmt.Fprintf(os.Stderr, "--digest %q is not 64 hex characters (with or without the sha256: prefix)\n", d)
+				exitFn(1)
+				return
+			}
 		}
 		var cs []map[string]string
 		for _, c := range commits {
