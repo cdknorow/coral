@@ -3,6 +3,9 @@ package agent
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/subgentic/coral/internal/secfile"
@@ -88,4 +91,18 @@ func takeLaunchTemps(sessionID string) []string {
 	paths := launchTemps.m[sessionID]
 	delete(launchTemps.m, sessionID)
 	return paths
+}
+
+// inLaunchTempFolder reports whether path is directly in a folder launch temp files go to:
+// LaunchTempDir or the system temp folder (case-insensitively on Windows). A recorded path is
+// removed only there, whatever else may have changed since it was recorded.
+func inLaunchTempFolder(path string) bool {
+	dir := filepath.Dir(filepath.Clean(path))
+	for _, d := range []string{LaunchTempDir(), os.TempDir()} {
+		d = filepath.Clean(d)
+		if dir == d || runtime.GOOS == "windows" && strings.EqualFold(dir, d) {
+			return true
+		}
+	}
+	return false
 }
