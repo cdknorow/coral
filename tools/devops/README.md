@@ -101,6 +101,21 @@ the first failed check.
    `cask: Coral X.Y.Z` commit on `main` (it reads the DMG's sha256 from the release's metadata, not by downloading anything).
    `tools/devops/release-cadence.sh` prints every release with its channel and how long it has waited.
 
+## Runbook: approving, revoking and the hand fallbacks (#5551, #5559)
+
+- **First approval (144)**: done with the operator watching. The `flip` job reads the result back and fails loudly if the labels did not move.
+- **Hand fallback for an approval** (the operator, in a terminal or the browser): `gh release edit vX.Y.Z --prerelease=false --latest`. The tap stays on the old cask
+  (the safe side: `brew` keeps the previous version) until it is moved by hand from the signed `SHA256SUMS.txt` of that release.
+- **Hand fallback for a revoke**: `revoke` edits the tag first and then re-marks the fallback; if the second edit fails the read-back fails and the fallback must be marked by hand:
+  `gh release edit vX.Y.Z --prerelease --latest=false` for the revoked tag, then `gh release edit vPREVIOUS --latest` for the highest earlier approved release (GitHub does not move
+  the Latest mark by itself). A revoke is allowed only for the release that IS latest (approval is monotonic, so the fallback is always the right one).
+- **Artifact retention**: the `tap` job takes the cask's sha256 from the `release-sums` artifact of the release run (the checksums as signed, no download). GitHub keeps run artifacts at
+  most 90 days (the repository setting is already at that maximum, and `release.yml` says so explicitly). Approving, or reverting to, a release older than that fails in the `tap` job
+  AFTER `flip`: the labels moved, the cask did not. Do not let a release wait 90 days.
+- **The record**: the `Approved:` and `Revoked:` lines are in the release body, which anyone who can edit releases can change: they are a record and a guard against a mistaken
+  re-approval, not a security control. Every Monday read the audit log for Approve release runs and their actors (`gh run list --workflow approve-release.yml`): the team rule is
+  that no agent dispatches it.
+
 ## Release provenance (#5550)
 
 - **At every tag**: the first step of `release.yml`'s resolve job runs `tests/release/release_provenance.py`. It writes into the run's
