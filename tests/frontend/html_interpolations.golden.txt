@@ -304,6 +304,8 @@
 1	history_list.js	typeTag
 1	history_tabs.js	icon
 1	history_tabs.js	statusClass
+1	launch_core.js	failList
+1	launch_core.js	started
 1	list_card_parts.js	PIN_ICON
 2	list_card_parts.js	icon
 1	list_card_parts.js	name
@@ -623,8 +625,6 @@
 1	team_cross_team_settings.js	links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l
 1	team_cross_team_settings.js	switchRow({ label: 'Cross-team messaging', name: 'cross_team_messaging', checked: draft.messaging, disabled: !
 1	team_cross_team_settings.js	switchRow({ label: 'Share files with other teams', name: 'cross_team_artifacts', checked: draft.files, disable
-1	team_dialogs.js	failList
-1	team_dialogs.js	successCount
 1	team_health_settings.js	HEALTH_LIMITS.reviewers
 1	team_health_settings.js	extra
 1	team_health_settings.js	held
