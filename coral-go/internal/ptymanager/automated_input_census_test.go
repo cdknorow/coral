@@ -92,7 +92,7 @@ var allowedSenders = map[string]sender{
 	"internal/tmux/send_keys.go\tClient.typeToTarget\ttmux send-keys":              {guardPrimitive, "primitive: text then Enter, no Enter after a failed send or when enterAllowed says no", ""},
 	"internal/tmux/send_keys.go\tclearInputLine\ttmux send-keys":                   {guardLaunch, "launch: the Ctrl-U that clears a launch command typed into a fresh shell whose Enter did not go (#5171); never reached for text typed to an agent", "TestLaunchLineIsClearedWhenItsEnterIsWithheld"},
 	// The PTY master itself: every byte typed to a PTY agent goes through session.writeFull.
-	"internal/ptymanager/session.go\tsession.writeFull\tpty Write":        {guardPrimitive, "primitive: the PTY's write, reached by the senders above", ""},
+	"internal/ptymanager/session.go\tsession.writeFullCtx\tpty Write":     {guardPrimitive, "primitive: the PTY's write, reached by the senders above and by PTYBackend.SendHumanInput (a person's keystrokes, the gate's PTY rule #3482, logged by length only #60)", ""},
 	"internal/ptymanager/pty_unix.go\tunixPTY.Write\tpty Write":           {guardPrimitive, "primitive: the PTY file", ""},
 	"internal/ptymanager/pty_windows.go\twindowsPTY.Write\tpty Write":     {guardPrimitive, "primitive: the ConPTY", ""},
 	"internal/ptymanager/pty_windows.go\twindowsPTY.Terminate\tpty Write": {guardPrimitive, "primitive: the Ctrl-C that starts a session's end on Windows (session.killWithin, recorded in the input log); nothing is typed after it", ""},
@@ -100,7 +100,6 @@ var allowedSenders = map[string]sender{
 	"internal/background/runtime_pty.go\tPTYRuntime.SendInput\tSendLine":                                             {guardPrimitive, "primitive", ""},
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendInput\tSendKeys":                                           {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/manager.go\tPTYBackend.SendLine\tSendInput":                                                 {guardPrimitive, "primitive", ""},
-	"internal/ptymanager/manager.go\tPTYBackend.SendHumanInput\tSendInput":                                           {guardHuman, "a person's keystrokes (the dashboard terminal), recorded for the gate's PTY rule (#3482)", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendInput\tSendLine":                            {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendPrompt\tSendPrompt":                         {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendRawInput\tSendInput":                        {guardPrimitive, "primitive", ""},
@@ -111,7 +110,7 @@ var allowedSenders = map[string]sender{
 	"internal/ptymanager/session_terminal_tmux.go\tTmuxSessionTerminal.SendRawInput\tSendRawKeys":                    {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_tmux.go\tTmuxSessionTerminal.SendTerminalInput\tSendTerminalInputToTarget": {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_tmux.go\tTmuxSessionTerminal.SendToTarget\tSendKeysToTarget":               {guardPrimitive, "primitive", ""},
-	"internal/ptymanager/tmux_backend.go\tTmuxBackend.SendInput\tSendTerminalInputToTarget":                          {guardPrimitive, "primitive", ""},
+	"internal/ptymanager/tmux_backend.go\tTmuxBackend.sendInput\tSendTerminalInputToTarget":                          {guardPrimitive, "primitive: SendInput, and SendHumanInput for a person's keystrokes (#60)", ""},
 	"internal/ptymanager/prompt_screen.go\tTmuxSessionTerminal.SendEnter\tSendRawKeys":                               {guardPrimitive, "primitive", ""},
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendEnter\tSendRawKeys":                                        {guardPrimitive, "primitive", ""},
 	// #5114: the one 0 that dismisses Claude's session survey (never a rating), only when it is the only thing open.

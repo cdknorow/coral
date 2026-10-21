@@ -13,6 +13,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/logparse"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/safego"
@@ -181,7 +182,16 @@ func (b *TmuxBackend) Restart(name, command string) error {
 }
 
 func (b *TmuxBackend) SendInput(name string, data []byte) error {
-	ctx := context.Background()
+	return b.sendInput(context.Background(), name, data)
+}
+
+// SendHumanInput writes a person's keystrokes from the dashboard terminal: as SendInput, and
+// logged by their length only (inputlog.Human, #60).
+func (b *TmuxBackend) SendHumanInput(name string, data []byte) error {
+	return b.sendInput(inputlog.Human(context.Background()), name, data)
+}
+
+func (b *TmuxBackend) sendInput(ctx context.Context, name string, data []byte) error {
 
 	b.mu.RLock()
 	sess, ok := b.sessions[name]

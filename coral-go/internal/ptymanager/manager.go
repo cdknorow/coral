@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/tmux"
 )
@@ -116,7 +117,7 @@ func (m *PTYBackend) SendHumanInput(name string, data []byte) error {
 		}
 	}
 	m.mu.Unlock()
-	return m.SendInput(name, data)
+	return m.sendInput(inputlog.Human(context.Background()), name, data)
 }
 
 // HumanInputSince reports whether a person typed in the session's terminal after t.
@@ -127,13 +128,19 @@ func (m *PTYBackend) HumanInputSince(name string, t time.Time) bool {
 }
 
 func (m *PTYBackend) SendInput(name string, data []byte) error {
+	return m.sendInput(context.Background(), name, data)
+}
+
+// sendInput writes data to the session's terminal; ctx says whose input it is (inputlog.Human).
+func (m *PTYBackend) sendInput(ctx context.Context, name string, data []byte) error {
 	m.mu.RLock()
 	s, ok := m.sessions[name]
 	m.mu.RUnlock()
 	if !ok || !s.isRunning() {
 		return fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
 	}
-	return s.sendInput(data)
+	_, err := s.writeFullCtx(ctx, data)
+	return err
 }
 
 // promptSubmitDelay (a field of waits(), seams.go) separates a bracketed paste from the submitting Enter.
