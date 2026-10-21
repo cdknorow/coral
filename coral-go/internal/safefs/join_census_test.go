@@ -153,7 +153,7 @@ var joinSites = map[string]joinEntry{
 	"internal/server/routes/artifact_prune.go\tSessionsHandler.closedDiffs":                  {2, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
 	"internal/server/routes/artifact_prune.go\tSessionsHandler.keepArtifactRoute":            {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifact_prune.go\tSessionsHandler.objectCandidates":             {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
-	"internal/server/routes/artifact_prune.go\tSessionsHandler.sweepDiffObjects":             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/server/routes/artifact_prune.go\tSessionsHandler.sweepDiffObjects":             {2, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
 	"internal/server/routes/artifact_prune.go\tdiffObjectInodes":                             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
 	"internal/server/routes/artifact_prune.go\tnewestRecordFor":                              {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifact_prune.go\tobjectNewestUse":                              {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},

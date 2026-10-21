@@ -237,13 +237,13 @@ func diffStoreSizes(coralDir string) (tb, tn, sb, sn int64) {
 	// task and session diffs (the links). QA's #3555 finding.
 	seen := map[string]bool{}
 	walk := func(dir string) (bytes, files int64) {
-		_ = filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
+		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 			if err != nil || !d.Type().IsRegular() {
 				return nil
 			}
 			if info, ierr := d.Info(); ierr == nil {
 				files++
-				if key, ok := fileIdentity(info); ok {
+				if key, ok := fileIdentity(p, info); ok {
 					if seen[key] {
 						return nil
 					}
