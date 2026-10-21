@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/dbcrypt"
 	"github.com/subgentic/coral/internal/inputlog"
@@ -145,5 +146,16 @@ func (h *SystemHandler) GetPrivacyStatus(w http.ResponseWriter, r *http.Request)
 		"remote_access_tls": h.cfg.TLS,
 		"effective_host":    h.cfg.Host,
 		"debug_input_log":   inputlog.State(),
+		// H5: who besides the system and administrators can change the folder of the hooks every agent
+		// runs (a portable Coral in the user's profile); empty for an install in Program Files.
+		"tools_folder": toolsFolderStatus(),
 	})
+}
+
+func toolsFolderStatus() map[string]any {
+	dir, who := agent.ToolsFolderWriters()
+	if who == nil {
+		who = []string{}
+	}
+	return map[string]any{"path": dir, "writable_by": who}
 }

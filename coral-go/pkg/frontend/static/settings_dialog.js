@@ -12,7 +12,7 @@ import { applyCloudSettingsDialog, filterSettingsPayload } from './cloud_setting
 import { isCloud } from './server_base.js';
 import { requestJson } from './api.js';
 import { NOTHING_TO_SAVE } from './settings_diff.js';
-import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
+import { settingBool, changedSettings, renderRemoteAccessStatus, renderDebugInputLogStatus, renderToolsFolderStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 import { attachDialogFocus } from './dialog_focus.js';
 import { browserLocal } from './safe_storage.js';
 import { openSettingsGroup } from './settings_nav.js';
@@ -567,6 +567,7 @@ async function _fillMachineSettings(s) {
             if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, false);
             renderRemoteAccessStatus(state.privacyStatus);
             renderDebugInputLogStatus(state.privacyStatus);
+            renderToolsFolderStatus(state.privacyStatus);
         } catch (_) {
             renderRemoteAccessStatus(state.privacyStatus, !state.privacyStatus);
         }

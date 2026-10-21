@@ -346,3 +346,27 @@ func FormatPromptFileArg(promptFile string) string {
 		return fmt.Sprintf("\"$(cat %s)\"", shellQuoteLiteral(promptFile))
 	}
 }
+
+// toolsWriters is who besides the system and administrators can change the tools folder
+// (secfile.Writers), as startup found it (SetToolsFolderWriters); empty when only an
+// administrator can, as for an install in Program Files.
+var toolsWriters struct {
+	sync.Mutex
+	dir string
+	who []string
+}
+
+// SetToolsFolderWriters records what startup found about the tools folder (H5).
+func SetToolsFolderWriters(dir string, who []string) {
+	toolsWriters.Lock()
+	defer toolsWriters.Unlock()
+	toolsWriters.dir, toolsWriters.who = dir, append([]string(nil), who...)
+}
+
+// ToolsFolderWriters is the tools folder and who besides the system and administrators can
+// change it, for the dashboard (H5).
+func ToolsFolderWriters() (dir string, who []string) {
+	toolsWriters.Lock()
+	defer toolsWriters.Unlock()
+	return toolsWriters.dir, append([]string(nil), toolsWriters.who...)
+}
