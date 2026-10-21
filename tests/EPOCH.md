@@ -27,7 +27,7 @@ after your role, and remove only your own, by exact path.
 
 | Tool | Where | Version | How it was checked |
 |---|---|---|---|
-| Go | `$HOME/go-install/go/bin/go` | go1.24.1, which switches itself to `coral-go/go.mod`'s toolchain (go1.26.9) on first use (`GOTOOLCHAIN`) | the official go.dev tarball; the switched toolchain is checked against the Go checksum database |
+| Go | `$HOME/go-install/go/bin/go` | go1.24.1, which switches itself to `coral-go/go.mod`'s toolchain (go1.26.10) on first use (`GOTOOLCHAIN`) | the official go.dev tarball; the switched toolchain is checked against the Go checksum database |
 | Node.js | `$HOME/node-install/node/bin/node` (`node` -> `node-v22.23.3-linux-x64`) | v22.23.3 (LTS) | `SHASUMS256.txt` from nodejs.org, its signature checked with the releaser's key from [nodejs/release-keys](https://github.com/nodejs/release-keys); the tarball's sha256 matches it. No sudo. |
 | Chrome (headless) | `/sd2/$USER/coralgo-tools/chrome-linux64/chrome` | Chrome for Testing 155.0.8059.39 | Google's Chrome for Testing build for linux64 |
 | Frontend test dependencies | `/sd2/$USER/coralgo-cache/frontend/node_modules` | `tests/frontend/package-lock.json` | `npm ci --ignore-scripts`; link it as `tests/frontend/node_modules` |

@@ -154,7 +154,7 @@ jobs:
       # Exactly release.yml's build-linux setup, so this run saves under the key a tag looks for.
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       # Go checks a module against go.sum only when it downloads it, not when it reuses a cached
       # copy: re-hash every restored module (Security's MUST on #4251).
@@ -211,7 +211,7 @@ jobs:
       - if: matrix.os == 'linux'
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
