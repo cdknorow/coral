@@ -60,8 +60,8 @@ func TestNewDataFolderHasAnOwnerOnlyDACL(t *testing.T) {
 	}
 }
 
-// A folder that Everyone can read is reported; EnsureDataDir leaves an existing folder's
-// access list as it is.
+// A folder that Everyone can read is reported; EnsureDataDir then makes an existing folder this
+// user owns private.
 func TestBroadDataFolderIsReported(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "shared")
 	require.NoError(t, os.Mkdir(dir, 0o700))
@@ -78,7 +78,7 @@ func TestBroadDataFolderIsReported(t *testing.T) {
 	require.NoError(t, EnsureDataDir(dir))
 	groups, err = DataDirBroadReaders(dir)
 	require.NoError(t, err)
-	assert.Contains(t, groups, "Everyone", "an existing folder is not changed")
+	assert.Empty(t, groups, "an existing folder this user owns is made private (#96)")
 }
 
 // grantEveryoneRead adds an Everyone read entry to dir's DACL (a test stands in for a folder

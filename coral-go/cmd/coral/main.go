@@ -100,7 +100,9 @@ func main() {
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	showVersion := flag.Bool("version", false, "Print the version and exit (also -v, or coral version)")
 	flag.BoolVar(showVersion, "v", false, "Print the version and exit")
+	allowSharedDataDir := flag.Bool("allow-shared-data-dir", false, "Run even when the data folder can be read by other accounts and Coral can't make it private (Windows: it is owned by someone else, or is a link). By default Coral makes such a folder private to you, or refuses to start (also CORAL_ALLOW_SHARED_DATA_DIR=1)")
 	flag.Parse()
+	config.SetAllowSharedDataDir(*allowSharedDataDir) // before config.Load, which makes the data folder
 	if *showVersion {
 		printVersion(os.Stdout)
 		os.Exit(0)
