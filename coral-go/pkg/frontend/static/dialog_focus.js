@@ -71,6 +71,7 @@ export function attachDialogFocus(dialog) {
         const behind = [...document.querySelectorAll('.modal')].some(m => m !== dialog && isShown(m) && m.getClientRects().length > 0 && !m.contains(back));
         if (back && !behind && (!now || now === document.body || dialog.contains(now))) back.focus();
     };
+    dialog._focusRestore = onClose;
     new MutationObserver(() => {
         const now = isShown(dialog);
         if (now === open) return;
@@ -80,11 +81,20 @@ export function attachDialogFocus(dialog) {
     if (isShown(dialog)) { open = true; onOpen(); }
 }
 
+/** For a dialog that is removed from the page when it closes (the observer above sees a display change, not a removal): call it after removing the
+ *  dialog, and focus goes back to the opener as it does for a dialog that is only hidden. */
+export function restoreDialogFocus(dialog) {
+    if (dialog && dialog._focusRestore) dialog._focusRestore();
+}
+
 // A dialog whose code never called attachDialogFocus is opened by showing it: the control that has focus at that moment is the opener.
 function noteOpener(dialog) {
     const a = document.activeElement;
     if (a && a !== document.body && !dialog.contains(a)) dialog._focusOpener = a;
-    else if (!dialog.contains(a) && !dialog._focusOpener) dialog._focusOpener = lastFocusOutsideDialogs();
+    // Focus is already inside (the dialog's own show function focused a field before this ran: the macro and team wizard dialogs do) or on the page:
+    // the opener is the control that last had focus outside every dialog. This branch also required focus to be outside the dialog, so it never ran
+    // for exactly those dialogs and Escape or Cancel dropped focus to the page (#5705).
+    else if (!dialog._focusOpener) dialog._focusOpener = lastFocusOutsideDialogs();
 }
 
 /** Every dialog in the page shell (#4026): focus moves in when it opens and back to the opener when it closes, however its own code

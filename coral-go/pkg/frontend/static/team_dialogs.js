@@ -1,5 +1,6 @@
 /* Moved out of modals.js as it was (#4684): The AI team wizard, the team-agent dialog, and the Launch dialog's team form: its agents, templates, quick launch and Launch Team. No behaviour change. */
 import { importOnce } from './import_once.js';
+import { registerDialog } from './modal_chrome.js';
 import { scrollBehavior } from './motion.js';
 import { showToast, escapeHtml, escapeAttr, boardNameProblem } from './utils.js';
 import { loadLiveSessions } from './api.js';
@@ -502,9 +503,10 @@ async function launchTeam() {
                     </div>
                 `;
                 document.body.appendChild(modal);
+                const close = registerDialog(modal);
                 modal.addEventListener('click', (e) => {
-                    if (e.target.dataset?.action === 'close' || e.target === modal) modal.remove();
-                    if (e.target.dataset?.action === 'settings') { modal.remove(); showSettingsModal(); }
+                    if (e.target.dataset?.action === 'close') close();
+                    if (e.target.dataset?.action === 'settings') { close(); showSettingsModal(); }
                 });
             }
             if (launched.length - failed.length > 0) {

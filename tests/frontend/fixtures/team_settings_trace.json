@@ -42,39 +42,39 @@
   "dialog, all good, tabs": [
    {
     "step": "opened and loaded",
-    "sha256": "366c7ea5bbdb72cb50d717a710df75aa01fd907ad3f6a144319436dcd66e34a1"
+    "sha256": "5fbfea8d7e2b4a2af1b0e4f468e3deea6b95635bcbe49a93acc63379277c3c07"
    },
    {
     "step": "tab prompts",
-    "sha256": "372412775bea6e7b64702cf0a4bbe774aebf8827eeff3312d1c8cb8d1254ff4c"
+    "sha256": "886fc095064bbdfb218b102dedfe82dcb1104255dd5735ebdfbaaaefd17acb31"
    },
    {
     "step": "tab workflow",
-    "sha256": "478c1c4dac83261733c279ff46b1e72be3ee9f9fcfefc1c3cdf586cf662693d2"
+    "sha256": "dd94b805f59b7e88b88ae61a8e1304cf694ea8ffa6d591437c661ea2fff1d2c1"
    },
    {
     "step": "key ArrowRight",
-    "sha256": "fd08a7c733b6f9c73ccd425d7858b415c75d0a933bab207c3045366a26ec4232"
+    "sha256": "1b0f5c644ef663fd561663a99e148f3d212b2009517831bdcd18465d4adf1119"
    },
    {
     "step": "key ArrowRight",
-    "sha256": "b80ae48831cfc5292c559a129fadbf8a7045afb77b93f9d009fad7a8a7ee528a"
+    "sha256": "52f125a937fc12cec7fc58a8422f778fee021c3f2e996088b7035a1aaa176e1e"
    },
    {
     "step": "key ArrowRight",
-    "sha256": "b0ee29e19b0dbba741d867f199b2a7933a9751068a79dae8cdb6c5f319cfa98b"
+    "sha256": "85ada03fd346a9e2824a5fab1f48c59ac411eaf2962acf88cf3ee92fcbee91f0"
    },
    {
     "step": "key ArrowLeft",
-    "sha256": "8687b47b98e928be0d1a39264e474a3b04a3f49420f824ffeec193cf2cf68855"
+    "sha256": "42f9d6a01bfd0487d8db6370f5e06823f153c97b3720a9124de98312f65f9e47"
    },
    {
     "step": "key End",
-    "sha256": "d4d4ac4e024da0005461cd12703c8c902a479cd8bc105eb2fe9193e96b57e2e3"
+    "sha256": "1a4265419cbc12f7f28ab2decab3bf4dca6c7f811a8ac0039ca9a84d83f5f432"
    },
    {
     "step": "key Home",
-    "sha256": "5dbc7a6c0cdab8a9df2bea64c591ac13b122365a245e975c1c5fb19564e2d17b"
+    "sha256": "66fa28a47cefe14c8e01ed927eb9d43e74d25401fe4c36644214e6947fee9b60"
    }
   ],
   "workspace, presets": [
@@ -118,39 +118,39 @@
   "dialog, presets": [
    {
     "step": "opened and loaded",
-    "sha256": "366c7ea5bbdb72cb50d717a710df75aa01fd907ad3f6a144319436dcd66e34a1"
+    "sha256": "5fbfea8d7e2b4a2af1b0e4f468e3deea6b95635bcbe49a93acc63379277c3c07"
    },
    {
     "step": "preset shared_checkout",
-    "sha256": "bfeaba97aec4448a818e2c7ce8bd00437817a8e19eb338cb32a342381136ba98"
+    "sha256": "e8e19be1a9d5c8559c729f44a592426f0a8a598e9d641060d54f6674c41dec96"
    },
    {
     "step": "preset worktrees",
-    "sha256": "78257f7cba7930be72f792e895794c1b20fe0d41a1fb1b17024344fae9e65d14"
+    "sha256": "cde7ada25de858becdcffa492485109890c51e5ba1df6991629fdb5ce730b2c3"
    },
    {
     "step": "new preset",
-    "sha256": "8703a40818726026b06df0ad0b7097ebe51e3561f23bb4ae3db244ed1380c25f"
+    "sha256": "57755bd918f624190b2996578ae6fa987f336c9fe322187652285d6713493478"
    },
    {
     "step": "save with no name",
-    "sha256": "961872a904a8704c0af15c5c8e92c7d123333f1372d13031428320dd5b7a8458"
+    "sha256": "c0265662e42bcd449351babfb44a60507392da99799ab2ea8df0bdfe3c39a404"
    },
    {
     "step": "save with no instructions",
-    "sha256": "1730b31d6ba7b0ac590225b8843eff6704d46b8abc336462303ee2c90e5557ae"
+    "sha256": "ee993326e3d1583763f940c622c61c067597b83e8094e88d452f5a94fa9995d3"
    },
    {
     "step": "save by Enter",
-    "sha256": "74971970c13e36ff504b66f05ad0f45bbf1ede530fbfebe701fdf970c9d816df"
+    "sha256": "56b797b5fc292f3bc368e2cc98c4d04cd2ea56bc52edf72a3ed09de787826e74"
    },
    {
     "step": "save built-in override",
-    "sha256": "9a0b502c0cf685f0de88b243116cd136438fd8f76c9dabe07a8ea056590c74d4"
+    "sha256": "97d55b16341089e98d466d5f97b8bc8e11e719b9bec584e55fbd3f6e6c17a590"
    },
    {
     "step": "reset built-in",
-    "sha256": "f7c7fb2aba0c1a4f7057c24f87bdb1d2094f94db934af7d326a5682de08aeaa7"
+    "sha256": "b774ee9b3c8062e182bba0d711ec9972e391bfa15d4c115c4abf540abf31e59b"
    }
   ],
   "workspace, save": [
@@ -178,23 +178,23 @@
   "dialog, save": [
    {
     "step": "opened and loaded",
-    "sha256": "366c7ea5bbdb72cb50d717a710df75aa01fd907ad3f6a144319436dcd66e34a1"
+    "sha256": "5fbfea8d7e2b4a2af1b0e4f468e3deea6b95635bcbe49a93acc63379277c3c07"
    },
    {
     "step": "save with nothing changed",
-    "sha256": "76137f40205e37132b42e88f442c86cd187a5af93c50e00c3f42cb69fa36d815"
+    "sha256": "b5293f4bb8880b4306333d111b111f402a4fcd6a48b21a22f6b1d0f31479aa2a"
    },
    {
     "step": "save the working mode",
-    "sha256": "3a0316166aa9304d4492028c44c9e60fc3f81390bb46e71b731be61673b7c4f8"
+    "sha256": "fec2b63224c5a5b3b26274cb37f55556943c9a98b059fcdd85e8ee52a1e97a19"
    },
    {
     "step": "save the messaging switch",
-    "sha256": "eb718c43cd0ebf7ab002e7b39d4758cba55c196730aafd14dc0e5836ac93d73f"
+    "sha256": "3714260ae068d7106f7dbaf549fbb9deae296d41d95ff6b26b28e007bc6ee854"
    },
    {
     "step": "save again",
-    "sha256": "db7b5588d657d77e0c3bcd514a897c6954c618156201c7dfe0b60cb31eb1c1a0"
+    "sha256": "f5d463105b80af6d1875b84983f51f62009ecd37eb3c64ecbb047dcbf281f051"
    }
   ],
   "preset save fails": [
@@ -324,11 +324,11 @@
   "presets fail to load": [
    {
     "step": "opened and loaded",
-    "sha256": "66db5c1d56c0b214ffdff1f0b6db7c552a1c76af25892700dd1809eb32ffa1c9"
+    "sha256": "6c0599bde180c05b171810b1cca5bc73f293b33f44e48c33efc8df550c2f4ae7"
    },
    {
     "step": "nothing more",
-    "sha256": "73f5dac0b5c27aeebe12c7b25333c3dcaac78e55406a0857cd2eb7f2a90f17f2"
+    "sha256": "5fc0dee0349b03100667719bd31aaadbb5ad17f305bec59b2babe9c2024b91e4"
    }
   ]
  },

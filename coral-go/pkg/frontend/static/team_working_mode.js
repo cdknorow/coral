@@ -1,4 +1,5 @@
 import { importOnce } from './import_once.js';
+import { bindNativeDialog } from './modal_chrome.js';
 import { escapeHtml, escapeAttr, copyText, showToast } from './utils.js';
 import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
 const { boardRenameControl } = await importOnce('./board_rename.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
@@ -91,7 +92,7 @@ function _teamSettingsShell(workspaceMode) {
     dialog.setAttribute('aria-labelledby', 'working-mode-title');
     const workspaceActions = workspaceMode
         ? ''  // sidebar panel: no close/back, the team context owns navigation
-        : `<button type="button" class="modal-close-btn" aria-label="Close"><span class="material-icons" aria-hidden="true">close</span></button>`;
+        : `<button type="button" class="modal-close-btn" data-dialog-close aria-label="Close"><span class="material-icons" aria-hidden="true">close</span></button>`;
     dialog.innerHTML = `<header><div><h2 id="working-mode-title">Team settings</h2><p class="working-mode-team"></p></div>${workspaceActions}</header>
       <div class="working-mode-status" role="status" aria-live="polite"></div>
       <nav class="team-settings-tabs" aria-label="Team settings sections" role="tablist">
@@ -148,9 +149,7 @@ function _mountTeamSettings(dialog, team, workspaceMode) {
         document.getElementById('agentic-panel-team-settings')?.replaceChildren(dialog);
     } else {
         document.body.append(dialog);
-        dialog.querySelector('header .modal-close-btn').onclick = () => dialog.close(); // the Close button: `header button` was the first button, "Rename board", which then closed the dialog while Close did nothing
-        dialog.addEventListener('close', () => dialog.remove());
-        dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+        bindNativeDialog(dialog); // Close (data-dialog-close), the backdrop, and removal on close
         dialog.showModal();
     }
 

@@ -1,4 +1,5 @@
 import { importOnce } from './import_once.js';
+import { bindNativeDialog } from './modal_chrome.js';
 import { escapeHtml } from './utils.js';
 import { state } from './state.js';
 import { boardFetch, inTeam, keyLabel, sessionTeamKey } from './server_base.js';
@@ -109,7 +110,7 @@ export function showTeamAvailability(team, options = {}) {
     dialog.setAttribute('aria-labelledby', 'availability-title');
     const actions = workspaceMode
         ? ''  // sidebar panel: the team context owns navigation
-        : '<button type="button" aria-label="Close team view">×</button>';
+        : '<button type="button" data-dialog-close aria-label="Close team view">×</button>';
     dialog.innerHTML = `<header><div><h2 id="availability-title">Team view</h2><p>${escapeHtml(keyLabel(team))}</p></div>${actions}</header>
         <div class="availability-toolbar"><button type="button" class="btn btn-small">Refresh</button></div>
         <div class="availability-content" aria-live="polite"></div>`;
@@ -119,14 +120,9 @@ export function showTeamAvailability(team, options = {}) {
         if (!host) return;
         host.replaceChildren(dialog);
     } else document.body.append(dialog);
-    const close = dialog.querySelector('header button'); // modal mode only
     const refresh = dialog.querySelector('.availability-toolbar button');
     const content = dialog.querySelector('.availability-content');
-    if (!workspaceMode) {
-        close.onclick = () => dialog.close();
-        dialog.addEventListener('close', () => dialog.remove());
-        dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
-    }
+    if (!workspaceMode) bindNativeDialog(dialog);
     async function load() {
         const hadFocus = document.activeElement === refresh;   // a disabled button loses the keyboard focus: give it back afterwards
         refresh.disabled = true;

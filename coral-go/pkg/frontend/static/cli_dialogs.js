@@ -1,5 +1,6 @@
 /* Moved out of modals.js as it was (#4684): The CLI checks of the Settings paths (verify one or all), the 'CLI not found' dialog of a launch, and the permission-prompt warning. No behaviour change. */
 import { importOnce } from './import_once.js';
+import { registerDialog } from './modal_chrome.js';
 import { state } from './state.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { normServer, LOCAL_SERVER } from './server_base.js';
@@ -80,9 +81,10 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
         </div>
     `;
     document.body.appendChild(modal);
+    const close = registerDialog(modal);
     modal.addEventListener('click', (e) => {
-        if (e.target.dataset?.action === 'close' || e.target === modal) modal.remove();
-        if (e.target.dataset?.action === 'settings') { modal.remove(); showSettingsModal(); }
+        if (e.target.dataset?.action === 'close') close();
+        if (e.target.dataset?.action === 'settings') { close(); showSettingsModal(); }
     });
 }
 
@@ -112,14 +114,12 @@ function _checkPermissionFlag(flagsStr, agentType, server = LOCAL_SERVER) {
             </div>
         `;
         document.body.appendChild(modal);
+        const close = registerDialog(modal, { onClose: () => resolve(null) }); // Escape and the backdrop cancel: the launch must not wait on a dialog that is gone
         modal.addEventListener('click', (e) => {
             const action = e.target.dataset?.action;
             if (action) {
-                modal.remove();
                 resolve(action === 'cancel' ? null : action);
-            } else if (e.target === modal) {
-                modal.remove();
-                resolve(null);
+                close();
             }
         });
     });

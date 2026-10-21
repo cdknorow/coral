@@ -1,5 +1,6 @@
 /* What the sidebar's menus do to a team or a folder's agents: kill all, share, save as a template, sleep (moved out of render.js, #4996; no behaviour change). */
 import { state } from './state.js';
+import { registerDialog } from './modal_chrome.js';
 import { sessionFolderKey, serverFetch, sessionServer, keyLabel, splitKey, inTeam, teamFetch, boardFetch } from './server_base.js';
 import { browserLocal } from './safe_storage.js';
 import { redrawLiveList } from './list_hooks.js';
@@ -192,9 +193,10 @@ export async function shareAgentTeam(boardName) {
         </div>
     `;
     document.body.appendChild(modal);
+    const close = registerDialog(modal);
     modal.addEventListener('click', (e) => {
         const action = e.target.dataset?.action;
-        if (action === 'close' || e.target === modal) { modal.remove(); return; }
+        if (action === 'close') { close(); return; }
         if (action === 'copy') {
             navigator.clipboard.writeText(jsonStr).then(() => showToast('Copied to clipboard'));
             return;

@@ -2,6 +2,7 @@
 
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { registerActions } from './actions.js';
+import { registerDialog, closeDialog } from './modal_chrome.js';
 
 let _categoriesCache = {};
 
@@ -75,11 +76,7 @@ export async function showTemplateBrowser(type, onSelect) {
         </div>
     `;
     document.body.appendChild(modal);
-
-    // Close on backdrop click
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
-    });
+    const close = registerDialog(modal); // Escape and a click on the backdrop close it, and focus goes back to the opener
 
     const catPanel = modal.querySelector('.template-browser-categories');
     const listPanel = modal.querySelector('.template-browser-list');
@@ -179,7 +176,7 @@ export async function showTemplateBrowser(type, onSelect) {
         `;
 
         previewPanel.querySelector('.template-use-btn').addEventListener('click', () => {
-            modal.remove();
+            close();
             onSelect(template);
         });
     }
@@ -191,14 +188,10 @@ export async function showTemplateBrowser(type, onSelect) {
         if (allTemplates.length) renderTemplateList(allTemplates, q);
     });
 
-    searchInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') modal.remove();
-    });
-
     renderCategories();
 }
 
 // The template browser's ×: it removes its dialog (#3645).
 registerActions({
-    'template-browser-close': el => el.closest('.modal')?.remove(),
+    'template-browser-close': el => closeDialog(el.closest('.modal')),
 });
