@@ -1,0 +1,46 @@
+name: trial-agents-token-5524
+on:
+  push:
+    branches: [trial/agents-token-5524]
+jobs:
+  helper:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+      - shell: bash
+        run: |
+          cd coral-go/tools/coral-agents-token
+          test -z "$(gofmt -l .)"
+          go mod verify
+          go vet ./...
+          GOOS=windows go vet ./...
+          go test -count=1 -v ./...
+          go build -o /dev/null .
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+      - shell: bash
+        run: |
+          cd coral-go
+          test -z "$(gofmt -l internal/safefs)"
+          git diff --quiet origin/main -- go.mod go.sum 2>/dev/null || true
+          go build ./... 
+          go test -count=1 ./internal/safefs ./internal/testguard ./internal/safego ./internal/startup ./internal/httputil ./internal/settings ./internal/tracking ./internal/agent ./internal/claudestub ./cmd/coral
+          go list ./... | grep -c coral-agents-token | grep -x 0
