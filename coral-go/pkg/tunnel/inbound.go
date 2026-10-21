@@ -73,6 +73,12 @@ func (c SessionConfig) advertisedHooks(chosen []string) ([]string, map[Kind]inbo
 	var caps []string
 	hooks := map[Kind]inboundHook{}
 	for _, name := range chosen {
+		if name == CapCrossTeamLinks { // not a stream kind: the hub sends the link list as an ordinary request, and tells the connector it does (#5572)
+			if !contains(caps, name) {
+				caps = append(caps, name)
+			}
+			continue
+		}
 		for _, k := range inboundKinds {
 			if name != k.capability || hooks[k.kind] != nil {
 				continue
@@ -333,3 +339,12 @@ func (c *ClientSession) inboundErr(ctx context.Context, err, unsupported error) 
 
 // errInboundDisconnected: the tunnel itself went away during the request (not a refusal).
 var errInboundDisconnected = fmt.Errorf("tunnel: disconnected during the request: %w", ErrSessionClosed)
+
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}

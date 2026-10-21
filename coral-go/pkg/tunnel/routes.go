@@ -257,6 +257,8 @@ var routeTable = cat(
 		"/api/board/{project}/external-artifacts",
 		// Coral Hub's notice about a team link (#3489): only with its stamped header.
 		"/api/board/{project}/hub-notice",
+		// Coral Hub's full list of cross-team links (#5572): only with its stamped header (X-Coral-Hub-Links: snapshot), only on a connection whose hub advertised cross_team_links/1.
+		"/api/cloud/cross-team-links",
 		"/api/board/{project}/subscribe",
 		"/api/board/{project}/reminder",
 		"/api/board/{project}/tasks",

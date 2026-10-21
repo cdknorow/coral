@@ -58,6 +58,7 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/board/{project}/cross-team/enable":        "turn a team's cross-team switch on or off",
 	"POST /api/board/{project}/cross-team/files/disable": "turn a team's cross-team switch on or off",
 	"POST /api/board/{project}/cross-team/files/enable":  "turn a team's cross-team switch on or off",
+	"POST /api/cloud/cross-team-links":                   "send Coral Hub's list of cross-team links",
 	"GET /api/board/{project}/cross-team-state":          "read who may message a board",
 	"GET /api/board/{project}/cross-team-candidates":     "list the boards that may be put on a board's list",
 	"GET /api/board/{project}/settings/log":              "read a board's settings log",

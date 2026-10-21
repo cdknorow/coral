@@ -85,6 +85,11 @@ type Hello struct {
 // CapCrossTeamAllowlist is this Coral's list-of-senders capability, version 1 (see Hello.Capabilities).
 const CapCrossTeamAllowlist = "cross_team_allowlist/1"
 
+// CapCrossTeamLinks is the capability a HUB advertises in Welcome.Capabilities when it keeps the cross-team link table and sends it to this Coral as full snapshots (#5572): "cross_team_links/1".
+// It is per connection. The connector stamps what it learned from THIS connection on the requests that carry a relayed message or a snapshot (HubLinksCapHeader), never what the hub says on a
+// request.
+const CapCrossTeamLinks = "cross_team_links/1"
+
 // capabilityShape is a well-formed capability string: a lower-case name, a slash and a whole version.
 var capabilityShape = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}/[0-9]{1,4}$`)
 

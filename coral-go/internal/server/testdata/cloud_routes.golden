@@ -273,6 +273,7 @@ POST /api/call-metrics never
 POST /api/cloud/cli-hello never
 POST /api/cloud/connect never
 POST /api/cloud/connect/cancel never
+POST /api/cloud/cross-team-links interact
 POST /api/cloud/disconnect never
 POST /api/cloud/redeem never
 POST /api/cloud/rekey never

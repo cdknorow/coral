@@ -3,6 +3,8 @@ package tunnel
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -108,6 +110,8 @@ type ClientSession struct {
 	up         *uplink // nil: writes go straight to yamux
 	// capabilities the hub advertised in Welcome (version 2), e.g. "relay" (#3489).
 	capabilities []string
+	// id is this connector's own name for this tunnel session (random, never from the hub): the key the server uses to tell one authenticated session from another (#5572).
+	id string
 }
 
 func isLoopbackHost(h string) bool {
@@ -285,7 +289,7 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 	if log == nil {
 		log = slog.Default()
 	}
-	cs := &ClientSession{ys: ys, cfg: cfg, h: o.Handler, cancel: cancel, version: w.AcceptedVersion, maxStreams: cfg.MaxStreams, log: log, started: time.Now(), capabilities: w.Capabilities}
+	cs := &ClientSession{ys: ys, cfg: cfg, h: o.Handler, cancel: cancel, version: w.AcceptedVersion, maxStreams: cfg.MaxStreams, log: log, started: time.Now(), capabilities: w.Capabilities, id: newSessionID()}
 	if !o.uplink.Off && !envOff(schedulerEnv) {
 		cs.up = newUplink(o.uplink)
 	}
@@ -358,7 +362,7 @@ func (c *ClientSession) serve(st *yamux.Stream) {
 		case <-ctx.Done():
 		}
 	}()
-	s := &Stream{Header: hdr, st: st, cancel: cancel, ctx: ctx, limits: c.cfg.Limits,
+	s := &Stream{Header: hdr, st: st, cancel: cancel, ctx: ctx, limits: c.cfg.Limits, sessionID: c.id, linksCap: c.advertised(CapCrossTeamLinks),
 		w: &upWriter{st: st, u: c.up, lane: laneFor(hdr), done: ctx.Done()}}
 	defer func() {
 		if r := recover(); r != nil {
@@ -368,9 +372,22 @@ func (c *ClientSession) serve(st *yamux.Stream) {
 	c.h.ServeStream(ctx, s)
 }
 
+// newSessionID is 16 random bytes in hex: a tunnel session's name on this machine.
+func newSessionID() string {
+	var b [16]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(b[:])
+}
+
 // Stream is one hub-initiated stream as seen by a Handler.
 type Stream struct {
 	Header Header
+
+	// sessionID is the connector's id of the tunnel session the stream came in on; linksCap is whether the hub advertised CapCrossTeamLinks on that session (#5572).
+	sessionID string
+	linksCap  bool
 
 	st     *yamux.Stream
 	w      io.Writer // st's writes, through the uplink scheduler
