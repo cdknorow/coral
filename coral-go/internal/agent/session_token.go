@@ -3,6 +3,9 @@ package agent
 import (
 	"fmt"
 	"strings"
+
+	"github.com/subgentic/coral/internal/agentenv"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // SessionTokenEnv is the variable an agent's tools read its session token from (#3387).
@@ -32,6 +35,18 @@ func sessionTokenPrefix(p LaunchParams, agentType string) string {
 		return ""
 	}
 	q := shellQuoteLiteral(path)
+	if agentType == at.Codex {
+		// Codex hides CORAL_SESSION_TOKEN from the commands it runs (its default excludes
+		// before 0.161), so its tools also get the file's path, and the file stays: it is
+		// private to this user, in <data>/session_tokens, and goes at the next startup once
+		// its session's token is revoked (#13). The token is still never in the line.
+		switch detectShell() {
+		case ShellPowerShell:
+			return fmt.Sprintf("$env:%s = (Get-Content -Raw -LiteralPath %s).Trim(); $env:%s = %s;", SessionTokenEnv, q, agentenv.SessionAuthFileEnv, q)
+		default:
+			return fmt.Sprintf(`export %s="$(cat %s)" %s=%s;`, SessionTokenEnv, q, agentenv.SessionAuthFileEnv, q)
+		}
+	}
 	switch detectShell() {
 	case ShellPowerShell:
 		return fmt.Sprintf("$env:%s = (Get-Content -Raw -LiteralPath %s).Trim(); Remove-Item -Force -LiteralPath %s;", SessionTokenEnv, q, q)
@@ -69,7 +84,7 @@ func coralEnvPrefix(p LaunchParams) string {
 		known[kv[0]] = true
 	}
 	var unset []string
-	for _, k := range []string{"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SUBSCRIBER_ID", SessionTokenEnv} {
+	for _, k := range []string{"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SUBSCRIBER_ID", SessionTokenEnv, agentenv.SessionAuthFileEnv} {
 		if !known[k] {
 			unset = append(unset, k)
 		}

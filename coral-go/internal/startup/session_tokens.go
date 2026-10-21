@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/secfile"
@@ -13,8 +14,9 @@ import (
 
 // setupSessionTokens turns on per-session agent tokens (#3387): every launch line
 // built from now on mints a token for its session and hands it over through a file
-// in <data>/session_tokens (0700), which the agent's shell reads and deletes. Files
-// left by a launch that never ran are removed here, at startup.
+// in <data>/session_tokens (0700), which the agent's shell reads and deletes, except a
+// Codex agent's, whose tools read it later (#13). Files whose token is no longer live
+// are removed here, at startup (sweepSessionTokenFiles).
 //
 // Threat model: the token stops mistakes and prompt-injected impersonation through
 // coral-board and the hooks. It does not stop a malicious process running as the same
@@ -26,11 +28,7 @@ func setupSessionTokens(db *store.DB, coralDir string) {
 		return
 	}
 	_ = os.Chmod(dir, 0o700)
-	if entries, err := os.ReadDir(dir); err == nil {
-		for _, e := range entries {
-			_ = os.Remove(filepath.Join(dir, e.Name()))
-		}
-	}
+	sweepSessionTokenFiles(db, dir)
 	agent.SessionTokenMinter = func(sessionID, sessionName string) string {
 		token, err := db.MintSessionToken(context.Background(), sessionID, sessionName)
 		if err != nil {
@@ -56,5 +54,29 @@ func setupSessionTokens(db *store.DB, coralDir string) {
 			return ""
 		}
 		return f.Name()
+	}
+}
+
+// sweepSessionTokenFiles removes the token files in dir whose token is revoked or unknown: a
+// launch that never ran, or a Codex agent's file once its session ended (unregistering a
+// session revokes its tokens). A live session's file stays, so a Codex agent that outlived a
+// restart (tmux) keeps its tools' token. Anything unreadable, or not a small regular file, goes.
+func sweepSessionTokenFiles(db *store.DB, dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		p := filepath.Join(dir, e.Name())
+		if e.Type().IsRegular() {
+			if b, err := os.ReadFile(p); err == nil && len(b) <= 256 {
+				if tok := strings.TrimSpace(string(b)); tok != "" {
+					if owner, err := db.SessionTokenOwnerOf(context.Background(), tok); err == nil && owner != nil {
+						continue
+					}
+				}
+			}
+		}
+		_ = os.RemoveAll(p)
 	}
 }

@@ -14,7 +14,7 @@ import (
 // every test that reads the environment, e.g. a config built from CORAL_HUB. Keep in step
 // with tests/lib/agent_env.sh and AGENT_SHELL_VARS in tests/frontend/run_cdp_suites.mjs.
 var agentShellVars = []string{
-	"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SESSION_TOKEN", "CORAL_SUBSCRIBER_ID", "CORAL_CLOUD_URL", "CORAL_HUB", "CORAL_SHELL",
+	"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SESSION_TOKEN", "CORAL_SESSION_AUTH_FILE", "CORAL_SUBSCRIBER_ID", "CORAL_CLOUD_URL", "CORAL_HUB", "CORAL_SHELL",
 	"CORAL_TMUX_SOCKET", "CORAL_TMUX_FALLBACK", "CORAL_AGENT_HELPER", "CORAL_AGENT_ARGS", "CORAL_BOARD_HELPER", "CORAL_BOARD_ARGS",
 }
 

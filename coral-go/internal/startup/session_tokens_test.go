@@ -55,3 +55,27 @@ func TestSetupSessionTokens(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "claude-sid-1", o.SessionName)
 }
+
+// #13: a Codex agent's token file stays while its token is live, so a Codex agent that outlived a
+// restart keeps its tools' token; a revoked one goes at startup, as does an unknown one.
+func TestSessionTokenSweepKeepsLiveTokens(t *testing.T) {
+	home := t.TempDir()
+	db, err := storetest.Open(t, filepath.Join(home, "sessions.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	setupSessionTokens(db, home)
+	t.Cleanup(func() { agent.SessionTokenMinter = nil })
+	live := agent.SessionTokenMinter("sid-13", "codex-sid-13")
+	old := agent.SessionTokenMinter("sid-14", "codex-sid-14")
+	revoked := agent.SessionTokenMinter("sid-14", "codex-sid-14") // revokes old's token
+	require.NotEmpty(t, live)
+	require.NotEmpty(t, revoked)
+	unknown := filepath.Join(home, "session_tokens", "t-unknown")
+	require.NoError(t, os.WriteFile(unknown, []byte("nobody's"), 0o600))
+
+	sweepSessionTokenFiles(db, filepath.Join(home, "session_tokens"))
+	assert.FileExists(t, live)
+	assert.FileExists(t, revoked, "the session's current token")
+	assert.NoFileExists(t, old, "revoked")
+	assert.NoFileExists(t, unknown)
+}

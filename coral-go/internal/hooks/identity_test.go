@@ -3,10 +3,16 @@ package hooks
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // #3387: an agent tool sends its session token and names itself, with no action from the
@@ -151,4 +157,36 @@ func TestTrustedServerURL(t *testing.T) {
 	} {
 		assert.Equal(t, c.want, TrustedServerURL(c.candidate, c.configured), c.candidate)
 	}
+}
+
+// #13: inside a command Codex ran, which hides CORAL_SESSION_TOKEN, the token comes from the
+// file agentenv.SessionAuthFileEnv names, read only when the variable is missing, never over
+// it, and only from a private regular file.
+func TestSessionTokenFallsBackToTheAuthFile(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "t-13")
+	require.NoError(t, secfile.WriteFileNoFollow(file, []byte("filetok\n"), 0o600))
+	t.Setenv(agentenv.SessionAuthFileEnv, file)
+
+	t.Setenv("CORAL_SESSION_TOKEN", "")
+	assert.Equal(t, "filetok", sessionToken(), "the file when the variable is missing")
+	t.Setenv("CORAL_SESSION_TOKEN", "envtok")
+	assert.Equal(t, "envtok", sessionToken(), "the variable wins: the file never overrides it")
+
+	t.Setenv("CORAL_SESSION_TOKEN", "")
+	t.Setenv(agentenv.SessionAuthFileEnv, filepath.Join(dir, "missing"))
+	assert.Empty(t, sessionToken())
+	if runtime.GOOS != "windows" {
+		open := filepath.Join(dir, "t-open")
+		require.NoError(t, os.WriteFile(open, []byte("opentok"), 0o644))
+		t.Setenv(agentenv.SessionAuthFileEnv, open)
+		assert.Empty(t, sessionToken(), "a file others can read is not a token file")
+	}
+	link := filepath.Join(dir, "t-link")
+	if os.Symlink(file, link) == nil {
+		t.Setenv(agentenv.SessionAuthFileEnv, link)
+		assert.Empty(t, sessionToken(), "never through a link")
+	}
+	t.Setenv(agentenv.SessionAuthFileEnv, "")
+	assert.Empty(t, sessionToken())
 }
