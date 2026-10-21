@@ -1,0 +1,36 @@
+name: trial-flake5695b
+on:
+  push:
+    branches: [trial/flake5695b]
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+jobs:
+  flake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: before, ref: "fa9aaafab7b5d93f3783e1ec5f7483d0e5b728ff"}
+          - {name: after, ref: ""}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          ref: ${{ matrix.ref }}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - shell: bash
+        run: |
+          cd coral-go
+          go version
+          go test -c -o /tmp/bg.test ./internal/background
+          for i in $(seq 16); do (while :; do :; done) & done
+          cd internal/background
+          /tmp/bg.test -test.count=20 -test.v -test.run '^TestBackgroundCallersStillAskClaudeWhenSignedIn$' > /tmp/o.log 2>&1 || true
+          echo "variant ${{ matrix.name }}"; grep -E "^(ok|PASS|FAIL|--- FAIL)" /tmp/o.log | sort | uniq -c
+          grep -E "Error:|Messages" /tmp/o.log | sort | uniq -c | head
+          kill $(jobs -p) 2>/dev/null || true
