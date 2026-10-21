@@ -4,9 +4,12 @@ package main
 
 import (
 	"os"
+	"os/signal"
 	"syscall"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // redirectStderr duplicates the log file's fd onto stderr (fd 2) so that
@@ -26,4 +29,21 @@ func detachProcessAttrs() *syscall.SysProcAttr {
 // signalProcess sends a signal to a process. Used for --stop and PID liveness checks.
 func signalProcess(pid int, sig syscall.Signal) error {
 	return syscall.Kill(pid, sig)
+}
+
+// askTrayToShowWindow is a second start of the app asking the running tray (pid) to show its window: SIGUSR1.
+func askTrayToShowWindow(pid int) error {
+	return syscall.Kill(pid, syscall.SIGUSR1)
+}
+
+// onShowWindowSignal calls show whenever another start of the app asks this tray to show its window.
+func onShowWindowSignal(show func()) {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGUSR1)
+	go func() {
+		defer safego.Recover("coral-tray/platform_unix:showWindowSignal")
+		for range ch {
+			show()
+		}
+	}()
 }

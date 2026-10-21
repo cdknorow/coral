@@ -47,3 +47,11 @@ func signalProcess(pid int, sig syscall.Signal) error {
 	}
 	return p.Kill()
 }
+
+// askTrayToShowWindow: Windows has no signal to send, so a second start does not hand over (a refusal: it starts as before).
+func askTrayToShowWindow(pid int) error {
+	return fmt.Errorf("no way to ask a running tray to show its window on Windows")
+}
+
+// onShowWindowSignal is nothing on Windows.
+func onShowWindowSignal(show func()) {}

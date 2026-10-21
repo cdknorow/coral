@@ -323,7 +323,8 @@ func TestMacStartAndShowRunTheFixedTools(t *testing.T) {
 	m, fr, install := newMac(t)
 	require.NoError(t, m.Start(context.Background(), install))
 	require.NoError(t, m.Show(context.Background(), "/p/Coral.v1.4.130.dmg"))
-	assert.Equal(t, []string{"/usr/bin/open " + install, "/usr/bin/open /p/Coral.v1.4.130.dmg"}, fr.cmds)
+	// the relaunch after an update stays in the background: --no-browser (#5827)
+	assert.Equal(t, []string{"/usr/bin/open " + install + " --args --no-browser", "/usr/bin/open /p/Coral.v1.4.130.dmg"}, fr.cmds)
 	assert.True(t, m.Pinned())
 	assert.False(t, (&Mac{}).Pinned(), "no team pinned, nothing installs")
 }
