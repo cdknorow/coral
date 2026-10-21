@@ -6,10 +6,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/windows"
 )
 
 // H5: a folder only an administrator can change (the system folder, as Program Files) has no
@@ -76,4 +79,36 @@ func TestWritersReadsTheParentFolder(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, who, "Everyone (through the parent folder)")
 	assert.NotContains(t, who, "Everyone", "the folder itself grants Everyone nothing")
+}
+
+// H5 review: naming a domain account can wait seconds for an unreachable domain controller, on
+// Coral's startup path. Writers waits lookupWait at most, reports the account by its SID string,
+// and a later call takes the name the lookup cached when it finished.
+func TestWritersDoesNotWaitForASlowAccountLookup(t *testing.T) {
+	const sid = "S-1-5-21-1111111111-2222222222-3333333333-4321"
+	release := make(chan struct{})
+	oldLookup, oldWait := lookupAccount, lookupWait
+	lookupAccount = func(s *windows.SID) (string, string, error) {
+		if s.String() == sid {
+			<-release // a domain controller that doesn't answer
+			return "slow", "CORP", nil
+		}
+		return oldLookup(s)
+	}
+	lookupWait = 200 * time.Millisecond
+	defer func() { close(release); lookupAccount, lookupWait = oldLookup, oldWait }()
+
+	dir := t.TempDir()
+	grantFolder(t, dir, sid, "Modify", "None")
+	start := time.Now()
+	who, err := Writers(dir)
+	require.NoError(t, err)
+	assert.Less(t, time.Since(start), 5*time.Second, "Writers waited for the lookup")
+	assert.Contains(t, who, sid, "an account not named in time is reported by its SID")
+
+	release <- struct{}{} // the lookup answers now and caches the name
+	require.Eventually(t, func() bool {
+		who, err := Writers(dir)
+		return err == nil && slices.Contains(who, `CORP\slow`)
+	}, 5*time.Second, 20*time.Millisecond)
 }

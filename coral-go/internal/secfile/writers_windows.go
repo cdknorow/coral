@@ -5,6 +5,8 @@ package secfile
 import (
 	"fmt"
 	"path/filepath"
+	"sync"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -29,63 +31,80 @@ const trustedInstaller = "S-1-5-80-956008885-3418522649-1831038044-1853292631-22
 // rewrite the access list); no access list at all is everyone. From its parent's: any account that
 // can move the folder away and put another at its path (delete child, or the parent's access list or
 // owner), marked "through the parent folder". This user is "this user"; other accounts are
-// DOMAIN\name, or their SID when it doesn't resolve. An empty list is a folder only an administrator
+// DOMAIN\name, or their SID when it doesn't resolve within lookupWait. An empty list is a folder only an administrator
 // can change, as one in Program Files.
 func Writers(path string) ([]string, error) {
 	p, err := currentPrincipals()
 	if err != nil {
 		return nil, err
 	}
+	var found []writer
+	clean := filepath.Clean(path)
+	if found, err = aclWriters(found, clean, writeMask, true, p, ""); err != nil {
+		return nil, err
+	}
+	if parent := filepath.Dir(clean); parent != clean {
+		if found, err = aclWriters(found, parent, parentMask, false, p, "through the parent folder"); err != nil {
+			return nil, err
+		}
+	}
+	names := accountNames(found, p)
 	var who []string
 	seen := map[string]bool{}
-	add := func(name string) {
+	for i, w := range found {
+		name := names[i] + w.note
 		if !seen[name] {
 			seen[name] = true
 			who = append(who, name)
 		}
 	}
-	clean := filepath.Clean(path)
-	if err := aclWriters(clean, writeMask, true, p, "", add); err != nil {
-		return nil, err
-	}
-	if parent := filepath.Dir(clean); parent != clean {
-		if err := aclWriters(parent, parentMask, false, p, "through the parent folder", add); err != nil {
-			return nil, err
-		}
-	}
 	return who, nil
 }
 
-// aclWriters adds the accounts that hold one of mask's rights in path's access list (on the folder,
-// or inherited by its files when files is set) and its owner, leaving out SYSTEM, Administrators,
-// TrustedInstaller and CREATOR OWNER (a placeholder for whoever creates a file). via, when set, says
-// how (through the parent folder).
-func aclWriters(path string, mask uint32, files bool, p principals, via string, add func(string)) error {
+// writer is an account aclWriters found (nil sid: Everyone, for no access list) and why, as
+// " (the owner)".
+type writer struct {
+	sid  *windows.SID
+	note string
+}
+
+// aclWriters adds to found the accounts that hold one of mask's rights in path's access list (on
+// the folder, or inherited by its files when files is set) and its owner, leaving out SYSTEM,
+// Administrators, TrustedInstaller and CREATOR OWNER (a placeholder for whoever creates a file). via,
+// when set, says how (through the parent folder).
+func aclWriters(found []writer, path string, mask uint32, files bool, p principals, via string) ([]writer, error) {
 	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
-		return err
+		return found, err
 	}
 	note := func(why string) string {
 		if via != "" {
-			why += ", " + via
+			if why != "" {
+				why += ", "
+			}
+			why += via
+		}
+		if why == "" {
+			return ""
 		}
 		return " (" + why + ")"
 	}
 	if owner, _, err := sd.Owner(); err == nil && owner != nil && !trusted(owner, p) {
-		add(accountName(owner, p) + note("the owner"))
+		if owner, err = owner.Copy(); err == nil {
+			found = append(found, writer{owner, note("the owner")})
+		}
 	}
 	dacl, _, err := sd.DACL()
 	if err != nil {
-		return fmt.Errorf("read the access list of %s: %w", path, err)
+		return found, fmt.Errorf("read the access list of %s: %w", path, err)
 	}
 	if dacl == nil {
-		add("Everyone" + note("no access list"))
-		return nil
+		return append(found, writer{nil, note("no access list")}), nil
 	}
 	for i := uint32(0); i < uint32(dacl.AceCount); i++ {
 		var ace *windows.ACCESS_ALLOWED_ACE
 		if err := windows.GetAce(dacl, i, &ace); err != nil {
-			return fmt.Errorf("read the access list of %s: %w", path, err)
+			return found, fmt.Errorf("read the access list of %s: %w", path, err)
 		}
 		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || uint32(ace.Mask)&mask == 0 {
 			continue
@@ -99,13 +118,11 @@ func aclWriters(path string, mask uint32, files bool, p principals, via string, 
 		if trusted(sid, p) || sid.IsWellKnown(windows.WinCreatorOwnerSid) {
 			continue
 		}
-		name := accountName(sid, p)
-		if via != "" {
-			name += " (" + via + ")"
+		if sid, err = sid.Copy(); err == nil {
+			found = append(found, writer{sid, note("")})
 		}
-		add(name)
 	}
-	return nil
+	return found, nil
 }
 
 // trusted reports SYSTEM, Administrators and TrustedInstaller: the accounts that can change any file
@@ -114,17 +131,83 @@ func trusted(sid *windows.SID, p principals) bool {
 	return sid.Equals(p.system) || sid.Equals(p.admins) || sid.String() == trustedInstaller
 }
 
-// accountName is "this user" for this user's SID, otherwise DOMAIN\name, or the SID string when the
-// account doesn't resolve.
-func accountName(sid *windows.SID, p principals) string {
-	if sid.Equals(p.user) {
-		return "this user"
-	}
-	if account, domain, _, err := sid.LookupAccount(""); err == nil && account != "" {
-		if domain != "" {
-			return domain + `\` + account
+// lookupWait bounds how long Writers, on Coral's startup path, waits for account names: looking up a
+// domain account on a machine that is off its network can wait seconds for a domain controller. An
+// account not named in time is reported by its SID string.
+var lookupWait = 2 * time.Second
+
+// lookupAccount is (*windows.SID).LookupAccount on this machine; a test replaces it with one that
+// hangs.
+var lookupAccount = func(sid *windows.SID) (account, domain string, err error) {
+	account, domain, _, err = sid.LookupAccount("")
+	return account, domain, err
+}
+
+// lookups caches account names by SID string, the finished ones and those still being looked up,
+// so a slow lookup runs once however often Writers is called.
+var lookups = struct {
+	sync.Mutex
+	m map[string]*lookup
+}{m: map[string]*lookup{}}
+
+type lookup struct {
+	done chan struct{}
+	name string // when done: DOMAIN\name, or "" when the account doesn't resolve
+}
+
+// accountNames names found's accounts: "this user" for this user's SID, Everyone for no access list,
+// otherwise DOMAIN\name, or the SID string when the account doesn't resolve or isn't named within
+// lookupWait (all the lookups share that one wait).
+func accountNames(found []writer, p principals) []string {
+	names := make([]string, len(found))
+	pending := make([]*lookup, len(found))
+	for i, w := range found {
+		switch {
+		case w.sid == nil:
+			names[i] = "Everyone"
+		case w.sid.Equals(p.user):
+			names[i] = "this user"
+		default:
+			names[i] = w.sid.String()
+			pending[i] = startLookup(w.sid)
 		}
-		return account
 	}
-	return sid.String()
+	deadline := time.NewTimer(lookupWait)
+	defer deadline.Stop()
+	for i, l := range pending {
+		if l == nil {
+			continue
+		}
+		select {
+		case <-l.done:
+		case <-deadline.C:
+			return names // the rest keep their SID strings; their lookups finish into the cache
+		}
+		if l.name != "" {
+			names[i] = l.name
+		}
+	}
+	return names
+}
+
+// startLookup returns sid's lookup, starting it unless it is cached.
+func startLookup(sid *windows.SID) *lookup {
+	key := sid.String()
+	lookups.Lock()
+	defer lookups.Unlock()
+	if l, ok := lookups.m[key]; ok {
+		return l
+	}
+	l := &lookup{done: make(chan struct{})}
+	lookups.m[key] = l
+	go func() {
+		defer close(l.done)
+		if account, domain, err := lookupAccount(sid); err == nil && account != "" {
+			if domain != "" {
+				account = domain + `\` + account
+			}
+			l.name = account
+		}
+	}()
+	return l
 }
