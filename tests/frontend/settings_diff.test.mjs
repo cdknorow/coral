@@ -64,6 +64,11 @@ assert.deepEqual(changedSettings({ received_artifacts_max_bytes: String(2 * GIB)
 // Retention fields read a missing setting as their defaults.
 assert.deepEqual(changedSettings({ artifact_retention_days: '0', artifact_retention_kinds: 'diffs' }, {}), {});
 assert.deepEqual(changedSettings({ artifact_retention_days: '30', artifact_retention_kinds: 'diffs' }, {}), { artifact_retention_days: '30' });
+// The default permission mode shows Auto while nothing is saved (#5836): a dialog saved without touching it does not turn the default into a saved mode; another choice is saved
+assert.deepEqual(changedSettings({ default_permission_mode: 'auto' }, {}), {});
+assert.deepEqual(changedSettings({ default_permission_mode: 'bypassPermissions' }, {}), { default_permission_mode: 'bypassPermissions' });
+assert.deepEqual(changedSettings({ default_permission_mode: 'bypassPermissions' }, { default_permission_mode: 'bypassPermissions' }), {}, 'a saved bypass stays as it is');
+assert.deepEqual(changedSettings({ default_permission_mode: 'auto' }, { default_permission_mode: 'bypassPermissions' }), { default_permission_mode: 'auto' });
 
 // A field the person typed in is sent even when what they typed equals what it showed (the page's copy may be stale).
 assert.deepEqual(changedSettings({ cli_path_claude: '/opt/claude', cli_path_codex: '/opt/codex' }, base, undefined, ['cli_path_claude']), { cli_path_claude: '/opt/claude' });

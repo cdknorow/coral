@@ -103,6 +103,8 @@ Capabilities are translated to each CLI's own permissions at launch, and that is
 
 When capabilities set a mode, they win over the launch dialog's permission flag for Codex and Antigravity.
 
+**Default permission mode (#5836).** A Claude launch with no mode chosen (no `--permission-mode` or bypass flag, no saved `default_permission_mode`) starts in `--permission-mode auto`; the launch form, the team form and quick launch show Auto for Claude until another is picked, and a saved default is the person's choice for every agent type. Other CLIs start as they did: Codex's Auto (`--sandbox workspace-write -a never`) blocks the localhost board, Antigravity has no safe mode between its edits-only one and skip-permissions, and Pi has none. A task run with `auto_accept` adds `--permission-mode auto` for Claude.
+
 The dashboard's built-in presets get these flags (from `agent_presets.js`, pinned by `internal/agent/testdata/preset_enforcement.golden`):
 
 | Preset | Codex | Antigravity |

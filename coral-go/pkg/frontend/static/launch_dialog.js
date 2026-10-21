@@ -9,7 +9,7 @@ import { serverFetch, identityKey, isHub, normServer, LOCAL_SERVER, keyLabel, no
 import { pickerVisible, pickerOptions, serverLabel, coerceSelection, bareBoardName } from './launch_server.js';
 const { launch } = await importOnce('./launch_state.js');
 const { _effectiveServer, _loadServerSettings, _serverSettings, _settingsFor } = await importOnce('./launch_models.js');
-const { _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
+const { defaultPermissionMode, syncDefaultPermissionMode, _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 const { _checkAgentCLI } = await importOnce('./cli_check.js');
 const { _syncACFModelField, getAgentConfig, renderAgentConfigForm } = await importOnce('./agent_config_form.js');
 const { _checkPermissionFlag } = await importOnce('./cli_dialogs.js');
@@ -87,7 +87,9 @@ export function showLaunchModal(server, lock = false) {
     if (teamFlagsEl) teamFlagsEl.value = "";
     const teamPermModeEl = document.getElementById("team-permission-mode");
     if (teamPermModeEl) {
-        teamPermModeEl.value = _settingsFor(_effectiveServer(launch.server)).default_permission_mode || 'bypassPermissions';
+        delete teamPermModeEl.dataset.pickedByPerson; // a new dialog: the default again, for the agent type the team starts with (#5836)
+        const teamSettings = _settingsFor(_effectiveServer(launch.server));
+        syncDefaultPermissionMode(teamPermModeEl, teamSettings, teamSettings.default_agent_type || 'claude');
         _updatePermModeDescription(teamPermModeEl);
     }
 
@@ -257,7 +259,7 @@ export async function launchSession() {
         const permResult = await _checkPermissionFlag(flagsStr, type, server);
         if (permResult === null) return;
         if (permResult === 'enable') {
-            const mode = _settingsFor(server).default_permission_mode || 'bypassPermissions';
+            const mode = defaultPermissionMode(_settingsFor(server), type);
             flagsStr = _normalizePermFlagsForAgent(flagsStr, type, mode);
         }
     }

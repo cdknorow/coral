@@ -6,7 +6,7 @@ import { escapeHtml, escapeAttr } from './utils.js';
 import { normServer, LOCAL_SERVER } from './server_base.js';
 import { serverLabel } from './launch_server.js';
 const { _settingsFor } = await importOnce('./launch_models.js');
-const { _getPermissionFlagsForAgentMode, _hasPermFlag } = await importOnce('./permission_flags.js');
+const { defaultPermissionMode, _getPermissionFlagsForAgentMode, _hasPermFlag } = await importOnce('./permission_flags.js');
 const { CLI_INSTALL_INSTRUCTIONS } = await importOnce('./cli_check.js');
 const { showSettingsModal } = await importOnce('./settings_dialog.js');
 
@@ -89,7 +89,7 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
 }
 
 function _checkPermissionFlag(flagsStr, agentType, server = LOCAL_SERVER) {
-    const mode = _settingsFor(server).default_permission_mode || 'bypassPermissions';
+    const mode = defaultPermissionMode(_settingsFor(server), agentType);
     const permFlag = _getPermissionFlagsForAgentMode(agentType, mode);
     if (!permFlag) return Promise.resolve('skip');
     return new Promise((resolve) => {

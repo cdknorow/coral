@@ -6,7 +6,7 @@ import { splitKey, isHub, normServer, LOCAL_SERVER, keyLabel } from './server_ba
 import { serverLabel, bareBoardName } from './launch_server.js';
 const { launch } = await importOnce('./launch_state.js');
 const { _effectiveServer, _loadServerSettings, _serverSettings, _settingsFor } = await importOnce('./launch_models.js');
-const { _getPermissionFlagsForAgentMode, _normalizePermFlagsForAgent } = await importOnce('./permission_flags.js');
+const { defaultPermissionMode, _getPermissionFlagsForAgentMode, _normalizePermFlagsForAgent } = await importOnce('./permission_flags.js');
 const { getAgentConfig, renderAgentConfigForm } = await importOnce('./agent_config_form.js');
 const { _checkPermissionFlag } = await importOnce('./cli_dialogs.js');
 const { _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, _withServerSettings } = await importOnce('./launch_core.js');
@@ -62,7 +62,7 @@ export async function launchAgentToBoard() {
     const permResult = await _checkPermissionFlag(flagsStr, config.agentType, server);
     if (permResult === null) return;
     if (permResult === 'enable') {
-        const mode = _settingsFor(server).default_permission_mode || 'bypassPermissions';
+        const mode = defaultPermissionMode(_settingsFor(server), config.agentType);
         flagsStr = _normalizePermFlagsForAgent(flagsStr, config.agentType, mode);
     }
 
@@ -137,7 +137,7 @@ export async function launchDefaultAgent(workDir, server) {
         }
     }
     const agentType = s.default_agent_type || 'claude';
-    const permFlag = _getPermissionFlagsForAgentMode(agentType, s.default_permission_mode || 'bypassPermissions');
+    const permFlag = _getPermissionFlagsForAgentMode(agentType, defaultPermissionMode(s, agentType));
     const flags = permFlag ? permFlag.split(/\s+/) : [];
 
     const payload = {
