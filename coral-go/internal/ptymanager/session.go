@@ -175,13 +175,6 @@ func (s *session) closeLog() {
 	}
 }
 
-// sendInput writes raw bytes to the PTY (terminal input).
-func (s *session) sendInput(data []byte) error {
-	logTerminalInput(context.Background(), s.name, string(data))
-	_, err := s.writeFull(data)
-	return err
-}
-
 // writeFull writes data once and reports a short write (fewer bytes than
 // requested with a nil error) as io.ErrShortWrite instead of ignoring it. It
 // returns how many bytes reached the PTY.
