@@ -244,6 +244,11 @@ var routeTable = cat(
 	// message of a bookmark (the text of its source, redacted and cut to 64 KiB; the source is the stored bookmark's, never a ref from the request) is read from its own route. The
 	// changes (POST, PATCH, DELETE) stay as they were (Interact).
 	owner(OwnerRefuse, rules(http.MethodGet, TierView, "/api/saved", "/api/saved/{id}/message")),
+	// ... and so are its changes (#5763, Security's SHOULD 3 on #5761): a bookmark is the owner's own note, so a hub Interact grantee can neither read, create, mark done nor delete one.
+	// Still Interact for the tier (they move no work); the machine also refuses anyone but the owner.
+	owner(OwnerRefuse, rules(http.MethodPost, TierInteract, "/api/saved")),
+	owner(OwnerRefuse, rules(http.MethodPatch, TierInteract, "/api/saved/{id}")),
+	owner(OwnerRefuse, rules(http.MethodDelete, TierInteract, "/api/saved/{id}")),
 	// What a viewer sees of a board's settings is the machine's to decide (the health setup is the owner's, #5307): the marker is stamped, the handler gives a non-owner less.
 	// The update status (#5280) shows the owner more, with the label optional for a machine linked before it was recorded.
 	owner(OwnerSees, rules(http.MethodGet, TierView, "/api/board/{project}/settings")),
@@ -293,8 +298,6 @@ var routeTable = cat(
 		"/api/board/{project}/tasks/{id}/reminder",
 		"/api/board/{project}/tasks/{id}/publish",
 		"/api/board/{project}/working-mode/presets",
-		// Save for Later (#4510): a bookmark is the Operator's own note, it moves no work.
-		"/api/saved",
 	),
 	rules(http.MethodPut, TierInteract,
 		// Only the changed-files comparison base (validated to three values); PUT /api/settings itself stays never.
@@ -309,14 +312,12 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}/amend",
-		"/api/saved/{id}",
 	),
 	rules(http.MethodDelete, TierInteract,
 		"/api/sessions/live/{name}/notes/{id}",
 		"/api/sessions/live/{name}/tasks/{id}",
 		"/api/board/{project}/reminder",
 		"/api/board/{project}/tasks/{id}/reminder",
-		"/api/saved/{id}",
 	),
 	// Deleting a whole board (its messages, tasks and members) can't be undone: Launch, not
 	// Interact (#3433). It stays the Operator's (attributed, recorded, refused with the opt-out).
