@@ -333,6 +333,7 @@ function renderBoardItem(item, prev) {
     const isLeader = /orchestrator/i.test(agent) || isOperatorId(m.subscriber_id);
     const alignClass = isLeader ? ' board-msg-left' : ' board-msg-right';
     const selectedClass = isSelectMode() && isSelected(m.id) ? ' mb-message-selected' : '';
+    const deleteLabel = `Delete the message from ${agent}, ${formatTime(m.created_at)}`; // names the message: the × alone is read as "times"
     const checkbox = isSelectMode() ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${isSelected(m.id) ? 'checked' : ''} data-on-click="mb-msg-select">` : '';
     return `
         <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}"${messageAttachmentAttrs(m)} style="${boardMessageColorStyle(color)}">
@@ -343,7 +344,7 @@ function renderBoardItem(item, prev) {
                 ${externalMessageBadge(m)}${hubUserBadge(m)}
                 <span class="mb-message-time">${formatTime(m.created_at)}</span>
                 ${BOARD_SAVE_BUTTON(currentProject || '', keyLabel(currentProject || ''), String(m.created_at || ''), String(m.job_title || m.subscriber_id || ''))}
-                <button class="mb-delete-msg-btn" data-on-click="mb-msg-delete" data-msg-id="${Number(m.id)}" title="Delete message">&times;</button>
+                <button class="mb-delete-msg-btn" data-on-click="mb-msg-delete" data-msg-id="${Number(m.id)}" title="Delete message" aria-label="${escapeAttr(deleteLabel)}">&times;</button>
             </div>
             <div class="mb-message-body">${renderBoardMessageBody(m)}</div>
             ${messageAttachmentsHtml(m)}
@@ -479,6 +480,7 @@ function renderMessages(messages, { keepAnchor = false, prepended = 0 } = {}) {
 // render when the rows shown don't match the loaded messages.
 function appendNewMessages(count) {
     const container = document.getElementById('mb-messages');
+    announceArrivals(_allMessages.slice(-count), isAtBottom(container)); // (a board read higher up is told by the pill below instead)
     const rows = container.querySelectorAll(ROW);
     const last = rows[rows.length - 1];
     const lastIdx = last ? indexOfId(_allMessages, rowFirstId(last)) : -1;
@@ -510,6 +512,22 @@ function appendNewMessages(count) {
     highlightBoard(container);
     if (wasAtBottom) container.scrollTop = container.scrollHeight;
     else noteUnseenMessages(count);
+}
+
+// What arrives while the board is at the bottom is said once, politely, to a screen reader (the pill below does that for a board read higher up): who, and the start
+// of what they wrote; several at once are a count and the latest. Nothing for the task queue's own lines, a system post, or what the Operator posted themselves.
+let _announceFlip = false;
+function announceArrivals(fresh, atBottom) {
+    if (!atBottom) return;
+    const said = fresh.filter(m => m && !m.is_system && m.subscriber_id !== 'Operator' && String(m.content || '').trim());
+    const region = document.getElementById('mb-announce');
+    if (!said.length || !region) return;
+    const last = said[said.length - 1];
+    const who = last.job_title || last.subscriber_id || 'Unknown';
+    const start = String(last.content).replace(/\s+/g, ' ').trim();
+    const text = start.length > 140 ? start.slice(0, 140) + '…' : start;
+    _announceFlip = !_announceFlip;
+    region.textContent = (said.length === 1 ? `New message from ${who}: ${text}` : `${said.length} new messages. The latest is from ${who}: ${text}`) + (_announceFlip ? '' : ' ');
 }
 
 // Reading higher up: the posts a poll brings are not shown to you, so a small pill at the board's bottom edge counts them and jumps to the latest

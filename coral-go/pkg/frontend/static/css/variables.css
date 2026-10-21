@@ -47,6 +47,8 @@
     --warning-rgb: 212, 160, 48;
     --error:       #e05545;
     --error-text:  #f0705f; /* red as text on its own tint (a priority chip): 4.5:1 or more on the dark panels (#4851); --error itself is 4.0 on the tint */
+    --success-text: var(--success); /* green and amber as text on a grey panel or on their own tint: the light theme has darker ones that hold 4.5:1 (#5791) */
+    --warning-text: var(--warning);
     --border-subtle:  rgba(255, 255, 255, 0.04); /* a row's hairline inside a table or list (#5146) */
     --hover-bg:       rgba(255, 255, 255, 0.03); /* a table or list row under the pointer */
     --sidebar-separator: rgba(127, 127, 127, 0.18); /* the team card's frame and the line under its header */
@@ -249,6 +251,8 @@
     --warning-rgb: 154, 103, 0;
     --error:       #cf222e;
     --error-text:  #a8161f; /* the same in the light theme: 5.1:1 on the tint; --error is 3.6 */
+    --success-text: #116329; /* 5.8:1 on the secondary panel; --success is 4.0 */
+    --warning-text: #7a5100; /* 5.0:1 on the warning tint; --warning is 4.4 */
     --border-subtle:  rgba(0, 0, 0, 0.06);
     --hover-bg:       rgba(0, 0, 0, 0.04);
     --sidebar-separator: rgba(127, 127, 127, 0.18);

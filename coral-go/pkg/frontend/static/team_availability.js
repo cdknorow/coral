@@ -113,7 +113,8 @@ export function showTeamAvailability(team, options = {}) {
         : '<button type="button" data-dialog-close aria-label="Close team view">×</button>';
     dialog.innerHTML = `<header><div><h2 id="availability-title">Team view</h2><p>${escapeHtml(keyLabel(team))}</p></div>${actions}</header>
         <div class="availability-toolbar"><button type="button" class="btn btn-small">Refresh</button></div>
-        <div class="availability-content" aria-live="polite"></div>`;
+        <p class="sr-only availability-status" role="status"></p>
+        <div class="availability-content"></div>`; // the live region is the one line above, not the whole view: a Refresh says what changed, it does not read every card again
     if (workspaceMode) {
         // Rendered into the sidebar's Team View tab (see team_context.js).
         const host = document.getElementById('agentic-panel-team-view');
@@ -122,8 +123,9 @@ export function showTeamAvailability(team, options = {}) {
     } else document.body.append(dialog);
     const refresh = dialog.querySelector('.availability-toolbar button');
     const content = dialog.querySelector('.availability-content');
+    const status = dialog.querySelector('.availability-status');
     if (!workspaceMode) bindNativeDialog(dialog);
-    async function load() {
+    async function load(manual = false) {
         const hadFocus = document.activeElement === refresh;   // a disabled button loses the keyboard focus: give it back afterwards
         refresh.disabled = true;
         content.textContent = 'Checking agents…';
@@ -144,29 +146,33 @@ export function showTeamAvailability(team, options = {}) {
                 ${data.unassigned_tasks.length ? `<section class="availability-unassigned"><h3>Unassigned work</h3><ul>${tasks(data.unassigned_tasks)}</ul></section>` : ''}
                 <section class="availability-health"><h3>Board health</h3><ul>${(data.health_report || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
                 <p class="availability-note">Updated ${escapeHtml(new Date(data.observed_at).toLocaleTimeString())}</p>`;
+            if (manual) { const free = data.summary.available || 0, busy = data.summary.busy || 0; status.textContent = `Team view updated: ${data.agents.length} agent${data.agents.length === 1 ? '' : 's'}, ${free} free, ${busy} busy.`; }
             content.querySelectorAll('.availability-agent').forEach((card, index) => {
                 const agent = data.agents[index];
                 if (!agent) return;
                 if (agent.agent_type === 'terminal' && !agent.reminder) return; // a terminal is not an agent: a reminder to it does nothing (UI audit #5589)
                 const button = document.createElement('button');
                 button.type = 'button'; button.className = 'btn'; button.textContent = agent.reminder ? 'Edit reminder' : 'Remind agent';
+                button.setAttribute('aria-label', `${button.textContent} for ${agent.name}`); // three cards, three buttons of the same words: each says whose
                 button.onclick = () => remindAgent(team, agent.subscriber_id || agent.name, agent);
                 card.append(button);
                 if (agent.reminder) {
                     const stop = document.createElement('button');
                     stop.type = 'button'; stop.className = 'btn availability-stop-reminder'; stop.textContent = 'Remove reminder';
+                    stop.setAttribute('aria-label', `Remove the reminder for ${agent.name}`);
                     stop.onclick = () => stopAgentReminder(team, agent.subscriber_id || agent.name, load);
                     card.append(stop);
                 }
             });
         } catch (error) {
             content.textContent = `${error.message} Use Refresh to try again.`;
+            status.textContent = content.textContent;
         } finally {
             refresh.disabled = false;
             if (hadFocus && dialog.isConnected) refresh.focus();
         }
     }
-    refresh.onclick = load;
+    refresh.onclick = () => load(true);
     if (!workspaceMode) dialog.showModal();
     load();
 }

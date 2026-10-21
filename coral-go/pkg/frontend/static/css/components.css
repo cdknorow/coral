@@ -3086,14 +3086,12 @@ button.subscriber-history-link {
 }
 
 .mb-action-btn.mb-action-danger {
-    color: var(--error);
-    opacity: 0.7;
+    color: var(--error-text); /* --error is 4.2:1 on this panel in both themes (#5791); the dimming is the border's alone */
     border-color: rgba(var(--fx-red-rgb), 0.3);
 }
 
 .mb-action-btn.mb-action-danger:hover {
-    opacity: 1;
-    color: var(--error);
+    color: var(--error-text);
     background: rgba(var(--fx-red-rgb), 0.1);
 }
 

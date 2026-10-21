@@ -43,6 +43,8 @@
                     <div class="empty-state" id="mb-messages-empty">No messages yet</div>
                 </div>
                 <!-- Reading higher up while posts arrive (#4502): a count and a way to the latest, announced politely -->
+                <!-- What arrives at the bottom of the board, said politely to a screen reader (message_board.js announceArrivals) -->
+                <div id="mb-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
                 <div id="mb-new-pill" class="mb-new-pill" role="status" aria-live="polite">
                     <button type="button" class="mb-new-pill-btn" data-on-click="mb-jump-latest" hidden></button>
                 </div>

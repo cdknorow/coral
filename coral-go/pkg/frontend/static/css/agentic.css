@@ -992,7 +992,7 @@ body.panel-dragging .agentic-state {
 }
 
 .board-task-priority-critical { background: rgba(var(--error-rgb), 0.15); color: var(--error-text); }
-.board-task-priority-high { background: rgba(var(--warning-rgb), 0.15); color: var(--warning); }
+.board-task-priority-high { background: rgba(var(--warning-rgb), 0.15); color: var(--warning-text); }
 .board-task-priority-medium { background: rgba(var(--fx-grey-rgb), 0.1); color: var(--text-secondary); }
 .board-task-priority-low { background: rgba(var(--fx-grey-rgb), 0.06); color: var(--text-muted); }
 .board-task-priority-none { background: none; color: var(--text-muted); }

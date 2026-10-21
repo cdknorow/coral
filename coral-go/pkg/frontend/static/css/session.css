@@ -1669,7 +1669,7 @@
 .availability-agent > p { margin:0; }
 .availability-agent-heading small, .availability-agent li span, .availability-unassigned li span { display: block; margin: 4px 0; }
 .availability-badge { white-space: nowrap; border-radius: var(--radius-xl); padding: 4px 8px; background: var(--bg-tertiary); font-size: 0.75rem; color: var(--text-secondary); }
-.availability-badge.is-free { color: var(--success); }
+.availability-badge.is-free { color: var(--success-text); }
 .availability-task_idle .availability-badge, .availability-summary-task_idle { color: var(--text-secondary); }
 .availability-waiting .availability-badge, .availability-summary-waiting { color: var(--accent); }
 .team-availability-dialog ul { padding-left: 18px; font-size: 0.8125rem; }
