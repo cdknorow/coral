@@ -116,7 +116,16 @@ func (c *Client) typeToTarget(ctx context.Context, target, command string, launc
 		// with paste-buffer -p as before, which brackets the paste when the pane asked for it and keeps the breaks. tmux
 		// cannot query the mode, so unknown is not off (QA on #62: every multi-line message to a bracketed agent was flattened).
 		var err error
-		if en, known := BracketedPasteHint(ctx); strings.ContainsAny(command, "\r\n") && !(known && !en) {
+		multi := strings.ContainsAny(command, "\r\n")
+		en, known := BracketedPasteHint(ctx)
+		off := known && !en
+		if multi && !known && c.foregroundIsShell(ctx, target) {
+			// Unknown, but the pane's foreground program is a plain shell: it never enabled bracketed paste (a shell's own
+			// readline may, but the agent's launch line and a shell prompt do not need it), and paste-buffer would turn each
+			// LF into Enter and run the lines one by one (Security's note on #62).
+			off = true
+		}
+		if multi && !off {
 			clean := SanitizePaste(command) // CRLF and CR are one LF; controls and ESC are dropped
 			if strings.TrimSpace(clean) == "" {
 				return ErrNothingToSend
