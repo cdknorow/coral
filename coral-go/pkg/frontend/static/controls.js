@@ -1034,6 +1034,9 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
     }
 }
 
+// An attachment is named by its place in the strip ("Image 2"), not by its file's name: the name is a generated id that says nothing; it stays in the tooltip.
+const imageName = (i, n) => (n > 1 ? `Image ${i + 1}` : 'Image');
+
 export function renderAttachments(session = state.currentSession) {
     const container = document.getElementById("image-attachments");
     if (!container) return;
@@ -1048,8 +1051,8 @@ export function renderAttachments(session = state.currentSession) {
     container.style.display = "flex";
     container.innerHTML = list.map((att, i) => `
         <div class="image-attachment" title="${escapeAttr(att.filename)}">
-            <img src="${escapeAttr(att.previewUrl)}" alt="${escapeAttr(att.filename)}" />
-            <button type="button" class="image-attachment-remove" data-on-click="attachment-remove" data-index="${Number(i)}" aria-label="Remove ${escapeAttr(att.filename)}" title="Remove ${escapeAttr(att.filename)}">&times;</button>
+            <img src="${escapeAttr(att.previewUrl)}" alt="${escapeAttr(imageName(i, list.length))}" />
+            <button type="button" class="image-attachment-remove" data-on-click="attachment-remove" data-index="${Number(i)}" aria-label="Remove ${escapeAttr(imageName(i, list.length).toLowerCase())}" title="Remove ${escapeAttr(att.filename)}">&times;</button>
         </div>
     `).join("");
 }
