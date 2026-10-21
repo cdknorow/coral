@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 func writeExecutable(t *testing.T, path, body string) {
@@ -28,9 +30,7 @@ func TestSameFileFollowsSymlinks(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(link), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(real, link); err != nil {
-		t.Fatal(err)
-	}
+	linktest.Symlink(t, real, link)
 
 	if !sameFile(real, link) {
 		t.Error("a symlink to our binary must count as the same program, not a conflict")

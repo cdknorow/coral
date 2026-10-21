@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 func TestCheckDataPathPanicsOnRealCoralDir(t *testing.T) {
@@ -100,9 +102,7 @@ func TestProtectedInResolvesSymlinksAndCase(t *testing.T) {
 		t.Fatal(err)
 	}
 	link := filepath.Join(root, "link")
-	if err := os.Symlink(real, link); err != nil {
-		t.Fatal(err)
-	}
+	linktest.Symlink(t, real, link)
 	dirs := []string{real}
 	for _, p := range []string{
 		filepath.Join(real, "tmux.sock"),
