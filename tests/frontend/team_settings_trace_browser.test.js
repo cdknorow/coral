@@ -83,7 +83,7 @@ const sha = t => require('node:crypto').createHash('sha256').update(t).digest('h
                 const f = q('form', root());
                 f.requestSubmit(); await settle(); record('save with nothing changed'); flush();
                 f.elements.mode.value = 'worktrees'; f.elements.dependency_guidance.checked = true; f.elements.custom_instructions.value = 'Team rule'; f.requestSubmit(); await settle(); record('save the working mode'); flush();
-                f.elements.cross_team_messaging.checked = !f.elements.cross_team_messaging.checked; f.requestSubmit(); await settle(); record('save the board settings'); flush();
+                { const c = q('#team-settings-messaging input[name=cross_team_messaging]', root()); if (c) { c.checked = !c.checked; c.dispatchEvent(new Event('change', { bubbles: true })); await settle(); q('#team-settings-messaging [type=submit]', root()).click(); await settle(); } record('save the messaging switch'); flush(); } // the Messaging tab has its own Save (#5572)
                 f.elements.mode.value = 'none'; f.requestSubmit(); await settle(); record('save again'); flush();
             }`,
             nothing: `async ({ record }) => { record('nothing more'); }`,

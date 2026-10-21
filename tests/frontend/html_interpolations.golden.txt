@@ -596,16 +596,10 @@
 1	team_availability.js	label
 1	team_availability.js	tasks(a.tasks)
 1	team_availability.js	tasks(data.unassigned_tasks)
-1	team_cross_team_settings.js	draft.length ? `<ul class="ct-list" aria-label="Teams that may message this board">${draft.map(rowHtml).join('
-1	team_cross_team_settings.js	draft.map(rowHtml).join('')
-1	team_cross_team_settings.js	limit
-1	team_cross_team_settings.js	log.length ? `<ul class="ct-log">${log.slice(0, 50).map(e => `<li><span class="ct-log-when">${escapeHtml(when(
-1	team_cross_team_settings.js	log.slice(0, 50).map(e => `<li><span class="ct-log-when">${escapeHtml(when(e.at))}</span> ${logLine(e)}</li>`)
-1	team_cross_team_settings.js	logLine(e)
-1	team_cross_team_settings.js	pick.map(c => `<option value="${escapeAttr(keyOf(c))}">${escapeHtml(nameOf(c))}</option>`).join('')
-1	team_cross_team_settings.js	showPrompt ? `<fieldset class="team-settings-section ct-prompt"><legend>Choose who may send</legend> <p class=
-1	team_cross_team_settings.js	sugg.length ? `<ul class="ct-suggest" aria-describedby="ct-prompt-why">${sugg.map(x => `<li><label class="ct-c
-1	team_cross_team_settings.js	sugg.map(x => `<li><label class="ct-check"><input type="checkbox" name="suggest" value="${escapeAttr(keyOf(x))
+1	team_cross_team_settings.js	[l.machine && escapeHtml(l.machine), l.sid && 'server ' + escapeHtml(l.sid), l.refreshed && 'confirmed ' + esc
+1	team_cross_team_settings.js	buttonFor(st)
+1	team_cross_team_settings.js	links.length ? `<div class="xt-links"><h3 class="xt-h">Linked teams that can message this one <a href="${escap
+1	team_cross_team_settings.js	links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l
 1	team_dialogs.js	failList
 1	team_dialogs.js	successCount
 1	team_health_settings.js	HEALTH_LIMITS.reviewers

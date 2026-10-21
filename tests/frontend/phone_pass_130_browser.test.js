@@ -102,7 +102,7 @@ const LONG_WAIT = "⏳ This agent hasn't done anything yet — check the termina
             await scene('the comments sheet with its composer', '#preview-pane');
             // 4. the owner-only refusal messages (team settings note, Prompt inspection, the Health check's refused save), stood in for
             const R = (status, code) => ({ status, code, error: 'x' });
-            for (const [label, ans, expect] of [['team settings note', { settings: R(403, 'mode_too_low') }, '.team-settings-refusal'], ['Prompt inspection', { inspection: R(404, 'not_found') }, '.prompt-inspection-content'], ['Health check save', { put: R(403, 'owner_unverified') }, '#team-settings-health .health-state']]) {
+            for (const [label, ans, expect] of [['team settings note', { settings: R(403, 'mode_too_low') }, '#team-settings-messaging .ct-unavailable'], ['Prompt inspection', { inspection: R(404, 'not_found') }, '.prompt-inspection-content'], ['Health check save', { put: R(403, 'owner_unverified') }, '#team-settings-health .health-state']]) {
                 await load(w, theme);
                 await ev(`(() => { const R0 = window.fetch; window.__ans = ${JSON.stringify(ans)}; const json = (b, s = 200) => Promise.resolve(new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } }));
                     const refuse = a => json({ code: a.code, error: 'x' }, a.status);

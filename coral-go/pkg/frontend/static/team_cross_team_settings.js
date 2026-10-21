@@ -1,204 +1,132 @@
-/* The Messaging tab of Team settings (#5510, the dashboard half of #5508): who may message this board. The board accepts a message from another team only when that team (its
- * cross_team_id, on this computer or on a named Coral) is on this list; an empty list refuses everyone. The state is GET /api/board/{project}/cross-team-state ({ enforced,
- * allowed: [{server, cross_team_id, label?, known_here}], max_entries, was_open, suggestions: [{server, cross_team_id, label, label_is_a_claim, last_seen, count, listable}] }), the
- * boards to pick from are GET .../cross-team-candidates ({ candidates: [{cross_team_id, label, created_at}] }), the log is GET .../settings/log ({ entries }, newest first), and Save is
- * PUT .../settings { subscriber_id, cross_team_allowed: [...] } (the whole list, the Operator on this computer only; the state is read again after it).
+/* The Messaging tab of Team settings (#5572, operator decision): the one place for cross-team messaging. Top to bottom: ONE status line with a dot and ONE primary button, the two switches ("Cross-team messaging",
+ * "Share files with other teams"), the teams linked to this one, a collapsed "How this works" (with this computer's Coral Hub id), and the tab's own Save bar. A team on another Coral can message this one only when
+ * Coral Hub has linked the two teams and the switch is on here, so there is no list to edit on this computer: links are made and removed in Coral Hub (a compiled-in link, never one the server sent).
  *
- * A board that accepted messages from any team before the list existed (was_open) is asked once, here: the senders seen in the last 30 days are offered as boxes, all unchecked, and
- * nothing is added until the person checks some and presses Add; the list is still only saved by Save. A sender seen before ids existed cannot be listed yet and says so. Ids are what the
- * server checks; labels are for people (a label a board on another Coral gave itself is marked as its own claim). The tab is drawn whether or not the server enforces the list yet (an owner can prepare it; a line says it is not in force), and the one-time prompt only when it is enforced. */
+ * The words of the status line come from the server (GET /api/board/{team}/cross-team-state: status {state: ready|waiting|off|stale|old, text}, links [{server_label, server_id, team_label, refreshed}]) and are shown as text;
+ * this module chooses only the dot and the button from status.state. A server that sends no status gets a line made from the switch alone. The switches are saved with PUT /api/board/{team}/settings, only what changed,
+ * on this computer and through Coral Hub (the hub's owner; anyone else is refused and told so in our words). */
 import { escapeHtml, escapeAttr } from './utils.js';
-import { boardFetch } from './server_base.js';
-import { browserLocal } from './safe_storage.js';
+import { boardFetch, isCloud } from './server_base.js';
+import { copyText } from './utils.js';
 import { importOnce } from './import_once.js';
 const { refusalOf, answeredLocally } = await importOnce('./owner_refusal.js');
 
-const DEFAULT_LIMIT = 200;
-const SERVER_ID = /^[a-z0-9_-]{1,64}$/; // 'local' or a Coral Hub server id (the server's own shape)
-const TEAM_ID = /^x-[a-z2-7]{16}$/; // a board's cross-team id
-
-const keyOf = e => JSON.stringify([e.server, e.cross_team_id]); // unambiguous, and safe in an attribute (a NUL would not survive the HTML parser)
-const serverName = server => (server === 'local' ? 'this computer' : server);
-const clean = list => (Array.isArray(list) ? list : []).filter(e => e && typeof e === 'object' && typeof e.server === 'string' && typeof e.cross_team_id === 'string')
-    .map(e => ({ server: e.server, cross_team_id: e.cross_team_id, label: String(e.label || ''), known_here: e.known_here !== false, claim: !!e.label_is_a_claim, listable: e.listable !== false, last_seen: e.last_seen, count: Number(e.count) || 0 }));
+// Coral Hub's page where a team on another Coral is linked ("Coral Hub > Team links"). A constant: the hub refuses a query on it, so nothing is preselected.
+export const HUB_LINKS_URL = 'https://app.coralhub.dev/team-links';
+let _hubForTests = null; // a test says it is Coral Hub without booting the Hub page
+export function _setHubForTests(v) { _hubForTests = v; }
+const STATES = ['ready', 'waiting', 'off', 'stale', 'old'];
+const SERVER_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const MAX_LINKS = 50;
+const label = v => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '').trim().slice(0, 80); // display text: no control or bidi characters, bounded
 const when = at => { const d = new Date(at); return Number.isNaN(d.getTime()) ? '' : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); };
-const nameOf = e => e.label || e.cross_team_id;
-const entryOut = e => ({ server: e.server, cross_team_id: e.cross_team_id, ...(e.label ? { label: e.label } : {}) });
+const DOT = { ready: 'ok', waiting: 'warm', off: '', stale: 'bad', old: 'bad' }; // a switch that is off by choice is not an alarm
 
-const entryName = e => `<b>${escapeHtml(nameOf(e))}</b>${e.server === 'local' ? '' : ` on ${escapeHtml(e.server)}`}`;
-const names = list => (Array.isArray(list) ? list : []).map(entryName).join(', ');
-
-/** One log row as HTML (every part escaped): an edit says what it added and removed, a refused edit and the refused messages are counted, never quoted. */
-function logLine(e) {
-    const by = e.actor ? escapeHtml(e.actor) : 'The Operator';
-    if (e.kind === 'edit') {
-        const parts = [];
-        if (e.added && e.added.length) parts.push(`added ${names(e.added)}`);
-        if (e.removed && e.removed.length) parts.push(`removed ${names(e.removed)}`);
-        return `${by} ${parts.join(' and ') || 'saved the list'}`;
-    }
-    if (e.kind === 'edit_refused') return `${by}: a change to the list was refused`;
-    if (e.kind === 'refused' || e.kind === 'would_refuse') {
-        const n = Number(e.count) || 1;
-        const who = (Array.isArray(e.senders) ? e.senders : []).map(s => escapeHtml(s.server === 'local' ? s.cross_team_id : `${s.cross_team_id} on ${s.server}`));
-        const more = Number(e.others) > 0 ? ` and ${Number(e.others)} more` : '';
-        return `${n} ${n === 1 ? 'message' : 'messages'} ${e.kind === 'refused' ? 'refused' : 'would have been refused'}${who.length ? ` from ${who.join(', ')}${more}` : ''}`;
-    }
-    return escapeHtml(String(e.kind || 'Changed'));
+function cleanLinks(list) {
+    return (Array.isArray(list) ? list : []).filter(l => l && typeof l === 'object').slice(0, MAX_LINKS).map(l => ({
+        team: label(l.team_label) || 'a team', machine: label(l.server_label), sid: SERVER_ID.test(String(l.server_id || '')) ? String(l.server_id) : '', refreshed: typeof l.refreshed === 'string' ? when(l.refreshed) : '',
+    }));
 }
 
-function rowHtml(e) {
-    const detail = `${serverName(e.server)} · ${e.cross_team_id}`;
-    const unknown = e.server === 'local' && !e.known_here;
-    return `<li class="ct-row" data-key="${escapeAttr(keyOf(e))}">
-        <span class="ct-who"><span class="ct-line"><span class="ct-name">${escapeHtml(nameOf(e))}</span>${unknown ? '<span class="ct-unknown">not known here</span>' : ''}</span><span class="ct-id">${escapeHtml(detail)}</span></span>
-        <button type="button" class="btn ct-remove" data-remove="${escapeAttr(keyOf(e))}" aria-label="${escapeAttr('Remove ' + nameOf(e) + ' from the list')}">Remove</button></li>`;
-}
-
-/** The server's own words for a refused save: the row and field of a bad list, or the edit limit; null for anything else (owner_refusal.js says those). */
-async function savedProblem(resp) {
-    let body = null;
-    try { body = await resp.clone().json(); } catch { /* not JSON */ }
-    if (!body || typeof body !== 'object') return null;
-    if (body.code === 'bad_allowlist') {
-        const row = Number.isInteger(body.row) ? `Row ${body.row + 1}${body.field ? ` (${String(body.field).replace(/_/g, ' ')})` : ''}: ` : '';
-        return `${row}${String(body.message || 'the list was not accepted')}.`.replace(/\.\.$/, '.');
-    }
-    if (body.code === 'edit_rate_limited') return 'Too many changes in the last hour. Try again later.';
-    return null;
-}
-
-/** Draw the tab into host. `state` is the cross-team-state object. Returns { dirty() }. */
-export async function mountCrossTeamSettings(host, team, state) {
+/** Draw the tab into host. `info` is { state, settings, refusal }: state is the cross-team-state object or null, settings the board's settings (null when they could not be read, with refusal the reason in words). */
+export async function mountCrossTeamSettings(host, team, info = {}) {
+    const hub = _hubForTests === null ? isCloud() : _hubForTests;
     const local = answeredLocally(team);
-    let limit = Number(state.max_entries) > 0 ? Number(state.max_entries) : DEFAULT_LIMIT;
-    let wasOpen = !!state.was_open;
-    let enforced = !!state.enforced;
-    let saved = clean(state.allowed);
-    let draft = saved.map(e => ({ ...e }));
-    let candidates = [];
-    let log = [];
-    let said = '';
-    let sayError = false;
-    const dismissKey = `coral-ct-prompt:${team}`;
-    let dismissed = browserLocal.get(dismissKey) === '1'; // a blocked store keeps it for this page load only
-
-    try { const r = await boardFetch(team, '/cross-team-candidates'); if (r.ok) candidates = clean(((await r.json()).candidates || []).map(c => ({ ...c, server: 'local' }))); } catch { /* the picker is then empty: ids can still be typed */ }
-    const readLog = async () => { try { const r = await boardFetch(team, '/settings/log'); if (r.ok) log = (await r.json()).entries || []; } catch { /* the old log stays */ } };
-    await readLog();
-    const suggestions = clean(state.suggestions);
-
+    let state = info.state && typeof info.state === 'object' ? info.state : null;
+    let saved = { messaging: !!(info.settings && info.settings.cross_team_messaging), files: !!(info.settings && info.settings.cross_team_artifacts) };
+    let draft = { ...saved };
+    // Through Coral Hub the switches change only when the machine says this request may (state.can_change: the hub's owner path is live and not locked); until it says so they are shown, disabled, with the reason: no guessing.
+    const canChange = () => !hub || !!(state && state.can_change === true);
+    const lockedText = () => (hub && state && state.owner_path_live === true ? 'This setting can only be changed on the computer itself, or by the owner through Coral Hub.' : 'This setting can only be changed on the computer itself.');
+    let said = '', sayError = false, how = false, serverId = '';
     host.innerHTML = '';
+    if (!info.settings) {
+        const p = document.createElement('p');
+        p.className = 'working-mode-hint ct-unavailable'; p.setAttribute('role', 'status');
+        p.textContent = info.refusal ? `Messaging settings: ${info.refusal}` : 'Cross-team messaging settings are not available here.';
+        host.append(p);
+        return { dirty: () => false };
+    }
+    if (!hub) { // this computer's Coral Hub id, for the "How this works" line (text only, and only when it has the shape of an id)
+        try { const r = await fetch('/api/cloud/status'); if (r.ok) { const st = await r.json(); if (['connecting', 'connected', 'retrying'].includes(st.state) && SERVER_ID.test(String(st.server_id || ''))) serverId = String(st.server_id); } } catch { /* no id shown */ }
+    }
     const form = document.createElement('form');
-    form.className = 'working-mode-form ct-form';
-    form.autocomplete = 'off';
-    form.noValidate = true;
+    form.className = 'working-mode-form ct-form xt-panel';
+    form.autocomplete = 'off'; form.noValidate = true;
     host.append(form);
-
     const snapshot = () => JSON.stringify(Array.from(form.elements).filter(el => el.name).map(el => ({ name: el.name, type: el.type, value: el.type === 'checkbox' ? el.checked : el.value })));
-    const listValue = () => JSON.stringify(draft.map(keyOf).sort());
+
+    function status() {
+        const s = state && state.status && typeof state.status === 'object' ? state.status : null;
+        const known = s && STATES.includes(s.state) && typeof s.text === 'string' && s.text.trim();
+        // The server's words win, unless the person has changed the switch here and not saved yet: then the line follows the switch (a draft is not a state)
+        if (known && draft.messaging === saved.messaging) return { state: s.state, text: s.text.trim().slice(0, 300) };
+        if (!draft.messaging) return { state: 'off', text: 'Cross-team messaging is off for this team.' };
+        return { state: 'waiting', text: 'Cross-team messaging is on for this team.' };
+    }
+    const buttonFor = st => {
+        if (st.state === 'off' && !canChange()) return '';
+        if (st.state === 'off') return '<button type="button" class="btn btn-primary xt-primary" data-act="turn-on">Turn on cross-team messaging</button>';
+        if (st.state === 'stale') return '<button type="button" class="btn btn-primary xt-primary" data-act="check-hub">Check the Coral Hub connection</button>';
+        if (st.state === 'old') return '<button type="button" class="btn btn-primary xt-primary" data-act="new-team">Create a new team</button>';
+        return `<a class="btn btn-primary xt-primary" href="${escapeAttr(HUB_LINKS_URL)}" target="_blank" rel="noopener noreferrer">Link a team on another Coral<span class="sr-only"> (opens Coral Hub in a new tab)</span></a>`;
+    };
 
     function draw(focusSel) {
-        const full = draft.length >= limit;
-        const inList = new Set(draft.map(keyOf));
-        const pick = candidates.filter(c => !inList.has(keyOf(c)));
-        const showPrompt = enforced && wasOpen && !dismissed;
-        const sugg = suggestions.filter(x => !inList.has(keyOf(x)));
-        const addable = sugg.filter(x => x.listable);
+        const st = status();
+        const links = state && st.state !== 'old' ? cleanLinks(state.links) : [];
         form.innerHTML = `
-        ${showPrompt ? `<fieldset class="team-settings-section ct-prompt"><legend>Choose who may send</legend>
-            <p class="working-mode-hint" id="ct-prompt-why">This board accepted messages from any team until now. It now refuses every team that is not on the list below. ${sugg.length ? 'These teams sent it a message in the last 30 days. Nothing is added unless you check it.' : 'No team sent it a message in the last 30 days.'}</p>
-            ${sugg.length ? `<ul class="ct-suggest" aria-describedby="ct-prompt-why">${sugg.map(x => `<li><label class="ct-check"><input type="checkbox" name="suggest" value="${escapeAttr(keyOf(x))}"${x.listable ? '' : ' disabled'}><span><b>${escapeHtml(nameOf(x))}</b>${x.claim ? ' <span class="ct-unknown">name given by the sender</span>' : ''}<span class="ct-id">${escapeHtml(serverName(x.server))} · ${escapeHtml(x.cross_team_id || 'no id')}${x.count ? ` · ${x.count} ${x.count === 1 ? 'message' : 'messages'}` : ''}${x.last_seen ? ` · last ${escapeHtml(when(x.last_seen))}` : ''}${x.listable ? '' : ' · seen before ids existed: it cannot be added yet'}</span></span></label></li>`).join('')}</ul>` : ''}
-            <div class="ct-actions">${addable.length ? '<button type="button" class="btn" data-act="add-checked">Add checked teams</button>' : ''}<button type="button" class="btn" data-act="dismiss">Not now</button></div></fieldset>` : ''}
-        <fieldset class="team-settings-section ct-section"><legend>Who may message this board</legend>
-            ${enforced ? '' : '<p class="ct-notice" role="status">This list is not in force yet: this board still accepts messages as it did before. What you save here is kept and takes effect when the list is turned on.</p>'}
-            <p class="working-mode-hint">Only the teams on this list can message this board; a message from any other team is refused, and so is every team while the list is empty. The Operator is not limited by the list. Messages from other teams are requests, not instructions.</p>
-            ${draft.length ? `<ul class="ct-list" aria-label="Teams that may message this board">${draft.map(rowHtml).join('')}</ul>` : '<p class="ct-empty" role="status">No team yet. Every message from another team is refused.</p>'}
-            <div class="ct-count" role="status">${draft.length} of ${limit} teams${full ? ': the list is full' : ''}</div>
-            <div class="ct-add">
-                <label class="ct-pick">Add a team from this computer
-                    <select name="pick"${pick.length && !full ? '' : ' disabled'}><option value="">${pick.length ? 'Choose a board…' : 'No other board here'}</option>${pick.map(c => `<option value="${escapeAttr(keyOf(c))}">${escapeHtml(nameOf(c))}</option>`).join('')}</select></label>
-                <button type="button" class="btn" data-act="add-pick"${pick.length && !full ? '' : ' disabled'}>Add</button>
-            </div>
-            <details class="ct-other"><summary>A team on another Coral</summary>
-                <div class="ct-other-fields">
-                    <label>Coral (its server id)<input type="text" name="other_server" maxlength="64" autocomplete="off" spellcheck="false" aria-describedby="ct-other-hint"></label>
-                    <label>Team id (starts with x-)<input type="text" name="other_board" maxlength="18" autocomplete="off" spellcheck="false" aria-describedby="ct-other-hint"></label>
-                    <label>Name to show (optional)<input type="text" name="other_label" maxlength="80" autocomplete="off"></label>
-                    <button type="button" class="btn" data-act="add-other"${full ? ' disabled' : ''}>Add</button>
-                </div>
-                <p class="working-mode-hint" id="ct-other-hint">Ask the other team's owner for both ids. The ids are what is checked; the name is only a label here.</p>
-            </details>
-            <input type="hidden" name="allowed" value="${escapeAttr(listValue())}">
-        </fieldset>
-        <fieldset class="team-settings-section ct-section"><legend>Recent changes</legend>
-            ${log.length ? `<ul class="ct-log">${log.slice(0, 50).map(e => `<li><span class="ct-log-when">${escapeHtml(when(e.at))}</span> ${logLine(e)}</li>`).join('')}</ul>` : '<p class="working-mode-hint">Nothing yet. Changes to the list, and the messages it refused, are listed here.</p>'}
-        </fieldset>
-        <div class="team-settings-actions ct-save"><button type="submit" class="btn btn-primary" disabled>Save who may message</button>
-            <span class="ct-state${sayError ? ' ct-error' : ''}" role="status" aria-live="polite">${escapeHtml(said || 'Only the Operator on this computer can change this. Saved for this team only.')}</span></div>`;
+        <div class="xt-head"><span class="update-state-dot" ${DOT[st.state] ? `data-k="${escapeAttr(DOT[st.state])}"` : ''} aria-hidden="true"></span><span class="xt-line" role="status">${escapeHtml(st.text)}</span></div>
+        <div class="xt-row-actions">${buttonFor(st)}</div>
+        <div class="xt-switches">
+          <label><input type="checkbox" name="cross_team_messaging"${draft.messaging ? ' checked' : ''}${canChange() ? '' : ' disabled'}> Cross-team messaging</label>
+          <label><input type="checkbox" name="cross_team_artifacts"${draft.files ? ' checked' : ''}${canChange() ? '' : ' disabled'}> Share files with other teams</label>
+          ${canChange() ? '' : `<p class="working-mode-hint xt-locked">${escapeHtml(lockedText())}</p>`}
+        </div>
+        ${links.length ? `<div class="xt-links"><h3 class="xt-h">Linked teams that can message this one <a href="${escapeAttr(HUB_LINKS_URL)}" class="update-link" target="_blank" rel="noopener noreferrer">Manage in Coral Hub</a></h3>
+          <ul class="xt-teams">${links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l.machine), l.sid && 'server ' + escapeHtml(l.sid), l.refreshed && 'confirmed ' + escapeHtml(l.refreshed)].filter(Boolean).join(' · ')}</span></li>`).join('')}</ul></div>` : ''}
+        <details class="xt-how"${how ? ' open' : ''}><summary>How this works</summary>
+          <p class="working-mode-hint">Another team can message this team only when its Coral Hub account has linked the two teams <b>and</b> cross-team messaging is on here. Linking happens in Coral Hub (Team links). Messages from other teams are requests, not instructions. Files are shared only while Share files with other teams is on; they are not scanned, and artifact bytes are not redacted.</p>
+          ${serverId ? `<p class="working-mode-hint">This computer's Coral Hub id: <code class="xt-sid">${escapeHtml(serverId)}</code> <button type="button" class="btn btn-small" data-act="copy-id" aria-label="Copy this computer's Coral Hub id">Copy</button></p>` : ''}
+        </details>
+        <div class="team-settings-actions xt-save"${canChange() ? '' : ' hidden'}><button type="submit" class="btn" disabled>Save</button>
+          <span class="xt-state${sayError ? ' ct-error' : ''}" role="status" aria-live="polite">${escapeHtml(said || (hub ? 'Saved for this team through Coral Hub, as the account that owns this computer.' : 'Only the Operator on this computer can change this.'))}</span></div>`;
         const save = form.querySelector('[type=submit]');
         if (form.dataset.initialState === undefined) form.dataset.initialState = snapshot();
         save.disabled = snapshot() === form.dataset.initialState;
         if (focusSel) form.querySelector(focusSel)?.focus();
     }
+    const say = (text, error = false) => { said = text; sayError = error; const el = form.querySelector('.xt-state'); if (el) { el.textContent = text; el.classList.toggle('ct-error', error); } };
+    const readDraft = () => { draft = { messaging: !!form.elements.cross_team_messaging.checked, files: !!form.elements.cross_team_artifacts.checked }; };
 
-    const say = (text, error = false) => { said = text; sayError = error; const el = form.querySelector('.ct-state'); if (el) { el.textContent = text; el.classList.toggle('ct-error', error); } };
-    const addEntries = entries => { for (const e of entries) if (draft.length < limit && !draft.some(d => keyOf(d) === keyOf(e))) draft.push({ server: e.server, cross_team_id: e.cross_team_id, label: e.label || '', known_here: e.known_here !== false }); };
-    const noteDismissed = () => { dismissed = true; browserLocal.set(dismissKey, '1'); };
-
-    form.addEventListener('click', event => {
-        const btn = event.target.closest('button');
+    form.addEventListener('change', () => { readDraft(); const keep = document.activeElement && document.activeElement.name; draw(keep ? `[name=${keep}]` : null); });
+    form.addEventListener('toggle', e => { if (e.target.classList && e.target.classList.contains('xt-how')) how = e.target.open; }, true);
+    form.addEventListener('click', async event => {
+        const btn = event.target.closest('button[data-act]');
         if (!btn) return;
-        const gone = btn.dataset.remove;
-        if (gone !== undefined) {
-            const idx = draft.findIndex(e => keyOf(e) === gone);
-            const name = idx >= 0 ? nameOf(draft[idx]) : 'the team';
-            if (idx >= 0) draft.splice(idx, 1);
-            said = ''; sayError = false;
-            draw(draft.length ? `.ct-row:nth-child(${Math.min(idx + 1, draft.length)}) .ct-remove` : '.ct-add select, .ct-add [data-act="add-pick"]'); // the keyboard stays in the list, or goes to Add when it is empty
-            say(`Removed ${name}. Save to apply.`);
-            return;
-        }
         const act = btn.dataset.act;
-        if (act === 'add-pick') {
-            const sel = form.elements.pick;
-            const c = candidates.find(x => keyOf(x) === sel.value);
-            if (!c) { say('Choose a board first.', true); sel.focus(); return; }
-            addEntries([c]); said = ''; draw('.ct-add select, .ct-add [data-act="add-pick"]'); say(`Added ${nameOf(c)}. Save to apply.`);
-        } else if (act === 'add-other') {
-            const server = form.elements.other_server.value.trim(), id = form.elements.other_board.value.trim(), label = form.elements.other_label.value.trim();
-            if (!SERVER_ID.test(server)) { say('Enter the other Coral\'s server id (lower-case letters, numbers, _ and -, up to 64).', true); form.elements.other_server.focus(); return; }
-            if (!TEAM_ID.test(id)) { say('Enter the team\'s id: x- and 16 lower-case letters or the digits 2 to 7.', true); form.elements.other_board.focus(); return; }
-            if (draft.some(d => d.server === server && d.cross_team_id === id)) { say('That team is already on the list.', true); form.elements.other_board.focus(); return; }
-            addEntries([{ server, cross_team_id: id, label }]); said = ''; draw('.ct-other summary'); form.querySelector('.ct-other').open = true; say(`Added ${label || id}. Save to apply.`);
-        } else if (act === 'add-checked') {
-            const picked = [...form.querySelectorAll('input[name=suggest]:checked')].map(el => suggestions.find(x => keyOf(x) === el.value)).filter(Boolean);
-            if (!picked.length) { say('Check the teams that may send, or choose Not now.', true); form.querySelector('input[name=suggest]:not(:disabled)')?.focus(); return; }
-            addEntries(picked); noteDismissed();
-            said = ''; draw('.ct-list .ct-remove'); say(`Added ${picked.length} ${picked.length === 1 ? 'team' : 'teams'}. Save to apply.`);
-        } else if (act === 'dismiss') {
-            noteDismissed();
-            draw('.ct-add select, .ct-add [data-act="add-pick"]'); say('Nothing was added. This board refuses every team until you add some.');
-        }
+        if (act === 'turn-on') { draft.messaging = true; said = ''; draw('[name=cross_team_messaging]'); say('Cross-team messaging is on in this form. Save to apply.'); }
+        else if (act === 'check-hub') { if (typeof window.showSettingsModal === 'function') { const d = form.closest('dialog'); if (d && typeof d.close === 'function' && d.matches(':modal')) d.close(); window.showSettingsModal('network'); } }
+        else if (act === 'new-team') { if (typeof window.showLaunchModal === 'function') { const d = form.closest('dialog'); if (d && typeof d.close === 'function' && d.matches(':modal')) d.close(); window.showLaunchModal(); window._selectLaunchType?.('team'); } }
+        else if (act === 'copy-id') { const ok = await copyText(serverId); btn.textContent = ok ? 'Copied' : 'Copy failed'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); }
     });
-    form.addEventListener('input', () => { const sb = form.querySelector('[type=submit]'); if (sb) sb.disabled = snapshot() === form.dataset.initialState; });
     form.addEventListener('submit', async event => {
         event.preventDefault();
         const save = form.querySelector('[type=submit]');
         save.disabled = true; say('Saving…');
+        const body = { subscriber_id: 'Operator', ...(draft.messaging !== saved.messaging ? { cross_team_messaging: draft.messaging } : {}), ...(draft.files !== saved.files ? { cross_team_artifacts: draft.files } : {}) };
         try {
-            const resp = await boardFetch(team, '/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', cross_team_allowed: draft.map(entryOut) }) });
-            if (!resp.ok) { say(`Could not save the list. ${(await savedProblem(resp)) || await refusalOf(resp, local)}`, true); save.disabled = false; return; }
-            // The answer is the board's settings: the list as the server kept it (labels cleaned, known_here) is read from the state route.
-            const fresh = await boardFetch(team, '/cross-team-state');
-            if (fresh.ok) { const next = await fresh.json(); saved = clean(next.allowed); limit = Number(next.max_entries) > 0 ? Number(next.max_entries) : limit; wasOpen = !!next.was_open; enforced = !!next.enforced; } else saved = draft.map(e => ({ ...e }));
-            draft = saved.map(e => ({ ...e }));
-            await readLog();
+            const resp = await boardFetch(team, '/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (!resp.ok) { say(`Could not save. ${hub && (resp.status === 404 || resp.status === 403) ? lockedText() : await refusalOf(resp, local)}`, true); save.disabled = false; return; } // through Coral Hub a 404 or 403 on this save is "not changeable from here", never a raw word // the refusal in our words, never the server's (#5323)
+            const fresh = await boardFetch(team, '/settings');
+            if (fresh.ok) { const s = await fresh.json(); saved = { messaging: !!s.cross_team_messaging, files: !!s.cross_team_artifacts }; } else saved = { ...draft };
+            draft = { ...saved };
+            try { const r = await boardFetch(team, '/cross-team-state'); if (r.ok) state = await r.json(); } catch { /* the line follows the switch */ }
             delete form.dataset.initialState;
             said = 'Saved.'; sayError = false;
             draw();
             host.dispatchEvent(new CustomEvent('cross-team-saved', { bubbles: true }));
-        } catch (error) { say(error.message || 'Could not save the list.', true); save.disabled = false; }
+        } catch (error) { say(error.message || 'Could not save.', true); save.disabled = false; }
     });
     draw();
     return { dirty: () => form.dataset.initialState !== undefined && snapshot() !== form.dataset.initialState };

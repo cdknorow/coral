@@ -1729,39 +1729,27 @@
 .health-form input:focus-visible, .health-form select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .health-state.health-error { color: var(--error, var(--fx-red)); }
 
-/* Team settings, Messaging tab (#5510): who may message this board. A list of teams (name, then the Coral and id small), Add from this computer's boards or by id, the one-time prompt, the change log. */
-.ct-form { display: grid; gap: 12px; }
-.ct-form .ct-list, .ct-form .ct-suggest, .ct-form .ct-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.ct-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-primary); }
-.ct-who { display: grid; gap: 2px; min-width: 0; }
-.ct-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
-.ct-name { font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
-.ct-id { display: block; color: var(--text-secondary); font-size: 0.75rem; overflow-wrap: anywhere; }
-.ct-unknown { padding: 0 6px; border: 1px dashed var(--border); border-radius: var(--radius-md); color: var(--text-secondary); font-size: 0.75rem; white-space: nowrap; }
-.ct-empty { margin: 0; color: var(--text-secondary); }
-.ct-notice { margin: 0; padding: 8px 10px; border: 1px dashed var(--border); border-radius: var(--radius-md); background: var(--bg-primary); color: var(--text-primary); font-size: calc(var(--fs-md) * .9); }
-.ct-count { color: var(--text-secondary); font-size: 0.75rem; }
-.ct-add { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
-.ct-pick { display: grid; gap: 4px; flex: 1 1 14em; min-width: 0; font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
-.ct-form select, .ct-form input[type="text"] { box-sizing: border-box; width: 100%; min-height: var(--control-height, 32px); background: var(--bg-tertiary, var(--bg-primary)); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; }
-.ct-other summary { cursor: pointer; font-weight: 600; color: var(--text-primary); min-height: var(--control-height, 32px); display: flex; align-items: center; }
-.ct-other-fields { display: grid; gap: 8px; margin-top: 6px; }
-.ct-other-fields label { display: grid; gap: 4px; font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
-.ct-other-fields .btn { justify-self: start; }
-.ct-form .ct-check { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-weight: 400; }
-.ct-form .ct-check input { margin-top: 3px; flex: none; }
-.ct-form .ct-check > span { display: grid; gap: 2px; min-width: 0; }
-.ct-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.ct-prompt { border-color: var(--accent); }
-.ct-log li { color: var(--text-secondary); font-size: calc(var(--fs-md) * .9); overflow-wrap: anywhere; }
-.ct-log-when { color: var(--text-secondary); font-size: 0.75rem; margin-right: 6px; white-space: nowrap; }
-.ct-state.ct-error { color: var(--error, var(--fx-red)); }
-.ct-form button:focus-visible, .ct-form select:focus-visible, .ct-form input:focus-visible, .ct-other summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Team settings, Messaging tab (#5572): one status line and one button, two switches, the linked teams, "How this works". */
+.xt-panel { display: grid; gap: 14px; }
+.xt-head { display: flex; align-items: center; gap: 10px; }
+.xt-head .update-state-dot { margin: 0; flex: none; }
+.xt-line { font-weight: 600; font-size: var(--fs-lg, 1rem); min-width: 0; overflow-wrap: anywhere; }
+.xt-row-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.xt-primary { text-decoration: none; display: inline-flex; align-items: center; }
+.xt-switches { display: grid; gap: 4px; }
+.xt-switches label { display: flex; gap: 10px; align-items: center; min-height: 36px; font-weight: 500; }
+.xt-h { margin: 0 0 6px; font-size: var(--fs-md); color: var(--text-secondary); font-weight: 600; }
+.xt-teams { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.xt-teams li { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-primary); min-width: 0; }
+.xt-teams b { overflow-wrap: anywhere; }
+.xt-sub { color: var(--text-secondary); font-size: 0.75rem; overflow-wrap: anywhere; }
+.xt-how summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; color: var(--text-secondary); }
+.xt-sid { font-family: var(--font-mono, monospace); font-size: 0.8125rem; color: var(--text-primary); overflow-wrap: anywhere; }
+.xt-state.ct-error { color: var(--error, var(--fx-red)); }
+.xt-panel button:focus-visible, .xt-panel a.btn:focus-visible, .xt-panel input:focus-visible, .xt-how summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @media (max-width: 767px), (pointer: coarse) {
-    .ct-form .btn, .ct-form select, .ct-form input[type="text"] { min-height: var(--control-touch-height, 44px); }
-    .ct-other summary { min-height: var(--control-touch-height, 44px); }
-    .ct-form .ct-check { min-height: var(--control-touch-height, 44px); align-items: center; }
-    .ct-form .ct-check input { margin-top: 0; }
+    .xt-switches label, .xt-how summary { min-height: var(--control-touch-height, 44px); }
+    .xt-panel .btn { min-height: var(--control-touch-height, 44px); }
 }
 
 .team-availability-dialog .modal-close-btn { padding: 0; background: transparent; border-color: transparent; }

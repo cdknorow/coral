@@ -1,6 +1,6 @@
 // #4423: Team settings saves only what the person changed, against the real server (another client is a request straight to it):
 //   - a working-mode instruction and the files switch another client changed while the dialog was open survive a Save of the
-//     messaging switch, and nothing else is sent;
+//     messaging switch (saved from the Messaging tab, which sends only what changed), and nothing else is sent;
 //   - a working-mode field changed in the dialog is saved onto the server's current working mode (the other client's instruction stays);
 //   - the Health check tab saves the person's change onto the server's current health object: a rule another client changed stays;
 //   - a Save with nothing changed sends nothing and says so.
@@ -41,8 +41,12 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await open();
         assert.equal((await put('/working-mode', { mode: 'none', dependency_guidance: false, custom_instructions: 'from another client' })).status, 200);
         assert.equal((await put('/settings', { subscriber_id: 'Operator', cross_team_artifacts: true })).status, 200);
-        await ev(`${form}.elements.cross_team_messaging.checked = true; true`);
-        await submit();
+        // the messaging switch lives on the Messaging tab (#5572), which saves only what changed with its own Save
+        await ev(`document.querySelector('[data-settings-tab=messaging]').click(); true`);
+        await waitFor(`!!document.querySelector('#team-settings-messaging input[name=cross_team_messaging]')`, 'the Messaging tab', 8000);
+        await ev(`(() => { const c = document.querySelector('#team-settings-messaging input[name=cross_team_messaging]'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await ev(`document.querySelector('#team-settings-messaging [type=submit]').click(); true`);
+        await waitFor(`document.querySelector('#team-settings-messaging .xt-state')?.textContent === 'Saved.'`, 'the Messaging save', 10000);
         let mode = (await api('/working-mode')).body, board = (await api('/settings')).body;
         assert.equal(mode.custom_instructions, 'from another client', 'the working mode the dialog showed is not written back');
         assert.equal(board.cross_team_messaging, true, 'the switch the person turned on is saved');

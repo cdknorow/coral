@@ -68,11 +68,11 @@ const CASES = [
         console.log('2. the team settings that could not be read (Coral Hub refused them)');
         for (const [c, key] of [CASES[0], CASES[1], CASES[3], CASES[4], CASES[7], CASES[10], CASES[13]]) {
             await fresh(); await openTeam({ settings: c });
-            const note = await ev(`(() => { const n = document.querySelector('#agentic-panel-team-settings .team-settings-refusal'); return n && !n.hidden ? { text: n.textContent, role: n.getAttribute('role'), tab: !!document.getElementById('team-settings-tab-health'), off: document.querySelector('#agentic-panel-team-settings [name=cross_team_messaging]').disabled } : null; })()`);
-            check(`settings refused ${c.status} ${c.code || ''}: the note says it in our words, the switches are off, no Health check tab (${note && note.text})`, note && note.text.startsWith('Team settings: ') && (key === 'unavailable' ? note.text.endsWith('Unavailable') : SENTENCE[key].test(note.text)) && !note.text.includes(LEAK) && note.role === 'status' && note.off && !note.tab);
+            const note = await ev(`(() => { const n = document.querySelector('#agentic-panel-team-settings #team-settings-messaging .ct-unavailable'); return n ? { text: n.textContent, role: n.getAttribute('role'), tab: !!document.getElementById('team-settings-tab-health'), off: !document.querySelector('#agentic-panel-team-settings [name=cross_team_messaging]') } : null; })()`);
+            check(`settings refused ${c.status} ${c.code || ''}: the Messaging tab says it in our words, there are no switches, no Health check tab (${note && note.text})`, note && note.text.startsWith('Messaging settings: ') && (key === 'unavailable' ? note.text.endsWith('Unavailable') : SENTENCE[key].test(note.text)) && !note.text.includes(LEAK) && note.role === 'status' && note.off && !note.tab);
         }
         await fresh(); await openTeam({});
-        check('nothing refused: no note', await ev(`document.querySelector('#agentic-panel-team-settings .team-settings-refusal').hidden`));
+        check('nothing refused: no note, and the two switches are there', await ev(`!document.querySelector('#agentic-panel-team-settings #team-settings-messaging .ct-unavailable') && !!document.querySelector('#agentic-panel-team-settings [name=cross_team_messaging]') && !!document.querySelector('#agentic-panel-team-settings [name=cross_team_artifacts]')`));
 
         console.log('3. the Prompt inspection');
         for (const [c, key] of [CASES[0], CASES[1], CASES[3], CASES[6], CASES[7], CASES[11], CASES[14]]) {
