@@ -79,7 +79,6 @@ func TestTeamGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 }
 
 func TestTeamGenerationStillAsksClaudeWhenSignedIn(t *testing.T) {
-	t.Parallel() // no shared state: these ran one after another (#5622)
 	claudestub.Isolate(t)
 	stub := claudestub.New(t, claudestub.SignedIn)
 	_, msg := runTeamGeneration(context.Background(), stub.Path(), "a team of three", t.TempDir())
@@ -110,7 +109,6 @@ func generateTheme(t *testing.T, path string) (*httptest.ResponseRecorder, time.
 }
 
 func TestThemeGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
-	t.Parallel() // no shared state: these ran one after another (#5622)
 	for _, state := range []claudestub.State{claudestub.SignedOut, claudestub.LoginInProgress, claudestub.HangingAuth} {
 		t.Run(string(state), func(t *testing.T) {
 			claudestub.Isolate(t)
@@ -127,7 +125,6 @@ func TestThemeGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 }
 
 func TestThemeGenerationStillAsksClaudeWhenSignedIn(t *testing.T) {
-	t.Parallel() // no shared state: these ran one after another (#5622)
 	claudestub.Isolate(t)
 	stub := claudestub.New(t, claudestub.SignedIn)
 	rec, _ := generateTheme(t, stub.Path())
