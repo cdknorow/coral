@@ -61,11 +61,9 @@ var broadGroups = []struct {
 	{"Users", windows.WinBuiltinUsersSid},
 }
 
-// readAccess is any right that lets a holder read files in the folder or list it.
-const readAccess = windows.GENERIC_ALL | windows.GENERIC_READ | windows.FILE_READ_DATA | windows.FILE_LIST_DIRECTORY
-
-// DataDirBroadReaders lists the broad groups (Everyone, Authenticated Users, Users) that the
-// folder's DACL lets read it. A folder with no DACL at all grants everyone everything.
+// DataDirBroadReaders lists who the folder's DACL lets in besides this user, SYSTEM and Administrators:
+// the broad groups (Everyone, Authenticated Users, Users) and any other group or account with an allow
+// entry. A folder with no DACL at all grants everyone everything.
 func DataDirBroadReaders(dir string) ([]string, error) {
 	sd, err := windows.GetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
@@ -81,15 +79,31 @@ func DataDirBroadReaders(dir string) ([]string, error) {
 	return broadReadersOf(dacl)
 }
 
-// broadReadersOf lists the broad groups a DACL lets read.
+// broadReadersOf lists who a DACL lets in besides this user, SYSTEM and Administrators: every other
+// SID with an allow entry that applies to the object (#96 N1: a custom group or a named account counts, not
+// only Everyone, Authenticated Users and Users). Broad groups are named plainly; others by account name,
+// or by SID when it can't be looked up.
 func broadReadersOf(dacl *windows.ACL) ([]string, error) {
-	var sids []*windows.SID
+	me, err := currentUserSID()
+	if err != nil {
+		return nil, err
+	}
+	var ours []*windows.SID
+	ours = append(ours, me)
+	for _, t := range []windows.WELL_KNOWN_SID_TYPE{windows.WinLocalSystemSid, windows.WinBuiltinAdministratorsSid, windows.WinCreatorOwnerSid} {
+		sid, err := windows.CreateWellKnownSid(t)
+		if err != nil {
+			return nil, err
+		}
+		ours = append(ours, sid)
+	}
+	var broad []*windows.SID
 	for _, g := range broadGroups {
 		sid, err := windows.CreateWellKnownSid(g.sid)
 		if err != nil {
 			return nil, err
 		}
-		sids = append(sids, sid)
+		broad = append(broad, sid)
 	}
 	var found []string
 	seen := map[string]bool{}
@@ -98,16 +112,41 @@ func broadReadersOf(dacl *windows.ACL) ([]string, error) {
 		if err := windows.GetAce(dacl, i, &ace); err != nil {
 			return nil, err
 		}
-		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || ace.Mask&readAccess == 0 {
+		// An entry that is only for what is made below the folder does not apply to the folder itself.
+		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || ace.Mask == 0 || ace.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0 {
 			continue
 		}
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
+		if sidIn(sid, ours) {
+			continue
+		}
+		name := sid.String()
 		for j, g := range broadGroups {
-			if sid.Equals(sids[j]) && !seen[g.name] {
-				seen[g.name] = true
-				found = append(found, g.name)
+			if sid.Equals(broad[j]) {
+				name = g.name
 			}
+		}
+		if name == sid.String() {
+			if account, domain, _, err := sid.LookupAccount(""); err == nil {
+				name = account
+				if domain != "" {
+					name = domain + `\` + account
+				}
+			}
+		}
+		if !seen[name] {
+			seen[name] = true
+			found = append(found, name)
 		}
 	}
 	return found, nil
+}
+
+func sidIn(sid *windows.SID, set []*windows.SID) bool {
+	for _, s := range set {
+		if sid.Equals(s) {
+			return true
+		}
+	}
+	return false
 }
