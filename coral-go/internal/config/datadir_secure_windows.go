@@ -55,6 +55,11 @@ func secureExistingDataDir(dir string) (string, error) {
 			fmt.Sprintf(`takeown /F "%s" /R /D Y`, dir)+" and then "+
 			fmt.Sprintf(`icacls "%s" /inheritance:r /grant:r "%%USERDOMAIN%%\%%USERNAME%%:(OI)(CI)F" "SYSTEM:(OI)(CI)F" /T`, dir))
 	}
+	// Every file under the folder gets a new list below: only for a folder that is Coral's own (a CORAL_DATA_DIR pointed at a project or a
+	// drive would have its whole tree re-protected, and other accounts, services and backups locked out of data that is not Coral's).
+	if ok, other := looksLikeCoralDataDir(dir); !ok {
+		return "", sharedDataDirError(dir, groups, fmt.Sprintf("it holds files that are not Coral's (for example %q), and making every file in it private could lock other accounts and programs out of them", other))
+	}
 	if err := setOwnerOnly(h, true); err != nil {
 		return "", sharedDataDirError(dir, groups, fmt.Sprintf("its permissions could not be changed: %v", err))
 	}

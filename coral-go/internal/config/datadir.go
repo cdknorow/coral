@@ -97,3 +97,30 @@ func DataDirWarning(dir string) string {
 	return fmt.Sprintf("WARNING: Coral's data folder %s can be read by %s. It holds the API key, the command-line token and the databases. Move the folder (CORAL_DATA_DIR) to one only you can read, or remove those groups from its permissions (Properties > Security).",
 		dir, strings.Join(groups, ", "))
 }
+
+// coralDataNames are what Coral keeps in its data folder besides its databases (*.db): a folder with any of them is a Coral data folder.
+var coralDataNames = map[string]bool{
+	"api-key": true, "cli-token": true, "session_tokens": true, "artifacts": true, "uploads": true, "logs": true, "tmp": true,
+	"agent_knowledge": true, "workflows": true, "themes": true, "pi-sessions": true, "updates": true,
+}
+
+// looksLikeCoralDataDir says whether an existing folder is Coral's own: it is empty, or it holds a database (*.db) or one of
+// coralDataNames. A folder that is none of those (a CORAL_DATA_DIR pointed at a project or a drive) is someone else's data, and Coral does
+// not rewrite the permissions of every file in it (#5698 review of #96). other names one entry that is not Coral's, for the message.
+func looksLikeCoralDataDir(dir string) (ok bool, other string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false, ""
+	}
+	if len(entries) == 0 {
+		return true, ""
+	}
+	for _, e := range entries {
+		n := strings.ToLower(e.Name())
+		if coralDataNames[n] || strings.HasSuffix(n, ".db") || strings.HasSuffix(n, ".db-wal") || strings.HasSuffix(n, ".db-shm") {
+			return true, ""
+		}
+		other = e.Name()
+	}
+	return false, other
+}

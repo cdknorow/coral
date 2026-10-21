@@ -27,3 +27,25 @@ func TestEnsureDataDirCreatesAPrivateFolder(t *testing.T) {
 	}
 	assert.Error(t, EnsureDataDir(""))
 }
+
+// #5698 (review of #96): a folder is tightened, with every file in it, only when it is Coral's own.
+func TestLooksLikeCoralDataDir(t *testing.T) {
+	mk := func(names ...string) string {
+		dir := t.TempDir()
+		for _, n := range names {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600))
+		}
+		return dir
+	}
+	for name, names := range map[string][]string{"empty": nil, "a database": {"sessions.db"}, "an old database": {"old.db"}, "the key": {"api-key", "notes.txt"}, "a wal": {"x.DB-WAL"}} {
+		ok, _ := looksLikeCoralDataDir(mk(names...))
+		assert.True(t, ok, name)
+	}
+	for name, names := range map[string][]string{"a project": {"main.go", "README.md"}, "documents": {"report.docx"}, "only a log": {"coral.log"}} {
+		ok, other := looksLikeCoralDataDir(mk(names...))
+		assert.False(t, ok, name)
+		assert.NotEmpty(t, other, name)
+	}
+	ok, _ := looksLikeCoralDataDir(filepath.Join(t.TempDir(), "missing"))
+	assert.False(t, ok, "a folder that cannot be read is not judged Coral's")
+}

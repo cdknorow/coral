@@ -140,3 +140,11 @@ func TestWarningFollowsTheRecordedFindings(t *testing.T) {
 	Set(nil)
 	assert.Empty(t, Warning())
 }
+
+// #5698 (review of #97): the command Coral suggests quotes a rule id as PowerShell reads it: a curly single quote ends a quoted string too, so it is doubled like the straight one.
+func TestFixQuotesARuleIdTheWayPowerShellReadsIt(t *testing.T) {
+	f := Finding{Rule: Rule{ID: "{a}'; calc; \u2019b"}}
+	fix := f.Fix()
+	assert.Contains(t, fix, "'{a}''; calc; \u2019\u2019b'", "straight and curly quotes both doubled")
+	assert.NotContains(t, fix, "-Name {a}", "the id is always quoted")
+}
