@@ -465,6 +465,7 @@ func agyHooksDir(sessionID string) (string, error) {
 	if err := secfile.WriteFileNoFollow(filepath.Join(agents, "hooks.json"), b, 0o600); err != nil {
 		return fail("can't write agy's hooks.json in %s: %w", err)
 	}
+	rememberLaunchTemp(safeFileID(sessionID), dir)
 	return dir, nil
 }
 
