@@ -35,7 +35,7 @@ func (wr *WorkflowRunner) buildStepEnv(workflow *store.Workflow, runID int64, ru
 
 	// Ensure Coral tools (coral-board, hooks, etc.) and agent CLIs are in PATH
 	if toolsDir := agent.CoralToolsDir(); toolsDir != "" {
-		env = append(env, "PATH="+toolsDir+":"+os.Getenv("PATH"))
+		env = append(env, "PATH="+agent.PathWithDir(toolsDir, os.Getenv("PATH")))
 	}
 
 	// Previous step references
