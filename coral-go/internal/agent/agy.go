@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // AgyAgent implements the Agent interface for Antigravity CLI (agy).
@@ -277,6 +279,14 @@ func (a *AgyAgent) LaunchCommand(params LaunchParams) (string, error) {
 		raw = append(raw, export)
 		parts = append(parts, export)
 	}
+	if runtime.GOOS == "windows" {
+		// cmd.exe, which agy runs its hooks and commands through, then finds a bare program name
+		// only on PATH, never in the current folder, the agent's repository (#21, Security's #20
+		// F1b). Set in the launch line, so it holds whatever environment the terminal started with.
+		export := formatEnvExport("NoDefaultCurrentDirectoryInExePath", "1")
+		raw = append(raw, export)
+		parts = append(parts, export)
+	}
 	// NOTE: PATH injection is handled by callers via WrapWithBundlePath()
 
 	parts = append(parts, bin)
@@ -409,14 +419,23 @@ var agyHookEvents = []string{"SessionStart", "PreInvocation", "PreToolUse", "Pos
 // <tmp>/coral_agyhooks_<session>_*/.agents/hooks.json, and returns the folder. On an
 // error the launch fails (#3601 W12: an agent without Coral's hooks is silently degraded).
 // CleanupTempFiles removes it with the session's other temp files.
+//
+// On Windows agy runs each hook through cmd.exe, which looks in the agent's folder first, so
+// a hook command must name the tool by an absolute path cmd.exe reads (ResolveCmdHookCommand).
+// When there is none, no hooks are installed ("" and no error): agy runs without Coral's
+// state tracking, which is logged, rather than with a command a repository could hijack
+// (#21, Security's #20 F1). The folder, .agents and hooks.json (the commands agy runs) are
+// readable and writable only by this user and SYSTEM (#21, #25 H2).
 func agyHooksDir(sessionID string) (string, error) {
-	dir, err := os.MkdirTemp(LaunchTempDir(), "coral_agyhooks_"+safeFileID(sessionID)+"_*")
-	if err != nil {
-		return "", fmt.Errorf("can't create agy's hooks folder in the temp folder %s: %w", LaunchTempDir(), err)
-	}
 	spec := map[string]any{}
 	for _, event := range agyHookEvents {
-		handler := map[string]any{"type": "command", "command": ResolveCmdHookCommand("coral-hook-agentic-state --agy " + event), "timeout": 10}
+		command, ok := ResolveCmdHookCommand("coral-hook-agentic-state --agy " + event)
+		if !ok {
+			slog.Warn("agy runs without Coral's hooks, so its state isn't tracked: the hook tool has no absolute path cmd.exe can run (no tools folder, no tool in it, or a path with characters cmd.exe reads and no 8.3 short name)",
+				"session", sessionID, "tools", CoralToolsDir())
+			return "", nil
+		}
+		handler := map[string]any{"type": "command", "command": command, "timeout": 10}
 		switch event {
 		case "PreToolUse", "PostToolUse":
 			spec[event] = []any{map[string]any{"matcher": ".*", "hooks": []any{handler}}}
@@ -425,14 +444,26 @@ func agyHooksDir(sessionID string) (string, error) {
 		}
 	}
 	b, _ := json.MarshalIndent(map[string]any{"coral": spec}, "", "  ")
+	dir, err := os.MkdirTemp(LaunchTempDir(), "coral_agyhooks_"+safeFileID(sessionID)+"_*")
+	if err != nil {
+		return "", fmt.Errorf("can't create agy's hooks folder in the temp folder %s: %w", LaunchTempDir(), err)
+	}
+	fail := func(format string, err error) (string, error) {
+		os.RemoveAll(dir)
+		return "", fmt.Errorf(format, dir, err)
+	}
+	if err := secfile.Protect(dir); err != nil {
+		return fail("can't make agy's hooks folder %s private: %w", err)
+	}
 	agents := filepath.Join(dir, ".agents")
 	if err := os.Mkdir(agents, 0o700); err != nil {
-		os.RemoveAll(dir)
-		return "", fmt.Errorf("can't create agy's hooks folder in %s: %w", dir, err)
+		return fail("can't create agy's hooks folder in %s: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(agents, "hooks.json"), b, 0o600); err != nil {
-		os.RemoveAll(dir)
-		return "", fmt.Errorf("can't write agy's hooks.json in %s: %w", dir, err)
+	if err := secfile.Protect(agents); err != nil {
+		return fail("can't make agy's hooks folder in %s private: %w", err)
+	}
+	if err := secfile.WriteFileNoFollow(filepath.Join(agents, "hooks.json"), b, 0o600); err != nil {
+		return fail("can't write agy's hooks.json in %s: %w", err)
 	}
 	return dir, nil
 }

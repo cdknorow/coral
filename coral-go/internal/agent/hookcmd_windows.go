@@ -4,8 +4,8 @@ package agent
 
 import "golang.org/x/sys/windows"
 
-// shortPathName is p's 8.3 short form (GetShortPathNameW), or "" when Windows has none, as
-// on a volume with 8.3 names turned off, where it returns the long path unchanged.
+// shortPathName is p's 8.3 short form (GetShortPathNameW), or "" on an error. On a volume
+// with 8.3 names turned off it is the long path, unchanged.
 func shortPathName(p string) string {
 	lp, err := windows.UTF16PtrFromString(p)
 	if err != nil {
