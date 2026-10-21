@@ -463,6 +463,19 @@ func TestArtifactRouteIsExactDigestOnly(t *testing.T) {
 	assert.Equal(t, TierView, Classify("GET", "/api/artifacts/"+hex, ""))
 	assert.Equal(t, TierView, Classify("HEAD", "/api/artifacts/"+hex, ""))
 	assert.True(t, AllowRequest(func() Mode { return TierView })("GET", "/api/artifacts/"+hex, ""), "readable in view mode")
+	// The machine-wide list (#5575) is a View read with exactly its three query parameters, and a delete is Launch: both are the owner's alone, which the machine checks (hubOwnerRequest).
+	assert.Equal(t, TierView, Classify("GET", "/api/artifacts", ""))
+	assert.Equal(t, TierView, Classify("GET", "/api/artifacts", "limit=50&cursor=abc&board=team-1"))
+	assert.Equal(t, TierNever, Classify("GET", "/api/artifacts", "q=x"), "no other parameter")
+	assert.Equal(t, TierLaunch, Classify("DELETE", "/api/artifacts/"+hex, ""))
+	assert.Equal(t, TierNever, Classify("DELETE", "/api/artifacts/"+hex, "force=1"), "no query on a delete")
+	assert.Equal(t, TierNever, Classify("DELETE", "/api/artifacts/"+hex[:63], ""))
+	assert.Equal(t, TierNever, Classify("DELETE", "/api/artifacts/"+strings.ToUpper(hex), ""))
+	assert.Equal(t, TierNever, Classify("DELETE", "/api/artifacts", ""), "no delete of the list")
+	assert.Equal(t, TierNever, Classify("POST", "/api/artifacts/"+hex, ""))
+	assert.False(t, AllowRequest(func() Mode { return TierView })("DELETE", "/api/artifacts/"+hex, ""), "a delete needs launch mode")
+	assert.False(t, AllowRequest(func() Mode { return TierInteract })("DELETE", "/api/artifacts/"+hex, ""), "a delete needs launch mode")
+	assert.True(t, AllowRequest(func() Mode { return TierLaunch })("DELETE", "/api/artifacts/"+hex, ""))
 	for _, probe := range []struct{ method, path, query string }{
 		{"GET", "/api/artifacts/" + hex[:63], ""},                    // 63 digits
 		{"GET", "/api/artifacts/" + hex + "0", ""},                   // 65 digits
@@ -475,7 +488,6 @@ func TestArtifactRouteIsExactDigestOnly(t *testing.T) {
 		{"GET", "/api/artifacts/" + hex[:63] + "g", ""},              // not hex
 		{"GET", "/api/artifacts/" + hex[:63] + "١", ""},              // look-alike digit
 		{"GET", "/api/artifacts/" + hex[:62] + "\x00a", ""},          // NUL
-		{"GET", "/api/artifacts", ""},                                // no list
 		{"GET", "/api/artifacts/", ""},                               // empty id
 		{"GET", "/api/artifacts/x", ""},                              // wildcard-looking id
 		{"GET", "/api/artifacts/*", ""},                              //
@@ -483,7 +495,6 @@ func TestArtifactRouteIsExactDigestOnly(t *testing.T) {
 		{"GET", "/api/artifacts/" + hex, "x"},                        //
 		{"POST", "/api/artifacts/" + hex, ""},                        // writes
 		{"PUT", "/api/artifacts/" + hex, ""},                         //
-		{"DELETE", "/api/artifacts/" + hex, ""},                      //
 		{"POST", "/api/artifacts", ""},                               // upload is not part of this change
 		{"POST", "/api/agent/artifacts", ""},                         // the agent upload route
 		{"GET", "/api/agent/artifacts", ""},                          //

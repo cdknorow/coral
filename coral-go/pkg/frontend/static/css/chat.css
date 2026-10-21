@@ -1672,6 +1672,3 @@
 .chat-attachment-unshare:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 767px) { .chat-attachment-unshare { min-width: 44px; min-height: 44px; } }
 
-.share-notice { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border)); border-radius: var(--radius-lg, 8px); background: color-mix(in srgb, var(--warning) 9%, var(--bg-secondary)); color: var(--text-primary); }
-.share-notice-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
-@media (max-width: 767px) { .share-notice-actions { width: 100%; margin-left: 0; } .share-notice-actions .btn { flex: 1 1 auto; min-height: 44px; } }

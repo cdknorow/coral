@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,8 +12,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // GET /api/artifacts/{id}/meta (#5465): the facts of an artifact without its bytes.
@@ -25,7 +22,7 @@ func getArtifactMeta(t *testing.T, rig *artifactRig, id string, tunneled bool) (
 	require.NoError(t, err)
 	req.Header.Set(testDashboardHeader, "1")
 	if tunneled {
-		req.Header.Set(tunnel.ViaHeader, "x")
+		setHubOwner(t, req)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -68,21 +65,6 @@ func TestArtifactMetaIs404ForAnAbsentArtifact(t *testing.T) {
 	rig := uploadRig(t)
 	code, _, _ := getArtifactMeta(t, rig, strings.Repeat("a", 64), false)
 	assert.Equal(t, http.StatusNotFound, code)
-}
-
-// The owner's switch hides a pasted image from the Hub for the meta read exactly as for the content read.
-func TestArtifactMetaFollowsThePasteSwitch(t *testing.T) {
-	rig := uploadRig(t)
-	_, out := postImage(t, "p.png", cleanPNG(t), "s1")
-	id := artifactOf(out)["id"].(string)
-	code, _, _ := getArtifactMeta(t, rig, id, true)
-	require.Equal(t, http.StatusOK, code, "on by default")
-	require.NoError(t, rig.ss.SetSetting(context.Background(), SharePastedImagesSetting, "false"))
-	code, _, _ = getArtifactMeta(t, rig, id, true)
-	assert.Equal(t, http.StatusNotFound, code, "off: a tunneled meta read is 404, as the content read is")
-	assert.Equal(t, http.StatusNotFound, getArtifact(t, rig, id, true))
-	code, _, _ = getArtifactMeta(t, rig, id, false)
-	assert.Equal(t, http.StatusOK, code, "off: this computer still sees it")
 }
 
 // An id is exactly 64 lower-case hex digits: anything else is 400 on both reads.

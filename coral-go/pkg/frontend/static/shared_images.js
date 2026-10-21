@@ -4,10 +4,8 @@
  *  - splitSharedImages: the leading images of a user turn and the text after them. Two shapes: today's "<link> <link> <hint>" and the one before #5481, "<path> coral://artifacts/<hex>" pairs (an upload
  *    path, whitespace, a 64-hex link, repeated), which older turns in a session's history still have. A user's own text that starts with a link (no hint after it), or a link with no upload path before it, is never
  *    taken for one.
- *  - the notice before the first paste after each Coral Hub connect (the images are visible to Hub viewers and cannot be hidden), with the way to turn sharing off;
  *  - the call that removes one image's shared copy. */
 import { serverFetch } from './server_base.js';
-import { browserSession } from './safe_storage.js';
 
 /** The one hint typed after the image links (#5496): the exact command that fetches each of them, with the real link filled in, then what to do with its output. The same words every time, so the chat can tell
  *  them from a person's text; an agent that has never seen a coral:// link can act on it as it stands. */
@@ -50,47 +48,6 @@ export function attachmentsLead(atts) {
     const uris = atts.filter(a => a.artifact && a.artifact.uri).map(a => a.artifact.uri);
     if (uris.length) parts.push(imageHint(uris));
     return parts;
-}
-
-const NOTICE_KEY = 'coral-share-notice-connect';
-
-/** Coral Hub's current connection, as { connected, since }: the notice is once for each. */
-async function hubConnection() {
-    try {
-        const resp = await fetch('/api/cloud/status');
-        if (!resp.ok) return { connected: false, since: '' };
-        const st = await resp.json();
-        return { connected: st.state === 'connected', since: String(st.connected_at || ''), share: st.share_pasted_images !== false };
-    } catch { return { connected: false, since: '' }; }
-}
-
-export async function setShareSwitch(on) {
-    const resp = await fetch('/api/cloud/share-pasted-images', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ share: !!on }) });
-    return resp.ok;
-}
-
-/** Before an image is pasted: when Coral Hub is connected and the person has not been told for this connect, show the notice (in `host`) and wait for the answer. Resolves when it is answered; never rejects. */
-export async function ensureShareNotice(host) {
-    const hub = await hubConnection();
-    if (!hub.connected || !hub.share) return;
-    try { if (browserSession.get(NOTICE_KEY) === hub.since) return; } catch { /* storage blocked: ask each time */ }
-    await new Promise((resolve) => {
-        const box = document.createElement('div');
-        box.className = 'share-notice'; box.setAttribute('role', 'alertdialog'); box.setAttribute('aria-labelledby', 'share-notice-title'); box.setAttribute('aria-describedby', 'share-notice-body');
-        const title = document.createElement('b'); title.id = 'share-notice-title'; title.textContent = 'Coral Hub is connected. ';
-        const body = document.createElement('span'); body.id = 'share-notice-body';
-        body.textContent = 'Images you paste are visible to anyone who can view this Coral through Coral Hub, and cannot be hidden.';
-        const row = document.createElement('div'); row.className = 'share-notice-actions';
-        const off = document.createElement('button'); off.type = 'button'; off.className = 'btn'; off.textContent = "Don't share pasted images";
-        const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'btn btn-primary'; ok.textContent = 'OK';
-        const done = () => { try { browserSession.set(NOTICE_KEY, hub.since); } catch { /* storage blocked */ } box.remove(); resolve(); };
-        off.addEventListener('click', async () => { off.disabled = true; await setShareSwitch(false); done(); });
-        ok.addEventListener('click', done);
-        row.append(off, ok); box.append(title, body, row);
-        host.prepend(box);
-        host.style.display = 'flex'; // display-ok: the attachments strip is shown and hidden by controls.js renderAttachments with style.display, so the notice shows the strip too
-        ok.focus();
-    });
 }
 
 /** Remove this agent's shared copy of an image: the Hub's view of it goes with it, the agent's file stays. */

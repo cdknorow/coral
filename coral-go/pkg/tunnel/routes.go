@@ -207,12 +207,15 @@ var routeTable = cat(
 		"/api/templates/commands", "/api/templates/commands/{category}", "/api/templates/commands/{category}/{name}",
 		"/api/views", "/api/views/{id}",
 		"/api/agent-models", "/api/settings/default-prompts", "/api/session-artifacts",
-		// Images pasted or attached in the dashboard are artifacts too (#5284): an image in a chat is served through this same read; /api/upload and /api/shared-images stay local only, and the
-		// owner's switch (share_pasted_images, PUT /api/cloud/share-pasted-images, never from here) makes a request through the tunnel for a pasted-only image a 404.
+		// Images pasted or attached in the dashboard are artifacts too (#5284): an image in a chat is served through this same read; /api/upload and /api/shared-images stay local only. Through the hub every artifact
+		// and pasted image is the OWNER's alone (#5575): the machine refuses anyone but the owner (the stamped marker, hubrole.go) whatever their tier.
 		// A content-addressed agent artifact, named by its full SHA-256. Reads only; the exact 64-hex shape is
 		// enforced by the {hex64} segment, and the only query is the link form v=2 (routes_query.go, #3179). Upload (POST /api/agent/artifacts) and
 		// the artifact list under /api/agent/ stay unlisted (never).
 		"/api/artifacts/{hex64}",
+		// The machine-wide list (#5575): every artifact on this computer with its uploader, board and source, paged by a cursor. OWNER ONLY, as every artifact read
+		// through the hub now is: the machine refuses anyone but the owner (the stamped marker, hubrole.go) whatever tier they hold.
+		"/api/artifacts",
 		// The same artifact without its bytes (#5465, coral-hub): id, size, the media type a download is served as and the stored name, 404 exactly as the content read is, never cached.
 		"/api/artifacts/{hex64}/meta",
 		// The comments on an artifact (#5176): reads only, for every viewer tier (an agent's own artifact, so the same trust as the artifact). Writing, replying, resolving and the owner's lock are
@@ -356,6 +359,9 @@ var routeTable = cat(
 	// and the machine refuses anyone but the owner (the stamped marker, hubrole.go): a grantee at launch tier gets 403. The hub may set only
 	// the health part of a board's settings; the cross-team fields stay local (#3377, #4379).
 	rules(http.MethodPut, TierLaunch, "/api/board/{project}/settings"),
+	// Deleting an artifact from the hub's Artifacts tab (#5575): Launch, and the machine refuses anyone but the owner (the stamped marker, hubrole.go); each delete is
+	// recorded in the Operator actions with the hub user. Pasted images are artifacts too, so this removes them as well.
+	rules(http.MethodDelete, TierLaunch, "/api/artifacts/{hex64}"),
 	rules(http.MethodGet, TierLaunch, PromptInspectionPath),
 	rules(http.MethodGet, TierView, UpdateStatusPath),
 	rules(http.MethodPost, TierLaunch, UpdateRelaunchPath),

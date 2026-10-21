@@ -34,13 +34,11 @@ async function httpJson(method, p, body, headers = {}) {
             await Emulation.setTouchEmulationEnabled({ enabled: mobile });
             await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
             await ev(`window.__coralReady.then(() => true)`);
-            await pageJson('PUT', '/api/cloud/share-pasted-images', { share: true });
             // record the upload replies and what Send types into the agent (the send itself answers ok and goes nowhere); the Hub status is stubbed per test
             await ev(`(() => { const real = window.fetch; window.__rec = { uploads: [], sends: [], puts: [], deletes: [] }; window.__hub = { state: 'off' };
                 window.fetch = async (u, o = {}) => { const url = String(u), m = (o.method || 'GET').toUpperCase();
-                    if (url.endsWith('/api/cloud/status') && m === 'GET') return new Response(JSON.stringify({ state: window.__hub.state, connected_at: window.__hub.at || '', share_pasted_images: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+                    if (url.endsWith('/api/cloud/status') && m === 'GET') return new Response(JSON.stringify({ state: window.__hub.state, connected_at: window.__hub.at || '' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
                     if (/\\/send$/.test(url) && m === 'POST') { window.__rec.sends.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }); }
-                    if (url.includes('/api/cloud/share-pasted-images') && m === 'PUT') window.__rec.puts.push(JSON.parse(o.body));
                     const resp = await real(u, o);
                     if (url.includes('/api/shared-images/') && m === 'DELETE') window.__rec.deletes.push({ url, status: resp.status, body: await resp.clone().json().catch(() => null) });
                     if (url.endsWith('/api/upload') && m === 'POST') window.__rec.uploads.push(await resp.clone().json());
@@ -86,46 +84,27 @@ async function httpJson(method, p, body, headers = {}) {
             check(`${tag}: a user's own link at the start of a message is shown whole`, old[1].text.includes(`coral://artifacts/${up.artifact.id}`) && old[1].text.endsWith('what is this') && old[1].thumbs === 0, JSON.stringify(old[1]));
             check(`${tag}: an old image attachment has no remove button (it is no artifact)`, old[2].thumbs === 0 && old[2].unshare === 0, JSON.stringify(old[2]));
 
-            // 5. the artifact route serves the image; the owner's switch off keeps it local
+            // 5. the artifact route serves the image to this computer (through Coral Hub it is the owner's alone, #5575: the Go tests drive that)
             const served = await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2').then(r => ({ status: r.status, type: r.headers.get('content-type') }))`);
             check(`${tag}: GET /api/artifacts/{id} serves the image`, served.status === 200 && served.type === 'image/png', JSON.stringify(served));
-            const sw = await pageJson('PUT', '/api/cloud/share-pasted-images', { share: false });
-            check(`${tag}: the switch is saved and reported by the hub status (share_pasted_images false)`, sw.status === 200 && sw.data && sw.data.share_pasted_images === false, JSON.stringify(sw));
-            check(`${tag}: with it off this computer still serves the image`, (await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2').then(r => r.status)`)) === 200);
-            await pageJson('PUT', '/api/cloud/share-pasted-images', { share: true });
 
             // 6. Remove shared copy: the thumbnail goes back to the chip, the artifact is gone
             await render([{ type: 'user', content: typed, key: 'k5', timestamp: '2026-10-19T00:05:00Z' }]);
             await waitFor(`!!document.querySelector('#pia-box .chat-attachment-unshare:not([hidden])')`, `${tag}: the remove button`, { timeout: 10000 });
             await ev(`document.querySelector('#pia-box .chat-attachment-unshare').click(); true`);
             await waitFor(`document.getElementById('confirm-modal').style.display === 'flex'`, `${tag}: the confirmation`, { timeout: 5000 });
-            check(`${tag}: removing asks first and says what is lost`, /Coral Hub viewers lose/.test(await ev(`document.getElementById('confirm-modal-message').textContent`)));
+            check(`${tag}: removing asks first and says what is lost`, /removed from Coral Hub/.test(await ev(`document.getElementById('confirm-modal-message').textContent`)));
             await ev(`document.getElementById('confirm-modal-yes').click(); true`);
             await waitFor(`window.__rec.deletes.length === 1 && document.querySelector('#pia-box .chat-attachment-thumb').hidden === true`, `${tag}: the thumbnail turns back into the chip`, { timeout: 8000 });
             check(`${tag}: the chip ("Pasted image") stays`, (await ev(`(document.querySelector('#pia-box .chat-attachment-chip') || {}).textContent`)) === 'Pasted image');
             check(`${tag}: the shared copy is gone from the artifact route (asked past the browser's cache: an artifact is cached for good)`, (await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2', { cache: 'no-store' }).then(r => r.status)`)) === 404, JSON.stringify(await ev(`window.__rec.deletes`)));
 
-            // 7. the notice: once for each Coral Hub connect, with the way to turn sharing off
-            await ev(`document.getElementById('pia-box')?.remove(); sessionStorage.clear(); window.__rec.puts = []; window.__hub = { state: 'connected', at: 'T1' }; true`);
+            // 7. no notice before a paste, whatever the Coral Hub state: pasted images are the owner's alone through the hub, so there is nothing to warn about or switch off (#5575)
+            await ev(`document.getElementById('pia-box')?.remove(); sessionStorage.clear(); window.__hub = { state: 'connected', at: 'T1' }; true`);
             const n0 = await ev(`window.__rec.uploads.length`);
-            const pending = png().then(() => ev(`import(${S} + 'controls.js').then(m => { window.__done = false; return m.uploadAndInsertImage(window.__file).then(() => { window.__done = true; }); })`));
-            await waitFor(`!!document.querySelector('#image-attachments .share-notice')`, `${tag}: the notice appears before the upload`, { timeout: 8000 });
-            check(`${tag}: nothing is uploaded until it is answered`, (await ev(`window.__rec.uploads.length`)) === n0, String(n0));
-            const n1 = await ev(`(() => { const n = document.querySelector('#image-attachments .share-notice'); return { text: n.textContent, role: n.getAttribute('role'), focus: document.activeElement && document.activeElement.textContent }; })()`);
-            check(`${tag}: it says the image is visible through Coral Hub and cannot be hidden, as an alert dialog with the focus on OK`, /visible to anyone who can view this Coral through Coral Hub/.test(n1.text) && /cannot be hidden/.test(n1.text) && n1.role === 'alertdialog' && n1.focus === 'OK', JSON.stringify(n1));
-            await ev(`[...document.querySelectorAll('#image-attachments .share-notice button')].find(b => b.textContent === 'OK').click(); true`);
-            await pending; await waitFor(`window.__done === true`, `${tag}: the upload goes on after OK`, { timeout: 10000 });
-            await upload();
-            check(`${tag}: a second paste on the same connect shows no notice`, (await ev(`document.querySelectorAll('#image-attachments .share-notice').length`)) === 0);
-            await ev(`window.__hub = { state: 'connected', at: 'T2' }; true`);
-            const again = png().then(() => ev(`import(${S} + 'controls.js').then(m => m.uploadAndInsertImage(window.__file))`));
-            await waitFor(`!!document.querySelector('#image-attachments .share-notice')`, `${tag}: a new connect asks again`, { timeout: 8000 });
-            await ev(`[...document.querySelectorAll('#image-attachments .share-notice button')].find(b => b.textContent === "Don't share pasted images").click(); true`);
-            await again;
-            const puts = await ev(`window.__rec.puts`);
-            check(`${tag}: "Don't share pasted images" turns the switch off`, puts.length === 1 && puts[0].share === false, JSON.stringify(puts));
-            check(`${tag}: the status now says sharing is off`, (await pageJson('GET', '/api/cloud/status?now=1')).data.share_pasted_images === false);
-            await pageJson('PUT', '/api/cloud/share-pasted-images', { share: true });
+            await png();
+            await ev(`import(${S} + 'controls.js').then(m => m.uploadAndInsertImage(window.__file))`);
+            check(`${tag}: with Coral Hub connected a paste uploads at once and shows no notice`, (await ev(`window.__rec.uploads.length`)) === n0 + 1 && (await ev(`document.querySelectorAll('#image-attachments .share-notice').length`)) === 0);
             await ev(`window.__hub = { state: 'off' }; true`);
             // leave nothing attached
             await ev(`import(${S} + 'controls.js').then(m => { for (let i = m.getPendingAttachments().length - 1; i >= 0; i--) m.removeAttachment(i); return true; })`);

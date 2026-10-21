@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/server/routes"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/pkg/tunnel"
 )
@@ -118,6 +119,14 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	require.Equal(t, 404, call(h, "GET", "/api/board/b-nosuchboard00/tasks/1/cost", "", nil).Code)
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"view"}`, js).Code)
 	hub := map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}
+	// Artifacts and pasted images are the owner's alone through the hub (#5575): the routes that serve them are swept as the owner (the stamped marker and the enrolled label), and a
+	// plain hub caller is checked to be refused on each of them, not to leak.
+	const sweepOwner = "hub-user-1234abcd"
+	routes.SetHubOwnerLabel(func(context.Context) (string, error) { return sweepOwner, nil })
+	t.Cleanup(func() { routes.SetHubOwnerLabel(nil) })
+	owner := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubRoleHeader: "owner", tunnel.HubUserHeader: sweepOwner}
+	ownerOnly := map[string]bool{"/api/artifacts": true, "/api/artifacts/{id}": true, "/api/artifacts/{id}/meta": true, "/api/artifacts/{id}/comments": true,
+		"/api/board/{project}/artifacts": true, "/api/session-artifacts": true, "/api/board/{project}/tasks/{taskID}/artifact-content": true}
 
 	golden, err := os.ReadFile("testdata/cloud_routes.golden")
 	require.NoError(t, err)
@@ -144,6 +153,12 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		}
 		q := hubSweepQuery(f[1], sid)
 		rec := call(h, "GET", path+q, "", hub)
+		if ownerOnly[f[1]] {
+			plain := rec
+			require.Equal(t, 403, plain.Code, "%s through the hub without the owner marker: %s", f[1], plain.Body.String())
+			require.Contains(t, plain.Body.String(), "owner_only", f[1])
+			rec = call(h, "GET", path+q, "", owner)
+		}
 		tried = append(tried, f[1]+" "+strconv.Itoa(rec.Code))
 		if rec.Code != 200 && os.Getenv("SWEEP_DEBUG") == "1" {
 			t.Logf("NON200 %s%s -> %d %.160s", path, q, rec.Code, rec.Body.String())

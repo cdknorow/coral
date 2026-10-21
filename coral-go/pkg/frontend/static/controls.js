@@ -16,7 +16,7 @@ import { addPendingMessage, confirmPendingMessage, removePendingMessage, resetLi
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked } from './hub_access.js';
-import { attachmentsLead, ensureShareNotice } from './shared_images.js';
+import { attachmentsLead } from './shared_images.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
 import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends } from './terminal_gone.js';
@@ -979,7 +979,6 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
         formData.append("session_id", sid); // the agent this image is for: its artifact copy goes on that agent's record (#5284)
 
         try {
-            await ensureShareNotice(document.getElementById("image-attachments")); // Coral Hub connected: say once per connect that a pasted image is visible there
             showToast(`Uploading ${file.name}...`);
             // The path is typed into the agent, so the file must land on the agent's own server.
             const resp = await serverFetch(sessionServer(targetSession), "/api/upload", {

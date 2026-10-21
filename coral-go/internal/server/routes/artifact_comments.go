@@ -279,12 +279,11 @@ func (h *SessionsHandler) listArtifactComments(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	id, ok := h.commentArtifact(w, r, false)
-	if !ok {
+	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
 		return
 	}
-	if h.hubMayNotSeePastedImage(r, id) { // the owner's switch hides a pasted image's comments from the Hub too (#5284)
-		errNotFound(w, "artifact not found")
+	id, ok := h.commentArtifact(w, r, false)
+	if !ok {
 		return
 	}
 	state := r.URL.Query().Get("state")

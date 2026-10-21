@@ -55,28 +55,6 @@ func uploadRecordCounts(coralDir, id, exceptSession string) (all, pasted int) {
 	return all, pasted
 }
 
-// pasteOnlyArtifact reports whether artifact id is known only as a pasted image: it has upload records and every one of them is a paste. An artifact with a record of an agent's own upload (or no
-// record at all: a received file, an older one) is not.
-func pasteOnlyArtifact(coralDir, id string) bool {
-	all, pasted := uploadRecordCounts(coralDir, id, "")
-	return all > 0 && all == pasted
-}
-
-// hubMayNotSeePastedImage is the check the artifact route makes (#5284): a request that came through the Coral Hub tunnel, for an artifact that is only a pasted image, while the owner's
-// switch "share pasted images" is off (or cannot be read: closed), is answered 404 as if there were no such artifact.
-func (h *SessionsHandler) hubMayNotSeePastedImage(r *http.Request, id string) bool {
-	if !cloud.Tunneled(r) {
-		return false
-	}
-	share := false
-	if h.ss != nil {
-		if s, err := h.ss.GetSettings(r.Context()); err == nil {
-			share = HubSharePastedImages(s)
-		}
-	}
-	return !share && pasteOnlyArtifact(h.cfg.CoralDir(), id)
-}
-
 // otherReferences counts what else lists artifact id once one session's record is gone: the other sessions' records, pending receipts and the boards' shared and received rows.
 func otherReferences(coralDir, id, exceptSession string) int {
 	n, _ := uploadRecordCounts(coralDir, id, exceptSession)
@@ -190,78 +168,4 @@ func (h *SessionsHandler) PurgePastedImages(ctx context.Context, cutoff time.Tim
 		slog.Info("[artifacts] pasted images removed with the uploads retention", "records", records, "artifacts", blobs)
 	}
 	return records, blobs
-}
-
-// pasteOnlyIDs is the set of artifact ids that are known only as pasted images (every upload record of theirs is a paste), from one pass over the upload records.
-func pasteOnlyIDs(coralDir string) map[string]bool {
-	counts := map[string][2]int{}
-	sessions, err := os.ReadDir(filepath.Join(coralDir, "artifacts", "uploads"))
-	if err != nil {
-		return nil
-	}
-	for _, s := range sessions {
-		if !s.IsDir() {
-			continue
-		}
-		up := uploadsDir(coralDir, s.Name())
-		if up == "" {
-			continue
-		}
-		files, err := os.ReadDir(up)
-		if err != nil {
-			continue
-		}
-		for _, f := range files {
-			name := f.Name()
-			if len(name) != 69 || name[64:] != ".json" || !objectNameRe.MatchString(name[:64]) {
-				continue
-			}
-			rec, ok := readUploadRecord(coralDir, s.Name(), name[:64])
-			if !ok {
-				continue
-			}
-			c := counts[name[:64]]
-			c[0]++
-			if rec.Source == sourcePaste {
-				c[1]++
-			}
-			counts[name[:64]] = c
-		}
-	}
-	out := map[string]bool{}
-	for id, c := range counts {
-		if c[0] > 0 && c[0] == c[1] {
-			out[id] = true
-		}
-	}
-	return out
-}
-
-// hidePastedFromHub removes the pasted-only images from an artifact list when the request came through the Coral Hub tunnel and the owner's switch "share pasted images" is off (or cannot be
-// read: closed). The artifact route answers 404 for their bytes (hubMayNotSeePastedImage); the lists must not show their names, ids and sizes either (#5284, Security's review).
-func hidePastedFromHub(r *http.Request, coralDir string, items []teamArtifact) []teamArtifact {
-	if !cloud.Tunneled(r) || len(items) == 0 {
-		return items
-	}
-	share := false
-	if uploadSettings != nil {
-		if s, err := uploadSettings(r.Context()); err == nil {
-			share = HubSharePastedImages(s)
-		}
-	}
-	if share {
-		return items
-	}
-	hidden := pasteOnlyIDs(coralDir)
-	if len(hidden) == 0 {
-		return items
-	}
-	out := make([]teamArtifact, 0, len(items))
-	for _, it := range items {
-		if it.Source == "upload" && hidden[it.ID] {
-			continue
-		}
-		out = append(out, it)
-	}
-	return out
 }

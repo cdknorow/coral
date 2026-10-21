@@ -28,7 +28,6 @@ const (
 	HubOperatorDisabled      = "hub_operator_disabled"
 	LegacyHubOperator        = "hub_acts_as_operator"
 	HubRedactTokens          = "hub_redact_tokens"
-	HubSharePastedImages     = "hub_share_pasted_images"
 	CloudAllowHubAutoAccept  = "cloud_allow_hub_auto_accept"
 	HubRelaunchUpdates       = "hub_relaunch_updates"
 	UpdateChannel            = "update_channel"
@@ -203,7 +202,6 @@ func init() {
 	ownRoute(CloudAllowHubAutoAccept, KindBool, "true", "The Hub may auto-accept.")
 	ownRoute(HubRelaunchUpdates, KindBool, "true", "The Hub's owner may relaunch this Coral to install a staged update (#5280).")
 	ownRoute(HubRedactTokens, KindBool, "true", "Redact tokens in what the Hub sees.")
-	ownRoute(HubSharePastedImages, KindBool, "true", "Coral Hub viewers can see images pasted or attached in the dashboard (#5284); off, the Hub gets 404 for them.")
 	ownRoute("hub_signin_enabled", KindBool, "false", "Sign in with the Hub.")
 	optIn("hub_signin_enabled")
 	ownRoute("hub_signin_origins", KindText, "", "Origins allowed for the Hub sign-in.")

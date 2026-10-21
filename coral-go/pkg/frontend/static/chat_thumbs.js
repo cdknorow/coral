@@ -76,7 +76,7 @@ registerActions({
     'chat-thumb-unshare': el => {
         const x = el.closest('.chat-attachment-unshare'), s = state.currentSession;
         if (!x || !s || !s.session_id) return;
-        showConfirmModal('Remove the shared copy?', 'Coral Hub viewers lose this image, and so does the chat here. The agent keeps its own file.', async () => {
+        showConfirmModal('Remove the shared copy?', 'The image is removed from Coral Hub and from the chat here. The agent keeps its own file.', async () => {
             if (await removeSharedCopy(serverOf(), s.session_id, x.dataset.artifact).catch(() => false)) {
                 const thumb = x.previousElementSibling;
                 if (thumb) thumb.hidden = true;
