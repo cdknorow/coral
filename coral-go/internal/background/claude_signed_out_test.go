@@ -136,7 +136,12 @@ func TestBackgroundCallersStillAskClaudeWhenSignedIn(t *testing.T) {
 			claudestub.Isolate(t)
 			stub := claudestub.New(t, claudestub.SignedIn)
 			_, err, took := ran(t, c, stub.Path())
-			assert.Less(t, took, failFast)
+			// Signed in, speed is not the property (the fast-fail bound of the signed-out tests is): what is checked is that nothing HELD the call (the bug waited 15-20 s behind a login). A fresh stub script
+			// can take seconds to run for the first time on a machine that scans new executables, so the bound is the hold's, not failFast (#5695: 3 of 10 alone on a loaded Mac).
+			assert.Less(t, took, hangBound+5*time.Second, "a signed-in call is not held")
+			// What failFast stood for here is "a background caller does not sit on the sign-in check": the event for that is the count of checks, one before the run, not a retry loop or a back-off (which the
+			// wall clock could only see by being slow).
+			assert.LessOrEqual(t, len(stub.AuthChecks()), 1, "one sign-in check, then the run")
 			assert.False(t, notSignedIn(err), "signed in is not 'not signed in': %v", err)
 			runs := stub.PrintRuns()
 			require.Len(t, runs, 1, "exactly one print-mode run")
