@@ -251,6 +251,7 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/pinned-folders":                                  "pin a folder (the file browser's bounds)",
 	"DELETE /api/pinned-folders":                                "unpin a folder",
 	"GET /api/saved":                                            "see the saved messages",
+	"GET /api/saved/{id}/message":                               "read a saved message",
 	"POST /api/saved":                                           "save a message",
 	"PATCH /api/saved/{id}":                                     "change a saved message",
 	"DELETE /api/saved/{id}":                                    "remove a saved message",
