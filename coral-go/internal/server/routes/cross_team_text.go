@@ -141,3 +141,6 @@ func textHubSwitchNotice(hubUser string, files, on, changed bool) string {
 	}
 	return "Coral Hub's owner (" + hubUser + ") turned " + what + " " + state + " for this team. See " + teamSettingsMessaging + "."
 }
+
+// textLinksInCoralHub is the answer to an attempt to ADD a server to a team's list: that list has no write path any more.
+const textLinksInCoralHub = "Teams on other computers are linked in Coral Hub now (" + teamSettingsMessaging + " shows them). This list of servers can only be shortened here."

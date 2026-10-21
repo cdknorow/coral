@@ -124,8 +124,7 @@ func TestEveryCauseOfARelayedRefusalIsTheSameBytesHeadersAndSteps(t *testing.T) 
 	require.Equal(t, http.StatusOK, code, out)
 	e.h.crossTeam.now = func() time.Time { return fixedNow.Add(time.Minute) }
 	add(asked("beta", ""))
-	code, out = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": []string{relaySrc}}, false)
-	require.Equal(t, http.StatusOK, code, out)
+	seedServers(t, e.h.bs, "beta", relaySrc)
 	e.h.crossTeam.now = func() time.Time { return fixedNow.Add(2 * time.Minute) }
 	add(asked("beta", "QA"))
 
@@ -166,13 +165,12 @@ func TestTheRateLimiterTripsAtTheSameCountForAMissingTeamAndAnExistingOne(t *tes
 func TestARelayedMessageToAListedTeamNeedsItsSwitchOn(t *testing.T) {
 	e := newArtifactEnv(t)
 	e.h.crossTeam.now = func() time.Time { return fixedNow }
-	code, out := e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": []string{relaySrc}}, false)
-	require.Equal(t, http.StatusOK, code, out)
+	seedServers(t, e.h.bs, "beta", relaySrc)
 	off := relayedRec(e, relaySrc, "beta", "sw-"+strings.Repeat("a", 3), "Orchestrator", "")
 	assert.Equal(t, http.StatusNotFound, off.Code, "listed but switched off: refused like any other cause")
 	assert.JSONEq(t, `{"ok":false,"error":"not_found","message":"no such team"}`, off.Body.String())
 	e.h.crossTeam.now = func() time.Time { return fixedNow.Add(time.Minute) }
-	code, out = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_messaging": true}, false)
+	code, out := e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_messaging": true}, false)
 	require.Equal(t, http.StatusOK, code, out)
 	on := relayedRec(e, relaySrc, "beta", "sw-"+strings.Repeat("b", 3), "Orchestrator", "")
 	assert.NotEqual(t, http.StatusNotFound, on.Code, "listed and switched on: admitted (%d %s)", on.Code, on.Body.String())

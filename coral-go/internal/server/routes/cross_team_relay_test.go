@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/internal/httputil"
 	"github.com/subgentic/coral/pkg/tunnel"
@@ -58,7 +59,29 @@ func (e *crossTeamEnv) allowServers(ids ...string) (int, map[string]any) {
 	if ids == nil {
 		ids = []string{} // [] clears the list; null (the field left out) changes nothing
 	}
-	return e.do("PUT", "/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": ids})
+	code, out := e.do("PUT", "/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": ids})
+	if code == http.StatusBadRequest && out["code"] == "links_in_coral_hub" {
+		// The settings route no longer ADDS a server (#5572): these tests set up the old path (a hub that never advertised links) through the store, then ask the route as before.
+		seedServers(e.t, e.h.bs, "beta", ids...)
+		return e.do("PUT", "/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": ids})
+	}
+	return code, out
+}
+
+// seedServers stores a board's list of servers directly, as it would have been before the write path went (the old door reads it).
+func seedServers(t *testing.T, bs *board.Store, project string, ids ...string) {
+	t.Helper()
+	clean := []string{}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		id = strings.ToLower(id)
+		if !seen[id] {
+			seen[id] = true
+			clean = append(clean, id)
+		}
+	}
+	_, err := bs.UpdateBoardSettings(context.Background(), project, board.BoardSettingsUpdate{CrossTeamServers: &clean})
+	require.NoError(t, err)
 }
 
 func (e *crossTeamEnv) betaMessages() []map[string]any {

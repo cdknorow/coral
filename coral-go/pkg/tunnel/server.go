@@ -147,6 +147,7 @@ type Session struct {
 	version   int
 	coralVer  string
 	localMode Mode
+	peerCaps  []string // the connector's Hello.Capabilities when the whole list is well formed, else nil
 	active    atomic.Int32
 	closeOnce sync.Once
 	hooks     map[Kind]inboundHook // the connector-opened kinds advertised to this tunnel
@@ -249,7 +250,7 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 		_ = nc.Close()
 		return nil, err
 	}
-	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode),
+	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode), peerCaps: wellFormedCapabilities(hello.Capabilities),
 		hooks: hooks, artifactHook: artifactHook, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
 	go func() { defer safego.Recover("tunnel/server:s.rejectInbound"); s.rejectInbound() }()
 	go func() { defer safego.Recover("tunnel/server:191"); <-ys.CloseChan(); s.Close() }()
@@ -318,6 +319,13 @@ func parseLocalMode(v string) Mode {
 	}
 	return TierView
 }
+
+// PeerCapabilities are the capabilities the connector reported in its Hello (#5572), each "name/version". A list that is too long or holds any malformed string reads as none (never a partial
+// read), as HasCapability does. The hub sends a feature only to a connector that says it has it.
+func (s *Session) PeerCapabilities() []string { return append([]string(nil), s.peerCaps...) }
+
+// HasPeerCapability reports whether the connector's Hello named want exactly (HasCapability on its Hello list).
+func (s *Session) HasPeerCapability(want string) bool { return HasCapability(s.peerCaps, want) }
 
 // CoralVersion is what the connector reported in its Hello.
 func (s *Session) CoralVersion() string { return s.coralVer }

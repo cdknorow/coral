@@ -151,7 +151,7 @@ func (h *BoardHandler) SetOwnServerID(fn func(ctx context.Context) (string, erro
 
 func (h *BoardHandler) linksSeen(ctx context.Context) bool {
 	if h.linksSeenRead == nil {
-		return true
+		return false // not wired (a test handler): nothing says a hub ever advertised links. The server always wires it.
 	}
 	seen, err := h.linksSeenRead(ctx)
 	return err != nil || seen
@@ -189,6 +189,7 @@ type snapshotLink struct {
 	SourceServer      string `json:"source_server"`
 	SourceTeam        string `json:"source_team"`
 	TargetTeam        string `json:"target_team"`
+	TargetServer      string `json:"target_server"`
 	SourceLabel       string `json:"source_label"`
 	TargetLabel       string `json:"target_label"`
 	SourceServerLabel string `json:"source_server_label"`
@@ -248,6 +249,7 @@ func (h *BoardHandler) PostCrossTeamLinks(w http.ResponseWriter, r *http.Request
 		return
 	}
 	own, err := h.ownServerID(ctx)
+	own = strings.ToLower(own)
 	if err != nil || own == "" || !strings.EqualFold(own, body.ThisServer) {
 		writeLinksRefusal(w, http.StatusForbidden, "wrong_server", "this link list is for another computer")
 		return
@@ -282,22 +284,37 @@ func (h *BoardHandler) PostCrossTeamLinks(w http.ResponseWriter, r *http.Request
 	targetOK := map[string]bool{}
 	for _, l := range body.Links {
 		src := strings.ToLower(strings.TrimSpace(l.SourceServer))
-		if !relayIDRe.MatchString(src) || !linkTeamRe.MatchString(l.SourceTeam) || !linkTeamRe.MatchString(l.TargetTeam) {
+		tgtServer := strings.ToLower(strings.TrimSpace(l.TargetServer))
+		if tgtServer == own {
+			tgtServer = "" // a target on this computer, said out loud
+		}
+		if !relayIDRe.MatchString(src) || !linkTeamRe.MatchString(l.SourceTeam) || !linkTeamRe.MatchString(l.TargetTeam) || (tgtServer != "" && !relayIDRe.MatchString(tgtServer)) {
 			h.links.count(&h.links.dropped)
 			continue
 		}
-		ok, seen := targetOK[l.TargetTeam]
+		// The team here is the SOURCE when the link names another computer as its target: kept to show "this team can message X", never read by the door.
+		local := l.TargetTeam
+		if tgtServer != "" {
+			local = l.SourceTeam
+			if src != own {
+				h.links.count(&h.links.dropped) // neither end is on this computer
+				continue
+			}
+		}
+		ok, seen := targetOK[local]
 		if !seen {
-			b, err := h.bs.GetBoard(ctx, l.TargetTeam)
-			ok = err == nil && b != nil && b.ID == l.TargetTeam && board.IsGeneratedBoardID(b.ID)
-			targetOK[l.TargetTeam] = ok
+			b, err := h.bs.GetBoard(ctx, local)
+			ok = err == nil && b != nil && b.ID == local && board.IsGeneratedBoardID(b.ID)
+			targetOK[local] = ok
 		}
 		if !ok {
 			h.links.count(&h.links.dropped)
 			continue
 		}
-		kept = append(kept, teamLink{src, l.SourceTeam, l.TargetTeam})
-		stored = append(stored, board.TeamLink{SourceServer: src, SourceTeam: l.SourceTeam, TargetTeam: l.TargetTeam,
+		if tgtServer == "" {
+			kept = append(kept, teamLink{src, l.SourceTeam, l.TargetTeam})
+		}
+		stored = append(stored, board.TeamLink{SourceServer: src, SourceTeam: l.SourceTeam, TargetTeam: l.TargetTeam, TargetServer: tgtServer,
 			SourceLabel: board.CleanClaimedLabel(l.SourceLabel), TargetLabel: board.CleanClaimedLabel(l.TargetLabel), SourceServerLabel: board.CleanClaimedLabel(l.SourceServerLabel)})
 	}
 	now := h.linkNow()
@@ -328,4 +345,59 @@ func LinksSeenFromSettings(read func(ctx context.Context) (map[string]string, er
 // MarkLinksSeen writes the flag.
 func MarkLinksSeen(set func(ctx context.Context, key, value string) error) func(context.Context) error {
 	return func(ctx context.Context) error { return set(ctx, LinksSeenSetting, "true") }
+}
+
+// relayTrust is what a relayed request's door decides on: how the door treats it (doorMode, from the capability of the connection it arrived on) and the sending team the hub named.
+type relayTrust struct {
+	mode doorMode
+	team string // the sending team's generated id from X-Coral-Hub-Source-Team, "" when absent, repeated or malformed
+}
+
+// relaySourceTeam reads X-Coral-Hub-Source-Team: exactly one value in the generated-id shape, else "". It is only ever read on a request that carries the per-process stamp.
+func relaySourceTeam(r *http.Request) string {
+	vals := r.Header.Values(tunnel.HubSourceTeamHeader)
+	if len(vals) != 1 {
+		return ""
+	}
+	if v := strings.TrimSpace(vals[0]); linkTeamRe.MatchString(v) {
+		return v
+	}
+	return ""
+}
+
+func (h *BoardHandler) relayTrustOf(ctx context.Context, r *http.Request) relayTrust {
+	return relayTrust{mode: h.DoorMode(ctx, r), team: relaySourceTeam(r)}
+}
+
+// linked says whether the sending team may message target: through the old list of servers (a hub that never advertised links), or through a fresh link for the team the hub named. A missing or
+// malformed team is no link: the door never falls back to the server alone once links are in use (Security's condition 1).
+func (h *BoardHandler) linked(settings board.BoardSettings, t relayTrust, src, target string) bool {
+	switch t.mode {
+	case doorOld:
+		return settings.AllowsServer(src)
+	case doorLinks:
+		return t.team != "" && h.links.admits(src, t.team, target, h.linkNow())
+	}
+	return false
+}
+
+// refusedBecause names why a relayed send was refused, for the owner's log only (never in the answer): off, stale, no_link. "" when it was not the switch or the link.
+func (h *BoardHandler) refusedBecause(settings board.BoardSettings, t relayTrust, src, target string) string {
+	switch {
+	case !settings.CrossTeamMessaging:
+		return "off"
+	case h.linked(settings, t, src, target):
+		return ""
+	case t.mode != doorOld && !h.links.fresh(h.linkNow()):
+		return "stale"
+	}
+	return "no_link"
+}
+
+// noteLinkRefusal counts one refused relayed send under its reason, off the request, for a board that exists (noteHourly): at most one row an hour per reason.
+func (h *BoardHandler) noteLinkRefusal(target, cause, src string) {
+	kinds := map[string]string{"off": board.LogLinkRefusedOff, "no_link": board.LogLinkRefusedNoLink, "stale": board.LogLinkRefusedStale, "no_orchestrator": board.LogLinkRefusedNoOrchestrator}
+	if kind, ok := kinds[cause]; ok {
+		h.noteHourly(target, kind, board.AllowedSender{Server: src})
+	}
 }

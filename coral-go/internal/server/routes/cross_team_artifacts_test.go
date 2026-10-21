@@ -74,6 +74,7 @@ func (e *artifactEnv) put(path string, body any, via bool) (int, map[string]any)
 // open turns every switch on: messaging, the source, and artifacts.
 func (e *artifactEnv) open() {
 	e.t.Helper()
+	seedServers(e.t, e.h.bs, "beta", relaySrc)
 	code, out := e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_messaging": true, "cross_team_servers": []string{relaySrc}, "cross_team_artifacts": true}, false)
 	require.Equal(e.t, http.StatusOK, code, out)
 }
@@ -200,6 +201,9 @@ func TestReceivedArtifactSwitchesAnswerUniformly(t *testing.T) {
 	} {
 		e := newArtifactEnv(t)
 		set["subscriber_id"] = "Operator"
+		if servers, ok := set["cross_team_servers"].([]string); ok {
+			seedServers(t, e.h.bs, "beta", servers...)
+		}
 		code, out := e.put("/api/board/beta/settings", set, false)
 		require.Equal(t, http.StatusOK, code, out)
 		status, out := e.send("auth", relaySrc, "", body)
@@ -638,7 +642,7 @@ func TestReceivedFilesWaitForTheirMessage(t *testing.T) {
 	assert.Empty(t, e.listed(), "no message, nothing listed")
 
 	// A message with another id, or from another server, does not claim them.
-	_, _ = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": []string{relaySrc, otherSrc}}, false)
+	seedServers(t, e.h.bs, "beta", relaySrc, otherSrc)
 	code, out := e.deliver(relaySrc, "m9")
 	require.Equal(t, 200, code, out)
 	code, out = e.deliver(otherSrc, "m1")
@@ -747,7 +751,7 @@ func TestReceivedFileDeletedWhilePendingIsNotListed(t *testing.T) {
 func TestReceivedSecondSourceIsRecorded(t *testing.T) {
 	e := newArtifactEnv(t)
 	e.open()
-	_, _ = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": []string{relaySrc, otherSrc}}, false)
+	seedServers(t, e.h.bs, "beta", relaySrc, otherSrc)
 	data := []byte("the same bytes from two Corals\n")
 	id := strings.TrimPrefix(sha256Of(data), "sha256:")
 

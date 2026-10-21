@@ -323,6 +323,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 	}
 	target := urlParam(r, "project")
 	ctx := r.Context()
+	trust := h.relayTrustOf(ctx, r)
 	if ok, err := h.bs.BoardExists(ctx, target); err != nil {
 		errInternalServer(w, "could not check the board")
 		return
@@ -335,7 +336,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	// One uniform answer for every switch that is off, so a sender cannot tell which.
-	if on, err := h.receivingOn(ctx, target, src, "", false); err != nil {
+	if on, err := h.receivingOn(ctx, target, src, "", false, trust); err != nil {
 		errInternalServer(w, "could not read the board's settings")
 		return
 	} else if !on {
@@ -395,7 +396,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 	}
 	// The sender's claimed board, now that the metadata is read: in force, a file from a sender that is not on the list is the same uniform refusal as every other "no" (#5508). It has cost the
 	// sender's transfer quota, as an accepted file does.
-	if on, err := h.receivingOn(ctx, target, src, meta.FromCrossTeamID, true); err != nil {
+	if on, err := h.receivingOn(ctx, target, src, meta.FromCrossTeamID, true, trust); err != nil {
 		errInternalServer(w, "could not read the board's settings")
 		return
 	} else if !on {
@@ -434,7 +435,7 @@ func (h *BoardHandler) PostExternalArtifact(w http.ResponseWriter, r *http.Reque
 	if receivedBeforeStore != nil {
 		receivedBeforeStore()
 	}
-	if on, err := h.receivingOn(ctx, target, src, meta.FromCrossTeamID, true); err != nil {
+	if on, err := h.receivingOn(ctx, target, src, meta.FromCrossTeamID, true, trust); err != nil {
 		errInternalServer(w, "could not read the board's settings")
 		return
 	} else if !on {
@@ -483,10 +484,13 @@ var receivedBeforeStore func()
 // receivingOn reports whether the board takes files from src right now. Allowlist off: messaging on, src listed (the server list), files on. In force (#5508): files on, and (once the frame's metadata
 // has been read, claimKnown) the sender is on the board's list by BOTH the hub-verified server and the cross-team id it claims; before that only the files switch can be asked. Every "no" is the
 // same uniform answer.
-func (h *BoardHandler) receivingOn(ctx context.Context, target, src, claim string, claimKnown bool) (bool, error) {
+func (h *BoardHandler) receivingOn(ctx context.Context, target, src, claim string, claimKnown bool, t relayTrust) (bool, error) {
 	settings, err := h.bs.GetBoardSettings(ctx, target)
 	if err != nil {
 		return false, err
+	}
+	if t.mode != doorOld { // a hub that keeps the links (#5572): a file comes in only from a team linked to this one, as its messages do
+		return settings.CrossTeamMessaging && h.linked(settings, t, src, target) && settings.CrossTeamArtifacts, nil
 	}
 	if h.allowlistOn(ctx) {
 		if !settings.CrossTeamArtifacts {

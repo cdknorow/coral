@@ -85,9 +85,10 @@ func (h *BoardHandler) crossTeamDoor(ctx context.Context, target string, s doorS
 	return recipients, settings, exists && listed && rerr == nil, nil
 }
 
-// relayedDoor is the door for a message relayed from another Coral while the allowlist is off: the board exists, its cross-team switch is on, the source server is one it takes, and an
-// Orchestrator can be told. It runs the same four reads in the same order whatever the answer, so no cause is told from another by what the request did (#5572, Security's condition 9).
-func (h *BoardHandler) relayedDoor(ctx context.Context, target, src, to string) (recipients []string, settings board.BoardSettings, admitted bool, err error) {
+// relayedDoor is the door for a message relayed from another Coral: the board exists, its cross-team switch is on, the sender is linked (the board's list of servers for a hub that never advertised
+// links, a fresh hub link for the sending team otherwise: see linked) and an Orchestrator can be told. It runs the same four reads in the same order whatever the answer, so no cause is told from
+// another by what the request did (#5572, Security's condition 9). cause is for the owner's log only: why a send that reached an existing board was refused.
+func (h *BoardHandler) relayedDoor(ctx context.Context, target, src, to string, t relayTrust) (recipients []string, settings board.BoardSettings, admitted bool, cause string, err error) {
 	step := func(name string) {
 		if doorTrace != nil {
 			doorTrace(name)
@@ -96,18 +97,25 @@ func (h *BoardHandler) relayedDoor(ctx context.Context, target, src, to string) 
 	step("exists")
 	exists, err := h.bs.BoardExists(ctx, target)
 	if err != nil {
-		return nil, settings, false, err
+		return nil, settings, false, "", err
 	}
 	step("settings")
 	settings, err = h.bs.GetBoardSettings(ctx, target)
 	if err != nil {
-		return nil, settings, false, err
+		return nil, settings, false, "", err
 	}
 	step("list")
-	linked := settings.CrossTeamMessaging && settings.AllowsServer(src)
+	linked := settings.CrossTeamMessaging && h.linked(settings, t, src, target)
 	step("recipients")
 	recipients, rerr := h.bs.TargetOrchestrators(ctx, target, to)
-	return recipients, settings, exists && linked && rerr == nil, nil
+	admitted = exists && linked && rerr == nil
+	if exists && !admitted {
+		cause = h.refusedBecause(settings, t, src, target)
+		if cause == "" && rerr != nil {
+			cause = "no_orchestrator"
+		}
+	}
+	return recipients, settings, admitted, cause, nil
 }
 
 // writeRelayedRefused is the one refusal toward a sender on another Coral.
@@ -333,6 +341,13 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 			links = append(links, map[string]any{"server_id": srv, "server_label": "", "team_label": "", "refreshed": ""})
 		}
 	}
+	// What this team may message elsewhere (links where it is the source): display only, never read by the door.
+	linksOut := []map[string]any{}
+	if stored, err := h.bs.TeamLinksFrom(ctx, project); err == nil {
+		for _, l := range stored {
+			linksOut = append(linksOut, map[string]any{"server_id": l.TargetServer, "team_id": l.TargetTeam, "team_label": l.TargetLabel, "refreshed": l.AppliedAt})
+		}
+	}
 	// Whether Coral Hub's owner can change the two switches of this team (#5572): this request (the owner on this computer) always can; owner_path_live says this build has the Coral Hub owner's routes;
 	// hub_may_change is the local lock "Let Coral Hub change cross-team settings" (a lock that cannot be read reads as off); last_changed is who changed each switch last, by hub user or on this computer.
 	lastChanged := map[string]any{}
@@ -349,9 +364,10 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 		"can_change": true, "owner_path_live": true, "hub_may_change": h.hubMayChange(ctx), "last_changed": lastChanged,
 		"enforced": h.allowlistOn(ctx), "allowed": entries, "max_entries": board.MaxAllowedSenders, "self_cross_team_id": self,
 		"was_open": settings.CrossTeamMessaging && len(settings.CrossTeamAllowed) == 0, "suggestions": suggestions,
-		"status":   statusFor(linkable, settings.CrossTeamMessaging, len(links), stale, heard),
-		"links":    links,
-		"linkable": linkable,
+		"status":    statusFor(linkable, settings.CrossTeamMessaging, len(links), stale, heard),
+		"links":     links,
+		"links_out": linksOut,
+		"linkable":  linkable,
 	})
 }
 

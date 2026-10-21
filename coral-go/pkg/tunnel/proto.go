@@ -114,6 +114,19 @@ func HasCapability(caps []string, want string) bool {
 	return have
 }
 
+// wellFormedCapabilities is caps when the list is within the bound and every entry has the shape, else nil.
+func wellFormedCapabilities(caps []string) []string {
+	if len(caps) > maxCapabilities {
+		return nil
+	}
+	for _, c := range caps {
+		if !capabilityShape.MatchString(c) {
+			return nil
+		}
+	}
+	return append([]string(nil), caps...)
+}
+
 // Welcome is the server's reply to Hello.
 type Welcome struct {
 	AcceptedVersion int    `json:"accepted_version,omitempty"`

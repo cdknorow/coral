@@ -230,6 +230,12 @@ const (
 	// LogRefused is the hourly count of sends the list refused (flag on); LogWouldRefuse the same with the flag off ("would refuse", shadow).
 	LogRefused     = "refused"
 	LogWouldRefuse = "would_refuse"
+	// The hourly counts of relayed sends a hub link refused (#5572, Security's condition 10), one kind per reason: the switch was off, no link, the table was stale, nobody to tell. Owner-only;
+	// the reason never leaves this computer.
+	LogLinkRefusedOff            = "link_refused_off"
+	LogLinkRefusedNoLink         = "link_refused_no_link"
+	LogLinkRefusedStale          = "link_refused_stale"
+	LogLinkRefusedNoOrchestrator = "link_refused_no_orchestrator"
 	// LogEditRefused is the hourly count of refused edits.
 	LogEditRefused = "edit_refused"
 

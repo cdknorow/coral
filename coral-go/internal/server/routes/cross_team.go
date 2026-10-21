@@ -259,6 +259,23 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 			errBadRequest(w, fmt.Sprintf("cross_team_servers: at most %d servers", maxCrossTeamServer))
 			return
 		}
+		// The write path is gone (#5572, Security's condition 11): who may message a team on this computer is decided by the links in Coral Hub now. What is stored stays, readable and removable: a
+		// list may only get shorter. An addition is refused, not accepted and ignored.
+		current, err := h.bs.GetBoardSettings(r.Context(), urlParam(r, "project"))
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		have := map[string]bool{}
+		for _, id := range current.CrossTeamServers {
+			have[strings.ToLower(id)] = true
+		}
+		for _, id := range clean {
+			if !have[id] {
+				writeError(w, http.StatusBadRequest, "links_in_coral_hub", textLinksInCoralHub)
+				return
+			}
+		}
 		body.CrossTeamServers = &clean
 	}
 	if body.Health != nil {
@@ -329,7 +346,14 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 // POST /api/board/{project}/external-messages
 // {"from_board": "...", "subscriber_id": "...", "session_name": "...", "content": "...", "to": "..."}
 func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Request) {
-	if src, present := relaySource(r); present {
+	src, present := relaySource(r)
+	// The sending team the hub names is trusted exactly like the server it names: only on a request this process's own connector stamped. A request that carries it without that is refused, not
+	// ignored (#5572, Security's condition 1).
+	if len(r.Header.Values(tunnel.HubSourceTeamHeader)) > 0 && !(present && cloud.TunneledAuthentic(r)) {
+		relayRefuse(w, http.StatusForbidden, "hub_server_untrusted", "X-Coral-Hub-Source-Team is only accepted from Coral Hub")
+		return
+	}
+	if present {
 		h.postRelayedExternalMessage(w, r, src)
 		return
 	}
@@ -639,24 +663,29 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 	var recipients []string
 	var admitted bool
 	var err error
-	if h.allowlistOn(ctx) {
+	var cause string
+	trust := h.relayTrustOf(ctx, r)
+	if trust.mode == doorOld && h.allowlistOn(ctx) {
 		recipients, settings, admitted, err = h.crossTeamDoor(ctx, target, sender, strings.TrimSpace(body.To))
 	} else {
-		recipients, settings, admitted, err = h.relayedDoor(ctx, target, src, strings.TrimSpace(body.To))
+		recipients, settings, admitted, cause, err = h.relayedDoor(ctx, target, src, strings.TrimSpace(body.To), trust)
 	}
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
 	if !admitted {
-		if h.allowlistOn(ctx) {
+		if trust.mode == doorOld && h.allowlistOn(ctx) {
 			h.noteDoor(ctx, target, board.LogRefused, sender)
+		}
+		if trust.mode != doorOld {
+			h.noteLinkRefusal(target, cause, src)
 		}
 		// One answer for every cause (no such team, not linked, switched off, nobody to tell): the same status, code, text and size (coral-hub's requirement 5).
 		writeRelayedRefused(w)
 		return
 	}
-	if !h.allowlistOn(ctx) && !sender.listed(settings) {
+	if trust.mode == doorOld && !h.allowlistOn(ctx) && !sender.listed(settings) {
 		// Shadow (#5508): what the list would have refused, counted, not acted on.
 		h.noteDoor(ctx, target, board.LogWouldRefuse, sender)
 	}
@@ -682,7 +711,7 @@ func (h *BoardHandler) postRelayedExternalMessage(w http.ResponseWriter, r *http
 	// The files this message names (pushed before it, with its message id) are listed now, if the board
 	// still takes files (#4440).
 	if settings.CrossTeamArtifacts {
-		if on, err := h.receivingOn(ctx, target, src, validIDOrEmpty(body.FromCrossTeamID), true); err == nil && on {
+		if on, err := h.receivingOn(ctx, target, src, validIDOrEmpty(body.FromCrossTeamID), true, trust); err == nil && on {
 			h.promotePending(target, src, body.Relay.MessageID, inbound.ID)
 		}
 	}
