@@ -3,6 +3,7 @@ package routes
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -48,4 +49,28 @@ func TestKeysRouteRefusesAnUnknownKeyName(t *testing.T) {
 	terminal.mu.Lock()
 	assert.Equal(t, []string{"Down", "Enter"}, terminal.raw["claude-"+sid])
 	terminal.mu.Unlock()
+}
+
+// Security's N1 on #39: more than 64 keys in one request is a 400 on every backend, and nothing is sent.
+func TestKeysRouteBoundsTheList(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-0000000000c2"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "repo", WorkingDir: "/tmp/test"}))
+	terminal.addSession("claude-"+sid, "/tmp/test")
+	post := func(n int) int {
+		keys := make([]string, n)
+		for i := range keys {
+			keys[i] = "Down"
+		}
+		body, _ := json.Marshal(map[string]any{"keys": keys, "agent_type": "claude", "session_id": sid})
+		resp, err := http.Post(server.URL+"/api/sessions/live/claude-"+sid+"/keys", "application/json", bytes.NewReader(body))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	assert.Equal(t, http.StatusBadRequest, post(ptymanager.MaxKeysPerRequest+1))
+	terminal.mu.Lock()
+	assert.Empty(t, terminal.raw["claude-"+sid])
+	terminal.mu.Unlock()
+	assert.Equal(t, http.StatusOK, post(ptymanager.MaxKeysPerRequest))
 }

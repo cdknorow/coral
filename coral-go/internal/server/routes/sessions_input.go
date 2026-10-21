@@ -82,6 +82,10 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "keys must be a non-empty list")
 		return
 	}
+	if len(body.Keys) > ptymanager.MaxKeysPerRequest {
+		errBadRequest(w, fmt.Sprintf("at most %d keys in one request", ptymanager.MaxKeysPerRequest))
+		return
+	}
 	// As for Send: keys always name their exact target.
 	if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
 		writeExactTargetError(w, status, message)
