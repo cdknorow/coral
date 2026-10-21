@@ -11,6 +11,7 @@ import (
 	"github.com/subgentic/coral/internal/agent"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/gitutil"
 	"github.com/subgentic/coral/internal/httputil"
