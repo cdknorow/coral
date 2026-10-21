@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -32,6 +33,13 @@ func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "coral-agent-test-")
 	if err == nil {
 		os.Setenv("TMPDIR", dir)
+		// Windows takes its temp folder from TMP, then TEMP (#15: agy's hooks folders were
+		// left in the user's %TEMP%).
+		os.Setenv("TMP", dir)
+		os.Setenv("TEMP", dir)
+		// testguard's per-process data folder was named in the system temp folder before this
+		// ran: inside this one instead, so it goes too.
+		os.Setenv("CORAL_DATA_DIR", filepath.Join(dir, "coral-testguard-data"))
 	}
 	code := m.Run()
 	if err == nil {
