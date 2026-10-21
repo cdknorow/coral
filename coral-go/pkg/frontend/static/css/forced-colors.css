@@ -69,4 +69,8 @@
     .ac-card.ac-active { border-color: Highlight; outline: 2px solid Highlight; outline-offset: -2px; }
     .ac-card.ac-hover { border-color: Highlight; }
     .ac-avatar { box-sizing: border-box; border: 1px solid CanvasText; }
+    /* The Inbox tabs (#5770): the selected one is an accent underline, a colour. Every tab has the same 4 px underline, in the page colour unless selected, so the selected one is
+       Highlight and none moves. */
+    .inbox-tab { border-bottom-width: 4px; border-bottom-color: Canvas; }
+    .inbox-tab[aria-selected="true"] { border-bottom-color: Highlight; }
 }

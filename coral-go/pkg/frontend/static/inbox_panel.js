@@ -88,8 +88,10 @@ export function mountInbox(host, adapter, options) {
     const say = msg => { liveFlip = !liveFlip; live.textContent = msg + (liveFlip ? '' : ' '); }; // the same words twice are still a change
     let gone = false;
 
+    const openIds = new Set(); // tasks that are open, kept across a refresh (the list is rebuilt each time the tab is shown)
     function taskRow(task) {
         const li = el('li', 'ibx-task');
+        li.dataset.key = draftKey(task.project, task.id);
         const bodyId = uid('ibx-task-body');
         const head = el('button', 'ibx-task-head');
         head.type = 'button';
@@ -101,27 +103,32 @@ export function mountInbox(host, adapter, options) {
         meta.textContent = bits.join(' · ');
         head.append(title, meta);
         const region = el('div', 'ibx-task-body');
-        region.id = bodyId;
-        region.setAttribute('role', 'region');
-        region.setAttribute('aria-label', `Task: ${task.title || task.id}`);
+        region.id = bodyId; // not a landmark: aria-controls and aria-expanded on the button already tie them together
         region.hidden = true;
         li.append(head, region);
         let loaded = false, loading = false;
-        head.addEventListener('click', async () => {
-            const open = head.getAttribute('aria-expanded') === 'true';
-            head.setAttribute('aria-expanded', String(!open));
-            region.hidden = open;
-            if (open || loaded || loading) return;
+        async function setOpen(open, announce) {
+            head.setAttribute('aria-expanded', String(open));
+            region.hidden = !open;
+            if (open) openIds.add(li.dataset.key); else openIds.delete(li.dataset.key);
+            if (!open || loaded || loading) return;
             loading = true;
+            region.setAttribute('aria-busy', 'true');
             region.replaceChildren(el('p', 'ibx-loading', 'Reading the task…'));
+            if (announce) say('Reading the task…');
             try {
                 const full = await adapter.getTask(task.project, task.id);
                 region.replaceChildren(...taskBody(task, full || {}));
                 loaded = true;
+                if (announce) say(`${task.title || 'The task'} is open.`);
             } catch (e) {
-                region.replaceChildren(el('p', 'ibx-error', `Could not read the task (${e && e.message ? e.message : 'no answer'}).`));
-            } finally { loading = false; }
-        });
+                const msg = `Could not read the task (${e && e.message ? e.message : 'no answer'}).`;
+                region.replaceChildren(el('p', 'ibx-error', msg));
+                say(msg);
+            } finally { loading = false; region.removeAttribute('aria-busy'); }
+        }
+        head.addEventListener('click', () => setOpen(head.getAttribute('aria-expanded') !== 'true', true));
+        if (openIds.has(li.dataset.key)) setOpen(true, false);
         return li;
     }
 
@@ -156,7 +163,7 @@ export function mountInbox(host, adapter, options) {
         _boxes.add(ta);
         const send = el('button', 'btn btn-primary ibx-send', 'Send reply');
         send.type = 'submit';
-        const status = el('p', 'ibx-reply-status'); status.setAttribute('role', 'status');
+        const status = el('p', 'ibx-reply-status'); // its words are spoken once, through the panel's live region (say), not by a second one here
         const note = el('p', 'ibx-note', 'A reply does not complete or change the task.');
         const row = el('div', 'ibx-reply-row'); row.append(send, status);
         form.append(label, ta, row, note);
@@ -186,8 +193,10 @@ export function mountInbox(host, adapter, options) {
                 ta.value = '';
                 status.textContent = text;
                 say(text);
+                ta.focus(); // the Send button is disabled now (nothing to send): focus goes to the empty box, not to the page
             } catch (err) {
                 status.textContent = err && err.message ? err.message : 'The reply was refused.';
+                say(status.textContent);
             } finally { busy = false; sync(); }
         });
         return form;
@@ -198,7 +207,9 @@ export function mountInbox(host, adapter, options) {
             const tasks = await adapter.listTasks();
             if (gone) return;
             const rows = Array.isArray(tasks) ? tasks : [];
+            const kept = document.activeElement && list.contains(document.activeElement) ? document.activeElement.closest('.ibx-task')?.dataset.key : '';
             list.replaceChildren(...rows.map(taskRow));
+            if (kept) list.querySelector(`.ibx-task[data-key="${CSS.escape(kept)}"] .ibx-task-head`)?.focus(); // a refresh does not take the focus from the task being read
             empty.hidden = rows.length > 0;
             empty.textContent = rows.length ? '' : 'No tasks are assigned to you.';
         } catch (e) {
@@ -218,19 +229,18 @@ export function mountInbox(host, adapter, options) {
         button.setAttribute('aria-controls', regionId);
         const region = el('div', 'ibx-saved-body');
         region.id = regionId;
-        region.setAttribute('role', 'region');
-        region.setAttribute('aria-label', 'The whole message');
         region.hidden = true;
         wrap.append(button, region);
         if (!adapter || typeof adapter.readSavedMessage !== 'function') { wrap.hidden = true; return { root: wrap, button, region }; }
         let loaded = false, loading = false;
         button.addEventListener('click', async () => {
             const open = button.getAttribute('aria-expanded') === 'true';
-            button.setAttribute('aria-expanded', String(!open));
-            button.textContent = open ? 'Read the whole message' : 'Hide the message';
+            button.setAttribute('aria-expanded', String(!open)); // the label stays: aria-expanded says which it is
             region.hidden = open;
             if (open || loaded || loading) return;
             loading = true;
+            region.setAttribute('aria-busy', 'true');
+            say('Reading the message…');
             region.replaceChildren(el('p', 'ibx-loading', 'Reading the message…'));
             try {
                 const res = await adapter.readSavedMessage(item) || {};
@@ -242,9 +252,12 @@ export function mountInbox(host, adapter, options) {
                 if (!parts.length) parts.push(el('p', 'ibx-why', 'There is no more text than the snippet.'));
                 region.replaceChildren(...parts);
                 loaded = !reason || !!res.text;
+                say(reason || 'The message is open.');
             } catch (e) {
-                region.replaceChildren(el('p', 'ibx-error', `Could not read the message (${e && e.message ? e.message : 'no answer'}).`));
-            } finally { loading = false; }
+                const msg = `Could not read the message (${e && e.message ? e.message : 'no answer'}).`;
+                region.replaceChildren(el('p', 'ibx-error', msg));
+                say(msg);
+            } finally { loading = false; region.removeAttribute('aria-busy'); }
         });
         return { root: wrap, button, region };
     }

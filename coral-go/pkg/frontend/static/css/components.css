@@ -4163,6 +4163,11 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .ibx-task { border: 1px solid var(--border); border-radius: var(--radius-ml); background: var(--bg-secondary); min-width: 0; }
 .ibx-task-head { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; background: none; border: 0; color: var(--text-primary); padding: 10px 12px; cursor: pointer; border-radius: var(--radius-ml); font: inherit; }
 .ibx-task-head:hover { background: var(--bg-tertiary); }
+/* A chevron says a task opens and which way it is now (the state is aria-expanded; this is the same for the eye). It is drawn with borders, so it stays in forced colors. */
+.ibx-task-head { position: relative; padding-right: 36px; }
+.ibx-task-head::after { content: ""; position: absolute; right: 16px; top: 50%; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-70%) rotate(45deg); transition: transform .12s ease; }
+.ibx-task-head[aria-expanded="true"]::after { transform: translateY(-30%) rotate(-135deg); }
+@media (prefers-reduced-motion: reduce) { .ibx-task-head::after { transition: none; } }
 .ibx-task-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ibx-task-title { font-weight: 600; overflow-wrap: anywhere; }
 .ibx-task-meta { font-size: var(--fs-sm, 0.8125rem); color: var(--text-secondary); }

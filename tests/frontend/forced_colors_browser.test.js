@@ -86,6 +86,15 @@ const MD = '# Migration plan\n\n## Steps\n\n1. Add the new columns behind a flag
             for (const [n, w] of Object.entries(chips.chips)) assert.ok(parseFloat(w) >= 1, n + ' has a border in forced colors: ' + JSON.stringify(chips));
             assert.ok(parseFloat(chips.on) >= 2 && chips.on !== chips.off, 'a pressed toggle is marked by its border colour: ' + JSON.stringify(chips));
             assert.equal(chips.on.split(' ')[0], chips.off.split(' ')[0], 'a toggle keeps its size when pressed: the border is as wide unpressed as pressed: ' + JSON.stringify(chips));
+
+            console.log(`9. ${mode}: the selected Inbox tab is marked and none moves (#5770)`);
+            await ev(`localStorage.removeItem('coral.inbox.tab'); document.getElementById('nav-tab-hub-inbox').click(); true`);
+            await waitFor(`!!document.getElementById('inbox-local') && !document.getElementById('inbox-local').hidden`, 'the Inbox', 8000);
+            const itabs = await ev(`(() => [...document.querySelectorAll('.inbox-tab')].map(b => { const c = getComputedStyle(b); return { sel: b.getAttribute('aria-selected') === 'true', w: c.borderBottomWidth, col: c.borderBottomColor }; }))()`);
+            const isel = itabs.find(x => x.sel), iothers = itabs.filter(x => !x.sel);
+            assert.ok(isel && iothers.length === 2, 'three Inbox tabs: ' + JSON.stringify(itabs));
+            assert.ok(iothers.every(o => o.col !== isel.col), "the selected tab's underline is a colour of its own: " + JSON.stringify(itabs));
+            assert.ok(iothers.every(o => o.w === isel.w) && parseFloat(isel.w) >= 3, 'all the underlines are as wide, so none moves: ' + JSON.stringify(itabs));
         }
         console.log('7. a comment card that is current or hovered, and an avatar, are marked in forced colors (#5732)');
         for (const dark of [true, false]) {
