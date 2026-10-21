@@ -1,6 +1,7 @@
 package board
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,15 +48,18 @@ func TestAttachAddsARevisionAndIsIdempotent(t *testing.T) {
 	id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1")
 	task, reopened, err := e.s.AttachPatches(e.ctx, "team", id, "rev1", []TaskArtifact{patchRow("fix", "d2")})
 	require.NoError(t, err)
-	assert.Nil(t, reopened, "nobody had approved: the round stays open")
+	require.NotNil(t, reopened, "a new round: a reviewer who read the old bytes cannot approve these")
+	assert.Equal(t, 2, reopened.Round)
 	rows := task.Workflow.CompletionReview.Artifacts
 	require.Len(t, rows, 2)
 	assert.Equal(t, 1, rows[1].Seq)
 	assert.Equal(t, "rev1", rows[1].AttachedBy)
-	// the same name and digest again adds nothing
-	task, _, err = e.s.AttachPatches(e.ctx, "team", id, "rev1", []TaskArtifact{patchRow("fix", "d2")})
+	// the same name and digest again adds nothing, and opens no further round
+	task, again, err := e.s.AttachPatches(e.ctx, "team", id, "rev1", []TaskArtifact{patchRow("fix", "d2")})
 	require.NoError(t, err)
+	assert.Nil(t, again)
 	assert.Len(t, task.Workflow.CompletionReview.Artifacts, 2)
+	assert.Len(t, task.Workflow.ReviewRounds, 2)
 	// the queue's view of the task: the newest row of the name
 	cur := currentPatches(task.Workflow.CompletionReview.Artifacts)
 	require.Len(t, cur, 1)
@@ -202,4 +206,59 @@ func TestAnApprovedTaskKeepsEveryRevisionAndApprovesTheNewest(t *testing.T) {
 	// a client that sends the same name twice in one submission is still refused
 	_, err = validateTaskArtifacts([]TaskArtifact{{Name: "x", Content: "1"}, {Name: "x", Content: "2"}})
 	require.ErrorContains(t, err, "unique")
+}
+
+// An attach and the last approval race (Orchestrator, Backend's #5689 review): whichever order they come in, the task never completes
+// with a row nobody approved, and no one approves bytes they did not see.
+func TestAnAttachRacingTheLastApprovalNeverCompletesWithAnUnapprovedRow(t *testing.T) {
+	t.Run("approval first", func(t *testing.T) {
+		e := newVerEnv(t)
+		id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1")
+		v, err := e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 1)
+		require.NoError(t, err)
+		e.finish(v)
+		_, _, err = e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d2")})
+		require.ErrorContains(t, err, "not in review with an open round")
+		assert.Equal(t, []string{"d1"}, lastRound(t, e.task(id)).ApprovedDigests)
+	})
+	t.Run("attach first", func(t *testing.T) {
+		e := newVerEnv(t)
+		id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1")
+		_, _, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d2")})
+		require.NoError(t, err)
+		_, err = e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 1) // the reviewer read round 1
+		require.ErrorContains(t, err, "was resubmitted")
+		assert.NotEqual(t, "completed", e.task(id).Status)
+		v, err := e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 2) // after reading round 2
+		require.NoError(t, err)
+		assert.True(t, v.Complete)
+		assert.Equal(t, []string{"d2"}, lastRound(t, e.task(id)).ApprovedDigests)
+	})
+	t.Run("at the same time", func(t *testing.T) {
+		for i := 0; i < 20; i++ {
+			e := newVerEnv(t)
+			id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1")
+			var wg sync.WaitGroup
+			var approved *ReviewVerdict
+			var aerr, perr error
+			wg.Add(2)
+			go func() { defer wg.Done(); approved, aerr = e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 1) }()
+			go func() {
+				defer wg.Done()
+				_, _, perr = e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d2")})
+			}()
+			wg.Wait()
+			final := lastRound(t, e.task(id))
+			if aerr == nil && approved.Complete {
+				// the approval won: the attach was refused and what was approved is the old row only
+				require.Error(t, perr)
+				assert.Equal(t, []string{"d1"}, final.ApprovedDigests)
+			} else {
+				// the attach won: the approval of round 1 was refused and nothing is approved
+				require.NoError(t, perr)
+				require.Error(t, aerr)
+				assert.Empty(t, final.ApprovedDigests)
+			}
+		}
+	})
 }
