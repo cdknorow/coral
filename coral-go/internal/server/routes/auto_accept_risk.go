@@ -301,7 +301,7 @@ var harmlessDevice = map[string]bool{"/dev/null": true, "/dev/stdout": true, "/d
 func notDevices(paths []string) []string {
 	var out []string
 	for _, p := range paths {
-		if !harmlessDevice[p] {
+		if !harmlessDevice[p] && !(runtime.GOOS == "windows" && isDiscard(p)) { // NUL and $null discard output on Windows
 			out = append(out, p)
 		}
 	}
