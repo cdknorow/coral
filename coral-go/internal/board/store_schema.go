@@ -70,6 +70,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 			claimed_at TEXT,
 			completed_at TEXT,
 			last_activity_at TEXT,
+			edited_at TEXT,
 			idle_snoozed_until TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_board_tasks_board_status ON board_tasks(board_id, status);
@@ -124,6 +125,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"ALTER TABLE board_groups ADD COLUMN subscriber_id TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN session_id TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN last_activity_at TEXT",
+		"ALTER TABLE board_tasks ADD COLUMN edited_at TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN idle_snoozed_until TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN cost_usd REAL",
 		"ALTER TABLE board_tasks ADD COLUMN input_tokens INTEGER",
