@@ -44,7 +44,7 @@ func (ar *Routes) SetOperatorCheck(f func(*http.Request) bool) { ar.isOperator =
 // request straight from this computer (never through Coral Hub) that the identity layer verified as
 // the Operator, whatever strict local auth says (#4290, Security's SHOULD 3 in #4288).
 func (ar *Routes) keyRoutesRefuse(w http.ResponseWriter, r *http.Request) bool {
-	if !localOperator(r) {
+	if !localPower(r) {
 		httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "localhost only"})
 		return true
 	}

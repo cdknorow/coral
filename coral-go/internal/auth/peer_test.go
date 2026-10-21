@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"sync"
@@ -84,6 +85,43 @@ func TestPeerCheckWarningWhenTheCheckIsLost(t *testing.T) {
 	} else {
 		assert.Empty(t, PeerCheckWarning(), "a system without a peer check never had a per-user pass")
 	}
+}
+
+// The lost peer check (#5738 ruling): on a system that has one but whose socket table this build can't read, no request gets a local-only power
+// (IsDirectLocal, the API key routes), while the credential-free pass keeps the rule from before #95.
+func TestLostPeerCheckGivesNoLocalOnlyPower(t *testing.T) {
+	if !peercred.Supported {
+		t.Skip("a system without a peer check never had a per-user pass")
+	}
+	t.Cleanup(func() { peerCheckLost.Store(false) })
+	peerCheckLost.Store(false)
+	request := func() *http.Request {
+		r := httptest.NewRequest("GET", "/api/auth/key", nil).WithContext(ConnContext(context.Background(), tcpConn{}))
+		r.RemoteAddr = "127.0.0.1:50000"
+		return r
+	}
+	keyRoute := func(r *http.Request) (int, string) {
+		w := httptest.NewRecorder()
+		(&Routes{}).keyRoutesRefuse(w, r)
+		return w.Code, w.Body.String()
+	}
+
+	restore := SetPeerAttribution(func(netip.AddrPort, netip.AddrPort) (peercred.Verdict, error) { return peercred.Self, nil })
+	r := request()
+	assert.True(t, IsDirectLocal(r), "Coral's own account, check working: the power")
+	code, body := keyRoute(request())
+	assert.Equal(t, http.StatusUnauthorized, code, "past the locality check, on to the Operator check: %s", body)
+	restore()
+
+	t.Cleanup(SetPeerAttribution(func(netip.AddrPort, netip.AddrPort) (peercred.Verdict, error) { return peercred.Unsupported, nil }))
+	r = request()
+	assert.False(t, IsDirectLocal(r), "the check is lost: no local-only power for anyone")
+	assert.True(t, localOperator(r), "the credential-free pass keeps the old rule")
+	assert.True(t, IsDirectLocalPeer(r))
+	code, body = keyRoute(request())
+	assert.Equal(t, http.StatusForbidden, code, "the API key routes refuse too: %s", body)
+	assert.Contains(t, body, "localhost only")
+	assert.NotEmpty(t, PeerCheckWarning())
 }
 
 // #95 review F5: at most cap(attributeSlots) socket-table reads run at once.
