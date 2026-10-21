@@ -543,20 +543,23 @@ console.log(`running ${tests.length} of ${suites.cdp.length + suites.server.leng
 // CDP({port}) attach to that fresh tab.
 async function clearOrigin(shard) {
   let client;
+  // Every call below is bounded: a Chrome whose storage service has wedged never answers Storage.clearDataForOrigin, and with no limit here the runner waited on it for ever (the
+  // per-attempt timeout starts after this), with no suite ever started and nothing printed (#5757). A call that does not answer in 20 s is reported and the suite goes on.
+  const bounded = (p, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what} did not answer in 20 s`)), 20000))]);
   try {
     const version = await (await fetch(`http://127.0.0.1:${shard.env.CDP_PORT}/json/version`, { signal: AbortSignal.timeout(5000) })).json();
     client = await CDP({ target: version.webSocketDebuggerUrl, local: true });
     // The fresh tab is created first, so Chrome always has a page open.
-    const { targetId } = await client.send('Target.createTarget', { url: 'about:blank' });
-    const { targetInfos } = await client.send('Target.getTargets');
+    const { targetId } = await bounded(client.send('Target.createTarget', { url: 'about:blank' }), 'Target.createTarget');
+    const { targetInfos } = await bounded(client.send('Target.getTargets'), 'Target.getTargets');
     for (const t of targetInfos) {
-      if (t.type === 'page' && t.targetId !== targetId) await client.send('Target.closeTarget', { targetId: t.targetId }).catch(() => {});
+      if (t.type === 'page' && t.targetId !== targetId) await bounded(client.send('Target.closeTarget', { targetId: t.targetId }), 'Target.closeTarget').catch(() => {});
     }
     // Chrome answers 'Internal error' to this on the browser target, so it is sent through a page session
     // (the fresh tab: the call clears the named origin, not the page's own).
-    const { sessionId } = await client.send('Target.attachToTarget', { targetId, flatten: true });
-    await client.send('Storage.clearDataForOrigin', { origin: shard.env.CORAL_TEST_URL, storageTypes: 'all' }, sessionId);
-    await client.send('Target.detachFromTarget', { sessionId });
+    const { sessionId } = await bounded(client.send('Target.attachToTarget', { targetId, flatten: true }), 'Target.attachToTarget');
+    await bounded(client.send('Storage.clearDataForOrigin', { origin: shard.env.CORAL_TEST_URL, storageTypes: 'all' }, sessionId), 'Storage.clearDataForOrigin');
+    await bounded(client.send('Target.detachFromTarget', { sessionId }), 'Target.detachFromTarget');
   } catch (e) {
     console.log(`  [runner] could not clear browser storage on shard ${shard.n}: ${e.message}`);
   } finally {
