@@ -159,7 +159,7 @@ const HOOK = `(() => {
         // A notification shows as a toast when it arrives, so it is sent with the page open (and again after each page below).
         const notify = () => plant('notification', 'POST', '/api/notifications', { title: P('notif-title'), message: P('notif-message'), level: 'info', link: { label: P('notif-link-label'), url: 'docs://workflow-quickstart' } }, tok);
         await notify();
-        await waitFor(`!!document.querySelector('.notification-toast, .alert-notification')`, 'the notification toast', { timeout: 4000, soft: true });
+        await waitFor(`!!document.querySelector('.notification-toast, .alert-notification')`, 'the notification toast', { timeout: 15000, soft: true });
         // ── open the pages ─────────────────────────────────────────────────────
         const wfId = (await ev(`fetch('/api/workflows').then(r => r.json()).then(d => ((d.workflows || d)[0] || {}).id)`).catch(() => null));
         const visits = ['/', `/agents/${sid}`, ...['board', 'tasks', 'notes', 'files', 'browse', 'artifacts', 'activity'].map(s => `/agents/${sid}/${s}`),
@@ -197,7 +197,7 @@ const HOOK = `(() => {
             await coralReady().catch(() => {});
             await settle();
             if (path === `/agents/${sid}/files`) await waitFor(`document.documentElement.outerHTML.includes('file-name-')`, 'the changed files', { timeout: 8000, soft: true });
-            if (path === '/') { await ev(`document.getElementById('saved-btn') && document.getElementById('saved-btn').click()`); await settle(); await notify(); await waitFor(`!!document.querySelector('.notification-toast, .alert-notification')`, 'the notification toast', { timeout: 4000, soft: true }); }
+            if (path === '/') { await ev(`document.getElementById('saved-btn') && document.getElementById('saved-btn').click()`); await settle(); await notify(); await waitFor(`!!document.querySelector('.notification-toast, .alert-notification')`, 'the notification toast', { timeout: 15000, soft: true }); }
             const snap = async () => { for (const f of await ev(`[...document.documentElement.outerHTML.matchAll(/data-pwn=(?:&quot;|[\"'])([A-Za-z0-9_.-]+)/g)].map(m => m[1])`)) seen.add(f); };
             await snap();
             const clicked = await crawl(path);
