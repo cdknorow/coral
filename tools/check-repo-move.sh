@@ -299,9 +299,10 @@ fi
 if [ "$VERIFY" = 1 ]; then
   if [ -x "$here/verify-release.sh" ]; then
     vlog="$TMP/verify.log"
-    "$here/verify-release.sh" "$TAG" --repo "$OLD" > "$vlog" 2>&1; vrc=$?
+    vhome="$OLD"; command -v release_home_for_tag >/dev/null 2>&1 && [ -n "$(release_home_for_tag "$TAG")" ] && vhome="$(release_home_for_tag "$TAG")" # the home that built THIS tag
+    "$here/verify-release.sh" "$TAG" --repo "$vhome" > "$vlog" 2>&1; vrc=$?
     vsum="$(grep -E 'passed|FAIL' "$vlog" | tail -2 | tr '\n' ' ')"
-    [ "$vrc" = 0 ] && row PASS "verify-release: $TAG with the old identity ($OLD)" "exit 0; ${vsum:-see the table}" || row FAIL "verify-release: $TAG with the old identity ($OLD)" "exit $vrc; $(grep -E '^(FAIL|\|.*FAIL)' "$vlog" | head -3 | tr '\n' ' ')"
+    [ "$vrc" = 0 ] && row PASS "verify-release: $TAG with its own identity ($vhome)" "exit 0; ${vsum:-see the table}" || row FAIL "verify-release: $TAG with its own identity ($vhome)" "exit $vrc; $(grep -E '^(FAIL|\|.*FAIL)' "$vlog" | head -3 | tr '\n' ' ')"
   else
     row SKIP "verify-release" "tools/verify-release.sh not found next to this script"
   fi
