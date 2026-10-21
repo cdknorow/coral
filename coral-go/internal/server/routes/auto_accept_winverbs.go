@@ -252,7 +252,15 @@ func pathOutside(p string, outside func(string) bool) bool {
 }
 
 // winVerbRisk is why a PowerShell or cmd command is high-risk, or "".
+// winForInCommandRe: for /f's in ('command') or in (`command`): cmd runs the quoted text as a command, but the group reader below takes it for a string.
+var winForInCommandRe = regexp.MustCompile("(?i)\\bfor\\b[^()]*\\bin\\s*\\(\\s*(['`])(.*?)['`]\\s*\\)")
+
 func winVerbRisk(command string, outside func(string) bool) string {
+	for _, m := range winForInCommandRe.FindAllStringSubmatch(command, -1) {
+		if why := winVerbRisk(m[2], outside); why != "" {
+			return why
+		}
+	}
 	// The text inside { } ( ) $( ) @( ) is a command of its own: judged on its own, and a group Coral cannot read asks.
 	body, inner, ok := extractGroups(command)
 	if !ok {
@@ -399,10 +407,18 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 		return ""
 	case "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "curl", "wget":
 		for _, a := range args {
+			// curl -K file and --config file read more options (an output among them) from a file Coral does not read.
+			if name == "curl" && (strings.HasPrefix(a, "-K") || strings.EqualFold(a, "--config") || strings.HasPrefix(strings.ToLower(a), "--config=")) {
+				return "it reads curl options from a file Coral can't judge"
+			}
+			// curl -oPATH and wget -OPATH / -PPATH: the short option with its value glued on.
+			if len(a) > 2 && ((name == "curl" && strings.HasPrefix(a, "-o")) || (name == "wget" && (strings.HasPrefix(a, "-O") || strings.HasPrefix(a, "-P")))) && pathOutside(a[2:], outside) {
+				return "it writes outside the working directory (" + a[2:] + ")"
+			}
 			// --output=path, --output-document=path, --directory-prefix=path: the path is glued on.
 			if k := strings.IndexByte(a, '='); k > 0 && strings.HasPrefix(a, "--") {
 				switch strings.ToLower(a[:k]) {
-				case "--output", "--output-document", "--directory-prefix":
+				case "--output", "--output-document", "--directory-prefix", "--output-dir":
 					if pathOutside(a[k+1:], outside) {
 						return "it writes outside the working directory (" + a[k+1:] + ")"
 					}
@@ -414,7 +430,7 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 				break
 			}
 			// -OutFile (PowerShell), curl's -o / --output and wget's -O / --output-document / -P: where the download is written.
-			if (isParam(a, "outfile", 3) || a == "-o" || strings.EqualFold(a, "--output") || (name == "wget" && (a == "-O" || strings.EqualFold(a, "--output-document") || a == "-P" || strings.EqualFold(a, "--directory-prefix")))) && pathOutside(args[i+1], outside) {
+			if (isParam(a, "outfile", 3) || a == "-o" || strings.EqualFold(a, "--output") || strings.EqualFold(a, "--output-dir") || (name == "wget" && (a == "-O" || strings.EqualFold(a, "--output-document") || a == "-P" || strings.EqualFold(a, "--directory-prefix")))) && pathOutside(args[i+1], outside) {
 				return "it writes outside the working directory (" + args[i+1] + ")"
 			}
 		}
@@ -498,6 +514,9 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 		}
 		return ""
 	case winWrite[name]:
+		if name == "robocopy" && (hasArgFold(args, "/mov") || hasArgFold(args, "/move")) && len(paths) > 0 && pathOutside(paths[0], outside) {
+			return "it moves files out of a folder outside the working directory (" + paths[0] + ")" // /mov and /move delete the source
+		}
 		if name == "robocopy" && (hasArgFold(args, "/mir") || hasArgFold(args, "/purge")) {
 			if len(paths) < 2 || pathOutside(paths[1], outside) {
 				return "it mirrors over a folder outside the working directory"
@@ -603,7 +622,10 @@ func winShellWrapper(args []string, outside func(string) bool) string {
 			return "it runs an encoded PowerShell command"
 		case len(name) >= 2 && strings.HasPrefix("executionpolicy", name), len(name) >= 2 && strings.HasPrefix("windowstyle", name),
 			len(name) >= 2 && strings.HasPrefix("inputformat", name), len(name) >= 2 && strings.HasPrefix("outputformat", name),
-			len(name) >= 2 && strings.HasPrefix("workingdirectory", name):
+			len(name) >= 2 && strings.HasPrefix("workingdirectory", name), name == "ep", name == "w", name == "if", name == "of", name == "wd",
+			len(name) >= 1 && strings.HasPrefix("version", name), len(name) >= 2 && strings.HasPrefix("psconsolefile", name),
+			len(name) >= 2 && strings.HasPrefix("configurationname", name), len(name) >= 2 && strings.HasPrefix("settingsfile", name),
+			len(name) >= 2 && strings.HasPrefix("custompipename", name):
 			i++ // a switch with a value
 		case name == "c" || strings.HasPrefix("command", name):
 			if i+1 < len(args) && args[i+1] == "-" {
