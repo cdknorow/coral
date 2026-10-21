@@ -27,6 +27,7 @@ const rel = f => path.relative(st, f);
 export const ALLOW = new Map([
     ['__coralReady', 'the suites wait on it (ready.js): a promise-like with the page\'s startup parts, in 117 suites and the harness preload'],
     ['__coralTest', 'the namespace test_hooks.js installs when the page\'s boot data asks for it (dev build, CORAL_TEST_HOOKS=1)'],
+    ['_setHubForTests', 'update_settings.js loads lazily, so test_hooks.js cannot import it; update_channel_browser imports the module by URL to draw the Hub view of the pane'],
     ['_resetHubNavForTests', 'hub_nav.js loads lazily, so test_hooks.js cannot import it; its suite imports the module by URL'],
     ['savedLinkUrl', 'saved_link.js loads lazily, so test_hooks.js cannot import it; its suite imports the module by URL'],
 ]);

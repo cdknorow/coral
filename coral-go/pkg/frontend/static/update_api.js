@@ -54,6 +54,12 @@ export function normalizeStatus(raw) {
         latest: VERSION_RE.test(str(raw.latest)) ? raw.latest : '',
         rollback: raw.last_rollback && typeof raw.last_rollback === 'object' ? { at: str(raw.last_rollback.at), from: str(raw.last_rollback.from), to: str(raw.last_rollback.to), reason: ROLLBACK_REASONS.includes(raw.last_rollback.reason) ? raw.last_rollback.reason : 'other', restartFailed: raw.last_rollback.restart_failed === true } : null,
         auto: typeof raw.auto === 'boolean' ? raw.auto : null,
+        // Release channels (#5558; the server's #5557): the fields are optional, an older server sends none and the pane then draws no channel group.
+        hasChannel: raw.channel === 'approved' || raw.channel === 'agentic',
+        channel: raw.channel === 'agentic' ? 'agentic' : 'approved', // anything else is read as approved: the safe side wins
+        approved: raw.approved && typeof raw.approved === 'object' && VERSION_RE.test(str(raw.approved.version)) ? { version: raw.approved.version, approvedAt: Date.parse(str(raw.approved.approved_at)) ? str(raw.approved.approved_at) : '' } : null,
+        pastApproved: raw.past_approved === true,
+        waiting: Array.isArray(raw.waiting) ? raw.waiting.filter(w => w && typeof w === 'object' && VERSION_RE.test(str(w.version))).slice(0, 5).map(w => ({ version: w.version, publishedAt: Date.parse(str(w.published_at)) ? str(w.published_at) : '', notes: str(w.notes).slice(0, 2000) })) : [],
         progress: Number.isFinite(Number(raw.progress)) ? Math.min(100, Math.max(0, Math.round(Number(raw.progress)))) : null, // provisional: percent of a download in progress
     };
 }
@@ -163,6 +169,12 @@ export async function savePrefs({ auto }, was = {}) {
         const resp = await fetch(ROUTES.prefs, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auto: !!auto }) });
         if (!resp.ok) throw new Error('Could not save the update settings.');
     }
+}
+
+/** Save the update channel (an ordinary setting: PUT /api/settings { update_channel }); throws with the server's reason when it refuses. */
+export async function saveChannel(channel) {
+    const resp = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ update_channel: channel === 'agentic' ? 'agentic' : 'approved' }) });
+    if (!resp.ok) throw new Error('Could not save the update channel.');
 }
 
 /** How long an update has been ready, as the three states of the control. */

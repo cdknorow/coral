@@ -69,3 +69,20 @@
 /* a link in the Settings > Updates card: a 44 px target on a phone, and a darker accent in the light theme (the accent was 4.44:1 on the panel) */
 [data-theme="light"] .update-link { color: var(--accent-dim); }
 @media (max-width: 767px) { .update-link { display: inline-flex; align-items: center; min-height: 44px; } }
+
+/* The update channel and the releases waiting for approval (#5558) */
+.update-channel { margin: 0 0 var(--space-lg, 12px); }
+.update-channel .update-calm { margin: 6px 0 0; }
+.update-waiting { margin: 0 0 var(--space-lg, 12px); }
+.update-waiting > summary { cursor: pointer; font-weight: 600; min-height: var(--control-height, 32px); display: flex; align-items: center; color: var(--text-primary); }
+.update-waiting > .update-calm { margin: 2px 0 8px; }
+.update-waiting .update-status { margin: 0 0 8px; }
+.update-waiting code { font-family: var(--font-mono, monospace); }
+.update-notes { margin-top: 6px; } .update-notes summary { cursor: pointer; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); min-height: 28px; display: flex; align-items: center; }
+.update-notes pre { margin: 4px 0 0; padding: 8px; max-height: 140px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: var(--radius-md); background: var(--bg-primary); color: var(--text-primary); font-size: var(--fs-sm, 0.8125rem); }
+.update-toast-unapproved { display: block; }
+.update-channel label.tb-opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+#settings-modal .update-channel .tb-opt input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 767px), (pointer: coarse) {
+    .update-waiting > summary, .update-notes > summary { min-height: var(--control-touch-height, 44px); }
+}

@@ -1032,10 +1032,10 @@ export async function applySettings() {
     try {
         const nothingToSave = await saveSettings(form);
         await applySettingsEffects(form, oldGitDiffMode);
-        if (updatesUiOn()) await importOnce('./update_settings.js').then(m => m.applyUpdatePrefs()); // the two update switches (#5275)
+        const updatesSaved = updatesUiOn() ? await importOnce('./update_settings.js').then(m => m.applyUpdatePrefs()) : false; // the update switch and channel (#5275, #5558)
         const modelsSaved = isCloud() ? false : await importOnce('./custom_models.js').then(m => m.applyCustomModels()); // the custom models (#5480)
         if (modelsSaved) { _invalidateAgentModels(); (await importOnce('./model_labels.js')).clearModelsCache(); }
-        showToast(nothingToSave && !modelsSaved ? NOTHING_TO_SAVE : "Settings saved");
+        showToast(nothingToSave && !modelsSaved && !updatesSaved ? NOTHING_TO_SAVE : "Settings saved");
     } catch (e) {
         showToast(e && e.userMessage ? `Failed to save settings: ${e.userMessage}` : "Failed to save settings", true);
         return;

@@ -75,8 +75,9 @@ function showUpdateToast(data) {
         <div class="update-toast-body">
             <div class="update-toast-header">
                 <span class="update-toast-title">
-                    Coral v${escapeHtml(data.latest)} available
+                    Coral v${escapeHtml(data.latest)} available${data.channel === "agentic" ? " (Agentic channel)" : ""}
                     <span class="update-toast-current">(you have v${escapeHtml(data.current)})</span>
+                    ${data.channel === "agentic" && data.approved === false ? '<span class="update-toast-current update-toast-unapproved">Not yet approved.</span>' : ""}
                 </span>
                 <button class="update-toast-close" data-on-click="update-dismiss" data-version="${escapeAttr(data.latest)}" title="Dismiss">&times;</button>
             </div>

@@ -4,7 +4,7 @@
 import { importOnce } from './import_once.js';
 import { copyText, showToast } from './utils.js';
 import { isCloud } from './server_base.js';
-const { ageTier, notAvailable, notReadyText, fetchHubRelaunch, requestCheckNow, savePrefs, serverHas } = await importOnce('./update_api.js');
+const { ageTier, notAvailable, notReadyText, fetchHubRelaunch, requestCheckNow, savePrefs, saveChannel, serverHas } = await importOnce('./update_api.js');
 const { failureNotice, getUpdateStatus, refreshUpdateStatus, relaunchOffered } = await importOnce('./update_ui.js');
 
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -91,6 +91,56 @@ function row(id, label, desc, checked, disabled) {
     return r;
 }
 
+// The page that runs the approval (Run workflow with the tag). A constant: no field the server or the release feed sent is ever put into this link.
+let _hubForTests = null; // a test says it is the Hub without booting the Hub page
+export function _setHubForTests(v) { _hubForTests = v; }
+const inHub = () => (_hubForTests === null ? isCloud() : _hubForTests);
+
+const APPROVE_URL = 'https://github.com/subgentic/coral/actions/workflows/approve-release.yml';
+const daysSince = (iso) => { const t = Date.parse(iso); return t ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null; };
+const ago = (d) => (d === null ? '' : d < 1 ? 'earlier today' : `${plural(d, 'day')} ago`);
+
+/** The channel choice (#5558, the Terminal backend's radio cards): Approved (the default) or Agentic. Through the Hub it is a line of text: the owner of that computer chooses. */
+function channelBlock(s) {
+    const g = mk('div', 'tb-row update-channel'); g.setAttribute('role', 'group'); g.setAttribute('aria-labelledby', 'uc-label');
+    const head = mk('div', 'tb-head'); const lab = mk('span', 'tb-label', 'Update channel'); lab.id = 'uc-label'; head.append(lab); g.append(head);
+    if (inHub()) { g.append(mk('p', 'tb-sub', `Channel: ${s.channel === 'agentic' ? 'Agentic' : 'Approved'} (set on this computer)`)); return g; }
+    g.append(mk('p', 'tb-sub', 'Which releases Coral tells you about. Saved with Apply.'));
+    const opt = (value, title, desc) => {
+        const l = mk('label', 'tb-opt'); const i = document.createElement('input'); i.type = 'radio'; i.name = 'update-channel'; i.value = value; i.id = `uc-${value}`; i.checked = s.channel === value;
+        const t = mk('span'); t.append(mk('span', 'tb-t', title), mk('span', 'tb-d', desc)); l.append(i, t); return l;
+    };
+    g.append(opt('approved', 'Approved (recommended)', 'Releases the team has approved.'));
+    g.append(opt('agentic', 'Agentic (every release)', 'Every release as soon as it is published, including ones not yet approved. These may change faster and be less tested.'));
+    if (s.approved) { const d = daysSince(s.approved.approvedAt); g.append(mk('p', 'update-calm', `Approved now: v${s.approved.version}${d === null ? '' : `, approved ${ago(d)}`}.`)); }
+    if (s.pastApproved) g.append(mk('p', 'update-calm', 'You are already past the Approved release, so Approved offers nothing newer.'));
+    if (s.auto !== false) { const n = mk('p', 'update-calm update-channel-auto', 'Installing updates automatically still uses Approved releases only.'); n.hidden = s.channel !== 'agentic'; g.append(n); }
+    return g;
+}
+
+/** The releases published but not yet approved (only those newer than the newest approved one), for the operator: collapsed, each with the tag to type and the one link to the approval page. Plain text only. */
+function waitingBlock(s) {
+    const d = mk('details', 'update-waiting');
+    const sum = mk('summary', null, `Waiting for approval (${s.waiting.length})`);
+    d.append(sum);
+    d.append(mk('p', 'update-calm', 'Published, not yet approved. Approving makes a release the Approved channel, Homebrew and the download links. Only the repository\'s operator can: Coral does not approve anything itself.'));
+    for (const r of s.waiting) {
+        const days = daysSince(r.publishedAt);
+        const tier = days === null ? 'ok' : ageTier(days) === 'stale' ? 'bad' : ageTier(days);
+        const c = mk('div', 'update-status'); c.setAttribute('role', 'group'); c.dataset.k = tier;
+        const dot = mk('span', 'update-state-dot'); dot.dataset.k = tier; dot.setAttribute('aria-hidden', 'true');
+        const text = mk('div', 'update-status-text');
+        text.append(mk('b', null, `Coral ${r.version}`), mk('p', null, days === null ? 'Waiting for approval' : `Published ${ago(days)}${days >= 7 ? ' (over a week)' : ''}, waiting for approval`));
+        const how = mk('p', null, 'Run it with the tag '); how.append(mk('code', null, `v${r.version}`));
+        text.append(how);
+        if (r.notes) { const n = mk('details', 'update-notes'); n.append(mk('summary', null, 'Release notes'), mk('pre', null, r.notes)); text.append(n); }
+        const a = mk('a', 'btn update-act', 'Open the approval page'); a.href = APPROVE_URL; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.setAttribute('aria-label', `Open the approval page for Coral ${r.version} on GitHub (opens a new tab)`);
+        c.append(dot, text, a); d.append(c);
+    }
+    return d;
+}
+
 /** Draw the pane from the last status (and ask for a fresh one). */
 export async function showUpdatesPane() {
     const host = body();
@@ -101,6 +151,17 @@ export async function showUpdatesPane() {
     if (!s || !s.enabled) { host.append(mk('p', 'update-calm', 'Updates are not available in this Coral.')); return; }
     const unmanaged = isManaged(s);
     host.append(unmanaged ? managed(s) : card(s));
+    if (s.hasChannel) {
+        host.append(channelBlock(s));
+        // The waiting list is the operator's, and the client reads the release list only on Agentic: it shows while Agentic is the choice and the server sent releases (never through the Hub)
+        const sync = () => {
+            host.querySelector('.update-waiting')?.remove();
+            const agentic = !inHub() && !!(host.querySelector('#uc-agentic') || {}).checked;
+            const auto = host.querySelector('.update-channel-auto'); if (auto) auto.hidden = !agentic;
+            if (agentic && s.waiting.length) host.querySelector('.update-channel').after(waitingBlock(s));
+        };
+        host.querySelector('.update-channel').addEventListener('change', sync); sync();
+    }
     // Through Coral Hub the switch is not the hub's to change (the machine's owner sets it on that computer), so it is not drawn there
     const grid = mk('dl', 'info-grid settings-grid');
     const reason = unmanaged ? (s.installKind === 'homebrew' ? 'Homebrew manages updates.' : 'This install cannot update itself.') : '';
@@ -123,11 +184,31 @@ export async function showUpdatesPane() {
     host.append(mk('p', 'update-calm update-privacy', 'Coral contacts GitHub only, to read the release list and download the package.'));
 }
 
-/** Save "Install updates automatically" with Apply (a no-op when the pane was not drawn, has no such switch, or nothing changed). */
+/** Save what the pane changed, with Apply: "Install updates automatically" and the update channel (each only when it changed; a no-op when the pane was not drawn). Returns true when something was saved. */
 export async function applyUpdatePrefs() {
-    const auto = document.getElementById('settings-update-auto');
     const s = getUpdateStatus();
-    if (isCloud() || !s || !auto || auto.disabled || auto.checked === (s.auto !== false)) return;
-    await savePrefs({ auto: auto.checked }, { auto: s.auto });
-    await refreshUpdateStatus();
+    if (isCloud() || !s) return false;
+    let saved = false;
+    const auto = document.getElementById('settings-update-auto');
+    if (auto && !auto.disabled && auto.checked !== (s.auto !== false)) { await savePrefs({ auto: auto.checked }, { auto: s.auto }); saved = true; }
+    const picked = document.querySelector('input[name="update-channel"]:checked');
+    const channelChanged = !!(s.hasChannel && picked && picked.value !== s.channel);
+    if (channelChanged) { await saveChannel(picked.value); saved = true; }
+    if (saved) await refreshUpdateStatus();
+    if (channelChanged && body()) { await showUpdatesPane(); if (picked.value === 'agentic') redrawWhenFactsArrive(0); } // the pane shows the new channel's facts now (#5561)
+    return saved;
+}
+
+// The server answers the first status after a switch to Agentic from a cold cache: the channel only, its release list a moment later. Read it again a few times, and redraw while nothing is pending in the pane.
+const RETRY_MS = [2000, 5000, 12000];
+function redrawWhenFactsArrive(i) {
+    if (i >= RETRY_MS.length) return;
+    setTimeout(async () => {
+        const cur = getUpdateStatus();
+        if (!body() || !cur || cur.channel !== 'agentic' || cur.approved) return; // the pane is gone, the choice changed, or the facts are here
+        await refreshUpdateStatus();
+        const picked = document.querySelector('input[name="update-channel"]:checked');
+        if (body() && picked && picked.value === 'agentic') await showUpdatesPane();
+        redrawWhenFactsArrive(i + 1);
+    }, RETRY_MS[i]);
 }
