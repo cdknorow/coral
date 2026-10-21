@@ -34,7 +34,7 @@ func TestLaunchLineDeliversTheSessionTokenWithoutTypingIt(t *testing.T) {
 
 	envOut := filepath.Join(dir, "env.txt")
 	stub := filepath.Join(dir, "cli")
-	require.NoError(t, os.WriteFile(stub, []byte("#!/bin/sh\nprintf '%s' \"$CORAL_SESSION_TOKEN\" > "+envOut+"\n"), 0o755))
+	require.NoError(t, os.WriteFile(stub, []byte("#!/bin/sh\nprintf '%s|%s' \"$CORAL_SESSION_TOKEN\" \"$CORAL_SESSION_AUTH_FILE\" > "+envOut+"\n"), 0o755))
 	for name, ag := range map[string]Agent{"claude": &ClaudeAgent{}, "codex": &CodexAgent{}, "agy": &AgyAgent{}, "pi": &PiAgent{}} {
 		os.Remove(envOut)
 		p := LaunchParams{SessionID: "11111111-2222-3333-4444-555555555555", CLIPath: stub, CoralPort: 8420}
@@ -45,8 +45,15 @@ func TestLaunchLineDeliversTheSessionTokenWithoutTypingIt(t *testing.T) {
 		require.NoError(t, err, "%s: %s", name, out)
 		got, err := os.ReadFile(envOut)
 		require.NoError(t, err, name)
-		assert.Equal(t, token, string(got), "%s: the CLI has its token", name)
-		assert.NoFileExists(t, file, "%s: the file is deleted", name)
+		if name == "codex" {
+			// #13: Codex's commands may not see the variable, so they get the file, kept.
+			assert.Equal(t, token+"|"+file, string(got), "%s: the CLI has its token and its file", name)
+			assert.FileExists(t, file, "%s: the file stays for the tools", name)
+			os.Remove(file)
+		} else {
+			assert.Equal(t, token+"|", string(got), "%s: the CLI has its token, and no file", name)
+			assert.NoFileExists(t, file, "%s: the file is deleted", name)
+		}
 		CleanupTempFiles(p.SessionID)
 	}
 

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/subgentic/coral/internal/agentenv"
 	"github.com/subgentic/coral/internal/auth"
 	"github.com/subgentic/coral/internal/httputil"
 	"github.com/subgentic/coral/internal/safefs"
@@ -35,7 +36,7 @@ const TokenFile = "cli-token"
 const maxSignedBody = 32 << 20
 
 // agentMarkers are set by Coral for an agent session (its launch line and environment).
-var agentMarkers = []string{"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SESSION_TOKEN", "CORAL_SUBSCRIBER_ID"}
+var agentMarkers = []string{"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SESSION_TOKEN", "CORAL_SUBSCRIBER_ID", agentenv.SessionAuthFileEnv}
 
 // InsideAgentSession reports whether this process runs inside a Coral agent session: any
 // of the variables Coral sets for one is present. Such a process never signs with the
@@ -65,7 +66,23 @@ func DataDir() string {
 // ReadToken reads the command-line token from dir: a regular file (not a link), not
 // readable by group or others, owned by this user where the system says, at most 256 bytes.
 func ReadToken(dir string) (string, error) {
-	p := filepath.Join(dir, TokenFile)
+	tok, err := readPrivateFile(dir, TokenFile)
+	if err == nil && tok == "" {
+		return "", errors.New("empty command-line token")
+	}
+	return tok, err
+}
+
+// ReadPrivateFile reads a secret from the file at path with ReadToken's checks: a regular file
+// with one name (not a link), private to this user, at most 256 bytes. It holds an agent
+// session's token for the tools of a Codex agent (agentenv.SessionAuthFileEnv, #13); "" with
+// no error for an empty file.
+func ReadPrivateFile(path string) (string, error) {
+	return readPrivateFile(filepath.Dir(path), filepath.Base(path))
+}
+
+func readPrivateFile(dir, name string) (string, error) {
+	p := filepath.Join(dir, name)
 	// Opened once, then checked and read through the same handle (#3601, weak site W22): a
 	// regular file, never through a symlink, never a FIFO; the mode, size and owner checks are
 	// on what was opened, so nothing can be swapped in between the check and the read.
@@ -73,7 +90,7 @@ func ReadToken(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	f, fi, err := root.Open(TokenFile)
+	f, fi, err := root.Open(name)
 	root.Close()
 	if err != nil {
 		if errors.Is(err, safefs.ErrNotRegular) {
@@ -101,11 +118,7 @@ func ReadToken(dir string) (string, error) {
 	if len(b) > 256 {
 		return "", fmt.Errorf("%s is not a private regular file of this user", p)
 	}
-	tok := strings.TrimSpace(string(b))
-	if tok == "" {
-		return "", errors.New("empty command-line token")
-	}
-	return tok, nil
+	return strings.TrimSpace(string(b)), nil
 }
 
 // Transport signs every request to a loopback Coral with the command-line token: one
@@ -215,7 +228,7 @@ func (t Transport) hello(ctx context.Context, base string) (clientNonce, serverN
 // "401 session_token_required" told a person nothing).
 func InstallOperatorSigning() bool {
 	if InsideAgentSession() {
-		if strings.TrimSpace(os.Getenv("CORAL_SESSION_TOKEN")) == "" {
+		if strings.TrimSpace(os.Getenv("CORAL_SESSION_TOKEN")) == "" && strings.TrimSpace(os.Getenv(agentenv.SessionAuthFileEnv)) == "" {
 			installUnsignedHint("this agent session has no session token (it started before Coral gave agents one): restart the agent from Coral")
 		}
 		return false

@@ -42,6 +42,7 @@ var Allowed = map[string]bool{
 	"CORAL_SESSION_NAME":       true, // the agent's identity, set by Coral for each agent
 	"CORAL_SESSION_ID":         true,
 	"CORAL_SUBSCRIBER_ID":      true,
+	SessionAuthFileEnv:         true, // a Codex agent's session token file (#13)
 	"CORAL_SHELL":              true, // the user's shell preference
 	"CORAL_TELEMETRY_DISABLED": true, // a user opt-out: tools an agent runs honour it too
 	"CORAL_DEBUG":              true,
@@ -88,7 +89,15 @@ func Filter(env []string) []string {
 // IdentityVars name an agent session's identity. A Coral server is never an agent session,
 // so it never keeps them from whatever started it (#3421: a test server started from an
 // agent's shell handed that agent's name, role and token to its own agents).
-var IdentityVars = []string{"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SUBSCRIBER_ID", "CORAL_SESSION_TOKEN"}
+var IdentityVars = []string{"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SUBSCRIBER_ID", "CORAL_SESSION_TOKEN", SessionAuthFileEnv}
+
+// SessionAuthFileEnv names the file a Codex agent's tools read its session token from when
+// CORAL_SESSION_TOKEN is missing (#13). Codex hides from the commands it runs every variable
+// whose name holds KEY, SECRET or TOKEN (its default excludes, before 0.161), so the token's
+// own variable never reached coral-board or the hooks there. This name holds none of those,
+// nor PASS or CRED (TestSessionAuthFileEnvPassesCodexExcludes), and the variable is a path,
+// not the secret, so a command that prints its environment doesn't print the token.
+const SessionAuthFileEnv = "CORAL_SESSION_AUTH_FILE"
 
 // LocationVars tell an agent's tools which Coral to talk to and where its data is.
 var LocationVars = []string{"CORAL_PORT", "CORAL_HOST", "CORAL_URL", "CORAL_DIR", "CORAL_DATA_DIR"}

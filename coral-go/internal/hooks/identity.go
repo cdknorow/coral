@@ -7,6 +7,9 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/subgentic/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/cliauth"
 )
 
 // Identity for an agent's own tools (#3387). Coral's launch line puts the agent session's
@@ -62,12 +65,28 @@ func (t identityTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 // transport carry the agent session's token (if Coral gave it one) and name the tool
 // in its User-Agent. Call it first thing in main.
 func InstallIdentity(tool string) {
-	token := strings.TrimSpace(os.Getenv(sessionTokenEnv))
+	token := sessionToken()
 	base := http.DefaultTransport
 	if _, done := base.(identityTransport); done {
 		return
 	}
 	http.DefaultTransport = identityTransport{base: base, tool: tool, token: token, hosts: configuredHosts()}
+}
+
+// sessionToken is the agent session's token: CORAL_SESSION_TOKEN, or when that is missing (in
+// a command Codex ran, which hides it, #13) the file agentenv.SessionAuthFileEnv names, read
+// with cliauth's private-file checks. The file never overrides the variable, and a file that
+// fails the checks gives no token (the request goes out without one, refused like any other).
+func sessionToken() string {
+	if tok := strings.TrimSpace(os.Getenv(sessionTokenEnv)); tok != "" {
+		return tok
+	}
+	if p := strings.TrimSpace(os.Getenv(agentenv.SessionAuthFileEnv)); p != "" {
+		if tok, err := cliauth.ReadPrivateFile(p); err == nil {
+			return tok
+		}
+	}
+	return ""
 }
 
 // tokenAllowed: the request goes to this agent's own Coral.

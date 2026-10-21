@@ -348,7 +348,7 @@ function ensureRunDir() {
 // An agent shell's identity and production links (Cloud Hub URL, hub mode, tmux socket, workflow
 // context) never reach a test server or suite.
 // Keep in step with tests/lib/agent_env.sh and agentShellVars in coral-go/internal/testguard.
-const AGENT_SHELL_VARS = ['CORAL_SESSION_NAME', 'CORAL_SESSION_ID', 'CORAL_SESSION_TOKEN', 'CORAL_SUBSCRIBER_ID', 'CORAL_CLOUD_URL', 'CORAL_HUB', 'CORAL_SHELL', 'CORAL_TMUX_SOCKET',
+const AGENT_SHELL_VARS = ['CORAL_SESSION_NAME', 'CORAL_SESSION_ID', 'CORAL_SESSION_TOKEN', 'CORAL_SESSION_AUTH_FILE', 'CORAL_SUBSCRIBER_ID', 'CORAL_CLOUD_URL', 'CORAL_HUB', 'CORAL_SHELL', 'CORAL_TMUX_SOCKET',
   'CORAL_TMUX_FALLBACK', 'CORAL_AGENT_HELPER', 'CORAL_AGENT_ARGS', 'CORAL_BOARD_HELPER', 'CORAL_BOARD_ARGS'];
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => ![
   'CORAL_PORT', 'CORAL_URL', 'CORAL_HOST', 'CORAL_DATA_DIR', 'CORAL_DIR', 'CORAL_TEST_URL', 'TMUX', 'TMUX_PANE', ...AGENT_SHELL_VARS,

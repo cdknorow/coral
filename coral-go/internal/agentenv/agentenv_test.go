@@ -78,3 +78,14 @@ func TestKeepIgnoresCase(t *testing.T) {
 	assert.True(t, IsCoral("coral_x"))
 	assert.False(t, IsCoral("CORA"))
 }
+
+// #13: the name a Codex agent's tools find their token file under passes Codex's default
+// excludes (KEY, SECRET, TOKEN, case-insensitive), and the names a later Codex might add (PASS,
+// CRED); it reaches agents and is an agent's identity, never the server's.
+func TestSessionAuthFileEnvPassesCodexExcludes(t *testing.T) {
+	for _, word := range []string{"KEY", "SECRET", "TOKEN", "PASS", "CRED"} {
+		assert.NotContains(t, strings.ToUpper(SessionAuthFileEnv), word)
+	}
+	assert.True(t, Keep(SessionAuthFileEnv))
+	assert.Contains(t, IdentityVars, SessionAuthFileEnv)
+}
