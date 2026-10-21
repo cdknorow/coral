@@ -178,6 +178,12 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef) {
 			agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks = limitAgentLaunch("launch-team", agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks)
 		}
+		if code, msg, stopped := h.hubMemberStopped(ctx, r, body, agentDef); stopped {
+			// Not started, and a setup problem (the category "" makes an all-refused team a 422), never a server fault (#5839).
+			launched = append(launched, map[string]any{"name": agentDef.Name, "error": msg, "code": code})
+			categories = append(categories, "")
+			continue
+		}
 		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID)
 		if category != "" && firstFailure == "" {
 			firstFailure = category
@@ -294,21 +300,45 @@ func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTea
 // count (#126 F4, the Orchestrator's decision). One member is enough to refuse the team.
 func teamAsksToSkip(body launchTeamRequest, settings map[string]string) bool {
 	for _, def := range body.Agents {
-		agentType, flags := body.AgentType, def.Flags
-		if def.AgentType != "" {
-			agentType = def.AgentType
-		}
-		if len(flags) == 0 {
-			flags = body.Flags
-		}
-		if agent.SkipsPermissionPrompts(agentType, flags) {
-			return true
-		}
-		if hubWidens(def.Capabilities, def.Tools, def.Hooks) && !inSavedTeamTemplate(settings, def) {
+		if memberAsksToSkip(body, def, settings) {
 			return true
 		}
 	}
 	return false
+}
+
+// memberAsksToSkip is teamAsksToSkip for one member.
+func memberAsksToSkip(body launchTeamRequest, def launchTeamAgent, settings map[string]string) bool {
+	agentType, flags := body.AgentType, def.Flags
+	if def.AgentType != "" {
+		agentType = def.AgentType
+	}
+	if len(flags) == 0 {
+		flags = body.Flags
+	}
+	if agent.SkipsPermissionPrompts(agentType, flags) {
+		return true
+	}
+	return hubWidens(def.Capabilities, def.Tools, def.Hooks) && !inSavedTeamTemplate(settings, def)
+}
+
+// hubMemberStopped is the check of one member of a team launch that came through Coral Hub, made when it is its turn (#5839): the owner may have turned
+// the switch off, or lowered the mode, since the request was admitted, and the team takes seconds to minutes to start. A member that skips permission
+// prompts is then not started: its entry carries the refusal's code and message, as the request would have been refused. Members that keep the prompts are
+// not affected (the request was admitted at Launch, as for every route). The settings are read now, not taken from the start of the request.
+func (h *SessionsHandler) hubMemberStopped(ctx context.Context, r *http.Request, body launchTeamRequest, def launchTeamAgent) (code, msg string, stopped bool) {
+	if !cloud.Tunneled(r) {
+		return "", "", false
+	}
+	settings, err := h.ss.GetSettings(ctx)
+	if err != nil {
+		return "hub_settings_unreadable", "the settings could not be read to check this member: " + err.Error(), true // fail closed
+	}
+	code, msg, refused, err := hubSkipRefusal(ctx, r, h.ss, memberAsksToSkip(body, def, settings))
+	if err != nil {
+		return "hub_settings_unreadable", "the settings could not be read to check this member: " + err.Error(), true
+	}
+	return code, msg, refused
 }
 
 // restoreTeamTemplate writes what a team template brings besides its members: the members' knowledge files and the
