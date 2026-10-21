@@ -7,6 +7,7 @@ import (
 )
 
 func TestPTYBackendSendLineSubmitsSeparately(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	backend := NewPTYBackend()
 	defer backend.Close()

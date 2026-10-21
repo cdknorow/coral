@@ -86,6 +86,7 @@ func TestTmuxSessionTerminal_ListSessions_Empty(t *testing.T) {
 }
 
 func TestTmuxSessionTerminal_ListSessions_WithSessions(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	dir := t.TempDir()
 
@@ -107,6 +108,7 @@ func TestTmuxSessionTerminal_ListSessions_WithSessions(t *testing.T) {
 }
 
 func TestTmuxSessionTerminal_ListSessions_Multiple(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 
 	spawnTmuxSession(t, terminal, "multi-a", t.TempDir())
@@ -120,6 +122,7 @@ func TestTmuxSessionTerminal_ListSessions_Multiple(t *testing.T) {
 // ── FindSession ──────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_FindSession_ByName(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	dir := t.TempDir()
 
@@ -142,6 +145,7 @@ func TestTmuxSessionTerminal_FindSession_NotFound(t *testing.T) {
 // ── CreateSession / HasSession / KillSession ─────────────────────────
 
 func TestTmuxSessionTerminal_CreateSession(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -154,6 +158,7 @@ func TestTmuxSessionTerminal_CreateSession(t *testing.T) {
 }
 
 func TestTmuxSessionTerminal_KillSession(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -184,6 +189,7 @@ func TestTmuxSessionTerminal_HasSession_False(t *testing.T) {
 // ── SendInput / CaptureOutput ────────────────────────────────────────
 
 func TestTmuxSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -197,6 +203,7 @@ func TestTmuxSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
 }
 
 func TestTmuxSessionTerminal_CaptureOutput_EmptySession(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -211,6 +218,7 @@ func TestTmuxSessionTerminal_CaptureOutput_EmptySession(t *testing.T) {
 // ── SendRawInput ─────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_SendRawInput(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -224,6 +232,7 @@ func TestTmuxSessionTerminal_SendRawInput(t *testing.T) {
 // ── SendToTarget ─────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_SendToTarget(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -242,6 +251,7 @@ func TestTmuxSessionTerminal_SendToTarget(t *testing.T) {
 }
 
 func TestTmuxSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 	spawnTmuxSession(t, terminal, "claude-00003687-0009-4000-8000-000000000000", t.TempDir())
@@ -259,6 +269,7 @@ func TestTmuxSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
 // ── ResizeSession ────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_ResizeSession(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -271,6 +282,7 @@ func TestTmuxSessionTerminal_ResizeSession(t *testing.T) {
 // ── RenameSession ────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_RenameSession(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -288,6 +300,7 @@ func TestTmuxSessionTerminal_RenameSession(t *testing.T) {
 // ── RestartPane ──────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_RestartPane(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -312,6 +325,7 @@ func TestTmuxSessionTerminal_RestartPane(t *testing.T) {
 // ── Logging ──────────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_StartStopLogging(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -333,6 +347,7 @@ func TestTmuxSessionTerminal_StartStopLogging(t *testing.T) {
 // ── ClearHistory ─────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_ClearHistory(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -349,6 +364,7 @@ func TestTmuxSessionTerminal_ClearHistory(t *testing.T) {
 // ── SetPaneTitle ─────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_SetPaneTitle(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -372,6 +388,7 @@ func TestTmuxSessionTerminal_SetPaneTitle(t *testing.T) {
 // ── FindTarget ───────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_FindTarget(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
@@ -406,6 +423,7 @@ func TestTmuxSessionTerminal_AttachCommand(t *testing.T) {
 // ── Concurrent Access ────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_ConcurrentListAndKill(t *testing.T) {
+	t.Parallel()
 	terminal := newTmuxTestTerminal(t)
 	ctx := context.Background()
 
