@@ -21,7 +21,7 @@ func TestPSHandoffRunsAndRemovesItselfInABracketFolder(t *testing.T) {
 	}
 	path := filepath.Join(dir, "coral-command-1.ps1")
 	// The command's own non-ASCII text must survive too: it prints its code points.
-	script, invocation := psHandoff(path, "Write-Output handed-off; [string]::Join(',', [int[]][char[]]"+psLiteral("Jos\u00e9\u2019s")+")")
+	script, invocation := psHandoff(ps, path, "Write-Output handed-off; [string]::Join(',', [int[]][char[]]"+psLiteral("Jos\u00e9\u2019s")+")")
 	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
 		t.Fatal(err)
 	}

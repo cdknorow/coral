@@ -358,21 +358,11 @@ func defaultShell() ([]string, error) {
 	return sh, err
 }
 
-// psPolicyArgs: Coral's launch line runs a .ps1 (the long-command handoff, command_delivery_ps.go). A stock
-// Windows client's LocalMachine policy is Restricted, which refuses every script: agents could not start, and
-// users "fixed" it by setting Bypass machine-wide (#25 G3A). Bypass for this one process only, so the script
-// (user-only ACL, removes itself) runs and the machine's policy is untouched. A Group Policy policy
-// (MachinePolicy/UserPolicy) still wins, as it does over any process flag.
-var psPolicyArgs = []string{"-ExecutionPolicy", "Bypass"}
-
 // pickShell is defaultShell's rule, with the environment and PATH lookup passed in.
 func pickShell(goos, coralShell, userShell string, lookPath func(string) (string, error)) (shell []string, cmdIgnored bool, err error) {
 	if coralShell != "" {
 		base := strings.TrimSuffix(strings.ToLower(filepath.Base(strings.ReplaceAll(coralShell, `\`, "/"))), ".exe")
 		if base != "cmd" {
-			if goos == "windows" && (base == "powershell" || base == "pwsh") {
-				return append([]string{coralShell}, psPolicyArgs...), false, nil
-			}
 			return []string{coralShell}, false, nil
 		}
 		cmdIgnored = true
@@ -380,7 +370,7 @@ func pickShell(goos, coralShell, userShell string, lookPath func(string) (string
 	if goos == "windows" {
 		for _, ps := range []string{"pwsh.exe", "powershell.exe"} {
 			if _, err := lookPath(ps); err == nil {
-				return append([]string{ps}, psPolicyArgs...), cmdIgnored, nil
+				return []string{ps}, cmdIgnored, nil
 			}
 		}
 		return nil, cmdIgnored, errNoPowerShell
