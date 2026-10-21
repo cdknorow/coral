@@ -264,6 +264,11 @@
 1	event_row.js	r.cls
 1	event_row.js	slow
 1	event_row.js	typeCls
+1	field_row.js	after
+1	field_row.js	box
+1	field_row.js	descFirst ? '' : note
+1	field_row.js	descFirst ? ` ${note}` : ''
+1	field_row.js	input
 1	folder_tags.js	available.map(t => `<span class="tag-dropdown-item" style="background:${escapeAttr(tagColor(t.color))}" data-o
 1	folder_tags.js	availableHtml
 1	folder_tags.js	createHtml
@@ -625,7 +630,6 @@
 1	team_cross_team_settings.js	links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l
 1	team_cross_team_settings.js	switchRow({ label: 'Cross-team messaging', name: 'cross_team_messaging', checked: draft.messaging, disabled: !
 1	team_cross_team_settings.js	switchRow({ label: 'Share files with other teams', name: 'cross_team_artifacts', checked: draft.files, disable
-1	team_health_settings.js	HEALTH_LIMITS.reviewers
 1	team_health_settings.js	extra
 1	team_health_settings.js	held
 1	team_health_settings.js	knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'minutes')
