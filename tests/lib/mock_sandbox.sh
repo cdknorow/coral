@@ -39,6 +39,12 @@ coral_test_sandbox() {
         printf '#!/bin/sh\nprintf "%%s %%s\\n" "%s" "$*" >> "%s"\nexit 1\n' \
             "$_cli" "$CORAL_TEST_STUB_MARKER" > "$CORAL_TEST_STUB_BIN/$_cli"
         chmod +x "$CORAL_TEST_STUB_BIN/$_cli"
+        # Windows finds a command on PATH only with an extension (PATHEXT), never the
+        # extensionless script above, so a server on Windows gets a .cmd stub as well.
+        case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
+            printf '@echo %s %%* >> "%s"\r\n@exit /b 1\r\n' "$_cli" "$(cygpath -w "$CORAL_TEST_STUB_MARKER")" \
+                > "$CORAL_TEST_STUB_BIN/$_cli.cmd" ;;
+        esac
     done
     # Baseline of the real ~/.claude/projects (the leak vector): a test must add nothing here. The
     # project-dir set, not a timestamp, so the operator's own live Claude sessions don't false-positive.
