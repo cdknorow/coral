@@ -594,6 +594,17 @@ not code-signed, so SmartScreen warns that the publisher is unknown; verify the 
 "Verify your download") before running it. On Windows Coral uses the native PTY backend
 (ConPTY; there is no tmux on Windows) and listens on port 8450 by default, not 8420, which svchost can hold.
 
+### Windows: Antigravity (agy) agents show no Working or Needs-input status
+
+agy runs Coral's hooks through `cmd.exe`, which can't take a quoted path, so Coral names the hook
+by an unquoted absolute path. When Coral is installed in a folder with a space in it (the
+installer's default, `C:\Program Files\Coral`), that path is the folder's 8.3 short name
+(`C:\PROGRA~1\Coral\...`). On a volume with 8.3 names turned off there is no such name, and agy
+then runs without Coral's hooks rather than with one a repository could replace: its status
+isn't tracked, and Coral's log says so once per launch (`agy runs without Coral's hooks`).
+Claude and Codex agents are not affected. To check a volume, run `fsutil 8dot3name query C:`;
+installing Coral in a folder without spaces also avoids it.
+
 ### Windows: an unknown account has Modify on `%TEMP%` or a project folder
 
 If you run Codex agents with a sandbox (workspace-write, with `[windows] sandbox = "unelevated"` in
