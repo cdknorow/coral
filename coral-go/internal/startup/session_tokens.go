@@ -30,6 +30,7 @@ func setupSessionTokens(db *store.DB, coralDir string) {
 		return
 	}
 	_ = os.Chmod(dir, 0o700)
+	_ = secfile.ProtectDir(dir) // Windows: a mode means nothing there; this user and SYSTEM only, whatever the data folder allows
 	sweepSessionTokenFiles(db, dir)
 	agent.SessionTokenMinter = func(sessionID, sessionName string) string {
 		token, err := db.MintSessionToken(context.Background(), sessionID, sessionName)
