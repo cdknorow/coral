@@ -46,6 +46,7 @@ func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 	if refuseUnlessOperator(w, r, "see the saved messages") {
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store") // the bookmarks are the owner's notes (#5763)
 	q := r.URL.Query()
 	state := q.Get("state")
 	if state != "" && state != "open" && state != "done" && state != "all" {
@@ -203,6 +204,9 @@ func cleanSavedField(s string) string {
 
 // SavedAdd: POST /api/saved {kind, ref, key, agent_type, title, snippet, said_at, team, author}: team is the board an agent was on (a board message's is its board), author who wrote a board message. Saving a saved message again answers the bookmark that exists.
 func (h *SystemHandler) SavedAdd(w http.ResponseWriter, r *http.Request) {
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5763)
+		return
+	}
 	if refuseUnlessOperator(w, r, "save a message") {
 		return
 	}
@@ -280,6 +284,9 @@ func savedID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 
 // SavedUpdate: PATCH /api/saved/{id} {"done": bool}: marks it done, or open again.
 func (h *SystemHandler) SavedUpdate(w http.ResponseWriter, r *http.Request) {
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5763)
+		return
+	}
 	if refuseUnlessOperator(w, r, "change a saved message") {
 		return
 	}
@@ -308,6 +315,9 @@ func (h *SystemHandler) SavedUpdate(w http.ResponseWriter, r *http.Request) {
 
 // SavedDelete: DELETE /api/saved/{id}.
 func (h *SystemHandler) SavedDelete(w http.ResponseWriter, r *http.Request) {
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5763)
+		return
+	}
 	if refuseUnlessOperator(w, r, "remove a saved message") {
 		return
 	}
