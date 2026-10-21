@@ -128,6 +128,12 @@ const BASE = require('./test_base').BASE;
         await waitFor(`window.__teamLaunches.length === 1`, 'the quick launch request');
         assert.equal((await ev(`window.__teamLaunches[0]`)).board_name, 'quick-1');
         await waitFor(`[...document.querySelectorAll('.toast')].some(t => t.textContent.trim().replace(/×$/, '') === 'Launched 2 of 3 agents (1 failed)')`, 'the partial-launch toast');
+        // Nobody started (#122): the quick launch shows the same per-member dialog, and its own dialog stays open.
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); window.__teamLaunches.length = 0; document.getElementById('quick-launch-modal').style.display = 'flex'; window.__launchAnswer = { status: 422, body: { ok: false, code: 'team_launch_failed', error: 'no agent in the team started (A: no cli; B: no cli)', agents: [{ name: 'A', error: 'no cli' }, { name: 'B', error: 'no cli' }] } }; document.getElementById('quick-launch-board-name').value = 'quick-2'; window._quickLaunchTeam(); true`);
+        await waitFor(`!!document.querySelector('body > .modal:not([id]) ul li')`, 'the quick launch all-failed dialog');
+        assert.deepEqual(await ev(`[document.querySelector('body > .modal:not([id]) h3').textContent, document.querySelectorAll('body > .modal:not([id]) ul li').length]`), ['Team Launch — 2 agents failed', 2]);
+        assert.equal(await ev(`document.getElementById('quick-launch-modal').style.display`), 'flex', 'the quick launch dialog stays open');
+        await ev(`document.querySelector('body > .modal:not([id]) [data-action=close]').click(); document.getElementById('quick-launch-modal').style.display = 'none'; true`);
 
         console.log('The wizard: both fields are required, a failed request shows its error, a finished job is reviewed in the team form');
         await ev(`window.hideLaunchModal(); window.showTeamWizardModal(); window.generateTeamFromWizard(); true`);
