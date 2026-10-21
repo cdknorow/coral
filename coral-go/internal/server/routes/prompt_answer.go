@@ -601,7 +601,8 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 	if opt.Action == "text" && !byArrows {
 		// The digit turns the option into a text field; type into it, then Enter
 		time.Sleep(promptTextDelay)
-		if err := h.terminal.SendInput(r.Context(), terminalinput.Unclassified, name, text, body.AgentType, body.SessionID); err != nil {
+		// The text a person typed into the prompt's field: logged by its length (#5715).
+		if err := h.terminal.SendInput(r.Context(), terminalinput.Person, name, text, body.AgentType, body.SessionID); err != nil {
 			writeTerminalError(w, err)
 			return
 		}

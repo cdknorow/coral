@@ -82,7 +82,8 @@ type mockSessionTerminal struct {
 	outputs          map[string]string
 	sent             map[string][]string
 	captures         []string
-	raw              map[string][]string // keys sent with SendRawInput
+	raw              map[string][]string               // keys sent with SendRawInput
+	origins          map[string][]terminalinput.Origin // the origin of each SendInput and SendRawInput, in order (#5715)
 	killSessionCalls []string
 	sendErr          error
 	gone             bool                // the agent's own terminal is gone: writes fail with ErrTerminalGone (#3211)
@@ -175,7 +176,15 @@ func (m *mockSessionTerminal) CaptureOutput(ctx context.Context, name string, _ 
 	return "", fmt.Errorf("session %q not found", name)
 }
 
-func (m *mockSessionTerminal) SendInput(_ context.Context, _ terminalinput.Origin, name, command, _, _ string) error {
+// noteOrigin records the origin of a send (m.mu held).
+func (m *mockSessionTerminal) noteOrigin(name string, o terminalinput.Origin) {
+	if m.origins == nil {
+		m.origins = map[string][]terminalinput.Origin{}
+	}
+	m.origins[name] = append(m.origins[name], o)
+}
+
+func (m *mockSessionTerminal) SendInput(_ context.Context, o terminalinput.Origin, name, command, _, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.gone {
@@ -185,10 +194,11 @@ func (m *mockSessionTerminal) SendInput(_ context.Context, _ terminalinput.Origi
 		return fmt.Errorf("session %q not found", name)
 	}
 	m.sent[name] = append(m.sent[name], command)
+	m.noteOrigin(name, o)
 	return nil
 }
 
-func (m *mockSessionTerminal) SendRawInput(_ context.Context, _ terminalinput.Origin, name string, keys []string, _, _ string) error {
+func (m *mockSessionTerminal) SendRawInput(_ context.Context, o terminalinput.Origin, name string, keys []string, _, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.gone {
@@ -201,6 +211,7 @@ func (m *mockSessionTerminal) SendRawInput(_ context.Context, _ terminalinput.Or
 		m.raw = map[string][]string{}
 	}
 	m.raw[name] = append(m.raw[name], keys...)
+	m.noteOrigin(name, o)
 	if hook := m.onRaw; hook != nil {
 		m.mu.Unlock()
 		hook(name)

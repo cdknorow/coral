@@ -101,7 +101,7 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// The origin of the keys: a person's (the dashboard's) are Unclassified as before, anything else goes through the gate as Coral's.
+	// The origin of the keys: a person's (the dashboard's, the operator's signed CLI) are Person, anything else goes through the gate as Coral's.
 	send := func(ctx context.Context, o terminalinput.Origin) error {
 		return h.terminal.SendRawInput(ctx, o, name, body.Keys, body.AgentType, body.SessionID)
 	}
@@ -110,7 +110,7 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 		if held := h.sendAutomatedHTTP(w, r, name, body.AgentType, body.SessionID, strings.Join(body.Keys, " "), "/keys", func(ctx context.Context) error { return send(ctx, terminalinput.Coral) }); held {
 			return
 		}
-	} else if err := send(r.Context(), terminalinput.Unclassified); err != nil {
+	} else if err := send(r.Context(), terminalinput.Person); err != nil {
 		writeTerminalError(w, err)
 		return
 	}
