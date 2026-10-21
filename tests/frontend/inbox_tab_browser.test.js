@@ -14,6 +14,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
+const { themeJs } = require('./helpers/theme');
 const BASE = require('./test_base').BASE;
 const { safePaused } = require('./helpers/paused');
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
@@ -96,7 +97,7 @@ const { settle } = require('./helpers/wait');
         await feed({ total: 3, waiting: 3 });
         check('a visible badge is not a bare dot: it has text', (await ev(`document.getElementById('nav-tab-hub-inbox-badge').textContent.length > 0`)));
 
-        const ratio = theme => ev(`(() => { document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)}); const b = document.getElementById('nav-tab-hub-inbox-badge'), cs = getComputedStyle(b);
+        const ratio = theme => ev(`(() => { ${themeJs(theme)}; const b = document.getElementById('nav-tab-hub-inbox-badge'), cs = getComputedStyle(b);
             const px = c => { const x = document.createElement('canvas').getContext('2d'); x.fillStyle = '#000'; x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data].slice(0, 3); };
             const L = ([r, g, bl]) => [r, g, bl].map(v => v / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
             const a = L(px(cs.color)), c = L(px(cs.backgroundColor)); return (Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05); })()`);
