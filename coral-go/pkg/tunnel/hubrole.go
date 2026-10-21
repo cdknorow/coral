@@ -27,7 +27,7 @@ const (
 
 // IsOwnerRoute reports whether the owner marker is stamped for (method, decodedPath): the two update routes, and the owner's reads and
 // writes of this computer's own configuration (#5307): GET and PUT /api/board/{project}/settings (the health check's setup) and
-// GET /api/settings/prompt-inspection. The marker only says the hub account is the one this computer is linked to; every one of these routes
+// GET /api/settings/prompt-inspection, and the artifact routes (#5575), which are the owner's alone through the hub: an artifact can hold anything. The marker only says the hub account is the one this computer is linked to; every one of these routes
 // decides for itself what it gives the owner and refuses a viewer without it.
 func IsOwnerRoute(method, decodedPath string) bool {
 	if IsUpdateRoute(method, decodedPath) {
@@ -35,11 +35,24 @@ func IsOwnerRoute(method, decodedPath string) bool {
 	}
 	switch method {
 	case http.MethodGet:
-		return decodedPath == PromptInspectionPath || boardSettingsRoute.MatchString(decodedPath)
+		return decodedPath == PromptInspectionPath || boardSettingsRoute.MatchString(decodedPath) || isArtifactReadRoute(decodedPath)
 	case http.MethodPut:
 		return boardSettingsRoute.MatchString(decodedPath)
+	case http.MethodDelete:
+		return artifactDeleteRoute.MatchString(decodedPath)
 	}
 	return false
+}
+
+// The artifact routes the machine answers only to the owner (artifactsOwnerOnly in internal/server/routes): without the marker on them the machine refuses even the owner.
+var (
+	artifactReadRoutes  = regexp.MustCompile(`^/api/artifacts(/[0-9a-f]{64}(/(meta|comments))?)?$`)
+	artifactDeleteRoute = regexp.MustCompile(`^/api/artifacts/[0-9a-f]{64}$`)
+	teamArtifactRoutes  = regexp.MustCompile(`^/api/board/[^/]+/(artifacts|tasks/[0-9]+/artifact-content)$`)
+)
+
+func isArtifactReadRoute(decodedPath string) bool {
+	return decodedPath == "/api/session-artifacts" || artifactReadRoutes.MatchString(decodedPath) || teamArtifactRoutes.MatchString(decodedPath)
 }
 
 // PromptInspectionPath is the read-only view of the global prompts.

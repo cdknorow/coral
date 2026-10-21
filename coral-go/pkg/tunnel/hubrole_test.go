@@ -31,6 +31,8 @@ func TestIsUpdateRouteIsExactlyTheTwoRoutes(t *testing.T) {
 	}
 }
 
+const hexID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 func TestStampRoleOnlyForAnOwnerStreamOnAnUpdateRoute(t *testing.T) {
 	const user = "hub-user-1234abcd"
 	for _, tc := range []struct {
@@ -50,6 +52,11 @@ func TestStampRoleOnlyForAnOwnerStreamOnAnUpdateRoute(t *testing.T) {
 		{"a request's own marker, other route", "owner", http.MethodGet, "/api/health", http.Header{HubRoleHeader: {"owner"}}, "", ""},
 		{"two spellings of the marker", "", http.MethodPost, "/api/system/update/relaunch", http.Header{"x-coral-hub-role": {"owner"}, "X-CORAL-HUB-ROLE": {"owner"}}, "", ""},
 		{"a request's own user, owner stream", "owner", http.MethodGet, "/api/system/update", http.Header{HubUserHeader: {"hub-user-ffffffff"}}, "owner", user},
+		{"owner on an artifact read", "owner", http.MethodGet, "/api/artifacts/" + hexID, nil, "owner", user},
+		{"owner on the artifact list", "owner", http.MethodGet, "/api/artifacts", nil, "owner", user},
+		{"owner deleting an artifact", "owner", http.MethodDelete, "/api/artifacts/" + hexID, nil, "owner", user},
+		{"a grantee on an artifact read", "", http.MethodGet, "/api/artifacts/" + hexID, nil, "", ""},
+		{"a request's own marker on an artifact read, no role", "", http.MethodGet, "/api/artifacts/" + hexID, http.Header{HubRoleHeader: {"owner"}}, "", ""},
 	} {
 		h := Header{Kind: KindHTTP, Method: tc.method, Path: tc.path, HubUser: user, HubRole: tc.role}
 		out := scrub(tc.inHeaders, tc.method, tc.path)
@@ -149,6 +156,26 @@ func TestIsOwnerRouteIsTheUpdateRoutesAndTheOwnersConfiguration(t *testing.T) {
 		{http.MethodPut, "/api/settings", false},
 		{http.MethodGet, "/api/settings/default-prompts", false},
 		{http.MethodGet, "/api/board/team/status", false},
+		// the artifact routes (#5575): the machine answers them to the owner alone, so the marker must be stamped on them
+		{http.MethodGet, "/api/artifacts", true},
+		{http.MethodGet, "/api/artifacts/" + hexID, true},
+		{http.MethodGet, "/api/artifacts/" + hexID + "/meta", true},
+		{http.MethodGet, "/api/artifacts/" + hexID + "/comments", true},
+		{http.MethodGet, "/api/artifacts/" + hexID + "/readers", false}, // not in this release
+		{http.MethodDelete, "/api/artifacts/" + hexID, true},
+		{http.MethodGet, "/api/board/team/artifacts", true},
+		{http.MethodGet, "/api/board/team/tasks/12/artifact-content", true},
+		{http.MethodGet, "/api/session-artifacts", true},
+		{http.MethodPost, "/api/artifacts/" + hexID, false},
+		{http.MethodPut, "/api/artifacts/" + hexID, false},
+		{http.MethodDelete, "/api/artifacts", false},
+		{http.MethodGet, "/api/artifacts/" + hexID[:63], false},
+		{http.MethodGet, "/api/artifacts/" + strings.ToUpper(hexID), false},
+		{http.MethodGet, "/api/artifacts/" + hexID + "/keep", false},
+		{http.MethodGet, "/api/artifacts/" + hexID + "/x", false},
+		{http.MethodGet, "/api/board/team/artifacts/x", false},
+		{http.MethodGet, "/api/board/a/b/artifacts", false},
+		{http.MethodGet, "/api/board/team/tasks/x/artifact-content", false},
 	} {
 		assert.Equal(t, tc.want, IsOwnerRoute(tc.method, tc.path), "%s %s", tc.method, tc.path)
 	}
