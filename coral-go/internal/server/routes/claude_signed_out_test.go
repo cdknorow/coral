@@ -59,7 +59,7 @@ func saysFor(t *testing.T, state claudestub.State, text string) {
 func notSignedInText(s string) bool { return strings.Contains(strings.ToLower(s), "not signed in") }
 
 func TestTeamGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
-	t.Parallel() // no shared state: these ran one after another (#5622)
+	// serial: its helper claudestub.Isolate calls t.Setenv, which panics under t.Parallel (go-tests on CI, where no real claude makes it skip) (#5667)
 	for _, state := range []claudestub.State{claudestub.SignedOut, claudestub.LoginInProgress, claudestub.HangingAuth} {
 		t.Run(string(state), func(t *testing.T) {
 			claudestub.Isolate(t)
