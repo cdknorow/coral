@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -17,31 +19,80 @@ import (
 // would expand, the command stays as it is. Commands that aren't Coral's tools are unchanged.
 func ResolveHookCommand(cmd string) string {
 	tool, rest, _ := strings.Cut(cmd, " ")
-	if !strings.HasPrefix(tool, "coral-hook-") || strings.ContainsAny(tool, `/\`) {
+	p := hookToolPath(tool)
+	if p == "" {
 		return cmd
+	}
+	// PowerShell also ends a double-quoted string at the curly double quotes U+201C, U+201D and
+	// U+201E (#3930, Security's #3927 finding 6, as #3904 did for single quotes).
+	if strings.ContainsAny(p, "\"$`\\%!\n“”„") {
+		return cmd // never a path a shell would expand inside double quotes
+	}
+	return withRest(`"`+p+`"`, rest)
+}
+
+// ResolveCmdHookCommand is ResolveHookCommand for an agent that runs its hooks as
+// cmd.exe /c <command> with Go's argument quoting, as agy does on Windows: that quoting
+// turns each " into \", which cmd.exe doesn't read, so a quoted path fails ("'\"C:/Program
+// Files (x86)/...\"' is not recognized"). The command names the tool by its absolute path
+// without quotes instead: as it is when cmd.exe would read it as one word, otherwise with
+// its folder's 8.3 short name (C:/PROGRA~2/Coral/...). When the volume has no 8.3 names
+// either, the command stays the bare name, found through PATH as before #3660, and that is
+// logged. Elsewhere it is ResolveHookCommand.
+func ResolveCmdHookCommand(cmd string) string {
+	if runtime.GOOS != "windows" {
+		return ResolveHookCommand(cmd)
+	}
+	tool, rest, _ := strings.Cut(cmd, " ")
+	p := hookToolPath(tool)
+	if p == "" {
+		return cmd
+	}
+	if cmdWord(p) {
+		return withRest(p, rest)
+	}
+	dir, base := path.Split(p)
+	if short := filepath.ToSlash(shortPathName(filepath.FromSlash(dir))); short != "" {
+		if p := strings.TrimSuffix(short, "/") + "/" + base; cmdWord(p) {
+			return withRest(p, rest)
+		}
+	}
+	slog.Warn("hook tool's path can't be written for cmd.exe, so the hook runs it through PATH", "path", p)
+	return cmd
+}
+
+// hookToolPath is the absolute path, with forward slashes (sh, cmd.exe and Git Bash all take
+// them), of Coral's hook tool in CoralToolsDir, or "" for a name that isn't one of Coral's
+// tools, with no tools folder or no such file there.
+func hookToolPath(tool string) string {
+	if !strings.HasPrefix(tool, "coral-hook-") || strings.ContainsAny(tool, `/\`) {
+		return ""
 	}
 	dir := CoralToolsDir()
 	if dir == "" {
-		return cmd
+		return ""
 	}
 	p := filepath.Join(dir, tool)
 	if runtime.GOOS == "windows" {
 		p += ".exe"
 	}
 	if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
-		return cmd
+		return ""
 	}
-	p = filepath.ToSlash(p)
-	// PowerShell also ends a double-quoted string at the curly double quotes U+201C, U+201D and
-	// U+201E (#3930, Security's #3927 finding 6, as #3904 did for single quotes).
-	if strings.ContainsAny(p, "\"$`\\%!\n\u201c\u201d\u201e") {
-		return cmd // never a path a shell would expand inside double quotes
-	}
-	out := `"` + p + `"`
+	return filepath.ToSlash(p)
+}
+
+// cmdWord reports whether cmd.exe reads p, unquoted, as one word with nothing to expand or
+// redirect: no whitespace, quote, separator, operator, escape or variable character.
+func cmdWord(p string) bool {
+	return p != "" && !strings.ContainsAny(p, " \t\r\n\"&|<>^()%!,;=\x00")
+}
+
+func withRest(cmd, rest string) string {
 	if rest != "" {
-		out += " " + rest
+		return cmd + " " + rest
 	}
-	return out
+	return cmd
 }
 
 // resolvedHookGroup is a copy of a Coral hook group with each command resolved
