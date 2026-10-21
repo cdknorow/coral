@@ -1282,7 +1282,7 @@ body.panel-dragging .agentic-state {
     letter-spacing: 0.3px;
 }
 
-.task-detail-status-pending { background: rgba(var(--fx-grey-rgb), 0.15); color: var(--text-muted); }
+.task-detail-status-pending { background: rgba(var(--fx-grey-rgb), 0.15); color: var(--text-secondary); } /* --text-muted is 4.25:1 on this chip in the light theme (#5814) */
 .task-detail-status-inprogress { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
 .task-detail-status-completed { background: rgba(var(--success-rgb), 0.15); color: var(--success); }
 .task-detail-status-cancelled { background: rgba(var(--warning-rgb), 0.15); color: var(--warning); }
@@ -1355,21 +1355,23 @@ body.panel-dragging .agentic-state {
     color: var(--accent);
 }
 
-.dep-tag a {
+.dep-tag .dep-tag-remove {
     cursor: pointer;
-    color: var(--text-muted);
+    color: var(--text-secondary); /* a real button now (keyboard, a name): the colour it had was --text-muted, 3.3:1 on the tag in light */
     font-size: 0.8125rem;
     line-height: 1;
+    background: none; border: 0; padding: 0 2px; font-family: inherit;
 }
 
-.dep-tag a:hover {
+.dep-tag .dep-tag-remove:hover {
     color: var(--error);
 }
 
 .dep-picker-add-link {
     font-size: 0.75rem;
-    color: var(--accent);
+    color: var(--link-text); /* the accent is 4.4:1 on the light panel (#5814) */
     cursor: pointer;
+    background: none; border: 0; padding: 0; font-family: inherit; /* a button that looks like the link it was */
 }
 
 .dep-picker-add-link:hover {

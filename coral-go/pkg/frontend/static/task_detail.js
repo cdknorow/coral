@@ -64,6 +64,7 @@ export function showTaskDetailModal(taskId) {
 
     titleEl.textContent = `Task #${task.id}`;
     content.innerHTML = _taskDetailHtml(task, task.status === 'in_progress' ? _liveCosts[task.id] : null);
+    modal.setAttribute('aria-labelledby', 'task-detail-modal-title task-detail-heading'); // named by its number and its task (the dialog is shared: the others keep the title alone)
 
     // Update footer with action buttons for editable tasks
     const footer = document.getElementById('task-detail-modal-footer');
@@ -115,6 +116,7 @@ export function showAgentTaskDetailModal(taskId) {
 
     titleEl.textContent = `Task #${task.id}`;
     content.innerHTML = _taskDetailHtml(task, null);
+    modal.setAttribute('aria-labelledby', 'task-detail-modal-title task-detail-heading');
 
     const footer = document.getElementById('task-detail-modal-footer');
     if (footer) {

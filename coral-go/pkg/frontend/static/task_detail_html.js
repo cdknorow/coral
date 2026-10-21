@@ -25,7 +25,7 @@ function _taskDetailHeadHtml(task) {
     const priorityClass = 'board-task-priority-' + (task.priority || 'medium');
 
     let html = `
-        <div class="task-detail-title">#${Number(task.id)} · ${escapeHtml(task.title)}</div>
+        <div class="task-detail-title" id="task-detail-heading">#${Number(task.id)} · ${escapeHtml(task.title)}</div>
         <div class="task-detail-meta">
             <span class="task-detail-meta-item"><span class="task-detail-meta-label">Lifecycle</span><span class="task-detail-status ${statusClass}">${statusLabel}</span></span>
             <span class="task-detail-meta-item"><span class="task-detail-meta-label">Priority</span><span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(task.priority || 'none')}">${task.priority ? (_priorityLabel[task.priority] || escapeHtml(task.priority)) : '\u2014'}</span></span>

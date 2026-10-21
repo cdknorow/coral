@@ -70,7 +70,7 @@
 
 .btn-success {
     border-color: var(--success);
-    color: var(--success);
+    color: var(--success-text); /* --success is 4.3:1 on the light panel (#5814) */
     background: transparent;
 }
 

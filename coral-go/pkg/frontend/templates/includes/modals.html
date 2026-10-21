@@ -1431,9 +1431,9 @@
                 <button class="modal-close-btn" data-on-click="m-hide-create-task-modal" aria-label="Close dialog"><span class="material-icons" aria-hidden="true">close</span></button>
             </div>
             <div class="modal-body">
-                <div id="create-task-error" class="modal-error" style="display:none"></div>
+                <div id="create-task-error" class="modal-error" role="alert" style="display:none"></div>
                 <label for="create-task-title">Title
-                    <input type="text" id="create-task-title" placeholder="Task title (required)">
+                    <input type="text" id="create-task-title" placeholder="Task title (required)" aria-required="true">
                 </label>
                 <label for="create-task-body">Description
                     <textarea id="create-task-body" rows="3" placeholder="Optional description"></textarea>

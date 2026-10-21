@@ -11,7 +11,7 @@ export function _renderDepPicker(containerId, selectedIds = [], excludeTaskId = 
     const selected = new Set(selectedIds.map(Number));
 
     let html = `<div class="dep-picker-selected" id="${escapeAttr(containerId)}-tags"></div>`;
-    html += `<div class="dep-picker-toggle"><a class="dep-picker-add-link" data-on-click="dep-picker-toggle" data-container="${escapeAttr(containerId)}">+ Add dependency</a></div>`;
+    html += `<div class="dep-picker-toggle"><button type="button" class="dep-picker-add-link" data-on-click="dep-picker-toggle" data-container="${escapeAttr(containerId)}" aria-expanded="false" aria-controls="${escapeAttr(containerId)}-list">+ Add dependency</button></div>`;
     html += `<div class="dep-picker-list" id="${escapeAttr(containerId)}-list" style="display:none">`;
     if (tasks.length === 0) {
         html += `<div class="dep-picker-empty">No eligible tasks</div>`;
@@ -38,7 +38,7 @@ export function _updateDepTags(containerId) {
     }
     const tags = Array.from(checked).map(cb => {
         const label = cb.parentElement.textContent.trim();
-        return `<span class="dep-tag">${escapeHtml(label)} <a data-on-click="dep-tag-remove" data-container="${escapeAttr(containerId)}" data-task-id="${Number(cb.value)}">&times;</a></span>`;
+        return `<span class="dep-tag">${escapeHtml(label)} <button type="button" class="dep-tag-remove" data-on-click="dep-tag-remove" data-container="${escapeAttr(containerId)}" data-task-id="${Number(cb.value)}" aria-label="Remove dependency ${escapeAttr(label)}">&times;</button></span>`;
     }).join('');
     tagsEl.innerHTML = tags;
 }

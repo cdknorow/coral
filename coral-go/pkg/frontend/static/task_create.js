@@ -27,6 +27,7 @@ export async function showCreateTaskModal() {
     if (draftCheck) draftCheck.checked = false;
     const errEl = document.getElementById('create-task-error');
     if (errEl) errEl.style.display = 'none';
+    clearTitleInvalid(document.getElementById('create-task-title'));
 
     // Solo agent: no board fields; offer to send the task to the agent
     const solo = _isSoloAgent();
@@ -79,15 +80,23 @@ export function hideCreateTaskModal() {
     releaseEscape(modal);
 }
 
+// A refusal in the dialog is a role=alert line, so it is spoken when it shows; one about the title also marks the title invalid and ties the box to the line.
+function showCreateError(errEl, message, titleInvalid = false) {
+    const title = document.getElementById('create-task-title');
+    if (title) {
+        if (titleInvalid) { title.setAttribute('aria-invalid', 'true'); title.setAttribute('aria-describedby', 'create-task-error'); title.focus(); }
+        else clearTitleInvalid(title);
+    }
+    if (errEl) { errEl.style.display = ''; errEl.textContent = ''; errEl.textContent = message; }
+}
+function clearTitleInvalid(title) { title.removeAttribute('aria-invalid'); title.removeAttribute('aria-describedby'); }
+
 export async function submitCreateTask() {
     const title = document.getElementById('create-task-title').value.trim();
     const errEl = document.getElementById('create-task-error');
 
     if (!title) {
-        if (errEl) {
-            errEl.textContent = 'Title is required';
-            errEl.style.display = '';
-        }
+        showCreateError(errEl, 'Title is required', true);
         return;
     }
 
@@ -100,10 +109,7 @@ export async function submitCreateTask() {
     const assignedTo = document.getElementById('create-task-assignee').value;
     const boardProject = _getBoardProject();
     if (!boardProject) {
-        if (errEl) {
-            errEl.textContent = 'No board project found';
-            errEl.style.display = '';
-        }
+        showCreateError(errEl, 'No board project found');
         return;
     }
 

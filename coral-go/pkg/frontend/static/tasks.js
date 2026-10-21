@@ -147,7 +147,7 @@ registerActions({
     'task-load-more': () => window.loadMoreBoardTasks(),
     'dep-picker-toggle': el => {
         const list = depContainer(el) && document.getElementById(el.dataset.container + '-list');
-        if (list) list.style.display = list.style.display === 'none' ? '' : 'none';
+        if (list) { list.style.display = list.style.display === 'none' ? '' : 'none'; el.setAttribute('aria-expanded', String(list.style.display !== 'none')); }
     },
     'dep-picker-change': el => { if (depContainer(el)) _updateDepTags(el.dataset.container); },
     'dep-tag-remove': el => {
