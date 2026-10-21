@@ -49,7 +49,7 @@ func (r *PTYRuntime) SpawnAgent(ctx context.Context, name, workDir, logFile, com
 
 func (r *PTYRuntime) SendInput(ctx context.Context, name, text string) error {
 	// Type the text, then submit with the platform's Enter key (unless the gate's check withholds it).
-	return r.backend.SendLineCtx(ctx, name, text)
+	return r.backend.SendText(ctx, name, text)
 }
 
 // SendPrompt implements ptymanager.PromptSender: automated text as one bracketed
