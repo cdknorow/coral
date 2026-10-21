@@ -22,9 +22,10 @@ var TaskQuerySummaryFields = []string{"id", "title", "status", "priority", "assi
 // TaskQueryLargeFields can be long: they come back only when fields names them (or with no fields at all, which is the whole row).
 var TaskQueryLargeFields = []string{"body", "completion_message"}
 
-// updatedAtSQL: a task has no updated_at column; the newest of its creation, claim, completion and last activity says when it
-// last changed. All are UTC RFC 3339 text written by nowUTC, so they compare as text.
-const updatedAtSQL = `MAX(created_at, COALESCE(claimed_at, created_at), COALESCE(completed_at, created_at), COALESCE(last_activity_at, created_at))`
+// updatedAtSQL: a task has no updated_at column; the newest of its creation, claim, completion, last activity and last edit (its body, title, priority or assignee: edited_at,
+// #5819) says when it last changed. All are UTC RFC 3339 text written by nowUTC, so they compare as text. An edit moves this and neither the revision (amendments and
+// review rounds own that) nor last_activity_at (the stall timer's).
+const updatedAtSQL = `MAX(created_at, COALESCE(claimed_at, created_at), COALESCE(completed_at, created_at), COALESCE(last_activity_at, created_at), COALESCE(edited_at, created_at))`
 
 // taskQueryColumns maps each field the caller may name to its SQL. board_label is not a column: it is filled from the boards.
 var taskQueryColumns = map[string]string{

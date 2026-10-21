@@ -665,6 +665,8 @@ func (s *Store) UpdateTask(ctx context.Context, project string, taskID int64, up
 		}
 	}
 	if len(setClauses) > 0 {
+		setClauses = append(setClauses, "edited_at = ?") // the edit moves updated_at (#5819)
+		args = append(args, nowUTC())
 		query := fmt.Sprintf("UPDATE board_tasks SET %s WHERE id = ? AND board_id = ? AND status NOT IN ('completed', 'skipped', 'review_pending') AND NOT EXISTS (SELECT 1 FROM task_workflows w WHERE w.task_id=board_tasks.id AND json_extract(w.data,'$.completion_review') IS NOT NULL)", strings.Join(setClauses, ", "))
 		args = append(args, taskID, project)
 		result, err := s.db.ExecContext(ctx, query, args...)
