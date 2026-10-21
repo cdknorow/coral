@@ -3,6 +3,8 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,7 +38,11 @@ func TestShellQuotePowerShell(t *testing.T) {
 	assert.Equal(t, `'hooks.Stop=[{hooks=[{type=\"command\",command=\"\\\"C:/Program Files (x86)/Coral/coral-hook-agentic-state.exe\\\"\"}]}]'`, shellQuote(toml))
 	assert.Equal(t, `'C:\dir with space\\'`, shellQuote(`C:\dir with space\`))
 	// pwsh 7.3+ escapes each argument itself: the value is only quoted for PowerShell.
-	t.Setenv("CORAL_SHELL", `C:\Program Files\PowerShell\7\pwsh.exe`)
+	pwsh := filepath.Join(t.TempDir(), "pwsh.exe") // a stand-in: CORAL_SHELL must name a real file (#26 G1A)
+	if err := os.WriteFile(pwsh, []byte("MZ"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CORAL_SHELL", pwsh)
 	assert.Equal(t, "'"+toml+"'", shellQuote(toml))
 	assert.Equal(t, `'say "hi"'`, shellQuote(`say "hi"`))
 	// A prompt file is read back as it is, whichever PowerShell: promptArg wrote it escaped for

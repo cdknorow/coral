@@ -363,10 +363,14 @@ func defaultShell() ([]string, error) {
 func pickShell(goos, coralShell, userShell string, lookPath func(string) (string, error)) (shell []string, cmdIgnored bool, err error) {
 	if coralShell != "" {
 		base := strings.TrimSuffix(strings.ToLower(filepath.Base(strings.ReplaceAll(coralShell, `\`, "/"))), ".exe")
-		if base != "cmd" {
+		switch {
+		case base == "cmd":
+			cmdIgnored = true
+		case goos == "windows" && winshell.IsPowerShell(coralShell):
+			// Found by winshell.Pick below, by its absolute path (#26 G1A).
+		default:
 			return []string{coralShell}, false, nil
 		}
-		cmdIgnored = true
 	}
 	if goos == "windows" {
 		if ps := winshell.Pick(coralShell, lookPath); ps != "" {

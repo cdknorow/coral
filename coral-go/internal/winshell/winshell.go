@@ -34,18 +34,48 @@ func LegacyNativeArgs(shell string) bool {
 	return base(shell) != "pwsh"
 }
 
-// Pick is the PowerShell for a Windows agent: CORAL_SHELL (coralShell) when it names pwsh or
-// powershell, otherwise the first of PowerShells that lookPath finds; "" when there is none.
+// Pick is the PowerShell for a Windows agent, as an absolute path: CORAL_SHELL (coralShell)
+// when it names pwsh or powershell and lookPath finds it, otherwise the first of PowerShells
+// that lookPath finds, otherwise Windows PowerShell in the system folder
+// (%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe) when it is there; "" when
+// there is none. Never a bare name, which Windows would look up from the current folder (the
+// agent's repository) before PATH (#26 G1A). Go's exec.LookPath refuses a result from the
+// current folder (exec.ErrDot), so a decoy there is never picked.
 func Pick(coralShell string, lookPath func(string) (string, error)) string {
 	if IsPowerShell(coralShell) {
-		return coralShell
-	}
-	for _, ps := range PowerShells {
-		if _, err := lookPath(ps); err == nil {
-			return ps
+		if p, err := lookPath(coralShell); err == nil && absolute(p) {
+			return p
 		}
 	}
+	for _, ps := range PowerShells {
+		if p, err := lookPath(ps); err == nil && absolute(p) {
+			return p
+		}
+	}
+	return systemPowerShell()
+}
+
+// systemPowerShell is Windows PowerShell in the system folder, or "" (tests replace it).
+var systemPowerShell = func() string {
+	root := os.Getenv("SystemRoot")
+	if root == "" {
+		return ""
+	}
+	p := filepath.Join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+		return p
+	}
 	return ""
+}
+
+// absolute reports whether p is an absolute Windows path (C:\x, C:/x, \\server\share), on
+// any OS.
+func absolute(p string) bool {
+	if strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, "//") {
+		return true
+	}
+	return len(p) > 2 && p[1] == ':' && (p[2] == '\\' || p[2] == '/') &&
+		(p[0] >= 'a' && p[0] <= 'z' || p[0] >= 'A' && p[0] <= 'Z')
 }
 
 // PowerShell is Pick for this process's CORAL_SHELL and PATH. The answer is remembered for the
@@ -72,4 +102,12 @@ var cache struct {
 func base(shell string) string {
 	b := strings.ToLower(filepath.Base(strings.ReplaceAll(shell, `\`, "/")))
 	return strings.TrimSuffix(b, ".exe")
+}
+
+// SetSystemPowerShellForTest replaces the system-folder fallback (a test with no PowerShell on
+// a machine that has one) and returns the function that restores it.
+func SetSystemPowerShellForTest(f func() string) (restore func()) {
+	prev := systemPowerShell
+	systemPowerShell = f
+	return func() { systemPowerShell = prev }
 }

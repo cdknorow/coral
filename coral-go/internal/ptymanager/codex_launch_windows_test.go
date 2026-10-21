@@ -104,13 +104,20 @@ func copyFile(t *testing.T, from, to string) {
 // for: shellWrap and the agent package's quoting both take winshell.PowerShell, which follows
 // CORAL_SHELL (a pwsh named there is never paired with a line escaped for 5.1, or the reverse).
 func TestShellWrapRunsThePowerShellTheLineIsWrittenFor(t *testing.T) {
-	for _, shell := range []string{`C:\PS7\pwsh.exe`, "powershell.exe"} {
+	ps, err := exec.LookPath("powershell.exe")
+	if err != nil {
+		t.Skip("no Windows PowerShell")
+	}
+	pwsh := filepath.Join(t.TempDir(), "pwsh.exe") // a stand-in pwsh, only named, never run
+	require.NoError(t, os.WriteFile(pwsh, []byte("MZ"), 0o700))
+	for _, shell := range []string{pwsh, ps} {
 		t.Setenv("CORAL_SHELL", shell)
 		assert.Equal(t, shell, shellWrap("x")[0])
 		assert.Equal(t, shell, winshell.PowerShell())
 	}
 	t.Setenv("CORAL_SHELL", "powershell.exe")
+	assert.Equal(t, ps, shellWrap("x")[0], "by its absolute path (#26 G1A)")
 	assert.Equal(t, `'"a""b c"'`, agent.ShellJoin([]string{"x", `a"b c`})[2:], "5.1: escaped")
-	t.Setenv("CORAL_SHELL", `C:\PS7\pwsh.exe`)
+	t.Setenv("CORAL_SHELL", pwsh)
 	assert.Equal(t, `'a"b c'`, agent.ShellJoin([]string{"x", `a"b c`})[2:], "pwsh: not escaped")
 }
