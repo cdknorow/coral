@@ -202,3 +202,27 @@ func TestAClientCannotWriteALandedCommitRow(t *testing.T) {
 	}
 	require.Equal(t, []string{"real"}, subjects)
 }
+
+// #5793: an upload prints its digest as sha256:<hex>, so a patch row holds that form; mark-landed names the same bytes by the bare 64 hex too, in either case, and still only
+// the approved ones.
+func TestMarkLandedAcceptsADigestBareOrPrefixed(t *testing.T) {
+	hexD := strings.Repeat("ab", 32)
+	e := newVerEnv(t)
+	id := e.inReview("p", []TaskArtifact{patchRow("fix", "sha256:"+hexD)}, "rev1")
+	e.approve(id, "rev1")
+	_, err := e.s.MarkLanded(e.ctx, "team", id, "lead", false, []string{strings.Repeat("cd", 32)}, nil)
+	require.Error(t, err, "another digest is still refused")
+	assert.Equal(t, []string{"sha256:" + hexD}, queueDigests(t, e)[id])
+	task, err := e.s.MarkLanded(e.ctx, "team", id, "lead", false, []string{strings.ToUpper(hexD)}, nil)
+	require.NoError(t, err, "the bare digest names the prefixed row")
+	landed := 0
+	for _, a := range task.Workflow.Artifacts {
+		if a.Kind == PatchKind && a.LandedBy == "lead" {
+			landed++
+		}
+	}
+	assert.Equal(t, 1, landed)
+	assert.NotContains(t, queueDigests(t, e), id)
+	_, err = e.s.MarkLanded(e.ctx, "team", id, "lead", false, []string{"sha256:" + hexD}, nil)
+	require.NoError(t, err, "the other form is idempotent")
+}

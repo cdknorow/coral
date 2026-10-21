@@ -30,8 +30,8 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	manifest := fs.String("artifacts", "", "Manifest of the patch rows to add (attach)")
 	note := fs.String("note", "", "Why (send-back)")
 	var digests, commits listFlag
-	fs.Var(&digests, "digest", "Digest of a patch that landed (mark-landed; repeat)")
-	fs.Var(&commits, "commit", "A commit that landed it: SHA or SHA:subject (mark-landed; repeat)")
+	fs.Var(&digests, "digest", "Digest of a patch that landed: 64 hex characters, with or without the sha256: prefix (mark-landed; repeat)")
+	fs.Var(&commits, "commit", "A commit that landed it: the full 40-hex SHA, or SHA:subject (mark-landed; repeat)")
 	fs.Parse(args[1:])
 	*note = flagText(*note, "note")
 	body := map[string]any{"subscriber_id": resolveSubscriberID()}
