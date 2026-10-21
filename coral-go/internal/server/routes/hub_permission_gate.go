@@ -3,6 +3,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/subgentic/coral/internal/agent"
@@ -28,6 +29,28 @@ func hubWidens(caps *agent.Capabilities, tools []string, hooks map[string]interf
 	return caps != nil && len(caps.Allow) > 0 || len(tools) > 0 || len(hooks) > 0
 }
 
+// hubSkipRefusal is the decision of refuseHubSkip without the answer: for a request that carries the Hub's stamp and asks to skip permission
+// prompts (skips), the refusal's code and message, ok=false when the owner allows it; ok=true for a request that is not gated. settings are read
+// again by the caller when the same request is checked more than once (a team launch checks each member that skips, #5839).
+func hubSkipRefusal(ctx context.Context, r *http.Request, ss *store.SessionStore, skips bool) (code, msg string, gated bool, err error) {
+	if !skips || !cloud.Tunneled(r) {
+		return "", "", false, nil
+	}
+	settings, err := ss.GetSettings(ctx)
+	if err != nil {
+		return "", "", false, err
+	}
+	switch {
+	case !cloud.TunneledAuthentic(r):
+		return "no_dashboard_provenance", "Auto-accept can only be turned on from the Coral dashboard or the Coral Hub", true, nil
+	case !HubAutoAcceptAllowed(settings):
+		return "hub_auto_accept_disabled", hubAutoAcceptOff, true, nil
+	case MaxModeFromSettings(ss)() < tunnel.TierLaunch:
+		return "hub_mode_too_low", "An agent that skips permission prompts needs Coral Hub access set to Launch on this computer", true, nil
+	}
+	return "", "", false, nil
+}
+
 // refuseHubSkip answers a Coral Hub request that asks to skip permission prompts (skips) unless the
 // owner allowed that on this computer, and reports whether it refused: the agent auto-accept rule
 // (#3182, #3377 SEC-JB-01), on every route that starts an agent with the request's choices (launch,
@@ -36,23 +59,13 @@ func hubWidens(caps *agent.Capabilities, tools []string, hooks map[string]interf
 // mode must be set. It is refused, never stripped, so the person sees why. A local request is not
 // gated: the owner chooses at the dashboard, the command line or with the API key.
 func refuseHubSkip(w http.ResponseWriter, r *http.Request, ss *store.SessionStore, skips bool) bool {
-	if !skips || !cloud.Tunneled(r) {
-		return false
-	}
-	settings, err := ss.GetSettings(r.Context())
+	code, msg, refused, err := hubSkipRefusal(r.Context(), r, ss, skips)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return true
 	}
-	switch {
-	case !cloud.TunneledAuthentic(r):
-		refuseAutoAccept(w, http.StatusForbidden, "no_dashboard_provenance", "Auto-accept can only be turned on from the Coral dashboard or the Coral Hub")
-	case !HubAutoAcceptAllowed(settings):
-		refuseAutoAccept(w, http.StatusForbidden, "hub_auto_accept_disabled", hubAutoAcceptOff)
-	case MaxModeFromSettings(ss)() < tunnel.TierLaunch:
-		refuseAutoAccept(w, http.StatusForbidden, "hub_mode_too_low", "An agent that skips permission prompts needs Coral Hub access set to Launch on this computer")
-	default:
-		return false
+	if refused {
+		refuseAutoAccept(w, http.StatusForbidden, code, msg)
 	}
-	return true
+	return refused
 }

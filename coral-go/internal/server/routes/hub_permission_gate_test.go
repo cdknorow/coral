@@ -253,3 +253,65 @@ func TestHubTeamLaunchOfTheOwnersSavedTemplate(t *testing.T) {
 	// A forged stamp on a request that asks for more (the real router refuses the stamp itself first, 401 invalid_credential).
 	refused(post("forged", nil, changed("prompt", "something else"), reviewer), "no_dashboard_provenance", "a forged stamp")
 }
+
+// #5839 (coral-hub's question 1): a team launch through the Coral Hub checks each member that skips permission prompts when its turn comes, with the
+// settings as they are then. The owner turning the switch off, or lowering the mode, after the first member started stops the members that skip; a member that
+// keeps the prompts still starts (the request was admitted at Launch). With nothing changed every member starts.
+func TestHubTeamLaunchChecksEachMemberWhenItsTurnComes(t *testing.T) {
+	type change struct {
+		name, key, to string
+		code          string
+	}
+	for _, tc := range []change{
+		{"the switch turned off", AllowHubAutoAcceptSetting, "false", "hub_auto_accept_disabled"},
+		{"the mode lowered", MaxModeSetting, "interact", "hub_mode_too_low"},
+		{"nothing changed", "", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, h, term, ss := setupSessionsTestServer(t)
+			stubCLIPaths(t, ss)
+			ctx := context.Background()
+			require.NoError(t, ss.SetSetting(ctx, MaxModeSetting, "launch"))
+			require.NoError(t, ss.SetSetting(ctx, AllowHubAutoAcceptSetting, "true"))
+			started := 0
+			term.mu.Lock()
+			term.onCall = func(method string) {
+				if method != "CreateSession" {
+					return
+				}
+				started++
+				if started == 1 && tc.key != "" { // the owner changes the setting while the first member starts
+					require.NoError(t, ss.SetSetting(ctx, tc.key, tc.to))
+				}
+			}
+			term.mu.Unlock()
+			body, _ := json.Marshal(map[string]any{"board_name": "recheck", "new_board": true, "working_dir": t.TempDir(), "agent_type": "claude",
+				"flags": []string{"--dangerously-skip-permissions"}, // the team's flags: A and B take them, C has its own that keep the prompts
+				"agents": []map[string]any{
+					{"name": "A"}, {"name": "B"}, {"name": "C", "flags": []string{"--permission-mode", "plan"}},
+				}})
+			req := stamp(httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(body)))
+			rec := httptest.NewRecorder()
+			h.LaunchTeam(rec, req)
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			var out struct {
+				Agents []map[string]any `json:"agents"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+			require.Len(t, out.Agents, 3, rec.Body.String())
+			byName := map[string]map[string]any{}
+			for _, a := range out.Agents {
+				byName[a["name"].(string)] = a
+			}
+			assert.NotContains(t, byName["A"], "error", "the first member started before anything changed")
+			assert.NotContains(t, byName["C"], "error", "a member that keeps the prompts starts whatever changed")
+			if tc.code == "" {
+				assert.NotContains(t, byName["B"], "error", "nothing changed: every member starts")
+				return
+			}
+			assert.Equal(t, tc.code, byName["B"]["code"], "B skips prompts, and the owner no longer allows it: %v", byName["B"])
+			assert.NotEmpty(t, byName["B"]["error"])
+			assert.NotContains(t, byName["B"], "session_id", "B was not started")
+		})
+	}
+}
