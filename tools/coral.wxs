@@ -7,19 +7,28 @@
     - Adds Coral to the system PATH
     - Creates a Start Menu shortcut
     - Registers for clean uninstall
+
+  ProductName is the name shown in the installer and in Apps & features: "Coral", or the
+  build tier's name when the build passes one (-d "ProductName=Coral For Dropbox" for the
+  dropboxers tier, .github/workflows/release.yml). The install folders stay "Coral" in
+  every tier.
 -->
+
+<?ifndef ProductName ?>
+<?define ProductName = "Coral" ?>
+<?endif ?>
 
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <Package
-    Name="Coral"
+    Name="$(var.ProductName)"
     Manufacturer="Coral"
     Version="$(var.Version)"
     UpgradeCode="B8F2E3A1-7C4D-4E5F-9A1B-2C3D4E5F6A7B">
 
     <MajorUpgrade
-      DowngradeErrorMessage="A newer version of Coral is already installed." />
+      DowngradeErrorMessage="A newer version of $(var.ProductName) is already installed." />
 
     <MediaTemplate EmbedCab="yes" />
 
@@ -87,11 +96,11 @@
         <Component Id="CoralShortcut" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
           <Shortcut
             Id="CoralStartMenuShortcut"
-            Name="Coral"
+            Name="$(var.ProductName)"
             Target="[INSTALLFOLDER]coral-tray.exe"
             Arguments="--backend pty"
             WorkingDirectory="INSTALLFOLDER"
-            Description="Coral — AI Agent Dashboard"
+            Description="$(var.ProductName) — AI Agent Dashboard"
             Icon="CoralIcon.exe" />
 
           <RemoveFolder Id="RemoveCoralMenuFolder" On="uninstall" />
@@ -111,9 +120,19 @@
     <Icon Id="CoralIcon.exe" SourceFile="$(var.BinDir)\coral-tray.exe" />
     <Property Id="ARPPRODUCTICON" Value="CoralIcon.exe" />
 
-    <!-- License agreement dialog -->
+    <!-- Apps & features: the project's public pages (README) -->
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/subgentic/coral" />
+    <Property Id="ARPHELPLINK" Value="https://subgentic.github.io/coral/" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://github.com/subgentic/coral/releases/latest" />
+
+    <!-- License agreement dialog. license.rtf is the app's own terms text (pinned to it by
+         TestInstallerTermsMatchEULAText), so it is shown as it is. -->
     <ui:WixUI Id="WixUI_Minimal" />
     <WixVariable Id="WixUILicenseRtf" Value="$(var.BuildDir)\license.rtf" />
+
+    <!-- Coral's dialog art in place of WiX's stock bitmaps (tools/make_installer_art.py) -->
+    <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)..\assets\installer\WixUIBannerBmp.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)..\assets\installer\WixUIDialogBmp.bmp" />
 
     <!-- Write EULA acceptance marker after install so coral-app skips its own prompt -->
     <StandardDirectory Id="SystemFolder" />
@@ -126,7 +145,7 @@
       <Custom Action="WriteEULAMarker" After="InstallFiles" Condition="NOT Installed" />
     </InstallExecuteSequence>
 
-    <Feature Id="MainFeature" Title="Coral" Level="1">
+    <Feature Id="MainFeature" Title="$(var.ProductName)" Level="1">
       <ComponentRef Id="CoralExe" />
       <ComponentRef Id="LaunchCoralExe" />
       <ComponentRef Id="CoralBoardExe" />
