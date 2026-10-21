@@ -50,7 +50,10 @@ func serve(t *testing.T, status int, body string) string {
 	return srv.URL
 }
 
-func tag(s string) string { b, _ := json.Marshal(map[string]string{"tag_name": s}); return string(b) }
+func tag(s string) string {
+	b, _ := json.Marshal(map[string]any{"tag_name": s, "draft": false, "prerelease": false, "html_url": tagPagePrefix + s})
+	return string(b)
+}
 
 // Items 4 and 5: a 200 only, a capped body, and a version-shaped tag.
 func TestLatest(t *testing.T) {
@@ -93,7 +96,7 @@ func TestLatestSendsNoCredential(t *testing.T) {
 	var seen []http.Header
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = append(seen, r.Header.Clone())
-		_, _ = w.Write([]byte(`{"tag_name":"v9.9.9"}`))
+		_, _ = w.Write([]byte(tag("v9.9.9")))
 	}))
 	defer target.Close()
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -158,4 +161,30 @@ func TestLatestFollowsOnlySameHostRedirects(t *testing.T) {
 	t.Cleanup(tls.Close)
 	_, err = Latest(ctx, tls.URL) // the test server's certificate is not trusted by the check: it fails before any redirect, which is also a refusal
 	require.Error(t, err)
+}
+
+// #5568: every read of releases/latest checks the reply's page, not only the channel feeds: the server's log line and FetchLatestVersion included.
+func TestLatestRefusesAReplyThatIsNotThisRepositorysRelease(t *testing.T) {
+	ctx := context.Background()
+	body := func(page string, draft, pre bool) string {
+		b, _ := json.Marshal(map[string]any{"tag_name": "v1.4.150", "draft": draft, "prerelease": pre, "html_url": page})
+		return string(b)
+	}
+	good := tagPagePrefix + "v1.4.150"
+	v, err := Latest(ctx, serve(t, 200, body(good, false, false)))
+	require.NoError(t, err)
+	assert.Equal(t, "1.4.150", v)
+	for name, b := range map[string]string{
+		"no page":         body("", false, false),
+		"only a tag":      `{"tag_name":"v1.4.150"}`,
+		"another owner":   body("https://github.com/cdknorow/coral/releases/tag/v1.4.150", false, false),
+		"look-alike repo": body("https://github.com/subgentic/coral-evil/releases/tag/v1.4.150", false, false),
+		"another tag":     body(tagPagePrefix+"v1.4.149", false, false),
+		"http":            body("http://github.com/subgentic/coral/releases/tag/v1.4.150", false, false),
+		"a draft":         body(good, true, false),
+		"a pre-release":   body(good, false, true),
+	} {
+		_, err := Latest(ctx, serve(t, 200, b))
+		assert.Error(t, err, name)
+	}
 }

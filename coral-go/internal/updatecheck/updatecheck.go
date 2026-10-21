@@ -13,10 +13,8 @@ package updatecheck
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -57,35 +55,17 @@ var tagShape = regexp.MustCompile(`^v?(\d{1,9})\.(\d{1,9})\.(\d{1,9})(?:-([0-9A-
 var ErrBadTag = errors.New("updatecheck: the release tag is not a version")
 
 // Latest returns the latest release's version (without the "v"), from apiURL (ReleasesAPI;
-// tests pass their own). The request is anonymous: it reads a public endpoint, and no credential
+// tests pass their own). It is the Approved channel's feed read through FetchFeed, so it makes the same checks as the
+// channel reads (an OK status, a version-shaped tag, not a draft or pre-release, and the reply's page URL being this
+// repository's tag page, #5568). The request is anonymous: it reads a public endpoint, and no credential
 // from the environment (GITHUB_TOKEN, which is often a developer's token with write rights) is
 // attached to it (#4133).
 func Latest(ctx context.Context, apiURL string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, Timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	f, err := FetchFeed(ctx, Approved, apiURL, time.Now())
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("updatecheck: GitHub answered %d", resp.StatusCode)
-	}
-	var data struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, MaxBody)).Decode(&data); err != nil {
-		return "", fmt.Errorf("updatecheck: %w", err)
-	}
-	if !tagShape.MatchString(data.TagName) {
-		return "", ErrBadTag
-	}
-	return strings.TrimPrefix(data.TagName, "v"), nil
+	return f.Offer.Version, nil
 }
 
 // Newer reports whether latest is strictly newer than current, both versions with or without a
