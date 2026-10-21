@@ -477,13 +477,33 @@ func (s *Store) CompleteTaskWithArtifacts(ctx context.Context, project string, t
 // revision and enforces all orchestrator-declared completion gates; a non-nil expectedRevision
 // rejects stale work after an amendment.
 func (s *Store) CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
+	clearStamps(artifacts) // the server's fields (Seq, AttachedBy) are never a client's (#5689)
+	return s.completeTaskWithArtifacts(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision, candidateRevision, false)
+}
+
+// CompleteApprovedReview completes a task whose review every reviewer approved, from the candidate the board itself kept on the task:
+// its rows keep their revisions (the same name more than once, each with its own Seq), which a client's rows may not.
+func (s *Store) CompleteApprovedReview(ctx context.Context, project string, taskID int64, subscriberID string, expectedRevision *int) (*Task, error) {
+	w, err := loadWorkflow(ctx, s.db, taskID)
+	if err != nil {
+		return nil, err
+	}
+	cr := w.CompletionReview
+	if cr == nil {
+		return nil, fmt.Errorf("task #%d has no candidate to complete", taskID)
+	}
+	msg := cr.Message
+	return s.completeTaskWithArtifacts(ctx, project, taskID, subscriberID, &msg, cr.ProposedOutcome, cr.Artifacts, expectedRevision, cr.CandidateRevision, true)
+}
+
+func (s *Store) completeTaskWithArtifacts(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string, kept bool) (*Task, error) {
 	if outcome == "" {
 		outcome = "success"
 	}
 	if outcome != "success" && outcome != "failed" {
 		return nil, fmt.Errorf("outcome must be success or failed")
 	}
-	names, err := validateTaskArtifacts(artifacts)
+	names, err := validateArtifactRows(artifacts, kept)
 	if err != nil {
 		return nil, err
 	}
@@ -623,14 +643,25 @@ func validCommand(s string, maxBytes int) bool {
 }
 
 func validateTaskArtifacts(artifacts []TaskArtifact) ([]string, error) {
-	if len(newestByName(artifacts)) > maxTaskArtifacts { // the newest revision of each name counts (#5689)
+	return validateArtifactRows(artifacts, false)
+}
+
+// validateArtifactRows checks the rows of a candidate. revisions is true only for the rows the server itself kept on a review
+// (CompleteApprovedReview): there a name may repeat across revisions (a later Seq) and the cap counts the newest row of each name.
+// A client's rows never get that (clearStamps at every entry): the names are unique and every row counts.
+func validateArtifactRows(artifacts []TaskArtifact, revisions bool) ([]string, error) {
+	counted := len(artifacts)
+	if revisions {
+		counted = len(newestByName(artifacts))
+	}
+	if counted > maxTaskArtifacts {
 		return nil, fmt.Errorf("at most %d artifacts allowed", maxTaskArtifacts)
 	}
 	names := []string{}
 	unique := []string{} // a row attached later (Seq > 0, #5689) is a newer revision of a name: it may repeat one
 	for _, a := range artifacts {
 		names = append(names, a.Name)
-		if a.Seq == 0 {
+		if !revisions || a.Seq == 0 {
 			unique = append(unique, a.Name)
 		} else if strings.TrimSpace(a.Name) == "" || len(a.Name) > 128 {
 			return nil, fmt.Errorf("artifact names must be nonempty, unique, and at most 128 characters")

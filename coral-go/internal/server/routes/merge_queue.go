@@ -40,7 +40,14 @@ func (h *BoardHandler) AttachPatches(w http.ResponseWriter, r *http.Request) {
 	unverified := h.vetTaskArtifacts(r, project, body.Artifacts)
 	task, reopened, err := h.bs.AttachPatches(r.Context(), project, id, body.SubscriberID, body.Artifacts)
 	if err != nil {
-		errBadRequest(w, err.Error())
+		switch {
+		case strings.Contains(err.Error(), "is not on this board"):
+			errNotFound(w, err.Error())
+		case strings.Contains(err.Error(), "only the author, a reviewer of the round or the orchestrator"):
+			errForbidden(w, err.Error())
+		default:
+			errBadRequest(w, err.Error())
+		}
 		return
 	}
 	if reopened != nil {
@@ -96,10 +103,19 @@ func (h *BoardHandler) SendBack(w http.ResponseWriter, r *http.Request) {
 	if task.AssignedTo != nil {
 		author = *task.AssignedTo
 	}
-	h.bs.PostSystemMessage(r.Context(), project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d sent back by %s] %s. Fix it and submit-review again: the same reviewers review the new revision", author, id, body.SubscriberID, body.Note), nil)
+	h.bs.PostSystemMessage(r.Context(), project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d sent back by %s] %s. Fix it and submit-review again: the same reviewers review the new revision (the full note: coral-board task detail %d)", author, id, body.SubscriberID, oneLine(body.Note, 300), id), nil)
 	h.bs.PostSystemMessage(r.Context(), project, "Coral Task Queue", h.buildAssignmentNotification(r.Context(), project, task, author, true), nil)
 	if h.notifyFn != nil {
 		h.notifyFn(project)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"task": task})
+}
+
+// oneLine is note on one line, cut to max characters: what a board post shows of a long note (the whole note stays on the task).
+func oneLine(note string, max int) string {
+	line := strings.Join(strings.Fields(note), " ")
+	if r := []rune(line); len(r) > max {
+		return string(r[:max]) + "..."
+	}
+	return line
 }

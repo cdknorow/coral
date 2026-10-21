@@ -83,7 +83,9 @@ func patchDigests(cr *CompletionReview) []string {
 }
 
 // checkOwnPatchApproval: a reviewer who attached a patch row cannot approve it alone (#5689): another reviewer of the round has to
-// approve it, so a round with that reviewer as its only reviewer is refused with the way out.
+// approve it, so a round with that reviewer as its only reviewer is refused with the way out. With two or more reviewers the attacher
+// may approve their own fix: every reviewer of the round has to approve for it to complete, so another one still approves the same
+// bytes. It is not "never your own patch", it is "never only you".
 func checkOwnPatchApproval(id int64, w *TaskWorkflow, round *ReviewRound, actor string) error {
 	if w.CompletionReview == nil {
 		return nil
@@ -114,6 +116,7 @@ func (s *Store) AttachPatches(ctx context.Context, project string, id int64, act
 	if len(rows) == 0 {
 		return nil, nil, fmt.Errorf("nothing to attach")
 	}
+	clearStamps(rows) // a client's Seq and AttachedBy are replaced, and checked as 0 below: two rows of one name in one attach are refused
 	if _, err := validateTaskArtifacts(rows); err != nil {
 		return nil, nil, err
 	}
@@ -226,6 +229,7 @@ func (s *Store) SendBack(ctx context.Context, project string, id int64, actor, n
 	}
 	last := &w.ReviewRounds[n-1]
 	last.Result, last.SentBackBy, last.SentBackNote = "rejected", actor, note
+	last.SentBackDigests = patchDigests(w.CompletionReview)
 	w.Outcome, w.Artifacts, w.CompletionReview = "", nil, nil
 	if err := saveWorkflow(ctx, tx, id, w); err != nil {
 		return nil, err

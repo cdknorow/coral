@@ -215,12 +215,16 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", h.buildAssignmentNotification(ctx, project, task, v.Author, true), nil)
 	case v.Complete:
 		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("[Task #%d approved by %s] every reviewer approved: completing it%s", task.ID, body.SubscriberID, note), nil)
-		msg, outcome, rev := "", "success", ""
-		var artifacts []board.TaskArtifact
+		msg := ""
+		var done *board.Task
+		var cerr error
 		if cr := task.Workflow.CompletionReview; cr != nil {
-			msg, outcome, rev, artifacts = cr.Message, cr.ProposedOutcome, cr.CandidateRevision, cr.Artifacts
+			// the candidate the board kept: its patch revisions stay as they are (#5689)
+			msg = cr.Message
+			done, cerr = h.bs.CompleteApprovedReview(ctx, project, task.ID, v.Orchestrator, &task.Revision)
+		} else {
+			done, cerr = h.bs.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, project, task.ID, v.Orchestrator, &msg, "success", nil, &task.Revision, "")
 		}
-		done, cerr := h.bs.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, project, task.ID, v.Orchestrator, &msg, outcome, artifacts, &task.Revision, rev)
 		if cerr != nil {
 			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@%s [Task #%d approved, but it could not be completed: %s] complete it with 'coral-board task complete %d'", v.Orchestrator, task.ID, cerr.Error(), task.ID), nil)
 		} else {
