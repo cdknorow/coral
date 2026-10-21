@@ -3,6 +3,7 @@
 //   - a Settings switch: on and off differ in track, knob colour and knob position;
 //   - the selected tab (Settings, a dialog's section list, Team settings) differs from the others by more than weight;
 //   - the agent list's status dot: working, needs input, stuck and idle each have their own shape or fill, and so do the sidebar rail's, a machine's health dot, a Hub server's and a live job's (#5713);
+//   - the Launch dialog's section list marks the selected section; count and status chips keep a border; a pressed toggle has a thick one (#5735);
 //   - a focused text field or list is outlined (its normal rule drops the outline and only changes the border colour).
 // Without forced colors nothing of this applies (the normal look is unchanged). Drives Chrome over CDP against the isolated dev server.
 const assert = require('node:assert/strict');
@@ -65,6 +66,22 @@ const BASE = require('./test_base').BASE;
             console.log(`6. ${mode}: a focused text field has an outline`);
             const focus = await ev(`(() => { const i = document.createElement('input'); i.type = 'text'; i.className = 'sidebar-search-input'; document.body.append(i); i.focus(); const cs = getComputedStyle(i); const o = [cs.outlineStyle, cs.outlineWidth]; i.remove(); return o; })()`);
             assert.ok(focus[0] !== 'none' && parseFloat(focus[1]) >= 2, 'a focused search field is outlined: ' + JSON.stringify(focus));
+
+            console.log(`7. ${mode}: the Launch dialog's section list marks the selected section, and a field in it is outlined when focused (#5735)`);
+            await ev(`(async () => { await window.showLaunchModal(); window._selectLaunchType('agent'); document.getElementById('launch-agent-more-btn')?.click(); return true; })()`);
+            await waitFor(`document.querySelectorAll('[id^="sd1-tab-"]').length >= 4`, 'the Launch section list', 15000);
+            const lt = await tabs('.settings-tab[id^="sd1-tab-"]'); assert.ok(lt.n >= 4 && lt.selected && lt.other, 'Launch tabs found: ' + JSON.stringify(lt)); assert.notEqual(lt.selected, lt.other, 'the selected Launch section has a border the others do not: ' + JSON.stringify(lt));
+            const lf = await ev(`(() => { const i = document.getElementById('launch-dir'); i.focus(); const cs = getComputedStyle(i); return [cs.outlineStyle, cs.outlineWidth]; })()`);
+            assert.ok(lf[0] !== 'none' && parseFloat(lf[1]) >= 2, 'a focused field in the Launch dialog is outlined (its rule drew a box-shadow): ' + JSON.stringify(lf));
+            await ev(`window.hideLaunchModal(); true`);
+
+            console.log(`8. ${mode}: count and status chips keep a shape, and a pressed toggle is marked (#5735)`);
+            const chips = await ev(`(() => { const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0'; const names = ['nav-tab-badge', 'agentic-tab-count', 'live-job-badge live-job-badge-cron', 'badge session-state-pill', 'wf-status-badge failed', 'section-count-badge', 'terminal-state-pill'];
+                host.innerHTML = names.map(n => '<span class="' + n + '">3</span>').join('') + '<button class="perm-chip" aria-pressed="true">on</button><button class="perm-chip" aria-pressed="false">off</button>'; document.body.append(host);
+                const out = { chips: {}, on: null, off: null }; names.forEach((n, i) => { out.chips[n] = getComputedStyle(host.children[i]).borderTopWidth; });
+                out.on = getComputedStyle(host.children[names.length]).borderTopWidth + ' ' + getComputedStyle(host.children[names.length]).borderTopColor; out.off = getComputedStyle(host.children[names.length + 1]).borderTopWidth + ' ' + getComputedStyle(host.children[names.length + 1]).borderTopColor; host.remove(); return out; })()`);
+            for (const [n, w] of Object.entries(chips.chips)) assert.ok(parseFloat(w) >= 1, n + ' has a border in forced colors: ' + JSON.stringify(chips));
+            assert.ok(parseFloat(chips.on) >= 2 && chips.on !== chips.off, 'a pressed toggle has a thicker border than an unpressed one: ' + JSON.stringify(chips));
         }
         console.log('4. without forced colors the normal look stays');
         await start(false, true);

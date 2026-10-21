@@ -58,6 +58,7 @@ function renderJobsSidebar() {
             : lastStatus === 'running' ? '🔵'
             : lastStatus === 'failed' || lastStatus === 'killed' ? '🔴'
             : '⚪';
+        const dotWords = lastStatus ? `Last run ${lastStatus}` : 'Not run yet'; // the dot is a coloured circle: its words say what it means
         const isWorkflow = !!job.workflow_id;
         const typeIcon = isWorkflow
             ? '<span class="material-icons sched-type-icon" style="font-size:0.8125rem;color:var(--color-tool-agent)" title="Workflow" aria-hidden="true">account_tree</span>'
@@ -69,7 +70,7 @@ function renderJobsSidebar() {
             ? `<span class="sched-fail-badge" title="The last ${escapeAttr(fails)} runs all failed">${fails} failed</span>`
             : '';
         return `<li class="session-list-item ${escapeAttr(active)}" data-on-click="job-select" data-job-id="${Number(job.id)}">
-            <span class="sched-dot">${dot}</span>
+            <span class="sched-dot" role="img" aria-label="${escapeAttr(dotWords)}" title="${escapeAttr(dotWords)}">${dot}</span>
             ${typeIcon}
             <span class="session-name">${escapeHtml(job.name)}${status}</span>
             ${failBadge}
