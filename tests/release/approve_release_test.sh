@@ -70,11 +70,22 @@ grep -qx 'Approved: [0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}T[0-9:]*Z' "$FIX/notes_v1.4.
 
 # revoke: only an approved release; the highest EARLIER approved release is marked latest again
 printf '[{"tag_name":"v1.4.151","draft":false,"prerelease":false},{"tag_name":"v1.4.150","draft":false,"prerelease":false},{"tag_name":"v1.4.149","draft":false,"prerelease":false},{"tag_name":"v1.4.9","draft":false,"prerelease":false},{"tag_name":"v1.4.152","draft":false,"prerelease":true},{"tag_name":"v1.4.150-rc1","draft":false,"prerelease":false}]\n' > "$FIX/repos_subgentic_coral_releases_per_page_30.json"
-rel v1.4.150 false false true "notes"; : > "$FIX/edits.log"
+# a release that is not the latest cannot be revoked: that would move latest backwards past a newer approved release
+rel v1.4.150 false false true "notes"; latest v1.4.151; : > "$FIX/edits.log"
+WANT="only the latest release can be revoked" expect_fail "revoke of an approved release that is not latest is refused" bash "$SCRIPT" revoke v1.4.150
+[ ! -s "$FIX/edits.log" ] && ok "a refused revoke edits nothing" || bad "a refused revoke edited: $(cat "$FIX/edits.log")"
+rel v1.4.150 false false true "notes"; latest v1.4.150; : > "$FIX/edits.log"
 bash "$SCRIPT" revoke v1.4.150 >"$T/rv.out" 2>&1; rc=$?; [ $rc = 0 ] || cat "$T/rv.out" >&2
 [ $rc = 0 ] && grep -q 'edit v1.4.150 --repo subgentic/coral --prerelease --latest=false' "$FIX/edits.log" && grep -q 'edit v1.4.149 --repo subgentic/coral --latest' "$FIX/edits.log" && ok "revoke flips back and re-marks v1.4.149 (not v1.4.9, not the rc, not a newer one)" || bad "revoke edits: $(cat "$FIX/edits.log")"
 grep -qx 'Revoked: [0-9TZ:-]* by tester' "$FIX/notes_v1.4.150.txt" && ok "revoke records the Revoked line" || bad "revoke body"
 rel v1.4.150 false true true "notes"; WANT="is not approved" expect_fail "revoke of a pre-release is refused" bash "$SCRIPT" revoke v1.4.150
+
+# flip re-runs the checks itself: a release that stopped being approvable between the verify job and the flip job is not flipped
+good; latest v1.4.151; : > "$FIX/edits.log"; printf '{"body":"x"}\n' > "$FIX/body_v1.4.150.json"
+WANT="not newer than the current latest" expect_fail "flip refuses a tag that is no longer newer than latest" bash "$SCRIPT" flip v1.4.150
+[ ! -s "$FIX/edits.log" ] && ok "a refused flip edits nothing" || bad "a refused flip edited: $(cat "$FIX/edits.log")"
+good; rel v1.4.150 false false true "notes"; : > "$FIX/edits.log"
+WANT="not a pre-release" expect_fail "flip refuses an already approved release" bash "$SCRIPT" flip v1.4.150
 
 # the script never builds a command from the tag text: a hostile tag never reaches gh
 good; : > "$FIX/edits.log"; bash "$SCRIPT" flip '$(touch /tmp/apr-pwned)' >/dev/null 2>&1; [ ! -e /tmp/apr-pwned ] && [ ! -s "$FIX/edits.log" ] && ok "a hostile tag runs nothing and edits nothing" || bad "a hostile tag was used"
