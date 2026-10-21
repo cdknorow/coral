@@ -1648,7 +1648,7 @@ func TestPublishArtifactDocsStateTheDefault(t *testing.T) {
 func launchBody(line string) string {
 	for {
 		trimmed := false
-		for _, kw := range []string{"unset ", "export CORAL_", "Remove-Item Env:", "$env:CORAL_"} {
+		for _, kw := range []string{"unset ", "export CORAL_", "Remove-Item Env:", "$env:CORAL_", "$env:NoDefaultCurrentDirectoryInExePath="} {
 			if strings.HasPrefix(line, kw) {
 				if i := strings.Index(line, "; "); i >= 0 {
 					line, trimmed = line[i+2:], true
@@ -1685,6 +1685,15 @@ func TestClaudeSettingsInstallTheRequestHooks(t *testing.T) {
 // .agents/hooks.json from an --add-dir folder), and the session's cleanup removes it.
 func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
 	sid := "a9f3c4d1-0000-4000-8000-000000003481" // canonical: CleanupTempFiles only acts on one (#3598)
+	tools := t.TempDir() // a tools folder with the hook: on Windows there are no hooks without one (#21)
+	exe := ""
+	if runtime.GOOS == "windows" {
+		exe = ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(tools, "coral-hook-agentic-state"+exe), nil, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(HookDirEnv, tools)
 	line := buildLaunch((&AgyAgent{}), LaunchParams{SessionID: sid, WorkingDir: t.TempDir()})
 	m := regexp.MustCompile(`--add-dir '?([^' ]+)'?`).FindStringSubmatch(line)
 	if m == nil {
@@ -1701,7 +1710,11 @@ func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
 	}
 	for _, event := range []string{"SessionStart", "PreInvocation", "PreToolUse", "PostToolUse", "Stop"} {
 		b, _ := json.Marshal(spec["coral"][event])
-		want, _ := json.Marshal(ResolveCmdHookCommand("coral-hook-agentic-state --agy " + event))
+		command, ok := ResolveCmdHookCommand("coral-hook-agentic-state --agy " + event)
+		if !ok {
+			t.Fatalf("%s: no hook command for the tools folder %s", event, tools)
+		}
+		want, _ := json.Marshal(command)
 		if !strings.Contains(string(b), string(want)) {
 			t.Errorf("%s: %s", event, b)
 		}

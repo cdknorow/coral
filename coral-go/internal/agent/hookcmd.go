@@ -1,12 +1,12 @@
 package agent
 
 import (
-	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"unicode"
 )
 
 // ResolveHookCommand turns a hook command Coral installs ("coral-hook-agentic-state --hooks-rev
@@ -35,30 +35,34 @@ func ResolveHookCommand(cmd string) string {
 // cmd.exe /c <command> with Go's argument quoting, as agy does on Windows: that quoting
 // turns each " into \", which cmd.exe doesn't read, so a quoted path fails ("'\"C:/Program
 // Files (x86)/...\"' is not recognized"). The command names the tool by its absolute path
-// without quotes instead: as it is when cmd.exe would read it as one word, otherwise with
-// its folder's 8.3 short name (C:/PROGRA~2/Coral/...). When the volume has no 8.3 names
-// either, the command stays the bare name, found through PATH as before #3660, and that is
-// logged. Elsewhere it is ResolveHookCommand.
-func ResolveCmdHookCommand(cmd string) string {
+// without quotes instead: as it is when cmd.exe reads it as one plain word (cmdWord),
+// otherwise with its folder's 8.3 short name (C:/PROGRA~2/Coral/...). ok is false when
+// neither works (a volume without 8.3 names, a UNC install), or there is no tools folder or
+// no such tool in it: then there is no command to install, since a bare name would be found
+// in the agent's folder first (cmd.exe searches the current folder before PATH) and a
+// repository could ship its own (#3660; #21, Security's #20 F1). Elsewhere it is
+// ResolveHookCommand, always ok.
+func ResolveCmdHookCommand(cmd string) (string, bool) {
 	if runtime.GOOS != "windows" {
-		return ResolveHookCommand(cmd)
+		return ResolveHookCommand(cmd), true
 	}
 	tool, rest, _ := strings.Cut(cmd, " ")
 	p := hookToolPath(tool)
 	if p == "" {
-		return cmd
+		return "", false
 	}
 	if cmdWord(p) {
-		return withRest(p, rest)
+		return withRest(p, rest), true
 	}
 	dir, base := path.Split(p)
+	// On a volume without 8.3 names GetShortPathNameW returns the long path, which fails
+	// cmdWord again.
 	if short := filepath.ToSlash(shortPathName(filepath.FromSlash(dir))); short != "" {
 		if p := strings.TrimSuffix(short, "/") + "/" + base; cmdWord(p) {
-			return withRest(p, rest)
+			return withRest(p, rest), true
 		}
 	}
-	slog.Warn("hook tool's path can't be written for cmd.exe, so the hook runs it through PATH", "path", p)
-	return cmd
+	return "", false
 }
 
 // hookToolPath is the absolute path, with forward slashes (sh, cmd.exe and Git Bash all take
@@ -82,10 +86,23 @@ func hookToolPath(tool string) string {
 	return filepath.ToSlash(p)
 }
 
-// cmdWord reports whether cmd.exe reads p, unquoted, as one word with nothing to expand or
-// redirect: no whitespace, quote, separator, operator, escape or variable character.
+// cmdWord reports whether cmd.exe reads p, unquoted, as one plain word: only ASCII letters
+// and digits, . _ - / : ~ and non-ASCII letters (an allowlist: nothing cmd.exe expands,
+// redirects, separates or escapes), and not a UNC path (//server/share), which goes to the
+// fail-closed path (#21, Security's #20 F2).
 func cmdWord(p string) bool {
-	return p != "" && !strings.ContainsAny(p, " \t\r\n\"&|<>^()%!,;=\x00")
+	if p == "" || strings.HasPrefix(p, "//") {
+		return false
+	}
+	for _, r := range p {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', strings.ContainsRune("._-/:~", r):
+		case r > unicode.MaxASCII && unicode.IsLetter(r):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func withRest(cmd, rest string) string {
