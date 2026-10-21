@@ -412,7 +412,8 @@ POST /api/board/{project}/working-mode/presets/{id}/reset
 ```
 
 The list response contains `presets` and `working_mode`. Each preset has `id`,
-`name`, `builtin`, `default_instructions`, `instructions`, and `overridden`.
+`name`, `description`, `builtin`, `default_instructions`, `instructions`, and `overridden`.
+`description` is one line saying what the mode means, shown under the Working mode list in Team settings (empty for custom presets).
 `default_instructions` is the shipped text for built-ins (empty for custom
 presets); `instructions` is the current effective preset text. `overridden`
 distinguishes an explicitly empty built-in override from the shipped default.

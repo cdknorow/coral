@@ -172,3 +172,30 @@ func TestWorkflowPresetBoardDeletion(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "custom", mode.Mode)
 }
+
+// The picker shows one line for the chosen mode (#5760): each built-in has one, a team's own preset has none, and overriding a built-in's instructions keeps it.
+func TestWorkflowPresetDescriptionsForThePicker(t *testing.T) {
+	ctx := context.Background()
+	s, err := NewStoreWithKey(filepath.Join(t.TempDir(), "board.db"), "")
+	require.NoError(t, err)
+	defer func() { s.Close() }()
+	for _, p := range builtinWorkflowPresets() {
+		require.NotEmpty(t, p.Description, p.ID+" has a description")
+		require.LessOrEqual(t, len(p.Description), 100, p.ID+": one short line")
+		require.NotContains(t, p.Description, "\n", p.ID)
+	}
+	_, err = s.SaveWorkflowPreset(ctx, "team", "mine", "Mine", "Do it my way.", true)
+	require.NoError(t, err)
+	_, err = s.SaveWorkflowPreset(ctx, "team", "worktrees", "", "Changed instructions.", false)
+	require.NoError(t, err)
+	list, err := s.ListWorkflowPresets(ctx, "team")
+	require.NoError(t, err)
+	byID := map[string]WorkflowPreset{}
+	for _, p := range list {
+		byID[p.ID] = p
+	}
+	require.Equal(t, "Agents hand in patches for review; one role lands them with coral-board queue.", byID["merge_queue"].Description)
+	require.True(t, byID["worktrees"].Overridden)
+	require.NotEmpty(t, byID["worktrees"].Description, "an override of the instructions keeps the built-in's description")
+	require.Empty(t, byID["mine"].Description, "a team's own preset has none")
+}

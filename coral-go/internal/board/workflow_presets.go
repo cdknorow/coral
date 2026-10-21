@@ -17,6 +17,7 @@ var presetIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 type WorkflowPreset struct {
 	ID                  string `json:"id" db:"id"`
 	Name                string `json:"name" db:"name"`
+	Description         string `json:"description"` // one line for the picker: what the mode means; built-ins only, a team's own presets have none
 	Builtin             bool   `json:"builtin"`
 	DefaultInstructions string `json:"default_instructions"`
 	Instructions        string `json:"instructions" db:"instructions"`
@@ -25,10 +26,10 @@ type WorkflowPreset struct {
 
 func builtinWorkflowPresets() []WorkflowPreset {
 	return []WorkflowPreset{
-		{ID: "none", Name: "None", Builtin: true},
-		{ID: "shared_checkout", Name: "Shared checkout", Builtin: true, Instructions: "In the shared checkout, coordinate file ownership, preserve teammates' changes, and commit only your task's work."},
-		{ID: "worktrees", Name: "Worktrees", Builtin: true, Instructions: "Use an isolated Git worktree and branch from the agreed base; reuse your task's checkout if available. Leave teammates' checkouts untouched and publish the exact commit."},
-		{ID: "merge_queue", Name: "Merge queue", Builtin: true, Instructions: "Work in an isolated Git worktree from the agreed base. When your change is ready, attach it to your task as a patch with: coral-board task submit-review <id> --artifacts manifest.json. The manifest has one row of kind patch with its uri, its digest and the base commit it applies to. Answer review findings by attaching the next revision with coral-board task attach <id> --artifacts manifest.json, not by posting patch ids. Reviewers approve the exact digest. Do not land or push to the target branch yourself: whoever lands (the orchestrator, or the role this team names) reads coral-board queue, applies what it lists, and records it with coral-board task mark-landed. A patch that cannot be applied comes back to you with coral-board task send-back and a note."}}
+		{ID: "none", Name: "None", Description: "Agents get no extra guidance on where or how to work.", Builtin: true},
+		{ID: "shared_checkout", Name: "Shared checkout", Description: "Everyone works in one checkout; agents coordinate who edits which files.", Builtin: true, Instructions: "In the shared checkout, coordinate file ownership, preserve teammates' changes, and commit only your task's work."},
+		{ID: "worktrees", Name: "Worktrees", Description: "Each agent works in its own Git worktree and branch from the agreed base.", Builtin: true, Instructions: "Use an isolated Git worktree and branch from the agreed base; reuse your task's checkout if available. Leave teammates' checkouts untouched and publish the exact commit."},
+		{ID: "merge_queue", Name: "Merge queue", Description: "Agents hand in patches for review; one role lands them with coral-board queue.", Builtin: true, Instructions: "Work in an isolated Git worktree from the agreed base. When your change is ready, attach it to your task as a patch with: coral-board task submit-review <id> --artifacts manifest.json. The manifest has one row of kind patch with its uri, its digest and the base commit it applies to. Answer review findings by attaching the next revision with coral-board task attach <id> --artifacts manifest.json, not by posting patch ids. Reviewers approve the exact digest. Do not land or push to the target branch yourself: whoever lands (the orchestrator, or the role this team names) reads coral-board queue, applies what it lists, and records it with coral-board task mark-landed. A patch that cannot be applied comes back to you with coral-board task send-back and a note."}}
 }
 func builtinWorkflowPreset(id string) (WorkflowPreset, bool) {
 	for _, p := range builtinWorkflowPresets() {

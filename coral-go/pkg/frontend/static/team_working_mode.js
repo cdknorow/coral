@@ -105,7 +105,8 @@ function _teamSettingsShell(workspaceMode) {
       <section class="team-settings-panel active" id="team-settings-workflow" role="tabpanel" aria-labelledby="team-settings-tab-workflow" data-settings-panel="workflow" tabindex="0">
       <fieldset class="team-settings-section">
         <legend>Team working mode</legend>
-        <label>Working mode<select name="mode"><option value="none">None</option><option value="shared_checkout">Shared checkout</option><option value="worktrees">Worktrees</option></select></label>
+        <label>Working mode<select name="mode" aria-describedby="working-mode-desc"><option value="none">None</option><option value="shared_checkout">Shared checkout</option><option value="worktrees">Worktrees</option></select></label>
+        <p class="working-mode-hint working-mode-desc" id="working-mode-desc"></p>
         ${switchRow({ label: 'Include dependent-queue guidance', name: 'dependency_guidance' })}
         <label>Additional instructions<textarea name="custom_instructions" rows="4" placeholder="Team-specific conventions"></textarea></label>
         <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
@@ -307,12 +308,21 @@ export async function showTeamWorkingMode(team, options = {}) {
             : 'This is a team-local custom preset.';
         if (hubLocked) presetState.textContent += ' Through Coral Hub a preset can be added but not changed: edit it in Coral on that computer.';
     }
+    // One line under the Working mode list: what the chosen mode means, from the preset (the server's description; a team's own preset has none, and the line is empty).
+    function syncModeDescription() {
+        const preset = presets.find(p => p.id === form.elements.mode.value);
+        const line = dialog.querySelector('#working-mode-desc');
+        line.textContent = (preset && preset.description) || '';
+        line.hidden = !line.textContent;
+    }
+    form.elements.mode.addEventListener('change', syncModeDescription);
     function renderPresets() {
         presetSelect.innerHTML = presets.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(presetLabel(p))}</option>`).join('');
         const modeSelect = form.elements.mode;
         presets.filter(p => ![...modeSelect.options].some(option => option.value === p.id)).forEach(p => modeSelect.add(new Option(presetLabel(p), p.id)));
         if (workingMode?.mode && presets.some(p => p.id === workingMode.mode)) presetSelect.value = workingMode.mode;
         syncPresetForm();
+        syncModeDescription();
     }
     function setStatus(message, error = false) {
         status.textContent = message;
@@ -321,6 +331,7 @@ export async function showTeamWorkingMode(team, options = {}) {
     presetSelect.onchange = () => {
         syncPresetForm();
         if (presetSelect.value) form.elements.mode.value = presetSelect.value;
+        syncModeDescription();
     };
     dialog.querySelector('.preset-new').onclick = () => {
         const id = `custom-${Date.now().toString(36)}`;
@@ -329,6 +340,7 @@ export async function showTeamWorkingMode(team, options = {}) {
         presetSelect.value = id;
         syncPresetForm();
         form.elements.mode.value = id;
+        syncModeDescription();
         presetName.focus();
     };
     presetSave.onclick = async () => {
@@ -401,6 +413,7 @@ export async function showTeamWorkingMode(team, options = {}) {
             presets = presetData.presets || [];
             renderPresets();
             form.elements.mode.value = workingMode.mode || 'none';
+            syncModeDescription();
             form.elements.dependency_guidance.checked = Boolean(workingMode.dependency_guidance);
             form.elements.custom_instructions.value = workingMode.custom_instructions || '';
             // The all-Coral health switch lives in Settings (#5128); this dialog only reads it, for the Health check tab's note.
