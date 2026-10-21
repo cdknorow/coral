@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.4.144 — Two release channels: Agentic and Approved
+
+### Features
+
+- **Choose your update channel in Settings > Updates:** **Approved (recommended)**, releases the team has approved, is the default for everyone; **Agentic (every release)** tells you about every release as soon as it is published, including ones not yet approved, which may change faster and be less tested. The channel decides what the update notice and the tray offer. Automatic install, when you turn it on, still uses Approved releases only. Through Coral Hub the channel is shown, not changed.
+- **Waiting for approval:** on the Agentic channel, Settings > Updates lists the releases published since the newest approved one, each with its age and its release notes (shown as plain text), and a link to the repository's approval page. Only the repository's operator can approve; Coral never approves anything itself.
+- **The update notice names the channel:** an Agentic release says "Agentic channel" and, until it is approved, "Not yet approved."
+
+### Changes
+
+- **Every release is published first as a pre-release** and becomes the latest release, with the stable download links, once it is approved. An installed Coral on an earlier version keeps following approved releases with no change.
+- **The update check asks GitHub for Coral's repository by its numeric id** and accepts a release only if its page is Coral's own, so a repository that took over the old name could never be followed.
+- **The tray asks the local Coral server for updates** instead of GitHub, so the tray, the dashboard and the server's log line share one check and one setting.
+
+### Internal
+
+- Each release records who pushed its tag and whether that exact commit passed the required checks, and stops before building anything if it did not. A weekly job re-checks the newest releases' files against their signed checksums.
+
 ## v1.4.143 — The Go module is now github.com/subgentic/coral
 
 ### Changes
@@ -23,7 +41,6 @@
 - **The documentation moved to <https://subgentic.github.io/coral/>.** The old documentation address does **not** redirect, so update any bookmark or link you have to it.
 - **Homebrew is unchanged for now:** `brew install --cask cdknorow/coral/coral` and `brew upgrade --cask coral` keep working, with no need to tap anything again.
 - **The update notice looks at the new home:** the "a new version is available" notice in the dashboard, the tray menu and the server's startup log now reads releases from `subgentic/coral`. An installed Coral on an earlier version keeps finding this release through the old address's redirect.
-- **The Team settings tab strip no longer changes after it appears:** the Messaging tab is drawn with the rest of the strip, so the tabs stay where they are while the settings load.
 
 ### Fixes
 
