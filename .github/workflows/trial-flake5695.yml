@@ -20,4 +20,7 @@ jobs:
         run: |
           cd coral-go
           go version
-          go test -count=30 -v -run '^TestBackgroundCallersStillAskClaudeWhenSignedIn$' ./internal/background 2>&1 | grep -E "TOOK|--- FAIL|Error:|FAIL|^ok|Messages" | sort | uniq -c | sort -rn | head -60
+          go test -count=50 -v -run '^TestBackgroundCallersStillAskClaudeWhenSignedIn$' ./internal/background > /tmp/o.log 2>&1 || true
+          grep -E "^(ok|FAIL|--- FAIL)" /tmp/o.log | sort | uniq -c
+          grep TOOK /tmp/o.log | sed 's/.*TOOK //' | awk '{t=$1; if (t ~ /ms$/) v=t+0; else if (t ~ /µs$/) v=(t+0)/1000; else v=(t+0)*1000; name=""; for (i=3;i<=NF;i++) name=name" "$i; n[name]++; s[name]+=v; if (v>m[name]) m[name]=v} END {for (k in n) printf "%-34s runs=%d avg=%.0fms max=%.0fms\n", k, n[k], s[k]/n[k], m[k]}'
+          grep -E "Error:|Messages|expected|actual" /tmp/o.log | sort | uniq -c | head -20
