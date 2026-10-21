@@ -22,7 +22,9 @@ export function thumbHtml(att) {
     const ref = !artifact && att && /^[0-9a-f]{32}$/.test(att.ref || '') ? att.ref : '';
     const file = att && att.file ? String(att.file) : '';
     if (!artifact && !ref && !file) return '';
-    const label = (att && att.name) || file || 'image';
+    const label0 = (att && att.name) || file || 'image';
+    // An image pasted in the dashboard is named by its place ("Pasted image 2"): read as a sentence, "Open pasted image 2", not "Open Pasted image 2".
+    const label = /^Pasted image\b/.test(label0) ? label0.charAt(0).toLowerCase() + label0.slice(1) : label0;
     // An artifact (an image pasted in the dashboard, #5284) is served by the artifact route, locally and through Coral Hub; its owner can remove the shared copy (on this computer only).
     const unshare = artifact && !isCloud() ? `<button type="button" class="chat-attachment-unshare" data-on-click="chat-thumb-unshare" data-artifact="${escapeAttr(artifact)}" aria-label="Remove the shared copy of ${escapeAttr(label)}" title="Remove the shared copy (the image goes from Coral Hub and from this chat)" hidden>&times;</button>` : '';
     return `<button type="button" class="chat-attachment-thumb" data-on-click="chat-thumb-open" data-artifact="${escapeAttr(artifact)}" data-ref="${escapeAttr(ref)}" data-upload="${escapeAttr(artifact || ref ? '' : file)}" ` +
