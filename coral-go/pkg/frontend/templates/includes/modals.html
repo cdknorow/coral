@@ -641,34 +641,10 @@
                     </select>
                 </dd>
                 </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-group-by-team">Group agents by board or team</label>
-                    <span class="toggle-desc">Keeps related agents grouped together in the sidebar</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-group-by-team" data-on-change="m-toggle-group-by-team"></label></dd>
-                </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-show-summary">Show a summary under each agent</label>
-                    <span class="toggle-desc">The goal line beneath an agent's name in the sidebar (off by default)</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-show-summary" data-on-change="m-toggle-session-summary"></label></dd>
-                </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-show-scrollbars">Show scrollbars</label>
-                    <span class="toggle-desc">Show scrollbars in terminal and chat views</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-show-scrollbars" checked></label></dd>
-                </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-check-updates">Check for updates</label>
-                    <span class="toggle-desc">Notify when a new version of Coral is available</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-check-updates"></label></dd>
-                </div>
+                {{ template "includes/toggle_row" (toggle "settings-group-by-team" "Group agents by board or team" "Keeps related agents grouped together in the sidebar" "data-on-change=\"m-toggle-group-by-team\"") }}
+                {{ template "includes/toggle_row" (toggle "settings-show-summary" "Show a summary under each agent" "The goal line beneath an agent's name in the sidebar (off by default)" "data-on-change=\"m-toggle-session-summary\"") }}
+                {{ template "includes/toggle_row" (toggle "settings-show-scrollbars" "Show scrollbars" "Show scrollbars in terminal and chat views" "checked") }}
+                {{ template "includes/toggle_row" (toggle "settings-check-updates" "Check for updates" "Notify when a new version of Coral is available") }}
                         </dl>
                         <button class="btn settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator">
                             <span class="material-icons icon-inline" aria-hidden="true">palette</span>
@@ -762,51 +738,11 @@
                 <dt>Custom models</dt>
                 <dd id="settings-custom-models" class="settings-custom-models"></dd>
                 </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-auto-resume">Resume agents stopped by an API error</label>
-                    <span class="toggle-desc">Off by default. When an agent's CLI stops on a rate limit, an overload or another API error, Coral wakes it again after about 2, then 5, then 15 minutes, and stops trying after the third. Waking the agent yourself starts the count again.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-auto-resume"></label>
-                </dd>
-                </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-auto-goals">Name each agent's goal</label>
-                    <span class="toggle-desc">On by default. Coral asks Claude Code's smallest model (Haiku) for a short goal line for each agent, from your requests only: once when the agent first answers, then for a new request at most every 30 minutes. Each one is a short call made with your Claude Code account (about 1,300 input tokens). When off, the goal shows your first prompt.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-auto-goals"></label>
-                </dd>
-                </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-agent-low-priority">Run agents at lower priority</label>
-                    <span class="toggle-desc">On by default. Agents and everything they start (builds, test runs) run below Coral itself (nice +10 on Mac and Linux, below normal on Windows), so the dashboard, Coral Hub and your own apps stay quick while agents use every CPU. It changes scheduling only, never what an agent may do. Applies to agents started after the change.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-agent-low-priority"></label>
-                </dd>
-                </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-board-auto-attach">Attach files agents link on the board</label>
-                    <span class="toggle-desc">Off by default. When on, an agent's own board post that links a local image (png, jpg, gif, webp) or Markdown file changed in the last day has it stored as an artifact, so the team and Coral Hub can open it. When off, links stay as written and agents upload with coral-agent artifact upload.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-board-auto-attach"></label>
-                </dd>
-                </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-board-health-monitor">Allow team health checks (all teams)</label>
-                    <span class="toggle-desc">Turns the background health service on or off for every team; each team still turns its own check on in Team settings. Takes effect after Coral restarts.</span>
-                </dt>
-                <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-board-health-monitor"></label>
-                </dd>
-                </div>
+                {{ template "includes/toggle_row" (toggle "settings-auto-resume" "Resume agents stopped by an API error" "Off by default. When an agent's CLI stops on a rate limit, an overload or another API error, Coral wakes it again after about 2, then 5, then 15 minutes, and stops trying after the third. Waking the agent yourself starts the count again.") }}
+                {{ template "includes/toggle_row" (toggle "settings-auto-goals" "Name each agent's goal" "On by default. Coral asks Claude Code's smallest model (Haiku) for a short goal line for each agent, from your requests only: once when the agent first answers, then for a new request at most every 30 minutes. Each one is a short call made with your Claude Code account (about 1,300 input tokens). When off, the goal shows your first prompt.") }}
+                {{ template "includes/toggle_row" (toggle "settings-agent-low-priority" "Run agents at lower priority" "On by default. Agents and everything they start (builds, test runs) run below Coral itself (nice +10 on Mac and Linux, below normal on Windows), so the dashboard, Coral Hub and your own apps stay quick while agents use every CPU. It changes scheduling only, never what an agent may do. Applies to agents started after the change.") }}
+                {{ template "includes/toggle_row" (toggle "settings-board-auto-attach" "Attach files agents link on the board" "Off by default. When on, an agent's own board post that links a local image (png, jpg, gif, webp) or Markdown file changed in the last day has it stored as an artifact, so the team and Coral Hub can open it. When off, links stay as written and agents upload with coral-agent artifact upload.") }}
+                {{ template "includes/toggle_row" (toggle "settings-board-health-monitor" "Allow team health checks (all teams)" "Turns the background health service on or off for every team; each team still turns its own check on in Team settings. Takes effect after Coral restarts.") }}
                         
                 <div class="settings-row settings-row-wide">
                 <dt>CLI paths</dt>
@@ -875,13 +811,7 @@
                     </select>
                 </dd>
                 </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-fit-pane-width">Fit pane width</label>
-                    <span class="toggle-desc">Auto-resize tmux pane to match browser width</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-fit-pane-width"></label></dd>
-                </div>
+                {{ template "includes/toggle_row" (toggle "settings-fit-pane-width" "Fit pane width" "Auto-resize tmux pane to match browser width") }}
             <!-- Settings > Terminal backend (#3634): filled by terminal_backend.js; never shown through Coral Hub. -->
             <div class="tb-row" id="settings-terminal-backend" role="group" aria-labelledby="tb-label" hidden>
                 <div class="tb-head"><span class="tb-label" id="tb-label">Terminal backend</span><span class="tb-now" id="tb-now"></span></div>
@@ -926,20 +856,8 @@
                         <h4 class="settings-pane-title">Notifications</h4>
                         <p class="settings-pane-sub">Alerts when an agent needs you.</p>
                         <dl class="info-grid settings-grid">
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-notify-needs-input">Notifications</label>
-                    <span class="toggle-desc">Show toast when an agent needs input</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-notify-needs-input"></label></dd>
-                </div>
-                <div class="settings-row">
-                <dt class="toggle-dt">
-                    <label for="settings-desktop-notify">Desktop alerts</label>
-                    <span class="toggle-desc">This browser only: alert while this tab is in the background. Shows the agent and server names (your OS may keep them in its notification history), never agent output. May duplicate a local alert.</span>
-                </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="settings-desktop-notify"></label></dd>
-                </div>
+                {{ template "includes/toggle_row" (toggle "settings-notify-needs-input" "Notifications" "Show toast when an agent needs input") }}
+                {{ template "includes/toggle_row" (toggle "settings-desktop-notify" "Desktop alerts" "This browser only: alert while this tab is in the background. Shows the agent and server names (your OS may keep them in its notification history), never agent output. May duplicate a local alert.") }}
                         </dl>
                     </section>
                     <section class="settings-pane" id="settings-pane-files" data-group="files" data-icon="account_tree" data-title="Files and Git" role="tabpanel" aria-labelledby="settings-tab-files" tabindex="-1" hidden>
@@ -1121,34 +1039,10 @@
                         </select>
                         <div id="settings-cloud-mode-desc" data-cloud="mode-desc" class="settings-hint"></div>
                         <div class="settings-hint settings-cloud-hub-mode-hint">The hub has its own setting per server (default View). The lower of the two applies.</div>
-                        <div id="settings-cloud-auto-accept-row" class="settings-cloud-switch-row" data-cloud="auto-accept-row" hidden>
-                            <div class="settings-cloud-switch-text">
-                                <label for="settings-cloud-allow-auto-accept" class="settings-cloud-switch-label">Coral Hub can turn on auto-accept</label>
-                                <div id="settings-cloud-auto-accept-desc" class="settings-hint">On by default while access is Launch. A hub user can then let an agent's permission prompts be approved for it, for up to 8 hours (1 hour unless they choose otherwise). Turn this off to keep that on this computer only; it also stops any auto-accept the hub turned on.</div>
-                            </div>
-                            <label class="check-hit"><input type="checkbox" id="settings-cloud-allow-auto-accept" data-cloud="allow-auto-accept" aria-describedby="settings-cloud-auto-accept-desc"></label>
-                        </div>
-                        <div id="settings-cloud-hub-relaunch-row" class="settings-cloud-switch-row" data-flag="updates">
-                            <div class="settings-cloud-switch-text">
-                                <label for="settings-cloud-hub-relaunch" class="settings-cloud-switch-label">Let Coral Hub relaunch this Coral to install updates</label>
-                                <div id="settings-cloud-hub-relaunch-desc" class="settings-hint">On by default. Coral Hub can ask for the relaunch of a version this computer has already downloaded and checked; it cannot choose a version or start one that is not ready, and it cannot change this switch. It only works at the Launch level above. Changed on this computer only.</div>
-                            </div>
-                            <label class="check-hit"><input type="checkbox" id="settings-cloud-hub-relaunch" data-cloud="hub-relaunch" aria-describedby="settings-cloud-hub-relaunch-desc"></label>
-                        </div>
-                        <div id="settings-cloud-cross-team-row" class="settings-cloud-switch-row">
-                            <div class="settings-cloud-switch-text">
-                                <label for="settings-cloud-hub-cross-team" class="settings-cloud-switch-label">Let Coral Hub change cross-team settings</label>
-                                <div id="settings-cloud-hub-cross-team-desc" class="settings-hint">Coral Hub's owner can turn cross-team messaging and file sharing on or off for your teams. Turn this off to forbid it.</div>
-                            </div>
-                            <label class="check-hit"><input type="checkbox" id="settings-cloud-hub-cross-team" data-cloud="hub-cross-team" aria-describedby="settings-cloud-hub-cross-team-desc"></label>
-                        </div>
-                        <div id="settings-cloud-redact-row" class="settings-cloud-switch-row">
-                            <div class="settings-cloud-switch-text">
-                                <label for="settings-cloud-redact-tokens" class="settings-cloud-switch-label">Hide tokens from Coral Hub viewers who can only look</label>
-                                <div id="settings-cloud-redact-desc" class="settings-hint">On by default. Coral Hub shows everything an agent printed or wrote: terminal output, chat, transcripts and board posts. With this on, tokens and keys that the betterleaks rules recognise are replaced by "[redacted token]" before they leave this computer, for viewers who can only look (View). Viewers who can type (Interact or Launch) see everything as it is: they can already run commands as you. The live terminal is never delayed: a token that arrives in one piece is hidden, but one typed key by key or split across two pieces of output can show in part, or in full when typed. On this computer nothing is hidden.</div>
-                            </div>
-                            <label class="check-hit"><input type="checkbox" id="settings-cloud-redact-tokens" data-cloud="redact-tokens" aria-describedby="settings-cloud-redact-desc"></label>
-                        </div>
+                        {{ template "includes/cloud_switch_row" (cloudSwitch "settings-cloud-auto-accept-row" "data-cloud=\"auto-accept-row\" hidden" "settings-cloud-allow-auto-accept" "Coral Hub can turn on auto-accept" "settings-cloud-auto-accept-desc" "On by default while access is Launch. A hub user can then let an agent's permission prompts be approved for it, for up to 8 hours (1 hour unless they choose otherwise). Turn this off to keep that on this computer only; it also stops any auto-accept the hub turned on." "data-cloud=\"allow-auto-accept\" aria-describedby=\"settings-cloud-auto-accept-desc\"") }}
+                        {{ template "includes/cloud_switch_row" (cloudSwitch "settings-cloud-hub-relaunch-row" "data-flag=\"updates\"" "settings-cloud-hub-relaunch" "Let Coral Hub relaunch this Coral to install updates" "settings-cloud-hub-relaunch-desc" "On by default. Coral Hub can ask for the relaunch of a version this computer has already downloaded and checked; it cannot choose a version or start one that is not ready, and it cannot change this switch. It only works at the Launch level above. Changed on this computer only." "data-cloud=\"hub-relaunch\" aria-describedby=\"settings-cloud-hub-relaunch-desc\"") }}
+                        {{ template "includes/cloud_switch_row" (cloudSwitch "settings-cloud-cross-team-row" "" "settings-cloud-hub-cross-team" "Let Coral Hub change cross-team settings" "settings-cloud-hub-cross-team-desc" "Coral Hub's owner can turn cross-team messaging and file sharing on or off for your teams. Turn this off to forbid it." "data-cloud=\"hub-cross-team\" aria-describedby=\"settings-cloud-hub-cross-team-desc\"") }}
+                        {{ template "includes/cloud_switch_row" (cloudSwitch "settings-cloud-redact-row" "" "settings-cloud-redact-tokens" "Hide tokens from Coral Hub viewers who can only look" "settings-cloud-redact-desc" "On by default. Coral Hub shows everything an agent printed or wrote: terminal output, chat, transcripts and board posts. With this on, tokens and keys that the betterleaks rules recognise are replaced by \"[redacted token]\" before they leave this computer, for viewers who can only look (View). Viewers who can type (Interact or Launch) see everything as it is: they can already run commands as you. The live terminal is never delayed: a token that arrives in one piece is hidden, but one typed key by key or split across two pieces of output can show in part, or in full when typed. On this computer nothing is hidden." "data-cloud=\"redact-tokens\" aria-describedby=\"settings-cloud-redact-desc\"") }}
                         <div class="settings-cloud-hub-operator settings-cloud-switch-row" id="settings-cloud-hub-operator-row" data-cloud="hub-operator-row" hidden>
                             <div class="settings-cloud-switch-text">
                                 <label for="settings-cloud-hub-operator" class="settings-cloud-switch-label">Don't let Coral Hub act as the Operator</label>
@@ -1615,3 +1509,21 @@
     </div>
 
 {{ end }}
+
+{{/* One settings switch: the label names it, the description is the text beside it. toggle (funcs in frontend.go) builds the argument; attrs are extra attributes of the input. */}}
+{{ define "includes/toggle_row" }}<div class="settings-row">
+                <dt class="toggle-dt">
+                    <label for="{{ .ID }}">{{ .Label }}</label>
+                    <span class="toggle-desc">{{ .Desc }}</span>
+                </dt>
+                <dd><label class="check-hit"><input type="checkbox" id="{{ .ID }}"{{ .Attrs }}></label></dd>
+                </div>{{ end }}
+
+{{/* One Coral Hub switch in Settings: the label names it, the description (its own id) is tied to it by aria-describedby in inputAttrs. */}}
+{{ define "includes/cloud_switch_row" }}<div id="{{ .RowID }}" class="settings-cloud-switch-row"{{ .RowAttrs }}>
+                            <div class="settings-cloud-switch-text">
+                                <label for="{{ .InputID }}" class="settings-cloud-switch-label">{{ .Label }}</label>
+                                <div id="{{ .DescID }}" class="settings-hint">{{ .Desc }}</div>
+                            </div>
+                            <label class="check-hit"><input type="checkbox" id="{{ .InputID }}"{{ .InputAttrs }}></label>
+                        </div>{{ end }}
