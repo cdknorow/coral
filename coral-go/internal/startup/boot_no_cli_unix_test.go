@@ -28,7 +28,26 @@ var agentCLIBinaries = []string{"claude", "codex", "pi", "agy", "antigravity", "
 // PATH holds only the stubs and the system folders, so no real agent CLI can be reached. seed
 // runs on the fresh database before startup. It waits for startup and the first background
 // ticks, and returns what the stubs recorded.
+// bootObserve is how long a boot that must run NO agent CLI is watched after the server answers: the first background ticks (the CLI-version backfill and the goal poll run
+// at once, the pollers' first passes within a few seconds) all fall inside it.
+const bootObserve = 6 * time.Second
+
 func bootWithStubCLIs(t *testing.T, seed func(ctx context.Context, db *store.DB, home string)) string {
+	return bootStubCLIs(t, seed, bootObserve, false)
+}
+
+// bootWithStubCLIsNoWatch boots the same server and returns once it answers: for a test that checks what Start itself did and does not watch for a CLI run (#5591: two of them
+// used to sit out the 6 s watch for nothing).
+func bootWithStubCLIsNoWatch(t *testing.T, seed func(ctx context.Context, db *store.DB, home string)) {
+	bootStubCLIs(t, seed, 0, false)
+}
+
+// bootWithStubCLIsUntilRun is the control: it returns as soon as a stub has recorded a call (at most 15 s), where the others watch a fixed window for none.
+func bootWithStubCLIsUntilRun(t *testing.T, seed func(ctx context.Context, db *store.DB, home string)) string {
+	return bootStubCLIs(t, seed, 15*time.Second, true)
+}
+
+func bootStubCLIs(t *testing.T, seed func(ctx context.Context, db *store.DB, home string), observe time.Duration, untilRun bool) string {
 	iso := t.TempDir()
 	for _, k := range []string{"TMPDIR", "TMP", "TEMP"} {
 		t.Setenv(k, iso)
@@ -94,9 +113,17 @@ func bootWithStubCLIs(t *testing.T, seed func(ctx context.Context, db *store.DB,
 		resp.Body.Close()
 		return resp.StatusCode == http.StatusOK
 	}, 30*time.Second, 50*time.Millisecond, "the server answers")
-	// The first background ticks: the CLI-version backfill and the goal poll run at once, the
-	// pollers' first passes within a few seconds.
-	time.Sleep(6 * time.Second)
+	if untilRun {
+		deadline := time.Now().Add(observe)
+		for time.Now().Before(deadline) {
+			if b, err := os.ReadFile(calls); err == nil && len(strings.TrimSpace(string(b))) > 0 {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	} else if observe > 0 {
+		time.Sleep(observe) // the watch for a CLI run that must not happen: nothing to wait on, so a fixed window
+	}
 
 	data, err := os.ReadFile(calls)
 	if os.IsNotExist(err) {
@@ -136,7 +163,7 @@ func TestAServerWithAnEndedSessionRunsNoAgentCLI(t *testing.T) {
 // backfill, #3573; the session is also resumed, which runs the stub once more), and the stubs
 // record those calls, so the two tests above would see one.
 func TestBootStubsRecordACLIRun(t *testing.T) {
-	got := bootWithStubCLIs(t, func(ctx context.Context, db *store.DB, home string) {
+	got := bootWithStubCLIsUntilRun(t, func(ctx context.Context, db *store.DB, home string) {
 		ss := store.NewSessionStore(db)
 		require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: "00000000-0000-4000-8000-000000004421",
 			AgentType: "claude", AgentName: "Bob", WorkingDir: home}))
