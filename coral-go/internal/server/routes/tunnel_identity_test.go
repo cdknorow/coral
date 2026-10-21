@@ -315,8 +315,8 @@ func TestTasksRunAutoAcceptThroughTheHub(t *testing.T) {
 		h.SubmitTask(rec, r)
 		return rec.Code, codeOf(t, rec)
 	}
-	auto := `{"prompt":"p","repo_path":"` + repo + `","auto_accept":true}`
-	flags := `{"prompt":"p","repo_path":"` + repo + `","flags":"--dangerously-skip-permissions"}`
+	auto := `{"prompt":"p","repo_path":` + jsonString(repo) + `,"auto_accept":true}`
+	flags := `{"prompt":"p","repo_path":` + jsonString(repo) + `,"flags":"--dangerously-skip-permissions"}`
 
 	code, c := run(true, true, auto)
 	assert.Equal(t, http.StatusForbidden, code)
@@ -335,11 +335,11 @@ func TestTasksRunAutoAcceptThroughTheHub(t *testing.T) {
 	}
 	code, _ = run(false, false, auto)
 	assert.Equal(t, http.StatusOK, code, "from this computer: unchanged")
-	code, _ = run(true, true, `{"prompt":"p","repo_path":"`+repo+`"}`)
+	code, _ = run(true, true, `{"prompt":"p","repo_path":`+jsonString(repo)+`}`)
 	assert.Equal(t, http.StatusOK, code, "no auto-accept: no switch needed")
 
 	notGit := t.TempDir()
-	code, _ = run(false, false, `{"prompt":"p","repo_path":"`+notGit+`"}`)
+	code, _ = run(false, false, `{"prompt":"p","repo_path":`+jsonString(notGit)+`}`)
 	assert.Equal(t, http.StatusBadRequest, code, "repo_path must be a git work tree")
 	_ = os.RemoveAll(notGit)
 }

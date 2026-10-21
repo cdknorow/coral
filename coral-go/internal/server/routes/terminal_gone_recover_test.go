@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -60,9 +59,9 @@ func TestRestartAndResumeRecoverAGoneTerminal(t *testing.T) {
 			require.NotNil(t, pane, "a fresh terminal is created for the agent")
 			assert.Equal(t, wd, pane.CurrentPath, "in the agent's own working directory")
 			require.Len(t, launched, 1, "the agent is launched in its new terminal")
-			m := regexp.MustCompile(`--settings (\S+)`).FindStringSubmatch(launched[0])
+			m := oracleSettingsArg.FindStringSubmatch(launched[0]) // a quoted path on Windows (PowerShell)
 			require.Len(t, m, 2, "launch has a settings file: %s", launched[0])
-			settings, err := os.ReadFile(m[1])
+			settings, err := os.ReadFile(strings.Trim(m[1], `'"`))
 			require.NoError(t, err)
 			assert.NotContains(t, string(settings), "QA_3213_MARKER", "a repository's settings never reach --settings (#3591)")
 			if route == "resume" {

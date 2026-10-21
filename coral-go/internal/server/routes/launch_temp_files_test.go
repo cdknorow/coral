@@ -32,7 +32,11 @@ func TestLaunchFailsWhenTheTempFolderRefusesItsFiles(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 	msg, _ := io.ReadAll(resp.Body)
-	assert.Contains(t, string(msg), gone, "the error names the temp folder")
+	var e struct {
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(msg, &e) // the JSON text writes a Windows path's backslashes doubled
+	assert.Contains(t, e.Error, gone, "the error names the temp folder")
 
 	sessions, _ := terminal.ListSessions(context.Background())
 	assert.Empty(t, sessions, "no terminal is made")
