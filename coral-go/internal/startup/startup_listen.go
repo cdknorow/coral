@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/subgentic/coral/internal/safego"
 
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/firewall"
 )
 
 // serveListeners serves httpServer on every listener, in the background, with the dashboard's address and any
@@ -50,6 +52,11 @@ func serveListeners(httpServer *http.Server, lns []net.Listener, cfg *config.Con
 func listenAll(cfg *config.Config) ([]net.Listener, int, error) {
 	if err := config.HostsError(cfg.Host); err != nil {
 		return nil, 0, err
+	}
+	// On Windows the first listen on a network address makes Windows ask whether to allow the program, and Allow makes a rule for the
+	// whole program: say so before the prompt appears (#97).
+	if w := firewall.BindWarning(cfg.Host, runtime.GOOS, config.IsLoopbackHost(cfg.Host)); w != "" {
+		log.Print(w)
 	}
 	hosts := cfg.ListenHosts()
 	port := cfg.Port
