@@ -127,7 +127,7 @@ async function httpJson(method, p, body, headers = {}) {
             if (dir) {
                 const { themeJs } = require('./helpers/theme');
                 for (const theme of ['dark', 'light']) {
-                    await ev(`${themeJs(theme)}; true`); // the helper clears the custom colour variables first, so a "light" picture is light (#5757)
+                    await ev(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)}); true`); // TRIAL CONTROL: the bare attribute; the helper clears the custom colour variables first, so a "light" picture is light (#5757)
                     await ev(`document.getElementById('pia-box')?.remove(); true`);
                     await waitFor(`document.querySelectorAll('#image-attachments img').length === 3`, `${tag}: composer thumbnails`, { timeout: 10000 });
                     const cr = await ev(`(() => { const r = document.getElementById('image-attachments').getBoundingClientRect(); return { x: Math.max(0, r.left - 20), y: Math.max(0, r.top - 20), width: Math.min(innerWidth, r.width + 40), height: 110, scale: 1 }; })()`);
