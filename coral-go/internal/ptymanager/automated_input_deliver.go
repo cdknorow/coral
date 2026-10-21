@@ -96,7 +96,14 @@ func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHe
 		footerOnly.Store(open && !isPromptHold(why))
 		return !open
 	}
-	err = in.Send(tmux.WithAutomated(tmux.WithBeforeEnter(ctx, check)))
+	sctx := tmux.WithAutomated(tmux.WithBeforeEnter(ctx, check))
+	if _, known := BracketedPasteHint(ctx); !known {
+		at, sid := in.identity()
+		if enabled, known := BracketedPasteFromLog(naming.DefaultLogDir(), at, sid); known {
+			sctx = WithBracketedPasteHint(sctx, enabled) // tmux flattens a multi-line text only when the pane is known not to take a paste
+		}
+	}
+	err = in.Send(sctx)
 	if errors.Is(err, tmux.ErrEnterWithheld) {
 		kind := kindPrompt
 		if footerOnly.Load() {
