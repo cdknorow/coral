@@ -123,6 +123,8 @@ the first failed check.
   `cdp-gate` (`.github/gate.json`, "always") passed on that exact code. The heavy gates run on the commit pushed to a `ci/` branch; the tagged
   commit is that tree plus the release notes, so a notes-only tagged commit is judged by its single parent's runs. A failed, cancelled or
   missing gate fails the release before anything is built.
+  **Every tag runs it, `-dev`, `-beta`, `-rc` and `-forDropbox` included**: the commit of such a tag also needs green `go-tests`, `go-race` and `cdp-gate`
+  runs (push it to a `ci/` branch first); the step fails early with the table of what is missing.
 - **Every Monday** (`reverify-releases.yml`, also by hand from `main`): the three newest published releases are verified again
   with `verify-release.sh --require-cosign` (stage by their state), from the release runs' artifacts, no download from the release. A release
   that changed after publication, or whose signatures stop verifying, turns the run red. The macOS-only rows (DMG signature, stapling) SKIP on
