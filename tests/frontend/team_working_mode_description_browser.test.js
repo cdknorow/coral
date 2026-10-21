@@ -39,6 +39,17 @@ const BASE = require('./test_base').BASE;
             // choosing a preset in Edit presets changes the mode, and the line follows
             await ev(`(() => { const p = document.querySelector('form.working-mode-form select[name=preset]'); p.value = 'worktrees'; p.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
             assert.equal(await ev(`document.getElementById('working-mode-desc').textContent`), want.worktrees, 'the line follows the preset chosen for editing');
+            { // the description and the Workflow tab hold 4.5:1 in both themes, the real light one included (#5781)
+                const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
+                await installAudit(ev); await read('merge_queue');
+                for (const theme of ['dark', 'light']) {
+                    await setTheme(ev, theme);
+                    const au = await auditRegion(ev, ['#team-settings-workflow']);
+                    assert.ok(au.checked > 0 && !au.fails.length, `${w} px, ${theme}: the Workflow tab holds 4.5:1: ${JSON.stringify(au.fails).slice(0, 500)}`);
+                    if (process.env.CORAL_SCREENSHOT_DIR) require('node:fs').writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/working-mode-${w}-${theme}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'));
+                }
+                await setTheme(ev, 'dark');
+            }
             await ev(`document.querySelectorAll('dialog[open]').forEach(d => d.close()); true`);
         }
         console.log('   ✓');
