@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,10 +62,7 @@ func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, r
 	if unescaped, err := url.PathUnescape(fp); err == nil {
 		fp = unescaped
 	}
-	if strings.HasPrefix(strings.ToLower(fp), "file://localhost/") {
-		fp = fp[len("file://localhost"):]
-	}
-	fp = strings.TrimPrefix(fp, "file://")
+	fp = fileURLPath(fp, runtime.GOOS == "windows")
 
 	if m := fileRefHashLineRe.FindStringSubmatch(fp); m != nil {
 		fp = m[1]
@@ -221,3 +219,40 @@ var (
 	fileRefLineRe     = regexp.MustCompile(`^(.+?):(\d+)(?:[-:]\d+)?$`)
 	fileRefHashLineRe = regexp.MustCompile(`^(.+?)#(?:L)?(\d+)(?:[-:]L?\d+)?$`)
 )
+
+// fileURLPath is the path a file: URL names (fp otherwise), already percent-decoded:
+// file://localhost/p and file:///p are /p. On Windows a drive path loses the slash before its
+// letter (file:///C:/x/y.go is C:/x/y.go, not a /C:/... joined under the repository and refused,
+// #59, QA #28 C3) and file://server/share/x is the UNC path \\server\share\x, which the
+// containment checks then allow or refuse like any other path. Elsewhere file://host/p keeps
+// what it always gave, host/p.
+func fileURLPath(fp string, windows bool) string {
+	lower := strings.ToLower(fp)
+	switch {
+	case strings.HasPrefix(lower, "file://localhost/"):
+		fp = fp[len("file://localhost"):]
+	case strings.HasPrefix(lower, "file:///"):
+		fp = fp[len("file://"):]
+	case strings.HasPrefix(lower, "file://"):
+		rest := fp[len("file://"):]
+		// file://server/share/x: a host name (no colon or backslash: file://C:/x is the drive
+		// path, as before) and then a path. Anything else stays as it always was.
+		host, _, hasPath := strings.Cut(rest, "/")
+		if windows && hasPath && host != "" && !strings.ContainsAny(host, `:\`) {
+			return `\\` + strings.ReplaceAll(rest, "/", `\`)
+		}
+		return rest
+	default:
+		return fp
+	}
+	if windows && len(fp) > 1 && fp[0] == '/' && driveLetterPath(fp[1:]) {
+		fp = fp[1:]
+	}
+	return fp
+}
+
+// driveLetterPath reports whether p starts with a drive letter, a colon and a slash (C:/ or C:\).
+func driveLetterPath(p string) bool {
+	return len(p) >= 3 && p[1] == ':' && (p[2] == '/' || p[2] == '\\') &&
+		(p[0] >= 'a' && p[0] <= 'z' || p[0] >= 'A' && p[0] <= 'Z')
+}

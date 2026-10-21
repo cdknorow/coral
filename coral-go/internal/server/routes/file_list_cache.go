@@ -2,6 +2,9 @@ package routes
 
 import (
 	"context"
+	"path"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -116,13 +119,25 @@ func (c *fileListCache) keep(workdir string, files []string) {
 // invalidate drops the lists of workdir and of any repository containing it or inside it (the
 // poller's folder can be an agent's subfolder of the repository the search lists).
 func (c *fileListCache) invalidate(workdir string) {
-	w := strings.TrimRight(workdir, "/") + "/"
+	w := folderKey(workdir, runtime.GOOS == "windows")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for k := range c.entries {
-		key := strings.TrimRight(k, "/") + "/"
+		key := folderKey(k, runtime.GOOS == "windows")
 		if strings.HasPrefix(w, key) || strings.HasPrefix(key, w) {
 			delete(c.entries, k)
 		}
 	}
+}
+
+// folderKey is a folder as invalidate compares it: cleaned, with a trailing separator so that
+// /repo never matches /repo2. On Windows either slash separates and case doesn't count, so
+// C:\Repo\pkg is inside C:/repo (#59, QA #28 C4: a subfolder's change never cleared its
+// repository's list there).
+func folderKey(dir string, windows bool) string {
+	if windows {
+		dir = strings.ToLower(strings.ReplaceAll(dir, "/", `\`))
+		return strings.TrimRight(filepath.Clean(dir), `\`) + `\`
+	}
+	return strings.TrimRight(path.Clean(dir), "/") + "/"
 }
