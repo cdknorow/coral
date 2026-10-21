@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agent"
 )
 
 const (

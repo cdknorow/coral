@@ -9,15 +9,15 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/proxy"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/proxy"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // TasksHandler handles one-shot task run endpoints.

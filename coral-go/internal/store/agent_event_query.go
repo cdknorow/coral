@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 )
 
 // The agent events query (#4745): GET /api/sessions/live/{name}/events with type, q, since, until, sort, limit and cursor, answering

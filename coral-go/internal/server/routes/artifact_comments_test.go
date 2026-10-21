@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #5176: comments on an artifact. Every role x action through the real routes, the stamped-is-never-owner rule, sizes and limits.

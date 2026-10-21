@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/naming"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/naming"
 )
 
 func sessionOf(n int) string {

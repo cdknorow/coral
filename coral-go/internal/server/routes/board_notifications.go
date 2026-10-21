@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/safego"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 func (h *BoardHandler) buildAssignmentNotification(ctx context.Context, project string, task *board.Task, assignee string, reassigned bool) string {

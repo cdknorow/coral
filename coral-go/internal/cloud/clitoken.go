@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // The command-line token (#3149): a same-user proof for the local cloud write

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/testleak"
+	"github.com/subgentic/coral/internal/testleak"
 )
 
 // TestMain fails the package when its tests leave a goroutine running (#4167), and runs every test

@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/proxy"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/proxy"
 )
 
 // The list a picker shows when the CLI does not answer (#5044): the current Claude models, by name,

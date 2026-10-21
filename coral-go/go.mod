@@ -1,4 +1,4 @@
-module github.com/cdknorow/coral
+module github.com/subgentic/coral
 
 go 1.26.10
 

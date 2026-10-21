@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 func TestTaskQueueIssues(t *testing.T) {

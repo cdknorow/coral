@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // #3601 (weak site W16, Backend's third site): the dashboard's launch path doesn't take

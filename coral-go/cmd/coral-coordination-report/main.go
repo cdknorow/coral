@@ -3,13 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/cliauth"
 	"io"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/coordination"
+	"github.com/subgentic/coral/internal/coordination"
 )
 
 func main() {

@@ -24,7 +24,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agent"
 )
 
 // State is how the stub behaves.

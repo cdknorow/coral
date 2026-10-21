@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #3601 (weak site W24): a stored base branch that git would read as an option never reaches it:

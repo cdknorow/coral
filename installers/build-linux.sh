@@ -43,7 +43,7 @@ cd "$GO_DIR"
 for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
     echo "==> Compiling $cmd"
     GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 go build -tags "$BUILD_TAGS" \
-        -ldflags="-s -w -X github.com/cdknorow/coral/internal/config.Version=$VERSION" \
+        -ldflags="-s -w -X github.com/subgentic/coral/internal/config.Version=$VERSION" \
         -o "$BUILD_DIR/$cmd" "./cmd/$cmd/"
 done
 

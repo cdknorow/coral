@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board/boardtest"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/board/boardtest"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #3620 (hub audit H3): every list route a viewer can call bounds the size it was asked for. A

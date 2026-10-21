@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 var phaseTraceSeq atomic.Uint64

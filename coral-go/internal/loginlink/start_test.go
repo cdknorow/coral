@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/loginlink"
-	"github.com/cdknorow/coral/internal/startup"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/loginlink"
+	"github.com/subgentic/coral/internal/startup"
 )
 
 func freePort(t *testing.T) int {

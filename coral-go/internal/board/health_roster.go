@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/naming"
+	"github.com/subgentic/coral/internal/naming"
 )
 
 // What the orchestrator's health check needs to tell the agents apart (#4583).

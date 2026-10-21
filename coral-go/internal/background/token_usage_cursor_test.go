@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 func codexLine(i int) string {

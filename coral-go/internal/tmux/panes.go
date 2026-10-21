@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/logparse"
+	"github.com/subgentic/coral/internal/logparse"
 )
 
 // paneSnapshot is one list-panes: the panes, and each pane's state by target (#S:#I.#P).

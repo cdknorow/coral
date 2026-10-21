@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // #3998 (Security's #3994 finding 2): with the pty backend every agent runs inside Coral's

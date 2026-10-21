@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/cloud"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // The caller of a comments route is derived HERE and nowhere else, and fails closed (#5176, Security's conditions): the author of a comment, the key of its rate limit and every

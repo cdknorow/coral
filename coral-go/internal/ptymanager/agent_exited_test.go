@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // fgTerm's shell is idle when cmd is a shell name (the CLI exited), busy otherwise.

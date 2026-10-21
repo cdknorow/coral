@@ -20,15 +20,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentprio"
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/inputlog"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store/storetest"
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentprio"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // PutSettings was split for #4599 item 5 (ordered checks and a table of value rules in place of one long function).

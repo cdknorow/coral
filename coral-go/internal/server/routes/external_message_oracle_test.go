@@ -19,11 +19,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/board/boardtest"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/board/boardtest"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // The outcomes the PostExternalMessage oracle must reach, each counted from the answer, with a floor.

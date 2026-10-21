@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // composeCheck was split for #4599 (second ranking, item 5). The check is what the orchestrator acts on, so the old

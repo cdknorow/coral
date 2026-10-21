@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #4875: a tag's colour goes into a style attribute of the dashboard, so the server keeps only #rgb, #rrggbb and #rrggbbaa: anything else

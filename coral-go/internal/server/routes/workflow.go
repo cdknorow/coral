@@ -15,14 +15,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/mediatype"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/mediatype"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/store"
 )
 
 var workflowNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)

@@ -13,14 +13,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentmodels"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentmodels"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // launchTeamAgent is one member of a team launch.

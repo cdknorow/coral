@@ -2,7 +2,7 @@
 
 package main
 
-import "github.com/cdknorow/coral/internal/license"
+import "github.com/subgentic/coral/internal/license"
 
 // showEULADialog falls back to terminal prompt on non-macOS platforms.
 func showEULADialog(tosText string) bool {

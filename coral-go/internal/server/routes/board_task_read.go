@@ -8,10 +8,10 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // ListTasks returns a page of the board's task list (#3269).

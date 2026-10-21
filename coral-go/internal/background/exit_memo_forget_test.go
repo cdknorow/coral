@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // #4057: the "agent exited" and terminal-agent log memos are forgotten when each session ends,

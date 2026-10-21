@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentsignin"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/claudestub"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/claudestub"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #5469: a background caller never starts a signed-out Claude: its sign-in flow would hold the login. The stand-in "claude" answers "auth status --json" from a state file and

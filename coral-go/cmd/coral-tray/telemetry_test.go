@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // #5184: the tray's own events (install, app_opened, returned_24h, active week) went out whatever the saved Usage analytics setting said, because the tray

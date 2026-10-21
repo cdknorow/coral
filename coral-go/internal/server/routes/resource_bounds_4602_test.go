@@ -15,16 +15,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/board/boardtest"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/agent"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/board/boardtest"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #4602: a list size a caller asks for is bounded. A huge ?limit used to be the whole list, or the whole transcript and a copy of it

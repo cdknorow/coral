@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // Editor is a desktop code editor Coral can open a file in.

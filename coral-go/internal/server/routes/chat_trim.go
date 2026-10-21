@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // A chat page asked for with ?trim=N (#3723) carries at most N bytes of each long tool field:

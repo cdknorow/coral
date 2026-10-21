@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/pkg/frontend"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/pkg/frontend"
 )
 
 // tokenMarkup matches the places a credential would be put into a page: a

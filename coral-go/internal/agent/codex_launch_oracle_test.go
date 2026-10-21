@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // codexTempFile is a temporary file a Codex start command names (its instructions and prompt files).

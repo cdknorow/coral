@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/store"
 )
 
 func hooksRevOf(t *testing.T, ss *store.SessionStore, sid string) int {

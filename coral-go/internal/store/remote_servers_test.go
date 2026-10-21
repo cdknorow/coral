@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/pkg/secretbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/pkg/secretbox"
 
-	"github.com/cdknorow/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 )
 
 const plainKey = "PLAINTEXT-API-KEY-1234567890"

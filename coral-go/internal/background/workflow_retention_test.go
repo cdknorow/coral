@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Starting a run keeps a workflow's newest WorkflowRunsKept runs and removes

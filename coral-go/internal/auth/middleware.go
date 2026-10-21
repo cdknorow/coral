@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // Method is how the middleware let a request in. Handlers that must tell a

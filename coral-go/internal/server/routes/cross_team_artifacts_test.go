@@ -19,9 +19,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board/boardtest"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/board/boardtest"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // The receive side of cross-team artifacts (C3): a file another Coral sends through Coral Hub.

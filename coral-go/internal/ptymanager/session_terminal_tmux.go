@@ -3,7 +3,7 @@ package ptymanager
 import (
 	"context"
 
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // TmuxSessionTerminal implements SessionTerminal using tmux.

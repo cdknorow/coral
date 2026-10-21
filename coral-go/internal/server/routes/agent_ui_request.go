@@ -14,10 +14,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store"
 )
 
 const (

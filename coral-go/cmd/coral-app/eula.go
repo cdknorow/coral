@@ -3,8 +3,8 @@
 package main
 
 import (
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/license"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/license"
 )
 
 // checkAndShowEULA checks if the user has accepted the EULA.

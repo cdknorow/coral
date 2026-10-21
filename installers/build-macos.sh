@@ -34,9 +34,9 @@ echo "==> Building coral-go for macOS (universal) v${VERSION}"
 
 # Build ldflags — always strip symbols and inject the version. A local build has NO analytics key unless CORAL_POSTHOG_KEY is set (#5184: the script used to
 # embed the project's key for every tier, dev builds too, so a build made here sent usage events); the release workflow injects its own key from a secret.
-LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.Version=$VERSION"
+LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.Version=$VERSION"
 if [ -n "${CORAL_POSTHOG_KEY:-}" ]; then
-    LDFLAGS="$LDFLAGS -X github.com/cdknorow/coral/internal/config.PostHogKey=$CORAL_POSTHOG_KEY"
+    LDFLAGS="$LDFLAGS -X github.com/subgentic/coral/internal/config.PostHogKey=$CORAL_POSTHOG_KEY"
 else
     echo "==> No CORAL_POSTHOG_KEY: this build sends no usage analytics"
 fi

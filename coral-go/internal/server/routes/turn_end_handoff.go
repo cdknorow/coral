@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/ptymanager"
+	setreg "github.com/subgentic/coral/internal/settings"
 )
 
 // TurnEndHandoffSetting turns the turn-end hand-off off when "off" (#3481, #3475 3A).

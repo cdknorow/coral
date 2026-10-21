@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/cdknorow/coral/internal/inputlog"
-	"github.com/cdknorow/coral/internal/naming"
+	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/naming"
 )
 
 // Automated text as a bracketed paste (#3457). Measured with Claude 2.1.299, Codex

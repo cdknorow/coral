@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/cdknorow/coral/internal/httputil"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	"github.com/subgentic/coral/internal/httputil"
+	setreg "github.com/subgentic/coral/internal/settings"
 )
 
 // The ceiling on the live agents an agent token may add (#4602): POST /api/sessions/launch and /launch-team are routes an agent

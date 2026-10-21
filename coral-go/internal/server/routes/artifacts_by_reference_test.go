@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #4379 T3: there is no upload "by reference". A request naming an existing object (a header, a

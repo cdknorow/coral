@@ -17,10 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // Diff returns the unified diff for a single file.

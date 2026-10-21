@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // GetFileContent returns the raw content of a file in the agent's working tree.

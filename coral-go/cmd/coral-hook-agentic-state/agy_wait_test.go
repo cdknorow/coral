@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/sessionstate"
+	"github.com/subgentic/coral/internal/sessionstate"
 )
 
 // #4819: agy sends no hook for a question to the user, only PreToolUse before every tool. Its ask_question always waits for the user's

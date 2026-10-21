@@ -17,11 +17,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/pkg/tunnel"
 	"unicode"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // Enrollment errors. They carry no hub-supplied text.

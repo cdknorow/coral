@@ -26,9 +26,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 const (

@@ -14,7 +14,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // openFDs is how many file descriptors this process holds (-1 where /dev/fd is not there).

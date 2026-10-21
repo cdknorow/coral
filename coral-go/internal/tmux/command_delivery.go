@@ -1,6 +1,6 @@
 package tmux
 
-import "github.com/cdknorow/coral/internal/cmdhandoff"
+import "github.com/subgentic/coral/internal/cmdhandoff"
 
 // inlineCommandLimit is the longest command typed into a fresh shell as it is; a longer one is
 // delivered through a script (cmdhandoff.InlineLimit).

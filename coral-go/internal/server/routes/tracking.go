@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // TrackingHandler exposes the small set of funnel events that can only be

@@ -13,8 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // QA's #3561 probe, kept: the multipart upload's and a kill's answers through Coral Hub, with

@@ -31,8 +31,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/store"
 	"github.com/google/uuid"
 )
 

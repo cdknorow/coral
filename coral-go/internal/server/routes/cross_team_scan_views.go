@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/secrets"
 )
 
 // The sender-side scan of a text attachment looks at the file as it is and at a few re-encodings of it

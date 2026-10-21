@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/agent"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agent"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // pathCLI puts a "claude" on PATH that records that it ran (the operator's real CLI, in the test's words), and returns the marker.

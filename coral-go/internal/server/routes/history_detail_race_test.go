@@ -12,10 +12,10 @@ import (
 	"sync"
 	"testing"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // TestHistoryDetail_ConcurrentReadsEachGetTheWholeTranscript (#3651): many requests for the same

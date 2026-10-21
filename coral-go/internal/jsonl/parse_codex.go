@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agent"
 )
 
 // parseCodexEntry handles Codex CLI JSONL transcript format.

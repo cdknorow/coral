@@ -3,7 +3,7 @@ package tmux
 import (
 	"strings"
 
-	"github.com/cdknorow/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/inputlog"
 )
 
 // recordSendKeys logs a send-keys command (every one goes through run): literal

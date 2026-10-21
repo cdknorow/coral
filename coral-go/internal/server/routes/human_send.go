@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/ptymanager"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // A person's message to an agent, from Chat (#4587, coral-hub's O2). Typed while the agent was still starting, it

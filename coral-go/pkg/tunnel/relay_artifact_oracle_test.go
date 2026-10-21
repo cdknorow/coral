@@ -17,7 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // The outcomes the RelayArtifact oracle must reach, each counted from the call's outcome, with a floor.

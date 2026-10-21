@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // Agent pipe logs (#3601, weak site W17): everything an agent's terminal shows. Readable by this

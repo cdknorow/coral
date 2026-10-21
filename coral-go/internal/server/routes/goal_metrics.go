@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Alert thresholds for GET /api/goals/metrics. Each flags something that

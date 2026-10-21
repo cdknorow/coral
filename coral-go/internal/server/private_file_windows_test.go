@@ -5,7 +5,7 @@ package server
 import (
 	"testing"
 
-	"github.com/cdknorow/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 )
 
 // requirePrivateFile: on Windows the mode says nothing (a writable file is 0666); a secret file

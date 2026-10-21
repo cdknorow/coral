@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/uploads"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/uploads"
 )
 
 // UploadsRetention removes uploads (images pasted or dropped for agents) older than

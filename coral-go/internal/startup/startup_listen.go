@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // serveListeners serves httpServer on every listener, in the background, with the dashboard's address and any

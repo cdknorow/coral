@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #3536 on the real router: a board's label in /api/board/<key>/... resolves to its id; an

@@ -8,14 +8,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // Task outcomes are distinguished: first_task_completed keeps meaning "any

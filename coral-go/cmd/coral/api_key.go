@@ -7,8 +7,8 @@ import (
 	"io"
 	iofs "io/fs"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // runAPIKey is `coral api-key` (#3936): it prints the API key a script on this computer sends

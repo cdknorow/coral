@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // The leak sweep (QA's #5041 review method, #5052): an agent's token is for its own board. Seed ANOTHER board's session and board with

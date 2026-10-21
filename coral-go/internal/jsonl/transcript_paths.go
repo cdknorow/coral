@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/agent"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // TranscriptPath returns the transcript file for a session, or "" when the

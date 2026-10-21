@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // Only this process's secret is authentic; any stamp at all still counts as

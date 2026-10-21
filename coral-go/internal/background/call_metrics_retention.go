@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // CallMetricsRetention deletes raw call metrics older than the retention window

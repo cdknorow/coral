@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // RegisterWait parks an agent by registering an active wait condition.

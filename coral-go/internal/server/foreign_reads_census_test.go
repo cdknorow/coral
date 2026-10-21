@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #4032 (Security's #4031 finding 2), the census on the real router: every GET under /api and

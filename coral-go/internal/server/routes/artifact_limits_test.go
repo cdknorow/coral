@@ -19,12 +19,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // The artifact store (#3553, from the #3551 audit): streamed uploads, image metadata by the

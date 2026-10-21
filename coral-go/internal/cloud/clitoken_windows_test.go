@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 )
 
 // #3905: the command-line token gets an access list of its own, and one another account can

@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // The command line and the running server authenticate each other with the

@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // checkBoard compares a board request's claimed identity with the token's session, and

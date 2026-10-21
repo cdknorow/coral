@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // A sleeping agent takes no input: /send and /keys addressed to it (with the

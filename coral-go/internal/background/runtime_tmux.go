@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // TmuxRuntime implements AgentRuntime using tmux sessions.

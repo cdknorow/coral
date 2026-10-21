@@ -17,8 +17,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // The guard's outcomes the oracle must reach, each counted from the condition happening (not from a request

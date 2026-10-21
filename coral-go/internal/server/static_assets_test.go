@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/pkg/frontend"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/pkg/frontend"
 )
 
 func staticTestServer(t *testing.T) (*httptest.Server, fs.FS) {

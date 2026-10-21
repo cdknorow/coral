@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // BoardHealthMonitor is the orchestrator's check (#4175 step 2): every interval, for each board,

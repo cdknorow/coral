@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/claudestub"
+	"github.com/subgentic/coral/internal/claudestub"
 )
 
 // QA's checks of the shared sign-in check against the claude stand-in (#5469 review), the ones the package's own tests do not make: many callers at once, a hung status

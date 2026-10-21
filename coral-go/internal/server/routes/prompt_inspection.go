@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cloud"
 )
 
 // GetPromptInspection displays defaults separately from current global overrides.

@@ -12,8 +12,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #4098 (the #3995 soak: a warning every 2 minutes for each working folder that isn't a git

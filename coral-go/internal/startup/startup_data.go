@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cmdhandoff"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/dbcrypt"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cmdhandoff"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // prepareDataDirs makes the Coral home (this user only, #3637) and the database's folder (it may be elsewhere).

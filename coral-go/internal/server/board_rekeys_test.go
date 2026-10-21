@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #3541: a re-keyed legacy board ("." here) moves in the sessions database (live session,

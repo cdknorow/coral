@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/agentmodels"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agentmodels"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #5480: the operator's custom models. The set is replaced as a whole, validated as a whole; both catalogs the pickers read carry the customs after the CLI's models.

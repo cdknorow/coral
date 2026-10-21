@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/cloud"
 )
 
 // RefuseForeignBrowserWrites refuses a state-changing request a browser sends from

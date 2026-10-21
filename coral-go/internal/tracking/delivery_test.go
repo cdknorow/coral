@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // rawCollector is a fake PostHog that records every request body verbatim and

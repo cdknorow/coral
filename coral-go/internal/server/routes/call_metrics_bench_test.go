@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // BenchmarkRequestMetrics measures what the metrics middleware adds to an /api

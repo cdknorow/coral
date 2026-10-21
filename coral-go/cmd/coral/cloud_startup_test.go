@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 func TestCloudStartupMode(t *testing.T) {

@@ -14,7 +14,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/hashicorp/yamux"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 const (

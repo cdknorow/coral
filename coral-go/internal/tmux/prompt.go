@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/inputlog"
 )
 
 // ErrBracketedPasteUnavailable means the target application is not currently

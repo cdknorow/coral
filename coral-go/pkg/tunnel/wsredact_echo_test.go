@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secrets"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/secrets"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // echoBound is how long a typed key's echo may take to leave the stream when nothing token-like is pending (#3959).

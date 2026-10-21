@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // A normal build has nothing to check: the seam's startup check changes no setting and never refuses.

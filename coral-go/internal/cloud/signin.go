@@ -17,9 +17,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // Sign in with Coral Hub, the Coral half of the wire (#3966, coral-hub PR #529; design note

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/dbcrypt"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // RebuildSearch rebuilds the full-text search index of sessions.db offline (`coral db rebuild-search`, #4735). session_fts is an

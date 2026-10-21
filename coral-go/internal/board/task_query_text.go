@@ -2,7 +2,7 @@ package board
 
 import (
 	"context"
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 	"slices"
 	"strings"
 )

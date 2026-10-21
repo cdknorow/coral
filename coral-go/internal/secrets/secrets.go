@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
-	"github.com/cdknorow/coral/pkg/redact/betterleaks"
+	"github.com/subgentic/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact/betterleaks"
 )
 
 // Budget bounds the detection for one reply, document, log line or stream unit. Text dense with

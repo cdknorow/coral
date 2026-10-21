@@ -18,11 +18,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // The health check end to end (#4246, before v1.4.74): one team on an isolated board, with

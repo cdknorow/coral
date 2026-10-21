@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // Hub-side bulk pacing (#4427, coral-hub's push of a file to a machine).

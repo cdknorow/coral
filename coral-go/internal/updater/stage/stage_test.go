@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // fakeSigner stands in for Sigstore (verify's own tests prove the real one against the real v1.4.120 bundle): a "bundle" is the artifact's hash and

@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/auth"
 	"github.com/stretchr/testify/assert"
+	"github.com/subgentic/coral/internal/auth"
 )
 
 // The four route-level "is this a person at this computer" checks go through auth.IsDirectLocal

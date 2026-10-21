@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/cdknorow/coral/pkg/hubproxy"
+	"github.com/subgentic/coral/pkg/hubproxy"
 )
 
 // setUntrustedContentHeaders prepares a response whose bytes an agent, a repo

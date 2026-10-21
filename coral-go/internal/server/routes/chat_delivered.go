@@ -3,8 +3,8 @@ package routes
 import (
 	"time"
 
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // markCoralDeliveries flags the user turns of a transcript that Coral itself typed into the agent (#4306): a task notice, the

@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/hooks"
 	"golang.org/x/term"
 )
 

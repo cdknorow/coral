@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // The database key file is checked by its access list on Windows, where the mode is always

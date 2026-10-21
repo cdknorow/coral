@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/updater/runrecord"
+	"github.com/subgentic/coral/internal/updater/runrecord"
 )
 
 // elfHeader is the smallest ELF a debug/elf parse accepts: a 64-bit little-endian header with no program or section headers.

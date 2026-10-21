@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/store"
 )
 
 func TestTeamAvailabilityQueuesAndRuntime(t *testing.T) {

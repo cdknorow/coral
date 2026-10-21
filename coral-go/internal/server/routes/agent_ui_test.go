@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/store"
 )
 
 func TestAgentUIRoundTrip(t *testing.T) {

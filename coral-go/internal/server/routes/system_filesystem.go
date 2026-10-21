@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // expandHome expands a leading ~ to the home directory.

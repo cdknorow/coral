@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/inputlog"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // DeliverAutomated types an automated send now if the agent is not waiting on

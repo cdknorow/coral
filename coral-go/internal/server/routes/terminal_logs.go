@@ -9,10 +9,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // The terminal logs of ended agents (#4447): since #4437 Kill keeps an agent's terminal log on both backends, so the only way to remove those logs

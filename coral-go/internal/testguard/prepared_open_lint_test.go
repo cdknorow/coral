@@ -81,8 +81,8 @@ func TestNoProductionCodeOpensADatabaseWithoutItsSchemaStep(t *testing.T) {
 func TestNoNonTestFileImportsTheDatabaseTestSupportPackages(t *testing.T) {
 	root := filepath.Join("..", "..") // coral-go
 	banned := map[string]bool{
-		"github.com/cdknorow/coral/internal/board/boardtest": true,
-		"github.com/cdknorow/coral/internal/store/storetest": true,
+		"github.com/subgentic/coral/internal/board/boardtest": true,
+		"github.com/subgentic/coral/internal/store/storetest": true,
 	}
 	fset := token.NewFileSet()
 	var offenders []string

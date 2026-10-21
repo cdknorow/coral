@@ -19,15 +19,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/mediatype"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/secfile"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/mediatype"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/secfile"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
 )
 
 const maxAgentArtifactSize = 64 << 20

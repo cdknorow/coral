@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #5213, the follow-ups to #5171: Launch and LaunchTeam run to their end when the request is dropped, the bound of a wake of many grows with the number, and a

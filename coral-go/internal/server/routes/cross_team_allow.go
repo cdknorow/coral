@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/httputil"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/httputil"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Who may message a board (#5508, coral-hub's spec): with the allowlist in force, a board takes a cross-team message, and the files that come with it, only from a sender on its list of

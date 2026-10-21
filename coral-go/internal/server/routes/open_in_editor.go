@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/executil"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/executil"
 )
 
 // Swapped in tests so nothing is launched.

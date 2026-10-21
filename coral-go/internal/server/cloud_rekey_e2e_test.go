@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/secretbox"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/secretbox"
 )
 
 // #3698, the real router: when the secret key is refused, /api/cloud/status says so and what a

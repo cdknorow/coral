@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board/boardtest"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/board/boardtest"
 )
 
 const (

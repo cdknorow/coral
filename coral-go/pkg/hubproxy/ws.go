@@ -14,9 +14,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/coder/websocket"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 const wsReadLimit = 16 << 20

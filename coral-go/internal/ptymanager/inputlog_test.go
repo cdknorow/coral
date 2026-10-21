@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/inputlog"
 )
 
 // Every write to a PTY is recorded with the code path that sent it, and Ctrl-D

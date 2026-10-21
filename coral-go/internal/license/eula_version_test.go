@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	terms "github.com/cdknorow/coral/pkg/license"
+	terms "github.com/subgentic/coral/pkg/license"
 )
 
 // markerAt points the acceptance marker at a temporary file for one test.

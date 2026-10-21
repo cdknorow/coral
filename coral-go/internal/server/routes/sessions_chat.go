@@ -13,14 +13,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/jsonl"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Detail returns detailed info for a specific live session.

@@ -15,10 +15,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // The outcomes the history-search oracle must reach, each counted from the condition happening, with a floor.

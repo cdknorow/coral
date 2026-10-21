@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"net/http"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // viaSecret is the value the connector stamps in tunnel.ViaHeader: random per

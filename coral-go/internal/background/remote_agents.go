@@ -47,9 +47,9 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/store"
-	proxy "github.com/cdknorow/coral/pkg/hubproxy"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/store"
+	proxy "github.com/subgentic/coral/pkg/hubproxy"
 )
 
 // RemoteRegistry is the part of store.RemoteServerStore the hub needs.

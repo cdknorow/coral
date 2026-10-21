@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // requireTaskPlanner follows the local board identity model: subscriber_id

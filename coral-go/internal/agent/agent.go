@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	setreg "github.com/subgentic/coral/internal/settings"
 )
 
 var coralSessionIDPattern = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}`)

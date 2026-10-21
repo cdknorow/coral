@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
-	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #3642: the Coral Hub pool sizes are whole numbers in range, or empty for the default.

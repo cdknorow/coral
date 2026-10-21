@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // Coral's own rules (#4265), added to betterleaks' for the provider keys it does not mask: an

@@ -14,9 +14,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/jsonl"
-	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // A stable key for a chat message (#4510, Save for Later): the same message has the same key after a reload, a poll, another page size and in the History view, so a

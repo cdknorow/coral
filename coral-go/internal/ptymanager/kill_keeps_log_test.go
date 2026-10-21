@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/naming"
+	"github.com/subgentic/coral/internal/naming"
 )
 
 // isolateForKillLog isolates the test (the #4381 env rules; a short temp folder, since a tmux socket path must stay

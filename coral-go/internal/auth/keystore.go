@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 const (

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/updater/stage"
+	"github.com/subgentic/coral/internal/updater/stage"
 )
 
 // #5419: an update that could end Coral and not bring it back does not begin, and a restart that fails during a rollback is said, not silent.

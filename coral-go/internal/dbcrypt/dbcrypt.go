@@ -20,7 +20,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 func encryptedKeyHex(key string) string {

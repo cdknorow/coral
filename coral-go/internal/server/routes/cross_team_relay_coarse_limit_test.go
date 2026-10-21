@@ -11,9 +11,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #5514: a relayed sender names its own board and subscriber strings, so the per-(source, sender board, sender, target) limit is dodged by varying them. A limit per source Coral and target

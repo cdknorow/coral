@@ -18,9 +18,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // runProject was split for #4599 (second ranking, item 4). The health rules nudge agents and escalate to the

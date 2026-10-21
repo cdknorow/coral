@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/store"
 )
 
 func TestCodexTranscriptStateHTTPWebSocketAndSingleSession(t *testing.T) {

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	proxy "github.com/subgentic/coral/pkg/hubproxy"
 )
 
 // The liveness poll and the hub's proxied calls share one connection pool, so

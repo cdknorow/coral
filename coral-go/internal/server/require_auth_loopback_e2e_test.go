@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // require_auth_on_loopback ON (with strict-local-auth OFF) makes a direct-local request

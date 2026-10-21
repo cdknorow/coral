@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // screenReader is what an agent runtime offers to show an agent's screen (the PTY and tmux runtimes both do).

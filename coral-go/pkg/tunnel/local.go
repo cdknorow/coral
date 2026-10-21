@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // ── Path guard ──────────────────────────────────────────────────────

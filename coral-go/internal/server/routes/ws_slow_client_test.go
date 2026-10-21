@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // lagBackend is a terminal backend for the socket's own behaviour (#4161): the test feeds and

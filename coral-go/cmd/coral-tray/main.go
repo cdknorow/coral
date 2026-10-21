@@ -30,17 +30,17 @@ import (
 	"time"
 
 	"fyne.io/systray"
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/loginlink"
-	"github.com/cdknorow/coral/internal/logrotate"
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/tracking"
-	"github.com/cdknorow/coral/internal/updatecheck"
 	"github.com/gen2brain/beeep"
 	"github.com/shirou/gopsutil/v4/process"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/loginlink"
+	"github.com/subgentic/coral/internal/logrotate"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/updatecheck"
 )
 
 // iconData is embedded per-platform in icon_unix.go (.png) and icon_windows.go (.ico).

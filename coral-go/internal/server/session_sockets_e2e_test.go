@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #3966 (c) through the real router, strict local auth on: "sign out other browsers" closes the

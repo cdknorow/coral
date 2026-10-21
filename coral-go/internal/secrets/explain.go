@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact/betterleaks"
+	"github.com/subgentic/coral/pkg/redact/betterleaks"
 )
 
 // Where the hub's rules found something, for a refusal that has to say why (#5212): a person told "this file looks like it contains a secret" cannot find it in 4,000 lines. ExplainHub gives the

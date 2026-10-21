@@ -10,9 +10,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 const taskNudge = "You have tasks available. Run 'coral-board task claim' to start."

@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/jsonl"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // ChatSearchHit is a bounded, plain-text match. MatchOffsets are byte offsets

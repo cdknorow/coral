@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/cdknorow/coral/pkg/hubproxy"
+	"github.com/subgentic/coral/pkg/hubproxy"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 func teamArtifactServer(t *testing.T) (*httptest.Server, *BoardHandler, string) {

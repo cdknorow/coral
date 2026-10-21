@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // PTYRuntime implements AgentRuntime using native PTY sessions.

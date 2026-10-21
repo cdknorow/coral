@@ -6,10 +6,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/cdknorow/coral/internal/proxy"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/subagent"
+	"github.com/subgentic/coral/internal/proxy"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/subagent"
 )
 
 // syncSubagentSpend brings the subagents table up to date for one main agent.

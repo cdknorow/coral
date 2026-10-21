@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/hooks"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 func main() {

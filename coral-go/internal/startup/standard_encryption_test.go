@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/dbcrypt"
 )
 
 // A standard build must refuse an encrypted setup before creating, saving,

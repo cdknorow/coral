@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // #3602 (Lead's NIT): naming.LogFile gives no path for an unsafe agent type or session id, and

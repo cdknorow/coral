@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	setreg "github.com/subgentic/coral/internal/settings"
 	"image"
 	"image/color"
 	"image/gif"

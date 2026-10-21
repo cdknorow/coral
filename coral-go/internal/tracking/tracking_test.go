@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 type capturedEvent struct {

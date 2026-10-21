@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // #4098: a task with no agent session (completed by the API key, the command line or the

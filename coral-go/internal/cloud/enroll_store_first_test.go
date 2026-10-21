@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
-	"github.com/cdknorow/coral/pkg/secretbox"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/pkg/secretbox"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #3693: when the token can't be stored here (on Windows every existing key file was refused),

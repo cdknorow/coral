@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 )
 
 // #4806: the events search's q refuses every control character, at the start, in the middle and at the end (the live and the history route share this parser).

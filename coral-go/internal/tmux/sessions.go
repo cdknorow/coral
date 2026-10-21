@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/subgentic/coral/internal/agentprio"
 
-	"github.com/cdknorow/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/agentenv"
 )
 
 // KillSession kills the tmux session for a given agent.

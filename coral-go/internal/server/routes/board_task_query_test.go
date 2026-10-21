@@ -19,9 +19,9 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/board/boardtest"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/board/boardtest"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 type tqEnv struct {

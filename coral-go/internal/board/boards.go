@@ -16,7 +16,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // Boards as their own entities (#3536, design #3534 B, operator-approved). A board has an id

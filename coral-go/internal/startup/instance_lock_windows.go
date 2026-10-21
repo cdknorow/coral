@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 type instanceLock struct {

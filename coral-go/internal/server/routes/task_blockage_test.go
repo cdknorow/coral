@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/store"
 )
 
 func TestClaimAPIExplainsMissingArtifact(t *testing.T) {

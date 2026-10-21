@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // newTestServer is New for tests: the server's background work stops and its board database

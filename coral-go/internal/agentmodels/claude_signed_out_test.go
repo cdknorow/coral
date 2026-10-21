@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/claudestub"
+	"github.com/subgentic/coral/internal/claudestub"
 )
 
 // #5469 / #5472: the model list is read by running the claude CLI in print mode (an initialize request, no prompt), once a day and whenever the dashboard asks. While

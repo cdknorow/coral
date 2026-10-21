@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // TestIndependentClaimGuidanceAndQueueSafety rigorously verifies all aspects of #1265:

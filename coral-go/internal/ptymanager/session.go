@@ -15,10 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agentenv"
-	"github.com/cdknorow/coral/internal/inputlog"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // session represents a single running PTY session.

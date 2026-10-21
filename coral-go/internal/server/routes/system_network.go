@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/config"
 	qrcode "github.com/skip2/go-qrcode"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // QRCode generates a QR code PNG for the given URL.

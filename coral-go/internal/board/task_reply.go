@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/clitext"
 )
 
 // The reply to a task (#5463): a board message linked to a task id (board_messages.task_id) whose text starts with a mention of the task's creator, so the existing mention

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/decodelimit"
+	"github.com/subgentic/coral/internal/decodelimit"
 )
 
 // #3715 (Security's review points): at most two large decodes run at once; a third waits, and

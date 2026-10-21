@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/store"
 )
 
 func TestLiveListRejectsUnavailableIdentityMetadata(t *testing.T) {

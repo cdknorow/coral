@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // 'terminal' is a supported agent_type: asking for its agent must not log that the type

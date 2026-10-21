@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // writeRollout writes a Codex rollout for thread in the same folder (cwd) as every other one;

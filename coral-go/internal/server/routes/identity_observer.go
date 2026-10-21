@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Identity phase 1 (#3387): LOG-ONLY. Every request is classified by who it comes

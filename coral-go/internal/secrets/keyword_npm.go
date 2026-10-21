@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // Round five of the hub's keyword rules (#5242), found by coral-hub's rerun on v1.4.122: the npm and yarn way of writing a registry token or password, and a bare "pwd" name. The

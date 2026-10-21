@@ -16,9 +16,9 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/hooks"
 )
 
 // The dashboard password from the command line (#3949). Both commands sign their request with

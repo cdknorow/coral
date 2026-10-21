@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // Creating the first password from the sign-in page (#3949; the operator, via the Orchestrator;

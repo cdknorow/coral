@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // flakyRemote answers the hub's own probes, but drops the connection of any

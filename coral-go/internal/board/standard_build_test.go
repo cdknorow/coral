@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/dbcrypt"
 )
 
 func TestStandardBoardStoreRejectsKeyAndEncryptedFileWithoutMutation(t *testing.T) {

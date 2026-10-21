@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // mockRuntime records SendInput calls for verification.

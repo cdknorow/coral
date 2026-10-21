@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cdknorow/coral/internal/clihelp"
+	"github.com/subgentic/coral/internal/clihelp"
 )
 
 // commands are the top-level commands main dispatches.
