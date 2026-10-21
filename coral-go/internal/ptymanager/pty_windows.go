@@ -34,6 +34,11 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 	// The agent gets env, newSession's filtered environment (#3389), as on Unix (cmd.Env): without
 	// ConPtyEnv the process inherited Coral's whole environment, CORAL_SECRET_KEY and every other
 	// server setting with it, and missed TERM, COLORTERM and CORAL_SESSION_NAME (#19).
+	if len(env) == 0 {
+		// conpty passes no block for an empty one, and no block is the parent's whole
+		// environment: refuse rather than start an agent with the server's (Security's #20 F2).
+		return nil, errEmptyEnv
+	}
 	opts := []conpty.ConPtyOption{
 		conpty.ConPtyDimensions(int(cols), int(rows)),
 		conpty.ConPtyEnv(windowsEnvBlock(env)),

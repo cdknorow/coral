@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentenv"
 	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/executil"
@@ -786,7 +787,7 @@ func runGoalCLI(ctx context.Context, bin, prompt string) (goalCLIResult, error) 
 	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Dir = os.TempDir()
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "TMUX") || strings.HasPrefix(kv, "CORAL_") {
+		if name, _, _ := strings.Cut(kv, "="); strings.HasPrefix(strings.ToUpper(name), "TMUX") || agentenv.IsCoral(name) { // any case (#19)
 			continue
 		}
 		cmd.Env = append(cmd.Env, kv)

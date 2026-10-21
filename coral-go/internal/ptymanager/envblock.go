@@ -1,6 +1,7 @@
 package ptymanager
 
 import (
+	"errors"
 	"sort"
 	"strings"
 )
@@ -38,3 +39,7 @@ func envName(kv string) string {
 	}
 	return kv
 }
+
+// errEmptyEnv: a process is never started with an empty environment, which ConPTY would turn
+// into the parent's whole one.
+var errEmptyEnv = errors.New("the agent's environment is empty: refusing to start it with Coral's own")

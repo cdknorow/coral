@@ -56,3 +56,13 @@ func TestWindowsAgentGetsTheFilteredEnvironment(t *testing.T) {
 		}
 	}
 }
+
+// Security's #20 F2: an empty environment is refused, never handed to ConPTY, which would start
+// the process with the parent's whole environment instead.
+func TestWindowsPTYRefusesAnEmptyEnvironment(t *testing.T) {
+	for _, env := range [][]string{nil, {}} {
+		p, err := startPTYProcess("cmd.exe", []string{"/c", "exit"}, "", env, 80, 24)
+		assert.ErrorIs(t, err, errEmptyEnv)
+		assert.Nil(t, p)
+	}
+}

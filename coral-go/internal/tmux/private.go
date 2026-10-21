@@ -42,7 +42,7 @@ func privateTmux(ctx context.Context, socket string, args ...string) (string, er
 	// Never the tmux this process may run inside: only the -S socket.
 	env := make([]string, 0, len(os.Environ()))
 	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "TMUX=") && !strings.HasPrefix(e, "TMUX_PANE=") {
+		if name, _, _ := strings.Cut(e, "="); !strings.EqualFold(name, "TMUX") && !strings.EqualFold(name, "TMUX_PANE") {
 			env = append(env, e)
 		}
 	}

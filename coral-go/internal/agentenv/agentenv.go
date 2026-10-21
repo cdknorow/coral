@@ -16,6 +16,14 @@
 //
 // Workflow step variables (CORAL_WORKFLOW_*, CORAL_STEP_*, CORAL_PREV*) are allowed: Coral
 // sets them for the step it runs.
+//
+// Names are compared without case, on every OS: Windows reads a variable whatever case it was
+// set in (Coral_Secret_Key is CORAL_SECRET_KEY there), so a filter that matched the case let a
+// server setting spelled another way through to every agent (#19, Security's #20 F1).
+//
+// The variables that are not CORAL_ ones pass on purpose, secrets among them (GITHUB_TOKEN,
+// AWS_*, ANTHROPIC_API_KEY): the agent CLIs and the tools they run need the user's own keys.
+// This filter keeps Coral's server settings away from agents, not the user's environment.
 package agentenv
 
 import (
@@ -42,16 +50,22 @@ var Allowed = map[string]bool{
 // AllowedPrefixes are workflow step context Coral sets for the step it runs.
 var AllowedPrefixes = []string{"CORAL_WORKFLOW_", "CORAL_STEP_", "CORAL_PREV"}
 
+// IsCoral reports whether a variable named name is a CORAL_ one, in any case.
+func IsCoral(name string) bool {
+	return len(name) >= len("CORAL_") && strings.EqualFold(name[:len("CORAL_")], "CORAL_")
+}
+
 // Keep reports whether a variable named name may reach an agent.
 func Keep(name string) bool {
-	if !strings.HasPrefix(name, "CORAL_") {
+	if !IsCoral(name) {
 		return true
 	}
-	if Allowed[name] {
+	upper := strings.ToUpper(name)
+	if Allowed[upper] {
 		return true
 	}
 	for _, p := range AllowedPrefixes {
-		if strings.HasPrefix(name, p) {
+		if strings.HasPrefix(upper, p) {
 			return true
 		}
 	}

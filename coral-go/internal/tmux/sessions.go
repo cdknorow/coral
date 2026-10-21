@@ -190,7 +190,7 @@ func (c *Client) scrubServerEnv(ctx context.Context) {
 		have[name] = value
 		// "-NAME" is already marked for removal; CORAL_TMUX_BIN is set on purpose (tmuxEnv).
 		// An agent identity is never the server's (#3421): removed like a server setting.
-		if !strings.HasPrefix(name, "CORAL_") || name == "CORAL_TMUX_BIN" || (agentenv.Keep(name) && !identity[name]) {
+		if !agentenv.IsCoral(name) || strings.EqualFold(name, "CORAL_TMUX_BIN") || (agentenv.Keep(name) && !identity[strings.ToUpper(name)]) {
 			continue
 		}
 		if _, err := c.run(ctx, "set-environment", "-g", "-r", name); err != nil {
