@@ -27,7 +27,7 @@ func stampArtifacts(rows []TaskArtifact, actor string, after int) {
 // clearStamps drops what a client sent in the server's fields.
 func clearStamps(rows []TaskArtifact) {
 	for i := range rows {
-		rows[i].Seq, rows[i].AttachedBy = 0, ""
+		rows[i].Seq, rows[i].AttachedBy, rows[i].LandedBy, rows[i].LandedAt = 0, "", "", ""
 	}
 }
 

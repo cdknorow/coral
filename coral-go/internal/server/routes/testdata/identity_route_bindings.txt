@@ -43,6 +43,7 @@ GET /api/board/{project}/messages/check | board-claims
 GET /api/board/{project}/messages/search | board-claims
 GET /api/board/{project}/paused | board-claims
 GET /api/board/{project}/peek | board-claims
+GET /api/board/{project}/queue | board-claims
 GET /api/board/{project}/relay-targets | board-claims
 GET /api/board/{project}/settings | board-claims
 GET /api/board/{project}/settings/log | board-claims +token-session | operator-only
@@ -140,6 +141,7 @@ POST /api/board/{project}/tasks/{taskID}/approve | board-claims
 POST /api/board/{project}/tasks/{taskID}/attach | board-claims
 POST /api/board/{project}/tasks/{taskID}/cancel | board-claims
 POST /api/board/{project}/tasks/{taskID}/complete | board-claims
+POST /api/board/{project}/tasks/{taskID}/mark-landed | board-claims
 POST /api/board/{project}/tasks/{taskID}/nudge | board-claims
 POST /api/board/{project}/tasks/{taskID}/park | board-claims +token-session
 POST /api/board/{project}/tasks/{taskID}/publish | board-claims

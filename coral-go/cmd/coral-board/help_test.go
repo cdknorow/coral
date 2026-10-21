@@ -117,7 +117,7 @@ func TestHelpFlagsPrintUsageWithoutSideEffects(t *testing.T) {
 	for cmd := range commands {
 		cases = append(cases, []string{cmd, "--help"}, []string{cmd, "-h"})
 	}
-	for _, sub := range []string{"add", "list", "claim", "current", "detail", "submit-review", "release-review", "attach", "send-back", "complete", "cancel", "reassign", "unblock", "amend"} {
+	for _, sub := range []string{"add", "list", "claim", "current", "detail", "submit-review", "release-review", "attach", "send-back", "mark-landed", "complete", "cancel", "reassign", "unblock", "amend"} {
 		cases = append(cases, []string{"task", sub, "--help"}, []string{"task", sub, "-h"})
 	}
 	for _, sub := range []string{"create", "list", "trigger", "status", "runs", "kill"} {

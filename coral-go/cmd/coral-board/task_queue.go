@@ -15,9 +15,10 @@ import (
 //
 //	attach <id> --artifacts manifest.json   add patch rows to a task in review (the author's next revision, a reviewer's fix commit)
 //	send-back <id> --note "why"             the orchestrator returns an approved, completed task to its author
+//	mark-landed <id> --digest D [--commit SHA[:subject]]   the orchestrator records that approved patches landed, and the commits
 func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, `Usage: coral-board task attach <id> --artifacts manifest.json | send-back <id> --note "why"`)
+		fmt.Fprintln(os.Stderr, `Usage: coral-board task attach <id> --artifacts manifest.json | send-back <id> --note "why" | mark-landed <id> --digest D [--commit SHA[:subject]]`)
 		os.Exit(1)
 	}
 	id, err := strconv.ParseInt(args[0], 10, 64)
@@ -28,6 +29,9 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	manifest := fs.String("artifacts", "", "Manifest of the patch rows to add (attach)")
 	note := fs.String("note", "", "Why (send-back)")
+	var digests, commits listFlag
+	fs.Var(&digests, "digest", "Digest of a patch that landed (mark-landed; repeat)")
+	fs.Var(&commits, "commit", "A commit that landed it: SHA or SHA:subject (mark-landed; repeat)")
 	fs.Parse(args[1:])
 	*note = flagText(*note, "note")
 	body := map[string]any{"subscriber_id": resolveSubscriberID()}
@@ -48,6 +52,17 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 			os.Exit(1)
 		}
 		body["artifacts"] = artifacts
+	case "mark-landed":
+		if len(digests) == 0 {
+			fmt.Fprintln(os.Stderr, "--digest D is required (repeat it for each patch that landed)")
+			os.Exit(1)
+		}
+		var cs []map[string]string
+		for _, c := range commits {
+			sha, subject, _ := strings.Cut(c, ":")
+			cs = append(cs, map[string]string{"sha": sha, "subject": subject})
+		}
+		body["digests"], body["commits"] = []string(digests), cs
 	case "send-back":
 		if strings.TrimSpace(*note) == "" {
 			fmt.Fprintln(os.Stderr, `--note "why" is required`)
@@ -75,6 +90,8 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 			fmt.Printf("Task #%d: attached.\n", id)
 		}
 		printUnverifiedArtifacts(data)
+	case "mark-landed":
+		fmt.Printf("Task #%d: %d patch(es) marked landed, %d commit(s) recorded.\n", id, len(digests), len(commits))
 	default:
 		fmt.Printf("Task #%d sent back to its author.\n", id)
 	}

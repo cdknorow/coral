@@ -36,7 +36,11 @@ type TaskArtifact struct {
 	// client sends is replaced (stampArtifacts), so a patch row's author cannot be forged.
 	Seq        int    `json:"seq,omitempty"`
 	AttachedBy string `json:"attached_by,omitempty"`
-	ExitCode   *int   `json:"exit_code,omitempty"`
+	// LandedBy and LandedAt: who marked the patch landed, and when (mark-landed, #5689). Server-set like Seq; the queue reads these, never the
+	// client-writable Landed flag.
+	LandedBy string `json:"landed_by,omitempty"`
+	LandedAt string `json:"landed_at,omitempty"`
+	ExitCode *int   `json:"exit_code,omitempty"`
 	// Provenance is how Coral checked a managed link (coral://artifacts/<id>) when the result was
 	// recorded (#4379): "uploaded", "person", "unverified", or "" (legacy rows, other entries). Set
 	// by the server only; a value the client sends is cleared.

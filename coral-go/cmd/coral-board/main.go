@@ -82,6 +82,8 @@ func main() {
 		cmdWait()
 	case "health":
 		cmdHealth()
+	case "queue":
+		cmdQueue()
 	case "send":
 		cmdSend()
 	case "targets":
@@ -119,6 +121,7 @@ Commands:
                                Use --name NAME --instructions TEXT when creating/editing
                                Read or update custom team rules (mode unchanged)
                                (changing them is Operator only; reading works)
+  queue [--json]               The merge queue: approved tasks whose patches have not landed
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
   send --board <target> [--to <orchestrator>] [--attach coral://artifacts/<id> ...] "<message>"
                                Message another team's Orchestrator (Orchestrators

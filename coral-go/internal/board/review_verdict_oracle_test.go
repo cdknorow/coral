@@ -114,7 +114,7 @@ func dumpVerdictBoard(t *testing.T, path string) []string {
 				}
 				fmt.Fprintf(&b, " %s=%v", cols[i], v)
 			}
-			out = append(out, stampRe.ReplaceAllString(b.String(), "<t>"))
+			out = append(out, maskStamps(b.String()))
 		}
 		r.Close()
 	}
@@ -128,7 +128,15 @@ func verdictResult(v *ReviewVerdict, err error) string {
 		return "error: " + err.Error()
 	}
 	b, _ := json.Marshal(v)
-	return stampRe.ReplaceAllString(string(b), "<t>")
+	return maskStamps(string(b))
+}
+
+// concludedRe: a round approved after the old verdict was frozen records when it concluded (ConcludedAt, #5689); the old copy below does
+// not, so the field is left out of what is compared (the time is masked and then dropped).
+var concludedRe = regexp.MustCompile(`,?\\*"concluded_at\\*":\\*"<t>\\*"`)
+
+func maskStamps(s string) string {
+	return concludedRe.ReplaceAllString(stampRe.ReplaceAllString(s, "<t>"), "")
 }
 
 func runVerdictOracle(t *testing.T, seed int64) {

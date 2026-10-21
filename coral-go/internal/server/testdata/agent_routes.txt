@@ -78,6 +78,7 @@ a GET /api/board/{project}/messages/check
 c GET /api/board/{project}/messages/search
 c GET /api/board/{project}/paused
 a GET /api/board/{project}/peek
+a GET /api/board/{project}/queue
 a GET /api/board/{project}/relay-targets
 c GET /api/board/{project}/settings
 b GET /api/board/{project}/settings/log
@@ -271,6 +272,7 @@ a POST /api/board/{project}/tasks/{taskID}/approve
 a POST /api/board/{project}/tasks/{taskID}/attach
 a POST /api/board/{project}/tasks/{taskID}/cancel
 a POST /api/board/{project}/tasks/{taskID}/complete
+a POST /api/board/{project}/tasks/{taskID}/mark-landed
 a POST /api/board/{project}/tasks/{taskID}/nudge
 a POST /api/board/{project}/tasks/{taskID}/reply
 a POST /api/board/{project}/tasks/{taskID}/park
