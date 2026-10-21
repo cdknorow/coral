@@ -58,21 +58,52 @@ coral_test_home_env() {
     fi
 }
 
+# coral_test_proc_start PID: what identifies the process PID for as long as it lives: its start time (Linux and Git Bash: field 22 of
+# /proc/PID/stat; macOS and the BSDs: ps -o lstart). A process that took the number over later has another one. Prints nothing when it can't tell
+# (no such process, no /proc and no ps -o): callers treat that as "not the same", never as "the same".
+coral_test_proc_start() {
+    local pid="$1" stat rest
+    if [[ -r "/proc/$pid/stat" ]]; then
+        stat=$(<"/proc/$pid/stat") 2>/dev/null || return 0
+        rest=${stat##*) }   # after the command name, which may hold spaces and parentheses: state is the first field (3), start time the 20th (22)
+        set -- $rest
+        [[ -n "${20:-}" ]] && printf '%s\n' "${20}"
+        return 0
+    fi
+    ps -o lstart= -p "$pid" 2>/dev/null | sed -e 's/^ *//' -e 's/ *$//'
+    return 0
+}
+
+# coral_test_same_process PID START: true when PID is a live process whose coral_test_proc_start is START (non-empty).
+coral_test_same_process() {
+    local now
+    [[ -n "$2" ]] || return 1
+    now="$(coral_test_proc_start "$1")"
+    [[ -n "$now" && "$now" == "$2" ]]
+}
+
 # coral_test_watchdog [SECONDS]: if the runner is still going after SECONDS (default
 # CORAL_TEST_WATCHDOG_S, else 900), it says so and exits 124, so its EXIT trap still stops the server
 # and cleans up. A hang then fails one runner instead of blocking a whole suite run (#116: on
 # Windows, run_agent_tasks hung on a path the server could not open). Bash acts on the signal
 # between commands, and every API call here has a curl -m limit, so it lands within seconds.
+# The signal goes only to the process that started the watchdog: its start time is taken now and compared when the time is up, so a runner
+# that was killed hard (its EXIT trap never stopped the watchdog) never has its number's later owner signalled (#5776). Where the start time
+# can't be read the watchdog is not started, and says so.
 # Call coral_test_watchdog_stop first thing in the runner's cleanup.
 coral_test_watchdog() {
-    local secs="${1:-${CORAL_TEST_WATCHDOG_S:-900}}" me=$$
+    local secs="${1:-${CORAL_TEST_WATCHDOG_S:-900}}" me=$$ started
+    started="$(coral_test_proc_start "$me")"
+    if [[ -z "$started" ]]; then
+        echo "[watchdog] cannot tell this process apart from another one here (no /proc/PID/stat, no ps -o lstart): no watchdog for this runner" >&2
+        return 0
+    fi
     # The limit is expanded now: secs is local, and gone by the time the trap runs.
     trap "echo \"[watchdog] \$(basename \"\$0\") still running after ${secs}s: stopping it\" >&2; exit 124" USR1
     (
         trap 'kill "${sp:-}" 2>/dev/null; exit 0' TERM
         sleep "$secs" & sp=$!
-        # kill -0 first (#5762): the runner may be gone, and its number reused by an unrelated process this must not signal
-        wait "$sp" && kill -0 "$me" 2>/dev/null && kill -USR1 "$me" 2>/dev/null
+        wait "$sp" && coral_test_same_process "$me" "$started" && kill -USR1 "$me" 2>/dev/null
     ) &
     CORAL_TEST_WATCHDOG_PID=$!
 }
