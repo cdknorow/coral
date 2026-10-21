@@ -860,6 +860,7 @@ jobs:
             *.sigstore.json
           if-no-files-found: error
           overwrite: true  # a re-run of this job replaces the first attempt's
+          retention-days: 90  # the longest GitHub allows here: the Approve release workflow's tap job and the weekly re-verify read this artifact
 
       # The stable-name copies (#5333) as a run artifact too, for the same reason: tools/verify-release.sh reads the
       # packages from the run, so our own checks don't add to the release's download counts (#4936).
