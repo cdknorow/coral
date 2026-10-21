@@ -160,6 +160,7 @@ const strictOnly = flag('--strict');
 const STRICT_SUITES = [
   'strict_mode_browser.test.js', 'server_switcher_browser.test.js', 'agent_state.test.js',
   'team_view_consolidation.test.js', 'team_view_responsive_rows.test.js', 'a11y_dashboard_browser.test.js',
+  'qa_inbox_real_browser.test.js', 'qa_inbox_report_browser.test.js', // TRIAL: the reply route needs the signed-in dashboard (#5774)
 ];
 const strictShard = strictOnly || (!flag('--no-strict') && !only && !stress && !flag('--sequences') && !part);
 const PROD_PORT = 8420;

@@ -257,7 +257,7 @@ jobs:
           [[ "$RUNS" =~ ^[0-9]+$ ]] && [ "$RUNS" -ge 1 ] && [ "$RUNS" -le 50 ] || { echo "runs: a whole number from 1 to 50"; exit 2; }
           [[ "$THROTTLE" =~ ^[1-8]$ ]] || { echo "cpu_throttle: a whole number from 1 to 8"; exit 2; }
           [[ "$SUITE_TIMEOUT" =~ ^[0-9]+$ ]] && [ "$SUITE_TIMEOUT" -ge 1 ] && [ "$SUITE_TIMEOUT" -le 5400 ] || { echo "suite_timeout: a whole number of seconds from 1 to 5400"; exit 2; }
-          node run_cdp_suites.mjs --timeout "$SUITE_TIMEOUT" --keep --stress --only "$SUITES" --runs "$RUNS" --shards 1 --cpu-throttle "$THROTTLE" --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          node run_cdp_suites.mjs --timeout "$SUITE_TIMEOUT" --keep --strict --only "$SUITES" --shards 1 --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
       - name: pass counts
         if: always()
         run: |
