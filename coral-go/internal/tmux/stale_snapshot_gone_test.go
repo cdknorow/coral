@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #4049 follow-up: a pane killed outside Coral still resolves from the shared pane list for up to a
@@ -29,8 +31,12 @@ func TestCommandOnAPaneKilledSinceTheSharedListIsTerminalGone(t *testing.T) {
 		name string
 		do   func() error
 	}{
-		{"send-keys", func() error { return c.SendKeys(ctx, sibling, "echo hi", "claude", siblingSID) }},
-		{"raw keys", func() error { return c.SendRawKeys(ctx, sibling, []string{"Escape"}, "claude", siblingSID) }},
+		{"send-keys", func() error {
+			return c.SendKeys(ctx, terminalinput.Unclassified, sibling, "echo hi", "claude", siblingSID)
+		}},
+		{"raw keys", func() error {
+			return c.SendRawKeys(ctx, terminalinput.Unclassified, sibling, []string{"Escape"}, "claude", siblingSID)
+		}},
 		{"display", func() error {
 			_, err := c.DisplayForAgent(ctx, sibling, "claude", siblingSID, "#{pane_pid}")
 			return err

@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // gatedReminderTerminal records nudges. When gate is non-nil, SendInput signals
@@ -25,7 +26,7 @@ type gatedReminderTerminal struct {
 	entered chan struct{}
 }
 
-func (g *gatedReminderTerminal) SendInput(_ context.Context, _, command, _, _ string) error {
+func (g *gatedReminderTerminal) SendInput(_ context.Context, _ terminalinput.Origin, _, command, _, _ string) error {
 	g.mu.Lock()
 	gate, entered := g.gate, g.entered
 	g.mu.Unlock()

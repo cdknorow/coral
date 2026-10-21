@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -105,7 +106,7 @@ func (d *dialogTerm) AgentScreen(context.Context, string, string, string) (strin
 const surveyLines = "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n\n"
 
 func (d *dialogTerm) HasRenderedScreen() bool { return true }
-func (d *dialogTerm) SendPrompt(ctx context.Context, _, text, _, _ string) error {
+func (d *dialogTerm) SendPrompt(ctx context.Context, _ terminalinput.Origin, _, text, _, _ string) error {
 	d.mu.Lock()
 	d.pasted = append(d.pasted, text)
 	if d.dialog {

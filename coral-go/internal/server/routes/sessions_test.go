@@ -34,6 +34,7 @@ import (
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/pkg/tunnel"
 )
 
@@ -174,7 +175,7 @@ func (m *mockSessionTerminal) CaptureOutput(ctx context.Context, name string, _ 
 	return "", fmt.Errorf("session %q not found", name)
 }
 
-func (m *mockSessionTerminal) SendInput(_ context.Context, name, command, _, _ string) error {
+func (m *mockSessionTerminal) SendInput(_ context.Context, _ terminalinput.Origin, name, command, _, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.gone {
@@ -187,7 +188,7 @@ func (m *mockSessionTerminal) SendInput(_ context.Context, name, command, _, _ s
 	return nil
 }
 
-func (m *mockSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, _ string) error {
+func (m *mockSessionTerminal) SendRawInput(_ context.Context, _ terminalinput.Origin, name string, keys []string, _, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.gone {
@@ -242,7 +243,7 @@ func (m *mockSessionTerminal) SendEnter(_ context.Context, name, _, _ string) er
 	return nil
 }
 
-func (m *mockSessionTerminal) SendToTarget(ctx context.Context, target, command string) error {
+func (m *mockSessionTerminal) SendToTarget(ctx context.Context, _ terminalinput.Origin, target, command string) error {
 	if err := m.step(ctx, "SendToTarget"); err != nil {
 		return err
 	}
@@ -260,7 +261,7 @@ func (m *mockSessionTerminal) SendToTarget(ctx context.Context, target, command 
 	m.sent[target] = append(m.sent[target], command)
 	return nil
 }
-func (m *mockSessionTerminal) SendTerminalInput(_ context.Context, _, _ string) error {
+func (m *mockSessionTerminal) SendTerminalInput(_ context.Context, _ terminalinput.Origin, _, _ string) error {
 	return nil
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // captureCountingTerminal counts capture-pane runs.
@@ -97,7 +98,7 @@ func TestPollAnswers304WhileNothingChanged(t *testing.T) {
 	assert.Equal(t, before, term.captures.Load(), "no capture-pane while the pane printed nothing")
 
 	// The pane prints: a 200 with the new screen and a new ETag, from a fresh capture.
-	require.NoError(t, backend.SendInput(tmuxName, []byte("echo POLL_$((6*7))\r")))
+	require.NoError(t, backend.SendInput(terminalinput.Unclassified, tmuxName, []byte("echo POLL_$((6*7))\r")))
 	require.Eventually(t, func() bool {
 		code, e, b := get(etag)
 		if code == http.StatusOK && strings.Contains(capture(b), "POLL_42") {

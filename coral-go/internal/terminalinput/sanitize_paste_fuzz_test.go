@@ -1,4 +1,4 @@
-package tmux
+package terminalinput
 
 import (
 	"strings"
@@ -10,7 +10,7 @@ import (
 // carry nothing a terminal could act on (ESC, so the paste cannot be ended early with ESC [ 201 ~; any other control or C1 character; CR), must be
 // stable under a second pass, and must keep ordinary text as it was.
 //
-//	go test ./internal/tmux -run '^$' -fuzz FuzzSanitizePaste -fuzztime 10m
+//	go test ./internal/terminalinput -run '^$' -fuzz FuzzSanitizePaste -fuzztime 10m
 func FuzzSanitizePaste(f *testing.F) {
 	for _, s := range []string{
 		"", "plain text", "line one\nline two\ttabbed", "a\r\nb\rc", "\x1b[201~ rm -rf /", "x\x1b[200~y", "\x00\x01\x7f", "é ü 日本語 🎉", "\xc2\x85next line", "\xc2\x9b31m",

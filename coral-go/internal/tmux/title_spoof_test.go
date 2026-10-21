@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #3687 (#3684 finding 2): an agent sets its own pane's title (OSC 2), so a title naming another
@@ -22,7 +24,7 @@ func TestAPaneTitledWithAnotherAgentIsNeverThatAgent(t *testing.T) {
 	createTestSession(t, c, nameB, t.TempDir())
 
 	// B sets its title from inside its pane, as an agent's output would.
-	require.NoError(t, c.SendKeysToTarget(ctx, nameB+":0.0", `printf '\033]2;`+nameA+` Backend Dev\007'`))
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, nameB+":0.0", `printf '\033]2;`+nameA+` Backend Dev\007'`))
 	titled := func() bool {
 		panes, _ := c.ListPanes(ctx)
 		for _, p := range panes {

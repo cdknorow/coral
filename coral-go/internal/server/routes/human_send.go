@@ -10,8 +10,8 @@ import (
 	"time"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
-	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // A person's message to an agent, from Chat (#4587, coral-hub's O2). Typed while the agent was still starting, it
@@ -177,7 +177,7 @@ func (h *SessionsHandler) humanScreen(ctx context.Context, name, agentType, sess
 // deliverHumanSend types a person's message into the agent's input box and submits it, with the care above. A
 // terminal whose screen can't be read, or an agent whose input box Coral doesn't know, gets the plain send.
 func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType, sessionID, text string) (err error) {
-	ctx = inputlog.Human(ctx) // a person's text: the input debug log keeps its length only (#60 review N3)
+	// A person's text: the input debug log keeps its length only (#60 review N3), whatever the terminal: the origin is passed to every send below.
 	key := sessionID
 	if key == "" {
 		key = name
@@ -202,7 +202,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 			h.sendGate.setLeftover(key, ptymanager.BoxMark{}) // the leftover itself, submitted now
 		}
 	}()
-	send := func() error { return h.terminal.SendInput(ctx, name, text, agentType, sessionID) }
+	send := func() error { return h.terminal.SendInput(ctx, terminalinput.Person, name, text, agentType, sessionID) }
 	if !ptymanager.InputBoxKnown(agentType) {
 		return send()
 	}

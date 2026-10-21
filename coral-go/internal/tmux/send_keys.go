@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // SendKeys types text into a tmux pane: a message, an answer, anything a person or Coral wrote
@@ -16,7 +16,7 @@ import (
 // that respects the pane's bracketed paste mode, a short line with send-keys -l), and is NEVER
 // turned into a script the pane's shell would run (#4361: an over-900-character dashboard
 // message reached the agent as ". '/tmp/coral-command-N.sh'").
-func (c *Client) SendKeys(ctx context.Context, agentName, command, agentType, sessionID string) error {
+func (c *Client) SendKeys(ctx context.Context, o terminalinput.Origin, agentName, command, agentType, sessionID string) error {
 	target, err := c.FindPaneTarget(ctx, agentName, agentType, sessionID)
 	if err != nil {
 		return err
@@ -25,7 +25,7 @@ func (c *Client) SendKeys(ctx context.Context, agentName, command, agentType, se
 		return fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
 	}
 
-	return c.GoneAfter(ctx, agentName, agentType, sessionID, c.typeToTarget(ctx, target, command, false))
+	return c.GoneAfter(ctx, agentName, agentType, sessionID, c.typeToTarget(ctx, o, target, command, false))
 }
 
 // errEmptyDisplay stands for a display-message that answered nothing, for GoneAfter.
@@ -62,17 +62,6 @@ func WithBeforeEnter(ctx context.Context, ok func(context.Context) bool) context
 	return context.WithValue(ctx, beforeEnterKey{}, ok)
 }
 
-type automatedKey struct{}
-
-// WithAutomated marks a send as Coral's own (the automated-input gate's: a board message, a task notice, a nudge,
-// an agent's /send), as opposed to a person's. Text typed under it is made safe first (AutomatedText), on both backends.
-func WithAutomated(ctx context.Context) context.Context {
-	return context.WithValue(ctx, automatedKey{}, true)
-}
-
-// Automated says whether ctx carries WithAutomated.
-func Automated(ctx context.Context) bool { v, _ := ctx.Value(automatedKey{}).(bool); return v }
-
 // EnterAllowed runs ctx's WithBeforeEnter check (true when there is none).
 func EnterAllowed(ctx context.Context) bool { return enterAllowed(ctx) }
 
@@ -102,15 +91,15 @@ func SetSendKeysSettleForTest(d time.Duration) (restore func()) {
 // Multi-line text uses tmux paste-buffer -p which respects the pane's
 // bracketed paste mode — if the shell has it enabled, tmux wraps the
 // paste in \e[200~...\e[201~; otherwise it sends raw text.
-func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) error {
-	return c.typeToTarget(ctx, target, command, true)
+func (c *Client) SendKeysToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error {
+	return c.typeToTarget(ctx, o, target, command, true)
 }
 
 // typeToTarget is the typing both paths share. launch: the text is a command Coral composed, and a
 // long one goes through a script (commandInvocation); otherwise it is delivered as text at any
 // length.
-func (c *Client) typeToTarget(ctx context.Context, target, command string, launch bool) error {
-	if !launch && Automated(ctx) {
+func (c *Client) typeToTarget(ctx context.Context, o terminalinput.Origin, target, command string, launch bool) error {
+	if !launch && o.SafeText() {
 		// Automated text: no keystroke from the text itself. A text with line breaks is flattened to one line only when the
 		// pane is KNOWN not to take bracketed paste (a hint, the gate's reading of the pane's log): otherwise it is pasted
 		// with paste-buffer -p as before, which brackets the paste when the pane asked for it and keeps the breaks. tmux
@@ -126,12 +115,12 @@ func (c *Client) typeToTarget(ctx context.Context, target, command string, launc
 			off = true
 		}
 		if multi && !off {
-			clean := SanitizePaste(command) // CRLF and CR are one LF; controls and ESC are dropped
-			if strings.TrimSpace(clean) == "" {
-				return ErrNothingToSend
+			clean, perr := terminalinput.PreparePaste(o, command) // CRLF and CR are one LF; controls and ESC are dropped
+			if perr != nil {
+				return perr
 			}
 			command = clean
-		} else if command, err = AutomatedTextChecked(command); err != nil {
+		} else if command, err = terminalinput.PrepareTyped(o, command); err != nil {
 			return err
 		}
 	}
@@ -156,11 +145,11 @@ func (c *Client) typeToTarget(ctx context.Context, target, command string, launc
 	// A long single line is pasted too (not an argument of send-keys): text for an agent has no
 	// length limit, and a launch command that became a short ". path" line is under it anyway.
 	if strings.Contains(command, "\n") || (!launch && len(command) > inlineCommandLimit) {
-		sendErr = c.pasteToTarget(ctx, target, command)
+		sendErr = c.pasteToTarget(ctx, o, target, command)
 	} else {
 		// "--": text starting with '-' ("- fix the tests", "--help") is typed, not read as
 		// tmux options (#3690).
-		_, sendErr = c.run(ctx, "send-keys", "-t", target, "-l", "--", command)
+		_, sendErr = c.sendKeys(ctx, o, "-t", target, "-l", "--", command)
 	}
 	if sendErr != nil {
 		// No Enter after a failed send: it would submit whatever was already in the agent's
@@ -194,7 +183,7 @@ func (c *Client) typeToTarget(ctx context.Context, target, command string, launc
 		enterCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), launchEnterTimeout)
 		defer cancel()
 	}
-	if _, err := c.run(enterCtx, "send-keys", "-t", target, "Enter"); err != nil {
+	if _, err := c.sendKeys(enterCtx, terminalinput.Internal, "-t", target, "Enter"); err != nil {
 		abandon()
 		return fmt.Errorf("send Enter failed: %w", err)
 	}
@@ -208,18 +197,17 @@ const launchEnterTimeout = 5 * time.Second
 func clearInputLine(c *Client, target string) {
 	ctx, cancel := context.WithTimeout(context.Background(), launchEnterTimeout)
 	defer cancel()
-	_, _ = c.run(ctx, "send-keys", "-t", target, "C-u")
+	_, _ = c.sendKeys(ctx, terminalinput.Internal, "-t", target, "C-u")
 }
 
 // pasteToTarget loads text into a tmux buffer and pastes it into the target pane.
 // Uses paste-buffer -p which respects the pane's bracketed paste mode setting.
-func (c *Client) pasteToTarget(ctx context.Context, target, text string) error {
-	inputlog.RecordCtx(ctx, target, inputlog.Paste, text) // a person's paste (inputlog.Human) is logged by its length only (#60 N3, #5682)
+func (c *Client) pasteToTarget(ctx context.Context, o terminalinput.Origin, target, text string) error {
 	// A private named buffer, deleted by the paste (-d) or on an error, as SendPrompt's (#4381,
 	// Security's #4371 SHOULD 2): the unnamed one stayed in tmux's buffer stack (its last 50), on a
 	// tmux server that outlives Coral's upgrades.
 	countExec("load-buffer")
-	buffer, err := c.loadPromptBuffer(ctx, text)
+	buffer, err := c.recordedBuffer(ctx, o, target, text)
 	if err != nil {
 		return err
 	}
@@ -232,7 +220,7 @@ func (c *Client) pasteToTarget(ctx context.Context, target, text string) error {
 }
 
 // SendRawKeys sends raw tmux key names (e.g. "BTab", "Escape") to a pane.
-func (c *Client) SendRawKeys(ctx context.Context, agentName string, keys []string, agentType, sessionID string) error {
+func (c *Client) SendRawKeys(ctx context.Context, o terminalinput.Origin, agentName string, keys []string, agentType, sessionID string) error {
 	target, err := c.FindPaneTarget(ctx, agentName, agentType, sessionID)
 	if err != nil {
 		return err
@@ -244,7 +232,7 @@ func (c *Client) SendRawKeys(ctx context.Context, agentName string, keys []strin
 	for i, key := range keys {
 		// "--": a key from the request that starts with "-" is a key, never a tmux option (-X, -F,
 		// -H...) (#3930, Security's #3927 finding 5).
-		if _, err := c.run(ctx, "send-keys", "-t", target, "--", key); err != nil {
+		if _, err := c.sendKeys(ctx, o, "-t", target, "--", key); err != nil {
 			// Never the key itself: errors reach the log, and keys are what was typed (#4112).
 			return c.GoneAfter(ctx, agentName, agentType, sessionID, fmt.Errorf("send-keys failed (key %d of %d): %w", i+1, len(keys), err))
 		}
@@ -255,7 +243,7 @@ func (c *Client) SendRawKeys(ctx context.Context, agentName string, keys []strin
 
 // SendTerminalInputToTarget sends raw terminal input data to a resolved tmux target.
 // Handles control characters, escape sequences, and multi-line text.
-func (c *Client) SendTerminalInputToTarget(ctx context.Context, target, data string) error {
+func (c *Client) SendTerminalInputToTarget(ctx context.Context, o terminalinput.Origin, target, data string) error {
 	// Control character map
 	ctrlMap := map[string]string{
 		"\r":   "Enter",
@@ -267,25 +255,25 @@ func (c *Client) SendTerminalInputToTarget(ctx context.Context, target, data str
 	// Single control character
 	if len(data) == 1 {
 		if key, ok := ctrlMap[data]; ok {
-			_, err := c.run(ctx, "send-keys", "-t", target, "--", key)
+			_, err := c.sendKeys(ctx, o, "-t", target, "--", key)
 			return err
 		}
 		// Ctrl+<letter> (0x01-0x1a)
 		b := data[0]
 		if b >= 1 && b <= 26 {
 			key := fmt.Sprintf("C-%c", b+96)
-			_, err := c.run(ctx, "send-keys", "-t", target, "--", key)
+			_, err := c.sendKeys(ctx, o, "-t", target, "--", key)
 			return err
 		}
 	}
 
 	// Escape sequences (arrow keys, function keys, etc.)
 	if len(data) > 0 && data[0] == '\x1b' {
-		hexArgs := []string{"send-keys", "-t", target}
+		hexArgs := []string{"-t", target}
 		for _, b := range []byte(data) {
 			hexArgs = append(hexArgs, "-H", fmt.Sprintf("%02x", b))
 		}
-		_, err := c.run(ctx, hexArgs...)
+		_, err := c.sendKeys(ctx, o, hexArgs...)
 		return err
 	}
 
@@ -295,7 +283,7 @@ func (c *Client) SendTerminalInputToTarget(ctx context.Context, target, data str
 	// the line, unsubmitted. Send the text, then Enter as a key.
 	if body := strings.TrimRight(data, "\r\n"); body != data {
 		if body != "" {
-			if err := c.SendTerminalInputToTarget(ctx, target, body); err != nil {
+			if err := c.SendTerminalInputToTarget(ctx, o, target, body); err != nil {
 				return err
 			}
 		}
@@ -304,7 +292,7 @@ func (c *Client) SendTerminalInputToTarget(ctx context.Context, target, data str
 			enters = 1 // a bare \n submits too
 		}
 		for i := 0; i < enters; i++ {
-			if _, err := c.run(ctx, "send-keys", "-t", target, "Enter"); err != nil {
+			if _, err := c.sendKeys(ctx, o, "-t", target, "Enter"); err != nil {
 				return err
 			}
 		}
@@ -313,10 +301,10 @@ func (c *Client) SendTerminalInputToTarget(ctx context.Context, target, data str
 
 	// Multi-line text: use tmux paste-buffer -p (bracket paste aware)
 	if strings.ContainsAny(data, "\n\r") {
-		return c.pasteToTarget(ctx, target, data)
+		return c.pasteToTarget(ctx, o, target, data)
 	}
 
 	// Single-line literal text ("--": a leading '-' is text, not a tmux option, #3690)
-	_, err := c.run(ctx, "send-keys", "-t", target, "-l", "--", data)
+	_, err := c.sendKeys(ctx, o, "-t", target, "-l", "--", data)
 	return err
 }

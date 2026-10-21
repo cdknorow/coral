@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #3219, PTY backend: the session's shell is idle at its prompt, busy while a
@@ -25,9 +27,9 @@ func TestPTYShellIdleFollowsTheCommand(t *testing.T) {
 	busy := func() bool { v, _, ok := b.ShellIdle(name); return ok && !v }
 
 	require.Eventually(t, idle, 5*time.Second, 25*time.Millisecond, "a fresh terminal is at an idle shell")
-	require.NoError(t, b.SendLine(name, "sleep 30"))
+	require.NoError(t, b.SendLine(terminalinput.Unclassified, name, "sleep 30"))
 	require.Eventually(t, busy, 5*time.Second, 25*time.Millisecond, "a running command keeps it busy")
-	require.NoError(t, b.SendInput(name, []byte{0x03})) // Ctrl-C
+	require.NoError(t, b.SendInput(terminalinput.Unclassified, name, []byte{0x03})) // Ctrl-C
 	require.Eventually(t, idle, 5*time.Second, 25*time.Millisecond, "idle again after it exits")
 
 	_, _, ok := b.ShellIdle("claude-nope")

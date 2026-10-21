@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // killRecorder is an AgentRuntime that records KillAgent calls.
@@ -20,9 +21,11 @@ type killRecorder struct {
 }
 
 func (k *killRecorder) SpawnAgent(_ context.Context, _, _, _, _ string) error { return nil }
-func (k *killRecorder) SendInput(_ context.Context, _, _ string) error        { return nil }
-func (k *killRecorder) IsAlive(_ context.Context, _ string) bool              { return true }
-func (k *killRecorder) ListAgents(_ context.Context) ([]AgentInfo, error)     { return nil, nil }
+func (k *killRecorder) SendInput(_ context.Context, _ terminalinput.Origin, _, _ string) error {
+	return nil
+}
+func (k *killRecorder) IsAlive(_ context.Context, _ string) bool          { return true }
+func (k *killRecorder) ListAgents(_ context.Context) ([]AgentInfo, error) { return nil, nil }
 func (k *killRecorder) KillAgent(_ context.Context, name string) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()

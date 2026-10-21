@@ -29,6 +29,7 @@ import (
 	"github.com/subgentic/coral/internal/safego"
 	setreg "github.com/subgentic/coral/internal/settings"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -198,7 +199,7 @@ func (h *SessionsHandler) putSubscriptionBack(ctx context.Context, sub *board.Su
 }
 
 func sendLaunchCommand(ctx context.Context, terminal ptymanager.SessionTerminal, target, command string) error {
-	if err := terminal.SendToTarget(ctx, target, command); err != nil {
+	if err := terminal.SendToTarget(ctx, terminalinput.Internal, target, command); err != nil {
 		return fmt.Errorf("launch command delivery to %s failed: %w", target, err)
 	}
 	return nil

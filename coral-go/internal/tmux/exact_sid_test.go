@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #3214: a session id matches only the "<type>-<sid>" session, never a session whose name
@@ -51,7 +53,7 @@ func TestFindPaneBySessionIDIsExact(t *testing.T) {
 		pane, err := c.FindPane(ctx, "x", "claude", partial)
 		require.NoError(t, err)
 		assert.Nil(t, pane, "a partial id %q matched %v", partial, pane)
-		assert.ErrorIs(t, c.SendKeys(ctx, "x", "echo nope", "claude", partial), ErrTerminalGone)
+		assert.ErrorIs(t, c.SendKeys(ctx, terminalinput.Unclassified, "x", "echo nope", "claude", partial), ErrTerminalGone)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #60: on the PTY backend, what a person types in the dashboard terminal reaches the agent as it
@@ -22,7 +23,7 @@ func TestPTYLogsAPersonsTypingByLengthOnly(t *testing.T) {
 
 	require.NoError(t, b.SendHumanInput("claude-60", []byte("hunter2")))
 	require.NoError(t, b.SendHumanInput("claude-60", []byte("\r")))
-	require.NoError(t, b.SendInput("claude-60", []byte("coral's own")))
+	require.NoError(t, b.SendInput(terminalinput.Unclassified, "claude-60", []byte("coral's own")))
 	assert.Equal(t, [][]byte{[]byte("hunter2"), []byte("\r"), []byte("coral's own")}, proc.written(), "the agent gets the input unchanged")
 
 	inputlog.Flush()
@@ -42,7 +43,7 @@ func TestPTYLogsAPersonsSentLineByLengthOnly(t *testing.T) {
 	inputlog.Setup(dir, true)
 	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
 	b, _, proc := newFakeBackend(t, "codex-60")
-	require.NoError(t, b.SendLineCtx(inputlog.Human(context.Background()), "codex-60", "my token is xyz"))
+	require.NoError(t, b.SendLineCtx(context.Background(), terminalinput.Person, "codex-60", "my token is xyz"))
 	assert.Equal(t, [][]byte{[]byte("my token is xyz"), []byte(EnterKey)}, proc.written())
 	inputlog.Flush()
 	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
@@ -58,7 +59,7 @@ func TestPTYLogsAPersonsPastedTextByLengthOnly(t *testing.T) {
 	inputlog.Setup(dir, true)
 	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
 	b, _, proc := newFakeBackend(t, "claude-5673")
-	require.NoError(t, b.SendText(inputlog.Human(context.Background()), "claude-5673", "line one\nmy token is xyz-secret"))
+	require.NoError(t, b.SendText(context.Background(), terminalinput.Person, "claude-5673", "line one\nmy token is xyz-secret"))
 	assert.NotEmpty(t, proc.written(), "the text was sent")
 	inputlog.Flush()
 	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))

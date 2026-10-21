@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // fakePromptAgent stands in for Claude in a real tmux pane: it draws a
@@ -40,11 +42,13 @@ func TestGateHoldsAutomatedInputInARealTmuxPane(t *testing.T) {
 	name := "claude-0f1e2d3c-4b5a-4968-8776-655443322110"
 	spawnTmuxSession(t, term, name, dir)
 	ctx := context.Background()
-	require.NoError(t, term.SendToTarget(ctx, name+".0", "sh "+script+" "+dir))
+	require.NoError(t, term.SendToTarget(ctx, terminalinput.Unclassified, name+".0", "sh "+script+" "+dir))
 	waitForCapture(t, term, name, "Esc to cancel", 10*time.Second)
 
 	in := AutomatedInput{Term: term, Name: name, Text: "You have 1 unread message", What: "board nudge",
-		Send: func(ctx context.Context) error { return term.SendInput(ctx, name, "You have 1 unread message", "", "") }}
+		Send: func(ctx context.Context) error {
+			return term.SendInput(ctx, terminalinput.Unclassified, name, "You have 1 unread message", "", "")
+		}}
 	d, err := DeliverAutomated(ctx, in)
 	require.NoError(t, err)
 	assert.Equal(t, Held, d)
@@ -53,7 +57,7 @@ func TestGateHoldsAutomatedInputInARealTmuxPane(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "the menu got no answer from automated input")
 
 	// A person answers the menu (an explicit human action, not gated).
-	require.NoError(t, term.SendInput(ctx, name, "1", "", ""))
+	require.NoError(t, term.SendInput(ctx, terminalinput.Unclassified, name, "1", "", ""))
 	require.Eventually(t, func() bool {
 		b, err := os.ReadFile(filepath.Join(dir, "answered"))
 		return err == nil && strings.TrimSpace(string(b)) == "1"
@@ -79,7 +83,9 @@ func TestAHeldFirstPromptNeverReachesTheNextLaunch(t *testing.T) {
 	spawnTmuxSession(t, term, name, dir)
 	ctx := context.Background()
 	in := AutomatedInput{Term: term, Name: name, Key: "initial-prompt", Text: "old launch's prompt", What: "initial prompt", RequireInputBox: true,
-		Send: func(ctx context.Context) error { return term.SendInput(ctx, name, "old launch's prompt", "", "") }}
+		Send: func(ctx context.Context) error {
+			return term.SendInput(ctx, terminalinput.Unclassified, name, "old launch's prompt", "", "")
+		}}
 	d, err := DeliverAutomated(ctx, in)
 	require.NoError(t, err)
 	require.Equal(t, Held, d, "a plain shell shows no input box yet")
@@ -90,7 +96,7 @@ func TestAHeldFirstPromptNeverReachesTheNextLaunch(t *testing.T) {
 	// The new launch reaches its input box; nothing from the old one may arrive.
 	script := filepath.Join(dir, "box.sh")
 	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nprintf '\\n╭────────╮\\n│ >      │\\n╰────────╯\\n'\nwhile IFS= read -r l; do printf '%s\\n' \"$l\" >> \"$1/received\"; done\n"), 0o755))
-	require.NoError(t, term.SendToTarget(ctx, name+".0", "sh "+script+" "+dir))
+	require.NoError(t, term.SendToTarget(ctx, terminalinput.Unclassified, name+".0", "sh "+script+" "+dir))
 	time.Sleep(time.Second)
 	_, statErr := os.Stat(filepath.Join(dir, "received"))
 	assert.True(t, os.IsNotExist(statErr), "the old launch's prompt never reached the new launch")

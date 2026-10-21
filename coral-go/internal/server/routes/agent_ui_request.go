@@ -18,6 +18,7 @@ import (
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 const (
@@ -196,7 +197,7 @@ func (h *SessionsHandler) agentUIRequest(w http.ResponseWriter, r *http.Request)
 			if pasteKnown {
 				ctx = ptymanager.WithBracketedPasteHint(ctx, pasteEnabled)
 			}
-			err = sender.SendPrompt(ctx, terminalName, notification, ls.AgentType, ls.SessionID)
+			err = sender.SendPrompt(ctx, terminalinput.Coral, terminalName, notification, ls.AgentType, ls.SessionID)
 		}
 		// Record the result even if the client went away mid-request.
 		finishErr = finish(context.WithoutCancel(ctx), sid, body.RequestID, err)

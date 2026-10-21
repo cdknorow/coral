@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // failingRuntime fails the first fails[session] sends to a session, then records them.
@@ -18,7 +20,7 @@ type failingRuntime struct {
 	fails map[string]int
 }
 
-func (f *failingRuntime) SendInput(ctx context.Context, name, text string) error {
+func (f *failingRuntime) SendInput(ctx context.Context, _ terminalinput.Origin, name, text string) error {
 	f.fmu.Lock()
 	if f.fails[name] > 0 {
 		f.fails[name]--
@@ -26,7 +28,7 @@ func (f *failingRuntime) SendInput(ctx context.Context, name, text string) error
 		return errors.New("can't find pane")
 	}
 	f.fmu.Unlock()
-	return f.mockRuntime.SendInput(ctx, name, text)
+	return f.mockRuntime.SendInput(ctx, terminalinput.Unclassified, name, text)
 }
 
 // countingDiscovery returns *agents (read at each call) and counts the calls.

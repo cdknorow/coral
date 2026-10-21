@@ -2,7 +2,6 @@ package ptymanager
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,9 +16,9 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/agentenv"
-	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/winshell"
 )
 
@@ -175,23 +174,12 @@ func (s *session) closeLog() {
 	}
 }
 
-// sendInput writes raw bytes to the PTY (terminal input).
-func (s *session) sendInput(data []byte) error {
-	_, err := s.writeFull(data)
-	return err
-}
-
-// writeFull writes data once and reports a short write (fewer bytes than
-// requested with a nil error) as io.ErrShortWrite instead of ignoring it. It
-// returns how many bytes reached the PTY.
-func (s *session) writeFull(data []byte) (int, error) {
-	return s.writeFullCtx(context.Background(), data)
-}
-
-// writeFullCtx is writeFull for input sent with ctx: a person's own (inputlog.Human) is logged by
-// its length only (#60).
-func (s *session) writeFullCtx(ctx context.Context, data []byte) (int, error) {
-	inputlog.RecordCtx(ctx, s.name, inputlog.Raw, string(data))
+// writeInput is the ONE function that writes input to the session's process (a census test fails on any other, #5706): it records
+// the write as o's input, then writes data once and reports a short write (fewer bytes than requested with a nil error) as
+// io.ErrShortWrite instead of ignoring it. It returns how many bytes reached the PTY. o is a parameter, not a value in a
+// context: a caller must say whose input it is.
+func (s *session) writeInput(o terminalinput.Origin, data []byte) (int, error) {
+	terminalinput.Record(o, s.name, terminalinput.Raw, string(data))
 	n, err := s.proc.Write(data)
 	if err == nil && n < len(data) {
 		err = io.ErrShortWrite
@@ -269,7 +257,7 @@ func (s *session) killWithin(grace time.Duration) error {
 	// Graceful termination
 	if terminateTypesCtrlC {
 		// On Windows, Terminate types Ctrl-C into the console (pty_windows.go).
-		inputlog.Record(s.name, inputlog.Raw, "\x03")
+		terminalinput.Record(terminalinput.Internal, s.name, terminalinput.Raw, "\x03")
 	}
 	s.proc.Terminate()
 

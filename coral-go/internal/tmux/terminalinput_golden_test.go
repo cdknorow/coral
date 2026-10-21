@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #5706 (the single terminal-input path, step 1): a golden matrix on the tmux backend as it was BEFORE the refactor, against the
@@ -27,14 +28,14 @@ func TestTerminalInputGoldenTmux(t *testing.T) {
 	name := "claude-" + sid
 	createTestSession(t, c, name, t.TempDir())
 	target := name + ".0"
-	person := func(ctx context.Context) context.Context { return inputlog.Human(ctx) }
-	automated := func(ctx context.Context) context.Context { return WithAutomated(ctx) }
-	hint := func(on bool) func(context.Context) context.Context {
-		return func(ctx context.Context) context.Context { return WithBracketedPasteHint(ctx, on) }
-	}
-	both := func(a, b func(context.Context) context.Context) func(context.Context) context.Context {
-		return func(ctx context.Context) context.Context { return b(a(ctx)) }
-	}
+	// hint: 0 none, 1 bracketed paste known on, 2 known off. The origin is the 5706 explicit argument: Person, Coral, or
+	// Unclassified for the senders nobody has classified (what an unmarked context was).
+	const (
+		noHint = iota
+		hintOn
+		hintOff
+	)
+	P, C, U := terminalinput.Person, terminalinput.Coral, terminalinput.Unclassified
 	secret, multi := "my token is xyz-secret", "line one\nline two: xyz-secret"
 	keys := func(text string) goldenOp { return goldenOp{"keys", text, nil} }
 	term := func(data string) goldenOp { return goldenOp{"term", data, nil} }
@@ -42,44 +43,45 @@ func TestTerminalInputGoldenTmux(t *testing.T) {
 	raw := func(k ...string) goldenOp { return goldenOp{"raw", "", k} }
 	cases := []struct {
 		name string
-		ctx  func(context.Context) context.Context
+		o    terminalinput.Origin
+		hint int
 		run  goldenOp
 	}{
-		{"person typed text", person, term("hunter2")},
-		{"person Enter", person, term("\r")},
-		{"person digits", person, term("123456")},
-		{"person Ctrl-C", person, term("\x03")},
-		{"person arrow key", person, term("\x1b[A")},
-		{"person typed text with an arrow", person, term("ab\x1b[Ac")},
-		{"coral terminal input", nil, term("coral's own")},
-		{"person sent line", person, keys(secret)},
-		{"coral sent line", nil, keys("echo hi")},
-		{"person multi-line (a paste)", person, keys(multi)},
-		{"person prompt, hint on", both(person, hint(true)), prompt(multi)},
-		{"person prompt, hint off", both(person, hint(false)), prompt(multi)},
-		{"person prompt, hint unknown", person, prompt(multi)},
-		{"coral line with control characters", automated, keys("echo \x07hi\x1b[31m there")},
-		{"coral multi-line", automated, keys("one\ntwo\x1b[201~three")},
-		{"coral CRLF paste", automated, keys("one\r\ntwo")},
-		{"coral text of only control characters", automated, keys("\x07\x1b[31m\x1b")},
-		{"coral multi-line of only control characters", automated, keys("\x07\n\x1b")},
-		{"coral prompt, hint on", both(automated, hint(true)), prompt("a prompt\nwith two lines\x1b[201~")},
-		{"coral prompt, hint off", both(automated, hint(false)), prompt("a prompt")},
-		{"coral prompt, hint unknown", automated, prompt("a prompt")},
-		{"unmarked multi-line (today it is logged in full)", nil, keys(multi)},
-		{"unmarked prompt, hint on", hint(true), prompt(multi)},
-		{"named keys", nil, raw("Escape", "C-c")},
-		{"person named keys", person, raw("Up")},
+		{"person typed text", P, noHint, term("hunter2")},
+		{"person Enter", P, noHint, term("\r")},
+		{"person digits", P, noHint, term("123456")},
+		{"person Ctrl-C", P, noHint, term("\x03")},
+		{"person arrow key", P, noHint, term("\x1b[A")},
+		{"person typed text with an arrow", P, noHint, term("ab\x1b[Ac")},
+		{"coral terminal input", U, noHint, term("coral's own")},
+		{"person sent line", P, noHint, keys(secret)},
+		{"coral sent line", U, noHint, keys("echo hi")},
+		{"person multi-line (a paste)", P, noHint, keys(multi)},
+		{"person prompt, hint on", P, hintOn, prompt(multi)},
+		{"person prompt, hint off", P, hintOff, prompt(multi)},
+		{"person prompt, hint unknown", P, noHint, prompt(multi)},
+		{"coral line with control characters", C, noHint, keys("echo \x07hi\x1b[31m there")},
+		{"coral multi-line", C, noHint, keys("one\ntwo\x1b[201~three")},
+		{"coral CRLF paste", C, noHint, keys("one\r\ntwo")},
+		{"coral text of only control characters", C, noHint, keys("\x07\x1b[31m\x1b")},
+		{"coral multi-line of only control characters", C, noHint, keys("\x07\n\x1b")},
+		{"coral prompt, hint on", C, hintOn, prompt("a prompt\nwith two lines\x1b[201~")},
+		{"coral prompt, hint off", C, hintOff, prompt("a prompt")},
+		{"coral prompt, hint unknown", C, noHint, prompt("a prompt")},
+		{"unmarked multi-line (today it is logged in full)", U, noHint, keys(multi)},
+		{"unmarked prompt, hint on", U, hintOn, prompt(multi)},
+		{"named keys", U, noHint, raw("Escape", "C-c")},
+		{"person named keys", P, noHint, raw("Up")},
 	}
 	var all strings.Builder
 	for _, tc := range cases {
 		dir := t.TempDir()
 		inputlog.Setup(dir, true)
 		ctx := context.Background()
-		if tc.ctx != nil {
-			ctx = tc.ctx(ctx)
+		if tc.hint != noHint {
+			ctx = WithBracketedPasteHint(ctx, tc.hint == hintOn)
 		}
-		err := goldenSend(ctx, c, target, name, sid, tc.run)
+		err := goldenSend(ctx, c, tc.o, target, name, sid, tc.run)
 		inputlog.Flush()
 		inputlog.Setup("", false)
 		inputlog.SetSetting(false)
@@ -110,15 +112,15 @@ type goldenOp struct {
 	keys []string
 }
 
-func goldenSend(ctx context.Context, c *Client, target, name, sid string, op goldenOp) error {
+func goldenSend(ctx context.Context, c *Client, o terminalinput.Origin, target, name, sid string, op goldenOp) error {
 	switch op.kind {
 	case "keys":
-		return c.SendKeysToTarget(ctx, target, op.text)
+		return c.SendKeysToTarget(ctx, o, target, op.text)
 	case "term":
-		return c.SendTerminalInputToTarget(ctx, target, op.text)
+		return c.SendTerminalInputToTarget(ctx, o, target, op.text)
 	case "prompt":
-		return c.SendPrompt(ctx, name, op.text, "claude", sid)
+		return c.SendPrompt(ctx, o, name, op.text, "claude", sid)
 	default:
-		return c.SendRawKeys(ctx, name, op.keys, "claude", sid)
+		return c.SendRawKeys(ctx, o, name, op.keys, "claude", sid)
 	}
 }

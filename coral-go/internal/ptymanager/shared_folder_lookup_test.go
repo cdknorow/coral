@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #3704 (as #3687 for tmux): two teammates in one folder each resolve only to their own
@@ -49,7 +50,7 @@ func TestPTYTeammatesInOneFolderResolveOnlyToThemselves(t *testing.T) {
 
 	assert.Equal(t, folder, term.resolveSessionKey(folder), "not resolved to a teammate's key")
 	assert.Equal(t, keyB, term.resolveSessionKey(sidB), "a session id (a pane's Target) is its own session")
-	assert.Error(t, term.SendTerminalInput(ctx, folder, "x"), "nothing typed by folder")
+	assert.Error(t, term.SendTerminalInput(ctx, terminalinput.Unclassified, folder, "x"), "nothing typed by folder")
 
 	// A person typed in B only: A's gate check, by A's session id, does not see it.
 	before := time.Now().Add(-time.Second)

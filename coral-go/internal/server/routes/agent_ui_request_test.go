@@ -21,6 +21,7 @@ import (
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -39,7 +40,7 @@ type uiRequestTerminal struct {
 	hints      [][2]bool // {enabled, known} seen on each SendPrompt
 }
 
-func (t *uiRequestTerminal) SendPrompt(ctx context.Context, name, text, _, _ string) error {
+func (t *uiRequestTerminal) SendPrompt(ctx context.Context, _ terminalinput.Origin, name, text, _, _ string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	enabled, known := ptymanager.BracketedPasteHint(ctx)
@@ -55,7 +56,7 @@ func (t *uiRequestTerminal) SendPrompt(ctx context.Context, name, text, _, _ str
 	return nil
 }
 
-func (t *uiRequestTerminal) SendInput(context.Context, string, string, string, string) error {
+func (t *uiRequestTerminal) SendInput(context.Context, terminalinput.Origin, string, string, string, string) error {
 	t.mu.Lock()
 	t.inputCalls++
 	t.mu.Unlock()

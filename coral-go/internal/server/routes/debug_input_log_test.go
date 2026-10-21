@@ -71,7 +71,7 @@ func TestDeleteDebugInputLog(t *testing.T) {
 	}
 
 	inputlog.SetSetting(true)
-	inputlog.Record("p", inputlog.Text, "x")
+	inputlog.Write("p", inputlog.Text, "x")
 	inputlog.Flush()
 	assert.Equal(t, http.StatusConflict, del().StatusCode, "refused while on")
 	_, err := os.Stat(path)

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -44,7 +45,7 @@ func TestPTYGateDoesNotPasteOverAPersonsDraft(t *testing.T) {
 	in := AutomatedInput{
 		Term: term, Name: name, AgentType: "claude", Key: "k", Text: "You have a new task", What: "test", Paste: true,
 		Send: func(ctx context.Context) error {
-			return term.SendPrompt(ctx, name, "You have a new task", "claude", "")
+			return term.SendPrompt(ctx, terminalinput.Unclassified, name, "You have a new task", "claude", "")
 		},
 	}
 	d, err := DeliverAutomated(context.Background(), in)
@@ -59,7 +60,7 @@ func TestPTYTypedSendWithholdsEnterWhenAPromptOpened(t *testing.T) {
 	name := "claude-4-enter"
 	term, proc := ptyGateTerm(t, name, claudeBoxScreen("", 100))
 	ctx := tmux.WithBeforeEnter(context.Background(), func(context.Context) bool { return false })
-	err := term.SendInput(ctx, name, "hello", "claude", "")
+	err := term.SendInput(ctx, terminalinput.Unclassified, name, "hello", "claude", "")
 	assert.True(t, errors.Is(err, tmux.ErrEnterWithheld), "got %v", err)
 	w := proc.written()
 	require.Len(t, w, 1, "the text was typed")

@@ -7,6 +7,7 @@ package ptymanager
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/terminalinput"
 
 	"github.com/subgentic/coral/internal/tmux"
 )
@@ -26,7 +27,7 @@ type PaneInfo struct {
 // followed by Enter). It returns ErrBracketedPasteUnavailable instead of
 // risking early submission when the agent is not accepting bracketed paste.
 type PromptSender interface {
-	SendPrompt(ctx context.Context, name, text, agentType, sessionID string) error
+	SendPrompt(ctx context.Context, o terminalinput.Origin, name, text, agentType, sessionID string) error
 }
 
 // ErrBracketedPasteUnavailable is returned by PromptSender when the target is
@@ -62,10 +63,11 @@ type SessionTerminal interface {
 	CaptureOutput(ctx context.Context, name string, lines int, agentType, sessionID string) (string, error)
 
 	// Input
-	SendInput(ctx context.Context, name, command, agentType, sessionID string) error
-	SendRawInput(ctx context.Context, name string, keys []string, agentType, sessionID string) error
-	SendToTarget(ctx context.Context, target, command string) error
-	SendTerminalInput(ctx context.Context, target, data string) error
+	// Every send names whose input it is (terminalinput.Origin) as an argument, never in the context (#5706).
+	SendInput(ctx context.Context, o terminalinput.Origin, name, command, agentType, sessionID string) error
+	SendRawInput(ctx context.Context, o terminalinput.Origin, name string, keys []string, agentType, sessionID string) error
+	SendToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error
+	SendTerminalInput(ctx context.Context, o terminalinput.Origin, target, data string) error
 
 	// Lifecycle
 	CreateSession(ctx context.Context, name, workDir string) error

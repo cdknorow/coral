@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -51,7 +52,7 @@ func (r *TmuxRuntime) SpawnAgent(ctx context.Context, name, workDir, logFile, co
 
 	if command != "" {
 		log.Printf("[launch] session=%s agent=%s cmd=%s", name, agentType, command)
-		if err := r.client.SendKeysToTarget(ctx, target, command); err != nil {
+		if err := r.client.SendKeysToTarget(ctx, terminalinput.Internal, target, command); err != nil {
 			log.Printf("[launch] session=%s: the start command could not be typed into its terminal: %v", name, err) // the terminal stays at its shell (#5171)
 		}
 	}
@@ -59,11 +60,11 @@ func (r *TmuxRuntime) SpawnAgent(ctx context.Context, name, workDir, logFile, co
 	return nil
 }
 
-func (r *TmuxRuntime) SendInput(ctx context.Context, name, text string) error {
+func (r *TmuxRuntime) SendInput(ctx context.Context, o terminalinput.Origin, name, text string) error {
 	// Parse agent type and session ID from name format "{type}-{uuid}"
 	agentType, sessionID := parseSessionName(name)
 	agentName := name
-	return r.client.SendKeys(ctx, agentName, text, agentType, sessionID)
+	return r.client.SendKeys(ctx, o, agentName, text, agentType, sessionID)
 }
 
 func (r *TmuxRuntime) KillAgent(ctx context.Context, name string) error {
@@ -167,11 +168,11 @@ func (r *TmuxRuntime) AgentScreenStyled(ctx context.Context, name, agentType, se
 
 // SendPrompt implements ptymanager.PromptSender: automated text as one bracketed
 // paste and its Enter (#3457).
-func (r *TmuxRuntime) SendPrompt(ctx context.Context, name, text, agentType, sessionID string) error {
+func (r *TmuxRuntime) SendPrompt(ctx context.Context, o terminalinput.Origin, name, text, agentType, sessionID string) error {
 	if agentType == "" && sessionID == "" {
 		agentType, sessionID = parseSessionName(name)
 	}
-	return r.client.SendPrompt(ctx, name, text, agentType, sessionID)
+	return r.client.SendPrompt(ctx, o, name, text, agentType, sessionID)
 }
 
 // RenderedScreen implements ptymanager.RenderedScreen: AgentScreen is the pane as drawn.
@@ -183,5 +184,5 @@ func (r *TmuxRuntime) SendEnter(ctx context.Context, name, agentType, sessionID 
 	if agentType == "" && sessionID == "" {
 		agentType, sessionID = parseSessionName(name)
 	}
-	return r.client.SendRawKeys(ctx, name, []string{"Enter"}, agentType, sessionID)
+	return r.client.SendRawKeys(ctx, terminalinput.Internal, name, []string{"Enter"}, agentType, sessionID)
 }

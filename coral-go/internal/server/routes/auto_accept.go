@@ -23,6 +23,7 @@ import (
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/sessionstate"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -458,7 +459,7 @@ func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
 			}
 			return nil
 		}
-		return a.h.terminal.SendRawInput(ctx, paneName(s), []string{strconv.Itoa(d.N)}, s.AgentType, s.SessionID)
+		return a.h.terminal.SendRawInput(ctx, terminalinput.Internal, paneName(s), []string{strconv.Itoa(d.N)}, s.AgentType, s.SessionID)
 	}); err != nil {
 		slog.Warn("auto-accept: sending the answer failed", "session", s.SessionID, "error", err)
 		return

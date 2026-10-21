@@ -11,6 +11,7 @@ import (
 
 	"github.com/subgentic/coral/internal/background"
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -38,7 +39,7 @@ func TestBackgroundPTYRuntimeSendInputWithholdsEnter(t *testing.T) {
 	b, written := ptymanager.NewFakeBackendForTest(t, "claude-5b", "", 80, 24)
 	rt := background.NewPTYRuntime(b)
 	ctx := tmux.WithBeforeEnter(context.Background(), func(context.Context) bool { return false })
-	err := rt.SendInput(ctx, "claude-5b", "nudge")
+	err := rt.SendInput(ctx, terminalinput.Unclassified, "claude-5b", "nudge")
 	assert.True(t, errors.Is(err, tmux.ErrEnterWithheld), "got %v", err)
 	for _, w := range written() {
 		assert.NotContains(t, string(w), "\r")

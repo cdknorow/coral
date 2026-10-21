@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // An agent TUI runs its terminal in raw mode, where nothing translates the Enter a send types: it must
@@ -25,7 +27,7 @@ func TestPTYSendLineDeliversACarriageReturnToARawModeReader(t *testing.T) {
 		t.Fatalf("Attach failed: %v", err)
 	}
 	time.Sleep(300 * time.Millisecond) // the shell is in raw mode before the line arrives
-	if err := backend.SendLine("raw-enter", "submit"); err != nil {
+	if err := backend.SendLine(terminalinput.Unclassified, "raw-enter", "submit"); err != nil {
 		t.Fatalf("SendLine failed: %v", err)
 	}
 	var output strings.Builder
@@ -59,7 +61,7 @@ func TestPTYSendLineStillRunsACommandInACookedShell(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Attach failed: %v", err)
 	}
-	if err := backend.SendLine("cooked-enter", "echo cooked-$((40+2))"); err != nil {
+	if err := backend.SendLine(terminalinput.Unclassified, "cooked-enter", "echo cooked-$((40+2))"); err != nil {
 		t.Fatalf("SendLine failed: %v", err)
 	}
 	var output strings.Builder

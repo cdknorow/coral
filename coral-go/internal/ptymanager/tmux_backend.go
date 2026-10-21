@@ -3,6 +3,7 @@ package ptymanager
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"io"
 	"log"
 	"os"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/logparse"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/safego"
@@ -85,7 +85,7 @@ func (b *TmuxBackend) Spawn(name, agentType, workDir, sessionID, command string,
 
 	// Launch the agent command
 	if command != "" {
-		if err := b.client.SendKeysToTarget(ctx, tmuxName+".0", command); err != nil {
+		if err := b.client.SendKeysToTarget(ctx, terminalinput.Internal, tmuxName+".0", command); err != nil {
 			log.Printf("[launch] %s: the start command could not be typed into its terminal: %v", name, err) // the terminal stays at its shell (#5171)
 		}
 	}
@@ -173,7 +173,7 @@ func (b *TmuxBackend) Restart(name, command string) error {
 	b.client.PipePane(ctx, pane.Target, sess.logPath)
 
 	if command != "" {
-		if err := b.client.SendKeysToTarget(ctx, pane.Target, command); err != nil {
+		if err := b.client.SendKeysToTarget(ctx, terminalinput.Internal, pane.Target, command); err != nil {
 			log.Printf("[launch] %s: the start command could not be typed into its restarted terminal: %v", name, err) // the terminal stays at its shell (#5171)
 		}
 	}
@@ -181,17 +181,18 @@ func (b *TmuxBackend) Restart(name, command string) error {
 	return nil
 }
 
-func (b *TmuxBackend) SendInput(name string, data []byte) error {
-	return b.sendInput(context.Background(), name, data)
+// SendInput writes data to the session's terminal as o's input.
+func (b *TmuxBackend) SendInput(o terminalinput.Origin, name string, data []byte) error {
+	return b.sendInput(context.Background(), o, name, data)
 }
 
 // SendHumanInput writes a person's keystrokes from the dashboard terminal: as SendInput, and
-// logged by their length only (inputlog.Human, #60).
+// logged by their length only (terminalinput.Person, #60).
 func (b *TmuxBackend) SendHumanInput(name string, data []byte) error {
-	return b.sendInput(inputlog.Human(context.Background()), name, data)
+	return b.sendInput(context.Background(), terminalinput.Person, name, data)
 }
 
-func (b *TmuxBackend) sendInput(ctx context.Context, name string, data []byte) error {
+func (b *TmuxBackend) sendInput(ctx context.Context, o terminalinput.Origin, name string, data []byte) error {
 
 	b.mu.RLock()
 	sess, ok := b.sessions[name]
@@ -215,7 +216,7 @@ func (b *TmuxBackend) sendInput(ctx context.Context, name string, data []byte) e
 		return fmt.Errorf("%w: pane %q not found", ErrTerminalGone, name)
 	}
 
-	return b.client.GoneAfter(ctx, name, agentType, sessionID, b.client.SendTerminalInputToTarget(ctx, target, string(data)))
+	return b.client.GoneAfter(ctx, name, agentType, sessionID, b.client.SendTerminalInputToTarget(ctx, o, target, string(data)))
 }
 
 func (b *TmuxBackend) Resize(name string, cols, rows uint16) error {

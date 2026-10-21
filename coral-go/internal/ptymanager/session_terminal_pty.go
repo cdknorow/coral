@@ -3,6 +3,7 @@ package ptymanager
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"strings"
 	"time"
 
@@ -126,22 +127,22 @@ func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, lines
 	return vtscreen.RenderScrollback(data, cols, rows, lines), nil
 }
 
-func (p *PTYSessionTerminal) SendInput(ctx context.Context, name, command, _, sessionID string) error {
+func (p *PTYSessionTerminal) SendInput(ctx context.Context, o terminalinput.Origin, name, command, _, sessionID string) error {
 	key, err := p.keyFor(name, sessionID)
 	if err != nil {
 		return err
 	}
-	return p.backend.SendText(ctx, key, command)
+	return p.backend.SendText(ctx, o, key, command)
 }
 
 // SendPrompt delivers text as one bracketed paste followed by Enter, only while
 // the session's application has bracketed paste mode enabled.
-func (p *PTYSessionTerminal) SendPrompt(ctx context.Context, name, text, _, sessionID string) error {
+func (p *PTYSessionTerminal) SendPrompt(ctx context.Context, o terminalinput.Origin, name, text, _, sessionID string) error {
 	key, err := p.keyFor(name, sessionID)
 	if err != nil {
 		return err
 	}
-	return p.backend.SendPrompt(ctx, key, text)
+	return p.backend.SendPrompt(ctx, o, key, text)
 }
 
 // SendEnter implements EnterSender: the Enter of a send the automated-input gate
@@ -151,7 +152,7 @@ func (p *PTYSessionTerminal) SendEnter(_ context.Context, name, _, sessionID str
 	if err != nil {
 		return err
 	}
-	return p.backend.SendInput(key, []byte("\r"))
+	return p.backend.SendInput(terminalinput.Internal, key, []byte("\r"))
 }
 
 // SendArrow implements ArrowSender: the cursor key, encoded for the cursor-key mode the program asked for (DECCKM),
@@ -169,7 +170,7 @@ func (p *PTYSessionTerminal) SendArrow(_ context.Context, name, _, sessionID str
 	if err != nil {
 		return err
 	}
-	return p.backend.SendInput(key, b)
+	return p.backend.SendInput(terminalinput.Internal, key, b)
 }
 
 // ValidateKeys implements KeyValidator: every entry of a /keys request is a key name, a single character or digits.
@@ -189,7 +190,7 @@ func (p *PTYSessionTerminal) ValidateKeys(keys []string) error {
 // (the arrows for the cursor-key mode the program is in), a single character or digits are typed, and any other
 // entry is refused with ErrUnknownKey before anything is sent. Keys go 100 ms apart, as tmux's go: a program reading
 // them one read at a time (Escape, Escape) takes each as its own key.
-func (p *PTYSessionTerminal) SendRawInput(ctx context.Context, name string, keys []string, _, sessionID string) error {
+func (p *PTYSessionTerminal) SendRawInput(ctx context.Context, o terminalinput.Origin, name string, keys []string, _, sessionID string) error {
 	resolved, err := p.keyFor(name, sessionID)
 	if err != nil {
 		return err
@@ -202,7 +203,7 @@ func (p *PTYSessionTerminal) SendRawInput(ctx context.Context, name string, keys
 		if err != nil {
 			return err
 		}
-		if err := p.backend.SendInput(resolved, b); err != nil {
+		if err := p.backend.SendInput(o, resolved, b); err != nil {
 			return err
 		}
 		if i < len(keys)-1 {
@@ -214,7 +215,7 @@ func (p *PTYSessionTerminal) SendRawInput(ctx context.Context, name string, keys
 	return nil
 }
 
-func (p *PTYSessionTerminal) SendToTarget(_ context.Context, target, command string) error {
+func (p *PTYSessionTerminal) SendToTarget(_ context.Context, o terminalinput.Origin, target, command string) error {
 	DropHeld(target, "a launch command is typed") // nothing held for the old process is typed into a new one (#3431)
 	resolved := p.resolveSessionKey(target)
 	if len(command) > inlineCommandLimit {
@@ -222,17 +223,17 @@ func (p *PTYSessionTerminal) SendToTarget(_ context.Context, target, command str
 		if err != nil {
 			return err
 		}
-		if err := p.backend.SendLine(resolved, invocation); err != nil {
+		if err := p.backend.SendLine(o, resolved, invocation); err != nil {
 			cleanup()
 			return err
 		}
 		return nil
 	}
-	return p.backend.SendLine(resolved, command)
+	return p.backend.SendLine(o, resolved, command)
 }
 
-func (p *PTYSessionTerminal) SendTerminalInput(_ context.Context, target, data string) error {
-	return p.backend.SendInput(p.resolveSessionKey(target), []byte(data))
+func (p *PTYSessionTerminal) SendTerminalInput(_ context.Context, o terminalinput.Origin, target, data string) error {
+	return p.backend.SendInput(o, p.resolveSessionKey(target), []byte(data))
 }
 
 // HumanInputSince implements HumanInputReader: whether a person typed in the agent's

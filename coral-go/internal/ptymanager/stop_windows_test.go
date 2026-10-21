@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 func processAlive(pid int) bool {
@@ -43,7 +44,7 @@ func TestWindowsStopEndsTheWholeProcessTree(t *testing.T) {
 	// A program under the shell that a shell exit alone would not end.
 	script := "$p = Start-Process ping -ArgumentList '-n','300','127.0.0.1' -PassThru -WindowStyle Hidden; $p.Id | Out-File -Encoding ascii '" +
 		strings.ReplaceAll(pidFile, "'", "''") + "'; Wait-Process -Id $p.Id"
-	require.NoError(t, b.SendInput(name, []byte(script+EnterKey)))
+	require.NoError(t, b.SendInput(terminalinput.Unclassified, name, []byte(script+EnterKey)))
 	var child int
 	require.Eventually(t, func() bool {
 		data, err := os.ReadFile(pidFile)

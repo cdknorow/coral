@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // exitLogged holds the sessions whose 'agent exited' skip was already logged,
@@ -87,7 +88,7 @@ func deliverAutomatedIfWanted(ctx context.Context, rt AgentRuntime, logger *slog
 			if wanted != nil && !wanted(ctx) {
 				return ptymanager.ErrNotWanted
 			}
-			return rt.SendInput(ctx, name, text)
+			return rt.SendInput(ctx, terminalinput.Coral, name, text) // Coral's own text, made safe before it is typed
 		},
 	})
 	if errors.Is(err, errSkippedExited) {

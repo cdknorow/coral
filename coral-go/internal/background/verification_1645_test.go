@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // TestTask1645_ComprehensiveNotifierVerification tests all scenarios required by Task #1645.
@@ -243,7 +245,7 @@ type mockFailingRuntime struct {
 }
 
 func (m *mockFailingRuntime) SpawnAgent(_ context.Context, _, _, _, _ string) error { return nil }
-func (m *mockFailingRuntime) SendInput(_ context.Context, session, content string) error {
+func (m *mockFailingRuntime) SendInput(_ context.Context, _ terminalinput.Origin, session, content string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.failCount > 0 {

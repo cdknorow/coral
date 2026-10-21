@@ -618,7 +618,7 @@ func (g *inputGate) giveUpPaste(in AutomatedInput, why string) error {
 	agentType, sessionID := in.identity()
 	slog.Warn("automated input: gave up a held paste", "session", in.Name, "sender", in.What, "why", why,
 		"held_for", g.now().Sub(in.heldSince).Round(time.Second).String())
-	inputlog.Record(in.Name, inputlog.Text, "[GAVE UP, "+why+"] "+in.Text)
+	inputlog.Note(in.Name, inputlog.Text, "[GAVE UP, "+why+"] "+in.Text)
 	heldGaveUp.RLock()
 	fn := heldGaveUp.fn
 	heldGaveUp.RUnlock()

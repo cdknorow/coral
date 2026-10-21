@@ -13,6 +13,7 @@ import (
 
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // Answering an agent's prompt from the chat.
@@ -593,14 +594,14 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 				"The prompt's selection didn't move to that option. Answer it in the terminal.")
 			return
 		}
-	} else if err := h.terminal.SendRawInput(r.Context(), name, []string{strconv.Itoa(body.N)}, body.AgentType, body.SessionID); err != nil {
+	} else if err := h.terminal.SendRawInput(r.Context(), terminalinput.Unclassified, name, []string{strconv.Itoa(body.N)}, body.AgentType, body.SessionID); err != nil {
 		writeTerminalError(w, err)
 		return
 	}
 	if opt.Action == "text" && !byArrows {
 		// The digit turns the option into a text field; type into it, then Enter
 		time.Sleep(promptTextDelay)
-		if err := h.terminal.SendInput(r.Context(), name, text, body.AgentType, body.SessionID); err != nil {
+		if err := h.terminal.SendInput(r.Context(), terminalinput.Unclassified, name, text, body.AgentType, body.SessionID); err != nil {
 			writeTerminalError(w, err)
 			return
 		}
@@ -726,7 +727,7 @@ func (h *SessionsHandler) confirmAnswer(ctx context.Context, name, agentType, se
 // The box is confirmed from the screen (it must have flipped, on the same prompt) and the screen read is the
 // reply, so the card shows what the terminal shows (#5232).
 func (h *SessionsHandler) toggleMulti(w http.ResponseWriter, r *http.Request, name, agentType, sessionID string, before promptScreen, n int) {
-	if err := h.terminal.SendRawInput(r.Context(), name, []string{strconv.Itoa(n)}, agentType, sessionID); err != nil {
+	if err := h.terminal.SendRawInput(r.Context(), terminalinput.Unclassified, name, []string{strconv.Itoa(n)}, agentType, sessionID); err != nil {
 		writeTerminalError(w, err)
 		return
 	}
