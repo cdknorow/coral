@@ -48,7 +48,7 @@ func newWakeRig(t *testing.T) *wakeRig {
 	}
 	h.autoWake.now = func() time.Time { return rig.now }
 	// The CLI a wake types is harmless: never a real agent in a test.
-	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", "/usr/bin/true"))
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", harmlessCLI()))
 	return rig
 }
 

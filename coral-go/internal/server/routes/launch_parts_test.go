@@ -3,11 +3,13 @@ package routes
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/ptymanager"
 )
 
@@ -56,6 +58,9 @@ func TestResolveLaunchCLI(t *testing.T) {
 
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "my-claude")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
 	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755))
 	got, err = resolveLaunchCLI("claude", bin)
 	require.NoError(t, err)
@@ -65,5 +70,10 @@ func TestResolveLaunchCLI(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // no common install places
 	_, err = resolveLaunchCLI("claude", filepath.Join(dir, "missing-claude"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "CLI not found. Install it:")
+	assert.Contains(t, err.Error(), agent.CLIPathSettingKey("claude"), "a configured path that is missing is refused, naming the setting (#115)")
+	assert.Contains(t, err.Error(), "missing-claude")
+
+	_, err = resolveLaunchCLI("claude", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "CLI not found. Install it:", "nothing configured and nothing on PATH")
 }

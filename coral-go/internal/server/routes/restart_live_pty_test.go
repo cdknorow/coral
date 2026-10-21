@@ -45,7 +45,7 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 	ctx := context.Background()
 	// The CLI the restart types is a harmless stand-in: never a real agent CLI in a test.
 	for _, agentType := range []string{"claude", "agy"} {
-		require.NoError(t, ss.SetSetting(ctx, "cli_path_"+agentType, "/usr/bin/true"))
+		require.NoError(t, ss.SetSetting(ctx, "cli_path_"+agentType, harmlessCLI()))
 	}
 
 	pty := ptymanager.NewPTYBackend()
@@ -133,7 +133,7 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 // typedStart reports whether a session's replay shows its start command typed: inline, or for one over the
 // inline limit (agy's, under a long TMPDIR such as macOS's /var/folders/...) the script that holds it sourced.
 func typedStart(replay []byte) bool {
-	return bytes.Contains(replay, []byte("/usr/bin/true")) || bytes.Contains(replay, []byte("/coral-command-"))
+	return bytes.Contains(replay, []byte(filepath.Base(harmlessCLI()))) || bytes.Contains(replay, []byte("/coral-command-"))
 }
 
 // spawnFails is the pty backend with a Spawn that fails, as one does at a fork limit or for a working directory
@@ -155,7 +155,7 @@ func livePTYFixture(t *testing.T) (string, *store.DB, *store.SessionStore, *ptym
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	ss := store.NewSessionStore(db)
-	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", "/usr/bin/true"))
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", harmlessCLI()))
 	pty := ptymanager.NewPTYBackend()
 	t.Cleanup(func() {
 		var wg sync.WaitGroup

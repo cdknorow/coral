@@ -109,14 +109,18 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 			}
 			settings = st
 		}
-		var err error
+		// A configured cli_path_<agent> that can't be run refuses the launch; it never runs another CLI (#115).
+		cliPath, err := agent.LaunchCLI(settings, agentType)
+		if err != nil {
+			return nil, err
+		}
 		launchCmd, err = ag.LaunchCommand(agent.LaunchParams{
 			SessionID:       sessionID,
 			ProtocolPath:    protocolPath,
 			ResumeSessionID: resumeSessionID,
 			Flags:           flags,
 			WorkingDir:      workingDir,
-			CLIPath:         agent.ResolveCLIPath(settings, agentType),
+			CLIPath:         cliPath,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("launch command: %w", err)

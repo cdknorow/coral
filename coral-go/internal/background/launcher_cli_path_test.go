@@ -2,7 +2,9 @@ package background
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -42,15 +44,22 @@ func TestJobRunsUseTheConfiguredCLIPath(t *testing.T) {
 	_, err := l.LaunchAgent(ctx, t.TempDir(), at.Claude, "job", "", nil, true, "p", "", "")
 	require.NoError(t, err)
 
-	require.NoError(t, ss.SetSetting(ctx, agent.CLIPathSettingKey(at.Claude), "/opt/custom/bin/claude"))
+	name := "claude"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	custom := filepath.Join(t.TempDir(), "custom", name)
+	require.NoError(t, os.MkdirAll(filepath.Dir(custom), 0o755))
+	require.NoError(t, os.WriteFile(custom, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+	require.NoError(t, ss.SetSetting(ctx, agent.CLIPathSettingKey(at.Claude), custom))
 	_, err = l.LaunchAgent(ctx, t.TempDir(), at.Claude, "job", "", nil, true, "p", "", "")
 	require.NoError(t, err)
 
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	require.Len(t, rt.commands, 2)
-	assert.False(t, strings.Contains(rt.commands[0], "/opt/custom/bin/claude"), "no setting: the default lookup")
-	assert.Contains(t, rt.commands[1], "/opt/custom/bin/claude", "the configured CLI path: %s", rt.commands[1])
+	assert.False(t, strings.Contains(rt.commands[0], "custom"), "no setting: the default lookup")
+	assert.Contains(t, rt.commands[1], filepath.Base(custom), "the configured CLI path: %s", rt.commands[1])
 }
 
 // #3602 W13: LaunchAgent refuses an agent type it doesn't know before it touches anything.
