@@ -23,7 +23,10 @@ const staleTempAge = 24 * time.Hour
 // removes the stale ones left in it and in the system temp folder (agent.SweepStaleTempFiles has
 // the rules: exact names, this user's regular files, a day old, no live session here, no running
 // process naming them; in the shared temp folder, only sessions this Coral saw end). The channel
-// closes when the sweep is over.
+// closes when the sweep is over. It is the only reader of the system temp folder: an agent's stop
+// removes the paths its launch recorded and its files in <data dir>/tmp (agent.CleanupTempFiles,
+// #90), so the system temp files launches left before a restart (before #4381, or while
+// <data dir>/tmp couldn't be made) are this sweep's, under the same guards.
 func setupLaunchTempDir(db *store.DB, dataDir string) <-chan struct{} {
 	diskguard.Use(dataDir) // the routes that can fill this volume refuse when it is nearly full (#4602)
 	if err := agent.SetTempDir(filepath.Join(dataDir, "tmp")); err != nil {
@@ -74,7 +77,11 @@ func setupLaunchTempDir(db *store.DB, dataDir string) <-chan struct{} {
 				opt.Ended = func(id string) bool { return ended[id] }
 			}
 			if removed := agent.SweepStaleTempFiles(dir, opt); len(removed) > 0 {
-				log.Printf("[startup] removed %d launch temp file(s) over a day old, of agents no longer running, from %s", len(removed), dir)
+				if dir == os.TempDir() {
+					log.Printf("[startup] removed %d launch temp file(s) over a day old, of agents that ended, from the system temp folder %s (left before a restart; an agent's stop doesn't read this folder)", len(removed), dir)
+				} else {
+					log.Printf("[startup] removed %d launch temp file(s) over a day old, of agents no longer running, from %s", len(removed), dir)
+				}
 			}
 		}
 	})
