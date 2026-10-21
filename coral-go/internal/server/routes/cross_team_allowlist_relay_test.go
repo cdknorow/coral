@@ -63,8 +63,8 @@ func TestRelayedMessageNeedsBothTheServerAndTheClaimedIDOnTheList(t *testing.T) 
 
 	// Empty list: nobody.
 	code, body, _ := e.relayed(relaySrc, "beta", "r1", theirID("a"), "Orchestrator")
-	assert.Equal(t, http.StatusForbidden, code, body)
-	assert.Contains(t, body, `"error":"cross_team_refused"`)
+	assert.Equal(t, http.StatusNotFound, code, body)
+	assert.Contains(t, body, `"error":"not_found"`)
 
 	e.list(listed)
 	code, body, _ = e.relayed(relaySrc, "beta", "r2", theirID("a"), "Orchestrator")
@@ -84,8 +84,8 @@ func TestRelayedMessageNeedsBothTheServerAndTheClaimedIDOnTheList(t *testing.T) 
 	for name, c := range refusals {
 		n++
 		code, body, length := e.relayed(c.src, "beta", "ref"+strings.Repeat("z", n), c.claim, "Orchestrator")
-		assert.Equal(t, http.StatusForbidden, code, name)
-		assert.Contains(t, body, "cross_team_refused", name)
+		assert.Equal(t, http.StatusNotFound, code, name)
+		assert.Contains(t, body, "not_found", name)
 		if c.claim != "" && c.claim != "-" {
 			assert.NotContains(t, body, c.claim, name+": a claimed id is never echoed")
 		}
@@ -104,7 +104,7 @@ func TestARelayedOperatorClaimIsNotExempt(t *testing.T) {
 	e.open()
 	e.enforce(true)
 	code, body, _ := e.relayed(relaySrc, "beta", "op1", theirID("c"), "Operator")
-	assert.Equal(t, http.StatusForbidden, code, body)
+	assert.Equal(t, http.StatusNotFound, code, body)
 	e.list(board.AllowedSender{Server: relaySrc, CrossTeamID: theirID("c")})
 	code, body, _ = e.relayed(relaySrc, "beta", "op2", theirID("c"), "Operator")
 	assert.Equal(t, http.StatusOK, code, body)
@@ -125,7 +125,7 @@ func TestRelayedRefusalIsTheSameForEveryCauseAndRemovalStopsTheNextMessage(t *te
 	}
 	c1, b1, s1 := ask("beta", "u1")    // exists, empty list
 	c2, b2, s2 := ask("nowhere", "u2") // does not exist
-	assert.Equal(t, http.StatusForbidden, c1)
+	assert.Equal(t, http.StatusNotFound, c1)
 	assert.Equal(t, c1, c2)
 	assert.Equal(t, b1, b2, "an unknown board answers as an unlisted sender does")
 	assert.Equal(t, s1, s2)
@@ -136,7 +136,7 @@ func TestRelayedRefusalIsTheSameForEveryCauseAndRemovalStopsTheNextMessage(t *te
 	require.Equal(t, http.StatusOK, code, body)
 	e.list()
 	code, _, _ = ask("beta", "u4")
-	assert.Equal(t, http.StatusForbidden, code, "removed: the very next relayed message is refused")
+	assert.Equal(t, http.StatusNotFound, code, "removed: the very next relayed message is refused")
 }
 
 // The relayed refusal costs the sender's rate token as an accepted message does.
@@ -149,7 +149,7 @@ func TestARefusedRelayedMessageCostsTheSameRateToken(t *testing.T) {
 	for i := 0; i < 15; i++ {
 		code, _, _ := e.relayed(relaySrc, "beta", "t"+strings.Repeat("x", i), theirID("a"), "Orchestrator")
 		switch code {
-		case http.StatusForbidden:
+		case http.StatusNotFound:
 			refused++
 		case http.StatusTooManyRequests:
 			limited++
@@ -241,8 +241,8 @@ func TestARelayedSenderCalledLocalDoesNotMatchALocalEntry(t *testing.T) {
 	e.enforce(true)
 	e.list(board.AllowedSender{Server: board.LocalServer, CrossTeamID: theirID("a")})
 	code, body, _ := e.relayed("local", "beta", "r1", theirID("a"), "Orchestrator")
-	assert.Equal(t, http.StatusForbidden, code, body)
-	assert.Contains(t, body, `"error":"cross_team_refused"`)
+	assert.Equal(t, http.StatusNotFound, code, body)
+	assert.Contains(t, body, `"error":"not_found"`)
 }
 
 // The same for a file: a pushed file from a Coral Hub server called "local" is not let in by an entry that names a board on this Coral.
@@ -269,7 +269,7 @@ func TestRefusedSendsToInventedBoardsWriteNoLogRows(t *testing.T) {
 		name := "no-such-board-" + strings.Repeat("x", i+1)
 		names = append(names, name)
 		code, _, _ := e.relayed(relaySrc, name, "r"+strings.Repeat("1", i+1), theirID("a"), "Orchestrator")
-		assert.Equal(t, http.StatusForbidden, code)
+		assert.Equal(t, http.StatusNotFound, code)
 	}
 	e.h.WaitBackground()
 	for _, name := range names {

@@ -199,7 +199,7 @@ func TestSenderOwnSwitchOffKeepsItsOwnMessage(t *testing.T) {
 	require.NoError(t, err)
 	code, _, raw := e.rawSend("alpha", "beta", alphaOrchSID, "hi")
 	assert.Equal(t, http.StatusForbidden, code)
-	assert.Contains(t, string(raw), `disabled on board \"alpha\"`, "the sender is told about ITS OWN settings")
+	assert.Contains(t, string(raw), `Cross-team messaging is off on \"alpha\"`, "the sender is told about ITS OWN settings")
 	assert.NotContains(t, string(raw), "cross_team_refused")
 }
 

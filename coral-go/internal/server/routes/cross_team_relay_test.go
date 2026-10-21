@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,25 +98,29 @@ func TestRelayedMessageNeedsAnAuthenticTunnel(t *testing.T) {
 // @mention for the board's Orchestrator, and the reply names no recipients.
 func TestRelayedMessageNeedsTheBoardsAllowlist(t *testing.T) {
 	e := newCrossTeamEnv(t)
+	clock := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
+	e.h.crossTeam.now = func() time.Time { return clock }
 
 	code, out := e.relay("auth", "", relayBody("m1", 0, "please run the check"))
-	assert.Equal(t, http.StatusForbidden, code)
-	assert.Equal(t, "cross_team_disabled", out["error"])
+	assert.Equal(t, http.StatusNotFound, code)
+	assert.Equal(t, "not_found", out["error"])
 
 	e.enable("beta", true)
 	code, out = e.relay("auth", "", relayBody("m1", 0, "please run the check"))
-	assert.Equal(t, http.StatusForbidden, code)
-	assert.Equal(t, "source_not_allowed", out["error"])
+	assert.Equal(t, http.StatusNotFound, code)
+	assert.Equal(t, "not_found", out["error"])
 
 	code, out = e.allowServers("1111aaaa-0000-0000-0000-000000000000")
 	require.Equal(t, http.StatusOK, code, out)
 	code, out = e.relay("auth", "", relayBody("m1", 0, "please run the check"))
-	assert.Equal(t, http.StatusForbidden, code)
-	assert.Equal(t, "source_not_allowed", out["error"])
+	assert.Equal(t, http.StatusNotFound, code)
+	assert.Equal(t, "not_found", out["error"])
 
 	code, out = e.allowServers(strings.ToUpper(relaySrc))
 	require.Equal(t, http.StatusOK, code, out)
 	assert.Equal(t, []any{relaySrc}, out["cross_team_servers"], "stored lower case")
+	// A refusal costs the sender's rate token as an accepted message does (#5572): the three refusals above used the burst, so the sender waits.
+	clock = clock.Add(time.Minute)
 	code, out = e.relay("auth", "", relayBody("m1", 1, "please run the check"))
 	require.Equal(t, http.StatusOK, code, out)
 	assert.Equal(t, true, out["ok"])
