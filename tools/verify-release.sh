@@ -300,7 +300,11 @@ if [ -f SHA256SUMS.txt ]; then
     cask_ver="$(awk -F'"' '/^  version /{print $2; exit}' <<<"$cask")"; cask_sum="$(awk -F'"' '/^  sha256 /{print $2; exit}' <<<"$cask")"
     if [ "$cask_ver" != "$want_ver" ]; then
       if [ "$STAGE" = agentic ]; then skip cask "$which_ Casks/coral.rb" "at $cask_ver: the cask follows the approval, not the publication (--stage agentic)"
-      elif [ "$which_" = repo ]; then skip cask "$which_ Casks/coral.rb" "at $cask_ver: it is made after verification (tools/devops/cask.sh)"; else fail cask "$which_ Casks/coral.rb" "at version ${cask_ver:-none}, expected $want_ver"; fi
+      elif [ "$which_" = repo ]; then skip cask "$which_ Casks/coral.rb" "at $cask_ver: it is made after verification (tools/devops/cask.sh)"
+      elif [[ "$cask_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$(printf '%s\n%s\n' "$cask_ver" "$want_ver" | sort -V | tail -1)" = "$cask_ver" ]; then
+        # a LATER approved release moved the cask on (the weekly re-verify checks the newest three): only a cask that is OLDER than this approved release is a failure
+        skip cask "$which_ Casks/coral.rb" "at $cask_ver: a newer release than $want_ver was approved since"
+      else fail cask "$which_ Casks/coral.rb" "at version ${cask_ver:-none}, expected $want_ver"; fi
     elif [ -n "$dmg_sum" ] && [ "$cask_sum" = "$dmg_sum" ]; then pass cask "$which_ Casks/coral.rb" "sha256 equals the DMG's line in SHA256SUMS.txt (${cask_sum:0:12}...)"
     else fail cask "$which_ Casks/coral.rb" "sha256 ${cask_sum:0:12}... is not the DMG's line in SHA256SUMS.txt (${dmg_sum:0:12}...)"; fi
   done
