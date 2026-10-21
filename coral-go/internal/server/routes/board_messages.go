@@ -112,6 +112,13 @@ func (h *BoardHandler) postMessageCore(w http.ResponseWriter, r *http.Request, p
 			return nil, nil, false
 		}
 		body.SubscriberID = attrWho
+		// A reply names no sender in its body (#5463): the sender is whoever the request proves it is. In log mode attributedTo returns the claim, which a reply does not have, so
+		// the verified actor's own name stands in (the dashboard's Operator, an agent's token member), in either identity mode; never a name the body gives (#5779).
+		if reply != nil && body.SubscriberID == "" {
+			if name, verified := actorName(callerActor(r)); verified {
+				body.SubscriberID = name
+			}
+		}
 	}
 	if derr != nil || body.Content == "" {
 		errBadRequest(w, "content required")

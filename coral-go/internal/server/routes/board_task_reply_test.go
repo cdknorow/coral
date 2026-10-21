@@ -311,3 +311,41 @@ func TestARepliesCountAgainstTheAgentWriteBudget(t *testing.T) {
 func limitedAgentWriteOf(method, path string) bool {
 	return limitedAgentWrite(httptest.NewRequest(method, path, nil))
 }
+
+// #5779 (QA's #5774 e2e): the dashboard's reply was refused ("a reply needs a verified sender") in log mode, the default identity mode, because attributedTo gave back the empty
+// claim of a body that has no sender; it worked only under enforcement, which is what every test here ran in. A reply is sent by whoever the request proves it is, in either mode:
+// the verified Operator as "Operator", an agent's token as its member, Coral Hub's user as itself; a name in the body is never used; no verified actor is still refused.
+func TestTheVerifiedActorRepliesInEitherIdentityMode(t *testing.T) {
+	for _, enforced := range []bool{true, false} {
+		mode := map[bool]string{true: "enforce", false: "log"}[enforced]
+		t.Run(mode, func(t *testing.T) {
+			e := newReplyEnv(t)
+			setIdentityActorEnforced(enforced)
+			e.join("p", "Backend Dev", "Frontend Dev")
+			id := e.task("p", "Backend Dev")
+			path := "/api/board/p/tasks/" + itoa(id) + "/reply"
+
+			// the verified Operator (the dashboard) is the sender, whatever the body names
+			code, out, b := e.do("POST", path, `{"content":"from the dashboard","subscriber_id":"Frontend Dev","as":"Backend Dev"}`, map[string]string{"X-Test-Actor": "operator"})
+			require.Equal(t, 200, code, mode+": "+string(b))
+			assert.Equal(t, []any{"Backend Dev"}, out["notified"])
+			// an agent's token is its own member
+			code, _, b = e.do("POST", path, `{"content":"from an agent","subscriber_id":"Backend Dev"}`, map[string]string{"X-Test-Actor": "token:Frontend Dev"})
+			require.Equal(t, 200, code, mode+": "+string(b))
+			senders := map[string]string{}
+			for _, m := range e.messages("p", "?task_id="+itoa(id)) {
+				senders[strings.TrimPrefix(m.Content, "@Backend Dev: ")] = m.SubscriberID
+			}
+			assert.Equal(t, map[string]string{"from the dashboard": "Operator", "from an agent": "Frontend Dev"}, senders, mode)
+
+			// no verified actor: still refused, and nothing is posted
+			code, _, _ = e.do("POST", path, `{"content":"nobody","subscriber_id":"Operator"}`, nil)
+			assert.GreaterOrEqual(t, code, 400, mode)
+			assert.Len(t, e.messages("p", "?task_id="+itoa(id)), 2, mode+": nothing from the unverified request")
+
+			// Coral Hub's user replies as itself in either mode (its path never went through attributedTo)
+			code, _, b = e.do("POST", path, `{"content":"from the hub"}`, hubReplyHdr("hub-user-1234abcd"))
+			require.Equal(t, 200, code, mode+": "+string(b))
+		})
+	}
+}
