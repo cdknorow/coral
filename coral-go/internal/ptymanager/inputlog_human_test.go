@@ -50,3 +50,20 @@ func TestPTYLogsAPersonsSentLineByLengthOnly(t *testing.T) {
 	assert.NotContains(t, string(raw), "my token")
 	assert.Contains(t, string(raw), `kind=typed text="[typed 15 bytes]"`)
 }
+
+// #5673 (the merge of sets A and B): a person's text that goes in as a PASTE (a line break, or longer than a command typed into a shell) is logged by its length only too, as a typed line is.
+// SendText's paste write took no ctx, so the input debug log kept the pasted text in full.
+func TestPTYLogsAPersonsPastedTextByLengthOnly(t *testing.T) {
+	dir := t.TempDir()
+	inputlog.Setup(dir, true)
+	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
+	b, _, proc := newFakeBackend(t, "claude-5673")
+	require.NoError(t, b.SendText(inputlog.Human(context.Background()), "claude-5673", "line one\nmy token is xyz-secret"))
+	assert.NotEmpty(t, proc.written(), "the text was sent")
+	inputlog.Flush()
+	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "secret", "a person's pasted text is not in the input log")
+	assert.NotContains(t, string(raw), "line one")
+	assert.Contains(t, string(raw), `kind=typed text="[typed `)
+}

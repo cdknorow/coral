@@ -240,7 +240,7 @@ func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
 	} else {
 		body = strings.ReplaceAll(body, "\n", EnterKey)
 	}
-	if n, err := s.writeFull([]byte(body)); err != nil {
+	if n, err := s.writeFullCtx(ctx, []byte(body)); err != nil { // a person's paste is logged by its length (#60 N3)
 		if n > 0 {
 			return tmux.MarkDeliveryUnknown(fmt.Errorf("paste write failed after %d of %d bytes: %w", n, len(body), err))
 		}
