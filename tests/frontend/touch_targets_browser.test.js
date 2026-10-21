@@ -185,7 +185,9 @@ const UNDERSIZED = `(() => {
 
         // The Cloud Hub sign-in and enroll pages (templates the hub renders with
         // our stylesheets): every input and button is at least 44px tall.
-        for (const page of ['signin', 'enroll']) {
+        // On a coarse pointer, and on a fine one at the same width: a phone browser that reports a fine pointer (the hub's mobile run measured 38 to 40 px) gets the same 44px targets (#5637).
+        for (const [coarse, page] of [[true, 'signin'], [true, 'enroll'], [false, 'signin'], [false, 'enroll']]) {
+            await Emulation.setTouchEmulationEnabled({ enabled: coarse, maxTouchPoints: coarse ? 5 : 1 });
             const tpl = fs.readFileSync(path.resolve(__dirname, '../../coral-go/pkg/frontend/templates/cloud', page + '.html'), 'utf8')
                 .replace(/\{\{-?\s*\$base\s*:=[^}]*\}\}/, '').replace(/\{\{\s*\$base\s*\}\}/g, '/static/')
                 .replace(/<script[\s\S]*?<\/script>/g, '');
@@ -203,9 +205,14 @@ const UNDERSIZED = `(() => {
                 return ${UNDERSIZED};
             })()`);
             assert.ok(await ev(`document.querySelectorAll('input:not([type=hidden]), .cloud-btn').length`) >= 2, page + ': the page has its inputs and buttons');
-            assert.deepEqual(small, [], `phone 390, cloud ${page}: every control is at least 44x44: ` + JSON.stringify(small));
+            if (page === 'signin') {
+                const dv = await ev(`parseFloat(getComputedStyle(document.querySelector('.cloud-divider')).fontSize)`);
+                assert.ok(dv >= 13, 'the "or" divider is at least 13px: ' + dv);
+            }
+            assert.deepEqual(small, [], `phone 390, ${coarse ? 'coarse' : 'fine'} pointer, cloud ${page}: every control is at least 44x44: ` + JSON.stringify(small));
         }
-        console.log('PASS phone 390 coarse: cloud sign-in and enroll inputs and buttons at least 44x44');
+        await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 });
+        console.log('PASS phone 390, coarse and fine pointer: cloud sign-in and enroll inputs and buttons at least 44x44');
 
         // The Cloud Hub account dropdown (Servers / Sign out, #3131): the dashboard
         // as the hub serves it (cloud-mode boot flag, a signed-in session).

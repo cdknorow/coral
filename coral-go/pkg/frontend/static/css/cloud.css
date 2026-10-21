@@ -16,14 +16,14 @@ body.cloud-mode [data-local-only] { display: none !important; }
 .cloud-card p { margin: 0 0 14px; line-height: 1.5; opacity: .85; }
 .cloud-card label { display: block; font-size: 0.8125rem; margin: 12px 0 4px; }
 .cloud-card input[type=email], .cloud-card input[type=text] { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: var(--radius-lg);
-    border: 1px solid var(--control-border, var(--border, var(--fx-navy-line))); background: var(--bg-primary, var(--fx-navy-ink)); color: inherit; font-size: 0.9375rem; }
+    border: 1px solid var(--control-border, var(--border, var(--fx-navy-line))); background: var(--bg-primary, var(--fx-navy-ink)); color: inherit; font-size: 0.9375rem; min-height: var(--control-touch-height, 44px); } /* a 44px target on every pointer: the sign-in page is used from a phone (#5637) */
 .cloud-card input.cloud-code { font-family: ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; font-size: 1.125rem; text-align: center; }
-.cloud-btn { display: inline-block; width: 100%; box-sizing: border-box; margin-top: 14px; padding: 10px 14px; border-radius: var(--radius-lg); border: 1px solid var(--control-border, var(--border, var(--fx-navy-line)));
+.cloud-btn { display: inline-flex; align-items: center; justify-content: center; min-height: var(--control-touch-height, 44px); width: 100%; box-sizing: border-box; margin-top: 14px; padding: 10px 14px; border-radius: var(--radius-lg); border: 1px solid var(--control-border, var(--border, var(--fx-navy-line)));
     background: var(--bg-tertiary, #1c2330); color: inherit; font-size: 0.875rem; cursor: pointer; text-align: center; text-decoration: none; }
 .cloud-btn.primary { background: #1f6feb; border-color: #1f6feb; color: var(--text-on-accent); }
 .cloud-btn.danger { background: #b62324; border-color: #b62324; color: var(--text-on-accent); }
 .cloud-btn[disabled] { opacity: .55; cursor: default; }
-.cloud-divider { text-align: center; margin: 16px 0 0; font-size: 0.75rem; opacity: .6; }
+.cloud-divider { text-align: center; margin: 16px 0 0; font-size: 0.8125rem; opacity: .6; }
 .cloud-status { margin-top: 12px; min-height: 1.4em; font-size: 0.8125rem; }
 .cloud-status.error { color: #ff7b72; }
 .cloud-status.ok { color: var(--fx-green); }
@@ -97,7 +97,7 @@ body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
 /* Touch hit areas (#3098): these pages do not load touch.css; on a coarse
    pointer their inputs and buttons are at least 44px tall, like the dashboard. */
 @media (pointer: coarse) {
-    .cloud-card input, .cloud-card select, .cloud-btn { min-height: var(--control-touch-height, 44px); }
+    .cloud-card select { min-height: var(--control-touch-height, 44px); }
     .cs-enroll ol li a { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
 }
 
