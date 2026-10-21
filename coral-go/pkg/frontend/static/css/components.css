@@ -4136,6 +4136,47 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .saved-panel { overflow-y: auto; min-height: 0; flex: 1; }
 .saved-panel:focus { outline: none; }
 .saved-list { list-style: none; margin: 0; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+/* The shared Inbox component (inbox_panel.js, #5754): Tasks for you, and "Read the whole message" on a saved item. The rendered text (.md) comes from the shared renderer: classes md, md-h, md-plain, md-partial. */
+.ibx { display: flex; flex-direction: column; gap: var(--space-md); min-width: 0; }
+.ibx-live { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.ibx-tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-sm); }
+.ibx-task { border: 1px solid var(--border); border-radius: var(--radius-ml); background: var(--bg-secondary); min-width: 0; }
+.ibx-task-head { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; background: none; border: 0; color: var(--text-primary); padding: 10px 12px; cursor: pointer; border-radius: var(--radius-ml); font: inherit; }
+.ibx-task-head:hover { background: var(--bg-tertiary); }
+.ibx-task-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ibx-task-title { font-weight: 600; overflow-wrap: anywhere; }
+.ibx-task-meta { font-size: var(--fs-sm, 0.8125rem); color: var(--text-secondary); }
+.ibx-task-body, .ibx-saved-body { padding: 4px 12px 12px; min-width: 0; }
+.ibx-task-body[hidden], .ibx-saved-body[hidden] { display: none; }
+.ibx-saved { margin-top: 4px; }
+.ibx-saved-body { padding: 8px 0 0; }
+.ibx-saved-toggle { font-size: var(--fs-sm, 0.8125rem); }
+.ibx-task-facts { margin: 0 0 6px; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
+.ibx-loading, .ibx-why, .ibx-note, .ibx-empty { margin: 4px 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
+.ibx-error { margin: 4px 0; color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); }
+.ibx-reply { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.ibx-reply-label { font-weight: 600; font-size: var(--fs-sm, 0.8125rem); }
+.ibx-reply-input { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.ibx-reply-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ibx-reply-status { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); overflow-wrap: anywhere; }
+.ibx-open { align-self: flex-start; margin: 2px 0 6px; }
+.ibx .md, .ibx-saved-body .md { overflow-wrap: anywhere; line-height: 1.5; font-size: var(--fs-md, 0.875rem); color: var(--text-primary); }
+.md > :first-child { margin-top: 0; }
+.md p, .md ul, .md ol, .md blockquote, .md pre, .md table { margin: 0 0 8px; }
+.md ul, .md ol { padding-left: 22px; }
+.md blockquote { padding-left: 10px; border-left: 3px solid var(--border); color: var(--text-secondary); }
+.md pre { padding: 8px 10px; overflow-x: auto; background: var(--bg-tertiary); border-radius: var(--radius-md); }
+.md code { font-family: var(--font-mono, monospace); font-size: 0.9em; }
+.md table { border-collapse: collapse; display: block; overflow-x: auto; max-width: 100%; }
+.md th, .md td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+.md .md-h { font-weight: 700; margin: 10px 0 4px; }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: 10px 0; }
+.md a { color: var(--link-text); overflow-wrap: anywhere; }
+.md-plain { white-space: pre-wrap; }
+.md-partial { color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
+@media (pointer: coarse) {
+    .ibx-task-head, .ibx-saved-toggle, .ibx-send, .ibx-open { min-height: var(--control-touch-height, 44px); }
+}
 .saved-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-ml); padding: 10px 12px; }
 .saved-item .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .saved-item .top .material-icons { font-size: 1rem; color: var(--text-muted); flex: none; }

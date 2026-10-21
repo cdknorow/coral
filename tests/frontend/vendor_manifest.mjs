@@ -43,6 +43,12 @@ export const ENTRIES = [
     { file: 'xterm/addon-canvas.min.js', pkg: '@xterm/addon-canvas', version: '0.7.0', path: 'lib/addon-canvas.js', mode: 'verbatim', tarball: 'f8004a9c444289c686ac9b58df98505f3e027fcfea411b6845f9279cc281a774',
         note: 'Upstream deprecates it in later xterm lines; pinned, revisit at the next xterm bump.' },
     { file: 'xterm/addon-canvas.LICENSE', pkg: '@xterm/addon-canvas', version: '0.7.0', path: 'LICENSE', mode: 'verbatim', tarball: 'f8004a9c444289c686ac9b58df98505f3e027fcfea411b6845f9279cc281a774' },
+    // Shared with Coral Hub (#5754): ONE file, the same bytes in both repos. The hub pins this sha256; a change to it goes through Security on both sides, and fixtures/markdown-corpus.mjs
+    // (the shared hostile-input corpus, also pinned) runs against it in a real browser (hostile_markdown_browser).
+    { file: 'safe-markdown.js', mode: 'shared', pinned: 'f2e534847b953ab44c4f832e753ff9caf632bb93db9e8b56fbb9be82e79b1fad',
+        from: 'Coral Hub, internal/accountui/assets/markdown.js (AccountMarkdown)',
+        note: 'A small DOM-built markdown renderer for machine-supplied text (the shared Inbox, #5754): no HTML sink, no images, only http, https and mailto links with the host shown, hidden characters stripped, bounded work. '
+            + 'Loaded as a classic script; safe_markdown.js is its ES wrapper. Byte-identical to the hub\'s copy: the hub pins the same hash.' },
     { file: 'codemirror/codemirror-bundle.js', mode: 'bundle', built: '2026-03-23', input: 'tests/vendor-build/codemirror',
         note: 'An esbuild 0.28.1 IIFE (window.CoralCM) of CodeMirror 6 and its @lezer parsers, built from the input in `tests/vendor-build/codemirror` '
             + '(package.json with exact versions, package-lock.json, entry.js). Byte-verified: `node vendor_manifest.mjs --rebuild` runs '
@@ -66,6 +72,10 @@ export const ENTRIES = [
             { pkg: '@codemirror/lang-xml', version: '6.1.0' }, { pkg: '@codemirror/lang-yaml', version: '6.1.2' },
         ] },
 ];
+
+// The shared hostile-input corpus (also in the hub's repo, same bytes): pinned here as the renderer is.
+export const SHARED_CORPUS = path.resolve(here, 'fixtures/markdown-corpus.mjs');
+export const SHARED_CORPUS_SHA = '4365c0455bd41e4dc013ffda0f5ac5b5fb9d2c21fc9515d02132678d62e0def3';
 
 export function sha256(b) { return crypto.createHash('sha256').update(b).digest('hex'); }
 
@@ -106,7 +116,7 @@ function readmeText(rows) {
         '|---|---|---|---|---|---|',
     ];
     for (const r of rows) {
-        if (r.mode === 'bundle') continue;
+        if (r.mode === 'bundle' || r.mode === 'shared') continue;
         const how = { verbatim: `\`${r.path}\`, byte for byte`, 'jsdelivr-header': `\`${r.path}\` after jsDelivr's comment header`,
             'jsdelivr-minified': `jsDelivr's minification of \`${r.path}\` (not byte-comparable)` }[r.mode];
         out.push(`| \`${r.file}\` | [\`${r.pkg}\`](https://www.npmjs.com/package/${r.pkg}) | ${r.version} | \`${r.sha}\` | ${how} | \`${r.tarball || 'not recorded'}\` |`);
@@ -115,7 +125,14 @@ function readmeText(rows) {
         out.push('', `## \`${r.file}\``, '', `SHA-256 \`${r.sha}\`. ${r.note}`, '', '| Package | Version |', '|---|---|');
         for (const p of r.packages) out.push(`| \`${p.pkg}\` | ${p.version} |`);
     }
-    const notes = rows.filter(r => r.note && r.mode !== 'bundle');
+    for (const r of rows.filter(x => x.mode === 'shared')) {
+        out.push('', `## \`${r.file}\` (shared with Coral Hub)`, '', `SHA-256 \`${r.sha}\`, pinned in \`tests/frontend/vendor_manifest.mjs\`. From ${r.from}. ${r.note}`,
+            '', 'The hub pins the same hash. A change to this file needs Security on both sides. `tests/frontend/fixtures/markdown-corpus.mjs` (pinned by the same test, `' + SHARED_CORPUS_SHA + '`) is the hostile-input corpus both repos run against it in a real browser.');
+    }
+    out.push('', '## Update rule for DOMPurify and marked', '',
+        'They sanitize and render the agent-written HTML and markdown of the chat, the board, the docs and the artifact viewer. A security advisory for either one means an update of that file: within 7 days when it is rated high or critical, within 30 days otherwise. ',
+        'Before the new version lands the whole front-end suite runs on it, with `html_interpolation_census` and `fixtures/markdown-corpus.mjs` (the shared hostile corpus) in a real browser. The Inbox does not use them (it uses `safe-markdown.js`).');
+    const notes = rows.filter(r => r.note && r.mode !== 'bundle' && r.mode !== 'shared');
     if (notes.length) {
         out.push('', '## Notes', '');
         for (const r of notes) out.push(`- \`${r.file}\`: ${r.note}`);
@@ -218,7 +235,7 @@ async function main() {
     const rows = rowsNow();
     if (args.has('--fetch')) {
         let bad = 0;
-        for (const e of ENTRIES.filter(x => x.mode !== 'bundle')) {
+        for (const e of ENTRIES.filter(x => x.mode !== 'bundle' && x.mode !== 'shared')) {
             const { errs, tsha } = await fetchCheck(e);
             for (const m of errs) { console.log('FAIL ' + m); bad++; }
             if (!errs.length) console.log(`ok   ${e.file}: ${e.pkg}@${e.version} (${e.mode}), tarball ${tsha}`);
@@ -246,6 +263,10 @@ async function main() {
             + 'Check the file, then run: node tests/frontend/vendor_manifest.mjs --fetch && node tests/frontend/vendor_manifest.mjs --write');
         process.exit(1);
     }
+    const sharedErrs = [];
+    for (const r of rows.filter(x => x.mode === 'shared')) if (r.sha !== r.pinned) sharedErrs.push(`${r.file}: sha256 ${r.sha}, pinned ${r.pinned}: a change to a file shared with Coral Hub is a change in both repos, with Security on both sides`);
+    if (sha256(fs.readFileSync(SHARED_CORPUS)) !== SHARED_CORPUS_SHA) sharedErrs.push(`fixtures/markdown-corpus.mjs differs from its pinned sha256 ${SHARED_CORPUS_SHA}`);
+    if (sharedErrs.length) { console.error(sharedErrs.join('\n')); process.exit(1); }
     const inputErrs = ENTRIES.filter(e => e.mode === 'bundle').flatMap(bundleInputErrors);
     if (inputErrs.length) { console.error(inputErrs.join('\n')); process.exit(1); }
     const licErrs = licenseErrors();
