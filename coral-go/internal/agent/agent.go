@@ -567,7 +567,12 @@ func CleanupTempFiles(sessionID string) {
 	if SessionTokenFileRemover != nil {
 		SessionTokenFileRemover(sessionID) // a Codex agent's kept token file (#13 review N2)
 	}
-	paths := takeLaunchTemps(sessionID)
+	var paths []string
+	for _, p := range takeLaunchTemps(sessionID) {
+		if inLaunchTempFolder(p) {
+			paths = append(paths, p)
+		}
+	}
 	if dir := privateLaunchTempDir(); dir != "" {
 		if m, err := filepath.Glob(filepath.Join(dir, "coral_*_"+sessionID+"*")); err == nil {
 			paths = append(paths, m...)

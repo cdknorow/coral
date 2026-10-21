@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -107,6 +108,36 @@ func TestCleanupTempFilesUsesTheWrittenPathsInTheSystemTemp(t *testing.T) {
 	assert.NotContains(t, launchTemps.m, a, "nothing of a's is remembered after its teardown")
 	assert.NotContains(t, launchTemps.m, b, "nor of b's")
 	launchTemps.Unlock()
+}
+
+// #90 review N1: a recorded path is removed only when it is in the launch temp folder or the system
+// temp folder; one elsewhere (however it came to be recorded) is left alone.
+func TestCleanupTempFilesRemovesRecordedPathsOnlyInTheTempFolders(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	if runtime.GOOS == "windows" {
+		t.Setenv("TMP", tmp)
+		t.Setenv("TEMP", tmp)
+	}
+	usePrivateLaunchTempDir(t, filepath.Join(t.TempDir(), "tmp"))
+
+	a := "0b2f6c1e-3d4a-4b5c-8d6e-7f8091a2b3c4"
+	elsewhere := filepath.Join(t.TempDir(), "coral_prompt_"+a+"_1.txt")
+	require.NoError(t, os.WriteFile(elsewhere, []byte("x"), 0o600))
+	inSystemTemp := filepath.Join(tmp, "coral_prompt_"+a+"_2.txt")
+	require.NoError(t, os.WriteFile(inSystemTemp, []byte("x"), 0o600))
+	rememberLaunchTemp(a, elsewhere)
+	rememberLaunchTemp(a, inSystemTemp)
+	if runtime.GOOS == "windows" {
+		upper := filepath.Join(strings.ToUpper(tmp), "coral_prompt_"+a+"_3.txt")
+		require.NoError(t, os.WriteFile(upper, []byte("x"), 0o600))
+		rememberLaunchTemp(a, upper)
+		defer func() { assert.NoFileExists(t, upper, "the temp folder in another case is the same folder on Windows") }()
+	}
+
+	CleanupTempFiles(a)
+	assert.FileExists(t, elsewhere, "a recorded path outside the temp folders stays")
+	assert.NoFileExists(t, inSystemTemp, "a recorded path in the system temp folder goes")
 }
 
 func exists(p string) bool {
