@@ -1,5 +1,31 @@
 # Release Notes
 
+## v1.4.145 — Artifacts through Coral Hub are for the owner
+
+### Features
+
+- **Coral now gives the owner, through Coral Hub, a list of every artifact on this computer** (file name, type, size, team, the agent or person that made it, and when) **and accepts the owner's delete**; Coral Hub's Artifacts tab uses them as its matching update arrives. A message that linked to a deleted artifact shows "Artifact unavailable". An artifact made before this release shows "unknown" for who made it.
+
+### Changes
+
+- **Cross-team messaging is set in one place: Team settings > Messaging.** The tab shows one status line and one button, the "Cross-team messaging" and "Share files with other teams" switches (moved from Workflow), and the teams on other Corals that are linked to this team. A team on another Coral can message yours only when your Coral Hub account has linked the two teams and cross-team messaging is on here; linking happens in Coral Hub. Through Coral Hub the switches stay read-only, with "This setting can only be changed on the computer itself". When a message from another team is refused, the reply names Team settings > Messaging.
+- **Through Coral Hub, artifacts and pasted images are for the owner only**: the account this computer is linked to. People you have shared this Coral with in Coral Hub no longer see, list or comment on its artifacts or pasted images. On this computer the dashboard works as before.
+- **This needs Coral Hub's matching update:** until it arrives, artifacts and image thumbnails do not open through Coral Hub (this computer's dashboard is unaffected).
+- **Older link:** a computer linked to Coral Hub before Coral recorded its owner refuses artifacts and image thumbnails through Coral Hub until you link it again.
+- **Pasting an image no longer shows a notice**, and the "Share pasted images with Coral Hub viewers" switch is gone, because the answer is now always the same: only the owner sees them. "Remove shared copy" on a thumbnail stays. The documentation now describes pasting in [Files and artifacts](https://subgentic.github.io/coral/files-and-artifacts/#images-you-paste-or-attach).
+- **Agents can read Coral's own documentation:** `coral-agent docs` lists and prints the docs, every agent prompt now names it, and the Docs tab has a **Copy docs line for agents** button.
+
+### Fixes
+
+- **The Team settings tabs no longer move while they load.** The Messaging tab is drawn together with the others, so the tab strip is final the first time it shows and does not change when Health check arrives.
+
+### Internal
+
+- When an agent session has two active board subscriptions, Coral now always uses the same one (the newest, then the highest row), so a message is always addressed the same way.
+- Every read of the latest release now checks that the reply is Coral's own release page, in the server's log line as well as in the update notice.
+- A test seeded an agent under two names, so a notice could go to either one; it now uses one name, which ended a failure of about one run in sixty.
+- The macOS update code, which is not switched on in any release yet, read only the first 64 KB of the system's process list, and a busy Mac's list is about 500 KB: it could not see the new Coral start and would have rolled back every update, and could have taken a running Coral for a stopped one. It now reads the whole answer and refuses one that was cut.
+
 ## v1.4.144 — Two release channels: Agentic and Approved
 
 ### Features
