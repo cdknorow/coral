@@ -128,7 +128,7 @@ class Agent:
 # ── Cases ────────────────────────────────────────────────────────────────────
 
 SPECIALS = "quote' dq\" back\\slash $(whoami) `id` %PATH% ^caret & | < > !bang C:\\Program Files (x86)\\Coral\\"
-UNICODE = "héllo wörld ü ß 日本語 中文 🎉 👍🏽 👨‍👩‍👧 ✓ —"
+UNICODE = "héllo wörld ü ß 日本語 中文 🎉 👍🏽 👨\u200d👩\u200d👧 ✓ —"
 
 
 def text_cases():

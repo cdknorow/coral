@@ -108,13 +108,14 @@ var (
 	winDelete = setOf("remove-item", "ri", "rm", "rmdir", "del", "erase", "rd", "clear-content", "clear-item", "rimraf")
 	// Writes over or moves files.
 	winWrite = setOf("move-item", "mi", "mv", "move", "rename-item", "rni", "ren", "rename", "set-content", "add-content", "ac",
-		"out-file", "new-item", "ni", "set-item", "si", "copy-item", "cp", "copy", "cpi", "xcopy", "robocopy", "tee-object", "export-csv", "export-clixml")
+		"out-file", "new-item", "ni", "mkdir", "md", "set-item", "si", "copy-item", "cp", "copy", "cpi", "xcopy", "robocopy", "tee-object", "export-csv", "export-clixml")
 	// Always high-risk, whatever they are given.
 	winSystem = setOf("format-volume", "clear-disk", "initialize-disk", "remove-partition", "diskpart", "stop-computer", "restart-computer",
 		"shutdown", "set-executionpolicy", "bcdedit", "takeown", "cipher", "clear-recyclebin", "invoke-expression", "iex",
 		"remove-itemproperty", "set-itemproperty", "new-itemproperty", "clear-eventlog", "remove-eventlog", "wevtutil",
 		"set-mppreference", "add-mppreference", "disable-netfirewallrule", "remove-netfirewallrule", "netsh", "schtasks",
-		"remove-service", "set-service", "stop-service", "new-service", "sc", "net", "net1", "taskkill", "wmic", "mklink")
+		"remove-service", "set-service", "stop-service", "new-service", "sc", "net", "net1", "taskkill", "wmic", "mklink",
+		"format", "convert", "label", "fsutil", "vssadmin", "mountvol")
 	// Cmdlets that only read or print: never risky for being given -Recurse or a path.
 	cmdletRe   = regexp.MustCompile(`^[A-Za-z]+-[A-Za-z]+$`)
 	providerRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]+:`) // HKLM:, HKCU:, Env:, Cert:, Function:... (a drive letter is one character)
@@ -394,6 +395,14 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	for _, a := range args {
 		recurse = recurse || isRecurse(a)
 		force = force || isForce(a)
+	}
+
+	if name == "xargs" { // xargs hands the pipeline's output to another command: the paths it names are not visible here
+		for _, a := range args {
+			if v := cmdName(a); winDelete[v] || winWrite[v] || winSystem[v] {
+				return "it hands what a pipeline names to " + v + ", not a path inside the working directory"
+			}
+		}
 	}
 
 	switch {
