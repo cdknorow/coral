@@ -498,9 +498,8 @@ function _taskListHeaderHtml() {
 }
 
 /** A row's status icon and label. */
-function _taskStatusIconHtml(t) {
-    const statusWrap = (className, detail, icon, label) =>
-        `<span class="board-task-status-wrap ${className}" title="${escapeAttr(detail)}" aria-label="${escapeAttr(detail)}" role="img" tabindex="0">${icon}<span class="board-task-status-label">${label}</span></span>`;
+function _taskStatus(t) {
+    const statusWrap = (className, detail, icon, label) => ({ className, detail, icon, label });
     const activelyClaimed = t.status === 'in_progress' && Boolean(t.claimed_at);
     const workingDetail = activelyClaimed ? 'Claimed · Working' : 'Open · Working';
     const statusIcon = (t.outcome || t.workflow?.outcome) === 'failed'
@@ -521,6 +520,12 @@ function _taskStatusIconHtml(t) {
         ? statusWrap('pending', 'Open · Draft', '<span class="material-icons board-task-status-icon draft" aria-hidden="true">edit_note</span>', 'Open <b>· Draft</b>')
         : statusWrap('pending', 'Open', '<span class="material-icons board-task-status-icon pending" aria-hidden="true">radio_button_unchecked</span>', 'Open');
     return statusIcon;
+}
+
+/** The status cell. Not a tab stop (#5813): a focusable image is a known anti-pattern; the status is spoken as part of the row's Open button (_taskStatus(t).detail) and is its title for the mouse. */
+function _taskStatusIconHtml(t) {
+    const { className, detail, icon, label } = _taskStatus(t);
+    return `<span class="board-task-status-wrap ${className}" title="${escapeAttr(detail)}" aria-label="${escapeAttr(detail)}" role="img">${icon}<span class="board-task-status-label">${label}</span></span>`;
 }
 
 /** A row's cost text and class: a subagent's spend as it runs, an agent's or a finished task's, or a running task's live cost. */
@@ -569,10 +574,13 @@ function _taskRowsHtml(tasks) {
         const timeStr = _formatTaskTime(t.created_at);
         const statusIcon = _taskStatusIconHtml(t);
         const { costText, costClass } = _taskRowCost(t, isAgent, isSubagent);
-        // The subagent id stays in its data-subagent-id attribute; the action reads it from there.
-        const clickHandler = isSubagent ? ` role="button" tabindex="0" data-key-click data-on-click="task-subagent-open" style="cursor:pointer"`
-            : isAgent ? ` role="button" tabindex="0" data-key-click data-on-click="task-open" data-kind="agent" data-task-id="${Number(t.id)}" style="cursor:pointer"`
-            : ` role="button" tabindex="0" data-key-click data-on-click="task-open" data-kind="board" data-task-id="${Number(t.id)}" style="cursor:pointer"`;
+        // The row is not a button (#5813): a button holding other controls hides them from some screen readers and gives the row three tab stops. Its one keyboard control is the real button in the id
+        // cell (Enter or Space on it is a click, which bubbles to the row's action); a click anywhere else on the row still opens the task for the mouse. The subagent id stays in its
+        // data-subagent-id attribute; the action reads it from there.
+        const clickHandler = isSubagent ? ` data-on-click="task-subagent-open" style="cursor:pointer"`
+            : isAgent ? ` data-on-click="task-open" data-kind="agent" data-task-id="${Number(t.id)}" style="cursor:pointer"`
+            : ` data-on-click="task-open" data-kind="board" data-task-id="${Number(t.id)}" style="cursor:pointer"`;
+        const openLabel = `${isSubagent ? 'Open subagent' : `Open task ${taskIdLabel}`}: ${t.title || t.description || ''}, ${_taskStatus(t).detail}`;
         const typeCell = isSubagent
             ? `<span class="board-task-type board-task-type-subagent" title="Subagent launched by ${escapeAttr(assignee)}"><span class="material-icons" aria-hidden="true">account_tree</span>sub</span>`
             : `<span class="board-task-type">${isAgent ? 'agent' : 'board'}</span>`;
@@ -587,7 +595,7 @@ function _taskRowsHtml(tasks) {
         return `
         <div class="board-task-item ${statusClass}${isSubagent ? ' board-task-subagent' : ''}"${clickHandler}${isSubagent ? ` data-subagent-id="${escapeAttr(t.subagent_id || '')}"` : ''}>
             ${statusIcon}
-            <button type="button" class="board-task-id board-task-open" title="Task ID" aria-label="Open task ${escapeAttr(taskIdLabel)}: ${escapeAttr(t.title || t.description || '')}">${taskIdLabel}</button>
+            <button type="button" class="board-task-id board-task-open" title="${isSubagent ? 'Open the subagent' : 'Task ID'}" aria-label="${escapeAttr(openLabel)}">${taskIdLabel}</button>
             <span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(t.priority || 'none')}">${t.priority ? (_priorityLabel[t.priority] || escapeHtml(t.priority)) : '\u2014'}</span>
             ${typeCell}
             <span class="board-task-assignee">${escapeHtml(assignee)}</span>

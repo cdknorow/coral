@@ -36,11 +36,11 @@
             <div id="mb-tools" class="mb-tools"></div>
             <!-- Messages -->
             <div class="mb-messages-wrap">
-                <div id="mb-messages" class="mb-messages-scroll" tabindex="-1">
-                    <div id="mb-sleep-banner" class="mb-sleep-banner" style="display:none">
+                <div id="mb-messages" class="mb-messages-scroll" tabindex="-1" role="list" aria-label="Messages"><!-- every direct child is a list item: a message, a run of task-queue lines, "Load earlier", or a notice, so a screen reader can move item by item -->
+                    <div id="mb-sleep-banner" class="mb-sleep-banner" role="listitem" style="display:none">
                         <span>🌙 This team is sleeping. Messages are paused.</span>
                     </div>
-                    <div class="empty-state" id="mb-messages-empty">No messages yet</div>
+                    <div class="empty-state" id="mb-messages-empty" role="listitem">No messages yet</div>
                 </div>
                 <!-- Reading higher up while posts arrive (#4502): a count and a way to the latest, announced politely -->
                 <!-- What arrives at the bottom of the board, said politely to a screen reader (message_board.js announceArrivals) -->

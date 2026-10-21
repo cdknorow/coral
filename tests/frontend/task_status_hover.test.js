@@ -59,14 +59,14 @@ const BASE = require('./test_base').BASE;
         assert.equal(working.text, 'Open');
         assert.equal(working.title, 'Open · Working');
         assert.equal(working.aria, 'Open · Working');
-        assert.equal(working.tabIndex, 0);
+        assert.equal(working.tabIndex, -1, 'the status is not a tab stop (#5813): its words are in the Open button\'s name');
         assert.equal(working.role, 'img');
         assert.equal(working.label, true);
         assert.equal(working.spinner, true);
         assert.equal(blocked.text, 'Blocked', 'a blocked task reads Blocked (#3170)');
         assert.equal(blocked.title, 'Blocked: waiting for prerequisites');
         assert.equal(blocked.aria, 'Blocked: waiting for prerequisites');
-        assert.equal(blocked.tabIndex, 0);
+        assert.equal(blocked.tabIndex, -1, 'the status is not a tab stop (#5813): its words are in the Open button\'s name');
         assert.equal(blocked.role, 'img');
         assert.equal(blocked.label, true);
         assert.equal(blocked.hourglass, 'hourglass_empty');
@@ -76,14 +76,14 @@ const BASE = require('./test_base').BASE;
         assert.equal(finished.text, 'Finished');
         assert.equal(finished.title, 'Finished');
         assert.equal(finished.aria, 'Finished');
-        assert.equal(finished.tabIndex, 0);
+        assert.equal(finished.tabIndex, -1, 'the status is not a tab stop (#5813): its words are in the Open button\'s name');
         assert.equal(finished.label, true);
 
         const claimed = status.find(row => row.id === '#1500');
         assert.equal(claimed.text, 'Claimed');
         assert.equal(claimed.title, 'Claimed · Working');
         assert.equal(claimed.aria, 'Claimed · Working');
-        assert.equal(claimed.tabIndex, 0);
+        assert.equal(claimed.tabIndex, -1, 'the status is not a tab stop (#5813): its words are in the Open button\'s name');
         assert.equal(claimed.label, true);
 
         const assignedOpen = status.find(row => row.id === '#1501');
@@ -95,9 +95,12 @@ const BASE = require('./test_base').BASE;
         assert.equal(review.text, 'Review');
         assert.equal(review.title, 'Open · Review pending');
 
-        const focus = await ev(`(() => { const el = document.querySelector('#board-task-list .board-task-item:not(.board-task-header) .board-task-status-wrap'); el.focus(); return {label: el.getAttribute('aria-label'), tabIndex: el.tabIndex}; })()`);
+        // the row's one keyboard control says the task and its status (#5813): "Open task #N: title, Open · Working"
+        const focus = await ev(`(() => { const row = document.querySelector('#board-task-list .board-task-item:not(.board-task-header)'); const el = row.querySelector('.board-task-status-wrap'); el.focus(); return { label: el.getAttribute('aria-label'), tabIndex: el.tabIndex, focused: document.activeElement === el, open: row.querySelector('.board-task-open').getAttribute('aria-label') }; })()`);
         assert.equal(focus.label, 'Open · Working');
-        assert.equal(focus.tabIndex, 0);
+        assert.equal(focus.tabIndex, -1);
+        assert.equal(focus.focused, false, 'the status image takes no focus');
+        assert.match(focus.open, /^Open task #\d+: .+, Open · Working$/, 'the Open button carries the status: ' + focus.open);
         await ev(`document.getElementById('board-tasks-section').scrollIntoView({block:'start'})`);
         require('node:fs').writeFileSync('/tmp/coral-1497-task-status-hover.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
         console.log(JSON.stringify({working, blocked, focus}));

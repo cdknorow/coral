@@ -214,6 +214,7 @@ async function loadBoardMessages(project) {
     if (!loadingEl && msgsEl) {
         loadingEl = document.createElement('div');
         loadingEl.className = 'loading-indicator';
+        loadingEl.setAttribute('role', 'listitem');
         loadingEl.textContent = 'Loading messages';
         msgsEl.appendChild(loadingEl);
     }
@@ -307,14 +308,14 @@ function boardHeaderHtml(messages) {
     let loadEarlierHtml = '';
     if (_loadedOffset > 0) {
         const remaining = _loadedOffset;
-        loadEarlierHtml = `<div class="mb-load-earlier" style="text-align:center;padding:8px 0 12px">
+        loadEarlierHtml = `<div class="mb-load-earlier" role="listitem" style="text-align:center;padding:8px 0 12px">
             <button class="btn btn-small" data-on-click="mb-earlier" class="mb-project-meta">
                 Load ${Math.min(remaining, PAGE_SIZE)} earlier messages (${remaining} remaining)
             </button>
         </div>`;
     }
     // Message count indicator
-    const countHtml = `<div class="mb-message-count">
+    const countHtml = `<div class="mb-message-count" role="listitem">
         Showing ${messages.length} of ${_totalMessages} messages
     </div>`;
     return loadEarlierHtml + countHtml;
@@ -336,7 +337,7 @@ function renderBoardItem(item, prev) {
     const deleteLabel = `Delete the message from ${agent}, ${formatTime(m.created_at)}`; // names the message: the × alone is read as "times"
     const checkbox = isSelectMode() ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${isSelected(m.id) ? 'checked' : ''} data-on-click="mb-msg-select">` : '';
     return `
-        <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}"${messageAttachmentAttrs(m)} style="${boardMessageColorStyle(color)}">
+        <div class="mb-message ${spacing}${alignClass}${selectedClass}" role="listitem" data-message-id="${escapeAttr(String(m.id))}"${messageAttachmentAttrs(m)} style="${boardMessageColorStyle(color)}">
             ${boardAvatar(m, agent)}
             <div class="mb-message-header">
                 ${checkbox}
@@ -427,6 +428,7 @@ function renderMessages(messages, { keepAnchor = false, prepended = 0 } = {}) {
     wireBoardScroll(container);
     if (!messages.length) {
         emptyState(container, 'No messages yet');
+        container.firstElementChild.setAttribute('role', 'listitem'); // the messages box is a list: its one notice is an item
         return;
     }
     // Save scroll position before replacing content

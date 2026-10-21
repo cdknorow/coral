@@ -611,7 +611,7 @@
 1	team_availability.js	Object.entries(labels).filter(([key]) => data.summary[key] || key === 'available').map(([key,label]) => `<div 
 1	team_availability.js	a.tasks.length ? `<ul>${tasks(a.tasks)}</ul>` : ''
 1	team_availability.js	actions
-1	team_availability.js	data.agents.map(a => { const every = a.reminder_interval_seconds ? ` every ${Math.round(a.reminder_interval_se
+1	team_availability.js	data.agents.map((a, i) => { const every = a.reminder_interval_seconds ? ` every ${Math.round(a.reminder_interv
 1	team_availability.js	data.unassigned_tasks.length ? `<section class="availability-unassigned"><h3>Unassigned work</h3><ul>${tasks(d
 1	team_availability.js	key
 1	team_availability.js	label

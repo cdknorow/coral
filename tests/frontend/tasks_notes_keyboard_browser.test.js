@@ -29,8 +29,11 @@ const { connect } = require('./agent_view_harness');
         await waitFor(`document.querySelectorAll('#board-task-list [data-on-click="task-open"]').length === 2`, 'two task rows', 5000);
 
         console.log('1. Tasks: rows and headings');
-        const kinds = await ev(`[...document.querySelectorAll('#board-task-list [data-on-click="task-open"], #board-task-list [data-on-click="task-sort"]')].map(e => ({ tab: e.tabIndex, role: e.getAttribute('role') }))`);
-        assert.ok(kinds.length >= 3 && kinds.every(k => k.tab === 0 && k.role === 'button'), 'rows and headings are focusable buttons: ' + JSON.stringify(kinds) + (kinds.length ? '' : ' ' + await ev(`document.getElementById('board-task-list').innerHTML.slice(0, 600)`)));
+        const kinds = await ev(`[...document.querySelectorAll('#board-task-list [data-on-click="task-sort"]')].map(e => ({ tab: e.tabIndex, role: e.getAttribute('role') }))`);
+        assert.ok(kinds.length >= 3 && kinds.every(k => k.tab === 0 && k.role === 'button'), 'the headings are focusable buttons: ' + JSON.stringify(kinds));
+        // a task row is neither (#5813): its one keyboard control is the native Open button, named by the task and its status
+        const rowKinds = await ev(`[...document.querySelectorAll('#board-task-list [data-on-click="task-open"]')].map(e => ({ tab: e.tabIndex, role: e.getAttribute('role'), open: e.querySelector('button.board-task-open')?.getAttribute('aria-label') || '' }))`);
+        assert.ok(rowKinds.length === 2 && rowKinds.every(k => k.tab === -1 && k.role === null && /^Open task #\d+: .+, .+$/.test(k.open)), 'rows are not buttons; each holds a named native Open button: ' + JSON.stringify(rowKinds));
         const sortLabel = () => ev(`document.querySelector('#board-task-list [data-sort="priority"]').textContent`);
         assert.equal((await sortLabel()).includes('▲') || (await sortLabel()).includes('▼'), false, 'not sorted by priority yet');
         for (const [k, code, vk] of [['Enter', 'Enter', 13], [' ', 'Space', 32]]) {
@@ -39,7 +42,7 @@ const { connect } = require('./agent_view_harness');
             await press(k, code, vk);
             await waitFor(`document.querySelector('#board-task-list [data-sort="priority"]').textContent !== ${JSON.stringify(before)}`, `${JSON.stringify(k)} sorts by the heading`, 4000);
         }
-        await ev(`document.querySelector('#board-task-list [data-on-click="task-open"]').focus(); true`);
+        await ev(`document.querySelector('#board-task-list .board-task-open').focus(); true`);
         await press('Enter', 'Enter', 13);
         await waitFor(`getComputedStyle(document.getElementById('task-detail-modal')).display !== 'none'`, 'the task details open on Enter', 5000);
         assert.ok((await ev(`document.getElementById('task-detail-modal').textContent`)).includes('keyboard test') || (await ev(`document.getElementById('task-detail-modal').textContent`)).includes('focus ring'), 'the details are the task\'s');

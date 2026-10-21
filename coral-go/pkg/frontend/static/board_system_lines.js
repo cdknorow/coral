@@ -66,7 +66,7 @@ export function renderTaskQueueRun(item, formatTime) {
                 <span class="mb-queue-text">${escapeHtml(String(m.content || ''))}</span>
             </div>`).join('');
     const open = item.msgs.some(m => openIds.has(String(m.id)));
-    return `<details class="mb-queue-run" data-queue-run="${escapeAttr(item.key)}"${open ? ' open' : ''}>
+    return `<details class="mb-queue-run" role="listitem" data-queue-run="${escapeAttr(item.key)}"${open ? ' open' : ''}>
         <summary class="mb-queue-summary" title="Task queue updates">
             <span class="mb-queue-icon" aria-hidden="true">⚙</span>
             <span class="mb-queue-label">${escapeHtml(label)}</span>
