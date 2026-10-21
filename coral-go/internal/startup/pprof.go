@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/subgentic/coral/internal/auth"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/tmux"
 )
@@ -75,7 +76,9 @@ func startPprofOn(ctx context.Context, addr string) (net.Addr, error) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(tmux.ExecCounts())
 	})
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	// Only Coral's own OS user (#95): the profiler has no credential, so another user of this
+	// computer, or a process whose user can't be told, is refused.
+	srv := &http.Server{Handler: ownUserOnly(mux), ReadHeaderTimeout: 10 * time.Second, ConnContext: auth.ConnContext}
 	go func() {
 		defer safego.Recover("startup/pprof:65")
 		<-ctx.Done()
@@ -88,6 +91,17 @@ func startPprofOn(ctx context.Context, addr string) (net.Addr, error) {
 		}
 	}()
 	return ln.Addr(), nil
+}
+
+// ownUserOnly refuses a request whose loopback connection isn't Coral's own OS user's (auth.PeerReason).
+func ownUserOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if reason := auth.PeerReason(r); reason != "" {
+			http.Error(w, "the profiler is only for the account Coral runs as ("+reason+")", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // checkLoopbackAddr accepts host:port only when host is a loopback IP literal.

@@ -220,7 +220,7 @@ The run folder is private (0700, files 0600). Coral makes each step's folder and
 ### Example
 
 ```bash
-curl -X POST http://localhost:8420/api/workflows \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/workflows \
   -H "Content-Type: application/json" \
   -d '{
     "name": "nightly-release",
@@ -279,7 +279,7 @@ Updates only the fields you include. When updating `steps`, Coral re-validates t
 ### Example
 
 ```bash
-curl -X PUT http://localhost:8420/api/workflows/12 \
+curl -H "Authorization: Bearer $(coral api-key)" -X PUT http://localhost:8420/api/workflows/12 \
   -H "Content-Type: application/json" \
   -d '{
     "enabled": 0,
@@ -336,7 +336,7 @@ At most **5 workflow runs** are in progress at once. A trigger beyond that answe
 ### Example
 
 ```bash
-curl -X POST http://localhost:8420/api/workflows/by-name/nightly-release/trigger \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/workflows/by-name/nightly-release/trigger \
   -H "Content-Type: application/json" \
   -d '{
     "trigger_type": "manual",
@@ -471,7 +471,7 @@ Serves a file from the run artifact directory for one step.
 ### Example
 
 ```bash
-curl http://localhost:8420/api/workflows/runs/44/steps/0/files/test-report.txt
+curl -H "Authorization: Bearer $(coral api-key)" http://localhost:8420/api/workflows/runs/44/steps/0/files/test-report.txt
 ```
 
 ### Errors

@@ -1049,7 +1049,7 @@ no `X-Coral-Working-Directory` header, and a diff stored before this release is 
 same way when served. The live diff on this computer is unchanged.
 
 ```bash
-curl -fsS \
+curl -H "Authorization: Bearer $(coral api-key)" -fsS \
   http://localhost:PORT/api/board/eval-team/tasks/42/changes.diff \
   -o changes.diff
 ```

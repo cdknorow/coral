@@ -135,7 +135,7 @@ POST /api/scheduled/jobs
 ### Prompt job example
 
 ```bash
-curl -X POST http://localhost:8420/api/scheduled/jobs \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/scheduled/jobs \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Morning triage",
@@ -149,7 +149,7 @@ curl -X POST http://localhost:8420/api/scheduled/jobs \
 ### Workflow job example
 
 ```bash
-curl -X POST http://localhost:8420/api/scheduled/jobs \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/scheduled/jobs \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Nightly release workflow",
@@ -193,7 +193,7 @@ Updates only the fields you include. If `cron_expr` is present, Coral validates 
 ### Example
 
 ```bash
-curl -X PUT http://localhost:8420/api/scheduled/jobs/7 \
+curl -H "Authorization: Bearer $(coral api-key)" -X PUT http://localhost:8420/api/scheduled/jobs/7 \
   -H "Content-Type: application/json" \
   -d '{
     "enabled": 0,
@@ -357,7 +357,7 @@ Validates a five-field cron expression and returns the next five fire times.
 ### Example
 
 ```bash
-curl -X POST http://localhost:8420/api/scheduled/validate-cron \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/scheduled/validate-cron \
   -H "Content-Type: application/json" \
   -d '{"cron_expr": "0 9 * * 1-5", "timezone": "America/Los_Angeles"}'
 ```

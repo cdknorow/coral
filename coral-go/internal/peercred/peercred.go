@@ -183,6 +183,58 @@ func unmap(ap netip.AddrPort) netip.AddrPort {
 	return netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port())
 }
 
+// Verdict is whose a loopback connection's client socket is.
+type Verdict int
+
+const (
+	// Unsupported: this system can't be asked, or its socket table has a layout this build doesn't
+	// know. The caller applies the rules for a system without the check.
+	Unsupported Verdict = iota
+	// Self: the socket's owner is positively this process's user (Windows: the same token user SID,
+	// elevated or not).
+	Self
+	// OtherUser: the socket's owner is another user.
+	OtherUser
+	// Unattributed: the owner couldn't be told: no row (after a re-read), two rows that disagree, a
+	// process or token that can't be opened, any error. Fail closed: as another user's.
+	Unattributed
+)
+
+// retryWait is how long Attribute waits before re-reading a socket table that has no row for the
+// connection yet (the race with accept, or a short-lived client).
+var retryWait = 20 * time.Millisecond
+
+// Attribute tells whose the loopback client socket client -> server is (#95). Only a positive
+// answer is Self; anything that can't be told is Unattributed, never a guess. err says why for
+// Unattributed (and for a layout this build doesn't know).
+func Attribute(client, server netip.AddrPort) (Verdict, error) {
+	if !Supported {
+		return Unsupported, nil
+	}
+	client, server = unmap(client), unmap(server)
+	var err error
+	for attempt := 0; attempt < 2; attempt++ { // re-read once: the race with accept
+		if attempt > 0 {
+			time.Sleep(retryWait)
+		}
+		var me bool
+		if me, err = ownerCheck(client, server); err == nil {
+			if me {
+				return Self, nil
+			}
+			return OtherUser, nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			break
+		}
+	}
+	if errors.Is(err, ErrLayout) {
+		logLayoutOnce(err)
+		return Unsupported, err // this OS version's table isn't one we know: as an unsupported system
+	}
+	return Unattributed, err
+}
+
 // SameUser reports whether the loopback TCP client of r runs as this process's
 // user. supported is false where the kernel cannot be asked (see Supported) or
 // the request is not a TCP connection over loopback: the caller applies its own
@@ -205,21 +257,14 @@ func SameUser(r *http.Request) (same, supported bool) {
 	if !client.Addr().Unmap().IsLoopback() {
 		return false, false // not a local request: not this package's question
 	}
-	client, server = unmap(client), unmap(server)
-	for attempt := 0; attempt < 2; attempt++ { // re-read once: the race with accept
-		var me bool
-		if me, err = ownerCheck(client, server); err == nil {
-			return me, true
-		}
-		if !errors.Is(err, ErrNotFound) {
-			break
-		}
+	switch v, err := Attribute(client, server); v {
+	case Self:
+		return true, true
+	case Unsupported:
+		return false, false
+	case Unattributed:
+		logRefused(unmap(client), err)
 	}
-	if errors.Is(err, ErrLayout) {
-		logLayoutOnce(err)
-		return false, false // this OS version's table isn't one we know: as an unsupported system
-	}
-	logRefused(client, err)
 	return false, true
 }
 
