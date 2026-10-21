@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/subgentic/coral/internal/agent"
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #5836: a Claude launch that nobody gave a permission mode starts in Auto, not in a bypass of every prompt (and not in prompts nobody is there to answer); what the person chose
@@ -193,4 +195,69 @@ func TestTheAutoDefaultDoesNotGetPastTheHubGate(t *testing.T) {
 	require.NoError(t, ss.SetSetting(ctx, "default_permission_mode", "plan"))
 	assert.Equal(t, "plan", launch(true), "a saved default is the owner's choice")
 	assert.Equal(t, "plan", launch(false))
+}
+
+// #5836, Security's FIX 3: an agent never starts a less-restricted agent (#4032): its launch has every permission flag stripped, so a child with no flags must not start in Auto
+// (it would ask for less than its parent). An agent-token launch, and a team member an agent launches that is not exactly a saved template entry, keep the old rule (the saved
+// default, else default); the same from the dashboard gets Auto, and a saved template's member is unchanged (Auto).
+func TestAnAgentsLaunchIsNotStartedInAutoByDefault(t *testing.T) {
+	_, h, _, ss := setupSessionsTestServer(t)
+	stubCLIPaths(t, ss)
+	ctx := context.Background()
+	const parent = "11111111-2222-4333-8444-555555555555"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: parent, AgentType: "claude", AgentName: "parent", WorkingDir: t.TempDir()}))
+	asAgent := func(r *http.Request) *http.Request { // a request with an agent's verified session token
+		return r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, &store.SessionTokenOwner{SessionID: parent, SessionName: "claude-" + parent}))
+	}
+	mode := func(sessionID string) string {
+		ls, err := ss.GetLiveSession(ctx, sessionID)
+		require.NoError(t, err)
+		require.NotNil(t, ls)
+		require.NotNil(t, ls.PermissionMode)
+		return *ls.PermissionMode
+	}
+	launch := func(agentCaller bool) string {
+		t.Helper()
+		b, _ := json.Marshal(map[string]any{"agent_type": at.Claude, "working_dir": t.TempDir()})
+		req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch", bytes.NewReader(b))
+		if agentCaller {
+			req = asAgent(req)
+		}
+		rec := httptest.NewRecorder()
+		h.Launch(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var res map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res))
+		return mode(res["session_id"].(string))
+	}
+	team := func(agentCaller bool, member map[string]any) string {
+		t.Helper()
+		b, _ := json.Marshal(map[string]any{"board_name": "ag" + strings.ReplaceAll(t.Name(), "/", "") + fmt.Sprint(len(member)), "new_board": true, "working_dir": t.TempDir(), "agent_type": at.Claude,
+			"agents": []map[string]any{member}})
+		req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(b))
+		if agentCaller {
+			req = asAgent(req)
+		}
+		rec := httptest.NewRecorder()
+		h.LaunchTeam(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var res struct {
+			Agents []map[string]any `json:"agents"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res))
+		require.Len(t, res.Agents, 1, rec.Body.String())
+		return mode(res.Agents[0]["session_id"].(string))
+	}
+	plain := map[string]any{"name": "A", "agent_type": "claude"}
+
+	assert.Equal(t, "auto", launch(false), "from the dashboard: Auto")
+	assert.Equal(t, "default", launch(true), "an agent's launch with no flags: not Auto")
+	assert.Equal(t, "auto", team(false, plain), "a team member from the dashboard: Auto")
+	assert.Equal(t, "default", team(true, plain), "a team member an agent launches: not Auto")
+	// a member that is exactly an entry of a template the Operator saved is the Operator's choice
+	require.NoError(t, ss.SetSetting(ctx, "saved_team_templates", `[{"name":"t","agents":[{"name":"S","agent_type":"claude"}]}]`))
+	assert.Equal(t, "auto", team(true, map[string]any{"name": "S", "agent_type": "claude"}), "a saved template's member, launched by an agent: unchanged (Auto)")
+	// a saved default still wins for the agent's child, as before this change
+	require.NoError(t, ss.SetSetting(ctx, "default_permission_mode", "acceptEdits"))
+	assert.Equal(t, "acceptEdits", launch(true))
 }
