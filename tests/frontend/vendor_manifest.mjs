@@ -44,13 +44,14 @@ export const ENTRIES = [
         note: 'Upstream deprecates it in later xterm lines; pinned, revisit at the next xterm bump.' },
     { file: 'xterm/addon-canvas.LICENSE', pkg: '@xterm/addon-canvas', version: '0.7.0', path: 'LICENSE', mode: 'verbatim', tarball: 'f8004a9c444289c686ac9b58df98505f3e027fcfea411b6845f9279cc281a774' },
     { file: 'codemirror/codemirror-bundle.js', mode: 'bundle', built: '2026-03-23', input: 'tests/vendor-build/codemirror',
-        note: 'An esbuild 0.27.4 IIFE (window.CoralCM) of CodeMirror 6 and its @lezer parsers, built from the input in `tests/vendor-build/codemirror` '
+        note: 'An esbuild 0.28.1 IIFE (window.CoralCM) of CodeMirror 6 and its @lezer parsers, built from the input in `tests/vendor-build/codemirror` '
             + '(package.json with exact versions, package-lock.json, entry.js). Byte-verified: `node vendor_manifest.mjs --rebuild` runs '
             + '`npm ci --ignore-scripts` there and `esbuild entry.js --bundle --format=iife --global-name=CoralCM --minify`, and the output must '
             + 'equal this file. The lock was resolved with `npm install --before=2026-03-23T18:06:23Z`, the date of the earlier build, whose output '
             + 'this file replaces: the two have the same size and differ in 8 bytes, all minified variable names (the lang-sql dialect tables and '
             + 'yaml-frontmatter); the earlier build\'s input was never recorded, so that difference is not traced to a package. '
-            + '(codemirror by its latest tag: 6.65.7 is an old CodeMirror 5 publish.)',
+            + '(codemirror by its latest tag: 6.65.7 is an old CodeMirror 5 publish.) esbuild was raised from 0.27.4 to 0.28.1 (#5545, the npm audit finding) '
+            + 'with the same output: the rebuild is byte for byte this file under both.',
         packages: [
             { pkg: 'codemirror', version: '6.0.2' }, { pkg: '@codemirror/state', version: '6.6.0' }, { pkg: '@codemirror/view', version: '6.40.0' },
             { pkg: '@codemirror/language', version: '6.12.2' }, { pkg: '@codemirror/commands', version: '6.10.3' },
