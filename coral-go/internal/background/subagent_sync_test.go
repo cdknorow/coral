@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/subagent"
 )
@@ -231,7 +232,7 @@ func TestSyncSubagentSpend_OneBadSubagentDoesNotBlockOthers(t *testing.T) {
 	env.writeSubagent("good", subLine("msg_1", "claude-opus-5", 1, 100, 0, 0))
 	// Discovered as a transcript, but unreadable as a file.
 	require.NoError(t, os.Mkdir(filepath.Join(subagent.Dir(env.parentPath), "unreadable"), 0o755))
-	require.NoError(t, os.Symlink(filepath.Join(subagent.Dir(env.parentPath), "unreadable"), env.transcriptPath("bad")))
+	linktest.Symlink(t, filepath.Join(subagent.Dir(env.parentPath), "unreadable"), env.transcriptPath("bad"))
 
 	n, err := syncSubagentSpend(context.Background(), env.subagents, subMainSID, env.parentPath, nil)
 	require.Error(t, err)

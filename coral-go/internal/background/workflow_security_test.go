@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/store"
 )
 
@@ -86,6 +87,7 @@ var lnS = func() string {
 // CRIT-02: output_artifact never escapes the step's folder: not with "..", not an absolute
 // path, not through a symlink at the file or at a folder on the way.
 func TestOutputArtifactStaysInTheStepFolder(t *testing.T) {
+	linktest.RequireSymlinks(t) // the step makes its link with ln -s; without the privilege it makes a plain file and the test checks nothing
 	outside := t.TempDir()
 	victim := filepath.Join(outside, "victim.txt")
 	require.NoError(t, os.WriteFile(victim, []byte("orig"), 0o644))
@@ -187,6 +189,7 @@ func TestContentTemplateDropsTrailingNewlines(t *testing.T) {
 // F2: a refused artifact is visible in the step (a note and a stderr line), and the next
 // step's {{prev_artifact_content}} is an empty word, never the template text.
 func TestRefusedArtifactIsVisibleAndEmpty(t *testing.T) {
+	linktest.RequireSymlinks(t) // the step makes its link with ln -s; without the privilege it makes a plain file and the test checks nothing
 	outside := t.TempDir()
 	final, repo, _ := runWorkflowSteps(t, []StepDef{
 		{Name: "link", Type: "shell", Command: lnS + ` "` + outside + `" "$CORAL_WORKFLOW_STEP_DIR/sub"; echo data`, OutputArtifact: "sub/a.txt"},

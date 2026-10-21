@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // #3597 (weak site W19): the link folder is one the Codex agent can write, so a link's Path is
@@ -57,7 +59,7 @@ func TestCodexLinkPathMustBeTheThreadsOwnRollout(t *testing.T) {
 	other := rollout(t, day, "rollout-2026-10-15T10-00-00-00000000-0000-4000-8000-000000000000.jsonl")
 	notes := rollout(t, day, "notes.txt")
 	link2 := filepath.Join(day, "rollout-link-"+thread+".jsonl")
-	require.NoError(t, os.Symlink(outside, link2))
+	linktest.Symlink(t, outside, link2)
 
 	for name, p := range map[string]string{
 		"outside the sessions folder":            outside,

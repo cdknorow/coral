@@ -71,6 +71,10 @@ func TestLoadTrustPrefersTUFThenItsCacheThenTheSnapshotOnAFirstRun(t *testing.T)
 
 	// Offline on a first run: nothing was ever cached (TUF's own root.json is not a cached trusted root), so the snapshot starts it.
 	first := filepath.Join(t.TempDir(), "tuf")
+	// The folder is made private first, as LoadTrust makes it, so what is put in it after takes that
+	// owner-only ACL. Filled first, a Windows folder made private later leaves its old children with an
+	// empty DACL (secfile.Protect's protected, non-inheriting ACL), unreadable to the very user.
+	require.NoError(t, ensureDir(first))
 	require.NoError(t, os.MkdirAll(filepath.Join(first, "mirror", "targets"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(first, "mirror", "root.json"), []byte("{}"), 0o600))
 	fakeFetch(t, down, down, tuftrust)
@@ -82,6 +86,7 @@ func TestLoadTrustPrefersTUFThenItsCacheThenTheSnapshotOnAFirstRun(t *testing.T)
 
 	// Offline with a cache whose metadata has expired: no update, never a quiet fall back to the snapshot (it may name a key Sigstore retired).
 	stale := filepath.Join(t.TempDir(), "tuf")
+	require.NoError(t, ensureDir(stale)) // as above
 	require.NoError(t, os.MkdirAll(filepath.Join(stale, "mirror", "targets"), 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(stale, "mirror", "targets", "trusted_root.json"), []byte("{}"), 0o600))
 	fakeFetch(t, down, expired, tuftrust)
