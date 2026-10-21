@@ -183,10 +183,8 @@ func TestLaunchAndWakeRefuseABrokenConfiguredCLIPath(t *testing.T) {
 		"launch":      func(hub bool) (int, string) { return post(server.URL, "/api/sessions/launch", launch, hub) },
 		"wake":        func(hub bool) (int, string) { return post(wakeServer.URL, "/api/sessions/live/"+id+"/wake", "{}", hub) },
 	} {
+		// A team in which no member started is an error too (#122): the one member's CLI path is a setting to fix, a 422 that names it per member.
 		want := http.StatusUnprocessableEntity
-		if label == "launch-team" {
-			want = http.StatusOK // a team answers per member
-		}
 		code, body := call(false)
 		assert.Equal(t, want, code, "%s: %s", label, body)
 		assert.Contains(t, body, agent.CLIPathSettingKey("claude"), label)
