@@ -2,6 +2,14 @@
   <strong>Coral: the control plane for the coding agents you already have.</strong>
 </p>
 
+<h2 align="center">
+  <a href="https://coralhub.dev">Coral Hub: coralhub.dev</a>
+</h2>
+
+<p align="center">
+  Reach your Coral servers from any browser, your phone included. Invite-only beta.
+</p>
+
 <p align="center">
   Run Claude Code, Codex, Antigravity CLI, and Pi.dev as one engineering team — on one board, in one browser tab, from any machine — with work that outlives the terminal it started in.
 </p>
