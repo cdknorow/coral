@@ -1,5 +1,31 @@
 # Release Notes
 
+## v1.4.149 — Windows hardening round 2, a firewall warning, and an accessibility pass
+
+### Features
+
+- **Windows Firewall warning:** before Coral binds a network address on Windows, it reads the firewall rules (read-only, nothing is changed) and warns in the dashboard when an inbound rule allows Coral's programs on a Public network (or on no profile) and no block rule overrides it. The warning names the PowerShell command to narrow the rule. Private-only rules are not findings. It is checked again later while the server runs.
+- **A warning for a tools folder others can change:** on a portable Windows install, Startup and Settings warn when the folder Coral's agent tools run from can be changed by any account other than SYSTEM, Administrators and TrustedInstaller.
+- **Windows polish:** the Coral window has the Coral icon, the taskbar and Task Manager name the program by its version information ("Coral", "Coral server", "Coral tray", "Coral launcher"), and the installer has Coral's dialog art, links in Apps & features, and a product name that follows the build edition.
+
+### Changes
+
+- **The data folder must be Coral's own and private (Windows):** when Coral's data folder is readable by another account, Coral tightens it to your account and refuses to start if it cannot (`--allow-shared-data-dir` overrides it). It acts only on a folder that looks like Coral's: empty, with a database, or with Coral's own files. A folder that is not Coral's is refused and left untouched. The folder holding agents' session tokens (`session_tokens`) gets the same private access list.
+- **Desktop app and tray hardening (Windows):** the app opens only http and https links, opens a file only inside the data folder and only a regular `.log` or `.txt` file, calls `rundll32` by its system path, and checks a per-launch token in Go on every native function the dashboard calls. DevTools are available only in a development build. The app no longer receives `CORAL_DEBUG` through its environment; `--debug` still works.
+- **Auto-accept on Windows, a fourth round:** it waits on more commands it knows to be dangerous (a `cd` out of the folder, links, `wsl`, pipelines into a shell, archive extraction and clones written outside the folder, `bash` or `sh` by any path judged by its `-c` text). `git clone` with `-b`, `--depth` and the like no longer asks. As before, anything not recognised still passes, and the folder check reads the path text (junctions and mapped drives are not seen).
+- **The input debug log on the PTY backend** now records the same entries the tmux backend does for the same input (the typed line, Enter and Ctrl-D as keys), and a person's text is still recorded by its length.
+- **Agents' temporary launch files** are removed by their recorded paths when the agent stops, only inside a temp folder; the system temp folder itself is never read.
+- **Accessibility:** "Who can read this" works by keyboard, the Messaging button fits at 200% text, Team settings has a Close button, close buttons are 44 px and folded sections work at 390 px, the Linked teams heading is a heading, and every dialog's Close and Escape go through one shared helper.
+- **Settings switches are named and described properly:** every switch in Settings, Team settings, the health check, Coral Hub sign-in, the server form and the phone display menu is a labelled switch whose description is read with it by a screen reader; the server form's id, URL and API key fields are named by their label. The Settings wording says what each setting does before the explanation.
+- **The README links to Coral Hub (coralhub.dev) at the top.**
+- **Telemetry:** the tray follows a switch-off made while it runs, and its child's hook states the setting as it is now.
+
+### Internal
+
+- 57 routes tests that share nothing run in parallel; ptymanager and tmux tests leave nothing behind, so a second run passes; the browser suites wait for what they need instead of fixed sleeps; several loaded-machine flakes (a signed-in call, a toast, a badge, a team launch deadline) are fixed. Windows tests use private per-binary temp folders.
+- Two gate fixes of our own: the tray telemetry test clears `CORAL_TELEMETRY_DISABLED` (CI sets it), and the startup-sequence golden follows the new order in which the dashboard registers the same listeners.
+- New tests: hostile-command matrices for Windows auto-accept, real Claude, Codex and agy screens pinned against an independent terminal emulator, and a stress runner for input fidelity.
+
 ## v1.4.148 — Windows hardening, safer automated input, and a round of dashboard polish
 
 ### Features
