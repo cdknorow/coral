@@ -608,11 +608,21 @@ hook files are created with a protected access list of their own (only you and S
 don't inherit the entry, and Coral refuses to read a secret file that others can read. Other files
 created in those folders do inherit it.
 
-To remove the entry (Codex adds it again the next time a sandboxed agent writes there):
+To remove the entry (Codex adds it again the next time a sandboxed agent writes there), in
+PowerShell, with the SID from `icacls` or `~/.codex/cap_sid`:
 
 ```powershell
-icacls "$env:TEMP" /remove:g *S-1-5-21-...   # the SID from icacls or ~/.codex/cap_sid
+$sid = [Security.Principal.SecurityIdentifier]'S-1-5-21-...'
+$d = Get-Item $env:TEMP            # or the project folder
+$a = $d.GetAccessControl('Access') # the access list only: no extra privilege needed
+$a.PurgeAccessRules($sid)
+$d.SetAccessControl($a)
 ```
+
+`icacls <folder> /remove *S-1-5-21-...` does not work here, in cmd.exe or PowerShell: the
+capability SID maps to no account, so icacls reports "No mapping between account names and
+security IDs was done" and "Successfully processed 0 files" and leaves the entry. `Set-Acl` fails
+too unless run with SeSecurityPrivilege, because it writes the audit list as well.
 
 ### Linux
 
