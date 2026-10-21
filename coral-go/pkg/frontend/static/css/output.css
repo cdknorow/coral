@@ -762,46 +762,42 @@ body.panel-dragging .xterm-container {
 
 .image-attachment {
     display: flex;
-    align-items: center;
-    gap: 6px;
+    align-items: stretch;
     background: var(--bg-secondary);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
-    padding: 4px 8px 4px 4px;
-    max-width: 220px;
+    overflow: hidden;
 }
 
+/* A compact chip: the thumbnail and its remove button, no name (the thumbnail's alt and the button's name say it). */
 .image-attachment img {
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
     object-fit: cover;
-    border-radius: var(--radius-sm);
     flex-shrink: 0;
 }
 
-.image-attachment-name {
-    font-size: 0.6875rem;
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-    min-width: 0;
-}
-
 .image-attachment-remove {
+    align-self: stretch;
+    min-width: 28px;
     background: none;
-    border: none;
-    color: var(--text-muted);
+    border: 0;
+    border-left: 1px solid var(--border-light);
+    color: var(--text-secondary);
     cursor: pointer;
     font-size: 1rem;
     line-height: 1;
-    padding: 0 2px;
+    padding: 0 6px;
     flex-shrink: 0;
 }
 
 .image-attachment-remove:hover {
     color: var(--danger);
+    background: var(--bg-hover);
+}
+
+@media (pointer: coarse), (max-width: 767px) {
+    .image-attachment-remove { min-width: 44px; }
 }
 
 /* Reading width for rendered markdown, closer to the VS Code preview */

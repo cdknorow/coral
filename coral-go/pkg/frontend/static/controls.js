@@ -1047,10 +1047,9 @@ export function renderAttachments(session = state.currentSession) {
 
     container.style.display = "flex";
     container.innerHTML = list.map((att, i) => `
-        <div class="image-attachment" title="${escapeAttr(att.path)}">
+        <div class="image-attachment" title="${escapeAttr(att.filename)}">
             <img src="${escapeAttr(att.previewUrl)}" alt="${escapeAttr(att.filename)}" />
-            <span class="image-attachment-name">${escapeHtml(att.filename)}</span>
-            <button class="image-attachment-remove" data-on-click="attachment-remove" data-index="${Number(i)}" title="Remove">&times;</button>
+            <button type="button" class="image-attachment-remove" data-on-click="attachment-remove" data-index="${Number(i)}" aria-label="Remove ${escapeAttr(att.filename)}" title="Remove ${escapeAttr(att.filename)}">&times;</button>
         </div>
     `).join("");
 }

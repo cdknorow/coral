@@ -49,7 +49,9 @@ function attachmentChips(attachments) {
 // The images pasted in the dashboard (#5284): a chip with the file's name and a thumbnail from the artifact, which Coral Hub serves too; a link that is gone (removed, retention, the owner's switch)
 // leaves the chip.
 function sharedImageChips(images) {
-    const chips = images.map(im => `<span class="chat-attachment-chip">${escapeHtml(im.name)}</span>${thumbHtml({ artifact: im.hex, name: im.name })}`);
+    // One compact chip per image: the thumbnail with its remove button on the corner. The name is the chip's fallback, shown only while there is no thumbnail (css: the image has not
+    // loaded, a link that is gone, the shared copy removed); the thumbnail and the button carry it as their names.
+    const chips = images.map(im => `<span class="chat-attachment-image"><span class="chat-attachment-chip chat-attachment-name">${escapeHtml(im.name)}</span>${thumbHtml({ artifact: im.hex, name: im.name })}</span>`);
     return chips.length ? `<div class="chat-attachments">${chips.join("")}</div>` : "";
 }
 
