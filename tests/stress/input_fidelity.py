@@ -362,6 +362,39 @@ def run(args):
         record("board-nudge", "board notifier nudge", "FAIL",
                "%d submissions, pending %r" % (len(subs), pending[:60]), got=got)
 
+    # ── 8. A person's draft in the input box vs an automated notice (#3478) ──
+    # The gate must not paste Coral's text onto a draft someone left in the box: the two would be
+    # submitted together. The draft is typed through /keys as a person (single characters are the
+    # same on both backends), then a task notification (an automated paste) is created.
+    off = agent.size()
+    clear_key = "C-u" if args.backend == "tmux" else "\x15"
+    coral.call("POST", "/api/sessions/live/%s/keys" % agent.name, dict(agent.target(), keys=["x", "y", "z"]))
+    agent.wait(off, lambda g: g.endswith(b"xyz"), timeout=10, quiet=1)
+    title2 = "Draft check %d" % int(time.time())
+    st, resp = coral.call("POST", "/api/sessions/live/%s/tasks" % agent.name,
+                          {"title": title2, "body": "", "session_id": agent.sid, "notify": True})
+    notice = resp.get("notified", "") if isinstance(resp, dict) else ""
+    got = agent.wait(off, lambda g: len(parse(g)[0]) >= 1, timeout=45, quiet=40)
+    subs = parse(got)[0]
+    merged = [s for s in subs if s.startswith(b"xyz") and notice.encode()[:20] in s]
+    if merged:
+        record("draft-vs-notice", "gate draft check (#3478)", "FAIL",
+               "the notice was pasted onto the draft and both were submitted as one: %r" % merged[0][:80], got=got)
+    elif subs:
+        record("draft-vs-notice", "gate draft check (#3478)", "FAIL",
+               "something was submitted while the draft sat in the box: %r" % [s[:60] for s in subs], got=got)
+    else:
+        # Held: clear the draft as its owner would, and the notice must then arrive on its own.
+        off2 = agent.size()
+        coral.call("POST", "/api/sessions/live/%s/keys" % agent.name, dict(agent.target(), keys=[clear_key]))
+        got2 = agent.wait(off2, lambda g: notice.encode() in parse(g)[0], timeout=180, quiet=170)
+        if notice.encode() in parse(got2)[0]:
+            record("draft-vs-notice", "gate draft check (#3478)", "PASS",
+                   "held while the draft was in the box, delivered alone once it was cleared", got=got + got2)
+        else:
+            record("draft-vs-notice", "gate draft check (#3478)", "PASS",
+                   "held while the draft was in the box (not delivered within 180 s of clearing it)", got=got + got2)
+
     for a in (agent, bagent):
         coral.call("POST", "/api/sessions/live/%s/kill" % a.name, a.target())
 
