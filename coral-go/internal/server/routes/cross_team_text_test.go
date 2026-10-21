@@ -160,3 +160,20 @@ func TestTheRateLimiterTripsAtTheSameCountForAMissingTeamAndAnExistingOne(t *tes
 	require.Positive(t, missing, "the limiter trips")
 	assert.Equal(t, missing, off, "a 429 that only an existing team could earn would be the probe the single word removes")
 }
+
+// The switch is a cause of its own: a team that takes this server but has its cross-team switch OFF refuses like every other cause, and the same team with the switch on admits the
+// message. (The four-cause test cannot tell the switch from the list: the first two causes there are also not on the list.)
+func TestARelayedMessageToAListedTeamNeedsItsSwitchOn(t *testing.T) {
+	e := newArtifactEnv(t)
+	e.h.crossTeam.now = func() time.Time { return fixedNow }
+	code, out := e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": []string{relaySrc}}, false)
+	require.Equal(t, http.StatusOK, code, out)
+	off := relayedRec(e, relaySrc, "beta", "sw-"+strings.Repeat("a", 3), "Orchestrator", "")
+	assert.Equal(t, http.StatusNotFound, off.Code, "listed but switched off: refused like any other cause")
+	assert.JSONEq(t, `{"ok":false,"error":"not_found","message":"no such team"}`, off.Body.String())
+	e.h.crossTeam.now = func() time.Time { return fixedNow.Add(time.Minute) }
+	code, out = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_messaging": true}, false)
+	require.Equal(t, http.StatusOK, code, out)
+	on := relayedRec(e, relaySrc, "beta", "sw-"+strings.Repeat("b", 3), "Orchestrator", "")
+	assert.NotEqual(t, http.StatusNotFound, on.Code, "listed and switched on: admitted (%d %s)", on.Code, on.Body.String())
+}
