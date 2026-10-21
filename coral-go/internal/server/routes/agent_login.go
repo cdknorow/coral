@@ -46,6 +46,10 @@ type loginScreenRead struct {
 	stamp string // the output stamp read before the screen was ("" without one)
 	on    bool
 	why   string
+	// confirmed: the reading before this one had the same stamp too, so the stamp has held across a whole loginScreenTTL. Only then is the reading reused past the TTL for as long
+	// as the stamp holds (#5838): the stamp is as coarse as a second, and the first read of a new agent can fall in the same second as the login menu is drawn, with the stamp
+	// unchanged; reusing that reading for a minute is how the sign-in card came a minute late.
+	confirmed bool
 }
 
 // read returns the reading for key: the last one while it is younger than loginScreenTTL, or
@@ -57,11 +61,12 @@ func (l *loginScreens) read(key, stamp string, now time.Time, fn func() (bool, s
 	if r, ok := l.m[key]; ok {
 		age := now.Sub(r.at)
 		changed := l.stampDecides && stamp != "" && r.stamp != stamp
-		if !changed && (age < loginScreenTTL || (stamp != "" && r.stamp == stamp && age < loginScreenStampMax)) {
+		if !changed && (age < loginScreenTTL || (stamp != "" && r.confirmed && r.stamp == stamp && age < loginScreenStampMax)) {
 			l.mu.Unlock()
 			return r.on, r.why
 		}
 	}
+	prev, hadPrev := l.m[key]
 	l.mu.Unlock()
 	on, why := fn()
 	l.mu.Lock()
@@ -76,7 +81,7 @@ func (l *loginScreens) read(key, stamp string, now time.Time, fn func() (bool, s
 			}
 		}
 	}
-	l.m[key] = loginScreenRead{at: now, stamp: stamp, on: on, why: why}
+	l.m[key] = loginScreenRead{at: now, stamp: stamp, on: on, why: why, confirmed: hadPrev && stamp != "" && prev.stamp == stamp && prev.on == on}
 	return on, why
 }
 

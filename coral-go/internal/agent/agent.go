@@ -397,6 +397,24 @@ func (e *CLIPathError) HubText() string {
 	return fmt.Sprintf("the %s CLI path set in Settings > CLI paths (%s) can't be run; Coral does not run another program in its place: fix it or clear it to use the one on PATH", e.AgentType, CLIPathSettingKey(e.AgentType))
 }
 
+// CLINotFoundError is an agent CLI found nowhere: not set in Settings > CLI paths, not on PATH, not in the common install places (#5838). A launch answers it with a 422 and the fixed
+// code cli_not_found, so a client says what to do (install it, or point Settings at it) instead of showing a server fault. Error keeps the sentence "<binary> CLI not found" (the
+// launch failure's analytics category and the dashboard read it) and adds the setting.
+type CLINotFoundError struct {
+	AgentType      string
+	Binary         string
+	InstallCommand string
+	InstallURL     string
+}
+
+func (e *CLINotFoundError) Error() string {
+	msg := fmt.Sprintf("%s CLI not found. Install it: %s", e.Binary, e.InstallCommand)
+	if e.InstallURL != "" {
+		msg += fmt.Sprintf(" (the vendor's page: %s)", e.InstallURL)
+	}
+	return msg + fmt.Sprintf(". Already installed? Set its path in Settings > CLI paths (the setting %s).", CLIPathSettingKey(e.AgentType))
+}
+
 // FindCLI returns the executable to run for agentType, the way launch finds
 // it: the configured path (cli_path_<type> in settings), then the binary on
 // PATH, then the common install locations. The macOS app started from Finder
