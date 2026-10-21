@@ -23,6 +23,7 @@ import (
 // process never reads it. The server child reports the setting it applied, and the tray sends only after hearing "on".
 func TestTrayTelemetrySendsOnlyWhenTheChildSaysOn(t *testing.T) {
 	t.Cleanup(func() { tracking.SetTelemetryEnabled(true) })
+	t.Setenv("CORAL_TELEMETRY_DISABLED", "") // CI sets it for every run; this test is about the tray's own switch, which the variable overrides
 	for _, tc := range []struct {
 		name string
 		says []bool
