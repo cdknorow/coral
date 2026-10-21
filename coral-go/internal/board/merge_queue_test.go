@@ -316,3 +316,51 @@ func TestSendBackKeepsTheDigestsItSentBack(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"d1"}, lastRound(t, task).SentBackDigests)
 }
+
+func TestOnlyAPatchRowOpensARound(t *testing.T) {
+	e := newVerEnv(t)
+	id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1", "rev2")
+	_, err := e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 0)
+	require.NoError(t, err)
+	task, reopened, err := e.s.AttachPatches(e.ctx, "team", id, "rev2", []TaskArtifact{{Name: "test-log", Content: "ok", Kind: "log"}})
+	require.NoError(t, err)
+	assert.Nil(t, reopened, "a log row opens no round")
+	assert.Len(t, task.Workflow.ReviewRounds, 1)
+	assert.Equal(t, "approved", task.Workflow.ReviewRounds[0].Reviewers[0].State, "and voids no approval")
+	assert.Len(t, task.Workflow.CompletionReview.Artifacts, 2)
+}
+
+func TestABurstOfPatchAttachesIsOneRoundUntilAVerdictOrTheWindowEnds(t *testing.T) {
+	e := newVerEnv(t)
+	id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1", "rev2")
+	_, r1, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d2")})
+	require.NoError(t, err)
+	require.NotNil(t, r1)
+	assert.Equal(t, 2, r1.Round)
+	assert.Equal(t, "worker", r1.SupersededBy)
+	task, r2, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d3"), patchRow("other", "d4")})
+	require.NoError(t, err)
+	assert.Nil(t, r2, "the same person's next patch within the window joins round 2: no new round, no new notice")
+	assert.Len(t, task.Workflow.ReviewRounds, 2)
+	assert.Len(t, currentPatches(task.Workflow.CompletionReview.Artifacts), 2)
+	// another person's patch does not join
+	_, r3, err := e.s.AttachPatches(e.ctx, "team", id, "rev1", []TaskArtifact{patchRow("fix", "d5")})
+	require.NoError(t, err)
+	require.NotNil(t, r3)
+	assert.Equal(t, 3, r3.Round)
+	// once anybody has given a verdict in the round, the next patch opens a new one
+	_, err = e.s.ApproveReview(e.ctx, "team", id, "rev2", "ok", 3)
+	require.NoError(t, err)
+	_, r4, err := e.s.AttachPatches(e.ctx, "team", id, "rev1", []TaskArtifact{patchRow("fix", "d6")})
+	require.NoError(t, err)
+	require.NotNil(t, r4)
+	assert.Equal(t, 4, r4.Round, "an approval exists in round 3: never joined")
+	// and after the window it opens a new round too
+	old := burstWindow
+	burstWindow = 0
+	defer func() { burstWindow = old }()
+	_, r5, err := e.s.AttachPatches(e.ctx, "team", id, "rev1", []TaskArtifact{patchRow("fix", "d7")})
+	require.NoError(t, err)
+	require.NotNil(t, r5)
+	assert.Equal(t, 5, r5.Round)
+}

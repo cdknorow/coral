@@ -41,6 +41,8 @@ type ReviewRound struct {
 	// so the resubmission path is the one a rejection uses.
 	SentBackBy   string `json:"sent_back_by,omitempty"`
 	SentBackNote string `json:"sent_back_note,omitempty"`
+	// SupersededBy: who attached the patch that opened this round (#5689): the burst rule lets their next attach join it.
+	SupersededBy string `json:"superseded_by,omitempty"`
 	// SentBackDigests: the patches that were approved and sent back, kept for the history (the queue never reads it).
 	SentBackDigests []string `json:"sent_back_digests,omitempty"`
 }
