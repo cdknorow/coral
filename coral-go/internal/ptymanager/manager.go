@@ -142,11 +142,21 @@ func (m *PTYBackend) SendInput(name string, data []byte) error {
 // separately after a short delay: agent TUIs treat text that arrives in the same
 // read as a trailing newline as a paste, leaving it in the input box unsent.
 func (m *PTYBackend) SendLine(name, text string) error {
+	return m.SendLineCtx(context.Background(), name, text)
+}
+
+// SendLineCtx is SendLine with ctx's WithBeforeEnter check run just before the Enter, as
+// tmux's typeToTarget does: when a prompt opened after the text was typed it returns
+// tmux.ErrEnterWithheld and the gate holds the Enter (#3431), not letting it answer the prompt.
+func (m *PTYBackend) SendLineCtx(ctx context.Context, name, text string) error {
 	if text != "" {
 		if err := m.SendInput(name, []byte(text)); err != nil {
 			return err
 		}
 		time.Sleep(lineSubmitDelay)
+	}
+	if !tmux.EnterAllowed(ctx) {
+		return tmux.ErrEnterWithheld
 	}
 	return m.SendInput(name, []byte(EnterKey))
 }

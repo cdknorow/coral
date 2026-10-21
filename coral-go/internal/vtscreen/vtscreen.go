@@ -38,8 +38,17 @@ const (
 // recovered counts the renders that panicked: a bug, and the tests require it to stay 0.
 var recovered atomic.Int64
 
+// RenderStyled is Render with each faint cell (SGR 2) marked in the text as the SGR sequences tmux's
+// capture-pane -e prints (ESC[2m ... ESC[22m... per row), so a reader of the styled screen can tell Claude's
+// faint prompt suggestion from a person's text (F10). No other styling is kept.
+func RenderStyled(output []byte, cols, rows int) (screen string) {
+	return render(output, cols, rows, true)
+}
+
 // Render plays output through a cols x rows screen and returns its rows, each with trailing blanks trimmed.
-func Render(output []byte, cols, rows int) (screen string) {
+func Render(output []byte, cols, rows int) (screen string) { return render(output, cols, rows, false) }
+
+func render(output []byte, cols, rows int, styled bool) (screen string) {
 	if cols <= 0 || rows <= 0 {
 		cols, rows = DefaultCols, DefaultRows
 	}
@@ -56,22 +65,29 @@ func Render(output []byte, cols, rows int) (screen string) {
 	}()
 	s := newTerm(cols, rows)
 	s.write(output)
+	if styled {
+		return s.styledString()
+	}
 	return s.String()
 }
 
 type term struct {
 	cols, rows  int
 	grid        [][]rune
-	x, y        int  // the cursor
-	wrapPending bool // the last column was written: the next character goes to the next row first
+	faintGrid   [][]bool // cells written faint (SGR 2)
+	faint       bool     // the pen
+	x, y        int      // the cursor
+	wrapPending bool     // the last column was written: the next character goes to the next row first
 	budget      int
 }
 
 func newTerm(cols, rows int) *term {
 	t := &term{cols: cols, rows: rows, budget: Budget}
 	t.grid = make([][]rune, rows)
+	t.faintGrid = make([][]bool, rows)
 	for i := range t.grid {
 		t.grid[i] = blankRow(cols)
+		t.faintGrid[i] = make([]bool, cols)
 	}
 	return t
 }
@@ -207,6 +223,7 @@ func (t *term) put(r rune) {
 		r = ' '
 	}
 	t.grid[t.y][t.x] = r
+	t.faintGrid[t.y][t.x] = t.faint
 	if t.x == t.cols-1 {
 		t.wrapPending = true
 	} else {
@@ -225,6 +242,8 @@ func (t *term) lineFeed() {
 	}
 	copy(t.grid, t.grid[1:])
 	t.grid[t.rows-1] = blankRow(t.cols)
+	copy(t.faintGrid, t.faintGrid[1:])
+	t.faintGrid[t.rows-1] = make([]bool, t.cols)
 }
 
 func (t *term) clear(y, from, to int) {
@@ -235,6 +254,7 @@ func (t *term) clear(y, from, to int) {
 	row := t.grid[y]
 	for i := from; i < to; i++ {
 		row[i] = ' '
+		t.faintGrid[y][i] = false
 	}
 }
 
@@ -251,6 +271,10 @@ func (t *term) csi(final byte, params []int) {
 	mode := 0
 	if len(params) > 0 {
 		mode = params[0]
+	}
+	if final == 'm' {
+		t.sgr(params)
+		return
 	}
 	t.wrapPending = false
 	switch final {
@@ -300,6 +324,60 @@ func (t *term) csi(final byte, params []int) {
 		}
 	}
 	// Anything else (styling, scroll regions, insert, delete, repeat, tab stops, reports) is skipped.
+}
+
+// sgr tracks only faint: 2 sets it, 0 and 22 clear it; the arguments of an extended colour (38/48/58 ;5;n or
+// ;2;r;g;b) are skipped, so a colour number 2 is not read as faint.
+func (t *term) sgr(params []int) {
+	if len(params) == 0 {
+		t.faint = false
+		return
+	}
+	for i := 0; i < len(params); i++ {
+		switch params[i] {
+		case 0, 22:
+			t.faint = false
+		case 2:
+			t.faint = true
+		case 38, 48, 58:
+			if i+1 < len(params) && params[i+1] == 5 {
+				i += 2
+			} else if i+1 < len(params) && params[i+1] == 2 {
+				i += 4
+			}
+		}
+	}
+}
+
+// styledString is String with each run of faint cells wrapped in ESC[2m ... ESC[22m. A row's trailing blanks
+// are trimmed as String's are.
+func (t *term) styledString() string {
+	lines := make([]string, t.rows)
+	for y, row := range t.grid {
+		runes := []rune(string(row))
+		end := len(runes)
+		for end > 0 && runes[end-1] == ' ' {
+			end--
+		}
+		var b strings.Builder
+		faint := false
+		for x := 0; x < end; x++ {
+			if f := t.faintGrid[y][x]; f != faint {
+				if f {
+					b.WriteString("\x1b[2m")
+				} else {
+					b.WriteString("\x1b[22m")
+				}
+				faint = f
+			}
+			b.WriteRune(runes[x])
+		}
+		if faint {
+			b.WriteString("\x1b[22m")
+		}
+		lines[y] = b.String()
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (t *term) String() string {

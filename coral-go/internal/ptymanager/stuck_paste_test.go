@@ -87,7 +87,7 @@ func (s *stuckTerm) AgentScreen(context.Context, string, string, string) (string
 	}
 	return screen, nil
 }
-func (s *stuckTerm) RenderedScreen() bool { return true }
+func (s *stuckTerm) HasRenderedScreen() bool { return true }
 func (s *stuckTerm) SendPrompt(ctx context.Context, _, text, _, _ string) error {
 	s.mu.Lock()
 	s.pasted = append(s.pasted, text)

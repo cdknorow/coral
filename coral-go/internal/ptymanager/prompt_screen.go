@@ -8,6 +8,7 @@ import (
 
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/logparse"
+	"github.com/subgentic/coral/internal/vtscreen"
 )
 
 // Recognising, from the bottom of an agent's screen, that it is waiting on a
@@ -360,8 +361,8 @@ func (t *TmuxSessionTerminal) AgentScreenStyled(ctx context.Context, name, agent
 	return t.client.CapturePaneStyled(ctx, name, 40, agentType, sessionID)
 }
 
-// AgentScreen implements ScreenReader for the PTY backend: the end of the
-// session's output.
+// AgentScreen implements ScreenReader for the PTY backend: the session's output rendered
+// as the screen (#4543), else (nothing rendered) the end of its raw output.
 func (p *PTYSessionTerminal) AgentScreen(ctx context.Context, name, agentType, sessionID string) (string, error) {
 	if rendered, err := p.RenderedScreen(ctx, name, agentType, sessionID); err == nil && rendered != "" {
 		return rendered, nil
@@ -377,8 +378,40 @@ func (p *PTYSessionTerminal) AgentScreen(ctx context.Context, name, agentType, s
 	return screenTail(data), nil
 }
 
-// ReplayScreen is the end of a PTY session's output, for ScreenReaders built on
-// a PTYBackend outside this package.
+// RenderedScreenText is the session's output rendered at the size its PTY was last given
+// (what PTYSessionTerminal.AgentScreen reads), for ScreenReaders built on a PTYBackend
+// outside this package.
+func (m *PTYBackend) RenderedScreenText(name string) (string, error) {
+	data, err := m.Replay(name)
+	if err != nil {
+		return "", err
+	}
+	cols, rows, err := m.PaneSize(name)
+	if err != nil {
+		return "", err
+	}
+	return RenderScreen(data, cols, rows), nil
+}
+
+func (m *PTYBackend) renderedScreenStyled(name string) (string, error) {
+	data, err := m.Replay(name)
+	if err != nil {
+		return "", err
+	}
+	cols, rows, err := m.PaneSize(name)
+	if err != nil {
+		return "", err
+	}
+	return vtscreen.RenderStyled(data, cols, rows), nil
+}
+
+// RenderedScreenStyledText is RenderedScreenText with faint cells marked (see AgentScreenStyled).
+func (m *PTYBackend) RenderedScreenStyledText(name string) (string, error) {
+	return m.renderedScreenStyled(name)
+}
+
+// ReplayScreen is the end of a PTY session's raw output: a fallback for a screen that
+// renders empty. Gate checks use RenderedScreenText.
 func (m *PTYBackend) ReplayScreen(name string) (string, error) {
 	data, err := m.Replay(name)
 	if err != nil {
