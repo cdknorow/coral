@@ -108,7 +108,7 @@ async function httpJson(method, p, body, headers = {}) {
             check(`${tag}: the shared copy is gone from the artifact route (asked past the browser's cache: an artifact is cached for good)`, (await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2', { cache: 'no-store' }).then(r => r.status)`)) === 404, JSON.stringify(await ev(`window.__rec.deletes`)));
 
             // 6b. three images: each is named by its place (#5756), in the composer and in the chat; CORAL_SCREENSHOT_DIR=<dir> also writes pictures of them, dark and light
-            const dir = process.env.CORAL_SCREENSHOT_DIR;
+            const dir = process.env.CORAL_SCREENSHOT_DIR || '/tmp/qa5777shots'; // TRIAL: pictures on, so the light check runs
             const shot = async (n, clip) => { require('node:fs').mkdirSync(dir, { recursive: true }); require('node:fs').writeFileSync(require('node:path').join(dir, n + '.png'), Buffer.from((await Page.captureScreenshot(clip ? { format: 'png', clip } : { format: 'png' })).data, 'base64')); };
             const n1 = await ev(`window.__rec.uploads.length`);
             for (let k = 0; k < 3; k++) await upload();
