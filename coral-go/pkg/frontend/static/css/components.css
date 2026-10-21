@@ -1426,7 +1426,7 @@ button.subscriber-history-link {
 .update-toast-title {
     font-size: 0.875rem;
     font-weight: 600;
-    color: var(--accent);
+    color: var(--link-text); /* the accent is 4.4:1 on the light panel; this is the accent in the dark theme and a darker blue in the light one (#5781) */
 }
 
 .update-toast-current {

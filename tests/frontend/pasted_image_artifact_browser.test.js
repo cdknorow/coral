@@ -124,6 +124,21 @@ async function httpJson(method, p, body, headers = {}) {
             await waitFor(`document.querySelectorAll('#pia-box .chat-attachment-thumb:not([hidden])').length === 3`, `${tag}: three thumbnails`, { timeout: 10000 });
             const hnames = await ev(`[...document.querySelectorAll('#pia-box .chat-attachment-thumb')].map((t, i) => ({ open: t.getAttribute('aria-label'), alt: t.querySelector('img').alt, remove: document.querySelectorAll('#pia-box .chat-attachment-unshare')[i].getAttribute('aria-label') }))`);
             check(`${tag}: three images in a message are named by their place too: "Open pasted image 2", "Remove the shared copy of pasted image 2"`, JSON.stringify(hnames.map(h => [h.open, h.alt, h.remove])) === JSON.stringify([1, 2, 3].map(n => [`Open pasted image ${n}`, `pasted image ${n}`, `Remove the shared copy of pasted image ${n}`])), JSON.stringify(hnames));
+            { // both themes hold 4.5:1 for the chips (composer strip and message), in the real light theme (#5781)
+                const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
+                await installAudit(ev);
+                for (const theme of ['dark', 'light']) {
+                    await setTheme(ev, theme);
+                    await ev(`document.getElementById('pia-box')?.remove(); true`);
+                    const ac = await auditRegion(ev, ['#image-attachments']);
+                    await render([{ type: 'user', content: mk, key: 'k9', timestamp: '2026-10-19T00:09:00Z' }]);
+                    await waitFor(`document.querySelectorAll('#pia-box .chat-attachment-thumb:not([hidden])').length === 3`, `${tag}: three thumbnails`, { timeout: 10000 });
+                    const am = await auditRegion(ev, ['#pia-box']);
+                    check(`${tag}: ${theme}: the composer's chips and the message's chips hold 4.5:1 (text) and 3:1 (graphics): ${ac.checked + am.checked} looked at`, ac.checked > 0 && am.checked > 0 && !ac.fails.length && !am.fails.length, JSON.stringify([...ac.fails, ...am.fails]).slice(0, 500));
+                }
+                await ev(`document.getElementById('pia-box')?.remove(); true`);
+                await setTheme(ev, 'dark');
+            }
             { // both themes run in every gate (the "really light" check is the swap helper's proof, #5757); only the pictures need CORAL_SCREENSHOT_DIR (#5783)
                 const { themeJs } = require('./helpers/theme');
                 for (const theme of ['dark', 'light']) {
