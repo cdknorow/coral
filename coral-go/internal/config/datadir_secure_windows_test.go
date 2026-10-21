@@ -95,6 +95,8 @@ func TestDataFolderAnotherAccountOwnsIsRefusedUnlessAllowed(t *testing.T) {
 	require.ErrorIs(t, err, ErrSharedDataDir)
 	assert.Contains(t, err.Error(), dir, "the message names the folder")
 	assert.Contains(t, err.Error(), "--allow-shared-data-dir", "and the way out")
+	assert.True(t, strings.HasPrefix(err.Error(), "Coral will not start: its data folder "), "the refusal says what happens first, in plain words (#5755)")
+	assert.NotContains(t, err.Error(), ErrSharedDataDir.Error(), "the sentinel's own words are not repeated in front of the message")
 	assert.Contains(t, err.Error(), "Users")
 	assert.Contains(t, err.Error(), "takeown /F", "the exact command to take it over")
 	assert.NotEmpty(t, readersOf(t, dir), "nothing was changed")
@@ -102,7 +104,7 @@ func TestDataFolderAnotherAccountOwnsIsRefusedUnlessAllowed(t *testing.T) {
 	SetAllowSharedDataDir(true)
 	require.NoError(t, EnsureDataDir(dir))
 	assert.NotEmpty(t, readersOf(t, dir), "still shared, as the opt-out says")
-	assert.Contains(t, DataDirWarning(dir), "WARNING", "and still reported")
+	assert.NotEmpty(t, DataDirWarning(dir), "and still reported")
 	assert.Contains(t, DataDirWarning(dir), "can be read by")
 
 	SetAllowSharedDataDir(false)

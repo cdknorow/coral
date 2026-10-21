@@ -76,10 +76,17 @@ func secureExistingDataDir(dir string) (string, error) {
 }
 
 func sharedDataDirError(dir string, groups []string, why string) error {
-	return fmt.Errorf("%w: Coral's data folder %s can be used by %s, and Coral can't make it private because %s. It holds the databases, the API key and the tokens. "+
-		"Move it (CORAL_DATA_DIR) to a folder only you can read, or take ownership of it and remove those accounts from its permissions; "+
-		"to run on it anyway, start Coral with --allow-shared-data-dir (or set CORAL_ALLOW_SHARED_DATA_DIR=1)", ErrSharedDataDir, dir, strings.Join(groups, ", "), why)
+	return sharedDataDirRefusal{fmt.Sprintf("Coral will not start: its data folder %s can be used by %s, and Coral could not make it private (%s). "+
+		"The folder holds the databases, the API key and the tokens. "+
+		"Move it with CORAL_DATA_DIR to a folder only you can use, or take ownership of it and remove those accounts from its permissions. "+
+		"To run on it anyway, start Coral with --allow-shared-data-dir (or set CORAL_ALLOW_SHARED_DATA_DIR=1).", dir, strings.Join(groups, ", "), why)}
 }
+
+// sharedDataDirRefusal is the refusal's text as the person reads it, which is ErrSharedDataDir to errors.Is (the sentinel's own words would only repeat it).
+type sharedDataDirRefusal struct{ text string }
+
+func (e sharedDataDirRefusal) Error() string        { return e.text }
+func (e sharedDataDirRefusal) Is(target error) bool { return target == ErrSharedDataDir }
 
 // openNoFollow opens the object named by path itself, not what a reparse point there points to, for reading and changing its list.
 func openNoFollow(path string) (windows.Handle, error) {
