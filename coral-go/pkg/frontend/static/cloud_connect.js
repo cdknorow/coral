@@ -26,6 +26,8 @@ const HUB_OPERATOR_URL = '/api/system/hub-operator';
 // answer 403): connecting has to happen there.
  const ELSEWHERE_TEXT = 'Connecting has to happen on the computer running Coral. On that computer, run: coral cloud connect';
  const CONNECT_COMMAND = 'coral cloud connect';
+// The command a server with no hub is started with (the OFF_TEXT's first step), with a Copy button beside it (UI audit #5589, finding 21: a command to run in a terminal was text only).
+ const START_COMMAND = 'coral --cloud-url https://app.coralhub.dev';
 // Said when this server has no hub (a dev build, or --cloud-url off); the CLI says the same (#3285).
  const OFF_TEXT = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralhub.dev (or CORAL_CLOUD_URL=https://app.coralhub.dev), then run: coral cloud connect";
 
@@ -151,7 +153,10 @@ class CloudPanel {
             if (uc) uc.textContent = st.user_code || '';
         }
         const show = (role, on) => { const el = this.part(role); if (el) el.hidden = !on; };
-        show('command-row', false);
+        // A server with no hub says what to run: the command is in the row, with Copy (a person copies it into a terminal).
+        const startRow = this.part('command-row');
+        if (startRow && st.state === 'off') { show('command-row', true); const c = this.part('command'); if (c) c.textContent = START_COMMAND; this.command = START_COMMAND; }
+        else { show('command-row', false); if (this.command === START_COMMAND) this.command = null; }
         show('connect', st.state === 'idle' || st.state === 'revoked');
         // While the code is shown: Cancel stops the enrollment (never undoes a connection).
         // A container without a Cancel keeps offering Disconnect, which also stops it.

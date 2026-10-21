@@ -224,6 +224,7 @@ svg[width="48"][height="48"] { width: 3rem; height: 3rem; }
 
 /* The phone pass (#5219): controls the first walk of the new views found under 44 px on a coarse pointer. */
 @media (pointer: coarse) {
+    .tb-learn { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); display: inline-flex; align-items: center; }
     .preview-tab-close { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); display: inline-flex; align-items: center; justify-content: center; }
     .artifact-viewer-close, .artifact-viewer-download, .ac-toggle { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
     .ac-filter { min-width: var(--control-touch-height, 44px); }

@@ -95,6 +95,18 @@ export async function loadTerminalBackendRow() {
             r.checked = r.value === next;
             if (!r._tbWired) { r._tbWired = true; r.addEventListener('change', renderPending); }
         }
+        // Each choice says it in a line; the whole explanation (Security's wording) opens under it.
+        for (const b of document.querySelectorAll('#settings-terminal-backend .tb-learn')) {
+            if (b._tbWired) continue;
+            b._tbWired = true;
+            b.addEventListener('click', () => {
+                const target = document.getElementById(b.getAttribute('aria-controls'));
+                if (!target) return;
+                target.hidden = !target.hidden;
+                b.setAttribute('aria-expanded', String(!target.hidden));
+                b.textContent = target.hidden ? 'Learn more' : 'Show less';
+            });
+        }
         $('tb-note').textContent = osNote();
         renderPending();
     }

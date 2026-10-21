@@ -2208,6 +2208,7 @@ button.subscriber-history-link {
 }
 
 .launch-type-card {
+    font: inherit; /* a button does not take the page's font by itself */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -3943,6 +3944,9 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 0.6875rem; line-heig
 .tb-opt > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tb-t { font-weight: 600; font-size: var(--fs-md); color: var(--text-primary); }
 .tb-default { font-weight: 400; color: var(--text-muted); }
+.tb-short { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; }
+.tb-learn { align-self: flex-start; background: none; border: 0; padding: 2px 0; color: var(--link-text, var(--accent)); font: inherit; font-size: var(--fs-base); cursor: pointer; text-decoration: underline; }
+.tb-d[hidden] { display: none; }
 .tb-d { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; }
 .tb-note { font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.45; margin: var(--space-xs) 0 0; }
 .tb-pending { font-size: var(--fs-base); color: var(--warning); margin: var(--space-sm) 0 0; }
@@ -4421,3 +4425,4 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 #launch-step-team .sd-name-field .team-field-hint { margin: .25rem 0 0; }
 #launch-step-team .sd-name-field #team-board-name { width: 100%; }
 @container sd (max-width: 40rem) { #launch-step-team .sd-name-grid { grid-template-columns: minmax(0, 1fr); gap: .3rem; } #launch-step-team .sd-name-grid > label { padding-top: 0; } }
+.launch-type-glyph { font-size: 2rem; } /* the agent card draws the same robot as the start page */
