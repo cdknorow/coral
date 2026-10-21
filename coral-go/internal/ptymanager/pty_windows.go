@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/UserExistsError/conpty"
+	"golang.org/x/sys/windows"
 )
 
 // windowsPTY wraps ConPTY for Windows systems.
@@ -19,6 +20,7 @@ type windowsPTY struct {
 	cpty   *conpty.ConPty
 	done   chan struct{}
 	closed sync.Once
+	job    windows.Handle // ends the whole process tree (0: none)
 }
 
 func startPTYProcess(name string, args []string, dir string, env []string, cols, rows uint16) (ptyProcess, error) {
@@ -63,6 +65,7 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 	p := &windowsPTY{
 		cpty: cpty,
 		done: make(chan struct{}),
+		job:  newKillJob(cpty.Pid()),
 	}
 
 	go func() {
@@ -88,14 +91,25 @@ func (p *windowsPTY) Resize(cols, rows uint16) error {
 const terminateTypesCtrlC = true
 
 func (p *windowsPTY) Terminate() error {
-	// Send Ctrl+C to the console to allow graceful shutdown
+	// Ctrl+C into the console now; politeStop adds the second one a raw-mode CLI needs, and "exit" once the agent has gone
+	// and its shell is idle. The force kill after the grace is the backstop.
 	_, err := p.cpty.Write([]byte{0x03}) // Ctrl+C
+	if err == nil {
+		pid := p.cpty.Pid()
+		go func() {
+			defer safego.Recover("ptymanager/pty_windows:terminate")
+			politeStop(func(b []byte) error { _, err := p.cpty.Write(b); return err }, p.done,
+				func() (bool, error) { return hasChildProcesses(pid) }, defaultStopTimings)
+		}()
+	}
 	return err
 }
 
+// ForceKill ends the whole process tree through the job object, then the pseudo console.
 func (p *windowsPTY) ForceKill() error {
 	var err error
 	p.closed.Do(func() {
+		p.endTree()
 		err = p.cpty.Close()
 	})
 	return err
@@ -104,9 +118,19 @@ func (p *windowsPTY) ForceKill() error {
 func (p *windowsPTY) Close() error {
 	var err error
 	p.closed.Do(func() {
+		p.endTree()
 		err = p.cpty.Close()
 	})
 	return err
+}
+
+// endTree terminates every process of the terminal's tree and releases the job.
+func (p *windowsPTY) endTree() {
+	if p.job != 0 {
+		_ = windows.TerminateJobObject(p.job, 1)
+		_ = windows.CloseHandle(p.job)
+		p.job = 0
+	}
 }
 
 // shellWrap wraps a command string for execution via PowerShell on Windows.
