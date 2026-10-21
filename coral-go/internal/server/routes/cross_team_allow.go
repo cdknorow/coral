@@ -307,8 +307,31 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 	// replaces this when it lands, #5572), and whether the team can be linked at all.
 	linkable := board.IsGeneratedBoardID(project)
 	links := make([]map[string]any, 0, len(settings.CrossTeamServers))
-	for _, srv := range settings.CrossTeamServers {
-		links = append(links, map[string]any{"server_id": srv, "server_label": "", "team_label": "", "refreshed": ""})
+	stale, heard := false, ""
+	if h.links.everApplied() || h.linksSeen(ctx) {
+		// A hub that keeps the link table (#5572): who is linked comes from its last snapshot. A snapshot older than the TTL, or none yet since this process started, is stale: the rows shown are
+		// the last known ones, and nothing is admitted (the door says the same).
+		now := h.linkNow()
+		stale = !h.links.fresh(now)
+		live := map[teamLink]bool{}
+		for _, l := range h.links.linkedTo(project, now) {
+			live[l] = true
+		}
+		if stored, err := h.bs.TeamLinksTo(ctx, project); err == nil {
+			for _, l := range stored {
+				if !stale && !live[teamLink{l.SourceServer, l.SourceTeam, l.TargetTeam}] {
+					continue
+				}
+				links = append(links, map[string]any{"server_id": l.SourceServer, "server_label": l.SourceServerLabel, "team_id": l.SourceTeam, "team_label": l.SourceLabel, "refreshed": l.AppliedAt})
+				if t, err := time.Parse(time.RFC3339, l.AppliedAt); err == nil {
+					heard = t.Local().Format("15:04")
+				}
+			}
+		}
+	} else {
+		for _, srv := range settings.CrossTeamServers {
+			links = append(links, map[string]any{"server_id": srv, "server_label": "", "team_label": "", "refreshed": ""})
+		}
 	}
 	// Whether Coral Hub's owner can change the two switches of this team (#5572): this request (the owner on this computer) always can; owner_path_live says this build has the Coral Hub owner's routes;
 	// hub_may_change is the local lock "Let Coral Hub change cross-team settings" (a lock that cannot be read reads as off); last_changed is who changed each switch last, by hub user or on this computer.
@@ -326,7 +349,7 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 		"can_change": true, "owner_path_live": true, "hub_may_change": h.hubMayChange(ctx), "last_changed": lastChanged,
 		"enforced": h.allowlistOn(ctx), "allowed": entries, "max_entries": board.MaxAllowedSenders, "self_cross_team_id": self,
 		"was_open": settings.CrossTeamMessaging && len(settings.CrossTeamAllowed) == 0, "suggestions": suggestions,
-		"status":   statusFor(linkable, settings.CrossTeamMessaging, len(links), false, ""),
+		"status":   statusFor(linkable, settings.CrossTeamMessaging, len(links), stale, heard),
 		"links":    links,
 		"linkable": linkable,
 	})

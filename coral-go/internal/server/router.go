@@ -618,6 +618,14 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 	sessStore := store.NewSessionStore(s.db)
 	boardHandler.SetAllowlistFlag(routes.AllowlistEnabled(sessStore))
 	boardHandler.SetHubCrossTeamLock(routes.HubCrossTeamLockFromSettings(sessStore.GetSettings))
+	boardHandler.SetLinksSeen(routes.LinksSeenFromSettings(sessStore.GetSettings), routes.MarkLinksSeen(sessStore.SetSetting))
+	boardHandler.SetOwnServerID(func(ctx context.Context) (string, error) {
+		c, err := store.NewCloudStore(s.db, store.NewRemoteServerStore(s.db, s.cfg.CoralDir())).Get(ctx)
+		if err != nil || c == nil {
+			return "", err
+		}
+		return c.ServerID, nil
+	})
 	boardHandler.SetAutoAttacher(routes.NewAutoAttacher(s.cfg.CoralDir(), routes.AutoAttachEnabled(sessStore), routes.SessionDirs(sessStore)))
 	s.goBackground(boardHandler.RecoverTaskNotifications)
 	s.goBackground(func(ctx context.Context) {
@@ -682,6 +690,8 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 		r.Post("/api/board/{project}/relay-messages", boardHandler.PostRelayMessage)
 		r.Get("/api/board/{project}/relay-targets", boardHandler.ListRelayTargets)
 		r.Post("/api/board/{project}/hub-notice", boardHandler.PostHubNotice)
+		// Coral Hub's full list of cross-team links (#5572): only through this computer's own connector, only from Coral Hub.
+		r.Post("/api/cloud/cross-team-links", boardHandler.PostCrossTeamLinks)
 		// Coral Hub's owner turns a team's two cross-team switches on or off (#5572): Launch tier, the owner marker, the local lock.
 		r.Post("/api/board/{project}/cross-team/enable", boardHandler.HubCrossTeamEnable)
 		r.Post("/api/board/{project}/cross-team/disable", boardHandler.HubCrossTeamDisable)

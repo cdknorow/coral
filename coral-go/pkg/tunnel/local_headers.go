@@ -38,6 +38,9 @@ var forwardRequestHeaders = map[string]bool{
 	// Coral Hub's notice about a team link (#3489): forwarded only on
 	// POST /api/board/{project}/hub-notice, trusted only on a request this connector stamped.
 	"X-Coral-Hub-Notice": true,
+	// The sending team of a relayed message or file, and the marker of a link snapshot (#5572): each forwarded only on its own routes (scrub).
+	"X-Coral-Hub-Source-Team": true,
+	"X-Coral-Hub-Links":       true,
 }
 
 // HubUserHeader names the Coral Hub user behind a tunnel board write: the sender of a
@@ -74,6 +77,32 @@ func ForwardsHubServer(method, decodedPath string) bool {
 	return method == http.MethodPost && hubServerRoute.MatchString(decodedPath)
 }
 
+// HubSourceTeamHeader names the sending team (its generated board id, b- and ten characters) of a relayed cross-team message or file (#5572). The hub sets it from the link pair, overwriting any
+// value a sending Coral supplied; it is forwarded only where X-Coral-Hub-Server is, and the server trusts it exactly like that header: only on a request this connector stamped.
+const HubSourceTeamHeader = "X-Coral-Hub-Source-Team"
+
+// The cross-team link snapshot (#5572): Coral Hub sends the full list of links as POST HubLinksPath, with HubLinksHeader set to HubLinksSnapshot (forwarded only on that path). The connector adds
+// two headers of its own, which no hub can send (they are not on the allowlist): HubLinksSessionHeader, the id this connector made for the tunnel session the request arrived on (the first
+// snapshot of a session is accepted whatever its version), and HubLinksCapHeader "1" when the hub advertised CapCrossTeamLinks on THIS session. Both are stamped only on a snapshot and on a relayed
+// message or file.
+const (
+	HubLinksPath          = "/api/cloud/cross-team-links"
+	HubLinksHeader        = "X-Coral-Hub-Links"
+	HubLinksSnapshot      = "snapshot"
+	HubLinksSessionHeader = "X-Coral-Hub-Links-Session"
+	HubLinksCapHeader     = "X-Coral-Hub-Links-Cap"
+)
+
+// ForwardsHubLinks reports whether X-Coral-Hub-Links is forwarded: a POST to HubLinksPath, and nothing else.
+func ForwardsHubLinks(method, decodedPath string) bool {
+	return method == http.MethodPost && decodedPath == HubLinksPath
+}
+
+// stampsLinksSession reports whether the connector adds the two session headers: a snapshot, and a relayed message or file.
+func stampsLinksSession(method, decodedPath string) bool {
+	return ForwardsHubLinks(method, decodedPath) || ForwardsHubServer(method, decodedPath)
+}
+
 // HubNoticeHeader marks a notice Coral Hub posts about a team link (#3489). The hub sets
 // it only on its own notice requests and strips it from browser requests.
 const HubNoticeHeader = "X-Coral-Hub-Notice"
@@ -105,8 +134,31 @@ func scrub(h http.Header, method, decodedPath string) http.Header {
 	if !ForwardsHubNotice(method, decodedPath) {
 		out.Del(HubNoticeHeader)
 	}
+	if !ForwardsHubServer(method, decodedPath) {
+		out.Del(HubSourceTeamHeader)
+	}
+	if !ForwardsHubLinks(method, decodedPath) {
+		out.Del(HubLinksHeader)
+	}
+	// Never from the hub: the connector's own, below (stampLinks).
+	out.Del(HubLinksSessionHeader)
+	out.Del(HubLinksCapHeader)
 	// The hub cannot send this header (it is not on the allowlist) and cannot remove it:
 	// Coral's file endpoints use it to apply the strict, tunnel-only path bounds.
 	out.Set(ViaHeader, "1")
 	return out
+}
+
+// stampLinks adds the connector's own two headers (HubLinksSessionHeader, HubLinksCapHeader) on a snapshot and on a relayed message or file: what this connector knows of the tunnel session the
+// stream arrived on. The hub cannot send either (scrub drops them), so the server may trust them on a request carrying the per-process stamp.
+func stampLinks(out http.Header, s *Stream, method, decodedPath string) {
+	out.Del(HubLinksSessionHeader)
+	out.Del(HubLinksCapHeader)
+	if !stampsLinksSession(method, decodedPath) || s.sessionID == "" {
+		return
+	}
+	out.Set(HubLinksSessionHeader, s.sessionID)
+	if s.linksCap {
+		out.Set(HubLinksCapHeader, "1")
+	}
 }

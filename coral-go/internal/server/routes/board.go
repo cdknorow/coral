@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/ptymanager"
@@ -61,6 +62,13 @@ type BoardHandler struct {
 	// hubSwitches limits Coral Hub's requests to turn a team's cross-team switches on or off (#5572); hubCrossTeamLock reads the local lock.
 	hubSwitches      hubSwitchLimiter
 	hubCrossTeamLock func(ctx context.Context) (bool, error)
+	// links is the cross-team link table Coral Hub's snapshots fill (#5572); linksSeenRead and linksSeenWrite keep the one-way "a hub advertised links" flag; ownServerID reads this computer's
+	// Coral Hub server id; linkClock is the clock (tests inject one).
+	links          linkTable
+	linksSeenRead  func(ctx context.Context) (bool, error)
+	linksSeenWrite func(ctx context.Context) error
+	ownServerID    func(ctx context.Context) (string, error)
+	linkClock      func() time.Time
 	// relayCoarse are the coarse limits on what one source Coral can push (#5514).
 	relayCoarse relayCoarseLimits
 	// relay sends a cross-team message to another Coral through Coral Hub (#3489).
