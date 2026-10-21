@@ -88,3 +88,18 @@ func TestTheStatusProcessGetsNoStdinNoCoralSecretsAndTheTempFolder(t *testing.T)
 	assert.Equal(t, "NOTTY", lines[2], "no terminal")
 	assert.Equal(t, "0", strings.TrimSpace(lines[3]), "nothing on stdin")
 }
+
+// #5604: other packages' tests of a hanging status command shorten the limit through SetCheckTimeoutForTests (an atomic: checks run in background goroutines, -race), so what ships must still
+// be 6 s, and the override must come off again. This is what keeps those tests from hiding a change of the production limit.
+func TestTheStatusCommandsLimitIsSixSecondsUnlessATestShortensIt(t *testing.T) {
+	assert.Equal(t, 6*time.Second, checkTimeout, "the shipped limit")
+	assert.Equal(t, 6*time.Second, effectiveCheckTimeout())
+	restore := SetCheckTimeoutForTests(time.Second)
+	assert.Equal(t, time.Second, effectiveCheckTimeout(), "the override is used")
+	inner := SetCheckTimeoutForTests(2 * time.Second)
+	assert.Equal(t, 2*time.Second, effectiveCheckTimeout())
+	inner()
+	assert.Equal(t, time.Second, effectiveCheckTimeout(), "an inner restore puts back the outer override")
+	restore()
+	assert.Equal(t, 6*time.Second, effectiveCheckTimeout(), "and the last puts back the shipped limit")
+}

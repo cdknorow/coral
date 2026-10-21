@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/subgentic/coral/internal/agentenv"
@@ -172,6 +173,25 @@ var (
 	backoffMax = 5 * time.Minute
 )
 
+// checkTimeoutOverride is a test's shorter limit (SetCheckTimeoutForTests), 0 for none. It is atomic because checks run in background goroutines of earlier tests and of the server under
+// test, which read the limit while another test sets it; the plain checkTimeout above is only ever written by this package's own tests.
+var checkTimeoutOverride atomic.Int64
+
+// SetCheckTimeoutForTests shortens how long the status command may take, for a test in another package that makes the stand-in hang on purpose (claudestub.HangingAuth): what such a test
+// checks (the run is skipped as "did not answer", never as signed out) does not need the production 6 s. It returns what puts the limit back.
+func SetCheckTimeoutForTests(d time.Duration) (restore func()) {
+	prev := checkTimeoutOverride.Swap(int64(d))
+	return func() { checkTimeoutOverride.Store(prev) }
+}
+
+// effectiveCheckTimeout is the limit a check runs under: a test's override, else checkTimeout.
+func effectiveCheckTimeout() time.Duration {
+	if o := checkTimeoutOverride.Load(); o > 0 {
+		return time.Duration(o)
+	}
+	return checkTimeout
+}
+
 const maxStatusOutput = 64 << 10
 
 // Check asks the CLI at bin now, whatever was answered before. It never signs in: stdin is empty, there is no terminal, and the call ends at checkTimeout.
@@ -188,7 +208,7 @@ func CheckIn(ctx context.Context, agentType, bin, dir string) State {
 	if agentType == "claude" && credentialedOutsideLogin() {
 		return Unknown // signed in by an API key, a token, a key helper or a cloud provider: no login to ask about, and none to refuse
 	}
-	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	cctx, cancel := context.WithTimeout(ctx, effectiveCheckTimeout())
 	defer cancel()
 	cmd := executil.Command(cctx, bin, sp.args...)
 	cmd.Stdin = nil // the null device: a prompt gets end of input

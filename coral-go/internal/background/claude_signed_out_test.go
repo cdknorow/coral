@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/claudestub"
 	"github.com/subgentic/coral/internal/store"
@@ -22,8 +23,17 @@ import (
 // log is what says what was started; the tests name no helper, so they hold for whatever shape the shared check takes.
 const failFast = 3 * time.Second
 
-// hangBound is the ceiling when the status command does not answer (the first ask waits 6 s, #5469): the run is then skipped as "did not answer", its own state, never as signed out.
-const hangBound = 8 * time.Second
+// hangBound is the ceiling when the status command does not answer (its limit, shortened to 1 s by shortHang; production 6 s, #5469): the run is then skipped as "did not answer", its own state, never as signed out.
+const hangBound = 4 * time.Second
+
+// shortHang makes the status command's limit one second for this test when the stand-in hangs on purpose (claudestub.HangingAuth): what is tested, a run skipped as "did not answer" and never
+// as signed out, does not need the production 6 s (#5604; agentsignin's own test pins the 6 s).
+func shortHang(t *testing.T, state claudestub.State) {
+	t.Helper()
+	if state == claudestub.HangingAuth {
+		t.Cleanup(agentsignin.SetCheckTimeoutForTests(time.Second))
+	}
+}
 
 // expectation is what a refused run must show in a state: how fast it comes back and what it says.
 type expectation struct {
@@ -101,6 +111,7 @@ func TestBackgroundCallersNeverStartAClaudeRunWhileNotSignedIn(t *testing.T) {
 		for _, c := range callers() {
 			t.Run(string(state)+"/"+c.name, func(t *testing.T) {
 				claudestub.Isolate(t)
+				shortHang(t, state)
 				stub := claudestub.New(t, state)
 				want := expect(state)
 				out, err, took := ran(t, c, stub.Path())

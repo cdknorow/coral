@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/claudestub"
 	"github.com/subgentic/coral/internal/config"
@@ -25,8 +26,17 @@ import (
 // seconds, start no print-mode run and no login flow (the stand-in's call log says), and say Claude is not signed in. See internal/background for the other callers.
 const failFastRoutes = 3 * time.Second
 
-// hangBoundRoutes is the ceiling when the status command does not answer: its first ask waits 6 s, then the run is skipped as "did not answer", never as signed out.
-const hangBoundRoutes = 8 * time.Second
+// hangBoundRoutes is the ceiling when the status command does not answer: its limit (shortened to 1 s by shortHang; production 6 s) passes, then the run is skipped as "did not answer", never as signed out.
+const hangBoundRoutes = 4 * time.Second
+
+// shortHang makes the status command's limit one second for this test when the stand-in hangs on purpose (claudestub.HangingAuth): what is tested, a run skipped as "did not answer" and never
+// as signed out, does not need the production 6 s (#5604; agentsignin's own test pins the 6 s).
+func shortHang(t *testing.T, state claudestub.State) {
+	t.Helper()
+	if state == claudestub.HangingAuth {
+		t.Cleanup(agentsignin.SetCheckTimeoutForTests(time.Second))
+	}
+}
 
 func boundFor(state claudestub.State) time.Duration {
 	if state == claudestub.HangingAuth {
@@ -52,6 +62,7 @@ func TestTeamGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 	for _, state := range []claudestub.State{claudestub.SignedOut, claudestub.LoginInProgress, claudestub.HangingAuth} {
 		t.Run(string(state), func(t *testing.T) {
 			claudestub.Isolate(t)
+			shortHang(t, state)
 			stub := claudestub.New(t, state)
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
@@ -100,6 +111,7 @@ func TestThemeGenerationNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 	for _, state := range []claudestub.State{claudestub.SignedOut, claudestub.LoginInProgress, claudestub.HangingAuth} {
 		t.Run(string(state), func(t *testing.T) {
 			claudestub.Isolate(t)
+			shortHang(t, state)
 			stub := claudestub.New(t, state)
 			rec, took := generateTheme(t, stub.Path())
 			assert.Less(t, took, boundFor(state), "comes back fast")
