@@ -88,7 +88,11 @@ func keepAgentLaunchFlags(flags []string) []string {
 // user (#126 F4). Exactly: every field, its knowledge text included (the agent reads it as it
 // reads its prompt). The templates are read from this computer's settings, which neither an
 // agent's token nor the tunnel can write; nothing in the request says which template it is.
-func inSavedTeamTemplate(settings map[string]string, def launchTeamAgent) bool {
+// agentType is the type the member will run as (its own, else the team's): capabilities mean a
+// different thing for each CLI (Claude allow rules become agy's or Codex's bypass), so a saved
+// member matches only with an agent_type equal to it, and one saved with no agent_type never
+// matches (the settings don't record what the owner ran it as) (#126 F4 review F1).
+func inSavedTeamTemplate(settings map[string]string, def launchTeamAgent, agentType string) bool {
 	var templates []struct {
 		Agents []struct {
 			Name         string                 `json:"name"`
@@ -107,9 +111,15 @@ func inSavedTeamTemplate(settings map[string]string, def launchTeamAgent) bool {
 	if json.Unmarshal([]byte(setreg.Raw(settings, "saved_team_templates")), &templates) != nil {
 		return false
 	}
-	want := teamAgentKey(def.Name, def.Prompt, def.AgentType, def.Model, def.Flags, def.Capabilities, def.Tools, def.Hooks, def.Knowledge)
+	if agentType == "" {
+		return false
+	}
+	want := teamAgentKey(def.Name, def.Prompt, agentType, def.Model, def.Flags, def.Capabilities, def.Tools, def.Hooks, def.Knowledge)
 	for _, t := range templates {
 		for _, a := range t.Agents {
+			if a.AgentType == "" {
+				continue
+			}
 			name, prompt := a.Name, a.Prompt
 			if name == "" {
 				name = a.Role // the dashboard's older template fields

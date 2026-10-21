@@ -175,7 +175,11 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		if agentDef.Name == "" {
 			continue
 		}
-		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef) {
+		memberType := body.AgentType
+		if agentDef.AgentType != "" {
+			memberType = agentDef.AgentType
+		}
+		if fromAgent && !inSavedTeamTemplate(userSettings, agentDef, memberType) {
 			agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks = limitAgentLaunch("launch-team", agentDef.Flags, agentDef.Capabilities, agentDef.Tools, agentDef.Hooks)
 		}
 		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID)
@@ -298,7 +302,7 @@ func teamAsksToSkip(body launchTeamRequest, settings map[string]string) bool {
 		if agent.SkipsPermissionPrompts(agentType, flags) {
 			return true
 		}
-		if hubWidens(def.Capabilities, def.Tools, def.Hooks) && !inSavedTeamTemplate(settings, def) {
+		if hubWidens(def.Capabilities, def.Tools, def.Hooks) && !inSavedTeamTemplate(settings, def, agentType) {
 			return true
 		}
 	}
