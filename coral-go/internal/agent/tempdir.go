@@ -17,8 +17,15 @@ var (
 	launchTempDirPath string
 )
 
-// SetTempDir makes dir (created if needed, mode 0700) the folder launch temp files go to.
+// SetTempDir makes dir (created if needed, mode 0700, and on Windows an access list of this user and SYSTEM only)
+// the folder launch temp files go to; "" puts them back in the system temp folder.
 func SetTempDir(dir string) error {
+	if dir == "" { // back to the system temp folder (tests)
+		launchTempDirMu.Lock()
+		launchTempDirPath = ""
+		launchTempDirMu.Unlock()
+		return nil
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("can't create the launch temp folder %s: %w", dir, err)
 	}
