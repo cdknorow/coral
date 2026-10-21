@@ -44,6 +44,15 @@ func tightenDataPermissions(coralDir string) {
 		}
 	}
 	tighten(coralDir, 0o700)
+	// Every other file directly in the folder (keys, tokens, state an older Coral left): the 0700 folder keeps others out, but a copy
+	// or a restore of the folder would carry a loose mode with it (#96).
+	if entries, err := os.ReadDir(coralDir); err == nil {
+		for _, e := range entries {
+			if e.Type().IsRegular() {
+				tighten(filepath.Join(coralDir, e.Name()), 0o600)
+			}
+		}
+	}
 	for _, pattern := range dataFiles {
 		matches, _ := filepath.Glob(filepath.Join(coralDir, pattern))
 		for _, m := range matches {
@@ -82,11 +91,12 @@ var dataFiles = []string{
 }
 
 // dataTrees are the data folder's folders whose every folder is 0700 and every file 0600.
-var dataTrees = []string{"artifacts", "uploads", "agent_knowledge", "workflows", "pi-sessions", "themes"}
+var dataTrees = []string{"artifacts", "uploads", "agent_knowledge", "workflows", "pi-sessions", "themes", "session_tokens"}
 
 // warnBroadDataFolder: on Windows the data folder's access list is the protection for the API
 // key, the command-line token and the databases; a folder others can read is reported loudly at
-// every start (#3637). Coral doesn't change an existing folder's access list itself.
+// every start (#3637). EnsureDataDir has already made a folder this user owns private (#96); what is left here is a folder it could
+// not change and that --allow-shared-data-dir let run.
 func warnBroadDataFolder(coralDir string) {
 	if msg := config.DataDirWarning(coralDir); msg != "" {
 		log.Printf("[security] %s", msg)

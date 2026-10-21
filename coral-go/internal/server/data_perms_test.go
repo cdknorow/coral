@@ -88,3 +88,26 @@ func TestTightenDataPermissionsThroughSymlink(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o700), fi.Mode().Perm())
 }
+
+// Any file directly in the data folder, not only the known databases and logs, is made 0600 (#96): a key or token file an older Coral left.
+func TestTightenDataPermissionsCoversRootFiles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	dir := t.TempDir()
+	key := filepath.Join(dir, "api_key")
+	require.NoError(t, os.WriteFile(key, []byte("k"), 0o644))
+	require.NoError(t, os.Chmod(key, 0o644))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "session_tokens"), 0o755))
+	tok := filepath.Join(dir, "session_tokens", "s1")
+	require.NoError(t, os.WriteFile(tok, []byte("t"), 0o644))
+	require.NoError(t, os.Chmod(tok, 0o644))
+
+	tightenDataPermissions(dir)
+
+	for _, p := range []string{key, tok} {
+		fi, err := os.Stat(p)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm(), p)
+	}
+}

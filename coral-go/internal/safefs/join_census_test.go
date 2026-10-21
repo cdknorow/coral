@@ -145,7 +145,7 @@ var joinSites = map[string]joinEntry{
 	"internal/safefs/safefs.go\tRoot.WriteFileUnless":                                        {2, joinContained, "the containment code itself"},
 	"internal/safefs/safefs.go\tWithin":                                                      {1, joinContained, "the containment code itself"},
 	"internal/safefs/safefs.go\tresolveExisting":                                             {2, joinContained, "the containment code itself"},
-	"internal/server/data_perms.go\ttightenDataPermissions":                                  {2, joinOwn, "a fixed or program-made name in its own folder"},
+	"internal/server/data_perms.go\ttightenDataPermissions":                                  {3, joinOwn, "a fixed or program-made name in its own folder"},
 	"internal/server/routes/agent_docs.go\tAgentDocsHandler.Get":                             {1, joinContained, "an embedded fs.FS, which refuses a name that is not a valid path"},
 	"internal/server/routes/artifact_comments.go\tSessionsHandler.commentArtifact":           {1, joinID, "an object id is checked with objectNameRe (64 hex digits) or a session id with IsSafeID before the join (#5305)"},
 	"internal/server/routes/artifact_readers.go\tSessionsHandler.artifactReaders":            {1, joinID, "an object id is checked with validArtifactID (64 lower-case hex digits) before the join (#5305)"},
