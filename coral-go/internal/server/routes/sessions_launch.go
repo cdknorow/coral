@@ -153,6 +153,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		WorkDir: body.WorkingDir, AgentType: body.AgentType, DisplayName: body.DisplayName, ResumeSessionID: body.ResumeSessionID,
 		Flags: launchFlags, Prompt: body.Prompt, BoardName: body.BoardName, BoardServer: body.BoardServer, Backend: body.Backend,
 		BoardType: body.BoardType, Model: effectiveModel, Thinking: effectiveThinking, Capabilities: body.Capabilities, Tools: body.Tools, Hooks: body.Hooks,
+		AutoByDefault: autoDefaultAllowed(lctx, r, h.ss), // a Hub request the owner does not let skip prompts asks instead (#5836)
 	})
 	if err != nil {
 		attempt.Finish(tracking.OutcomeFailure, classifyLaunchError(err), 0, 1)

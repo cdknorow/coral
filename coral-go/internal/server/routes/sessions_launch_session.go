@@ -60,6 +60,9 @@ type launchSpec struct {
 	Tools                           []string
 	Hooks                           map[string]interface{}
 	PermissionMode                  string // effective permission mode if already decided (team reset, etc.) (#5188)
+	// AutoByDefault: this is a new launch that may start Claude in Auto when it names no permission mode (#5836). Set only by the launch and the team launch, and only when
+	// autoDefaultAllowed (a Coral Hub request the owner does not let skip prompts is not). A restart, resume, wake or team reset restores a session and never sets it.
+	AutoByDefault bool
 }
 
 // launchSession creates a new agent session using the specified backend (tmux or pty).
@@ -142,7 +145,10 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 			if def := setreg.Enum(userSettings, "default_permission_mode"); def != "" {
 				return def
 			}
-			return agent.DefaultLaunchPermissionMode(agentType) // Claude: Auto (#5836)
+			if spec.AutoByDefault {
+				return agent.DefaultLaunchPermissionMode(agentType) // Claude: Auto (#5836)
+			}
+			return "default"
 		}(),
 		CoralDir:  h.cfg.CoralDir(),
 		CoralHost: h.cfg.AgentHost(),
