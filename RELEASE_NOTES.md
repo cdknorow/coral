@@ -1,5 +1,38 @@
 # Release Notes
 
+## v1.4.148 — Windows hardening, safer automated input, and a round of dashboard polish
+
+### Features
+
+- **`coral-board peek --lines N`:** shows the last N lines of an agent's terminal, rendered as the screen shows them.
+- **Coral Hub can read one team's cross-team settings:** the owner's `GET /api/board/{project}/cross-team/settings` gives the guided setup what it needs. It is owner-only and changes nothing.
+
+### Changes
+
+- **Windows agents start from a filtered environment:** Coral's whole environment is no longer handed to an agent on Windows. CORAL_ names are removed from agents' environment on every OS, matched without regard to case, and an empty environment is refused.
+- **Windows launch hardening:** PowerShell and the programs it starts are named by absolute path; DLLs load from System32 only in the desktop app; the launch script runs with Bypass for its own process only, so a Restricted machine policy no longer stops it and the agent's own shells are unchanged; native arguments are escaped for PowerShell 5.1 and prompt files are read as UTF-8; the current folder is not searched for programs.
+- **Codex and agy on Windows:** Codex's hooks run, and its commands find the session token through a file when Codex hides the variable; agy gets hook commands cmd.exe can parse, and no hooks at all rather than a hook found by bare name. Codex's session token file stays in Coral's data folder (session_tokens) while the session runs; it is private to your user, and any of your user's processes can read it.
+- **Windows stop:** a second Ctrl-C is sent, an idle shell is told to exit, and the whole process tree ends through a job object.
+- **Auto-accept on Windows waits on commands it knows to be dangerous** (Remove-Item and its aliases, del, rd, move, copy, format, and others, in PowerShell and cmd). Anything not recognised still passes, and the folder check reads the path text: junctions and mapped drives are not seen. A rooted path (`\Windows`, a UNC path, `C:foo`, `~`, `%VAR%`) counts as outside the working folder.
+- **Typed text from Coral is safer on both terminal backends:** text sent for an agent has no control characters or line breaks, and a text of nothing but control characters is refused rather than sent as a bare Enter. Multi-line text is one paste and CRLF is one line break. Enter is withheld when the rendered screen shows something other than the prompt. `/keys` sends key names as keys, follows the program's cursor-key mode, takes at most 64 entries, and answers `terminal_gone` for a gone session.
+- **Workflow steps with other CLIs:** pi steps no longer get Claude's `--no-session-persistence`; a pi prompt never starts with `-` or `@`; the prompt of Codex and agy goes where it can only be the prompt, and agy steps run with `--disable-slash-commands`. Claude's launch prompt that starts with / gets a leading newline, so it is read as text, not run as a slash command.
+- **The input debug log is private and short-lived:** secrets are redacted, what a person types is kept only as its length, the files are readable by you only, and the log deletes itself after 7 days unwritten. Text sent through an answer prompt or the plain /send and /keys routes is kept after secret redaction, not as its length.
+- **Windows files and links:** `file:///C:/...` links open, network paths are refused by their text, a change in a subfolder clears its repository's file list, and the diff prune keeps objects that other diffs still link.
+- **Dashboard polish:** terminal backend described in one line each, machine health in About, a Copy button for the Coral Hub start command (said once, with the order of the two commands), the chooser's Cancel, an Unsaved changes notice in Settings, the CLI paths folded, and Settings > Agents in groups with the units of the storage limits beside their fields; text on a phone is at least 13 px in the Servers view and the agent list.
+- **Docs site:** every page has a title and a description, Open Graph and Twitter tags, and a robots.txt that names the sitemap.
+
+### Fixes
+
+- **A person's pasted text is logged by length** on both terminal backends (PTY and tmux), as a typed line is.
+- **A cancelled key sequence stops at once** instead of waiting out its delay.
+- **Terminal capture is the rendered screen with scrollback**, not the raw output ring.
+
+### Internal
+
+- Windows and Linux stress runners can choose the terminal backend and check input fidelity; test runners isolate USERPROFILE with HOME and agent tests leave nothing in the system temp folder.
+- The browser gate balances its six parts from the last three green runs.
+- Troubleshooting notes for Codex's Windows sandbox permissions.
+
 ## v1.4.147 — Team settings uses the room, and cross-team links arrive
 
 ### Features
