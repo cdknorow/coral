@@ -71,24 +71,34 @@ func TestCodexWalkStopsWhenItsContextEnds(t *testing.T) {
 	assert.Less(t, took, 2*time.Second, "the walk of 5000 rollouts ended with its context")
 }
 
-// The marker cache drops the least recently used rollout when it is full, not everything at once.
+// The marker cache drops the least recently used rollout when it is full, not everything at once, and never holds more than its bound.
 func TestCodexMarkerCacheIsAnLRUNotClearedWhole(t *testing.T) {
+	was := codexMarkerMax
+	codexMarkerMax = 3
+	t.Cleanup(func() { codexMarkerMax = was })
 	resetCodexMarkers()
 	put := func(i int) { codexMarkerPut(fmt.Sprintf("/r/%d", i), codexMarkerEntry{id: fmt.Sprint(i)}) }
-	for i := 0; i < codexMarkerMax; i++ {
-		put(i)
-	}
-	assert.Equal(t, codexMarkerMax, codexMarkerCount())
-	_, ok := codexMarkerGet("/r/0") // used: now the newest
-	require.True(t, ok)
-	put(codexMarkerMax) // one over: the oldest unused (1) goes, one entry only
-	assert.Equal(t, codexMarkerMax, codexMarkerCount(), "one entry left, not all of them")
-	_, ok = codexMarkerGet("/r/1")
-	assert.False(t, ok, "the least recently used is the one dropped")
-	_, ok = codexMarkerGet("/r/0")
-	assert.True(t, ok, "a recently used one stays")
-	// more rollouts than the old limit of 4096 are all remembered
-	assert.Greater(t, codexMarkerMax, 4096)
+	has := func(i int) bool { _, ok := codexMarkerGet(fmt.Sprintf("/r/%d", i)); return ok }
+	put(0)
+	put(1)
+	put(2)
+	assert.Equal(t, 3, codexMarkerCount())
+	assert.True(t, has(0), "used: now the newest, so 1 is the oldest") // 0 moves to the front
+	put(3)
+	assert.Equal(t, 3, codexMarkerCount(), "full: one entry left, not all of them")
+	assert.False(t, has(1), "the least recently used is the one dropped")
+	assert.True(t, has(0) && has(2) && has(3), "the others stay")
+	put(4)
+	put(5)
+	assert.Equal(t, 3, codexMarkerCount(), "the bound holds")
+	assert.False(t, has(0) || has(2), "the two least recently used went")
+	assert.True(t, has(3) && has(4) && has(5), "the three most recently used are kept")
+	// an entry put again is updated in place, not added twice
+	codexMarkerPut("/r/5", codexMarkerEntry{id: "again"})
+	assert.Equal(t, 3, codexMarkerCount())
+	e, _ := codexMarkerGet("/r/5")
+	assert.Equal(t, "again", e.id)
+	assert.Greater(t, was, 4096, "the real bound is larger than the old clear-all limit")
 }
 
 // The list's lookup of a Codex rollout is by its link and its file name only: a rollout that holds the session id in its name is found; one that does not is "not told" (the scan
