@@ -58,20 +58,31 @@ coral_test_home_env() {
     fi
 }
 
-# coral_test_proc_start PID: what identifies the process PID for as long as it lives: its start time (Linux and Git Bash: field 22 of
-# /proc/PID/stat; macOS and the BSDs: ps -o lstart). A process that took the number over later has another one. Prints nothing when it can't tell
-# (no such process, no /proc and no ps -o): callers treat that as "not the same", never as "the same".
+# coral_test_proc_start PID: what identifies the process PID for as long as it lives: its start time. Linux and Git Bash read field 22 of /proc/PID/stat;
+# macOS and the BSDs ps -o lstart; where neither answers, Git Bash asks Windows (PowerShell Get-Process StartTime, as UTC ticks, for the Windows pid in
+# /proc/PID/winpid). A process that took the number over later has another one. Prints nothing when it can't tell (no such process, nothing above works):
+# callers treat that as "not the same", never as "the same".
 coral_test_proc_start() {
-    local pid="$1" stat rest
+    local pid="$1" stat rest out winpid
     if [[ -r "/proc/$pid/stat" ]]; then
-        stat=$(<"/proc/$pid/stat") 2>/dev/null || return 0
+        stat=$(<"/proc/$pid/stat") 2>/dev/null
         rest=${stat##*) }   # after the command name, which may hold spaces and parentheses: state is the first field (3), start time the 20th (22)
         set -- $rest
-        [[ -n "${20:-}" ]] && printf '%s\n' "${20}"
-        return 0
+        if [[ -n "${20:-}" ]]; then printf '%s\n' "${20}"; return 0; fi
     fi
-    ps -o lstart= -p "$pid" 2>/dev/null | sed -e 's/^ *//' -e 's/ *$//'
+    out="$(ps -o lstart= -p "$pid" 2>/dev/null | sed -e 's/^ *//' -e 's/ *$//')"
+    if [[ -n "$out" ]]; then printf '%s\n' "$out"; return 0; fi
+    case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*|CYGWIN*) coral_test_proc_start_windows "$pid" ;;
+    esac
     return 0
+}
+
+# coral_test_proc_start_windows PID: Git Bash's way to ask Windows for the start time of the process whose Git Bash number is PID (UTC ticks); nothing when it can't.
+coral_test_proc_start_windows() {
+    local pid="$1" winpid
+    winpid="$(cat "/proc/$pid/winpid" 2>/dev/null)"
+    powershell.exe -NoProfile -NonInteractive -Command "(Get-Process -Id ${winpid:-$pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks" 2>/dev/null | tr -d '\r'
 }
 
 # coral_test_same_process PID START: true when PID is a live process whose coral_test_proc_start is START (non-empty).
