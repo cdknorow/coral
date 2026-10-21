@@ -1438,6 +1438,16 @@ func TestSessionsSetNameColor(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, put(`{"color": "#a3be8c"}`), "session_id required")
 }
 
+// fileURL is the file: URL of the absolute path p, with host ("" or "localhost"): file:///C:/x/y
+// on Windows (#59), file:///x/y elsewhere.
+func fileURL(host, p string) string {
+	p = filepath.ToSlash(p)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return "file://" + host + p
+}
+
 func TestSessionsResolvePath(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -1484,9 +1494,9 @@ func TestSessionsResolvePath(t *testing.T) {
 		"app/main.go:12":              "app/main.go", // with a line
 		"main.go:3-9":                 "app/main.go", // with a range
 		filepath.Join(app, "main.go"): "app/main.go", // absolute
-		"file://" + filepath.Join(app, "main.go"):                       "app/main.go", // file:// URL
-		"file://localhost" + filepath.Join(app, "main.go") + "#L12-L30": "app/main.go", // file://localhost URL with #L range
-		"file://" + filepath.Join(app, "main.go") + "#L12-L30":          "app/main.go", // file:// URL with #L range
+		fileURL("", filepath.Join(app, "main.go")):                       "app/main.go", // file:// URL
+		fileURL("localhost", filepath.Join(app, "main.go")) + "#L12-L30": "app/main.go", // file://localhost URL with #L range
+		fileURL("", filepath.Join(app, "main.go")) + "#L12-L30":          "app/main.go", // file:// URL with #L range
 		"app/main.go#L12":     "app/main.go", // markdown line hash
 		"app/main.go#L12-L45": "app/main.go", // markdown line hash range
 		"README.md":           "README.md",
