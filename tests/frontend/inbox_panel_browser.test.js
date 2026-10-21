@@ -215,8 +215,9 @@ const STUB = `(() => {
         // artifact links (#5784): a coral://artifacts/<hex> in task text is a link only after GET /api/artifacts/<hex>/meta answered 200
         console.log('artifact links');
         const A = c => c.repeat(64);
-        const text = [`ok coral://artifacts/${A('a')} and [again](coral://artifacts/${A('a')})`, `forbidden coral://artifacts/${A('b')}`, `missing coral://artifacts/${A('c')}`, `offline coral://artifacts/${A('d')}`,
-            `upper coral://artifacts/${A('A')}`, `short coral://artifacts/${'a'.repeat(63)}`, `[trick](coral://artifacts/${A('a')}/../../x)`, `[pw](coral://artifacts/${A('e')}?x=1)`].join('\n\n');
+        const L = (label, id) => `[${label}](coral://artifacts/${id})`;
+        const text = [`ok ${L('ok', A('a'))} and ${L('again', A('a'))}`, `forbidden ${L('forbidden', A('b'))}`, `missing ${L('missing', A('c'))}`, `offline ${L('offline', A('d'))}`,
+            `upper ${L('upper', A('A'))}`, `short ${L('short', 'a'.repeat(63))}`, `[trick](coral://artifacts/${A('a')}/../../x)`, `[pw](coral://artifacts/${A('e')}?x=1)`, `bare coral://artifacts/${A('f')}`].join('\n\n');
         await ev(`(async () => { window.__reqs.length = 0; const m = await import(${S} + 'inbox_panel.js'); const c = await import(${S} + 'inbox_coral.js'); const host = document.createElement('div'); host.id = 'link-host'; document.body.append(host);
             const adapter = { ...c.coralInboxAdapter, listTasks: async () => [{ id: 7, project: 'team a', board: 'x', title: 'Links', priority: 'low', status: 'pending', created_by: 'X', updated_at: new Date().toISOString() }], getTask: async () => ({ body: ${JSON.stringify(text)}, created_by: 'X' }) };
             window.__link = m.mountInbox(host, adapter); return true; })()`);
@@ -225,9 +226,9 @@ const STUB = `(() => {
         await waitFor(`!!document.querySelector('#link-host .ibx-task-body .md')`, 'the link host text', 4000);
         const lk = await ev(`(() => { const b = document.querySelector('#link-host .ibx-task-body'); const metas = window.__reqs.filter(r => /\\/meta$/.test(r.p)).map(r => r.p.split('/')[3][0]);
             return { hrefs: [...b.querySelectorAll('.md a')].map(a => a.getAttribute('href')), metas, open: b.querySelector('a.ibx-open').getAttribute('href'), text: b.textContent }; })()`);
-        check('only the id that answered 200 is a link, to the fixed /api/artifacts/<hex> path (the markdown link; a bare id is text)', lk.hrefs.length === 1 && lk.hrefs.every(h => h === '/api/artifacts/' + 'a'.repeat(64)), JSON.stringify(lk.hrefs));
-        check('403, 404, a network failure, an uppercase id, a short id and an id with a tail stay text', ['b', 'c', 'd', 'A', 'e'].every(c => lk.text.includes('coral://artifacts/' + c.repeat(64))) && lk.text.includes('a'.repeat(63)), lk.text);
-        check('one meta request per distinct valid id (a, b, c, d, e), and none for the uppercase or short ones', JSON.stringify([...lk.metas].sort()) === JSON.stringify(['a', 'b', 'c', 'd']) || JSON.stringify([...lk.metas].sort()) === JSON.stringify(['a', 'b', 'c', 'd', 'e']), JSON.stringify(lk.metas));
+        check('only the id that answered 200 is a link, to the fixed /api/artifacts/<hex> path (both markdown links of it; b, c, d, e and the others are written as links too, so only the 200 can make one)', lk.hrefs.length === 2 && lk.hrefs.every(h => h === '/api/artifacts/' + 'a'.repeat(64)), JSON.stringify(lk.hrefs));
+        check('403, 404, a network failure, an uppercase id, a short id, an id with a tail or a query and a bare id are not links: the 200 id has the only hrefs', lk.hrefs.length === 2 && !lk.hrefs.some(h => /\/\.\.|\?/.test(h)) && lk.text.includes('forbidden') && lk.text.includes('offline'), lk.text);
+        check('one meta request per distinct lowercase 64-hex id (a, b, c, d, e, f: the tail and query ids are asked for their own hex, the bare one too), none for the uppercase or short ones', JSON.stringify([...lk.metas].sort()) === JSON.stringify(['a', 'b', 'c', 'd', 'e', 'f']), JSON.stringify(lk.metas));
         check('"Open the task" is the board path of the task, encoded', lk.open === '/board/team%20a', lk.open);
         const many = await ev(`(async () => { const c = await import(${S} + 'inbox_coral.js'); window.__reqs.length = 0;
             const ids = Array.from({ length: 30 }, (_, i) => 'a' + String(i).padStart(2, '0').repeat(1) + 'f'.repeat(61));
