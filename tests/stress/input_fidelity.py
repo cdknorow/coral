@@ -254,8 +254,13 @@ def run(args):
         record("launch-prompt-arg", "launch prompt (argv)", "PASS", "the prompt arrived in the agent's arguments intact")
     else:
         near = [l for l in argv.splitlines() if "launch prompt" in l]
-        record("launch-prompt-arg", "launch prompt (argv)", "FAIL",
-               "the agent's arguments do not contain the prompt as sent",
+        why = "the agent's arguments do not contain the prompt as sent"
+        try:
+            if lp.encode("utf-8").decode("cp1252", "replace")[:60] in argv or "Ã©" in (near[0] if near else ""):
+                why = "non-ASCII arrived as mojibake: the UTF-8 prompt was read as Windows-1252"
+        except Exception:
+            pass
+        record("launch-prompt-arg", "launch prompt (argv)", "FAIL", why,
                extra={"argv_line": (near[0] if near else argv[:600])})
 
     # ── 2. /send as a person (dashboard cookie: direct, no gate) and 3. as automation (gate) ──
@@ -269,13 +274,15 @@ def run(args):
             want = expect_text(text)
             st, resp = coral.call("POST", "/api/sessions/live/%s/send" % agent.name,
                                   dict(agent.target(), command=text), human=human)
-            if st not in (200, 202):
-                record(cid, path, "FAIL", "HTTP %s: %s" % (st, str(resp)[:200]))
-                continue
             got = agent.wait(off, lambda g: parse(g)[0][-1:] == [want], timeout=60 if len(text) > 50000 else 30)
             verdict, note = judge_send(got, text)
             if st == 202:
                 note = ("(held by the gate, HTTP 202) " + note).strip()
+            elif st != 200:
+                # Refused or not confirmed: still say what reached the agent (a retype shows here).
+                code = resp.get("code", "") if isinstance(resp, dict) else ""
+                n = len(parse(got)[0])
+                verdict, note = "FAIL", "HTTP %s %s; the agent got %d submission(s): %s" % (st, code, n, note)
             record(cid, path, verdict, note, sent=want + b"\r", got=got)
 
     # ── 4. /keys: tmux key names ──

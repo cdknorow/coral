@@ -26,3 +26,11 @@ func TestInputBoxFeed(t *testing.T) {
 		t.Errorf("submissions = %q, want %q", got, want)
 	}
 }
+
+func TestSplitWords(t *testing.T) {
+	got := splitWords(`"C:/Program Files (x86)/Coral/coral-hook-agentic-state.exe" --flag x`)
+	want := []string{"C:/Program Files (x86)/Coral/coral-hook-agentic-state.exe", "--flag", "x"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("splitWords = %q, want %q", got, want)
+	}
+}
