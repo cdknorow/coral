@@ -128,6 +128,7 @@ func (a *ClaudeAgent) LaunchCommand(params LaunchParams) (string, error) {
 	// without relying on fragile tmux send-keys delivery.
 	cliPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
 	if cliPrompt != "" {
+		cliPrompt = guardSlashPrompt(cliPrompt)
 		promptFile := files.write("prompt", effectiveID, "txt", []byte(cliPrompt))
 		arg := FormatPromptFileArg(promptFile)
 		raw = append(raw, arg)
