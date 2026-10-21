@@ -235,11 +235,13 @@ else
 fi
 
 # 5. the Homebrew tap: the cask file in the tap's repository, cloned into a temp folder (Homebrew itself is not touched: a tap lives inside its prefix)
-for which in old new; do
-  if [ "$which" = old ]; then trepo="$OLD_OWNER/homebrew-$OLD_NAME"; else trepo="$NEW_OWNER/homebrew-$NEW_NAME"; fi
-  # the tap's name is homebrew-coral for both homes (release-homes.sh: release_tap_repo)
-  trepo="${trepo%/homebrew-*}/homebrew-coral"
-  [ "$which" = new ] && [ "$EXPECT" = before ] && { row SKIP "tap: $trepo" "the new home does not exist yet"; continue; }
+# The tap does NOT move with the repository (decided, #5299): it stays at the old owner and its cask points at the release home. A tap at the new owner is reported, never required.
+ntap="$NEW_OWNER/homebrew-coral"
+nout2="$(git_ls "$ntap" HEAD | head -1)"
+if printf '%s' "$nout2" | grep -Eq '^[0-9a-f]{40}'; then row INFO "tap: $ntap exists" "answers (${nout2:0:12}): the tap is not moving, so nothing reads it"
+else row INFO "tap: $ntap does not exist" "as decided: the tap stays at ${OLD_OWNER}/homebrew-coral"; fi
+for which in old; do
+  trepo="$OLD_OWNER/homebrew-coral"
   d="$TMP/tap-$which"
   if env -i PATH="$PATH" HOME="$TMP" GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git clone -q --depth 1 "https://github.com/$trepo.git" "$d" >"$TMP/clone.log" 2>&1 && [ -f "$d/Casks/coral.rb" ]; then
     cv="$(cask_field "$d/Casks/coral.rb" version)"; cs="$(cask_field "$d/Casks/coral.rb" sha256)"; cu="$(cask_field "$d/Casks/coral.rb" url)"
@@ -251,7 +253,7 @@ for which in old new; do
     [ "$syn" = ok ] || ok=0
     [ "$cv" = "${TAG#v}" ] || { ok=0; detail="$detail; version is not $TAG"; }
     [ -n "$dmg_sum" ] && [ "$dmg_sum" != "$cs" ] && { ok=0; detail="$detail; sha256 differs from SHA256SUMS.txt's DMG"; }
-    [ "$curepo" = "$HOME_REPO" ] || { ok=0; detail="$detail; the url points at $curepo, the home is $HOME_REPO"; [ "$EXPECT" = after ] && [ "$curepo" = "$OLD" ] && detail="$detail (the old home still works through GitHub's redirect, see the release download row; the tap moves with the first release from the new home)"; }
+    [ "$curepo" = "$HOME_REPO" ] || { ok=0; detail="$detail; the url points at $curepo, the home is $HOME_REPO"; [ "$EXPECT" = after ] && [ "$curepo" = "$OLD" ] && detail="$detail (the old home still works through GitHub's redirect, see the release download row; the cask gets the new url when the first release from the new home publishes it)"; }
     [ "$ok" = 1 ] && row PASS "tap: $trepo's cask" "$detail, sha256 equals the DMG's in SHA256SUMS.txt" || row FAIL "tap: $trepo's cask" "$detail"
   else
     if [ "$which" = old ]; then row FAIL "tap: $trepo" "could not clone it: $(head -c 160 "$TMP/clone.log")"; else row FAIL "tap: $trepo" "could not clone it after the move: $(head -c 160 "$TMP/clone.log")"; fi
