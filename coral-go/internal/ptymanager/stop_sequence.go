@@ -3,6 +3,8 @@ package ptymanager
 import (
 	"strings"
 	"time"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // stopTimings are the pauses of a polite stop where Terminate types into the console (Windows). A raw-mode CLI takes the
@@ -53,6 +55,20 @@ func politeStop(write func([]byte) error, done <-chan struct{}, hasChildren func
 		}
 	}
 }
+
+// noteStopWrite is write, with each write recorded in the input debug log as Coral's own control input (terminalinput.Internal) for
+// the session name: the second Ctrl-C and the "exit" line of a polite stop (#5706; the first Ctrl-C is recorded by session.killWithin).
+// The record is the log's non-blocking enqueue (a full queue drops the line), so a stuck log writer cannot delay the stop.
+func noteStopWrite(name string, write func([]byte) error) func([]byte) error {
+	return func(b []byte) error {
+		terminalinput.RecordInput(terminalinput.Internal, name, string(b)) // as the key and the line they are: C-c, and exit then Enter
+		return write(b)
+	}
+}
+
+// stopNamer is implemented by a terminal process whose stop types into its console (Windows): the session tells it its name before
+// Terminate, so the stop's own writes are recorded under it.
+type stopNamer interface{ setStopName(name string) }
 
 // isShellImage says whether an executable's path or name is one of the Windows shells a terminal is started with: powershell.exe,
 // pwsh.exe or cmd.exe, whatever the folder and the case. Anything else, an empty name included, is not a shell.
