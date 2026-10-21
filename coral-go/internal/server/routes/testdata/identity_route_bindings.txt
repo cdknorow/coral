@@ -137,6 +137,7 @@ POST /api/board/{project}/tasks | board-claims
 POST /api/board/{project}/tasks/claim | board-claims
 POST /api/board/{project}/tasks/current | board-claims
 POST /api/board/{project}/tasks/{taskID}/approve | board-claims
+POST /api/board/{project}/tasks/{taskID}/attach | board-claims
 POST /api/board/{project}/tasks/{taskID}/cancel | board-claims
 POST /api/board/{project}/tasks/{taskID}/complete | board-claims
 POST /api/board/{project}/tasks/{taskID}/nudge | board-claims
@@ -148,6 +149,7 @@ POST /api/board/{project}/tasks/{taskID}/release-review | board-claims
 POST /api/board/{project}/tasks/{taskID}/reminder | board-claims
 POST /api/board/{project}/tasks/{taskID}/reply | board-claims +token-session
 POST /api/board/{project}/tasks/{taskID}/review | board-claims
+POST /api/board/{project}/tasks/{taskID}/send-back | board-claims
 POST /api/board/{project}/tasks/{taskID}/snooze | board-claims
 POST /api/board/{project}/tasks/{taskID}/submit-review | board-claims
 POST /api/board/{project}/waits | board-claims

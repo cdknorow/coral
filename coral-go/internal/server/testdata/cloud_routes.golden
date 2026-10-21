@@ -254,6 +254,7 @@ POST /api/board/{project}/tasks interact
 POST /api/board/{project}/tasks/claim never
 POST /api/board/{project}/tasks/current never
 POST /api/board/{project}/tasks/{taskID}/approve never
+POST /api/board/{project}/tasks/{taskID}/attach never
 POST /api/board/{project}/tasks/{taskID}/cancel interact
 POST /api/board/{project}/tasks/{taskID}/complete interact
 POST /api/board/{project}/tasks/{taskID}/nudge interact
@@ -265,6 +266,7 @@ POST /api/board/{project}/tasks/{taskID}/release-review never
 POST /api/board/{project}/tasks/{taskID}/reminder interact
 POST /api/board/{project}/tasks/{taskID}/reply interact
 POST /api/board/{project}/tasks/{taskID}/review never
+POST /api/board/{project}/tasks/{taskID}/send-back never
 POST /api/board/{project}/tasks/{taskID}/snooze never
 POST /api/board/{project}/tasks/{taskID}/submit-review never
 POST /api/board/{project}/waits never

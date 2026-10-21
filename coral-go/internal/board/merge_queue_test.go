@@ -185,3 +185,21 @@ func TestSendBackReturnsAnApprovedTaskToItsAuthor(t *testing.T) {
 	require.NotNil(t, reopened)
 	assert.Equal(t, 2, reopened.Round)
 }
+
+// The approving completion carries every revision of a patch (the same name more than once): it was refused as a duplicate name.
+func TestAnApprovedTaskKeepsEveryRevisionAndApprovesTheNewest(t *testing.T) {
+	e := newVerEnv(t)
+	id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1")
+	_, _, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d2")})
+	require.NoError(t, err)
+	v, err := e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 0)
+	require.NoError(t, err)
+	e.finish(v)
+	done := e.task(id)
+	require.Equal(t, "completed", done.Status)
+	require.Len(t, done.Workflow.Artifacts, 2, "both revisions stay on the task")
+	assert.Equal(t, []string{"d2"}, lastRound(t, done).ApprovedDigests, "only the newest is approved")
+	// a client that sends the same name twice in one submission is still refused
+	_, err = validateTaskArtifacts([]TaskArtifact{{Name: "x", Content: "1"}, {Name: "x", Content: "2"}})
+	require.ErrorContains(t, err, "unique")
+}

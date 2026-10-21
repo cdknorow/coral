@@ -623,12 +623,18 @@ func validCommand(s string, maxBytes int) bool {
 }
 
 func validateTaskArtifacts(artifacts []TaskArtifact) ([]string, error) {
-	if len(artifacts) > maxTaskArtifacts {
+	if len(newestByName(artifacts)) > maxTaskArtifacts { // the newest revision of each name counts (#5689)
 		return nil, fmt.Errorf("at most %d artifacts allowed", maxTaskArtifacts)
 	}
 	names := []string{}
+	unique := []string{} // a row attached later (Seq > 0, #5689) is a newer revision of a name: it may repeat one
 	for _, a := range artifacts {
 		names = append(names, a.Name)
+		if a.Seq == 0 {
+			unique = append(unique, a.Name)
+		} else if strings.TrimSpace(a.Name) == "" || len(a.Name) > 128 {
+			return nil, fmt.Errorf("artifact names must be nonempty, unique, and at most 128 characters")
+		}
 		if strings.TrimSpace(a.URI) == "" && strings.TrimSpace(a.Content) == "" {
 			return nil, fmt.Errorf("artifact %q requires uri or content", a.Name)
 		}
@@ -657,7 +663,7 @@ func validateTaskArtifacts(artifacts []TaskArtifact) ([]string, error) {
 			return nil, fmt.Errorf("artifact %q: command must be one line of plain text of at most 4096 bytes", a.Name)
 		}
 	}
-	if err := validNames(names); err != nil {
+	if err := validNames(unique); err != nil {
 		return nil, err
 	}
 	return names, nil

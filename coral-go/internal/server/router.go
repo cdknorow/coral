@@ -734,6 +734,8 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 		r.Post("/api/board/{project}/tasks/{taskID}/review", boardHandler.DelegateReview) // #3725
 		r.Post("/api/board/{project}/tasks/{taskID}/approve", boardHandler.ApproveReview) // #3725
 		r.Post("/api/board/{project}/tasks/{taskID}/reject", boardHandler.RejectReview)   // #3725
+		r.Post("/api/board/{project}/tasks/{taskID}/attach", boardHandler.AttachPatches)  // the merge queue (#5689)
+		r.Post("/api/board/{project}/tasks/{taskID}/send-back", boardHandler.SendBack)    // the merge queue (#5689)
 		r.Post("/api/board/{project}/tasks/{taskID}/cancel", boardHandler.CancelTaskByID)
 		r.Patch("/api/board/{project}/tasks/{taskID}", boardHandler.UpdateTask)
 		r.Patch("/api/board/{project}/tasks/{taskID}/amend", boardHandler.AmendTask)
