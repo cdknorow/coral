@@ -6,7 +6,7 @@
 // is replayed from the session's ring on every read. A general terminal emulator spun for minutes on 8 bytes
 // and panicked on negative parameters (Security on #4543), so this is deliberately tiny: printable UTF-8
 // text, carriage return, line feed (scrolling the screen at its bottom), backspace, tab to the next stop,
-// cursor addressing (CUP, CUU, CUD, CUF, CUB, CNL, CPL, CHA, VPA) and erase (ED, EL). Styling and every other
+// cursor addressing (CUP, CUU, CUD, CUF, CUB, CNL, CPL, CHA, VPA) and erase (ED, EL, ECH). Styling and every other
 // sequence are skipped, never interpreted: no repeat, insert, delete or scroll-region operation exists here.
 // Parameters are capped as they are read and clamped to the screen, the screen and the input are capped,
 // the work is counted against a budget past which nothing more is drawn, and a panic (a bug) is recovered
@@ -313,6 +313,8 @@ func (t *term) csi(final byte, params []int) {
 				t.clear(y, 0, t.cols)
 			}
 		}
+	case 'X':
+		t.clear(t.y, t.x, t.x+n) // ECH: n cells from the cursor, the cursor stays (Codex erases the old selection marker this way)
 	case 'K':
 		switch mode {
 		case 0:
