@@ -1685,7 +1685,7 @@ func TestClaudeSettingsInstallTheRequestHooks(t *testing.T) {
 // .agents/hooks.json from an --add-dir folder), and the session's cleanup removes it.
 func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
 	sid := "a9f3c4d1-0000-4000-8000-000000003481" // canonical: CleanupTempFiles only acts on one (#3598)
-	tools := t.TempDir() // a tools folder with the hook: on Windows there are no hooks without one (#21)
+	tools := t.TempDir()                          // a tools folder with the hook: on Windows there are no hooks without one (#21)
 	exe := ""
 	if runtime.GOOS == "windows" {
 		exe = ".exe"
