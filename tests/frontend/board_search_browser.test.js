@@ -8,6 +8,7 @@
 // Expects CORAL_TEST_URL + CDP_PORT from the runner. Exit 0 / 1.
 'use strict';
 const CDP = require('chrome-remote-interface');
+const { themeJs } = require('./helpers/theme');
 const BASE = require('./test_base').BASE;
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 
@@ -51,7 +52,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
     const onScreen = () => settle(`(() => { const c = document.getElementById('mb-messages'); const m = c.querySelector(':scope > .mb-message-current'); if (!m) return false; const a = m.getBoundingClientRect(), b = c.getBoundingClientRect(); return a.top >= b.top - 2 && a.bottom <= b.bottom + 2 && document.activeElement === m; })()`, 'the match on screen');
     const type = async (sel, text) => { await ev(`document.querySelector(${JSON.stringify(sel)}).focus(); true`); await Input.insertText({ text }); };
     const click = sel => ev(`document.querySelector(${JSON.stringify(sel)}).click(); true`);
-    const ratio = theme => ev(`(() => { document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)});
+    const ratio = theme => ev(`(() => { ${themeJs(theme)};
         const px = c => { const x = document.createElement('canvas').getContext('2d'); x.fillStyle = '#000'; x.fillStyle = c; x.fillRect(0, 0, 1, 1); return [...x.getImageData(0, 0, 1, 1).data].slice(0, 3); };
         const L = ([r, g, bl]) => [r, g, bl].map(v => v / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
         const worst = [...document.querySelectorAll('#mb-messages mark.mb-hit')].slice(0, 6).map(m => { const cs = getComputedStyle(m); const a = L(px(cs.color)), b = L(px(cs.backgroundColor)); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); });
