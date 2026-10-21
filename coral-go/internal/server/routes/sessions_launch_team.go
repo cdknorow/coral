@@ -184,7 +184,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			categories = append(categories, "")
 			continue
 		}
-		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID)
+		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID, autoDefaultAllowed(ctx, r, h.ss)) // read now, as the member's own check is (#5839)
 		if category != "" && firstFailure == "" {
 			firstFailure = category
 		}
@@ -501,7 +501,7 @@ func (h *SessionsHandler) createTeamRecord(ctx context.Context, body launchTeamR
 // default for its type), its own flags or the team's (without their permission flags: launchSession derives those),
 // the team's distilled knowledge in its prompt. It returns the member's entry for the reply ({name, error} when it
 // failed) and, for a launch that failed, its analytics category.
-func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamRequest, def launchTeamAgent, userSettings map[string]string, workingDir, worktreePath string, teamID int64) (map[string]any, string) {
+func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamRequest, def launchTeamAgent, userSettings map[string]string, workingDir, worktreePath string, teamID int64, autoByDefault bool) (map[string]any, string) {
 	agentType := body.AgentType
 	if def.AgentType != "" {
 		agentType = def.AgentType
@@ -534,6 +534,7 @@ func (h *SessionsHandler) launchTeamMember(ctx context.Context, body launchTeamR
 		// The member's flags carry the mode as the expanded flags of its type (--sandbox workspace-write -a never for Codex's auto), which PermissionModeFromFlags does not read
 		// back (it never widens one type's flags into a mode), so the mode stored for it was the default and a team reset relaunched it with no permission flags (#5251).
 		PermissionMode: memberPermMode,
+		AutoByDefault:  autoByDefault,
 	})
 	if err != nil {
 		log.Printf("[launch-team] failed to launch agent %s: %v", def.Name, err)

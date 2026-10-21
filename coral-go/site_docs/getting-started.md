@@ -78,7 +78,7 @@ Launching successfully means the agent process was started. It does not prove th
 
 ## Permission mode
 
-A new Claude agent starts in Claude's **Auto** permission mode: it runs without most prompts, and Claude's own background safety checks stay on. Coral no longer bypasses every prompt by default. Pick another mode in the launch form's **Permissions** section, or set your own default in **Settings > Agents > Default permission mode**; a mode you saved or chose stays as you set it, for every agent type. The other CLIs start as before: Codex and Antigravity use their own settings (Codex's Auto mode is a sandbox that cannot reach Coral's board on this computer, so Coral does not make it the default), and Pi has no permission modes.
+A new Claude agent starts in Claude's **Auto** permission mode: it runs without most prompts, and Claude's own background safety checks stay on. Coral no longer bypasses every prompt by default. Pick another mode in the launch form's **Permissions** section, or set your own default in **Settings > Agents > Default permission mode**; a mode you saved or chose stays as you set it, for every agent type. An agent started from Coral Hub gets Auto only when this computer allows Coral Hub to turn on auto-accept; otherwise it asks as Claude does by default. The other CLIs start as before: Codex and Antigravity use their own settings (Codex's Auto mode is a sandbox that cannot reach Coral's board on this computer, so Coral does not make it the default), and Pi has no permission modes.
 
 ## Auto-accept permission prompts
 
