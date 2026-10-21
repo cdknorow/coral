@@ -29,6 +29,16 @@ Use **Download** to save a managed or inline artifact. Unsupported binary files 
 
 The preview's title is the artifact label, which can differ from the uploaded filename. A **Missing** or **Unavailable** item cannot currently be opened from that entry.
 
+## Images you paste or attach
+
+An image you paste or attach in the message box is an artifact too.
+
+- **Where it lives.** Coral saves it on the agent's computer in `<data dir>/uploads/` and keeps a copy in the artifact store, which is what the chat's thumbnail shows. The agent is given a `coral://artifacts/...` link and fetches the image with `coral-agent artifact download`.
+- **How long it is kept.** 30 days, or until the uploads folder reaches 1 GB, whichever comes first (the settings `uploads_retention_days` and `uploads_max_mb`).
+- **Who sees it.** The agent you pasted it into, the other agents on its board, and anyone who opens the dashboard on this computer. Through Coral Hub, an artifact is the owner's alone: only the account this computer is linked to can open it.
+- **The model.** The agent opens the image with its own tools, so its command-line tool sends it to the agent's model provider as part of the conversation, like any file the agent reads. Coral removes location and camera data from a JPEG, PNG or GIF and does not change the picture itself.
+- **Removing one.** The × on a thumbnail in the chat removes the shared copy: it goes from Coral Hub and from the chat here, and the agent keeps its own file. The owner can also delete an artifact from the Artifacts tab in Coral Hub.
+
 ## Publish a file into Coral
 
 An agent can upload a report from its Coral session:
