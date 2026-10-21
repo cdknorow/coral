@@ -131,6 +131,7 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(await names(NA), [['Name and persona', 'badge'], ['Agent', 'smart_toy'], ['Prompt', 'description'], ['Permissions', 'lock'], ['Advanced', 'tune']]);
         v = await view(NA); assert.deepEqual([v.open, v.title], ['workspace', 'Name and persona']); assert.match(v.desc, /What the agent is called/);
         assert.ok(v.footBottom <= v.contentBottom, 'Launch is in the fixed footer, in view');
+        await ev(`{ const m = document.querySelector('#launch-agent-acf .acf-permission-mode'); m.value = 'bypassPermissions'; m.dispatchEvent(new Event('change', { bubbles: true })); } true`); // a Claude agent now starts in Auto (#5836): this suite is about the Bypass line, so it picks Bypass
         assert.equal(await ev(`document.querySelector('[data-acf-enforced-for="launch-agent-acf"]').hidden`), true, 'the plain Bypass line is said on Permissions only, not again under the persona');
         assert.ok(await ev(`!document.querySelector('#launch-agent-title').closest('.launch-modal-step').querySelector('[data-on-click="m-select-launch-type"]').hidden`), 'the way back to the choices is in the header');
         await shot('new-agent-workspace-desktop');

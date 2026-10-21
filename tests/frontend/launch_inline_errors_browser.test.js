@@ -82,6 +82,23 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(await ev(`[...document.querySelectorAll('#launch-step-team .acf-default-note')].map(n => n.textContent.trim())`), ['Starts from the default in Settings > General.', 'Starts from the default in Settings > Agents.']);
         await ev(`window.hideLaunchModal(); true`);
 
+        console.log('4b. A new agent starts in Auto for Claude and as before for the others; a mode the person picked is kept (#5836)');
+        await ev(`window.showLaunchModal(); window._selectLaunchType('agent'); window._toggleLaunchMore(); true`);
+        await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the agent step');
+        const pm = `document.getElementById('launch-agent-acf').querySelector('.acf-permission-mode')`;
+        const setType = t => ev(`(() => { const s = document.getElementById('launch-agent-acf').querySelector('.acf-agent-type'); s.value = ${JSON.stringify(t)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await setType('claude');
+        assert.equal(await ev(`${pm}.value`), 'auto', 'Claude: Auto, not a bypass of every prompt');
+        await setType('codex');
+        assert.equal(await ev(`${pm}.value`), 'bypassPermissions', 'Codex keeps its own default while the mode is still the default');
+        await setType('claude');
+        assert.equal(await ev(`${pm}.value`), 'auto', 'and Claude again');
+        await ev(`(() => { const m = ${pm}; m.value = 'plan'; m.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await setType('codex');
+        assert.equal(await ev(`${pm}.value`), 'plan', 'a mode the person picked stays when the agent type changes');
+        await setType('claude');
+        console.log('   \u2713');
+
         console.log('5. Bypass Permissions: no Allow row; the chips say pressed or not, in named groups');
         await ev(`window.showLaunchModal(); window._selectLaunchType('agent'); window._toggleLaunchMore(); true`); // New Agent opens on the folder: its sections are behind More options
         await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the agent step');
