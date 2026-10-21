@@ -12,10 +12,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/agentmodels"
+	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/proxy"
@@ -216,6 +218,9 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 		}(),
 	})
 	h.noteLaunchedHooks(ctx, sessionID, agentType) // #3665
+	if agentType == at.Claude {
+		probeSignInOnce(cliPath, absDir) // the first launch of this Claude asks once whether it is signed in (#5838)
+	}
 	if !isTerminal {
 		go func() {
 			defer safego.Recover("server/routes/sessions_launch:h.recordCLIVersion")
@@ -235,6 +240,30 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 		// only the former is how a silent backend downgrade went unnoticed.
 		"terminal": terminalKind(h.backend),
 	}, nil
+}
+
+// signInProbed holds the Claude CLIs (by path) whose sign-in was asked about after a launch in this process.
+var signInProbed sync.Map
+
+// signInProbe is the one-time sign-in question after a launch (a variable so a test replaces it): the same non-interactive status check the background jobs make (#5469), whose answer
+// /api/system/status then reports as claude_signed_in, so the launch card can say "Claude is not signed in" and what to do next on a fresh install, where no job has asked yet.
+var signInProbe = func(ctx context.Context, bin, dir string) { _ = agentsignin.RequireIn(ctx, at.Claude, bin, dir) }
+
+// probeSignInOnce asks, once per Claude CLI per process and in the background (a launch never waits for it), whether Claude is signed in (#5838). The check never signs in and
+// never starts a terminal; an answer it cannot get changes nothing.
+func probeSignInOnce(bin, dir string) {
+	if bin == "" {
+		return
+	}
+	if _, asked := signInProbed.LoadOrStore(bin, struct{}{}); asked {
+		return
+	}
+	go func() {
+		defer safego.Recover("server/routes/sessions_launch_session:signInProbe")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		signInProbe(ctx, bin, dir)
+	}()
 }
 
 // resolveLaunchCLI is the CLI an agent of agentType starts with: cliPath (Settings > CLI paths), else its binary
@@ -272,10 +301,7 @@ func resolveLaunchCLI(agentType, cliPath string) (string, error) {
 	if info := agent.GetCLIInfo(agentType); info != nil {
 		installCmd, installURL = info.InstallCommand, info.InstallURL
 	}
-	if installURL != "" {
-		return "", fmt.Errorf("%s CLI not found. Install it: %s (the vendor's page: %s)", checkBin, installCmd, installURL)
-	}
-	return "", fmt.Errorf("%s CLI not found. Install it: %s", checkBin, installCmd)
+	return "", &agent.CLINotFoundError{AgentType: agentType, Binary: checkBin, InstallCommand: installCmd, InstallURL: installURL}
 }
 
 // launchPath is the launch path for a requested one.

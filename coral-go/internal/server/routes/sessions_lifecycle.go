@@ -232,9 +232,14 @@ func viaHub(ctx context.Context, r *http.Request) context.Context {
 	return context.WithValue(ctx, tunneledKey{}, cloud.Tunneled(r))
 }
 
-// cliPathRefusal is the 422 answer for a configured CLI path that can't be run (#115): the setting and the path, and through Coral Hub the
+// cliPathRefusal is the 422 answer for a CLI that can't be run: one found nowhere (cli_not_found, #5838), or a configured path that can't be run (cli_path_unusable, #115): the setting and the path, and through Coral Hub the
 // setting only, as the CLI check says it. ok is false for any other error.
 func cliPathRefusal(ctx context.Context, err error) (answer, bool) {
+	var nf *agent.CLINotFoundError
+	if errors.As(err, &nf) { // 422 cli_not_found: the install command and the setting to point at an existing install, not a server fault (#5838)
+		msg := nf.Error()
+		return func(w http.ResponseWriter) { writeError(w, http.StatusUnprocessableEntity, "cli_not_found", msg) }, true
+	}
 	var cpe *agent.CLIPathError
 	if !errors.As(err, &cpe) {
 		return nil, false
