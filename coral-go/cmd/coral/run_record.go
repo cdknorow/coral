@@ -5,7 +5,7 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/cdknorow/coral/internal/updater/runrecord"
+	"github.com/subgentic/coral/internal/updater/runrecord"
 )
 
 // recordRun writes how this Coral was started (its own program, arguments and working directory) to <data dir>/updates/run.json, for coral-update's Linux apply to

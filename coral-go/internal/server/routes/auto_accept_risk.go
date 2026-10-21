@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/safefs"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // A best-effort safety net, not a guarantee (#3182; operator, 2026-10-13): the

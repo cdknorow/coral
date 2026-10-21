@@ -58,7 +58,7 @@ import "C"
 import (
 	"unsafe"
 
-	"github.com/cdknorow/coral/internal/eulatext"
+	"github.com/subgentic/coral/internal/eulatext"
 )
 
 // showEULADialog shows a native Cocoa dialog with the TOS text.

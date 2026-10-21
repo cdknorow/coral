@@ -7,7 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/cdknorow/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/clitext"
 )
 
 // PostMessage posts a new message to a project board.

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // SessionName returns the canonical tmux/pty session name for an agent.

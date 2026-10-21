@@ -3,7 +3,7 @@
 package agentprio
 
 import (
-	"github.com/cdknorow/coral/internal/executil"
+	"github.com/subgentic/coral/internal/executil"
 	"strconv"
 	"strings"
 	"syscall"

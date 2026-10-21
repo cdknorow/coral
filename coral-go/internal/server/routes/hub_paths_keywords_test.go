@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secrets"
-	"github.com/cdknorow/coral/pkg/redact"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/secrets"
+	"github.com/subgentic/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #5172: the paths a Coral Hub viewer can reach that cut or keep a text before the reply is redacted use the hub's redactor (the keyword rules) when

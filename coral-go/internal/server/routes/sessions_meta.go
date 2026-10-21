@@ -7,11 +7,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/agent"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/jsonl"
-	"github.com/cdknorow/coral/internal/proxy"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/agent"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/proxy"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // SetDisplayName sets the display name for a live session.

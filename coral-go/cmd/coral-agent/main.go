@@ -15,9 +15,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/clitext"
-	"github.com/cdknorow/coral/internal/taskcli"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/taskcli"
 	"io"
 	"net/http"
 	"net/url"
@@ -27,9 +27,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/hooks"
-	"github.com/cdknorow/coral/internal/mediatype"
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/mediatype"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 var serverURL = hooks.CoralBase()

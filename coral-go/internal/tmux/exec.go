@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/logdedupe"
+	"github.com/subgentic/coral/internal/logdedupe"
 )
 
 // run executes a tmux command. If the args target a session (-t flag),
@@ -204,7 +204,7 @@ func execCaller() string {
 	frames := runtime.CallersFrames(pcs[:runtime.Callers(3, pcs[:])])
 	for {
 		f, more := frames.Next()
-		fn := strings.TrimPrefix(f.Function, "github.com/cdknorow/coral/internal/")
+		fn := strings.TrimPrefix(f.Function, "github.com/subgentic/coral/internal/")
 		if fn != "" && !strings.HasPrefix(fn, "tmux.") && !strings.HasPrefix(fn, "ptymanager.(*TmuxSessionTerminal).") &&
 			!strings.HasPrefix(fn, "background.(*TmuxRuntime).") {
 			return fn

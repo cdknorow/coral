@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/stretchr/testify/require"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // TestConcurrentSessionReads verifies that a slow read or turn-event inspection

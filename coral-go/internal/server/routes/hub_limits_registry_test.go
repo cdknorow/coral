@@ -3,8 +3,8 @@ package routes
 import (
 	"testing"
 
-	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/stretchr/testify/assert"
+	setreg "github.com/subgentic/coral/internal/settings"
 )
 
 // The pool ranges the PUT validator checks are the ones the typed registry declares (and the reader holds a stored value to).

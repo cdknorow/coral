@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // filesCacheFloor is how long a changed-files list stays fresh when nothing

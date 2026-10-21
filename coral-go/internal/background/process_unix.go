@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // configureChildProcess puts cmd in its own process group and makes a context

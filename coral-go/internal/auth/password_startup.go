@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // SessionsRevokedFile marks a data folder whose password `coral reset-password` changed while

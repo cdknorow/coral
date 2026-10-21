@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/store"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/store"
 
-	"github.com/cdknorow/coral/internal/sessionstate"
+	"github.com/subgentic/coral/internal/sessionstate"
 )
 
 // The derivation lives in internal/sessionstate so the background idle

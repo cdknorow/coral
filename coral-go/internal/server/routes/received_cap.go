@@ -3,7 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	setreg "github.com/subgentic/coral/internal/settings"
 	"log/slog"
 	"os"
 	"path/filepath"

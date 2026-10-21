@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // DeleteBoard deletes a board and everything on it: its messages, tasks, members and settings (Store.DeleteProject, one transaction).

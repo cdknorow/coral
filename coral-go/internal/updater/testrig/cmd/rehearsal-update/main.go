@@ -24,10 +24,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/updater/apply"
-	"github.com/cdknorow/coral/internal/updater/stage"
-	"github.com/cdknorow/coral/internal/updater/testrig"
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/updater/apply"
+	"github.com/subgentic/coral/internal/updater/stage"
+	"github.com/subgentic/coral/internal/updater/testrig"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 func say(v any) {

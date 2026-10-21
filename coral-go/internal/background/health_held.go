@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // ruleHeldNotice is the health rule that tells the Operator about a delivery held at a dialog.

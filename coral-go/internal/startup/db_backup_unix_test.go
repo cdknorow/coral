@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/dbcrypt"
 )
 
 // The backups 'coral db compact' and 'coral db rebuild-search' write next to sessions.db hold every session's text: they are private to

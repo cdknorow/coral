@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // Streaming relay requests (cross-team artifacts, coral-hub design section 3.3 and 10, C0 and H0).

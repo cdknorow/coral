@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agent"
 )
 
 // The test binary is its own mock: with MOCK_AGENT_TEST_MAIN=1 it runs main(), so a test can start "the mock" with real arguments and watch what it does.

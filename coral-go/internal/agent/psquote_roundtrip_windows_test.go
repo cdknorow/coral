@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/psquote"
+	"github.com/subgentic/coral/internal/psquote"
 )
 
 // #3904: PowerShell itself reads each quoted word (psquote.Literal, used by shellQuote and

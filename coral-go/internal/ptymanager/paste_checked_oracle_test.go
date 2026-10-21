@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // pasteChecked, split into a held paste's turn, the look before the first paste, and the paste with its Enter

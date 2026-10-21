@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentmodels"
-	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentmodels"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // newAgentModels finds each CLI the way a launch does (Settings > CLI paths, then PATH).

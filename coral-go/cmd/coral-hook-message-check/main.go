@@ -6,7 +6,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tmux"
 	"io"
 	"log"
 	"net/url"
@@ -17,7 +17,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/hooks"
 )
 
 func main() {

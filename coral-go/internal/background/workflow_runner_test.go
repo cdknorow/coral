@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // ── Hooks Tests ─────────────────────────────────────────────

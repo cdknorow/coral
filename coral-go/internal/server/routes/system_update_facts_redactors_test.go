@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/secrets"
 )
 
 // #5389: the tunnel runs a reply through the base redactor and the Hub redactor (its keyword rules too). Every new fact, in every state that carries

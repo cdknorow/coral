@@ -16,7 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	terms "github.com/cdknorow/coral/pkg/license"
+	terms "github.com/subgentic/coral/pkg/license"
 )
 
 // Redeeming a one-time credential for this server's identity on the Coral Hub

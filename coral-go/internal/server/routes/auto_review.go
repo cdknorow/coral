@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // Review auto-delegation (#4175 step 1): when a task enters review for the first time, Coral

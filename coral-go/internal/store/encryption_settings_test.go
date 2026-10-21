@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/dbcrypt"
 )
 
 const settingsTestKey = "settings-test-key-material-1234567890"

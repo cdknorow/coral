@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // RelayArtifact (cross-team artifacts, C2): without a live tunnel it is ErrNotLinked, and a transfer

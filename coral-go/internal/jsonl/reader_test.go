@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 func TestResolveCodexTranscriptByMarkerUsesTrustedDeveloperMetadata(t *testing.T) {

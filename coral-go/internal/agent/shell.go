@@ -10,7 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cdknorow/coral/internal/psquote"
+	"github.com/subgentic/coral/internal/psquote"
 )
 
 // cmdShellIgnored logs once that a CORAL_SHELL naming cmd.exe is ignored (#3692).

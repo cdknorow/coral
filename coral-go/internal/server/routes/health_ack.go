@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // healthItemIDRe is the id the check prints for an item (teamhealth.ItemID).

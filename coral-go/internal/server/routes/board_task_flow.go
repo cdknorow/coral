@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // ClaimTask claims the next available task by priority.

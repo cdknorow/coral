@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // #4414: a knowledge file written before knowledge was redacted reaches a launch prompt redacted.

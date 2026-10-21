@@ -5,7 +5,7 @@ package agent
 import (
 	"strings"
 
-	"github.com/cdknorow/coral/internal/psquote"
+	"github.com/subgentic/coral/internal/psquote"
 )
 
 // shellQuote returns s as one PowerShell word: unchanged when every byte is in a small

@@ -15,13 +15,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 const uiReqSession = "5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f"

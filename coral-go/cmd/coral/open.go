@@ -11,10 +11,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/hooks"
-	"github.com/cdknorow/coral/internal/loginlink"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/loginlink"
 )
 
 // canOpenBrowser reports whether this machine can show a browser: false on a Linux

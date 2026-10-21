@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/secrets"
 )
 
 // samples per shape, as coral-hub's harness measures (N=2000).

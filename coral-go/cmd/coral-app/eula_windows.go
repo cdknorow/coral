@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/cdknorow/coral/internal/eulatext"
+	"github.com/subgentic/coral/internal/eulatext"
 )
 
 var (

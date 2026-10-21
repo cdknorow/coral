@@ -7,7 +7,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 type instanceLock struct {

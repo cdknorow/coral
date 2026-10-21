@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // A file that arrives from another Coral is held as pending until the message that names it arrives

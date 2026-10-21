@@ -7,9 +7,9 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/subgentic/coral/internal/agentprio"
 
-	"github.com/cdknorow/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/agentenv"
 )
 
 // parseStepHooks unmarshals the hooks JSON from a step definition.

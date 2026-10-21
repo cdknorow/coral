@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/secrets"
 )
 
 // newRefusal is one refusal Coral v1.4.91 and v1.4.92 added (#4602 and its follow-ups), as the server writes it: its route, the tier the

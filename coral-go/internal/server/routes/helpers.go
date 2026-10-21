@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/cdknorow/coral/internal/diskguard"
+	"github.com/subgentic/coral/internal/diskguard"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -18,9 +18,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/safefs"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/safefs"
+	setreg "github.com/subgentic/coral/internal/settings"
 )
 
 // urlParam extracts a chi URL parameter and percent-decodes it.

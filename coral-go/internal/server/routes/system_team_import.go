@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentsignin"
-	"github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/safego"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
+	"github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/safego"
 	"gopkg.in/yaml.v3"
 )
 

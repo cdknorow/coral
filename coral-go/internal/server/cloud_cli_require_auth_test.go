@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/cloud"
 )
 
 // The signed `coral cloud connect` handshake (the hello, then a token-signed request) still works

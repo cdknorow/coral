@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
-	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/coder/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // recordingHandler notes each stream's hub user, then serves it as the connector does.

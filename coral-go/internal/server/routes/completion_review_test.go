@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/board"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
 )
 
 func TestCompletionReviewAPI(t *testing.T) {

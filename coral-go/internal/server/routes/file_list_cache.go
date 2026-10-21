@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/gitutil"
 )
 
 // fileListTTL bounds how stale a cached file list can be when the git poller hasn't seen the

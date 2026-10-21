@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // coral --version carries the test seam's flavor exactly when the build has it (#5452, Security's condition 3): a shipped binary never does.

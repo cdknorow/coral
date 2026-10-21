@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // A pasted image reaches the agent as its coral://artifacts link alone (#5481), so the agent has to be able to fetch it: the stand-in of each agent type (Claude, Codex, Antigravity, Pi), acting

@@ -11,7 +11,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // The files the updater keeps in <data dir>/updates (the directory is 0700, each file 0600 or the owner-only ACL on Windows). They survive a

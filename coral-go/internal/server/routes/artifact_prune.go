@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/go-chi/chi/v5"
 	"github.com/jmoiron/sqlx"
+	"github.com/subgentic/coral/internal/cloud"
 )
 
 // Artifact retention and pruning (#3554, design note v3). What can go:

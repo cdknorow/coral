@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 func (l *LocalHandler) redacting() bool { return l.RedactTokens == nil || l.RedactTokens() }

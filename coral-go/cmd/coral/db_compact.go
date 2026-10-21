@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/startup"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/startup"
 )
 
 // coral db compact [--home DIR]

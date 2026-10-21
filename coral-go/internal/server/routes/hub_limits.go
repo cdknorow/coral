@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // The Coral Hub request pools' sizes (#3642): how many requests Coral Hub can hold open on

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // The roster of the orchestrator's check (#4583): what each agent is doing, who waits on whom, who sleeps with tagged messages

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // What the dashboard needs to know about an open prompt rides on the chat poll's reply (#3720): the pending

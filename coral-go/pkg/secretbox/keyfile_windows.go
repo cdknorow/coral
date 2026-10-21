@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // On Windows the file's mode says nothing (a writable file is always 0666), so the key file is

@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/linktest"
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // #3920: OpenNoFollow never reads, writes, appends to or truncates the target of a link planted

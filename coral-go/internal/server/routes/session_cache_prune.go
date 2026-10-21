@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/logparse"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/logparse"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // sessionCachePruneEvery is how often per-session caches are swept of sessions

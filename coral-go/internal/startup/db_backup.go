@@ -3,7 +3,7 @@ package startup
 import (
 	"os"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // newPrivateBackup creates path empty and readable by this user only (mode 0600; a protected access list on Windows), for VACUUM INTO to

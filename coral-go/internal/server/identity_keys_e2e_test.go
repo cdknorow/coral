@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #4233 end to end, the real router: a claimed name spelled with another capitalisation (or

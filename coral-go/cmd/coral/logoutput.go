@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/secrets"
 )
 
 // terminalLogDepth is how many log lines may wait for a slow terminal before

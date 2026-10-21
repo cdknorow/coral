@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // The relaunch test seam (#5452), coral-hub's way to prove the whole relaunch path against a real Coral without a real updater. It exists only in a build made with the

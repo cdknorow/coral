@@ -3,8 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
-	"github.com/cdknorow/coral/internal/board"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
 	"path/filepath"
 	"sync"
 	"sync/atomic"

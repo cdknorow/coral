@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 func TestCodexLinkReplacesCachedTranscriptAndResumeIdentity(t *testing.T) {

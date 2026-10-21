@@ -8,7 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/cdknorow/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/ptr"
 )
 
 // SessionListParams holds parameters for paginated session listing.

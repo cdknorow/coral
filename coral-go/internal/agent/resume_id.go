@@ -1,8 +1,8 @@
 package agent
 
 import (
-	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/google/uuid"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // IsResumeID reports whether id is a resume session id safe to put in a file path for agentType

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/decodelimit"
+	"github.com/subgentic/coral/internal/decodelimit"
 )
 
 // claudeHistory is what one ClaudeAgent's indexer passes remember between passes (#3728): a

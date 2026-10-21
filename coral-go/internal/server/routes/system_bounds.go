@@ -15,9 +15,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // knownCLIBinaries are the CLI names Coral launches (claude, codex, agy, pi).

@@ -14,9 +14,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/updater/stage"
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/updater/stage"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // applyEnabled is the off switch of the apply (#5325): until all three platforms pass their upgrade tests it answers not_enabled. A constant on

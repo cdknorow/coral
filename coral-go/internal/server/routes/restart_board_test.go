@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/store"
 )
 
 func TestRestartPreservesSubscriptionWithoutStoredBoard(t *testing.T) {

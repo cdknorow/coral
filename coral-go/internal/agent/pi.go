@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // PiAgent implements the Agent interface for the Pi coding agent CLI.

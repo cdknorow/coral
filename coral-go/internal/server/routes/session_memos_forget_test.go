@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // #4057: the routes' per-session log memos (an exited agent's skipped input, keyed by session

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/assert"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // The whole policy as a table: every caller x action x locked x hub-write flag (#5176). A new row of the doc table that is not here is a missing test.

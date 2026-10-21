@@ -1,6 +1,6 @@
 package cloud
 
-import "github.com/cdknorow/coral/internal/cliauth"
+import "github.com/subgentic/coral/internal/cliauth"
 
 // The command-line handshake lives in internal/cliauth (#3418), so the small agent and
 // command-line tools can sign requests without linking the cloud connector and its store.

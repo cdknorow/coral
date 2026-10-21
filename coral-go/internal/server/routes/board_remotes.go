@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // BoardRemotesHandler handles remote board subscription and proxy endpoints.

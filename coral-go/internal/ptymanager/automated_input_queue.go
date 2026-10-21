@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/inputlog"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 func (g *inputGate) lockSession(name string) func() {

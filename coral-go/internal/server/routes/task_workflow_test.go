@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
 )
 
 func TestBoardTaskWorkflowAPI(t *testing.T) {

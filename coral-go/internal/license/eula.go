@@ -13,8 +13,8 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/cdknorow/coral/internal/testguard"
-	terms "github.com/cdknorow/coral/pkg/license"
+	"github.com/subgentic/coral/internal/testguard"
+	terms "github.com/subgentic/coral/pkg/license"
 )
 
 // EULAText is the Terms of Service the user accepts, and EULAVersion its

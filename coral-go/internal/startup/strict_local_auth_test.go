@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // #3936: strict local auth is on unless CORAL_STRICT_LOCAL_AUTH says off or the command line

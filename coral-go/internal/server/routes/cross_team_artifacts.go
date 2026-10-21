@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cdknorow/coral/internal/diskguard"
+	"github.com/subgentic/coral/internal/diskguard"
 	"io"
 	"log/slog"
 	"net/http"
@@ -20,10 +20,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // A file another Coral sends through Coral Hub (cross-team artifacts, coral-hub's design section 3.3 and

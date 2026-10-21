@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/cdknorow/coral/internal/logparse"
+	"github.com/subgentic/coral/internal/logparse"
 )
 
 // The log status of an agent (its staleness and last lines) is read on every live-list,

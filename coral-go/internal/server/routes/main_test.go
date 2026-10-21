@@ -2,13 +2,13 @@ package routes
 
 import (
 	"fmt"
-	"github.com/cdknorow/coral/internal/testleak"
+	"github.com/subgentic/coral/internal/testleak"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 func TestMain(m *testing.M) {

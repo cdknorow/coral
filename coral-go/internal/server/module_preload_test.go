@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/pkg/frontend"
+	"github.com/subgentic/coral/pkg/frontend"
 )
 
 var preloadRe = regexp.MustCompile(`<link rel="modulepreload" href="([^"]+)">`)

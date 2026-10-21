@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/naming"
+	"github.com/subgentic/coral/internal/naming"
 )
 
 // MaxTeamArtifactTaskScan bounds how many of a team's most recent

@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/store"
-	proxy "github.com/cdknorow/coral/pkg/hubproxy"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/store"
+	proxy "github.com/subgentic/coral/pkg/hubproxy"
 )
 
 // RemoteServersHandler implements the hub-local server registry API

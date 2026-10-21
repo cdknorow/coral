@@ -7,8 +7,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/cdknorow/coral/internal/agentmodels"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agentmodels"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Custom models (#5480): the model ids the operator adds in Settings > Custom models, per provider, with the thinking levels each takes. They are merged, at read time and after the

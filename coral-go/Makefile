@@ -17,7 +17,7 @@ sync-docs:
 # based on the latest release tag. Use make dev / make build to get that base: a
 # plain `go build` reports 0.0.0-dev+<commit>, which hubs treat as a very old version.
 DEV_BASE := $(shell git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' 2>/dev/null)
-DEV_LDFLAGS := -ldflags "-X github.com/cdknorow/coral/internal/config.DevBase=$(DEV_BASE)"
+DEV_LDFLAGS := -ldflags "-X github.com/subgentic/coral/internal/config.DevBase=$(DEV_BASE)"
 
 # Dev build (skips EULA + license)
 .PHONY: dev

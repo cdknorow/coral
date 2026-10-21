@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/gitutil"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // reconcileOrphanedSessions checks all non-sleeping live sessions against

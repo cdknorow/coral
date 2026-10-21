@@ -3,9 +3,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/clitext"
-	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/hooks"
 	"os"
 )
 

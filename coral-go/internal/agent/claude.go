@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // ClaudeAgent implements the Agent interface for Claude Code.

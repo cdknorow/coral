@@ -1,6 +1,6 @@
 package routes
 
-import "github.com/cdknorow/coral/internal/store"
+import "github.com/subgentic/coral/internal/store"
 
 // Who may do what with the comments on an artifact (#5176, phase 1): ONE function, called by every route; nothing else in the handlers decides access. The routes derive the
 // caller in one place (artifact_comments_caller.go) and ask here. The UI hides what a caller cannot do, but this is the gate.

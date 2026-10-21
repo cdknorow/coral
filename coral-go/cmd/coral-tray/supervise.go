@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // The tray runs Coral's server as a child process and supervises it (#4163, the operator's

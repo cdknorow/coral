@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // ScheduledJob represents a cron job definition.

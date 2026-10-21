@@ -5,7 +5,7 @@ package tracking
 import (
 	"os"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // A dev build has no analytics key and so sends nothing. CORAL_TELEMETRY_TEST_SINK=<url> gives it a dummy key and

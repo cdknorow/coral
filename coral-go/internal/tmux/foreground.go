@@ -3,7 +3,7 @@ package tmux
 import (
 	"context"
 	"fmt"
-	"github.com/cdknorow/coral/internal/executil"
+	"github.com/subgentic/coral/internal/executil"
 	"path/filepath"
 	"strconv"
 	"strings"

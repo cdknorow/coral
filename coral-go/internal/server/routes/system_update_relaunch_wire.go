@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/updater/runrecord"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/updater/runrecord"
 )
 
 // updateRelaunchFeature (relaunch_feature_off.go) is the off flag: until coral-hub's half ships and the updater exists, both routes answer 404. It is a constant on

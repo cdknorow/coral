@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/secrets"
 )
 
 // #5290: a tunneled reply passes through the redactors, and a value under a key named for a token is taken as a secret. The acknowledgement

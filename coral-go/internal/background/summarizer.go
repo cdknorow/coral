@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentsignin"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/store"
 )
 
 const summarizerPrompt = `You are a session summarizer. You will be given a chat transcript or log of chats between a user and an AI coding assistant, produce a concise markdown summary with:

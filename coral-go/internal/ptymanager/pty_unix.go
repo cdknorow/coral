@@ -3,8 +3,8 @@
 package ptymanager
 
 import (
-	"github.com/cdknorow/coral/internal/agentprio"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/agentprio"
+	"github.com/subgentic/coral/internal/safego"
 	"os"
 	"os/exec"
 	"syscall"

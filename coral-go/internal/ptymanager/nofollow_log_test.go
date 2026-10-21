@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/linktest"
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // #3920: an agent's terminal log is never opened through a link planted at its name (a symbolic

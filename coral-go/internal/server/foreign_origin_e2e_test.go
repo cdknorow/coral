@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/cliauth"
 )
 
 // #3511 end to end, the real router in both modes: a page on another localhost port

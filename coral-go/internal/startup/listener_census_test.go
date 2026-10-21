@@ -17,9 +17,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #5136: every way Coral can listen is this-computer-only by default, and only the remote_access_enabled gate (the saved setting, or --remote)

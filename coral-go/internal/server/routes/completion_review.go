@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/board"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // SubmitCompletionReview preserves a candidate; it does not complete the task.

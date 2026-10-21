@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/logparse"
+	"github.com/subgentic/coral/internal/logparse"
 )
 
 // oldLogStatusLines is getLogStatus's recent lines as it was before #3711: the log's last

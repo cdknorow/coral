@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // #3492: a server on a data folder other than ~/.coral (a test server), or a dev build,

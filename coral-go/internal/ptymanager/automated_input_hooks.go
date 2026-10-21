@@ -6,7 +6,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // NeedsInputFunc reports whether the agent's state, derived from its hook and

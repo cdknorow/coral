@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/cloud"
 )
 
 // #3966: a busy check (429) reaches the auth side as "no answer", so the session keeps its

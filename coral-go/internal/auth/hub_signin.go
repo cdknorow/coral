@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // Sign in with Coral Hub, the local half (#3966; design note r2, sections 1 and 4-6 and 12-13).

@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // #4378 (C0): streamed artifact requests, the second connector-opened relay request kind.

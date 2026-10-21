@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/cdknorow/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/ptr"
 )
 
 // Workflow represents a reusable multi-step automation definition.

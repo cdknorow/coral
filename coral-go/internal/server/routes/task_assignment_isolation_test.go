@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // An explicit planner assignment must never be offered to the idle worker

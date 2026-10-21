@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/pkg/secretbox"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/pkg/secretbox"
 )
 
 // masterKeyGen counts master-key replacements in this process (a rotation or a re-key). Every

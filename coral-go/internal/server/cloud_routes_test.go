@@ -12,8 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 const cloudGolden = "testdata/cloud_routes.golden"

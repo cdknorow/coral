@@ -26,8 +26,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agentenv"
-	"github.com/cdknorow/coral/internal/executil"
+	"github.com/subgentic/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/executil"
 )
 
 // State is what a status check found.

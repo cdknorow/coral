@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cdknorow/coral/pkg/secretbox"
+	"github.com/subgentic/coral/pkg/secretbox"
 )
 
 // Cloud connection states.

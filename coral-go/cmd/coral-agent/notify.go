@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/hooks"
 )
 
 const notifyUsageText = `Usage: coral-agent notify --title "Title" [--message "text"] [--level info|success|warning|error] [--alert]

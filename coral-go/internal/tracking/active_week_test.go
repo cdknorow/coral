@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // everyKindOfEvent makes the server try to send one of each way an event is built: the install and upgrade

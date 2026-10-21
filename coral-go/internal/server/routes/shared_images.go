@@ -14,8 +14,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // readUploadRecord reads the upload record of artifact id in one session's folder.

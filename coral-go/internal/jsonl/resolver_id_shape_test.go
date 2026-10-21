@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // #4590: a resolver that globs or joins a session id into a path returns nothing for an id

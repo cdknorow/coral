@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/pkg/secretbox"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/pkg/secretbox"
 )
 
 // #3698 (Security's SHOULD): only a refusal of the key itself offers a re-key; an error reaching
