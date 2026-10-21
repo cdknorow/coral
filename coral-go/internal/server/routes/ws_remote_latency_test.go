@@ -142,11 +142,17 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 	// as it should: keep the next one out of the burst and the read window (#3932).
 	clearOfTick(h.cfg.WSPollInterval, 3*time.Second)
 
+	setAt := time.Now()
 	src.set(remoteSnap("b-1"))
 	first := awaitStatus(t, ctx, conn, "b-1", time.Second)
+	// awaitStatus times from its own call: a test goroutine starved between the set and that call (a loaded host: the failure showed
+	// first = 0s) understates how far into the window b-1's build sits, and the burst then seems to fit one window when it
+	// does not. From the set it is the whole lag (#83).
+	seen := first
+	first = max(first, time.Since(setAt))
 	// Not held back means sent before the debounce would have let it go; under a loaded gate the
 	// send itself can take more than a fixed 100 ms (#4136: this failed twice in full gates).
-	assert.Less(t, first, h.cfg.WSRemoteDebounce, "the first change of a burst is not held back")
+	assert.Less(t, seen, h.cfg.WSRemoteDebounce, "the first change of a burst is not held back")
 	burstStart := time.Now()
 	for i := 2; i <= 10; i++ {
 		src.set(remoteSnap(fmt.Sprintf("b-%d", i)))

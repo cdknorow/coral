@@ -319,6 +319,17 @@ func TestATimedOutCheckIsItsOwnRefusalNotSignedOut(t *testing.T) {
 		return strings.Count(string(b), "\n")
 	}
 
+	// The stand-in writes its log line when it STARTS; on a loaded host the process can start after the 300 ms deadline has
+	// already passed, so a count taken right after Require could still read 0 (#83). askedAfter waits for the line it expects
+	// (at most 15 s) and then a moment more, so an extra ask would show.
+	askedAfter := func(want int) int {
+		for deadline := time.Now().Add(15 * time.Second); asked() < want && time.Now().Before(deadline); {
+			time.Sleep(20 * time.Millisecond)
+		}
+		time.Sleep(50 * time.Millisecond)
+		return asked()
+	}
+
 	err := Require(context.Background(), "claude", bin)
 	var refused *NotSignedInError
 	require.ErrorAs(t, err, &refused)
@@ -336,13 +347,13 @@ func TestATimedOutCheckIsItsOwnRefusalNotSignedOut(t *testing.T) {
 	for i := 0; i < 5; i++ { // inside the backoff nothing is asked
 		assert.Error(t, Require(context.Background(), "claude", bin))
 	}
-	assert.Equal(t, 1, asked())
+	assert.Equal(t, 1, askedAfter(1))
 	clock = clock.Add(timeoutBackoff - time.Second)
 	assert.Error(t, Require(context.Background(), "claude", bin))
-	assert.Equal(t, 1, asked())
+	assert.Equal(t, 1, askedAfter(1))
 	clock = clock.Add(2 * time.Second) // the short backoff is over: asked again (30 s, not the signed-out doubling)
 	assert.Error(t, Require(context.Background(), "claude", bin))
-	assert.Equal(t, 2, asked())
+	assert.Equal(t, 2, askedAfter(2))
 
 	// And a later answer replaces it. The short deadline above was for the hanging stand-in: a stand-in that answers must not race it (the race detector makes this binary start slowly).
 	checkTimeout = 20 * time.Second
