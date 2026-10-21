@@ -226,6 +226,7 @@ func (a *PiAgent) LaunchCommand(params LaunchParams) (string, error) {
 		cliPrompt = params.Prompt
 	}
 	if cliPrompt != "" {
+		cliPrompt = guardPositionalPrompt(cliPrompt)
 		promptFile := files.write("pi_prompt", params.SessionID, "txt", []byte(cliPrompt))
 		arg := FormatPromptFileArg(promptFile)
 		raw = append(raw, arg)
@@ -234,4 +235,17 @@ func (a *PiAgent) LaunchCommand(params LaunchParams) (string, error) {
 
 	parts, raw = withSessionToken(parts, raw, params, at.Pi)
 	return files.done(ShellJoin(parts, raw...))
+}
+
+// guardPositionalPrompt makes text safe as pi's positional prompt, which has no "--" to end its options. pi reads
+// an argument that starts with "-" as an option and one that starts with "@" as a file to attach, so a prompt that
+// starts with either (team instructions, a board message and an imported team all become prompts) gets a newline
+// in front: the agent reads the same text, and the argument no longer looks like an option or a file (#36). The
+// other agents end their options with "--" (claude, codex) or take the prompt as the value of -i (agy, whose
+// parser takes the next argument as an option's value whatever it starts with).
+func guardPositionalPrompt(prompt string) string {
+	if strings.HasPrefix(prompt, "-") || strings.HasPrefix(prompt, "@") {
+		return "\n" + prompt
+	}
+	return prompt
 }
