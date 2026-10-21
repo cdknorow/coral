@@ -616,13 +616,13 @@
 1	team_health_settings.js	rule('mention_renudge', 'Remind the orchestrator of an unanswered mention', 'A message that @mentions the orch
 1	team_health_settings.js	rule('status_nudge', 'Ask a quiet agent for a status', 'An agent that has done nothing for a while is asked wh
 1	team_templates_ui.js	suffix
+1	team_working_mode.js	block(role, name, title, text)
 1	team_working_mode.js	body
 1	team_working_mode.js	cards
-1	team_working_mode.js	fragment(role, 'default_instructions', 'Default task instructions')
 1	team_working_mode.js	head
 2	team_working_mode.js	label
 1	team_working_mode.js	options
-1	team_working_mode.js	title
+2	team_working_mode.js	title
 1	team_working_mode.js	workspaceActions
 1	template_browser.js	active
 1	template_browser.js	btnLabel

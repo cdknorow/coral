@@ -30,7 +30,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
    assert.equal(await ev(`document.activeElement.dataset.settingsTab`),'prompts');
    results.push({name,stage:'prompts-top',...await geometry()});await shot(`${name}-prompts-top`);
    // One read-only page (UI audit #5589): no collapsibles, no inner scroll boxes, one role at a time chosen by a select.
-   assert.equal(await ev(`document.querySelectorAll('.prompt-inspection-content details').length`),0);
+   assert.equal(await ev(`[...document.querySelectorAll('.prompt-inspection-content details')].filter(d => d.open || !d.classList.contains('prompt-inspection-folded')).length`),0,'only the folded blocks are details, closed to begin with');
    assert.deepEqual(await ev(`[...document.querySelectorAll('.prompt-inspection-content pre')].filter(p => getComputedStyle(p).overflowY !== 'visible').length`),0,'no scroll box inside the page');
    assert.deepEqual(await ev(`[...document.querySelectorAll('.prompt-inspection-card')].map(c => !c.hidden)`),[true,false,false]);
    await ev(`document.querySelector('.prompt-inspection-role').focus()`);

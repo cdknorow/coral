@@ -56,8 +56,11 @@ function presetLabel(preset) {
 
 function renderInspection(data, workingMode) {
     const roles = [['orchestrator', 'Orchestrator'], ['worker', 'Agent / worker'], ['task', 'Task defaults']];
-    // One role at a time, in full: a page that scrolls once (UI audit #5589, finding 10). Each text is a labelled block, not a small scroll box.
-    const fragment = (role, name, title) => `<section class="prompt-inspection-fragment"><h5>${title}</h5><pre>${escapeHtml(role[name] || 'Not configured')}</pre></section>`;
+    // One role at a time: a page that scrolls once (UI audit #5589, finding 10). Each text is a labelled block, not a small scroll box; the texts behind the effective ones are folded.
+    const block = (role, name, title, text) => `<h5>${title}</h5><pre>${escapeHtml(text ?? (role[name] || 'Not configured'))}</pre>`;
+    // What the agent actually gets (the effective texts) is shown; the defaults and the override it came from are one click away, so the page starts short.
+    const shown = (role, name, title, text) => `<section class="prompt-inspection-fragment">${block(role, name, title, text)}</section>`;
+    const folded = (role, name, title, text) => `<details class="prompt-inspection-fragment prompt-inspection-folded"><summary>${title}</summary><pre>${escapeHtml(text ?? (role[name] || 'Not configured'))}</pre></details>`;
     const cards = roles.map(([key, label], index) => {
         const role = data?.[key] || {};
         const head = `<h4>${label}</h4><p class="prompt-inspection-meta"><span>Scope: ${escapeHtml(role.scope || 'global')}</span><span>Applies: ${escapeHtml(role.applicability || '—')}</span></p>`;
@@ -66,9 +69,9 @@ function renderInspection(data, workingMode) {
             const defaultInst = role.default_instructions || '';
             const teamInst = workingMode?.instructions?.trim();
             const composed = defaultInst + (teamInst ? `\n\nTeam working instructions:\n${teamInst}` : '') + '\n\n[+ per-task extra when supplied at creation]';
-            body = `${fragment(role, 'default_instructions', 'Default task instructions')}<section class="prompt-inspection-fragment"><h5>Effective composed task preview (on first claim)</h5><pre>${escapeHtml(composed)}</pre></section>`;
+            body = `${shown(role, null, 'Effective composed task preview (on first claim)', composed)}${folded(role, 'default_instructions', 'Default task instructions')}`;
         } else {
-            body = fragment(role, 'system_default', 'System default') + fragment(role, 'action_default', 'Action default') + fragment(role, 'override', 'Override') + fragment(role, 'effective_system', 'Effective system') + fragment(role, 'effective_action', 'Effective action');
+            body = shown(role, 'effective_system', 'Effective system') + shown(role, 'effective_action', 'Effective action') + folded(role, 'system_default', 'System default') + folded(role, 'action_default', 'Action default') + folded(role, 'override', 'Override');
         }
         return `<article class="prompt-inspection-card" data-role="${escapeAttr(key)}"${index ? ' hidden' : ''}>${head}${body}</article>`;
     }).join('');
@@ -123,7 +126,7 @@ function _teamSettingsShell(workspaceMode) {
         <div class="prompt-inspection-content" aria-live="polite">Loading prompt inspection…</div>
       </fieldset>
       </section>
-      <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button><span>Saves the working mode and additional guidance. Save preset instructions separately.</span></div>
+      <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button><span title="Saves the working mode and additional guidance. Save preset instructions separately.">Saves the working mode and additional guidance. Save preset instructions separately.</span></div>
       </form>
       ${'<section class="team-settings-panel" id="team-settings-messaging" role="tabpanel" aria-labelledby="team-settings-tab-messaging" data-settings-panel="messaging" tabindex="0" hidden><p class="working-mode-hint ct-loading" role="status">Loading…</p></section>'}`;
     return dialog;
@@ -222,7 +225,10 @@ export async function showTeamWorkingMode(team, options = {}) {
         if (!event.target.closest('.prompt-inspection-copy')) return;
         const card = inspection.querySelector('.prompt-inspection-card:not([hidden])');
         if (!card) return;
-        if (await copyText(card.innerText)) showToast('Copied'); else showToast('Could not copy: select the text and copy it', true);
+        // Every text of the role, the folded ones too (innerText leaves out what a closed details hides).
+        const parts = [card.querySelector('h4')?.textContent.trim() || ''];
+        for (const fragment of card.querySelectorAll('.prompt-inspection-fragment')) parts.push(`${fragment.querySelector('h5, summary')?.textContent.trim() || ''}\n${fragment.querySelector('pre')?.textContent || ''}`);
+        if (await copyText(parts.join('\n\n'))) showToast('Copied'); else showToast('Could not copy: select the text and copy it', true);
     });
     const { server: teamServer, name: teamName } = splitKey(team);
     const workingModeURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode`, teamServer);

@@ -1,7 +1,7 @@
 // UI audit #5589, findings 9, 10 and 12: Team settings uses the room it has and has one scroll.
 //   - the side panel is clamp(420px, 30vw, 640px) wide until the person drags it (a saved width is kept);
 //   - Workflow: Team working mode first; the preset editor is behind "Edit presets", closed to begin with, and opens;
-//   - Prompt inspection: one read-only page: no collapsibles, no scroll boxes inside it, one role at a time (a select),
+//   - Prompt inspection: one read-only page: the effective texts shown, the others folded (closed), no scroll boxes inside it, one role at a time (a select),
 //     and Copy copies the text of the role shown.
 // Drives Chrome over CDP against the isolated dev server.
 const assert = require('node:assert/strict');
@@ -49,9 +49,9 @@ const BASE = require('./test_base').BASE;
         console.log('3. Prompt inspection: one read-only page, one role at a time, Copy');
         await ev(`document.querySelector('[data-settings-tab=prompts]').click(); true`);
         await waitFor(`!!document.querySelector('.prompt-inspection-role')`, 'the inspection', 15000);
-        const pi = await ev(`(() => ({ details: document.querySelectorAll('.prompt-inspection-content details').length, boxes: [...document.querySelectorAll('.prompt-inspection-content pre')].filter(p => getComputedStyle(p).overflowY !== 'visible').length,
+        const pi = await ev(`(() => ({ details: [...document.querySelectorAll('.prompt-inspection-content details')].filter(d => d.open || !d.classList.contains('prompt-inspection-folded')).length, boxes: [...document.querySelectorAll('.prompt-inspection-content pre')].filter(p => getComputedStyle(p).overflowY !== 'visible').length,
             shown: [...document.querySelectorAll('.prompt-inspection-card')].map(c => !c.hidden), roles: [...document.querySelectorAll('.prompt-inspection-role option')].map(o => o.textContent) }))()`);
-        assert.equal(pi.details, 0, JSON.stringify(pi)); assert.equal(pi.boxes, 0, 'no scroll box inside the page'); assert.deepEqual(pi.shown, [true, false, false]);
+        assert.equal(pi.details, 0, 'only the folded blocks are details, and they start closed: ' + JSON.stringify(pi)); assert.equal(pi.boxes, 0, 'no scroll box inside the page'); assert.deepEqual(pi.shown, [true, false, false]);
         assert.deepEqual(pi.roles, ['Orchestrator', 'Agent / worker', 'Task defaults']);
         await ev(`(() => { const s = document.querySelector('.prompt-inspection-role'); s.value = 'task'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
         assert.deepEqual(await ev(`[...document.querySelectorAll('.prompt-inspection-card')].map(c => !c.hidden)`), [false, false, true]);
