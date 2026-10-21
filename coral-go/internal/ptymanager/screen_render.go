@@ -6,7 +6,7 @@ import (
 	"github.com/subgentic/coral/internal/vtscreen"
 )
 
-// A PTY session's CaptureOutput is its raw output, escapes and cursor moves included. Claude Code draws
+// A PTY session's replay ring is its raw output, escapes and cursor moves included. Claude Code draws
 // line by line, but Codex (ratatui) places every row, and every word of a row, with cursor moves and never
 // writes a newline, so no option line of its prompts could be read from that text: prompt_options came back
 // empty for its hook-trust menu on the PTY backend (#4543). When no CLI signal says what is on screen, the
