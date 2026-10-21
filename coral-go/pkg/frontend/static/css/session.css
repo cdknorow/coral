@@ -1648,7 +1648,7 @@
 .team-availability-dialog header p { font-size: var(--fs-base); color: var(--text-secondary); }
 .team-availability-dialog button { min-height: var(--control-compact-height); font: 500 var(--fs-md)/1.4 var(--font-sans); cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--control-border); border-radius: var(--radius-md); padding: 7px 12px; }
 .team-availability-dialog button:disabled { opacity: .5; }
-.availability-toolbar { margin: 18px 0; font-size: 0.8125rem; }
+.availability-toolbar { margin: 8px 0 12px; font-size: 0.8125rem; justify-content: flex-end; } /* Refresh alone, on the right (UI audit #5589, finding 15: the sentence beside it repeated the heading) */
 .availability-summary { display: flex; gap: 12px; flex-wrap: wrap; }
 .availability-summary div { display: flex; flex-direction: column; min-width: 65px; padding: 10px; border-radius: var(--radius-lg); background: var(--bg-tertiary); }
 .availability-summary strong { font-size: 1.5rem; }

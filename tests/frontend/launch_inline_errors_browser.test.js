@@ -66,9 +66,10 @@ const BASE = require('./test_base').BASE;
         await ev(`document.getElementById('team-board-name').value = ''; window.launchTeam(); true`);
         f = await inline('team-board-name');
         assert.match(f.text, /Type a name for the team/, JSON.stringify(f)); assert.ok(f.described && f.invalid === 'true');
-        assert.equal(await ev(`document.querySelector('#launch-step-team [role=tab][aria-selected=true]').dataset.section`), 'board', 'the dialog is on the tab with the field');
+        assert.equal(await ev(`!!document.getElementById('team-board-name').closest('.settings-pane')`), false, 'the name is above the sections, in view on every tab');
         assert.equal(await ev(`!!document.getElementById('launch-team-health') || /health monitor/i.test(document.getElementById('launch-step-team').textContent)`), false, 'no health check option in the launch dialog');
         await ev(`document.getElementById('team-board-name').value = 'inline-err'; window._validateTeamName(); document.getElementById('launch-team-dir').value = ''; window.launchTeam(); true`);
+        assert.equal(await ev(`document.querySelector('#launch-step-team [role=tab][aria-selected=true]').dataset.section`), 'board', 'a folder problem opens the tab with the folder');
         f = await inline('launch-team-dir'); assert.match(f.text, /Choose a working directory/, JSON.stringify(f));
         await ev(`window.hideLaunchModal(); true`);
 

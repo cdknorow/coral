@@ -134,6 +134,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         assert.equal(on.name, 'Send a health check to this team'); assert.match(on.desc, /^Off until you turn it on\. Coral checks in on the team/);
         const every = await ax(`${P} input[name=interval_min]`);
         assert.equal(every.name, 'Every minutes'); assert.equal(every.desc, '5 to 1440');
+        await ev(`document.querySelector('${P} .health-advanced').open = true; true`); // Reviews and the automatic rules are behind one disclosure (#5589 finding 11)
         const rev = await ax(`${P} input[name=default_reviewers]`);
         assert.equal(rev.name, 'Default reviewers'); assert.match(rev.desc, /^Names of agents on this team/);
         const claim = await ax(`${P} input[name=claim_nudge_on]`);

@@ -43,7 +43,8 @@ function _selectLaunchType(type) {
     } else if (type === "team") {
         _initTeamForm();
         const shell = document.querySelector('#launch-step-team .settings-shell');
-        if (shell) { initSectionDialog(shell); showSection(shell, 'members', { focus: true }); } // always opens on Members, the keyboard in the list
+        if (shell) { initSectionDialog(shell); showSection(shell, 'members'); } // always opens on Members; the name, which every launch needs, is above the sections (#5589 finding 6), and the keyboard starts in it
+        document.getElementById('team-board-name')?.focus();
     } else {
         document.getElementById("launch-terminal-name").focus();
     }

@@ -215,6 +215,13 @@
                     <p class="sd-sub">Agents launch together on one shared message board.</p>
                 </div>
                 <div class="settings-modal-body">
+                    <div class="sd-essentials sd-name-grid">
+                        <label for="team-board-name">Team Name:</label>
+                        <div class="sd-name-field">
+                            <input type="text" id="team-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" data-on-input="m-validate-team-name" aria-describedby="team-board-name-hint">
+                            <div id="team-board-name-hint" class="team-field-hint">This will also be used as the message board name.</div>
+                        </div>
+                    </div>
                     <div class="settings-shell">
                         <nav class="settings-nav" aria-label="Team sections">
                             <div class="settings-group-pick"><select class="settings-select" aria-label="Team section"></select></div>
@@ -228,30 +235,25 @@
                                             <option value="">Select a template...</option>
                                         </select>
                                     </label>
-                                    <div class="team-template-actions">
-                                        <button class="btn btn-small btn-subtle team-generate-ai-btn" data-on-click="m-show-team-wizard-modal" title="Generate a team with AI"><span class="material-icons icon-btn-inline" aria-hidden="true">auto_awesome</span> Generate with AI</button>
-                                        <button class="btn btn-small btn-subtle" data-on-click="m-import-team-templates" title="Import team templates from file">Import Template</button>
-                                        <button class="btn btn-small btn-subtle" data-on-click="m-import-team-from-folder" title="Import team from a folder with .md agent files">Import from Folder</button>
-                                        <button class="btn btn-small btn-subtle" data-on-click="m-save-team-template" title="Save team configuration as reusable template">Save as Template</button>
-                                        <span class="team-template-info info-tooltip" title="Folder structure:&#10;&#10;my-team/&#10;  SKILL.md → Orchestrator prompt&#10;  agents/&#10;    role-name.md → Agent prompt&#10;&#10;Each .md file uses YAML frontmatter:&#10;---&#10;name: role-name&#10;description: What this agent does&#10;---&#10;Prompt body below...">&#9432;</span>
-                                        <input type="file" id="team-folder-input" webkitdirectory directory multiple style="display:none" data-on-change="m-handle-team-folder-import">
-                                    </div>
-                                    <div class="team-agents-header">
-                                        <strong style="font-size:0.875rem">Team Agents</strong>
-                                        <p class="team-agents-desc">These agents launch together on the shared message board, each in its own session.</p>
-                                    </div>
-                                    <div id="team-agents-list" class="team-agents-scroll"></div>
+                                    <details class="team-template-more">
+                                        <summary>More template options</summary>
+                                        <div class="team-template-actions">
+                                            <button class="btn btn-small btn-subtle team-generate-ai-btn" data-on-click="m-show-team-wizard-modal" title="Generate a team with AI"><span class="material-icons icon-btn-inline" aria-hidden="true">auto_awesome</span> Generate with AI</button>
+                                            <button class="btn btn-small btn-subtle" data-on-click="m-import-team-templates" title="Import team templates from file">Import Template</button>
+                                            <button class="btn btn-small btn-subtle" data-on-click="m-import-team-from-folder" title="Import team from a folder with .md agent files">Import from Folder</button>
+                                            <button class="btn btn-small btn-subtle" data-on-click="m-save-team-template" title="Save team configuration as reusable template">Save as Template</button>
+                                            <span class="team-template-info info-tooltip" title="Folder structure:&#10;&#10;my-team/&#10;  SKILL.md → Orchestrator prompt&#10;  agents/&#10;    role-name.md → Agent prompt&#10;&#10;Each .md file uses YAML frontmatter:&#10;---&#10;name: role-name&#10;description: What this agent does&#10;---&#10;Prompt body below...">&#9432;</span>
+                                            <input type="file" id="team-folder-input" webkitdirectory directory multiple style="display:none" data-on-change="m-handle-team-folder-import">
+                                        </div>
+                                    </details>
+                                    <div id="team-agents-list" class="team-agents-scroll" role="group" aria-label="Team agents"></div>
                                     <div class="team-agents-footer">
                                         <button class="btn btn-primary team-add-agent-btn team-add-agent-btn-full" data-on-click="m-show-team-agent-modal">+ Add Agent</button>
                                     </div>
                                 </div>
 
                         </section>
-                        <section class="settings-pane" data-section="board" data-title="Board &amp; workspace" data-icon="forum" data-desc="Name the board and pick the folder the team works in." hidden>
-                            <label>Team Name:
-                                <input type="text" id="team-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" data-on-input="m-validate-team-name">
-                            </label>
-                            <div id="team-board-name-hint" class="team-field-hint">This will also be used as the message board name.</div>
+                        <section class="settings-pane" data-section="board" data-title="Board &amp; workspace" data-icon="forum" data-desc="The folder the team works in, and where it runs." hidden>
                             <label>Working Directory:
                                 <div class="dir-input-row">
                                     <input type="text" id="launch-team-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">

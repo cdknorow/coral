@@ -111,7 +111,7 @@ export function showTeamAvailability(team, options = {}) {
         ? ''  // sidebar panel: the team context owns navigation
         : '<button type="button" aria-label="Close team view">×</button>';
     dialog.innerHTML = `<header><div><h2 id="availability-title">Team view</h2><p>${escapeHtml(keyLabel(team))}</p></div>${actions}</header>
-        <div class="availability-toolbar"><span>Team details, observed activity, and assigned work</span><button type="button">Refresh</button></div>
+        <div class="availability-toolbar"><button type="button" class="btn btn-small">Refresh</button></div>
         <div class="availability-content" aria-live="polite"></div>`;
     if (workspaceMode) {
         // Rendered into the sidebar's Team View tab (see team_context.js).
@@ -135,7 +135,7 @@ export function showTeamAvailability(team, options = {}) {
             const data = await refreshTeamAvailability(team, true);
             if (!data) throw new Error('Availability could not be loaded.');
             if (!dialog.isConnected) return;
-            const labels = {available:'Free',busy:'Busy',task_idle:'Task assigned · idle',queued:'Queued',waiting:'Waiting',needs_input:'Needs input',sleeping:'Sleeping',offline:'Offline',unknown:'Unknown',unavailable:'Unavailable'};
+            const labels = {available:'Free',busy:'Busy',task_idle:'Task assigned · idle',queued:'Queued',waiting:'Waiting',needs_input:'Needs input',sleeping:'Sleeping',offline:'Offline',unknown:'No signal yet',unavailable:'Unavailable'};
             const tasks = items => items.map(t => `<li><span>${escapeHtml(t.scope)} #${Number(t.id)} · ${escapeHtml(t.status.replaceAll('_',' '))}</span>${escapeHtml(t.title)}</li>`).join('');
             const teamAgents = (state.liveSessions || []).filter(s => inTeam(s, team));
             const directory = teamAgents.find(s => s.working_directory)?.working_directory || '';
@@ -143,8 +143,8 @@ export function showTeamAvailability(team, options = {}) {
             const branch = branchSession?.branch || '';
             content.innerHTML = `<section class="team-view-details"><div><span>Agents</span><strong>${teamAgents.length || data.agents.length}</strong></div><div><span>Directory</span><strong title="${escapeHtml(directory)}">${escapeHtml(directory || '—')}</strong></div><div><span>Branch</span><strong>${escapeHtml(branch || '—')}</strong></div></section>
                 <div class="availability-summary">${Object.entries(labels).filter(([key]) => data.summary[key] || key === 'available').map(([key,label]) => `<div class="availability-summary-${key}"><strong>${Number(data.summary[key] || 0)}</strong><span>${label}</span></div>`).join('')}</div>
-                <p class="availability-note">Free means idle with no active or ready assigned tasks. Blocked work is shown below. This snapshot does not reserve an agent.</p>
-                <div class="availability-agents">${data.agents.map(a => { const every = a.reminder_interval_seconds ? ` every ${Math.round(a.reminder_interval_seconds / 60)} min` : ''; const title = a.reminder ? `Periodic reminder${every}` : ''; return `<article class="availability-agent availability-${escapeHtml(a.availability)}"><div class="availability-agent-heading"><div><strong>${escapeHtml(a.name)}</strong>${a.reminder ? `<span class="agent-reminder-icon" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">⏰</span>` : ''}<small>${escapeHtml([a.agent_type,a.role].filter(Boolean).join(' · '))}</small></div><span class="availability-badge ${a.available ? 'is-free' : ''}">${escapeHtml(labels[a.availability] || 'Unknown')}</span></div><p>${escapeHtml(a.reason)}</p>${a.tasks.length ? `<ul>${tasks(a.tasks)}</ul>` : '<small>No open assigned tasks</small>'}</article>`; }).join('') || '<p>No agents found for this team.</p>'}</div>
+                <p class="availability-note">Free means idle, with no active or ready task. A snapshot: it does not reserve an agent.${data.agents.length && !data.agents.some(a => a.tasks.length) ? ' No open assigned tasks.' : ''}</p>
+                <div class="availability-agents">${data.agents.map(a => { const every = a.reminder_interval_seconds ? ` every ${Math.round(a.reminder_interval_seconds / 60)} min` : ''; const title = a.reminder ? `Periodic reminder${every}` : ''; return `<article class="availability-agent availability-${escapeHtml(a.availability)}"><div class="availability-agent-heading"><div><strong>${escapeHtml(a.name)}</strong>${a.reminder ? `<span class="agent-reminder-icon" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">⏰</span>` : ''}<small>${escapeHtml([a.agent_type, a.role && a.role.trim().toLowerCase() !== String(a.name || '').trim().toLowerCase() ? a.role : ''].filter(Boolean).join(' · '))}</small></div><span class="availability-badge ${a.available ? 'is-free' : ''}">${escapeHtml(labels[a.availability] || 'Unknown')}</span></div><p>${escapeHtml(a.reason)}</p>${a.tasks.length ? `<ul>${tasks(a.tasks)}</ul>` : ''}</article>`; }).join('') || '<p>No agents found for this team.</p>'}</div>
                 ${data.unassigned_tasks.length ? `<section class="availability-unassigned"><h3>Unassigned work</h3><ul>${tasks(data.unassigned_tasks)}</ul></section>` : ''}
                 <section class="availability-health"><h3>Board health</h3><ul>${(data.health_report || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
                 <p class="availability-note">Updated ${escapeHtml(new Date(data.observed_at).toLocaleTimeString())}</p>`;

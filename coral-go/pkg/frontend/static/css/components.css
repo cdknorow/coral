@@ -2349,16 +2349,6 @@ button.subscriber-history-link {
     background: var(--inset-fill);
 }
 
-.team-agents-header {
-    margin-bottom: 10px;
-}
-
-.team-agents-desc {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin: 4px 0 0;
-    line-height: 1.4;
-}
 
 .team-field-hint {
     margin: -4px 0 12px;
@@ -4412,3 +4402,17 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
     .sd-essentials :is(input[type="text"], .btn), .sd-more-btn { min-height: 44px; }
     .sd-more-hint { display: none; }
 }
+/* Agent Team (UI audit #5589, findings 5 and 6): the team name, which every launch needs, is above the sections; the template tools are one disclosure after the picker, so the members come first. */
+.modal-content:has(.settings-shell) #launch-step-team .settings-modal-body { flex-direction: column; }
+.team-template-more { margin: 0 0 .75rem; }
+.team-template-more > summary { cursor: pointer; width: fit-content; padding: .25rem .5rem .25rem 0; color: var(--text-secondary); font-size: .8125rem; font-weight: 600; }
+.team-template-more[open] > summary { margin-bottom: .4rem; }
+.health-advanced > summary { cursor: pointer; width: fit-content; padding: .25rem .5rem .25rem 0; font-weight: 600; font-size: var(--fs-md); }
+.health-advanced[open] > summary { margin-bottom: 10px; }
+.health-advanced > fieldset + fieldset { margin-top: 16px; }
+#launch-step-team .sd-essentials { padding-bottom: .3rem; }
+#launch-step-team .sd-name-grid { display: grid; grid-template-columns: max-content minmax(0, 38rem); gap: .6rem; align-items: start; }
+#launch-step-team .sd-name-grid > label { margin: 0; padding-top: .6rem; }
+#launch-step-team .sd-name-field .team-field-hint { margin: .25rem 0 0; }
+#launch-step-team .sd-name-field #team-board-name { width: 100%; }
+@container sd (max-width: 40rem) { #launch-step-team .sd-name-grid { grid-template-columns: minmax(0, 1fr); gap: .3rem; } #launch-step-team .sd-name-grid > label { padding-top: 0; } }

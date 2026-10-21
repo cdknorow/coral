@@ -186,7 +186,7 @@ const BASE = require('./test_base').BASE;
         assert.equal((await view(NA)).overflow, 0);
         await ev(`window.hideLaunchModal(); true`);
 
-        console.log('Agent Team: Members, Board & workspace, Defaults; the name marks its section; the agent dialog is the same shell');
+        console.log('Agent Team: the name above the sections; Members, Board & workspace, Defaults; the agent dialog is the same shell');
         await open(1440, false);
         await ev(`window.showLaunchModal(); window._selectLaunchType('team'); true`);
         await waitFor(vis('#launch-step-team'), 'the team step');
@@ -196,15 +196,16 @@ const BASE = require('./test_base').BASE;
         assert.equal(await topStays(TM), 0, 'the Members section opens at its top and stays there: its heading and the template picker are in view, not scrolled past by the default agents being added');
         assert.ok(await ev(vis('#team-agents-list')) && await ev(vis('#launch-step-team [data-on-click="m-show-team-agent-modal"]')) && await ev(vis('#team-template-selector')), 'the agents, Add Agent and the templates are in Members');
         await shot('team-members-desktop');
+        assert.ok(await ev(vis('#team-board-name')), 'the team name is in view on Members, above the sections'); assert.equal(await ev(`document.activeElement.id`), 'team-board-name', 'and the keyboard starts in it');
         for (const [id, sel] of [['board', '#team-board-name'], ['board', '#launch-team-dir'], ['board', '#team-board-server'], ['defaults', '#team-agent-type'], ['defaults', '#team-permission-mode']]) { await go(TM, id); assert.ok(await ev(vis(sel)), `${sel} is reached in ${id}`); }
         await go(TM, 'board'); await shot('team-board-desktop');
         await fillId('team-board-name', 'bad name!');
         await go(TM, 'members');
-        assert.equal(await dot(TM, 'Board & workspace'), true, 'a bad name marks Board & workspace while the person is in Members');
+        assert.ok(await ev(vis('#team-board-name')), 'a bad name is in view while the person is in Members, and no section is marked: it is not in one');
         await click('#launch-step-team [data-on-click="m-launch-team"]');
         await waitFor(`document.activeElement.id === 'team-board-name'`, 'the bad name focused');
-        assert.equal((await view(TM)).open, 'board', 'Launch Team opens the section with the problem');
-        await fillId('team-board-name', 'ok-team'); assert.equal(await dot(TM, 'Board & workspace'), false);
+        assert.equal((await view(TM)).open, 'members', 'Launch Team leaves the section alone: the name is above them');
+        await fillId('team-board-name', 'ok-team');
         await ev(`window.hideLaunchModal(); true`);
         console.log('Agent Team on a phone');
         await open(390, true);

@@ -59,6 +59,7 @@ function healthPanelHTML(h, members) {
           <label class="health-wide-select">Send it to<select name="recipient">${options.join('')}</select></label></div>
         <label class="health-rule-head"><input type="checkbox" name="all_clear"${h.all_clear ? ' checked' : ''} aria-labelledby="hc-clear-t" aria-describedby="hc-clear-w"><span><span id="hc-clear-t">Also post one short line when nothing needs attention</span><br><span class="health-why" id="hc-clear-w">So a quiet team is not mistaken for a stopped check. Off: say nothing when all is well.</span></span></label>
       </fieldset>
+      <details class="health-advanced"><summary>Reviews and automatic rules</summary>
       <fieldset class="team-settings-section"><legend>Reviews</legend>
         <p class="working-mode-hint">Works whether or not the health check above is on.</p>
         ${rule('auto_delegate', 'Hand reviews to the default reviewers', 'When a task is submitted for review and nobody is assigned, Coral delegates it. On unless you turn it off here.', !!h.auto_delegate.on, '', reviewers)}
@@ -73,6 +74,7 @@ function healthPanelHTML(h, members) {
         ${rule('mention_renudge', 'Remind the orchestrator of an unanswered mention', 'A message that @mentions the orchestrator and has had no reply gets a reminder.', !!h.mention_renudge.on,
             knob('mention_renudge_after_min', 'After', h.mention_renudge.after_min, MIN_LO, MIN_HI, 'minutes'))}
       </fieldset>
+      </details>
       <div class="team-settings-actions health-actions"><button type="submit" class="btn btn-primary" disabled>Save health check</button><button type="button" class="btn health-reset">Reset to defaults</button>
         <span class="health-state" role="status" aria-live="polite">Only the Operator on this computer can change these. Saved for this team only.</span></div>
     </form>`;
@@ -157,7 +159,7 @@ function bind(host, team, base, members, said) {
     form.addEventListener('submit', async event => {
         event.preventDefault();
         const problem = healthProblem(form);
-        if (problem) { say(problem.text, true); problem.el.focus(); return; }
+        if (problem) { say(problem.text, true); const folded = problem.el.closest('details'); if (folded) folded.open = true; problem.el.focus(); return; } // a field behind "Reviews and automatic rules" opens it first
         save.disabled = true; say('Saving…');
         try {
             const now = await boardFetch(team, '/settings');
