@@ -11,6 +11,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isHub, initHub, isCloud } from './server_base.js';
 import { showToast } from './utils.js';
+import { switchRow } from './switch_row.js';
 import { pollEvery } from './overload.js';
 import {
     statusMeta, escHtml, describeServerError, formatLastSeen, isValidServerId,
@@ -177,9 +178,7 @@ function formHtml() {
         <label>API key
             <input type="password" name="api_key" value="" autocomplete="new-password" spellcheck="false" placeholder="${adding ? 'Paste the remote server\'s API key' : 'Leave blank to keep the current key'}" ${adding ? 'required' : ''}>
             <span class="servers-help">Write-only. The key is stored encrypted and is never shown again.</span></label>
-        <label class="servers-check"><input type="checkbox" name="allow_private" ${cur.allow_private ? 'checked' : ''}>
-            <span>Allow private network address
-            <span class="servers-help servers-warning">Only tick this for a server on your LAN, tailnet or localhost that you trust. It lets this hub connect to private and reserved addresses, which is normally blocked to prevent requests being steered at internal services.</span></span></label>
+        ${switchRow({ label: 'Allow private network address', name: 'allow_private', checked: cur.allow_private, labelClass: 'servers-check', desc: 'Only tick this for a server on your LAN, tailnet or localhost that you trust. It lets this hub connect to private and reserved addresses, which is normally blocked to prevent requests being steered at internal services.', descClass: 'servers-help servers-warning', descInside: true })}
         <div class="servers-form-actions">
             <button type="button" class="btn" data-action="cancel-form"${busy ? ' disabled' : ''}>Cancel</button>
             <button type="submit" class="btn btn-primary"${busy ? ' disabled aria-busy="true"' : ''}>${busy ? 'Checking connection...' : (adding ? 'Add server' : 'Save')}</button>

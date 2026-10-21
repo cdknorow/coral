@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { syncDisplayMenu } from './session_rows.js';
 import { showView } from './utils.js';
 import { note, backIs } from './nav.js';
+import { switchRow } from './switch_row.js';
 
 const MOBILE_BREAKPOINT = 767;
 
@@ -103,11 +104,11 @@ function _listHeader(agentList) {
             <div class="list-display-panel" id="mobile-display-panel" data-display-panel role="group" aria-label="Display options" data-on-keydown="display-panel-key" hidden>
                 <div class="agent-list-bar" id="mobile-agent-list-bar" hidden></div>
                 <div class="list-display-options">
-                    <label class="list-display-option"><input type="checkbox" data-display-input="summary" data-on-change="toggle-session-summary"> Show summaries</label>
-                    <label class="list-display-option" data-display-row="server" hidden><input type="checkbox" data-display-input="server" data-on-change="toggle-show-server"> Show server</label>
-                    <label class="list-display-option" data-display-row="group" hidden><input type="checkbox" data-display-input="group" data-on-change="toggle-group-by-server"> Group by server</label>
-                    <label class="list-display-option" data-display-row="branches"><input type="checkbox" data-display-input="branches" data-on-change="toggle-show-branches"> Show branches</label>
-                    <label class="list-display-option" data-display-row="agenttype"><input type="checkbox" data-display-input="agenttype" data-on-change="toggle-show-agent-type"> Show agent type</label>
+                    ${switchRow({ label: 'Show summaries', labelClass: 'list-display-option', attrs: ' data-display-input="summary" data-on-change="toggle-session-summary"' })}
+                    ${switchRow({ label: 'Show server', labelClass: 'list-display-option', labelAttrs: ' data-display-row="server" hidden', attrs: ' data-display-input="server" data-on-change="toggle-show-server"' })}
+                    ${switchRow({ label: 'Group by server', labelClass: 'list-display-option', labelAttrs: ' data-display-row="group" hidden', attrs: ' data-display-input="group" data-on-change="toggle-group-by-server"' })}
+                    ${switchRow({ label: 'Show branches', labelClass: 'list-display-option', labelAttrs: ' data-display-row="branches"', attrs: ' data-display-input="branches" data-on-change="toggle-show-branches"' })}
+                    ${switchRow({ label: 'Show agent type', labelClass: 'list-display-option', labelAttrs: ' data-display-row="agenttype"', attrs: ' data-display-input="agenttype" data-on-change="toggle-show-agent-type"' })}
                 </div>
                 <p class="list-display-hint" data-display-hint role="status" hidden></p>
             </div>

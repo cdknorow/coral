@@ -1,5 +1,6 @@
 import { importOnce } from './import_once.js';
 import { bindNativeDialog } from './modal_chrome.js';
+import { switchRow } from './switch_row.js';
 import { escapeHtml, escapeAttr, copyText, showToast } from './utils.js';
 import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
 const { boardRenameControl } = await importOnce('./board_rename.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
@@ -105,7 +106,7 @@ function _teamSettingsShell(workspaceMode) {
       <fieldset class="team-settings-section">
         <legend>Team working mode</legend>
         <label>Working mode<select name="mode"><option value="none">None</option><option value="shared_checkout">Shared checkout</option><option value="worktrees">Worktrees</option></select></label>
-        <label><input type="checkbox" name="dependency_guidance"> Include dependent-queue guidance</label>
+        ${switchRow({ label: 'Include dependent-queue guidance', name: 'dependency_guidance' })}
         <label>Additional instructions<textarea name="custom_instructions" rows="4" placeholder="Team-specific conventions"></textarea></label>
         <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
       </fieldset>

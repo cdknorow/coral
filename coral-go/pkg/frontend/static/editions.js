@@ -18,6 +18,7 @@ import { state } from './state.js';
 import { isCloud } from './server_base.js';
 import { isPopout } from './popout.js';
 import { escapeAttr } from './utils.js';
+import { switchRow } from './switch_row.js';
 import { mountCloudConnect, enrolledRetrying } from './cloud_connect.js';
 import { trapTab } from './dialog_focus.js';
 
@@ -132,7 +133,7 @@ function _connectHtml() {
                 </select>
                 <div id="editions-mode-desc" class="settings-hint" data-cloud="mode-desc"></div>
                 <div data-cloud="auto-accept-row" hidden>
-                    <label class="editions-auto-accept"><input type="checkbox" data-cloud="allow-auto-accept"> Coral Hub can turn on auto-accept</label>
+                    ${switchRow({ label: 'Coral Hub can turn on auto-accept', labelClass: 'editions-auto-accept', attrs: ' data-cloud="allow-auto-accept"' })}
                 </div>
                 <div class="settings-hint">You can change this any time in Settings › Coral Hub.</div>
             </div>

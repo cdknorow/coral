@@ -9,6 +9,7 @@ import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch, isCloud } from './server_base.js';
 import { copyText } from './utils.js';
 import { importOnce } from './import_once.js';
+import { switchRow } from './switch_row.js';
 const { refusalOf, answeredLocally } = await importOnce('./owner_refusal.js');
 
 // Coral Hub's page where a team on another Coral is linked ("Coral Hub > Team links"). A constant: the hub refuses a query on it, so nothing is preselected.
@@ -85,7 +86,7 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
     const changed = key => { const t = changedText(key); return t ? `<span class="working-mode-hint xt-changed" id="xt-changed-${escapeAttr(key)}" data-for="${escapeAttr(key)}">${escapeHtml(t)}</span>` : ''; };
     const hubMay = () => !hub && !!state && state.hub_may_change === true;
     // Each switch is described by what is said about it: when it was last changed, whether Coral Hub may change it, and why it is locked
-    const describedBy = key => { const ids = [changedText(key) && `xt-changed-${key}`, hubMay() && 'xt-hub-may', !canChange() && 'xt-locked'].filter(Boolean); return ids.length ? ` aria-describedby="${ids.map(escapeAttr).join(' ')}"` : ''; };
+    const describedBy = key => [changedText(key) && `xt-changed-${key}`, hubMay() && 'xt-hub-may', !canChange() && 'xt-locked'].filter(Boolean);
 
     function draw(focusSel) {
         const st = status();
@@ -94,9 +95,9 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         <div class="xt-head"><span class="update-state-dot" ${DOT[st.state] ? `data-k="${escapeAttr(DOT[st.state])}"` : ''} aria-hidden="true"></span><span class="xt-line" role="status">${escapeHtml(st.text)}</span></div>
         <div class="xt-row-actions">${buttonFor(st)}</div>
         <div class="xt-switches">
-          <label><input type="checkbox" name="cross_team_messaging"${draft.messaging ? ' checked' : ''}${canChange() ? '' : ' disabled'}${describedBy('cross_team_messaging')}> Cross-team messaging</label>
+          ${switchRow({ label: 'Cross-team messaging', name: 'cross_team_messaging', checked: draft.messaging, disabled: !canChange(), describedBy: describedBy('cross_team_messaging') })}
           ${changed('cross_team_messaging')}
-          <label><input type="checkbox" name="cross_team_artifacts"${draft.files ? ' checked' : ''}${canChange() ? '' : ' disabled'}${describedBy('cross_team_artifacts')}> Share files with other teams</label>
+          ${switchRow({ label: 'Share files with other teams', name: 'cross_team_artifacts', checked: draft.files, disabled: !canChange(), describedBy: describedBy('cross_team_artifacts') })}
           ${changed('cross_team_artifacts')}
           ${hubMay() ? '<p class="working-mode-hint xt-hub-may" id="xt-hub-may">Coral Hub can change these settings.</p>' : ''}
           ${canChange() ? '' : `<p class="working-mode-hint xt-locked" id="xt-locked">${escapeHtml(lockedText())}</p>`}

@@ -8,6 +8,7 @@
  * object, Save reads it again first and changes only what the person changed (#4423): a rule another client changed while the tab was
  * open keeps that change. */
 import { importOnce } from './import_once.js';
+import { switchRow } from './switch_row.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch } from './server_base.js';
 import { rebaseChanges } from './settings_diff.js';
@@ -36,8 +37,7 @@ function knob(name, label, value, lo, hi, unit) {
 
 function rule(key, title, why, on, knobs, extra = '') {
     // The title names the switch and the group of numbers under it, so "After minutes" is heard inside its rule; the explanation describes the switch.
-    return `<div class="health-rule" data-rule="${escapeAttr(key)}" role="group" aria-labelledby="hr-${escapeAttr(key)}-t"><label class="health-rule-head"><input type="checkbox" name="${escapeAttr(key)}_on"${on ? ' checked' : ''} aria-labelledby="hr-${escapeAttr(key)}-t" aria-describedby="hr-${escapeAttr(key)}-w"> <span id="hr-${escapeAttr(key)}-t">${escapeHtml(title)}</span></label>
-        <p class="health-why" id="hr-${escapeAttr(key)}-w">${escapeHtml(why)}</p><div class="health-knobs">${knobs}${extra}</div></div>`;
+    return `<div class="health-rule" data-rule="${escapeAttr(key)}" role="group" aria-labelledby="hr-${escapeAttr(key)}-t">${switchRow({ label: title, name: `${key}_on`, checked: on, labelClass: 'health-rule-head', labelId: `hr-${key}-t`, desc: why, descId: `hr-${key}-w`, descTag: 'p', descClass: 'health-why' })}<div class="health-knobs">${knobs}${extra}</div></div>`;
 }
 
 /** The panel's HTML for a health object and the team's members (active subscribers: { subscriber_id, job_title }). */
@@ -54,10 +54,10 @@ function healthPanelHTML(h, members) {
         !!h.held_notice.on, knob('held_notice_after_min', 'After', h.held_notice.after_min, MIN_LO, MIN_HI, 'minutes held')) : '';
     return `<form class="health-form working-mode-form" autocomplete="off" novalidate>
       <fieldset class="team-settings-section"><legend>The check</legend>
-        <label class="health-rule-head"><input type="checkbox" name="on"${h.on ? ' checked' : ''} aria-labelledby="hc-on-t" aria-describedby="hc-on-w"><span><b id="hc-on-t">Send a health check to this team</b><br><span class="health-why" id="hc-on-w">Off until you turn it on. Coral checks in on the team every few minutes to spot stuck or idle agents and tells one person who is idle, stuck or waiting, and what changed. It uses tokens each time.</span></span></label>
+        ${switchRow({ label: 'Send a health check to this team', name: 'on', checked: h.on, labelClass: 'health-rule-head', labelId: 'hc-on-t', titleTag: 'b', desc: 'Off until you turn it on. Coral checks in on the team every few minutes to spot stuck or idle agents and tells one person who is idle, stuck or waiting, and what changed. It uses tokens each time.', descId: 'hc-on-w', descClass: 'health-why', descInside: true, sep: '<br>', gap: '' })}
         <div class="health-row">${knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'minutes')}
           <label class="health-wide-select">Send it to<select name="recipient">${options.join('')}</select></label></div>
-        <label class="health-rule-head"><input type="checkbox" name="all_clear"${h.all_clear ? ' checked' : ''} aria-labelledby="hc-clear-t" aria-describedby="hc-clear-w"><span><span id="hc-clear-t">Also post one short line when nothing needs attention</span><br><span class="health-why" id="hc-clear-w">So a quiet team is not mistaken for a stopped check. Off: say nothing when all is well.</span></span></label>
+        ${switchRow({ label: 'Also post one short line when nothing needs attention', name: 'all_clear', checked: h.all_clear, labelClass: 'health-rule-head', labelId: 'hc-clear-t', desc: 'So a quiet team is not mistaken for a stopped check. Off: say nothing when all is well.', descId: 'hc-clear-w', descClass: 'health-why', descInside: true, sep: '<br>', gap: '' })}
       </fieldset>
       <details class="disclosure health-advanced"><summary>Reviews and automatic rules</summary>
       <fieldset class="team-settings-section"><legend>Reviews</legend>

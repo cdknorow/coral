@@ -255,6 +255,7 @@
 1	cost_dashboard.js	t.id
 1	cost_dashboard.js	t.num_agents || 0
 2	cost_dashboard.js	teamHtml
+1	editions.js	switchRow({ label: 'Coral Hub can turn on auto-accept', labelClass: 'editions-auto-accept', attrs: ' data-clou
 1	event_row.js	durationChip(ev)
 1	event_row.js	formatClockTime(ev.created_at)
 1	event_row.js	icon.char
@@ -332,6 +333,11 @@
 1	message_board.js	renderBoardMessageBody(m)
 1	message_board.js	selectedClass
 1	message_board.js	spacing
+1	mobile.js	switchRow({ label: 'Group by server', labelClass: 'list-display-option', labelAttrs: ' data-display-row="group
+1	mobile.js	switchRow({ label: 'Show agent type', labelClass: 'list-display-option', labelAttrs: ' data-display-row="agent
+1	mobile.js	switchRow({ label: 'Show branches', labelClass: 'list-display-option', labelAttrs: ' data-display-row="branche
+1	mobile.js	switchRow({ label: 'Show server', labelClass: 'list-display-option', labelAttrs: ' data-display-row="server" h
+1	mobile.js	switchRow({ label: 'Show summaries', labelClass: 'list-display-option', attrs: ' data-display-input="summary" 
 1	model_chip.js	checked
 2	model_chip.js	how
 1	model_chip.js	kind
@@ -415,6 +421,7 @@
 1	servers.js	rowHtml(local)
 1	servers.js	statusPill('online')
 1	servers.js	statusPill(s.status)
+1	servers.js	switchRow({ label: 'Allow private network address', name: 'allow_private', checked: cur.allow_private, labelCl
 1	servers.js	title
 1	servers.js	warningHtml(s.warning)
 1	session_rows.js	(goalLine || unreadChip) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''
@@ -497,6 +504,15 @@
 1	subagents.js	tok('Output', sa.output_tokens)
 1	subagents.js	value
 1	subagents.js	warningClass
+1	switch_row.js	attrs
+1	switch_row.js	descInside ? '' : note
+1	switch_row.js	gap
+1	switch_row.js	input
+1	switch_row.js	labelAttrs
+1	switch_row.js	note
+1	switch_row.js	sep
+1	switch_row.js	text
+1	switch_row.js	title
 1	tab_customize.js	iconHtml
 1	tab_customize.js	svg.outerHTML
 1	tags.js	tags.map(t => `<span class="sidebar-tag-pill" style="background:${escapeAttr(tagColor(t.color))}" title="${esc
@@ -600,10 +616,10 @@
 1	team_cross_team_settings.js	buttonFor(st)
 1	team_cross_team_settings.js	changed('cross_team_artifacts')
 1	team_cross_team_settings.js	changed('cross_team_messaging')
-1	team_cross_team_settings.js	describedBy('cross_team_artifacts')
-1	team_cross_team_settings.js	describedBy('cross_team_messaging')
 1	team_cross_team_settings.js	links.length ? `<div class="xt-links"><div class="xt-h-row"><h3 class="xt-h">Linked teams that can message thi
 1	team_cross_team_settings.js	links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l
+1	team_cross_team_settings.js	switchRow({ label: 'Cross-team messaging', name: 'cross_team_messaging', checked: draft.messaging, disabled: !
+1	team_cross_team_settings.js	switchRow({ label: 'Share files with other teams', name: 'cross_team_artifacts', checked: draft.files, disable
 1	team_dialogs.js	failList
 1	team_dialogs.js	successCount
 1	team_health_settings.js	HEALTH_LIMITS.reviewers
@@ -617,6 +633,9 @@
 1	team_health_settings.js	rule('claim_nudge', 'Nudge an idle agent to claim its work', 'An agent that is idle with ready work gets a rem
 1	team_health_settings.js	rule('mention_renudge', 'Remind the orchestrator of an unanswered mention', 'A message that @mentions the orch
 1	team_health_settings.js	rule('status_nudge', 'Ask a quiet agent for a status', 'An agent that has done nothing for a while is asked wh
+1	team_health_settings.js	switchRow({ label: 'Also post one short line when nothing needs attention', name: 'all_clear', checked: h.all_
+1	team_health_settings.js	switchRow({ label: 'Send a health check to this team', name: 'on', checked: h.on, labelClass: 'health-rule-hea
+1	team_health_settings.js	switchRow({ label: title, name: `${key}_on`, checked: on, labelClass: 'health-rule-head', labelId: `hr-${key}-
 1	team_templates_ui.js	suffix
 1	team_working_mode.js	block(role, name, title, text)
 1	team_working_mode.js	body
@@ -624,6 +643,7 @@
 1	team_working_mode.js	head
 2	team_working_mode.js	label
 1	team_working_mode.js	options
+1	team_working_mode.js	switchRow({ label: 'Include dependent-queue guidance', name: 'dependency_guidance' })
 2	team_working_mode.js	title
 1	team_working_mode.js	workspaceActions
 1	template_browser.js	active
