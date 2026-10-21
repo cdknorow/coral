@@ -217,3 +217,13 @@ func TestAlternateScreenIsLeftBehind(t *testing.T) {
 	// Other private modes are skipped.
 	assert.Equal(t, "main one\nmain two\n", Render([]byte(main+"\x1b[?25l\x1b[?2004h\x1b[?25h"), 20, 3))
 }
+
+// A double-width character on a one-column screen has no room for its right half: it takes the one cell, and nothing is
+// written past the row.
+func TestDoubleWidthCharacterOnAOneColumnScreen(t *testing.T) {
+	assert.NotPanics(t, func() {
+		assert.Equal(t, "日\n本", Render([]byte("日本"), 1, 2))
+		assert.Equal(t, "🎉", RenderStyled([]byte("🎉"), 1, 1))
+		assert.Equal(t, "b\n日", Render([]byte("a日\x1b[1;1Hb"), 1, 2))
+	})
+}
