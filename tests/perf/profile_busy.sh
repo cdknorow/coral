@@ -82,7 +82,7 @@ start_server() { # $1 data dir, $2 port, $3 log, rest: extra flags
   local d="$1" port="$2" logf="$3"; shift 3
   printf '%s\n' "$PW" > "$d/pw" && chmod 600 "$d/pw"
   env -u TMUX -u CORAL_CLOUD_URL -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CORAL_SESSION_TOKEN \
-    -u CLAUDE_PROJECTS_DIR HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" CORAL_DATA_DIR="$d" CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
+    -u CLAUDE_PROJECTS_DIR HOME="$CORAL_TEST_HOME" USERPROFILE="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" CORAL_DATA_DIR="$d" CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
     CORAL_INITIAL_PASSWORD_FILE="$d/pw" "$@" \
     "$WORK/bin/coral" --home "$d" --no-browser --host 127.0.0.1 --port "$port" --cloud-url off >"$logf" 2>&1 &
   local pid=$!

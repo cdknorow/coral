@@ -128,7 +128,7 @@ HOSTILE_ENV=(CORAL_PORT=1 CORAL_HOST=10.255.255.1 CORAL_URL=http://10.255.255.1:
     CORAL_DATA_DIR=/nonexistent/parent-coral CORAL_SESSION_NAME=parent-session-3421 CORAL_SESSION_ID=parent-sid-3421
     CORAL_SUBSCRIBER_ID=ParentRole3421 CORAL_SESSION_TOKEN=leak-token-parent-3421)
 coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
-env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$TMP/h" PATH="$CORAL_TEST_STUB_BIN:$PATH" "${HOSTILE_ENV[@]}" \
+env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$TMP/h" USERPROFILE="$TMP/h" PATH="$CORAL_TEST_STUB_BIN:$PATH" "${HOSTILE_ENV[@]}" \
     CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 CORAL_TMUX_NO_FALLBACK=1 \
     MOCK_AGENT_CORAL_BOARD="$BIN/coral-board" MOCK_AGENT_ENV_DUMP="$DUMP" MOCK_AGENT_BLIND_PREFIX=id-blind \
     CORAL_TEST_LOGIN_TOKEN_TTL=3s \
@@ -357,7 +357,7 @@ if [[ $STRICT == 1 ]]; then
     [[ $c == 401 ]] && grep -q session_token_required <<<"$b" && pass "STRICT: an agent-tool call with no token is refused (401 session_token_required)" || fail "STRICT: untokened call answered $c $b"
     # ...and the real coral-board from an agent-marked shell whose token was removed: refused, never Operator.
     st0=$(rjson 'd.get("refused",{}).get("session_token_required",0)')
-    out=$(env -i PATH="$PATH" HOME="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" CORAL_SESSION_NAME="stripped-agent" CORAL_SUBSCRIBER_ID="Operator" "$BIN/coral-board" post "stripped token probe" 2>&1) && rc=0 || rc=$?
+    out=$(env -i PATH="$PATH" HOME="$TMP/h" USERPROFILE="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" CORAL_SESSION_NAME="stripped-agent" CORAL_SUBSCRIBER_ID="Operator" "$BIN/coral-board" post "stripped token probe" 2>&1) && rc=0 || rc=$?
     EXP_TOKEN=$((EXP_TOKEN + 1))
     st1=$(rjson 'd.get("refused",{}).get("session_token_required",0)')
     # The SERVER must have refused it (the counter moved), not merely coral-board failing for another reason.
@@ -368,9 +368,9 @@ if [[ $STRICT == 1 ]]; then
     fi
 
     # A human at a normal shell (no agent markers) signs with the CLI token and acts as the Operator.
-    out=$(env -i PATH="$PATH" HOME="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" "$BIN/coral-board" join id-team-1 --as Operator 2>&1) && rc=0 || rc=$?
+    out=$(env -i PATH="$PATH" HOME="$TMP/h" USERPROFILE="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" "$BIN/coral-board" join id-team-1 --as Operator 2>&1) && rc=0 || rc=$?
     if [[ $rc -eq 0 ]]; then
-        out2=$(env -i PATH="$PATH" HOME="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" "$BIN/coral-board" post "operator from a plain shell" 2>&1) && rc2=0 || rc2=$?
+        out2=$(env -i PATH="$PATH" HOME="$TMP/h" USERPROFILE="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" "$BIN/coral-board" post "operator from a plain shell" 2>&1) && rc2=0 || rc2=$?
         if [[ $rc2 -eq 0 ]] && api GET "/api/board/id-team-1/messages/all" | grep -q "operator from a plain shell"; then
             pass "STRICT: coral-board from a plain shell signs with the CLI token and posts as the Operator"
         else
