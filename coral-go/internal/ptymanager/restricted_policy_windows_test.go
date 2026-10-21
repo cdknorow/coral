@@ -54,3 +54,23 @@ func TestLaunchScriptRunsUnderARestrictedExecutionPolicy(t *testing.T) {
 func TestShellWrapKeepsTheMachinePolicy(t *testing.T) {
 	assert.Equal(t, []string{"powershell.exe", "-NoProfile", "-Command", "x | y"}, shellWrap("x | y"))
 }
+
+// Security's N1: -ExecutionPolicy sets PSExecutionPolicyPreference in the handoff child's environment, and every PowerShell the
+// agent's tools start would inherit it. The script drops it first: a powershell.exe started from the script reports
+// no Process policy.
+func TestHandoffBypassDoesNotReachThePowerShellsTheAgentStarts(t *testing.T) {
+	ps := powerShellForTest(t)
+	grandchild := "& " + psLiteral(ps) + " -NoProfile -Command Get-ExecutionPolicy -Scope Process"
+	invocation, cleanup, err := commandInvocation(grandchild)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	sh, err := defaultShell()
+	require.NoError(t, err)
+	cmd := exec.Command(sh[0], "-NoProfile", "-Command", invocation)
+	cmd.Env = append(os.Environ(), "PSExecutionPolicyPreference=Restricted")
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "Undefined", "a PowerShell the agent starts has no Process policy of its own")
+	assert.NotContains(t, string(out), "Bypass")
+	assert.NotContains(t, string(out), "Restricted")
+}

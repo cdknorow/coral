@@ -22,6 +22,9 @@ const utf8BOM = "\ufeff"
 // refuses every script, and the script (this user's and SYSTEM's only, removing itself) is all the child runs.
 // The agent's interactive terminal keeps the machine's policy (#25 G3A, Security's review).
 func psHandoff(shell, path, command string) (script, invocation string) {
-	return utf8BOM + "Remove-Item -Force -LiteralPath " + psLiteral(path) + "\n" + command + "\n",
+	// -ExecutionPolicy puts PSExecutionPolicyPreference in this process's environment, which every PowerShell the
+	// agent's tools start would inherit: drop it first, so Bypass covers this script and nothing it runs.
+	return utf8BOM + "Remove-Item -Force -LiteralPath " + psLiteral(path) + "\n" +
+			"Remove-Item Env:PSExecutionPolicyPreference -ErrorAction SilentlyContinue\n" + command + "\n",
 		"& " + psLiteral(shell) + " -NoProfile -ExecutionPolicy Bypass -File " + psLiteral(path)
 }
