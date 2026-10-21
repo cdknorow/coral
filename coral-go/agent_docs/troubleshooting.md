@@ -594,6 +594,26 @@ not code-signed, so SmartScreen warns that the publisher is unknown; verify the 
 "Verify your download") before running it. On Windows Coral uses the native PTY backend
 (ConPTY; there is no tmux on Windows) and listens on port 8450 by default, not 8420, which svchost can hold.
 
+### Windows: an unknown account has Modify on `%TEMP%` or a project folder
+
+If you run Codex agents with a sandbox (workspace-write, with `[windows] sandbox = "unelevated"` in
+`~/.codex/config.toml`), Codex itself creates a capability SID for the sandbox and grants it
+**Modify**, inherited by new files, on every folder it lets the agent write: the project folder,
+and `%TEMP%` when that is a writable root. This is Codex's behaviour, not Coral's. `icacls` shows it
+as an unnamed SID (`S-1-5-21-...`); Codex lists the SIDs it made in `~/.codex/cap_sid`
+(`writable_root_by_path`).
+
+Coral's own secrets are not affected: the API key, the command-line token, session tokens and the
+hook files are created with a protected access list of their own (only you and SYSTEM), so they
+don't inherit the entry, and Coral refuses to read a secret file that others can read. Other files
+created in those folders do inherit it.
+
+To remove the entry (Codex adds it again the next time a sandboxed agent writes there):
+
+```powershell
+icacls "$env:TEMP" /remove:g *S-1-5-21-...   # the SID from icacls or ~/.codex/cap_sid
+```
+
 ### Linux
 
 There are two tarballs, x86-64 (`amd64`) and ARM64 (`arm64`). Each contains bare binaries with no
