@@ -19,7 +19,7 @@ import { isCloud } from './server_base.js';
 import { isPopout } from './popout.js';
 import { escapeAttr } from './utils.js';
 import { switchRow } from './switch_row.js';
-import { mountCloudConnect, enrolledRetrying } from './cloud_connect.js';
+import { importOnce } from './import_once.js';
 import { trapTab } from './dialog_focus.js';
 
  const OWN_HUB_GUIDE_URL = 'https://subgentic.github.io/coral/multi-server-hub/';
@@ -95,9 +95,15 @@ function _modal() {
     return m;
 }
 
+// The connect flow (cloud_connect.js, 21 KB) loads the first time the screen opens, not with the page (#5818); _onState only runs once it has mounted.
+let _cc = null;
+
 /** Open the screen: 'connect' (Connect to Coral Hub) or 'own-hub' (the explainer). */
-export function showHubSetup(step = 'connect') {
+export async function showHubSetup(step = 'connect') {
     if (!_available()) return;
+    if (step !== 'own-hub' && !_cc) {
+        try { _cc = await importOnce('./cloud_connect.js'); } catch { return; } // a failed load shows nothing; the next press tries again
+    }
     const m = _modal();
     if (m.style.display === 'none') _returnFocus = document.activeElement;
     _panel?.stop();
@@ -105,7 +111,7 @@ export function showHubSetup(step = 'connect') {
     m.innerHTML = step === 'own-hub' ? _ownHubHtml() : _connectHtml();
     delete m.dataset.focused;
     m.style.display = 'flex';
-    if (step !== 'own-hub') _panel = mountCloudConnect(m.querySelector('.editions-cloud'), { onState: _onState });
+    if (step !== 'own-hub') _panel = _cc.mountCloudConnect(m.querySelector('.editions-cloud'), { onState: _onState });
     (m.querySelector('[data-editions-focus]:not([hidden])') || m.querySelector('button:not([hidden])'))?.focus();
 }
 
@@ -172,7 +178,7 @@ function _ownHubHtml() {
 function _onState(st) {
     const m = document.getElementById('editions-modal');
     if (!m) return;
-    const connected = !!st && (st.state === 'connected' || enrolledRetrying(st));
+    const connected = !!st && (st.state === 'connected' || (_cc && _cc.enrolledRetrying(st)));
     const q = sel => m.querySelector(sel);
     const skip = q('[data-editions="skip"]'), done = q('[data-editions="done"]'), mode = q('[data-cloud="mode-row"]');
     const focusWasOnSkip = skip && document.activeElement === skip;
