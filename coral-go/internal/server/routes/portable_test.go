@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -44,4 +45,14 @@ func stubScript(t *testing.T, path, script string) string {
 		t.Fatalf("write the stub program: %v", err)
 	}
 	return path
+}
+
+// fileURL is path as a well-formed file URL: file:///tmp/x on Unix, file:///C:/x on Windows (a drive
+// path gets the leading slash and forward slashes), with host ("localhost") when given (#28).
+func fileURL(host, path string) string {
+	p := filepath.ToSlash(path)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return "file://" + host + p
 }

@@ -333,7 +333,15 @@ func runResumeOracle(t *testing.T, seed int64, counts map[string]int) {
 			cmd = strings.ReplaceAll(cmd, s.h.cfg.CoralDir(), "<coral>") // each side has its own data folder
 			fmt.Fprintf(&b, ";cmd %s", oracleTempName.ReplaceAllString(cmd, "<tmp>"))
 		}
-		return b.String() + b2.String()
+		// Each side's own folders, as they are also written: the data folder JSON-escaped in a settings file
+		// (backslashes on Windows) and the stand-in CLI, which stubCLI makes per side on Windows (#28).
+		dir := s.h.cfg.CoralDir()
+		st, _ := s.ss.GetSettings(ctx)
+		oneSide := strings.NewReplacer(strings.Trim(jsonString(dir), `"`), "<coral>", dir, "<coral>")
+		if cli := st["cli_path_claude"]; cli != "" {
+			oneSide = strings.NewReplacer(strings.Trim(jsonString(dir), `"`), "<coral>", dir, "<coral>", cli, "<cli>")
+		}
+		return oneSide.Replace(b.String() + b2.String())
 	}
 	newName := ""
 	for _, at := range []string{"claude", "codex", "agy"} {
