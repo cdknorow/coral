@@ -1,6 +1,6 @@
 babel==2.18.0
 backrefs==6.2
-certifi==2026.7.22
+certifi==2026.10.19
 charset-normalizer==3.5.2
 click==8.1.8
 colorama==0.4.6
@@ -21,12 +21,12 @@ paginate==0.5.7
 pathspec==1.1.1
 platformdirs==4.4.0
 Pygments==2.21.0
-pymdown-extensions==10.21.3
+pymdown-extensions==11.0.1
 python-dateutil==2.9.0.post0
 PyYAML==6.0.3
 pyyaml_env_tag==1.1
-requests==2.32.5
+requests==2.33.0
 six==1.17.0
-urllib3==2.6.3
+urllib3==2.8.0
 watchdog==6.0.0
 zipp==3.23.1
