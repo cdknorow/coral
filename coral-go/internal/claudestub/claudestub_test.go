@@ -110,10 +110,24 @@ func TestPrintModeSignedOutIsTheBug(t *testing.T) {
 func TestPrintModeWhileALoginIsOpenOrAuthHangsWaitsAndIsLogged(t *testing.T) {
 	for _, st := range []State{LoginInProgress, HangingAuth} {
 		s := New(t, st)
-		_, _, _, took, killed := run(t, s, 700*time.Millisecond, "", "-p", "--model", "haiku")
-		assert.True(t, killed, st)
-		assert.Less(t, took, 3*time.Second, st)
-		assert.Len(t, s.PrintRuns(), 1, "%s: the run is on record", st)
+		// Wait for the run to be on record (the stub writes it as it starts, so on a loaded machine that can take a while: no fixed limit), then show it is still waiting behind the login a moment
+		// later, and end it. A run killed before it recorded anything proved nothing (#5633).
+		ctx, cancel := context.WithCancel(context.Background())
+		cmd := exec.CommandContext(ctx, s.Path(), "-p", "--model", "haiku")
+		cmd.Stdin = strings.NewReader("")
+		require.NoError(t, cmd.Start(), st)
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		require.Eventually(t, func() bool { return len(s.PrintRuns()) == 1 }, 15*time.Second, 10*time.Millisecond, "%s: the run is on record", st)
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("%s: the run ended instead of waiting behind the login: %v", st, err)
+		case <-time.After(500 * time.Millisecond):
+		}
+		cancel()
+		<-done
+		assert.Len(t, s.PrintRuns(), 1, "%s: one run on record", st)
 		assert.Zero(t, s.Grabs(), "%s: it waited behind the login, it did not start one", st)
 	}
 }
