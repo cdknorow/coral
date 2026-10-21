@@ -222,8 +222,12 @@ func TestStalledLocalBodyFreesItsSlot(t *testing.T) {
 	assert.Error(t, got.err, "the reply ends truncated")
 	assert.Equal(t, "first part", string(got.b))
 	assert.Less(t, time.Since(start), 3*time.Second)
-	resp, body := rig.get("/api/small")
-	assert.Equal(t, 200, resp.StatusCode, "the slot was freed: %s", body)
+	// The slot is given back when the stalled request's handler returns, a moment after its reply ended on this side: poll for it (as the test above does), never assume it is already free. Under load
+	// (the Windows runners) that moment is longer than the first request (#5623).
+	require.Eventually(t, func() bool {
+		resp, _ := rig.get("/api/small")
+		return resp.StatusCode == 200
+	}, 5*time.Second, 50*time.Millisecond, "the slot was freed")
 }
 
 // #3663: one user's normal use, a dashboard tab (its live feed) and 12 terminals, is never refused
