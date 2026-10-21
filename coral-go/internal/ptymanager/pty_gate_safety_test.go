@@ -120,6 +120,9 @@ func TestHeldEnterIsRetriedOnlyAfterTheGateReadsTheScreen(t *testing.T) {
 	base, proc := ptyGateTerm(t, name, " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n")
 	term := &recTerm{PTYSessionTerminal: base}
 	in := AutomatedInput{Term: term, Name: name, AgentType: "claude", Key: "k", Text: "hello", What: "test"}
+	gate.mu.Lock()
+	in.gen = gate.gens[name] // as DeliverAutomated records it: DropHeld of an earlier run (-count=2) moved the generation, and a send of an older one is dropped as stale (#5677)
+	gate.mu.Unlock()
 	gate.holdEnter(in, kindPrompt)
 	t.Cleanup(func() { DropHeld(name, "test") })
 

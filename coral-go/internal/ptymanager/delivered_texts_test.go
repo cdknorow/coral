@@ -176,7 +176,11 @@ func BenchmarkFlagDelivered(b *testing.B) {
 // What the Operator sent from the dashboard is remembered apart from what Coral delivered (#5482): any length, whole text, one turn each, and never mistaken for a delivery.
 func TestOperatorSentTextsAreRememberedApartFromDeliveries(t *testing.T) {
 	name := "claude-operator-sent"
-	short := "[Coral] hi" // far under the delivered floor: a person's text that looks like a notice must still be theirs
+	short := "[Coral] hi"                           // far under the delivered floor: a person's text that looks like a notice must still be theirs
+	name2 := "claude-operator-sent-stamp"
+	forget := func() { forgetOperatorTexts(name); forgetOperatorTexts(name2) }
+	t.Cleanup(forget) // the tables are package-level: a second run of this test (-count=2) starts clean (#5677)
+	forget()
 	require.False(t, HasOperatorTexts(name))
 	NoteOperatorText(name+".0", short) // a pane target names the session
 	NoteOperatorText(name, "Stop hook feedback: typed by me")
@@ -191,9 +195,18 @@ func TestOperatorSentTextsAreRememberedApartFromDeliveries(t *testing.T) {
 	noteDeliveredText(name, taskNotice)
 	assert.Equal(t, []bool{false}, flags(taskNotice))
 	// a turn stamped before the send is not it (the Operator typed it earlier, or it is somebody else's)
-	name2 := "claude-operator-sent-stamp"
 	NoteOperatorText(name2, short)
 	before := time.Now().Add(-time.Minute)
 	assert.Equal(t, []bool{false}, FlagOperatorSent([]string{short}, []time.Time{before}, name2))
 	assert.Equal(t, []bool{true}, FlagOperatorSent([]string{short}, []time.Time{time.Now()}, name2))
+}
+
+// forgetOperatorTexts drops what was noted for the session from the package-level tables of what the Operator sent and what Coral delivered (an emptied ring stays in the table, and a session with a
+// ring answers "nothing delivered" differently from one without), so a test leaves nothing for the next run of itself.
+func forgetOperatorTexts(name string) {
+	for _, l := range []*textLog{operatorSent, delivered} {
+		l.Lock()
+		delete(l.rings, sessionOfTarget(name))
+		l.Unlock()
+	}
 }
