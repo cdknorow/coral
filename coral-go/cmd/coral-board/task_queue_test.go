@@ -77,7 +77,8 @@ func TestTaskMarkLandedSendsDigestsAndCommits(t *testing.T) {
 	before := os.Args
 	defer func() { os.Args = before }()
 	sha := "1111111111111111111111111111111111111111"
-	os.Args = []string{"coral-board", "task", "mark-landed", "7", "--digest", "d1", "--digest", "d2", "--commit", sha + ":the fix: a colon in a subject", "--commit", sha[:39] + "2"}
+	d1, d2 := strings.Repeat("a", 64), "sha256:"+strings.Repeat("b", 64)
+	os.Args = []string{"coral-board", "task", "mark-landed", "7", "--digest", d1, "--digest", d2, "--commit", sha + ":the fix: a colon in a subject", "--commit", sha[:39] + "2"}
 	cmdTask()
 	if path != "/api/board/mq/tasks/7/mark-landed" {
 		t.Fatalf("unexpected endpoint: %s", path)
@@ -85,12 +86,34 @@ func TestTaskMarkLandedSendsDigestsAndCommits(t *testing.T) {
 	if body["subscriber_id"] != "lead" {
 		t.Fatalf("missing identity: %#v", body)
 	}
-	if d := body["digests"].([]any); len(d) != 2 || d[0] != "d1" || d[1] != "d2" {
+	if d := body["digests"].([]any); len(d) != 2 || d[0] != d1 || d[1] != d2 {
 		t.Fatalf("digests: %#v", body["digests"])
 	}
 	cs := body["commits"].([]any)
 	if len(cs) != 2 || cs[0].(map[string]any)["sha"] != sha || cs[0].(map[string]any)["subject"] != "the fix: a colon in a subject" || cs[1].(map[string]any)["subject"] != "" {
 		t.Fatalf("commits: %#v", cs)
+	}
+}
+
+// #5793 (Security's LOW): a digest that is not 64 hex (an empty one, a bare "sha256:") is refused before anything is sent.
+func TestTaskMarkLandedRefusesAMalformedDigest(t *testing.T) {
+	isolateBoardEnv(t)
+	t.Setenv("CORAL_SUBSCRIBER_ID", "lead")
+	saveState(&boardState{Project: "mq", JobTitle: "Orchestrator"})
+	sent := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { sent = true }))
+	defer server.Close()
+	serverURL = server.URL
+	before := os.Args
+	defer func() { os.Args = before }()
+	for _, bad := range []string{"", "sha256:", "d1", strings.Repeat("a", 63), "sha256:" + strings.Repeat("g", 64)} {
+		os.Args = []string{"coral-board", "task", "mark-landed", "7", "--digest", bad}
+		if !captureExit(t, cmdTask) {
+			t.Errorf("digest %q was accepted", bad)
+		}
+	}
+	if sent {
+		t.Error("a request was sent for a malformed digest")
 	}
 }
 

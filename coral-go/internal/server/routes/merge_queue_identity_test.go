@@ -104,6 +104,9 @@ func TestQueueActionsTakeTheVerifiedActorInEitherIdentityMode(t *testing.T) {
 			call2("review", `{"subscriber_id":"lead","reviewers":["rev"]}`, "lead", 200)
 			call2("approve", `{"subscriber_id":"rev"}`, "rev", 200)
 			call2("mark-landed", `{"digests":["`+strings.Repeat("d", 64)+`"]}`, "lead", http.StatusBadRequest)
+			for _, bad := range []string{"", "sha256:", "x", strings.Repeat("c", 63)} {
+				call2("mark-landed", `{"digests":["`+bad+`"]}`, "lead", http.StatusBadRequest) // never matches a row
+			}
 			call2("mark-landed", `{"digests":["`+d3+`"]}`, "lead", 200)
 			call2("mark-landed", `{"digests":["sha256:`+d3+`"]}`, "lead", 200) // the other form, idempotent
 			q, err := bs.MergeQueue(t.Context(), "mq")

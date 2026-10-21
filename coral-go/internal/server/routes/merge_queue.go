@@ -183,6 +183,12 @@ func (h *BoardHandler) MarkLanded(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "subscriber_id required")
 		return
 	}
+	for _, d := range body.Digests {
+		if !board.ValidPatchDigest(d) {
+			errBadRequest(w, fmt.Sprintf("digest %q is not 64 hex characters (with or without the sha256: prefix)", d))
+			return
+		}
+	}
 	task, err := h.bs.MarkLanded(r.Context(), project, id, body.SubscriberID, byOperator, body.Digests, body.Commits)
 	if err != nil {
 		switch {

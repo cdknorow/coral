@@ -47,8 +47,16 @@ func approvedRound(w *TaskWorkflow) *ReviewRound {
 	return &w.ReviewRounds[n-1]
 }
 
+var patchDigestRe = regexp.MustCompile(`^(sha256:)?[0-9a-fA-F]{64}$`)
+
+// ValidPatchDigest is whether d is 64 hex characters, with the sha256: prefix of an upload's digest or without it (what mark-landed takes).
+func ValidPatchDigest(d string) bool { return patchDigestRe.MatchString(strings.TrimSpace(d)) }
+
 // sameDigest compares two patch digests by their hex: a row's digest is "sha256:<hex>" as the upload printed it, and a bare 64-hex digest names the same bytes (#5793).
 func sameDigest(a, b string) bool {
+	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
+		return false // an empty value never names a row (#5793)
+	}
 	bare := func(d string) string { return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(d), "sha256:")) }
 	return bare(a) == bare(b)
 }
