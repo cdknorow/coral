@@ -33,6 +33,9 @@ say() { echo; echo "== $*"; }
 need_t() { [ -f "$T/.coral-updtest" ] || die "run prepare first"; }
 
 pid_alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
+# ours PID: the process is the test's own, not another process that was given a recorded PID after the test Coral ended (PIDs are reused; a recorded one is only ever killed if its
+# command line names the test folder)
+ours() { [ -n "${1:-}" ] && ps -o command= -p "$1" 2>/dev/null | grep -qF "$T/"; }
 listening() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; }
 
 write_start_script() {
@@ -136,7 +139,7 @@ cmd_update() {
   cat "$T/update.log" | cut -c1-230
   if grep -q '"step":"ready"' "$T/update.log"; then
     say "the staged, verified update is ready: the old server ends now (as it ends itself in the real flow), pid $old"
-    kill "$old" 2>/dev/null
+    ours "$old" && kill "$old" 2>/dev/null
     for i in $(seq 1 15); do pid_alive "$old" || break; sleep 1; done
     wait "$up" 2>/dev/null
   else
@@ -172,7 +175,8 @@ cmd_evidence() {
 cmd_cleanup() {
   [ -f "$T/.coral-updtest" ] || { echo "nothing to clean ($T has no marker)"; return 0; }
   local p; p="$(cat "$T/pids/server.pid" 2>/dev/null)"
-  if pid_alive "$p"; then kill "$p" 2>/dev/null; sleep 1; pid_alive "$p" && kill -9 "$p" 2>/dev/null; echo "stopped the test Coral (pid $p)"; fi
+  if pid_alive "$p" && ours "$p"; then kill "$p" 2>/dev/null; sleep 1; pid_alive "$p" && kill -9 "$p" 2>/dev/null; echo "stopped the test Coral (pid $p)"
+  elif pid_alive "$p"; then echo "pid $p is alive but is not the test Coral (its command line does not name $T): not touching it"; fi
   hdiutil info 2>/dev/null | grep -q "$T" && echo "WARNING: a disk image of the test is still mounted: detach it by hand (hdiutil info)"
   rm -rf /tmp/coral-updtest && echo "removed /tmp/coral-updtest"
 }
