@@ -78,6 +78,11 @@ func DataDirBroadReaders(dir string) ([]string, error) {
 	if dacl == nil {
 		return []string{"Everyone (the folder has no access list)"}, nil
 	}
+	return broadReadersOf(dacl)
+}
+
+// broadReadersOf lists the broad groups a DACL lets read.
+func broadReadersOf(dacl *windows.ACL) ([]string, error) {
 	var sids []*windows.SID
 	for _, g := range broadGroups {
 		sid, err := windows.CreateWellKnownSid(g.sid)

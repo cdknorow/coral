@@ -1,0 +1,143 @@
+//go:build windows
+
+package config
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// usersCanRead makes dir's list the way a folder on a drive root looks: this user, SYSTEM and BUILTIN\Users with read, and what is
+// made in it inherits that (no protection, nothing explicit but those).
+func usersCanRead(t *testing.T, dir string) {
+	t.Helper()
+	me, err := currentUserSID()
+	require.NoError(t, err)
+	out, err := exec.Command("icacls", dir, "/inheritance:r", "/grant:r", "*"+me.String()+":(OI)(CI)F", "/grant:r", "*S-1-5-18:(OI)(CI)F",
+		"/grant:r", "*S-1-5-32-545:(OI)(CI)RX").CombinedOutput()
+	require.NoError(t, err, string(out))
+}
+
+func readersOf(t *testing.T, path string) []string {
+	t.Helper()
+	g, err := DataDirBroadReaders(path)
+	require.NoError(t, err)
+	return g
+}
+
+// G2A (#96): an existing data folder that Users can read is made private to this user, and so are the files and folders in it.
+func TestExistingDataFolderOthersCanReadIsTightened(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "coral")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	usersCanRead(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sessions.db"), []byte("db"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "artifacts", "sub"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "artifacts", "sub", "obj"), []byte("x"), 0o600))
+	require.NotEmpty(t, readersOf(t, dir), "the setup: Users can read the folder")
+	require.NotEmpty(t, readersOf(t, filepath.Join(dir, "sessions.db")), "and what is in it, by inheritance")
+	// A file with an EXPLICIT entry for Users, which a change to the folder's list would not remove.
+	explicit := filepath.Join(dir, "api-key")
+	require.NoError(t, os.WriteFile(explicit, []byte("secret"), 0o600))
+	out, err := exec.Command("icacls", explicit, "/inheritance:d", "/grant", "*S-1-5-32-545:R").CombinedOutput()
+	require.NoError(t, err, string(out))
+	require.NotEmpty(t, readersOf(t, explicit))
+
+	require.NoError(t, EnsureDataDir(dir))
+
+	assert.Empty(t, readersOf(t, dir), "the folder")
+	for _, p := range []string{"sessions.db", "api-key", filepath.Join("artifacts", "sub"), filepath.Join("artifacts", "sub", "obj")} {
+		assert.Empty(t, readersOf(t, filepath.Join(dir, p)), p)
+	}
+	// The data is still this user's to read and write, and a file made now is private too.
+	data, err := os.ReadFile(filepath.Join(dir, "sessions.db"))
+	require.NoError(t, err)
+	assert.Equal(t, "db", string(data))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "new.db"), []byte("n"), 0o600))
+	assert.Empty(t, readersOf(t, filepath.Join(dir, "new.db")))
+	// The outcome is what the dashboard's data-folder line shows.
+	w := DataDirWarning(dir)
+	assert.Contains(t, w, "made its data folder")
+	assert.Contains(t, w, "Users")
+	assert.NotContains(t, w, "WARNING")
+	// A second start finds nothing to do and keeps saying what happened.
+	require.NoError(t, EnsureDataDir(dir))
+	assert.Empty(t, readersOf(t, dir))
+}
+
+// A folder that is already private is left alone, with no notice.
+func TestPrivateDataFolderIsLeftAlone(t *testing.T) {
+	setDataDirNotice("")
+	dir := filepath.Join(t.TempDir(), "coral")
+	require.NoError(t, EnsureDataDir(dir)) // new: protected
+	require.NoError(t, EnsureDataDir(dir)) // existing, already private
+	assert.Empty(t, DataDirWarning(dir))
+}
+
+// A folder another account owns can't be made private by this one: Coral refuses to start, naming the folder and the way out; the
+// opt-out lets it run, and says so.
+func TestDataFolderAnotherAccountOwnsIsRefusedUnlessAllowed(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "coral")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	usersCanRead(t, dir)
+	prev := ownedByUs
+	ownedByUs = func(string) (bool, error) { return false, nil }
+	t.Cleanup(func() { ownedByUs = prev; SetAllowSharedDataDir(false); setDataDirNotice("") })
+
+	err := EnsureDataDir(dir)
+	require.ErrorIs(t, err, ErrSharedDataDir)
+	assert.Contains(t, err.Error(), dir, "the message names the folder")
+	assert.Contains(t, err.Error(), "--allow-shared-data-dir", "and the way out")
+	assert.Contains(t, err.Error(), "Users")
+	assert.NotEmpty(t, readersOf(t, dir), "nothing was changed")
+
+	SetAllowSharedDataDir(true)
+	require.NoError(t, EnsureDataDir(dir))
+	assert.NotEmpty(t, readersOf(t, dir), "still shared, as the opt-out says")
+	assert.Contains(t, DataDirWarning(dir), "WARNING", "and still reported")
+	assert.Contains(t, DataDirWarning(dir), "can be read by")
+
+	SetAllowSharedDataDir(false)
+	t.Setenv("CORAL_ALLOW_SHARED_DATA_DIR", "1")
+	assert.NoError(t, EnsureDataDir(dir), "the environment variable is the same opt-out")
+}
+
+// Nothing is followed: a junction inside the data folder is left alone and not entered, so a folder outside it keeps its list; and a
+// data folder that is itself a junction is refused rather than changed.
+func TestDataFolderLinksAreNeverFollowed(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(root, "outside")
+	require.NoError(t, os.Mkdir(outside, 0o700))
+	usersCanRead(t, outside)
+	secret := filepath.Join(outside, "other-apps-file")
+	require.NoError(t, os.WriteFile(secret, []byte("not coral's"), 0o600))
+	require.NotEmpty(t, readersOf(t, secret))
+
+	dir := filepath.Join(root, "coral")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	usersCanRead(t, dir)
+	out, err := exec.Command("cmd", "/c", "mklink", "/J", filepath.Join(dir, "link"), outside).CombinedOutput()
+	require.NoError(t, err, string(out))
+
+	require.NoError(t, EnsureDataDir(dir))
+	assert.Empty(t, readersOf(t, dir), "the data folder is private")
+	assert.NotEmpty(t, readersOf(t, outside), "the folder the junction points to is not touched")
+	assert.NotEmpty(t, readersOf(t, secret), "nor what is in it")
+	assert.True(t, strings.Contains(DataDirWarning(dir), "links were left alone"), DataDirWarning(dir))
+
+	// The data folder is itself a junction to a shared folder: refused, not changed.
+	link := filepath.Join(root, "datalink")
+	out, err = exec.Command("cmd", "/c", "mklink", "/J", link, outside).CombinedOutput()
+	require.NoError(t, err, string(out))
+	t.Cleanup(func() { SetAllowSharedDataDir(false); setDataDirNotice("") })
+	err = EnsureDataDir(link)
+	require.ErrorIs(t, err, ErrSharedDataDir)
+	assert.Contains(t, err.Error(), "link or junction")
+	assert.NotEmpty(t, readersOf(t, outside), "the target keeps its list")
+}
