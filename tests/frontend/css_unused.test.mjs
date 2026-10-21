@@ -40,6 +40,7 @@ const builtFrom = (c, pre) => [...pre].some(p => c.startsWith(p));
 const DYNAMIC = [
     [/^server-(online|unauthorized|unknown|unreachable|stale)$/, 'server_status.js builds server-${status} from the machine state (one-word prefix)'],
     [/^availability-(waiting|task_idle|available)$/, 'team_availability.js builds availability-${key} from the summary keys (one-word prefix)'],
+    [/^md-(h|partial)$/, 'vendor/safe-markdown.js (the renderer shared with Coral Hub, byte for byte; vendor/ is not scanned) builds the md-h heading and the md-partial "shown in part" note'],
 ];
 const dynamic = c => DYNAMIC.some(([re]) => re.test(c));
 const built = c => tokens.has(c) || other.includes(c) || EXTERNAL.test(c) || builtFrom(c, prefixes) || dynamic(c);

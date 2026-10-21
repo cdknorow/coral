@@ -11,6 +11,7 @@ import { withScope, scopeHeading, scopeEmpty, ALL } from './saved_scope.js';
 import { effectiveLiveViewMode, setLiveViewMode, jumpToLiveMessage } from './live_chat.js';
 import { buildListBar } from './list_bar.js';
 import { importOnce } from './import_once.js';
+const { savedExpandFor } = await importOnce('./inbox_coral.js'); // "Read the whole message" on a saved item: the shared Inbox component
 import { selectInboxTab } from './inbox_tab.js';
 // This module is loaded lazily, so its own parts are loaded the same way (a static import of a module not loaded at startup could not be retried: import_hygiene).
 const { KINDS, KIND_LABEL, SORTS, SORT_LABEL, EMPTY: SAVED_EMPTY, makeModel: savedModel, clean: cleanSaved, isFiltered: savedFiltered, toQuery: savedQuery } = await importOnce('./saved_filters.js');
@@ -166,6 +167,8 @@ function itemNode(it) {
     }
     acts.append(btn('saved-remove', 'Remove', 'Remove from saved', 'close', () => remove(it)));
     li.append(acts);
+    // "Read the whole message": the shared Inbox component's control (inbox_panel.js), inline under the snippet; not for an item whose source is gone.
+    if (!gone) { const x = savedExpandFor(it); if (x && !x.root.hidden) li.insertBefore(x.root, why); }
     return li;
 }
 

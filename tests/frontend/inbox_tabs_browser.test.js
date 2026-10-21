@@ -1,4 +1,4 @@
-// The dashboard's own Inbox is tabbed like Coral Hub's (#5126): a header, then the tabs "Needs you" | "Saved for later", one panel on screen at a time.
+// The dashboard's own Inbox is tabbed like Coral Hub's (#5126): a header, then the tabs "Needs you" | "Tasks for you" | "Saved for later", one panel on screen at a time.
 //   - roles: a tablist named Inbox, two tabs with the hub's names, each controlling a tabpanel it labels; Needs you is the default;
 //   - only the chosen section shows (the other is out of the layout, not just scrolled away), and the Saved scope heading stays inside the Saved tab;
 //   - arrow keys, Home and End move between the tabs (roving tabindex, the focus follows); a click does the same;
@@ -21,8 +21,8 @@ const BASE = require('./test_base').BASE;
     const key = async (k, code) => { await Input.dispatchKeyEvent({ type: 'keyDown', key: k, code: k, windowsVirtualKeyCode: code }); await Input.dispatchKeyEvent({ type: 'keyUp', key: k, code: k, windowsVirtualKeyCode: code }); };
     const shown = id => ev(`(() => { const e = document.getElementById(${JSON.stringify(id)}); return !!e && getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0; })()`);
     const look = () => ev(`(() => { const t = n => document.getElementById('inbox-tab-' + n), p = n => document.getElementById('inbox-panel-' + n);
-        return { sel: ['needs', 'saved'].filter(n => t(n).getAttribute('aria-selected') === 'true'), tabindex: ['needs', 'saved'].map(n => t(n).tabIndex), focus: document.activeElement && document.activeElement.id,
-            panels: ['needs', 'saved'].map(n => p(n).getClientRects().length > 0), list: document.getElementById('inbox-needs-list').getClientRects().length > 0, savedView: document.getElementById('saved-view').getClientRects().length > 0,
+        return { sel: ['needs', 'tasks', 'saved'].filter(n => t(n).getAttribute('aria-selected') === 'true'), tabindex: ['needs', 'tasks', 'saved'].map(n => t(n).tabIndex), focus: document.activeElement && document.activeElement.id,
+            panels: ['needs', 'tasks', 'saved'].map(n => p(n).getClientRects().length > 0), list: document.getElementById('inbox-needs-list').getClientRects().length > 0, savedView: document.getElementById('saved-view').getClientRects().length > 0,
             stored: localStorage.getItem('coral.inbox.tab'), over: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
     const theme = name => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'settings_core.js'); m.clearCustomThemeVars && m.clearCustomThemeVars(); m.applyTheme(${JSON.stringify(name)}); return true; })()`);
 
@@ -57,21 +57,25 @@ const BASE = require('./test_base').BASE;
             const roles = await ev(`(() => { const l = document.getElementById('inbox-tablist'); const tabs = [...l.querySelectorAll('[role=tab]')]; const panel = id => document.getElementById(id);
                 return { list: l.getAttribute('role'), name: l.getAttribute('aria-label'), tabs: tabs.map(t => t.textContent.trim()), panels: tabs.map(t => { const p = panel(t.getAttribute('aria-controls')); return !!p && p.getAttribute('role') === 'tabpanel' && p.getAttribute('aria-labelledby') === t.id; }),
                     title: document.getElementById('inbox-title').textContent.trim(), sub: document.querySelector('.inbox-sub').textContent.trim() }; })()`);
-            check(`${dev}: a tablist named Inbox with the hub's two tab names, each controlling the tabpanel it labels`, roles.list === 'tablist' && roles.name === 'Inbox' && roles.tabs.join('|') === 'Needs you|Saved for later' && roles.panels.every(Boolean), JSON.stringify(roles));
+            check(`${dev}: a tablist named Inbox with the hub's tab names (and Tasks for you, #5754), each controlling the tabpanel it labels`, roles.list === 'tablist' && roles.name === 'Inbox' && roles.tabs.join('|') === 'Needs you|Tasks for you|Saved for later' && roles.panels.every(Boolean), JSON.stringify(roles));
             check(`${dev}: the page has the hub's header (Needs you) and a subtitle`, roles.title === 'Needs you' && roles.sub.length > 10, JSON.stringify([roles.title, roles.sub]));
             let s = await look();
-            check(`${dev}: it opens on Needs you, and only that section is on screen`, s.sel.join() === 'needs' && s.panels.join() === 'true,false' && s.list && !s.savedView && !(await shown('saved-scope')), JSON.stringify(s));
+            check(`${dev}: it opens on Needs you, and only that section is on screen`, s.sel.join() === 'needs' && s.panels.join() === 'true,false,false' && s.list && !s.savedView && !(await shown('saved-scope')), JSON.stringify(s));
             check(`${dev}: Needs you lists the waiting agent`, (await ev(`document.querySelectorAll('#inbox-needs-list .inbox-needs-item').length`)) === 1);
 
             // keyboard
             await ev(`document.getElementById('inbox-tab-needs').focus(); true`);
             await key('ArrowRight', 39);
+            await waitFor(`document.getElementById('inbox-panel-tasks').getClientRects().length > 0`, 'Tasks for you', 8000);
+            s = await look();
+            check(`${dev}: ArrowRight moves to Tasks for you (focus follows, roving tabindex), and only that section is on screen`, s.sel.join() === 'tasks' && s.focus === 'inbox-tab-tasks' && s.tabindex.join() === '-1,0,-1' && s.panels.join() === 'false,true,false' && !s.list, JSON.stringify(s));
+            await key('ArrowRight', 39);
             await waitFor(`document.getElementById('inbox-panel-saved').getClientRects().length > 0 && document.querySelectorAll('#saved-list .saved-item').length === 1`, 'Saved for later', 8000);
             s = await look();
-            check(`${dev}: ArrowRight moves to Saved for later (focus follows, roving tabindex), and only that section is on screen`, s.sel.join() === 'saved' && s.focus === 'inbox-tab-saved' && s.tabindex.join() === '-1,0' && s.panels.join() === 'false,true' && !s.list && s.savedView, JSON.stringify(s));
+            check(`${dev}: ArrowRight moves on to Saved for later, and only that section is on screen`, s.sel.join() === 'saved' && s.focus === 'inbox-tab-saved' && s.tabindex.join() === '-1,-1,0' && s.panels.join() === 'false,false,true' && !s.list && s.savedView, JSON.stringify(s));
             check(`${dev}: the Saved scope heading is inside the Saved tab`, (await ev(`document.getElementById('inbox-panel-saved').contains(document.getElementById('saved-scope')) && document.getElementById('saved-scope').textContent`)) === 'Saved: all');
             await key('ArrowRight', 39); s = await look();
-            check(`${dev}: ArrowRight wraps to Needs you`, s.sel.join() === 'needs' && s.focus === 'inbox-tab-needs' && s.panels.join() === 'true,false', JSON.stringify(s));
+            check(`${dev}: ArrowRight wraps to Needs you`, s.sel.join() === 'needs' && s.focus === 'inbox-tab-needs' && s.panels.join() === 'true,false,false', JSON.stringify(s));
             await key('End', 35); s = await look();
             check(`${dev}: End goes to the last tab`, s.sel.join() === 'saved' && s.focus === 'inbox-tab-saved', JSON.stringify(s));
             await key('Home', 36); s = await look();
@@ -85,7 +89,7 @@ const BASE = require('./test_base').BASE;
             await open(w, mobile);
             await waitFor(`document.getElementById('inbox-panel-saved').getClientRects().length > 0 && document.querySelectorAll('#saved-list .saved-item').length === 1`, 'Saved after a reload', 8000);
             s = await look();
-            check(`${dev}: after a reload the Inbox opens on Saved for later, its list loaded, Needs you not on screen`, s.sel.join() === 'saved' && s.savedView && !s.list && s.tabindex.join() === '-1,0', JSON.stringify(s));
+            check(`${dev}: after a reload the Inbox opens on Saved for later, its list loaded, Needs you not on screen`, s.sel.join() === 'saved' && s.savedView && !s.list && s.tabindex.join() === '-1,-1,0', JSON.stringify(s));
             await pick('needs');
             await open(w, mobile);
             await waitFor(`document.getElementById('inbox-needs-list').getClientRects().length > 0`, 'Needs after a reload', 8000);
@@ -98,10 +102,10 @@ const BASE = require('./test_base').BASE;
             await waitFor(`(window.__qaState.liveSessions || []).some(x => x.session_id === 'tb-l')`, 'the late agent', 8000);
             await ev(`window.__qaState.liveSessions = window.__qaState.liveSessions.map(x => x.session_id === 'tb-l' ? { ...x, waiting_for_input: true, waiting_kind: 'permission' } : x); import((window.__coralStatic || '/static/') + 'inbox_tab.js').then(m => m.updateInboxTab()); true`);
             check(`${dev}: a newly waiting agent is announced in the live region while the Saved tab is shown`, await waitFor(`/needs you/i.test(document.getElementById('inbox-live').textContent)`, 'the announcement', 4000).then(() => true, () => false), await ev(`document.getElementById('inbox-live').textContent`));
-            check(`${dev}: the live region is outside both panels`, await ev(`!document.getElementById('inbox-panel-needs').contains(document.getElementById('inbox-live')) && !document.getElementById('inbox-panel-saved').contains(document.getElementById('inbox-live'))`));
+            check(`${dev}: the live region is outside both panels`, await ev(`!document.getElementById('inbox-panel-needs').contains(document.getElementById('inbox-live')) && !document.getElementById('inbox-panel-tasks').contains(document.getElementById('inbox-live')) && !document.getElementById('inbox-panel-saved').contains(document.getElementById('inbox-live'))`));
 
             // size and legibility
-            const box = await ev(`['needs', 'saved'].map(n => { const r = document.getElementById('inbox-tab-' + n).getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })`);
+            const box = await ev(`['needs', 'tasks', 'saved'].map(n => { const r = document.getElementById('inbox-tab-' + n).getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })`);
             check(`${dev}: each tab is at least 44 px tall`, box.every(b => b[1] >= 44), JSON.stringify(box));
             for (const th of ['dark', 'light']) {
                 await theme(th); await new Promise(r => setTimeout(r, 350)); // sleep-ok: the theme's colour transitions
@@ -109,8 +113,8 @@ const BASE = require('./test_base').BASE;
                     const bgOf = el => { for (let e = el; e; e = e.parentElement) { const c = px(getComputedStyle(e).backgroundColor); if (c.a > 0.99) return c; } return { r: 255, g: 255, b: 255, a: 1 }; };
                     const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; const lum = c => 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
                     const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
-                    return ['needs', 'saved'].map(n => { const t = document.getElementById('inbox-tab-' + n); return { n, sel: t.getAttribute('aria-selected'), ratio: ratio(px(getComputedStyle(t).color), bgOf(t)) }; }); })()`);
-                check(`${dev}, ${th}: both tab labels read at 4.5:1 (the chosen one and the other)`, c.every(x => x.ratio >= 4.5), JSON.stringify(c));
+                    return ['needs', 'tasks', 'saved'].map(n => { const t = document.getElementById('inbox-tab-' + n); return { n, sel: t.getAttribute('aria-selected'), ratio: ratio(px(getComputedStyle(t).color), bgOf(t)) }; }); })()`);
+                check(`${dev}, ${th}: all three tab labels read at 4.5:1 (the chosen one and the other)`, c.every(x => x.ratio >= 4.5), JSON.stringify(c));
                 await shot(`inbox-tabs-${dev}-${th}`);
             }
             await theme('dark');
