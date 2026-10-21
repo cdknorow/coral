@@ -68,12 +68,7 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 		parts = sh
 	}
 
-	// Coral's own server settings never reach the agent (#3389).
-	env := append(agentenv.Filter(os.Environ()),
-		"TERM=xterm-256color",
-		"COLORTERM=truecolor",
-		fmt.Sprintf("CORAL_SESSION_NAME=%s", name),
-	)
+	env := sessionEnv(name)
 
 	// Set up log file (in the data folder's logs folder, which startup sets; #3601). An unsafe
 	// agent type or session id gets no log path: refused before the process starts (#3602).
@@ -299,6 +294,32 @@ func (s *session) isRunning() bool {
 	default:
 		return true
 	}
+}
+
+// sessionEnv is the environment of the agent named name. Coral's own server settings never reach the agent
+// (#3389).
+func sessionEnv(name string) []string {
+	env := append(agentenv.Filter(os.Environ()),
+		"TERM=xterm-256color",
+		"COLORTERM=truecolor",
+		fmt.Sprintf("CORAL_SESSION_NAME=%s", name),
+	)
+	// Ours replace the server's own entry of the same name (a block with the name twice is read by its first).
+	extra := platformAgentEnv()
+	kept := env[:0:0]
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		dup := false
+		for _, e := range extra {
+			if n, _, _ := strings.Cut(e, "="); strings.EqualFold(n, name) {
+				dup = true
+			}
+		}
+		if !dup {
+			kept = append(kept, kv)
+		}
+	}
+	return append(kept, extra...)
 }
 
 // parseCommand splits a shell command string into parts.
