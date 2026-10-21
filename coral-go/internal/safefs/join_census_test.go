@@ -47,6 +47,7 @@ var joinSites = map[string]joinEntry{
 	"internal/updater/apply/apply.go\twriteJournal":                                          {1, joinOwn, "the journal's file name, a constant, in the updates folder"},
 	"internal/updater/apply/apply.go\tremoveJournal":                                         {1, joinOwn, "the journal's file name, a constant, in the updates folder"},
 	"internal/updater/apply/apply.go\trecoverInterrupted":                                    {1, joinID, "the staged version folder named by the staged record itself (LoadStaged: ParseVersion, equal to the journal's record), never by the journal's own text"},
+	"internal/ptymanager/command_delivery_windows.go\tcommandInvocation":                     {1, joinFixed, "numbers the program makes: the launch temp folder (private, #4381) and coral-command-<random uint64>.ps1"},
 	"internal/updater/apply/linux.go\tLinux.Unsupported":                                     {2, joinFixed, "the install's licenses folder (a constant) and names from a listing of the install's parent folder"},
 	"internal/updater/apply/linux.go\tLinux.Verify":                                          {3, joinFixed, "names from a listing of the new folder, the licenses constant, and the program names of linuxPrograms"},
 	"internal/updater/apply/linux.go\tLinux.runRecord":                                       {1, joinOwn, "the run record's file name, a constant, in the updates folder"},
