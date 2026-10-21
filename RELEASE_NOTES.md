@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.4.141 — A sender can no longer dodge the relayed-message limits by changing its names; Messaging settings show before the list is enforced
+
+### Changes
+
+- **Team settings > Messaging shows before the list is enforced:** a line says the list is not in force yet, and the owner can prepare and save it before turning the `cross_team_allowlist` switch on (the one-time prompt for a board that was open appears only once the list is enforced).
+
+### Fixes
+
+- **Relayed cross-team messages are limited per source Coral and target board, and per source Coral overall, whatever names the sender picks:** the limit used to be keyed on the sender's own board and subscriber strings, so varying them dodged it. Besides the existing per-sender limit (3 at once, then one every 6 seconds), a relayed sender is now limited to 30 messages at once and then one every 2 seconds per source Coral and target board, and to 120 at once and then one a second per source Coral overall. A slow sender is never limited, invented target names share the per-source budget, and another Coral has its own budget. The answer is the same 429 with `X-Coral-Limit: action`.
+- **The Team settings tab strip no longer shrinks to 10 px under a tall panel**, which hid the tabs after it on a phone.
+
+### Internal
+
+- A browser suite of the allowlist editor with hostile data from the server (labels and ids with markup are text only, a suggestion without an id cannot be added, a bad date or count does not break the page, the list is full at 200), and a wait for the Messaging tab in the Team settings test that reads the tab order.
+
 ## v1.4.140 — Choose who may message a board, and see the files that arrive with a cross-team message
 
 ### Features
