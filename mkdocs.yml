@@ -1,5 +1,5 @@
-site_name: Coral
-site_description: Documentation for Coral agent teams and workflows
+site_name: Coral docs
+site_description: "Documentation for Coral: coding agents and agent teams in one dashboard"
 site_url: https://subgentic.github.io/coral/
 repo_url: https://github.com/subgentic/coral
 repo_name: subgentic/coral
@@ -9,6 +9,7 @@ use_directory_urls: true
 
 theme:
   name: material
+  custom_dir: coral-go/docs_theme
   logo: assets/coral-icon.png
   favicon: assets/favicon.png
   font: false

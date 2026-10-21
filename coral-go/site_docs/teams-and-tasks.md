@@ -1,3 +1,8 @@
+---
+title: "Coral teams and tasks"
+description: "Start a Coral team with named roles and a shared message board, then use the task queue to assign work and make handoffs explicit."
+---
+
 # Teams and tasks
 
 A Coral team gives agents named roles, a shared message board, and a task queue. Use tasks to describe work, assign an owner, and make handoffs explicit. If you have not launched an agent yet, start with [Getting started](getting-started.md).

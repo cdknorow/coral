@@ -1,3 +1,8 @@
+---
+title: "Coral CLI and API reference"
+description: "The Coral command-line tools, where the agent-facing API documentation lives, and how to read it from the dashboard."
+---
+
 # CLI and API reference
 
 Use the guides on this site for everyday workflows. Detailed agent-facing command and API documentation lives alongside the Go source and is also available through Coral's documentation view.

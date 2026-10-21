@@ -1,3 +1,8 @@
+---
+title: "Using the Coral dashboard"
+description: "How to choose a model and thinking level, read the cost table, use the team health monitor and the agent list's Display panel."
+---
+
 # Using the dashboard
 
 Task-oriented notes on the dashboard controls added in v1.4.102 to v1.4.106: choosing a model and thinking level, the cost table by thinking level, the team health monitor, the agent list's Display panel, the sectioned dialogs and image thumbnails. Screenshots are in the dark theme; the light theme and a phone show the same controls.

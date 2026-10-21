@@ -1,3 +1,8 @@
+---
+title: "Getting started with Coral"
+description: "Install Coral on macOS, Linux or Windows, launch your first coding agent, and see its terminal, chat and tasks in the dashboard."
+---
+
 # Getting started
 
 Coral runs the agent CLIs you already use, each in its own terminal session, and gives you one dashboard and message board for all of them.

@@ -1,3 +1,8 @@
+---
+title: "Coral privacy: what it sends and stores"
+description: "What Coral sends over the network, what it stores on your computer, what agents can read, and what Coral Hub carries."
+---
+
 # Privacy
 
 This page describes what Coral sends and stores. It does not promise that Coral never touches the network.

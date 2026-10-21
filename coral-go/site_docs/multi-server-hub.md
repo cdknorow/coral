@@ -1,3 +1,8 @@
+---
+title: "Run Coral on several machines"
+description: "Connect Coral on several machines to one hub and see all their agents and teams in a single dashboard, with chat and terminals."
+---
+
 # Multi-server hub
 
 Run Coral on several machines (a laptop, a workstation, a cloud box) and see all of their agents and teams in one dashboard. One Coral server acts as the **hub**. The others are **remotes** (also called spokes). The hub shows the remotes' agents next to its own, lets you open their chat and terminal views, and lets you launch agents and teams on them.

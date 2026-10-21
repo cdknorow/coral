@@ -1,3 +1,8 @@
+---
+title: "Remote access to Coral"
+description: "Turn on remote access so your phone or another device can reach the dashboard. It is off by default; this page covers settings, sign-in and limits."
+---
+
 # Remote access
 
 Remote access lets another device, such as your phone, reach the dashboard over your network. **It is off by default.** Until you turn it on and restart, Coral listens on `127.0.0.1` only and accepts no direct network connections from other machines. A tunnel, proxy or port forward that you set up yourself can still expose that local listener.

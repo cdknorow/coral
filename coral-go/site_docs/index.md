@@ -1,3 +1,7 @@
+---
+description: "Coral brings coding agents into one dashboard: start agents and teams, follow their chats and tasks, inspect files and review artifacts."
+---
+
 # Coral documentation
 
 Coral brings coding agents into one dashboard. Start individual agents or teams, follow their conversations and tasks, inspect their files, and review the artifacts they produce.

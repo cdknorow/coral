@@ -1,3 +1,8 @@
+---
+title: "Agent UI in Coral"
+description: "Let an agent show diagrams, dashboards and small interactive panels in its Coral workspace, and read what you do in them."
+---
+
 # Agent UI
 
 Agent UI lets an agent display diagrams, dashboards, and interactive panels in its Coral workspace. It is useful when a visual explanation or a small interface is easier to use than a long chat reply. For downloadable reports and files, use [Files and artifacts](files-and-artifacts.md).

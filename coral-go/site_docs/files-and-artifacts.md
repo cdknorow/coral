@@ -1,3 +1,8 @@
+---
+title: "Files and artifacts in Coral"
+description: "Browse an agent's files, open the artifacts it produces, paste images into a chat, and see where each file lives and who can read it."
+---
+
 # Files and artifacts
 
 Select an agent and open its Files viewer. The viewer has four source tabs:

@@ -1,0 +1,18 @@
+{#- The documentation site's own head tags (#5643): Open Graph and Twitter cards for each page, from its title and its front matter description. The image is the site's own icon, never one from elsewhere. -#}
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {%- set page_title = (page.meta.title if page.meta and page.meta.title else (page.title if page.title and not page.is_homepage else config.site_name)) -%}
+  {%- set page_description = page.meta.description if page.meta and page.meta.description else config.site_description -%}
+  {%- set page_image = (config.site_url ~ "assets/coral-icon.png") if config.site_url else none -%}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ page_title }}">
+  <meta property="og:description" content="{{ page_description }}">
+  {% if page.canonical_url %}<meta property="og:url" content="{{ page.canonical_url }}">{% endif %}
+  {% if page_image %}<meta property="og:image" content="{{ page_image }}">{% endif %}
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{{ page_title }}">
+  <meta name="twitter:description" content="{{ page_description }}">
+  {% if page_image %}<meta name="twitter:image" content="{{ page_image }}">{% endif %}
+{% endblock %}

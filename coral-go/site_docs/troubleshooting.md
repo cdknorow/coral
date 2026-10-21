@@ -1,3 +1,8 @@
+---
+title: "Troubleshooting Coral"
+description: "Fixes for common problems: an agent that looks stuck, tmux or launch errors, a missing coral command, a busy port, and reaching Coral from a phone."
+---
+
 # Troubleshooting
 
 See the [agent troubleshooting guide](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/troubleshooting.md) for deeper notes.
