@@ -26,9 +26,10 @@ flags_of() {
       Version) out="$out -X $w=$VER" ;;
       PostHogKey) out="$out -X $w=$KEY" ;;
       DevBase) out="$out -X $w=$BASE" ;;
-      *) echo "FAIL: $f: -X $w sets an unknown variable" >&2; fail=1 ;;
+      # this function runs in a command substitution: a variable set here is lost with its subshell, so the failure is a file the end of the script reads
+      *) echo "FAIL: $f: -X $w sets an unknown variable" >&2; : > "$work/unknown-variable" ;;
     esac
-  done < <(grep -o -- '-X [^ "=]*' "$f" | sed 's/^-X //' | sort -u)
+  done < <(sed 's/[[:space:]]#.*$//' "$f" | grep -o -- '-X [^ "=]*' | sed 's/^-X //' | sort -u) # a trailing "# ... -X flags ..." comment is not a flag
   echo "$out"
 }
 
@@ -70,4 +71,5 @@ case "$v" in
   "coral (development build)"*) echo "ok: control: a wrong -X path is ignored (--version: $v), and the checks above would have failed on it" ;;
   *) echo "FAIL: control: a wrong -X path printed [$v]"; fail=1 ;;
 esac
+[ ! -e "$work/unknown-variable" ] || fail=1
 exit "$fail"
