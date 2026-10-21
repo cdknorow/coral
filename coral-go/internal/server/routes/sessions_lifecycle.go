@@ -246,6 +246,16 @@ func cliPathRefusal(ctx context.Context, err error) (answer, bool) {
 	return func(w http.ResponseWriter) { writeError(w, http.StatusUnprocessableEntity, "cli_path_unusable", msg) }, true
 }
 
+// launchErrText is a launch error's text for an answer: a configured CLI path that can't be run names the setting only when the request came
+// through Coral Hub (#115); any other error is its own text.
+func launchErrText(ctx context.Context, err error) string {
+	var cpe *agent.CLIPathError
+	if hub, _ := ctx.Value(tunneledKey{}).(bool); hub && errors.As(err, &cpe) {
+		return cpe.HubText()
+	}
+	return err.Error()
+}
+
 // beginRestart takes the session's turn (h.restarting: the sessions with a restart or resume running now, by name) and says whether it was free; the caller
 // ends it with the returned func. A second request for one of them (a double click, a client that retries while the first still runs, now that the first
 // no longer ends with its request) is refused, so one agent starts, not two (#5213).
