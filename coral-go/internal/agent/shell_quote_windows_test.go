@@ -11,6 +11,7 @@ import (
 // #3362: PowerShell expands $var, $(…) and backticks inside double quotes, so anything
 // not plainly safe is single-quoted; only the parts a builder names are raw.
 func TestShellQuotePowerShell(t *testing.T) {
+	t.Setenv("CORAL_SHELL", "powershell.exe")
 	for in, want := range map[string]string{
 		"claude":        "claude",
 		"--model":       "--model",
@@ -29,6 +30,19 @@ func TestShellQuotePowerShell(t *testing.T) {
 	} {
 		assert.Equal(t, want, shellQuote(in), "%q", in)
 	}
+	// #12: Windows PowerShell 5.1 escapes nothing for the program's argv, so the line does
+	// (psquote.NativeArg): the backslash before an escaped quote, and a trailing backslash.
+	const toml = `hooks.Stop=[{hooks=[{type="command",command="\"C:/Program Files (x86)/Coral/coral-hook-agentic-state.exe\""}]}]`
+	assert.Equal(t, `'hooks.Stop=[{hooks=[{type=\"command\",command=\"\\\"C:/Program Files (x86)/Coral/coral-hook-agentic-state.exe\\\"\"}]}]'`, shellQuote(toml))
+	assert.Equal(t, `'C:\dir with space\\'`, shellQuote(`C:\dir with space\`))
+	// pwsh 7.3+ escapes each argument itself: the value is only quoted for PowerShell.
+	t.Setenv("CORAL_SHELL", `C:\Program Files\PowerShell\7\pwsh.exe`)
+	assert.Equal(t, "'"+toml+"'", shellQuote(toml))
+	assert.Equal(t, `'say "hi"'`, shellQuote(`say "hi"`))
+	assert.Equal(t, `"$(Get-Content -Raw -Encoding UTF8 -LiteralPath 'p.txt')"`, FormatPromptFileArg("p.txt"))
+	t.Setenv("CORAL_SHELL", "powershell.exe")
+	assert.Equal(t, `"$((Get-Content -Raw -Encoding UTF8 -LiteralPath 'p.txt') -replace '(\\*)"', '$1$1\"' -replace '(\\+)\z', '$1$1')"`, FormatPromptFileArg("p.txt"))
+
 	raw := `"$((Get-Content -Raw 'C:\t\p.txt') -replace '"', '\"')"`
 	assert.Equal(t, `& 'C:\Program Files\claude.exe' '$(calc)' `+raw,
 		ShellJoin([]string{`C:\Program Files\claude.exe`, "$(calc)", raw}, raw))

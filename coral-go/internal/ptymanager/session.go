@@ -18,6 +18,7 @@ import (
 	"github.com/subgentic/coral/internal/agentenv"
 	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/psquote"
 	"github.com/subgentic/coral/internal/safego"
 )
 
@@ -368,7 +369,7 @@ func pickShell(goos, coralShell, userShell string, lookPath func(string) (string
 		cmdIgnored = true
 	}
 	if goos == "windows" {
-		for _, ps := range []string{"pwsh.exe", "powershell.exe"} {
+		for _, ps := range psquote.PowerShells {
 			if _, err := lookPath(ps); err == nil {
 				return []string{ps}, cmdIgnored, nil
 			}
