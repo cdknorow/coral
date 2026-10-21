@@ -535,6 +535,12 @@ as `/api/sessions/launch` applies (see above).
 }
 ```
 
+**Outcomes.** A member that fails to start has `{"name": ..., "error": ...}` in `agents` instead of a session.
+
+- Every member started: `200`, `"ok": true`.
+- Some started and some failed: `200`, `"ok": true`, `"partial": true`, with `"started"` and `"failed"` counts; each failure is in its entry.
+- None started: an error, not `ok: true` over an empty team. `422` when every failure is a setup problem (no CLI where the setting points or on PATH, no terminal backend, a working folder that is not there, a saved default model that is not a model ID), `500` otherwise, and `400` `no_named_agents` when no member has a name. The body is `{"ok": false, "code": "team_launch_failed", "error": "no agent in the team started (A: ...; B: ...)", "board": ..., "agents": [...each member's error...], "rolled_back": true}`. What the request made is taken back: its team record, its worktree, and the board when this request created it (a board that was already there is kept).
+
 ### POST `/api/sessions/live/{name}/restart`
 
 Kill and relaunch a session with the same or updated configuration. If the agent's own terminal is gone (it crashed or was closed), the restart starts it in a fresh terminal in its working directory.

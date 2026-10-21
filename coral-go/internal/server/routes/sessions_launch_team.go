@@ -106,12 +106,14 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	boardCreated := false // this request made the board (and so takes it back if nobody starts)
 	if body.BoardName != "" || body.BoardID != "" {
-		key, ok := h.launchBoard(w, r, body.BoardID, body.BoardName, body.NewBoard)
+		key, created, ok := h.launchBoardCreated(w, r, body.BoardID, body.BoardName, body.NewBoard)
 		if !ok {
 			return
 		}
 		body.BoardName = key
+		boardCreated = created
 	}
 	h.restoreTeamTemplate(r.Context(), &body)
 
@@ -153,6 +155,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		body.Flags = keepAgentLaunchFlags(body.Flags)
 	}
 	var launched []map[string]any
+	var categories []string // the analytics category of each member that failed
 	firstFailure := ""
 	for _, agentDef := range body.Agents {
 		if agentDef.Name == "" {
@@ -165,15 +168,95 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		if category != "" && firstFailure == "" {
 			firstFailure = category
 		}
+		if _, bad := entry["error"]; bad {
+			categories = append(categories, category)
+		}
 		launched = append(launched, entry)
 	}
+	finishTeamLaunch(attempt, launched, skippedMembers, firstFailure, len(body.Agents))
 
+	started := 0
+	for _, m := range launched {
+		if _, bad := m["error"]; !bad {
+			started++
+		}
+	}
+	if started == 0 {
+		// Nobody started: an error, not ok:true over an empty team. What this request made (the team record, the worktree, the board
+		// when it made it) is taken back, so a retry starts clean.
+		h.rollBackTeamLaunch(ctx, body, teamID, worktreePath, boardCreated)
+		status, code := http.StatusInternalServerError, "team_launch_failed"
+		if len(categories) == 0 {
+			status, code = http.StatusBadRequest, "no_named_agents"
+		} else if allConfigurationFailures(categories) {
+			status = http.StatusUnprocessableEntity
+		}
+		writeJSON(w, status, map[string]any{"ok": false, "code": code, "error": teamLaunchFailureMessage(launched),
+			"board": body.BoardName, "agents": launched, "rolled_back": true})
+		return
+	}
 	resp := map[string]any{"ok": true, "board": body.BoardName, "board_id": body.BoardName, "board_label": h.boardLabel(body.BoardName), "agents": launched}
 	if teamID > 0 {
 		resp["team_id"] = teamID
 	}
-	finishTeamLaunch(attempt, launched, skippedMembers, firstFailure, len(body.Agents))
+	if started < len(launched) {
+		resp["partial"] = true // some members started, the others' entries carry their error
+		resp["started"], resp["failed"] = started, len(launched)-started
+	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// allConfigurationFailures says whether every failed member failed for a reason in the setup (no CLI found, no terminal backend, a
+// folder that is not there): the request can't succeed as it is, a 422. Anything else is the server's (500).
+func allConfigurationFailures(categories []string) bool {
+	for _, c := range categories {
+		switch c {
+		case tracking.FailProviderUnavailable, tracking.FailBackendUnavailable, tracking.FailWorkdirUnavailable:
+		case "": // a saved default model that is not a model ID (launchTeamMember gives that failure no analytics category): a Settings problem
+		default:
+			return false
+		}
+	}
+	return len(categories) > 0
+}
+
+// teamLaunchFailureMessage names each member's error, for a launch in which none started.
+func teamLaunchFailureMessage(launched []map[string]any) string {
+	var parts []string
+	for _, m := range launched {
+		if e, bad := m["error"]; bad {
+			parts = append(parts, fmt.Sprintf("%v: %v", m["name"], e))
+		}
+	}
+	if len(parts) == 0 {
+		return "no agent in the team has a name"
+	}
+	return "no agent in the team started (" + strings.Join(parts, "; ") + ")"
+}
+
+// rollBackTeamLaunch takes back what a team launch that started nobody made: its team record, its worktree, and the board when this
+// request created it (a board that was already there, with its messages and members, is never deleted). Failures are logged.
+func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTeamRequest, teamID int64, worktreePath string, boardCreated bool) {
+	if teamID > 0 && h.teamStore != nil {
+		// DeleteTeam removes only a stopped team, and this one has no member to stop.
+		err := h.teamStore.UpdateTeamStatus(ctx, teamID, "stopped")
+		if err == nil {
+			err = h.teamStore.DeleteTeam(ctx, teamID)
+		}
+		if err != nil {
+			log.Printf("[launch-team] could not remove the empty team record %d: %v", teamID, err)
+		}
+	}
+	if worktreePath != "" {
+		if out, err := gitutil.Command(ctx, body.WorkingDir, "worktree", "remove", "--force", "--", worktreePath).CombinedOutput(); err != nil {
+			log.Printf("[launch-team] could not remove the empty team's worktree %s: %v: %s", worktreePath, err, strings.TrimSpace(string(out)))
+		}
+	}
+	if boardCreated && h.bs != nil && body.BoardName != "" {
+		if err := h.bs.DeleteProject(ctx, body.BoardName); err != nil {
+			log.Printf("[launch-team] could not remove the empty team's board %s: %v", body.BoardName, err)
+		}
+	}
 }
 
 // restoreTeamTemplate writes what a team template brings besides its members: the members' knowledge files and the
