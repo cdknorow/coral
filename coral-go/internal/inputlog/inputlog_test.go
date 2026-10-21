@@ -274,3 +274,36 @@ func TestLogFileIsMadePrivate(t *testing.T) {
 	Flush()
 	secfiletest.AssertPrivate(t, path2) // an existing looser file is made private
 }
+
+// #5706 (Security's condition 6): a record is a non-blocking enqueue. A writer that takes no more lines (a stuck disk) fills its queue
+// and the next lines are dropped and counted; Write never waits, so the Windows stop's second Ctrl-C and exit line, which are recorded,
+// go out as on time as without a log.
+func TestWriteNeverWaitsForAStuckWriter(t *testing.T) {
+	fw := &fileWriter{ch: make(chan entry, 4)} // no loop reads it
+	prev := w.Load()
+	w.Store(fw)
+	enabled.Store(true)
+	t.Cleanup(func() { enabled.Store(false); w.Store(prev) })
+	start := time.Now()
+	for i := 0; i < 1000; i++ {
+		Write("p", Text, "x")
+	}
+	assert.Less(t, time.Since(start), time.Second, "1000 writes into a full queue return at once")
+	assert.Equal(t, int64(996), fw.dropped.Load(), "what did not fit is dropped and counted")
+}
+
+// #5706 (Security's condition 4): a note goes through the same redaction and cut as every record, never raw: the [HELD ...] text carries a
+// board message's text, which may hold a token.
+func TestANoteIsRedactedAndCutLikeAnyRecord(t *testing.T) {
+	path := enable(t)
+	captureLog(t)
+	Note("claude-x", Text, "[HELD, a prompt is open] please use "+fakeToken+" for the call")
+	Note("claude-x", Keys, "[auto-accept answers an approval prompt]")
+	Note("claude-x", Text, "[HELD, why] "+strings.Repeat("y", 400))
+	text := readFile(t, path)
+	assert.NotContains(t, text, fakeToken, "a token in a note is masked")
+	assert.NotContains(t, text, fakeToken[:20])
+	assert.Contains(t, text, `[HELD, a prompt is open] please use`)
+	assert.Contains(t, text, `kind=keys keys="[auto-accept answers an approval prompt]"`)
+	assert.Contains(t, text, "(+", "a long note is cut like a long record")
+}

@@ -258,6 +258,9 @@ func (s *session) killWithin(grace time.Duration) error {
 	if terminateTypesCtrlC {
 		// On Windows, Terminate types Ctrl-C into the console (pty_windows.go).
 		terminalinput.Record(terminalinput.Internal, s.name, terminalinput.Raw, "\x03")
+		if n, ok := s.proc.(stopNamer); ok {
+			n.setStopName(s.name) // so the second Ctrl-C and the exit line of the polite stop are recorded too
+		}
 	}
 	s.proc.Terminate()
 

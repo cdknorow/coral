@@ -2,11 +2,16 @@ package ptymanager
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/inputlog"
 )
 
 type stopRecorder struct {
@@ -96,4 +101,21 @@ func TestIsShellImageKnowsTheWindowsShellsAndNothingElse(t *testing.T) {
 	for _, not := range []string{"", "claude.exe", "codex.exe", "node.exe", `C:\Users\x\claude.exe`, "powershell.exe.bak", "mycmd.exe", "cmd.exe.exe", "powershell", "cmd", `C:\tools\powershell.exe\claude.exe`, "pwsh"} {
 		assert.False(t, isShellImage(not), not)
 	}
+}
+
+// #5706 (Security's answer a): the second Ctrl-C and the exit line of a polite stop are recorded in the input debug log, as Coral's own
+// control input, and are written to the console exactly as before.
+func TestPoliteStopRecordsItsWritesAsInternalNotes(t *testing.T) {
+	dir := t.TempDir()
+	inputlog.Setup(dir, true)
+	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
+	var r stopRecorder
+	politeStop(noteStopWrite("claude-stop", r.write), make(chan struct{}), func() (bool, error) { return false, nil }, yesShell, fastStop)
+	assert.Equal(t, []string{"\x03", "exit\r"}, r.writes(), "the console gets what it got before")
+	inputlog.Flush()
+	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `target=claude-stop `)
+	assert.Contains(t, string(raw), `kind=raw len=1 text="\x03"`)
+	assert.Contains(t, string(raw), `kind=raw len=5 text="exit\r"`)
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 
+	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/terminalinput"
 )
@@ -71,6 +72,29 @@ func TestWindowsIdleShellStopsWithinThePoliteStop(t *testing.T) {
 	start := time.Now()
 	require.NoError(t, b.Kill(name))
 	assert.Less(t, time.Since(start), 3*time.Second, "an idle shell is told to exit once the Ctrl-Cs are in, not killed after 5 s")
+}
+
+// #5706 (Security's answer a): the stop's control keys are in the input debug log: the first Ctrl-C (session.killWithin), the second
+// one and the exit line (politeStop, through noteStopWrite), all Coral's own; and recording them costs the stop no time.
+func TestWindowsStopRecordsItsControlKeysAndKeepsItsTiming(t *testing.T) {
+	naming.SetDefaultLogDir(t.TempDir())
+	dir := t.TempDir()
+	inputlog.Setup(dir, true)
+	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
+	b := NewPTYBackend()
+	name := "claude-5706-stop"
+	require.NoError(t, b.Spawn(name, "claude", t.TempDir(), "5706", "powershell.exe -NoProfile", 120, 40))
+	time.Sleep(2 * time.Second)
+	start := time.Now()
+	require.NoError(t, b.Kill(name))
+	assert.Less(t, time.Since(start), 3*time.Second, "the same polite stop as without the log")
+	inputlog.Flush()
+	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
+	require.NoError(t, err)
+	log := string(raw)
+	assert.GreaterOrEqual(t, strings.Count(log, "target="+name+" "), 3, log)
+	assert.GreaterOrEqual(t, strings.Count(log, `kind=raw len=1 text="\x03"`), 2, "the first and the second Ctrl-C: %s", log)
+	assert.Contains(t, log, `kind=raw len=5 text="exit\r"`)
 }
 
 // #5665: the root's image is read from its process handle. A started cmd.exe is a shell; a started ping.exe (an agent started directly) is not;

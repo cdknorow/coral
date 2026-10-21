@@ -21,7 +21,11 @@ type windowsPTY struct {
 	done   chan struct{}
 	closed sync.Once
 	job    windows.Handle // ends the whole process tree (0: none)
+	// stopName is the session name the stop's own writes are recorded under in the input debug log (set before Terminate).
+	stopName string
 }
+
+func (p *windowsPTY) setStopName(name string) { p.stopName = name }
 
 func startPTYProcess(name string, args []string, dir string, env []string, cols, rows uint16) (ptyProcess, error) {
 	// ConPTY takes a single command line string. The program is quoted (windowsProgram): it is
@@ -98,7 +102,11 @@ func (p *windowsPTY) Terminate() error {
 		pid := p.cpty.Pid()
 		go func() {
 			defer safego.Recover("ptymanager/pty_windows:terminate")
-			politeStop(func(b []byte) error { _, err := p.cpty.Write(b); return err }, p.done,
+			write := func(b []byte) error { _, err := p.cpty.Write(b); return err }
+			if p.stopName != "" {
+				write = noteStopWrite(p.stopName, write) // the second Ctrl-C and exit, recorded as Coral's own (#5706)
+			}
+			politeStop(write, p.done,
 				func() (bool, error) { return hasChildProcesses(pid) }, func() bool { return rootIsShell(pid) }, defaultStopTimings)
 		}()
 	}
