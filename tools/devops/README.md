@@ -68,16 +68,19 @@ the first failed check.
    - Land with `tools/devops/land-main.sh <old main> <notes commit> <gated tree>`. It checks that `main` is a
      fast-forward, that the parent's tree is the gated tree, and that the top commit is notes-only. It syncs the shared
      checkout's files with their modes, and stops if anyone else edited one of them.
-   - Then `git tag vX.Y.Z <notes commit>` and push the tag. The release workflow builds, signs and publishes.
+   - Then `git tag vX.Y.Z <notes commit>` and push the tag. The release workflow builds, signs and publishes the release as a
+     **pre-release that is not "latest"** (the AGENTIC channel, #5551): installed Corals, Homebrew and the stable download links keep
+     serving the last APPROVED release until the operator runs the **Approve release** workflow (below).
 
-5. **Finish**: `tools/devops/after-release.sh X.Y.Z` waits for the release run, runs `finish-release.sh` and stops before
-   the cask (re-read the board, then pass `--cask`, or run `cask.sh` yourself). `finish-release.sh X.Y.Z` itself:
+5. **Finish**: `tools/devops/after-release.sh X.Y.Z` waits for the release run and runs `finish-release.sh` (the check is
+   `verify-release.sh --stage agentic`: a plain tag is expected to be a pre-release, the tap is not expected to have moved).
+   `finish-release.sh X.Y.Z` itself:
    - sets the release body from the tag's notes;
    - starts the runtime check;
    - runs `tools/verify-release.sh`, which takes every file from the release run's artifacts and checks each against
      GitHub's digest of the published asset, so it verifies the published files without downloading them. It also checks
-     that the tap's `Casks/coral.rb` carries the DMG's sha256 from `SHA256SUMS.txt` (and the repo's own, once it is at this
-     version). It needs the PINNED cosign on PATH (#5112): `after-release.sh` and `finish-release.sh` stop at once without it, and
+     that the tap's `Casks/coral.rb` carries the DMG's sha256 from `SHA256SUMS.txt` at `--stage approved` (and the repo's own, once
+     it is at this version). It needs the PINNED cosign on PATH (#5112): `after-release.sh` and `finish-release.sh` stop at once without it, and
      `verify-release.sh --require-cosign` (which `finish-release.sh` passes) makes a missing cosign, or a release with no
      bundle to check, a FAIL row instead of a SKIP. Install it with `tools/devops/install-cosign.sh [DIR]` (default
      `~/.local/bin`; put DIR on PATH): it takes cosign's release binary and installs it only when its sha256 equals the line in
@@ -86,8 +89,17 @@ the first failed check.
 
    Edit the body only after verify-release has passed, since its notes row compares the body with the tag's notes.
 
-6. **Cask**: `tools/devops/cask.sh X.Y.Z` makes the one `cask: Coral X.Y.Z` commit on `main`. It reads the DMG's
-   sha256 from the release's metadata, not by downloading anything.
+6. **Approval and cask (the operator's act, #5551)**: the operator runs *Actions > Approve release > Run workflow* with the tag
+   (no agent ever dispatches it, revokes, or edits the Latest mark). Three jobs, one per privilege: `verify` (read only: the
+   release is published, immutable, a pre-release, on `main`, newer than the current latest, not revoked, and
+   `verify-release.sh --stage agentic` passes), `flip` (`contents: write`: `tools/devops/approve-release.sh flip` clears the
+   pre-release flag, marks it latest and appends a display-only `Approved: <UTC RFC3339>` line to the body (the last line; the actor is in the run summary)), `tap`
+   (environment `approve`, the tap deploy key only: `tools/devops/update-tap.sh` moves the cask by a new commit). `mode=revoke` is
+   the only way back: it re-marks the previous release latest (GitHub does not move the mark by itself), puts the cask back by a new
+   commit and writes a `Revoked:` line that makes the tag unapprovable for ever. After an approval:
+   `tools/verify-release.sh vX.Y.Z --require-cosign` (default `--stage approved`), then `tools/devops/cask.sh X.Y.Z` makes the one
+   `cask: Coral X.Y.Z` commit on `main` (it reads the DMG's sha256 from the release's metadata, not by downloading anything).
+   `tools/devops/release-cadence.sh` prints every release with its channel and how long it has waited.
 
 ## Downloads from a release by our own automation
 
@@ -100,7 +112,7 @@ Expected downloads by our automation per release: **none**.
 
 | Step | Reads | Downloads from the release |
 |---|---|---|
-| `release.yml` update-tap job | `release-sums` artifact of the same run | none |
+| `approve-release.yml` tap job | `release-sums` artifact of the release run | none |
 | Runtime check (`standard-runtime-verify.yml`) | `coral-linux-<arch>` artifacts of the release run | none |
 | `tools/verify-release.sh` (default) | the release run's artifacts, and the previous release's run for the entry counts | none |
 | `tools/devops/cask.sh` | the DMG's digest from the release metadata | none |

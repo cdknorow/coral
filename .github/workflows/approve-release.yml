@@ -1,0 +1,173 @@
+name: Approve release
+
+# Release channels (#5551, #5559). A release is PUBLISHED as a pre-release that is not "latest" (the AGENTIC channel). This workflow, run by the
+# operator from the browser (Actions > Approve release > Run workflow > the tag), makes it the APPROVED one: pre-release off, marked latest,
+# the Homebrew cask moved to it. mode=revoke is the only way back (it also re-marks the previous release and puts the cask back).
+# Team rule: no agent dispatches this workflow, revokes, or edits the Latest mark.
+#
+# Three jobs, one per privilege (Security's condition 1): verify (read only, no secrets), flip (contents: write, only the release edit),
+# tap (only the tap key, in the environment approve; its deployment policy is branch main). The tag is data: it goes through env, is matched
+# in tools/devops/approve-release.sh before any use, and never appears inside a run: script.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag to approve (or revoke), a plain vX.Y.Z"
+        required: true
+        type: string
+      mode:
+        description: "approve, or revoke (back one step: the previous release becomes latest again)"
+        required: true
+        type: choice
+        default: approve
+        options: [approve, revoke]
+
+permissions: {}
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"   # verify-release runs the release's own programs: none may send a usage event
+
+concurrency:
+  group: approve-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read   # the release run's artifacts are checked, not downloaded from the release (#4936)
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.6"
+      - name: Check the release (published, immutable, pre-release, on main, newer than latest)
+        if: inputs.mode == 'approve'
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: bash tools/devops/approve-release.sh check "$TAG"
+      - name: Verify the published files (checksums, signatures, programs)
+        if: inputs.mode == 'approve'
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/verify-release.sh "$TAG" --stage agentic --require-cosign
+      - name: Check a revoke (an approved release exists and an earlier one to fall back to)
+        if: inputs.mode == 'revoke'
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a plain vX.Y.Z tag"; exit 1; }
+          pre="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .prerelease)"
+          [ "$pre" = false ] || { echo "::error::$TAG is not an approved release"; exit 1; }
+
+  flip:
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # gh release edit: the pre-release flag, the Latest mark and the body line, nothing else
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Approve or revoke the release
+        env:
+          TAG: ${{ inputs.tag }}
+          MODE: ${{ inputs.mode }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = revoke ]; then bash tools/devops/approve-release.sh revoke "$TAG"; else bash tools/devops/approve-release.sh flip "$TAG"; fi
+      - name: Read the result back
+        env:
+          TAG: ${{ inputs.tag }}
+          MODE: ${{ inputs.mode }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pre="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .prerelease)"
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          if [ "$MODE" = revoke ]; then
+            [ "$pre" = true ] && [ "$latest" != "$TAG" ] || { echo "::error::revoke did not take effect (prerelease=$pre latest=$latest)"; exit 1; }
+          else
+            [ "$pre" = false ] && [ "$latest" = "$TAG" ] || { echo "::error::approve did not take effect (prerelease=$pre latest=$latest)"; exit 1; }
+          fi
+          {
+            echo "### Release channel change"
+            echo "- mode: $MODE"
+            echo "- tag: $TAG"
+            echo "- run by: ${GITHUB_ACTOR}"
+            echo "- latest is now: $latest"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  tap:
+    needs: flip
+    runs-on: ubuntu-24.04
+    environment: approve   # holds the tap deploy key and nothing else; deployment branch policy: main
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.6"
+      # The cask's sha256 comes ONLY from the SHA256SUMS.txt that cosign verifies against the workflow identity of the release run of the
+      # version the cask is going to: this tag for an approval, the new latest for a revoke. The run's own artifact, not a download.
+      - name: Read the DMG's sha256 from the verified SHA256SUMS.txt
+        env:
+          TAG_IN: ${{ inputs.tag }}
+          MODE: ${{ inputs.mode }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = revoke ]; then
+            TARGET="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          else
+            TARGET="$TAG_IN"
+          fi
+          [[ "$TARGET" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::not a plain vX.Y.Z tag"; exit 1; }
+          VERSION="${TARGET#v}"
+          RUN="$(gh run list --workflow release.yml --branch "$TARGET" --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          [ -n "$RUN" ] && [ "$RUN" != null ] || { echo "::error::no successful release run for $TARGET"; exit 1; }
+          mkdir sums
+          gh run download "$RUN" --name release-sums --dir sums
+          cosign verify-blob sums/SHA256SUMS.txt --bundle sums/SHA256SUMS.txt.sigstore.json \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TARGET}"
+          SHA="$(awk -v f="Coral.v${VERSION}.dmg" '$2==f {print $1}' sums/SHA256SUMS.txt)"
+          [[ "$SHA" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::no sha256 for Coral.v${VERSION}.dmg"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"; echo "SHA=$SHA" >> "$GITHUB_ENV"
+      - name: Set up the tap credential (nothing persists in .git/config)
+        env:
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$TAP_KEY" ] || { echo "::error::no HOMEBREW_TAP_DEPLOY_KEY in the environment approve"; exit 1; }
+          umask 077
+          printf '%s\n' "$TAP_KEY" > "$RUNNER_TEMP/tap_key"
+          # GitHub's published ed25519 host key (gh api meta), pinned: no trust on first use.
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$RUNNER_TEMP/known_hosts"
+          echo "GIT_SSH_COMMAND=ssh -i $RUNNER_TEMP/tap_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts" >> "$GITHUB_ENV"
+      - name: Move the tap's cask
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = revoke ]; then bash tools/devops/update-tap.sh "$VERSION" "$SHA" --revoke; else bash tools/devops/update-tap.sh "$VERSION" "$SHA"; fi
+      - name: Remove the deploy key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/tap_key"
