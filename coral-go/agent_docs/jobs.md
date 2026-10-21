@@ -54,7 +54,7 @@ Queues a new agent task. Returns immediately — all work (worktree creation, ag
 ### Example
 
 ```bash
-curl -X POST http://localhost:8420/api/tasks/run \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/tasks/run \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Add input validation to the signup form",

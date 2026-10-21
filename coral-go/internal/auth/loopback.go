@@ -133,23 +133,32 @@ func localOperator(r *http.Request) bool {
 // it is not the person at this computer.
 func tunneled(r *http.Request) bool { return r.Header.Get(tunnel.ViaHeader) != "" }
 
-// IsDirectLocalPeer is IsDirectLocal without the require_auth_on_loopback clause: a loopback peer
-// with no reverse-proxy header, whatever the setting. It is for a flow whose OWN credential is
+// IsDirectLocalPeer is IsDirectLocal without the require_auth_on_loopback clause and without the
+// peer-user check: a loopback peer with no reverse-proxy header, whatever the setting. It is the
+// middleware's loopback pass (whose request the identity layer then checks: strictly, for a
+// connection that isn't Coral's own user's, PeerReason), and the signed handshake's. It is for a flow whose OWN credential is
 // checked right after (the signed `coral cloud connect` handshake: the signature is the
 // credential, so require_auth_on_loopback is already satisfied and must not block it). A proxied
 // request is still excluded, so it is never a bypass; use IsDirectLocal everywhere the locality
 // itself is the only authority (#3585).
 func IsDirectLocalPeer(r *http.Request) bool {
-	return isDirectLocal(r)
+	return loopbackPeer(r)
 }
 
-// isDirectLocal reports whether r comes straight from a process on this machine: a loopback peer
-// (by connection address, never a header) that carries no reverse-proxy header. A same-machine
+// isDirectLocal reports whether r comes straight from a process of Coral's own user on this
+// machine: a loopback peer (by connection address, never a header) that carries no reverse-proxy
+// header, and whose connection the peer-user check doesn't say is another user's or unattributed
+// (PeerReason, #95). A same-machine
 // proxy connects from loopback too but adds a forwarding header, so such a request is treated
 // like a remote caller and must present the key or a session. The first proxied-loopback request
 // logs a one-time warning, since a proxy that forwards no header (a default nginx) still looks
 // direct and needs require_auth_on_loopback (#3585).
 func isDirectLocal(r *http.Request) bool {
+	return loopbackPeer(r) && PeerReason(r) == ""
+}
+
+// loopbackPeer is a loopback peer with no reverse-proxy header, whoever's process it is.
+func loopbackPeer(r *http.Request) bool {
 	if !isLocalhost(r) {
 		return false
 	}

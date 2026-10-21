@@ -203,7 +203,7 @@ The Orchestrator gets both the global `Stop` hook and its own `PostToolUse` hook
 Pass hooks when launching a single agent session:
 
 ```bash
-curl -X POST http://localhost:8420/api/sessions/launch \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/sessions/launch \
   -H "Content-Type: application/json" \
   -d '{
     "working_dir": "/home/user/project",

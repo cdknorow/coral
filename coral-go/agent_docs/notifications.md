@@ -2,6 +2,8 @@
 
 Push notifications to the Coral UI from workflows, scripts, or any HTTP client. Notifications appear in real-time via WebSocket.
 
+An agent sends one with `coral-agent notify --title "…" [--message "…"] [--level info|success|warning|error] [--alert]`, which carries its session token. A script sends the API key, as in the examples below (`coral api-key` prints it): a request with no credential is refused.
+
 ## Create Notification
 
 ```
@@ -52,7 +54,7 @@ POST /api/notifications
 Appears in the top-right corner and auto-dismisses after 8 seconds. User can click ✕ to dismiss early. Best for status updates and non-critical messages.
 
 ```bash
-curl -X POST http://localhost:${CORAL_PORT}/api/notifications \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:${CORAL_PORT}/api/notifications \
   -H 'Content-Type: application/json' \
   -d '{"title": "Deploy Complete", "message": "v1.2.0 is live", "level": "success"}'
 ```
@@ -62,7 +64,7 @@ curl -X POST http://localhost:${CORAL_PORT}/api/notifications \
 Centered modal overlay that requires the user to click OK. Supports an optional link button. Best for important messages that require acknowledgment.
 
 ```bash
-curl -X POST http://localhost:${CORAL_PORT}/api/notifications \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:${CORAL_PORT}/api/notifications \
   -H 'Content-Type: application/json' \
   -d '{
     "title": "Welcome to Coral Workflows",

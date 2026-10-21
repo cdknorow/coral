@@ -131,7 +131,7 @@ coral --home /tmp/coral-t1 --port 8452 --no-browser
 > A tmux socket path over about 104 characters (macOS) cannot bind, so keep the
 > directory short. If you are unsure what a new instance can see, check:
 > ```bash
-> curl -s localhost:8452/api/sessions/live   # sessions you did not create = not isolated
+> curl -s -H "Authorization: Bearer $(coral api-key)" localhost:8452/api/sessions/live   # sessions you did not create = not isolated
 > ```
 
 ## Remote access
@@ -240,7 +240,7 @@ equivalent API call (with [strict local auth](auth.md#strict-local-auth-the-defa
 `-H "Authorization: Bearer $(coral api-key)"` to every `curl` in this guide):
 
 ```console
-$ curl -s -X POST http://127.0.0.1:8420/api/sessions/launch \
+$ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://127.0.0.1:8420/api/sessions/launch \
     -H "Content-Type: application/json" \
     -d '{"working_dir":"/path/to/repo","agent_type":"claude",
          "display_name":"first-agent","prompt":"...your task..."}'
@@ -271,10 +271,10 @@ Answering over the API:
 
 ```bash
 # NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live.
-curl -s -X POST "http://127.0.0.1:8420/api/sessions/live/$NAME/keys" \
+curl -H "Authorization: Bearer $(coral api-key)" -s -X POST "http://127.0.0.1:8420/api/sessions/live/$NAME/keys" \
   -H "Content-Type: application/json" \
   -d "{\"keys\":[\"Down\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
-curl -s -X POST "http://127.0.0.1:8420/api/sessions/live/$NAME/keys" \
+curl -H "Authorization: Bearer $(coral api-key)" -s -X POST "http://127.0.0.1:8420/api/sessions/live/$NAME/keys" \
   -H "Content-Type: application/json" \
   -d "{\"keys\":[\"Enter\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
 ```
