@@ -222,6 +222,21 @@ func (s *Server) newRouteHandlers() *routeHandlers {
 	s.systemHandler = sysHandler
 	histHandler := routes.NewHistoryHandler(s.db, s.cfg, s.boardStore)
 	s.historyHandler = histHandler
+	// "Read the whole message" of a bookmark (#5753): a board's message by board and id, an agent's by its session and key.
+	var savedBoard func(ctx context.Context, project string, id int64) (string, bool, error)
+	if s.boardStore != nil {
+		savedBoard = func(ctx context.Context, project string, id int64) (string, bool, error) {
+			m, err := s.boardStore.GetMessageByID(ctx, project, id)
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", false, nil
+			}
+			if err != nil {
+				return "", false, err
+			}
+			return m.Content, true, nil
+		}
+	}
+	sysHandler.SetSavedSources(savedBoard, histHandler.SavedAgentText)
 	schedHandler := routes.NewScheduleHandler(s.db, s.cfg)
 	workflowHandler := routes.NewWorkflowHandler(s.db, s.cfg)
 	s.workflowHandler = workflowHandler
@@ -492,6 +507,7 @@ func (s *Server) registerSystem(r *chi.Mux, h *routeHandlers) {
 	// Save for Later (#4510): the Operator's bookmarks on chat and board messages.
 	r.Get("/api/saved", sysHandler.SavedList)
 	r.Post("/api/saved", sysHandler.SavedAdd)
+	r.Get("/api/saved/{id}/message", sysHandler.SavedMessage) // the whole text of a bookmark's source (#5753)
 	r.Patch("/api/saved/{id}", sysHandler.SavedUpdate)
 	r.Delete("/api/saved/{id}", sysHandler.SavedDelete)
 

@@ -206,7 +206,6 @@ var routeTable = cat(
 		"/api/goals/metrics", "/api/call-metrics/summary",
 		"/api/tags", "/api/folder-tags", "/api/folder-tags/{name}", "/api/pinned-folders",
 		// The Operator's saved messages (#4510): his own bookmarks, snippets redacted when saved.
-		"/api/saved",
 		"/api/scheduled/jobs", "/api/scheduled/jobs/{id}", "/api/scheduled/jobs/{id}/runs", "/api/scheduled/runs/recent",
 		"/api/workflows", "/api/workflows/runs/recent", "/api/workflows/by-name/{name}", "/api/workflows/{id}",
 		"/api/workflows/{id}/runs", "/api/workflows/runs/{id}",
@@ -241,6 +240,10 @@ var routeTable = cat(
 		"/api/board/{project}/artifacts",
 		"/api/session-artifacts",
 	)),
+	// Saved for later (#4510) is the OWNER's alone through the hub (#5753, Shared Inbox, Security's condition 3): the list holds the bookmarks of the owner's chats, and the whole
+	// message of a bookmark (the text of its source, redacted and cut to 64 KiB; the source is the stored bookmark's, never a ref from the request) is read from its own route. The
+	// changes (POST, PATCH, DELETE) stay as they were (Interact).
+	owner(OwnerRefuse, rules(http.MethodGet, TierView, "/api/saved", "/api/saved/{id}/message")),
 	// What a viewer sees of a board's settings is the machine's to decide (the health setup is the owner's, #5307): the marker is stamped, the handler gives a non-owner less.
 	// The update status (#5280) shows the owner more, with the label optional for a machine linked before it was recorded.
 	owner(OwnerSees, rules(http.MethodGet, TierView, "/api/board/{project}/settings")),

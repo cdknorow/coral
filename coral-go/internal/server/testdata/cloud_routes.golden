@@ -96,6 +96,7 @@ GET /api/goals/metrics view
 GET /api/health view
 GET /api/pinned-folders view
 GET /api/saved view
+GET /api/saved/{id}/message view
 GET /api/scheduled/jobs view
 GET /api/scheduled/jobs/{jobID} view
 GET /api/scheduled/jobs/{jobID}/runs view
