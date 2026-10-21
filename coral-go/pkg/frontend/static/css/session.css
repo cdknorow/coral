@@ -1714,7 +1714,8 @@
 /* On a phone the footer is one row (Save and a one-line caption, the whole caption in its title): three lines of caption under a full-width button covered a sixth of the screen; and what scrolls into view or takes the focus stops above it (UI audit #5589, finding 13). */
 @media(max-width: 600px) {
     .team-settings-actions { align-items: center; flex-direction: row; flex-wrap: wrap; } /* two buttons (the health tab) wrap at large text */
-    .team-settings-actions span { flex: 1 1 8rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .team-settings-actions .ts-caption-more { display: none; } /* on a phone the caption is the one sentence that is not obvious, whole */
+    .team-settings-actions span { flex: 1 1 8rem; min-width: 0; } /* the one sentence may take a second line: never cut with an ellipsis */
     .working-mode-form { scroll-padding-bottom: 4.5rem; }
 }
 
