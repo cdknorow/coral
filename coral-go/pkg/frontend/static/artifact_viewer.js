@@ -11,6 +11,7 @@ import { downloadArtifact, sanitizeDownloadName } from './artifact_download.js';
 import { trapTab } from './dialog_focus.js';
 import { importOnce } from './import_once.js';
 import { pushOverlay, popOverlay } from './overlay_history.js';
+import { readersAllowed, readersDisclosure } from './artifact_readers.js';
 // Asked for when used, not imported: this module loads lazily and may only import startup modules statically.
 const { attachComments, commentBoard } = await importOnce('./artifact_comments.js');
 
@@ -47,6 +48,7 @@ function _build() {
             <a class="btn artifact-viewer-download" rel="noopener noreferrer" download>Download</a>
             <button type="button" class="btn artifact-viewer-close" aria-label="Close">✕</button>
         </div>
+        <div class="artifact-viewer-readers" hidden></div>
         <div class="artifact-viewer-main"><div class="artifact-viewer-body"></div></div>
     </div>`;
     d.addEventListener('click', (e) => { if (e.target === d) closeArtifactViewer(); });
@@ -97,6 +99,10 @@ export function openArtifactViewer(hex, opts = {}) {
     d.hidden = false;
     if (!wasOpen && window.innerWidth <= 767 && !_overlay) _overlay = pushOverlay(() => closeArtifactViewer({ popped: true })); // Back closes it, above the preview's full screen, under its comments sheet
     _comments.open(hex, opts.server, commentBoard(opts));
+    // "Who can read this", for the Operator (the owner through Coral Hub): drawn only when the machine answers it; anyone else sees nothing.
+    const readers = d.querySelector('.artifact-viewer-readers');
+    readers.hidden = true; readers.replaceChildren();
+    readersAllowed(hex, opts.server).then(ok => { if (ok && gen === _gen && !d.hidden) { readers.replaceChildren(readersDisclosure(hex, opts.server)); readers.hidden = false; } }).catch(() => {});
     d.querySelector('.artifact-viewer-close').focus();
     renderArtifact(body, `coral://artifacts/${hex}`, { server: opts.server, filename: opts.filename, mediaType: opts.mediaType }, {
         signal: _abort.signal,

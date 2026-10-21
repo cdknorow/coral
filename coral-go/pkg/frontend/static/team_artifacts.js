@@ -5,6 +5,7 @@ import { boardOfPage } from './dock_page.js';
 import { escapeHtml, escapeAttr, sanitizeHtml, refusedTooLarge } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { bindDownload } from './artifact_download.js';
+import { readersAllowed, readersDisclosure } from './artifact_readers.js';
 import { appendRows, FIRST_ROWS, setIcon } from './chunked_rows.js';
 import { fileIconFor, mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath, isCloud, keyLabel } from './server_base.js';
@@ -407,7 +408,18 @@ function buildRow(item) {
             if (value.length) fields.append(el('dt', '', label), ...value.map(v => el('dd', '', v)));
         } else if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));
     }
-    details.append(fields);info.append(details);row.append(info);
+    details.append(fields);
+    // "Who can read this", in the row's details, for the Operator (the owner through Coral Hub): asked when the details are open (a listing makes no extra request), drawn once the machine has said this person may see it.
+    const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})(?:\?v=\d+)?$/i.exec(item.uri || '');
+    let readersAsked = false;
+    const addReaders = () => {
+        if (readersAsked || !managed || !link) return;
+        readersAsked = true;
+        const hex = managed[1].toLowerCase(), srv = splitKey(team).server;
+        readersAllowed(hex, srv).then(ok => { if (ok) details.append(readersDisclosure(hex, srv)); }).catch(() => {});
+    };
+    if (!details.hidden) addReaders();
+    info.append(details);row.append(info);
     row.append(el('td', 'team-artifact-col-type', type), el('td', 'team-artifact-col-created', created));
     const actionCell = el('td', 'team-artifact-col-actions');row.append(actionCell);
     const actions = el('div', 'team-artifact-actions');
@@ -419,6 +431,7 @@ function buildRow(item) {
         details.hidden = !details.hidden;
         if (details.hidden) openDetails.delete(openKey); else openDetails.add(openKey);
         infoBtn.setAttribute('aria-expanded', String(!details.hidden));
+        if (!details.hidden) addReaders();
         syncExpandAll();
     });
     actions.append(infoBtn);

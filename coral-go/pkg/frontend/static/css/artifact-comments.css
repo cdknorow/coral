@@ -96,3 +96,13 @@
 /* the Comments button sits in the pane's toolbar; artifact_comments.js hides it unless the panel is a sheet (beside the document it is always there) */
 .preview-toolbar .ac-toggle:not([hidden]) { display: inline-flex; align-items: center; min-height: 28px; margin-left: auto; flex: 0 0 auto; }
 @media (max-width: 767px) { .preview-toolbar .ac-toggle:not([hidden]) { min-height: 44px; min-width: 44px; } } /* a touch target (the rule above is more specific than the phone's own) */
+
+/* "Who can read this" (artifact_readers.js): a small disclosure under the viewer's header and in an Artifacts row's details. */
+.artifact-viewer-readers { flex: none; padding: 0 16px; }
+.artifact-viewer-readers[hidden] { display: none; }
+.artifact-readers { font-size: var(--fs-sm, 0.8125rem); margin: 6px 0; }
+.artifact-readers > summary { cursor: pointer; color: var(--text-secondary); font-weight: 600; min-height: 24px; display: flex; align-items: center; }
+.artifact-readers-body { display: grid; gap: 4px; padding: 4px 0 6px; color: var(--text-primary); }
+.artifact-readers-body p { margin: 0; overflow-wrap: anywhere; }
+.artifact-readers-note { color: var(--text-secondary); }
+@media (pointer: coarse) { .artifact-readers > summary { min-height: var(--control-touch-height, 44px); } }
