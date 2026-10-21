@@ -1,0 +1,67 @@
+name: trial-links-5572
+on:
+  push:
+    branches: [trial/links-5572]
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+jobs:
+  assembled:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - shell: bash
+        run: |
+          set -eo pipefail
+          cd coral-go
+          test -z "$(gofmt -l .)"
+          go build -o /dev/null ./...
+          go vet ./...
+          go vet -tags 'dev fts5' ./...
+          GOOS=windows go vet ./...
+          CLOUD_GOLDEN_UPDATE=1 go test -count=1 -run TestCloudRouteCensus ./internal/server/ >/dev/null 2>&1 || true
+          UPDATE_GOLDEN=1 go test -count=1 -run TestRouteBindingsAreReviewed ./internal/server/routes/ >/dev/null 2>&1 || true
+          (cd .. && python3 tools/gen_route_queries.py >/dev/null 2>&1)
+          test -z "$(git status --porcelain)" || { git status --porcelain; echo "regenerators left a diff"; exit 1; }
+  gotest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: default, tags: ""}
+          - {name: dev-fts5, tags: "dev fts5"}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - shell: bash
+        run: |
+          set -eo pipefail
+          cd coral-go
+          go test -count=1 -p 4 -tags "${{ matrix.tags }}" ./... 2>&1 | tee "$RUNNER_TEMP/gotest.log" | grep -v '^ok\|no test files' || true
+          ! grep -E '^(--- FAIL|FAIL|panic:)' "$RUNNER_TEMP/gotest.log"
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - shell: bash
+        run: cd coral-go && go vet ./... && go test -count=1 ./internal/settings ./internal/board ./cmd/coral-tray
