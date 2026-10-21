@@ -10,7 +10,10 @@
 # blocks deploy keys in the subgentic organisation (#5530). When the tap moves, change this one line (and the TAP_URL lines of the
 # update-tap job in release.yml, and the brew lines of the docs, which the post for #5530 lists).
 : "${RELEASE_TAP_REPO:=cdknorow/homebrew-coral}"
-_rh_file() { echo "${RELEASE_HOMES_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release-homes.txt}"; }
+# The folder is read once, when this file is sourced: a caller that changes directory later (verify-release.sh does, into its work
+# folder) must still find the table; a lookup at call time with a relative $0 failed and made the tap name come out wrong (v1.4.142).
+_RH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_rh_file() { echo "${RELEASE_HOMES_FILE:-$_RH_DIR/release-homes.txt}"; }
 _rh_rows() { grep -vE '^[[:space:]]*(#|$)' "$(_rh_file)"; }
 release_home_current() { _rh_rows | tail -1 | awk '{print $2}'; }
 release_home_for_tag() {

@@ -37,6 +37,11 @@ eq "the tap moves with the variable" "$(RELEASE_TAP_REPO=subgentic/homebrew-cora
 eq "tap of an older home is that home's own" "$(release_tap_repo cdknorow/coral)" "cdknorow/homebrew-coral"
 eq "tap of an older home does not follow the variable" "$(RELEASE_TAP_REPO=subgentic/homebrew-coral release_tap_repo cdknorow/coral)" "cdknorow/homebrew-coral"
 
+# a caller that changes directory after sourcing (verify-release.sh does) still finds the table, also through a relative path (v1.4.142 got the tap wrong)
+RH_REL="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+eq "the tap name survives a cd after sourcing by a relative path" "$(cd "$RH_REL" && env -u RELEASE_HOMES_FILE bash -c '. tools/release-homes.sh; cd /; release_tap_name subgentic/coral')" "cdknorow/coral"
+eq "the home survives a cd after sourcing by a relative path" "$(cd "$RH_REL" && env -u RELEASE_HOMES_FILE bash -c '. tools/release-homes.sh; cd /; release_home_current')" "subgentic/coral"
+
 # the stable-name copies are expected from 1.4.130 on only (#5333)
 for v in v1.4.129 1.4.9 v1.3.200 v0.9.0; do if release_has_stable_names "$v"; then eq "no stable names expected for $v" yes no; else eq "no stable names expected for $v" no no; fi; done
 for v in v1.4.130 1.4.131 v1.4.130-rc1 v1.5.0 v2.0.0 1.10.0; do if release_has_stable_names "$v"; then eq "stable names expected for $v" yes yes; else eq "stable names expected for $v" no yes; fi; done

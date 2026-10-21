@@ -194,7 +194,7 @@ if [ -n "$meta" ]; then
       for f in Coral.dmg Coral-x64.msi Coral-x64-portable.zip coral-linux-amd64.tar.gz coral-linux-arm64.tar.gz; do
         grep -qF "($dlbase/$f)" <<<"$dlsec" || dlmiss="$dlmiss $f"
       done
-      grep -qF "brew install --cask ${dlhome%%/*}/coral/coral" <<<"$dlsec" || dlmiss="$dlmiss brew-line"
+      grep -qF "brew install --cask $(release_tap_name "$dlhome")/coral" <<<"$dlsec" || dlmiss="$dlmiss brew-line"
       [ -z "$dlmiss" ] && pass notes "Download section" "the five stable files of $TAG and the Homebrew line" || fail notes "Download section" "missing:$dlmiss"
     fi
   fi
