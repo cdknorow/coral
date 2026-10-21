@@ -35,7 +35,7 @@ awk -v h="## v$ARGUMENTS " 'index($0,h)==1{f=1;next} f&&/^## v[0-9]/{exit} f' RE
 ## 5. Verify what was published
 The release home is per tag (tools/release-homes.txt: up to v1.4.141 `cdknorow/coral`, v1.4.142 and later `subgentic/coral`): `. tools/release-homes.sh; home=$(release_home_for_tag v$ARGUMENTS)`. Download the assets into an empty folder (`gh release download v$ARGUMENTS -R "$home"`), then:
 - `cosign verify-blob` of `SHA256SUMS.txt` and both Linux tarballs against their `.sigstore.json` bundles (identity `https://github.com/$home/.github/workflows/release.yml@refs/tags/v…`, issuer `https://token.actions.githubusercontent.com`), and `shasum -a 256 -c SHA256SUMS.txt`.
-- `gh attestation verify <file> --repo "$home"` for every package and `SHA256SUMS.txt`.
+- `gh attestation verify <file> --owner "${home%%/*}" --signer-workflow "$home/.github/workflows/release.yml" --source-ref refs/tags/v$ARGUMENTS` for every package and `SHA256SUMS.txt` (by owner, not `--repo`: GitHub keeps an attestation with the owner that built the release, so after the move `--repo` finds nothing for v1.4.141 and earlier).
 - The DMG: `spctl -a -vv -t exec` on the app (Notarized Developer ID), `xcrun stapler validate`, `coral --version` prints the version, no entitlements.
 - The tap (`$RELEASE_TAP_REPO` of tools/release-homes.sh, today `cdknorow/homebrew-coral`; `Casks/coral.rb`) has the new version and the DMG's sha256; bump the in-repo `Casks/coral.rb` to match.
 - Run the "Published Standard Linux runtime verification" workflow with `-f tag=v$ARGUMENTS`.
