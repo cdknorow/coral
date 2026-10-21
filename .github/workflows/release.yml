@@ -970,7 +970,11 @@ jobs:
             echo "::notice::cask is at $CUR, newer than $VERSION; not downgrading"; exit 0
           fi
           sed -i -E "s/^  version \"[^\"]*\"$/  version \"${VERSION}\"/; s/^  sha256 \"[^\"]*\"$/  sha256 \"${SHA}\"/" Casks/coral.rb
-          if ! { grep -qx "  version \"${VERSION}\"" Casks/coral.rb && grep -qx "  sha256 \"${SHA}\"" Casks/coral.rb; }; then
+          # The download URL and the homepage follow the repository that built the release (the repository moved in v1.4.142; the
+          # tap did not): a URL that only works through GitHub's redirect would break if the old name were ever created again.
+          sed -i -E "s#^  url \"https://github.com/[^/\"]+/[^/\"]+/releases/download/#  url \"https://github.com/${GITHUB_REPOSITORY}/releases/download/#; s#^  homepage \"https://github.com/[^\"]*\"#  homepage \"https://github.com/${GITHUB_REPOSITORY}\"#" Casks/coral.rb
+          if ! { grep -qx "  version \"${VERSION}\"" Casks/coral.rb && grep -qx "  sha256 \"${SHA}\"" Casks/coral.rb \
+                 && grep -qx "  url \"https://github.com/${GITHUB_REPOSITORY}/releases/download/v#{version}/Coral.v#{version}.dmg\"" Casks/coral.rb; }; then
             echo "::error::cask not updated as expected"; exit 1
           fi
           git commit -qam "coral ${VERSION}"
