@@ -1382,3 +1382,15 @@
     .top-bar { padding: 7px 8px; flex-wrap: wrap; row-gap: 4px; }
     .nav-select { order: 3; flex: 1 1 100%; margin: 0; }
 }
+
+/* Text on a phone is at least 13px (coral-hub's Mobile probe found 10 to 12px in the Servers view and the agent list). Desktop sizes are unchanged. */
+@media (max-width: 767px) {
+    body .session-group-count,
+    body #mobile-session-list .session-goal,
+    body #mobile-session-list .session-status-chip,
+    body #mobile-session-list .session-mobile-meta-pill,
+    body .servers-intro, body .servers-empty,
+    body .machine-health-title, body .machine-health-status, body .machine-health-grid { font-size: var(--fs-md); }
+    /* the goal's box was a fixed 14px, which cut a 13px line (that base rule is for 12px on a desktop row): on a phone it is as high as its lines, up to the two this list's clamp allows */
+    body #mobile-session-list .session-goal { height: auto; }
+}
