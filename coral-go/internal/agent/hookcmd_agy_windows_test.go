@@ -151,3 +151,47 @@ func TestAgyHooksFolderIsPrivate(t *testing.T) {
 		secfiletest.RequirePrivate(t, p)
 	}
 }
+
+// #49: Codex runs its hooks through PowerShell on Windows (0.161), where a quoted path is a string
+// PowerShell prints, so the hook never ran. ResolvePowerShellHookCommand calls the tool by its
+// absolute path: run here as Codex runs it, in folders with a space and (x86), $ and an
+// apostrophe, from the decoy's folder, it runs the tools folder's copy. The old quoted form is
+// shown printing the path.
+func TestPowerShellHookCommandRunsUnderCodexsPowerShell(t *testing.T) {
+	ps, err := exec.LookPath("powershell.exe")
+	if err != nil {
+		t.Skip("no Windows PowerShell")
+	}
+	for _, folder := range []string{`Program Files (x86)\Coral`, `Coral`, `O'Brien $HOME`} {
+		t.Run(folder, func(t *testing.T) {
+			tools := filepath.Join(t.TempDir(), folder)
+			require.NoError(t, os.MkdirAll(tools, 0o700))
+			real := filepath.Join(tools, "coral-hook-agentic-state.exe")
+			copyTestBinary(t, real)
+			work := t.TempDir()
+			copyTestBinary(t, filepath.Join(work, "coral-hook-agentic-state.exe"))
+			t.Setenv(HookDirEnv, tools)
+
+			cmd := ResolvePowerShellHookCommand("coral-hook-agentic-state")
+			assert.True(t, strings.HasPrefix(cmd, "& '"), cmd)
+			run := func(command string) string {
+				c := exec.Command(ps, "-NoProfile", "-NonInteractive", "-Command", command)
+				c.Dir = work
+				c.Env = append(os.Environ(), hookEchoEnv+"=1", "PATH="+work+string(os.PathListSeparator)+os.Getenv("PATH"))
+				out, err := c.CombinedOutput()
+				require.NoError(t, err, "%s", out)
+				return strings.TrimSpace(string(out))
+			}
+			ran, err := os.Stat(run(cmd))
+			require.NoError(t, err)
+			want, err := os.Stat(real)
+			require.NoError(t, err)
+			assert.True(t, os.SameFile(want, ran), "ran the tools folder's hook")
+			if quoted := ResolveHookCommand("coral-hook-agentic-state"); strings.HasPrefix(quoted, `"`) {
+				assert.Equal(t, strings.Trim(quoted, `"`), run(quoted), "the old form: PowerShell prints the path, runs nothing")
+			}
+		})
+	}
+	t.Setenv(HookDirEnv, t.TempDir())
+	assert.Equal(t, "coral-hook-agentic-state", ResolvePowerShellHookCommand("coral-hook-agentic-state"), "no tool: the bare name, PATH only")
+}
