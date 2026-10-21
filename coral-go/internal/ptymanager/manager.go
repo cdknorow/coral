@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -167,6 +168,65 @@ func (m *PTYBackend) SendLineCtx(ctx context.Context, name, text string) error {
 		return tmux.ErrEnterWithheld
 	}
 	return m.sendInput(ctx, name, []byte(EnterKey))
+}
+
+// pastesAsText reports whether text for an agent goes in as one paste rather than as typed keys: it has a line break
+// (LF or CR, so CRLF too) or is longer than a command typed into a shell may be. tmux pastes the same text
+// (typeToTarget), so an agent that treats a paste differently from fast keystrokes (Codex's paste-burst, a menu that
+// ignores a paste) sees the same input on both backends.
+func pastesAsText(text string) bool {
+	return strings.ContainsAny(text, "\r\n") || len(text) > inlineCommandLimit
+}
+
+// SendText types text for an agent and submits it with Enter. Text with a line break, or a long one, is pasted: one
+// bracketed paste (ESC [ 200 ~ ... ESC [ 201 ~) when the application enabled bracketed paste, as tmux's paste-buffer -p
+// does, so the lines are one input and CRLF is one line break; an application that did not is given the lines with CR
+// for each break, as tmux's paste-buffer gives them. Short single-line text is typed (SendLineCtx). ctx's
+// WithBeforeEnter check runs before the Enter, as for every typed send.
+func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
+	if !pastesAsText(text) {
+		return m.SendLineCtx(ctx, name, text)
+	}
+	m.mu.RLock()
+	s, ok := m.sessions[name]
+	m.mu.RUnlock()
+	if !ok || !s.isRunning() {
+		return fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
+	}
+	s.promptSemOnce.Do(func() { s.promptSem = make(chan struct{}, 1) })
+	select {
+	case s.promptSem <- struct{}{}:
+		defer func() { <-s.promptSem }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	body := tmux.SanitizePaste(text) // CRLF and CR are one LF; control characters, ESC included, are dropped
+	if s.bracketedPaste.Load() {
+		body = "\x1b[200~" + body + "\x1b[201~"
+	} else {
+		body = strings.ReplaceAll(body, "\n", EnterKey)
+	}
+	if n, err := s.writeFull([]byte(body)); err != nil {
+		if n > 0 {
+			return tmux.MarkDeliveryUnknown(fmt.Errorf("paste write failed after %d of %d bytes: %w", n, len(body), err))
+		}
+		return fmt.Errorf("write text: %w", err) // nothing reached the PTY
+	}
+	// Input has started: finish regardless of ctx, bounded by the fixed delay.
+	time.Sleep(waits().promptSubmitDelay)
+	if !tmux.EnterAllowed(ctx) {
+		return tmux.ErrEnterWithheld // a prompt opened: the gate holds the Enter (#3431)
+	}
+	if n, err := s.writeFull([]byte(EnterKey)); err != nil || n != len(EnterKey) {
+		if err == nil {
+			err = io.ErrShortWrite
+		}
+		return tmux.MarkDeliveryUnknown(fmt.Errorf("pasted the text but sending Enter failed: %w", err))
+	}
+	return nil
 }
 
 // lineSubmitDelay separates typed text from the submitting Enter in SendLine.
