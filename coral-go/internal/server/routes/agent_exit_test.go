@@ -19,6 +19,7 @@ import (
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #3613 A: the exit notice and auto-resume for agents that died on their own.
@@ -256,7 +257,7 @@ func TestAutoResumeSettingIsABoolean(t *testing.T) {
 
 // Security's MUST on #3647: a team launch never waits for the spacing. Through Coral Hub the
 // connector cancels a request with no response headers at its deadline (#3624), which ends the
-// request's context; here that context has a 5 s deadline, and a team of 15 still launches whole:
+// request's context; here that context has the Hub's request deadline less a margin (25 s), and a team of 15 still launches whole:
 // the call answers within it with all 15 started (their sessions and terminals exist), the team's
 // first CLI is typed at once, and each later start is typed on a background context when its
 // slot comes, 2-3 s apart, after the request's context has ended.
@@ -275,10 +276,11 @@ func TestTeamLaunchOf15AnswersAtOnceAndStartsAllLater(t *testing.T) {
 		agents[i] = map[string]any{"name": fmt.Sprintf("Agent %02d", i+1), "prompt": "work"}
 	}
 	body, _ := json.Marshal(map[string]any{"board_name": team, "working_dir": t.TempDir(), "agent_type": "claude", "agents": agents})
-	// The deadline is the hub's, scaled for a loaded host: waiting for the spacing would take 14 gaps of at least TeamGap each (about
-	// 28 s), well past it, so the call still shows it did not wait; a 5 s deadline failed when a loaded Windows run took longer than that
-	// to start 15 agents (#83).
-	deadline := 25 * time.Second
+	// The deadline follows the Hub's (less a margin for a loaded host): waiting for the spacing would take 14 gaps of at least TeamGap each
+	// (28 s), past it, so the call still shows it did not wait; a fixed 5 s failed when a loaded Windows run took longer than that to start
+	// 15 agents (#83). The guard below says so if the Hub's deadline ever grows past what the spacing would take.
+	deadline := tunnel.DefaultRequestDeadline - 5*time.Second
+	require.Less(t, deadline, 14*ptymanager.TeamGap, "a call that waited for the spacing would still be caught by the deadline")
 	ctx, cancel := context.WithTimeout(context.Background(), deadline)
 	defer cancel()
 	req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(body)).WithContext(ctx)
