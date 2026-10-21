@@ -29,6 +29,11 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
+      # The Go toolchain the module asks for: the linker-flag check below builds ./cmd/coral (#5539).
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
       - name: Resolve the tier, version and program lists
         id: r
         run: |
@@ -38,6 +43,7 @@ jobs:
           bash tests/release/require_cosign_test.sh
           bash tests/release/release_homes_test.sh
           bash tests/release/download_section_test.sh   # the Download section of the notes (#5467); no network
+          bash tests/release/ldflags_build_test.sh      # every build script's -X flags take effect: version and PostHog key land in the binary (#5539)
           bash tests/release/resolve_release.sh "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
 
   # ── Linux ──────────────────────────────────────────────────────
