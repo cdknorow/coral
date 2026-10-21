@@ -552,7 +552,6 @@
 
 /* By Model shows a readable name ("Opus 5.5"), not an id, so it is not set in the code font (#4589). */
 #cost-by-model .cost-model-name, #cost-by-thinking .cost-model-name { font-family: inherit; }
-}
 
 /* The usage with no thinking level recorded (#4969): not a level, so quieter than the rows that are. */
 #cost-by-thinking .cost-table tr.cost-row-unreported td { color: var(--text-muted); }

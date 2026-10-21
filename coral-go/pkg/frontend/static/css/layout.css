@@ -853,19 +853,7 @@ body.panel-dragging .sidebar {
     margin-bottom: 16px;
 }
 
-    font-size: 0.6875rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-muted);
-    width: var(--welcome-row-width);
-    margin-bottom: 8px;
-
 /* Simplified launch page */
-.welcome {
-    display: block;
-    padding: clamp(36px, 7vh, 80px) 28px;
-}
 .welcome-shell { width: min(640px, 100%); margin: 0 auto; }
 .welcome-header { margin-bottom: 30px; }
 .welcome-eyebrow { display: block; margin-bottom: 10px; color: var(--accent); font-size: 0.6875rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
