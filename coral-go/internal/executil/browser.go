@@ -1,13 +1,23 @@
 package executil
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 )
 
-// OpenBrowser opens url in the user's browser.
+// OpenBrowser opens url in the user's browser. Only a plain http or https address (WebURL) is
+// handed to the system's opener, which would otherwise open or run a file or start a custom
+// scheme's handler (#78 T1); anything else is not opened. A file Coral wants shown (its log) goes
+// through OpenFile.
 func OpenBrowser(url string) {
-	argv := browserCommand(runtime.GOOS, url)
+	u, ok := WebURL(url)
+	if !ok {
+		return
+	}
+	argv := browserCommand(runtime.GOOS, u)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	if runtime.GOOS == "windows" {
 		HideWindow(cmd)
@@ -17,14 +27,44 @@ func OpenBrowser(url string) {
 
 // browserCommand is the argv that opens url on goos. On Windows the URL goes to the URL
 // protocol handler directly, never through cmd.exe, which would read '&' or '|' in it as a
-// command separator (#3690, #3689 finding 3).
+// command separator (#3690, #3689 finding 3). The handler is named by its absolute path in the
+// system folder, so a rundll32 elsewhere on PATH is never the one started (#78 T1).
 func browserCommand(goos, url string) []string {
 	switch goos {
 	case "darwin":
 		return []string{"open", url}
 	case "windows":
-		return []string{"rundll32", "url.dll,FileProtocolHandler", url}
+		return []string{systemRundll32(), "url.dll,FileProtocolHandler", url}
 	default:
 		return []string{"xdg-open", url}
 	}
+}
+
+// openableFileExts are the files OpenFile shows: Coral's own logs.
+var openableFileExts = map[string]bool{".log": true, ".txt": true}
+
+// OpenFile shows a log file Coral wrote (the tray's "Open Log") in the system's default program:
+// an absolute path to a regular file with a .log or .txt extension, never a link, a program or a
+// script (the opener runs what it is given, #78 T1). It reports whether it started the opener.
+func OpenFile(path string) bool {
+	if path == "" || !filepath.IsAbs(path) || strings.HasPrefix(path, "-") || !openableFileExts[strings.ToLower(filepath.Ext(path))] {
+		return false
+	}
+	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	var argv []string
+	switch runtime.GOOS {
+	case "darwin":
+		argv = []string{"open", "-t", path}
+	case "windows":
+		argv = []string{systemRundll32(), "url.dll,FileProtocolHandler", path}
+	default:
+		argv = []string{"xdg-open", path}
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	if runtime.GOOS == "windows" {
+		HideWindow(cmd)
+	}
+	return cmd.Start() == nil
 }

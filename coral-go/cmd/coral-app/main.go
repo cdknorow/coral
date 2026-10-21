@@ -148,9 +148,11 @@ func main() {
 	installEditMenu()
 	log.Println("[WEBVIEW] Edit menu dispatched")
 
-	log.Printf("[WEBVIEW] creating webview (devtools=%v)", debugMode)
-	// In debug mode, enable DevTools (pass true to webview.New)
-	w := webview.New(debugMode)
+	// DevTools give script access to the signed-in dashboard: only a dev build opens them, whatever --debug or CORAL_DEBUG
+	// say (they switch the debug LOG on in every build, #78 W2).
+	devTools := debugMode && config.TierDevTools
+	log.Printf("[WEBVIEW] creating webview (devtools=%v)", devTools)
+	w := webview.New(devTools)
 	webviewInstance = w
 	log.Println("[WEBVIEW] webview created successfully")
 	defer func() {
@@ -350,6 +352,12 @@ func main() {
 		}()
 	})
 	w.Init(fmt.Sprintf(`(function(){ if (location.origin === %q && location.pathname === '/auth' && window._coralAppSignIn) window._coralAppSignIn(new URLSearchParams(location.search).get('return_to') || '/'); })();`, baseOrigin))
+
+	// The bindings above are installed in every page the window shows, and only clicks are intercepted (linkInterceptScript): a script
+	// navigation, a redirect or a form post can still take the window to another origin. Added after the Binds so it runs after them,
+	// this takes the native functions away from any page that is not this Coral's dashboard (#78 W1). A native navigation allowlist
+	// (WebView2 NavigationStarting) is still wanted: webview_go does not expose it.
+	w.Init(fmt.Sprintf(`(function(){ if (location.origin !== %q) { delete window._coralOpenExternal; delete window._coralAppSignIn; delete window._coralLog; } })();`, baseOrigin))
 
 	log.Printf("[WEBVIEW] navigating to %s", loginlink.Redact(startURL))
 	w.Navigate(startURL)

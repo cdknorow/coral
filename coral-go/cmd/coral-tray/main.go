@@ -32,6 +32,7 @@ import (
 	"fyne.io/systray"
 	"github.com/gen2brain/beeep"
 	"github.com/shirou/gopsutil/v4/process"
+	"github.com/subgentic/coral/internal/agentenv"
 	"github.com/subgentic/coral/internal/cliauth"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/executil"
@@ -369,7 +370,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 				case <-mUpdate.ClickedCh:
 					go func() { defer safego.Recover("coral-tray/main:checkForUpdates"); checkForUpdates(url, dataDir) }()
 				case <-mLog.ClickedCh:
-					executil.OpenBrowser(filepath.Join(dataDir, "tray.log"))
+					executil.OpenFile(filepath.Join(dataDir, "tray.log")) // a log file only, never a program (#78 T1)
 				case <-mRetry.ClickedCh:
 					log.Printf("[supervise] Retry from the menu")
 					sup.retry()
@@ -675,7 +676,7 @@ func launchCoralApp(url string, mint func() (string, error)) error {
 	}
 
 	cmd := exec.Command(appPath, "--url", url, "--data-dir", coralAppDataDir)
-	cmd.Env = append(os.Environ(), "CORAL_APP_LOGIN_URL="+loginlink.Or(url, mint))
+	cmd.Env = append(agentenv.Filter(os.Environ()), "CORAL_APP_LOGIN_URL="+loginlink.Or(url, mint)) // Coral's server settings stay out of the app (#78 T3)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
