@@ -1,0 +1,62 @@
+name: Re-verify releases
+
+# Release provenance, part 2 (#5550, Security's rule 3): once a week, the latest three published releases are checked again from the files
+# the release run itself kept (its artifacts), not downloaded from the release (a download there counts as a user download, #4936):
+# every asset's sha256 against GitHub's digest of the published asset, the checksums against the signed SHA256SUMS.txt (the identity of this
+# repository's release.yml at that tag, pinned by cosign), the Sigstore bundles, the program lists and versions. A release that changed after
+# it was published, or whose signatures no longer verify, turns this run red. Runs only from main.
+#
+# A release is checked at the stage it is in: a pre-release (published, not yet approved) as agentic, an approved one as approved.
+on:
+  schedule:
+    - cron: "17 5 * * 1"   # Mondays, 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"   # verify-release runs the release's own programs: none may send a usage event
+
+concurrency:
+  group: reverify-releases
+  cancel-in-progress: false
+
+jobs:
+  reverify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.6"
+      - name: Verify the latest three releases again
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          # the three newest published plain-tag releases by VERSION (not by date), approved or waiting
+          mapfile -t TAGS < <(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" \
+            --jq '.[]|select(.draft==false)|.tag_name' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -3)
+          [ "${#TAGS[@]}" -gt 0 ] || { echo "::error::no plain-tag release found"; exit 1; }
+          fail=0
+          for tag in "${TAGS[@]}"; do
+            pre="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq .prerelease)"
+            stage=approved; [ "$pre" = true ] && stage=agentic
+            echo "::group::verify-release $tag (stage $stage)"
+            if bash tools/verify-release.sh "$tag" --stage "$stage" --require-cosign; then
+              echo "### $tag ($stage): verified" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "### $tag ($stage): NOT verified" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$tag did not re-verify"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$fail"
