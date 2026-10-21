@@ -218,6 +218,8 @@ func (s *Store) AttachPatches(ctx context.Context, project string, id int64, act
 		}
 		reopened.DelegatedBy = "superseded by a new patch from " + actor
 		reopened.SupersededBy = actor
+	} else if patchRow {
+		round.Revision++ // a burst join: an approval must name this revision
 	}
 	if err := saveWorkflow(ctx, tx, id, w); err != nil {
 		return nil, nil, err

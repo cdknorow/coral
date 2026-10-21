@@ -364,3 +364,47 @@ func TestABurstOfPatchAttachesIsOneRoundUntilAVerdictOrTheWindowEnds(t *testing.
 	require.NotNil(t, r5)
 	assert.Equal(t, 5, r5.Round)
 }
+
+// A burst join must never let an approval cover a row the approver did not read (Orchestrator, #5689 part 4): each join bumps the round's
+// revision, an approval names the revision it read, and an older one is refused, like a stale round.
+func TestAnApprovalNamesTheRevisionOfTheRoundItRead(t *testing.T) {
+	e := newVerEnv(t)
+	id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1")
+	_, r, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d2")})
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, 0, r.Revision, "a round just opened has had no join")
+	// the reviewer reads round 2, revision 0; then the same person's next patch joins it
+	task, joined, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d3")})
+	require.NoError(t, err)
+	assert.Nil(t, joined)
+	assert.Equal(t, 1, lastRound(t, task).Revision)
+	// the approval of what they read (revision 0) is refused, as is one that names no revision, and the task is not completed
+	_, err = e.s.ApproveReviewAt(e.ctx, "team", id, "rev1", "ok", 2, 0)
+	require.ErrorContains(t, err, "changed since you read it")
+	_, err = e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 2)
+	require.ErrorContains(t, err, "changed since you read it")
+	assert.Equal(t, "review_pending", e.task(id).Status)
+	// after reading revision 1 the approval goes through, and what is approved is the newest row
+	v, err := e.s.ApproveReviewAt(e.ctx, "team", id, "rev1", "ok", 2, 1)
+	require.NoError(t, err)
+	require.True(t, v.Complete)
+	assert.Equal(t, []string{"d3"}, lastRound(t, e.task(id)).ApprovedDigests)
+}
+
+func TestAnApprovalThenAJoinOpensANewRoundInstead(t *testing.T) {
+	e := newVerEnv(t)
+	id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1", "rev2")
+	_, _, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d2")})
+	require.NoError(t, err)
+	_, err = e.s.ApproveReviewAt(e.ctx, "team", id, "rev1", "ok", 2, 0) // the round has had no join: revision 0 is right
+	require.NoError(t, err)
+	// the same person's next patch, inside the window, but a verdict exists: a new round, not a join
+	_, r, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{patchRow("fix", "d3")})
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, 3, r.Round)
+	// a round nobody has joined takes an approval that names no revision (existing callers)
+	_, err = e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 3)
+	require.NoError(t, err)
+}
