@@ -2,6 +2,7 @@
  * (the Inbox tab's "Tasks for you" and the "Read the whole message" control of a Saved for later item). The component itself is inbox_panel.js; Coral Hub mounts the same file with its own adapter. */
 import { importOnce } from './import_once.js';
 import { makeLinkPolicy } from './safe_markdown.js';
+import { build as buildRoute } from './routes.js';
 import { onAccountForgotten } from './local_store.js';
 import { keyLabel, pathId, serverFetch } from './server_base.js';
 const { mountInbox, clearInboxDrafts, INBOX_CONTRACT } = await importOnce('./inbox_panel.js'); // the component (shared with the hub); this file is the one that is Coral's
@@ -14,6 +15,20 @@ async function json(resp) {
     try { data = await resp.json(); } catch { /* no body */ }
     if (!resp.ok) throw new Error((data && typeof data.error === 'string' && data.error) || `HTTP ${resp.status}`);
     return data;
+}
+
+const ARTIFACT_LINK_RE = /coral:\/\/artifacts\/([0-9a-f]{64})(?![0-9a-f])/g;
+export const ARTIFACT_LOOKUPS_MAX = 20;
+
+/** The link policy for ONE render of `text`: each distinct lowercase 64-hex artifact id in it (at most ARTIFACT_LOOKUPS_MAX, one request each) is asked for at GET /api/artifacts/<hex>/meta, and
+ *  only an answer of exactly 200 makes it a link. 403, 404, any other status and a network failure leave it as text; no path is built from text without that 200. Nothing is kept between renders. */
+export async function artifactLinkPolicy(text) {
+    const ids = [...new Set([...String(text == null ? '' : text).matchAll(ARTIFACT_LINK_RE)].map(m => m[1]))].slice(0, ARTIFACT_LOOKUPS_MAX);
+    const found = new Set();
+    await Promise.all(ids.map(async hex => {
+        try { if ((await fetch(`/api/artifacts/${hex}/meta`)).status === 200) found.add(hex); } catch { /* text */ }
+    }));
+    return makeLinkPolicy({ artifactExists: hex => found.has(hex) });
 }
 
 /** The adapter for this Coral (the Operator's own, on this computer). */
@@ -39,7 +54,9 @@ export const coralInboxAdapter = {
         const d = await json(await serverFetch(item.server, `/api/saved/${pathId(item.id)}/message`));
         return { text: typeof d.text === 'string' ? d.text : '', partial: !!d.partial, reason: typeof d.reason === 'string' ? d.reason : '' };
     },
-    linkPolicy: makeLinkPolicy({}), // no artifact lookup yet: artifact links stay plain text until there is one that says the id exists
+    taskHref(task) { return buildRoute({ view: 'board', id: task.project }); }, // the task's board (the panel keeps it only as a same-origin path)
+    linkPolicy: makeLinkPolicy({}), // without a lookup, artifact links stay plain text
+    prepareLinks: artifactLinkPolicy,
 };
 
 let _inbox = null;
