@@ -64,7 +64,14 @@ if [ "$print" = 1 ]; then
   case "$state" in
     signed-in)
       log PRINT
-      [ "$tty" = 0 ] && cat > /dev/null
+      if [ "$tty" = 0 ]; then
+        # the model list is asked as an initialize control request on stream-json (agentmodels.fetchClaude): the real claude answers it at once and goes on reading, so the stub does too
+        case " $* " in *" --input-format stream-json "*)
+          IFS= read -r _req
+          echo '{"type":"control_response","response":{"subtype":"success","request_id":"coral-models","response":{"models":[{"value":"stub-model","displayName":"Stub model","description":"the stand-in model","supportedEffortLevels":["low","high"]}]}}}';;
+        esac
+        cat > /dev/null
+      fi
       case " $* " in
         *" json "*) echo '{"type":"result","subtype":"success","is_error":false,"result":"stub reply","session_id":"stub","total_cost_usd":0}';;
         *) echo "stub reply";;
