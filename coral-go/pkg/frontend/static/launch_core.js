@@ -133,7 +133,7 @@ function inlineProblem(input, message) {
     line.className = 'field-error';
     line.id = `${input.id || 'field'}-error`;
     line.textContent = inlineProblem(input, message);
-    (input.closest('.dir-input-row') || input).insertAdjacentElement('afterend', line);
+    (input.closest('label') || input.closest('.dir-input-row') || input).insertAdjacentElement('afterend', line); // after the label, not inside it: inside, the words became part of the field's name
     input.setAttribute('aria-describedby', previousDescribedBy ? `${previousDescribedBy} ${line.id}` : line.id);
     input.setAttribute('aria-invalid', 'true');
     input.classList.add('input-invalid');

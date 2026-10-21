@@ -46,6 +46,7 @@ const BASE = require('./test_base').BASE;
         let f = await inline('launch-dir');
         assert.match(f.text, /Choose a working directory.*Browse/, JSON.stringify(f)); assert.ok(f.described && f.visible && f.invalid === 'true', JSON.stringify(f));
         assert.ok((await ev(`[...document.querySelectorAll('.toast')].some(t => /Working directory is required/.test(t.textContent))`)), 'the toast still says it');
+        assert.deepEqual(await ev(`(() => { const f = document.getElementById('launch-dir'), e = document.getElementById('launch-dir-error'); return { inLabel: f.closest('label').contains(e), nameHasError: f.closest('label').textContent.includes(e.textContent), after: f.closest('label').nextElementSibling === e }; })()`), { inLabel: false, nameHasError: false, after: true }, 'the line is after the label, so it is not part of the field name');
         await ev(`document.getElementById('launch-dir').value = '/x'; document.getElementById('launch-dir').dispatchEvent(new Event('input', { bubbles: true })); true`);
         f = await inline('launch-dir'); assert.equal(f.text, null, 'cleared by the edit'); assert.equal(f.invalid, null);
         assert.equal(await ev(`document.getElementById('launch-dir').getAttribute('aria-describedby')`), null, 'and the description with it');
@@ -102,6 +103,16 @@ const BASE = require('./test_base').BASE;
         await ev(`(() => { const sel = ${acf}.querySelector('.acf-permission-mode'); sel.value = 'bypassPermissions'; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         assert.equal((await groups()).allow.shown, false);
         assert.equal(await ev(`${acf}.querySelector('[id$="-perms-allow"] .perm-chip[data-cap="file_read"]').classList.contains('active')`), true, 'a hidden Allow row keeps its state: looking at a preset does not change it');
+        // The shell patterns are Allow entries: with Shell allowed, Bypass hides the patterns field with the Allow row, and the other modes bring it back with its value.
+        const patterns = () => ev(`(() => { const p = ${acf}.querySelector('.perms-shell-patterns'); return { shown: p.getClientRects().length > 0, value: p.querySelector('.perms-shell-input').value }; })()`);
+        const mode = m => ev(`(() => { const sel = ${acf}.querySelector('.acf-permission-mode'); sel.value = ${JSON.stringify(m)}; sel.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        await mode('default');
+        await ev(`${acf}.querySelector('[id$="-perms-allow"] .perm-chip[data-cap="shell"]').click(); { const i = ${acf}.querySelector('.perms-shell-input'); i.value = 'git status'; } true`);
+        assert.deepEqual(await patterns(), { shown: true, value: 'git status' }, 'Shell allowed: its patterns are asked for');
+        await mode('bypassPermissions');
+        assert.equal((await patterns()).shown, false, 'Bypass: no Allow row, so no patterns field either');
+        await mode('acceptEdits');
+        assert.deepEqual(await patterns(), { shown: true, value: 'git status' }, 'any other mode: the field is back with what was typed');
         await ev(`window.hideLaunchModal(); true`);
 
         console.log('6. Team view: Remind agent is on an agent, not on a terminal');

@@ -3747,7 +3747,8 @@ input[aria-invalid="true"] {
 
 /* The line under a rejected field: the reason and the next step (launch_core.js markFieldInvalid). */
 .acf-default-note { display: block; margin-top: 2px; } /* where this field's default lives: Settings (UI audit #5589, finding 22) */
-.field-error { margin: 4px 0 0; color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); line-height: 1.4; overflow-wrap: anywhere; }
+label:has(+ .field-error) { margin-bottom: 0; } /* the line sits after the label and takes the label's space below it */
+.field-error { margin: 4px 0 .9rem; color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); line-height: 1.4; overflow-wrap: anywhere; }
 
 /* Auto-accept (#3182): the AUTO chip (agent row and header), the menu switch's state and the warning dialog. */
 .auto-accept-chip {

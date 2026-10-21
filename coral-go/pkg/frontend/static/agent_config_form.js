@@ -103,7 +103,10 @@ function _syncEnforcement(container) {
     // Claude in Bypass Permissions mode never asks, so Allow pre-approves nothing: the row is not shown (its
     // chips keep their state, so a saved preset is not changed by looking at it) and the line above says why.
     const allowGroup = container.querySelector(`#${CSS.escape(uid)}-perms-allow`)?.closest('.perms-group');
-    if (allowGroup) allowGroup.hidden = _agentFamilyIsClaude(agentType) && permMode === 'bypassPermissions';
+    const noAllow = _agentFamilyIsClaude(agentType) && permMode === 'bypassPermissions';
+    if (allowGroup) allowGroup.hidden = noAllow;
+    const patterns = container.querySelector('.perms-shell-patterns'); // the shell patterns are Allow entries: no Allow row, no patterns field (its value is kept)
+    if (patterns) patterns.hidden = noAllow;
     for (const chip of container.querySelectorAll(`#${CSS.escape(uid)}-perms-deny .perm-chip`)) {
         chip.disabled = !e.denyEnforced && !chip.classList.contains('active');
     }
