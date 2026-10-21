@@ -59,7 +59,7 @@ func TestStartupModulesIsTheRealGraph(t *testing.T) {
 			t.Errorf("startup graph lacks %s", must)
 		}
 	}
-	for _, lazy := range []string{"modals.js", "workflows.js", "docs.js", "cost_dashboard.js", "chat_search.js", "theme_config.js"} {
+	for _, lazy := range []string{"modals.js", "workflows.js", "docs.js", "cost_dashboard.js", "chat_search.js", "theme_config.js", "cloud_connect.js", "inbox_panel.js", "inbox_coral.js"} {
 		if in[lazy] {
 			t.Errorf("%s is loaded lazily, it must not be in the startup graph", lazy)
 		}

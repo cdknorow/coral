@@ -131,8 +131,11 @@ async function run() {
             await showHome(mobile);
             const hm0 = await home();
             check(`${label}: Coral Hub stays reachable from the home screen`, hm0.shown && hm0.items.length > 0, JSON.stringify(hm0));
+            const ccLoaded = () => ev(`performance.getEntriesByType('resource').filter(e => /\\/cloud_connect\\.js/.test(e.name)).length`);
+            const ccBefore = await ccLoaded();
             await click('#editions-home [data-editions="home-hub"]');
             await until(`(() => { const m = document.getElementById('editions-modal'); return !!m && m.style.display !== 'none'; })()`, 'the screen from home');
+            check(`${label}: the connect flow (cloud_connect.js) loads when the screen is opened, once, not with the page (#5818)`, ccBefore <= 1 && (await ccLoaded()) === 1, `${ccBefore} -> ${await ccLoaded()}`);
             check(`${label}: the home card still opens Connect to Coral Hub`, ((await screen()) || {}).title === 'Connect to Coral Hub');
             await escape();
             // An explicit URL (--cloud-url / CORAL_CLOUD_URL): the server offers it, as with the flag.
