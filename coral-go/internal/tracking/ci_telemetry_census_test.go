@@ -65,6 +65,7 @@ var notAStarter = map[string]string{
 	"tests/release/verify_encrypted_bundle.ps1": "Windows counterpart: runs the from-source (keyless) bundle's --encryption-self-test, which carries no PostHog key and sends nothing",
 	"tests/release/resolve_release_test.sh":     "unit-tests resolve_release.sh; no Coral",
 	"tests/release/download_section_test.sh":    "unit-tests download-section.sh, which only prints the release notes' Download links; starts no Coral",
+	"tests/release/gate_check_test.py":          "unit-tests the required-check logic with fake run lists; the repository name subgentic/coral is only a string, no Coral starts",
 	// Sourced by run_agent_tasks.sh / run.sh (the parent exports the opt-out); not a top-level runner.
 	"tests/stress/agent_task_assignment.sh":   "sourced by run_agent_tasks.sh",
 	"tests/stress/agent_task_workflows.sh":    "sourced by run_agent_tasks.sh",
