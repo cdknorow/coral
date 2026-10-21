@@ -264,6 +264,9 @@ func (s *session) killWithin(grace time.Duration) error {
 	if terminateTypesCtrlC {
 		// On Windows, Terminate types Ctrl-C into the console (pty_windows.go).
 		terminalinput.RecordInput(terminalinput.Internal, s.name, "\x03") // a key, as tmux sends (and logs) it (#60 step 4)
+		if n, ok := s.proc.(stopNamer); ok {
+			n.setStopName(s.name) // so the second Ctrl-C and the exit line of the polite stop are recorded too
+		}
 	}
 	s.proc.Terminate()
 
