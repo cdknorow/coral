@@ -18,8 +18,8 @@ import (
 	"github.com/subgentic/coral/internal/agentenv"
 	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/naming"
-	"github.com/subgentic/coral/internal/psquote"
 	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/winshell"
 )
 
 // session represents a single running PTY session.
@@ -369,10 +369,8 @@ func pickShell(goos, coralShell, userShell string, lookPath func(string) (string
 		cmdIgnored = true
 	}
 	if goos == "windows" {
-		for _, ps := range psquote.PowerShells {
-			if _, err := lookPath(ps); err == nil {
-				return []string{ps}, cmdIgnored, nil
-			}
+		if ps := winshell.Pick(coralShell, lookPath); ps != "" {
+			return []string{ps}, cmdIgnored, nil
 		}
 		return nil, cmdIgnored, errNoPowerShell
 	}

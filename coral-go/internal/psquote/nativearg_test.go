@@ -32,16 +32,3 @@ func TestNativeArg(t *testing.T) {
 		assert.Equal(t, want, NativeArg(s), "%s", s)
 	}
 }
-
-func TestLegacyNativeArgs(t *testing.T) {
-	for shell, want := range map[string]bool{
-		"powershell.exe": true,
-		`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`: true,
-		"pwsh.exe":                               false,
-		"pwsh":                                   false,
-		`C:\Program Files\PowerShell\7\pwsh.exe`: false,
-		"PWSH.EXE":                               false,
-	} {
-		assert.Equal(t, want, LegacyNativeArgs(shell), shell)
-	}
-}

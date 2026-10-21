@@ -207,8 +207,8 @@ func (a *CodexAgent) launchCommandBefore4845(params LaunchParams) (string, error
 	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
 
 	if len(sysParts) > 0 {
-		sysFile := files.write("codex_instructions", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
-		instructions := fmt.Sprintf(`developer_instructions="%s"`, formatCatSubstitution(sysFile))
+		// The file's writing and reading back as #29 made it, in both builders.
+		instructions := files.promptArg("codex_instructions", params.SessionID, "md", "developer_instructions=", strings.Join(sysParts, "\n\n"))
 		raw = append(raw, instructions)
 		parts = append(parts, "-c", instructions)
 	}
@@ -339,8 +339,7 @@ func (a *CodexAgent) launchCommandBefore4845(params LaunchParams) (string, error
 	}
 
 	if actionPrompt != "" {
-		promptFile := files.write("codex_prompt", params.SessionID, "txt", []byte(actionPrompt))
-		arg := FormatPromptFileArg(promptFile)
+		arg := files.promptArg("codex_prompt", params.SessionID, "txt", "", actionPrompt)
 		raw = append(raw, arg)
 		// "--": a prompt that is only a flag ("--dangerously-skip-permissions") is the
 		// prompt, not that option (#3690). The prompt is the last argument.

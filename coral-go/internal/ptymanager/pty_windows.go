@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/subgentic/coral/internal/agentprio"
 	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/winshell"
 	"strings"
 	"sync"
 
@@ -105,7 +106,14 @@ func (p *windowsPTY) Close() error {
 
 // shellWrap wraps a command string for execution via PowerShell on Windows.
 // PowerShell is used because agent launch commands use PowerShell syntax
-// (e.g. $(Get-Content -Raw ...)) which cmd.exe cannot interpret.
+// (e.g. $(Get-Content -Raw ...)) which cmd.exe cannot interpret. It is the PowerShell the
+// launch line was written for (winshell.PowerShell, as the agent package's quoting): a line
+// escaped for Windows PowerShell 5.1 run by pwsh, or the reverse, would split or keep its
+// escapes (#29, Security's #20 F3).
 func shellWrap(cmd string) []string {
-	return []string{"powershell.exe", "-NoProfile", "-Command", cmd}
+	ps := winshell.PowerShell()
+	if ps == "" {
+		ps = "powershell.exe" // none on PATH: the launch fails as it did, naming it
+	}
+	return []string{ps, "-NoProfile", "-Command", cmd}
 }

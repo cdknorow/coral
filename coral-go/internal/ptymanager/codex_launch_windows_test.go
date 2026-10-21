@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/psquote"
+	"github.com/subgentic/coral/internal/winshell"
 )
 
 // #12: a Codex launch on Windows PowerShell 5.1, with Coral installed under a folder like
@@ -72,7 +74,9 @@ func TestCodexLaunchScriptPassesItsArgumentsThroughWindowsPowerShell(t *testing.
 		assert.Contains(t, args, `hooks.`+event+`=[{hooks=[{type="command",command=`+hook+`}]}]`, "%s: %q", event, args)
 	}
 	assert.Contains(t, args, `model="gpt-5"`, "a user's -c value")
-	assert.Equal(t, string(wantPrompt), args[len(args)-1], "the prompt, byte for byte (audit F6: 5.1 read it as Windows-1252)")
+	// The file holds the prompt escaped for 5.1 (#29): what arrived is exactly what it encodes.
+	assert.Equal(t, string(wantPrompt), psquote.NativeArg(args[len(args)-1]), "the prompt, byte for byte (audit F6: 5.1 read it as Windows-1252)")
+	assert.True(t, strings.HasPrefix(args[len(args)-1], `say "hi" to C:\dir\ and "a b\" — héllo wörld 日本語 🎉`), args[len(args)-1])
 	assert.Contains(t, args[len(args)-1], "héllo wörld 日本語 🎉")
 	var instructions string
 	for _, a := range args {
@@ -94,4 +98,19 @@ func copyFile(t *testing.T, from, to string) {
 	_, err = io.Copy(dst, src)
 	require.NoError(t, err)
 	require.NoError(t, dst.Close())
+}
+
+// #29 (Security's #20 F3): a launch command is wrapped in the PowerShell its line was written
+// for: shellWrap and the agent package's quoting both take winshell.PowerShell, which follows
+// CORAL_SHELL (a pwsh named there is never paired with a line escaped for 5.1, or the reverse).
+func TestShellWrapRunsThePowerShellTheLineIsWrittenFor(t *testing.T) {
+	for _, shell := range []string{`C:\PS7\pwsh.exe`, "powershell.exe"} {
+		t.Setenv("CORAL_SHELL", shell)
+		assert.Equal(t, shell, shellWrap("x")[0])
+		assert.Equal(t, shell, winshell.PowerShell())
+	}
+	t.Setenv("CORAL_SHELL", "powershell.exe")
+	assert.Equal(t, `'"a""b c"'`, agent.ShellJoin([]string{"x", `a"b c`})[2:], "5.1: escaped")
+	t.Setenv("CORAL_SHELL", `C:\PS7\pwsh.exe`)
+	assert.Equal(t, `'a"b c'`, agent.ShellJoin([]string{"x", `a"b c`})[2:], "pwsh: not escaped")
 }

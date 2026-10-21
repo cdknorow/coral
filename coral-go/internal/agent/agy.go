@@ -392,8 +392,7 @@ func (a *AgyAgent) LaunchCommand(params LaunchParams) (string, error) {
 
 	if len(promptSections) > 0 {
 		fullPrompt := strings.Join(promptSections, "\n\n")
-		promptFile := files.write("agy_prompt", params.SessionID, "txt", []byte(fullPrompt))
-		arg := FormatPromptFileArg(promptFile)
+		arg := files.promptArg("agy_prompt", params.SessionID, "txt", "", fullPrompt)
 		raw = append(raw, arg)
 		parts = append(parts, "-i", arg)
 	}

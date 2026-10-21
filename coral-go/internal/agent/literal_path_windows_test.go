@@ -41,7 +41,7 @@ func TestPowerShellCmdletsTakeLiteralPaths(t *testing.T) {
 	if err := os.WriteFile(prompt, []byte("hello [world]"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := runPowerShell(t, ps, "Write-Output "+formatCatSubstitution(prompt)); got != "hello [world]" {
+	if got := runPowerShell(t, ps, "Write-Output "+FormatPromptFileArg(prompt)); got != "hello [world]" {
 		t.Errorf("prompt file read = %q", got)
 	}
 }
