@@ -192,7 +192,7 @@ function needsInputHtml(info, session) {
         question = screenQuestion || "The agent is waiting for you";
     } else {
         question = "The agent may be waiting at a startup prompt";
-        context = `<div class="cni-context-text">For example, trusting this folder or logging in. Answer it in the terminal.</div>`;
+        context = `<div class="cni-context-text">For example, trusting this folder or signing in. Open the terminal, answer it there, then come back and type your first message.</div>`;
     }
 
     if (info.kind === "login") return loginCardHtml(info, name, kicker);
