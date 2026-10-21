@@ -133,6 +133,11 @@ func InstalledToolsFallback() bool { return installedFallback.Load() }
 
 // CoralToolsDir returns the directory containing coral-board and the coral-hook-*
 // binaries that agents launched by this server get on their PATH: see CoralToolsSource.
+func CoralToolsDir() string {
+	dir, _ := CoralToolsSource()
+	return dir
+}
+
 // PathWithDir is path with dir first, joined with the platform's list separator (':' on Unix, ';' on Windows, where a ':' made
 // "<dir>:C:\Windows\system32" one invalid entry, #126 F2).
 func PathWithDir(dir, path string) string {
@@ -140,11 +145,6 @@ func PathWithDir(dir, path string) string {
 		return dir
 	}
 	return dir + string(os.PathListSeparator) + path
-}
-
-func CoralToolsDir() string {
-	dir, _ := CoralToolsSource()
-	return dir
 }
 
 // CoralToolsSource returns CoralToolsDir and where it was found, for the startup log:
@@ -262,9 +262,19 @@ func prefixWithPathEnv(binDir string) string {
 	case ShellPowerShell:
 		return fmt.Sprintf(`$env:PATH=%s + $env:PATH; `, shellQuoteLiteral(binDir+";"))
 	default:
-		// binDir is quoted as a literal; only $PATH is expanded (#3362).
-		return fmt.Sprintf(`export PATH=%s"$PATH" && `, singleQuote(binDir+":"))
+		return bashPathPrefix(binDir, runtime.GOOS == "windows")
 	}
+}
+
+// bashPathPrefix is the POSIX-shell form (CORAL_SHELL=bash on Windows is Git Bash). binDir is quoted as a literal; only $PATH is expanded
+// (#3362). A Windows folder (C:\Users\x\bin) would make "C:\Users\x\bin:$PATH" one entry in an MSYS shell's ':'-separated list, so on
+// Windows it goes through cygpath -u, falling back to the folder as given and never to an empty entry (which would put the current folder on PATH).
+func bashPathPrefix(binDir string, windows bool) string {
+	if windows {
+		q := singleQuote(binDir)
+		return fmt.Sprintf(`export PATH="$(cygpath -u %s 2>/dev/null || printf %%s %s)":"$PATH" && `, q, q)
+	}
+	return fmt.Sprintf(`export PATH=%s"$PATH" && `, singleQuote(binDir+":"))
 }
 
 // WrapWithBundlePath prepends the app bundle bin directory to PATH in the
