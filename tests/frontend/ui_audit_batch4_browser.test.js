@@ -26,6 +26,7 @@ const BASE = require('./test_base').BASE;
             await waitFor(`/isn't configured/.test(document.getElementById('settings-cloud-status').textContent)`, 'the no-hub status', 10000);
             const hub = await ev(`(() => { const r = document.querySelector('#settings-cloud [data-cloud=command-row]'); return { sentence: document.getElementById('settings-cloud-status').textContent, flag: /--cloud-url|CORAL_CLOUD_URL/.test(document.getElementById('settings-cloud-status').textContent), lines: r.querySelector('code').textContent.split('\\n'), shown: !r.hidden }; })()`);
             assert.ok(hub.shown && !hub.flag, 'the flag is in the row, not repeated in the sentence: ' + JSON.stringify(hub));
+            assert.match(hub.sentence, /Run the first command to start Coral with the Hub address\. Once Coral is running again, run the second in another terminal to connect it\.$/, 'the sentence says what order and where: ' + hub.sentence);
             assert.deepEqual(hub.lines, ['coral --cloud-url https://app.coralhub.dev', 'coral cloud connect']);
             await ev(`window.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copied.push(t); return Promise.resolve(); } } }); document.querySelector('#settings-cloud [data-cloud=command-row] button').click(); true`);
             await waitFor(`window.__copied.length === 1`, 'the copy');
