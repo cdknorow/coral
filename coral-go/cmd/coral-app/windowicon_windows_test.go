@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/windows"
 )
 
 // The test exe links the same rsrc_windows_amd64.syso as coral-app, so the icon is there to load.
@@ -21,7 +22,7 @@ func TestExeCarriesTheAppIcon(t *testing.T) {
 }
 
 func TestSetWindowIconGivesTheWindowBothSizes(t *testing.T) {
-	user32 := syscall.NewLazyDLL("user32.dll")
+	user32 := windows.NewLazySystemDLL("user32.dll")
 	class, _ := syscall.UTF16PtrFromString("STATIC")
 	hwnd, _, err := user32.NewProc("CreateWindowExW").Call(0, uintptr(unsafe.Pointer(class)), 0, 0, 0, 0, 10, 10, 0, 0, 0, 0)
 	require.NotZero(t, hwnd, "CreateWindowEx: %v", err)
