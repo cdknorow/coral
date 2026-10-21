@@ -87,6 +87,7 @@ function _teamSettingsShell(workspaceMode) {
       <nav class="team-settings-tabs" aria-label="Team settings sections" role="tablist">
         <button type="button" role="tab" id="team-settings-tab-workflow" aria-selected="true" aria-controls="team-settings-workflow" tabindex="0" data-settings-tab="workflow">Workflow</button>
         <button type="button" role="tab" id="team-settings-tab-prompts" aria-selected="false" aria-controls="team-settings-prompts" tabindex="-1" data-settings-tab="prompts">Prompt inspection</button>
+        ${isCloud() ? '' : '<button type="button" role="tab" id="team-settings-tab-messaging" aria-selected="false" aria-controls="team-settings-messaging" tabindex="-1" data-settings-tab="messaging">Messaging</button>'}
       </nav>
       <form class="working-mode-form">
       <section class="team-settings-panel active" id="team-settings-workflow" role="tabpanel" aria-labelledby="team-settings-tab-workflow" data-settings-panel="workflow" tabindex="0">
@@ -121,7 +122,8 @@ function _teamSettingsShell(workspaceMode) {
       </fieldset>
       </section>
       <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button><span>Saves the working mode, additional guidance and cross-team sharing. Save preset instructions separately.</span></div>
-      </form>`;
+      </form>
+      ${isCloud() ? '' : '<section class="team-settings-panel" id="team-settings-messaging" role="tabpanel" aria-labelledby="team-settings-tab-messaging" data-settings-panel="messaging" tabindex="0" hidden><p class="working-mode-hint ct-loading" role="status">Loading…</p></section>'}`;
     return dialog;
 }
 
@@ -236,9 +238,11 @@ export async function showTeamWorkingMode(team, options = {}) {
         const panel = document.createElement('section');
         panel.className = 'team-settings-panel'; panel.id = 'team-settings-health'; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', 'team-settings-tab-health');
         panel.dataset.settingsPanel = 'health'; panel.tabIndex = 0; panel.hidden = true;
-        dialog.querySelector('.team-settings-tabs').append(tab);
+        // before the Messaging tab, which is drawn with the strip (#5518): the strip never changes after it appears, and its order is the tab order
+        const strip = dialog.querySelector('.team-settings-tabs'), messaging = strip.querySelector('#team-settings-tab-messaging');
+        strip.insertBefore(tab, messaging);
         form.after(panel);
-        tabs.push(tab); panels.push(panel); bindTab(tab);
+        tabs.splice(messaging ? tabs.indexOf(messaging) : tabs.length, 0, tab); panels.push(panel); bindTab(tab);
         // The tab's form is drawn again after a save, so the note about the all-Coral switch (#5128) sits beside it, not in it.
         const host = document.createElement('div');
         panel.append(host);
@@ -258,18 +262,13 @@ export async function showTeamWorkingMode(team, options = {}) {
         await m.mountHealthSettings(host, team, health);
     }
 
-    // The Messaging tab (#5510): who may message this board. Drawn whenever the state route answers (enforced or not: the list is editable before it is in force), and only for the Operator on this computer (the state route is not served through Coral Hub).
-    async function addMessagingTab(state) {
+    // The Messaging tab (#5510, #5516, #5518): who may message this board. The tab and its panel are drawn with the strip (never through Coral Hub), so the strip does not change after it appears; the panel
+    // is filled once the state is read, whether or not the list is enforced yet (the list is editable before it is in force), and says so when the state is not available.
+    async function fillMessagingPanel(state) {
+        const panel = dialog.querySelector('#team-settings-messaging');
+        if (!panel) return;
+        if (!state) { panel.replaceChildren(Object.assign(document.createElement('p'), { className: 'working-mode-hint ct-unavailable', textContent: 'Who may message this board is not available here.' })); panel.firstChild.setAttribute('role', 'status'); return; }
         const m = await importOnce('./team_cross_team_settings.js');
-        const tab = document.createElement('button');
-        tab.type = 'button'; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-selected', 'false'); tab.setAttribute('aria-controls', 'team-settings-messaging');
-        tab.dataset.settingsTab = 'messaging'; tab.id = 'team-settings-tab-messaging'; tab.tabIndex = -1; tab.textContent = 'Messaging';
-        const panel = document.createElement('section');
-        panel.className = 'team-settings-panel'; panel.id = 'team-settings-messaging'; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', 'team-settings-tab-messaging');
-        panel.dataset.settingsPanel = 'messaging'; panel.tabIndex = 0; panel.hidden = true;
-        dialog.querySelector('.team-settings-tabs').append(tab);
-        (dialog.querySelector('#team-settings-health') || form).after(panel);
-        tabs.push(tab); panels.push(panel); bindTab(tab);
         await m.mountCrossTeamSettings(panel, team, state);
     }
 
@@ -401,13 +400,14 @@ export async function showTeamWorkingMode(team, options = {}) {
                 if (!isCloud()) {
                     const stateResponse = await fetch(serverUrl(`/api/board/${encodeURIComponent(teamName)}/cross-team-state`, teamServer)).catch(() => null);
                     const crossTeam = stateResponse?.ok ? await stateResponse.json().catch(() => null) : null;
-                    if (crossTeam && Array.isArray(crossTeam.allowed)) await addMessagingTab(crossTeam).catch(() => {}); // also while the list is not enforced yet: an owner can prepare it (#5516)
+                    await fillMessagingPanel(crossTeam && Array.isArray(crossTeam.allowed) ? crossTeam : null).catch(() => fillMessagingPanel(null));
                 }
                 if (openHealthTab) document.getElementById('team-settings-tab-health')?.click();
             } else {
                 // The board settings could not be loaded: leave the switch off and disabled.
                 form.elements.cross_team_messaging.disabled = true;
                 form.elements.cross_team_artifacts.disabled = true;
+                await fillMessagingPanel(null);
                 // Through Coral Hub the owner-only settings can be refused (#5323): say why, in our words, where the switches are (and the Health check tab is not).
                 if (boardSettingsResponse) { const note = form.querySelector('.team-settings-refusal'); note.textContent = `Team settings: ${await refusalOf(boardSettingsResponse, answeredLocally(team))}`; note.hidden = false; }
             }
@@ -416,7 +416,7 @@ export async function showTeamWorkingMode(team, options = {}) {
             form.dataset.initialState = settingsFormSnapshot(form);
             opened = { mode: modeValues(), board: boardValues() };
             save.disabled = false;
-        } catch (error) { setStatus(error.message, true); inspection.textContent = 'Prompt inspection could not be loaded.'; }
+        } catch (error) { setStatus(error.message, true); inspection.textContent = 'Prompt inspection could not be loaded.'; fillMessagingPanel(null).catch(() => {}); }
     }
     form.onsubmit = async event => {
         event.preventDefault(); save.disabled = true; setStatus('Saving…');

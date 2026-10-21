@@ -152,6 +152,9 @@ const BASE = require('./test_base').BASE;
     await ev(`document.querySelector('#team-availability-dialog header button').click()`);
     await ev(`new Promise(r => setTimeout(r, 50))`);
 
+    // The team's working mode starts from none, so the Save below always has something to save: a repeat on the same server (--stress) saw the last run's saved mode and answered "Nothing to save".
+    await ev(`fetch('/api/board/test-team/working-mode', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'none', dependency_guidance: false, custom_instructions: '' }) }).then(r => r.status)`);
+
     // 5. Open Team settings (showTeamWorkingMode) and verify its settings (the all-Coral health switch is in Settings now, #5128).
     await ev(`(async () => {
       const modeModule = await import((window.__coralStatic||'/static/')+'team_working_mode.js');

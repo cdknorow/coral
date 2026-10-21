@@ -93,8 +93,9 @@ const HOSTILE = '<img src=x onerror="window.__pwn=1">';
             ['an older server has no such route (404)', `window.__ct.stateStatus = 404; window.__ct.stateBody = { error: 'not found' }; window.__ct.state = null;`, false],
             ['an answer without a list is no state', `window.__ct.stateStatus = 0; window.__ct.state = { enforced: false };`, false]]) {
             await ev(`${patch} true`);
-            await open(); await ev(`new Promise(r => setTimeout(r, 700))`); // sleep-ok: proves a negative, the tab gets this long to appear
-            check(`no Messaging tab when ${what}`, await ev(`!document.querySelector('[data-settings-tab=messaging]')`));
+            await open();
+            await waitFor(`!!document.querySelector('[data-settings-tab=messaging]') && !!document.querySelector('${P} .ct-unavailable')`, `the Messaging panel says it is not available when ${what}`, 8000);
+            check(`when ${what}, the tab is still drawn (with the strip, #5518) and its panel says it is not available, with no editor`, await ev(`!!document.querySelector('[data-settings-tab=messaging]') && /not available here/.test(document.querySelector('${P} .ct-unavailable').textContent) && !document.querySelector('${P} .ct-form')`));
         }
         await ev(`window.__ct.stateStatus = 0; window.__ct.state = Object.assign({ enforced: false, was_open: true }, ${base}); window.__ct.cand = { candidates: [] }; window.__ct.log = { entries: [] }; true`);
         await open(); await tabClick();
