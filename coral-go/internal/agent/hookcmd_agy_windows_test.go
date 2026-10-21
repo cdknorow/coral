@@ -172,7 +172,8 @@ func TestPowerShellHookCommandRunsUnderCodexsPowerShell(t *testing.T) {
 			copyTestBinary(t, filepath.Join(work, "coral-hook-agentic-state.exe"))
 			t.Setenv(HookDirEnv, tools)
 
-			cmd := ResolvePowerShellHookCommand("coral-hook-agentic-state")
+			cmd, ok := ResolvePowerShellHookCommand("coral-hook-agentic-state")
+			require.True(t, ok)
 			assert.True(t, strings.HasPrefix(cmd, "& '"), cmd)
 			run := func(command string) string {
 				c := exec.Command(ps, "-NoProfile", "-NonInteractive", "-Command", command)
@@ -192,6 +193,21 @@ func TestPowerShellHookCommandRunsUnderCodexsPowerShell(t *testing.T) {
 			}
 		})
 	}
+	// No tool: no command, never the bare name; a Codex launch then has no hooks, logged once
+	// (Security's #49 note).
 	t.Setenv(HookDirEnv, t.TempDir())
-	assert.Equal(t, "coral-hook-agentic-state", ResolvePowerShellHookCommand("coral-hook-agentic-state"), "no tool: the bare name, PATH only")
+	cmd, ok := ResolvePowerShellHookCommand("coral-hook-agentic-state")
+	assert.False(t, ok)
+	assert.Empty(t, cmd)
+	var logged strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	sid := "a9f3c4d1-0000-4000-8000-000000000049"
+	line := buildLaunch(&CodexAgent{}, LaunchParams{SessionID: sid, WorkingDir: t.TempDir()})
+	assert.NotContains(t, line, "hooks.")
+	assert.NotContains(t, line, "coral-hook-agentic-state")
+	assert.Equal(t, 1, strings.Count(logged.String(), "codex runs without Coral's hooks"), logged.String())
+	assert.Contains(t, logged.String(), sid)
+	CleanupTempFiles(sid)
 }

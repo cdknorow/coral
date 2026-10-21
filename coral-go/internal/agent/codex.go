@@ -190,7 +190,7 @@ func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 		raw = append(raw, instructions)
 		parts = append(parts, "-c", instructions)
 	}
-	parts = append(parts, codexHookArgs()...)
+	parts = append(parts, codexHookArgs(params.SessionID)...)
 	// Note: Codex's sandbox may strip env vars from child processes.
 	// coral-board handles this via board_state file fallback (reads job_title
 	// from ~/.coral/board_state_{session}.json when CORAL_SUBSCRIBER_ID is unavailable).
@@ -274,10 +274,20 @@ var codexHookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse",
 // codexHookArgs install Coral's activity hook in Codex's config: Codex does not read Claude's settings.json, and
 // without these hooks a Codex session can still appear active, but no tool, thinking or stop events reach the
 // activity view.
-func codexHookArgs() []string {
+//
+// On Windows, with no absolute path to the hook (no tools folder, or no hook in it), there are
+// none: Codex runs without Coral's state tracking, logged once for the launch, rather than with
+// a bare name a repository could shadow (#49).
+func codexHookArgs(sessionID string) []string {
+	command, ok := ResolvePowerShellHookCommand("coral-hook-agentic-state")
+	if !ok {
+		slog.Warn("codex runs without Coral's hooks, so its state isn't tracked: the hook tool has no absolute path (no tools folder, or no tool in it)",
+			"session", sessionID, "tools", CoralToolsDir())
+		return nil
+	}
 	var args []string
 	for _, event := range codexHookEvents {
-		args = append(args, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(ResolvePowerShellHookCommand("coral-hook-agentic-state"))))
+		args = append(args, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(command)))
 	}
 	return args
 }

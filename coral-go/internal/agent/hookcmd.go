@@ -73,18 +73,20 @@ func ResolveCmdHookCommand(cmd string) (string, bool) {
 // came back as the hook's output, so the hook never ran and Codex reported "invalid stop hook
 // JSON output"). The command calls the tool with PowerShell's call operator on its absolute
 // path as a single-quoted literal (& 'C:/Program Files (x86)/Coral/...exe'), in which nothing
-// expands. Without a tools folder or the tool in it, it is the bare name, which PowerShell finds
-// only on PATH, never in the current folder. Elsewhere it is ResolveHookCommand.
-func ResolvePowerShellHookCommand(cmd string) string {
+// expands. ok is false without a tools folder or the tool in it: no command, never the bare
+// name, which would rest on Codex running hooks through PowerShell (PATH only) and not cmd.exe
+// (the current folder first, #11; Security's #49 note). Elsewhere it is ResolveHookCommand,
+// always ok.
+func ResolvePowerShellHookCommand(cmd string) (string, bool) {
 	if runtime.GOOS != "windows" {
-		return ResolveHookCommand(cmd)
+		return ResolveHookCommand(cmd), true
 	}
 	tool, rest, _ := strings.Cut(cmd, " ")
 	p := hookToolPath(tool)
 	if p == "" {
-		return cmd
+		return "", false
 	}
-	return withRest("& "+psquote.Literal(p), rest)
+	return withRest("& "+psquote.Literal(p), rest), true
 }
 
 // hookToolPath is the absolute path, with forward slashes (sh, cmd.exe and Git Bash all take
