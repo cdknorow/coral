@@ -17,6 +17,7 @@ import (
 // Restarting an agent runs the CLI from Settings > CLI paths, like its launch
 // did, not whatever binary is first on PATH (#3205).
 func TestRestartUsesTheConfiguredCLIPath(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, _, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	const oldID = "restart-cli-path"
@@ -42,6 +43,7 @@ func TestRestartUsesTheConfiguredCLIPath(t *testing.T) {
 
 // Resuming an agent's conversation runs the configured CLI too (#3205).
 func TestResumeUsesTheConfiguredCLIPath(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, _, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	const curID = "resume-cli-path"

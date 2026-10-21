@@ -105,6 +105,7 @@ func TestTeamImportRefusesMCPServersInFrontmatter(t *testing.T) {
 // A session stored with MCP servers before #3644 (the startup wipe clears them; this shows the
 // stored value is ignored anyway) restarts without them in its settings.
 func TestRestartOfAnOldSessionLaunchesWithoutMCP(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, _, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	const oldID = "11111111-aaaa-4bbb-8ccc-0000000003f4"

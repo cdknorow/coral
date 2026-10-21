@@ -13,6 +13,7 @@ import (
 )
 
 func TestBlockedTaskReassignPreservesDependencies(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, h := setupBoardTestServer(t)
 	ctx := context.Background()
 	registerTaskPlanner(t, h, "team", "Orchestrator")

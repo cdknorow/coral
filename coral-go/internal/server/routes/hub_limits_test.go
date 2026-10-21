@@ -30,6 +30,7 @@ func TestHubLimitSettingsAreValidated(t *testing.T) {
 // The sizes are read from the settings for each request (at most a second old); anything
 // missing or out of range is the default.
 func TestHubLimitsFromSettings(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "s.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
