@@ -1,7 +1,8 @@
 /* Moved out of modals.js as it was (#4684): The pieces every launch dialog shares: the launch steps, the working-directory resets, the 'cannot launch here' check, the request to the server (with its CLI-not-found and invalid-field outcomes), and what a launch refreshes and says. No behaviour change. */
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
-import { showToast } from './utils.js';
+import { showToast, escapeHtml } from './utils.js';
+import { registerDialog } from './modal_chrome.js';
 import { blockedReason } from './hub_access.js';
 import { loadLiveSessions } from './api.js';
 import { isHub, normServer, LOCAL_SERVER, noteBoardLabels } from './server_base.js';
@@ -90,7 +91,7 @@ function _launchBlocked(server) {
  * on success, or null after showing the error. Never falls back to another
  * server.
  */
-export async function _launchOn(server, path, payload, agentType, { dirInput = null } = {}) { // exported for board_ids_browser
+export async function _launchOn(server, path, payload, agentType, { dirInput = null, teamFailures = false } = {}) { // exported for board_ids_browser
     let res = await postLaunch(server, path, payload);
     // A board of that name exists (#3536): the person chooses to join it or start another.
     if (!res.ok && isBoardNameExists(res)) {
@@ -102,6 +103,9 @@ export async function _launchOn(server, path, payload, agentType, { dirInput = n
         res = await postLaunch(server, path, retry);
     }
     if (res.ok && res.data && res.data.board_id) noteBoardLabels([res.data], 'board_id', server); // the board it joined or started
+    // A team in which no member started (#122): the answer carries each member's error. A caller that shows them per member (the team dialog, the
+    // template launcher) takes the answer as it is (data.ok is false) instead of one toast of the joined text.
+    if (!res.ok && teamFailures && res.data && res.data.code === 'team_launch_failed' && Array.isArray(res.data.agents)) return res.data;
     if (!res.ok) {
         if (agentType && res.error.includes('not found') && res.error.includes('CLI')) _showCLINotFoundModal(agentType, server);
         else showToast(res.error, true);
@@ -109,6 +113,32 @@ export async function _launchOn(server, path, payload, agentType, { dirInput = n
         return null;
     }
     return res.data;
+}
+
+/** The dialog for a team launch in which some or all members failed: each member's error, and a button to Settings (CLI paths).
+ *  failed: the members' {name, error} entries; started: how many started; openSettings: what the button runs. */
+export function showTeamLaunchFailures(failed, started, openSettings) {
+    const failList = failed.map(a => `<li><strong>${escapeHtml(a.name)}</strong>: ${escapeHtml(a.error)}</li>`).join('');
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+        <div class="modal-content" style="width:500px">
+            <h3>Team Launch — ${failed.length} agent${failed.length > 1 ? 's' : ''} failed</h3>
+            <p style="color:var(--text-secondary);font-size:0.8125rem;margin:8px 0">${started} launched successfully, ${failed.length} failed:</p>
+            <ul style="color:var(--error);font-size:0.8125rem;line-height:1.6;margin:8px 0 16px;padding-left:20px">${failList}</ul>
+            <div class="modal-actions">
+                <button class="btn" data-action="settings">Set CLI paths</button>
+                <button class="btn btn-primary" data-action="close">OK</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    const close = registerDialog(modal);
+    modal.addEventListener('click', (e) => {
+        if (e.target.dataset?.action === 'close') close();
+        if (e.target.dataset?.action === 'settings') { close(); openSettings(); }
+    });
 }
 
 /** The words shown under a rejected field: what is wrong and what to do next (UI audit #5589, finding 25). */

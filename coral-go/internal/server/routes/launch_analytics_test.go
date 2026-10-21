@@ -178,8 +178,8 @@ func TestTeamLaunchCountsStartedAndFailedMembersSeparately(t *testing.T) {
 	assert.Equal(t, float64(0), team["failed_agents"])
 	sink.wait(t, tracking.EventFirstTeamLaunched, 1)
 
-	// Every member fails: the HTTP call still returns 200 with per-member
-	// errors, but nothing counts as a launched team. A team's later members have
+	// Every member fails: the call answers 500 (a start that failed is not a setup
+	// problem) with per-member errors (#122), and nothing counts as a launched team. A team's later members have
 	// their CLI typed after the call answers (#3613: their starts are spaced), so
 	// only failures known by then count: here a team of one whose start fails.
 	terminal.mu.Lock()
@@ -188,7 +188,7 @@ func TestTeamLaunchCountsStartedAndFailedMembersSeparately(t *testing.T) {
 	b := body()
 	b["board_name"] = "tm2"
 	b["agents"] = []map[string]any{{"name": "A"}}
-	require.Equal(t, 200, postLaunch(t, server.URL, "/api/sessions/launch-team", b))
+	require.Equal(t, 500, postLaunch(t, server.URL, "/api/sessions/launch-team", b))
 	results := sink.wait(t, tracking.EventLaunchResult, 2)
 	var failedTeam map[string]any
 	for _, r := range results {
@@ -314,8 +314,8 @@ func TestTeamLaunchAccountsForSkippedUnnamedMembers(t *testing.T) {
 	assert.Equal(t, float64(3), team["requested_agents"])
 	assert.Equal(t, float64(2), team["failed_agents"])
 
-	// A team of only unnamed members starts nobody and is a failure.
-	require.Equal(t, 200, postLaunch(t, server.URL, "/api/sessions/launch-team", map[string]any{
+	// A team of only unnamed members starts nobody and is a failure (a 400, #122).
+	require.Equal(t, 400, postLaunch(t, server.URL, "/api/sessions/launch-team", map[string]any{
 		"board_name": "skip2", "working_dir": t.TempDir(), "agents": []map[string]any{{"name": ""}},
 	}))
 	var allSkipped map[string]any

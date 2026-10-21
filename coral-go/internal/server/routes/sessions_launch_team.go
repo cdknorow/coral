@@ -131,7 +131,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	// the team (#5213).
 	ctx, cancel := lifecycleCtxN(viaHub(r.Context(), r), len(body.Agents))
 	defer cancel()
-	workingDir, worktreePath, msg := h.createTeamWorktree(ctx, body)
+	workingDir, worktreePath, branchCreated, msg := h.createTeamWorktree(ctx, body)
 	if msg != "" {
 		refuse(tracking.FailWorktreeFailed, msg)
 		return
@@ -184,7 +184,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	if started == 0 {
 		// Nobody started: an error, not ok:true over an empty team. What this request made (the team record, the worktree, the board
 		// when it made it) is taken back, so a retry starts clean.
-		h.rollBackTeamLaunch(ctx, body, teamID, worktreePath, boardCreated)
+		h.rollBackTeamLaunch(ctx, body, teamID, worktreePath, branchCreated, boardCreated)
 		status, code := http.StatusInternalServerError, "team_launch_failed"
 		if len(categories) == 0 {
 			status, code = http.StatusBadRequest, "no_named_agents"
@@ -235,8 +235,10 @@ func teamLaunchFailureMessage(launched []map[string]any) string {
 }
 
 // rollBackTeamLaunch takes back what a team launch that started nobody made: its team record, its worktree, and the board when this
-// request created it (a board that was already there, with its messages and members, is never deleted). Failures are logged.
-func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTeamRequest, teamID int64, worktreePath string, boardCreated bool) {
+// request created it (a board that was already there, with its messages and members, is never deleted). Failures are logged. What
+// restoreTeamTemplate wrote (knowledge files, working mode, presets) is not taken back: it goes with a board this request created, and on a
+// board that was already there it is the template the Operator asked to restore.
+func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTeamRequest, teamID int64, worktreePath string, branchCreated, boardCreated bool) {
 	if teamID > 0 && h.teamStore != nil {
 		// DeleteTeam removes only a stopped team, and this one has no member to stop.
 		err := h.teamStore.UpdateTeamStatus(ctx, teamID, "stopped")
@@ -250,6 +252,12 @@ func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTea
 	if worktreePath != "" {
 		if out, err := gitutil.Command(ctx, body.WorkingDir, "worktree", "remove", "--force", "--", worktreePath).CombinedOutput(); err != nil {
 			log.Printf("[launch-team] could not remove the empty team's worktree %s: %v: %s", worktreePath, err, strings.TrimSpace(string(out)))
+		} else if branchCreated {
+			// The branch this request made; one that was already there (a previous run's work) stays.
+			branch := fmt.Sprintf("coral-team/%s", body.BoardName)
+			if out, err := gitutil.Command(ctx, body.WorkingDir, "branch", "-D", "--", branch).CombinedOutput(); err != nil {
+				log.Printf("[launch-team] could not remove the empty team's branch %s: %v: %s", branch, err, strings.TrimSpace(string(out)))
+			}
 		}
 	}
 	if boardCreated && h.bs != nil && body.BoardName != "" {
@@ -360,9 +368,9 @@ func checkTeamRequest(body launchTeamRequest) string {
 // createTeamWorktree makes the team's git worktree when it asks for one (branch coral-team/<board> from its base
 // branch, main by default; the branch reused when a previous run left it), and returns the folder its agents start
 // in, the worktree ("" for none), or why it failed.
-func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTeamRequest) (workingDir, worktreePath, failure string) {
+func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTeamRequest) (workingDir, worktreePath string, branchCreated bool, failure string) {
 	if !body.Worktree || body.WorkingDir == "" {
-		return body.WorkingDir, "", ""
+		return body.WorkingDir, "", false, ""
 	}
 	branch := body.BaseBranch
 	if branch == "" {
@@ -370,7 +378,7 @@ func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTea
 	}
 	// The board's name is one folder name under worktrees/: never a path out of it (#5305).
 	if !background.ValidKnowledgeTeam(body.BoardName) {
-		return "", "", "the board name cannot name a worktree folder"
+		return "", "", false, "the board name cannot name a worktree folder"
 	}
 	worktreeDir := filepath.Join(h.cfg.CoralDir(), "worktrees")
 	os.MkdirAll(worktreeDir, 0755)
@@ -381,11 +389,13 @@ func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTea
 		// Branch may already exist from a previous run — try without -b
 		cmd2 := gitutil.Command(ctx, body.WorkingDir, "worktree", "add", "--", worktreePath, worktreeBranch)
 		if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
-			return "", "", fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2))
+			return "", "", false, fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2))
 		}
+	} else {
+		branchCreated = true // the branch is new: a launch that starts nobody takes it back
 	}
 	log.Printf("[launch-team] created worktree at %s (branch %s from %s)", worktreePath, worktreeBranch, branch)
-	return worktreePath, worktreePath, ""
+	return worktreePath, worktreePath, branchCreated, ""
 }
 
 // createTeamRecord stores the team (its request, its folder, whether that is a worktree) and returns its id, 0

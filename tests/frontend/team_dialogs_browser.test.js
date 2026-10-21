@@ -112,6 +112,14 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(await ev(`[document.querySelector('body > .modal:not([id]) h3').textContent, document.querySelector('body > .modal:not([id]) ul li').textContent]`), ['Team Launch — 1 agent failed', 'B: no cli']);
         await ev(`document.querySelector('body > .modal:not([id]) [data-action=close]').click(); true`);
         assert.equal(await ev(`document.querySelectorAll('body > .modal:not([id])').length`), 0);
+        // A team in which nobody started (#122): the server answers an error with each member's error; the same per-member dialog (with its Settings
+        // button) shows, and the launch dialog stays open to try again.
+        await openTeam();
+        await ev(`window.__launchAnswer = { status: 422, body: { ok: false, code: 'team_launch_failed', error: 'no agent in the team started (A: no cli; B: no cli)', agents: [{ name: 'A', error: 'no cli' }, { name: 'B', error: 'no cli' }] } }; document.getElementById('team-board-name').value = 'crew-3'; document.getElementById('launch-team-dir').value = '/work/project'; window._validateTeamName(); window.launchTeam(); true`);
+        await waitFor(`!!document.querySelector('body > .modal:not([id]) ul li')`, 'the all-failed dialog');
+        assert.deepEqual(await ev(`[document.querySelector('body > .modal:not([id]) h3').textContent, document.querySelectorAll('body > .modal:not([id]) ul li').length, !!document.querySelector('body > .modal:not([id]) [data-action=settings]')]`), ['Team Launch — 2 agents failed', 2, true]);
+        assert.notEqual(await ev(`getComputedStyle(document.getElementById('launch-modal')).display`), 'none', 'the launch dialog stays open');
+        await ev(`document.querySelector('body > .modal:not([id]) [data-action=close]').click(); true`);
 
         console.log('Quick Launch from the welcome screen: an unknown template is refused, a partly failed launch says how many');
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); document.getElementById('quick-launch-template').value = 'No Such Team'; document.getElementById('quick-launch-board-name').value = 'quick-1'; document.getElementById('quick-launch-workdir').value = '/work/project'; window._quickLaunchTeam(); true`);
