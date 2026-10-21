@@ -99,7 +99,9 @@ func TestTheOwnerRoutesOfTheTableAreTheReviewedSet(t *testing.T) {
 		"POST /api/board/{project}/cross-team/enable": "owner-only-hub", "POST /api/board/{project}/cross-team/disable": "owner-only-hub",
 		"POST /api/board/{project}/cross-team/files/enable": "owner-only-hub", "POST /api/board/{project}/cross-team/files/disable": "owner-only-hub",
 		"GET /api/board/{project}/cross-team/settings": "owner-only-hub",
-		"GET /api/board/{project}/settings":            "owner-sees", "GET /api/system/update": "owner-update", "POST /api/system/update/relaunch": "owner-update",
+		"GET /api/saved":                    "owner-only",
+		"GET /api/saved/{id}/message":       "owner-only",
+		"GET /api/board/{project}/settings": "owner-sees", "GET /api/system/update": "owner-update", "POST /api/system/update/relaunch": "owner-update",
 	}
 	got := map[string]string{}
 	for _, r := range tunnel.OwnerRoutes() {

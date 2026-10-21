@@ -8,6 +8,8 @@ GET /api/board/{project}/artifacts view owner-only
 GET /api/board/{project}/cross-team/settings view owner-only-hub
 GET /api/board/{project}/settings view owner-sees
 GET /api/board/{project}/tasks/{taskID}/artifact-content view owner-only
+GET /api/saved view owner-only
+GET /api/saved/{id}/message view owner-only
 GET /api/session-artifacts view owner-only
 GET /api/settings/prompt-inspection launch owner-only
 GET /api/system/update view owner-update
