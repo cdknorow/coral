@@ -102,6 +102,9 @@ func DataDirWarning(dir string) string {
 var coralDataNames = map[string]bool{
 	"api-key": true, "cli-token": true, "session_tokens": true, "artifacts": true, "uploads": true, "logs": true, "tmp": true,
 	"agent_knowledge": true, "workflows": true, "themes": true, "pi-sessions": true, "updates": true,
+	// What a folder holds before any database exists: the MSI makes it with only the EULA marker, and the first start writes the lock, the pid
+	// and the logs before the first database is created (#5698 review: the folder the installer makes must count as Coral's).
+	".eula-accepted": true, "coral-server.lock": true, "tray.pid": true, "coral.log": true, "tray.log": true, "app.log": true, "input-debug.log": true,
 }
 
 // looksLikeCoralDataDir says whether an existing folder is Coral's own: it is empty, or it holds a database (*.db) or one of

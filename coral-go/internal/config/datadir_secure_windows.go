@@ -97,6 +97,12 @@ func isReparseHandle(h windows.Handle) bool {
 	return windows.GetFileInformationByHandle(h, &info) != nil || info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
 
+// hasOtherNames says whether the file behind h has more than one hard link (or its link count cannot be read, which is not certain enough to change it).
+func hasOtherNames(h windows.Handle) bool {
+	var info windows.ByHandleFileInformation
+	return windows.GetFileInformationByHandle(h, &info) != nil || info.NumberOfLinks > 1
+}
+
 // setOwnerOnly gives the object behind h the protected owner-only list (a folder's inherited by what is made in it).
 func setOwnerOnly(h windows.Handle, isDir bool) error {
 	acl, err := ownerOnlyACL(isDir)
@@ -200,6 +206,10 @@ func reprotect(path string, isDir bool) reprotectResult {
 	}
 	defer windows.CloseHandle(h)
 	if isReparseHandle(h) {
+		return reprotectLink
+	}
+	// A file with more than one name (a hard link) shares its access list with every name, one of which may be outside the folder: not changed.
+	if !isDir && hasOtherNames(h) {
 		return reprotectLink
 	}
 	if setOwnerOnly(h, isDir) != nil {
