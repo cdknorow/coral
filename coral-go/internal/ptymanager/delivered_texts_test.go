@@ -176,7 +176,7 @@ func BenchmarkFlagDelivered(b *testing.B) {
 // What the Operator sent from the dashboard is remembered apart from what Coral delivered (#5482): any length, whole text, one turn each, and never mistaken for a delivery.
 func TestOperatorSentTextsAreRememberedApartFromDeliveries(t *testing.T) {
 	name := "claude-operator-sent"
-	short := "[Coral] hi"                           // far under the delivered floor: a person's text that looks like a notice must still be theirs
+	short := "[Coral] hi" // far under the delivered floor: a person's text that looks like a notice must still be theirs
 	name2 := "claude-operator-sent-stamp"
 	forget := func() { forgetOperatorTexts(name); forgetOperatorTexts(name2) }
 	t.Cleanup(forget) // the tables are package-level: a second run of this test (-count=2) starts clean (#5677)
