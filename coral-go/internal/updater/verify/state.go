@@ -27,7 +27,9 @@ const (
 // permission: every rule that needs the state still applies, and the installed version bounds the newest manifest from below.
 var ErrCorrupt = errors.New("the updater's file is unreadable")
 
-// ensureDir makes dir (0700) and refuses a dir that is a symlink or not a directory.
+// ensureDir makes dir (0700) and refuses a dir that is a symlink or not a directory. On Windows, where the mode means nothing, the folder gets
+// the private access list secfile.ProtectDir makes, inherited by what is created in it (the staging folders, the package, the state files):
+// this user and SYSTEM only, whatever the parent allows (#126 F8). A folder that can't be made private is an error, not a folder used as it is.
 func ensureDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -39,7 +41,9 @@ func ensureDir(dir string) error {
 	if !fi.IsDir() || fi.Mode()&fs.ModeSymlink != 0 {
 		return fmt.Errorf("%s is not a directory", dir)
 	}
-	_ = secfile.Protect(dir)
+	if err := secfile.ProtectDir(dir); err != nil {
+		return fmt.Errorf("make %s private: %w", dir, err)
+	}
 	return nil
 }
 
@@ -94,6 +98,10 @@ func writePrivate(path string, data []byte) error {
 			os.Remove(name)
 		}
 	}()
+	// Private before anything is written to it, and an error when it can't be (#126 F8): it was set after the data, its error ignored.
+	if err := secfile.Protect(name); err != nil {
+		return fmt.Errorf("make %s private: %w", name, err)
+	}
 	if err := tmp.Chmod(0o600); err != nil && !errors.Is(err, errors.ErrUnsupported) {
 		return err
 	}
@@ -106,7 +114,6 @@ func writePrivate(path string, data []byte) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	_ = secfile.Protect(name)
 	if err := os.Rename(name, path); err != nil {
 		return err
 	}

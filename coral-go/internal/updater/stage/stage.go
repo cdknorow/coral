@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -116,6 +117,9 @@ func Check(ctx context.Context, cfg Config) Result {
 	}
 	dir := filepath.Join(cfg.DataDir, UpdatesDir)
 	if err := verify.EnsureDir(dir); err != nil {
+		// The result names only the stage; the reason goes to the log (stderr), so an owner can see why, e.g. a data folder on a volume
+		// without access lists, which can't be made private (#126 F8 review).
+		log.Printf("[update] the updates folder can't be used: %v", err)
 		res.Result, res.FailedStage = ResultFailed, "updates_folder"
 		return res
 	}
