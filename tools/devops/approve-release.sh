@@ -7,7 +7,7 @@
 #   flip TAG    make it the Approved release: prerelease off, marked latest, and a display-only "Approved: <UTC RFC3339>" line appended to
 #               the release body (the client reads the LAST body line, so nothing follows the time: the actor is in the run's summary;
 #               every decision is made from the prerelease flag and releases/latest, never from that line).
-#   revoke TAG  the only way down: prerelease on, the highest earlier approved release marked latest again (GitHub does not move the mark by
+#   revoke TAG  the only way down, and only for the release that is latest: prerelease on, the highest earlier approved release marked latest again (GitHub does not move the mark by
 #               itself), and a "Revoked: <UTC> by <actor>" line in the body, which makes check refuse that tag for ever.
 #
 # TAG is data from a workflow input: it is matched here before any use and never goes through a shell as text. Needs gh, jq.
@@ -33,8 +33,8 @@ body_append() {  # body_append TAG LINE: add one line to the release body (an im
 cmd="${1:-}"; TAG="${2:-}"
 valid_tag "$TAG" || die "'$TAG' is not a plain vX.Y.Z tag (suffix tags can never be approved)"
 
-case "$cmd" in
-  check)
+# The read-only checks, run by `check` (the verify job) and again by `flip` (the job that holds contents: write): the release can change between two jobs.
+do_check() {
     rel="$(gh api "repos/$REPO/releases/tags/$TAG")" || die "no release for $TAG"
     [ "$(jq -r .draft <<<"$rel")" = false ] || die "$TAG is still a draft"
     [ "$(jq -r .prerelease <<<"$rel")" = true ] || die "$TAG is not a pre-release (already approved?)"
@@ -48,8 +48,12 @@ case "$cmd" in
     valid_tag "$cur" || die "the current latest '$cur' is not a plain tag"
     semver_gt "$TAG" "$cur" || die "$TAG is not newer than the current latest $cur (approval only moves forward)"
     echo "ok: $TAG is a published, immutable pre-release on main, newer than $cur"
-    ;;
+}
+
+case "$cmd" in
+  check) do_check ;;
   flip)
+    do_check >/dev/null
     gh release edit "$TAG" --repo "$REPO" --prerelease=false --latest >/dev/null
     body_append "$TAG" "Approved: $(now)" || echo "warning: the display-only Approved line could not be written" >&2
     echo "approved: $TAG is now the latest release"
@@ -57,6 +61,10 @@ case "$cmd" in
   revoke)
     rel="$(gh api "repos/$REPO/releases/tags/$TAG")" || die "no release for $TAG"
     [ "$(jq -r .prerelease <<<"$rel")" = false ] || die "$TAG is not approved"
+    # Only the release that IS latest can be revoked: revoking an older approved release would re-mark a still older one as latest and move the stable
+    # links, Homebrew and every client BACKWARDS past a newer approved release.
+    cur="$(gh api "repos/$REPO/releases/latest" --jq .tag_name)" || die "cannot read the current latest"
+    [ "$cur" = "$TAG" ] || die "$TAG is not the latest release ($cur is): only the latest release can be revoked"
     prev="$(gh api "repos/$REPO/releases?per_page=30" --jq '.[]|select(.draft==false and .prerelease==false)|.tag_name' | while read -r t; do
       if valid_tag "$t" && [ "$t" != "$TAG" ] && semver_gt "$TAG" "$t"; then echo "$t"; fi; done | sed 's/^v//' | sort -V | tail -1)"
     [ -n "$prev" ] || die "no earlier approved release to fall back to"
