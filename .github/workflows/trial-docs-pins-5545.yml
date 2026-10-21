@@ -1,0 +1,48 @@
+name: trial-docs-pins-5545
+on:
+  push:
+    branches: [trial/docs-pins-5545]
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+jobs:
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - shell: bash
+        run: |
+          set -eo pipefail
+          python -m pip install -r requirements-docs.txt
+          python -m pip check
+          python -m pip freeze | grep -i -E '^(certifi|urllib3|pymdown|requests)=='
+          python -m mkdocs build --strict --site-dir "$RUNNER_TEMP/new"
+          python tools/check-site-links.py "$RUNNER_TEMP/new"
+          git show origin/main:requirements-docs.txt > "$RUNNER_TEMP/old.txt" 2>/dev/null || git show HEAD~1:requirements-docs.txt > "$RUNNER_TEMP/old.txt"
+          python -m venv "$RUNNER_TEMP/oldenv"
+          "$RUNNER_TEMP/oldenv/bin/pip" install -q -r "$RUNNER_TEMP/old.txt"
+          "$RUNNER_TEMP/oldenv/bin/python" -m mkdocs build --strict -q --site-dir "$RUNNER_TEMP/old"
+          diff -r "$RUNNER_TEMP/old" "$RUNNER_TEMP/new" && echo "sites byte-identical"
+  vendor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - working-directory: tests/frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - working-directory: tests/frontend
+        run: node vendor_manifest.mjs --rebuild
+      - working-directory: tests/vendor-build/codemirror
+        run: npm audit --package-lock-only
+      - working-directory: tests/frontend
+        run: npm run test:cloud
