@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/subgentic/coral/internal/windowmark"
 )
 
 // The macOS part of the apply (#5231 section 4). Every tool is run by its absolute path.
@@ -35,6 +37,8 @@ type Mac struct {
 	WaitFor, HealthFor time.Duration
 	// Prefixes are the Homebrew prefixes to look in (default /opt/homebrew, /usr/local and $HOMEBREW_PREFIX).
 	Prefixes []string
+	// DataDir is Coral's data folder: the relaunch after an update opens the window again only if it was open (windowmark).
+	DataDir string
 	// Self is this program's pid, excluded when looking for Coral processes in the install (it runs from inside it).
 	Self int
 	// SwapSupported probes whether parent's volume has an atomic swap (a test replaces it).
@@ -259,8 +263,13 @@ func (m *Mac) CanRestart(string) string {
 }
 
 func (m *Mac) Start(ctx context.Context, install string) error {
-	// --no-browser: the relaunch after an update stays in the background like the app it replaces, with no window popping up (#5827); the window opens when the app is opened again.
-	_, err := m.Run.Run(ctx, open, install, "--args", "--no-browser")
+	// The relaunch reopens what the person had (#5827): the window, if it was open when the update began; the tray alone stays in the background (--no-browser), with no window
+	// popping up. The window opens when the app is opened again.
+	args := []string{install}
+	if !windowmark.Present(m.DataDir) {
+		args = append(args, "--args", "--no-browser")
+	}
+	_, err := m.Run.Run(ctx, open, args...)
 	return err
 }
 

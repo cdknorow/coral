@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/windowmark"
 )
 
 // #5827: launching Coral.app by hand opens the window; a start nobody asked for stays in the background; launching it again while it runs hands over to the running one.
@@ -51,4 +53,22 @@ func TestAskingARunningTrayToShowItsWindowReachesIt(t *testing.T) {
 	cmd := exec.Command("sleep", "0")
 	require.NoError(t, cmd.Run())
 	assert.Error(t, askTrayToShowWindow(cmd.Process.Pid), "a finished process")
+}
+
+// #5827: the window is recorded open from when its process starts until the person closes it; when the tray ends it itself (an update, Quit) the record stays, so the relaunch
+// after an update opens the window again.
+func TestTheWindowIsRecordedOpenUntilThePersonClosesIt(t *testing.T) {
+	dir := t.TempDir()
+	run := func(current bool) {
+		cmd := exec.Command("sleep", "0.3")
+		require.NoError(t, cmd.Start())
+		done := make(chan struct{})
+		go func() { trackWindow(dir, cmd, func() bool { return current }); close(done) }()
+		require.Eventually(t, func() bool { return windowmark.Present(dir) }, 2*time.Second, 10*time.Millisecond, "recorded open while it runs")
+		<-done
+	}
+	run(true) // the person closed it: still the tray's current window when it exited
+	assert.False(t, windowmark.Present(dir), "closed by the person: not recorded")
+	run(false) // the tray let go of it first (killCoralApp)
+	assert.True(t, windowmark.Present(dir), "ended by the tray: recorded, so an update's relaunch opens the window")
 }

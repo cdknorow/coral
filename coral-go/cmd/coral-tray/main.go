@@ -41,6 +41,7 @@ import (
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/secfile"
 	"github.com/subgentic/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/windowmark"
 )
 
 // iconData is embedded per-platform in icon_unix.go (.png) and icon_windows.go (.ico).
@@ -205,6 +206,9 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 			waitForExit(pid, time.Minute)
 		}
 	}
+
+	// This start decides about the window itself: what the last tray left recorded is for the update's relaunch only (#5827).
+	windowmark.Clear(config.Load().CoralDir())
 
 	// Write PID
 	writePID(dataDir)
@@ -708,10 +712,14 @@ func launchCoralApp(url string, mint func() (string, error)) error {
 	}
 	coralAppProcess = cmd.Process
 
-	// Reap the process in background and clear the reference when it exits
+	// Reap the process in background and clear the reference when it exits. The window is recorded as open until the person closes it (windowmark, #5827).
 	go func() {
 		defer safego.Recover("coral-tray/main:693")
-		cmd.Wait()
+		trackWindow(coralAppDataDir, cmd, func() bool {
+			coralAppMu.Lock()
+			defer coralAppMu.Unlock()
+			return coralAppProcess == cmd.Process
+		})
 		coralAppMu.Lock()
 		if coralAppProcess == cmd.Process {
 			coralAppProcess = nil

@@ -22,7 +22,7 @@ func runApply(ctx context.Context, stdout io.Writer, dataDir string, trust root.
 	pins := verify.DefaultPins()
 	switch runtime.GOOS {
 	case "darwin":
-		platform = &apply.Mac{Run: apply.NewRunner(), TeamIDs: pins.MacTeamIDs, Parent: parentAtStart, Self: os.Getpid()}
+		platform = &apply.Mac{Run: apply.NewRunner(), TeamIDs: pins.MacTeamIDs, Parent: parentAtStart, Self: os.Getpid(), DataDir: dataDir}
 	case "linux":
 		platform = &apply.Linux{DataDir: dataDir, Parent: parentAtStart, Self: os.Getpid(), Arch: runtime.GOARCH}
 	default:
