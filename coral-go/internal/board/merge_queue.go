@@ -107,9 +107,9 @@ func checkOwnPatchApproval(id int64, w *TaskWorkflow, round *ReviewRound, actor 
 
 // AttachPatches adds rows to a task that is in review with an open round (#5689): a reviewer's fix commit, or the author's next
 // revision of a patch. A row whose name and digest are already there is skipped, so a retry adds nothing. A row with a name the task
-// already has is a newer revision of that patch. When a reviewer of the round has already approved, the round is superseded and the
-// same reviewers review the new bytes in a new round: an approval never carries over to different digests.
-// reopened is that new round, nil when the round stayed open.
+// already has is a newer revision of that patch. The round is superseded and the same reviewers review the new bytes in a new round
+// (an approval, or a verdict that is about to be given, never carries over to different digests). reopened is that new round, nil
+// when nothing was added (a retry).
 func (s *Store) AttachPatches(ctx context.Context, project string, id int64, actor string, rows []TaskArtifact) (task *Task, reopened *ReviewRound, err error) {
 	if len(rows) == 0 {
 		return nil, nil, fmt.Errorf("nothing to attach")
@@ -175,19 +175,13 @@ func (s *Store) AttachPatches(ctx context.Context, project string, id int64, act
 		return nil, nil, fmt.Errorf("a task has at most %d artifacts (the newest revision of each name counts)", maxTaskArtifacts)
 	}
 	w.CompletionReview.Artifacts = all
-	approved := false
-	for _, r := range round.Reviewers {
-		if r.State == "approved" {
-			approved = true
-		}
+	// Always a new round (not only after an approval): a reviewer may have read the task before this attach and be about to approve it,
+	// and a verdict that names the round they read is then refused (task detail shows the round), so no one approves bytes they did not see.
+	round.Result = "superseded"
+	if reopened, err = reopenReviews(ctx, tx, project, id, &w); err != nil {
+		return nil, nil, err
 	}
-	if approved {
-		round.Result = "superseded"
-		if reopened, err = reopenReviews(ctx, tx, project, id, &w); err != nil {
-			return nil, nil, err
-		}
-		reopened.DelegatedBy = "superseded by a new patch from " + actor
-	}
+	reopened.DelegatedBy = "superseded by a new patch from " + actor
 	if err := saveWorkflow(ctx, tx, id, w); err != nil {
 		return nil, nil, err
 	}
