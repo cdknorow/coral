@@ -13,6 +13,6 @@ func TestDefaultShellOnWindowsIsPowerShell(t *testing.T) {
 	t.Setenv("CORAL_SHELL", `C:\Windows\System32\cmd.exe`)
 	sh, err := defaultShell()
 	require.NoError(t, err)
-	require.Len(t, sh, 1)
+	require.Len(t, sh, 3)
 	assert.Contains(t, []string{"pwsh.exe", "powershell.exe"}, sh[0])
 }
