@@ -29,7 +29,7 @@ const BASE = require('./test_base').BASE;
         let made = 0;
         for (let i = 0; i < 100; i++) {
             const b = boards[i % 5];
-            const body = `Task ${i}: please read **this** and answer.\n\n- one\n- two\n\n${i < 5 ? 'Links: ' + links : 'A short body.'}`;
+            const body = `Task ${i}: please read **this** and answer.\n\n- one\n- two\n\n${i >= 95 ? 'Links: ' + links : 'A short body.'}`;
             const r = await api('POST', `/api/board/${b}/tasks`, { title: `Scale task ${String(i).padStart(3, '0')}`, priority: ['low', 'medium', 'high'][i % 3], subscriber_id: 'Orchestrator', assigned_to: 'Operator', body });
             if (r.status === 201 || r.status === 200) made++;
         }
