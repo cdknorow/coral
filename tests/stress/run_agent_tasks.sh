@@ -41,6 +41,7 @@ export CORAL_NO_WELCOME=1    # no first-launch screen (#3221)
 
 cleanup() {
     local exit_code=$?
+    coral_test_watchdog_stop
     for entry in "${NAME_A:-}:${SID_A:-}" "${NAME_B:-other-agent}:${SID_B:-}"; do
         if [[ -n "${entry##*:}" ]]; then
             api POST "/api/sessions/live/${entry%:*}/kill" -d "{\"agent_type\":\"claude\",\"session_id\":\"${entry##*:}\"}" >/dev/null 2>&1 || true
@@ -58,6 +59,7 @@ cleanup() {
     coral_test_sandbox_cleanup   # #4354
 }
 trap cleanup EXIT
+coral_test_watchdog   # a hang fails this runner within CORAL_TEST_WATCHDOG_S (default 900 s), not the whole run (#116)
 
 log()  { echo "[agent-tasks] $*"; }
 pass() { PASS=$((PASS + 1)); log "PASS: $*"; }
