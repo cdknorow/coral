@@ -11,7 +11,6 @@
  * retry fetches again instead of reusing the rejected promise. */
 
 const VENDOR_FILES = new Set([
-    'safe-markdown.js',
     'codemirror/codemirror-bundle.js',
     'xterm/xterm.min.css',
     'xterm/xterm.min.js',
@@ -71,14 +70,6 @@ export function loadScriptOnce(rel) {
     });
     _loads.set(href, p);
     return p;
-}
-
-/** The shared Inbox renderer (window.AccountMarkdown, vendor/safe-markdown.js, Coral Hub's own file): loaded the first time a task or a saved message is shown, not by the page. Resolves to it. */
-export async function loadSafeMarkdown() {
-    if (globalThis.AccountMarkdown) return globalThis.AccountMarkdown;
-    await loadScriptOnce('safe-markdown.js');
-    if (!globalThis.AccountMarkdown) { forget('safe-markdown.js'); throw new Error('The renderer did not initialise'); }
-    return globalThis.AccountMarkdown;
 }
 
 /** CodeMirror 6 (window.CoralCM). Resolves to the module. */

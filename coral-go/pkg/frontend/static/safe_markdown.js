@@ -1,5 +1,5 @@
 /* The ES wrapper of the shared markdown renderer (#5754). vendor/safe-markdown.js is Coral Hub's renderer, byte for byte (its hash is pinned in tests/frontend/vendor_manifest.mjs and the hub pins the
- * same one); it is a classic script that defines window.AccountMarkdown, loaded on first use by vendor_loader.js (loadSafeMarkdown; script-src 'self'), not by the page (#5818). This file is the only place that reads that global.
+ * same one); it is a classic script that defines window.AccountMarkdown, loaded by <script src> (script-src 'self'). This file is the only place that reads that global.
  *
  * renderSafe(text, opts) -> { node, partial }: the DOM-built, sanitised-by-construction rendering of machine-supplied text (no HTML string, no image, links http/https/mailto with the host shown).
  * If the renderer did not load, the text is shown as plain text: never as markup.
