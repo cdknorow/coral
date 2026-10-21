@@ -44,6 +44,19 @@ function post(method, url, body) {
     });
 }
 
+const cleanLabel = v => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 80); // display text: no control or bidi characters, bounded
+
+/** "Turned on from Coral Hub by <user>, <time>" / "Turned off on this computer, <time>" from the status; '' when it was never changed. The state is the switch's own: the last change set it. */
+export function autoAcceptChangedText(st) {
+    const c = st && st.allow_hub_auto_accept_changed;
+    if (!c || typeof c !== 'object' || (c.by !== 'hub' && c.by !== 'local')) return '';
+    const d = typeof c.at === 'string' ? new Date(c.at) : null;
+    const at = d && !Number.isNaN(d.getTime()) ? d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    const what = st.allow_hub_auto_accept === false ? 'Turned off' : 'Turned on';
+    const who = c.by === 'hub' ? `from Coral Hub by ${cleanLabel(c.user) || 'a Coral Hub user'}` : 'on this computer';
+    return `${what} ${who}${at ? ', ' + at : ''}`;
+}
+
 /** Enrolled, but the tunnel is down and retrying (the hub approved the code, then was
  *  unreachable): the server is connected to the hub as far as the user is concerned. A
  *  'retrying' without an enrollment (no server id or label) is still not connected. */
@@ -187,6 +200,9 @@ class CloudPanel {
         show('auto-accept-row', mode === 'launch');
         const allow = this.part('allow-auto-accept');
         if (allow) allow.checked = st.allow_hub_auto_accept !== false;
+        // Who last changed it (#5847, from status allow_hub_auto_accept_changed {by: hub|local, user, at}): a local Off that Coral Hub turned on again is visible to the person at this computer. Nothing is said until it was changed.
+        const changed = this.part('auto-accept-changed');
+        if (changed) { const t = autoAcceptChangedText(st); changed.textContent = t; show('auto-accept-changed', mode === 'launch' && !!t); }
         // Token redaction for hub viewers (#3560): on unless the owner turned it off here.
         const redact = this.part('redact-tokens');
         if (redact) redact.checked = st.redact_tokens !== false;

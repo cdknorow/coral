@@ -239,6 +239,33 @@ const BASE = require('./test_base').BASE;
         assert.deepEqual(await ev(`window.__cloudPuts[0]`), { method: 'PUT', body: { allow: false } });
         console.log('   ✓ hidden below Launch; on by default; PUT /api/cloud/allow-auto-accept {allow}');
 
+        // Who last changed it (#5847): status allow_hub_auto_accept_changed {by, user, at}, beside the switch, said in words, nothing before a change
+        const lines = await ev(`(async () => {
+            const cc = await import(${S}+'cloud_connect.js');
+            const line = document.getElementById('settings-cloud-auto-accept-changed'), box = document.getElementById('settings-cloud-allow-auto-accept');
+            const read = async next => { window.__setCloud({ max_mode: 'launch', allow_hub_auto_accept_changed: undefined, ...next }); await cc.loadCloudStatus(); return { text: line.textContent, shown: !line.hidden }; };
+            const out = {};
+            out.never = await read({ allow_hub_auto_accept: true });
+            out.hubOn = await read({ allow_hub_auto_accept: true, allow_hub_auto_accept_changed: { by: 'hub', user: 'hub-user-3f2a', at: '2026-10-21T20:15:00Z' } });
+            out.hubOff = await read({ allow_hub_auto_accept: false, allow_hub_auto_accept_changed: { by: 'hub', user: 'hub-user-3f2a', at: '2026-10-21T20:15:00Z' } });
+            out.local = await read({ allow_hub_auto_accept: false, allow_hub_auto_accept_changed: { by: 'local', at: '2026-10-21T20:15:00Z' } });
+            out.nasty = await read({ allow_hub_auto_accept: true, allow_hub_auto_accept_changed: { by: 'hub', user: '<img src=x onerror=1>\u202e\u0007Eve', at: 'not a time' } });
+            out.badBy = await read({ allow_hub_auto_accept: true, allow_hub_auto_accept_changed: { by: 'someone', at: '2026-10-21T20:15:00Z' } });
+            out.belowLaunch = await read({ max_mode: 'interact', allow_hub_auto_accept_changed: { by: 'hub', user: 'u', at: '2026-10-21T20:15:00Z' } });
+            out.described = box.getAttribute('aria-describedby');
+            out.img = document.querySelectorAll('#settings-cloud-auto-accept-changed img').length;
+            return out;
+        })()`);
+        assert.deepEqual(lines.never, { text: '', shown: false }, 'nothing is said before it was changed');
+        assert.match(lines.hubOn.text, /^Turned on from Coral Hub by hub-user-3f2a, .+2026.*$/); assert.equal(lines.hubOn.shown, true);
+        assert.match(lines.hubOff.text, /^Turned off from Coral Hub by hub-user-3f2a, /);
+        assert.match(lines.local.text, /^Turned off on this computer, /);
+        assert.ok(/^Turned on from Coral Hub by <img src=x onerror=1>Eve$/.test(lines.nasty.text) && lines.img === 0, 'a hub user label is text, stripped of control and bidi characters: ' + JSON.stringify(lines.nasty));
+        assert.deepEqual(lines.badBy, { text: '', shown: false }, 'an unknown "by" says nothing');
+        assert.equal(lines.belowLaunch.shown, false, 'hidden with its row below Launch');
+        assert.ok(/settings-cloud-auto-accept-desc/.test(lines.described) && /settings-cloud-auto-accept-changed/.test(lines.described), 'the switch is described by the line too: ' + lines.described);
+        console.log('   ✓ the last-changed line: hub user or this computer, on or off, nothing before a change, text only');
+
         console.log('10b. Settings: "Hide tokens from Coral Hub viewers who can only look" (#3560, #3958) is on by default and saves locally');
         const redactRow = await ev(`(async () => {
             const box = document.getElementById('settings-cloud-redact-tokens');
