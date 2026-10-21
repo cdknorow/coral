@@ -34,5 +34,5 @@ No OS-level signing. The release carries `SHA256SUMS.txt` covering every package
 ## Recommendations for the operator (not yet applied)
 
 1. **GitHub Environment `release`.** Put the signing steps behind an Environment named `release` with required reviewers, and add a tag ruleset restricting who can create `v*` tags. Move the Apple and Azure secrets into that Environment so a branch or fork workflow can never read them.
-2. **OIDC instead of `AZURE_CLIENT_SECRET`.** Create a federated credential on the service principal (subject `repo:cdknorow/coral:environment:release`) and grant the job `id-token: write`. This removes the long-lived Azure secret.
+2. **OIDC instead of `AZURE_CLIENT_SECRET`.** Create a federated credential on the service principal (subject `repo:subgentic/coral:environment:release`) and grant the job `id-token: write`. This removes the long-lived Azure secret. Not configured yet: Windows stays unsigned for now, so no Azure credential exists.
 3. **Action migration.** `azure/trusted-signing-action` has been renamed to `Azure/artifact-signing-action`. Plan to move to it (pinned by SHA) once its inputs are confirmed on the throwaway signtest tag build, which needs operator OK and the Azure secrets first.
