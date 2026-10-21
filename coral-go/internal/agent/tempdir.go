@@ -53,12 +53,39 @@ func LaunchTempDir() string {
 	return launchTempDirPath
 }
 
-// launchTempDirs are the folders a session's temp files may be in: LaunchTempDir, and the system
-// temp folder, where launches before #4381 wrote them.
-func launchTempDirs() []string {
-	dirs := []string{LaunchTempDir()}
-	if sys := os.TempDir(); sys != dirs[0] {
-		dirs = append(dirs, sys)
+// privateLaunchTempDir is the folder SetTempDir made, or "" before it (or when it failed, and
+// launch temp files go to the system temp folder).
+func privateLaunchTempDir() string {
+	launchTempDirMu.RLock()
+	defer launchTempDirMu.RUnlock()
+	return launchTempDirPath
+}
+
+// launchTemps are the temp files and folders this process wrote for each session's launches,
+// by session id: a session's teardown removes them by their exact paths, wherever they are, so it
+// never has to read the system temp folder (#90: on a long-used Windows machine that holds
+// hundreds of thousands of entries, and a stop read them all).
+var launchTemps = struct {
+	sync.Mutex
+	m map[string][]string
+}{m: map[string][]string{}}
+
+// rememberLaunchTemp records path as one of sessionID's launch temp files or folders. Only a
+// canonical UUID's: CleanupTempFiles removes no other id's, so the list would only grow.
+func rememberLaunchTemp(sessionID, path string) {
+	if !isCanonicalUUID(sessionID) {
+		return
 	}
-	return dirs
+	launchTemps.Lock()
+	launchTemps.m[sessionID] = append(launchTemps.m[sessionID], path)
+	launchTemps.Unlock()
+}
+
+// takeLaunchTemps returns, and forgets, the paths recorded for sessionID.
+func takeLaunchTemps(sessionID string) []string {
+	launchTemps.Lock()
+	defer launchTemps.Unlock()
+	paths := launchTemps.m[sessionID]
+	delete(launchTemps.m, sessionID)
+	return paths
 }

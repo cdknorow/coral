@@ -113,7 +113,8 @@ func TestSweepStaleTempFilesKeepsAllWhenUnsure(t *testing.T) {
 }
 
 // Launch temp files go to the folder SetTempDir names (private), and a session's teardown removes
-// its files there and in the system temp folder (where launches before #4381 wrote them).
+// its files there. One in the system temp folder (where launches before #4381 wrote them) is the
+// startup sweep's: a teardown never reads that folder (#90).
 func TestLaunchTempFilesGoToThePrivateFolder(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir()) // the "system" temp folder is this test's own, never the shared one
 	launchTempDirMu.Lock()
@@ -135,8 +136,7 @@ func TestLaunchTempFilesGoToThePrivateFolder(t *testing.T) {
 	t.Cleanup(func() { os.Remove(old) })
 
 	CleanupTempFiles(deadSID)
-	for _, f := range []string{p, old} {
-		_, err := os.Lstat(f)
-		assert.True(t, os.IsNotExist(err), "%s is removed", f)
-	}
+	_, err = os.Lstat(p)
+	assert.True(t, os.IsNotExist(err), "%s is removed", p)
+	assert.FileExists(t, old, "the system temp folder is not read at a teardown")
 }
