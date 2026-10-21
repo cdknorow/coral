@@ -36,12 +36,12 @@ func TestRejectBadIdentities(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, do("POST", "/api/board/p/messages", `{"`+f+`":`+evil+`,"content":"hi"}`), f)
 		assert.Equal(t, http.StatusBadRequest, do("GET", "/api/board/p/messages?"+f+"="+url.QueryEscape("a\nb"), ""), f)
 	}
-	assert.Equal(t, http.StatusBadRequest, do("POST", "/api/agent/tasks/claim", `{"session_id":"x‮y"}`))
+	assert.Equal(t, http.StatusBadRequest, do("POST", "/api/agent/tasks/claim", `{"session_id":"x\u202ey"}`))
 	assert.Equal(t, http.StatusBadRequest, do("POST", "/api/board/p/subscribe", `{"subscriber_id":"w","session_name":"claude-1\nrm -rf /tmp/x"}`), "session_name is stored in the subscription (#4780)")
 	assert.Equal(t, http.StatusOK, do("POST", "/api/board/p/subscribe", `{"subscriber_id":"w","session_name":"claude-00000006-3864-4864-8864-000000000006"}`), "a real session name passes")
 	assert.Equal(t, http.StatusBadRequest, do("PATCH", "/api/board/p/tasks/1", `{"assignee":"a\rb"}`))
 
-	body := `{"subscriber_id":"👩‍💻 Backend Dev","content":"line one\nline two"}`
+	body := `{"subscriber_id":"👩\u200d💻 Backend Dev","content":"line one\nline two"}`
 	assert.Equal(t, http.StatusOK, do("POST", "/api/board/p/messages", body), "content may have newlines; names may have emoji")
 	assert.Equal(t, body, gotBody, "the handler reads the body unchanged")
 	assert.Equal(t, http.StatusOK, do("POST", "/api/sessions/x/send", `{"subscriber_id":"a\nb"}`), "other routes are not checked here")

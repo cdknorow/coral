@@ -14,7 +14,7 @@ import (
 func FuzzSanitizePaste(f *testing.F) {
 	for _, s := range []string{
 		"", "plain text", "line one\nline two\ttabbed", "a\r\nb\rc", "\x1b[201~ rm -rf /", "x\x1b[200~y", "\x00\x01\x7f", "é ü 日本語 🎉", "\xc2\x85next line", "\xc2\x9b31m",
-		"bad \xff\xfe utf8", "‮ bidi ⁦", strings.Repeat("\x1b", 100), "tab\there\x0bvertical\x0cform",
+		"bad \xff\xfe utf8", "\u202e bidi \u2066", strings.Repeat("\x1b", 100), "tab\there\x0bvertical\x0cform",
 	} {
 		f.Add(s)
 	}

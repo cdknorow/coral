@@ -166,7 +166,7 @@ func TestLocalCrossTeamMessageListsItsAttachedFiles(t *testing.T) {
 // #5507 (Security): the name an agent gave its upload is free text. On the same-Coral path it reaches the receiving message's envelope (and the dashboard and the hub) unless it is cleaned.
 func TestLocalCrossTeamMessageListsAnUploadNameCleaned(t *testing.T) {
 	e := newAttachEnv(t, true)
-	hostile := "re‮port\x1b[31m\n\x00" + strings.Repeat("x", 500) + ".md"
+	hostile := "re\u202eport\x1b[31m\n\x00" + strings.Repeat("x", 500) + ".md"
 	d := writeUpload(t, e.coralDir, alphaOrchSID, "alpha's report", hostile, afterJoin())
 	code, out := e.send("alpha", "beta", alphaOrchSID, uri(d))
 	require.Equal(t, http.StatusOK, code, out)

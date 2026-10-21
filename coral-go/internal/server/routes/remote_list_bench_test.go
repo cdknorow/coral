@@ -73,7 +73,7 @@ func TestMergedRemoteListBytesUnchanged(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	h := NewSessionsHandler(db, &config.Config{LogDir: t.TempDir()}, nil, newMockTerminal(), nil)
 	snap := benchRemoteSnapshot(3, 4)
-	snap.Sessions[0]["summary"] = "a <b> & c   é 日本 \"quoted\" \\ back"
+	snap.Sessions[0]["summary"] = "a <b> & c \u2028 é 日本 \"quoted\" \\ back"
 	snap.Sessions[1]["nested"] = map[string]any{"z": 1, "a": []any{nil, true, 1.5, "x"}}
 	snap = background.NewRemoteSnapshot(snap.Servers, snap.Sessions)
 	h.SetRemoteAgents(staticRemoteSource{snap})

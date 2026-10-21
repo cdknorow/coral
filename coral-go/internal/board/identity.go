@@ -76,9 +76,9 @@ func badIdentityRune(r rune) bool {
 	switch {
 	case r < 0x20, r == 0x7f, r >= 0x80 && r <= 0x9f:
 		return true
-	case r == ' ', r == ' ':
+	case r == '\u2028', r == '\u2029':
 		return true
-	case r == '‍': // zero-width joiner: emoji sequences
+	case r == '\u200d': // zero-width joiner: emoji sequences
 		return false
 	case unicode.Is(unicode.Cf, r): // bidi overrides and isolates, zero-width marks
 		return true
@@ -172,7 +172,7 @@ func OneLine(s string) string {
 	b.Grow(len(s))
 	space := false
 	for _, r := range s {
-		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == ' ' || r == ' ' {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == '\u2028' || r == '\u2029' {
 			r = ' '
 		}
 		if r == ' ' {

@@ -463,9 +463,9 @@ func TestArtifactCommentsKeywordSecretsAreRedactedWhenKept(t *testing.T) {
 
 func TestArtifactCommentNamesAreText(t *testing.T) {
 	assert.Equal(t, "Casey", cleanCommentName("  Casey  "))
-	assert.Equal(t, "ab", cleanCommentName("a‮b​\n"), "bidi, zero-width and control characters are dropped")
+	assert.Equal(t, "ab", cleanCommentName("a\u202eb\u200b\n"), "bidi, zero-width and control characters are dropped")
 	assert.Equal(t, 32, len([]rune(cleanCommentName(strings.Repeat("n", 100)))), "capped at 32 characters")
-	assert.Equal(t, "", cleanCommentName("​‌"))
+	assert.Equal(t, "", cleanCommentName("\u200b\u200c"))
 }
 
 func TestArtifactCommentsGoWithTheirArtifact(t *testing.T) {
