@@ -42,7 +42,7 @@ func channelFeeds(t *testing.T, latest feedRel, list ...feedRel) (approvedHits, 
 	}
 	a, g := serve(approvedHits, latest), serve(agenticHits, list)
 	origA, origG := githubReleasesAPI, githubReleasesListAPI
-	githubReleasesAPI, githubReleasesListAPI = a.URL, g.URL
+	githubReleasesAPI, githubReleasesListAPI = uniqueFeedURL(a.URL), uniqueFeedURL(g.URL)
 	t.Cleanup(func() { githubReleasesAPI, githubReleasesListAPI = origA, origG })
 	return approvedHits, agenticHits
 }
@@ -176,7 +176,7 @@ func TestTheStatusAlwaysNamesTheChannelAndNeverWaitsForGitHub(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-slow }))
 	defer func() { close(slow); s.Close() }()
 	orig := githubReleasesAPI
-	githubReleasesAPI = s.URL
+	githubReleasesAPI = uniqueFeedURL(s.URL)
 	t.Cleanup(func() { githubReleasesAPI = orig })
 	e := newRelaunchEnv(t)
 	e.h.Feeds = releaseFeeds
@@ -244,7 +244,7 @@ func TestTheStatusKeepsTheChannelWhenTheFeedFails(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) }))
 	defer s.Close()
 	origA, origG := githubReleasesAPI, githubReleasesListAPI
-	githubReleasesAPI, githubReleasesListAPI = s.URL, s.URL
+	githubReleasesAPI, githubReleasesListAPI = uniqueFeedURL(s.URL), uniqueFeedURL(s.URL)
 	t.Cleanup(func() { githubReleasesAPI, githubReleasesListAPI = origA, origG })
 	e := newRelaunchEnv(t)
 	e.h.Feeds = releaseFeeds
