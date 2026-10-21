@@ -362,6 +362,10 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		fail(w)
 		return
 	}
+	// Through the Coral Hub, extra flags or capabilities that skip permission prompts need the owner's local switch (#126 F4).
+	if refuseHubSkip(w, r, h.ss, hubAsksToSkip(plan.agentType, strings.Fields(req.ExtraFlags), req.Capabilities, nil, nil)) {
+		return
+	}
 	plan.restartSettings()
 	cmd, fail := h.restartCommand(ctx, plan)
 	if fail != nil {

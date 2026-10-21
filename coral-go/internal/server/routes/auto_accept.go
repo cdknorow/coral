@@ -757,7 +757,7 @@ func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if !HubAutoAcceptAllowed(settings) {
-			refuseAutoAccept(w, http.StatusForbidden, "hub_auto_accept_disabled", "Coral Hub auto-accept is turned off on this computer")
+			refuseAutoAccept(w, http.StatusForbidden, "hub_auto_accept_disabled", hubAutoAcceptOff)
 			return
 		}
 	}

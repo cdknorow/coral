@@ -318,3 +318,86 @@ func ValidPermissionMode(mode string) bool {
 		return false
 	}
 }
+
+// SkipsPermissionPrompts reports whether flags could let an agentType agent act without asking:
+// a permission mode other than default or plan, a bypass, pre-allowed tools, extra folders, another
+// settings or config file, or any flag it does not know (#126 F4). It is an allowlist, so a spelling
+// nobody listed counts as skipping: false only when every word is a flag below with a value that
+// keeps the prompts on. Each flag is "--flag value" or "--flag=value"; a value that is itself a flag
+// counts as skipping.
+//
+//   - every type: --model / -m, and --permission-mode default|plan (Coral translates it per type)
+//   - Claude, agy, Antigravity: --effort (the thinking level, agentmodels.ThinkingArgs)
+//   - agy, Antigravity, Gemini: --mode plan, --approval-mode default|plan
+//   - Codex: -a / --ask-for-approval / --approval-mode untrusted|on-request, -s / --sandbox
+//     read-only|workspace-write (Coral's default for Codex), -c / --config model_reasoning_effort=<level> (a lowercase word)
+func SkipsPermissionPrompts(agentType string, flags []string) bool {
+	for i := 0; i < len(flags); i++ {
+		name, value, inline := strings.Cut(flags[i], "=")
+		keeps := promptKeepingFlag(agentType, name)
+		if keeps == nil {
+			return true
+		}
+		if !inline {
+			if i+1 >= len(flags) || strings.HasPrefix(flags[i+1], "-") {
+				return true
+			}
+			i++
+			value = flags[i]
+		}
+		if value == "" || !keeps(value) {
+			return true
+		}
+	}
+	return false
+}
+
+// promptKeepingFlag is the value check for a flag SkipsPermissionPrompts allows for agentType, nil
+// for any other flag.
+func promptKeepingFlag(agentType, name string) func(string) bool {
+	anyValue := func(string) bool { return true }
+	oneOf := func(values ...string) func(string) bool {
+		return func(v string) bool {
+			for _, ok := range values {
+				if v == ok {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	switch name {
+	case "--model", "-m":
+		return anyValue
+	case "--permission-mode":
+		return oneOf("default", "plan")
+	}
+	switch agentType {
+	case at.Claude:
+		if name == "--effort" {
+			return anyValue
+		}
+	case at.Agy, at.Antigravity, at.Gemini:
+		switch {
+		case name == "--effort" && agentType != at.Gemini:
+			return anyValue
+		case name == "--mode":
+			return oneOf("plan")
+		case name == "--approval-mode":
+			return oneOf("default", "plan")
+		}
+	case at.Codex:
+		switch name {
+		case "-a", "--ask-for-approval", "--approval-mode":
+			return oneOf("untrusted", "on-request")
+		case "-s", "--sandbox":
+			return oneOf("read-only", "workspace-write")
+		case "-c", "--config":
+			return func(v string) bool {
+				key, level, ok := strings.Cut(v, "=")
+				return ok && key == "model_reasoning_effort" && level != "" && strings.Trim(level, "abcdefghijklmnopqrstuvwxyz") == ""
+			}
+		}
+	}
+	return nil
+}

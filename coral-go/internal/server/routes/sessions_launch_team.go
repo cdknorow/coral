@@ -95,6 +95,11 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Through the Coral Hub, a team with any member that skips permission prompts needs the owner's local switch, checked
+	// before anything is written or started (#126 F4).
+	if refuseHubSkip(w, r, h.ss, teamAsksToSkip(body)) {
+		return
+	}
 	// Which board the team joins or starts (#3536), decided before anything is written
 	// (knowledge files, working mode, presets, worktrees, the teams row). From here on
 	// body.BoardName is the board's id.
@@ -271,6 +276,24 @@ func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTea
 			log.Printf("[launch-team] kept the board %s of the team that started nobody: something else joined or used it meanwhile", body.BoardName)
 		}
 	}
+}
+
+// teamAsksToSkip reports whether any member of a team launch asks to skip permission prompts (hubAsksToSkip), with the
+// flags launchTeamMember gives it: its own, or the team's when it has none.
+func teamAsksToSkip(body launchTeamRequest) bool {
+	for _, def := range body.Agents {
+		agentType, flags := body.AgentType, def.Flags
+		if def.AgentType != "" {
+			agentType = def.AgentType
+		}
+		if len(flags) == 0 {
+			flags = body.Flags
+		}
+		if hubAsksToSkip(agentType, flags, def.Capabilities, def.Tools, def.Hooks) {
+			return true
+		}
+	}
+	return false
 }
 
 // restoreTeamTemplate writes what a team template brings besides its members: the members' knowledge files and the
