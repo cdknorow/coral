@@ -105,12 +105,12 @@ Each release also keeps its versioned file names (`Coral.v<version>.dmg`, `coral
 
 #### Verify your download
 
-Every release is built and signed by Coral's release workflow on GitHub, with no long-lived keys (Sigstore keyless signing). You can check that a download came from that workflow, from a release tag of `subgentic/coral`. Releases up to v1.4.141 were built before the repository moved, in `cdknorow/coral`: use that name in the commands below to check one of them.
+Every release is built and signed by Coral's release workflow on GitHub, with no long-lived keys (Sigstore keyless signing). You can check that a download came from that workflow, from a release tag of `subgentic/coral`. Releases up to v1.4.141 were built before the repository moved, in `cdknorow/coral`: for one of them use `--owner cdknorow` and `cdknorow/coral/.github/workflows/release.yml` in the commands below (GitHub keeps a release's attestation with the owner that built it, so `--repo` finds nothing for them).
 
 With the [GitHub CLI](https://cli.github.com/) (any package):
 
 ```bash
-gh attestation verify coral-linux-amd64.tar.gz --repo subgentic/coral \
+gh attestation verify coral-linux-amd64.tar.gz --owner subgentic \
   --signer-workflow subgentic/coral/.github/workflows/release.yml
 ```
 
@@ -128,7 +128,7 @@ The checksum command must print `<your file>: OK` for the file you downloaded; i
 On Windows, check the MSI or the portable ZIP you downloaded the same way (PowerShell, with the GitHub CLI); it must report the attestation as verified for `release.yml` on a tag of `subgentic/coral`:
 
 ```powershell
-gh attestation verify Coral-x64.msi --repo subgentic/coral `
+gh attestation verify Coral-x64.msi --owner subgentic `
   --signer-workflow subgentic/coral/.github/workflows/release.yml
 ```
 
