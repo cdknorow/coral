@@ -215,7 +215,10 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	if serr != nil { // never wake the agent on the CLI found on PATH (#4350)
 		return serr
 	}
-	cliPath := agent.ResolveCLIPath(userSettings, ls.AgentType)
+	cliPath, err := agent.LaunchCLI(userSettings, ls.AgentType) // a broken cli_path_<agent> refuses the wake (#115)
+	if err != nil {
+		return err
+	}
 
 	role := displayName
 	if role == "" {

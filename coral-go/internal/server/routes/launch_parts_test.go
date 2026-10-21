@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/ptymanager"
 )
 
@@ -63,5 +64,10 @@ func TestResolveLaunchCLI(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()) // no common install places
 	_, err = resolveLaunchCLI("claude", filepath.Join(dir, "missing-claude"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "CLI not found. Install it:")
+	assert.Contains(t, err.Error(), agent.CLIPathSettingKey("claude"), "a configured path that is missing is refused, naming the setting (#115)")
+	assert.Contains(t, err.Error(), "missing-claude")
+
+	_, err = resolveLaunchCLI("claude", "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "CLI not found. Install it:", "nothing configured and nothing on PATH")
 }

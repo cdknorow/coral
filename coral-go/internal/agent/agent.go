@@ -391,8 +391,11 @@ func ResolveCLIPath(settings map[string]string, agentType string) string {
 func FindCLI(settings map[string]string, agentType string) (string, error) {
 	if p := ResolveCLIPath(settings, agentType); p != "" {
 		resolved, err := exec.LookPath(p)
+		if err == nil {
+			err = CheckRunnable(resolved)
+		}
 		if err != nil {
-			return "", fmt.Errorf("%s CLI path %q set in Settings > CLI paths can't be run (%v): fix it or clear it to use the one on PATH", agentType, p, err)
+			return "", fmt.Errorf("%s CLI path \"%s\" (the setting %s, in Settings > CLI paths) can't be run (%v): fix it or clear it to use the one on PATH; Coral does not run another program in its place", agentType, p, CLIPathSettingKey(agentType), err)
 		}
 		return resolved, nil
 	}
@@ -407,6 +410,26 @@ func FindCLI(settings map[string]string, agentType string) (string, error) {
 		return p, nil
 	}
 	return "", fmt.Errorf("%s CLI %q not found: install it or set its path in Settings > CLI paths", agentType, bin)
+}
+
+// LaunchCLI is the program a restart, resume, wake or background launch runs for agentType (#115). A configured cli_path_<type> must be
+// usable: FindCLI's answer, so one that can't be run is an error naming the setting and the path, never a silent fall back to whatever agent
+// CLI is first on PATH. With none configured it is the absolute path exec.LookPath finds (which refuses the current folder), rather than
+// a bare name that is looked up again, in the agent's shell, when it runs; when nothing is found it is "" and the launch line keeps the bare
+// name, as before (the launch route itself reports a missing CLI). An agent type with no CLI of its own (a plain terminal) gets whatever
+// is configured, unchecked.
+func LaunchCLI(settings map[string]string, agentType string) (string, error) {
+	info := GetCLIInfo(agentType)
+	if info == nil || info.Binary == "" {
+		return ResolveCLIPath(settings, agentType), nil
+	}
+	if ResolveCLIPath(settings, agentType) != "" {
+		return FindCLI(settings, agentType)
+	}
+	if p, err := exec.LookPath(info.Binary); err == nil && filepath.IsAbs(p) {
+		return p, nil
+	}
+	return "", nil
 }
 
 // resolveBinary returns cliPath if non-empty, otherwise the default binary name.
