@@ -107,5 +107,5 @@ func (p *windowsPTY) Close() error {
 // PowerShell is used because agent launch commands use PowerShell syntax
 // (e.g. $(Get-Content -Raw ...)) which cmd.exe cannot interpret.
 func shellWrap(cmd string) []string {
-	return []string{"powershell.exe", "-NoProfile", "-Command", cmd}
+	return append([]string{"powershell.exe", "-NoProfile"}, append(psPolicyArgs, "-Command", cmd)...)
 }
