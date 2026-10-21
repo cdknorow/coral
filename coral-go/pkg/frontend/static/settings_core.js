@@ -60,12 +60,14 @@ export function renderDebugInputLogStatus(status) {
     const file = log.path || 'input-debug.log';
     if (log.enabled === true) {
         const via = log.forced ? ' (turned on by CORAL_DEBUG_INPUT or --debug-input)' : '';
-        el.textContent = `On${via}: everything Coral sends to agent terminals, including typed text that may contain secrets, is written to ${file}. Turn it off when you are done.`;
+        // #60: redacted, and a person's own typing kept as its length only, but not empty of
+        // sensitive text: say so.
+        el.textContent = `On${via}: what Coral sends to agent terminals is written to ${file}, with the secrets Coral recognises removed and your own typing kept as its length only. It can still hold board messages and other text sent to agents, and secrets the redaction misses. Turn it off when you are done; it is deleted after 7 days without a write.`;
         el.dataset.state = 'on';
         el.hidden = false;
     } else if (log.file_exists === true) {
         // Turning it off keeps the file, which may hold secrets: say so, and offer to delete it.
-        el.textContent = `Off. ${file} is kept; delete it when you no longer need it.`;
+        el.textContent = `Off. ${file} is kept (its older copy was removed): it can hold text sent to agents, so delete it when you no longer need it. It is deleted after 7 days without a write.`;
         el.dataset.state = 'kept';
         el.hidden = false;
     } else {

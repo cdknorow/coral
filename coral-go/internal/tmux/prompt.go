@@ -143,8 +143,9 @@ func (c *Client) SendPrompt(ctx context.Context, agentName, text, agentType, ses
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	inputlog.Record(target, inputlog.Paste, text)
-	buffer, err := c.loadPromptBuffer(ctx, SanitizePaste(text))
+	sanitized := SanitizePaste(text)
+	inputlog.RecordCtx(ctx, target, inputlog.Paste, sanitized) // what is pasted, not what was asked (#60)
+	buffer, err := c.loadPromptBuffer(ctx, sanitized)
 	if err != nil {
 		return err
 	}

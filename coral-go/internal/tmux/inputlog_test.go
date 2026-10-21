@@ -65,9 +65,32 @@ func TestRecordSendKeysIgnoresOtherCommands(t *testing.T) {
 	dir := t.TempDir()
 	inputlog.Setup(dir, true)
 	t.Cleanup(func() { inputlog.Setup("", false) })
-	recordSendKeys([]string{"list-panes", "-a"})
-	recordSendKeys([]string{"capture-pane", "-t", "x", "-p"})
+	recordSendKeys(context.Background(), []string{"list-panes", "-a"})
+	recordSendKeys(context.Background(), []string{"capture-pane", "-t", "x", "-p"})
 	inputlog.Flush()
 	_, err := os.Stat(filepath.Join(dir, inputlog.FileName))
 	assert.True(t, os.IsNotExist(err), "nothing was written")
+}
+
+// #60: on the tmux backend, a person's own input (inputlog.Human) is logged by its length only,
+// literal or as hex bytes; key names stay; hex is logged decoded, never as a hex copy.
+func TestTmuxLogsAPersonsTypingByLengthOnly(t *testing.T) {
+	dir := t.TempDir()
+	inputlog.Setup(dir, true)
+	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
+	human := inputlog.Human(context.Background())
+	recordSendKeys(human, []string{"send-keys", "-t", "%1", "-l", "--", "hunter2"})
+	recordSendKeys(human, []string{"send-keys", "-t", "%1", "-H", "68", "-H", "69"}) // "hi"
+	recordSendKeys(human, []string{"send-keys", "-t", "%1", "--", "Enter"})
+	recordSendKeys(context.Background(), []string{"send-keys", "-t", "%1", "-H", "6f", "-H", "6b"}) // "ok"
+	inputlog.Flush()
+	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
+	require.NoError(t, err)
+	text := string(raw)
+	assert.NotContains(t, text, "hunter2")
+	assert.Contains(t, text, `kind=typed text="[typed 7 bytes]"`)
+	assert.Contains(t, text, `kind=typed text="[typed 2 bytes]"`)
+	assert.Contains(t, text, `keys="Enter"`)
+	assert.Contains(t, text, `kind=raw len=2 text="ok"`)
+	assert.NotContains(t, text, "6f")
 }

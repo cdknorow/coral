@@ -46,7 +46,8 @@ const BASE = require('./test_base').BASE;
     assert.equal(await ev(`window.__settingsPut[0].debug_input_log`), true);
     v = await view();
     assert.equal(v.noteHidden, false, 'the note shows once it is on');
-    assert.match(v.note, /^On: .*may contain secrets.*\/d\/input-debug\.log/);
+    // #60: redacted, typing kept as its length, and still not free of text sent to agents.
+    assert.match(v.note, /^On: .*\/d\/input-debug\.log, with the secrets Coral recognises removed and your own typing kept as its length only\. It can still hold board messages/);
 
     assert.equal(v.deleteHidden, true, 'no Delete while it is on');
 
@@ -55,7 +56,7 @@ const BASE = require('./test_base').BASE;
     assert.equal(await ev(`window.__settingsPut[1].debug_input_log`), false);
     v = await view();
     assert.equal(v.noteHidden, false);
-    assert.match(v.note, /^Off\. \/d\/input-debug\.log is kept; delete it when you no longer need it\.$/);
+    assert.match(v.note, /^Off\. \/d\/input-debug\.log is kept \(its older copy was removed\): it can hold text sent to agents, so delete it when you no longer need it\. It is deleted after 7 days without a write\.$/);
     assert.equal(v.deleteHidden, false, 'Delete is offered for the kept file');
 
     // Delete removes it: the note and the button go away.
