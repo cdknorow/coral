@@ -44,8 +44,10 @@ func TestPTYWritesAreRecorded(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
 	require.NoError(t, err)
 	got := string(data)
-	assert.Contains(t, got, `target=claude-pty1 source=ptymanager.TestPTYWritesAreRecorded kind=raw len=3 text="ls\r"`)
-	assert.Contains(t, got, `kind=raw len=1 text="\x04"`)
+	// The PTY backend logs what the tmux backend logs for the same input (#60 step 4): the typed line, then Enter, and Ctrl-D as a key.
+	assert.Contains(t, got, `target=claude-pty1 source=ptymanager.TestPTYWritesAreRecorded kind=text len=2 text="ls"`)
+	assert.Contains(t, got, `kind=keys keys="Enter"`)
+	assert.Contains(t, got, `kind=keys keys="C-d"`)
 	assert.Contains(t, got, "do the task", "the prompt write is recorded too")
 	assert.NotContains(t, coralLog.String(), "kind=", "input goes to the debug file only, never coral.log")
 }
