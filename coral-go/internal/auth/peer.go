@@ -2,11 +2,13 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 	"net/http"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/subgentic/coral/internal/peercred"
@@ -33,6 +35,7 @@ const (
 // request, and kept for that connection only (never reused across connections, or by process id).
 type connPeer struct {
 	client, server netip.AddrPort
+	known          bool // both addresses are TCP ones
 	once           sync.Once
 	reason         string
 }
@@ -50,17 +53,23 @@ func SetPeerAttribution(f func(client, server netip.AddrPort) (peercred.Verdict,
 	return func() { attributePeer = old }
 }
 
-// ConnContext is the main server's http.Server.ConnContext: it gives each loopback TCP connection
-// its attribution, worked out on its first request (in that connection's goroutine, so a socket
-// table read never holds up the accept loop) and kept for the connection. A connection that is not
-// TCP over loopback gets none, and the loopback pass doesn't apply to it anyway.
+// ConnContext is the main server's http.Server.ConnContext: it gives each connection its
+// attribution, worked out on its first loopback request (in that connection's goroutine, so a
+// socket table read never holds up the accept loop) and kept for the connection. Every connection
+// gets one, so a server with ConnContext never falls back to the rules from before #95: a
+// connection whose addresses aren't TCP ones it can read is unattributed (fail closed) for a
+// loopback request.
 func ConnContext(ctx context.Context, c net.Conn) context.Context {
 	client, ok1 := tcpAddrPort(c.RemoteAddr())
 	server, ok2 := tcpAddrPort(c.LocalAddr())
-	if !ok1 || !ok2 || !client.Addr().Unmap().IsLoopback() {
-		return ctx
-	}
-	return context.WithValue(ctx, connPeerKey{}, &connPeer{client: client, server: server})
+	return context.WithValue(ctx, connPeerKey{}, &connPeer{client: client, server: server, known: ok1 && ok2})
+}
+
+// remoteIsLoopback reports whether r's peer address (the connection's, as net/http sets it) is a
+// loopback one.
+func remoteIsLoopback(r *http.Request) bool {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	return err == nil && ap.Addr().Unmap().IsLoopback()
 }
 
 func tcpAddrPort(a net.Addr) (netip.AddrPort, bool) {
@@ -73,15 +82,32 @@ func tcpAddrPort(a net.Addr) (netip.AddrPort, bool) {
 
 // PeerReason is why r's loopback connection is not Coral's own user's (PeerOtherUser or
 // PeerUnattributed), or "" when it is, when the system can't tell users apart (the rules from
-// before #95), or when the server attributes no connections (ConnContext not installed: tests and
-// embedders).
+// before #95), when the connection isn't a loopback one, or when the server attributes no
+// connections (ConnContext not installed: tests and embedders; every production server installs
+// it, which startup's tests check).
 func PeerReason(r *http.Request) string {
 	cp, _ := r.Context().Value(connPeerKey{}).(*connPeer)
 	if cp == nil {
 		return ""
 	}
+	if cp.known && !cp.client.Addr().Unmap().IsLoopback() {
+		return "" // not a loopback connection: the loopback pass doesn't apply to it
+	}
+	if !cp.known && !remoteIsLoopback(r) {
+		return ""
+	}
 	cp.once.Do(func() {
+		if !cp.known {
+			cp.reason = PeerUnattributed
+			logPeer(cp.client.Addr(), cp.reason, errors.New("the connection's addresses are not TCP ones Coral can read"))
+			return
+		}
+		attributeSlots <- struct{}{} // at most a few socket-table reads at once (#95 review F5)
 		v, err := attributePeer(cp.client, cp.server)
+		<-attributeSlots
+		if v == peercred.Unsupported && peercred.Supported {
+			peerCheckLost.Store(true) // this OS version's socket table isn't one this build reads (F3)
+		}
 		switch v {
 		case peercred.OtherUser:
 			cp.reason = PeerOtherUser
@@ -93,6 +119,24 @@ func PeerReason(r *http.Request) string {
 		logPeer(cp.client.Addr(), cp.reason, err)
 	})
 	return cp.reason
+}
+
+// attributeSlots caps the socket-table reads running at once (#95 review F5): each new loopback
+// connection costs one, so a local program opening connections in a burst can't make Coral read the
+// table on every core at once. The others wait their turn.
+var attributeSlots = make(chan struct{}, 4)
+
+// peerCheckLost is set when the peer-user check answered Unsupported on a system that has one: its
+// socket table has a layout this build doesn't know, so the loopback pass is per machine again.
+var peerCheckLost atomic.Bool
+
+// PeerCheckWarning is the dashboard's line when the loopback pass can't be per user on this
+// computer although the system could tell users apart (#95 review F3), or "".
+func PeerCheckWarning() string {
+	if !peerCheckLost.Load() {
+		return ""
+	}
+	return "Coral can't tell which account a connection from this computer comes from (this OS version's socket table isn't one this build reads), so every account on this computer gets the no-sign-in pass that is meant only for Coral's own. Keep strict local auth on, and update Coral."
 }
 
 // peerLog limits the line for a connection that is not Coral's own user's to one a minute per
