@@ -80,6 +80,16 @@ var hubHome struct {
 	homes []string // as given and with symlinks resolved, no trailing separator
 }
 
+// hubHasHome reports whether homes already holds h, as paths compare on this platform.
+func hubHasHome(homes []string, h string) bool {
+	for _, x := range homes {
+		if hubKey(x) == hubKey(h) {
+			return true
+		}
+	}
+	return false
+}
+
 func hubHomes() []string {
 	home, err := os.UserHomeDir()
 	home = strings.TrimRight(home, `/\`)
@@ -93,6 +103,12 @@ func hubHomes() []string {
 		if real, err := safefs.Resolve(home); err == nil {
 			if real = strings.TrimRight(real, `/\`); real != home {
 				hubHome.homes = append(hubHome.homes, real)
+			}
+		}
+		for _, form := range append([]string(nil), hubHome.homes...) {
+			// C:\Users\JOHNSM~1: os.TempDir() and some tools spell the home that way, and it names the account too (#126 F5).
+			if short := strings.TrimRight(shortPathOf(form), `/\`); short != "" && !hubHasHome(hubHome.homes, short) {
+				hubHome.homes = append(hubHome.homes, short)
 			}
 		}
 	}

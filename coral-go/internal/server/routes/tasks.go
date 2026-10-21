@@ -3,7 +3,6 @@ package routes
 import (
 	"context"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/subgentic/coral/internal/gitutil"
 	"github.com/subgentic/coral/internal/httputil"
 	"github.com/subgentic/coral/internal/proxy"
+	"github.com/subgentic/coral/internal/safefs"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/pkg/tunnel"
 )
@@ -93,12 +93,17 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "'repo_path' is required")
 		return
 	}
-	if info, err := os.Stat(body.RepoPath); err != nil || !info.IsDir() {
-		errBadRequest(w, "repo_path '"+body.RepoPath+"' does not exist")
+	// A network path is refused before anything stats it: on Windows the stat alone connects to the host as the user, and tasks/run is
+	// reachable at Coral Hub's Launch tier (#126 F1). canonicalizeRepoPath (in jobRepoError) resolves the path; nothing else touches it first.
+	if safefs.RefuseRemote(body.RepoPath) != nil {
+		errBadRequest(w, "a network path can't be a repo_path")
 		return
 	}
 	// A git work tree, as for scheduled jobs (#3171, #3377): the run makes a worktree in it.
 	if msg := jobRepoError(r.Context(), body.RepoPath); msg != "" {
+		if cloud.Tunneled(r) { // the path names this computer's folders; the caller has it already
+			msg = strings.TrimSuffix(msg, ": "+body.RepoPath)
+		}
 		errBadRequest(w, msg)
 		return
 	}

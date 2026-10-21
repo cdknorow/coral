@@ -133,6 +133,15 @@ func InstalledToolsFallback() bool { return installedFallback.Load() }
 
 // CoralToolsDir returns the directory containing coral-board and the coral-hook-*
 // binaries that agents launched by this server get on their PATH: see CoralToolsSource.
+// PathWithDir is path with dir first, joined with the platform's list separator (':' on Unix, ';' on Windows, where a ':' made
+// "<dir>:C:\Windows\system32" one invalid entry, #126 F2).
+func PathWithDir(dir, path string) string {
+	if path == "" {
+		return dir
+	}
+	return dir + string(os.PathListSeparator) + path
+}
+
 func CoralToolsDir() string {
 	dir, _ := CoralToolsSource()
 	return dir
