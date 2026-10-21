@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // CodexAgent implements the Agent interface for OpenAI Codex CLI.

@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #4290 (Security's SHOULD 3 in #4288), the real router with strict local auth OFF: reading or

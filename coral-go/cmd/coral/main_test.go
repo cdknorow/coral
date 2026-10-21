@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/dbcrypt"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/server"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/server"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 func TestStandardBuildEncryptionSelfTestUnavailable(t *testing.T) {

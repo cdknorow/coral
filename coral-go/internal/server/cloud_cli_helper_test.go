@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/cloud"
 )
 
 // cliSign does what `coral cloud` does before a request: the hello against h

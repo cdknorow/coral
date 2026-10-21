@@ -1,12 +1,12 @@
 package ptymanager
 
 import (
-	"github.com/cdknorow/coral/internal/testleak"
+	"github.com/subgentic/coral/internal/testleak"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // TestMain removes the tmux variables a developer's shell may carry. Running these tests from inside

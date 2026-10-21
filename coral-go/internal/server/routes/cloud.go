@@ -16,17 +16,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/peercred"
-	"github.com/cdknorow/coral/internal/secrets"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/redact"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/peercred"
+	"github.com/subgentic/coral/internal/secrets"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // MaxModeSetting is the user setting holding this server's maximum cloud access mode:

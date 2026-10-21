@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cloud"
 )
 
 var taskQueryParamNames = map[string]bool{"fields": true, "status": true, "assigned_to": true, "board": true, "priority": true,

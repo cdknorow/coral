@@ -12,9 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // sessionStateMaxAge is how long after a session ended its per-session state files are kept.

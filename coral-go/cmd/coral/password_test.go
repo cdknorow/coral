@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/auth"
+	"github.com/subgentic/coral/internal/auth"
 )
 
 // #3949: --stdin reads one line (one trailing newline dropped); an empty one is refused.

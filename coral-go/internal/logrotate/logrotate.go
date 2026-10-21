@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // The sizes coral.log, tray.log and app.log rotate at (#3628 F5, #4112): 20 MB, 5 older copies

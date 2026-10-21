@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/updater/runrecord"
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/updater/runrecord"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 func statusRun(t *testing.T, env map[string]string, args ...string) (int, string) {

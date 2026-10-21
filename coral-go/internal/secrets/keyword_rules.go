@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // Keyword rules (#5132, #5141): the value after a name that says it is a secret is redacted whatever its entropy. betterleaks' generic rules

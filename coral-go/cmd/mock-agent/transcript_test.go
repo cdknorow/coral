@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/jsonl"
 )
 
 // The mock's transcript is one Coral reads as Claude Code's own: each turn ends (turn_duration),

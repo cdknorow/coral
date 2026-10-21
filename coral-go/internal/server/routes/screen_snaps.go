@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // screenSnaps lets read-only pollers share one capture of an agent's terminal for

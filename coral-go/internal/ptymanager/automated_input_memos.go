@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/logdedupe"
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/logdedupe"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // sessionOfTarget is the session a tmux target names: "claude-x", "claude-x.0",

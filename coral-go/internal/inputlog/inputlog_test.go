@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/linktest"
-	"github.com/cdknorow/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/linktest"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 )
 
 // captureLog collects what goes to the standard log (coral.log in the server).

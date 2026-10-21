@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/decodelimit"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/decodelimit"
 )
 
 // Bounds of FindImage: a transcript line holding an image is about the image's size plus a quarter, and one longer than maxImageLine is skipped, not

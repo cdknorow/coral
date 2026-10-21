@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // One check at a time, and none while an apply runs (#5231 section 2): an exclusive-create lock file holding the owner's pid and when it was taken.

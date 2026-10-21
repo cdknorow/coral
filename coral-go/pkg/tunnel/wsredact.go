@@ -31,7 +31,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // wsRedactFailed closes a socket whose frame could not be scanned: it never passes unscanned.

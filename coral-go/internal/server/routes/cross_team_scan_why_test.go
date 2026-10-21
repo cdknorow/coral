@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/secrets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/secrets"
 )
 
 // #5212: a refusal says where (the line) and by which rule, and never repeats any of the secret; and a code reference in a value position is not taken for one.

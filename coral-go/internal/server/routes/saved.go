@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 	"net/http"
 	"regexp"
 	"slices"
@@ -15,9 +15,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // Save for Later (#4510): the Operator bookmarks a message of an agent's chat or of a board, lists the bookmarks (open or done), and clicks one to go

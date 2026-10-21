@@ -8,8 +8,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/secrets"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/secrets"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // MaxShown is the longest line of agent text Coral shows, label included (#4176 rule 2).

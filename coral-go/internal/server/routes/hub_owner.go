@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // callerIdentity is who the stamp says is asking: owner is true only when every owner check passes.

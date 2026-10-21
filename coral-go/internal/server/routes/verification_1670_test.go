@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/board/boardtest"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/board/boardtest"
 )
 
 func setupTask1670Server(t *testing.T) (*httptest.Server, *BoardHandler, *board.Store) {

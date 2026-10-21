@@ -18,8 +18,8 @@ import (
 	"github.com/betterleaks/betterleaks/sources"
 	"github.com/rs/zerolog"
 
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // Version is the betterleaks release whose rules this package runs: the version go.mod pins.

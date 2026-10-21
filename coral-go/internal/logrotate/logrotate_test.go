@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/linktest"
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // #3628 F5: the log rotates at its size, keeps its copies, never splits a line, and every file

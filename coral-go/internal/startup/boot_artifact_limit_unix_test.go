@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/server/routes"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/server/routes"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #4602/#4678: Start raises an unset artifact limit once when the store already holds 80% of the 20 GiB default. The routes tests cover the

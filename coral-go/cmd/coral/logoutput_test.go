@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/logexit"
+	"github.com/subgentic/coral/internal/logexit"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

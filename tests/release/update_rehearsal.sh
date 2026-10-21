@@ -73,7 +73,7 @@ progs=$(grep -vE '^[[:space:]]*(#|$)' "$root/tests/release/commands.txt")
 build_dir() { # VERSION DIR: the shipped programs and coral-update, built as installers/build-linux.sh builds them
   mkdir -p "$2"
   for cmd in $progs coral-update; do
-    CGO_ENABLED=0 go build -tags fts5 -ldflags="-s -w -X github.com/cdknorow/coral/internal/config.Version=$1" -o "$2/$cmd" "./cmd/$cmd" || return 1
+    CGO_ENABLED=0 go build -tags fts5 -ldflags="-s -w -X github.com/subgentic/coral/internal/config.Version=$1" -o "$2/$cmd" "./cmd/$cmd" || return 1
   done
 }
 pack() { tar czf "$2" -C "$1" .; } # as build-linux.sh makes its tarball

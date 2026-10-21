@@ -11,7 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // Bounds on what the reader keeps of one session's transcript (#4620, Security's M12). A cold read

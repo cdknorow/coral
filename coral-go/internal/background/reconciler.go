@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // reconcileMissThreshold is the number of consecutive reconcile passes an

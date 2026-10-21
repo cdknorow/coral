@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/updater/runrecord"
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/updater/runrecord"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // The Linux part of the apply (#5231 section 6): a tarball install, a folder that holds only Coral's own programs. It is replaced by building the

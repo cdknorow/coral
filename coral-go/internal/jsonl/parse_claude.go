@@ -5,9 +5,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/agent"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/agent"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // parseTranscriptEntry converts a raw JSONL entry into normalized frontend messages.

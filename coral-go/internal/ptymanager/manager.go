@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // PTYBackend implements TerminalBackend using native PTY sessions.

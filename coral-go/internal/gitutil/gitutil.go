@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/safefs"
 	"os"
 	"os/exec"
 	"path/filepath"

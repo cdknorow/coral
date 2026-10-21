@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/secfile/secfiletest"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #3905: each session token file gets an access list of its own (only this user and SYSTEM).

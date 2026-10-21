@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/background"
+	"github.com/subgentic/coral/internal/background"
 )
 
 // remoteSnap is one remote with one agent whose status carries a marker.

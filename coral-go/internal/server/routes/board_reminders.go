@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 func (h *BoardHandler) reminderKey(project string, taskID int64) string {

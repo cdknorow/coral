@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/hooks"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/testguard"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/testguard"
 )
 
 // setupBoardAndPrompt subscribes a session to a message board.

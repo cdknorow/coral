@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/config"
 )
 
 func postRaw(t *testing.T, url string, body map[string]any) (int, string) {

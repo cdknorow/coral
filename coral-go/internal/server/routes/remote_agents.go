@@ -3,7 +3,7 @@ package routes
 import (
 	"strings"
 
-	"github.com/cdknorow/coral/internal/background"
+	"github.com/subgentic/coral/internal/background"
 )
 
 // Hub list contract (see background/remote_agents.go for the full text):

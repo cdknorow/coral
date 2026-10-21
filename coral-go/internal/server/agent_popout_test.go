@@ -1,7 +1,7 @@
 package server
 
 import (
-	"github.com/cdknorow/coral/pkg/frontend"
+	"github.com/subgentic/coral/pkg/frontend"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 const popoutTestSessionID = "abcdef11-2222-4333-8444-555555555555"

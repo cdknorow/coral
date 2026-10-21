@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
 )
 
 func TestBoardWaitRoutes_RegisterAndRetrieve(t *testing.T) {

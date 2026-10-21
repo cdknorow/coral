@@ -16,14 +16,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/sessionstate"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/tmux"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/sessionstate"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // Auto-accept (#3182): when the operator turns it on for an agent, Coral

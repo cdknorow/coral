@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // Kind is what a setting holds.

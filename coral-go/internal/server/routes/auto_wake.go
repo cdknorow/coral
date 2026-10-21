@@ -14,14 +14,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/clitext"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/safefs"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/safefs"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Waking the agents that were running when a pty Coral stopped (#3636). Coral's own shutdown

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 )
 
 // FuzzParseEventQuery (#5002): the agent events' search parameters come from the URL. The parser never panics, answers the same twice,

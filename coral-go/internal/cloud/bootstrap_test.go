@@ -18,10 +18,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
-	terms "github.com/cdknorow/coral/pkg/license"
-	"github.com/cdknorow/coral/pkg/secretbox"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
+	terms "github.com/subgentic/coral/pkg/license"
+	"github.com/subgentic/coral/pkg/secretbox"
 )
 
 // fakeEnrollHub answers the redeem endpoints with a scripted list of replies

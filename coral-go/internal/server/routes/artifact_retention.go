@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	setreg "github.com/subgentic/coral/internal/settings"
 	"log/slog"
 	"net/http"
 	"strconv"

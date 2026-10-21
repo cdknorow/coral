@@ -7,16 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/secrets"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/secrets"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // The Team Artifacts list's query (#4572): search, filters, sort, cursor paging and a total, on the existing list route. The rows

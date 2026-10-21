@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/background"
+	"github.com/subgentic/coral/internal/background"
 )
 
 func getKnowledgeStatus(t *testing.T, team string) map[string]any {

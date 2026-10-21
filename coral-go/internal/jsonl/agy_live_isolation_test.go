@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // #4590: an agy session whose own transcript is not written yet must not read another agy

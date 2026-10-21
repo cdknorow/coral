@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/server/routes"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/server/routes"
 )
 
 func captureTaskListStdout(t *testing.T, st *boardState) string {

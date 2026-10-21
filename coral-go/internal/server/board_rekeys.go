@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // applyBoardRekeys carries the board store's re-keys (#3541: a legacy board named "." or

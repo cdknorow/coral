@@ -12,11 +12,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cdknorow/coral/internal/testguard"
+	"github.com/subgentic/coral/internal/testguard"
 
 	"time"
 
-	"github.com/cdknorow/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/dbcrypt"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"

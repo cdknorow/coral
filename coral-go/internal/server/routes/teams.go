@@ -1,12 +1,12 @@
 package routes
 
 import (
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // TeamsHandler provides HTTP handlers for the teams API.

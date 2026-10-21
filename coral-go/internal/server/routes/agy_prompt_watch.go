@@ -8,10 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/sessionstate"
-	"github.com/cdknorow/coral/internal/store"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/sessionstate"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // An agy agent that waits on a tool permission prompt is waiting for the user, and the live list, the health check, the sidebar badge and the

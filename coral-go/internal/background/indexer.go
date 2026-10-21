@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentsignin"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // SessionIndexer scans history files for all registered agents and upserts

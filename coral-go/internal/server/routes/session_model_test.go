@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #4065: a session's "model" is the one its transcript last recorded once a turn read it

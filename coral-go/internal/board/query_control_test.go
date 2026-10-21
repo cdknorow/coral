@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 )
 
 // #4806: a search's text parameters refuse every control character (the C0 bytes, DEL and C1), at the start, in the middle and at the end,

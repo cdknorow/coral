@@ -2,7 +2,7 @@ package ptymanager
 
 import (
 	"context"
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 	"log/slog"
 	"regexp"
 	"strings"

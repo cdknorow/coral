@@ -6,8 +6,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/logparse"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/logparse"
 )
 
 // Recognising, from the bottom of an agent's screen, that it is waiting on a

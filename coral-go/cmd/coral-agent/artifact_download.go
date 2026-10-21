@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // linkVersion is the query of a versioned artifact link (/api/artifacts/<digest>?v=2).

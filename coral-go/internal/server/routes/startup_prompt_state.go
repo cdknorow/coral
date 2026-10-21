@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // startupPromptState is why an agent that has sent no event yet waits on a prompt its CLI drew at launch

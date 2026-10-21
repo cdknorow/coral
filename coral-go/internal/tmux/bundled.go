@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/agentenv"
 )
 
 // Seams for tests; production code never reassigns them.

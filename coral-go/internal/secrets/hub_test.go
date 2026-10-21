@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // #5141: the keyword rules are the hub's: Redactor (every local caller) is what it was, HubRedactor adds them.

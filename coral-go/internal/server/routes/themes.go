@@ -16,12 +16,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentsignin"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // ThemesHandler handles theme CRUD endpoints.

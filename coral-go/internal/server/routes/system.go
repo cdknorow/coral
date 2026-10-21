@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agentmodels"
+	"github.com/subgentic/coral/internal/agentmodels"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Indexer is the interface for triggering an index refresh.

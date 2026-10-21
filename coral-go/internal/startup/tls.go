@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // Native TLS (#3355). Remote access on plain HTTP sends the API key, the login cookie

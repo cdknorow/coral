@@ -25,8 +25,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cdknorow/coral/internal/updater/stage"
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/updater/stage"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // What an apply ended as (the JSON "result"; display only).

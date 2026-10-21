@@ -20,13 +20,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/jsonl"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/secrets"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // Chat, split into resolving the session, reading its transcript, its notices and the history page (#4713), answers

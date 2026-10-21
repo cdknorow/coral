@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/cdknorow/coral/internal/taskcli"
+	"github.com/subgentic/coral/internal/taskcli"
 	"io"
 	"net/http"
 	"net/url"

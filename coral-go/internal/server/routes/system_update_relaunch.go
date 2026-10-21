@@ -31,10 +31,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/secfile"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/secfile"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // The fixed vocabularies the hub maps (section 13): the machine emits only these.

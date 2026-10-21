@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/pkg/secretbox"
+	"github.com/subgentic/coral/pkg/secretbox"
 )
 
 // Remote server status values.

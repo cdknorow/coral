@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 const menuScreen = " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel\n"

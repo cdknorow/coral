@@ -23,9 +23,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // hubPathFields hold a path; one under the home directory is shown as "~/...". Only string

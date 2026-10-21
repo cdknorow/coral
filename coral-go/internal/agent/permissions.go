@@ -3,7 +3,7 @@ package agent
 import (
 	"strings"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // Capability represents a Coral-level permission capability.

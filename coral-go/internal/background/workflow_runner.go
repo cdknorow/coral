@@ -17,11 +17,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentsignin"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
+	"github.com/subgentic/coral/internal/safego"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // StepDef represents a single step definition parsed from the workflow's steps_json.

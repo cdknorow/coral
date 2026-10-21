@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // reconMockRuntime lets tests control what ListAgents reports and what

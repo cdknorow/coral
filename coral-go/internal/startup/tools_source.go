@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // setupAgentTools decides where agents launched by this server get Coral's tools

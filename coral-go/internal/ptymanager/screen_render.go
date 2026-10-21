@@ -3,7 +3,7 @@ package ptymanager
 import (
 	"context"
 
-	"github.com/cdknorow/coral/internal/vtscreen"
+	"github.com/subgentic/coral/internal/vtscreen"
 )
 
 // A PTY session's CaptureOutput is its raw output, escapes and cursor moves included. Claude Code draws

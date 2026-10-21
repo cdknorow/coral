@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"strings"
 
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/tmux"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // Settings > Terminal backend (#3634): tmux keeps agents running across Coral restarts but

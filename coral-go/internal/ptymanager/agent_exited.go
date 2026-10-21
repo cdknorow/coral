@@ -3,8 +3,8 @@ package ptymanager
 import (
 	"context"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/logparse"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/logparse"
 )
 
 // ShellIdleChecker is implemented by terminals that can tell whether an agent's

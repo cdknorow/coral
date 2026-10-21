@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/naming"
+	"github.com/subgentic/coral/internal/naming"
 )
 
 // #3704 (as #3687 for tmux): two teammates in one folder each resolve only to their own

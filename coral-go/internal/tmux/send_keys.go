@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/inputlog"
 )
 
 // SendKeys types text into a tmux pane: a message, an answer, anything a person or Coral wrote

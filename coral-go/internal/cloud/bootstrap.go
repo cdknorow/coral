@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/cdknorow/coral/internal/license"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/license"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Enrolling this server with a one-time credential, without a browser (#3149,

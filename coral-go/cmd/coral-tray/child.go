@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/startup"
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/startup"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // runServerChild is the server half of the tray (#4163): coral-tray --server-child runs

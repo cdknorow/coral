@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/jsonl"
-	"github.com/cdknorow/coral/internal/proxy"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/subagent"
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/proxy"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/subagent"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // TokenPoller periodically reads Codex (and future non-Claude) agent transcripts

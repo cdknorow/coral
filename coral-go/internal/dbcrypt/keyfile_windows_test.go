@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 )
 
 // requirePrivateKeyFile: on Windows the mode says nothing (a writable file is 0666); the key

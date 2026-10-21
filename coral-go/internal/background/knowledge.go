@@ -10,16 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentsignin"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/secrets"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentsignin"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secrets"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // KnowledgeBundle holds the OKF output for a team.

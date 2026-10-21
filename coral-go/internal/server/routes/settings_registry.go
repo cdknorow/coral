@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentmodels"
-	"github.com/cdknorow/coral/internal/settings"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentmodels"
+	"github.com/subgentic/coral/internal/settings"
 )
 
 // The settings registry (#4432, Security's #4431 SHOULD 3): every key PUT /api/settings knows, who may write it and

@@ -6,8 +6,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/updatecheck"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/updatecheck"
 )
 
 // githubReleasesAPI is where the update check asks (tests point it at their own server).

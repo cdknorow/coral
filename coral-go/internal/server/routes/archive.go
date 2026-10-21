@@ -3,8 +3,8 @@ package routes
 import (
 	"context"
 
-	"github.com/cdknorow/coral/internal/logparse"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/logparse"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // LiveSessionLookup returns the lookup BoardHandler.SetLiveSessionLookup takes: a live

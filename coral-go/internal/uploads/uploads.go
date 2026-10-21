@@ -5,7 +5,7 @@ package uploads
 
 import (
 	"errors"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	setreg "github.com/subgentic/coral/internal/settings"
 	"os"
 	"path/filepath"
 	"sort"

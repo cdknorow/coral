@@ -32,10 +32,10 @@ import (
 
 	webview "github.com/webview/webview_go"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/loginlink"
-	"github.com/cdknorow/coral/internal/logrotate"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/loginlink"
+	"github.com/subgentic/coral/internal/logrotate"
 )
 
 var debugMode bool

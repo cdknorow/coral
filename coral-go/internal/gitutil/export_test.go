@@ -3,7 +3,7 @@ package gitutil
 import (
 	"path/filepath"
 
-	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // Test-only, kept out of the shipped binary (#3824, Go cleanup 2: audit #3780 section B). The

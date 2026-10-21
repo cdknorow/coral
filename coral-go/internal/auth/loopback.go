@@ -9,8 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // A loopback peer normally gets Coral's no-credentials pass. A reverse proxy (Tailscale Serve,

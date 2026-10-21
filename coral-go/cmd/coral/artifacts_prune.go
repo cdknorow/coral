@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/hooks"
 )
 
 // `coral artifacts prune` (#3554): the Operator frees space from Coral's stored artifacts and

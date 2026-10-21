@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // ReadClaudeTurnEvent returns the latest end of a turn recorded in a Claude session's

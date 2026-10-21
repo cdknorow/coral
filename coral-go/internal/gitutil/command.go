@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/executil"
+	"github.com/subgentic/coral/internal/executil"
 )
 
 // Git in folders agents can write to (#3579). A repository's own config can name commands

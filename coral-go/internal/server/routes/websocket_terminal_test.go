@@ -18,11 +18,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store/storetest"
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // shortTerminalSocketPath returns a path under os.TempDir short enough to fit

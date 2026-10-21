@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // ErrNoStaged means nothing usable is staged.

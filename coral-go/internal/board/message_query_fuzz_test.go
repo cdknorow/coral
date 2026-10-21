@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 )
 
 // FuzzParseMessageQuery (#5002): the message search's raw parameters come from the URL. Whatever they are, the parser never panics,

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/pkg/redact"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // #5158: keywordSpans looks only where a name could be; it must find exactly what the rules find over the whole text. The test compares the bytes

@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 func main() {

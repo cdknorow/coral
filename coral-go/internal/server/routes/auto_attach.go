@@ -26,9 +26,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/safefs"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/safefs"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Board auto-attach (#3515): when an agent's own board post links a fresh local image or

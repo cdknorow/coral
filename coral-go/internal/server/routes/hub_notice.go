@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // Coral Hub's notices about team links (#3489, coral-hub PR #260 section 3.2): when the

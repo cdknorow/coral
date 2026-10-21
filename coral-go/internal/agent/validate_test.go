@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // The defect: GetAgent's default arm returned ClaudeAgent for any unrecognised

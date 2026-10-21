@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/claudestub"
+	"github.com/subgentic/coral/internal/claudestub"
 )
 
 // script writes an executable shell script standing for a CLI. It answers the sign-in status command ("claude auth status", #5469) as signed in, so the body is only

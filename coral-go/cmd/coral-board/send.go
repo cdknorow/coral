@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cdknorow/coral/internal/clihelp"
+	"github.com/subgentic/coral/internal/clihelp"
 )
 
 // sendIdentity is who is sending: always this agent's own subscription and

@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // TaskReminders sends each task's one-time reminder (task add --remind-at, #4175 step 3) when its

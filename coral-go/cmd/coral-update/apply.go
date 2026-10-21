@@ -8,9 +8,9 @@ import (
 
 	"github.com/sigstore/sigstore-go/pkg/root"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/updater/apply"
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/updater/apply"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // parentAtStart is the pid of the process that started this one (the server, which quits to be replaced), taken before anything else: it is

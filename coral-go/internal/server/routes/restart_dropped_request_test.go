@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #5171 (Security's reproduction): the dashboard drops a restart request (a reload, a tab change) after the old terminal is touched, and the agent

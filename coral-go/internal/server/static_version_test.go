@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/pkg/frontend"
+	"github.com/subgentic/coral/pkg/frontend"
 )
 
 // copyTree is the embedded static tree as a MapFS a test may change.

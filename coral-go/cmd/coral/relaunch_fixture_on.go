@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/server/routes"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/server/routes"
 )
 
 // applyRelaunchFixtureBuild is the relaunch test seam's startup check (#5452, Security's conditions 4 and 5). A build made with the relaunchfixture tag:

@@ -13,17 +13,17 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agentenv"
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/dbcrypt"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/secrets"
-	"github.com/cdknorow/coral/internal/server"
-	"github.com/cdknorow/coral/internal/server/routes"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/server"
+	"github.com/subgentic/coral/internal/server/routes"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Options configures optional behaviors that differ between entry points.

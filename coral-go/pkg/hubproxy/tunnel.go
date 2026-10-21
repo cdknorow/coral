@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // TunnelTarget sends proxied requests through a Cloud Hub tunnel session to

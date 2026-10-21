@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // ManagedByService reports that a service manager (systemd) started this process and restarts it by itself: nothing then has to start Coral again, and the record

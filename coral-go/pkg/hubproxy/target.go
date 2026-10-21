@@ -20,8 +20,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/coder/websocket"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // Target is a resolved remote server the proxy can send requests to.

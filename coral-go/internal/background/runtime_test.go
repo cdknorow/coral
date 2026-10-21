@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // newTestPTYRuntime creates a PTYRuntime backed by a fresh PTYBackend.

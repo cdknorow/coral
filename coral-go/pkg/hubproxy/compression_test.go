@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // chatPage is a history page big enough for WriteJSONCompressed to gzip.
