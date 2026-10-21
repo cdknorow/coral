@@ -1,0 +1,56 @@
+name: trial-move-prep-5530
+on:
+  push:
+    branches: [trial/move-prep-5530]
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+jobs:
+  go-and-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+      - shell: bash
+        run: |
+          set -e
+          cd coral-go
+          test -z "$(gofmt -l cmd/coral internal/updatecheck)"
+          go test -count=1 ./internal/updatecheck ./pkg/frontend ./cmd/coral ./internal/server ./internal/server/routes ./internal/safefs ./internal/testguard ./internal/safego ./internal/startup ./internal/httputil
+          cd ..
+          for t in release_homes_test download_section_test require_cosign_test test_release_upload_loop; do bash tests/release/$t.sh; done
+          python3 tests/release/workflows_lint.py
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - id: chrome
+        uses: browser-actions/setup-chrome@4f8e94349a351df0f048634f25fec36c3c91eded
+        with:
+          install-dependencies: true
+          chrome-version: "155.0.8059.39"
+      - working-directory: tests/frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - working-directory: tests/frontend
+        run: npm run test:cloud
+      - name: related CDP suites
+        working-directory: tests/frontend
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          stub="$RUNNER_TEMP/stub-cli"; mkdir -p "$stub"
+          for c in claude codex gemini; do printf '#!/bin/sh\nexit 1\n' > "$stub/$c"; chmod 755 "$stub/$c"; done
+          export PATH="$stub:$PATH"
+          node run_cdp_suites.mjs --timeout 180 --keep --only hub_launch_access_browser,server_update_notice_browser,servers_tab_browser,update_ui_browser,settings_update 2>&1 | tail -40
