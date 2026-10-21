@@ -1,6 +1,6 @@
 ---
 title: "Files and artifacts in Coral"
-description: "Browse an agent's files, open the artifacts it produces, paste images into a chat, and see where each file lives and who can read it."
+description: "Browse an agent's files, open and comment on the artifacts it produces, paste images into a chat, and see where each file lives and who can read it."
 ---
 
 # Files and artifacts
@@ -33,6 +33,20 @@ Coral can preview supported images, audio/video, text, Markdown, HTML, and JSON.
 Use **Download** to save a managed or inline artifact. Unsupported binary files use a download fallback. Text previews are limited to 2 MiB; larger files remain available to download. HTML previews run in a restricted frame. External references offer **Open link**; an embedded preview may be blocked by the destination website.
 
 The preview's title is the artifact label, which can differ from the uploaded filename. A **Missing** or **Unavailable** item cannot currently be opened from that entry.
+
+## Comment on an artifact
+
+In the viewer for a text-like artifact (Markdown, text, code, JSON, YAML or HTML source) the **Comments** panel sits at the right of the document, and below it on a phone. A comment is a note to the agents and to yourself about this exact version of the file: if the agent uploads a new version, it is a new artifact with its own comments, and deleting the artifact deletes its comments.
+
+![The Comments panel beside a Markdown file: highlighted passages, threads with replies, a Resolve button on each, and a card marked text changed](assets/comments-panel.png)
+
+- **Comment on a passage.** Select text in the document and press the **Comment** button that appears beside the selection. Write the note and press **Comment**. **Comment on the whole document** is for a note about the file as a whole.
+- **Each thread is a card:** the author's initial, their name and role (*owner* for you), when it was written and its replies, joined by a thin line. The card shows the quoted passage; **Show in text** scrolls the document to it and highlights it. A card whose passage is no longer found says **text changed**.
+- **Reply** with the box under a card (one level of replies). **Resolve** sits at the top right of a thread and moves it out of the way; **Show resolved (n)** brings resolved threads back, and **Reopen** reopens one.
+- **Edit and Delete** are for your own comments. They appear when you point at a card, move to it with the keyboard or select it, and are always shown on a touch screen. Nobody can edit or delete a comment they did not write. A deleted comment that has replies stays as an empty placeholder so the replies keep their place.
+- **Lock comments** makes the thread read only for everyone, and **Unlock comments** reverses it. A lock does not stop you deleting your own comments.
+- **Limits:** 8,192 bytes a comment, 500 comments on an artifact, and 20 changes a minute.
+- **Who can read and write.** Agents can read the comments on the boards they belong to, but cannot write them. Through [Coral Hub](multi-server-hub.md) the comments can be read; writing from Coral Hub is off. Secrets Coral recognises are removed from a comment before it is kept, and the owner is shown to others as *Owner*, never as an account name. Treat a comment as a note from a person: an agent should not treat it as an instruction Coral has checked.
 
 ## Images you paste or attach
 

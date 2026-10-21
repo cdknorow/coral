@@ -1,11 +1,11 @@
 ---
 title: "Using the Coral dashboard"
-description: "How to choose a model and thinking level, read the cost table, use the team health monitor and the agent list's Display panel."
+description: "Choose a model and thinking level, see them in the agent list, read the cost table, use the health monitor, the Display panel and the Inbox's task replies."
 ---
 
 # Using the dashboard
 
-Task-oriented notes on the dashboard controls added in v1.4.102 to v1.4.106: choosing a model and thinking level, the cost table by thinking level, the team health monitor, the agent list's Display panel, the sectioned dialogs and image thumbnails. Screenshots are in the dark theme; the light theme and a phone show the same controls.
+Task-oriented notes on the dashboard controls added in v1.4.102 to v1.4.151: choosing a model and thinking level and seeing them in the agent list, the cost table by thinking level, the team health monitor, the agent list's Display panel, the sectioned dialogs, image thumbnails, and the Inbox's Tasks for you and Read the whole message. Screenshots are in the dark theme; the light theme and a phone show the same controls.
 
 ## Choose a model and thinking level
 
@@ -27,6 +27,16 @@ The agent's header does not repeat the model (the chip and the agent row's toolt
 - **Apply with restart.** Shown in the menu for a CLI with no live switch (Codex, Antigravity, Pi: only Claude is checked so far). Choosing an item opens the Restart dialog with your choice filled in; the dialog is the confirmation.
 
 A second change while one is still pending is refused with a message. The API behind this is described in [Sessions](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/sessions.md).
+
+## See the model and thinking level in the agent list
+
+Under each agent's name the list can show one line of what that agent runs: its provider, its model and its thinking level, for example `Claude · Opus 5.5 · High`. It is read from the CLI's own transcript, so it is what the newest turn used. Before an agent's first reply the level is the one it was *started* with, and the agent's hover card says so (`High (as started)`).
+
+![The agent list with Show provider, Show model and Show thinking level on: three agents' lines: Claude · Opus 4.1 · High, Claude · Opus 4.1 · Medium, and Claude · Opus 4.1 with no level](assets/agent-line-options.png)
+
+- **Three options** in the **Display** panel (see [Filter and sort the agent list](#filter-and-sort-the-agent-list)): **Show provider**, **Show model** and **Show thinking level**. Each is on by default, is remembered in this browser, and turns one word of the line on or off. With **Show model** and **Show thinking level** both off, the provider alone is shown. Someone who had turned the old single "Show agent type" switch off keeps it off for all three until they change one.
+- **Only what is on record.** A plain terminal has none of the three, and Pi reports no thinking level, so its line has none. Claude, Codex and Antigravity show the level an agent was started with until its first reply records the real one. An agent started with no level shows none until then. An agent with nothing to show has no line, so the list does not grow a line per agent. Under the options the panel says how many agents have no thinking level on record.
+- **The hover card.** Hover an agent row and its card has **Model** and **Thinking** rows, independent of the three options.
 
 ## See cost by provider, model and thinking level
 
@@ -62,7 +72,7 @@ The ☰ **Display** button under the search box opens a panel in place (not a po
 ![The Display panel open with a State filter on](assets/display-panel.png)
 
 - **State** (Needs input, Working, Idle, Asleep), **Board**, **Machine** (when other machines are connected) and **Sort** (List order, Name, Recent activity, Cost), then the count ("4 of 10 agents") and **Clear filters**.
-- **Show summaries**; with other machines connected, **Show server** and **Group by server** too.
+- **Show summaries**, **Show branches**, **Show provider**, **Show model** and **Show thinking level**; with other machines connected, **Show server** and **Group by server** too.
 - **A summary line** under the search says what is on, for example `State: Working (4 of 10 agents)`, with **Clear**, and a dot on the button marks that something is on.
 - **Escape** closes the panel and returns to its button. Whether it is open is remembered in this browser. On a phone the same panel is in the Agents page header.
 
@@ -82,3 +92,17 @@ When you paste or attach an image in the message box and send it, its chip in th
 - It is shown for images Coral stored in its uploads folder on the agent's computer, and for images pasted into a Claude or Codex conversation, which Coral reads from the agent's own transcript (PNG, JPEG, GIF and WebP). A file the agent only names stays a plain name.
 - **Location and camera data are removed.** A JPEG, PNG or GIF is saved without its GPS position, camera and phone details, thumbnails and comments, and is not re-encoded; a JPEG keeps only its rotation, so a portrait photo is not on its side. HEIC is not converted or stripped: Coral does not accept a file named `.heic`, and HEIC data under another name is kept for the agent exactly as it is. Export a HEIC as JPEG or PNG first. A WebP or TIFF is also kept for the agent as it is; it is shared in the chat only when it carries no such data.
 - **Through Coral Hub:** an image pasted in the dashboard shows as a thumbnail only for the account this computer is linked to, because artifacts are that account's alone there ([Images you paste or attach](files-and-artifacts.md#images-you-paste-or-attach)); for anyone else, and for a thumbnail read from a Claude or Codex transcript or from an upload that has no shared copy, the chip keeps its name. An agent reads only its own session's and its board's chat images ([what an agent can read](privacy.md#what-an-agent-can-and-cannot-read)).
+
+## Answer tasks and read whole messages in the Inbox
+
+The **Inbox** has three tabs: **Needs you** (agents waiting for you), **Tasks for you** and **Saved for later**.
+
+**Tasks for you** lists the open tasks that an agent assigned to you, the Operator, on any board of this computer: its title, the board, its priority and how long ago it changed, newest first. Press a task to open it in place and press it again to close it.
+
+- An open task shows who it is from and its status, an **Open the task** link (to that task's board), its full text, and a reply box named for the task.
+- **Send reply** posts your reply on the task's thread and tells the agent who created it. It says what happened in words: *Reply sent. Orchestrator notified.*, or *Reply saved on the board, but the agent could not be notified* (for example, when that agent has ended). **A reply does not complete or change the task.** Use the task's own controls for that.
+- A draft you have not sent stays while you open and close the task or move between tabs, and is dropped when you sign out or close the page. It is never written to the browser's storage.
+
+The text of a task or message is shown as formatted text and nothing else: headings, lists, bold and code, and links that start with `http`, `https` or `mailto`, with the site's name shown next to them. Raw HTML, scripts and images in the text are shown as plain text or left out, whoever wrote it. A `coral://artifacts/…` link is a working link only when that [artifact](files-and-artifacts.md) exists on this computer and you may open it; otherwise it stays as text.
+
+**Saved for later** items show a snippet. **Read the whole message** opens the full text of the message in place, and a second press hides it. When the full text cannot be shown it says why: the message was deleted (only the snippet is left), its agent ended on another server so it cannot be read from here, or it is too long to show. A very long message is shown in part, and says so.

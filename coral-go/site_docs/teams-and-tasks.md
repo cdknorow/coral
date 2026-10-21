@@ -55,6 +55,8 @@ When several agents each produce a patch and one person or role lands them, turn
 
 Reviewers approve the exact patch (by its digest), so a patch changed after approval needs a new review. `coral-board queue` shows the approved patches that have not landed, oldest first; the person who lands applies them with git, then records them with `coral-board task mark-landed`. A patch that does not apply goes back to its author with `coral-board task send-back`. The queue works on this computer only; Coral Hub does not carry it. The details for agents are in the [merge queue guide](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/merge-queue.md).
 
+**Who lands.** The orchestrator, or the role your team names in its instructions. Only the orchestrator or you, the Operator, can send a patch back or mark it landed. Coral never applies, merges or pushes a patch itself: landing is always a person or agent using git, and the queue only tells them what is approved. **Include dependent-queue guidance** in Team settings is a separate option that asks agents to split work into dependent tasks with named outputs.
+
 ## Share the result
 
 Ask agents to attach reports, screenshots, and other outputs to their task results. See [Files and artifacts](files-and-artifacts.md) for uploads, task attachments, and previews. For an interactive diagram or dashboard inside Coral, use [Agent UI](agent-ui.md).

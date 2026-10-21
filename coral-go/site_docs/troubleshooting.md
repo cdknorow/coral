@@ -1,6 +1,6 @@
 ---
 title: "Troubleshooting Coral"
-description: "Fixes for common problems: an agent that looks stuck, tmux or launch errors, a missing coral command, a busy port, and reaching Coral from a phone."
+description: "Fixes for common problems: a stuck agent, tmux or launch errors, a missing coral command, a busy port, phone access and Windows security warnings."
 ---
 
 # Troubleshooting
@@ -28,6 +28,16 @@ The DMG does not change your `PATH`. Run `/Applications/Coral.app/Contents/MacOS
 ## I cannot reach Coral from my phone
 
 Remote access is off by default and applies only after a restart. See [Remote access](remote-access.md). Check **Saved** and **Effective** in Settings → Privacy, and make sure both devices are on the same network.
+
+## Windows warnings: firewall, data folder, tools folder
+
+On Windows Coral checks three things at start-up and tells you, in words, when one is more open than it needs to be. None of them stops Coral, and Coral never changes a permission or a firewall rule for you.
+
+- **A "Windows Firewall" warning** in the corner of the dashboard. Windows made a rule for one of Coral's programs when someone clicked **Allow** on its first prompt, and the rule lets other computers reach Coral on every port. The warning names each rule and gives two PowerShell commands (run PowerShell as an administrator): `Set-NetFirewallRule -Name '<rule>' -Profile Private` limits the rule to Private networks, and `Remove-NetFirewallRule -Name '<rule>'` removes it. Copy the commands from the warning: they carry the rule's real name.
+- **A "Security warning" about the data folder.** Coral's data folder (`.coral` in your profile, or the folder named by `CORAL_DATA_DIR`) can be read by other accounts, and it holds the API key, the command-line token and the databases. Move it to a folder only you can read, or remove those accounts from its permissions (Properties > Security).
+- **An "Agent tools folder" row in Settings > Terminal** (shown only when there is something to say, and written in the start-up log). Accounts other than the system and administrators can change the folder that holds `coral-board` and Coral's hooks, which every agent runs by its full path. This happens with a portable copy unpacked in your own profile. Install Coral with the installer: it goes in Program Files, where only an administrator can change it.
+
+Dismiss a warning with its **×**. See also [Privacy](privacy.md) and [Remote access](remote-access.md).
 
 ## Port already in use
 

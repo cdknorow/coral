@@ -607,6 +607,16 @@ not code-signed, so SmartScreen warns that the publisher is unknown; verify the 
 "Verify your download") before running it. On Windows Coral uses the native PTY backend
 (ConPTY; there is no tmux on Windows) and listens on port 8450 by default, not 8420, which svchost can hold.
 
+### Windows: firewall, data folder and tools folder warnings
+
+On Windows Coral checks three things at start-up and tells you, in words, when one is more open than it needs to be. None of them stops Coral, and Coral never changes a permission or a firewall rule for you.
+
+- **A "Windows Firewall" warning** in the corner of the dashboard. Windows made a rule for one of Coral's programs when someone clicked **Allow** on its first prompt, and the rule lets other computers reach Coral on every port. The warning names each rule and gives two PowerShell commands (run PowerShell as an administrator): `Set-NetFirewallRule -Name '<rule>' -Profile Private` limits the rule to Private networks, and `Remove-NetFirewallRule -Name '<rule>'` removes it. Copy the commands from the warning: they carry the rule's real name.
+- **A "Security warning" about the data folder.** Coral's data folder (`.coral` in your profile, or the folder named by `CORAL_DATA_DIR`) can be read by other accounts, and it holds the API key, the command-line token and the databases. Move it to a folder only you can read, or remove those accounts from its permissions (Properties > Security).
+- **An "Agent tools folder" row in Settings > Terminal** (shown only when there is something to say, and written in the start-up log). Accounts other than the system and administrators can change the folder that holds `coral-board` and Coral's hooks, which every agent runs by its full path. This happens with a portable copy unpacked in your own profile. Install Coral with the installer: it goes in Program Files, where only an administrator can change it.
+
+Dismiss a warning with its **×**. See also [Auth](auth.md) and [Hub](hub.md).
+
 ### Windows: Antigravity (agy) agents show no Working or Needs-input status
 
 agy runs Coral's hooks through `cmd.exe`, which can't take a quoted path, so Coral names the hook
