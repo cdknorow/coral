@@ -135,6 +135,7 @@ POST /api/scheduled/jobs
 ### Prompt job example
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/scheduled/jobs \
   -H "Content-Type: application/json" \
   -d '{
@@ -149,6 +150,7 @@ curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/a
 ### Workflow job example
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/scheduled/jobs \
   -H "Content-Type: application/json" \
   -d '{
@@ -193,6 +195,7 @@ Updates only the fields you include. If `cron_expr` is present, Coral validates 
 ### Example
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -X PUT http://localhost:8420/api/scheduled/jobs/7 \
   -H "Content-Type: application/json" \
   -d '{
@@ -357,6 +360,7 @@ Validates a five-field cron expression and returns the next five fire times.
 ### Example
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:8420/api/scheduled/validate-cron \
   -H "Content-Type: application/json" \
   -d '{"cron_expr": "0 9 * * 1-5", "timezone": "America/Los_Angeles"}'

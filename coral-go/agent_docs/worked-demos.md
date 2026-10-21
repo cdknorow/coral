@@ -22,6 +22,7 @@ dashboard, each producing a competent implementation.
 other's work.
 
 ```console
+# a script you run yourself, never an agent
 $ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://127.0.0.1:8452/api/sessions/launch-team \
    -H "Content-Type: application/json" -d '{
    "board_name":"demo-worktrees","working_dir":"/tmp/coral-demo",
@@ -73,6 +74,7 @@ Launching a team **without** the `worktree` flag — the default in the dashboar
 checkbox has no `checked` attribute — creates no worktree at all:
 
 ```console
+# a script you run yourself, never an agent
 $ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST .../api/sessions/launch-team -d '{"board_name":"demo-default",
     "working_dir":"/tmp/coral-demo","agents":[{"name":"a1",...},{"name":"a2",...}]}'
 {"agents":[{"name":"a1",...},{"name":"a2",...}],"ok":true}   # no worktree_path
@@ -126,6 +128,7 @@ Two agents on one board: `implementer` writes the code, `reviewer` waits for the
 and reviews it.
 
 ```console
+# a script you run yourself, never an agent
 $ curl -H "Authorization: Bearer $(coral api-key)" -s http://127.0.0.1:8452/api/board/demo-review/messages/all
 [1] reviewer    06:38:06  @implementer Reviewer here. Standing by to review IsPalindrome
                           in stringutil.go once @implementer says it's ready.
@@ -165,10 +168,12 @@ This did not work out of the box on a non-default data directory.
    The agents reported `Not subscribed to any board` while the server showed both
    correctly subscribed.
 
-The demo was completed by having the agents call the REST API directly. The board itself
-worked first try — the CLI wrapper is what fails.
+The demo was completed by having the agents call the REST API directly (with the Operator's API key, which is what the
+examples below show). The board itself worked first try — the CLI wrapper is what failed. Do not copy this: an agent
+uses `coral-board post` and `coral-board read`, which carry its own session token, and never the API key.
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://127.0.0.1:8452/api/board/demo-review/messages \
   -H "Content-Type: application/json" \
   -d '{"subscriber_id":"implementer","content":"@reviewer ready for review"}'
@@ -201,10 +206,11 @@ surfaced in the UI. If a team stalls, check that agents can actually reach the b
 **Result: works exactly as documented.** No caveats found.
 
 > **Operator only** (#3929): sleeping and waking a team is the Operator's. Run these yourself with
-> the API key (`-H "Authorization: Bearer $(coral api-key)"`), or from the dashboard; an agent's token
+> the API key (`-H "Authorization: Bearer $(coral api-key)"`; a script you run yourself, never an agent), or from the dashboard; an agent's token
 > gets 403 `forbidden_for_agent`. Through Coral Hub both are Launch tier — a session below Launch cannot reach them.
 
 ```console
+# a script you run yourself, never an agent
 $ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST .../api/sessions/live/team/demo-sleepwake/sleep
 {"board_paused":true,"ok":true,"sessions_affected":1,"sessions_killed":1,"sleeping":true}
 
@@ -215,6 +221,7 @@ no server running on /tmp/coral-t1/tmux.sock
 The process is genuinely terminated, not idled.
 
 ```console
+# a script you run yourself, never an agent
 $ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST .../api/sessions/live/team/demo-sleepwake/wake
 {"board_paused":false,"ok":true,"sessions_relaunched":1,"sleeping":false}
 
@@ -240,6 +247,7 @@ about 15 s.
 Re-run with the server process killed between sleep and wake:
 
 ```console
+# a script you run yourself, never an agent
 $ POST .../team/demo-restart/sleep
 {"board_paused":true,"ok":true,"sessions_killed":1,"sleeping":true}
 

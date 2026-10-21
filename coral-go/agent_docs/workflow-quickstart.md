@@ -42,6 +42,7 @@ Notice `{{prev_stdout}}` in the shell step — this is a **template variable** t
 ### Create it
 
 ```bash
+# a script you run yourself, never an agent
 curl -X POST http://localhost:8420/api/workflows \
   -H "Authorization: Bearer $(coral api-key)" \
   -H "Content-Type: application/json" \
@@ -69,6 +70,7 @@ The response includes the workflow's `id` — you'll need it to trigger runs.
 ### Trigger it
 
 ```bash
+# a script you run yourself, never an agent
 curl -X POST http://localhost:8420/api/workflows/12/trigger \
   -H "Authorization: Bearer $(coral api-key)"
 ```
@@ -78,6 +80,7 @@ This returns a `run_id`. The workflow starts executing immediately.
 ### Check the run
 
 ```bash
+# a script you run yourself, never an agent
 curl http://localhost:8420/api/workflows/runs/44 \
   -H "Authorization: Bearer $(coral api-key)"
 ```
@@ -87,6 +90,7 @@ The response shows the overall run status and a `steps` array with per-step `sta
 You can also trigger and monitor workflows by name:
 
 ```bash
+# a script you run yourself, never an agent
 curl -X POST http://localhost:8420/api/workflows/by-name/daily-motivation/trigger \
   -H "Authorization: Bearer $(coral api-key)"
 ```
@@ -96,6 +100,7 @@ curl -X POST http://localhost:8420/api/workflows/by-name/daily-motivation/trigge
 Want your motivational popup every weekday morning? Create a scheduled job:
 
 ```bash
+# a script you run yourself, never an agent
 curl -X POST http://localhost:8420/api/scheduled/jobs \
   -H "Authorization: Bearer $(coral api-key)" \
   -H "Content-Type: application/json" \
@@ -115,6 +120,7 @@ The `cron_expr` follows standard cron syntax — `0 9 * * 1-5` means "at 9:00 AM
 You can manage jobs from the **Jobs** tab in the UI, or via the API:
 
 ```bash
+# a script you run yourself, never an agent
 # List all jobs
 curl http://localhost:8420/api/scheduled/jobs \
   -H "Authorization: Bearer $(coral api-key)"

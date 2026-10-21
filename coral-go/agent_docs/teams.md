@@ -222,6 +222,7 @@ The dashboard follows a run wherever it was started (#3325): leaving the Knowled
 ## Example: Full team lifecycle
 
 ```bash
+# a script you run yourself, never an agent
 # 1. Launch a team
 curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:PORT/api/sessions/launch-team \
   -H "Content-Type: application/json" \
