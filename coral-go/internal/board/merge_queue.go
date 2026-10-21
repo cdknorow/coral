@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/subgentic/coral/internal/ptr"
 )
@@ -12,6 +13,26 @@ import (
 // The merge queue's board side (#5689). A patch is a TaskArtifact of kind "patch": uri (the managed link), digest (the file's
 // sha256), revision (the base commit it applies to). The review rounds say WHICH bytes were approved (ReviewRound.ApprovedDigests),
 // so a queue never lands bytes that were attached after an approval.
+
+// burstWindow is how long after the attach that opened a round the same person's next patch attach joins that round (a variable: tests).
+var burstWindow = 60 * time.Second
+
+// joinsBurst: the open round was opened by this person's own attach less than burstWindow ago and nobody has given a verdict in it.
+func joinsBurst(round *ReviewRound, actor string) bool {
+	if round.SupersededBy == "" || round.SupersededBy != actor {
+		return false
+	}
+	opened, err := time.Parse(time.RFC3339, round.DelegatedAt)
+	if err != nil || time.Since(opened) >= burstWindow {
+		return false
+	}
+	for _, r := range round.Reviewers {
+		if r.State != "pending" {
+			return false
+		}
+	}
+	return true
+}
 
 // PatchKind is the TaskArtifact kind of a patch the merge queue can land.
 const PatchKind = "patch"
@@ -178,13 +199,26 @@ func (s *Store) AttachPatches(ctx context.Context, project string, id int64, act
 		return nil, nil, fmt.Errorf("a task has at most %d artifacts (the newest revision of each name counts)", maxTaskArtifacts)
 	}
 	w.CompletionReview.Artifacts = all
-	// Always a new round (not only after an approval): a reviewer may have read the task before this attach and be about to approve it,
-	// and a verdict that names the round they read is then refused (task detail shows the round), so no one approves bytes they did not see.
-	round.Result = "superseded"
-	if reopened, err = reopenReviews(ctx, tx, project, id, &w); err != nil {
-		return nil, nil, err
+	// Only a patch row can change what a reviewer approves: a log or a note row opens no round and voids no approval (QA's #5726).
+	patchRow := false
+	for _, r := range fresh {
+		if r.Kind == PatchKind {
+			patchRow = true
+		}
 	}
-	reopened.DelegatedBy = "superseded by a new patch from " + actor
+	// A patch row opens a new round (not only after an approval): a reviewer may have read the task before this attach and be about to
+	// approve it, and a verdict that names the round they read is then refused (task detail shows the round), so no one approves bytes
+	// they did not see. One exception, a burst: the same person's next patch within burstWindow of the attach that opened this round,
+	// while nobody has given a verdict in it, joins it: one round and one notice for a series of attaches (QA's #5726). The window is
+	// short because a reviewer who read the round in those seconds and approves after the join approves a row they did not read.
+	if patchRow && !joinsBurst(round, actor) {
+		round.Result = "superseded"
+		if reopened, err = reopenReviews(ctx, tx, project, id, &w); err != nil {
+			return nil, nil, err
+		}
+		reopened.DelegatedBy = "superseded by a new patch from " + actor
+		reopened.SupersededBy = actor
+	}
 	if err := saveWorkflow(ctx, tx, id, w); err != nil {
 		return nil, nil, err
 	}
