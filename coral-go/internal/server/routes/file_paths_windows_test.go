@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,7 +63,13 @@ func TestResolvePathTakesWindowsFileURLs(t *testing.T) {
 			assert.Equal(t, line, body["line"], ref)
 		}
 	}
-	// A UNC link is a path like any other: refused here, outside the repository and not local.
-	code, _ := resolve("file://no-such-server/share/main.go")
-	assert.Equal(t, http.StatusNotFound, code)
+	// A network path is refused by its text, at once, before anything touches the filesystem
+	// (resolving it would make Windows connect to the host and send the user's credentials):
+	// a file: URL with a host, a \\server\share path and its forward-slash form (PR #44 review).
+	for _, ref := range []string{"file://unreachable.invalid/s/x.go", `\\unreachable.invalid\s\x.go`, "//unreachable.invalid/s/x.go"} {
+		start := time.Now()
+		code, _ := resolve(ref)
+		assert.Equal(t, http.StatusNotFound, code, ref)
+		assert.Less(t, time.Since(start), time.Second, "%s: refused without a network attempt", ref)
+	}
 }
