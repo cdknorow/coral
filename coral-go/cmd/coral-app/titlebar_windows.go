@@ -52,6 +52,11 @@ func setupNativeTitlebar() {
 		}
 		log.Printf("[TITLEBAR] found window HWND=%x", hwnd)
 
+		// The window's own icon: the exe's resource is not used for a window unless it is set on it.
+		if err := setWindowIcon(hwnd); err != nil {
+			log.Printf("[TITLEBAR] window icon: %v", err)
+		}
+
 		setDWMAttr(hwnd, dwmwaUseImmersiveDarkMode, int32(1))
 
 		// Caption background: #111114 (--bg-primary) as COLORREF 0x00BBGGRR
