@@ -1,5 +1,35 @@
 # Release Notes
 
+## v1.4.150 — A merge queue for teams, Windows round 3, comments redesigned, and high-contrast fixes
+
+### Features
+
+- **Merge queue (a working mode for teams that land through one person):** choose **Merge queue** in Team settings and every agent is told how to work: in a worktree, with the patch attached to the task. `coral-board task attach <id> --artifacts manifest.json` adds the next revision of a patch while a task is in review; reviewers approve the exact patch (its digest), so a patch changed after approval, or after a reviewer read it, needs a new review; `coral-board queue` lists the approved patches that have not landed, oldest first; `coral-board task send-back <id> --note "why"` (orchestrator) returns an approved task to its author; `coral-board task mark-landed` (orchestrator or Operator) records what landed. Coral does not apply or push anything itself, and these routes never go through Coral Hub. The guide is `agent_docs/merge-queue.md`.
+- **Comments look like a document's comments:** a thread is one card with avatars, a name and time line, a thin thread line, Resolve at the top right and a reply box at the foot; resolved threads are behind Show resolved. The Edit and Delete row takes no room until you hover or focus the card.
+- **Agents show their thinking level:** a Thinking row in the hover card (the level the newest turn ran at, or "(as started)"), and the sidebar's agent line is built from Show provider, Show model and Show thinking level. **Show thinking level is on by default**, so the line reads like "Claude · Opus 4.1 · High".
+- **A pasted image is one compact chip:** the thumbnail with its remove button on its right edge, no "Pasted image N" pill; several wrap as a row of equal chips. A screen reader hears "Remove image 2" and "Image 2" by the image's place, not a generated file name.
+
+### Changes
+
+- **A command Coral cannot run now refuses the launch (Windows and every OS):** a configured CLI path that cannot be run refuses launch, restart, resume and wake with a 422 naming the setting (before, the CLI on PATH ran, or a bare 500). Through Coral Hub the message names the setting only, never the path.
+- **A team in which no member started is an error:** launching a team now answers with each member's reason (422 when all are setup problems, otherwise 500) and takes back what the request made (the team record, the worktree, and the branch and board only when this request created them); before, it answered 200 over an empty team.
+- **Other accounts on this computer need a credential (loopback):** every loopback connection is attributed to its operating-system user once; another user, or one Coral cannot attribute, needs a credential and gets no local-only power. An elevated browser or PowerShell of the owner counts as unattributed (the docs say so), as can WSL2 mirrored networking.
+- **The webview's system DLLs load from the system folder (Windows):** the desktop app loads the DLLs the webview looks up by bare name from the system folder, and the agent docs now say that a command using `coral api-key` is a script you run yourself, never an agent.
+- **The terminal input path is one path:** every sender of text or keys to an agent names who is typing (a person, Coral, or Coral's internal keys), one write function per backend records it, and the stop's Ctrl-C keys are recorded. A person's text sent through an answer prompt or `/send` and `/keys` is now logged by its length, as a typed line is; a character typed through `/keys` is hidden.
+- **Windows warnings:** the security, firewall and database warnings no longer draw over each other, each × is a button named "Dismiss: ..." with a 24 px target, and the firewall and tools-folder messages are in plainer words.
+- **High contrast and forced colors (Windows):** Settings switches, the selected tab and every agent status dot stay readable; count and status chips keep a border; a pressed toggle keeps its size; the other status dots (sidebar avatar, machine health, Hub server, live job) have their own shapes; a focused text field has an outline; and targets are 24 px at 125% and 150% scaling.
+- **macOS:** Import Template and Import from Folder open the file chooser again.
+- **Stylesheet fixes:** a cost-dashboard row colour the browser had silently dropped now applies (rows with no thinking level recorded are muted), and a broken welcome-page rule that never applied is removed.
+
+### Fixes
+
+- **Windows launch:** a team launch's failure dialog lists each member's error and a button to Settings.
+
+### Internal
+
+- A test parses every stylesheet; the Windows stress runners use Windows-safe paths and a watchdog; update-check tests use their own feed URLs; the wake test checks the launch command sent, not the screen; and 43 ptymanager tests run in parallel; the tmux lag test no longer starves its reading viewer.
+- Windows branches added a note on agy under a folder with a space (8.3 names).
+
 ## v1.4.149 — Windows hardening round 2, a firewall warning, and an accessibility pass
 
 ### Features
