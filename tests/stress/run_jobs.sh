@@ -27,8 +27,8 @@ cleanup() {
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
-    rm -rf "$TMPDIR_JOBS" 2>/dev/null || true
-    coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir (runs the check too on a crash)
+    coral_test_sandbox_cleanup   # #4354: its check first (a crash path reads the stub marker), then the folders
+    coral_test_rm_tree "$TMPDIR_JOBS"
 }
 trap cleanup EXIT
 
@@ -81,6 +81,8 @@ REPO_JOBS="$TMPDIR_JOBS/repo"
 mkdir -p "$REPO_JOBS"
 git -C "$REPO_JOBS" init -q
 git -C "$REPO_JOBS" -c user.email=stress@coral.test -c user.name=stress commit -q --allow-empty -m init
+# The repo path as the server reads it from JSON (a Windows path under Git Bash).
+REPO_JOBS_NATIVE="$(coral_test_native_path "$REPO_JOBS")"
 
 log "Building coral (dev mode)..."
 cd "$CORAL_DIR"
@@ -102,7 +104,7 @@ log "Test 1: Create a workflow..."
 WF_RESULT=$(api POST "/api/workflows" -d '{
     "name": "test-scheduled-wf",
     "description": "Test workflow for scheduled jobs",
-    "repo_path": "'"$REPO_JOBS"'",
+    "repo_path": "'"$REPO_JOBS_NATIVE"'",
     "steps": [
         {"name": "echo-step", "type": "shell", "command": "echo hello"}
     ]
@@ -121,7 +123,7 @@ log "Test 2: Create a prompt-type scheduled job..."
 PROMPT_JOB=$(api POST "/api/scheduled/jobs" -d '{
     "name": "test-prompt-job",
     "cron_expr": "0 0 31 2 *",
-    "repo_path": "'"$REPO_JOBS"'",
+    "repo_path": "'"$REPO_JOBS_NATIVE"'",
     "prompt": "echo test"
 }')
 
@@ -175,7 +177,7 @@ log "Test 5: Prompt job validation..."
 STATUS_NO_PROMPT=$(api_status POST "/api/scheduled/jobs" -d '{
     "name": "bad-prompt-job",
     "cron_expr": "0 0 31 2 *",
-    "repo_path": "'"$REPO_JOBS"'"
+    "repo_path": "'"$REPO_JOBS_NATIVE"'"
 }')
 
 if [[ "$STATUS_NO_PROMPT" == "400" ]]; then

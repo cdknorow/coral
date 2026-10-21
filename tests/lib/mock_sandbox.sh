@@ -81,6 +81,23 @@ coral_test_sandbox_cleanup() {
     if [[ -z "${CORAL_TEST_SANDBOX_CHECKED:-}" && -n "${CORAL_TEST_STUB_BIN:-}" ]]; then
         coral_test_sandbox_check || true
     fi
-    [[ -n "${CORAL_TEST_HOME:-}" ]] && rm -rf "$CORAL_TEST_HOME"
-    [[ -n "${CORAL_TEST_STUB_BIN:-}" ]] && rm -rf "$CORAL_TEST_STUB_BIN"
+    coral_test_rm_tree "${CORAL_TEST_HOME:-}"
+    coral_test_rm_tree "${CORAL_TEST_STUB_BIN:-}"
+}
+
+# coral_test_rm_tree DIR: rm -rf DIR, never failing the run (it runs in EXIT traps, under set -e). On
+# Windows the system makes AppData\Local\Microsoft\Windows\INetCache\Content.IE5 in the isolated home,
+# a hidden system reparse point Git Bash's rm can't remove ("Directory not empty"), which made a clean
+# run exit 1: cmd's rmdir removes it. A leftover is only reported.
+coral_test_rm_tree() {
+    local d="$1"
+    [[ -n "$d" && -e "$d" ]] || return 0
+    rm -rf "$d" 2>/dev/null || true
+    if [[ -e "$d" ]]; then
+        case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)
+            cmd //c rmdir //s //q "$(cygpath -w "$d")" >/dev/null 2>&1 || true ;;
+        esac
+    fi
+    if [[ -e "$d" ]]; then echo "[#4354] note: could not remove $d" >&2; fi
+    return 0
 }
