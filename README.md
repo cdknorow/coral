@@ -268,8 +268,7 @@ Where the single-vendor tools are stronger: per-session worktree isolation is on
 Other open-source projects in this space — Claude Squad, Conductor, Crystal, and vibe-kanban — take a similar tmux-and-worktrees approach. Frameworks like AutoGen and CrewAI are a different job: they help you build agents in code, whereas Coral runs the CLIs you already have.
 
 ## Documentation
-
-Full documentation at **[cdknorow.github.io/coral](https://cdknorow.github.io/coral/)**.
+Full documentation at **[https://subgentic.github.io/coral/](https://subgentic.github.io/coral/)**.
 
 ## Contributing
 
