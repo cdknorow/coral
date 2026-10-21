@@ -1,5 +1,63 @@
 # Release Notes
 
+## v1.4.142 — Coral has a new home: github.com/subgentic/coral
+
+### Changes
+
+- **Coral's repository has moved to [github.com/subgentic/coral](https://github.com/subgentic/coral).** This is the first release built there. Links to the old address (`github.com/cdknorow/coral`) keep working: GitHub redirects the repository page, issues, releases and clones. Nothing changes for an installed Coral, and you do not need to reinstall.
+- **The documentation moved to <https://subgentic.github.io/coral/>.** The old documentation address does **not** redirect, so update any bookmark or link you have to it.
+- **Homebrew is unchanged for now:** `brew install --cask cdknorow/coral/coral` and `brew upgrade --cask coral` keep working, with no need to tap anything again.
+- **The update notice looks at the new home:** the "a new version is available" notice in the dashboard, the tray menu and the server's startup log now reads releases from `subgentic/coral`. An installed Coral on an earlier version keeps finding this release through the old address's redirect.
+- **The Team settings tab strip no longer changes after it appears:** the Messaging tab is drawn with the rest of the strip, so the tabs stay where they are while the settings load.
+
+### Fixes
+
+- Built with Go 1.26.10, which fixes a certificate-verification issue in Go's crypto/x509 (GO-2026-6809).
+
+### Internal
+
+- Releases are now built from subgentic/coral and published only after every file is attached, and they cannot be changed afterwards; changes to main go through a pull request with a required check.
+
+### Checking a release
+
+Releases are signed by the repository's release workflow on GitHub, with no long-lived keys. Because the repository moved, **v1.4.142 and later are signed by `subgentic/coral`**, and **v1.4.141 and earlier were signed by `cdknorow/coral`**. Use the owner that matches the version you downloaded: a release's attestation stays with the account that built it, so for v1.4.141 and earlier `gh attestation verify --repo` finds nothing (it answers 404); the `--owner` form below finds them.
+
+With the [GitHub CLI](https://cli.github.com/), for v1.4.142 or later (put the version you downloaded in `--source-ref`, for example `refs/tags/v1.4.142`: it ties the check to that release's tag):
+
+```bash
+gh attestation verify coral-linux-amd64.tar.gz --owner subgentic \
+  --signer-workflow subgentic/coral/.github/workflows/release.yml \
+  --source-ref refs/tags/v1.4.142
+```
+
+and for v1.4.141 or earlier (with the tag of the version you downloaded in place of `v1.4.141`):
+
+```bash
+gh attestation verify coral-linux-amd64.tar.gz --owner cdknorow \
+  --signer-workflow cdknorow/coral/.github/workflows/release.yml \
+  --source-ref refs/tags/v1.4.141
+```
+
+Offline, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v2.4 or later, download `SHA256SUMS.txt` and `SHA256SUMS.txt.sigstore.json` from the same release. For v1.4.142 or later:
+
+```bash
+cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json --new-bundle-format \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/subgentic/coral/\.github/workflows/release\.yml@refs/tags/v'
+sha256sum --check --ignore-missing SHA256SUMS.txt   # macOS: shasum -a 256 --check --ignore-missing
+```
+
+and for v1.4.141 or earlier, the same commands with `cdknorow/coral` in the identity:
+
+```bash
+cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json --new-bundle-format \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/cdknorow/coral/\.github/workflows/release\.yml@refs/tags/v'
+sha256sum --check --ignore-missing SHA256SUMS.txt
+```
+
+The checksum command must print `<your file>: OK` for the file you downloaded; if it prints nothing, nothing was checked. If either check fails, the file is not an official release.
+
 ## v1.4.141 — A sender can no longer dodge the relayed-message limits by changing its names; Messaging settings show before the list is enforced
 
 ### Changes
