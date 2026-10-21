@@ -89,9 +89,15 @@ coral_test_sandbox_cleanup() {
 # Windows the system makes AppData\Local\Microsoft\Windows\INetCache\Content.IE5 in the isolated home,
 # a hidden system reparse point Git Bash's rm can't remove ("Directory not empty"), which made a clean
 # run exit 1: cmd's rmdir removes it. A leftover is only reported.
+# Standing rule (#5762): only a folder whose name starts with coral-test is ever removed (the harness makes its own with mktemp ... coral-test-*.XXXXXX); a
+# variable that is empty, was never set to a harness folder, or points at a real one (/, a home, a project) is refused and said, never removed.
 coral_test_rm_tree() {
     local d="$1"
     [[ -n "$d" && -e "$d" ]] || return 0
+    case "$(basename "$d")" in
+        coral-test*) ;;
+        *) echo "[#5762] refusing to remove $d: the name does not start with coral-test (the harness removes only its own folders)" >&2; return 0 ;;
+    esac
     rm -rf "$d" 2>/dev/null || true
     if [[ -e "$d" ]]; then
         case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*)

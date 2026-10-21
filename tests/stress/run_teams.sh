@@ -79,7 +79,7 @@ wait_for_server() {
 
 # ── Setup ────────────────────────────────────────────────────────────
 
-TMPDIR_TEAMS="$(mktemp -d)"
+TMPDIR_TEAMS="$(mktemp -d "${TMPDIR:-/tmp}/coral-test-teams.XXXXXX")"
 export TMPDIR="$TMPDIR_TEAMS"  # (#3926)
 if lsof -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
     log "ERROR: Port $PORT is already in use; set CORAL_TEST_PORT to a free port."

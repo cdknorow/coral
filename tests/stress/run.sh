@@ -87,7 +87,7 @@ wait_for_server() {
 
 # ── Setup ────────────────────────────────────────────────────────────
 
-TMPDIR_STRESS="$(mktemp -d)"
+TMPDIR_STRESS="$(mktemp -d "${TMPDIR:-/tmp}/coral-test-run.XXXXXX")"
 # The server's os.TempDir() droppings (coral_settings_/coral_prompt_/sysprompt/agyhooks) land in our own dir, removed on exit; never a glob in the shared TMPDIR where live Coral writes the same names (#3926).
 export TMPDIR="$TMPDIR_STRESS"
 export CORAL_DATA_DIR="$TMPDIR_STRESS"
