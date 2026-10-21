@@ -18,6 +18,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await ev(`document.getElementById('team-settings-workspace')?.remove(); import((window.__coralStatic || '/static/') + 'team_working_mode.js').then(m => m.showTeamWorkingMode(${JSON.stringify(TEAM)}, { workspace: false })); true`);
         await waitFor(`!!document.querySelector('.preset-save') && !!document.querySelector('.preset-select, [name=preset]')`, 'the preset controls', 15000);
         await waitFor(`document.querySelector('.working-mode-form [type=submit]') && !document.querySelector('.working-mode-form [type=submit]').disabled`, 'the dialog to load', 15000);
+        await ev(`document.querySelector('.preset-editor').open = true; true`); // the preset editor is behind Edit presets (#5589)
     };
     try {
         await Page.enable();

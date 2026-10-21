@@ -29,12 +29,14 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
    await Input.dispatchKeyEvent({type:'keyDown',key:'ArrowRight',code:'ArrowRight'});await Input.dispatchKeyEvent({type:'keyUp',key:'ArrowRight',code:'ArrowRight'});
    assert.equal(await ev(`document.activeElement.dataset.settingsTab`),'prompts');
    results.push({name,stage:'prompts-top',...await geometry()});await shot(`${name}-prompts-top`);
-   assert.equal(await ev(`document.querySelectorAll('.prompt-inspection-content details[open]').length`),0);
-   await ev(`document.querySelector('.prompt-inspection-content summary').focus()`);
-   await Input.dispatchKeyEvent({type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r'});
-   await Input.dispatchKeyEvent({type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,text:'\r'});
-   assert.equal(await ev(`document.querySelector('.prompt-inspection-content details').open`),true);
-   await ev(`document.querySelectorAll('.prompt-inspection-content details').forEach(d=>d.open=true);document.querySelector('.working-mode-form').scrollTop=100000`);
+   // One read-only page (UI audit #5589): no collapsibles, no inner scroll boxes, one role at a time chosen by a select.
+   assert.equal(await ev(`document.querySelectorAll('.prompt-inspection-content details').length`),0);
+   assert.deepEqual(await ev(`[...document.querySelectorAll('.prompt-inspection-content pre')].filter(p => getComputedStyle(p).overflowY !== 'visible').length`),0,'no scroll box inside the page');
+   assert.deepEqual(await ev(`[...document.querySelectorAll('.prompt-inspection-card')].map(c => !c.hidden)`),[true,false,false]);
+   await ev(`document.querySelector('.prompt-inspection-role').focus()`);
+   await ev(`(() => { const s = document.querySelector('.prompt-inspection-role'); s.value = 'worker'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+   assert.deepEqual(await ev(`[...document.querySelectorAll('.prompt-inspection-card')].map(c => !c.hidden)`),[false,true,false],'the select shows the role chosen');
+   await ev(`document.querySelector('.working-mode-form').scrollTop=100000`);
    results.push({name,stage:'prompts-bottom',...await geometry()});await shot(`${name}-prompts-bottom`);
    // The all-Coral health switch is in Settings now (#5128): the team panel has only the Workflow and Prompt inspection tabs (and Health check), no Global tab.
    assert.equal(await ev(`!!document.querySelector('[data-settings-tab=global]') || !!document.querySelector('.working-mode-form').elements.board_health_monitor`),false);

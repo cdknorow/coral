@@ -1698,8 +1698,11 @@
 .prompt-inspection-card h4 { margin: 0 0 6px; font-size: 0.875rem; }
 .prompt-inspection-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--text-secondary); font-size: 0.75rem !important; }
 .prompt-inspection-fragment { margin-top: 10px; }
-.prompt-inspection-fragment summary { cursor: pointer; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
-.prompt-inspection-fragment pre { max-height: 120px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; padding: 8px; border-radius: 5px; background: var(--bg-primary); color: var(--text-primary); font: 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.prompt-inspection-fragment h5 { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+.prompt-inspection-bar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 12px; }
+.prompt-inspection-bar label { margin: 0; }
+.prompt-inspection-card[hidden] { display: none; }
+.prompt-inspection-fragment pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; padding: 8px; border-radius: 5px; background: var(--bg-primary); color: var(--text-primary); font: 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
 @media(max-width: 600px) { .prompt-inspection-meta { flex-direction: column; gap: 4px; } }
 @media(max-width: 600px) { .team-settings-tabs { overflow-x: auto; } .team-settings-tabs [role="tab"] { flex: 0 0 auto; white-space: nowrap; } }
 .team-settings-actions { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 12px 0 2px; background: linear-gradient(var(--bg-secondary), var(--bg-secondary)); }
@@ -2155,3 +2158,7 @@
 .mobile-list-header .mobile-search-input { width: 100%; box-sizing: border-box; height: var(--ctl-h); padding-left: 12px; }
 .server-details-update:not(.server-below-minimum) { flex-wrap: wrap; } /* #5487 review: the long "Update required" sentence and its badge wrap instead of squeezing the badge out of the panel */
 .server-details-update .server-update-badge { flex: none; white-space: nowrap; }
+/* Team settings > Workflow: the preset editor is behind "Edit presets"; the working mode comes first (UI audit #5589, finding 9). */
+.workflow-presets-section > summary { cursor: pointer; font-weight: 600; font-size: var(--fs-md); padding: 2px 0; }
+.workflow-presets-section[open] > summary { margin-bottom: 10px; }
+.workflow-presets-section:not([open]) { gap: 0; }

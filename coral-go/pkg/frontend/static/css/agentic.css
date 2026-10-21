@@ -53,7 +53,7 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 }
 
 .agentic-state {
-    width: 420px;
+    width: clamp(420px, 30vw, 640px); /* a wider window gives Team settings and the other panels more room; a width the person dragged is kept (sidebar.js) */
     min-width: 280px;
     /* The drag handle enforces the real limit, which keeps the terminal
        column usable; this only stops a stale saved width running away. */

@@ -1,5 +1,5 @@
 import { importOnce } from './import_once.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, escapeAttr, copyText, showToast } from './utils.js';
 import { splitKey, keyLabel, serverUrl, isCloud } from './server_base.js';
 const { boardRenameControl } = await importOnce('./board_rename.js'); // lazy modules load the others they need through importOnce, so a failed load is retried
 const { refusalOf, answeredLocally } = await importOnce('./owner_refusal.js');
@@ -56,17 +56,24 @@ function presetLabel(preset) {
 
 function renderInspection(data, workingMode) {
     const roles = [['orchestrator', 'Orchestrator'], ['worker', 'Agent / worker'], ['task', 'Task defaults']];
-    return roles.map(([key, label]) => {
+    // One role at a time, in full: a page that scrolls once (UI audit #5589, finding 10). Each text is a labelled block, not a small scroll box.
+    const fragment = (role, name, title) => `<section class="prompt-inspection-fragment"><h5>${title}</h5><pre>${escapeHtml(role[name] || 'Not configured')}</pre></section>`;
+    const cards = roles.map(([key, label], index) => {
         const role = data?.[key] || {};
-        const fragment = (name, title) => `<details class="prompt-inspection-fragment"><summary>${title}</summary><pre>${escapeHtml(role[name] || 'Not configured')}</pre></details>`;
+        const head = `<h4>${label}</h4><p class="prompt-inspection-meta"><span>Scope: ${escapeHtml(role.scope || 'global')}</span><span>Applies: ${escapeHtml(role.applicability || '—')}</span></p>`;
+        let body;
         if (key === 'task') {
             const defaultInst = role.default_instructions || '';
             const teamInst = workingMode?.instructions?.trim();
             const composed = defaultInst + (teamInst ? `\n\nTeam working instructions:\n${teamInst}` : '') + '\n\n[+ per-task extra when supplied at creation]';
-            return `<article class="prompt-inspection-card"><h4>${label}</h4><p class="prompt-inspection-meta"><span>Scope: ${escapeHtml(role.scope || 'global')}</span><span>Applies: ${escapeHtml(role.applicability || '—')}</span></p>${fragment('default_instructions', 'Default task instructions')}<details class="prompt-inspection-fragment"><summary>Effective composed task preview (on first claim)</summary><pre>${escapeHtml(composed)}</pre></details></article>`;
+            body = `${fragment(role, 'default_instructions', 'Default task instructions')}<section class="prompt-inspection-fragment"><h5>Effective composed task preview (on first claim)</h5><pre>${escapeHtml(composed)}</pre></section>`;
+        } else {
+            body = fragment(role, 'system_default', 'System default') + fragment(role, 'action_default', 'Action default') + fragment(role, 'override', 'Override') + fragment(role, 'effective_system', 'Effective system') + fragment(role, 'effective_action', 'Effective action');
         }
-        return `<article class="prompt-inspection-card"><h4>${label}</h4><p class="prompt-inspection-meta"><span>Scope: ${escapeHtml(role.scope || 'global')}</span><span>Applies: ${escapeHtml(role.applicability || '—')}</span></p>${fragment('system_default', 'System default')}${fragment('action_default', 'Action default')}${fragment('override', 'Override')}${fragment('effective_system', 'Effective system')}${fragment('effective_action', 'Effective action')}</article>`;
+        return `<article class="prompt-inspection-card" data-role="${escapeAttr(key)}"${index ? ' hidden' : ''}>${head}${body}</article>`;
     }).join('');
+    const options = roles.map(([key, label]) => `<option value="${escapeAttr(key)}">${label}</option>`).join('');
+    return `<div class="prompt-inspection-bar"><label>Show the prompts for <select class="prompt-inspection-role">${options}</select></label><button type="button" class="btn btn-small prompt-inspection-copy">Copy</button></div>${cards}`;
 }
 
 // The empty team settings: a section for the sidebar or a dialog, with its three tabs and the form (filled by the load).
@@ -91,16 +98,6 @@ function _teamSettingsShell(workspaceMode) {
       </nav>
       <form class="working-mode-form">
       <section class="team-settings-panel active" id="team-settings-workflow" role="tabpanel" aria-labelledby="team-settings-tab-workflow" data-settings-panel="workflow" tabindex="0">
-      <fieldset class="team-settings-section workflow-presets-section">
-        <legend>Workflow instructions</legend>
-        <p class="working-mode-hint">Choose the instructions captured on tasks when they are first claimed. Preset edits are local to this team.</p>
-        <label>Preset<select name="preset"></select></label>
-        <div class="workflow-preset-actions"><button type="button" class="btn preset-new">New preset</button><button type="button" class="btn preset-reset" hidden>Reset built-in</button></div>
-        <label class="preset-name-field">Preset name<input name="preset_name" maxlength="80" autocomplete="off"></label>
-        <label>Preset instructions<textarea name="preset_instructions" rows="5" maxlength="4096" placeholder="Instructions agents should follow"></textarea></label>
-        <p class="working-mode-hint preset-state"></p>
-        <button type="button" class="btn preset-save">Save preset</button>
-      </fieldset>
       <fieldset class="team-settings-section">
         <legend>Team working mode</legend>
         <label>Working mode<select name="mode"><option value="none">None</option><option value="shared_checkout">Shared checkout</option><option value="worktrees">Worktrees</option></select></label>
@@ -108,6 +105,16 @@ function _teamSettingsShell(workspaceMode) {
         <label>Additional instructions<textarea name="custom_instructions" rows="4" placeholder="Team-specific conventions"></textarea></label>
         <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
       </fieldset>
+      <details class="team-settings-section workflow-presets-section preset-editor">
+        <summary>Edit presets</summary>
+        <p class="working-mode-hint">Choose the instructions captured on tasks when they are first claimed. Preset edits are local to this team.</p>
+        <label>Preset<select name="preset"></select></label>
+        <div class="workflow-preset-actions"><button type="button" class="btn preset-new">New preset</button><button type="button" class="btn preset-reset" hidden>Reset built-in</button></div>
+        <label class="preset-name-field">Preset name<input name="preset_name" maxlength="80" autocomplete="off"></label>
+        <label>Preset instructions<textarea name="preset_instructions" rows="5" maxlength="4096" placeholder="Instructions agents should follow"></textarea></label>
+        <p class="working-mode-hint preset-state"></p>
+        <button type="button" class="btn preset-save">Save preset</button>
+      </details>
       </section>
       <section class="team-settings-panel" id="team-settings-prompts" role="tabpanel" aria-labelledby="team-settings-tab-prompts" data-settings-panel="prompts" tabindex="0" hidden>
       <fieldset class="team-settings-section prompt-inspection-section">
@@ -206,6 +213,17 @@ export async function showTeamWorkingMode(team, options = {}) {
     const presetReset = dialog.querySelector('.preset-reset');
     const presetSave = dialog.querySelector('.preset-save');
     const inspection = dialog.querySelector('.prompt-inspection-content');
+    // One role's prompts at a time; Copy takes the text of the one shown (UI audit #5589, finding 10).
+    inspection.addEventListener('change', event => {
+        if (!event.target.matches('.prompt-inspection-role')) return;
+        for (const card of inspection.querySelectorAll('.prompt-inspection-card')) card.hidden = card.dataset.role !== event.target.value;
+    });
+    inspection.addEventListener('click', async event => {
+        if (!event.target.closest('.prompt-inspection-copy')) return;
+        const card = inspection.querySelector('.prompt-inspection-card:not([hidden])');
+        if (!card) return;
+        if (await copyText(card.innerText)) showToast('Copied'); else showToast('Could not copy: select the text and copy it', true);
+    });
     const { server: teamServer, name: teamName } = splitKey(team);
     const workingModeURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode`, teamServer);
     const presetsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode/presets`, teamServer);
