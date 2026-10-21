@@ -833,10 +833,10 @@
                 <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-debug-input-log">Log terminal input (debug)</label>
-                    <span class="toggle-desc">Record everything Coral sends to agent terminals, for troubleshooting. Off by default; applies immediately.</span>
+                    <span class="toggle-desc" id="settings-debug-input-log-desc">Record everything Coral sends to agent terminals, for troubleshooting. Off by default; applies immediately.</span>
                 </dt>
                 <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-status"></label>
+                    <label class="check-hit"><input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-desc settings-debug-input-log-status"></label>
                     <div id="settings-debug-input-log-status" class="settings-hint" role="status" hidden></div>
                     <button class="btn btn-small" type="button" id="settings-debug-input-log-delete" hidden>Delete the log</button>
                 </dd>
@@ -1005,10 +1005,10 @@
                 <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-remote-access-enabled">Remote access</label>
-                    <span class="toggle-desc">Allow connections from other devices. Plain HTTP (unencrypted) unless Coral was started with --tls-cert and --tls-key.</span>
+                    <span class="toggle-desc" id="settings-remote-access-enabled-desc">Allow connections from other devices. Plain HTTP (unencrypted) unless Coral was started with --tls-cert and --tls-key.</span>
                 </dt>
                 <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status"></label>
+                    <label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-enabled-desc settings-remote-access-status"></label>
                     <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
                 </dd>
                 </div>
@@ -1104,10 +1104,10 @@
                 <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-telemetry-enabled">Usage analytics</label>
-                    <span class="toggle-desc">Allow anonymous product usage analytics. This applies immediately.</span>
+                    <span class="toggle-desc" id="settings-telemetry-enabled-desc">Allow anonymous product usage analytics. This applies immediately.</span>
                 </dt>
                 <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-telemetry-enabled" aria-describedby="settings-telemetry-help"></label>
+                    <label class="check-hit"><input type="checkbox" id="settings-telemetry-enabled" aria-describedby="settings-telemetry-enabled-desc settings-telemetry-help"></label>
                     <span id="settings-telemetry-help" class="settings-hint">No prompts, transcripts, or secrets are sent.</span>
                 </dd>
                 </div>
@@ -1510,13 +1510,13 @@
 
 {{ end }}
 
-{{/* One settings switch: the label names it, the description is the text beside it. toggle (funcs in frontend.go) builds the argument; attrs are extra attributes of the input. */}}
+{{/* One settings switch: the label names it, the description (id <id>-desc) is tied to it by aria-describedby. toggle (funcs in frontend.go) builds the argument; attrs are extra attributes of the input. */}}
 {{ define "includes/toggle_row" }}<div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="{{ .ID }}">{{ .Label }}</label>
-                    <span class="toggle-desc">{{ .Desc }}</span>
+                    <span class="toggle-desc" id="{{ .ID }}-desc">{{ .Desc }}</span>
                 </dt>
-                <dd><label class="check-hit"><input type="checkbox" id="{{ .ID }}"{{ .Attrs }}></label></dd>
+                <dd><label class="check-hit"><input type="checkbox" id="{{ .ID }}" aria-describedby="{{ .ID }}-desc"{{ .Attrs }}></label></dd>
                 </div>{{ end }}
 
 {{/* One Coral Hub switch in Settings: the label names it, the description (its own id) is tied to it by aria-describedby in inputAttrs. */}}

@@ -35,6 +35,11 @@ func TestShellSettingsSwitchesAreNamedAndDescribed(t *testing.T) {
 			}
 		}
 	}
+	for _, m := range regexp.MustCompile(`id="([^"]+)"`).FindAllStringSubmatch(html, -1) {
+		if strings.HasSuffix(m[1], "-desc") && strings.Count(html, `id="`+m[1]+`"`) != 1 {
+			t.Errorf("id %q is used %d times", m[1], strings.Count(html, `id="`+m[1]+`"`))
+		}
+	}
 	if n < 20 {
 		t.Errorf("found %d Settings switches, expected at least 20: the census regexp no longer matches the markup", n)
 	}
@@ -52,7 +57,7 @@ func TestToggleRowTemplateMarkup(t *testing.T) {
 	}
 	html := regexp.MustCompile(`\s+`).ReplaceAllString(b.String(), " ")
 	for _, want := range []string{
-		`<div class="settings-row"> <dt class="toggle-dt"> <label for="settings-show-scrollbars">Show scrollbars</label> <span class="toggle-desc">Show scrollbars in terminal and chat views</span> </dt> <dd><label class="check-hit"><input type="checkbox" id="settings-show-scrollbars" checked></label></dd> </div>`,
+		`<div class="settings-row"> <dt class="toggle-dt"> <label for="settings-show-scrollbars">Show scrollbars</label> <span class="toggle-desc" id="settings-show-scrollbars-desc">Show scrollbars in terminal and chat views</span> </dt> <dd><label class="check-hit"><input type="checkbox" id="settings-show-scrollbars" aria-describedby="settings-show-scrollbars-desc" checked></label></dd> </div>`,
 		`<label for="settings-cloud-hub-cross-team" class="settings-cloud-switch-label">Let Coral Hub change cross-team settings</label> <div id="settings-cloud-hub-cross-team-desc" class="settings-hint">`,
 		`<input type="checkbox" id="settings-cloud-hub-cross-team" data-cloud="hub-cross-team" aria-describedby="settings-cloud-hub-cross-team-desc">`,
 		`<div id="settings-cloud-auto-accept-row" class="settings-cloud-switch-row" data-cloud="auto-accept-row" hidden>`,
