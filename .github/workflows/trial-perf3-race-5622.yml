@@ -7,7 +7,7 @@ env:
 jobs:
   race:
     runs-on: ubuntu-24.04
-    timeout-minutes: 70
+    timeout-minutes: 80
     strategy:
       fail-fast: false
       matrix:
@@ -29,5 +29,5 @@ jobs:
           nproc
           cd coral-go
           start=$(date +%s)
-          go test -race -count=1 ./internal/server/routes 2>&1 | tail -15
+          go test -race -timeout 55m -count=1 ./internal/server/routes 2>&1 | tail -15
           echo "ELAPSED $(( $(date +%s) - start )) s (${{ matrix.name }})"
