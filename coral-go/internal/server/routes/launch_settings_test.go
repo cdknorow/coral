@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -60,6 +61,9 @@ func TestTeamLaunchUsesTheConfiguredCLIForEveryAgent(t *testing.T) {
 	handler := NewSessionsHandler(db, &config.Config{LogDir: t.TempDir()}, nil, term, bs)
 
 	exe := filepath.Join(t.TempDir(), "mock-claude")
+	if runtime.GOOS == "windows" {
+		exe += ".exe" // a configured path that is not a program is refused (#115)
+	}
 	require.NoError(t, os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755))
 	require.NoError(t, handler.ss.SetSetting(context.Background(), "cli_path_claude", exe))
 
