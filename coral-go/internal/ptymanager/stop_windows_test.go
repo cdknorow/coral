@@ -4,6 +4,7 @@ package ptymanager
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -69,4 +70,21 @@ func TestWindowsIdleShellStopsWithinThePoliteStop(t *testing.T) {
 	start := time.Now()
 	require.NoError(t, b.Kill(name))
 	assert.Less(t, time.Since(start), 3*time.Second, "an idle shell is told to exit once the Ctrl-Cs are in, not killed after 5 s")
+}
+
+// #5665: the root's image is read from its process handle. A started cmd.exe is a shell; a started ping.exe (an agent started directly) is not;
+// a process that does not exist is not.
+func TestRootIsShellReadsTheImageOfTheProcess(t *testing.T) {
+	sh := exec.Command("cmd.exe", "/c", "ping -n 20 127.0.0.1 >nul")
+	require.NoError(t, sh.Start())
+	defer func() { _ = sh.Process.Kill(); _ = sh.Wait() }()
+	assert.True(t, rootIsShell(sh.Process.Pid), "cmd.exe is a shell")
+
+	direct := exec.Command("ping.exe", "-n", "20", "127.0.0.1")
+	require.NoError(t, direct.Start())
+	defer func() { _ = direct.Process.Kill(); _ = direct.Wait() }()
+	assert.False(t, rootIsShell(direct.Process.Pid), "ping.exe started directly is not a shell, as an agent started directly is not")
+
+	assert.False(t, rootIsShell(os.Getpid()), "the test binary is not a shell")
+	assert.False(t, rootIsShell(0x7ffffff0), "a process that does not exist is not one")
 }

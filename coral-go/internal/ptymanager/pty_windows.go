@@ -99,7 +99,7 @@ func (p *windowsPTY) Terminate() error {
 		go func() {
 			defer safego.Recover("ptymanager/pty_windows:terminate")
 			politeStop(func(b []byte) error { _, err := p.cpty.Write(b); return err }, p.done,
-				func() (bool, error) { return hasChildProcesses(pid) }, defaultStopTimings)
+				func() (bool, error) { return hasChildProcesses(pid) }, func() bool { return rootIsShell(pid) }, defaultStopTimings)
 		}()
 	}
 	return err
