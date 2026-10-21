@@ -9,7 +9,10 @@
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const { removeBoards } = require('./helpers/board_cleanup');
+const { stubFetch } = require('./helpers/comments_stub');
 const BASE = require('./test_base').BASE;
+const HEX = 'd'.repeat(64);
+const MD = '# Migration plan\n\n## Steps\n\n1. Add the new columns behind a flag and backfill in batches of 500 rows.\n2. Switch reads to the new columns.\n\n## Risks\n\nThe backfill takes a write lock on large databases, so it must run off-peak.\n';
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -82,6 +85,24 @@ const BASE = require('./test_base').BASE;
                 out.on = getComputedStyle(host.children[names.length]).borderTopWidth + ' ' + getComputedStyle(host.children[names.length]).borderTopColor; out.off = getComputedStyle(host.children[names.length + 1]).borderTopWidth + ' ' + getComputedStyle(host.children[names.length + 1]).borderTopColor; host.remove(); return out; })()`);
             for (const [n, w] of Object.entries(chips.chips)) assert.ok(parseFloat(w) >= 1, n + ' has a border in forced colors: ' + JSON.stringify(chips));
             assert.ok(parseFloat(chips.on) >= 2 && chips.on !== chips.off, 'a pressed toggle has a thicker border than an unpressed one: ' + JSON.stringify(chips));
+        }
+        console.log('7. a comment card that is current or hovered, and an avatar, are marked in forced colors (#5732)');
+        for (const dark of [true, false]) {
+            const mode = dark ? 'dark' : 'light';
+            await start(true, dark);
+            await ev(stubFetch(HEX, MD));
+            await ev(`(async () => { const v = await import((window.__coralStatic || '/static/') + 'artifact_viewer.js'); v.openArtifactViewer(${JSON.stringify(HEX)}, { filename: 'plan.md' }); return true; })()`);
+            await waitFor(`document.querySelectorAll('.ac-card').length >= 3`, 'the comment cards', 10000);
+            await ev(`document.querySelector('.ac-card[data-id="3"]').click(); true`);
+            await waitFor(`!!document.querySelector('.ac-card[data-id="3"].ac-active')`, 'the current card', 5000);
+            await ev(`document.querySelector('.ac-card[data-id="1"]').dispatchEvent(new PointerEvent('pointerenter')); true`);
+            const look = await ev(`(() => { const st = e => { const c = getComputedStyle(e); return { border: c.borderTopColor, outline: c.outlineStyle + ' ' + c.outlineWidth }; };
+                return { rest: st(document.querySelector('.ac-card[data-id="4"]')), active: st(document.querySelector('.ac-card[data-id="3"]')), hover: st(document.querySelector('.ac-card[data-id="1"]')), avatar: getComputedStyle(document.querySelector('.ac-avatar')).borderTopWidth }; })()`);
+            assert.notEqual(look.active.border, look.rest.border, mode + ': the current card has a border of its own: ' + JSON.stringify(look));
+            assert.ok(look.active.outline.startsWith('solid') && parseFloat(look.active.outline.split(' ')[1]) >= 2, mode + ': the current card has an outline: ' + JSON.stringify(look));
+            assert.notEqual(look.hover.border, look.rest.border, mode + ': the hovered card has a border of its own: ' + JSON.stringify(look));
+            assert.equal(look.rest.outline.split(' ')[0], 'none', mode + ': a card at rest has no outline');
+            assert.ok(parseFloat(look.avatar) >= 1, mode + ': an avatar has a ring: ' + look.avatar);
         }
         console.log('4. without forced colors the normal look stays');
         await start(false, true);

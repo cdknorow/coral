@@ -61,4 +61,10 @@
 
     /* A toggle that is on (permission chips, filters, Show resolved): its fill is gone, so a thick Highlight border says it is pressed. */
     button[aria-pressed="true"] { border: 2px solid Highlight; font-weight: 600; }
+    /* Comments (#5711): the current card is raised by a shadow and the hovered one is tinted, both gone here, and each avatar is a coloured circle whose initials are all that is left.
+       The current card gets a Highlight border and an inner outline, the hovered one a Highlight border, and the avatar a ring. */
+    .ac-card { transition: none; } /* the state is a system colour: it changes at once, not over 120 ms */
+    .ac-card.ac-active { border-color: Highlight; outline: 2px solid Highlight; outline-offset: -2px; }
+    .ac-card.ac-hover { border-color: Highlight; }
+    .ac-avatar { box-sizing: border-box; border: 1px solid CanvasText; }
 }

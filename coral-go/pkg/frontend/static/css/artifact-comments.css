@@ -47,7 +47,8 @@
 .ac-actions:empty { display: none; }
 /* Edit and Delete show when the card is hovered, current or has focus (they are buttons the keyboard reaches: focus shows them), always on a touch screen */
 @media (hover: hover) and (pointer: fine) {
-    .ac-card:not(:hover):not(:focus-within):not(.ac-active) .ac-actions { opacity: 0; }
+    /* At rest the row takes no room (it left a gap of about 24 px under each comment): it is still in the tab order, and focus on a button inside it opens it again. */
+    .ac-card:not(:hover):not(:focus-within):not(.ac-active) .ac-actions { opacity: 0; max-height: 0; min-height: 0; overflow: hidden; margin: 0; }
 }
 .ac-act, .ac-jump, .ac-whole, .ac-lock, .ac-cancel, .ac-send { font-size: var(--fs-sm, 0.8125rem); }
 .ac-act, .ac-jump { background: none; border: 0; color: var(--text-secondary); padding: 2px 6px; cursor: pointer; }
