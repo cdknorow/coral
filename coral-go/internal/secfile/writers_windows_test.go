@@ -40,3 +40,40 @@ func TestWriters(t *testing.T) {
 	_, err = Writers(filepath.Join(mine, "missing"))
 	assert.Error(t, err)
 }
+
+// grantFolder gives sid the rights on dir, through .NET's access-only calls (no audit-list privilege).
+func grantFolder(t *testing.T, dir, sid, rights, inherit string) {
+	t.Helper()
+	ps := `$d = Get-Item -LiteralPath $env:D; $a = $d.GetAccessControl('Access'); ` +
+		`$r = New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($env:S)), $env:R, $env:I, 'None', 'Allow'); ` +
+		`$a.AddAccessRule($r); $d.SetAccessControl($a)`
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps)
+	cmd.Env = append(os.Environ(), "D="+dir, "S="+sid, "R="+rights, "I="+inherit)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "%s", out)
+}
+
+// H5 review N1: any account that can write is reported, not only the broad groups: a group of
+// its own (here Guests) by name, and an account that doesn't resolve by its SID.
+func TestWritersReportsEveryOtherAccount(t *testing.T) {
+	dir := t.TempDir()
+	grantFolder(t, dir, "S-1-5-32-546", "Modify", "ContainerInherit,ObjectInherit")
+	grantFolder(t, dir, "S-1-5-21-1111111111-2222222222-3333333333-1234", "Write", "None")
+	who, err := Writers(dir)
+	require.NoError(t, err)
+	assert.Contains(t, who, `BUILTIN\Guests`)
+	assert.Contains(t, who, "S-1-5-21-1111111111-2222222222-3333333333-1234")
+}
+
+// H5 review N2: an account that can delete the folder's parent's children can move the folder away
+// and put its own at the same path, whatever the folder's own access list says.
+func TestWritersReadsTheParentFolder(t *testing.T) {
+	parent := t.TempDir()
+	tools := filepath.Join(parent, "tools")
+	require.NoError(t, os.Mkdir(tools, 0o700))
+	grantFolder(t, parent, "S-1-1-0", "DeleteSubdirectoriesAndFiles", "None") // not inherited by tools
+	who, err := Writers(tools)
+	require.NoError(t, err)
+	assert.Contains(t, who, "Everyone (through the parent folder)")
+	assert.NotContains(t, who, "Everyone", "the folder itself grants Everyone nothing")
+}
