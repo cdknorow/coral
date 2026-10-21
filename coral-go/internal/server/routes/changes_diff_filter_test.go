@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/subgentic/coral/internal/board/boardtest"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 )
 
 const (
@@ -135,6 +136,7 @@ func TestGeneratePersistedDiffCap(t *testing.T) {
 // Identical diffs are stored once: two tasks' changes.diff are the same file on disk.
 func TestChangesDiffDedupe(t *testing.T) {
 	root := t.TempDir()
+	secfiletest.OwnerOnlyDir(t, root) // private, as Coral makes its data folder
 	a := filepath.Join(root, "artifacts", "tasks", "1", "changes.diff")
 	b := filepath.Join(root, "artifacts", "tasks", "2", "changes.diff")
 	diff := []byte("diff --git a/x b/x\n+same\n")
@@ -153,11 +155,7 @@ func TestChangesDiffDedupe(t *testing.T) {
 	require.NoError(t, writeChangesArtifact(a, []byte("diff --git a/x b/x\n+other\n")))
 	got, _ = os.ReadFile(b)
 	assert.Equal(t, diff, got)
-	if fi, _ := os.Stat(b); fi != nil {
-		if runtime.GOOS != "windows" { // NTFS has no Unix permission bits (Go reports 0666)
-			assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
-		}
-	}
+	secfiletest.AssertOwnerOnlyAccess(t, b) // mode 0600; on Windows, owner-only from the private data folder (a hard link)
 }
 
 // The Orchestrator's test: a diff stored BEFORE #3555 (an untracked .env.local and an image
