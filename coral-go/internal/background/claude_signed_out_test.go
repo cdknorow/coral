@@ -136,6 +136,7 @@ func TestBackgroundCallersStillAskClaudeWhenSignedIn(t *testing.T) {
 			claudestub.Isolate(t)
 			stub := claudestub.New(t, claudestub.SignedIn)
 			_, err, took := ran(t, c, stub.Path())
+			t.Logf("TOOK %v for %s", took, c.name)
 			assert.Less(t, took, failFast)
 			assert.False(t, notSignedIn(err), "signed in is not 'not signed in': %v", err)
 			runs := stub.PrintRuns()
