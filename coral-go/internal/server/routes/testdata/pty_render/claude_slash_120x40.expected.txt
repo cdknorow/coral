@@ -1,0 +1,40 @@
+ ▐▛███▛█   Claude Code v2.1.306
+▝▜██████▀  Sonnet 5.5 · Claude Max
+ ▝▝   ▝▝   ~\scratch-fx\work
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · restart with CLAUDE_CODE_FORCE_SESSION_PE…
+  ❯ /run                              Launch and drive this project's app to see a change working. Use when asked to
+                                      run, start, or screenshot the app, or to confirm a change works in the real app…
+    /add-dir                          Add a new working directory
+    /advisor                          Let Claude consult a stronger model at key moments
+    /artifacts                        Browse your published and shared artifacts
+    /auto-mode-setup                  Teach auto mode about your environment, plus optional rule tweaks
+    /autocompact                      Set how full the context gets before auto-summarizing
+    /autofix-pr                       Monitor and autofix any issues with the current PR
+    /background                       Send this session to the background and free the terminal
+    /branch                           Create a branch of the current conversation at this point
+    /btw                              Ask a quick side question without interrupting the main conversation
+    /bug                              Report a bug or share your conversation
+    /cd                               Move this session to a new working directory
+    /chrome                           Open Claude in Chrome settings
+    /clear                            Start a new session with empty context; previous session stays on disk
+                                      (resumable with /resume)
+    /color                            Set the prompt bar color for this session
+    /compact                          Free up context by summarizing the conversation so far
+    /config                           Open settings
+    /context                          Visualize current context usage as a colored grid
+
+
+
+
+
+
+
+
+
+
+
