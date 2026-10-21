@@ -48,8 +48,8 @@ func TestShellRisk(t *testing.T) {
 	safe := []string{
 		"rm -rf build",
 		"rm -rf ./dist node_modules",
-		"rm -r " + filepath.Join(wd, "out"),
-		"rm file.txt /tmp/one-file", // not recursive
+		"rm -r " + filepath.ToSlash(filepath.Join(wd, "out")), // a shell word: forward slashes, as a Git Bash command has them
+		"rm file.txt /tmp/one-file",                           // not recursive
 		"git push origin main",
 		"git push -u origin feature",
 		"git reset --soft HEAD~1",
