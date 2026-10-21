@@ -214,6 +214,7 @@ func riskTestStrings(t testing.TB) []string {
 }
 
 func TestShellRiskAgreesWithBefore4599OnEveryTestCommand(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	wd, dirs := riskDirs(t)
 	cmds := riskTestStrings(t)
 	if len(cmds) < 150 {
@@ -244,6 +245,7 @@ func riskWords(wd string) []string {
 }
 
 func TestShellRiskAgreesWithBefore4599OnRandomCommands(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	wd, dirs := riskDirs(t)
 	words := riskWords(wd)
 	n := 200000

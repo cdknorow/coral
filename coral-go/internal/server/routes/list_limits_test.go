@@ -62,6 +62,7 @@ func TestListLimitsAlwaysClamped(t *testing.T) {
 }
 
 func TestListRoutesAreBounded(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	ctx := context.Background()
 	dir := t.TempDir()
 	db, err := storetest.Open(t, filepath.Join(dir, "sessions.db"))

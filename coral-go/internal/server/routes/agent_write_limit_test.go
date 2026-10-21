@@ -47,6 +47,7 @@ func TestAgentWriteBucket(t *testing.T) {
 }
 
 func TestAgentWriteBucketsAreBounded(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	now := time.Now()
 	l := newAgentWriteLimiter()
 	l.now = func() time.Time { return now }

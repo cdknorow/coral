@@ -58,6 +58,7 @@ func replaced(t *testing.T, ss *store.SessionStore, oldID string) *store.LiveSes
 }
 
 func TestRestartRunsToItsEndWhenTheRequestIsDroppedAtEachStep(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	for _, tc := range []struct {
 		name     string
 		sleeping bool // no terminal: a new one is made

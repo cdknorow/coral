@@ -23,6 +23,7 @@ import (
 // the board subscription was moved to the new name after the launch. It must exist when the
 // launch command is typed.
 func TestRestartAndResumeSubscribeTheNewSessionBeforeTheLaunch(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	for _, op := range []string{"restart", "resume"} {
 		t.Run(op, func(t *testing.T) {
 			server, handler, term, ss := setupSessionsTestServer(t)
@@ -81,6 +82,7 @@ func TestRestartAndResumeSubscribeTheNewSessionBeforeTheLaunch(t *testing.T) {
 // When the launch command can't be typed, the subscription that moved to the new session name
 // before it goes back to the old one: a failed restart or resume leaves the agent on its board.
 func TestFailedRestartOrResumePutsTheSubscriptionBack(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	for _, op := range []string{"restart", "resume"} {
 		t.Run(op, func(t *testing.T) {
 			server, handler, term, ss := setupSessionsTestServer(t)

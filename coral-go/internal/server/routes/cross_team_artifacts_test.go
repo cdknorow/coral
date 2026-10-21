@@ -500,6 +500,7 @@ func TestReceivedLimiter(t *testing.T) {
 // Over the route: the 21st file in an hour is 429 artifact_quota with its limit and a Retry-After, and a
 // refused file counts too (a hostile sender cannot probe the gate for free).
 func TestReceivedArtifactQuotaOverTheRoute(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	e := newArtifactEnv(t)
 	e.open()
 	for i := 0; i < receivedPerSourceHour; i++ {

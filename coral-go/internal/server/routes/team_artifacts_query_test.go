@@ -378,6 +378,7 @@ var _ = context.Background
 // redaction hides, a prefix at a time (Security's #4572 MUST). Tunneled, q, by, board and the name sort see what the viewer sees, and a
 // cursor carries no text (an external link's id holds the link).
 func TestTeamArtifactsQueryCannotSeeBehindTheRedaction(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	const tokA = "ghp_aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"
 	const tokB = "ghp_zZ3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5"
 	e := newTAEnv(t)

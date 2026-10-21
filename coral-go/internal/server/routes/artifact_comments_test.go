@@ -364,6 +364,7 @@ func TestArtifactCommentsLock(t *testing.T) {
 }
 
 func TestArtifactCommentsSizesTypesAndIds(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	rig := newCmtRig(t)
 	post := func(id string, body map[string]any) int {
 		code, _ := rig.do("POST", cp(id), cmtAsOwner, body)

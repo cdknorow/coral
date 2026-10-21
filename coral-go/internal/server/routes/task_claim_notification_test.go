@@ -60,6 +60,7 @@ func TestTaskAssignmentNoticeClaimsNamedTask(t *testing.T) {
 // #5183: a parked task is not offered. Reassigning it to nobody says it is unassigned and parked, without the "run claim to pick it up" invitation to everyone, and reassigning it to an
 // agent says it is theirs but parked, with no claim nudge typed into their terminal.
 func TestParkedTaskReassignOffersNothing(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, h := setupBoardTestServer(t)
 	registerTaskPlanner(t, h, "team", "Orchestrator")
 	terminal := newMockTerminal()

@@ -152,6 +152,7 @@ func TestRoleReservationReleased(t *testing.T) {
 // #3549 (QA's #3543 follow-up): a reset that relaunches an agent under a numbered name
 // answers with that name (not the one asked for) and advances that name's read cursor.
 func TestResetTeamAnswersLaunchedNames(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
