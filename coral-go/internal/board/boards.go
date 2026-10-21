@@ -103,7 +103,7 @@ func UsableBoardKey(key string) bool {
 		return false
 	}
 	for _, r := range key {
-		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) || r == '‎' || r == '‏' || (r >= '⁦' && r <= '⁩') || (r >= '‪' && r <= '‮') {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) || r == '\u200e' || r == '\u200f' || (r >= '\u2066' && r <= '\u2069') || (r >= '\u202a' && r <= '\u202e') {
 			return false
 		}
 	}

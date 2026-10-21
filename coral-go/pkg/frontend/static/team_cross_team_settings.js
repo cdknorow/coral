@@ -18,7 +18,7 @@ export function _setHubForTests(v) { _hubForTests = v; }
 const STATES = ['ready', 'waiting', 'off', 'stale', 'old'];
 const SERVER_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_LINKS = 50;
-const label = v => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '').trim().slice(0, 80); // display text: no control or bidi characters, bounded
+const label = v => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 80); // display text: no control or bidi characters, bounded
 const when = at => { const d = new Date(at); return Number.isNaN(d.getTime()) ? '' : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); };
 const DOT = { ready: 'ok', waiting: 'warm', off: '', stale: 'bad', old: 'bad' }; // a switch that is off by choice is not an alarm
 

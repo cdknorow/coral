@@ -69,7 +69,8 @@ const SID = '0b7c2e4a-5d1f-4c8e-9a36-2f4d8e1b7c90';
             await board('/settings', 'PUT', { subscriber_id: 'Operator', cross_team_messaging: false, cross_team_artifacts: false });
             await layer();
 
-            // 1. the real server, off: the tab is there, the line is made from the switch, the primary turns it on
+            // 1. a server that sends no status (cross-team-state answers 404): the tab is there, the line is made from the switch, the primary turns it on
+            await setState(null);
             await open();
             let p = await panel();
             check(`${tag}: the tab is there and the switches are on it, not on Workflow (${JSON.stringify(p.labels)})`, JSON.stringify(p.labels) === JSON.stringify(['Cross-team messaging', 'Share files with other teams']) && !p.workflowHasSwitch);
@@ -118,9 +119,9 @@ const SID = '0b7c2e4a-5d1f-4c8e-9a36-2f4d8e1b7c90';
             check(`${tag}: no state route: the tab still works from the switch alone (${p.line})`, p.msg === true && p.line === 'Cross-team messaging is on for this team.' && p.teams.length === 0);
 
             // 3. the linked teams are text only, bounded, and a bad id is dropped
-            const hostile = links(60).map((l, i) => i === 0 ? { server_label: '<img src=x onerror="window.__pwn=1">box', server_id: 'srv "><b>', team_label: 'Evil‮team\u0000 <b>x</b>', refreshed: 'not a date' } : l);
+            const hostile = links(60).map((l, i) => i === 0 ? { server_label: '<img src=x onerror="window.__pwn=1">box', server_id: 'srv "><b>', team_label: 'Evil\u202eteam\u0000 <b>x</b>', refreshed: 'not a date' } : l);
             await setState({ ...base, status: { state: 'ready', text: 'ok' }, links: hostile }); await open(); p = await panel();
-            check(`${tag}: linked teams: markup, bidi and control characters are text or gone, a bad server id is dropped, at most 50 are drawn (${p.teams.length}; ${JSON.stringify(p.teams[0])})`, p.teams.length === 50 && p.imgs === 0 && !p.pwn && !/‮|\u0000/.test(p.teams[0].name) && /<b>x<\/b>/.test(p.teams[0].name) && !/server srv "/.test(p.teams[0].sub) && !/confirmed/.test(p.teams[0].sub));
+            check(`${tag}: linked teams: markup, bidi and control characters are text or gone, a bad server id is dropped, at most 50 are drawn (${p.teams.length}; ${JSON.stringify(p.teams[0])})`, p.teams.length === 50 && p.imgs === 0 && !p.pwn && !/\u202e|\u0000/.test(p.teams[0].name) && /<b>x<\/b>/.test(p.teams[0].name) && !/server srv "/.test(p.teams[0].sub) && !/confirmed/.test(p.teams[0].sub));
 
             // 4. How this works: closed, the id with Copy
             await setState({ ...base, status: { state: 'waiting', text: 'No team on another Coral is linked to this team yet.' }, links: [] });
@@ -177,6 +178,10 @@ const SID = '0b7c2e4a-5d1f-4c8e-9a36-2f4d8e1b7c90';
             await key(' ', 'Space', 32, ' '); await settle(100);
             check(`${tag}: Space toggles it (off to on here) and the line follows the form, not the server's last word`, (await panel()).msg === true && /is on for this team/.test((await panel()).line));
             await board('/settings', 'PUT', { subscriber_id: 'Operator', cross_team_messaging: false, cross_team_artifacts: false });
+
+            // 8. the real server (Backend's patch 1, #5572): a team whose board id is the old kind (this suite's) gets the "old" status, and the tab shows its words and the one way out (QA #5584)
+            await setState(undefined); await open(); p = await panel();
+            check(`${tag}: the real server's status for an old-kind board is shown as its own words with the "Create a new team" button (${p.line})`, /^This team was made before Coral Hub links existed/.test(p.line) && p.prim && p.prim.act === 'new-team' && p.dot === 'bad');
         }
         const failed = results.filter(r => !r).length;
         console.log(`${results.length - failed}/${results.length} checks passed`);
