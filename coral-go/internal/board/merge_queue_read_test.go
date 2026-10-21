@@ -172,3 +172,33 @@ func TestMarkLandedRefusesASupersededDigest(t *testing.T) {
 	require.ErrorContains(t, err, "not an approved patch")
 	assert.True(t, strings.Contains(strings.Join(queueDigests(t, e)[id], ","), "d2"))
 }
+
+// Security's finding on part 3: the landed-commit kind is the server's. A client's row of that kind is refused at every entry, so a forged
+// commit can neither show on a task nor keep the real one (a known sha is skipped) from being recorded.
+func TestAClientCannotWriteALandedCommitRow(t *testing.T) {
+	forged := TaskArtifact{Name: "landed-forged", Kind: landedCommitKind, Revision: sha1c, Content: "forged"}
+	e0 := newVerEnv(t)
+	task, err := e0.s.CreateTask(e0.ctx, "team", "p", "", "medium", "lead", "worker")
+	require.NoError(t, err)
+	_, err = e0.s.ClaimTask(e0.ctx, "team", "worker", task.ID)
+	require.NoError(t, err)
+	_, err = e0.s.SubmitCompletionReview(e0.ctx, "team", task.ID, "worker", "built", "success", "needs review", []TaskArtifact{patchRow("fix", "d1"), forged})
+	require.ErrorContains(t, err, "is the server's", "submit-review")
+	_, err = e0.s.CompleteTaskWithArtifacts(e0.ctx, "team", task.ID, "lead", nil, "success", []TaskArtifact{forged})
+	require.ErrorContains(t, err, "is the server's", "complete")
+	e := newVerEnv(t)
+	id := e.inReview("q", []TaskArtifact{patchRow("fix", "d2")}, "rev1")
+	_, _, err = e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{forged})
+	require.ErrorContains(t, err, "is the server's", "attach")
+	// and so the real commit is recorded
+	e.approve(id, "rev1")
+	got, err := e.s.MarkLanded(e.ctx, "team", id, "lead", false, []string{"d2"}, []LandedCommit{{SHA: sha1c, Subject: "real"}})
+	require.NoError(t, err)
+	var subjects []string
+	for _, a := range got.Workflow.Artifacts {
+		if a.Kind == landedCommitKind {
+			subjects = append(subjects, a.Content)
+		}
+	}
+	require.Equal(t, []string{"real"}, subjects)
+}

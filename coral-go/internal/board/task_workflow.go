@@ -665,6 +665,9 @@ func validateArtifactRows(artifacts []TaskArtifact, revisions bool) ([]string, e
 	unique := []string{} // a row attached later (Seq > 0, #5689) is a newer revision of a name: it may repeat one
 	for _, a := range artifacts {
 		names = append(names, a.Name)
+		if !revisions && a.Kind == landedCommitKind {
+			return nil, fmt.Errorf("artifact %q: the kind %s is the server's (mark-landed writes it)", a.Name, landedCommitKind)
+		}
 		if !revisions || a.Seq == 0 {
 			unique = append(unique, a.Name)
 		} else if strings.TrimSpace(a.Name) == "" || len(a.Name) > 128 {
