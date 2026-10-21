@@ -55,6 +55,7 @@ boolean settings in any case, so `true` and `"true"` mean the same.
 |---|---|---|
 | `auto_summarize` | off | `true` runs the batch summarizer over finished sessions. Read at startup: restart Coral after changing it. |
 | `auto_goals` | on | `false` stops the short goal line Coral keeps for each live agent (and `POST /api/sessions/live/{name}/goal` answers 409). Read on every pass, so it applies within a minute. Each goal is one short call to the Claude Code CLI on the user's account (about 1,300 input tokens, Haiku): after the first goal an agent's goal is asked for again only when the user's requests changed, at most every 30 minutes (60 in a turn that never goes quiet), with a failure backoff of 30 minutes doubling to 4 hours. The sparkle refresh (`POST .../goal`) runs at once, at most once a minute per session. A boolean only (`true` or `false`). |
+| `update_channel` | `approved` | Which releases the update notice, the tray and the Updates pane tell you about: `approved` (the release marked latest) or `agentic` (every published release, approved or not, plain `vX.Y.Z` tags only). Any other value is refused when saved and reads as `approved`. It changes the NOTICE only: the updater (Hub relaunch into a staged update) installs approved releases whatever this says. Applies on the next check. |
 | `terminal_replay_bytes` | 262144 | How much recent terminal output a newly opened terminal is sent first (see websockets.md), clamped to 4 KiB to 16 MiB. Applies to terminals opened from then on. |
 
 **CLI paths:** `cli_path_<type>` (Settings › CLI paths: `claude`, `codex`, `agy`,
@@ -183,15 +184,29 @@ GET /api/system/update-check
 
 Checks GitHub releases for available updates (5-second timeout). The answer is cached for an hour (a failure for five minutes) and concurrent calls share one request, so repeated calls, an agent's included, make one request to GitHub. `?refresh=1` (the dashboard's "Check for Updates") asks again when the cached answer is over a minute old.
 
+The channel is the `update_channel` setting (`approved` by default). On `approved` Coral asks for the release marked latest; on `agentic` it asks for the ten newest releases of the pinned repository and offers the highest plain `vX.Y.Z` (no `-rc`, `-beta`, `-dev` or `-forDropbox` tag, no draft), whether or not it is approved yet. A build that is already newer than what the channel offers is never told to move back. The two channels are cached separately.
+
 **Response:**
 ```json
 {
   "available": true,
   "current": "1.0.0",
   "latest": "1.1.0",
-  "release_url": "https://github.com/subgentic/coral/releases"
+  "release_url": "https://github.com/subgentic/coral/releases",
+  "channel": "approved",
+  "approved": true
 }
 ```
+
+`channel` is `approved` or `agentic`. `approved` is false when the offered release has not been approved yet (it is still a pre-release); it is always true on the approved channel. On the agentic channel `release_url` is that release's own page.
+
+### Update status (channel facts)
+
+```
+GET /api/system/update
+```
+
+The updater's status (it answers 404 while the update feature is off) also carries, additive and each only when known: `channel`; `approved` `{"version", "approved_at"}` (the newest approved release; `approved_at` is "" when its notes carry no `Approved: <time>` line, and is for display only: what is approved is decided by the release's pre-release flag and by `releases/latest`, never by that line); `past_approved: true` when the running build is newer than the newest approved release; and, on the agentic channel and never through Coral Hub, `waiting`: up to five `{"version", "published_at", "notes"}` of unapproved releases newer than the newest approved one, newest first, with the notes as plain text of at most 2000 characters (control and format characters removed). The route never waits for GitHub: until the first answer is cached only `channel` is present, and the next poll has the rest. Coral never approves anything: approving is the Operator's act on GitHub.
 
 ---
 

@@ -64,7 +64,7 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 |--------|------|-------------|
 | `GET` | `/api/health` | Health check: exactly `{"status":"ok","version":"…","hub":false}` |
 | `GET` | `/api/system/status` | System status (version, uptime, sessions) |
-| `GET` | `/api/system/update-check` | Check for new Coral versions |
+| `GET` | `/api/system/update-check` | Check for new Coral versions (on the update channel set by `update_channel`) |
 | `GET` | `/api/system/cli-check` | Check installed CLI tools |
 | `GET` | `/api/system/qr` | QR code for remote access URL |
 | `GET` | `/api/system/network-info` | Network interfaces and IPs |

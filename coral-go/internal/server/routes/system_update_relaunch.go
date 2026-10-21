@@ -34,6 +34,7 @@ import (
 	"github.com/subgentic/coral/internal/httputil"
 	"github.com/subgentic/coral/internal/secfile"
 	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/updatecheck"
 	"github.com/subgentic/coral/pkg/tunnel"
 )
 
@@ -194,6 +195,9 @@ type UpdateRelaunchHandler struct {
 	// Dir is <data dir>/updates.
 	Dir string
 	Now func() time.Time
+	// Feeds names the release feeds the channel facts (approved, past_approved, waiting) are read from; nil adds the channel only and asks nothing
+	// (#5557). The server sets releaseFeeds; a test that does not mean to reach a feed leaves it nil, so it never reaches GitHub.
+	Feeds func() updatecheck.Feeds
 
 	mu            sync.Mutex
 	noLabelLogged sync.Once
@@ -658,6 +662,7 @@ func (h *UpdateRelaunchHandler) Status(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, "update status is unavailable")
 		return
 	}
+	h.addChannelFacts(r, out)
 	writeJSON(w, http.StatusOK, out)
 }
 

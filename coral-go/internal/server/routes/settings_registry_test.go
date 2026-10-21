@@ -47,6 +47,7 @@ var settingRows = map[string]struct{ good, bad string }{
 	"auto_summarize":              {`"1"`, `"nope"`},
 	"gate_signals_claude":         {`"off"`, `"nope"`},
 	"turn_end_handoff":            {`"off"`, `"later"`},
+	"update_channel":              {`"agentic"`, `"nightly"`},
 	"welcome_choice":              {`"connected"`, `"maybe"`},
 	"welcome_pending":             {`"False"`, `"nope"`},
 	"home_editions_hidden":        {`"True"`, `"nope"`},

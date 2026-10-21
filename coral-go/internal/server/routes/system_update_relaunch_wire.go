@@ -24,6 +24,7 @@ func NewUpdateRelaunchHandler(ss *store.SessionStore, dataDir string, backend fu
 		Updater:   updater,
 		Settings:  ss.GetSettings,
 		OwnerUser: cs.OwnerUser,
+		Feeds:     releaseFeeds,
 		Dir:       filepath.Join(dataDir, updatesDirName),
 		// Coral must be startable again before a relaunch is offered: this computer's own record of how it was started, or a service manager (#5419).
 		CanRestart: func() bool {

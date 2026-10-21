@@ -31,6 +31,7 @@ const (
 	HubSharePastedImages     = "hub_share_pasted_images"
 	CloudAllowHubAutoAccept  = "cloud_allow_hub_auto_accept"
 	HubRelaunchUpdates       = "hub_relaunch_updates"
+	UpdateChannel            = "update_channel"
 	CloudMaxMode             = "cloud_max_mode"
 	IdentityActor            = "identity_actor"
 	AgentLaunchLimit         = "agent_launch_limit"
@@ -133,6 +134,7 @@ func init() {
 	boolOn(BoardHealthMonitor, ApplyRestart, "Team health checks for every team.")
 	boolOff(AutoSummarize, ApplyRestart, "Summarise sessions automatically.")
 	boolOn(GateSignalsClaude, ApplyLive, "Phase 2 of the paste gate for Claude.")
+	register(Spec{Key: UpdateChannel, Kind: KindEnum, Values: []string{"approved", "agentic"}, Default: "approved", Apply: ApplyLive, Doc: "Which releases the update notice and the tray offer: approved (the release marked latest) or agentic (every published release, approved or not). Notice only: the updater installs approved releases whatever this says (#5557)."})
 	register(Spec{Key: TurnEndHandoff, Kind: KindEnum, Values: []string{"off", "on"}, Default: "on", Apply: ApplyLive, Doc: "Hand the turn on at its end."})
 	boolOn(AutoGoals, ApplyLive, "Run the goals service.")
 	ownCheck(AutoGoals)
