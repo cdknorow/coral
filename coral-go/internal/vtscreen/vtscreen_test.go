@@ -160,3 +160,21 @@ func FuzzRender(f *testing.F) {
 		}
 	})
 }
+
+// ECH (CSI n X) erases n cells from the cursor and leaves the cursor: Codex redraws a menu by erasing the old
+// selection marker this way, and without it the old marker stayed on screen beside the new one.
+func TestEraseCharactersClearsFromTheCursor(t *testing.T) {
+	got := Render([]byte("\x1b[1;1H› 1. Review hooks\x1b[1;1H\x1b[2X"), 40, 1)
+	assert.Equal(t, "  1. Review hooks", got)
+	// Without a count it erases one cell; past the line's end it stops at the edge.
+	assert.Equal(t, "ab def", Render([]byte("abcdef\x1b[1;3H\x1b[X"), 10, 1))
+	assert.Equal(t, "a", Render([]byte("abc\x1b[1;2H\x1b[500X"), 5, 1))
+}
+
+// A full-width line leaves the cursor pending past the last column; styling between that line and the next must not
+// cancel the pending wrap (Codex draws `  1. Review hooks<padding>` then `ESC[1m ESC[7m› 2. ...`, and the "›" landed on the
+// end of line 1).
+func TestStylingDoesNotCancelAPendingWrap(t *testing.T) {
+	got := Render([]byte("\x1b[1;1H"+strings.Repeat("a", 10)+"\x1b[1m\x1b[7mb"), 10, 3)
+	assert.Equal(t, "aaaaaaaaaa\nb\n", got)
+}
