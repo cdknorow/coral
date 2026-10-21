@@ -193,9 +193,9 @@ async function freshServer(standIn) {
                 await answerQuestions();
                 await waitFor(`[...document.querySelectorAll('body > .modal:not([id]) h3')].some(h => /CLI Not Found/.test(h.textContent))`, 'the "CLI Not Found" dialog', { timeout: 15000, diag: `document.body.innerText.slice(0, 400)` });
                 const d = await ev(`(() => { const m = [...document.querySelectorAll('body > .modal:not([id])')].find(m => /CLI Not Found/.test(m.textContent)); return { title: m.querySelector('h3').textContent, text: m.textContent.replace(/\\s+/g, ' '), code: [...m.querySelectorAll('code')].map(c => c.textContent), buttons: [...m.querySelectorAll('button')].map(b => b.textContent.trim()) }; })()`);
-                assert.match(d.title, /claude/i); assert.match(d.text, /was not found/);
+                assert.match(d.title, /claude/i); assert.match(d.text, /could not find the claude command/);
                 assert.ok(d.code.some(c => c.length > 8), `an install command is offered (${JSON.stringify(d.code)})`);
-                assert.ok(d.buttons.includes('OK') && d.buttons.includes('Set CLI path'), `OK and Set CLI path are there (${JSON.stringify(d.buttons)})`);
+                assert.ok(d.buttons.includes('OK') && d.buttons.includes('Set CLI path') && d.buttons.includes('Check again'), `OK, Set CLI path and Check again are there (${JSON.stringify(d.buttons)})`);
                 const after = await ev(`fetch('/api/sessions/live').then(r => r.json()).then(l => (Array.isArray(l) ? l : l.sessions || []).length)`);
                 assert.equal(after, before.length, 'no agent was started');
                 // What the server answered, for the record (#5838 turns today's 500 into a 4xx); either way it is an error that names the CLI, never a success.
