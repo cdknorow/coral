@@ -40,7 +40,6 @@ import (
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/secfile"
 	"github.com/subgentic/coral/internal/tracking"
-	"github.com/subgentic/coral/internal/updatecheck"
 )
 
 // iconData is embedded per-platform in icon_unix.go (.png) and icon_windows.go (.ico).
@@ -314,7 +313,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	// Check for updates in background
 	go func() {
 		defer safego.Recover("coral-tray/main:checkForUpdatesOnStartup")
-		checkForUpdatesOnStartup(port)
+		checkForUpdatesOnStartup(url, dataDir)
 	}()
 
 	// Kill an orphaned coral-app from an earlier run of this Coral (this data folder only)
@@ -368,7 +367,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 				case <-mOpenBrowser.ClickedCh:
 					executil.OpenBrowser(loginlink.Or(url, mintLink))
 				case <-mUpdate.ClickedCh:
-					go func() { defer safego.Recover("coral-tray/main:checkForUpdates"); checkForUpdates() }()
+					go func() { defer safego.Recover("coral-tray/main:checkForUpdates"); checkForUpdates(url, dataDir) }()
 				case <-mLog.ClickedCh:
 					executil.OpenBrowser(filepath.Join(dataDir, "tray.log"))
 				case <-mRetry.ClickedCh:
@@ -452,33 +451,41 @@ func killAllAgents(baseURL, dataDir string) int {
 	return killed
 }
 
-// checkForUpdatesOnStartup tells the user, once, when a newer release is out. A build whose tier
-// opted out of update checks (dev, beta, partner) never asks (#3660, as the server does).
-func checkForUpdatesOnStartup(port int) {
+// checkForUpdatesOnStartup tells the user, once, when a newer release is out for the update channel they chose. A build whose tier
+// opted out of update checks (dev, beta, partner) never asks (#3660, as the server does). The server answers (updatecheck, #5557); it may still
+// be starting, so a refused connection is tried again a few times.
+func checkForUpdatesOnStartup(baseURL, dataDir string) {
 	if !config.TierChecksForUpdates {
 		return
 	}
 	time.Sleep(5 * time.Second) // Wait for server to be ready
-	if latest, _ := updatecheck.Available(context.Background(), updatecheck.ReleasesAPI, version); latest != "" {
-		beeep.Notify("Coral", fmt.Sprintf("Update available: v%s (you have v%s)", latest, version), "")
+	for try := 0; try < 3; try++ {
+		a, err := askServerForUpdate(baseURL, dataDir, false)
+		if err == nil {
+			if a.Available {
+				beeep.Notify("Coral", a.notice("Update available: v%s (you have v%s)", version), "")
+			}
+			return
+		}
+		time.Sleep(10 * time.Second)
 	}
 }
 
 // checkForUpdates checks for updates and notifies (the tray's "Check for Updates"). Only a
-// strictly newer release, with a version-shaped tag, is offered (updatecheck).
-func checkForUpdates() {
+// strictly newer release, with a version-shaped tag, is offered (updatecheck), on the update channel the owner chose.
+func checkForUpdates(baseURL, dataDir string) {
 	if !config.TierChecksForUpdates {
 		beeep.Notify("Coral", "This build doesn't check for updates.", "")
 		return
 	}
-	latest, err := updatecheck.Latest(context.Background(), updatecheck.ReleasesAPI)
+	a, err := askServerForUpdate(baseURL, dataDir, true)
 	if err != nil {
 		beeep.Notify("Coral", "Could not check for updates.", "")
 		return
 	}
-	if updatecheck.Newer(latest, version) {
-		beeep.Notify("Coral", fmt.Sprintf("Update available: v%s\nYou have v%s", latest, version), "")
-		executil.OpenBrowser(updatecheck.ReleasesURL)
+	if a.Available {
+		beeep.Notify("Coral", a.notice("Update available: v%s\nYou have v%s", version), "")
+		executil.OpenBrowser(a.pageURL())
 	} else {
 		beeep.Notify("Coral", "You're on the latest version.", "")
 	}
