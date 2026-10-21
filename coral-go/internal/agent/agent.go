@@ -480,6 +480,7 @@ func writeTempFile(prefix, id, ext string, content []byte) (string, error) {
 		os.Remove(f.Name())
 		return "", fmt.Errorf("can't write the agent's %s file in the temp folder %s: %w", prefix, dir, err)
 	}
+	rememberLaunchTemp(id, f.Name())
 	return f.Name(), nil
 }
 
@@ -554,6 +555,11 @@ func safeFileID(id string) string {
 // called during teardown so nothing sensitive stays in the temp folder. sessionID must be a
 // canonical UUID and each name must carry exactly it (followed by '_', '.' or nothing): a
 // glob on an id like "a" matched every other session's files too (weak site W10, #3598).
+//
+// It removes the paths this process wrote for the session (wherever they are), and the session's
+// files in Coral's private launch temp folder (<data dir>/tmp, written before a restart). It
+// never reads the system temp folder (#90): files a launch before #4381 left there, or one while
+// the private folder couldn't be made before a restart, are the startup sweep's.
 func CleanupTempFiles(sessionID string) {
 	if !isCanonicalUUID(sessionID) {
 		return
@@ -561,17 +567,16 @@ func CleanupTempFiles(sessionID string) {
 	if SessionTokenFileRemover != nil {
 		SessionTokenFileRemover(sessionID) // a Codex agent's kept token file (#13 review N2)
 	}
-	var matches []string
-	for _, dir := range launchTempDirs() {
-		m, err := filepath.Glob(filepath.Join(dir, "coral_*_"+sessionID+"*"))
-		if err == nil {
-			matches = append(matches, m...)
+	paths := takeLaunchTemps(sessionID)
+	if dir := privateLaunchTempDir(); dir != "" {
+		if m, err := filepath.Glob(filepath.Join(dir, "coral_*_"+sessionID+"*")); err == nil {
+			paths = append(paths, m...)
 		}
 	}
-	for _, path := range matches {
+	for _, path := range paths {
 		base := filepath.Base(path)
 		i := strings.Index(base, "_"+sessionID)
-		if i < len("coral_x") {
+		if !strings.HasPrefix(base, "coral_") || i < len("coral_x") {
 			continue
 		}
 		if rest := base[i+1+len(sessionID):]; rest != "" && rest[0] != '_' && rest[0] != '.' {
