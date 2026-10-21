@@ -32,6 +32,7 @@ import (
 
 	webview "github.com/webview/webview_go"
 
+	"github.com/subgentic/coral/internal/apptoken"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/executil"
 	"github.com/subgentic/coral/internal/loginlink"
@@ -255,11 +256,31 @@ func main() {
 	// What a link may do in this window (#5094): see linkInterceptScript.
 	w.Init(linkInterceptScript)
 
+	// The native functions are bound on every page the window shows and the Go side is not told the page's origin, so each takes a
+	// per-launch token first and refuses a call without it. Only an init script that runs on the dashboard's origin hands the
+	// token to the page-facing shims (apptoken, #78 W1): a page of another origin cannot call them, even through
+	// window.chrome.webview.postMessage. The check here, not the deleting of shims off-origin, is the boundary.
+	guard, gerr := apptoken.New()
+	if gerr != nil {
+		log.Fatalf("[FATAL] cannot make the window's call token: %v", gerr)
+	}
+	refused := func(name string) {
+		log.Printf("[WEBVIEW] refused a call to %s without this window's token (a page that is not the dashboard)", name)
+	}
+	natives := []apptoken.Native{
+		{Page: "_coralOpenExternal", Native: "__coralNativeOpenExternal"},
+		{Page: "_coralAppSignIn", Native: "__coralNativeAppSignIn"},
+	}
+
 	// Bind native URL opener — WKWebView doesn't support window.open(),
 	// so the link interceptor calls this to open external URLs in the system browser.
 	// The binding is callable by whatever page the window shows, and the system's opener runs files and starts custom
 	// schemes: only a plain http or https address goes through (executil.WebURL).
-	w.Bind("_coralOpenExternal", func(raw string) {
+	w.Bind("__coralNativeOpenExternal", func(token, raw string) {
+		if !guard.Allowed(token) {
+			refused("openExternal")
+			return
+		}
 		if !executil.OpenWebURL(raw) {
 			log.Printf("[WEBVIEW] refused to open an address that is not a plain http or https URL (%d bytes)", len(raw))
 			return
@@ -270,9 +291,14 @@ func main() {
 	// Bind JS console.log to Go logger in debug mode
 	log.Println("[WEBVIEW] setting up JS console redirect and WS monitoring")
 	if debugMode {
-		w.Bind("_coralLog", func(level, msg string) {
+		w.Bind("__coralNativeLog", func(token, level, msg string) {
+			if !guard.Allowed(token) {
+				refused("log")
+				return
+			}
 			log.Printf("[JS %s] %s", level, msg)
 		})
+		natives = append(natives, apptoken.Native{Page: "_coralLog", Native: "__coralNativeLog"})
 
 		// Inject JS that redirects console.log/warn/error to Go
 		w.Init(`
@@ -330,7 +356,11 @@ func main() {
 	baseOrigin := originOf(*url)
 	var lastSignIn time.Time
 	var signInMu sync.Mutex
-	w.Bind("_coralAppSignIn", func(page string) {
+	w.Bind("__coralNativeAppSignIn", func(token, page string) {
+		if !guard.Allowed(token) {
+			refused("appSignIn")
+			return
+		}
 		signInMu.Lock()
 		if time.Since(lastSignIn) < 30*time.Second {
 			signInMu.Unlock()
@@ -351,13 +381,12 @@ func main() {
 			w.Dispatch(func() { w.Navigate(link) })
 		}()
 	})
+	// The page-facing functions (_coralOpenExternal, _coralAppSignIn, _coralLog), which add the token, exist only on the
+	// dashboard's origin (apptoken.ShimScript). Registered after the Binds and BEFORE the sign-in call below, so the shim is there when
+	// that script runs. A native navigation allowlist (WebView2 NavigationStarting) and a dashboard CSP are still wanted (#78 W1):
+	// webview_go does not expose the first.
+	w.Init(guard.ShimScript(baseOrigin, natives))
 	w.Init(fmt.Sprintf(`(function(){ if (location.origin === %q && location.pathname === '/auth' && window._coralAppSignIn) window._coralAppSignIn(new URLSearchParams(location.search).get('return_to') || '/'); })();`, baseOrigin))
-
-	// The bindings above are installed in every page the window shows, and only clicks are intercepted (linkInterceptScript): a script
-	// navigation, a redirect or a form post can still take the window to another origin. Added after the Binds so it runs after them,
-	// this takes the native functions away from any page that is not this Coral's dashboard (#78 W1). A native navigation allowlist
-	// (WebView2 NavigationStarting) is still wanted: webview_go does not expose it.
-	w.Init(fmt.Sprintf(`(function(){ if (location.origin !== %q) { delete window._coralOpenExternal; delete window._coralAppSignIn; delete window._coralLog; } })();`, baseOrigin))
 
 	log.Printf("[WEBVIEW] navigating to %s", loginlink.Redact(startURL))
 	w.Navigate(startURL)
