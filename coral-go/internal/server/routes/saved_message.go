@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/subgentic/coral/internal/transcriptlink"
 	"github.com/subgentic/coral/pkg/redact"
 )
 
@@ -38,6 +39,7 @@ func (h *SystemHandler) SavedMessage(w http.ResponseWriter, r *http.Request) {
 	if refuseUnlessOperator(w, r, "read a saved message") {
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store") // the reply is message text (#5763)
 	id, ok := savedID(w, r)
 	if !ok {
 		return
@@ -67,7 +69,9 @@ func (h *SystemHandler) SavedMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		text, have, reachable = t, ok, true
 	case "agent":
-		if h.savedAgentText == nil {
+		// The stored ref is client text (cleanSavedField only trims it): it reaches the transcript lookups, some of which glob. A Coral session id is a lowercase UUID and nothing
+		// else (transcriptlink.IsSessionID): any other ref is no agent of this computer (#5763, Security's SHOULD 2).
+		if h.savedAgentText == nil || !transcriptlink.IsSessionID(item.Ref) {
 			writeJSON(w, http.StatusOK, map[string]any{"text": "", "partial": false, "reason": savedReasonNotReachable})
 			return
 		}
@@ -96,7 +100,7 @@ func (h *SystemHandler) SavedMessage(w http.ResponseWriter, r *http.Request) {
 	if n := redact.Cut(out, maxSavedMessage); n < len(out) {
 		out, partial = out[:n], true
 	}
-	reply := map[string]any{"text": out, "partial": partial}
+	reply := map[string]any{"text": out, "partial": partial, "reason": ""} // reason is always there: "" when the whole text is
 	if partial {
 		reply["reason"] = savedReasonTooLong
 	}
