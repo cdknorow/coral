@@ -128,6 +128,7 @@ func (a *ClaudeAgent) LaunchCommand(params LaunchParams) (string, error) {
 	// without relying on fragile tmux send-keys delivery.
 	cliPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
 	if cliPrompt != "" {
+		cliPrompt = guardSlashPrompt(cliPrompt)
 		arg := files.promptArg("prompt", effectiveID, "txt", "", cliPrompt)
 		raw = append(raw, arg)
 		// "--": a prompt that is only a flag ("--dangerously-skip-permissions") is the

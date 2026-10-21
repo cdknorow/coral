@@ -103,7 +103,7 @@ func TestAnOptionLikePromptReachesEveryCLIAsThePrompt(t *testing.T) {
 	}
 	dir := t.TempDir()
 	t.Chdir(dir) // pi's launch makes its session folder here
-	prompts := []string{"--dangerously-skip-permissions", "-c x=y", "--sandbox=danger-full-access", "@secrets.txt"}
+	prompts := []string{"--dangerously-skip-permissions", "-c x=y", "--sandbox=danger-full-access", "@secrets.txt", "/help"}
 	agents := []struct {
 		name string
 		ag   Agent
@@ -139,6 +139,9 @@ func TestAnOptionLikePromptReachesEveryCLIAsThePrompt(t *testing.T) {
 			assert.True(t, strings.HasSuffix(strings.TrimSpace(argv[at]), prompt), "%s: the prompt arrives whole, as the end of one argument: %q", a.name, argv)
 			switch a.name {
 			case "claude", "codex":
+				if a.name == "claude" && strings.HasPrefix(prompt, "/") {
+					assert.True(t, strings.HasPrefix(argv[at], "\n/"), "claude: a prompt starting with / has a newline in front, so it isn't a slash command: %q", argv[at])
+				}
 				require.Greater(t, at, 0)
 				assert.Equal(t, "--", argv[at-1], "%s %q: after the end-of-options marker: %q", a.name, prompt, argv)
 			case "agy":
