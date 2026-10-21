@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -110,5 +111,41 @@ func TestQueueReadsTheQueueRoute(t *testing.T) {
 	cmdQueue()
 	if method != "GET" || path != "/api/board/mq/queue" {
 		t.Fatalf("unexpected request: %s %s", method, path)
+	}
+}
+
+// The plain printout never carries a control character from a title or a name (ESC and the rest of C0, DEL, C1): DevOps's note on part 3.
+// Every server reply is cleaned of terminal control already (clitext.CleanJSON in readServer) unless --raw is given; with --raw the JSON is
+// left as it is on purpose, but the printout of the queue still cleans what it prints (plainText), which is what this checks.
+func TestQueuePrintoutStripsControlCharacters(t *testing.T) {
+	isolateBoardEnv(t)
+	saveState(&boardState{Project: "mq", JobTitle: "Orchestrator"})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"queue":[{"task_id":7,"title":"Fix \u001b[31mred\u001b]0;pwned\u0007 \u009bx","author":"wor\u001bker","approvers":["rev"],"approved_at":"t","patches":[{"name":"fi\u001bx","digest":"d2","revision":"base1"}]}]}`))
+	}))
+	defer server.Close()
+	serverURL = server.URL
+	rawOutput = true
+	defer func() { rawOutput = false }()
+	before := os.Args
+	defer func() { os.Args = before }()
+	os.Args = []string{"coral-board", "queue"}
+	r, w, _ := os.Pipe()
+	stdout := os.Stdout
+	os.Stdout = w
+	cmdQueue()
+	w.Close()
+	os.Stdout = stdout
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	got := string(buf[:n])
+	for _, c := range got {
+		if c == 0x1b || c == 0x07 || (c >= 0x80 && c < 0xa0) {
+			t.Fatalf("a control character reached the printout: %q", got)
+		}
+	}
+	if !strings.Contains(got, "Fix [31mred]0;pwned x") {
+		t.Fatalf("the text is gone, not cleaned: %q", got)
 	}
 }
