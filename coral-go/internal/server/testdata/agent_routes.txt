@@ -268,6 +268,7 @@ a POST /api/board/{project}/tasks
 a POST /api/board/{project}/tasks/claim
 a POST /api/board/{project}/tasks/current
 a POST /api/board/{project}/tasks/{taskID}/approve
+a POST /api/board/{project}/tasks/{taskID}/attach
 a POST /api/board/{project}/tasks/{taskID}/cancel
 a POST /api/board/{project}/tasks/{taskID}/complete
 a POST /api/board/{project}/tasks/{taskID}/nudge
@@ -279,6 +280,7 @@ a POST /api/board/{project}/tasks/{taskID}/reject
 a POST /api/board/{project}/tasks/{taskID}/release-review
 a POST /api/board/{project}/tasks/{taskID}/reminder
 a POST /api/board/{project}/tasks/{taskID}/review
+a POST /api/board/{project}/tasks/{taskID}/send-back
 a POST /api/board/{project}/tasks/{taskID}/snooze
 a POST /api/board/{project}/tasks/{taskID}/submit-review
 a POST /api/board/{project}/waits

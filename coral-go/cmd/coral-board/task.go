@@ -30,6 +30,7 @@ Subcommands:
   release-review <id> --reason "slot released pending review" (orchestrator only)
   review <id> --to "Security Reviewer,QA Engineer"   (orchestrator: delegate a task in review)
   approve <id> [--round N] [--note "..."] / reject <id> [--round N] --note "why"   (a delegated reviewer)
+  attach <id> --artifacts manifest.json / send-back <id> --note "why"   (the merge queue)
   complete <id> [--message "note"]`)
 		os.Exit(1)
 	}
@@ -79,6 +80,8 @@ Subcommands:
 		cmdTaskReview(st, taskArgs, sub)
 	case "review", "approve", "reject":
 		cmdTaskReviewFlow(st, taskArgs, sub)
+	case "attach", "send-back":
+		cmdTaskQueueVerb(st, taskArgs, sub)
 	case "complete":
 		cmdTaskComplete(st, taskArgs)
 	case "cancel":
@@ -113,6 +116,8 @@ Subcommands:
   review <id> --to "Security Reviewer,QA Engineer"  The orchestrator delegates a task in review: one review task each
   approve <id> [--round N] [--note "..."]  A reviewer approves, any time the task is in review; the last approval completes it
   reject <id> [--round N] --note "why"     A reviewer rejects: back to its author; the reviewers stay on it and review the resubmission
+  attach <id> --artifacts manifest.json    Add patch rows to a task in review (a next revision, a reviewer's fix); a reviewer who had approved reviews the new bytes again
+  send-back <id> --note "why"              The orchestrator returns an approved, completed task to its author (a fix after approval, a patch that would not apply)
   release-review <id> --reason "slot released pending review" (orchestrator only; for a candidate submitted before v1.4.56)
   complete <id> [--revision N] [--message "note"] [--outcome success|failed] [--candidate-revision REVISION] [--artifacts manifest.json]
   cancel <id> [--message "reason"]

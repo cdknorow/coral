@@ -58,6 +58,8 @@ func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
 	r.Post("/api/board/{project}/tasks/{taskID}/review", handler.DelegateReview)
 	r.Post("/api/board/{project}/tasks/{taskID}/approve", handler.ApproveReview)
 	r.Post("/api/board/{project}/tasks/{taskID}/reject", handler.RejectReview)
+	r.Post("/api/board/{project}/tasks/{taskID}/attach", handler.AttachPatches)
+	r.Post("/api/board/{project}/tasks/{taskID}/send-back", handler.SendBack)
 	r.Post("/api/board/{project}/tasks/{taskID}/cancel", handler.CancelTaskByID)
 	r.Get("/api/board/{project}/tasks/{taskID}/changes.diff", handler.TaskChangesDiff)
 	r.Post("/api/board/{project}/tasks/{taskID}/publish", handler.PublishTask)
