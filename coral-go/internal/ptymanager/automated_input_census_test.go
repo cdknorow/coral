@@ -99,8 +99,7 @@ var allowedSenders = map[string]sender{
 	// The primitives' own implementations, one layer calling the next.
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendInput\tSendKeys":                                           {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/manager.go\tPTYBackend.SendLine\tSendLineCtx":                                               {guardPrimitive, "primitive", ""},
-	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendInput\tSendLineCtx":                         {guardPrimitive, "primitive: carries ctx, so a person's send (inputlog.Human) is logged by length (#60 N3)", ""},
-	"internal/ptymanager/manager.go\tPTYBackend.SendHumanInput\tSendInput":                                           {guardHuman, "a person's keystrokes (the dashboard terminal), recorded for the gate's PTY rule (#3482)", ""},
+	"internal/ptymanager/manager.go\tPTYBackend.SendText\tSendLineCtx":                                               {guardPrimitive, "primitive: carries ctx, so a person's send (inputlog.Human) is logged by length (#60 N3); the text was sanitised and pasted by SendText", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendPrompt\tSendPrompt":                         {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendRawInput\tSendInput":                        {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendTerminalInput\tSendInput":                   {guardPrimitive, "primitive", ""},
