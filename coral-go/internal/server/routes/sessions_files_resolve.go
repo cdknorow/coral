@@ -73,6 +73,13 @@ func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, r
 	} else if idx := strings.Index(fp, "#"); idx != -1 {
 		fp = fp[:idx]
 	}
+	// A network path (file://server/share/x, \\server\share\x) is refused here, by its text,
+	// before anything touches the filesystem: resolving it would make Windows connect to the
+	// host and send the user's credentials. safefs.Resolve refuses it too, but no caller of
+	// fileURLPath's result may rely on reaching that first (PR #44 review).
+	if safefs.IsUNC(fp) {
+		return resolvedFileRef{}, errFileNotFound
+	}
 
 	// ~/path is the host user's home directory
 	if fp == "~" || strings.HasPrefix(fp, "~/") {
@@ -225,7 +232,9 @@ var (
 // letter (file:///C:/x/y.go is C:/x/y.go, not a /C:/... joined under the repository and refused,
 // #59, QA #28 C3) and file://server/share/x is the UNC path \\server\share\x, which the
 // containment checks then allow or refuse like any other path. Elsewhere file://host/p keeps
-// what it always gave, host/p.
+// what it always gave, host/p. The result is text only: before any filesystem call on it,
+// resolveFileRef refuses a network path (safefs.IsUNC), and safefs.Resolve must stay the first
+// thing that touches the filesystem with it.
 func fileURLPath(fp string, windows bool) string {
 	lower := strings.ToLower(fp)
 	switch {
