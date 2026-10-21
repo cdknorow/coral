@@ -165,19 +165,19 @@ function formHtml() {
     return `<form class="servers-form" id="servers-form" autocomplete="off" novalidate>
         <h4>${title}</h4>
         ${_formError ? `<div class="servers-form-error" role="alert">${escHtml(_formError)}</div>` : ''}
-        <label>Server id
-            <input type="text" name="id" value="${escHtml(cur.id || '')}" ${adding ? '' : 'disabled'} placeholder="workstation" maxlength="32" pattern="[a-z0-9-]{1,32}" required>
-            <span class="servers-help">Lowercase letters, digits and dashes. Cannot be changed later.</span></label>
+        <label><span id="servers-id-t">Server id</span>
+            <input type="text" name="id" value="${escHtml(cur.id || '')}" ${adding ? '' : 'disabled'} placeholder="workstation" maxlength="32" pattern="[a-z0-9-]{1,32}" required aria-labelledby="servers-id-t" aria-describedby="servers-id-d">
+            <span class="servers-help" id="servers-id-d">Lowercase letters, digits and dashes. Cannot be changed later.</span></label>
         <label>Display name
             <input type="text" name="label" value="${escHtml(cur.label || '')}" placeholder="Workstation"></label>
-        <label>URL
-            <input type="url" name="url" value="${escHtml(cur.url || '')}" placeholder="https://coral.example.com:8420" required${_urlError ? ' aria-invalid="true" aria-describedby="servers-url-error"' : ''}>
-            <span class="servers-help">Scheme, host and port only.</span></label>
+        <label><span id="servers-url-t">URL</span>
+            <input type="url" name="url" value="${escHtml(cur.url || '')}" placeholder="https://coral.example.com:8420" required aria-labelledby="servers-url-t"${_urlError ? ' aria-invalid="true" aria-describedby="servers-url-d servers-url-error"' : ' aria-describedby="servers-url-d"'}>
+            <span class="servers-help" id="servers-url-d">Scheme, host and port only.</span></label>
         ${_urlError ? `<div class="servers-url-error" id="servers-url-error" role="alert"><span class="material-icons" aria-hidden="true">error</span><span>${escHtml(_urlError)}</span></div>` : ''}
         ${adding ? '' : warningHtml((_servers.find(x => x.id === _editing) || {}).warning)}
-        <label>API key
-            <input type="password" name="api_key" value="" autocomplete="new-password" spellcheck="false" placeholder="${adding ? 'Paste the remote server\'s API key' : 'Leave blank to keep the current key'}" ${adding ? 'required' : ''}>
-            <span class="servers-help">Write-only. The key is stored encrypted and is never shown again.</span></label>
+        <label><span id="servers-key-t">API key</span>
+            <input type="password" name="api_key" value="" autocomplete="new-password" spellcheck="false" placeholder="${adding ? 'Paste the remote server\'s API key' : 'Leave blank to keep the current key'}" ${adding ? 'required' : ''} aria-labelledby="servers-key-t" aria-describedby="servers-key-d">
+            <span class="servers-help" id="servers-key-d">Write-only. The key is stored encrypted and is never shown again.</span></label>
         ${switchRow({ label: 'Allow private network address', name: 'allow_private', checked: cur.allow_private, labelClass: 'servers-check', labelId: 'servers-private-t', desc: 'Only tick this for a server on your LAN, tailnet or localhost that you trust. It lets this hub connect to private and reserved addresses, which is normally blocked to prevent requests being steered at internal services.', descId: 'servers-private-d', descClass: 'servers-help servers-warning', descInside: true })}
         <div class="servers-form-actions">
             <button type="button" class="btn" data-action="cancel-form"${busy ? ' disabled' : ''}>Cancel</button>

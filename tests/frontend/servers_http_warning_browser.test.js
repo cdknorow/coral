@@ -50,6 +50,14 @@ const SERVERS = [
         await waitFor(`!!document.getElementById('servers-form')`, 'the edit form');
         assert.equal(await ev(`!!document.querySelector('#servers-form .servers-row-warn')`), true, 'the edit form shows the warning');
         assert.equal(await ev(`document.querySelector('#servers-form input[name=url]').closest('label').textContent.includes('unencrypted')`), false, 'it is not part of the URL field\'s name');
+        // Name and description by what the markup says: the label text names each field, the help text under it describes it, and neither repeats the other.
+        const acc = await ev(`(() => { const t = id => (document.getElementById(id) || {}).textContent?.replace(/\\s+/g, ' ').trim(); const f = n => document.querySelector('#servers-form input[name=' + n + ']');
+            const o = {}; for (const n of ['id', 'url', 'api_key', 'allow_private']) { const e = f(n); o[n] = { name: e.getAttribute('aria-labelledby').split(' ').map(t).join(' '), desc: (e.getAttribute('aria-describedby') || '').split(' ').filter(Boolean).map(t).join(' ') }; } return o; })()`);
+        assert.deepEqual(acc.id, { name: 'Server id', desc: 'Lowercase letters, digits and dashes. Cannot be changed later.' });
+        assert.deepEqual(acc.url, { name: 'URL', desc: 'Scheme, host and port only.' });
+        assert.deepEqual(acc.api_key, { name: 'API key', desc: 'Write-only. The key is stored encrypted and is never shown again.' });
+        assert.equal(acc.allow_private.name, 'Allow private network address'); assert.match(acc.allow_private.desc, /^Only tick this for a server on your LAN/);
+        ok('each server form field is named by its label and described by its help');
         await ev(`document.querySelector('#servers-form [data-action=cancel-form]').click(); document.querySelector('#server-row-tls [data-action=edit]').click(); true`);
         await waitFor(`!!document.getElementById('servers-form')`, 'the second edit form');
         assert.equal(await ev(`!!document.querySelector('#servers-form .servers-row-warn')`), false, 'an https server\'s edit form has none');
@@ -63,7 +71,7 @@ const SERVERS = [
         await waitFor(`!!document.getElementById('servers-url-error')`, 'the inline URL error');
         const err = await ev(`(() => { const e = document.getElementById('servers-url-error'); const u = document.querySelector('#servers-form input[name=url]');
             return { text: e.lastElementChild.textContent.replace(/\\s+/g, ' ').trim(), role: e.getAttribute('role'), invalid: u.getAttribute('aria-invalid'), by: u.getAttribute('aria-describedby'), focus: document.activeElement === u, top: !!document.querySelector('#servers-form .servers-form-error'), posts: window.__posts, kept: u.value }; })()`);
-        assert.equal(err.text, REFUSED); assert.equal(err.role, 'alert'); assert.equal(err.invalid, 'true'); assert.equal(err.by, 'servers-url-error');
+        assert.equal(err.text, REFUSED); assert.equal(err.role, 'alert'); assert.equal(err.invalid, 'true'); assert.equal(err.by, 'servers-url-d servers-url-error', 'the URL field is described by its help, then the error');
         assert.equal(err.focus, true, 'focus goes to the URL field'); assert.equal(err.top, false, 'not also in the form\'s top error'); assert.equal(err.posts, 1); assert.equal(err.kept, 'http://example.org:8420', 'what was typed is kept');
         await shot('refused-desktop');
         // another refusal (a duplicate id) still goes to the form's top error, not next to the URL
