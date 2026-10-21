@@ -37,11 +37,11 @@ func TestLooksLikeCoralDataDir(t *testing.T) {
 		}
 		return dir
 	}
-	for name, names := range map[string][]string{"empty": nil, "a database": {"sessions.db"}, "an old database": {"old.db"}, "the key": {"api-key", "notes.txt"}, "a wal": {"x.DB-WAL"}} {
+	for name, names := range map[string][]string{"empty": nil, "a database": {"sessions.db"}, "an old database": {"old.db"}, "the key": {"api-key", "notes.txt"}, "a wal": {"x.DB-WAL"}, "only the installer marker": {".eula-accepted"}, "a first start before any database": {"coral-server.lock", "coral.log", "tray.pid"}} {
 		ok, _ := looksLikeCoralDataDir(mk(names...))
 		assert.True(t, ok, name)
 	}
-	for name, names := range map[string][]string{"a project": {"main.go", "README.md"}, "documents": {"report.docx"}, "only a log": {"coral.log"}} {
+	for name, names := range map[string][]string{"a project": {"main.go", "README.md"}, "documents": {"report.docx"}, "only a text file": {"notes.txt"}} {
 		ok, other := looksLikeCoralDataDir(mk(names...))
 		assert.False(t, ok, name)
 		assert.NotEmpty(t, other, name)
