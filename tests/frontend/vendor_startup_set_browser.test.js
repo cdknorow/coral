@@ -29,7 +29,7 @@ const { connect } = require('./agent_view_harness');
             }
             await sleep(500); // sleep-ok: a late lazy load would land within this window; there is no event for "nothing else loads"
             const scripts = [...new Set(seen.filter(f => /\.(js|css)$/.test(f)))].sort();
-            assert.deepEqual(scripts, ['marked.min.js', 'purify.min.js'], `${view}: only marked and DOMPurify load at startup, not the editor, the terminal or the highlighter (saw ${scripts.join(', ')})`);
+            assert.deepEqual(scripts, ['marked.min.js', 'purify.min.js', 'safe-markdown.js'], `${view}: only marked, DOMPurify and the shared Inbox renderer load at startup, not the editor, the terminal or the highlighter (saw ${scripts.join(', ')})`);
         }
         console.log('PASS vendor libraries are lazy: the home page and the Chat view load only marked and DOMPurify');
     } finally { await client.close(); }

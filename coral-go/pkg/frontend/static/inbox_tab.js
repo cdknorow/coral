@@ -9,6 +9,7 @@ import { isCloud, sessionServer, splitKey } from './server_base.js';
 import { importOnce } from './import_once.js';
 import { browserLocal } from './safe_storage.js';
 import { resolveSessionIdentity, sessionStateInfo } from './session_state.js';
+import './safe_markdown.js'; // the shared Inbox renderer's wrapper: the lazy Inbox modules import it, and a lazy module imports only what loads at startup (import_hygiene)
 
 const INBOX_URL = '/inbox';
 
@@ -90,7 +91,7 @@ function renderNeedsYou(force = false) {
 
 // The two tabs of the dashboard's own Inbox (as the hub's): one panel shows at a time. The chosen tab is kept for this browser (and across a reload) (browserLocal).
 const TAB_KEY = 'coral.inbox.tab';
-const TABS = ['needs', 'saved'];
+const TABS = ['needs', 'tasks', 'saved'];
 let _tab = null;
 const storedTab = () => { const v = browserLocal.get(TAB_KEY); return TABS.includes(v) ? v : 'needs'; };
 /** Which tab the dashboard's own Inbox is on. */
@@ -109,6 +110,7 @@ export function selectInboxTab(name, { focus = false } = {}) {
     }
     if (focus) document.getElementById(`inbox-tab-${name}`)?.focus();
     if (name === 'needs') renderNeedsYou(true);
+    else if (name === 'tasks') importOnce('./inbox_coral.js').then(m => m.refreshTasks()).catch(() => {});
     else if (!document.getElementById('inbox-local')?.hidden) importOnce('./saved.js').then(m => m.showSavedView()).catch(() => {});
 }
 
