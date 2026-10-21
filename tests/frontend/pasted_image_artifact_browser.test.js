@@ -107,24 +107,41 @@ async function httpJson(method, p, body, headers = {}) {
             check(`${tag}: the chip ("Pasted image") stays`, (await ev(`(document.querySelector('#pia-box .chat-attachment-chip') || {}).textContent`)) === 'Pasted image');
             check(`${tag}: the shared copy is gone from the artifact route (asked past the browser's cache: an artifact is cached for good)`, (await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2', { cache: 'no-store' }).then(r => r.status)`)) === 404, JSON.stringify(await ev(`window.__rec.deletes`)));
 
-            if (process.env.CORAL_SCREENSHOT_DIR) { // CORAL_SCREENSHOT_DIR=<dir>: three images in the composer, then three in a message, for a look (generated images only)
-                const dir = process.env.CORAL_SCREENSHOT_DIR; require('node:fs').mkdirSync(dir, { recursive: true });
-                const shot = async n => require('node:fs').writeFileSync(require('node:path').join(dir, n + '.png'), Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'));
-                const n1 = await ev(`window.__rec.uploads.length`);
-                for (let k = 0; k < 3; k++) await upload();
-                const ups = await ev(`window.__rec.uploads.slice(${n1})`);
-                const mk = ups.map(u => `${u.path} ${u.artifact.uri}`).join(' ') + ' what are these three';
+            // 6b. three images: each is named by its place (#5756), in the composer and in the chat; CORAL_SCREENSHOT_DIR=<dir> also writes pictures of them, dark and light
+            const dir = process.env.CORAL_SCREENSHOT_DIR;
+            const shot = async (n, clip) => { require('node:fs').mkdirSync(dir, { recursive: true }); require('node:fs').writeFileSync(require('node:path').join(dir, n + '.png'), Buffer.from((await Page.captureScreenshot(clip ? { format: 'png', clip } : { format: 'png' })).data, 'base64')); };
+            const n1 = await ev(`window.__rec.uploads.length`);
+            for (let k = 0; k < 3; k++) await upload();
+            const ups = await ev(`window.__rec.uploads.slice(${n1})`);
+            // the message as Send types it: the links, one hint, then the text (step 2); not the older path-and-link pairs, which the chat names by file
+            const uris = ups.map(u => u.artifact.uri);
+            const mk = `${uris.join(' ')} ${await ev(`import(${S} + 'shared_images.js').then(m => m.imageHint(${JSON.stringify(uris)}))`)} what are these three`;
+            await ev(`document.getElementById('pia-box')?.remove(); true`);
+            await waitFor(`document.querySelectorAll('#image-attachments img').length === 3 && [...document.querySelectorAll('#image-attachments img')].every(i => i.complete && i.naturalWidth > 0)`, `${tag}: three composer thumbnails`, { timeout: 10000 });
+            const cnames = await ev(`[...document.querySelectorAll('#image-attachments .image-attachment')].map(c => ({ alt: c.querySelector('img').alt, remove: c.querySelector('.image-attachment-remove').getAttribute('aria-label'), title: c.title }))`);
+            check(`${tag}: three attachments in the composer are named by their place, Image 1, 2 and 3, and keep their own file name as the tooltip`, JSON.stringify(cnames.map(c => [c.alt, c.remove])) === JSON.stringify([['Image 1', 'Remove image 1'], ['Image 2', 'Remove image 2'], ['Image 3', 'Remove image 3']]) && new Set(cnames.map(c => c.title)).size === 3 && cnames.every(c => c.title && !/uploads|\//.test(c.title)), JSON.stringify(cnames));
+            await render([{ type: 'user', content: mk, key: 'k9', timestamp: '2026-10-19T00:09:00Z' }]);
+            await waitFor(`document.querySelectorAll('#pia-box .chat-attachment-thumb:not([hidden])').length === 3`, `${tag}: three thumbnails`, { timeout: 10000 });
+            const hnames = await ev(`[...document.querySelectorAll('#pia-box .chat-attachment-thumb')].map((t, i) => ({ open: t.getAttribute('aria-label'), alt: t.querySelector('img').alt, remove: document.querySelectorAll('#pia-box .chat-attachment-unshare')[i].getAttribute('aria-label') }))`);
+            check(`${tag}: three images in a message are named by their place too: "Open pasted image 2", "Remove the shared copy of pasted image 2"`, JSON.stringify(hnames.map(h => [h.open, h.alt, h.remove])) === JSON.stringify([1, 2, 3].map(n => [`Open pasted image ${n}`, `pasted image ${n}`, `Remove the shared copy of pasted image ${n}`])), JSON.stringify(hnames));
+            if (dir) {
+                const { themeJs } = require('./helpers/theme');
                 for (const theme of ['dark', 'light']) {
-                    await ev(`document.getElementById('pia-box')?.remove(); document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)}); true`);
-                    await waitFor(`document.querySelectorAll('#image-attachments img').length === 3 && [...document.querySelectorAll('#image-attachments img')].every(i => i.complete && i.naturalWidth > 0)`, `${tag}: three composer thumbnails`, { timeout: 10000 });
+                    await ev(`${themeJs(theme)}; true`); // the helper clears the custom colour variables first, so a "light" picture is light (#5757)
+                    await ev(`document.getElementById('pia-box')?.remove(); true`);
+                    await waitFor(`document.querySelectorAll('#image-attachments img').length === 3`, `${tag}: composer thumbnails`, { timeout: 10000 });
                     const cr = await ev(`(() => { const r = document.getElementById('image-attachments').getBoundingClientRect(); return { x: Math.max(0, r.left - 20), y: Math.max(0, r.top - 20), width: Math.min(innerWidth, r.width + 40), height: 110, scale: 1 }; })()`);
-                    require('node:fs').writeFileSync(require('node:path').join(dir, `composer-${tag}-${theme}.png`), Buffer.from((await Page.captureScreenshot({ format: 'png', clip: cr })).data, 'base64'));
+                    await shot(`composer-${tag}-${theme}`, cr);
                     await render([{ type: 'user', content: mk, key: 'k9', timestamp: '2026-10-19T00:09:00Z' }]);
                     await waitFor(`document.querySelectorAll('#pia-box .chat-attachment-thumb:not([hidden])').length === 3`, `${tag}: three thumbnails`, { timeout: 10000 });
                     await shot(`chat-${tag}-${theme}`);
+                    check(`${tag}: the ${theme} picture is really ${theme}: the chat box's background is ${theme}`, (await ev(`(() => { const c = getComputedStyle(document.getElementById('pia-box')).backgroundColor.match(/\\d+/g).map(Number); return (c[0] + c[1] + c[2]) / 3 > 128; })()`)) === (theme === 'light'));
                 }
-                await ev(`document.documentElement.setAttribute('data-theme', 'dark'); true`);
+                await ev(`${themeJs('dark')}; true`);
             }
+            // take the three out of the composer through their buttons, so the steps below start with an empty strip
+            await ev(`document.getElementById('pia-box')?.remove(); for (let i = 0; i < 3; i++) document.querySelector('#image-attachments .image-attachment-remove')?.click(); true`);
+            check(`${tag}: each remove button takes its image out of the strip`, await ev(`document.querySelectorAll('#image-attachments .image-attachment').length === 0`));
 
             // 7. no notice before a paste, whatever the Coral Hub state: pasted images are the owner's alone through the hub, so there is nothing to warn about or switch off (#5575)
             await ev(`document.getElementById('pia-box')?.remove(); sessionStorage.clear(); window.__hub = { state: 'connected', at: 'T1' }; true`);
