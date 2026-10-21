@@ -85,7 +85,7 @@ const GROUPS = {
         console.log('4. Wide: the list is on the left, no selector; rows are label and control side by side');
         const wide = await ev(`(() => { const r = e => e.getBoundingClientRect(); const m = r(document.querySelector('#settings-modal .settings-modal-content')); const nav = r(document.getElementById('settings-tabs')); const row = document.querySelector('#settings-pane-cleanup .settings-row'); const dt = r(row.querySelector('dt')), dd = r(row.querySelector('dd'));
             return { w: Math.round(m.width), tabs: nav.width > 0, pick: document.querySelector('#settings-modal .settings-group-pick').getClientRects().length, sideBySide: dd.left > dt.right - 2 && Math.abs(dd.top - dt.top) < 40, over: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
-        assert.ok(wide.w >= 1000, 'the dialog is wide: ' + wide.w); assert.equal(wide.tabs, true); assert.equal(wide.pick, 0); assert.equal(wide.sideBySide, true); assert.equal(wide.over, 0);
+        assert.ok(wide.w >= 950, 'the dialog is wide (the one dialog size rule: 960 at most): ' + wide.w); assert.equal(wide.tabs, true); assert.equal(wide.pick, 0); assert.equal(wide.sideBySide, true); assert.equal(wide.over, 0);
         console.log(`   ✓ ${wide.w} px dialog`);
 
         for (const [label, w, h, mobile, font] of [['phone 390 px', 390, 844, true, ''], ['phone 390 px at 200% text', 390, 844, true, '32px'], ['desktop at 200% text', 1280, 800, false, '32px']]) {

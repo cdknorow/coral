@@ -4190,10 +4190,10 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .acf-cli-warning .cli-install-link a { display: block; color: var(--accent); overflow-wrap: anywhere; }
 .acf-cli-warning .cli-install-note { color: var(--text-secondary); font-size: 0.75rem; line-height: 1.5; }
 /* ── Settings: a wide dialog with its groups down the left (#4566) ──────────────────────────────────────────────────────────
-   The dialog is 65rem wide (92vw at most). Under 60rem of its own width (a phone, a small window, or large text) the group list is a
+   The dialog is 60rem wide at most (the one size rule, 92vw below that). Under 50rem of its own width (a phone, a small window, or large text) the group list is a
    selector at the top and the rows stack; the sizes are rem, so large text takes the narrow layout by itself. Every explanation sits
    behind an (i) button (settings_nav.js). */
-.settings-modal-content { width: min(65rem, 92vw); max-width: none; height: min(46rem, 90vh); container: settings / inline-size; }
+.settings-modal-content { container: settings / inline-size; } /* its size is the one dialog rule below */
 .modal-content:has(.settings-shell) .settings-modal-body { padding: 0; flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: row; gap: 0; }
 .settings-shell { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .settings-nav { width: 13.5rem; flex: none; border-right: 1px solid var(--border); padding: .6rem; overflow-y: auto; background: var(--bg-tertiary); }
@@ -4253,8 +4253,25 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
     .settings-row:has(> dd > .check-hit) .check-hit { display: inline-flex; align-items: center; justify-content: flex-start; align-self: center; margin: .35rem 0 0; } /* level with the (i): the box was at the top of its 44 px area (the cell is a label: its generic 12 px bottom margin was part of the box that got centred, and the visible box sat at its top, about 17 px above the (i)'s centre); the top margin matches the label's first padding (.35rem) that the (i) is centred below (#5109) */
 }
 /* The sectioned dialogs (#4950: Restart, New Agent, Agent Team, the team's agent dialog) are the Settings shell in a smaller dialog: the same list, panes, heading and footer. They switch to the selector at the top
-   under 40rem of their own width (Settings does at 60rem, as it is wider). One more thing the shell has here: a sub-line in the header, and a dot on a section that holds a problem. */
-.sd-modal-content { container: sd / inline-size; width: min(56rem, 94vw); max-width: none; height: min(36rem, 92vh); } /* (not .settings-modal-content: the Settings dialog is the one element with that class, and code and tests find it by it) */
+   under 40rem of their own width (Settings does at 50rem, as it is wider). One more thing the shell has here: a sub-line in the header, and a dot on a section that holds a problem. */
+.sd-modal-content { container: sd / inline-size; } /* its size is the one dialog rule below */ /* (not .settings-modal-content: the Settings dialog is the one element with that class, and code and tests find it by it) */
+/* ── One size rule for every dialog (UI audit #5589, finding 1) ─────────────────────────────────────────────────────────────
+   Launch (agent, team), Create Agent, Settings and Team settings are as high as their content, up to 90% of the window (a fixed
+   576 or 736 px cut content off while the screen was empty), as wide as clamp(360px, 92vw, 960px), and scroll in ONE place: the
+   pane (.settings-panes, the Team settings form), with the header and the footer always in view. A dialog with tabs keeps a floor
+   (30rem, never above 90% of the window) so it does not change height as the person moves between its tabs. The Launch chooser
+   and the terminal form are small forms: they keep their narrow width and take the same height rule. A phone's own rule
+   (mobile.css: 95vw wide) still applies. */
+.modal-content.settings-modal-content,
+.modal-content.sd-modal-content,
+.team-availability-dialog#team-working-mode-dialog { width: clamp(360px, 92vw, 960px); max-width: 100vw; }
+.modal-content.settings-modal-content,
+.modal-content.sd-modal-content,
+#launch-modal .modal-content,
+.team-availability-dialog#team-working-mode-dialog { height: auto; max-height: 90dvh; }
+.modal-content:has(.settings-shell) { min-height: min(30rem, 90dvh); }
+.sd-modal-content .team-agents-scroll { max-height: none; overflow: visible; padding-right: 0; } /* the pane scrolls, not a list inside it (a phone showed two scroll areas) */
+
 .modal-header .sd-sub { margin: .15rem 0 0; color: var(--text-secondary); font-size: .8125rem; font-weight: 400; }
 .sd-modal-content .modal-footer { flex: none; }
 /* In the launch dialog the sectioned steps sit inside the dialog's own box: it has no padding then, the step's header and footer are full width, the fixed footer is always in view. */
@@ -4296,7 +4313,7 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
     .sd-modal-content .launch-modal-step > .modal-actions { padding: 12px 16px; }
     .sd-modal-content .launch-modal-step > .modal-actions .btn { min-height: 44px; }
 }
-@container settings (max-width: 60rem) {
+@container settings (max-width: 50rem) {
     .settings-nav { width: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--border); padding: .6rem 1rem; overflow: visible; }
     .settings-shell { flex-direction: column; }
     .settings-tabs { display: none; }
@@ -4368,7 +4385,7 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
     .cm-row .btn, .cm-actions .btn, .cm-add { min-height: 44px; min-width: 44px; }
 }
 /* New Agent opens on the folder and Launch; the name, persona, agent, prompt, permissions and board sit behind "More options" (#5595). Closed, the dialog is only as tall as the folder row. */
-.sd-modal-content.launch-simple { width: min(42rem, 94vw); height: auto; max-height: 92vh; }
+.sd-modal-content.launch-simple { width: min(42rem, 94vw); height: auto; min-height: 0; max-height: 90dvh; } /* closed, only the folder row: no floor, and the one size rule's 90dvh */
 .modal-content:has(.settings-shell) #launch-step-agent .settings-modal-body { flex-direction: column; overflow: auto; }
 .launch-simple #launch-step-agent .settings-modal-body { flex: none; }
 .sd-essentials { flex: none; padding: 1.1rem 1.6rem .4rem; }
