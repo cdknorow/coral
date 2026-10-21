@@ -27,10 +27,20 @@ jobs:
         run: |
           cd coral-go
           go version
+          # inject the suspected cause: a slow first run of each stub invocation (a machine that scans new executables)
+          python3 - <<'PY'
+          import re
+          p='internal/claudestub/claudestub.go'
+          s=open(p).read()
+          i=s.index('#!/bin/sh')
+          j=s.index('\n',i)+1
+          s=s[:j]+'sleep 1.7\n'+s[j:]
+          open(p,'w').write(s)
+          PY
           go test -c -o /tmp/bg.test ./internal/background
           for i in $(seq 16); do (while :; do :; done) & done
           cd internal/background
-          /tmp/bg.test -test.count=20 -test.v -test.run '^TestBackgroundCallersStillAskClaudeWhenSignedIn$' > /tmp/o.log 2>&1 || true
+          /tmp/bg.test -test.count=4 -test.v -test.run '^TestBackgroundCallersStillAskClaudeWhenSignedIn$' > /tmp/o.log 2>&1 || true
           echo "variant ${{ matrix.name }}"; grep -E "^(ok|PASS|FAIL|--- FAIL)" /tmp/o.log | sort | uniq -c
           grep -E "Error:|Messages" /tmp/o.log | sort | uniq -c | head
           kill $(jobs -p) 2>/dev/null || true
