@@ -25,3 +25,22 @@ func (h *HistoryHandler) SavedAgentText(ctx context.Context, sessionID, agentTyp
 	}
 	return "", false, true
 }
+
+// SavedAgentPresence is which of these message keys are in the transcript of that session, read once for all of them (#5802, the Saved list's marks). reachable is false when
+// there is no transcript of the session here.
+func (h *HistoryHandler) SavedAgentPresence(ctx context.Context, sessionID string, keys []string) (found map[string]bool, reachable bool) {
+	messages, _ := h.sessionTranscript(ctx, sessionID)
+	if messages == nil {
+		return nil, false
+	}
+	secret := messageKeySecretFor(h.cfg)
+	present := make(map[string]bool, len(messages))
+	for _, m := range messages {
+		present[messageKey(secret, m)] = true
+	}
+	found = make(map[string]bool, len(keys))
+	for _, k := range keys {
+		found[k] = present[k]
+	}
+	return found, true
+}

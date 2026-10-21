@@ -25,6 +25,9 @@ type SavedMessage struct {
 	// saved before this was kept). Author is who wrote a board message (the name the board shows for them), "" for an agent's message.
 	Team   string `db:"team" json:"team"`
 	Author string `db:"author" json:"author"`
+	// Reason is set by the list route, not kept (#5802): "gone" when the message no longer exists, "not_reachable" when this computer holds no transcript of the agent that
+	// wrote it, "" otherwise (and for a bookmark that was not checked).
+	Reason string `db:"-" json:"reason"`
 }
 
 // SavedScope narrows the list and the counts to where the Operator is looking (#4792): Team keeps the bookmarks of one team (its board's messages and its agents'), Agent one

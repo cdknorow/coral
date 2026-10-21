@@ -245,3 +245,49 @@ func TestSavedChangesAreTheOwnersAloneThroughTheHub(t *testing.T) {
 	code, _ = g.do("POST", "/api/saved", cmtAsHubOwner, agentSave(strings.Repeat("b2", 10), "x"))
 	assert.Equal(t, http.StatusOK, code)
 }
+
+// #5802 (QA's #5796 scale probe): the list marks each bookmark gone or not reachable itself, so the client makes no request per bookmark: one lookup per board and one transcript
+// read per agent, however many bookmarks they hold.
+func TestSavedListMarksGoneAndNotReachableWithOneLookupPerSource(t *testing.T) {
+	g := newSavedRig(t)
+	ka, kb, kc := strings.Repeat("a1", 10), strings.Repeat("b2", 10), strings.Repeat("c3", 10)
+	var boardAsks []string
+	var agentAsks []string
+	g.h.SetSavedPresence(func(_ context.Context, project string, ids []int64) (map[int64]bool, error) {
+		boardAsks = append(boardAsks, fmt.Sprintf("%s:%d", project, len(ids)))
+		return map[int64]bool{1: true, 3: true}, nil // 2 was deleted
+	}, func(_ context.Context, session string, keys []string) (map[string]bool, bool) {
+		agentAsks = append(agentAsks, fmt.Sprintf("%s:%d", session, len(keys)))
+		if session == sessAway {
+			return nil, false
+		}
+		return map[string]bool{ka: true}, true // ka is in the transcript, kb is not
+	})
+	b1, b2, b3 := saveBoard(g, "teamA", "1"), saveBoard(g, "teamA", "2"), saveBoard(g, "teamA", "3")
+	a1, a2, a3 := saveAgent(g, sess1, ka), saveAgent(g, sess1, kb), saveAgent(g, sessAway, kc)
+	_ = []float64{b1, b3, a1}
+	code, out := g.do("GET", "/api/saved?limit=50", savedAsOperator, nil)
+	require.Equal(t, http.StatusOK, code, out)
+	reasons := map[float64]string{}
+	for _, it := range out["items"].([]any) {
+		m := it.(map[string]any)
+		r, present := m["reason"]
+		require.True(t, present, "reason is always there")
+		reasons[m["id"].(float64)] = r.(string)
+	}
+	assert.Equal(t, map[float64]string{b1: "", b2: "gone", b3: "", a1: "", a2: "gone", a3: "not_reachable"}, reasons)
+	assert.Equal(t, []string{"teamA:3"}, boardAsks, "one lookup for the board's three bookmarks")
+	assert.ElementsMatch(t, []string{sess1 + ":2", sessAway + ":1"}, agentAsks, "one transcript read per agent")
+	// the badge's count (limit=0) lists nothing and asks nothing
+	boardAsks, agentAsks = nil, nil
+	code, _ = g.do("GET", "/api/saved?limit=0", savedAsOperator, nil)
+	require.Equal(t, http.StatusOK, code)
+	assert.Empty(t, boardAsks)
+	assert.Empty(t, agentAsks)
+	// a source that fails marks nothing gone: an error is not "gone"
+	g.h.SetSavedPresence(func(context.Context, string, []int64) (map[int64]bool, error) { return nil, fmt.Errorf("busy") }, nil)
+	_, out = g.do("GET", "/api/saved?limit=50", savedAsOperator, nil)
+	for _, it := range out["items"].([]any) {
+		assert.Equal(t, "", it.(map[string]any)["reason"])
+	}
+}

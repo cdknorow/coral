@@ -206,6 +206,7 @@ function render() {
     const list = $('saved-list');
     const shown = items.filter(i => (tab === 'done') === !!i.done_at);
     syncBar(shown.length);
+    verify(shown); // before the items are drawn: their chips and actions read the marks
     list.replaceChildren(...down.map(noticeNode), ...shown.map(itemNode));
     if (!shown.length) {
         const li = document.createElement('li');
@@ -219,25 +220,24 @@ function render() {
         b.tabIndex = t === tab ? 0 : -1;
     }
     $('saved-panel').setAttribute('aria-labelledby', `saved-tab-${tab}`);
-    verify(shown);
 }
 
-// What each shown item points at, found out when the list opens: running, ended (opens in Chats) or gone. A few at a time; what is found replaces the chip.
-let verifyRun = 0;
-async function verify(shown) {
-    const run = ++verifyRun;
-    const todo = shown.filter(i => !checks.has(uid(i))).slice(0, 60);
-    let next = 0;
-    const worker = async () => {
-        while (next < todo.length) {
-            const it = todo[next++];
-            const found = await probe(it).catch(() => null);
-            if (run !== verifyRun || !found) continue;
-            checks.set(uid(it), found);
-            swap(it);
+// What each shown item points at, read from the list's own answer (#5802): the server marks a bookmark whose message is deleted or whose transcript is not on its computer, so the
+// tab asks nothing per item. Only a click (Open) asks the source, in probe().
+const GONE_WHY = {
+    board: 'This message was deleted from the board, or the board was.',
+    gone: 'The transcript no longer has this message, so there is nothing to jump to. The saved text above is all that is left.',
+    not_reachable: 'The transcript is gone (the agent was removed), so there is nothing to jump to. The saved text above is all that is left.',
+};
+function verify(shown) {
+    for (const it of shown) {
+        if (it.reason === 'gone' || it.reason === 'not_reachable') {
+            checks.set(uid(it), { state: 'gone', why: GONE_WHY[it.kind === 'board' ? 'board' : it.reason] });
+        } else if (it.kind !== 'board' && !liveAgent(it) && normServer(it.server) !== LOCAL_SERVER) {
+            // An ended agent's transcript is in the History of the server that had it, which this hub cannot browse for another server: the item is kept, not opened.
+            checks.set(uid(it), { state: 'noopen', why: `This agent has ended. Its history is on ${serverName(it.server)}, and Chats shows only this computer's, so the message cannot be opened from here. The saved text above is kept.` });
         }
-    };
-    await Promise.all([worker(), worker(), worker()]);
+    }
 }
 
 /** An item drawn again (its chip, its actions): the focus stays on the same button when it was inside, or moves to the item's first. */
