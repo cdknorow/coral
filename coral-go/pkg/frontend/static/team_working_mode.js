@@ -5,7 +5,7 @@ const { boardRenameControl } = await importOnce('./board_rename.js'); // lazy mo
 const { refusalOf, answeredLocally } = await importOnce('./owner_refusal.js');
 import { changedFields, rebaseChanges, NOTHING_TO_SAVE } from './settings_diff.js';
 
-const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };
+const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees', merge_queue: 'Merge queue' };
 
 function settingsFormSnapshot(form) {
     if (!form) return '';

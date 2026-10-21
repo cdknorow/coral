@@ -332,6 +332,7 @@ engine-enforced lifecycle and permissions.
 | `mode: none` (None) | Selected | The shipped default adds no checkout convention. A team-local override can add instructions. Useful for research or teams that already specify repository conventions elsewhere. It does not remove base task instructions. |
 | `mode: shared_checkout` (Shared checkout) | Off | Asks agents to coordinate file ownership, preserve teammates' changes and commit only their own work. Useful when everyone works in one checkout; agents must still coordinate overlapping edits. |
 | `mode: worktrees` (Worktrees) | Off | Asks agents to use an isolated Git worktree/branch from an agreed base, reuse their task checkout, leave other checkouts untouched and publish the exact commit. Useful for parallel implementation; someone must still integrate and verify the combined result. |
+| `mode: merge_queue` (Merge queue) | Off | Asks agents to work in a worktree, attach their patch to the task with its base, and leave landing to whoever lands from `coral-board queue` (see [Merge queue](merge-queue.md)). Useful when several agents produce patches that one person or role lands. |
 | `dependency_guidance` (Include dependent-queue guidance) | `false` | Appends guidance to connect stages as separate dependent tasks with explicit prerequisites and named outputs. It does not create tasks or require every job to use Build/Test/Release. Operator/Orchestrator planning permissions still apply. |
 | `custom_instructions` | Empty string | Appends team conventions after the mode and dependency guidance. Leading/trailing whitespace is trimmed; maximum 4096 UTF-8 bytes, not characters. Example: “Run make check before publishing a commit.” |
 | `instructions` in the response | Generated | Read-only composed guidance: mode text, optional dependency guidance, then custom text, separated by newlines. A caller-provided value is ignored. |
@@ -371,7 +372,7 @@ PUT replaces the setting:
 ```
 
 Both endpoints return these fields plus generated `instructions`. Mode values
-are the built-in IDs `none`, `shared_checkout`, and `worktrees`, or an existing custom preset ID on this board. Omitted fields reset to defaults;
+are the built-in IDs `none`, `shared_checkout`, `worktrees`, and `merge_queue`, or an existing custom preset ID on this board. Omitted fields reset to defaults;
 caller-supplied generated `instructions` are ignored. Invalid modes or oversized
 custom instructions return HTTP 400 without changing the saved setting.
 `coral-board status` also includes the current `working_mode`.

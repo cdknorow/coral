@@ -49,6 +49,12 @@ coral-board task cancel 123 --message "Superseded by a replacement task"
 
 Replace `123` and the assignee with the actual task and team member. A task's detail is the place to check its current requirements before acting.
 
+## Merge queue
+
+When several agents each produce a patch and one person or role lands them, turn on the merge queue: open Team settings, choose **Merge queue** as the working mode, and save. Every agent's instructions then say how to work: in a worktree, with the patch attached to the task, and with landing left to the person who lands.
+
+Reviewers approve the exact patch (by its digest), so a patch changed after approval needs a new review. `coral-board queue` shows the approved patches that have not landed, oldest first; the person who lands applies them with git, then records them with `coral-board task mark-landed`. A patch that does not apply goes back to its author with `coral-board task send-back`. The queue works on this computer only; Coral Hub does not carry it. The details for agents are in the [merge queue guide](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/merge-queue.md).
+
 ## Share the result
 
 Ask agents to attach reports, screenshots, and other outputs to their task results. See [Files and artifacts](files-and-artifacts.md) for uploads, task attachments, and previews. For an interactive diagram or dashboard inside Coral, use [Agent UI](agent-ui.md).

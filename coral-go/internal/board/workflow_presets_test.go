@@ -41,8 +41,8 @@ func TestWorkflowPresetPersistenceAndSnapshots(t *testing.T) {
 	require.NoError(t, err)
 	presets, err := s.ListWorkflowPresets(ctx, "team")
 	require.NoError(t, err)
-	require.Len(t, presets, 4)
-	require.Equal(t, "Renamed", presets[3].Name)
+	require.Len(t, presets, 5)
+	require.Equal(t, "Renamed", presets[4].Name)
 	next, err := s.CreateTask(ctx, "team", "Next", "", "medium", "lead")
 	require.NoError(t, err)
 	next, err = s.ClaimTask(ctx, "team", "newdev", next.ID)
@@ -51,7 +51,7 @@ func TestWorkflowPresetPersistenceAndSnapshots(t *testing.T) {
 	require.NotContains(t, next.Workflow.Instructions, "Review changes carefully.")
 	other, err := s.ListWorkflowPresets(ctx, "other-team")
 	require.NoError(t, err)
-	require.Len(t, other, 3)
+	require.Len(t, other, 4)
 	_, err = s.SetWorkingMode(ctx, "other-team", WorkingMode{Mode: "review"})
 	require.Error(t, err)
 }
@@ -99,9 +99,9 @@ func TestWorkflowPresetResetAndCompatibility(t *testing.T) {
 	require.Error(t, err)
 	presets, err := s.ListWorkflowPresets(ctx, "team")
 	require.NoError(t, err)
-	require.Len(t, presets, 4)
-	require.Equal(t, "Keep me", presets[3].Instructions)
-	for _, id := range []string{"none", "shared_checkout", "worktrees"} {
+	require.Len(t, presets, 5)
+	require.Equal(t, "Keep me", presets[4].Instructions)
+	for _, id := range []string{"none", "shared_checkout", "worktrees", "merge_queue"} {
 		_, err = s.SetWorkingMode(ctx, "team", WorkingMode{Mode: id})
 		require.NoError(t, err)
 	}
@@ -164,7 +164,7 @@ func TestWorkflowPresetBoardDeletion(t *testing.T) {
 	require.NoError(t, s.DeleteProject(ctx, "remove"))
 	presets, err := s.ListWorkflowPresets(ctx, "remove")
 	require.NoError(t, err)
-	require.Len(t, presets, 3)
+	require.Len(t, presets, 4)
 	mode, err := s.GetWorkingMode(ctx, "remove")
 	require.NoError(t, err)
 	require.Equal(t, "none", mode.Mode)
