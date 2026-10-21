@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/agent"
 )
 
 func privacyGetJSON(t *testing.T, url string) map[string]any {
@@ -104,4 +105,20 @@ func TestRemoteAccessStatus_ReportsTLS(t *testing.T) {
 	s = privacyGetJSON(t, server.URL+"/api/system/privacy")
 	assert.Equal(t, true, s["remote_access_tls"])
 	assert.Equal(t, "https", privacyGetJSON(t, net.URL+"/api/system/network-info")["scheme"])
+}
+
+// H5: the privacy status says who besides the system and administrators can change the agent tools
+// folder, so Settings can warn about a portable Coral in the user's profile; an empty list, and no
+// warning, for an install only an administrator can change.
+func TestPrivacyStatusReportsWhoCanChangeTheToolsFolder(t *testing.T) {
+	server, _ := setupSystemTestServer(t)
+	t.Cleanup(func() { agent.SetToolsFolderWriters("", nil) })
+	agent.SetToolsFolderWriters(`C:\Users\me\Coral Portable`, []string{"this user (the folder's owner)", "this user"})
+	tools := privacyGetJSON(t, server.URL+"/api/system/privacy")["tools_folder"].(map[string]any)
+	assert.Equal(t, `C:\Users\me\Coral Portable`, tools["path"])
+	assert.Equal(t, []any{"this user (the folder's owner)", "this user"}, tools["writable_by"])
+
+	agent.SetToolsFolderWriters(`C:\Program Files\Coral`, nil)
+	tools = privacyGetJSON(t, server.URL+"/api/system/privacy")["tools_folder"].(map[string]any)
+	assert.Equal(t, []any{}, tools["writable_by"], "an empty list, never null")
 }

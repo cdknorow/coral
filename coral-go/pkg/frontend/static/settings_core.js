@@ -49,6 +49,23 @@ export function renderRemoteAccessStatus(status, loadError = false) {
 // visible note says when the log is on (it records typed text, which may include
 // secrets). CORAL_DEBUG_INPUT / --debug-input force it on; the toggle can't
 // turn that off, so it is shown checked and disabled.
+// The agent tools folder (H5): shown only when an account other than the system and administrators
+// can change it (a portable Coral in the user's profile), since every agent runs the hooks in it.
+export function renderToolsFolderStatus(status) {
+    const row = document.getElementById('settings-tools-folder-row');
+    const el = document.getElementById('settings-tools-folder-status');
+    if (!row || !el) return;
+    const tools = status?.tools_folder || {};
+    const who = Array.isArray(tools.writable_by) ? tools.writable_by : [];
+    if (!tools.path || who.length === 0) {
+        row.hidden = true;
+        el.textContent = '';
+        return;
+    }
+    el.textContent = `${tools.path} can be changed by ${who.join(', ')}, not only by an administrator: a program running as that account could replace the hooks every agent runs. Install Coral with the installer (Program Files) to keep them where only an administrator can change them.`;
+    row.hidden = false;
+}
+
 export function renderDebugInputLogStatus(status) {
     const box = document.getElementById('settings-debug-input-log');
     const el = document.getElementById('settings-debug-input-log-status');
@@ -163,6 +180,7 @@ export async function loadSettings() {
             if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, false);
             renderRemoteAccessStatus(state.privacyStatus);
             renderDebugInputLogStatus(state.privacyStatus);
+            renderToolsFolderStatus(state.privacyStatus);
         } catch (error) {
             state.privacyStatus = null;
             const remote = document.getElementById('settings-remote-access-enabled');
