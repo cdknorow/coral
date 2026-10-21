@@ -75,6 +75,10 @@ func (s *Store) ensureBoardsSchema(ctx context.Context) error {
 // boardIDShape is the shape of a generated board id.
 var boardIDShape = regexp.MustCompile(`^b-[a-z2-7]{10}$`)
 
+// IsGeneratedBoardID reports whether id has the shape of an id Coral generated ("b-" and ten base32 characters): the only boards Coral Hub can link. A board made before ids is keyed by its
+// NAME, which is not one (#5572).
+func IsGeneratedBoardID(id string) bool { return boardIDShape.MatchString(id) }
+
 // LabelProblem is NewNameProblem for a board's label (a new board's name, or a rename),
 // plus: a label may not look like a generated id (QA's #3536 review), so a label can never
 // pass for a new-style id. A label equal to a legacy board's name is allowed: it is just a

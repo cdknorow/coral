@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -222,7 +223,7 @@ func (h *BoardHandler) prepareRelayAttachments(w http.ResponseWriter, r *http.Re
 		return nil, false
 	}
 	if !settings.CrossTeamArtifacts {
-		relayError(w, http.StatusForbidden, "artifacts_off", fmt.Sprintf("sending files is off on board %q; the Operator can turn on cross_team_artifacts in Team settings on this computer", project), 0)
+		relayError(w, http.StatusForbidden, "artifacts_off", textFilesOff([]string{strconv.Quote(project)}), 0)
 		return nil, false
 	}
 	if h.relayArtifactSender() == nil {
@@ -261,7 +262,7 @@ func (h *BoardHandler) sendRelayAttachments(w http.ResponseWriter, ctx context.C
 		// The switch is read again before each file: the Operator may turn it off while earlier files
 		// are on their way, and the files already held in memory must not follow (#4440).
 		if on, err := h.bs.GetBoardSettings(ctx, fromBoard); err != nil || !on.CrossTeamArtifacts {
-			relayError(w, http.StatusForbidden, "artifacts_off", fmt.Sprintf("sending files was turned off on board %q while the files were being sent; %s was not sent and the message was not sent", fromBoard, which), 0)
+			relayError(w, http.StatusForbidden, "artifacts_off", textFilesTurnedOffMidSend(strconv.Quote(fromBoard), which), 0)
 			return false, false
 		}
 		ownID, _ := h.senderIDOf(ctx, fromBoard)
@@ -274,7 +275,7 @@ func (h *BoardHandler) sendRelayAttachments(w http.ResponseWriter, ctx context.C
 		if err != nil {
 			switch {
 			case errors.Is(err, cloud.ErrNotLinked):
-				relayError(w, http.StatusServiceUnavailable, "not_linked", "this Coral isn't connected to Coral Hub", 0)
+				relayError(w, http.StatusServiceUnavailable, "not_linked", textNotLinked, 0)
 				return false, true
 			case errors.Is(err, tunnel.ErrRelayArtifactUnsupported):
 				relayError(w, http.StatusNotImplemented, "relay_unsupported", "Coral Hub doesn't relay files for this server (its file relay is switched off, or the hub is too old); the message was not sent", 0)

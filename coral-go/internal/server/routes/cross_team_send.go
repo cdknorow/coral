@@ -104,7 +104,7 @@ func (h *BoardHandler) relaySenderRole(w http.ResponseWriter, r *http.Request, p
 		return "", false
 	}
 	if !settings.CrossTeamMessaging {
-		relayError(w, http.StatusForbidden, "cross_team_disabled", fmt.Sprintf("cross-team messaging is disabled on board %q; the Operator can enable it in Team settings", project), 0)
+		relayError(w, http.StatusForbidden, "cross_team_disabled", textCrossTeamOff([]string{strconv.Quote(project)}), 0)
 		return "", false
 	}
 	return role, true
@@ -136,11 +136,11 @@ func (h *BoardHandler) relaySenderIdentity(w http.ResponseWriter, r *http.Reques
 func relayUnavailable(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, cloud.ErrNotLinked):
-		relayError(w, http.StatusServiceUnavailable, "not_linked", "this Coral isn't connected to Coral Hub", 0)
+		relayError(w, http.StatusServiceUnavailable, "not_linked", textNotLinked, 0)
 	case errors.Is(err, tunnel.ErrRelayUnsupported):
-		relayError(w, http.StatusNotImplemented, "relay_unsupported", "Coral Hub doesn't relay messages (its relay is switched off, or the hub is too old)", 0)
+		relayError(w, http.StatusNotImplemented, "relay_unsupported", textRelayUnsupported, 0)
 	default:
-		relayError(w, http.StatusBadGateway, "hub_unreachable", "couldn't reach Coral Hub; retry with the same message_id", 0)
+		relayError(w, http.StatusBadGateway, "hub_unreachable", textHubUnreachable, 0)
 	}
 }
 
@@ -356,7 +356,7 @@ func (h *BoardHandler) sendRelay(w http.ResponseWriter, ctx context.Context, rel
 		if status < 400 || status > 599 {
 			status = http.StatusBadGateway
 		}
-		relayError(w, status, code, "Coral Hub refused the message; retry with the same message_id if it is temporary", resp.RetryAfter)
+		relayError(w, status, code, textForHubRefusal(code, b.ToAddress), resp.RetryAfter)
 		return hubAnswer{}, false
 	}
 	return ans, true

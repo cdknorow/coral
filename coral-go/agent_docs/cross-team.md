@@ -105,6 +105,10 @@ It decides by the file's **content**, never its name or declared type. It accept
 - **Provenance is the sender's claim.** The sending Coral is named by Coral Hub (the account owner linked it); the board name is stated by the sending machine and Coral Hub cannot verify it.
 - **Deleting stays local.** Only the Operator deletes an artifact, on that computer. A sender deleting theirs does not delete the receiver's copy.
 
+### What a sender on another Coral is told (#5572)
+
+At the receiving Coral every refusal of a relayed message (no such team, its switch off, the sending Coral not accepted, no Orchestrator to tell, the sender not on the list) is the same answer: HTTP 404 `not_found`, `no such team`, the same bytes and headers, from the same reads in the same order. A refused send costs the sender's rate token before anything about the team is looked up, so a 429 never tells an existing team from a missing one. The sending person's command line explains `not_found` without saying which cause it was: "<address> was not found: there is no such team, or it is not linked to your team, or it is not taking messages. Check Team links in Coral Hub, and on the receiving team Team settings > Messaging." A reason Coral Hub passes (`target_refused:<reason>`) is not passed on. The precise reason is for the owner of the receiving team, on this computer: the status line of the Messaging tab (`GET /api/board/{project}/cross-team-state`: `status {state, text}` with state `ready`, `off`, `waiting`, `stale` or `old`, `links`, and `linkable`, false for a team made before Coral Hub links existed).
+
 ## Errors
 
 | Error | Meaning |
@@ -113,11 +117,11 @@ It decides by the file's **content**, never its name or declared type. It accept
 | 400 `content must be at most 8000 bytes` | Message too long |
 | 403 `only an active Orchestrator ... or the Operator` | You are not your board's Orchestrator |
 | 403 `session_name does not match` | `send` was not run from the Orchestrator's own session |
-| 403 `cross-team messaging is disabled on board "X"` | The Operator has not enabled it on that board |
+| 403 `Cross-team messaging is off on "X". Turn it on in Team settings > Messaging.` | The Operator has not turned it on for that board (the same words in the API, the command line and the dashboard) |
 | 404 | The target board does not exist (check the name), the `--to` is not an Orchestrator there, or your board is unknown |
 | 409 | The target board has no active Orchestrator |
 | 429 `retry in Ns` | Rate limit: a burst of 3, then 10 per minute, per sender and target board |
-| 403 `artifacts_off` | `--attach` with cross_team_artifacts off on the named board(s) |
+| 403 `artifacts_off` | `--attach` while "Share files with other teams" is off on the named board(s): "Sharing files with other teams is off on "X". Turn on Share files with other teams in Team settings > Messaging." |
 | 400 `not_yours` | The attached file is not one an agent of your team uploaded (or doesn't exist) |
 | 400 `attach_too_many` / `bad_attach` | More than 4 attachments, or a link that is not `coral://artifacts/<hex>` |
 | 413 `attach_too_large` / `attach_total_too_large` | Over 8 MiB for one file, or 16 MiB for the send |

@@ -103,10 +103,11 @@ func TestCrossTeamMessageRules(t *testing.T) {
 	code, out := e.send("alpha", "Orchestrator", "", "hi")
 	require.Equal(t, http.StatusForbidden, code)
 	require.Contains(t, out["error"], `"alpha" and "beta"`)
+	require.Contains(t, out["error"], "Turn it on in Team settings > Messaging.")
 	e.enable("alpha", true)
 	code, out = e.send("alpha", "Orchestrator", "", "hi")
 	require.Equal(t, http.StatusForbidden, code)
-	require.Contains(t, out["error"], `board "beta"`)
+	require.Contains(t, out["error"], `Cross-team messaging is off on "beta".`)
 	require.NotContains(t, out["error"], `"alpha"`)
 	e.enable("beta", true)
 
