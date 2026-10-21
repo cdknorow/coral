@@ -32,7 +32,11 @@ type TaskArtifact struct {
 	Branch       string `json:"branch,omitempty"`
 	Remote       string `json:"remote,omitempty"`
 	Landed       bool   `json:"landed,omitempty"`
-	ExitCode     *int   `json:"exit_code,omitempty"`
+	// Seq and AttachedBy are the server's (#5689): the order rows were recorded in on a task, and who recorded each. A value a
+	// client sends is replaced (stampArtifacts), so a patch row's author cannot be forged.
+	Seq        int    `json:"seq,omitempty"`
+	AttachedBy string `json:"attached_by,omitempty"`
+	ExitCode   *int   `json:"exit_code,omitempty"`
 	// Provenance is how Coral checked a managed link (coral://artifacts/<id>) when the result was
 	// recorded (#4379): "uploaded", "person", "unverified", or "" (legacy rows, other entries). Set
 	// by the server only; a value the client sends is cleared.

@@ -63,6 +63,7 @@ func (s *Store) SubmitCompletionReviewAtRevisionAndCandidate(ctx context.Context
 	if _, err := validateTaskArtifacts(artifacts); err != nil {
 		return nil, err
 	}
+	clearStamps(artifacts) // the server's fields: only attach sets them (#5689)
 	reviewerErr := s.RequireTaskReviewer(ctx, project, actor)
 	// Run twice: before the gates (read transaction, closed before slow
 	// registered checks run) and inside the write transaction. See
