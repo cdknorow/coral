@@ -51,8 +51,8 @@ def matches(paths, files):
 
 
 class Gate:
-    def __init__(self, cfg, get, files, sha, now=time.monotonic, sleep=time.sleep):
-        self.cfg, self.get, self.files, self.sha, self.now, self.sleep = cfg, get, files, sha, now, sleep
+    def __init__(self, cfg, get, files, sha, now=time.monotonic, sleep=time.sleep, repo=None):
+        self.cfg, self.get, self.files, self.sha, self.now, self.sleep, self.repo = cfg, get, files, sha, now, sleep, repo
 
     def required(self):
         names = list(self.cfg["always"])
@@ -72,9 +72,20 @@ class Gate:
                 break
             page += 1
         prefix, events = self.cfg["branch_prefix"], set(self.cfg["events"])
+        always, files = set(self.cfg["always"]), self.cfg["workflow_files"]
+        always_events = set(self.cfg.get("always_events", events))
         best = {}
         for r in runs:
             if r.get("head_sha") != self.sha or r.get("event") not in events:
+                continue
+            # A run counts only if it is THIS repository's own run of THE workflow file (#5534 review): a fork's pull request can run a workflow of the same display name that always
+            # succeeds (its run is listed under this repository with the same head commit), and any file can declare "name: go-tests".
+            if self.repo is not None and str((r.get("head_repository") or {}).get("full_name", "")).lower() != self.repo.lower():
+                continue
+            if str(r.get("path", "")).split("@")[0] != files.get(r.get("name")):
+                continue
+            # The heavy gates are proved by a push to a ci/ branch or a dispatch, never by a pull request's own run (whose workflow file is the pull request's).
+            if r.get("name") in always and r.get("event") not in always_events:
                 continue
             if r.get("event") == "push" and not str(r.get("head_branch", "")).startswith(prefix):
                 continue  # a push to main or to a branch an agent chose is not the ci/ gate
@@ -128,7 +139,7 @@ class Gate:
 
 def load_config(path):
     cfg = json.load(open(path))
-    for k, t in (("branch_prefix", str), ("always", list), ("events", list), ("appear_within_minutes", int), ("timeout_minutes", int), ("poll_seconds", int)):
+    for k, t in (("branch_prefix", str), ("always", list), ("events", list), ("always_events", list), ("workflow_files", dict), ("appear_within_minutes", int), ("timeout_minutes", int), ("poll_seconds", int)):
         if not isinstance(cfg.get(k), t):
             raise ValueError(f"gate.json: {k} must be a {t.__name__}")
     if not cfg["always"] or not all(isinstance(x, str) and x for x in cfg["always"]):
@@ -136,6 +147,9 @@ def load_config(path):
     for w in cfg.get("when", []):
         if not (isinstance(w.get("workflow"), str) and isinstance(w.get("paths"), list) and w["paths"]):
             raise ValueError("gate.json: every when entry needs a workflow and paths")
+    for n in list(cfg["always"]) + [w.get("workflow") for w in cfg.get("when", [])]:
+        if not isinstance(cfg["workflow_files"].get(n), str) or not cfg["workflow_files"][n].startswith(".github/workflows/"):
+            raise ValueError(f"gate.json: workflow_files must give the .github/workflows file of {n}")
     if cfg["poll_seconds"] < 5 or cfg["timeout_minutes"] < 1 or cfg["appear_within_minutes"] < 1:
         raise ValueError("gate.json: poll, timeout and appear limits are too small")
     return cfg
@@ -175,7 +189,7 @@ def main(argv):
         print(f"gate_check: {e}", file=sys.stderr)
         return 2
     get = github_get(argv[1])
-    return Gate(cfg, get, pr_files(get, argv[2]), argv[3]).run()
+    return Gate(cfg, get, pr_files(get, argv[2]), argv[3], repo=argv[1]).run()
 
 
 if __name__ == "__main__":

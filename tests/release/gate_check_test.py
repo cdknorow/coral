@@ -11,12 +11,15 @@ SHA = "a" * 40
 CFG = {
     "branch_prefix": "ci/", "always": ["go-tests", "go-race", "cdp-gate"],
     "when": [{"workflow": "gofmt", "paths": ["coral-go/**.go", ".github/workflows/**"]}, {"workflow": "windows-tests", "paths": ["coral-go/**", "tests/windows/**"]}],
-    "events": ["push", "pull_request", "workflow_dispatch"], "appear_within_minutes": 10, "timeout_minutes": 60, "poll_seconds": 30,
+    "events": ["push", "pull_request", "workflow_dispatch"], "always_events": ["push", "workflow_dispatch"], "appear_within_minutes": 10, "timeout_minutes": 60, "poll_seconds": 30,
+    "workflow_files": {n: f".github/workflows/{n}.yml" for n in ("go-tests", "go-race", "cdp-gate", "gofmt", "windows-tests")},
 }
+REPO = "subgentic/coral"
 
 
-def run(name, status="completed", conclusion="success", event="push", branch="ci/pr-1", sha=SHA, created="2026-10-21T01:00:00Z", rid=1, attempt=1):
-    return {"id": rid, "name": name, "status": status, "conclusion": conclusion, "event": event, "head_branch": branch, "head_sha": sha, "created_at": created, "run_attempt": attempt}
+def run(name, status="completed", conclusion="success", event="push", branch="ci/pr-1", sha=SHA, created="2026-10-21T01:00:00Z", rid=1, attempt=1, repo=None, path=None):
+    return {"id": rid, "name": name, "status": status, "conclusion": conclusion, "event": event, "head_branch": branch, "head_sha": sha, "created_at": created, "run_attempt": attempt,
+            "head_repository": {"full_name": repo or REPO}, "path": path or f".github/workflows/{name}.yml@refs/heads/{branch}"}
 
 
 class Clock:
@@ -39,7 +42,7 @@ def gate(runs_by_poll, files, cfg=CFG):
         i = min(len(calls), len(runs_by_poll) - 1)
         calls.append(i)
         return {"workflow_runs": runs_by_poll[i] if "page=1" in path else []}
-    code = g.Gate(cfg, get, files, SHA, clock.now, clock.sleep).run(lines.append)
+    code = g.Gate(cfg, get, files, SHA, clock.now, clock.sleep, repo=REPO).run(lines.append)
     return code, lines, len(calls)
 
 
@@ -150,6 +153,44 @@ class GateTests(unittest.TestCase):
         self.assertEqual(g.main(["gate_check.py", "not a repo", "1", SHA]), 2)
         self.assertEqual(g.main(["gate_check.py", "o/r", "x", SHA]), 2)
         self.assertEqual(g.main(["gate_check.py", "o/r", "1", "abc"]), 2)
+
+
+
+class ForgedRunTests(unittest.TestCase):
+    """#5534 (Security): a run only counts if it is this repository's own run of the workflow file the config names, and the heavy gates only by a push or a dispatch."""
+
+    def test_a_fork_run_with_the_same_name_does_not_count(self):
+        forged = [run("go-tests", repo="evil/coral", rid=1), run("go-race", rid=2), run("cdp-gate", rid=3)]
+        code, lines, _ = gate([forged], ["README.md"])
+        self.assertEqual(code, 1, lines)
+        self.assertTrue(any("no run for go-tests" in l for l in lines), lines)
+
+    def test_another_workflow_file_with_the_same_name_does_not_count(self):
+        forged = [run("go-tests", path=".github/workflows/fake.yml@refs/heads/ci/pr-1", rid=1), run("go-race", rid=2), run("cdp-gate", rid=3)]
+        code, lines, _ = gate([forged], ["README.md"])
+        self.assertEqual(code, 1, lines)
+
+    def test_the_heavy_gates_are_not_proved_by_the_pull_requests_own_run(self):
+        own = [run("go-tests", event="pull_request", branch="feature", rid=1), run("go-race", rid=2), run("cdp-gate", rid=3)]
+        code, lines, _ = gate([own], ["README.md"])
+        self.assertEqual(code, 1, lines)
+
+    def test_a_dispatch_still_counts(self):
+        d = [run("go-tests", event="workflow_dispatch", branch="ci/pr-1", rid=1), run("go-race", rid=2), run("cdp-gate", rid=3)]
+        self.assertEqual(gate([d], ["README.md"])[0], 0)
+
+    def test_a_when_workflow_may_be_proved_by_the_pull_requests_own_run(self):
+        runs = GREEN + [run("gofmt", event="pull_request", branch="feature", rid=4), run("windows-tests", event="pull_request", branch="feature", rid=5)]
+        self.assertEqual(gate([runs], ["coral-go/x.go"])[0], 0)
+
+    def test_the_config_must_name_every_workflows_file(self):
+        bad = dict(CFG, workflow_files={"go-tests": ".github/workflows/go-tests.yml"})
+        import json, tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(bad, f)
+        with self.assertRaises(ValueError):
+            g.load_config(f.name)
+        os.unlink(f.name)
 
 
 if __name__ == "__main__":
