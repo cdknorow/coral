@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 
@@ -42,7 +43,7 @@ func commandInvocation(command string) (invocation string, cleanup func(), err e
 			}
 			return "", func() {}, fmt.Errorf("create command handoff: %w", err)
 		}
-		content, invocation := psHandoff(path, command)
+		content, invocation := psHandoff(handoffShell(), path, command)
 		if _, err := file.WriteString(content); err != nil {
 			file.Close()
 			os.Remove(path)
@@ -54,4 +55,20 @@ func commandInvocation(command string) (invocation string, cleanup func(), err e
 		}
 		return invocation, func() { _ = os.Remove(path) }, nil
 	}
+}
+
+// handoffShell is the PowerShell that runs the handoff script: the one the agent's terminal runs (CORAL_SHELL, else
+// pwsh.exe, else powershell.exe), as a full path, so the name is not looked up again where the line is typed.
+func handoffShell() string {
+	sh, err := defaultShell()
+	if err != nil || len(sh) == 0 {
+		return "powershell.exe"
+	}
+	if filepath.IsAbs(sh[0]) {
+		return sh[0]
+	}
+	if p, err := exec.LookPath(sh[0]); err == nil {
+		return p
+	}
+	return sh[0]
 }

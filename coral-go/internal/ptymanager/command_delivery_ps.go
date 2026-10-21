@@ -17,7 +17,11 @@ func psLiteral(s string) string {
 const utf8BOM = "\ufeff"
 
 // psHandoff is the Windows command handoff for a script at path: the script's text (it removes
-// itself, then runs command) and the short line that runs it.
-func psHandoff(path, command string) (script, invocation string) {
-	return utf8BOM + "Remove-Item -Force -LiteralPath " + psLiteral(path) + "\n" + command + "\n", "& " + psLiteral(path)
+// itself, then runs command) and the short line that runs it. The line starts a child PowerShell (shell, a full
+// path) with -ExecutionPolicy Bypass for that one process: a stock Windows client's policy is Restricted, which
+// refuses every script, and the script (this user's and SYSTEM's only, removing itself) is all the child runs.
+// The agent's interactive terminal keeps the machine's policy (#25 G3A, Security's review).
+func psHandoff(shell, path, command string) (script, invocation string) {
+	return utf8BOM + "Remove-Item -Force -LiteralPath " + psLiteral(path) + "\n" + command + "\n",
+		"& " + psLiteral(shell) + " -NoProfile -ExecutionPolicy Bypass -File " + psLiteral(path)
 }
