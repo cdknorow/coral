@@ -1,5 +1,25 @@
 # Release Notes
 
+## v1.4.147 — Team settings uses the room, and cross-team links arrive
+
+### Features
+
+- **"Who can read this" in the dashboard:** the artifact viewer and the details of an Artifacts row show, for the owner of this computer (and the computer's owner through Coral Hub), which owners hold the artifact, their teams, the teams linked through Coral Hub, and the plain note that this is a Coral control, not an operating-system boundary. Anyone else is refused and nothing is drawn. Every word from the server is shown as text.
+- **Cross-team link table:** Coral receives Coral Hub's full snapshot of cross-team links over its own tunnel, ages it by this computer's clock and shows it to the owner. Nothing is admitted by it yet: it changes who can message or send files to whom in no way. This needs Coral Hub's matching update.
+
+### Changes
+
+- **Team settings uses the room and one scroll:** the side panel is `clamp(420px, 30vw, 640px)` wide until you drag it (a saved width is kept); on Workflow the team working mode comes first and the preset editor is behind an **Edit presets** disclosure; Prompt inspection is one read-only page with a select for the role, the effective texts shown and the defaults and Override folded, and Copy takes the texts of the role shown. On a phone the Save footer is one row ("Save preset instructions separately.") and the form no longer scrolls sideways.
+- **Messaging and Network and Hub:** the Save hint no longer contradicts the Coral Hub line, each switch is described by what is said about it, and the Network and Hub switch rows are laid out like every other row.
+- **Agent Team and Health check:** the team name is above the sections of the Agent Team dialog; the four template actions are one **More template options** disclosure; the Health check tab shows the check itself and keeps Reviews and the automatic rules in one closed disclosure; Customize tabs has its own icon; Team view cards no longer repeat their name; the template disclosure buttons meet 4.5:1 contrast on the light panel.
+- **The Coral Hub sign-in and enroll pages:** buttons and inputs are 44 px high on every pointer.
+
+### Internal
+
+- One route table now says which routes are the owner's, read by the connector and by the server; there is no change in behaviour.
+- A test refuses literal invisible characters in committed source (the existing ones are now written as escapes), and a census drives the real connector into the real router for every artifact and cross-team route.
+- Tests that waited on the order of two background notices, on a freed limiter slot, and on the print-mode record no longer fail on a loaded machine.
+
 ## v1.4.146 — Artifacts have owners, and the owner of Coral Hub can switch cross-team messaging
 
 ### Features
