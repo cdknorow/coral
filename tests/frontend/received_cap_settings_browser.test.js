@@ -40,9 +40,9 @@ const GIB = 1024 ** 3;
         console.log('1. The row: the total, the limit, a labelled field');
         await ev(`window.showSettingsModal('cleanup'); true`);
         await waitFor(`/Received: /.test((document.getElementById('settings-received-size') || {}).textContent || '')`, 'the received line', 8000);
-        const row = await ev(`(() => { const i = document.getElementById('settings-received-max'); const d = document.getElementById(i.getAttribute('aria-describedby')); const l = document.querySelector('label[for=settings-received-max]');
+        const row = await ev(`(() => { const i = document.getElementById('settings-received-max'); const d = document.getElementById(i.getAttribute('aria-describedby').split(' ')[0]); const l = document.querySelector('label[for=settings-received-max]');
             return { value: i.value, loaded: i.dataset.loaded, text: d.textContent, label: l && l.textContent.trim(), type: i.type, min: i.min }; })()`);
-        assert.equal(row.value, '2'); assert.equal(row.loaded, '1'); assert.equal(row.label, 'Received files limit (GiB)'); assert.equal(row.type, 'number'); assert.equal(row.min, '0');
+        assert.equal(row.value, '2'); assert.equal(row.loaded, '1'); assert.equal(row.label, 'Received files limit'); assert.equal(row.type, 'number'); assert.equal(row.min, '0');
         assert.match(row.text, /^Received: 1\.7 GiB in 3 files \(limit 2\.0 GiB, 85% full\)\. Delete received files in Team Artifacts to make room, or raise the limit\.$/, 'from 80% on: how full, and what to do');
         assert.equal(await ev(`document.getElementById('settings-received-size').dataset.state || ''`), '', 'the warning colour is for the limit itself');
         await showRow(); await sleep(300); // sleep-ok: the scroll settles
@@ -124,7 +124,7 @@ const GIB = 1024 ** 3;
         const un = await ev(`(() => { const b = document.getElementById('settings-received-unlisted-delete'); const region = document.getElementById('settings-received-size');
             return { text: region.textContent, role: region.getAttribute('role'), described: document.getElementById('settings-received-max').getAttribute('aria-describedby'), button: b.textContent, disabled: b.disabled, buttonInRegion: region.contains(b) }; })()`);
         assert.match(un.text, /Not listed on any board: 3 files, 3 MiB\. Another Coral sent them but the message that names them never came\. They count toward the limit\.$/);
-        assert.equal(un.role, 'status'); assert.equal(un.described, 'settings-received-size', 'one status region, described by the field'); assert.equal(un.buttonInRegion, false, 'the button is outside the announced text');
+        assert.equal(un.role, 'status'); assert.equal(un.described, 'settings-received-size settings-received-max-unit', 'one status region, described by the field (then its unit, GiB)'); assert.equal(un.buttonInRegion, false, 'the button is outside the announced text');
         assert.equal(un.button, 'Delete 3 unlisted files (3 MiB)', 'it names what it deletes'); assert.equal(un.disabled, false);
         await waitFor(`/Received: /.test(document.getElementById('settings-received-size').textContent) && document.getElementById('settings-received-max').dataset.loaded === '1'`, 'the dialog to finish loading', 8000);
         await sleep(400); // sleep-ok: the rest of the dialog finishes laying out

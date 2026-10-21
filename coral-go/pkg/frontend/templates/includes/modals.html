@@ -716,37 +716,6 @@
                 </dd>
                 </div>
                 <div class="settings-row settings-row-wide">
-                <dt>CLI paths</dt>
-                <dd class="settings-cli-paths">
-                    <details class="settings-cli-details"><summary>Set the paths to the agent CLIs</summary>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Claude</span>
-                        <input type="text" id="settings-cli-path-claude" class="settings-input settings-mono-input" placeholder="claude">
-                        <span id="cli-result-claude" class="cli-verify-result"></span>
-                    </label>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Codex</span>
-                        <input type="text" id="settings-cli-path-codex" class="settings-input settings-mono-input" placeholder="codex">
-                        <span id="cli-result-codex" class="cli-verify-result"></span>
-                    </label>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Antigravity</span>
-                        <input type="text" id="settings-cli-path-agy" class="settings-input settings-mono-input" placeholder="agy">
-                        <span id="cli-result-agy" class="cli-verify-result"></span>
-                    </label>
-                    <label class="settings-cli-row">
-                        <span class="settings-cli-label">Pi</span>
-                        <input type="text" id="settings-cli-path-pi" class="settings-input settings-mono-input" placeholder="pi">
-                        <span id="cli-result-pi" class="cli-verify-result"></span>
-                    </label>
-                    <div class="settings-cli-actions">
-                        <button class="btn btn-small" data-on-click="m-verify-all-c-l-is" id="verify-all-btn">Verify All</button>
-                    </div>
-                    <span class="settings-hint">Full path to agent CLI binary. Leave empty to use default from PATH.</span>
-                    </details>
-                </dd>
-                </div>
-                <div class="settings-row settings-row-wide">
                 <dt>Default thinking</dt>
                 <dd class="settings-cli-paths">
                     <label class="settings-cli-row">
@@ -838,7 +807,38 @@
                     <label class="check-hit"><input type="checkbox" id="settings-board-health-monitor"></label>
                 </dd>
                 </div>
-                        </dl>
+                        
+                <div class="settings-row settings-row-wide">
+                <dt>CLI paths</dt>
+                <dd class="settings-cli-paths">
+                    <details class="settings-cli-details"><summary>Set the paths to the agent CLIs</summary>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Claude</span>
+                        <input type="text" id="settings-cli-path-claude" class="settings-input settings-mono-input" placeholder="claude">
+                        <span id="cli-result-claude" class="cli-verify-result"></span>
+                    </label>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Codex</span>
+                        <input type="text" id="settings-cli-path-codex" class="settings-input settings-mono-input" placeholder="codex">
+                        <span id="cli-result-codex" class="cli-verify-result"></span>
+                    </label>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Antigravity</span>
+                        <input type="text" id="settings-cli-path-agy" class="settings-input settings-mono-input" placeholder="agy">
+                        <span id="cli-result-agy" class="cli-verify-result"></span>
+                    </label>
+                    <label class="settings-cli-row">
+                        <span class="settings-cli-label">Pi</span>
+                        <input type="text" id="settings-cli-path-pi" class="settings-input settings-mono-input" placeholder="pi">
+                        <span id="cli-result-pi" class="cli-verify-result"></span>
+                    </label>
+                    <div class="settings-cli-actions">
+                        <button class="btn btn-small" data-on-click="m-verify-all-c-l-is" id="verify-all-btn">Verify All</button>
+                    </div>
+                    <span class="settings-hint">Full path to agent CLI binary. Leave empty to use default from PATH.</span>
+                    </details>
+                </dd>
+                </div></dl>
                         <button class="btn btn-primary settings-prompts-btn" data-on-click="m-hide-settings-modal-then-show-default-prompts-modal">
                             <span class="material-icons icon-inline" aria-hidden="true">edit</span>
                             Edit Default Prompts
@@ -1002,22 +1002,22 @@
                         <dl class="info-grid settings-grid">
                 <div class="settings-row">
                 <dt class="toggle-dt">
-                    <label for="settings-artifact-store-max">Artifact store limit (GiB)</label>
+                    <label for="settings-artifact-store-max">Artifact store limit</label>
                     <span class="toggle-desc">The most space stored artifacts may take. Above it, agents' new uploads are refused until you delete some (Team Artifacts &gt; Delete). 0 means no limit. Saved task and session diffs aren't counted.</span>
                 </dt>
                 <dd>
-                    <input type="number" id="settings-artifact-store-max" min="0" step="1" inputmode="numeric" aria-describedby="settings-artifact-store-size">
+                    <span class="settings-unit-field"><input type="number" id="settings-artifact-store-max" min="0" step="1" inputmode="numeric" aria-describedby="settings-artifact-store-size settings-artifact-store-max-unit"><span class="settings-field-unit" id="settings-artifact-store-max-unit">GiB</span></span>
                     <div id="settings-artifact-store-size" class="settings-hint" role="status">Loading…</div>
                     <div id="settings-storage-detail" class="settings-hint"></div>
                 </dd>
                 </div>
                 <div class="settings-row">
                 <dt class="toggle-dt">
-                    <label for="settings-received-max">Received files limit (GiB)</label>
+                    <label for="settings-received-max">Received files limit</label>
                     <span class="toggle-desc">The most space files sent to this computer by other teams and Corals may take. Above it, new received files are refused; nothing is deleted, and your agents' own uploads are not affected. The default is 2; 0 means no limit.</span>
                 </dt>
                 <dd>
-                    <input type="number" id="settings-received-max" min="0" step="1" inputmode="numeric" aria-describedby="settings-received-size">
+                    <span class="settings-unit-field"><input type="number" id="settings-received-max" min="0" step="1" inputmode="numeric" aria-describedby="settings-received-size settings-received-max-unit"><span class="settings-field-unit" id="settings-received-max-unit">GiB</span></span>
                     <div id="settings-received-size" class="settings-hint" role="status">Loading…</div>
                     <div id="settings-received-unlisted" class="settings-hint" hidden>
                         <button class="btn btn-small" type="button" id="settings-received-unlisted-delete">Delete unlisted files</button>
@@ -1045,11 +1045,11 @@
                 </div>
                 <div class="settings-row settings-row-wide">
                 <dt class="toggle-dt">
-                    <label for="settings-retention-days">Automatic cleanup (days)</label>
+                    <label for="settings-retention-days">Automatic cleanup</label>
                     <span class="toggle-desc">Prune what is older than this every hour. 0 means off (the default). After you turn it on, nothing is removed until you review what it would do, or 24 hours later; each run frees at most 2 GiB.</span>
                 </dt>
                 <dd>
-                    <input type="number" id="settings-retention-days" min="0" max="3650" step="1" inputmode="numeric" aria-describedby="settings-retention-status">
+                    <span class="settings-unit-field"><input type="number" id="settings-retention-days" min="0" max="3650" step="1" inputmode="numeric" aria-describedby="settings-retention-status settings-retention-days-unit"><span class="settings-field-unit" id="settings-retention-days-unit">days</span></span>
                     <select id="settings-retention-kind" aria-label="What automatic cleanup prunes">
                         <option value="diffs">Saved diffs</option>
                         <option value="objects">Unlinked artifacts</option>

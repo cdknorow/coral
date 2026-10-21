@@ -4433,3 +4433,8 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .settings-unsaved[hidden] { display: none; }
 .settings-cli-details > summary { cursor: pointer; font-weight: 600; font-size: var(--fs-md); min-height: 32px; display: flex; align-items: center; }
 .settings-cli-details[open] > summary { margin-bottom: 8px; }
+
+/* A number field with its unit beside it, inside the field's own box (UI audit #5589, finding 20): the unit is no longer in the label. */
+.settings-unit-field { display: inline-flex; align-items: center; gap: 6px; }
+.settings-unit-field input[type="number"] { width: 6rem; }
+.settings-field-unit { color: var(--text-secondary); font-size: var(--fs-base); }
