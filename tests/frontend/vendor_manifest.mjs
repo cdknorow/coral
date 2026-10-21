@@ -48,7 +48,7 @@ export const ENTRIES = [
     { file: 'safe-markdown.js', mode: 'shared', pinned: 'f2e534847b953ab44c4f832e753ff9caf632bb93db9e8b56fbb9be82e79b1fad',
         from: 'Coral Hub, internal/accountui/assets/markdown.js (AccountMarkdown)',
         note: 'A small DOM-built markdown renderer for machine-supplied text (the shared Inbox, #5754): no HTML sink, no images, only http, https and mailto links with the host shown, hidden characters stripped, bounded work. '
-            + 'Loaded as a classic script; safe_markdown.js is its ES wrapper. Byte-identical to the hub\'s copy: the hub pins the same hash.' },
+            + 'A classic script, loaded on first use by vendor_loader.js (loadSafeMarkdown, #5818: not by the page); safe_markdown.js is its ES wrapper. Byte-identical to the hub\'s copy: the hub pins the same hash.' },
     { file: 'codemirror/codemirror-bundle.js', mode: 'bundle', built: '2026-03-23', input: 'tests/vendor-build/codemirror',
         note: 'An esbuild 0.28.1 IIFE (window.CoralCM) of CodeMirror 6 and its @lezer parsers, built from the input in `tests/vendor-build/codemirror` '
             + '(package.json with exact versions, package-lock.json, entry.js). Byte-verified: `node vendor_manifest.mjs --rebuild` runs '

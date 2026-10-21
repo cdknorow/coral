@@ -4,6 +4,7 @@ import { importOnce } from './import_once.js';
 import { makeLinkPolicy } from './safe_markdown.js';
 import { build as buildRoute } from './routes.js';
 import { onAccountForgotten } from './local_store.js';
+import { loadSafeMarkdown } from './vendor_loader.js';
 import { keyLabel, pathId, serverFetch } from './server_base.js';
 const { mountInbox, clearInboxDrafts, INBOX_CONTRACT } = await importOnce('./inbox_panel.js'); // the component (shared with the hub); this file is the one that is Coral's
 
@@ -56,7 +57,8 @@ export const coralInboxAdapter = {
     },
     taskHref(task) { return buildRoute({ view: 'board', id: task.project }); }, // the task's board (the panel keeps it only as a same-origin path)
     linkPolicy: makeLinkPolicy({}), // without a lookup, artifact links stay plain text
-    prepareLinks: artifactLinkPolicy,
+    // Before the text is drawn: the renderer is loaded on first use (a failed load leaves the text as plain text, renderSafe's own fallback), then the artifact lookups.
+    async prepareLinks(text) { await loadSafeMarkdown().catch(() => {}); return artifactLinkPolicy(text); },
 };
 
 let _inbox = null;

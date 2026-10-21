@@ -52,7 +52,7 @@ SHA-256 `7f76b559e3c98a67e47f0c601856c1bb85f25025ab443e836d7997325da37295`. An e
 
 ## `safe-markdown.js` (shared with Coral Hub)
 
-SHA-256 `f2e534847b953ab44c4f832e753ff9caf632bb93db9e8b56fbb9be82e79b1fad`, pinned in `tests/frontend/vendor_manifest.mjs`. From Coral Hub, internal/accountui/assets/markdown.js (AccountMarkdown). A small DOM-built markdown renderer for machine-supplied text (the shared Inbox, #5754): no HTML sink, no images, only http, https and mailto links with the host shown, hidden characters stripped, bounded work. Loaded as a classic script; safe_markdown.js is its ES wrapper. Byte-identical to the hub's copy: the hub pins the same hash.
+SHA-256 `f2e534847b953ab44c4f832e753ff9caf632bb93db9e8b56fbb9be82e79b1fad`, pinned in `tests/frontend/vendor_manifest.mjs`. From Coral Hub, internal/accountui/assets/markdown.js (AccountMarkdown). A small DOM-built markdown renderer for machine-supplied text (the shared Inbox, #5754): no HTML sink, no images, only http, https and mailto links with the host shown, hidden characters stripped, bounded work. A classic script, loaded on first use by vendor_loader.js (loadSafeMarkdown, #5818: not by the page); safe_markdown.js is its ES wrapper. Byte-identical to the hub's copy: the hub pins the same hash.
 
 The hub pins the same hash. A change to this file needs Security on both sides. `tests/frontend/fixtures/markdown-corpus.mjs` (pinned by the same test, `4365c0455bd41e4dc013ffda0f5ac5b5fb9d2c21fc9515d02132678d62e0def3`) is the hostile-input corpus both repos run against it in a real browser.
 
