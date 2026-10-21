@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/agentsignin"
 	"github.com/subgentic/coral/internal/claudestub"
 )
 
@@ -30,15 +31,25 @@ func fetched(t *testing.T, path string) (Result, time.Duration) {
 	return svc.Get("claude"), took
 }
 
+// shortHang makes the status command's limit one second for this test when the stand-in hangs on purpose (claudestub.HangingAuth): what is tested, a run skipped as "did not answer" and never
+// as signed out, does not need the production 6 s (#5604; agentsignin's own test pins the 6 s).
+func shortHang(t *testing.T, state claudestub.State) {
+	t.Helper()
+	if state == claudestub.HangingAuth {
+		t.Cleanup(agentsignin.SetCheckTimeoutForTests(time.Second))
+	}
+}
+
 func TestModelListNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 	for _, state := range []claudestub.State{claudestub.SignedOut, claudestub.LoginInProgress, claudestub.HangingAuth} {
 		t.Run(string(state), func(t *testing.T) {
 			claudestub.Isolate(t)
+			shortHang(t, state)
 			stub := claudestub.New(t, state)
 			res, took := fetched(t, stub.Path())
 			bound := 3 * time.Second
 			if state == claudestub.HangingAuth {
-				bound = 8 * time.Second // the status command's first ask waits 6 s (#5469)
+				bound = 4 * time.Second // the status command's limit, shortened to 1 s here (production: 6 s, #5469)
 			}
 			assert.Less(t, took, bound, "the background fetch ends fast")
 			assert.Empty(t, stub.PrintRuns(), "no print-mode run was started")
