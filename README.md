@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  Run Claude Code, Codex, Gemini CLI, and Pi.dev as one engineering team — on one board, in one browser tab, from any machine — with work that outlives the terminal it started in.
+  Run Claude Code, Codex, Antigravity CLI, and Pi.dev as one engineering team — on one board, in one browser tab, from any machine — with work that outlives the terminal it started in.
 </p>
 
 <p align="center">
