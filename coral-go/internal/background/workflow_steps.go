@@ -320,16 +320,17 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 		args = append(args, modelArgs...)
 		stdin = strings.NewReader(prompt)
 	} else {
-		// Other CLIs: the prompt stays an argument until each one's stdin handling is
-		// verified against the real CLI (#3521 follow-up). These flags are Claude's.
-		args = []string{"--print", "--no-session-persistence"}
+		// Other CLIs: the argument list and where the prompt goes are the agent package's (StepPrintArgs): the prompt
+		// can start with "-", and each CLI is given it where it can only be the prompt (#36).
 		modelArgs, merr := agentmodels.ModelArgs(agentCfg.Model)
 		if merr != nil {
 			return fmt.Errorf("step %q: the model %w", step.Name, merr)
 		}
-		args = append(args, modelArgs...)
-		args = append(args, agentCfg.Flags...)
-		args = append(args, prompt)
+		var in string
+		args, in = agent.StepPrintArgs(agentCfg.AgentType, agentCfg.Flags, modelArgs, prompt)
+		if in != "" {
+			stdin = strings.NewReader(in)
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, binPath, args...)

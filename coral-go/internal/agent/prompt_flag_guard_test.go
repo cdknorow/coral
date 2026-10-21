@@ -19,10 +19,14 @@ const argvPrinterSource = `package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 )
 
 func main() {
+	if in, err := io.ReadAll(os.Stdin); err == nil && len(in) > 0 {
+		os.WriteFile(os.Getenv("ARGV_OUT")+".stdin", in, 0o600)
+	}
 	out, err := os.Create(os.Getenv("ARGV_OUT"))
 	if err != nil {
 		os.Exit(3)
