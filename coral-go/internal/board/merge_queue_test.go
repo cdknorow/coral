@@ -103,9 +103,17 @@ func TestAttachAfterAnApprovalSupersedesTheRound(t *testing.T) {
 	for _, r := range reopened.Reviewers {
 		assert.Equal(t, "pending", r.State, "an approval of the old bytes does not carry over")
 	}
-	// a verdict that names the old round is refused; the new round needs both again
+	// a verdict that names the old round is refused, and the task is still in review, not completed
 	_, err = e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 1)
 	require.ErrorContains(t, err, "was resubmitted")
+	assert.Equal(t, "review_pending", e.task(id).Status)
+	// the new round needs both reviewers again; what it approved is the new digest, not the old one
+	_, err = e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 2)
+	require.NoError(t, err)
+	v, err := e.s.ApproveReview(e.ctx, "team", id, "rev2", "ok", 2)
+	require.NoError(t, err)
+	require.True(t, v.Complete)
+	assert.Equal(t, []string{"d2"}, lastRound(t, e.task(id)).ApprovedDigests)
 }
 
 func TestAReviewerCannotApproveTheirOwnPatchAlone(t *testing.T) {
@@ -261,4 +269,50 @@ func TestAnAttachRacingTheLastApprovalNeverCompletesWithAnUnapprovedRow(t *testi
 			}
 		}
 	})
+}
+
+// A client's Seq and AttachedBy are never kept (Backend's #5689 must-fix): they could otherwise open the cap and the unique-name check.
+func TestAClientCannotUseTheServersFieldsToOpenTheCapOrTheNames(t *testing.T) {
+	e := newVerEnv(t)
+	// two rows of one name in one attach are refused whatever Seq they carry
+	id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1")
+	a, b := patchRow("fix", "d2"), patchRow("fix", "d3")
+	a.Seq, b.Seq = 5, 6
+	_, _, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{a, b})
+	require.ErrorContains(t, err, "unique")
+	// an AttachedBy sent on an attach is replaced by the actor
+	forged := patchRow("fix", "d4")
+	forged.AttachedBy = "rev2"
+	got, _, err := e.s.AttachPatches(e.ctx, "team", id, "worker", []TaskArtifact{forged})
+	require.NoError(t, err)
+	rows := got.Workflow.CompletionReview.Artifacts
+	assert.Equal(t, "worker", rows[len(rows)-1].AttachedBy)
+	// 33 rows of one name, each claiming a Seq, are refused on complete
+	var many []TaskArtifact
+	for i := 0; i < maxTaskArtifacts+1; i++ {
+		many = append(many, TaskArtifact{Name: "a", Content: "x", Seq: 1, AttachedBy: "forged"})
+	}
+	task, err := e.s.CreateTask(e.ctx, "team", "c", "", "medium", "lead", "worker")
+	require.NoError(t, err)
+	_, err = e.s.ClaimTask(e.ctx, "team", "worker", task.ID)
+	require.NoError(t, err)
+	_, err = e.s.CompleteTaskWithArtifactsAtRevisionAndCandidate(e.ctx, "team", task.ID, "worker", nil, "success", many, nil, "")
+	require.Error(t, err)
+	// and on a complete the stamps are cleared
+	_, err = e.s.CompleteTaskWithArtifactsAtRevisionAndCandidate(e.ctx, "team", task.ID, "worker", nil, "success", []TaskArtifact{{Name: "r", Content: "x", Seq: 9, AttachedBy: "forged"}}, nil, "")
+	require.NoError(t, err)
+	art := e.task(task.ID).Workflow.Artifacts[0]
+	assert.Zero(t, art.Seq)
+	assert.Empty(t, art.AttachedBy)
+}
+
+func TestSendBackKeepsTheDigestsItSentBack(t *testing.T) {
+	e := newVerEnv(t)
+	id := e.inReview("p", []TaskArtifact{patchRow("fix", "d1")}, "rev1")
+	v, err := e.s.ApproveReview(e.ctx, "team", id, "rev1", "ok", 0)
+	require.NoError(t, err)
+	e.finish(v)
+	task, err := e.s.SendBack(e.ctx, "team", id, "lead", "again")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"d1"}, lastRound(t, task).SentBackDigests)
 }

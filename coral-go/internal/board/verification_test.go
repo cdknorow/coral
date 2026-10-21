@@ -69,10 +69,8 @@ func (e *verEnv) reviewed(name string, artifacts []TaskArtifact, reviewers ...st
 // finish completes an approved task the way the approve handler does: as the orchestrator, with the submitted candidate.
 func (e *verEnv) finish(v *ReviewVerdict) {
 	e.t.Helper()
-	cr := v.Task.Workflow.CompletionReview
-	require.NotNil(e.t, cr)
-	msg := cr.Message
-	_, err := e.s.CompleteTaskWithArtifactsAtRevisionAndCandidate(e.ctx, "team", v.Task.ID, "lead", &msg, cr.ProposedOutcome, cr.Artifacts, &v.Task.Revision, cr.CandidateRevision)
+	require.NotNil(e.t, v.Task.Workflow.CompletionReview)
+	_, err := e.s.CompleteApprovedReview(e.ctx, "team", v.Task.ID, "lead", &v.Task.Revision)
 	require.NoError(e.t, err)
 }
 

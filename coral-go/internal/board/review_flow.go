@@ -39,6 +39,8 @@ type ReviewRound struct {
 	// so the resubmission path is the one a rejection uses.
 	SentBackBy   string `json:"sent_back_by,omitempty"`
 	SentBackNote string `json:"sent_back_note,omitempty"`
+	// SentBackDigests: the patches that were approved and sent back, kept for the history (the queue never reads it).
+	SentBackDigests []string `json:"sent_back_digests,omitempty"`
 }
 
 // ReviewerState is one reviewer's part in a round.
