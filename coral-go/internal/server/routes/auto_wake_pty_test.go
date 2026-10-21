@@ -18,6 +18,7 @@ import (
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // ansiSeq matches the terminal's escape sequences (CSI, and OSC titles), which a colouring shell
@@ -31,14 +32,14 @@ type launchRecorder struct {
 	sent map[string][]string
 }
 
-func (l *launchRecorder) SendToTarget(ctx context.Context, target, command string) error {
+func (l *launchRecorder) SendToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error {
 	l.mu.Lock()
 	if l.sent == nil {
 		l.sent = map[string][]string{}
 	}
 	l.sent[target] = append(l.sent[target], command)
 	l.mu.Unlock()
-	return l.SessionTerminal.SendToTarget(ctx, target, command)
+	return l.SessionTerminal.SendToTarget(ctx, o, target, command)
 }
 
 // sentTo is every launch command sent to a target that names the session (a target may carry a
