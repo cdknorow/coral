@@ -137,6 +137,13 @@ func (o *IdentityObserver) effectiveStrict() bool {
 	return o != nil && (o.strict || auth.RequireAuthOnLoopback())
 }
 
+// strictFor is effectiveStrict for one request: also strict when its loopback connection isn't
+// Coral's own OS user's (auth.PeerReason, #95): another user of this computer always needs a
+// credential, whatever the settings.
+func (o *IdentityObserver) strictFor(r *http.Request) bool {
+	return o != nil && (o.effectiveStrict() || auth.PeerReason(r) != "")
+}
+
 // Strict reports whether strict local auth is on.
 func (o *IdentityObserver) Strict() bool { return o != nil && o.strict }
 
@@ -149,7 +156,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		if !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/ws/") {
-			if o.effectiveStrict() && o.lockPage(w, r) {
+			if o.strictFor(r) && o.lockPage(w, r) {
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -173,7 +180,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			if err != nil {
 				o.count(callerAgentBadToken)
 				o.logOnce("bad_token", "[identity] request with an unknown or revoked session token", "request", r.Method+" "+r.URL.Path, "tool", r.UserAgent(), "strict", o.strict)
-				if o.effectiveStrict() {
+				if o.strictFor(r) {
 					o.countBreak(callerAgentBadToken, r)
 					o.refuse(w, http.StatusUnauthorized, "session_token_required",
 						"This agent's session token is unknown or no longer valid (the agent was restarted or closed). Restart the agent from Coral.")
@@ -185,7 +192,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			}
 			o.count(callerAgentToken)
 			o.attribute(owner.SessionName, r.UserAgent())
-			if o.effectiveStrict() {
+			if o.strictFor(r) {
 				// The token is the whole identity: a command-line signature on the same
 				// request never adds the Operator's authority (#3418).
 				r.Header.Del(cliauth.CLIAuthHeader)
@@ -268,7 +275,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 		// strict mode (counted in the identity report as local_other); with strict local
 		// auth, every caller needs one.
 		claimed := caller == callerCLISigned || caller == callerAPIKey || caller == callerHub
-		if o.effectiveStrict() || claimed {
+		if o.strictFor(r) || claimed {
 			r2, ok := o.admit(r, caller)
 			if !ok {
 				o.countBreak(caller, r)
@@ -287,6 +294,13 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 					o.refuse(w, http.StatusUnauthorized, "invalid_credential",
 						"The credential sent is not valid for this Coral (a wrong API key, or a Coral Hub stamp that isn't this connector's): it is refused, never ignored")
 				default:
+					if reason := auth.PeerReason(r); reason != "" {
+						// Another account on this computer (or one Coral couldn't attribute): the
+						// loopback pass is only for Coral's own account (#95). The account isn't named.
+						o.refuseDetail(w, http.StatusUnauthorized, "other_user_needs_sign_in", reason,
+							"This request comes from another account on this computer, or one Coral couldn't identify. Sign in with Coral's password, or send the API key (Authorization: Bearer) or an agent's session token: the no-sign-in pass on this computer is only for Coral's own account.")
+						break
+					}
 					o.refuse(w, http.StatusUnauthorized, "dashboard_auth_required",
 						"Coral is locked: open it from the Coral app, or run 'coral open' to sign in this browser. Agents: use coral-agent docs, or send X-Coral-Session-Token")
 				}
@@ -358,6 +372,14 @@ func (o *IdentityObserver) refuse(w http.ResponseWriter, status int, code, msg s
 	o.refused[code]++
 	o.mu.Unlock()
 	writeJSON(w, status, map[string]any{"error": msg, "code": code})
+}
+
+// refuseDetail is refuse with a short detail code (#95: other_user or unattributed).
+func (o *IdentityObserver) refuseDetail(w http.ResponseWriter, status int, code, detail, msg string) {
+	o.mu.Lock()
+	o.refused[code]++
+	o.mu.Unlock()
+	writeJSON(w, status, map[string]any{"error": msg, "code": code, "detail": detail})
 }
 
 // callerKindKey holds a token-less request's caller type (classify) in its context.
@@ -594,7 +616,7 @@ func (o *IdentityObserver) AgentOperatorAction(r *http.Request, action string) b
 		return false
 	}
 	o.countOperatorCall(owner.SessionName, action)
-	return o.effectiveStrict()
+	return o.strictFor(r)
 }
 
 // acrossBoards: the requests an agent may make on a board its session isn't subscribed on

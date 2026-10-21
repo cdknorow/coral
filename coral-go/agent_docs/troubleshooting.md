@@ -31,9 +31,9 @@ Open the agent's terminal in the dashboard and answer it, or over the API.
 ```bash
 # NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live;
 # PORT is your server's port (8420 by default).
-curl -s -X POST "http://localhost:$PORT/api/sessions/live/$NAME/keys" \
+curl -H "Authorization: Bearer $(coral api-key)" -s -X POST "http://localhost:$PORT/api/sessions/live/$NAME/keys" \
   -H "Content-Type: application/json" -d "{\"keys\":[\"Down\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
-curl -s -X POST "http://localhost:$PORT/api/sessions/live/$NAME/keys" \
+curl -H "Authorization: Bearer $(coral api-key)" -s -X POST "http://localhost:$PORT/api/sessions/live/$NAME/keys" \
   -H "Content-Type: application/json" -d "{\"keys\":[\"Enter\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
 ```
 
@@ -137,14 +137,14 @@ if you see `Not subscribed to any board` on an old build, upgrade.
 Confirm the server's view first:
 
 ```bash
-curl -s http://localhost:<port>/api/board/<project>/subscribers
+curl -H "Authorization: Bearer $(coral api-key)" -s http://localhost:<port>/api/board/<project>/subscribers
 ```
 
 If the subscription exists server-side but the CLI disagrees, check that the agent's
 environment was not cleared by a wrapper, then use the REST API as a fallback:
 
 ```bash
-curl -s -X POST http://localhost:<port>/api/board/<project>/messages \
+curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://localhost:<port>/api/board/<project>/messages \
   -H "Content-Type: application/json" \
   -d '{"subscriber_id":"<name>","content":"your message"}'
 ```
@@ -200,7 +200,7 @@ first (above), then send a direct instruction.
 
 ```bash
 # NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live.
-curl -s -X POST "http://localhost:<port>/api/sessions/live/$NAME/send" \
+curl -H "Authorization: Bearer $(coral api-key)" -s -X POST "http://localhost:<port>/api/sessions/live/$NAME/send" \
   -H "Content-Type: application/json" \
   -d "{\"command\":\"Skip the board and do the task now.\",\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
 ```
@@ -337,7 +337,7 @@ forces it off.
 Check what a new instance can see before trusting it:
 
 ```bash
-curl -s localhost:<port>/api/sessions/live
+curl -H "Authorization: Bearer $(coral api-key)" -s localhost:<port>/api/sessions/live
 ```
 
 Sessions you did not create mean isolation is incomplete. Do not call `/kill`, `/restart`,

@@ -22,7 +22,7 @@ dashboard, each producing a competent implementation.
 other's work.
 
 ```console
-$ curl -s -X POST http://127.0.0.1:8452/api/sessions/launch-team \
+$ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://127.0.0.1:8452/api/sessions/launch-team \
    -H "Content-Type: application/json" -d '{
    "board_name":"demo-worktrees","working_dir":"/tmp/coral-demo",
    "worktree":true,"base_branch":"main",
@@ -73,11 +73,11 @@ Launching a team **without** the `worktree` flag — the default in the dashboar
 checkbox has no `checked` attribute — creates no worktree at all:
 
 ```console
-$ curl -s -X POST .../api/sessions/launch-team -d '{"board_name":"demo-default",
+$ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST .../api/sessions/launch-team -d '{"board_name":"demo-default",
     "working_dir":"/tmp/coral-demo","agents":[{"name":"a1",...},{"name":"a2",...}]}'
 {"agents":[{"name":"a1",...},{"name":"a2",...}],"ok":true}   # no worktree_path
 
-$ curl -s .../api/sessions/live
+$ curl -H "Authorization: Bearer $(coral api-key)" -s .../api/sessions/live
   a1 -> /private/tmp/coral-demo | branch: main
   a2 -> /private/tmp/coral-demo | branch: main
 ```
@@ -126,7 +126,7 @@ Two agents on one board: `implementer` writes the code, `reviewer` waits for the
 and reviews it.
 
 ```console
-$ curl -s http://127.0.0.1:8452/api/board/demo-review/messages/all
+$ curl -H "Authorization: Bearer $(coral api-key)" -s http://127.0.0.1:8452/api/board/demo-review/messages/all
 [1] reviewer    06:38:06  @implementer Reviewer here. Standing by to review IsPalindrome
                           in stringutil.go once @implementer says it's ready.
 [2] implementer 06:39:30  @reviewer IsPalindrome is committed, please review it
@@ -169,11 +169,11 @@ The demo was completed by having the agents call the REST API directly. The boar
 worked first try — the CLI wrapper is what fails.
 
 ```bash
-curl -s -X POST http://127.0.0.1:8452/api/board/demo-review/messages \
+curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://127.0.0.1:8452/api/board/demo-review/messages \
   -H "Content-Type: application/json" \
   -d '{"subscriber_id":"implementer","content":"@reviewer ready for review"}'
 
-curl -s http://127.0.0.1:8452/api/board/demo-review/messages/all
+curl -H "Authorization: Bearer $(coral api-key)" -s http://127.0.0.1:8452/api/board/demo-review/messages/all
 ```
 
 Note the field is `content`, not `message`; `PostMessage` rejects empty content.
@@ -205,7 +205,7 @@ surfaced in the UI. If a team stalls, check that agents can actually reach the b
 > gets 403 `forbidden_for_agent`. Through Coral Hub both are Launch tier — a session below Launch cannot reach them.
 
 ```console
-$ curl -s -X POST .../api/sessions/live/team/demo-sleepwake/sleep
+$ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST .../api/sessions/live/team/demo-sleepwake/sleep
 {"board_paused":true,"ok":true,"sessions_affected":1,"sessions_killed":1,"sleeping":true}
 
 $ tmux -S /tmp/coral-t1/tmux.sock ls
@@ -215,7 +215,7 @@ no server running on /tmp/coral-t1/tmux.sock
 The process is genuinely terminated, not idled.
 
 ```console
-$ curl -s -X POST .../api/sessions/live/team/demo-sleepwake/wake
+$ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST .../api/sessions/live/team/demo-sleepwake/wake
 {"board_paused":false,"ok":true,"sessions_relaunched":1,"sleeping":false}
 
 $ tmux -S /tmp/coral-t1/tmux.sock ls
@@ -244,7 +244,7 @@ $ POST .../team/demo-restart/sleep
 {"board_paused":true,"ok":true,"sessions_killed":1,"sleeping":true}
 
 $ kill <server pid>          # server and its tmux server both gone
-$ curl .../                  # 000 — down
+$ curl -H "Authorization: Bearer $(coral api-key)" .../                  # 000 — down
 
 $ <start a new server process against the same --home>
 $ GET .../team/demo-restart/sleep-status

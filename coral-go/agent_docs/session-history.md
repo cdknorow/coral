@@ -127,8 +127,8 @@ The transcript of a live (or sleeping/archived) agent, read from its JSONL log. 
 
 ```bash
 # Newest 100 messages, then the 200 above them
-curl -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_id=SID&agent_type=claude&after=0&limit=100"
-curl -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_id=SID&agent_type=claude&limit=200&before=742"
+curl -H "Authorization: Bearer $(coral api-key)" -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_id=SID&agent_type=claude&after=0&limit=100"
+curl -H "Authorization: Bearer $(coral api-key)" -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_id=SID&agent_type=claude&limit=200&before=742"
 ```
 
 **Message keys (#4510):** each message in a chat or history reply carries `key`, a stable 20-hex-character key for Save for later, and `find_key=KEY` answers `{found, index, total}` instead of a page: see [saved-messages.md](saved-messages.md#the-message-key).

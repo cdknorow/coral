@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/subgentic/coral/internal/auth"
 	"github.com/subgentic/coral/internal/safego"
 
 	"github.com/subgentic/coral/internal/config"
@@ -127,5 +128,8 @@ func newHTTPServer(handler http.Handler) *http.Server {
 		WriteTimeout:      0,                // Disabled for WebSocket/SSE
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    maxRequestHeaderBytes,
+		// Each loopback connection is attributed to its OS user, once (#95): the loopback pass is
+		// only for Coral's own account.
+		ConnContext: auth.ConnContext,
 	}
 }

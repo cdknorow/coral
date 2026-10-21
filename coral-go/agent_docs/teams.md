@@ -223,7 +223,7 @@ The dashboard follows a run wherever it was started (#3325): leaving the Knowled
 
 ```bash
 # 1. Launch a team
-curl -X POST http://localhost:PORT/api/sessions/launch-team \
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:PORT/api/sessions/launch-team \
   -H "Content-Type: application/json" \
   -d '{
     "board_name": "api-team",
@@ -239,25 +239,25 @@ curl -X POST http://localhost:PORT/api/sessions/launch-team \
 # "board_id" to relaunch onto that board, or "new_board": true to start another one.
 
 # 2. List running teams (each has board_label)
-curl http://localhost:PORT/api/teams/all?status=running
+curl -H "Authorization: Bearer $(coral api-key)" http://localhost:PORT/api/teams/all?status=running
 
 # 3. Get team detail (by its board id)
-curl http://localhost:PORT/api/teams/detail/b-7k3m9q2x4p
+curl -H "Authorization: Bearer $(coral api-key)" http://localhost:PORT/api/teams/detail/b-7k3m9q2x4p
 
 # 4. Sleep the team (pause without losing state)
-curl -X POST http://localhost:PORT/api/sessions/live/team/b-7k3m9q2x4p/sleep
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:PORT/api/sessions/live/team/b-7k3m9q2x4p/sleep
 
 # 5. Wake it back up
-curl -X POST http://localhost:PORT/api/sessions/live/team/b-7k3m9q2x4p/wake
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:PORT/api/sessions/live/team/b-7k3m9q2x4p/wake
 
 # 6. Stop the team (terminate)
 # (done via killing all sessions on the board)
 
 # 7. Resurrect — bring back the agents that were running
-curl -X POST http://localhost:PORT/api/teams/detail/b-7k3m9q2x4p/resurrect
+curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:PORT/api/teams/detail/b-7k3m9q2x4p/resurrect
 
 # 8. Or delete the stopped team
-curl -X DELETE http://localhost:PORT/api/teams/detail/b-7k3m9q2x4p
+curl -H "Authorization: Bearer $(coral api-key)" -X DELETE http://localhost:PORT/api/teams/detail/b-7k3m9q2x4p
 ```
 
 
