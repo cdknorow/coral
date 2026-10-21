@@ -197,6 +197,19 @@ func (c *Client) loadPromptBuffer(ctx context.Context, text string) (string, err
 	return buffer, nil
 }
 
+// ErrNothingToSend: an automated text was only control characters and line breaks, so nothing is left to type. The send is
+// refused: typing nothing and pressing Enter would submit whatever else is in the agent's input (a person's draft).
+var ErrNothingToSend = errors.New("the text has nothing left to send once control characters and line breaks are removed")
+
+// AutomatedTextChecked is AutomatedText, refusing (ErrNothingToSend) a non-empty text that comes out empty.
+func AutomatedTextChecked(text string) (string, error) {
+	out := AutomatedText(text)
+	if text != "" && strings.TrimSpace(out) == "" {
+		return "", ErrNothingToSend
+	}
+	return out, nil
+}
+
 // SanitizeTyped makes text safe to type as keystrokes: ESC (an ESC[201~ would end a paste, an ESC sequence is a key),
 // every other C0 control (Ctrl-C, Ctrl-D, Tab, CR, LF...), DEL and the C1 range U+0080-009F are dropped. What remains is
 // printable text.

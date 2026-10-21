@@ -114,7 +114,10 @@ func (c *Client) typeToTarget(ctx context.Context, target, command string, launc
 		// Typed, automated text: no keystroke from the text itself, and no line break (which would submit line by line
 		// into whatever is reading: tmux cannot tell whether the pane asked for bracketed paste, and the gate pastes
 		// when it did, so what is typed here is the case it did not).
-		command = AutomatedText(command)
+		var err error
+		if command, err = AutomatedTextChecked(command); err != nil {
+			return err
+		}
 	}
 	originalCommandLen := len(command)
 	cleanup := func() {}

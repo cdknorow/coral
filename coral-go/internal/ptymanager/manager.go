@@ -192,7 +192,10 @@ func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
 		s, ok := m.sessions[name]
 		m.mu.RUnlock()
 		if !(ok && s.bracketedPaste.Load() && pastesAsText(text)) {
-			text = tmux.AutomatedText(text)
+			var err error
+			if text, err = tmux.AutomatedTextChecked(text); err != nil {
+				return err // only control characters: no Enter over whatever is in the input
+			}
 		}
 	}
 	if !pastesAsText(text) {
@@ -215,6 +218,9 @@ func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
 		return err
 	}
 	body := tmux.SanitizePaste(text) // CRLF and CR are one LF; control characters, ESC included, are dropped
+	if tmux.Automated(ctx) && text != "" && strings.TrimSpace(body) == "" {
+		return tmux.ErrNothingToSend // only control characters: no empty paste and Enter over whatever is in the input
+	}
 	if s.bracketedPaste.Load() {
 		body = "\x1b[200~" + body + "\x1b[201~"
 	} else {

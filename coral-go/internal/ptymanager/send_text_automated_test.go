@@ -63,3 +63,27 @@ func TestGateMarksItsSendsAutomated(t *testing.T) {
 	// bracketed paste is on in this session: one paste, with the ESC and Ctrl-C of the text gone (it cannot end the paste early)
 	assert.Equal(t, "\x1b[200~board: [201~run this\nnow\x1b[201~", string(w[0]))
 }
+
+// Security's note on #62: text that is only control characters is refused, not sent as a bare Enter over a person's draft.
+func TestPTYAutomatedTextOfOnlyControlCharactersIsRefused(t *testing.T) {
+	withFastSubmit(t)
+	for _, bracketed := range []bool{true, false} {
+		for _, text := range []string{"\x03", "\x1b[201~\x04", "\u009b\u0080", "\n\x03\n", "\x1b"} {
+			b, s, proc := newFakeBackend(t, "claude-62-empty")
+			s.bracketedPaste.Store(bracketed)
+			err := b.SendText(tmux.WithAutomated(context.Background()), "claude-62-empty", text)
+			if text == "\x1b[201~\x04" {
+				// "[201~" survives as printable text once the ESC is gone
+				require.NoError(t, err)
+				continue
+			}
+			assert.ErrorIs(t, err, tmux.ErrNothingToSend, "%q bracketed=%v", text, bracketed)
+			assert.Empty(t, proc.written(), "no Enter, no empty paste: %q", text)
+		}
+	}
+	// An empty text is not "emptied": it is the caller's plain Enter, as before; a person's control characters are theirs.
+	b, _, proc := newFakeBackend(t, "claude-62-plain")
+	require.NoError(t, b.SendText(tmux.WithAutomated(context.Background()), "claude-62-plain", ""))
+	require.NoError(t, b.SendText(context.Background(), "claude-62-plain", "\x03"))
+	assert.NotEmpty(t, proc.written())
+}
