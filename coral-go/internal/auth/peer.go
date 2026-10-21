@@ -130,6 +130,11 @@ var attributeSlots = make(chan struct{}, 4)
 // socket table has a layout this build doesn't know, so the loopback pass is per machine again.
 var peerCheckLost atomic.Bool
 
+// ResetPeerCheckLostForTest clears the lost-check flag. The flag is sticky in a running server (a layout this build can't read stays
+// unreadable), and it takes the local-only powers from every request, so a test that makes the attribution answer Unsupported must put
+// the flag back, or the tests that run after it in the same process lose those powers.
+func ResetPeerCheckLostForTest() { peerCheckLost.Store(false) }
+
 // PeerCheckWarning is the dashboard's line when the loopback pass can't be per user on this
 // computer although the system could tell users apart (#95 review F3), or "".
 func PeerCheckWarning() string {

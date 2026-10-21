@@ -18,8 +18,10 @@ import (
 // loopbackConn is a net.Conn with loopback addresses and nothing else.
 type loopbackConn struct{ net.Conn }
 
-func (loopbackConn) RemoteAddr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50000} }
-func (loopbackConn) LocalAddr() net.Addr  { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8420} }
+func (loopbackConn) RemoteAddr() net.Addr {
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50000}
+}
+func (loopbackConn) LocalAddr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8420} }
 
 // #95: the main server attributes each loopback connection to its OS user (auth.ConnContext). Without
 // it every connection would keep the loopback pass, whoever's it is.
