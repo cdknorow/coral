@@ -84,7 +84,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`document.querySelectorAll('#artifact-viewer .artifact-readers').length`), 0, 'refused: no disclosure');
         assert.equal(await ev(`document.querySelector('#artifact-viewer .artifact-viewer-readers').hidden`), true);
         await ev(`document.querySelector('#artifact-viewer .artifact-viewer-close').click(); true`);
-        await stub(200, { id: hex, machine_owner: 'reads <img src=x onerror=alert(1)> everything', owners: [{ kind: 'hub_user', id: 'ada‮<b>x</b>', records: 2, teams: [{ id: 't1', label: '<script>bad</script>' }], reason: 'the agents of every team this owner owns read it' }, 'junk', null], linked_teams: [{ id: 'l1', label: 'Linked <i>team</i>' }], note: 'A <b>note</b>.' });
+        await stub(200, { id: hex, machine_owner: 'reads <img src=x onerror=alert(1)> everything', owners: [{ kind: 'hub_user', id: 'ada\u202e<b>x</b>', records: 2, teams: [{ id: 't1', label: '<script>bad</script>' }], reason: 'the agents of every team this owner owns read it' }, 'junk', null], linked_teams: [{ id: 'l1', label: 'Linked <i>team</i>' }], note: 'A <b>note</b>.' });
         await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'artifact_viewer.js'); m.openArtifactViewer('${hex}', { filename: 'readers.txt' }); return true; })()`);
         await waitFor(`!!document.querySelector('#artifact-viewer .artifact-readers')`, 'the disclosure');
         await ev(`document.querySelector('#artifact-viewer .artifact-readers > summary').click(); true`);

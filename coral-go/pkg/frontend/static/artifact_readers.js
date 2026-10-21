@@ -6,7 +6,7 @@ import { serverUrl } from './server_base.js';
 
 const HEX_RE = /^[a-f0-9]{64}$/;
 const KINDS = { operator: 'the Operator on this computer', hub_user: 'Coral Hub user' };
-const clean = (v, max = 120) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '').trim().slice(0, max);
+const clean = (v, max = 120) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, max);
 let _allowed; // undefined: not asked yet; a promise of true (owner) or false (refused or no answer), kept for the page
 
 async function fetchReaders(hex, server) {

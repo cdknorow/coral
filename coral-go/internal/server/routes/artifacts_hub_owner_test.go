@@ -252,7 +252,7 @@ func TestUploadsRecordWhoMadeThem(t *testing.T) {
 
 	// a lookup that fails, hangs on nothing, or returns text with control characters records none of it
 	uploaderLookup = func(context.Context, string) (string, string, string) {
-		return "b\x00", "n‮", strings.Repeat("r", 500)
+		return "b\x00", "n\u202e", strings.Repeat("r", 500)
 	}
 	_, _, err = storeArtifactBy(rig.coralDir, "s1", "x.txt", "text/plain", "", "", []byte("again"))
 	require.NoError(t, err)

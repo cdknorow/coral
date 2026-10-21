@@ -72,7 +72,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`document.querySelector('#owner-host [name=cross_team_messaging]').hasAttribute('aria-describedby')`), false, 'and no empty description');
         await mount({ status: { state: 'off', text: 'Off.' } });
         r = await read(); assert.equal(r.may, null, 'an older server (no field) says nothing'); assert.deepEqual(r.changed, []);
-        await mount({ status: { state: 'ready', text: 'x' }, hub_may_change: 'yes', last_changed: { cross_team_messaging: { via: 'hub', by: '<img src=x onerror=alert(1)>‮<script>', at: 'not a time', on: true }, cross_team_artifacts: 'x', bogus: { via: 'hub' } } });
+        await mount({ status: { state: 'ready', text: 'x' }, hub_may_change: 'yes', last_changed: { cross_team_messaging: { via: 'hub', by: '<img src=x onerror=alert(1)>\u202e<script>', at: 'not a time', on: true }, cross_team_artifacts: 'x', bogus: { via: 'hub' } } });
         r = await read(); assert.equal(r.may, null, 'only a boolean true counts'); assert.equal(r.imgs, 0, 'a hostile name is text, never markup');
         assert.equal(r.changed.length, 1); assert.match(r.changed[0][1], /^Turned on by <img src=x onerror=alert\(1\)><script> via Coral Hub$/, 'shown as text, control and bidi characters removed, a bad time left out: ' + r.changed[0][1]);
         await mount({ status: { state: 'ready', text: 'x' }, last_changed: { cross_team_messaging: { via: 'hub', at: '2026-10-21T10:00:00Z' } } });
