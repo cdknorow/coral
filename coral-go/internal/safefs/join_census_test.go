@@ -33,6 +33,8 @@ type joinEntry struct {
 
 // joinSites is "file<TAB>function" -> its joins, by file relative to coral-go.
 var joinSites = map[string]joinEntry{
+	"tools/coral-agents-token/keyfile.go\tkeyStore.keyPath":                                  {1, joinOwn, "the App key's file name, a constant, in the owner-only key folder (tools/coral-agents-token, never shipped); the helper checks the folder and the file (0700, 0600, owner, no link) and opens it without following a link"},
+	"tools/coral-agents-token/keyfile.go\tkeyStore.cachePath":                                {1, joinOwn, "the cached token's file name, made by cacheName from the installation number, the allowed repository and the allowed permission set (all checked by request.validate before any join), in the cache folder under the key folder; opened without following a link and checked 0600 and owner"},
 	"cmd/coral-update/status.go\tcollectStatus":                                              {3, joinOwn, "the updater's own files under the data folder: the updates folder, state.json and run.json, constant names, only read (Lstat, a no-follow private read), nothing written"},
 	"internal/updater/runrecord/restart.go\tRead":                                            {1, joinOwn, "the run record's file name, a constant, in the updates folder under the data folder; opened without following a link"},
 	"internal/server/routes/relaunch_fixture.go\treadFixture":                                {1, joinOwn, "the relaunch test seam (#5452, a relaunchfixture build only): the fixed file name relaunch.json in the owner-only folder the test named; opened without following a link, read-only"},
