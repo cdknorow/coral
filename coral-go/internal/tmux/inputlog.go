@@ -1,6 +1,8 @@
 package tmux
 
 import (
+	"context"
+	"strconv"
 	"strings"
 
 	"github.com/subgentic/coral/internal/inputlog"
@@ -8,7 +10,7 @@ import (
 
 // recordSendKeys logs a send-keys command (every one goes through run): literal
 // text (-l), hex bytes (-H) or key names, with the pane it targets (#3256).
-func recordSendKeys(args []string) {
+func recordSendKeys(ctx context.Context, args []string) {
 	if len(args) == 0 || args[0] != "send-keys" {
 		return
 	}
@@ -34,10 +36,18 @@ func recordSendKeys(args []string) {
 	}
 	switch {
 	case len(hexBytes) > 0:
-		inputlog.RecordHexKeys(target, hexBytes)
+		// Decoded: the log (and its secret redaction) sees the bytes, never a hex copy of them
+		// (#60, Security's condition a).
+		b := make([]byte, 0, len(hexBytes))
+		for _, h := range hexBytes {
+			if v, err := strconv.ParseUint(h, 16, 8); err == nil {
+				b = append(b, byte(v))
+			}
+		}
+		inputlog.RecordCtx(ctx, target, inputlog.Raw, string(b))
 	case literal:
-		inputlog.Record(target, inputlog.Text, strings.Join(rest, " "))
+		inputlog.RecordCtx(ctx, target, inputlog.Text, strings.Join(rest, " "))
 	default:
-		inputlog.Record(target, inputlog.Keys, strings.Join(rest, " "))
+		inputlog.RecordCtx(ctx, target, inputlog.Keys, strings.Join(rest, " "))
 	}
 }

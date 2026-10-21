@@ -76,7 +76,7 @@ func TestSettingTogglesLive(t *testing.T) {
 	SetSetting(true)
 	assert.True(t, State().Enabled)
 	assert.Contains(t, out.String(), "terminal input debug log is ON (the Log terminal input setting)")
-	assert.Contains(t, out.String(), "may contain secrets")
+	assert.Contains(t, out.String(), "with the secrets Coral recognises redacted")
 	Record("p", Text, "while on")
 
 	SetSetting(false)
@@ -142,7 +142,7 @@ func TestDebugFileIsCapped(t *testing.T) {
 	path := filepath.Join(dir, FileName)
 	fw := newFileWriter(path, 1000, 256)
 	for i := 0; i < 100; i++ {
-		fw.add(fmt.Sprintf("line %03d %s\n", i, strings.Repeat("y", 40)))
+		fw.add(entry{raw: fmt.Sprintf("line %03d %s\n", i, strings.Repeat("y", 40))})
 	}
 	fw.flush()
 	cur, err := os.Stat(path)
@@ -171,7 +171,7 @@ func TestDebugFileNeverBlocksTheSender(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		for i := 0; i < adds; i++ {
-			fw.add("x\n")
+			fw.add(entry{raw: "x\n"})
 		}
 		close(done)
 	}()
@@ -182,7 +182,7 @@ func TestDebugFileNeverBlocksTheSender(t *testing.T) {
 	}
 	fw.mu.Unlock()
 	fw.flush() // the queue drains once the file writes again
-	fw.add("after\n")
+	fw.add(entry{raw: "after\n"})
 	fw.flush()
 	b, _ := os.ReadFile(fw.path)
 	text := string(b)
@@ -226,14 +226,15 @@ func TestDeleteKeptLog(t *testing.T) {
 	assert.ErrorIs(t, err, ErrOn, "never while on")
 
 	SetSetting(false)
-	assert.Contains(t, out.String(), path+" is kept: delete it")
+	assert.Contains(t, out.String(), path+" is kept, its older copy (.1) removed")
+	assert.NoFileExists(t, path+".1", "the rotated copy goes when the log is turned off (#60)")
 	st := State()
 	assert.True(t, st.FileExists)
 	assert.Greater(t, st.FileBytes, int64(0))
 
 	n, err := Delete()
 	require.NoError(t, err)
-	assert.Equal(t, 2, n)
+	assert.Equal(t, 1, n)
 	assert.False(t, State().FileExists)
 	_, err = os.Stat(path)
 	assert.True(t, os.IsNotExist(err))

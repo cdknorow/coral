@@ -2,6 +2,7 @@ package ptymanager
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -178,7 +179,13 @@ func (s *session) sendInput(data []byte) error {
 // requested with a nil error) as io.ErrShortWrite instead of ignoring it. It
 // returns how many bytes reached the PTY.
 func (s *session) writeFull(data []byte) (int, error) {
-	inputlog.Record(s.name, inputlog.Raw, string(data))
+	return s.writeFullCtx(context.Background(), data)
+}
+
+// writeFullCtx is writeFull for input sent with ctx: a person's own (inputlog.Human) is logged by
+// its length only (#60).
+func (s *session) writeFullCtx(ctx context.Context, data []byte) (int, error) {
+	inputlog.RecordCtx(ctx, s.name, inputlog.Raw, string(data))
 	n, err := s.proc.Write(data)
 	if err == nil && n < len(data) {
 		err = io.ErrShortWrite

@@ -14,6 +14,7 @@
 package inputlog
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -29,6 +30,7 @@ import (
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secrets"
 )
 
 const (
@@ -40,6 +42,13 @@ const (
 	// maxText is how much of the sent text a line shows.
 	maxText    = 200
 	queueDepth = 4096
+	// redactWindow is how much of the sent text is checked for secrets before the line keeps
+	// maxText of it: a secret that starts in the shown part and runs past the cut is still found
+	// (#60, Security's condition a).
+	redactWindow = 16 << 10
+	// retention: a log file not written for this long is deleted at startup and when the log
+	// turns on (#60).
+	retention = 7 * 24 * time.Hour
 	// SettingKey is the user setting that turns the log on.
 	SettingKey = "debug_input_log"
 )
@@ -52,6 +61,7 @@ const (
 	Keys  Kind = "keys"  // tmux key names (Enter, C-c, Escape, ...)
 	Paste Kind = "paste" // a tmux buffer pasted into the pane
 	Raw   Kind = "raw"   // bytes written to a PTY
+	Typed Kind = "typed" // a person's own text from the dashboard terminal: its length only (#60)
 )
 
 var (
@@ -74,6 +84,7 @@ func Setup(dataDir string, force bool) {
 		path = filepath.Join(dataDir, FileName)
 	}
 	forced = force
+	pruneStaleLocked()
 	applyLocked("startup")
 }
 
@@ -156,8 +167,19 @@ func applyLocked(why string) {
 		w.Store(nil)
 		fw.stop()
 	}
+	if on && !was {
+		pruneStaleLocked()
+		// The rotated copy is never written again: private before anything is added next to it.
+		if fi, err := os.Lstat(path + ".1"); err == nil && fi.Mode().IsRegular() {
+			_ = os.Chmod(path+".1", 0o600)
+			_ = secfile.Protect(path + ".1")
+		}
+	}
 	if on && w.Load() == nil {
 		w.Store(newFileWriter(path, maxFileBytes, queueDepth))
+	}
+	if !on && was {
+		removeRegular(path + ".1") // the older half goes when the log is turned off (#60)
 	}
 	enabled.Store(on)
 	switch {
@@ -166,9 +188,9 @@ func applyLocked(why string) {
 		if forced {
 			via = "CORAL_DEBUG_INPUT / --debug-input"
 		}
-		log.Printf("[input] terminal input debug log is ON (%s): every write to an agent terminal, including typed text that may contain secrets, is recorded in %s. Turn it off when you are done.", via, path)
+		log.Printf("[input] terminal input debug log is ON (%s): every write to an agent terminal is recorded in %s, with the secrets Coral recognises redacted and a person's own typing kept as its length only; it can still hold text sent to agents. Turn it off when you are done.", via, path)
 	case !on && was:
-		log.Printf("[input] terminal input debug log is OFF (%s). %s is kept: delete it (Settings, or by hand) when you no longer need it.", why, path)
+		log.Printf("[input] terminal input debug log is OFF (%s). %s is kept, its older copy (.1) removed: delete it (Settings, or by hand) when you no longer need it; it goes by itself after %d days unwritten.", why, path, int(retention.Hours()/24))
 	}
 }
 
@@ -188,6 +210,13 @@ func EnabledFromEnv() bool {
 // name) when the debug log is on. For Keys, data is the tmux key names separated
 // by spaces.
 func Record(target string, kind Kind, data string) {
+	RecordCtx(context.Background(), target, kind, data)
+}
+
+// RecordCtx is Record for input sent with ctx: a person's own input from the dashboard terminal
+// (Human) is logged by its length only, unless it is only control input (Enter, arrows, Ctrl-C,
+// named keys), which stays as it is: a typed password or a pasted token is never logged (#60).
+func RecordCtx(ctx context.Context, target string, kind Kind, data string) {
 	if !enabled.Load() {
 		return
 	}
@@ -195,8 +224,85 @@ func Record(target string, kind Kind, data string) {
 	if fw == nil {
 		return
 	}
-	fw.add(fmt.Sprintf("%s target=%s source=%s kind=%s %s\n",
-		now().Format("2006-01-02T15:04:05.000Z07:00"), target, Source(), kind, describe(kind, data)))
+	if IsHuman(ctx) && kind != Keys && hasPrintable(data) {
+		kind, data = Typed, fmt.Sprintf("[typed %d bytes]", len(data))
+	}
+	if len(data) > redactWindow {
+		data = data[:redactWindow]
+	}
+	fw.add(entry{
+		prefix: fmt.Sprintf("%s target=%s source=%s kind=%s", now().Format("2006-01-02T15:04:05.000Z07:00"), target, Source(), kind),
+		kind:   kind,
+		data:   data,
+	})
+}
+
+type humanKey struct{}
+
+// Human marks ctx as carrying a person's own input from the dashboard terminal (RecordCtx).
+func Human(ctx context.Context) context.Context { return context.WithValue(ctx, humanKey{}, true) }
+
+// IsHuman reports whether ctx carries a person's own input.
+func IsHuman(ctx context.Context) bool {
+	on, _ := ctx.Value(humanKey{}).(bool)
+	return on
+}
+
+// hasPrintable reports whether s holds anything but control bytes and escape sequences: text a
+// person typed, as opposed to Enter, Tab, arrows or Ctrl-<key>.
+func hasPrintable(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == 0x1b { // an escape sequence: ESC [ A, ESC O P, ESC [ 1 ; 5 C ...
+			i++
+			for i < len(s) && (s[i] == '[' || s[i] == 'O' || s[i] >= '0' && s[i] <= '9' || s[i] == ';') {
+				i++
+			}
+			continue // the sequence's final byte
+		}
+		if c >= 0x20 && c != 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// entry is one line to write: its metadata, and the sent text, redacted and cut by the writer.
+type entry struct {
+	prefix string
+	kind   Kind
+	data   string
+	raw    string // a line written as it is (tests)
+}
+
+// redactText is the secret redactor the lines go through (coral.log's, secrets.LogRedactor);
+// tests replace it.
+var redactText = func(s string) (string, error) {
+	out, err := secrets.LogRedactor().Text([]byte(s))
+	return string(out), err
+}
+
+// line is e as written: the text redacted in full, then cut to maxText. A redactor that fails or
+// panics gives no text at all (#60, Security's condition c); the line keeps its metadata.
+func (e entry) line() (out string) {
+	if e.raw != "" {
+		return e.raw
+	}
+	const failed = "text=[not logged: redaction failed]"
+	defer func() {
+		if recover() != nil {
+			out = e.prefix + " " + failed + "\n"
+		}
+	}()
+	data := e.data
+	if e.kind != Typed {
+		red, err := redactText(data)
+		if err != nil {
+			return e.prefix + " " + failed + "\n"
+		}
+		data = red
+	}
+	return e.prefix + " " + describe(e.kind, data) + "\n"
 }
 
 // RecordHexKeys logs a tmux send-keys -H call (one hex byte per argument).
@@ -213,6 +319,9 @@ func RecordHexKeys(target string, hexBytes []string) {
 func describe(kind Kind, data string) string {
 	if kind == Keys {
 		return "keys=" + strconv.Quote(data)
+	}
+	if kind == Typed {
+		return "text=" + strconv.Quote(data)
 	}
 	s := data
 	cut := ""
@@ -261,7 +370,7 @@ func shortFunc(fn string) string {
 type fileWriter struct {
 	path    string
 	max     int64
-	ch      chan string
+	ch      chan entry
 	dropped atomic.Int64
 	mu      sync.Mutex // guards f/size for Flush in tests
 	f       *os.File
@@ -272,14 +381,14 @@ type fileWriter struct {
 }
 
 func newFileWriter(path string, max int64, depth int) *fileWriter {
-	fw := &fileWriter{path: path, max: max, ch: make(chan string, depth), done: make(chan chan struct{}), quit: make(chan chan struct{}), stopped: make(chan struct{})}
+	fw := &fileWriter{path: path, max: max, ch: make(chan entry, depth), done: make(chan chan struct{}), quit: make(chan chan struct{}), stopped: make(chan struct{})}
 	safego.Restart("inputlog/inputlog:fw.loop", func() { fw.loop() })
 	return fw
 }
 
-func (fw *fileWriter) add(line string) {
+func (fw *fileWriter) add(e entry) {
 	select {
-	case fw.ch <- line:
+	case fw.ch <- e:
 	default:
 		fw.dropped.Add(1)
 	}
@@ -292,13 +401,13 @@ func (fw *fileWriter) loop() {
 			if n := fw.dropped.Swap(0); n > 0 {
 				fw.write(fmt.Sprintf("%s [input] %d line(s) dropped: the log could not keep up\n", now().Format(time.RFC3339), n))
 			}
-			fw.write(line)
+			fw.write(line.line())
 		case ack := <-fw.done:
 		drain:
 			for {
 				select {
 				case line := <-fw.ch:
-					fw.write(line)
+					fw.write(line.line())
 				default:
 					break drain
 				}
@@ -308,7 +417,7 @@ func (fw *fileWriter) loop() {
 			for {
 				select {
 				case line := <-fw.ch:
-					fw.write(line)
+					fw.write(line.line())
 					continue
 				default:
 				}
@@ -349,6 +458,13 @@ func (fw *fileWriter) write(line string) {
 			fw.f = nil
 			return
 		}
+		// Windows ignores the mode, and an older Coral may have made the file with the folder's
+		// access list: never append to one others can read (#60, Security's condition d).
+		if err := secfile.Protect(fw.path); err != nil {
+			f.Close()
+			fw.f = nil
+			return
+		}
 		fw.f = f
 		fw.size = 0
 		if st, err := f.Stat(); err == nil {
@@ -376,5 +492,28 @@ func (fw *fileWriter) flush() {
 	case fw.done <- ack:
 		<-ack
 	case <-fw.stopped: // stopped meanwhile: everything it had is written
+	}
+}
+
+// pruneStaleLocked deletes the log and its rotated copy when they were last written more than
+// retention ago (#60): a log turned on for a debugging session doesn't stay on disk for good.
+func pruneStaleLocked() {
+	if path == "" {
+		return
+	}
+	for _, f := range []string{path, path + ".1"} {
+		if fi, err := os.Lstat(f); err == nil && fi.Mode().IsRegular() && now().Sub(fi.ModTime()) > retention {
+			if fw := w.Load(); fw != nil && f == path {
+				fw.closeFile()
+			}
+			removeRegular(f)
+		}
+	}
+}
+
+// removeRegular deletes f if it is a regular file: never a link or folder someone put there.
+func removeRegular(f string) {
+	if fi, err := os.Lstat(f); err == nil && fi.Mode().IsRegular() {
+		_ = os.Remove(f)
 	}
 }
