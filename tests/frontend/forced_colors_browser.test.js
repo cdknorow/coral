@@ -3,7 +3,7 @@
 //   - a Settings switch: on and off differ in track, knob colour and knob position;
 //   - the selected tab (Settings, a dialog's section list, Team settings) differs from the others by more than weight;
 //   - the agent list's status dot: working, needs input, stuck and idle each have their own shape or fill, and so do the sidebar rail's, a machine's health dot, a Hub server's and a live job's (#5713);
-//   - the Launch dialog's section list marks the selected section; count and status chips keep a border; a pressed toggle has a thick one (#5735);
+//   - the Launch dialog's section list marks the selected section; count and status chips keep a border; a pressed toggle has a Highlight one, as wide pressed as not (#5735);
 //   - a focused text field or list is outlined (its normal rule drops the outline and only changes the border colour).
 // Without forced colors nothing of this applies (the normal look is unchanged). Drives Chrome over CDP against the isolated dev server.
 const assert = require('node:assert/strict');
@@ -84,7 +84,8 @@ const MD = '# Migration plan\n\n## Steps\n\n1. Add the new columns behind a flag
                 const out = { chips: {}, on: null, off: null }; names.forEach((n, i) => { out.chips[n] = getComputedStyle(host.children[i]).borderTopWidth; });
                 out.on = getComputedStyle(host.children[names.length]).borderTopWidth + ' ' + getComputedStyle(host.children[names.length]).borderTopColor; out.off = getComputedStyle(host.children[names.length + 1]).borderTopWidth + ' ' + getComputedStyle(host.children[names.length + 1]).borderTopColor; host.remove(); return out; })()`);
             for (const [n, w] of Object.entries(chips.chips)) assert.ok(parseFloat(w) >= 1, n + ' has a border in forced colors: ' + JSON.stringify(chips));
-            assert.ok(parseFloat(chips.on) >= 2 && chips.on !== chips.off, 'a pressed toggle has a thicker border than an unpressed one: ' + JSON.stringify(chips));
+            assert.ok(parseFloat(chips.on) >= 2 && chips.on !== chips.off, 'a pressed toggle is marked by its border colour: ' + JSON.stringify(chips));
+            assert.equal(chips.on.split(' ')[0], chips.off.split(' ')[0], 'a toggle keeps its size when pressed: the border is as wide unpressed as pressed: ' + JSON.stringify(chips));
         }
         console.log('7. a comment card that is current or hovered, and an avatar, are marked in forced colors (#5732)');
         for (const dark of [true, false]) {

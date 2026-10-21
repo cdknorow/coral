@@ -59,8 +59,10 @@
         .hf-tag-pill, .dep-tag, .session-ctx-pill, .team-distill-chip, .chat-system-count, .selection-pause-badge, .xterm-disconnected-badge, .session-status-chip,
         .session-mobile-meta-pill) { border: 1px solid CanvasText; }
 
-    /* A toggle that is on (permission chips, filters, Show resolved): its fill is gone, so a thick Highlight border says it is pressed. */
-    button[aria-pressed="true"] { border: 2px solid Highlight; font-weight: 600; }
+    /* A toggle that is on (permission chips, filters, Show resolved): its fill is gone, so a thick Highlight border says it is pressed. Every toggle has the same 2 px border, pressed or not,
+       so one does not change size (and move what is beside it) when it is pressed; only the colour changes. */
+    button[aria-pressed] { border-width: 2px; border-style: solid; border-color: ButtonBorder; }
+    button[aria-pressed="true"] { border-color: Highlight; }
     /* Comments (#5711): the current card is raised by a shadow and the hovered one is tinted, both gone here, and each avatar is a coloured circle whose initials are all that is left.
        The current card gets a Highlight border and an inner outline, the hovered one a Highlight border, and the avatar a ring. */
     .ac-card { transition: none; } /* the state is a system colour: it changes at once, not over 120 ms */
