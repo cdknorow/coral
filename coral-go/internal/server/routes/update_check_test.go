@@ -20,7 +20,8 @@ func mockGitHubAPI(t *testing.T, tagName string, statusCode int) *httptest.Serve
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
-		json.NewEncoder(w).Encode(map[string]string{"tag_name": tagName})
+		// the page URL is part of the reply the update check requires (#5557): this repository's page for the tag
+		json.NewEncoder(w).Encode(map[string]any{"tag_name": tagName, "draft": false, "prerelease": false, "html_url": "https://github.com/subgentic/coral/releases/tag/" + tagName})
 	}))
 	origURL := githubReleasesAPI
 	githubReleasesAPI = server.URL
@@ -199,7 +200,7 @@ func TestUpdateCheckTwentyCallsMakeOneRequest(t *testing.T) {
 	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		json.NewEncoder(w).Encode(map[string]string{"tag_name": "v99.0.0"})
+		json.NewEncoder(w).Encode(map[string]any{"tag_name": "v99.0.0", "html_url": "https://github.com/subgentic/coral/releases/tag/v99.0.0"})
 	}))
 	origURL, origVersion := githubReleasesAPI, config.Version
 	githubReleasesAPI = server.URL

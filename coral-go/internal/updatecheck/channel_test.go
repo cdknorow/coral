@@ -49,6 +49,13 @@ func feedOf(t *testing.T, rs ...rel) *Feed {
 	return f
 }
 
+func objBody(t *testing.T, r rel) string {
+	t.Helper()
+	b, err := json.Marshal(r)
+	require.NoError(t, err)
+	return string(b)
+}
+
 func waitingVersions(f *Feed) []string {
 	var out []string
 	for _, w := range f.Waiting {
@@ -67,6 +74,7 @@ func TestParseChannelReadsOnlyTheWordAgenticAsAgentic(t *testing.T) {
 func TestTheAgenticFeedIsAskedByTheRepositoryIDAndNothingIsBuiltFromAReply(t *testing.T) {
 	assert.Equal(t, "https://api.github.com/repositories/1160696364/releases?per_page=10", ReleasesListAPI)
 	assert.Equal(t, "https://github.com/subgentic/coral/releases", ReleasesURL)
+	assert.Equal(t, "https://api.github.com/repositories/1160696364/releases/latest", ReleasesAPI, "the Approved feed is asked by the repository id too")
 	assert.Equal(t, Feeds{Approved: ReleasesAPI, Agentic: ReleasesListAPI}, DefaultFeeds)
 	assert.Equal(t, ReleasesURL, ReleasePageURL(Approved, "1.4.150"))
 	assert.Equal(t, ReleasesURL+"/tag/v1.4.150", ReleasePageURL(Agentic, "1.4.150"))
@@ -219,6 +227,8 @@ func TestNotesAreCleanedToPlainTextAndCut(t *testing.T) {
 	long := strings.Repeat("\u00e9", MaxNotes+50)
 	assert.Equal(t, MaxNotes, len([]rune(cleanNotes(long))), "cut by characters, not bytes")
 	assert.Equal(t, "", cleanNotes("   \n\t "))
+	assert.Equal(t, "ab", cleanNotes("a\u2028b"), "a line separator would break lines in a reader that honours it")
+	assert.Equal(t, "ab", cleanNotes("a\u2029b"))
 	html := "<script>alert(1)</script> [x](javascript:alert(1))"
 	assert.Equal(t, html, cleanNotes(html), "markup is not interpreted here: the dashboard shows it as text")
 }
@@ -233,10 +243,19 @@ func TestTheApprovedFeedReadsOneReleaseAndRefusesAPreRelease(t *testing.T) {
 	assert.Equal(t, f.Offer, *f.Approved)
 	assert.Empty(t, f.Waiting, "Approved users get no waiting list")
 	assert.False(t, f.Approved.ApprovedAt.IsZero())
-	// the old fixture shape: a tag and nothing else is still a release
-	f, err = parseLatest(strings.NewReader(`{"tag_name":"v0.14.0"}`), testNow)
-	require.NoError(t, err)
-	assert.Equal(t, "0.14.0", f.Offer.Version)
+	// the reply's page must be this repository's page for that tag, as for the list (#5557 follow-up 1)
+	for name, page := range map[string]string{
+		"no page":         "",
+		"another owner":   "https://github.com/cdknorow/coral/releases/tag/v1.4.142",
+		"look-alike repo": "https://github.com/subgentic/coral-evil/releases/tag/v1.4.142",
+		"another tag":     tagPagePrefix + "v1.4.141",
+		"http":            "http://github.com/subgentic/coral/releases/tag/v1.4.142",
+	} {
+		_, err = parseLatest(strings.NewReader(obj(release("v1.4.142", true).with("html_url", page))), testNow)
+		assert.Error(t, err, name)
+	}
+	_, err = parseLatest(strings.NewReader(`{"tag_name":"v0.14.0"}`), testNow)
+	assert.Error(t, err, "a tag and nothing else is no longer enough")
 	_, err = parseLatest(strings.NewReader(obj(release("v1.4.143", false))), testNow)
 	assert.Error(t, err, "releases/latest never names a pre-release; if it does, nothing is offered")
 	_, err = parseLatest(strings.NewReader(obj(release("v1.4.143", true).with("draft", true))), testNow)
@@ -297,7 +316,7 @@ func TestFetchFeedAnswersOnlyAnOKStatus(t *testing.T) {
 
 func TestTheTwoChannelsNeverShareACacheEntryAndAChangeNeedsNoFlush(t *testing.T) {
 	var aHits, gHits atomic.Int32
-	approved := feedServer(t, `{"tag_name":"v1.4.142","draft":false,"prerelease":false}`, &aHits, nil)
+	approved := feedServer(t, objBody(t, release("v1.4.142", true)), &aHits, nil)
 	agentic := feedServer(t, listBody(t, release("v1.4.143", false), release("v1.4.142", true)), &gHits, nil)
 	feeds := Feeds{Approved: approved.URL, Agentic: agentic.URL}
 	c := NewCache()
