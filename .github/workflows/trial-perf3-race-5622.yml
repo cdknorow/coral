@@ -13,7 +13,6 @@ jobs:
       matrix:
         include:
           - {name: patched, ref: ""}
-          - {name: base, ref: "4cfa4ef98c175fefbe388193ccc312839e80000b"}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
