@@ -16,17 +16,23 @@ type presenceRig struct {
 	c      *savedPresence
 	secret []byte
 	fp     map[string]string           // session -> fingerprint ("" = no file)
+	readAt map[string]string           // session -> the file the read comes from ("" = the stat'ed one)
 	msgs   map[string][]map[string]any // session -> the transcript
 	reads  []string
 }
 
 func newPresenceRig() *presenceRig {
-	r := &presenceRig{secret: []byte("s"), fp: map[string]string{}, msgs: map[string][]map[string]any{}}
+	r := &presenceRig{secret: []byte("s"), fp: map[string]string{}, readAt: map[string]string{}, msgs: map[string][]map[string]any{}}
 	r.c = &savedPresence{
-		fingerprint: func(_ context.Context, sid string) (string, bool) { return r.fp[sid], r.fp[sid] != "" },
-		read: func(_ context.Context, sid string) []map[string]any {
+		fingerprint: func(_ context.Context, sid string) (string, string, bool) {
+			return "file-" + sid, r.fp[sid], r.fp[sid] != ""
+		},
+		read: func(_ context.Context, sid string) ([]map[string]any, string) {
 			r.reads = append(r.reads, sid)
-			return r.msgs[sid]
+			if at := r.readAt[sid]; at != "" {
+				return r.msgs[sid], at
+			}
+			return r.msgs[sid], "file-" + sid
 		},
 	}
 	return r
@@ -139,4 +145,21 @@ func TestSavedAgentPresenceReadsARealTranscriptAndSeesItGrow(t *testing.T) {
 	assert.Equal(t, map[string]bool{k1: true, k2: true}, got, "the file changed: the new message is found")
 	_, ok = h.SavedAgentPresence(ctx, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee2", []string{k1})
 	assert.False(t, ok, "no transcript: not reachable")
+}
+
+// Security's LOW 1 on #5811: when the history view's read fell through to another file than the one stat'ed, the answer is true of a file the fingerprint does not watch, so it is not kept.
+func TestSavedPresenceKeepsNothingReadFromAnotherFileThanTheOneWatched(t *testing.T) {
+	r := newPresenceRig()
+	keys := r.set("s1", "p|10|1", "one")
+	r.readAt["s1"] = "another-file"
+	for i := 0; i < 2; i++ {
+		got, ok := r.ask("s1", keys[0])
+		require.True(t, ok)
+		assert.Equal(t, map[string]bool{keys[0]: true}, got, "still answered")
+	}
+	assert.Len(t, r.reads, 2, "and read each time")
+	r.readAt["s1"] = ""
+	_, _ = r.ask("s1", keys[0])
+	_, _ = r.ask("s1", keys[0])
+	assert.Len(t, r.reads, 3, "kept once the read is of the watched file")
 }

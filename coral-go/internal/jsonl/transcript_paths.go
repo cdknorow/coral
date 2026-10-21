@@ -26,18 +26,18 @@ func TranscriptPath(sessionID, workingDirectory, agentType string) string {
 	return resolveTranscriptPath(sessionID, workingDirectory, agentType)
 }
 
-// TranscriptFingerprint names the transcript file of a session as it is now: its path, size and modification time (a stat, never a read), and false when the agent has no
-// transcript here (#5802: the Saved list asks about a message only when this changed).
-func TranscriptFingerprint(sessionID, workingDirectory, agentType string) (string, bool) {
-	path := resolveTranscriptPath(sessionID, workingDirectory, agentType)
+// TranscriptFingerprint names the transcript file of a session as it is now: its path and a fingerprint of it (its size and modification time: a stat, never a read), and false
+// when the agent has no transcript here (#5802: the Saved list asks about a message only when this changed).
+func TranscriptFingerprint(sessionID, workingDirectory, agentType string) (path, fingerprint string, ok bool) {
+	path = resolveTranscriptPath(sessionID, workingDirectory, agentType)
 	if path == "" {
-		return "", false
+		return "", "", false
 	}
 	fi, err := os.Stat(path)
 	if err != nil || !fi.Mode().IsRegular() {
-		return "", false
+		return "", "", false
 	}
-	return fmt.Sprintf("%s|%d|%d", path, fi.Size(), fi.ModTime().UnixNano()), true
+	return path, fmt.Sprintf("%s|%d|%d", path, fi.Size(), fi.ModTime().UnixNano()), true
 }
 
 // resolveTranscriptPath finds the transcript file for a session.

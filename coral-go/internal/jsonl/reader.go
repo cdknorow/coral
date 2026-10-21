@@ -425,6 +425,19 @@ func (r *SessionReader) CachedFirstUserPrompt(sessionID string) string {
 	return c.prompt
 }
 
+// SessionPath is the transcript file this reader last read for the session ("" when it has read none): the file the messages it returned came from (#5802).
+func (r *SessionReader) SessionPath(sessionID string) string {
+	r.mu.Lock()
+	c := r.cache[sessionID]
+	r.mu.Unlock()
+	if c == nil {
+		return ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.path
+}
+
 // ClearSession removes cached state for a session.
 func (r *SessionReader) ClearSession(sessionID string) {
 	r.mu.Lock()
