@@ -12,7 +12,11 @@ import (
 // reported lagged once, and the tail keeps serving the others.
 func TestTmuxBackendLaggingSubscriberIsCutOff(t *testing.T) {
 	b := newTestTmuxBackend(t)
-	require.NoError(t, b.Spawn("lagger", "claude", t.TempDir(), "sid-lag", "yes 0123456789abcdefghijklmnopqrstuvwxyz", 80, 24))
+	// The agent prints in bursts with a pause between, not as fast as `yes` can: the tail reads everything new in one go, so a flood fills 256 chunks
+	// of the reading viewer's channel inside one scheduling slice, and where the test and the tail share a single P (-cpu 1) the reader never runs in
+	// between and is cut off as well (a viewer that really falls behind is meant to be: #5731).
+	const burst = `while :; do head -c 3000 /dev/zero | tr '\0' x; echo; sleep 0.002; done`
+	require.NoError(t, b.Spawn("lagger", "claude", t.TempDir(), "sid-lag", burst, 80, 24))
 	defer b.Kill("lagger")
 	time.Sleep(300 * time.Millisecond)
 
