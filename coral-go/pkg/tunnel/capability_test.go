@@ -32,3 +32,14 @@ func TestHelloAdvertisesTheAllowlistCapabilityAndReadingIsStrict(t *testing.T) {
 	assert.False(t, HasCapability(many, CapCrossTeamAllowlist), "too many entries")
 	assert.True(t, HasCapability([]string{"other/1", CapCrossTeamAllowlist}, CapCrossTeamAllowlist))
 }
+
+// #5572: a Coral's Hello says it takes link snapshots, next to the allowlist capability; both survive the bounded list and the shape check.
+func TestAHelloCarryingBothCapabilitiesIsRead(t *testing.T) {
+	raw, err := json.Marshal(Hello{ProtocolVersion: ProtocolVersion, Capabilities: []string{CapCrossTeamAllowlist, CapCrossTeamLinks}})
+	require.NoError(t, err)
+	var h Hello
+	require.NoError(t, json.Unmarshal(raw, &h))
+	assert.True(t, HasCapability(h.Capabilities, CapCrossTeamAllowlist))
+	assert.True(t, HasCapability(h.Capabilities, CapCrossTeamLinks))
+	assert.Equal(t, "cross_team_links/1", CapCrossTeamLinks)
+}
