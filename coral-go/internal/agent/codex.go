@@ -277,7 +277,7 @@ var codexHookEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse",
 func codexHookArgs() []string {
 	var args []string
 	for _, event := range codexHookEvents {
-		args = append(args, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(ResolveHookCommand("coral-hook-agentic-state"))))
+		args = append(args, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(ResolvePowerShellHookCommand("coral-hook-agentic-state"))))
 	}
 	return args
 }

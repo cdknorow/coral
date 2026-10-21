@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"unicode"
+
+	"github.com/subgentic/coral/internal/psquote"
 )
 
 // ResolveHookCommand turns a hook command Coral installs ("coral-hook-agentic-state --hooks-rev
@@ -63,6 +65,26 @@ func ResolveCmdHookCommand(cmd string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// ResolvePowerShellHookCommand is ResolveHookCommand for an agent that runs its hooks through
+// PowerShell, as Codex does on Windows (0.161, #49): there a quoted path is a string
+// expression, which PowerShell prints instead of running ("\"C:/.../coral-hook-agentic-state.exe\""
+// came back as the hook's output, so the hook never ran and Codex reported "invalid stop hook
+// JSON output"). The command calls the tool with PowerShell's call operator on its absolute
+// path as a single-quoted literal (& 'C:/Program Files (x86)/Coral/...exe'), in which nothing
+// expands. Without a tools folder or the tool in it, it is the bare name, which PowerShell finds
+// only on PATH, never in the current folder. Elsewhere it is ResolveHookCommand.
+func ResolvePowerShellHookCommand(cmd string) string {
+	if runtime.GOOS != "windows" {
+		return ResolveHookCommand(cmd)
+	}
+	tool, rest, _ := strings.Cut(cmd, " ")
+	p := hookToolPath(tool)
+	if p == "" {
+		return cmd
+	}
+	return withRest("& "+psquote.Literal(p), rest)
 }
 
 // hookToolPath is the absolute path, with forward slashes (sh, cmd.exe and Git Bash all take
@@ -136,7 +158,11 @@ func resolvedHookGroup(group map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// tomlString is s as a TOML basic string.
+// tomlString is s as a TOML basic string, with no whitespace in it: a space is written \u0020
+// and a tab \t. The string goes into a -c argument, and an argument without whitespace reaches
+// the program as it is from any shell: Windows PowerShell 5.1 wouldn't put quotes around one
+// whose spaces all fall inside a TOML string (after an odd number of quotes), so it needed
+// psquote.NativeArg's own quoting, which not every argv parser reads alike (#49).
 func tomlString(s string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, " ", `\u0020`, "\t", `\t`).Replace(s) + `"`
 }

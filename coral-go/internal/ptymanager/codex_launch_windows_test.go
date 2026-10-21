@@ -70,7 +70,9 @@ func TestCodexLaunchScriptPassesItsArgumentsThroughWindowsPowerShell(t *testing.
 	}
 	require.NotEmpty(t, args, "%s", out)
 
-	hook := `"\"` + filepath.ToSlash(filepath.Join(tools, "coral-hook-agentic-state.exe")) + `\""`
+	// PowerShell's call operator on the single-quoted path (#49: Codex runs hooks through
+	// PowerShell), the TOML string's spaces written  , so the argument has none.
+	hook := `"&\u0020'` + strings.ReplaceAll(filepath.ToSlash(filepath.Join(tools, "coral-hook-agentic-state.exe")), " ", `\u0020`) + `'"`
 	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"} {
 		assert.Contains(t, args, `hooks.`+event+`=[{hooks=[{type="command",command=`+hook+`}]}]`, "%s: %q", event, args)
 	}
