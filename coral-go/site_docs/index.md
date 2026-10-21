@@ -10,7 +10,7 @@ These guides cover the current **Go application**, including the macOS, Linux an
 2. Install and sign in to your agent CLI. Coral uses your installed agents and their provider accounts.
 3. Open Coral, select a project directory, and launch an agent or [create a team](teams-and-tasks.md).
 
-[Download the latest release](https://github.com/cdknorow/coral/releases/latest) · [Watch the team demo on Loom](https://www.loom.com/share/f2c52e824b1f41a8a18000a2df67adf8)
+[Download the latest release](https://github.com/cdknorow/coral/releases/latest)
 
 ## Find the right guide
 

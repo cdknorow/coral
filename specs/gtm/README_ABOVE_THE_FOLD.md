@@ -100,8 +100,6 @@ saves you time, you can support development with an optional one-time $49.99 sup
 license — no subscription. Supporters get priority support and priority consideration for
 feature requests.
 
-![Coral Dashboard](https://github.com/user-attachments/assets/6af60c92-1d72-45bd-9b46-7f1eab2ce5fe)
-
 ## Quick Start
 
 ### Download

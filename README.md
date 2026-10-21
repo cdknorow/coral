@@ -38,11 +38,9 @@
 ---
 
 <p align="center">
-  <a href="https://www.loom.com/share/f2c52e824b1f41a8a18000a2df67adf8">
-    <img alt="Watch: Using Coral's Agent Teams to Parallelize Development" src="assets/icons/dashboard.webp" width="100%" />
-  </a>
+  <img alt="The Coral dashboard: a team of agents on the left, an Orchestrator's chat in the middle, and the team's message board on the right" src="assets/readme/dashboard.webp" width="100%" />
   <br>
-  <sub><a href="https://www.loom.com/share/f2c52e824b1f41a8a18000a2df67adf8">▶ Watch: Using Coral's Agent Teams to Parallelize Development</a></sub>
+  <sub>The dashboard with a team of agents at work: the agent list, one agent's chat, and the team's message board. (Sample data.)</sub>
 </p>
 
 ## What is Coral?
@@ -56,25 +54,25 @@ It works by managing three things:
 - **Separate sessions and worktrees.** Every agent gets its own tmux session. Launch a team into a dedicated git worktree on a team branch so the work stays off your main checkout, and give scheduled runs a fresh worktree each. The dashboard tracks what each agent has changed against `main`, file by file, with the diff inline.
 
 <p align="center">
-  <img alt="An agent's changed-files panel: 46 files changed versus main, with an inline diff of admin.go and the agent's chat alongside" src="https://github.com/user-attachments/assets/73bb118b-2a9e-493b-b41b-4dd01d904809" width="100%" />
+  <img alt="An agent's changed-files panel: four files changed versus the previous commit, with an inline diff of cooldown.go and the agent's chat alongside" src="assets/readme/changed-files.png" width="100%" />
   <br>
-  <sub>The Orchestrator's changes so far — 46 files against <code>main</code> — with the diff open beside its chat. "Viewing — click to take control" hands you the keyboard.</sub>
+  <sub>An agent's changes so far — here four files against the previous commit — with the diff open beside its chat. (Sample data.)</sub>
 </p>
 
 - **A shared message board.** Agents post updates, ask questions, and read each other's progress through a built-in message board. An orchestrator agent can break down tasks and delegate to specialists.
 
 <p align="center">
-  <img alt="The message board beside an agent's chat: @mentioned posts from the Orchestrator and workers, Coral Task Queue announcements, and an unread-message nudge in the agent's chat" src="https://github.com/user-attachments/assets/ff1e8d2d-dc87-477e-80c0-42dae6e3c9d8" width="100%" />
+  <img alt="The message board beside an agent's chat: posts from the Orchestrator and workers, and the Pause Board and Export buttons" src="assets/readme/board-and-chat.png" width="100%" />
   <br>
-  <sub>Board on the right, agent on the left. Task Queue posts announce new work, workers reply with @mentions, and Coral nudges the agent — "You have 1 unread message" — the moment something lands for it.</sub>
+  <sub>Board on the right, agent on the left. Task Queue posts announce new work, workers reply with @mentions, and Coral nudges an agent the moment something lands for it. (Sample data.)</sub>
 </p>
 
 - **A web dashboard.** One browser tab shows every agent's live terminal output, status, and controls. Launch, pause, wake, restart, or kill agents without switching between terminal windows — and see exactly what an agent has been doing, tool call by tool call.
 
 <p align="center">
-  <img alt="An agent's activity timeline: time split between Thinking and Bash, and every tool call listed with its duration" src="https://github.com/user-attachments/assets/9fd9ef24-96de-4eb4-abff-61147b2e2c41" width="100%" />
+  <img alt="An agent's activity timeline: time split between Bash and Write, and every tool call listed with its duration" src="assets/readme/activity-timeline.png" width="100%" />
   <br>
-  <sub>The activity view for one agent: how long it spent thinking versus running commands, and every tool call with its duration and timestamp.</sub>
+  <sub>The activity view for one agent: how long it spent on each kind of work, and every tool call with its duration and timestamp. (Sample data.)</sub>
 </p>
 
 You bring your own API keys and agents. Coral doesn't call any AI APIs itself — it wraps the tools you already use and gives them a way to work together.
@@ -174,7 +172,9 @@ Then open `http://<that-machine>:8420` from any browser. Requests from anywhere 
 Scan that QR code and Coral opens as a purpose-built mobile client — installable to your home screen, laid out for a phone rather than a shrunken desktop.
 
 <p align="center">
-  <img alt="Coral mobile client: live sessions, agent chat, changed-file diffs, and token analytics" src="assets/icons/mobile-client.png" width="100%" />
+  <img alt="The dashboard on a phone: the live sessions list, and an agent's chat" src="assets/readme/dashboard-on-a-phone.png" width="100%" />
+  <br>
+  <sub>The same dashboard on a phone: the agent list, and one agent's chat. (Sample data.)</sub>
 </p>
 
 From it you can:
@@ -197,9 +197,9 @@ Coral Hub (app.coralhub.dev, invite-only beta) lets you reach your Coral servers
 Define a team of agents, each with a role and a system prompt. For example: an Orchestrator that plans and delegates, a Lead Developer that writes code, and a QA Engineer that reviews and tests. You can create teams from the dashboard UI, use built-in templates, or describe what you need in plain English and let AI generate the team configuration.
 
 <p align="center">
-  <img alt="The Launch New Session dialog with three choices: AI Agent, Agent Team, and Terminal" src="https://github.com/user-attachments/assets/137ef916-f1e6-4a65-bcf8-ac30b6d0105d" width="100%" />
+  <img alt="The Launch New Session dialog with four choices: AI Agent, Agent Team, Terminal, and Open Folder" src="assets/readme/launch-new-session.png" width="100%" />
   <br>
-  <sub><strong>+ New</strong> offers three things to launch: a single agent, a whole team on a shared board, or a plain terminal that lives alongside your agents.</sub>
+  <sub><strong>+ New</strong> offers four things to launch: a single agent, a whole team on a shared board, a plain terminal that lives alongside your agents, or a folder pinned to your Agents list.</sub>
 </p>
 
 ### 2. Agents work in their own sessions
@@ -221,9 +221,9 @@ The web dashboard shows every agent's live terminal, current status, and message
 - See what it all cost — by model, team, branch, and individual agent
 
 <p align="center">
-  <img alt="The Analytics view: cumulative spend chart, then cost tables by model, by team, by branch, and by agent, with a per-agent cumulative-cost popover" src="https://github.com/user-attachments/assets/3cd47d1f-273a-48e3-b7cd-14bb7ad2469d" width="100%" />
+  <img alt="The Analytics view: token and cost totals, a cumulative spend chart, then cost tables by provider and by model" src="assets/readme/analytics.png" width="100%" />
   <br>
-  <sub>Analytics for a nine-agent team: spend over time, then the same number cut by model, team, git branch, and agent. Hover an agent for its cumulative cost across every turn it has taken.</sub>
+  <sub>Analytics: token and cost totals, spend over time, then the same cost cut by provider and model, and further down by thinking level, team, git branch, and agent. (Sample data.)</sub>
 </p>
 
 ## Features
