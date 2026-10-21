@@ -53,3 +53,17 @@ func TestAPersonsTypedSendIsNotChangedOnTmux(t *testing.T) {
 	joined := strings.Join(readCalls(t, dir), "\n")
 	assert.Contains(t, joined, "paste-buffer", "multi-line text from a person is still pasted as it was")
 }
+
+func TestAutomatedTextOfOnlyControlCharactersIsRefused(t *testing.T) {
+	for _, in := range []string{"\x03", "\x1b", "\u009b", "\n\r\n", "\x1b\x04\x03"} {
+		out, err := AutomatedTextChecked(in)
+		assert.ErrorIs(t, err, ErrNothingToSend, "%q", in)
+		assert.Empty(t, out)
+	}
+	out, err := AutomatedTextChecked("")
+	assert.NoError(t, err)
+	assert.Empty(t, out)
+	out, err = AutomatedTextChecked("ok\x03")
+	assert.NoError(t, err)
+	assert.Equal(t, "ok", out)
+}
