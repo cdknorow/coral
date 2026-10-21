@@ -20,7 +20,12 @@ const hubAutoAcceptOff = `Coral Hub auto-accept is turned off on this computer. 
 // capability allow rules, allowed tools or custom hooks (the commands its CLI would run itself),
 // the same choices limitAgentLaunch takes from an agent (#4032). Deny rules only narrow.
 func hubAsksToSkip(agentType string, flags []string, caps *agent.Capabilities, tools []string, hooks map[string]interface{}) bool {
-	return agent.SkipsPermissionPrompts(agentType, flags) || caps != nil && len(caps.Allow) > 0 || len(tools) > 0 || len(hooks) > 0
+	return agent.SkipsPermissionPrompts(agentType, flags) || hubWidens(caps, tools, hooks)
+}
+
+// hubWidens is hubAsksToSkip's part that is not flags: capability allow rules, allowed tools or custom hooks.
+func hubWidens(caps *agent.Capabilities, tools []string, hooks map[string]interface{}) bool {
+	return caps != nil && len(caps.Allow) > 0 || len(tools) > 0 || len(hooks) > 0
 }
 
 // refuseHubSkip answers a Coral Hub request that asks to skip permission prompts (skips) unless the

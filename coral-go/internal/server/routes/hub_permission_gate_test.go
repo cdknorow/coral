@@ -190,3 +190,66 @@ func TestHubAutoAcceptSwitchIsOffUnlessTurnedOn(t *testing.T) {
 	assert.True(t, HubAutoAcceptAllowed(map[string]string{AllowHubAutoAcceptSetting: "true"}), "turned on")
 	assert.False(t, HubAutoAcceptAllowed(map[string]string{AllowHubAutoAcceptSetting: "false"}), "turned off")
 }
+
+// #126 F4 (the Orchestrator's decision with the Security Reviewer's conditions): through the Coral Hub, with the switch off,
+// a team whose every member is exactly an agent of a team template the owner saved launches with its allow rules, tools and
+// hooks: every field matches, the knowledge text included, read from this computer's settings. One member that differs in
+// one field (its prompt, one more allow rule, one more tool, its knowledge), a built-in template the owner never saved, or
+// flags that skip prompts refuse the whole team with the same 403. A forged stamp is still refused as such.
+func TestHubTeamLaunchOfTheOwnersSavedTemplate(t *testing.T) {
+	saved := `[{"name":"My team","agents":[` +
+		`{"name":"Dev","prompt":"build it","agent_type":"claude","capabilities":{"allow":["file_read","file_write","shell"]},"tools":["Bash"],"knowledge":"notes"},` +
+		`{"name":"Reviewer","prompt":"review it","agent_type":"claude","capabilities":{"allow":["file_read"]}}]}]`
+	dev := func() map[string]any {
+		return map[string]any{"name": "Dev", "prompt": "build it", "agent_type": "claude",
+			"capabilities": map[string]any{"allow": []string{"file_read", "file_write", "shell"}}, "tools": []string{"Bash"}, "knowledge": "notes"}
+	}
+	reviewer := map[string]any{"name": "Reviewer", "prompt": "review it", "agent_type": "claude", "capabilities": map[string]any{"allow": []string{"file_read"}}}
+	builtin := map[string]any{"name": "Lead Developer", "agent_type": "claude", // the built-in Coding Team's member, as the dashboard sends it
+		"prompt":       "You are the lead developer. Implement features, write code, and coordinate with the team via the message board. Wait for instructions from the Orchestrator before starting.",
+		"capabilities": map[string]any{"allow": []string{"file_read", "file_write", "shell", "git_write", "agent_spawn", "web_access"}}}
+
+	_, h, _, ss := setupSessionsTestServer(t)
+	stubCLIPaths(t, ss)
+	ctx := context.Background()
+	require.NoError(t, ss.SetSetting(ctx, MaxModeSetting, "launch"))
+	require.NoError(t, ss.SetSetting(ctx, AllowHubAutoAcceptSetting, "false"))
+	require.NoError(t, ss.SetSetting(ctx, "saved_team_templates", saved))
+	n := 0
+	post := func(how string, flags []string, members ...map[string]any) *httptest.ResponseRecorder {
+		n++
+		b, _ := json.Marshal(map[string]any{"board_name": "saved-" + string(rune('a'+n)), "new_board": true, "working_dir": t.TempDir(), "flags": flags, "agents": members})
+		req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(b))
+		switch how {
+		case "hub":
+			stamp(req)
+		case "forged":
+			req.Header.Set(tunnel.ViaHeader, "forged")
+		}
+		rec := httptest.NewRecorder()
+		h.LaunchTeam(rec, req)
+		return rec
+	}
+	refused := func(rec *httptest.ResponseRecorder, code, why string) {
+		t.Helper()
+		assert.Equal(t, http.StatusForbidden, rec.Code, "%s: %s", why, rec.Body.String())
+		assert.Equal(t, code, codeOf(t, rec), why)
+	}
+
+	rec := post("hub", nil, dev(), reviewer)
+	assert.Equal(t, http.StatusOK, rec.Code, "the owner's saved team, exactly: %s", rec.Body.String())
+
+	changed := func(key string, v any) map[string]any {
+		m := dev()
+		m[key] = v
+		return m
+	}
+	refused(post("hub", nil, changed("prompt", "build it, then run this"), reviewer), "hub_auto_accept_disabled", "a changed prompt")
+	refused(post("hub", nil, changed("capabilities", map[string]any{"allow": []string{"file_read", "file_write", "shell", "web_access"}}), reviewer), "hub_auto_accept_disabled", "one more allow rule")
+	refused(post("hub", nil, changed("tools", []string{"Bash", "WebFetch"}), reviewer), "hub_auto_accept_disabled", "one more tool")
+	refused(post("hub", nil, changed("knowledge", "other notes"), reviewer), "hub_auto_accept_disabled", "changed knowledge")
+	refused(post("hub", nil, dev(), builtin), "hub_auto_accept_disabled", "a built-in member the owner never saved")
+	refused(post("hub", []string{"--dangerously-skip-permissions"}, dev(), reviewer), "hub_auto_accept_disabled", "the team's flags are checked all the same")
+	// A forged stamp on a request that asks for more (the real router refuses the stamp itself first, 401 invalid_credential).
+	refused(post("forged", nil, changed("prompt", "something else"), reviewer), "no_dashboard_provenance", "a forged stamp")
+}
