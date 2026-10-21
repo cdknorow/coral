@@ -466,8 +466,9 @@ func TestTmuxSessionTerminal_CaptureOutputIsPlainTextWithBoundedScrollback(t *te
 	name := "claude-00000027-0027-4000-8000-000000000000"
 	spawnTmuxSession(t, terminal, name, t.TempDir())
 
-	require.NoError(t, terminal.SendInput(ctx, terminalinput.Unclassified, name, `printf '\033[32mgreen\033[0m\n'; seq -f 'row %03g' 1 300; echo CAPTURE_DONE`, "", ""))
-	waitForCapture(t, terminal, name, "CAPTURE_DONE", 10*time.Second)
+	require.NoError(t, terminal.SendInput(ctx, terminalinput.Unclassified, name, `printf '\033[32mgreen\033[0m\n'; seq -f 'row %03g' 1 300; echo CAPTURE_DONE_$((6*7))`, "", ""))
+	// The marker is what the shell PRINTS (42): the typed command line, which the pane shows at once, spells it $((6*7)), so waiting for it cannot return before the output (#5826).
+	waitForCapture(t, terminal, name, "CAPTURE_DONE_42", 10*time.Second)
 
 	out, err := terminal.CaptureOutput(ctx, name, 30, "", "")
 	require.NoError(t, err)
