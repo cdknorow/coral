@@ -17,7 +17,7 @@ import { attachDialogFocus } from './dialog_focus.js';
 import { browserLocal } from './safe_storage.js';
 import { openSettingsGroup } from './settings_nav.js';
 const { _fillModelDatalist, _getAgentModels, _invalidateAgentModels, _invalidateDefaultModels } = await importOnce('./launch_models.js');
-const { _updatePermModeDescription } = await importOnce('./permission_flags.js');
+const { defaultPermissionMode, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 
 // ── Settings: API key (#3152) ─────────────────────────────────────────────
 // Masked at full width with Show and Copy; a status message (not configured,
@@ -628,7 +628,7 @@ function _fillDefaults(s) {
     if (agentTypeSelect) agentTypeSelect.value = currentAgentType;
 
     // Default Permission Mode
-    const currentPermMode = s.default_permission_mode || "bypassPermissions";
+    const currentPermMode = defaultPermissionMode(s, "claude"); // not saved: Claude starts in Auto, the other CLIs keep their own default (#5836)
     const permModeSelect = document.getElementById("settings-permission-mode");
     if (permModeSelect) {
         permModeSelect.value = currentPermMode;
@@ -862,7 +862,7 @@ function readSettingsForm() {
     const themeValue = document.getElementById("settings-theme")?.value || "dark";
     const engineName = document.getElementById("settings-renderer-select").value;
     const agentType = document.getElementById("settings-agent-type")?.value || "claude";
-    const permissionMode = document.getElementById("settings-permission-mode")?.value || "bypassPermissions";
+    const permissionMode = document.getElementById("settings-permission-mode")?.value || "auto";
     const workingDir = document.getElementById("settings-working-dir")?.value.trim() || "";
     const cliPathClaude = document.getElementById("settings-cli-path-claude")?.value.trim() || "";
     const cliPathCodex = document.getElementById("settings-cli-path-codex")?.value.trim() || "";

@@ -1,7 +1,7 @@
 /* Moved out of modals.js as it was (#3844): no behaviour change. */
 import { importOnce } from './import_once.js';
 const { ALL_CAPABILITIES } = await importOnce('./agent_presets.js');
-const { PERMISSION_MODE_DESCRIPTIONS, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions } = await importOnce('./permission_flags.js');
+const { PERMISSION_MODE_DESCRIPTIONS, defaultPermissionMode, syncDefaultPermissionMode, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions } = await importOnce('./permission_flags.js');
 const { _acfServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _settingsFor } = await importOnce('./launch_models.js');
 const { _checkAgentCLI } = await importOnce('./cli_check.js');
 const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
@@ -89,7 +89,7 @@ function _syncEnforcement(container) {
     const uid = container.dataset.acfUid;
     const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
     const permMode = container.querySelector('.acf-permission-mode')?.value
-        || _settingsFor(_acfServer(container)).default_permission_mode || 'bypassPermissions';
+        || defaultPermissionMode(_settingsFor(_acfServer(container)), agentType);
     const e = presetEnforcement(agentType, _getPermissions(`${uid}-perms`) || {}, permMode);
     // The form's own line, and any line elsewhere that mirrors it (the Launch dialog shows it under the
     // persona, while this form is folded away).
@@ -210,7 +210,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
 
     let autoPermissionsHTML = '';
     if (showAutoPermissions) {
-        const defaultMode = _settingsFor(_acfServer(container)).default_permission_mode || 'bypassPermissions';
+        const defaultMode = defaultPermissionMode(_settingsFor(_acfServer(container)), agentTypeVal || 'claude');
         const permModeVal = autoPermsVal
             ? (typeof autoPermsVal === 'string' ? autoPermsVal : (_permissionModeFromFlags(flagsVal) || defaultMode))
             : 'default';
@@ -345,6 +345,8 @@ export function renderAgentConfigForm(containerId, opts = {}) {
     container.querySelector('.acf-agent-type')?.addEventListener('change', () => {
         const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
         _checkAgentCLI(agentType, container.querySelector('.acf-cli-warning'));
+        // Still showing the default (nobody picked a mode here): it follows the agent type, Auto for Claude and the other CLIs' own default (#5836)
+        syncDefaultPermissionMode(container.querySelector('.acf-permission-mode'), _settingsFor(_acfServer(container)), agentType);
         const permMode = container.querySelector('.acf-permission-mode')?.value || 'default';
         const flagsEl = container.querySelector('.acf-flags');
         if (flagsEl) flagsEl.value = _stripPermFlags(_normalizePermFlagsForAgent(flagsEl.value, agentType, permMode));
@@ -465,7 +467,7 @@ export function setAgentConfig(containerId, values) {
     if (permModeEl) {
         // Extract permission mode from flags if present, otherwise use default from settings
         const flagMode = _permissionModeFromFlags(v.flags || '');
-        const defaultMode = _settingsFor(_acfServer(container)).default_permission_mode || 'bypassPermissions';
+        const defaultMode = defaultPermissionMode(_settingsFor(_acfServer(container)), typeEl?.value || 'claude');
         if (flagMode) {
             permModeEl.value = flagMode;
         } else if (_hasPermFlag(v.flags || '')) {

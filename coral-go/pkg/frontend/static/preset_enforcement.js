@@ -96,3 +96,27 @@ export function presetEnforcement(agentType, caps, permMode) {
     if (family === 'terminal') return { text: '', denyEnforced: false, patternsEnforced: false };
     return { text: `${family === 'pi' ? 'Pi' : 'This agent'} does not use these permissions.`, denyEnforced: false, patternsEnforced: false };
 }
+
+/**
+ * The permission mode a launch starts with when the person did not pick one (#5836): the mode they saved in Settings, else Auto for Claude (Claude's own safety checks stay on, and a new
+ * user is not met with an agent that bypasses every prompt). The other CLIs keep what they had: Codex's Auto is a workspace-write sandbox that cannot reach the board on localhost, Antigravity
+ * has no mode between its edits-only one and skip-permissions, and Pi has none. A saved mode is the person's choice and applies to every CLI as before.
+ */
+export function defaultPermissionMode(settings, agentType) {
+    const saved = settings && settings.default_permission_mode;
+    if (saved) return saved;
+    return !agentType || agentType === 'claude' ? 'auto' : 'bypassPermissions';
+}
+
+/**
+ * Sets a permission mode select to the default for agentType unless the person has picked a mode in it (a change marks it): so the select follows the agent type while it still
+ * shows the default (Claude: Auto, the others: as before), and never overrides a choice.
+ */
+export function syncDefaultPermissionMode(selectEl, settings, agentType) {
+    if (!selectEl) return;
+    if (!selectEl.dataset.pickedByPerson && !selectEl.dataset.pickWired) {
+        selectEl.dataset.pickWired = '1';
+        selectEl.addEventListener('change', () => { selectEl.dataset.pickedByPerson = '1'; });
+    }
+    if (!selectEl.dataset.pickedByPerson) selectEl.value = defaultPermissionMode(settings, agentType);
+}
