@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -44,6 +45,12 @@ func approvedRound(w *TaskWorkflow) *ReviewRound {
 		return nil
 	}
 	return &w.ReviewRounds[n-1]
+}
+
+// sameDigest compares two patch digests by their hex: a row's digest is "sha256:<hex>" as the upload printed it, and a bare 64-hex digest names the same bytes (#5793).
+func sameDigest(a, b string) bool {
+	bare := func(d string) string { return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(d), "sha256:")) }
+	return bare(a) == bare(b)
 }
 
 func inSet(set []string, v string) bool {
@@ -162,19 +169,31 @@ func (s *Store) MarkLanded(ctx context.Context, project string, id int64, actor 
 	if status != "completed" || round == nil {
 		return nil, fmt.Errorf("task #%d is not an approved, completed task: only those can be marked landed", id)
 	}
-	current := map[string]bool{}
-	for _, p := range currentPatches(w.Artifacts) {
-		current[p.Digest] = true
+	isCurrent := func(d string) bool {
+		for _, p := range currentPatches(w.Artifacts) {
+			if sameDigest(p.Digest, d) {
+				return true
+			}
+		}
+		return false
+	}
+	approved := func(d string) bool {
+		for _, a := range round.ApprovedDigests {
+			if sameDigest(a, d) {
+				return true
+			}
+		}
+		return false
 	}
 	for _, d := range digests {
-		if !inSet(round.ApprovedDigests, d) || !current[d] {
+		if !approved(d) || !isCurrent(d) {
 			return nil, fmt.Errorf("digest %s is not an approved patch of task #%d (a patch is landed only on the digests its approving round approved)", d, id)
 		}
 	}
 	now := nowUTC()
 	for i := range w.Artifacts {
 		a := &w.Artifacts[i]
-		if a.Kind == PatchKind && inSet(digests, a.Digest) && a.LandedBy == "" {
+		if a.Kind == PatchKind && a.LandedBy == "" && slices.ContainsFunc(digests, func(d string) bool { return sameDigest(a.Digest, d) }) {
 			a.LandedBy, a.LandedAt = actor, now
 		}
 	}

@@ -11,6 +11,19 @@ import (
 	"github.com/subgentic/coral/internal/board"
 )
 
+// withVerifiedCaller is the name a request that claims none acts as (#5793, the same rule as a task reply, #5779): in log mode attributedTo returns the claim, which a
+// dashboard button does not send, so the verified actor's own name stands in, in either identity mode. Never a name the body gives, and an unverified caller still has
+// none (the handler refuses it); through Coral Hub the tunnel's guard names the caller, so that path is left as it was.
+func withVerifiedCaller(r *http.Request, attributed string) string {
+	if attributed != "" || callerActor(r).Kind == ActorHub {
+		return attributed
+	}
+	if name, verified := actorName(callerActor(r)); verified {
+		return name
+	}
+	return attributed
+}
+
 // AttachPatches adds patch rows to a task that is in review with an open round (#5689): the author's next revision of a patch or a
 // reviewer's fix commit. When a reviewer had already approved, the round is superseded and the same reviewers review the new bytes.
 // POST /api/board/{project}/tasks/{taskID}/attach {subscriber_id, artifacts}
@@ -31,7 +44,7 @@ func (h *BoardHandler) AttachPatches(w http.ResponseWriter, r *http.Request) {
 		if !attrOK {
 			return
 		}
-		body.SubscriberID = attrWho
+		body.SubscriberID = withVerifiedCaller(r, attrWho)
 	}
 	if derr != nil || body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id and valid JSON required")
@@ -84,7 +97,7 @@ func (h *BoardHandler) SendBack(w http.ResponseWriter, r *http.Request) {
 		if !attrOK {
 			return
 		}
-		body.SubscriberID = attrWho
+		body.SubscriberID = withVerifiedCaller(r, attrWho)
 	}
 	if derr != nil || body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id and valid JSON required")
@@ -156,7 +169,7 @@ func (h *BoardHandler) MarkLanded(w http.ResponseWriter, r *http.Request) {
 		if !attrOK {
 			return
 		}
-		body.SubscriberID = attrWho
+		body.SubscriberID = withVerifiedCaller(r, attrWho)
 	}
 	if derr != nil {
 		errBadRequest(w, "valid JSON required")
