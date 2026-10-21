@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/testguard"
+	"github.com/subgentic/coral/internal/testguard"
 )
 
 // TestBoardPathHelperProcess runs coral-board's main with the arguments in

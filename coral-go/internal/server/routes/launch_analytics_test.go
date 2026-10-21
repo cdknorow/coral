@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // analyticsSink is a fake PostHog. No test here can reach the real service.

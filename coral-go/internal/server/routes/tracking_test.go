@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 func postTrackingEvent(t *testing.T, body string) *httptest.ResponseRecorder {

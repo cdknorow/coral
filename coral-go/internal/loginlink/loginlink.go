@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/cloud"
 )
 
 // Param is the query parameter that carries the login token (auth.LoginTokenParam).

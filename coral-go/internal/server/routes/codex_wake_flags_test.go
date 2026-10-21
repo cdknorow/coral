@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #5222 (found with real Codex 0.163): a Codex agent in mode auto, dontAsk, acceptEdits or plan, woken after an earlier restart or resume, typed

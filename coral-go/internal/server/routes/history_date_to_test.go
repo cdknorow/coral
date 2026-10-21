@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/cdknorow/coral/internal/board/boardtest"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/board/boardtest"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #4779: the history list's date_to is the end of that day for a board too: a board whose first message came at 23:59:59.5Z on the date_to day

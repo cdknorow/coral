@@ -11,10 +11,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // maxParkDays is the furthest a park's end may be.

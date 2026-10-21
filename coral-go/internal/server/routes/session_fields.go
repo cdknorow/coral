@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"slices"
 
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/ptr"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Session-list fields that /api/sessions/live and /ws/coral both send. Both

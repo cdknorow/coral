@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/store"
 )
 
 var uiID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/auth"
+	"github.com/subgentic/coral/internal/auth"
 )
 
 // #3936: coral api-key prints the key the server made, and says how to get one when there is

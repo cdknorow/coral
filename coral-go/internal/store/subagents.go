@@ -6,7 +6,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/cdknorow/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/ptr"
 )
 
 // Subagent is one subagent launched by a main agent, with its cumulative

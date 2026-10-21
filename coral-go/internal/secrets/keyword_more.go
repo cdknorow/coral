@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // Round four of the hub's keyword rules (#5212): the neighbours of what keyword_rules.go takes, found by Security's review of #5172, and four misses coral-hub measured. They sit in their own file

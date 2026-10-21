@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // #5308: the transcript of a working directory with a dot, an underscore or a space in its path is found in the CLI's own folder for it, not by scanning every folder and taking the first

@@ -1,6 +1,6 @@
 package ptymanager
 
-import "github.com/cdknorow/coral/internal/psquote"
+import "github.com/subgentic/coral/internal/psquote"
 
 // psLiteral is s as a PowerShell single-quoted string: nothing inside expands, and every
 // single-quote character is doubled (#3690: a profile folder like C:\Users\O'Brien ended the

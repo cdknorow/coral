@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #4943: restarting or resuming an agent gives it a new session id; it keeps its place in the agent list. The list is served in the order

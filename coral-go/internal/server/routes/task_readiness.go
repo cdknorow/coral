@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // taskReadiness runs the check "did this task's finish unblock others" at most once at a time for a task id (#4602, L5). Each

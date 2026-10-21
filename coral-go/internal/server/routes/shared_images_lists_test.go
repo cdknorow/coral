@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/cloud"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #5284 (Security's review): with the owner's switch off, a request through the Hub tunnel must not learn a pasted image's name, id or size from an artifact list either, nor read its comments.

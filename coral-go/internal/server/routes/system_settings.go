@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentprio"
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/inputlog"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentprio"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/ptymanager"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // sensitiveKeys are settings that should never be returned to the frontend.

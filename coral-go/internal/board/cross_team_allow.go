@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/clitext"
 )
 
 // Who may message a board (#5508, coral-hub's spec): default deny. A board accepts a cross-team message, and the files that come with it, only from a sender on its list of

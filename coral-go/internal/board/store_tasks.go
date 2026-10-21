@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/naming"
+	"github.com/subgentic/coral/internal/naming"
 )
 
 // GetTask returns one task on a board.

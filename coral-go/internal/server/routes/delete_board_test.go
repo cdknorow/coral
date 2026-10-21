@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // #4966: DELETE /api/board/{name} deletes the whole board: its tasks go with its messages, and another board is left alone.

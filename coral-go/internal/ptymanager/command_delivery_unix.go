@@ -2,7 +2,7 @@
 
 package ptymanager
 
-import "github.com/cdknorow/coral/internal/cmdhandoff"
+import "github.com/subgentic/coral/internal/cmdhandoff"
 
 // inlineCommandLimit is the longest command typed into a starting shell as it is; a longer one is
 // delivered through a temporary script so the shell only has to receive a short path

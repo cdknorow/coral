@@ -11,11 +11,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/agentmodels"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/jsonl"
-	"github.com/cdknorow/coral/internal/proxy"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/agentmodels"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/proxy"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // The live switch of an agent's model and thinking level (#4969): the operator picks a model or level in the chat bar and Coral

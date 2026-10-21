@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	setreg "github.com/cdknorow/coral/internal/settings"
 	"github.com/go-chi/chi/v5"
+	setreg "github.com/subgentic/coral/internal/settings"
 )
 
 // SearchFiles searches for files in the agent's working directory.

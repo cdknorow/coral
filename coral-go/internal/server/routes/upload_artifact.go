@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/diskguard"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/diskguard"
 )
 
 // dashboardUploadBucket is the hourly window these artifacts count in (artifact_store.go admitUpload): the same limits as an agent's, in a bucket of its own so neither can use up the

@@ -13,10 +13,10 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/cdknorow/coral/internal/logparse"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/logparse"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // TmuxBackend implements TerminalBackend using tmux sessions.

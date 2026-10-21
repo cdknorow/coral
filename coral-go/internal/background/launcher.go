@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/google/uuid"
+	"github.com/subgentic/coral/internal/agent"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // AgentLauncher creates agent sessions and launches agents.

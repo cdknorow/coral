@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/tmux"
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // CLICheck verifies whether a CLI tool is installed and returns its version.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // KeywordsEnv turns the keyword rules off for Coral Hub when it is off, 0, no or false (#5141): the operator's switch, next to the setting

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // mockClaudeVersion is the Claude Code version the mock transcript claims to be written by.

@@ -7,17 +7,17 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/subgentic/coral/internal/agentprio"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/inputlog"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/server/routes"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/tmux"
-	"github.com/cdknorow/coral/internal/tracking"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/server/routes"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tracking"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // applyStartupSettings applies the saved settings the terminal needs before any backend starts: the replay buffer

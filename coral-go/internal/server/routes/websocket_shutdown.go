@@ -6,7 +6,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // wsRegistry tracks the open sockets of the dashboard and terminal routes. A hijacked connection is not one http.Server.Shutdown waits for or ends, and

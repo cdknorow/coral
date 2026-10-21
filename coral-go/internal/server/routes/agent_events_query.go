@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/store"
 )
 
 var eventQueryParamNames = map[string]bool{"type": true, "q": true, "since": true, "until": true, "sort": true, "limit": true, "cursor": true, "session_id": true}

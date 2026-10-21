@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agentsignin"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/agentsignin"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 const (

@@ -11,11 +11,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // Strict bounds are the DEFAULT for every request: files are served only from inside the

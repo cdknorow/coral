@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/agentprio"
+	"github.com/subgentic/coral/internal/agentprio"
 )
 
 func niceOf(t *testing.T, pid string) int {

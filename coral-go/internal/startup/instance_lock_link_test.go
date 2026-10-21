@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/linktest"
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // #3920: the instance lock is never taken through a link planted at its name (a symbolic link;

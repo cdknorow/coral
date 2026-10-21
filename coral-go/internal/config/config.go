@@ -4,7 +4,7 @@ package config
 
 import (
 	"fmt"
-	"github.com/cdknorow/coral/internal/testguard"
+	"github.com/subgentic/coral/internal/testguard"
 	"log"
 	"os"
 	"path/filepath"

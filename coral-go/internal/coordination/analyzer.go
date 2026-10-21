@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/ptr"
 )
 
 // DefaultInactivityLimit is the heuristic threshold for long active tasks.

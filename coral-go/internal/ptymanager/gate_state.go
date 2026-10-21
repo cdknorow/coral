@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // The gate on the CLIs' own signals (#3475 design v2.1, #3482).

@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"path/filepath"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/dbcrypt"
-	"github.com/cdknorow/coral/internal/inputlog"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/dbcrypt"
+	"github.com/subgentic/coral/internal/inputlog"
+	setreg "github.com/subgentic/coral/internal/settings"
 )
 
 // DatabaseSecurityStatus is intentionally metadata-only. Passwords and key

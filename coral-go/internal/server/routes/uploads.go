@@ -17,8 +17,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/uploads"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/uploads"
 )
 
 var (

@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // The password's routes (#3949). All are POST and same-origin (Sec-Fetch-Site, when sent, is

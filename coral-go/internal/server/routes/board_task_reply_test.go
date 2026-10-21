@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/board/boardtest"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/board/boardtest"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // The reply-to-task route (#5463) over the real handler and store. A test actor header stands in for the identity layer: "token:<member>" is an agent's token, "operator" the

@@ -3,7 +3,7 @@ package routes
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/pkg/hubproxy"
 )
 
 const (

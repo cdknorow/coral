@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // Security's note on df75d9aa: with TLS on its port, the loopback origins Coral registers with

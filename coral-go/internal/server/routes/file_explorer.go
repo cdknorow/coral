@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // Explorer lists names only, one directory at a time. Preview limits are

@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // The keyword rules are regular expressions with a case-insensitive name chain and no literal to start from: run over every byte they cost more than

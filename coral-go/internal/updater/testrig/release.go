@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // The identities of the rehearsal: nothing of Coral's real release or promote workflow, and an OIDC issuer that cannot exist (.invalid, RFC 6761).

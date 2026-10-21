@@ -10,8 +10,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/cdknorow/coral/internal/safego"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	"github.com/subgentic/coral/internal/safego"
+	setreg "github.com/subgentic/coral/internal/settings"
 )
 
 type CallMetric struct {

@@ -15,10 +15,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // Strict local auth (#3418): with --strict-local-auth, a request from this computer needs

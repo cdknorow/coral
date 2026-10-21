@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // managedArtifactURI is a link to an object in Coral's artifact store, in any of the forms an agent

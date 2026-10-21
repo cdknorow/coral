@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/jsonl"
 )
 
 // Transcripts only grow while an agent runs, but the token poller used to

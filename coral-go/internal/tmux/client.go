@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/testguard"
+	"github.com/subgentic/coral/internal/testguard"
 )
 
 // Pane represents a tmux pane with its metadata.

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // Dashboard login tokens (#3387, identity phase 1). Like Jupyter's: a single-use

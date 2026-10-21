@@ -9,10 +9,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/logparse"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/logparse"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // errAgentExited is returned for automated input to an agent whose CLI has

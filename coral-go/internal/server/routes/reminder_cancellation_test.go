@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // gatedReminderTerminal records nudges. When gate is non-nil, SendInput signals

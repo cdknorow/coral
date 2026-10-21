@@ -7,10 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/board"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/board"
 )
 
 func TestWorkflowPresetAPIWorkerAndUserPermissions(t *testing.T) {

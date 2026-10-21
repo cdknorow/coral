@@ -88,7 +88,7 @@ jobs:
           BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
           COMMANDS: ${{ needs.resolve.outputs.commands }}
         run: |
-          LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
+          LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
           mkdir -p ../dist/linux
           for cmd in $COMMANDS; do
             [ -d "./cmd/$cmd" ] || continue
@@ -176,7 +176,7 @@ jobs:
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
           $version = $env:VERSION
-          $ldflags = "-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=$env:POSTHOG_PROJECT_KEY -X github.com/cdknorow/coral/internal/config.Version=$version"
+          $ldflags = "-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=$env:POSTHOG_PROJECT_KEY -X github.com/subgentic/coral/internal/config.Version=$version"
           $buildTags = $env:BUILD_TAGS
           New-Item -ItemType Directory -Force -Path ..\dist\windows\bin | Out-Null
 
@@ -370,7 +370,7 @@ jobs:
           GUI_COMMANDS: ${{ needs.resolve.outputs.gui_commands }}
         run: |
           set -euo pipefail
-          LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
+          LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
           mkdir -p ../dist/macos-arm64
           for cmd in $COMMANDS; do
             CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
@@ -432,7 +432,7 @@ jobs:
           GUI_COMMANDS: ${{ needs.resolve.outputs.gui_commands }}
         run: |
           set -euo pipefail
-          LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
+          LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
           mkdir -p ../dist/macos-amd64
           for cmd in $COMMANDS; do
             CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"

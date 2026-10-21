@@ -10,10 +10,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/diskguard"
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/diskguard"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // staleTempAge is how old a launch temp file must be before the startup sweep may remove it.

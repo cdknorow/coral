@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // ResolvePath turns a file reference from an agent's chat (repo-relative,

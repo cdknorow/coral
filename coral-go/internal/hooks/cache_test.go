@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/linktest"
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // Path-shaped task IDs an agent could send (#3571).

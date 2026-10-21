@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #4489 (Security's #4488 SHOULD): GET /api/system/artifact-store lists the digests of the received files no board lists (received.unlisted.items) only to

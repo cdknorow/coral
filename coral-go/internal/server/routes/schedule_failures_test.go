@@ -3,7 +3,7 @@ package routes
 import (
 	"testing"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 func runsWithStatuses(statuses ...string) []store.ScheduledRun {

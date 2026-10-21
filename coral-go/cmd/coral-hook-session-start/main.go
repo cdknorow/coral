@@ -10,7 +10,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/hooks"
 )
 
 func main() {

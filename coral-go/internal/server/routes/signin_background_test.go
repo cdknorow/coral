@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/agentsignin"
-	"github.com/cdknorow/coral/internal/claudestub"
+	"github.com/subgentic/coral/internal/agentsignin"
+	"github.com/subgentic/coral/internal/claudestub"
 )
 
 // #5469: the routes that run Claude for a person (team generation, theme generation) never start a signed-out Claude: its sign-in flow would hold the login. The stand-in

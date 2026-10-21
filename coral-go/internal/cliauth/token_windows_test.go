@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 )
 
 // #3905: on Windows the command line checks the token's access list (Unix checks the mode and

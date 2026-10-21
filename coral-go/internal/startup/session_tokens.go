@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // setupSessionTokens turns on per-session agent tokens (#3387): every launch line

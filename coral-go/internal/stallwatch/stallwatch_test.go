@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 )
 
 // a log output that stops reading, like the terminal in #3226.

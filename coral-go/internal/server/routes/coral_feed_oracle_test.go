@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/background"
+	"github.com/subgentic/coral/internal/background"
 )
 
 // WSCoral's per-tick decision, moved into coralFeed (frame, then sent once written) (#4713), builds what

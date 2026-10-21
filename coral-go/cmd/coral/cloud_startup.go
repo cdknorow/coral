@@ -15,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // The startup "Connect to Coral Hub" step (#3285). Off unless asked for (#3459):

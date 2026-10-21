@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 )
 
 // #3690 (#3689 finding 2): with the temp folder under a name holding an apostrophe (a profile

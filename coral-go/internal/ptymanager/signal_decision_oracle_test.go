@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // signalDecision, split into reading the screen, the decision for each state but idle, and idle's checks (#4713),

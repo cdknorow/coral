@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // Routes provides HTTP handlers for authentication endpoints.

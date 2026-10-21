@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/sessionstate"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/teamhealth"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/sessionstate"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/teamhealth"
 )
 
 // HealthNudges is the part of the health check that acts by itself (#4175 step 1): it nudges an

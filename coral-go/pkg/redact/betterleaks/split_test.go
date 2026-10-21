@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // Security's probes on #3808, as tests: a secret written in two bursts, and a secret where a

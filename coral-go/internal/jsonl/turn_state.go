@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
+	at "github.com/subgentic/coral/internal/agenttypes"
 )
 
 // ReadCodexTurnEvent reuses the session reader's resolved path so frequent UI

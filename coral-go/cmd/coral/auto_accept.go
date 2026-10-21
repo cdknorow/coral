@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/cliauth"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/subgentic/coral/internal/hooks"
 )
 
 // coral auto-accept off --all [--url URL]

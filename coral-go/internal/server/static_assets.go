@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/pkg/frontend"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/pkg/frontend"
 )
 
 // The embedded /static tree never changes while the server runs, so each

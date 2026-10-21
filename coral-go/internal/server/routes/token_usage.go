@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // TokenUsageHandler provides HTTP handlers for token usage API.

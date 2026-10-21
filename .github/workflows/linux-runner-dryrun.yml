@@ -53,7 +53,7 @@ jobs:
         env:
           ARCH: ${{ inputs.arch }}
         run: |
-          LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.Version=0.0.0-dryrun"
+          LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.Version=0.0.0-dryrun"
           mkdir -p ../dist/linux
           # The shipped programs: tests/release/commands.txt, as release.yml (#3855).
           for cmd in $(grep -vE '^[[:space:]]*(#|$)' ../tests/release/commands.txt); do

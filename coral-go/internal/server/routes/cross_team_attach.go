@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // Per-send limits for coral-board send --attach (#4379, coral-hub's design section 10 C1).

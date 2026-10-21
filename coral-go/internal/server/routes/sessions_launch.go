@@ -9,11 +9,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/agentmodels"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/agentmodels"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // Launch creates a new agent session.

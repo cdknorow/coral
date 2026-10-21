@@ -17,10 +17,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/secfile"
 	"github.com/google/uuid"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // posthogURL is the capture endpoint. It is a var so tests can point it at a

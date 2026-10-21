@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/querypage"
+	"github.com/subgentic/coral/internal/querypage"
 )
 
 // The board message search (#4745): GET /api/board/{project}/messages/search. Like the Team Artifacts query it takes q, since, until,

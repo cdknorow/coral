@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/sessionstate"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/sessionstate"
 	"log"
 	"path/filepath"
 	"strings"
@@ -16,7 +16,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/cdknorow/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/secrets"
 )
 
 // AgentTask represents a checklist item for an agent.

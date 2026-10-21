@@ -7,12 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // TestVerification_PrivacyRoutes_StatusAndSettings verifies:

@@ -11,8 +11,8 @@ import (
 	"os"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/store"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // ThinkingEventType is the agent_events type of a thinking turn.

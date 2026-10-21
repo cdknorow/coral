@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/agent"
+	"github.com/subgentic/coral/internal/jsonl"
 )
 
 // ChatAttachment serves one pasted image of a session's chat (#5032). GET /api/sessions/live/{name}/attachment/{ref}

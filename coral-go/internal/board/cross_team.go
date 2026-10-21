@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/clitext"
 )
 
 // RawJSON is a JSON document stored as TEXT. It marshals as the document

@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/agent"
-	setreg "github.com/cdknorow/coral/internal/settings"
+	"github.com/subgentic/coral/internal/agent"
+	setreg "github.com/subgentic/coral/internal/settings"
 )
 
 // agentCaller reports a request made with an agent session's token.

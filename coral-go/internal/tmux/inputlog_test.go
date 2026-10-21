@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/inputlog"
 )
 
 // Every way Coral types into a tmux pane is recorded with its target and the code

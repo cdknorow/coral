@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"github.com/cdknorow/coral/internal/testguard"
+	"github.com/subgentic/coral/internal/testguard"
 	"io"
 	"net/http"
 	"net/http/httptest"

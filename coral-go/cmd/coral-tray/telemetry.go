@@ -3,7 +3,7 @@ package main
 import (
 	"sync"
 
-	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // trayTelemetry is the supervisor's onTelemetry (#5184). The tray's own install and app_opened events used to go out from the tray process, which never

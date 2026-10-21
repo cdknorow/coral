@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/pkg/secretbox"
+	"github.com/subgentic/coral/pkg/secretbox"
 )
 
 // #3698: a refused master key is replaced by a re-key, which discards what the old key sealed

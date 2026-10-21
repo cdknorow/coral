@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/httputil"
 )
 
 // A shared write budget per agent session (#4602, the Orchestrator's decision 3): the routes through which an agent token can add rows,

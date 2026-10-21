@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #5501: a cross-team send whose text names coral://artifacts (or /api/artifacts) links ATTACHES those files automatically, within --attach's limits and checks, only when the

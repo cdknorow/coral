@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	proxy "github.com/subgentic/coral/pkg/hubproxy"
 )
 
 func TestRemoteResolver_UnknownServer(t *testing.T) {

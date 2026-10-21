@@ -13,8 +13,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/jsonl"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/jsonl"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // AgentHistoryMatch represents a single matching turn found in session history.

@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	proxy "github.com/cdknorow/coral/pkg/hubproxy"
+	proxy "github.com/subgentic/coral/pkg/hubproxy"
 )
 
 // MountRemoteProxy registers the multi-server hub proxy on r:

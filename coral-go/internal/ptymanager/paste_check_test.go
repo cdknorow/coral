@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/naming"
+	"github.com/subgentic/coral/internal/naming"
 )
 
 // Screens captured from the real CLIs (#3457 rig): whether a paste is in the input box.

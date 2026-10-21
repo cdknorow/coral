@@ -1,7 +1,7 @@
 package tmux
 
 import (
-	"github.com/cdknorow/coral/internal/testleak"
+	"github.com/subgentic/coral/internal/testleak"
 	"os"
 	"runtime"
 	"testing"

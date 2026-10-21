@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // #3633: on Windows filepath.EvalSymlinks doesn't follow junctions, so every containment check

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // #3761's fuzz properties for the library (#3808): the rules are betterleaks', so what is

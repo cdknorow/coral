@@ -13,10 +13,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/updater/runrecord"
-	"github.com/cdknorow/coral/internal/updater/stage"
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/updater/runrecord"
+	"github.com/subgentic/coral/internal/updater/stage"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // "coral-update status [--json]" says what the updater knows (#5420), for the rollout and for a person asking why nothing happened. It only reads: the state file and the

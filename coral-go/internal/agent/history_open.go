@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cdknorow/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/safefs"
 )
 
 // maxHistoryJSONBytes caps a legacy Gemini session file, which is read whole.

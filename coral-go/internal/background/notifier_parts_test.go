@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // The pieces of a notification pass (#4599 second ranking, item 1: split out of runPassWith, behaviour unchanged).

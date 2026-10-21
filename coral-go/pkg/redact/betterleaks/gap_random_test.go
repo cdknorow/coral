@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // #3884: coral-hub's redaction comparison, folded into the gap report. Each shape is run with

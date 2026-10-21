@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // Credential files are read with descriptor-level checks on Linux and macOS.

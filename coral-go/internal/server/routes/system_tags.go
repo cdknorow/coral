@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // ListTags returns all tags.

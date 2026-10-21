@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/auth"
+	"github.com/subgentic/coral/internal/auth"
 )
 
 // a Coral that answers the hello and accepts only correctly signed requests.

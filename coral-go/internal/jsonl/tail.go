@@ -5,8 +5,8 @@ import (
 	"context"
 	"io"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/decodelimit"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/decodelimit"
 )
 
 // decodeLimited is decodeLines under the limit: a large decode waits for a slot, or gives up

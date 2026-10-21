@@ -13,13 +13,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/secrets"
-	"github.com/cdknorow/coral/internal/server/routes"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/store/storetest"
-	"github.com/cdknorow/coral/pkg/hubproxy"
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/secrets"
+	"github.com/subgentic/coral/internal/server/routes"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/pkg/hubproxy"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #3936 (Coral Hub Security's five checks): with strict local auth on, as it is by default, the

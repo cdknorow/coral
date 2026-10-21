@@ -12,7 +12,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/sessionstate"
+	"github.com/subgentic/coral/internal/sessionstate"
 )
 
 // seedAgentEvents writes perSession events for each of n sessions in one

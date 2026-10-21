@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // #4769: a URL's password (scheme://user:password@host) reached Coral Hub viewers: betterleaks has no rule for it, and the writer's

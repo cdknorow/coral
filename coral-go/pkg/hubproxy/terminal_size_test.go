@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/pkg/redact"
-	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/coder/websocket"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/pkg/redact"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #3422: a machine reports its terminal pane's size to every viewer (terminal_size), and a viewer

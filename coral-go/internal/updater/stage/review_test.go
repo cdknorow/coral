@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // #5301: a verified manifest's revocations count at once, not only after the install: the staged release is not installed yet, and a replayed older manifest that does not

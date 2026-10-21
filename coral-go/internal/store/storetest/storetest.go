@@ -15,7 +15,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 var (

@@ -19,10 +19,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/secrets"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/secrets"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Comments on an artifact (#5176, phase 1). Routes under /api/artifacts/{id}/comments, id the artifact's 64-hex digest; every decision about who may do what is commentPolicy's, and who is

@@ -16,10 +16,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/background"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/httputil"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // knowledgeJobs tracks distillation runs: the running one, or the last one to finish, per

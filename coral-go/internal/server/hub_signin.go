@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/cdknorow/coral/internal/auth"
-	"github.com/cdknorow/coral/internal/cloud"
-	"github.com/cdknorow/coral/internal/server/routes"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/auth"
+	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/server/routes"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // Sign in with Coral Hub's wiring (#3966): internal/auth serves it; Coral Hub is reached through

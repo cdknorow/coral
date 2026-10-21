@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
 	"github.com/coder/websocket"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {

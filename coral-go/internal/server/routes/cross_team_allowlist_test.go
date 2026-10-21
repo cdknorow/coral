@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/board"
+	"github.com/subgentic/coral/internal/board"
 )
 
 // #5508: who may message a board. With the allowlist in force a board takes a cross-team message only from a sender on its list of {server, cross_team_id}; one refusal for every cause.

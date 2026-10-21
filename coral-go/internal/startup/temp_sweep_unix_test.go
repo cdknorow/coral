@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #4381: at startup launch temp files move to <data dir>/tmp, and the stale ones are swept. In the

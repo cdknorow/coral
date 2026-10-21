@@ -8,7 +8,7 @@ package ptymanager
 import (
 	"context"
 
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // PaneInfo describes a running agent session (backend-agnostic).

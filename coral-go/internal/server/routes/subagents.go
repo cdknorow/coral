@@ -7,9 +7,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/subagent"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/subagent"
 )
 
 // Subagent statuses reported to the UI. They reuse the task list's status

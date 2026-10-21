@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safefs"
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safefs"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // A workflow run's folder (#3587). Every step gets the run folder's path in its

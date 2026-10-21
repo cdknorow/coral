@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/sessionstate"
-	"github.com/cdknorow/coral/internal/store"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/sessionstate"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // An agent that needs the user to sign in (#3830). The CLI's own record says so first: Claude

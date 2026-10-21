@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // Connector-opened streams: every stream is opened by the hub except these, one request each,

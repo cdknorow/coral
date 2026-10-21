@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/config"
+	"github.com/subgentic/coral/internal/config"
 )
 
 // #5305: an id read from a file in the data folder, or a name from a request, is one folder name before it is joined onto a folder. "../../x" never leaves it.

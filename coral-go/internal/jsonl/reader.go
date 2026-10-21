@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/transcriptlink"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/transcriptlink"
 )
 
 // SessionReader incrementally reads JSONL session files for live chat display.

@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cdknorow/coral/internal/background"
+	"github.com/subgentic/coral/internal/background"
 )
 
 // Every /ws/coral connection used to rebuild the session list on its own tick

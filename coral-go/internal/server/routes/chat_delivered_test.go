@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/ptymanager"
 )
 
 // #4306: a turn that Coral typed into the agent comes back flagged coral_notice, however long or odd its text (a task notice

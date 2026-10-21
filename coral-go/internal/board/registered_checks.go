@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/gitutil"
 )
 
 const (

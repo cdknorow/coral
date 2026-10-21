@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/secfile"
-	"github.com/cdknorow/coral/internal/testguard"
+	"github.com/subgentic/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/testguard"
 )
 
 // The hooks' cache and debug log (#3571). They live in the per-user Coral data folder, in a

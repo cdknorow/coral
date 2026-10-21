@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/stallwatch"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/stallwatch"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // startStallWatch runs the stall watchdog (#3262): every 10 s it checks the HTTP router,

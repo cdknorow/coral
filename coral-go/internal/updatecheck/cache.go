@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // The server asks GitHub through a cache (#4133, from the #4132 audit): every call to

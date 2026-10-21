@@ -9,7 +9,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"github.com/cdknorow/coral/internal/ptr"
+	"github.com/subgentic/coral/internal/ptr"
 )
 
 // The review flow (#3725, settled with the operator):

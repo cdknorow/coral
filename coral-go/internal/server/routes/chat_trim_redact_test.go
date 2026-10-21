@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/secrets"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/secrets"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // Security's #3723 finding: trim=N is chosen by the caller, a View-tier Coral Hub user among

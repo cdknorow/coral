@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cdknorow/coral/pkg/tunnel"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #3489: a session reported by a tunnel generation that was stopped is never stored, so a

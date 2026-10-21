@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cliauth"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #3513 end to end with strict local auth, the real router: an agent's token can't read the

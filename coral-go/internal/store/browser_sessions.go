@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/cdknorow/coral/internal/auth"
+	"github.com/subgentic/coral/internal/auth"
 )
 
 // Browser sessions (#3949) live in sessions.db so a sign-in survives a restart. The auth

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // TokenUsageHourAgg keeps the Cost view's hourly aggregate of token usage up to date (#4752): every minute it recomputes the hours that are over

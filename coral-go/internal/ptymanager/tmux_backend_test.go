@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/tmux"
 )
 
 // newTestTmuxBackend creates a TmuxBackend with an isolated tmux socket

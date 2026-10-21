@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/auth"
+	"github.com/subgentic/coral/internal/auth"
 )
 
 // PUT /api/settings accepts require_auth_on_loopback as a boolean, stores it normalised to

@@ -32,14 +32,14 @@ func TestSigstoreIsLinkedOnlyIntoTheUpdater(t *testing.T) {
 		deps := list("-deps", "-f", "{{.ImportPath}}", pkg)
 		for _, d := range deps {
 			assert.NotContains(t, d, "sigstore/sigstore-go", "%s links the Sigstore verifier", pkg)
-			assert.NotEqual(t, "github.com/cdknorow/coral/internal/updater/verify", d, "%s links the update verifier", pkg)
+			assert.NotEqual(t, "github.com/subgentic/coral/internal/updater/verify", d, "%s links the update verifier", pkg)
 		}
 		checked++
 	}
 	assert.Greater(t, checked, 5, "the programs under cmd/ were found")
 	// And nothing else in the module imports the verifier except the updater's own program and the packages under internal/updater (which only
 	// cmd/coral-update links: the loop above holds that for every other program).
-	const self = "github.com/cdknorow/coral/internal/updater/verify"
+	const self = "github.com/subgentic/coral/internal/updater/verify"
 	for _, line := range list("-f", "{{.ImportPath}}|{{join .Imports \" \"}}", "./...") {
 		pkg, imports, _ := strings.Cut(line, "|")
 		if pkg == self || strings.HasSuffix(pkg, "/cmd/coral-update") || strings.Contains(pkg, "/internal/updater/") {

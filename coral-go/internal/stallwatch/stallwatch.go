@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cdknorow/coral/internal/safego"
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // Probe is one health check. Check should return quickly when the part is healthy; it is

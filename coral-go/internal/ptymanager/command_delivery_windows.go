@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cdknorow/coral/internal/secfile"
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // inlineCommandLimit stays below the small canonical input buffer used by a

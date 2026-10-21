@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/cdknorow/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/cliauth"
 )
 
 var agentToolPrefixes = []string{"coral-board/", "coral-agent/", "coral-hook-"}

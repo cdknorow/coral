@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/gitutil"
 )
 
 // Persisted and tunneled changes diffs (#3555; Security's answer on it). A diff Coral stores

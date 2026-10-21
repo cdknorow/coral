@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // TokenUsageRetention rolls raw token usage older than store.TokenUsageRawDays into hourly rows

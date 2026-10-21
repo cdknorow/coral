@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #4937 part 2: end to end, a dev build pointed at a fake capture endpoint through the dev-only

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/testleak"
+	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/testleak"
 )
 
 // TestMain fails the package when its tests leave a goroutine running (#4167).

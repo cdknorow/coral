@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cdknorow/coral/internal/updater/stage"
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/updater/stage"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // FakeGitHub serves releases the way github.com does for the updater: /<repo>/releases/latest/download/<file> (redirecting to the newest release's file, as

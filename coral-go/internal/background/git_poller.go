@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/gitutil"
-	"github.com/cdknorow/coral/internal/safefs"
-	setreg "github.com/cdknorow/coral/internal/settings"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/subgentic/coral/internal/executil"
+	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/safefs"
+	setreg "github.com/subgentic/coral/internal/settings"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // MinGitPollInterval is the floor for a user-configured poll interval. Git

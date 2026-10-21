@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/secrets"
-	"github.com/cdknorow/coral/pkg/redact"
+	"github.com/subgentic/coral/internal/secrets"
+	"github.com/subgentic/coral/pkg/redact"
 )
 
 // #4769: through a real hub session with the connector's real redactor, a reply holding a URL with credentials reaches a View viewer with the

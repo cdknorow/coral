@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/store/storetest"
 )
 
 // #3671 (#3669 finding 1): a network path from a request is refused before anything stats it

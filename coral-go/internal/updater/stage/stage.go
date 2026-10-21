@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cdknorow/coral/internal/updater/verify"
+	"github.com/subgentic/coral/internal/updater/verify"
 )
 
 // The files a staged release is made of: everything verify.Release needs at apply, so apply verifies again from these and trusts no record.

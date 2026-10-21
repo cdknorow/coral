@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/store"
+	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/store"
 )
 
 // #3601 (weak site W17, Security's SHOULD-1): a job or scheduled run's agent log is created
