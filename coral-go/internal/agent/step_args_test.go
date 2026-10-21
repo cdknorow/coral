@@ -54,7 +54,7 @@ func TestAStepPromptThatLooksLikeAnOptionIsThePrompt(t *testing.T) {
 				}
 			case "agy":
 				require.GreaterOrEqual(t, len(argv), 2, label)
-				assert.Equal(t, []string{"--print", prompt}, argv[len(argv)-2:], "%s: --print and its value are last", label)
+				assert.Equal(t, []string{"--disable-slash-commands", "--print", prompt}, argv[len(argv)-3:], "%s: slash commands off, then --print and its value last", label)
 				assert.NoFileExists(t, argvFile+".stdin")
 			default:
 				last := argv[len(argv)-1]
