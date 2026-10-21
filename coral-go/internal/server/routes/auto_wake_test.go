@@ -323,12 +323,19 @@ func TestAutoWakeNoticeNudgesTheNamedAgent(t *testing.T) {
 	r.add(sid(1), "dev", store.SleepReasonCoralStopped, "", false)
 	_, err := r.h.db.ExecContext(ctx, "UPDATE live_sessions SET board_name = ? WHERE session_id = ?", team, sid(1))
 	require.NoError(t, err)
-	_, err = r.h.bs.Subscribe(ctx, team, "dev-sub", "Frontend Dev", naming.SessionName("claude", sid(1)), nil, "mentions")
+	// The agent's subscription is made under the id the wake itself uses ("dev", its name): waking it subscribes it again under that id, so a subscription under another id would leave
+	// TWO active ones for the one session, and the notice is addressed by the newest of them (ties in subscribed_at, within a second, picked either): the notice then named a title this
+	// subscriber did not have in about 1 run in 600 (#5573). In a team the agent has one subscription, as here.
+	_, err = r.h.bs.Subscribe(ctx, team, "dev", "Frontend Dev", naming.SessionName("claude", sid(1)), nil, "mentions")
 	require.NoError(t, err)
 	_, err = r.h.bs.Subscribe(ctx, team, "orch-sub", "Orchestrator", "claude-orchestrator", nil, "all")
 	require.NoError(t, err)
 	r.h.AutoWakeAfterRestart(ctx)
-	for who, want := range map[string]int{"dev-sub": 1, "orch-sub": 0} {
+	// Exactly one subscription of the agent's session remains: the test would be ambiguous otherwise.
+	var subs int
+	require.NoError(t, r.h.bs.Reader().GetContext(ctx, &subs, "SELECT COUNT(*) FROM board_subscribers WHERE project = ? AND session_name = ? AND is_active = 1", team, naming.SessionName("claude", sid(1))))
+	assert.Equal(t, 1, subs, "one active subscription for the woken session")
+	for who, want := range map[string]int{"dev": 1, "orch-sub": 0} {
 		n, err := r.h.bs.CheckUnread(ctx, team, who)
 		require.NoError(t, err)
 		assert.Equal(t, want, n, who)
