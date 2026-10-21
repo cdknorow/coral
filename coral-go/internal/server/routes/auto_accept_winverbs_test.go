@@ -361,3 +361,30 @@ func TestWindowsQuotedMethodNamesAndPosixSyntaxStayQuiet(t *testing.T) {
 		assert.Empty(t, winVerbRisk(cmd, fakeOutside), cmd)
 	}
 }
+
+// QA on #53: output thrown away is not a write outside the folder (through the pure reader and the real check).
+func TestWindowsDiscardRedirectionsAreQuiet(t *testing.T) {
+	quiet := []string{
+		"make 2>/dev/null",
+		"make >/dev/null 2>&1",
+		"cmd >>/dev/null 2>>err.log",
+		"echo hi > nul",
+		"echo hi > NUL",
+		"Get-ChildItem > $null",
+		"Get-ChildItem | Out-Null",
+		"dotnet build 2>&1",
+		"go test ./... 2> /dev/null",
+	}
+	for _, cmd := range quiet {
+		assert.Empty(t, winVerbRisk(cmd, fakeOutside), cmd)
+	}
+	for _, cmd := range []string{"echo hi > /etc/hosts", "make 2>/dev/null >/etc/motd", "echo x >> C:/x/f.txt"} {
+		assert.NotEmpty(t, winVerbRisk(cmd, fakeOutside), cmd)
+	}
+	if runtime.GOOS == "windows" {
+		wd := t.TempDir()
+		for _, cmd := range quiet {
+			assert.Empty(t, shellRisk(cmd, wd), cmd)
+		}
+	}
+}

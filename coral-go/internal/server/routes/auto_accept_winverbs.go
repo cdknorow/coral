@@ -260,7 +260,7 @@ func winVerbRisk(command string, outside func(string) bool) string {
 
 func winStageRisk(st winStage, outside func(string) bool) string {
 	for _, t := range st.redir {
-		if pathOutside(t, outside) && !strings.EqualFold(t, "nul") && !strings.EqualFold(t, "$null") {
+		if !isDiscard(t) && pathOutside(t, outside) {
 			return "it writes outside the working directory (" + t + ")"
 		}
 	}
@@ -518,4 +518,14 @@ func winShellWrapper(args []string, outside func(string) bool) string {
 		}
 	}
 	return ""
+}
+
+// isDiscard: a redirection target that throws the output away (/dev/null, NUL, PowerShell's $null) or is another stream
+// (&1, /dev/stdout, /dev/stderr), not a file.
+func isDiscard(t string) bool {
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "/dev/null", "nul", "nul:", "$null", "/dev/stdout", "/dev/stderr", "&1", "&2":
+		return true
+	}
+	return false
 }
