@@ -31,7 +31,7 @@ func TestPTYLogsAPersonsTypingByLengthOnly(t *testing.T) {
 	text := string(raw)
 	assert.NotContains(t, text, "hunter2")
 	assert.Contains(t, text, `kind=typed text="[typed 7 bytes]"`)
-	assert.Contains(t, text, `kind=raw len=1 text="\r"`)
+	assert.Contains(t, text, `kind=keys keys="Enter"`, "an Enter is the key tmux would send (#60 step 4)")
 	assert.Contains(t, text, `text="coral's own"`)
 }
 
@@ -66,4 +66,39 @@ func TestPTYLogsAPersonsPastedTextByLengthOnly(t *testing.T) {
 	assert.NotContains(t, string(raw), "secret", "a person's pasted text is not in the input log")
 	assert.NotContains(t, string(raw), "line one")
 	assert.Contains(t, string(raw), `kind=typed text="[typed `)
+}
+
+// #60 step 4: the PTY backend logs the same entries tmux logs for the same input: typed text as
+// text and its Enter as a key, a control byte as tmux's key name, an escape sequence as raw bytes,
+// multi-line text as a paste, a bracketed paste as the pasted text (never its ESC[200~ markers)
+// and a key; nothing raw beyond what tmux logs as raw.
+func TestPTYLogsTheEntriesTmuxLogs(t *testing.T) {
+	dir := t.TempDir()
+	inputlog.Setup(dir, true)
+	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
+	b, s, _ := newFakeBackend(t, "codex-parity")
+	ctx := context.Background()
+	require.NoError(t, b.SendInput("codex-parity", []byte("ls -la\r")))
+	require.NoError(t, b.SendInput("codex-parity", []byte{0x03}))
+	require.NoError(t, b.SendInput("codex-parity", []byte("\x7f")))
+	require.NoError(t, b.SendInput("codex-parity", []byte("\x1b[A")))
+	require.NoError(t, b.SendInput("codex-parity", []byte("one\ntwo")))
+	s.bracketedPaste.Store(true)
+	require.NoError(t, b.SendPrompt(ctx, "codex-parity", "a prompt\nof two lines"))
+	inputlog.Flush()
+	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
+	require.NoError(t, err)
+	text := string(raw)
+	for _, want := range []string{
+		`kind=text len=6 text="ls -la"`,
+		`kind=keys keys="Enter"`,
+		`kind=keys keys="C-c"`,
+		`kind=keys keys="BSpace"`,
+		`kind=raw len=3 text="\x1b[A"`,
+		`kind=paste len=7 text="one\ntwo"`,
+		`kind=paste len=21 text="a prompt\nof two lines"`,
+	} {
+		assert.Contains(t, text, want)
+	}
+	assert.NotContains(t, text, `200~`, "the bracketed-paste markers are not logged")
 }

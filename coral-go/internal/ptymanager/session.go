@@ -177,6 +177,7 @@ func (s *session) closeLog() {
 
 // sendInput writes raw bytes to the PTY (terminal input).
 func (s *session) sendInput(data []byte) error {
+	logTerminalInput(context.Background(), s.name, string(data))
 	_, err := s.writeFull(data)
 	return err
 }
@@ -191,7 +192,6 @@ func (s *session) writeFull(data []byte) (int, error) {
 // writeFullCtx is writeFull for input sent with ctx: a person's own (inputlog.Human) is logged by
 // its length only (#60).
 func (s *session) writeFullCtx(ctx context.Context, data []byte) (int, error) {
-	inputlog.RecordCtx(ctx, s.name, inputlog.Raw, string(data))
 	n, err := s.proc.Write(data)
 	if err == nil && n < len(data) {
 		err = io.ErrShortWrite
@@ -269,7 +269,7 @@ func (s *session) killWithin(grace time.Duration) error {
 	// Graceful termination
 	if terminateTypesCtrlC {
 		// On Windows, Terminate types Ctrl-C into the console (pty_windows.go).
-		inputlog.Record(s.name, inputlog.Raw, "\x03")
+		inputlog.Record(s.name, inputlog.Keys, "C-c") // as tmux sends (and logs) it (#60 step 4)
 	}
 	s.proc.Terminate()
 
