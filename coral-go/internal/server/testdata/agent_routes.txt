@@ -297,6 +297,7 @@ b POST /api/cloud/disconnect
 b POST /api/cloud/redeem
 b POST /api/cloud/rekey
 b POST /api/folder-tags/{folderName}
+b POST /api/hub-auto-accept
 b POST /api/indexer/refresh
 a POST /api/notifications
 b POST /api/pinned-folders

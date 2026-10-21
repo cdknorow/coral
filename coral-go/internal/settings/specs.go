@@ -32,6 +32,7 @@ const (
 	HubRelaunchUpdates       = "hub_relaunch_updates"
 	HubCrossTeamSettings     = "hub_cross_team_settings"
 	CrossTeamLinksSeen       = "cross_team_links_seen"
+	HubAutoAcceptChanged     = "cloud_hub_auto_accept_changed"
 	UpdateChannel            = "update_channel"
 	CloudMaxMode             = "cloud_max_mode"
 	IdentityActor            = "identity_actor"
@@ -201,9 +202,10 @@ func init() {
 	optIn(HubMode)
 	register(Spec{Key: IdentityActor, Kind: KindEnum, Values: []string{"log", "enforce"}, Default: "log", Class: ClassOwnRoute, Apply: ApplyLive, Doc: "Whether the actor header is enforced."})
 	ownRoute(CloudMaxMode, KindText, "", "The most access Coral Hub may have.")
-	ownRoute(CloudAllowHubAutoAccept, KindBool, "false", "The Hub may auto-accept, or start an agent that skips permission prompts (off unless the owner turned it on, #126 F4).")
+	ownRoute(CloudAllowHubAutoAccept, KindBool, "true", "The Hub may auto-accept, or start an agent that skips permission prompts (on unless the owner turned it off; the Hub owner may change it, #5840).")
 	ownRoute(HubRelaunchUpdates, KindBool, "true", "The Hub's owner may relaunch this Coral to install a staged update (#5280).")
 	ownRoute(HubCrossTeamSettings, KindBool, "true", "Coral Hub's owner may turn cross-team messaging and file sharing on or off for this computer's teams (#5572); off, Coral Hub changes neither, in either direction.")
+	coral(HubAutoAcceptChanged, "Who last changed the Coral Hub auto-accept switch, the Coral Hub owner or this computer, and when, as JSON: written by Coral, shown beside the switch in Settings > Network and Hub (#5840).")
 	coral(CrossTeamLinksSeen, "Set once, by Coral, when a Coral Hub advertised cross_team_links/1 to this computer: from then on a connection without it is refused, never sent back to the old path (#5572).")
 	ownRoute(HubRedactTokens, KindBool, "true", "Redact tokens in what the Hub sees.")
 	ownRoute("hub_signin_enabled", KindBool, "false", "Sign in with the Hub.")

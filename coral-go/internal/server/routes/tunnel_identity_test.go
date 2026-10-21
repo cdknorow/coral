@@ -322,9 +322,10 @@ func TestTasksRunAutoAcceptThroughTheHub(t *testing.T) {
 	claudeEdits := `{"prompt":"p","repo_path":` + jsonString(repo) + `,"flags":"--permission-mode acceptEdits"}`
 	geminiYolo := `{"prompt":"p","repo_path":` + jsonString(repo) + `,"agent_type":"gemini","flags":"--approval-mode yolo"}`
 
+	require.NoError(t, ss.SetSetting(context.Background(), AllowHubAutoAcceptSetting, "false"))
 	code, c := run(true, true, auto)
 	assert.Equal(t, http.StatusForbidden, code)
-	assert.Equal(t, "hub_auto_accept_disabled", c, "the switch is off unless the owner turned it on (#126 F4)")
+	assert.Equal(t, "hub_auto_accept_disabled", c, "the owner turned the switch off: it stays off (#5840)")
 	require.NoError(t, ss.SetSetting(context.Background(), AllowHubAutoAcceptSetting, "true"))
 	code, c = run(true, true, auto)
 	assert.Equal(t, http.StatusForbidden, code)

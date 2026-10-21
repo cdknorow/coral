@@ -283,6 +283,7 @@ POST /api/cloud/disconnect never
 POST /api/cloud/redeem never
 POST /api/cloud/rekey never
 POST /api/folder-tags/{folderName} never
+POST /api/hub-auto-accept launch
 POST /api/indexer/refresh never
 POST /api/notifications never
 POST /api/pinned-folders launch

@@ -400,6 +400,7 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	routes.LoadIdentityActor(context.Background(), store.NewSessionStore(s.db))
 	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
 	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
+	r.Post("/api/hub-auto-accept", s.cloudHandler.HubOwnerSetAutoAccept) // #5840: Coral Hub's owner, through the tunnel only
 	r.Put("/api/cloud/redact-tokens", s.cloudHandler.SetRedactTokens)
 	r.Put("/api/cloud/hub-relaunch", s.cloudHandler.SetHubRelaunch)    // #5280
 	r.Put("/api/cloud/hub-cross-team", s.cloudHandler.SetHubCrossTeam) // #5572
