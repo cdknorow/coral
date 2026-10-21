@@ -164,28 +164,26 @@ func Record(o Origin, target string, kind Kind, data string) {
 		switch {
 		case kind != Keys && hasPrintable(data):
 			kind, data = inputlog.Typed, fmt.Sprintf("[typed %d bytes]", len(data))
-		case kind == Keys && onlyTypedChars(data):
-			// tmux sends one character typed through /keys as a key name ("s"): that is text, not a named key (Enter, Up, C-c)
-			kind, data = inputlog.Typed, fmt.Sprintf("[typed %d bytes]", len(strings.ReplaceAll(data, " ", "")))
+		case kind == Keys && anyTypedChar(data):
+			// tmux sends a character typed through /keys as a key name ("s"): that is text, not a named key (Enter, Up, C-c). The length
+			// is that of the whole entry.
+			kind, data = inputlog.Typed, fmt.Sprintf("[typed %d bytes]", len(data))
 		}
 	}
 	inputlog.Write(target, kind, data)
 }
 
-// onlyTypedChars reports whether the key names in data (separated by spaces) are all single printable characters: characters a person
-// typed, as opposed to a named key (Enter, Up, Escape, C-c, F1).
-func onlyTypedChars(data string) bool {
-	keys := strings.Fields(data)
-	if len(keys) == 0 {
-		return false
-	}
-	for _, k := range keys {
+// anyTypedChar reports whether any of the key names in data (separated by spaces) is a single printable character: a character a
+// person typed, as opposed to a named key (Enter, Up, Escape, C-c, F1). One is enough: a record that batches a character with named
+// keys is hidden whole, since the character may be a secret.
+func anyTypedChar(data string) bool {
+	for _, k := range strings.Fields(data) {
 		r, n := utf8.DecodeRuneInString(k)
-		if n != len(k) || r == utf8.RuneError || r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
-			return false
+		if n == len(k) && r != utf8.RuneError && r >= 0x20 && r != 0x7f && !(r >= 0x80 && r < 0xa0) {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // hasPrintable reports whether s holds anything but control bytes and escape sequences: text a person typed, as opposed to Enter,

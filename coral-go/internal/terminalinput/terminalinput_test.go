@@ -64,6 +64,7 @@ func TestRecordHidesAPersonsTextAndNobodyElses(t *testing.T) {
 	Record(Person, "p", Keys, "Enter")
 	Record(Person, "p", Keys, "C-c")
 	Record(Person, "p", Keys, "Up")
+	Record(Person, "p", Keys, "Up q Enter") // a batch with one typed character is hidden whole
 	Record(Coral, "p", Keys, "t")
 	Record(Coral, "p", Text, "coral's own text")
 	Record(Internal, "p", Raw, "\x03")
@@ -81,6 +82,7 @@ func TestRecordHidesAPersonsTextAndNobodyElses(t *testing.T) {
 	assert.Contains(t, got, `keys="Up"`)
 	assert.Contains(t, got, `kind=typed text="[typed 1 bytes]"`, "a character typed as a key name is text")
 	assert.NotContains(t, got, `keys="s"`)
+	assert.NotContains(t, got, `keys="Up q Enter"`, "one typed character in a batch hides the batch (#5715)")
 	assert.Contains(t, got, `keys="t"`, "Coral's own key is logged as it is")
 	assert.Contains(t, got, `text="coral's own text"`)
 	assert.Contains(t, got, `kind=raw len=1 text="\x03"`)
