@@ -316,17 +316,23 @@ def run(args):
         with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
             codes = list(pool.map(lambda t: coral.call("POST", "/api/sessions/live/%s/send" % agent.name,
                                                        dict(agent.target(), command=t), human=human)[0], texts))
-        want = sorted(t.encode() for t in texts)
-        got = agent.wait(off, lambda g: sorted(parse(g)[0]) == want, timeout=60, quiet=4)
+        # A person's sends to one agent go one at a time: one that finds another in progress is
+        # refused (409), never typed. So: every accepted send arrives whole as a submission of its
+        # own, no refused one arrives, and nothing is interleaved.
+        accepted = sorted(t.encode() for t, c in zip(texts, codes) if c == 200)
+        refused = [t.encode() for t, c in zip(texts, codes) if c != 200]
+        got = agent.wait(off, lambda g: sorted(parse(g)[0]) == accepted, timeout=60, quiet=4)
         subs, pending, _ = parse(got)
-        if sorted(subs) == want and not pending:
-            record("rapid-16", path, "PASS", "all 16 arrived whole, one submission each", got=got)
+        mangled = [s for s in subs if s not in accepted]
+        if sorted(subs) == accepted and not pending and not any(r in subs for r in refused):
+            record("rapid-16", path, "PASS",
+                   "%d accepted, each arrived whole as its own submission; %d refused (HTTP %s), none typed" % (
+                       len(accepted), len(refused), sorted({c for c in codes if c != 200})), got=got)
         else:
-            lost = [t for t in texts if t.encode() not in subs]
-            mangled = [s for s in subs if s not in want]
             record("rapid-16", path, "FAIL",
-                   "HTTP %s; %d of 16 intact; mangled submissions: %r" % (
-                       sorted(set(codes)), 16 - len(lost), [m[:60] for m in mangled[:4]]),
+                   "HTTP %s; %d accepted, %d arrived intact; mangled or unexpected submissions: %r" % (
+                       sorted(set(codes)), len(accepted), len([s for s in subs if s in accepted]),
+                       [m[:60] for m in mangled[:4]]),
                    got=got)
 
     # ── 6. Task notification (typed by the automated-input gate) ──
