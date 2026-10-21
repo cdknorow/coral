@@ -588,7 +588,7 @@ func diffAt(path string) (diffCandidate, bool) {
 	if err != nil || !fi.Mode().IsRegular() {
 		return diffCandidate{}, false
 	}
-	return diffCandidate{path: path, bytes: fi.Size(), links: fileLinks(fi), inode: identityOf(path, fi), at: fi.ModTime()}, true
+	return diffCandidate{path: path, bytes: fi.Size(), links: fileLinks(path, fi), inode: identityOf(path, fi), at: fi.ModTime()}, true
 }
 
 // fileKey identifies a stored file across its hard links: (device, inode), or its path where
@@ -596,7 +596,7 @@ func diffAt(path string) (diffCandidate, bool) {
 type fileKey = string
 
 func identityOf(path string, fi os.FileInfo) fileKey {
-	if key, ok := fileIdentity(fi); ok {
+	if key, ok := fileIdentity(path, fi); ok {
 		return key
 	}
 	return "path:" + path
@@ -989,7 +989,7 @@ func (h *SessionsHandler) sweepDiffObjects(o pruneOptions, rep *pruneReport, cap
 		if err != nil {
 			continue
 		}
-		if fileLinks(fi) != 1 || o.Now.Sub(fi.ModTime()) < diffObjectGrace {
+		if fileLinks(filepath.Join(dir, e.Name()), fi) != 1 || o.Now.Sub(fi.ModTime()) < diffObjectGrace {
 			continue
 		}
 		it := pruneItem{Kind: pruneKindDiffObjects, ID: e.Name(), Bytes: fi.Size(), AgeDays: o.Now.Sub(fi.ModTime()).Hours() / 24}

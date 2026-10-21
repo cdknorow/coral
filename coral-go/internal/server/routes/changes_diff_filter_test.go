@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -269,9 +268,6 @@ func TestFilterPatchEveryPathCounts(t *testing.T) {
 // stored object) counts its bytes once in the store sizes; each task's diff still counts as
 // a file.
 func TestDiffStoreSizesCountSharedDiffsOnce(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("inode identity")
-	}
 	coral := t.TempDir()
 	shared := []byte(strings.Repeat("diff --git a/x b/x\n+same\n", 40))
 	other := []byte("diff --git a/y b/y\n+other\n")
