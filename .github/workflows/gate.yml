@@ -1,0 +1,44 @@
+name: gate
+# The one required status check of a pull request into main (#5522, the repository move: landing B). A change is built and tested the
+# way every change is: its head commit is pushed to a ci/ branch (ci/pr-<number>), where go-tests, go-race and cdp-gate run (and gofmt and
+# windows-tests where their paths apply). This job waits for those runs on the PR's head commit and fails unless they all succeeded:
+# tests/release/gate_check.py, configured by .github/gate.json. It always runs (no path filter), so it is never "expected" and pending: a
+# path-filtered workflow that did not run is simply not required by the config for that PR.
+#
+# Trust: the script and the config are read from the BASE commit of the pull request (the checkout below), never from the head, so a pull
+# request cannot loosen its own gate by editing them. The workflow file itself comes from the merge commit: .github/** is owned by the code
+# owners (CODEOWNERS), so a change to this file needs the owner's review. Read-only token (contents, actions, pull requests); no secrets;
+# no pull_request_target.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true # a push to the PR starts a new head commit and a new gate
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 130
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Wait for the head commit's workflows and require them green
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 -I tests/release/gate_check.py "$REPO" "$PR_NUMBER" "$HEAD_SHA"
