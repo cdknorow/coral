@@ -31,7 +31,14 @@ type ReviewRound struct {
 	DelegatedBy string          `json:"delegated_by"`
 	DelegatedAt string          `json:"delegated_at"`
 	Reviewers   []ReviewerState `json:"reviewers"`
-	Result      string          `json:"result,omitempty"` // "", approved or rejected
+	Result      string          `json:"result,omitempty"` // "", approved, rejected or superseded (a patch was attached after an approval, #5689)
+	// ApprovedDigests: when the round was approved, the digest of the newest row of every patch the task had (#5689). The merge
+	// queue lands a patch only if its digest is here, so bytes attached after an approval are never landed on its strength.
+	ApprovedDigests []string `json:"approved_digests,omitempty"`
+	// SentBackBy and SentBackNote: an approved task returned to its author by task send-back (#5689); Result is then "rejected",
+	// so the resubmission path is the one a rejection uses.
+	SentBackBy   string `json:"sent_back_by,omitempty"`
+	SentBackNote string `json:"sent_back_note,omitempty"`
 }
 
 // ReviewerState is one reviewer's part in a round.
@@ -286,6 +293,11 @@ func (s *Store) reviewVerdict(ctx context.Context, project string, id int64, act
 	if err != nil {
 		return nil, err
 	}
+	if approve {
+		if err := checkOwnPatchApproval(id, &w, round, actor); err != nil {
+			return nil, err
+		}
+	}
 	if err := checkReviewTaskOpen(ctx, tx, project, id, me.ReviewTaskID, actor); err != nil {
 		return nil, err
 	}
@@ -391,6 +403,7 @@ func concludeRound(ctx context.Context, tx *sqlx.Tx, project string, id int64, w
 		}
 	}
 	round.Result = "approved"
+	round.ApprovedDigests = patchDigests(w.CompletionReview)
 	v.Complete = true
 	for _, r := range round.Reviewers {
 		v.Approvers = append(v.Approvers, r.Reviewer)
