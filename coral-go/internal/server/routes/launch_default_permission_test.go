@@ -114,11 +114,83 @@ func TestAnAutoAcceptingTaskRunStartsClaudeInAuto(t *testing.T) {
 	assert.Equal(t, "--model x", taskRunFlags("claude", " --model x ", false), "no auto-accept: the caller's flags only")
 }
 
-// Through the hub a run in Auto mode keeps its prompt-style safety checks and needs no auto-accept switch; the auto-accept switch itself, and a bypass in the flags, still do.
-func TestAutoModeThroughTheHubIsNotAnAutoAcceptRun(t *testing.T) {
-	assert.False(t, hasAutoAcceptFlag("--permission-mode auto"), "Auto is not a bypass of the prompts")
-	assert.False(t, hasAutoAcceptFlag("--permission-mode plan"))
-	assert.True(t, hasAutoAcceptFlag("--permission-mode bypassPermissions"))
-	assert.True(t, hasAutoAcceptFlag("--dangerously-skip-permissions"))
-	assert.True(t, hasAutoAcceptFlag("--full-auto"))
+// Through the hub, Auto in the flags counts as skipping the prompts, as Windows round 4 decided (agent.SkipsPermissionPrompts: only default and plan keep them): an explicit
+// --permission-mode auto needs the owner's switch, Launch mode and the dashboard's provenance; the default and plan do not.
+func TestAutoModeThroughTheHubCountsAsSkippingPrompts(t *testing.T) {
+	assert.True(t, agent.SkipsPermissionPrompts("claude", []string{"--permission-mode", "auto"}), "Auto is the classifier approving for the agent")
+	assert.True(t, agent.SkipsPermissionPrompts("claude", []string{"--permission-mode=auto"}))
+	assert.True(t, agent.SkipsPermissionPrompts("claude", strings.Fields(taskRunFlags("claude", "", true))), "an auto-accepting task run's own flags")
+	assert.False(t, agent.SkipsPermissionPrompts("claude", []string{"--permission-mode", "default"}))
+	assert.False(t, agent.SkipsPermissionPrompts("claude", []string{"--permission-mode", "plan"}))
+}
+
+// #5836, Security's FIX 2: the Auto default must not get past the Hub gate. A Hub-stamped launch or team member with no permission mode starts Claude in Auto only when the
+// owner lets an agent skip prompts (switch on and Launch mode, the rule an explicit Auto meets); otherwise it asks ("default"); a launch from this computer starts in Auto; a
+// saved default_permission_mode always wins; a restart restores what the session had and never gets the new default.
+func TestTheAutoDefaultDoesNotGetPastTheHubGate(t *testing.T) {
+	_, h, _, ss := setupSessionsTestServer(t)
+	stubCLIPaths(t, ss)
+	ctx := context.Background()
+	set := func(mode, allow string) {
+		require.NoError(t, ss.SetSetting(ctx, MaxModeSetting, mode))
+		require.NoError(t, ss.SetSetting(ctx, AllowHubAutoAcceptSetting, allow))
+	}
+	launch := func(hub bool) string {
+		t.Helper()
+		b, _ := json.Marshal(map[string]any{"agent_type": at.Claude, "working_dir": t.TempDir()})
+		req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch", bytes.NewReader(b))
+		if hub {
+			stamp(req)
+		}
+		rec := httptest.NewRecorder()
+		h.Launch(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var res map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res))
+		ls, err := ss.GetLiveSession(ctx, res["session_id"].(string))
+		require.NoError(t, err)
+		require.NotNil(t, ls)
+		require.NotNil(t, ls.PermissionMode)
+		return *ls.PermissionMode
+	}
+	teamMember := func(hub bool) string {
+		t.Helper()
+		b, _ := json.Marshal(map[string]any{"board_name": "t" + strings.ReplaceAll(t.Name(), "/", ""), "new_board": true, "working_dir": t.TempDir(), "agent_type": at.Claude,
+			"agents": []map[string]any{{"name": "A", "agent_type": "claude"}}})
+		req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(b))
+		if hub {
+			stamp(req)
+		}
+		rec := httptest.NewRecorder()
+		h.LaunchTeam(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var res struct {
+			Agents []map[string]any `json:"agents"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res))
+		require.Len(t, res.Agents, 1, rec.Body.String())
+		ls, err := ss.GetLiveSession(ctx, res.Agents[0]["session_id"].(string))
+		require.NoError(t, err)
+		require.NotNil(t, ls.PermissionMode)
+		return *ls.PermissionMode
+	}
+
+	set("launch", "false") // the switch is off
+	assert.Equal(t, "default", launch(true), "Hub launch, switch off: the agent asks")
+	assert.Equal(t, "default", teamMember(true), "Hub team member, switch off: the agent asks")
+	set("interact", "true") // the switch is on, below Launch
+	assert.Equal(t, "default", launch(true), "Hub launch, below Launch mode: the agent asks")
+	assert.Equal(t, "default", teamMember(true), "Hub team member, below Launch mode: the agent asks")
+	set("launch", "true")
+	assert.Equal(t, "auto", launch(true), "Hub launch, switch on and Launch: Auto")
+	assert.Equal(t, "auto", teamMember(true), "Hub team member, switch on and Launch: Auto")
+	set("view", "false")
+	assert.Equal(t, "auto", launch(false), "a launch from this computer: Auto, whatever the Hub's settings")
+	assert.Equal(t, "auto", teamMember(false), "a team member from this computer: Auto")
+
+	// a saved default wins, through the Hub as well
+	set("launch", "false")
+	require.NoError(t, ss.SetSetting(ctx, "default_permission_mode", "plan"))
+	assert.Equal(t, "plan", launch(true), "a saved default is the owner's choice")
+	assert.Equal(t, "plan", launch(false))
 }

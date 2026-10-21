@@ -24,6 +24,14 @@ func hubAsksToSkip(agentType string, flags []string, caps *agent.Capabilities, t
 	return agent.SkipsPermissionPrompts(agentType, flags) || hubWidens(caps, tools, hooks)
 }
 
+// autoDefaultAllowed is whether a new launch that names no permission mode may start Claude in Auto (#5836): always for a request from this computer; through Coral Hub only when the
+// owner allows an agent to skip permission prompts (the switch on, Launch mode, dashboard provenance: the rule an explicit --permission-mode auto meets), else the agent asks
+// ("default"): a plain Hub launch still works with the switch off, it is just not started in a mode the owner did not allow. A settings read that fails is "no" (fail closed).
+func autoDefaultAllowed(ctx context.Context, r *http.Request, ss *store.SessionStore) bool {
+	_, _, refused, err := hubSkipRefusal(ctx, r, ss, true)
+	return err == nil && !refused
+}
+
 // hubWidens is hubAsksToSkip's part that is not flags: capability allow rules, allowed tools or custom hooks.
 func hubWidens(caps *agent.Capabilities, tools []string, hooks map[string]interface{}) bool {
 	return caps != nil && len(caps.Allow) > 0 || len(tools) > 0 || len(hooks) > 0
