@@ -13,7 +13,7 @@ func TestCLIVersionProbeDoesNotPassTheServersSettings(t *testing.T) {
 	const sentinel = "coral-sentinel-secret"
 	t.Setenv("CORAL_SECRET_KEY", sentinel)
 	t.Setenv("CORAL_TEST_VISIBLE", "visible") // not allowed: also removed
-	t.Setenv("PATH_CHECK_SENTINEL", "kept")    // not a CORAL_ variable: passes
+	t.Setenv("PATH_CHECK_SENTINEL", "kept")   // not a CORAL_ variable: passes
 	dir := t.TempDir()
 	seen := filepath.Join(dir, "seen.txt")
 	bin := filepath.Join(dir, "claude")
