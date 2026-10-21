@@ -29,6 +29,7 @@ func TestLoopbackPassIsOnlyForCoralsOwnUser(t *testing.T) {
 
 	var verdict atomic.Int32
 	var calls atomic.Int32
+	t.Cleanup(auth.ResetPeerCheckLostForTest) // the Unsupported verdict below sets the sticky lost-check flag, which takes the local-only powers from later tests
 	t.Cleanup(auth.SetPeerAttribution(func(netip.AddrPort, netip.AddrPort) (peercred.Verdict, error) {
 		calls.Add(1)
 		return peercred.Verdict(verdict.Load()), nil
