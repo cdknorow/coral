@@ -1,7 +1,10 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -11,7 +14,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/updatecheck"
 )
+
+// feedSeq numbers the feed URLs the tests hand the update check.
+var feedSeq atomic.Int64
+
+// uniqueFeedURL is base with a path no other test has used. The update check caches its answer per feed URL for an hour, and a test
+// server's address (a loopback port) is reused once an earlier test's server is closed: a later test whose server got the same port
+// was answered from the earlier test's cached feed (TestUpdateCheck_NeverOffersAnOlderRelease failed in full runs, never alone).
+func uniqueFeedURL(base string) string { return fmt.Sprintf("%s/feed-%d", base, feedSeq.Add(1)) }
 
 // mockGitHubAPI sets up an httptest server that returns the given tag_name.
 // Returns the server (caller must defer Close) and restores the original URL on cleanup.
@@ -24,7 +36,7 @@ func mockGitHubAPI(t *testing.T, tagName string, statusCode int) *httptest.Serve
 		json.NewEncoder(w).Encode(map[string]any{"tag_name": tagName, "draft": false, "prerelease": false, "html_url": "https://github.com/subgentic/coral/releases/tag/" + tagName})
 	}))
 	origURL := githubReleasesAPI
-	githubReleasesAPI = server.URL
+	githubReleasesAPI = uniqueFeedURL(server.URL)
 	t.Cleanup(func() {
 		githubReleasesAPI = origURL
 		server.Close()
@@ -41,7 +53,7 @@ func mockGitHubAPIError(t *testing.T) {
 		w.Write([]byte("invalid json"))
 	}))
 	origURL := githubReleasesAPI
-	githubReleasesAPI = server.URL
+	githubReleasesAPI = uniqueFeedURL(server.URL)
 	t.Cleanup(func() {
 		githubReleasesAPI = origURL
 		server.Close()
@@ -203,7 +215,7 @@ func TestUpdateCheckTwentyCallsMakeOneRequest(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"tag_name": "v99.0.0", "html_url": "https://github.com/subgentic/coral/releases/tag/v99.0.0"})
 	}))
 	origURL, origVersion := githubReleasesAPI, config.Version
-	githubReleasesAPI = server.URL
+	githubReleasesAPI = uniqueFeedURL(server.URL)
 	config.Version = "1.4.70"
 	t.Cleanup(func() { githubReleasesAPI, config.Version = origURL, origVersion; server.Close() })
 
@@ -224,4 +236,37 @@ func TestUpdateCheckTwentyCallsMakeOneRequest(t *testing.T) {
 		h.UpdateCheck(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/system/update-check?refresh=1", nil))
 	}
 	assert.EqualValues(t, 1, hits.Load(), "?refresh=1 within a minute of the last answer is not another request")
+}
+
+// The cause of the order-dependent failure, made deterministic: a closed test server's address is bound again by the next test's server,
+// and the update check answers from what it cached for that address; a feed URL made with uniqueFeedURL is a different cache key.
+func TestUpdateCheckCacheIsNotSharedBetweenTestServersOnOneAddress(t *testing.T) {
+	skipWhenUpdateCheckIsOff(t)
+	feed := func(tag string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			json.NewEncoder(w).Encode(map[string]any{"tag_name": tag, "html_url": "https://github.com/subgentic/coral/releases/tag/" + tag})
+		})
+	}
+	latest := func(u string) string {
+		v, _ := updatecheck.Default.Latest(context.Background(), u)
+		return v
+	}
+	first := httptest.NewServer(feed("v90.0.0"))
+	addr := first.Listener.Addr().String()
+	bare := first.URL
+	require.Equal(t, "90.0.0", latest(bare), "the first server's answer is cached for its address")
+	first.Close()
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Skipf("the address was not free again: %v", err)
+	}
+	second := httptest.NewUnstartedServer(feed("v91.0.0"))
+	second.Listener.Close()
+	second.Listener = ln
+	second.Start()
+	defer second.Close()
+
+	assert.Equal(t, "90.0.0", latest(second.URL), "the bare address is answered from the earlier test's cache: the bug")
+	assert.Equal(t, "91.0.0", latest(uniqueFeedURL(second.URL)), "a unique feed URL is asked for itself")
 }
