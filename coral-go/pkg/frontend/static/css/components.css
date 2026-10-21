@@ -3786,7 +3786,12 @@ dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 1rem; }
 #stop-all-auto-accept[hidden] { display: none; }
 .auto-accept-confirm-duration { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; color: var(--text-secondary); }
 .auto-accept-confirm-duration select { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--control-border); border-radius: var(--radius-md); padding: 4px 8px; font: inherit; }
-.settings-cloud-auto-accept { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+/* A switch row in Network and Hub: the words on the left, the switch on the right, as every other Settings row (UI audit #5589); the switch look comes from ".settings-row .check-hit". */
+.settings-cloud-switch-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; align-items: start; margin-top: 12px; }
+.settings-cloud-switch-row[hidden] { display: none; }
+.settings-cloud-switch-text { min-width: 0; }
+.settings-cloud-switch-label { font-weight: 600; font-size: .875rem; cursor: default; }
+.settings-cloud-switch-row .settings-hint { margin-top: 2px; }
 #settings-cloud-auto-accept-row[hidden] { display: none; }
 #settings-cloud-hub-operator-row[hidden], #settings-cloud-hub-operator-msg[hidden] { display: none; }
 .settings-cloud-hub-operator { margin-top: 8px; }

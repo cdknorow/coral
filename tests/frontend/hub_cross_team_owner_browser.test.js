@@ -33,10 +33,15 @@ const BASE = require('./test_base').BASE;
         await ev(`(async () => { await window.showSettingsModal('network'); return true; })()`);
         await waitFor(`!!document.getElementById('settings-cloud-hub-cross-team') && document.getElementById('settings-cloud-hub-cross-team').closest('#settings-cloud-mode-row').hidden === false`, 'the lock row', 10000);
         const row = await ev(`(() => { const c = document.getElementById('settings-cloud-hub-cross-team'); const d = document.getElementById('settings-cloud-hub-cross-team-desc');
-            return { label: c.closest('label').textContent.trim(), desc: d.textContent.trim(), described: c.getAttribute('aria-describedby'), checked: c.checked, shown: c.getClientRects().length > 0, small: c.closest('#settings-cloud-cross-team-row').getBoundingClientRect().height }; })()`);
+            return { label: document.querySelector('label[for=settings-cloud-hub-cross-team]').textContent.trim(), desc: d.textContent.trim(), described: c.getAttribute('aria-describedby'), checked: c.checked, shown: c.getClientRects().length > 0, small: c.closest('#settings-cloud-cross-team-row').getBoundingClientRect().height }; })()`);
         assert.equal(row.label, 'Let Coral Hub change cross-team settings');
         assert.equal(row.desc, "Coral Hub's owner can turn cross-team messaging and file sharing on or off for your teams. Turn this off to forbid it.");
         assert.equal(row.described, 'settings-cloud-hub-cross-team-desc'); assert.equal(row.checked, true, 'on unless the server says off'); assert.ok(row.shown);
+        // The three switch rows (relaunch, Hide tokens, Let Coral Hub change cross-team settings) are laid out as every other row: the words on the left, the switch on the right.
+        const rows = await ev(`['settings-cloud-hub-relaunch', 'settings-cloud-redact-tokens', 'settings-cloud-hub-cross-team'].map(id => { const c = document.getElementById(id); if (!c) return { id, missing: true }; const row = c.closest('.settings-cloud-switch-row'); const text = row.querySelector('.settings-cloud-switch-label').getBoundingClientRect(); const r = c.getBoundingClientRect();
+            return { id, appearance: getComputedStyle(c).appearance, w: Math.round(r.width), right: r.left >= text.right, name: document.querySelector('label[for=' + id + ']').textContent.trim().length > 10, inRow: Math.abs((r.top + r.height / 2) - (text.top + text.height / 2)) < 40 }; })`);
+        for (const r of rows) { if (r.missing) continue; assert.ok(r.appearance === 'none' && r.w >= 36 && r.right && r.name && r.inRow, 'a switch on the right of its words: ' + JSON.stringify(r)); } // the relaunch row is behind the updates flag: absent is allowed
+        assert.ok(rows.filter(r => !r.missing).length >= 2, JSON.stringify(rows));
         await shot('settings-network-lock-row');
         await ev(`(() => { const c = document.getElementById('settings-cloud-hub-cross-team'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await waitFor(`window.__lock.puts.length === 1`, 'the save', 6000);
@@ -53,11 +58,18 @@ const BASE = require('./test_base').BASE;
             last_changed: { cross_team_messaging: { via: 'hub', by: 'ada', at: '2026-10-21T10:00:00Z', on: true }, cross_team_artifacts: { via: 'local', at: '2026-10-21T09:00:00Z', on: false } } });
         let r = await read();
         assert.equal(r.may, 'Coral Hub can change these settings.');
+        // The Save hint does not contradict the line above it, and each switch is described by what is said about it
+        assert.equal(await ev(`document.querySelector('#owner-host .xt-state').textContent.trim()`), "Only the Operator on this computer, or Coral Hub's owner, can change this.");
+        const described = await ev(`['cross_team_messaging', 'cross_team_artifacts'].map(n => { const c = document.querySelector('#owner-host [name=' + n + ']'); return (c.getAttribute('aria-describedby') || '').split(' ').filter(Boolean).map(id => [id, (document.getElementById(id) || {}).textContent]); })`);
+        assert.deepEqual(described.map(d => d.map(x => x[0])), [['xt-changed-cross_team_messaging', 'xt-hub-may'], ['xt-changed-cross_team_artifacts', 'xt-hub-may']]);
+        assert.ok(described.flat().every(([id, text]) => text && text.trim()), 'every id names a line that is there: ' + JSON.stringify(described));
         assert.deepEqual(r.changed.map(c => c[0]), ['cross_team_messaging', 'cross_team_artifacts']);
         assert.match(r.changed[0][1], /^Turned on by ada via Coral Hub at .+/); assert.match(r.changed[1][1], /^Turned off on this computer at .+/);
         await shot('messaging-owner-path');
         await mount({ status: { state: 'off', text: 'Off.' }, hub_may_change: false, last_changed: {} });
         r = await read(); assert.equal(r.may, null, 'no line when the lock forbids it'); assert.deepEqual(r.changed, [], 'and none for a switch nobody changed');
+        assert.equal(await ev(`document.querySelector('#owner-host .xt-state').textContent.trim()`), 'Only the Operator on this computer can change this.', 'the old hint when the hub cannot change it');
+        assert.equal(await ev(`document.querySelector('#owner-host [name=cross_team_messaging]').hasAttribute('aria-describedby')`), false, 'and no empty description');
         await mount({ status: { state: 'off', text: 'Off.' } });
         r = await read(); assert.equal(r.may, null, 'an older server (no field) says nothing'); assert.deepEqual(r.changed, []);
         await mount({ status: { state: 'ready', text: 'x' }, hub_may_change: 'yes', last_changed: { cross_team_messaging: { via: 'hub', by: '<img src=x onerror=alert(1)>‮<script>', at: 'not a time', on: true }, cross_team_artifacts: 'x', bogus: { via: 'hub' } } });

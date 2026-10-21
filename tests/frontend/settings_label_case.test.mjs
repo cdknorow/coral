@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.resolve(here, '../../coral-go/pkg/frontend/templates/includes/modals.html'), 'utf8');
-const NAMES = new Set(['Coral', 'Hub', 'Claude', 'Codex', 'Antigravity', 'Pi', 'Git', 'GitHub', 'API', 'CLI', 'PTY', 'GiB', 'Persona', 'Role', 'Name']);
+const NAMES = new Set(['Coral', 'Hub', 'Claude', 'Codex', 'Antigravity', 'Pi', 'Git', 'GitHub', 'API', 'CLI', 'PTY', 'GiB', 'Persona', 'Role', 'Name', 'Operator']); // Operator: the person who runs this Coral, a defined role ("Don't let Coral Hub act as the Operator")
 const strip = (s) => s.replace(/<[^>]*>/g, ' ').replace(/&[a-z]+;/g, ' ').replace(/\s+/g, ' ').trim();
 
 /** The label texts to check: the row titles (<dt>) and switch labels (<label for="settings-...">) of the Settings dialog, each without the help text inside it. */

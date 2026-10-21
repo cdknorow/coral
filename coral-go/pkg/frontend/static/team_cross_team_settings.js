@@ -81,7 +81,11 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         return `<a class="btn btn-primary xt-primary" href="${escapeAttr(HUB_LINKS_URL)}" target="_blank" rel="noopener noreferrer">Link a team on another Coral<span class="sr-only"> (opens Coral Hub in a new tab)</span></a>`;
     };
 
-    const changed = key => { const t = changedLine(state && state.last_changed && state.last_changed[key]); return t ? `<span class="working-mode-hint xt-changed" data-for="${escapeAttr(key)}">${escapeHtml(t)}</span>` : ''; };
+    const changedText = key => changedLine(state && state.last_changed && state.last_changed[key]);
+    const changed = key => { const t = changedText(key); return t ? `<span class="working-mode-hint xt-changed" id="xt-changed-${escapeAttr(key)}" data-for="${escapeAttr(key)}">${escapeHtml(t)}</span>` : ''; };
+    const hubMay = () => !hub && !!state && state.hub_may_change === true;
+    // Each switch is described by what is said about it: when it was last changed, whether Coral Hub may change it, and why it is locked
+    const describedBy = key => { const ids = [changedText(key) && `xt-changed-${key}`, hubMay() && 'xt-hub-may', !canChange() && 'xt-locked'].filter(Boolean); return ids.length ? ` aria-describedby="${ids.map(escapeAttr).join(' ')}"` : ''; };
 
     function draw(focusSel) {
         const st = status();
@@ -90,12 +94,12 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         <div class="xt-head"><span class="update-state-dot" ${DOT[st.state] ? `data-k="${escapeAttr(DOT[st.state])}"` : ''} aria-hidden="true"></span><span class="xt-line" role="status">${escapeHtml(st.text)}</span></div>
         <div class="xt-row-actions">${buttonFor(st)}</div>
         <div class="xt-switches">
-          <label><input type="checkbox" name="cross_team_messaging"${draft.messaging ? ' checked' : ''}${canChange() ? '' : ' disabled'}> Cross-team messaging</label>
+          <label><input type="checkbox" name="cross_team_messaging"${draft.messaging ? ' checked' : ''}${canChange() ? '' : ' disabled'}${describedBy('cross_team_messaging')}> Cross-team messaging</label>
           ${changed('cross_team_messaging')}
-          <label><input type="checkbox" name="cross_team_artifacts"${draft.files ? ' checked' : ''}${canChange() ? '' : ' disabled'}> Share files with other teams</label>
+          <label><input type="checkbox" name="cross_team_artifacts"${draft.files ? ' checked' : ''}${canChange() ? '' : ' disabled'}${describedBy('cross_team_artifacts')}> Share files with other teams</label>
           ${changed('cross_team_artifacts')}
-          ${!hub && state && state.hub_may_change === true ? '<p class="working-mode-hint xt-hub-may">Coral Hub can change these settings.</p>' : ''}
-          ${canChange() ? '' : `<p class="working-mode-hint xt-locked">${escapeHtml(lockedText())}</p>`}
+          ${hubMay() ? '<p class="working-mode-hint xt-hub-may" id="xt-hub-may">Coral Hub can change these settings.</p>' : ''}
+          ${canChange() ? '' : `<p class="working-mode-hint xt-locked" id="xt-locked">${escapeHtml(lockedText())}</p>`}
         </div>
         ${links.length ? `<div class="xt-links"><h3 class="xt-h">Linked teams that can message this one <a href="${escapeAttr(HUB_LINKS_URL)}" class="update-link" target="_blank" rel="noopener noreferrer">Manage in Coral Hub</a></h3>
           <ul class="xt-teams">${links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l.machine), l.sid && 'server ' + escapeHtml(l.sid), l.refreshed && 'confirmed ' + escapeHtml(l.refreshed)].filter(Boolean).join(' · ')}</span></li>`).join('')}</ul></div>` : ''}
@@ -104,7 +108,7 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
           ${serverId ? `<p class="working-mode-hint">This computer's Coral Hub id: <code class="xt-sid">${escapeHtml(serverId)}</code> <button type="button" class="btn btn-small" data-act="copy-id" aria-label="Copy this computer's Coral Hub id">Copy</button></p>` : ''}
         </details>
         <div class="team-settings-actions xt-save"${canChange() ? '' : ' hidden'}><button type="submit" class="btn" disabled>Save</button>
-          <span class="xt-state${sayError ? ' ct-error' : ''}" role="status" aria-live="polite">${escapeHtml(said || (hub ? 'Saved for this team through Coral Hub, as the account that owns this computer.' : 'Only the Operator on this computer can change this.'))}</span></div>`;
+          <span class="xt-state${sayError ? ' ct-error' : ''}" role="status" aria-live="polite">${escapeHtml(said || (hub ? 'Saved for this team through Coral Hub, as the account that owns this computer.' : (hubMay() ? "Only the Operator on this computer, or Coral Hub's owner, can change this." : 'Only the Operator on this computer can change this.')))}</span></div>`;
         const save = form.querySelector('[type=submit]');
         if (form.dataset.initialState === undefined) form.dataset.initialState = snapshot();
         save.disabled = snapshot() === form.dataset.initialState;
