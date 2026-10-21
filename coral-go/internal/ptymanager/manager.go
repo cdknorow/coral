@@ -140,6 +140,7 @@ func (m *PTYBackend) sendInput(ctx context.Context, name string, data []byte) er
 	if !ok || !s.isRunning() {
 		return fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
 	}
+	logTerminalInput(ctx, name, string(data)) // logged as tmux logs the same input (#60 step 4)
 	if _, err := s.writeFullCtx(ctx, data); err != nil {
 		if !s.isRunning() {
 			return fmt.Errorf("%w: session %q ended: %v", ErrTerminalGone, name, err) // the process went between the check and the write
@@ -235,6 +236,7 @@ func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
 	if tmux.Automated(ctx) && text != "" && strings.TrimSpace(body) == "" {
 		return tmux.ErrNothingToSend // only control characters: no empty paste and Enter over whatever is in the input
 	}
+	inputlog.RecordCtx(ctx, name, inputlog.Paste, body) // the text pasted, as tmux logs a paste (#60 step 4)
 	if s.bracketedPaste.Load() {
 		body = "\x1b[200~" + body + "\x1b[201~"
 	} else {
@@ -251,6 +253,7 @@ func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
 	if !tmux.EnterAllowed(ctx) {
 		return tmux.ErrEnterWithheld // a prompt opened: the gate holds the Enter (#3431)
 	}
+	inputlog.RecordCtx(ctx, name, inputlog.Keys, "Enter")
 	if n, err := s.writeFull([]byte(EnterKey)); err != nil || n != len(EnterKey) {
 		if err == nil {
 			err = io.ErrShortWrite
@@ -301,8 +304,10 @@ func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
 	if !s.bracketedPaste.Load() {
 		return ErrBracketedPasteUnavailable
 	}
-	payload := []byte("\x1b[200~" + tmux.SanitizePaste(text) + "\x1b[201~")
-	n, err := s.writeFullCtx(ctx, payload) // a person's paste is logged by its length (#60 N3)
+	pasted := tmux.SanitizePaste(text)
+	inputlog.RecordCtx(ctx, name, inputlog.Paste, pasted) // the text pasted (a person's by its length), as tmux logs it (#60)
+	payload := []byte("\x1b[200~" + pasted + "\x1b[201~")
+	n, err := s.writeFullCtx(ctx, payload)
 	if err != nil {
 		if n > 0 {
 			return tmux.MarkDeliveryUnknown(fmt.Errorf("paste write failed after %d of %d bytes: %w", n, len(payload), err))
@@ -314,6 +319,7 @@ func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
 	if !tmux.EnterAllowed(ctx) {
 		return tmux.ErrEnterWithheld // a prompt opened: the gate holds the Enter (#3457)
 	}
+	inputlog.RecordCtx(ctx, name, inputlog.Keys, "Enter")
 	if n, err := s.writeFull([]byte("\r")); err != nil || n != 1 {
 		if err == nil {
 			err = io.ErrShortWrite
