@@ -17,7 +17,7 @@
 import { state } from './state.js';
 import { isCloud } from './server_base.js';
 import { isPopout } from './popout.js';
-import { escapeAttr } from './utils.js';
+import { escapeAttr, showToast } from './utils.js';
 import { switchRow } from './switch_row.js';
 import { importOnce } from './import_once.js';
 import { trapTab } from './dialog_focus.js';
@@ -102,7 +102,10 @@ let _cc = null;
 export async function showHubSetup(step = 'connect') {
     if (!_available()) return;
     if (step !== 'own-hub' && !_cc) {
-        try { _cc = await importOnce('./cloud_connect.js'); } catch { return; } // a failed load shows nothing; the next press tries again
+        try { _cc = await importOnce('./cloud_connect.js'); } catch { // a page left open across an update can no longer fetch it: say so; the next press tries again
+            showToast('Could not load the connect screen. Reload the page.', true);
+            return;
+        }
     }
     const m = _modal();
     if (m.style.display === 'none') _returnFocus = document.activeElement;
