@@ -124,17 +124,17 @@ async function httpJson(method, p, body, headers = {}) {
             await waitFor(`document.querySelectorAll('#pia-box .chat-attachment-thumb:not([hidden])').length === 3`, `${tag}: three thumbnails`, { timeout: 10000 });
             const hnames = await ev(`[...document.querySelectorAll('#pia-box .chat-attachment-thumb')].map((t, i) => ({ open: t.getAttribute('aria-label'), alt: t.querySelector('img').alt, remove: document.querySelectorAll('#pia-box .chat-attachment-unshare')[i].getAttribute('aria-label') }))`);
             check(`${tag}: three images in a message are named by their place too: "Open pasted image 2", "Remove the shared copy of pasted image 2"`, JSON.stringify(hnames.map(h => [h.open, h.alt, h.remove])) === JSON.stringify([1, 2, 3].map(n => [`Open pasted image ${n}`, `pasted image ${n}`, `Remove the shared copy of pasted image ${n}`])), JSON.stringify(hnames));
-            if (dir) {
+            { // both themes run in every gate (the "really light" check is the swap helper's proof, #5757); only the pictures need CORAL_SCREENSHOT_DIR (#5783)
                 const { themeJs } = require('./helpers/theme');
                 for (const theme of ['dark', 'light']) {
                     await ev(`${themeJs(theme)}; true`); // the helper clears the custom colour variables first, so a "light" picture is light (#5757)
                     await ev(`document.getElementById('pia-box')?.remove(); true`);
                     await waitFor(`document.querySelectorAll('#image-attachments img').length === 3`, `${tag}: composer thumbnails`, { timeout: 10000 });
                     const cr = await ev(`(() => { const r = document.getElementById('image-attachments').getBoundingClientRect(); return { x: Math.max(0, r.left - 20), y: Math.max(0, r.top - 20), width: Math.min(innerWidth, r.width + 40), height: 110, scale: 1 }; })()`);
-                    await shot(`composer-${tag}-${theme}`, cr);
+                    if (dir) await shot(`composer-${tag}-${theme}`, cr);
                     await render([{ type: 'user', content: mk, key: 'k9', timestamp: '2026-10-19T00:09:00Z' }]);
                     await waitFor(`document.querySelectorAll('#pia-box .chat-attachment-thumb:not([hidden])').length === 3`, `${tag}: three thumbnails`, { timeout: 10000 });
-                    await shot(`chat-${tag}-${theme}`);
+                    if (dir) await shot(`chat-${tag}-${theme}`);
                     check(`${tag}: the ${theme} picture is really ${theme}: the chat box's background is ${theme}`, (await ev(`(() => { const c = getComputedStyle(document.getElementById('pia-box')).backgroundColor.match(/\\d+/g).map(Number); return (c[0] + c[1] + c[2]) / 3 > 128; })()`)) === (theme === 'light'));
                 }
                 await ev(`${themeJs('dark')}; true`);
