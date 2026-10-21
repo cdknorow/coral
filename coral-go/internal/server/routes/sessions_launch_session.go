@@ -466,6 +466,12 @@ func classifyLaunchError(err error) string {
 	if err == nil {
 		return ""
 	}
+	// A configured CLI path that can't be run (#115's agent.CLIPathError) is a setup problem like a missing CLI. It is recognised by the text it
+	// has for an answer through Coral Hub rather than by name, so this compiles with or without that type.
+	var forHub interface{ HubText() string }
+	if errors.As(err, &forHub) {
+		return tracking.FailProviderUnavailable
+	}
 	msg := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(msg, "cli not found"):
