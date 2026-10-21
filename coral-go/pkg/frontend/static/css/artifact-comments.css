@@ -5,6 +5,7 @@
 .artifact-viewer.ac-on .artifact-viewer-content { width: min(1240px, 96vw); }
 
 ::highlight(ac-comment) { background-color: color-mix(in srgb, var(--accent) 28%, transparent); text-decoration: underline; text-decoration-color: var(--accent); }
+::highlight(ac-hover) { background-color: color-mix(in srgb, var(--accent) 40%, transparent); text-decoration: underline; text-decoration-color: var(--accent); }
 ::highlight(ac-active) { background-color: color-mix(in srgb, var(--accent) 55%, transparent); text-decoration: underline; text-decoration-color: var(--accent); }
 
 .ac-panel { flex: 0 0 340px; width: 340px; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; border-left: 1px solid var(--border); background: var(--bg-secondary); padding: var(--space-md); gap: var(--space-sm); box-sizing: border-box; }
@@ -12,30 +13,54 @@
 .ac-head { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; position: sticky; top: calc(-1 * var(--space-md)); z-index: 1; margin: calc(-1 * var(--space-md)) calc(-1 * var(--space-md)) 0; padding: var(--space-md); background: var(--bg-secondary); }
 .ac-title { margin: 0; font-size: var(--fs-lg, 1rem); flex: 1 1 auto; }
 .ac-count { margin-left: 8px; color: var(--text-muted); font-weight: 400; }
-.ac-filters { display: flex; gap: 2px; padding: 2px; border-radius: var(--radius-lg); background: var(--bg-tertiary); }
-.ac-filter { border: 0; background: transparent; color: var(--text-secondary); border-radius: var(--radius-md); padding: 2px 10px; font-size: var(--fs-sm, 0.8125rem); cursor: pointer; }
-.ac-filter[aria-pressed="true"] { background: var(--bg-primary); color: var(--text-primary); }
+.ac-panel .ac-showresolved { border: 0; background: transparent; color: var(--text-secondary); border-radius: var(--radius-md); padding: 2px 8px; font-size: var(--fs-sm, 0.8125rem); cursor: pointer; }
+.ac-panel .ac-showresolved:hover { color: var(--text-primary); background: var(--bg-tertiary); }
 .ac-sheet-close { display: none; }
 .ac-toggle { display: none; }
 .ac-note { margin: 0; padding: 6px 10px; border-radius: var(--radius-md); background: var(--bg-tertiary); color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
 .ac-list { display: flex; flex-direction: column; gap: var(--space-sm); list-style: none; margin: 0; padding: 0; }
 .ac-empty { margin: 0; color: var(--text-muted); font-size: var(--fs-sm, 0.8125rem); }
-.ac-card { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-sm); background: var(--bg-primary); cursor: pointer; }
-.ac-card.ac-active { border-color: var(--accent); }
-.ac-card.ac-resolved { opacity: 0.8; }
+/* A thread is one card (Docs, Paper): the quoted text, then an entry per comment and reply, the reply box at the foot. The current card is raised. */
+.ac-card { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-sm) var(--space-md); background: var(--bg-primary); cursor: pointer; transition: box-shadow .12s ease, border-color .12s ease; }
+.ac-card.ac-hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.ac-card.ac-active { border-color: var(--accent); box-shadow: 0 2px 10px rgba(var(--black-rgb), 0.2); }
+.ac-card.ac-resolved { opacity: 0.75; }
+@media (prefers-reduced-motion: reduce) { .ac-card { transition: none; } }
 .ac-quote { margin: 0 0 6px; padding-left: 8px; border-left: 3px solid var(--accent); color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); overflow-wrap: anywhere; }
 .ac-quote.ac-orphan { border-left-color: var(--warning); font-style: italic; }
-.ac-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-sm, 0.8125rem); color: var(--text-secondary); }
+/* an entry: the avatar, then the name, a dot and the time over the text; a thin line runs down the thread from one avatar to the next */
+.ac-entry { position: relative; display: flex; gap: 8px; padding: 4px 0; }
+.ac-entry:has(+ .ac-entry)::after { content: ""; position: absolute; left: 11px; top: 32px; bottom: -4px; width: 2px; background: var(--border); }
+.ac-entry-main { flex: 1 1 auto; min-width: 0; }
+.ac-avatar { flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.6875rem; font-weight: 600; color: var(--text-on-accent); background: hsl(var(--ac-hue) 42% 36%); } /* white on a dark fixed hue: 4.5:1 or better in both themes */
+.ac-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: var(--fs-sm, 0.8125rem); color: var(--text-secondary); }
+.ac-dot { color: var(--text-muted); margin: 0 -2px; }
+.ac-headrow { display: flex; align-items: flex-start; gap: 8px; }
+.ac-headrow .ac-meta { flex: 1 1 auto; min-width: 0; }
 .ac-author { color: var(--text-primary); font-weight: 600; }
-.ac-kind, .ac-pill { border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; font-size: 0.6875rem; color: var(--text-secondary); }
+.ac-pill { border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; font-size: 0.6875rem; color: var(--text-secondary); }
+.ac-kind { font-size: 0.6875rem; color: var(--text-muted); } /* who they are, in words after the name: a quiet label, not a chip */
 .ac-pill-resolved { color: var(--success); border-color: color-mix(in srgb, var(--success) 50%, var(--border)); }
 .ac-pill-orphan { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 50%, var(--border)); }
 .ac-body { margin: 4px 0 0; font-size: var(--fs-md, 0.875rem); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-primary); }
-.ac-reply { margin: 8px 0 0 10px; padding-left: 10px; border-left: 2px solid var(--border); }
-.ac-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.ac-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 0; }
+.ac-actions:empty { display: none; }
+/* Edit and Delete show when the card is hovered, current or has focus (they are buttons the keyboard reaches: focus shows them), always on a touch screen */
+@media (hover: hover) and (pointer: fine) {
+    .ac-card:not(:hover):not(:focus-within):not(.ac-active) .ac-actions { opacity: 0; }
+}
 .ac-act, .ac-jump, .ac-whole, .ac-lock, .ac-cancel, .ac-send { font-size: var(--fs-sm, 0.8125rem); }
 .ac-act, .ac-jump { background: none; border: 0; color: var(--text-secondary); padding: 2px 6px; cursor: pointer; }
 .ac-act:hover, .ac-jump:hover { color: var(--text-primary); text-decoration: underline; }
+/* a .btn is 36 px tall (--control-height): these are small links and chips inside a card; the phone and touch rules below give them 44 */
+.ac-panel .ac-act, .ac-panel .ac-jump, .ac-panel .ac-resolve, .ac-panel .ac-showresolved { min-height: 22px; }
+.ac-panel .ac-replybox { min-height: 32px; }
+/* Resolve, at the top right of the card */
+.ac-panel .ac-resolve { flex: none; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0 8px; background: none; color: var(--text-primary); font-size: var(--fs-sm, 0.8125rem); font-weight: 500; }
+.ac-panel .ac-resolve:hover { background: var(--bg-tertiary); text-decoration: none; }
+/* the reply box at the foot of the card: it looks like the field it opens */
+.ac-panel .ac-replybox { display: block; width: 100%; box-sizing: border-box; text-align: left; margin-top: 6px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-secondary); color: var(--text-muted); font-size: var(--fs-sm, 0.8125rem); cursor: text; }
+.ac-panel .ac-replybox:hover { border-color: var(--text-muted); color: var(--text-secondary); }
 .ac-composer { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .ac-input { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .ac-composer-row { display: flex; align-items: center; gap: 8px; }
@@ -60,17 +85,17 @@
     .ac-sheet-close { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; order: 2; }
     .ac-head { flex-wrap: wrap; }
     .ac-title { order: 1; }
-    .ac-filters { order: 3; flex: 1 0 100%; justify-content: stretch; }
-    .ac-filter { flex: 1; }
+    .ac-showresolved { order: 3; flex: 1 0 100%; text-align: left; }
     /* the composer stays in reach at the sheet's bottom while the list scrolls above it */
     .ac-panel > .ac-composer { position: sticky; bottom: calc(-1 * var(--space-md)); background: var(--bg-secondary); padding: 6px 0 calc(var(--space-md)); margin-bottom: calc(-1 * var(--space-md)); z-index: 1; }
     /* with the keyboard up there is little height: the sheet may use all of the viewer, and the header folds to one row (the filters and the close button; the title is the sheet's own name and
        the filters already say what is shown), so the sticky header and the sticky composer never overlap */
     body.keyboard-open .ac-panel { max-height: 100%; }
     body.keyboard-open .ac-title { display: none; }
-    body.keyboard-open .ac-filters { order: 1; flex: 1 1 0; }
+    body.keyboard-open .ac-showresolved { order: 1; flex: 1 1 0; }
     body.keyboard-open .ac-sheet-close { order: 2; }
-    .ac-filter, .ac-act, .ac-jump, .ac-whole, .ac-lock, .ac-cancel, .ac-send { min-height: 44px; }
+    .ac-panel .ac-showresolved, .ac-panel .ac-replybox, .ac-panel .ac-resolve, .ac-panel .ac-act, .ac-panel .ac-jump, .ac-whole, .ac-lock, .ac-cancel, .ac-send { min-height: 44px; }
+    .ac-panel .ac-resolve { padding: 0 14px; }
     .ac-act, .ac-jump { padding: 2px 12px; }
 }
 .ac-deleted { color: var(--text-muted); font-style: italic; }
@@ -89,8 +114,7 @@
     .preview-main > .ac-panel .ac-sheet-close { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; order: 2; }
     .preview-main > .ac-panel .ac-head { flex-wrap: wrap; }
     .preview-main > .ac-panel .ac-title { order: 1; }
-    .preview-main > .ac-panel .ac-filters { order: 3; flex: 1 0 100%; justify-content: stretch; }
-    .preview-main > .ac-panel .ac-filter { flex: 1; min-height: 44px; }
+    .preview-main > .ac-panel .ac-showresolved { order: 3; flex: 1 0 100%; text-align: left; min-height: 44px; }
     .preview-main > .ac-panel > .ac-composer { position: sticky; bottom: calc(-1 * var(--space-md)); background: var(--bg-secondary); padding: 6px 0 calc(var(--space-md)); margin-bottom: calc(-1 * var(--space-md)); z-index: 1; }
 }
 /* the Comments button sits in the pane's toolbar; artifact_comments.js hides it unless the panel is a sheet (beside the document it is always there) */

@@ -58,9 +58,9 @@ if (!process.env.COMMENTS_PROBE) { console.log('comments_scale_probe: skipped (s
                 for (let i = 0; i < 10; i++) { const c = cs[Math.floor(i * cs.length / 10)]; const t0 = performance.now(); c.click(); const sync = performance.now() - t0; await ${framesJs(2, 10000)}; ms.push({ sync: Math.round(sync), frame: Math.round(performance.now() - t0) }); }
                 const f = ms.map(x => x.frame).sort((a, b) => a - b), s = ms.map(x => x.sync).sort((a, b) => a - b); return { syncMedian: s[5], syncMax: s[9], frameMedian: f[5], frameMax: f[9] };
             })()`);
-            // 3. the filter: Resolved, All, Open
+            // 3. the Show resolved toggle: on, then off
             r.filter = await ev(`(async () => {
-                const out = {}; for (const label of ['Resolved', 'All', 'Open']) { const b = [...document.querySelectorAll('.ac-filter')].find(x => x.textContent === label); const t0 = performance.now(); b.click(); const sync = performance.now() - t0; await ${framesJs(2, 10000)}; out[label] = { sync: Math.round(sync), frame: Math.round(performance.now() - t0), cards: document.querySelectorAll('.ac-card').length }; }
+                const out = {}; for (const label of ['Show resolved', 'Hide resolved']) { const b = document.querySelector('.ac-showresolved'); const t0 = performance.now(); b.click(); const sync = performance.now() - t0; await ${framesJs(2, 10000)}; out[label] = { sync: Math.round(sync), frame: Math.round(performance.now() - t0), cards: document.querySelectorAll('.ac-card').length }; }
                 return out; })()`);
             // 4. a posted comment, on the whole document: click, type, submit, until the card is there
             r.post = await ev(`(async () => {

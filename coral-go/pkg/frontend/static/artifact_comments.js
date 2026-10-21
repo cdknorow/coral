@@ -23,15 +23,29 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const btn = (cls, text, label) => { const b = el('button', 'btn ' + cls, text); b.type = 'button'; if (label) b.setAttribute('aria-label', label); return b; };
 const KIND = { owner: 'owner', hub: 'Coral Hub', agent: 'agent' };
 
+const plural = (n, unit) => `${n} ${unit}${n === 1 ? '' : 's'} ago`;
 function ago(iso) {
     const t = Date.parse(iso);
     if (!t) return '';
     const s = Math.max(0, (Date.now() - t) / 1000);
     if (s < 60) return 'just now';
-    if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-    if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+    if (s < 3600) return plural(Math.floor(s / 60), 'minute');
+    if (s < 86400) return plural(Math.floor(s / 3600), 'hour');
     if (s < 172800) return 'yesterday';
-    return `${Math.floor(s / 86400)} days ago`;
+    return plural(Math.floor(s / 86400), 'day');
+}
+
+// An initials circle for an author, as Docs and Paper draw one: the first letters of the name's words, on one of a few fixed hues chosen by the author's id, so the same person is the same
+// colour in every thread. Decoration only (the name is beside it): aria-hidden.
+const AVATAR_HUES = [212, 262, 330, 8, 28, 150, 186, 48];
+function avatar(c) {
+    const name = c.authorName || c.authorId || '?';
+    const parts = name.split(/[\s._-]+/).filter(Boolean);
+    const initials = ((parts[0] || '?')[0] + (parts.length > 1 ? parts[1][0] : '')).toUpperCase();
+    let h = 0; for (const ch of (c.authorId || name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const a = el('span', 'ac-avatar', initials); a.setAttribute('aria-hidden', 'true');
+    a.style.setProperty('--ac-hue', String(AVATAR_HUES[h % AVATAR_HUES.length]));
+    return a;
 }
 
 /** Wire comments into the viewer `dialog` (or, #5311, the docked preview pane): `body` is where the document is drawn, `host` the element the panel goes into. Returns { open, docRendered, close, toggle }.
@@ -39,7 +53,7 @@ function ago(iso) {
  *  document now (the viewer: a phone's width; the pane: the pane's own width, so a narrow docked pane on a desktop gets the sheet too); shown(): whether the pane is on screen; observe: the element whose
  *  size decides sheet(). */
 export function attachComments(dialog, body, host, opts = {}) {
-    const st = { hex: null, server: undefined, board: undefined, source: '', text: false, data: null, filter: 'open', active: null, composing: null, busy: false, error: '', ranges: new Map(), orphan: new Set(), gone: false };
+    const st = { hex: null, server: undefined, board: undefined, source: '', text: false, data: null, showResolved: false, active: null, composing: null, busy: false, error: '', ranges: new Map(), orphan: new Set(), gone: false };
     const panel = el('aside', 'ac-panel'); panel.setAttribute('aria-label', 'Comments'); panel.hidden = true;
     const toggle = btn('ac-toggle', 'Comments', 'Comments: show the comments'); toggle.hidden = true; toggle.setAttribute('aria-expanded', 'false');
     const selBtn = btn('ac-selbtn', 'Comment', 'Comment on the selected text'); selBtn.hidden = true;
@@ -118,6 +132,16 @@ export function attachComments(dialog, body, host, opts = {}) {
         const a = st.ranges.get(st.active);
         if (a) hl.set('ac-active', new Highlight(a));
     }
+    // The thread the pointer is on (card or text): its text is lit a little, the card too.
+    function hover(id) {
+        const hl = window.CSS && CSS.highlights;
+        panel.querySelectorAll('.ac-card.ac-hover').forEach(n => n.classList.remove('ac-hover'));
+        if (hl) hl.delete('ac-hover');
+        if (id == null) return;
+        panel.querySelector(`.ac-card[data-id="${id}"]`)?.classList.add('ac-hover');
+        const r = st.ranges.get(id);
+        if (hl && r && typeof Highlight === 'function') hl.set('ac-hover', new Highlight(r));
+    }
     function paint(relocate = true) {
         if (relocate) locate();
         highlight();
@@ -151,13 +175,14 @@ export function attachComments(dialog, body, host, opts = {}) {
         const list = threads();
         const head = el('div', 'ac-head');
         const h = el('h3', 'ac-title', 'Comments'); h.append(el('span', 'ac-count', String(list.filter(t => !t.c.deleted).length)));
-        const filters = el('div', 'ac-filters'); filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', 'Show comments');
-        for (const [k, label] of [['open', 'Open'], ['resolved', 'Resolved'], ['all', 'All']]) {
-            const b = btn('ac-filter', label); b.setAttribute('aria-pressed', String(st.filter === k));
-            b.addEventListener('click', () => { st.filter = k; render(); });
-            filters.append(b);
+        head.append(h);
+        // Resolved threads are out of the way, as in Docs: one toggle brings them back (and only while there are any).
+        const nResolved = list.filter(t => t.c.resolved && !t.c.deleted).length;
+        if (nResolved || st.showResolved) {
+            const sr = btn('ac-showresolved', st.showResolved ? 'Hide resolved' : `Show resolved (${nResolved})`); sr.setAttribute('aria-pressed', String(st.showResolved));
+            sr.addEventListener('click', () => { st.showResolved = !st.showResolved; render(); });
+            head.append(sr);
         }
-        head.append(h, filters);
         const close = btn('ac-sheet-close', '✕', 'Hide the comments'); close.addEventListener('click', () => { setSheet(false); toggle.focus(); }); head.append(close);
         panel.append(head);
         const d = st.data;
@@ -169,9 +194,9 @@ export function attachComments(dialog, body, host, opts = {}) {
             panel.append(lock);
         }
         const wrap = el('ul', 'ac-list');
-        const shown = list.filter(t => st.filter === 'all' || (st.filter === 'resolved' ? t.c.resolved : !t.c.resolved));
+        const shown = list.filter(t => st.showResolved || !t.c.resolved);
         for (const t of shown) wrap.append(card(t));
-        if (!shown.length) wrap.append(el('p', 'ac-empty', st.filter === 'open' ? 'No open comments. Select some text to add one.' : 'Nothing here.'));
+        if (!shown.length) wrap.append(el('p', 'ac-empty', 'No open comments. Select some text to add one.'));
         panel.append(wrap);
         if (st.composing && st.composing.anchor) panel.append(composer());
         else if (d.canComment && !d.locked) {
@@ -183,41 +208,60 @@ export function attachComments(dialog, body, host, opts = {}) {
         restoreFocus(kept);
     }
 
-    function meta(c, extra) {
+    // One entry of a thread (the comment, then each reply), as Docs and Paper draw it: an avatar, the name in bold, a dot and the time, the text under it. On the thread's first entry the state (lines,
+    // resolved, text changed) follows the time and Resolve sits at the right; a thin line joins the avatars down the thread (css). What this viewer may do to the entry (Edit, Delete) shows
+    // when the card is hovered or has focus, always on a touch screen.
+    function entry(c, top) {
+        const e = el('div', 'ac-entry' + (top ? '' : ' ac-reply')); e.dataset.id = String(c.id);
+        e.append(avatar(c));
+        const main = el('div', 'ac-entry-main');
         const m = el('div', 'ac-meta');
         m.append(el('span', 'ac-author', c.authorName || c.authorId || 'unknown'));
         if (KIND[c.authorKind]) m.append(el('span', 'ac-kind', KIND[c.authorKind]));
+        const dot = el('span', 'ac-dot', '·'); dot.setAttribute('aria-hidden', 'true'); m.append(dot);
         const time = el('span', 'ac-time', ago(c.createdAt)); time.title = c.createdAt; m.append(time);
-        if (extra) for (const x of extra) m.append(x);
         if (c.editedAt) m.append(el('span', 'ac-pill', 'edited'));
-        return m;
+        let resolveBtn = null;
+        if (top) {
+            const a = c.anchor || {};
+            if (a.start_line) m.append(el('span', 'ac-lines', a.end_line && a.end_line !== a.start_line ? `lines ${a.start_line}-${a.end_line}` : `line ${a.start_line}`));
+            if (c.resolved) m.append(el('span', 'ac-pill ac-pill-resolved', 'resolved'));
+            if (st.orphan.has(c.id)) m.append(el('span', 'ac-pill ac-pill-orphan', 'text changed'));
+            if (!c.deleted && c.can.resolve) {
+                const r = act(c.resolved ? 'Reopen' : 'Resolve', () => run(() => (c.resolved ? api.reopenComment : api.resolveComment)(st.hex, st.server, c.id), c.resolved ? 'Comment reopened' : 'Comment resolved'));
+                r.classList.add('ac-resolve'); r.setAttribute('aria-label', `${c.resolved ? 'Reopen' : 'Resolve'} the thread by ${c.authorName || c.authorId || 'unknown'}`);
+                resolveBtn = r;
+            }
+        }
+        if (resolveBtn) { const row = el('div', 'ac-headrow'); row.append(m, resolveBtn); main.append(row); } // Resolve at the top right: the name line wraps beside it, never under it
+        else main.append(m);
+        main.append(editing(c) || el('p', 'ac-body' + (c.deleted ? ' ac-deleted' : ''), c.deleted ? 'Comment deleted' : c.body));
+        main.append(actions(c, top));
+        e.append(main);
+        return e;
     }
     function card({ c, replies }) {
         const li = el('li', 'ac-card' + (st.active === c.id ? ' ac-active' : '') + (c.resolved ? ' ac-resolved' : '')); li.dataset.id = String(c.id); li.setAttribute('aria-label', `Comment by ${c.authorName || c.authorId || 'unknown'}`); li.setAttribute('role', 'group');
         const a = c.anchor || {};
         const q = el('blockquote', 'ac-quote' + (st.orphan.has(c.id) ? ' ac-orphan' : ''), a.whole ? 'The whole document' : a.quote || '');
         li.append(q);
-        const extra = [];
-        if (a.start_line) extra.push(el('span', 'ac-lines', a.end_line && a.end_line !== a.start_line ? `lines ${a.start_line}-${a.end_line}` : `line ${a.start_line}`));
-        if (c.resolved) extra.push(el('span', 'ac-pill ac-pill-resolved', 'resolved'));
-        if (st.orphan.has(c.id)) extra.push(el('span', 'ac-pill ac-pill-orphan', 'text changed'));
-        li.append(meta(c, extra));
-        li.append(editing(c) || el('p', 'ac-body' + (c.deleted ? ' ac-deleted' : ''), c.deleted ? 'Comment deleted' : c.body));
-        for (const r of replies) {
-            const rep = el('div', 'ac-reply'); rep.dataset.id = String(r.id);
-            rep.append(meta(r)); rep.append(editing(r) || el('p', 'ac-body', r.body)); rep.append(actions(r, false));
-            li.append(rep);
+        li.append(entry(c, true));
+        for (const r of replies) li.append(entry(r, false));
+        // The reply box at the foot of the card, where Docs has it; it opens the composer in place.
+        if (!c.deleted && c.can.reply && !(st.composing && st.composing.parentId === c.id)) {
+            const rb = btn('ac-replybox', 'Reply…', `Reply to the comment by ${c.authorName || c.authorId || 'unknown'}`);
+            rb.addEventListener('click', () => { st.composing = { parentId: c.id }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); });
+            li.append(rb);
         }
-        li.append(actions(c, true));
         if (st.composing && st.composing.parentId === c.id) li.append(composer());
         li.addEventListener('click', (e) => { if (e.target.closest('button, textarea')) return; activate(c.id, true); });
+        // The card and its highlight light each other while the pointer is on either (a click makes them current).
+        li.addEventListener('pointerenter', () => hover(c.id)); li.addEventListener('pointerleave', () => hover(null));
         return li;
     }
     function actions(c, top) {
         const row = el('div', 'ac-actions');
         if (c.deleted) return row;
-        if (top && c.can.reply) row.append(act('Reply', () => { st.composing = { parentId: c.id }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); }));
-        if (top && c.can.resolve) row.append(act(c.resolved ? 'Reopen' : 'Resolve', () => run(() => (c.resolved ? api.reopenComment : api.resolveComment)(st.hex, st.server, c.id), c.resolved ? 'Comment reopened' : 'Comment resolved')));
         if (c.can.edit) row.append(act('Edit', () => { st.composing = { editId: c.id }; st.error = ''; render(); panel.querySelector('.ac-input')?.focus(); }));
         if (c.can.delete) row.append(act('Delete', () => confirmThen('Delete this comment?', () => run(() => api.deleteComment(st.hex, st.server, c.id), 'Comment deleted'))));
         // not an .ac-act: it writes nothing, so a read-only viewer has it too
@@ -299,14 +343,26 @@ export function attachComments(dialog, body, host, opts = {}) {
         const r = st.ranges.get(id);
         if (fromCard && r) (r.startContainer.parentElement || body).scrollIntoView({ block: 'center', behavior: scrollBehavior() });
     }
+    // The comment whose text is under the point, if any.
+    function rangeIdAt(x, y) {
+        const pos = document.caretPositionFromPoint ? document.caretPositionFromPoint(x, y) : null;
+        const range = pos ? null : (document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null);
+        const node = pos ? pos.offsetNode : range && range.startContainer, off = pos ? pos.offset : range && range.startOffset;
+        if (!node) return null;
+        for (const [id, r] of st.ranges) { try { if (r.isPointInRange(node, off)) return id; } catch { /* a range gone with its nodes */ } }
+        return null;
+    }
     body.addEventListener('click', (e) => {
         if (!st.data || !st.ranges.size) return;
-        const pos = document.caretPositionFromPoint ? document.caretPositionFromPoint(e.clientX, e.clientY) : null;
-        const range = pos ? null : (document.caretRangeFromPoint ? document.caretRangeFromPoint(e.clientX, e.clientY) : null);
-        const node = pos ? pos.offsetNode : range && range.startContainer, off = pos ? pos.offset : range && range.startOffset;
-        if (!node) return;
-        for (const [id, r] of st.ranges) { try { if (r.isPointInRange(node, off)) { if (window.getSelection().isCollapsed) { st.active = id; st.scrollCard = true; paint(false); if (sheet()) setSheet(true); } return; } } catch { /* a range gone with its nodes */ } }
+        const id = rangeIdAt(e.clientX, e.clientY);
+        if (id != null && window.getSelection().isCollapsed) { st.active = id; st.scrollCard = true; paint(false); if (sheet()) setSheet(true); }
     });
+    let hoverFrame = 0;
+    body.addEventListener('mousemove', (e) => {
+        if (!st.data || !st.ranges.size || hoverFrame) return;
+        hoverFrame = requestAnimationFrame(() => { hoverFrame = 0; hover(rangeIdAt(e.clientX, e.clientY)); });
+    });
+    body.addEventListener('mouseleave', () => hover(null));
 
     // ── the Comment button by a selection
     let selTimer = 0;
@@ -368,6 +424,6 @@ export function attachComments(dialog, body, host, opts = {}) {
         open(hex, server, board) { region(false); { const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } } docIx = null; st.hex = hex; st.server = server; st.board = board; st.data = null; st.active = null; st.composing = null; st.error = ''; st.text = false; st.gone = false; st.filter = 'open'; render(); setSheet(false); },
         /** The document was drawn: `text` says whether it is text the comments apply to. */
         docRendered(source, text) { st.source = source || ''; st.text = !!text; if (!st.text) { render(); return; } region(true); refresh(); },
-        close() { setSheet(false); region(false); docIx = null; st.ranges.clear(); st.hex = null; st.data = null; clearTimeout(selTimer); selBtn.hidden = true; const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } render(); },
+        close() { hover(null); setSheet(false); region(false); docIx = null; st.ranges.clear(); st.hex = null; st.data = null; clearTimeout(selTimer); selBtn.hidden = true; const hl = window.CSS && CSS.highlights; if (hl) { hl.delete('ac-comment'); hl.delete('ac-active'); } render(); },
     };
 }

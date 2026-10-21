@@ -140,8 +140,8 @@ const LONG = 'worktree-agent-a1b2c3d4e5f60718/feature/calm-the-dashboard-remove-
             check(`${tag}: the viewer's title is readable (${title.w} px wide, "${title.text}" whole)`, title.w >= 120 && !title.clipped, JSON.stringify(title));
             await tapSel('#artifact-viewer .ac-toggle');
             await audit(`${tag} the comments sheet`, '#artifact-viewer');
-            const head = await ev(`(() => { const t = document.querySelector('#artifact-viewer .ac-title').getBoundingClientRect(), x = document.querySelector('#artifact-viewer .ac-sheet-close').getBoundingClientRect(), f = document.querySelector('#artifact-viewer .ac-filters').getBoundingClientRect(); return { sameRow: Math.abs((t.top + t.height / 2) - (x.top + x.height / 2)) < 12, filtersBelow: f.top >= t.bottom - 2 }; })()`);
-            check(`${tag}: the sheet's close button is on the title's row and the filters have a row of their own`, head.sameRow && head.filtersBelow, JSON.stringify(head));
+            const head = await ev(`(() => { const t = document.querySelector('#artifact-viewer .ac-title').getBoundingClientRect(), x = document.querySelector('#artifact-viewer .ac-sheet-close').getBoundingClientRect(), f = document.querySelector('#artifact-viewer .ac-showresolved').getBoundingClientRect(); return { sameRow: Math.abs((t.top + t.height / 2) - (x.top + x.height / 2)) < 12, filtersBelow: f.top >= t.bottom - 2 }; })()`);
+            check(`${tag}: the sheet's close button is on the title's row and Show resolved has a row of its own`, head.sameRow && head.filtersBelow, JSON.stringify(head));
             await ev(`document.querySelector('#artifact-viewer .ac-whole').click(); true`); await settle(400);
             await ev(`document.querySelector('#artifact-viewer .ac-composer .ac-input').focus(); true`);
             await audit(`${tag} the comment composer`, '#artifact-viewer');
@@ -150,11 +150,11 @@ const LONG = 'worktree-agent-a1b2c3d4e5f60718/feature/calm-the-dashboard-remove-
             await ev(`window.__vv.set(${kbH}); true`); await settle(500);
             const kb = await ev(`(() => { const v = document.getElementById('artifact-viewer').getBoundingClientRect(), p = document.querySelector('#artifact-viewer .ac-panel').getBoundingClientRect(), t = document.querySelector('#artifact-viewer .ac-composer .ac-input').getBoundingClientRect(), s = document.querySelector('#artifact-viewer .ac-composer .ac-send').getBoundingClientRect(); return { viewerH: Math.round(v.height), panelBottom: Math.round(p.bottom), inputBottom: Math.round(t.bottom), sendBottom: Math.round(s.bottom), inputTop: Math.round(t.top), sendTop: Math.round(s.top), panelTop: Math.round(p.top) }; })()`);
             check(`${tag}: with the keyboard up (${kbH} px left) the viewer fits it, and the sheet and the composer's input and Comment button are inside it`, kb.viewerH <= kbH + 1 && kb.panelBottom <= kbH + 1 && kb.sendBottom <= kbH + 1 && kb.inputTop >= kb.panelTop && kb.sendTop >= 0, JSON.stringify(kb));
-            // the filters (Open / Resolved / All) stay visible above the composer: none is under it, and each is what a tap at its centre reaches
+            // the Show resolved toggle stays visible above the composer: it is not under it, and it is what a tap at its centre reaches
             const flt = await ev(`(() => { const comp = document.querySelector('#artifact-viewer .ac-composer').getBoundingClientRect(), p = document.querySelector('#artifact-viewer .ac-panel').getBoundingClientRect();
-                const fs = [...document.querySelectorAll('#artifact-viewer .ac-filter')].map(f => { const r = f.getBoundingClientRect(), top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { w: Math.round(r.width), h: Math.round(r.height), above: r.bottom <= comp.top + 1, reached: !!top && (top === f || f.contains(top)), inPanel: r.top >= p.top - 1 }; });
+                const fs = [...document.querySelectorAll('#artifact-viewer .ac-showresolved')].map(f => { const r = f.getBoundingClientRect(), top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { w: Math.round(r.width), h: Math.round(r.height), above: r.bottom <= comp.top + 1, reached: !!top && (top === f || f.contains(top)), inPanel: r.top >= p.top - 1 }; });
                 return { fs, n: fs.length }; })()`);
-            check(`${tag}: with the keyboard up the Open / Resolved / All row is above the composer and reachable (${JSON.stringify(flt.fs)})`, flt.n === 3 && flt.fs.every(f => f.above && f.reached && f.inPanel && f.h >= 44 && f.w >= 44), JSON.stringify(flt));
+            check(`${tag}: with the keyboard up the Show resolved toggle is above the composer and reachable (${JSON.stringify(flt.fs)})`, flt.n === 1 && flt.fs.every(f => f.above && f.reached && f.inPanel && f.h >= 44 && f.w >= 44), JSON.stringify(flt));
             await shot(`${tag} the composer with the keyboard`);
             await ev(`window.__vv.set(${h}); true`); await settle(300);
             // 6. the back gesture, from the top: the sheet, then the viewer, then the preview's full screen

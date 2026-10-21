@@ -70,7 +70,9 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
     };
     const select = (text) => ev(`(() => { const body = document.querySelector('#artifact-viewer .artifact-viewer-body'); const w = document.createTreeWalker(body, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { const i = n.nodeValue.indexOf(${JSON.stringify(text)}); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + ${JSON.stringify(text)}.length); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return true; } } return false; })()`);
     const click = sel => ev(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return false; e.click(); return true; })()`);
-    const cards = () => ev(`[...document.querySelectorAll('.ac-card')].map(c => ({ id: c.dataset.id, text: c.textContent, quote: c.querySelector('.ac-quote').textContent, active: c.classList.contains('ac-active'), acts: [...c.querySelectorAll(':scope > .ac-actions .ac-act, :scope > .ac-reply .ac-act')].map(b => b.textContent) }))`);
+    const cards = () => ev(`[...document.querySelectorAll('.ac-card')].map(c => ({ id: c.dataset.id, text: c.textContent, quote: c.querySelector('.ac-quote').textContent, active: c.classList.contains('ac-active'), acts: [...c.querySelectorAll('.ac-act, .ac-replybox')].map(b => b.textContent) }))`);
+    // an action of a thread's first entry (Resolve is in its header, Edit and Delete under its text)
+    const topAct = (id, label) => `[...document.querySelectorAll('.ac-card[data-id="${id}"] > .ac-entry:first-of-type .ac-act')].find(b => b.textContent === ${JSON.stringify(label)})`;
     const lastCall = () => ev(`window.__calls[window.__calls.length - 1]`);
     try {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
@@ -87,18 +89,39 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             check(`${at}: a quote that is not in the text any more says "text changed" and keeps its words`, /text changed/.test(cs[2].text) && /Run the backfill nightly/.test(cs[2].quote));
             const hl = await ev(`(() => { const h = CSS.highlights.get('ac-comment'); return h ? h.size : 0; })()`);
             check(`${at}: the quotes that are found are highlighted in the document (${hl})`, hl === 2);
-            check(`${at}: the actions are the viewer's: your own comment has Reply, Resolve, Edit, Delete; the Coral Hub one has Reply and Resolve only`, cs[0].acts.join() === 'Reply,Resolve,Edit,Delete,' + '' || /Reply/.test(cs[0].acts.join()) && /Delete/.test(cs[0].acts.join()), JSON.stringify(cs.map(c => c.acts)));
+            check(`${at}: the actions are the viewer's: your own thread has Resolve, Edit, Delete and the reply box; the Coral Hub one has Resolve and the reply box only`, ['Resolve', 'Edit', 'Delete', 'Reply…'].every(a => cs[0].acts.includes(a)) && cs[1].acts.join() === 'Resolve,Reply…', JSON.stringify(cs.map(c => c.acts)));
             check(`${at}: no Delete on someone else's comment (the reply of hub-user-3f2a, the card of hub-user-3f2a)`, !cs[1].acts.includes('Delete') && !(await ev(`!!document.querySelector('.ac-reply .ac-act[class*=x]')`)) && !/Delete/.test(await ev(`document.querySelector('.ac-reply').textContent`)));
             // current: card -> highlight, highlight -> card
             await click('.ac-card[data-id="3"]');
             check(`${at}: a card made current marks its highlight (ac-active) and itself`, (await cards()).find(c => c.id === '3').active && (await ev(`!!CSS.highlights.get('ac-active')`)));
             // filter
-            await click('.ac-filter:nth-child(2)'); cs = await cards();
-            check(`${at}: Resolved lists the resolved one`, cs.length === 1 && cs[0].id === '5' && /resolved/.test(cs[0].text) && cs[0].acts.includes('Reopen'), JSON.stringify(cs.map(c => c.id)));
-            await click('.ac-filter:nth-child(3)'); check(`${at}: All lists all 4`, (await cards()).length === 4);
-            await click('.ac-filter:nth-child(1)');
+            check(`${at}: the resolved thread is behind a "Show resolved (1)" toggle, pressed = false`, (await ev(`(() => { const b = document.querySelector('.ac-showresolved'); return b && b.textContent + '|' + b.getAttribute('aria-pressed'); })()`)) === 'Show resolved (1)|false');
+            await click('.ac-showresolved'); cs = await cards();
+            check(`${at}: Show resolved adds the resolved thread (its state and Reopen), after the open ones`, cs.length === 4 && cs[3].id === '5' && /resolved/.test(cs[3].text) && cs[3].acts.includes('Reopen') && (await ev(`document.querySelector('.ac-showresolved').textContent`)) === 'Hide resolved', JSON.stringify(cs.map(c => c.id)));
+            await shot(`comments-desktop-resolved-${theme}`);
+            await click('.ac-showresolved'); check(`${at}: and Hide resolved puts it away again`, (await cards()).length === 3);
 
             await shot(`comments-desktop-${theme}`);
+            // the card, as Docs and Paper draw it
+            const look = await ev(`(() => { const c = document.querySelector('.ac-card[data-id="1"]'); const es = [...c.querySelectorAll(':scope > .ac-entry')]; const top = es[0];
+                return { entries: es.length, avatars: es.map(e => (e.querySelector('.ac-avatar') || {}).textContent), avatarHidden: es.every(e => e.querySelector('.ac-avatar').getAttribute('aria-hidden') === 'true'),
+                    metaOrder: [...top.querySelectorAll('.ac-meta > span')].slice(0, 4).map(x => x.className.replace('ac-', '')).join(), time: top.querySelector('.ac-time').textContent, line: top.matches('.ac-entry:has(+ .ac-entry)') && getComputedStyle(top, '::after').width,
+                    resolveIn: !!top.querySelector('.ac-headrow > .ac-resolve'), replyLast: c.lastElementChild.classList.contains('ac-replybox'), group: c.getAttribute('role'), label: c.getAttribute('aria-label'),
+                    quoteFirst: c.firstElementChild.classList.contains('ac-quote') }; })()`);
+            check(`${at}: a thread is one card: the quote, an entry per comment with an initials avatar, the name, a dot and the time in words, Resolve at the top right, the reply box last; the card is a labelled group`,
+                look.entries === 2 && look.avatars.join() === 'O,HU' && look.avatarHidden && /^author,kind,dot,time$/.test(look.metaOrder) && /minutes? ago$/.test(look.time) && look.resolveIn && look.replyLast && look.quoteFirst && look.group === 'group' && /Comment by Operator/.test(look.label), JSON.stringify(look));
+            check(`${at}: a thin line joins the avatars down a thread (2 px, on every entry but the last)`, look.line === '2px', JSON.stringify(look.line));
+            // the card and its highlight light each other while the pointer is on either
+            await ev(`document.querySelector('.ac-card[data-id="1"]').dispatchEvent(new PointerEvent('pointerenter')); true`);
+            check(`${at}: the pointer on a card lights it and its text (ac-hover)`, await ev(`document.querySelector('.ac-card[data-id="1"]').classList.contains('ac-hover') && !!CSS.highlights.get('ac-hover')`));
+            await ev(`document.querySelector('.ac-card[data-id="1"]').dispatchEvent(new PointerEvent('pointerleave')); true`);
+            check(`${at}: and leaving puts both out`, await ev(`!document.querySelector('.ac-card.ac-hover') && !CSS.highlights.get('ac-hover')`));
+            // Edit and Delete show on hover, on a current card and on focus (they are real buttons: the keyboard reaches them and focus shows them)
+            await ev(`(() => { const a = document.querySelector('.ac-card[data-id="4"]'); a.classList.remove('ac-active'); return true; })()`);
+            const vis = await ev(`(() => { const a = document.querySelector('.ac-card[data-id="4"] .ac-actions'); return getComputedStyle(a).opacity; })()`);
+            check(`${at}: Edit and Delete of a card that is not current, hovered or focused are out of sight (opacity ${vis}) but in the page`, vis === '0' && (await ev(`!!document.querySelector('.ac-card[data-id="4"] .ac-actions .ac-act')`)));
+            await ev(`document.querySelector('.ac-card[data-id="4"] .ac-actions .ac-act').focus(); true`);
+            check(`${at}: and focus on one shows them`, (await ev(`getComputedStyle(document.querySelector('.ac-card[data-id="4"] .ac-actions')).opacity`)) === '1');
             // a selection -> Comment button -> composer -> post
             check(`${at}: the text is selected`, await select('write lock on large databases'));
             await waitFor(`!document.querySelector('.ac-selbtn').hidden`, 'the Comment button', 3000);
@@ -110,36 +133,37 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             let call = await ev(`window.__calls.filter(c => c.method === 'POST')[0]`);
             check(`${at}: the post carries the body and the anchor with its context`, call.body.body === 'Is the lock per table or per database?' && call.body.anchor.quote === 'write lock on large databases' && /backfill takes a/.test(call.body.anchor.prefix) && /, so it must run/.test(call.body.anchor.suffix), JSON.stringify(call.body.anchor));
             // reply
-            await click('.ac-card[data-id="1"] > .ac-actions .ac-act');
+            await click('.ac-card[data-id="1"] .ac-replybox');
+            await shot(`comments-desktop-reply-${theme}`);
             await ev(`(() => { const t = document.querySelector('.ac-composer .ac-input'); t.value = 'Thanks'; t.dispatchEvent(new Event('input')); document.querySelector('.ac-composer').requestSubmit(); return true; })()`);
             await waitFor(`[...document.querySelectorAll('.ac-reply')].some(c => /Thanks/.test(c.textContent))`, 'the reply', 5000);
             const rc = (await ev(`window.__calls.filter(c => c.method === 'POST').pop()`)).body;
             check(`${at}: a reply is posted with its thread's id and no anchor of its own`, rc.parent_id === 1 && !('anchor' in rc), JSON.stringify(rc));
             // edit own
-            await ev(`[...document.querySelectorAll('.ac-card[data-id="1"] > .ac-actions .ac-act')].find(b => b.textContent === 'Edit').click(); true`);
+            await ev(`${topAct(1, 'Edit')}.click(); true`);
             await ev(`(() => { const t = document.querySelector('.ac-composer .ac-input'); t.value = 'Batches of 500 is far too small.'; t.dispatchEvent(new Event('input')); document.querySelector('.ac-composer').requestSubmit(); return true; })()`);
             await waitFor(`[...document.querySelectorAll('.ac-card')].some(c => /far too small/.test(c.textContent) && /edited/.test(c.textContent))`, 'the edit', 5000);
             // resolve / reopen
-            await ev(`[...document.querySelectorAll('.ac-card[data-id="3"] > .ac-actions .ac-act')].find(b => b.textContent === 'Resolve').click(); true`);
-            await waitFor(`!document.querySelector('.ac-card[data-id="3"]')`, 'the thread leaving Open', 5000);
-            await click('.ac-filter:nth-child(2)');
-            await ev(`[...document.querySelectorAll('.ac-card[data-id="3"] > .ac-actions .ac-act')].find(b => b.textContent === 'Reopen').click(); true`);
-            await waitFor(`!document.querySelector('.ac-card[data-id="3"]')`, 'the thread leaving Resolved', 5000);
-            check(`${at}: Resolve and Reopen move a thread between the filters`, true);
-            await click('.ac-filter:nth-child(1)');
+            await ev(`${topAct(3, 'Resolve')}.click(); true`);
+            await waitFor(`!document.querySelector('.ac-card[data-id="3"]')`, 'the thread leaving the open ones', 5000);
+            await click('.ac-showresolved');
+            await ev(`${topAct(3, 'Reopen')}.click(); true`);
+            await waitFor(`!document.querySelector('.ac-card[data-id="3"].ac-resolved')`, 'the thread reopened', 5000);
+            await click('.ac-showresolved');
+            check(`${at}: Resolve puts a thread behind Show resolved and Reopen brings it back`, !!(await ev(`!!document.querySelector('.ac-card[data-id="3"]')`)));
             // delete own, after the confirmation
-            await ev(`[...document.querySelectorAll('.ac-card[data-id="6"] > .ac-actions .ac-act')].find(b => b.textContent === 'Delete').click(); true`);
+            await ev(`${topAct(6, 'Delete')}.click(); true`);
             await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirmation', 3000);
             check(`${at}: Delete asks first`, !(await ev(`window.__calls.some(c => c.method === 'DELETE')`)));
             await ev(`document.getElementById('confirm-modal-yes').click(); true`);
             await waitFor(`!document.querySelector('.ac-card[data-id="6"]')`, 'the deleted card gone', 5000);
             check(`${at}: the delete went to the server for that comment`, /\/6$/.test((await ev(`window.__calls.filter(c => c.method === 'DELETE').pop()`)).url));
             // a thread with replies that is deleted stays as a tombstone, its replies kept
-            await ev(`[...document.querySelectorAll('.ac-card[data-id="1"] > .ac-actions .ac-act')].find(b => b.textContent === 'Delete').click(); true`);
+            await ev(`${topAct(1, 'Delete')}.click(); true`);
             await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'the confirmation', 3000);
             await ev(`document.getElementById('confirm-modal-yes').click(); true`);
             await waitFor(`/Comment deleted/.test((document.querySelector('.ac-card[data-id="1"]') || {}).textContent || '')`, 'the tombstone', 5000);
-            const tomb = await ev(`(() => { const c = document.querySelector('.ac-card[data-id="1"]'); return { replies: c.querySelectorAll('.ac-reply').length, acts: [...c.querySelectorAll(':scope > .ac-actions .ac-act')].length }; })()`);
+            const tomb = await ev(`(() => { const c = document.querySelector('.ac-card[data-id="1"]'); return { replies: c.querySelectorAll('.ac-reply').length, acts: [...c.querySelectorAll(':scope > .ac-entry:first-of-type .ac-act, :scope > .ac-replybox')].length }; })()`);
             check(`${at}: a deleted thread that has replies reads "Comment deleted", keeps its replies and offers no actions`, tomb.replies >= 1 && tomb.acts === 0, JSON.stringify(tomb));
             const au = await auditRegion(ev, ['.ac-panel']);
             check(`${at}: the panel reads at 4.5:1`, au.fails.length === 0, JSON.stringify(au.fails.slice(0, 2)));

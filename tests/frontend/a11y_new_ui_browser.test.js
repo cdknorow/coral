@@ -110,7 +110,7 @@ const LABELS = ['Feels like a slideshow', "Doesn't show the game", 'Tone/story i
                 check(`${tag}: the Comments toggle opens the sheet and says so (aria-expanded)`, await ev(`document.querySelector('.ac-toggle').getAttribute('aria-expanded')`) === 'true');
             }
             ax = await axUnder('#artifact-viewer .ac-panel');
-            check(`${tag}: the comments panel is named, its filters have a pressed state`, ax.nodes.some(n => n.role === 'complementary' && /comments/i.test(n.name)) && ax.nodes.filter(n => n.role === 'button' && /^(Open|Resolved|All)$/.test(n.name) && n.pressed !== undefined).length === 3, JSON.stringify(ax.nodes.filter(n => n.role === 'button').map(n => [n.name, n.pressed])));
+            check(`${tag}: the comments panel is named, its Show resolved toggle has a pressed state`, ax.nodes.some(n => n.role === 'complementary' && /comments/i.test(n.name)) && ax.nodes.filter(n => n.role === 'button' && /^Show resolved \(\d+\)$/.test(n.name) && n.pressed !== undefined).length === 1, JSON.stringify(ax.nodes.filter(n => n.role === 'button').map(n => [n.name, n.pressed])));
             // the cards: a comment reaches its text in the document from the keyboard (a control on the card), and the document reaches the cards
             const jump = await ev(`(() => { const c = document.querySelector('.ac-card[data-id="1"]'); const b = c && c.querySelector('.ac-jump'); return b ? { label: b.getAttribute('aria-label') || b.textContent.trim(), tag: b.tagName } : null; })()`);
             check(`${tag}: a comment card has a keyboard control that shows its text in the document (${JSON.stringify(jump)})`, jump && jump.tag === 'BUTTON' && /document/i.test(jump.label));
