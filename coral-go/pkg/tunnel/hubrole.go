@@ -3,15 +3,14 @@ package tunnel
 import (
 	"context"
 	"net/http"
-	"regexp"
 )
 
-// The owner marker for the update routes (#5280, section 13 of the auto-update design) and the owner's configuration routes (#5307).
+// The owner marker (#5280 for the update routes, #5307 for the owner's configuration, #5575 and #5572 for artifacts and the cross-team switches). Which routes carry it is ownerroutes.go:
+// the owner routes of the route table, and nowhere else.
 //
-// Coral Hub marks a request "from the account this machine is enrolled to" only on those routes, as a field of the stream
-// (Header.HubRole), never as an HTTP header a browser could send. The connector turns the field into HubRoleHeader for the local
-// server on those two routes and nowhere else; the server honours it only on a request this connector stamped. Any HubRoleHeader a
-// request carries itself is not on the forward allowlist, and is deleted again after the scrub.
+// Coral Hub marks a request "from the account this machine is enrolled to" as a field of the stream (Header.HubRole), never as an HTTP header a browser could send. The connector turns the
+// field into HubRoleHeader for the local server on the owner routes and nowhere else; the server honours it only on a request this connector stamped. Any HubRoleHeader a request carries
+// itself is not on the forward allowlist, and is deleted again after the scrub.
 
 // HubRoleHeader is the local header the connector sets from the stream's HubRole.
 const HubRoleHeader = "X-Coral-Hub-Role"
@@ -25,46 +24,8 @@ const (
 	UpdateRelaunchPath = "/api/system/update/relaunch"
 )
 
-// IsOwnerRoute reports whether the owner marker is stamped for (method, decodedPath): the two update routes, and the owner's reads and
-// writes of this computer's own configuration (#5307): GET and PUT /api/board/{project}/settings (the health check's setup), the four POST
-// /api/board/{project}/cross-team[/files]/enable|disable (#5572) and GET /api/settings/prompt-inspection, and the artifact routes (#5575, #5577), which are the owner's alone through the hub: an artifact can hold anything.
-// The marker only says the hub account is the one this computer is linked to; every one of these routes
-// decides for itself what it gives the owner and refuses a viewer without it.
-func IsOwnerRoute(method, decodedPath string) bool {
-	if IsUpdateRoute(method, decodedPath) {
-		return true
-	}
-	switch method {
-	case http.MethodGet:
-		return decodedPath == PromptInspectionPath || boardSettingsRoute.MatchString(decodedPath) || isArtifactReadRoute(decodedPath)
-	case http.MethodPut:
-		return boardSettingsRoute.MatchString(decodedPath)
-	case http.MethodDelete:
-		return artifactDeleteRoute.MatchString(decodedPath)
-	case http.MethodPost:
-		return crossTeamSwitchRoute.MatchString(decodedPath)
-	}
-	return false
-}
-
-// The artifact routes the machine answers only to the owner (artifactsOwnerOnly in internal/server/routes): without the marker on them the machine refuses even the owner.
-var (
-	artifactReadRoutes  = regexp.MustCompile(`^/api/artifacts(/[0-9a-f]{64}(/(meta|comments|readers))?)?$`)
-	artifactDeleteRoute = regexp.MustCompile(`^/api/artifacts/[0-9a-f]{64}$`)
-	teamArtifactRoutes  = regexp.MustCompile(`^/api/board/[^/]+/(artifacts|tasks/[0-9]+/artifact-content)$`)
-)
-
-func isArtifactReadRoute(decodedPath string) bool {
-	return decodedPath == "/api/session-artifacts" || artifactReadRoutes.MatchString(decodedPath) || teamArtifactRoutes.MatchString(decodedPath)
-}
-
 // PromptInspectionPath is the read-only view of the global prompts.
 const PromptInspectionPath = "/api/settings/prompt-inspection"
-
-var boardSettingsRoute = regexp.MustCompile(`^/api/board/[^/]+/settings$`)
-
-// crossTeamSwitchRoute is the four routes on which Coral Hub's owner turns a team's cross-team messaging or file sharing on or off (#5572).
-var crossTeamSwitchRoute = regexp.MustCompile(`^/api/board/[^/]+/cross-team/(files/)?(enable|disable)$`)
 
 // IsUpdateRoute reports whether (method, decodedPath) is GET /api/system/update or POST /api/system/update/relaunch.
 func IsUpdateRoute(method, decodedPath string) bool {
@@ -89,7 +50,7 @@ func hubRoleFrom(ctx context.Context) string {
 }
 
 // stampRole sets HubRoleHeader (and the stamped hub user, which the server compares with the one recorded at enrolment) on
-// the request headers of a stream for an update route whose stream says owner. Any other stream, and any other route, gets neither:
+// the request headers of a stream for an owner route (ownerroutes.go) whose stream says owner. Any other stream, and any other route, gets neither:
 // whatever the request itself carried under these names is removed first.
 func stampRole(out http.Header, h Header, method, decodedPath string) {
 	out.Del(HubRoleHeader)

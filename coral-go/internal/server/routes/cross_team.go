@@ -170,8 +170,7 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 	if cloud.Tunneled(r) {
 		// Through Coral Hub this is the owner's alone, decided before the body is read (#5307), and the body is strict: one JSON object of at
 		// most boardSettingsHubMax bytes whose every key (the health setup's included) is known.
-		if !hubOwnerRequest(r).owner {
-			writeJSON(w, http.StatusForbidden, map[string]string{"code": "owner_only", "error": "only the account this computer is linked to can change board settings through Coral Hub"})
+		if refuseNonOwner(w, r) { // the table's owner route (PUT /api/board/{project}/settings)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")

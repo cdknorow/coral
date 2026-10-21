@@ -9,7 +9,7 @@ package routes
 //
 // An agent may read an artifact when some record of it is owned by the owner of the agent's team (the team the launch path put it on, live_sessions.board_name: an agent's own
 // "coral-board subscribe" never changes it), or when its team is linked to the record's board (crossTeamReadOpen, patch C of #5577, waits for #5572's link state and reads as "no" until then).
-// The machine owner, the dashboard and the signed command line read everything. Through Coral Hub the outer rule stays owner only (refuseArtifactsToNonOwner).
+// The machine owner, the dashboard and the signed command line read everything. Through Coral Hub the outer rule stays owner only (refuseNonOwner).
 //
 // Everything else answers the same 404 as an artifact that does not exist, before any other check (an existence probe gets nothing), and any error on the way is a refusal.
 //
@@ -243,7 +243,7 @@ func agentSessionOf(r *http.Request) (sessionID string, isAgent bool) {
 }
 
 // artifactReadable is the one read check: whether the caller of r may read artifact id. The machine owner, the dashboard, the signed command line, an API key and a request with no credential
-// (an install that opted out of strict local auth) read everything; through Coral Hub refuseArtifactsToNonOwner has already decided. An agent reads what its team's owner owns.
+// (an install that opted out of strict local auth) read everything; through Coral Hub refuseNonOwner has already decided. An agent reads what its team's owner owns.
 func artifactReadable(r *http.Request, coralDir, id string) bool {
 	if cloud.Tunneled(r) {
 		return true

@@ -223,7 +223,7 @@ func (h *UpdateRelaunchHandler) on() bool {
 
 // identify runs the stamp and owner checks (identifyOwner with this handler's own label source).
 func (h *UpdateRelaunchHandler) identify(r *http.Request) callerIdentity {
-	return identifyOwner(r, h.OwnerUser, &h.noLabelLogged)
+	return ownerIdentityWith(r, h.OwnerUser, &h.noLabelLogged)
 }
 
 // gate is the status of the checks that don't depend on the update's state, as the reason the relaunch is unavailable ("" = pass).

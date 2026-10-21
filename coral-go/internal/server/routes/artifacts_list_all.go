@@ -202,7 +202,7 @@ func parseAllArtifactsCursor(c string) (at, id string, ok bool) {
 // listAllArtifacts: GET /api/artifacts?limit=&cursor=&board=
 func (h *SessionsHandler) listAllArtifacts(w http.ResponseWriter, r *http.Request) {
 	if cloud.Tunneled(r) {
-		if refuseArtifactsToNonOwner(w, r) {
+		if refuseNonOwner(w, r) {
 			return
 		}
 	} else if refuseNonOperator(w, r, "list every artifact") {

@@ -74,12 +74,23 @@ type route struct {
 	method  string // "*" matches every method (used for explicit TierNever rules)
 	pattern string
 	tier    Tier
+	owner   OwnerMode // how the owner marker applies to the route (ownerroutes.go); OwnerNone for nearly every route
 }
 
 func rules(method string, t Tier, patterns ...string) []route {
 	out := make([]route, 0, len(patterns))
 	for _, p := range patterns {
-		out = append(out, route{method, p, t})
+		out = append(out, route{method: method, pattern: p, tier: t})
+	}
+	return out
+}
+
+// owner marks the routes of the groups as the computer OWNER's (ownerroutes.go): the connector stamps the owner marker on them and only on them, and the server asks this same table
+// who may use them. A route is owner-only here or it is not: there is no second list.
+func owner(mode OwnerMode, groups ...[]route) []route {
+	out := cat(groups...)
+	for i := range out {
+		out[i].owner = mode
 	}
 	return out
 }
@@ -176,12 +187,9 @@ var routeTable = cat(
 		"/api/board/{project}/messages/search",
 		"/api/board/{project}/subscribers",
 		"/api/board/{project}/paused",
-		"/api/board/{project}/settings",
 		"/api/board/{project}/tasks",
 		"/api/board/{project}/tasks/{id}",
 		"/api/board/{project}/tasks/{id}/cost",
-		"/api/board/{project}/tasks/{id}/artifact-content",
-		"/api/board/{project}/artifacts",
 		"/api/board/{project}/status",
 		"/api/board/{project}/working-mode",
 		"/api/board/{project}/working-mode/presets",
@@ -206,23 +214,7 @@ var routeTable = cat(
 		"/api/templates/agents", "/api/templates/agents/{category}", "/api/templates/agents/{category}/{name}",
 		"/api/templates/commands", "/api/templates/commands/{category}", "/api/templates/commands/{category}/{name}",
 		"/api/views", "/api/views/{id}",
-		"/api/agent-models", "/api/settings/default-prompts", "/api/session-artifacts",
-		// Images pasted or attached in the dashboard are artifacts too (#5284): an image in a chat is served through this same read; /api/upload and /api/shared-images stay local only. Through the hub every artifact
-		// and pasted image is the OWNER's alone (#5575): the machine refuses anyone but the owner (the stamped marker, hubrole.go) whatever their tier.
-		// A content-addressed agent artifact, named by its full SHA-256. Reads only; the exact 64-hex shape is
-		// enforced by the {hex64} segment, and the only query is the link form v=2 (routes_query.go, #3179). Upload (POST /api/agent/artifacts) and
-		// the artifact list under /api/agent/ stay unlisted (never).
-		"/api/artifacts/{hex64}",
-		// The machine-wide list (#5575): every artifact on this computer with its uploader, board and source, paged by a cursor. OWNER ONLY, as every artifact read
-		// through the hub now is: the machine refuses anyone but the owner (the stamped marker, hubrole.go) whatever tier they hold.
-		"/api/artifacts",
-		// The same artifact without its bytes (#5465, coral-hub): id, size, the media type a download is served as and the stored name, 404 exactly as the content read is, never cached.
-		"/api/artifacts/{hex64}/meta",
-		// Who can read an artifact (#5577), for the computer's OWNER only (the machine checks the stamped marker, hubrole.go): the owners that hold it and the teams whose agents read it. No query.
-		"/api/artifacts/{hex64}/readers",
-		// The comments on an artifact (#5176): reads only, for every viewer tier (an agent's own artifact, so the same trust as the artifact). Writing, replying, resolving and the owner's lock are
-		// unlisted (never) from here: a hub viewer cannot comment until coral-hub settles a stable user identity, and the owner comments on this computer.
-		"/api/artifacts/{hex64}/comments",
+		"/api/agent-models", "/api/settings/default-prompts",
 		// Agent UI (option B): the panel list, a panel's HTML (read as text and run in a sandbox by the dashboard) and its saved
 		// events. {uiid} is exactly the machine's panel id shape. Publishing and removing panels (PUT/DELETE) are the agent's own
 		// actions on its machine and stay unlisted (never).
@@ -230,6 +222,29 @@ var routeTable = cat(
 		"/api/agent/ui/{uiid}/content",
 		"/api/agent/ui/{uiid}/events",
 	),
+
+	// ── the owner's routes (ownerroutes.go): the SAME table says which routes carry the owner marker and which the machine refuses a non-owner on ──
+	// Artifacts and pasted images are the OWNER's alone through the hub (#5575): an artifact can hold anything. The machine refuses anyone but the owner whatever their tier.
+	// A content-addressed agent artifact is named by its full SHA-256; the only query on the content is the link form v=2 (routes_query.go, #3179). Pasted images are artifacts
+	// too (#5284); /api/upload and /api/shared-images stay local only. Upload (POST /api/agent/artifacts) and the artifact list under /api/agent/ stay unlisted (never).
+	owner(OwnerRefuse, rules(http.MethodGet, TierView,
+		"/api/artifacts/{hex64}",
+		// The machine-wide list (#5575): every artifact on this computer with its uploader, board and source, paged by a cursor.
+		"/api/artifacts",
+		// The same artifact without its bytes (#5465, coral-hub): id, size, the media type a download is served as and the stored name, 404 exactly as the content read is, never cached.
+		"/api/artifacts/{hex64}/meta",
+		// Who can read an artifact (#5577): the owners that hold it and the teams whose agents read it. No query.
+		"/api/artifacts/{hex64}/readers",
+		// The comments on an artifact (#5176): reads only. Writing, replying, resolving and the owner's lock are unlisted (never) from here.
+		"/api/artifacts/{hex64}/comments",
+		"/api/board/{project}/tasks/{id}/artifact-content",
+		"/api/board/{project}/artifacts",
+		"/api/session-artifacts",
+	)),
+	// What a viewer sees of a board's settings is the machine's to decide (the health setup is the owner's, #5307): the marker is stamped, the handler gives a non-owner less.
+	// The update status (#5280) shows the owner more, with the label optional for a machine linked before it was recorded.
+	owner(OwnerSees, rules(http.MethodGet, TierView, "/api/board/{project}/settings")),
+	owner(OwnerUpdate, rules(http.MethodGet, TierView, UpdateStatusPath)),
 
 	// ── interact: typing into running agents, and changing running work ──
 	rules(http.MethodPost, TierInteract,
@@ -317,14 +332,14 @@ var routeTable = cat(
 	rules(http.MethodDelete, TierLaunch, "/api/board/{project}/messages/{id}"),
 
 	// ── launch: starts or wakes processes, browses folders, opens editors ─
-	// Coral Hub's owner turns a team's cross-team messaging or file sharing on or off (#5572): the owner marker is stamped on these four only (IsOwnerRoute), the server refuses anyone else
-	// and the local lock "Let Coral Hub change cross-team settings" refuses both directions. No body, no query.
-	rules(http.MethodPost, TierLaunch,
+	// Coral Hub's owner turns a team's cross-team messaging or file sharing on or off (#5572): the machine refuses anyone else and the local lock "Let Coral Hub change cross-team
+	// settings" refuses both directions. No body, no query.
+	owner(OwnerHubOnly, rules(http.MethodPost, TierLaunch,
 		"/api/board/{project}/cross-team/enable",
 		"/api/board/{project}/cross-team/disable",
 		"/api/board/{project}/cross-team/files/enable",
 		"/api/board/{project}/cross-team/files/disable",
-	),
+	)),
 	rules(http.MethodPost, TierLaunch,
 		// Auto-accept lets the agent run tools without asking, as much as launching one
 		// with permissions bypassed (#3182, Coral Hub review). The owner's local switch
@@ -370,13 +385,12 @@ var routeTable = cat(
 	// The owner's own configuration through the hub (#5307): saving a board's health check setup, and reading the global prompts. Launch tier,
 	// and the machine refuses anyone but the owner (the stamped marker, hubrole.go): a grantee at launch tier gets 403. The hub may set only
 	// the health part of a board's settings; the cross-team fields stay local (#3377, #4379).
-	rules(http.MethodPut, TierLaunch, "/api/board/{project}/settings"),
+	owner(OwnerRefuse, rules(http.MethodPut, TierLaunch, "/api/board/{project}/settings")),
 	// Deleting an artifact from the hub's Artifacts tab (#5575): Launch, and the machine refuses anyone but the owner (the stamped marker, hubrole.go); each delete is
 	// recorded in the Operator actions with the hub user. Pasted images are artifacts too, so this removes them as well.
-	rules(http.MethodDelete, TierLaunch, "/api/artifacts/{hex64}"),
-	rules(http.MethodGet, TierLaunch, PromptInspectionPath),
-	rules(http.MethodGet, TierView, UpdateStatusPath),
-	rules(http.MethodPost, TierLaunch, UpdateRelaunchPath),
+	owner(OwnerRefuse, rules(http.MethodDelete, TierLaunch, "/api/artifacts/{hex64}")),
+	owner(OwnerRefuse, rules(http.MethodGet, TierLaunch, PromptInspectionPath)),
+	owner(OwnerUpdate, rules(http.MethodPost, TierLaunch, UpdateRelaunchPath)),
 	// Pinning a folder to the Agents list names a folder to launch into (#3630): Launch, like
 	// browsing for one. Reading the pins is View (above).
 	rules(http.MethodPost, TierLaunch, "/api/pinned-folders"),

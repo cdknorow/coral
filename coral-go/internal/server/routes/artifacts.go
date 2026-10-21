@@ -705,11 +705,10 @@ func deleteArtifactFilesLocked(coralDir, id string) (freed int64, records int, f
 // 403. Links to it in posts and task results stay and show "unavailable".
 func (h *SessionsHandler) deleteAgentArtifact(w http.ResponseWriter, r *http.Request) {
 	if cloud.Tunneled(r) {
-		owner := hubOwnerRequest(r)
-		if !owner.owner || owner.pseudo == "" {
-			writeError(w, http.StatusForbidden, "owner_only", "through Coral Hub only the account this computer is linked to can delete an artifact")
+		if refuseNonOwner(w, r) { // the table's owner route (DELETE /api/artifacts/{hex64}); an owner has a hub user
 			return
 		}
+		owner := hubOwnerRequest(r)
 		rec := &statusRecorder{ResponseWriter: w}
 		h.deleteArtifactCore(rec, r)
 		if rec.status == 0 {
@@ -795,7 +794,7 @@ func (h *SessionsHandler) openArtifactForRead(w http.ResponseWriter, r *http.Req
 }
 
 func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Request) {
-	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -832,7 +831,7 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 // It is the content read with the bytes left out: the same id check, the same 404 when the artifact is absent or hidden from Coral Hub by the paste share switch, the same refusal of a damaged
 // copy, from the same code (openArtifactForRead); no query parameter is read. The answer is never cached (no-store): an artifact can be deleted at any time.
 func (h *SessionsHandler) getAgentArtifactMeta(w http.ResponseWriter, r *http.Request) {
-	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
 		return
 	}
 	id := chi.URLParam(r, "id")

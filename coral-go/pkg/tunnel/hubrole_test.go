@@ -175,7 +175,7 @@ func TestIsOwnerRouteIsTheUpdateRoutesAndTheOwnersConfiguration(t *testing.T) {
 		{http.MethodGet, "/api/artifacts/" + hexID + "/x", false},
 		{http.MethodGet, "/api/board/team/artifacts/x", false},
 		{http.MethodGet, "/api/board/a/b/artifacts", false},
-		{http.MethodGet, "/api/board/team/tasks/x/artifact-content", false},
+		{http.MethodGet, "/api/board/team/tasks/x/artifact-content", true}, // the table's {id} is any one segment (the handler refuses a non-number); the old hand-written list wanted digits: the one difference of #5610
 		// Coral Hub's owner turns a team's cross-team switches on or off (#5572): the four POST routes only.
 		{http.MethodPost, "/api/board/team/cross-team/enable", true},
 		{http.MethodPost, "/api/board/team/cross-team/disable", true},

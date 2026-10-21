@@ -98,7 +98,7 @@ func parseBoundedInt(raw string, def, min, max int) (int, bool) {
 // With only limit, offset and session_id the reply is the plain list. Any of the others makes it a query (team_artifacts_query.go,
 // #4572): the reply then also has total, and next_cursor when there is another page.
 func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request) {
-	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
 		return
 	}
 	project := urlParam(r, "project")
@@ -338,7 +338,7 @@ func enrichTeamArtifact(it *teamArtifact, objectDir string) {
 // TeamArtifactContent serves an inline task artifact as plain text.
 // GET /api/board/{project}/tasks/{taskID}/artifact-content?source=completion|review&index=N
 func (h *BoardHandler) TeamArtifactContent(w http.ResponseWriter, r *http.Request) {
-	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
 		return
 	}
 	project := urlParam(r, "project")
@@ -554,7 +554,7 @@ func (c *uploadDirCache) merge(items []teamArtifact, coralDir string, sessions m
 // results.
 // GET /api/session-artifacts?session_id=&limit=&offset=
 func (h *BoardHandler) ListSessionArtifacts(w http.ResponseWriter, r *http.Request) {
-	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
 		return
 	}
 	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))

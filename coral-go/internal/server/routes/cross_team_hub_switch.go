@@ -18,20 +18,23 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/httputil"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
-var hubSwitchPath = regexp.MustCompile(`^/api/board/[^/]+/cross-team/(files/)?(enable|disable)$`)
-
-// isHubSwitchRoute says whether r is a POST to one of the four switch routes.
+// isHubSwitchRoute says whether r is a POST to one of the four switch routes: the POST routes the route table marks owner-only (the only other owner POST, the update relaunch, is
+// owner-update, not owner-only). A census test pins the set to the four.
 func isHubSwitchRoute(r *http.Request) bool {
-	return r.Method == http.MethodPost && hubSwitchPath.MatchString(r.URL.Path)
+	if r.Method != http.MethodPost {
+		return false
+	}
+	_, mode := tunnel.OwnerRoute(r.Method, r.URL.Path)
+	return mode.Refuses()
 }
 
 // hubSwitchPerMinute is how many requests one team takes from Coral Hub in a minute.
@@ -106,11 +109,10 @@ func (h *BoardHandler) HubCrossTeamFilesDisable(w http.ResponseWriter, r *http.R
 
 func (h *BoardHandler) setSwitchForHub(w http.ResponseWriter, r *http.Request, key string, on bool) {
 	w.Header().Set("Cache-Control", "no-store")
-	id := hubOwnerRequest(r)
-	if !id.owner || id.pseudo == "" {
-		writeError(w, http.StatusForbidden, "owner_only", textHubSwitchOwnerOnly)
+	if refuseNonOwner(w, r) { // the table's owner route: the owner's alone
 		return
 	}
+	id := hubOwnerRequest(r)
 	project := urlParam(r, "project")
 	if ok, wait := h.allowHubSwitch(project); !ok {
 		httputil.WriteActionLimit(w, wait, "hub_switch_rate_limited", textHubSwitchRateLimited)

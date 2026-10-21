@@ -32,7 +32,7 @@ type artifactReaderOwner struct {
 // artifactReaders: GET /api/artifacts/{id}/readers
 func (h *SessionsHandler) artifactReaders(w http.ResponseWriter, r *http.Request) {
 	if cloud.Tunneled(r) {
-		if refuseArtifactsToNonOwner(w, r) {
+		if refuseNonOwner(w, r) {
 			return
 		}
 	} else if refuseNonOperator(w, r, "see who can read an artifact") {

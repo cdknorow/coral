@@ -283,7 +283,7 @@ func (h *SessionsHandler) listArtifactComments(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
 		return
 	}
 	id, ok := h.commentArtifact(w, r, false)
