@@ -480,7 +480,7 @@ async function launchTeam() {
     try {
         const result = await _launchOn(server, "/api/sessions/launch-team", payload, undefined, { teamFailures: true });
         if (result) {
-            recordRecentDir(workingDir, server);
+            if (result.ok !== false) recordRecentDir(workingDir, server); // not for a team in which nobody started (#122)
             // Check for per-agent errors in the launched array
             const launched = result.agents || result.launched || [];
             const failed = launched.filter(a => a.error);
