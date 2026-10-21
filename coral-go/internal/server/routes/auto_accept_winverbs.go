@@ -117,7 +117,7 @@ func splitRedirections(words []string) (rest, targets []string) {
 // Command classes, by lower-case name without a .exe or .cmd suffix.
 var (
 	// Removes files; ambiguous names (rm, rmdir, del) are PowerShell's only when the arguments are PowerShell's.
-	winDelete = setOf("remove-item", "ri", "rm", "rmdir", "del", "erase", "rd", "clear-content", "clear-item", "rimraf")
+	winDelete = setOf("remove-item", "ri", "rm", "rmdir", "del", "erase", "rd", "clear-content", "clc", "clear-item", "cli", "rimraf")
 	// Writes over or moves files.
 	winWrite = setOf("move-item", "mi", "mv", "move", "rename-item", "rni", "ren", "rename", "set-content", "add-content", "ac",
 		"out-file", "new-item", "ni", "mkdir", "md", "set-item", "si", "copy-item", "cp", "copy", "cpi", "xcopy", "robocopy", "tee-object", "export-csv", "export-clixml")
@@ -128,6 +128,8 @@ var (
 		"set-mppreference", "add-mppreference", "disable-netfirewallrule", "remove-netfirewallrule", "netsh", "schtasks",
 		"remove-service", "set-service", "stop-service", "new-service", "sc", "net", "net1", "taskkill", "wmic", "mklink",
 		"format", "convert", "label", "fsutil", "vssadmin", "mountvol",
+		// aliases of the cmdlets above, and tools that change the registry, the environment, file associations, permissions or drives (#5690)
+		"sp", "rp", "spsv", "regedit", "setx", "at", "cacls", "xcacls", "subst", "assoc", "ftype",
 		// Disk, boot, image and backup tools, secure delete, run-as, and programs that fetch and run code or load a library (#5662): never judged by their arguments.
 		"chkdsk", "sfc", "dism", "bootrec", "bootsect", "wbadmin", "diskshadow", "sdelete", "sdelete64", "runas", "certutil", "bitsadmin", "msiexec",
 		"regsvr32", "mshta", "rundll32", "wscript", "cscript", "installutil", "cmstp", "odbcconf")
@@ -274,12 +276,36 @@ func winVerbRisk(command string, outside func(string) bool) string {
 	if winHiddenRe.MatchString(stripQuoted(body)) {
 		return "it calls .NET or COM, or a method that deletes, moves or starts something"
 	}
+	// A cd out of the working folder (or to a place that cannot be read) moves what every later relative path means: after it nothing is provably inside (#5690).
 	for _, st := range winStages(body) {
 		if why := winStageRisk(st, outside); why != "" {
 			return why
 		}
+		if winMovesOutside(st, outside) {
+			outside = func(string) bool { return true }
+		}
 	}
 	return ""
+}
+
+// winLocationCmds change the directory later commands start in.
+var winLocationCmds = setOf("cd", "chdir", "sl", "set-location", "pushd", "push-location")
+
+// winMovesOutside says whether a stage changes directory to somewhere outside the working folder or somewhere that cannot be read.
+func winMovesOutside(st winStage, outside func(string) bool) bool {
+	if len(st.words) == 0 || !winLocationCmds[cmdName(st.words[0])] {
+		return false
+	}
+	for _, a := range st.words[1:] {
+		if strings.EqualFold(a, "/d") || isParam(a, "path", 1) || isParam(a, "literalpath", 1) || a == "--" {
+			continue
+		}
+		if strings.HasPrefix(a, "-") && !strings.ContainsAny(a, `\/:.$`) {
+			continue
+		}
+		return pathOutside(strings.TrimPrefix(a, "-path:"), outside) || a == "-" || a == "~"
+	}
+	return false // cd with no target only prints the folder
 }
 
 func winStageRisk(st winStage, outside func(string) bool) string {
@@ -324,7 +350,13 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 
 	switch name {
 	case "powershell", "pwsh", "powershell_ise":
-		return winShellWrapper(args, outside)
+		if why := winShellWrapper(args, outside); why != "" {
+			return why
+		}
+		if st.sink && !winHasCommandArg(args) {
+			return "it runs what a pipeline feeds its PowerShell" // curl http://e | powershell
+		}
+		return ""
 	case "call":
 		return winVerbRisk(strings.Join(args, " "), outside) // call format C: runs format
 	case "for":
@@ -353,6 +385,9 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 		}
 		return ""
 	case "cmd":
+		if st.sink && !winHasCmdCommand(args) {
+			return "it runs what a pipeline feeds its cmd"
+		}
 		for i, a := range args {
 			if l := strings.ToLower(a); len(a) > 2 && (strings.HasPrefix(l, "/c") || strings.HasPrefix(l, "/k") || strings.HasPrefix(l, "/r")) {
 				// cmd /c"format C:" and cmd /cformat C:: the command text follows the switch with no space.
@@ -373,7 +408,10 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 		return ""
 	case "start":
 		// cmd's start and PowerShell's alias of Start-Process: the program it starts is judged, with -ArgumentList always asking.
-		for _, a := range args {
+		for i, a := range args {
+			if (strings.EqualFold(a, "/d") || isParam(a, "workingdirectory", 2)) && (i+1 >= len(args) || pathOutside(args[i+1], outside)) {
+				return "it starts a program in a folder outside the working directory (#5690)"
+			}
 			if isParam(a, "argumentlist", 2) || strings.EqualFold(a, "-args") {
 				return "it starts a program with arguments Coral can't judge"
 			}
@@ -388,6 +426,9 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	case "start-process", "saps":
 		filePath := ""
 		for i, a := range args {
+			if isParam(a, "workingdirectory", 2) && (i+1 >= len(args) || pathOutside(args[i+1], outside)) {
+				return "it starts a process in a folder outside the working directory (#5690)"
+			}
 			if isParam(a, "verb", 1) && i+1 < len(args) && strings.EqualFold(args[i+1], "runas") {
 				return "it starts a process as administrator"
 			}
@@ -435,6 +476,59 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 			}
 		}
 		return "" // piped into iex, the sink is judged
+	case "tar", "bsdtar":
+		for i, a := range args {
+			v := ""
+			switch {
+			case (a == "-C" || a == "--directory") && i+1 < len(args):
+				v = args[i+1]
+			case strings.HasPrefix(a, "--directory="):
+				v = a[len("--directory="):]
+			case len(a) > 2 && strings.HasPrefix(a, "-C"):
+				v = a[2:]
+			}
+			if v != "" && pathOutside(v, outside) {
+				return "it extracts outside the working directory (" + v + ")"
+			}
+		}
+		return ""
+	case "7z", "7za", "7zr":
+		for _, a := range args {
+			if len(a) > 2 && strings.HasPrefix(a, "-o") && pathOutside(a[2:], outside) {
+				return "it extracts outside the working directory (" + a[2:] + ")"
+			}
+		}
+		return ""
+	case "unzip":
+		for i, a := range args {
+			if a == "-d" && i+1 < len(args) && pathOutside(args[i+1], outside) {
+				return "it extracts outside the working directory (" + args[i+1] + ")"
+			}
+		}
+		return ""
+	case "expand", "makecab":
+		if p := winPaths(args); len(p) > 1 && pathOutside(p[len(p)-1], outside) {
+			return "it writes outside the working directory (" + p[len(p)-1] + ")"
+		}
+		return ""
+	case "git":
+		// git clone <url> <dir>: the directory it creates.
+		for i, a := range args {
+			if strings.EqualFold(a, "clone") {
+				if p := winPaths(args[i+1:]); len(p) > 1 && pathOutside(p[len(p)-1], outside) {
+					return "it clones into a folder outside the working directory (" + p[len(p)-1] + ")"
+				}
+				break
+			}
+		}
+		return ""
+	case "attrib":
+		for _, p := range winPaths(args) {
+			if pathOutside(p, outside) {
+				return "it changes attributes outside the working directory (" + p + ")"
+			}
+		}
+		return ""
 	case "reg":
 		if len(args) > 0 {
 			switch strings.ToLower(args[0]) {
@@ -462,15 +556,22 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	if winAsk[name] {
 		return "it runs " + words[0] + ", which can run anything"
 	}
+	if name == "sc" && (len(args) == 0 || !winServiceVerbs[strings.ToLower(args[0])]) {
+		name = "set-content" // sc is PowerShell 5's alias of Set-Content: judged by the path it writes (#5690)
+	}
 	if winSystem[name] {
 		switch name {
 		case "sc", "net", "net1":
-			if len(args) == 0 || !winServiceVerbs[strings.ToLower(args[0])] {
-				return ""
+			if len(args) == 0 || !winServiceVerbs[strings.ToLower(args[0])] || (strings.EqualFold(args[0], "use") && len(args) == 1) {
+				return "" // net use alone only lists the connections
 			}
 		case "cipher":
 			if !hasArgFold(args, "/w") {
 				return ""
+			}
+		case "assoc", "ftype":
+			if !strings.Contains(strings.Join(args, " "), "=") {
+				return "" // without = they only print
 			}
 		case "schtasks", "netsh", "wmic", "taskkill", "mklink":
 			// only the changing forms
@@ -483,11 +584,17 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 
 	// PowerShell uses its own parameters for names a POSIX shell also has.
 	ambiguous := name == "rm" || name == "mv" || name == "cp"
-	if ambiguous && !psStyle(args) {
-		return "" // the POSIX rules judge it
-	}
-
 	paths := winPaths(args)
+	if ambiguous && !psStyle(args) && !st.sink {
+		// The POSIX rules judge it, but on Windows these are PowerShell's aliases too: a path that is outside the folder or cannot be read still asks (#5690).
+		anyOutside := false
+		for _, p := range paths {
+			anyOutside = anyOutside || pathOutside(p, outside)
+		}
+		if !anyOutside {
+			return ""
+		}
+	}
 	recurse, force := false, false
 	for _, a := range args {
 		recurse = recurse || isRecurse(a)
@@ -498,6 +605,25 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 		for _, a := range args {
 			if v := cmdName(a); winDelete[v] || winWrite[v] || winSystem[v] {
 				return "it hands what a pipeline names to " + v + ", not a path inside the working directory"
+			}
+		}
+	}
+
+	if name == "new-item" || name == "ni" {
+		for i, a := range args {
+			v := strings.ToLower(a)
+			if isParam(a, "itemtype", 2) {
+				if k := strings.IndexAny(a, ":="); k > 0 {
+					v = strings.ToLower(a[k+1:])
+				} else if i+1 < len(args) {
+					v = strings.ToLower(args[i+1])
+				}
+				if strings.Contains(v, "junction") || strings.Contains(v, "link") {
+					return "it makes a link (junction or symbolic link): what it points at is not judged (#5690)"
+				}
+			}
+			if isParam(a, "target", 3) {
+				return "it makes a link: what it points at is not judged (#5690)"
 			}
 		}
 	}
@@ -557,7 +683,7 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	return ""
 }
 
-var winServiceVerbs = setOf("delete", "stop", "config", "create", "failure", "start", "user", "localgroup", "share", "stop")
+var winServiceVerbs = setOf("delete", "stop", "config", "create", "failure", "start", "user", "localgroup", "share", "stop", "use") // net use maps a drive or a share
 
 func hasArgFold(args []string, want string) bool {
 	for _, a := range args {
@@ -617,6 +743,9 @@ func winShellWrapper(args []string, outside func(string) bool) string {
 		if args[i] == "" || name == "" {
 			continue
 		}
+		if (name == "wd" || (len(name) >= 2 && strings.HasPrefix("workingdirectory", name))) && (i+1 >= len(args) || pathOutside(args[i+1], outside)) {
+			return "it runs in a folder outside the working directory (#5690)"
+		}
 		switch {
 		case name == "e" || name == "ec" || (len(name) >= 2 && strings.HasPrefix("encodedcommand", name)):
 			return "it runs an encoded PowerShell command"
@@ -648,6 +777,34 @@ func isDiscard(t string) bool {
 	switch strings.ToLower(strings.TrimSpace(t)) {
 	case "/dev/null", "nul", "nul:", "$null", "/dev/stdout", "/dev/stderr", "&1", "&2":
 		return true
+	}
+	return false
+}
+
+// winHasCommandArg: a PowerShell host's arguments carry its command (-Command text, -File, a first argument that is not a switch).
+func winHasCommandArg(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "" {
+			continue
+		}
+		if a[0] != '-' && a[0] != '/' {
+			return true
+		}
+		name := strings.ToLower(strings.TrimLeft(a, "-/"))
+		if name == "c" || name == "f" || (len(name) >= 1 && (strings.HasPrefix("command", name) || strings.HasPrefix("file", name))) || name == "e" || name == "ec" || (len(name) >= 2 && strings.HasPrefix("encodedcommand", name)) {
+			return true
+		}
+	}
+	return false
+}
+
+// winHasCmdCommand: cmd's arguments carry its command text (/c, /k or /r).
+func winHasCmdCommand(args []string) bool {
+	for _, a := range args {
+		if l := strings.ToLower(a); strings.HasPrefix(l, "/c") || strings.HasPrefix(l, "/k") || strings.HasPrefix(l, "/r") {
+			return true
+		}
 	}
 	return false
 }

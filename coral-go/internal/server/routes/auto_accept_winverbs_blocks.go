@@ -117,12 +117,12 @@ func groupFrom(rs []rune, open int) (text string, end int, ok bool) {
 
 // winHiddenRe: text that reaches .NET, COM or a method that deletes, moves or starts something (S3): [IO.File]::Delete(...),
 // [Diagnostics.Process]::Start(...), $x.Delete(), (New-Object -ComObject Shell.Application).InvokeVerb("delete").
-var winHiddenRe = regexp.MustCompile(`(?i)::|\.\s*(delete|move|moveto|copyto|kill|start|invokeverb|invoke|dispose|create\w*|write\w*|remove\w*)\s*(\x01|\()`)
+var winHiddenRe = regexp.MustCompile(`(?i)::|\.\s*(delete|move|moveto|copyto|kill|start|invokeverb|invoke\w*|dispose|create\w*|write\w*|remove\w*|uninstall|terminate|win32shutdown|reboot|shutdown)\s*(\x01|\()`)
 
 // winAsk: cmdlets (and aliases) that run something else or reach it a way a word list cannot judge, so they always ask.
 var winAsk = setOf("invoke-command", "icm", "start-job", "sajb", "start-threadjob", "invoke-item", "ii", "invoke-wmimethod", "invoke-cimmethod",
 	"register-scheduledtask", "register-objectevent", "new-object", "add-type", "invoke-expression", "iex", "invoke-restmethod-unsafe",
-	"start-process", "saps", "set-alias", "sal", "new-alias", "nal", "import-module", "ipmo", "install-module", "install-package", "update-help")
+	"start-process", "saps", "wsl", "winget", "choco", "scoop", "set-alias", "sal", "new-alias", "nal", "import-module", "ipmo", "install-module", "install-package", "update-help")
 
 // winReadVerbs: the verbs of cmdlets that only read or print. Any other Verb-Noun cmdlet asks unless every path it names is
 // inside the working folder.
