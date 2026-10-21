@@ -30,6 +30,11 @@ func TestTierValues(t *testing.T) {
 	}
 }
 
+// #78 W2: only a dev build may open the app window's DevTools; every release tier (prod, staging, beta, dropboxers) keeps them closed.
+func TestOnlyADevBuildHasDevTools(t *testing.T) {
+	assert.Equal(t, TierName == "dev", TierDevTools, "tier %s", TierName)
+}
+
 func TestEULARequired(t *testing.T) {
 	switch TierName {
 	case "dev", "dropboxers":

@@ -1,17 +1,21 @@
 package executil
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // #3690 (#3689 finding 3): a URL with '&' and '|' is one argument to the protocol handler on
 // Windows, never a cmd.exe command line; on macOS and Linux it is one argument too.
 func TestBrowserCommandKeepsTheURLOneArgument(t *testing.T) {
 	url := "http://127.0.0.1:8420/auth?token=a&next=/x|calc"
-	assert.Equal(t, []string{"rundll32", "url.dll,FileProtocolHandler", url}, browserCommand("windows", url))
+	assert.Equal(t, []string{systemRundll32(), "url.dll,FileProtocolHandler", url}, browserCommand("windows", url))
 	assert.Equal(t, []string{"open", url}, browserCommand("darwin", url))
 	assert.Equal(t, []string{"xdg-open", url}, browserCommand("linux", url))
 	for _, goos := range []string{"windows", "darwin", "linux", "freebsd"} {
@@ -59,4 +63,34 @@ func FuzzWebURL(f *testing.F) {
 			}
 		}
 	})
+}
+
+// #78 T1: on Windows the opener is the system folder's rundll32.
+func TestWindowsBrowserCommandUsesTheSystemRundll32(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("the absolute path is Windows' only")
+	}
+	t.Setenv("SystemRoot", `C:\Windows`)
+	argv := browserCommand("windows", "https://example.com/")
+	assert.Equal(t, `C:\Windows\System32\rundll32.exe`, argv[0])
+}
+
+// OpenFile shows only an absolute, regular .log or .txt file: never a program, a link, a relative
+// path, an option or a web address.
+func TestOpenFileOnlyOpensAnAbsoluteRegularLog(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "evil.exe")
+	require.NoError(t, os.WriteFile(exe, []byte("x"), 0o700))
+	for _, bad := range []string{"", "tray.log", "-a", exe, filepath.Join(dir, "gone.log"), dir, "https://example.com/x.log", filepath.Join(dir, "tray.log.exe")} {
+		assert.False(t, OpenFile(bad), "%q", bad)
+	}
+}
+
+// OpenBrowser starts nothing for an address WebURL refuses (a file, a program path, a custom scheme, an option).
+func TestOpenBrowserRefusesWhatIsNotAWebAddress(t *testing.T) {
+	for _, bad := range []string{"file:///C:/Windows/System32/calc.exe", `C:\Windows\System32\calc.exe`, "ms-msdt:/id", "-a x", ""} {
+		_, ok := WebURL(bad)
+		assert.False(t, ok, bad)
+		OpenBrowser(bad) // returns before building a command
+	}
 }
