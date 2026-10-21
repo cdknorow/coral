@@ -50,10 +50,11 @@ func (b *inputBox) display() string {
 		return fmt.Sprintf("[Pasted text #%d +%d lines]", b.pastes, strings.Count(s, "\n")+1)
 	}
 	s = strings.ReplaceAll(s, "\n", "⏎")
-	// Keep the box on one screen row: show the start, as the box's own check reads the start.
-	if utf8.RuneCountInString(s) > 150 {
+	// Keep the box on one screen row (a wrapped box would leave a stale row behind on redraw):
+	// show the start, as the box's own check reads the start.
+	if max := boxWidth(); utf8.RuneCountInString(s) > max {
 		r := []rune(s)
-		s = string(r[:150]) + "…"
+		s = string(r[:max]) + "…"
 	}
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
@@ -61,6 +62,14 @@ func (b *inputBox) display() string {
 		}
 		return r
 	}, s)
+}
+
+// boxWidth is how much of the box's text fits on one row of the terminal, after "> " and "…".
+func boxWidth() int {
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 20 {
+		return min(w-4, 150)
+	}
+	return 76
 }
 
 func drawBox(b *inputBox) { fmt.Printf("\r\x1b[K> %s", b.display()) }
