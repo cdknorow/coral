@@ -31,7 +31,7 @@ func (s *Store) UnreadForSessions(ctx context.Context, sessionNames []string) (m
 	if len(sessionNames) == 0 {
 		return out, nil
 	}
-	query, args, err := sqlx.In(`SELECT * FROM board_subscribers WHERE session_name IN (?) AND is_active = 1 ORDER BY subscribed_at DESC`, sessionNames)
+	query, args, err := sqlx.In(`SELECT * FROM board_subscribers WHERE session_name IN (?) AND is_active = 1 ORDER BY subscribed_at DESC, rowid DESC`, sessionNames)
 	if err != nil {
 		return nil, err
 	}
