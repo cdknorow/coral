@@ -92,6 +92,17 @@ func main() {
 		return
 	}
 
+	// A second start of the app (a program run again by hand, or the Dock, while a tray runs): the running tray shows its window and this start ends, so no second server is
+	// started on the same port (#5827). macOS itself sends a running app opened again a reopen event and starts nothing: installReopenHandler.
+	if *foreground {
+		if other := otherTrayPID(dataDir, os.Getpid(), os.Getenv(restartWaitEnv) != "", readPID); other > 0 {
+			if *noBrowser || handOver(other, askTrayToShowWindow) {
+				fmt.Printf("Coral is already running (PID %d).\n", other)
+				return
+			}
+		}
+	}
+
 	// If --foreground, run directly (this is the detached child)
 	if *foreground {
 		if *homeDir != "" {
@@ -301,14 +312,24 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		}
 	}()
 
-	// Open dashboard (try native app first, fall back to browser) once the server serves.
-	if !noBrowser && status.running() {
-		go func() {
-			defer safego.Recover("coral-tray/main:298")
-			if err := launchCoralApp(url, mintLink); err != nil {
-				executil.OpenBrowser(loginlink.Or(url, mintLink))
-			}
-		}()
+	// The Coral window (the native one, or the dashboard in the browser when it cannot open): shown when the person launched the app, brought forward when they launch it again
+	// (a reopen event on macOS, SIGUSR1 from a second start), and not at all for a start nobody asked for: a login item, the relaunch after an update (--no-browser) (#5827).
+	showWindow := func() {
+		if err := launchCoralApp(url, mintLink); err != nil {
+			executil.OpenBrowser(loginlink.Or(url, mintLink))
+		}
+	}
+	onShowWindowSignal(func() {
+		go func() { defer safego.Recover("coral-tray/main:showWindowSignal"); showWindow() }()
+	})
+	loginItem := loginItemLaunch()
+	switch {
+	case !opensWindowAtStart(noBrowser, loginItem):
+		log.Printf("[STARTUP] staying in the background (no-browser=%v, login item=%v): the window opens when the app is opened again", noBrowser, loginItem)
+	case status.running():
+		go func() { defer safego.Recover("coral-tray/main:298"); showWindow() }()
+	default:
+		log.Printf("[STARTUP] the server is not running: no window (the tray menu has the log and Retry)")
 	}
 
 	// Check for updates in background
@@ -330,6 +351,9 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		// This raises Jetsam priority so macOS is less likely to kill us under
 		// memory pressure, while still hiding from the Dock.
 		hideTrayFromDock()
+		installReopenHandler(func() { // the app opened again while it runs: macOS starts nothing and sends this (#5827)
+			go func() { defer safego.Recover("coral-tray/main:reopen"); showWindow() }()
+		})
 
 		systray.AddSeparator() // workaround: macOS clips the first item on some configurations
 		// The server's state when it is not simply running (#4151, #4163): why it stopped, its

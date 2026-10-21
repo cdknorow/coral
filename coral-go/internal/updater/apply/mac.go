@@ -259,7 +259,8 @@ func (m *Mac) CanRestart(string) string {
 }
 
 func (m *Mac) Start(ctx context.Context, install string) error {
-	_, err := m.Run.Run(ctx, open, install)
+	// --no-browser: the relaunch after an update stays in the background like the app it replaces, with no window popping up (#5827); the window opens when the app is opened again.
+	_, err := m.Run.Run(ctx, open, install, "--args", "--no-browser")
 	return err
 }
 
