@@ -531,6 +531,17 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		typed, _ := h.term.counts()
 		assert.Len(t, typed, 1)
 	})
+	t.Run("no hook events, an echo wrapped in the middle of a word with an indent on the continuation: found, sent once", func(t *testing.T) {
+		h := setup(t, "codex", false)
+		h.term.show(codexReady(t, ""))
+		h.term.onType = func(string) {
+			h.term.show("> Please review the retry lo\n    gic in the uploader and te\n    ll me\n" + codexReady(t, ""))
+		}
+		rec := h.send("Please review the retry logic in the uploader and tell me")
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		typed, _ := h.term.counts()
+		assert.Len(t, typed, 1)
+	})
 	t.Run("an earlier message of the same words on the screen is no echo of this one", func(t *testing.T) {
 		h := setup(t, "codex", false)
 		h.term.show("> you: please fix the build\n" + codexReady(t, ""))
