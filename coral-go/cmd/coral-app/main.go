@@ -163,6 +163,7 @@ func main() {
 	}()
 
 	log.Printf("[WEBVIEW] setting title=%q size=%dx%d", *title, *width, *height)
+	installFilePanel(w.Window()) // a file input opens the system chooser (#5743)
 	w.SetTitle(*title)
 	w.SetSize(*width, *height, webview.HintNone)
 
