@@ -32,6 +32,7 @@ func signedOutClaude(t *testing.T) (bin, ran string) {
 }
 
 func TestTeamGenerationDoesNotStartASignedOutClaude(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	bin, ran := signedOutClaude(t)
 	result, msg := runTeamGeneration(t.Context(), bin, "prompt", "")
 	assert.Nil(t, result)
@@ -58,6 +59,7 @@ func TestThemeGenerationDoesNotStartASignedOutClaude(t *testing.T) {
 // The system status says Claude is signed out once a background check found it so (one quiet line, #5469) and clears once a check finds it signed in (that nothing is said before
 // any check is the agentsignin Snapshot test).
 func TestSystemStatusCarriesClaudesSignIn(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	status := func(h *SystemHandler) map[string]any {
 		rec := httptest.NewRecorder()
 		h.Status(rec, httptest.NewRequest(http.MethodGet, "/api/system/status", nil))

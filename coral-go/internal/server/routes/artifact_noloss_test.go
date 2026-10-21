@@ -14,6 +14,7 @@ import (
 // but every accepted artifact still downloads afterward — nothing is evicted to make room, and
 // a refusal is never a success-shaped 2xx.
 func TestArtifactsAcceptedUploadsNeverVanish(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	rig := newArtifactRig(t)
 	var ids []string
 	accepted, refused := 0, 0

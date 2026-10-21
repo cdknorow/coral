@@ -87,6 +87,7 @@ func TestLifecycleBoundGrowsWithTheSessions(t *testing.T) {
 // A restart asked for twice while the first runs (a double click, a client that retries) starts one agent: the second is refused with 409, and once the
 // first is done the agent can be restarted again.
 func TestADoubleRestartStartsOneAgent(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	_, h, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	const oldID = "double-restart-0001"

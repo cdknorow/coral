@@ -122,6 +122,7 @@ func TestWaitCountPerSubscriberRefusalIsClear(t *testing.T) {
 
 // An agent token may have 500 open tasks it created on a board; the 501st is a 409 that says so; finishing one makes room.
 func TestOpenTasksPerAgentTokenAreBounded(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	call, bs := boundsRig(t)
 	ctx := context.Background()
 	for i := 0; i < maxOpenTasksPerAgent; i++ {

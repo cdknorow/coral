@@ -31,6 +31,7 @@ import (
 // in memory, for the Operator, an agent token and a viewer through Coral Hub alike.
 
 func TestCrossBoardTaskListIsCappedAt500(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	e := newTQEnv(t)
 	for i := 0; i < 520; i++ {
 		e.add("alpha", fmt.Sprintf("task %03d", i), "body", "low", "Orchestrator", "", "")
@@ -53,6 +54,7 @@ func TestCrossBoardTaskListIsCappedAt500(t *testing.T) {
 }
 
 func TestBoardTaskListFullIsCappedAndSaysSo(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	e := newTQEnv(t)
 	r := chi.NewRouter()
 	r.Get("/api/board/{project}/tasks", NewBoardHandler(e.bs).ListTasks)

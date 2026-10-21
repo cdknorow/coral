@@ -25,6 +25,7 @@ import (
 // script on the dashboard's origin: every response is sandboxed and never sniffed,
 // and anything that is not inert media or plain data downloads instead of opening.
 func TestAgentArtifactsNeverRunOnTheDashboardOrigin(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	_, h, _, ss := setupSessionsTestServer(t)
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: "artifact-session", AgentName: "artifact-agent", AgentType: "codex", WorkingDir: t.TempDir()}))
 	r := chi.NewRouter()

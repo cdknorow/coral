@@ -14,6 +14,7 @@ import (
 )
 
 func TestRestartPreservesSubscriptionWithoutStoredBoard(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, handler, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	const oldID = "restart-board-worker"
@@ -61,6 +62,7 @@ func TestRestartPreservesSubscriptionWithoutStoredBoard(t *testing.T) {
 // subscription, the same row, role and receive mode, targeting the newest terminal, and the
 // session keeps its board and display name.
 func TestRestartTwiceKeepsBoardMembership(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, handler, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	id, name := "restart-twice-ui", "claude-restart-twice-ui"

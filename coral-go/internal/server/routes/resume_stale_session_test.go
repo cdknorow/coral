@@ -18,6 +18,7 @@ import (
 // launch/register agent, restart (replaces old id with new id), then resume
 // with the OLD id. The answer must be 409 session_not_live, and no duplicate agent is spawned.
 func TestResumeWithStaleSessionIDRefuses(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, handler, term, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	oldSID := "11111111-1111-4111-8111-111111111111"

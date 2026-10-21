@@ -119,6 +119,7 @@ func TestReminderDeleteFailurePreservesActiveReminderAndRow(t *testing.T) {
 }
 
 func TestReminderStopWaitsForInFlightNudgeThenNothingFollows(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	h, term := reminderTestHandler(t, "p")
 	term.gate, term.entered = make(chan struct{}), make(chan struct{}, 1)
 	h.startSubscriberReminder("p", "agent", "ping", 5*time.Millisecond)
@@ -138,6 +139,7 @@ func TestReminderStopWaitsForInFlightNudgeThenNothingFollows(t *testing.T) {
 }
 
 func TestReminderReplacementWaitsForOldNudgeAndSurvivesOldCleanup(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	h, term := reminderTestHandler(t, "p")
 	term.gate, term.entered = make(chan struct{}), make(chan struct{}, 1)
 	h.startSubscriberReminder("p", "agent", "old", 5*time.Millisecond)

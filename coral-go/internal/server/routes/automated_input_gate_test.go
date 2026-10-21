@@ -52,6 +52,7 @@ func (s *screenTerminal) show(screen string) {
 // menu stays open, no option is chosen). Once the user answers the menu, each
 // is typed exactly once, in order.
 func TestAutomatedMessagesAreHeldWhileAPermissionMenuIsOpen(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	_, handler, mock, ss := setupSessionsTestServer(t)
 	term := &screenTerminal{fgSessionTerminal: newFGTerminal(mock), screen: permissionMenu}
 	handler.terminal = term
@@ -81,6 +82,7 @@ func TestAutomatedMessagesAreHeldWhileAPermissionMenuIsOpen(t *testing.T) {
 // classification) is automation: held while a prompt is open, answering 202.
 // The dashboard's own /send is a person typing and is sent at once.
 func TestSendFromAScriptIsHeldButTheDashboardTypes(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	_, handler, mock, ss := setupSessionsTestServer(t)
 	term := &screenTerminal{fgSessionTerminal: newFGTerminal(mock), screen: permissionMenu}
 	handler.terminal = term
