@@ -66,3 +66,39 @@ func TestKillChildProcessEndsTheStepsJob(t *testing.T) {
 	_ = cmd.Wait()
 	assert.Eventually(t, func() bool { return activeInJob(t, job) == 0 }, 10*time.Second, 20*time.Millisecond, "nothing in the job survived")
 }
+
+// A step starts suspended and joins its job before it runs: a grandchild it spawns at once is in the
+// job, so killing the step ends it too (a child started in the old gap escaped the kill).
+func TestQuicklySpawnedGrandchildDiesWithTheStep(t *testing.T) {
+	shell, err := workflowShell()
+	require.NoError(t, err)
+	for i := 0; i < 20; i++ {
+		cmd := exec.CommandContext(context.Background(), shell, "-c", "sleep 600 & sleep 600 & wait")
+		configureChildProcess(cmd)
+		require.NoError(t, cmd.Start())
+		trackChildProcess(cmd)
+		v, ok := stepJobs.Load(cmd)
+		require.True(t, ok)
+		var job windows.Handle
+		self := windows.CurrentProcess()
+		require.NoError(t, windows.DuplicateHandle(self, v.(windows.Handle), self, &job, 0, false, windows.DUPLICATE_SAME_ACCESS))
+		require.Eventually(t, func() bool { return activeInJob(t, job) >= 3 }, 10*time.Second, 10*time.Millisecond, "sh and both sleeps are in the job")
+		killChildProcess(cmd)
+		_ = cmd.Wait()
+		assert.Eventually(t, func() bool { return activeInJob(t, job) == 0 }, 10*time.Second, 20*time.Millisecond, "nothing survived")
+		windows.CloseHandle(job)
+	}
+}
+
+func TestStepProcessRunsAfterTrackingStartedItSuspended(t *testing.T) {
+	shell, err := workflowShell()
+	require.NoError(t, err)
+	cmd := exec.CommandContext(context.Background(), shell, "-c", "exit 7")
+	configureChildProcess(cmd)
+	require.NoError(t, cmd.Start())
+	trackChildProcess(cmd)
+	var ee *exec.ExitError
+	require.ErrorAs(t, cmd.Wait(), &ee)
+	assert.Equal(t, 7, ee.ExitCode())
+	releaseChildProcess(cmd)
+}
