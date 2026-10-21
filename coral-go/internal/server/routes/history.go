@@ -440,11 +440,10 @@ func (h *HistoryHandler) GetSessionTasks(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, emptyIfNil(tasks))
 }
 
-// GetSessionDetail returns all messages for a historical session.
-// GET /api/sessions/history/{sessionID}
-func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request) {
-	sid := chi.URLParam(r, "sessionID")
-	agentType := "claude"
+// sessionTranscript reads the whole transcript of a session by its id, live or ended, from this machine: the messages (nil when there is none) and the agent
+// type the history index or the live row says (a Codex or Agy transcript is found by its Coral marker). The history view and the saved-message read use it.
+func (h *HistoryHandler) sessionTranscript(ctx context.Context, sid string) (messages []map[string]any, agentType string) {
+	agentType = "claude"
 	workingDir := ""
 
 	// The history index is authoritative for provider identity. A session ID
@@ -452,13 +451,13 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 	// defaulting to Claude first can pin the wrong reader cache and hide the
 	// transcript from the history view.
 	if h.ss != nil {
-		if idx, err := h.ss.GetIndexedSession(r.Context(), sid); err == nil && idx != nil && idx.SourceType != "" {
+		if idx, err := h.ss.GetIndexedSession(ctx, sid); err == nil && idx != nil && idx.SourceType != "" {
 			agentType = idx.SourceType
 		}
 	}
 
 	if h.ss != nil {
-		if ls, err := h.ss.GetLiveSession(r.Context(), sid); err == nil && ls != nil {
+		if ls, err := h.ss.GetLiveSession(ctx, sid); err == nil && ls != nil {
 			if ls.AgentType != "" {
 				agentType = ls.AgentType
 			}
@@ -474,7 +473,7 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 	// A history view needs the whole transcript once, so nothing is worth caching between
 	// requests here.
 	rd := jsonl.NewSessionReader()
-	messages, _ := rd.ReadNewMessages(sid, workingDir, agentType)
+	messages, _ = rd.ReadNewMessages(sid, workingDir, agentType)
 	if len(messages) == 0 && agentType != "claude" {
 		// Fallback to claude
 		rd.ClearSession(sid)
@@ -497,6 +496,14 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 			agentType = "agy"
 		}
 	}
+	return messages, agentType
+}
+
+// GetSessionDetail returns all messages for a historical session.
+// GET /api/sessions/history/{sessionID}
+func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request) {
+	sid := chi.URLParam(r, "sessionID")
+	messages, agentType := h.sessionTranscript(r.Context(), sid)
 	if messages == nil {
 		errNotFound(w, "Session '"+sid+"' not found")
 		return

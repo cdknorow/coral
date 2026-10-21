@@ -104,6 +104,7 @@ c GET /api/health
 c GET /api/pinned-folders
 b GET /api/saved
 b GET /api/remote/{server}/*
+b GET /api/saved/{id}/message
 b GET /api/scheduled/jobs
 b GET /api/scheduled/jobs/{jobID}
 b GET /api/scheduled/jobs/{jobID}/runs

@@ -40,6 +40,9 @@ var (
 // SavedList: GET /api/saved?team=T keeps the bookmarks of one team (#4792: its board's messages and the messages of its agents), agent=REF those of one agent (its chat, and with team and author
 // both, the messages that author wrote on that team's board); the open and done counts are of the scope too. author needs agent and team. State=open|done (default: both; kind and conv (the session id or the board) narrow it to one conversation, for the buttons' saved state; q (#4745) keeps the bookmarks whose title or snippet holds that text, a plain case-insensitive substring of at most 200 characters; sort=newest|oldest; limit keeps the first N of the sort's order (the newest by default)).
 func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5753)
+		return
+	}
 	if refuseUnlessOperator(w, r, "see the saved messages") {
 		return
 	}

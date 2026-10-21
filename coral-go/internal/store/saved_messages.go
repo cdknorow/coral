@@ -135,6 +135,16 @@ func (s *SessionStore) SetSavedDone(ctx context.Context, id int64, done bool) (S
 	return out, err == nil, err
 }
 
+// GetSaved returns one bookmark by its id; found is false when there is none.
+func (s *SessionStore) GetSaved(ctx context.Context, id int64) (SavedMessage, bool, error) {
+	var out SavedMessage
+	err := s.reader().GetContext(ctx, &out, "SELECT "+savedCols+" FROM saved_messages WHERE id = ?", id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SavedMessage{}, false, nil
+	}
+	return out, err == nil, err
+}
+
 // DeleteSaved removes a bookmark; it reports whether there was one.
 func (s *SessionStore) DeleteSaved(ctx context.Context, id int64) (bool, error) {
 	res, err := s.db.ExecContext(ctx, "DELETE FROM saved_messages WHERE id = ?", id)

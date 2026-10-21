@@ -126,7 +126,8 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	t.Cleanup(func() { routes.SetHubOwnerLabel(nil) })
 	owner := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubRoleHeader: "owner", tunnel.HubUserHeader: sweepOwner}
 	ownerOnly := map[string]bool{"/api/artifacts": true, "/api/artifacts/{id}": true, "/api/artifacts/{id}/meta": true, "/api/artifacts/{id}/comments": true, "/api/artifacts/{id}/readers": true,
-		"/api/board/{project}/artifacts": true, "/api/board/{project}/cross-team/settings": true, "/api/session-artifacts": true, "/api/board/{project}/tasks/{taskID}/artifact-content": true}
+		"/api/board/{project}/artifacts": true, "/api/board/{project}/cross-team/settings": true, "/api/session-artifacts": true, "/api/board/{project}/tasks/{taskID}/artifact-content": true,
+		"/api/saved": true, "/api/saved/{id}/message": true} // saved for later is the owner's alone since #5753
 
 	golden, err := os.ReadFile("testdata/cloud_routes.golden")
 	require.NoError(t, err)
@@ -174,7 +175,9 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		resolveAnswered := f[1] == "/api/sessions/resolve" && rec.Code == 404 && strings.Contains(rec.Body.String(), "no matching session")
 		// GET /api/system/update answers 404 while the auto-update relaunch is switched off (#5280): the route answering.
 		updateOff := f[1] == "/api/system/update" && rec.Code == 404
-		if rec.Code == 200 || resolveAnswered || updateOff || (strings.HasPrefix(f[1], "/api/templates/") && rec.Code == 404 && strings.Contains(rec.Body.String(), "template_not_found")) {
+		// GET /api/saved/{id}/message names a bookmark; the rig has none, so the owner's answer is the route's 404 "no such saved message" (#5753).
+		savedAbsent := f[1] == "/api/saved/{id}/message" && rec.Code == 404 && strings.Contains(rec.Body.String(), "no such saved message")
+		if rec.Code == 200 || resolveAnswered || updateOff || savedAbsent || (strings.HasPrefix(f[1], "/api/templates/") && rec.Code == 404 && strings.Contains(rec.Body.String(), "template_not_found")) {
 			answered++
 		}
 		for _, home := range homes {

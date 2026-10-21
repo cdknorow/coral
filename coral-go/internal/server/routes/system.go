@@ -29,6 +29,10 @@ type SystemHandler struct {
 
 	// boardAuthor reads who wrote a board message, for the bookmarks saved before the author was kept (#4792); set by the server wiring.
 	boardAuthor func(ctx context.Context, project string, id int64) (string, bool, error)
+	// savedBoardText and savedAgentText read the source of a bookmark for "Read the whole message" (#5753): a board message by its board and id (found false when
+	// it is gone or is not on that board), an agent's message by its session id, agent type and key (reachable false when this machine has no transcript of it).
+	savedBoardText func(ctx context.Context, project string, id int64) (text string, found bool, err error)
+	savedAgentText func(ctx context.Context, sessionID, agentType, key string) (text string, found, reachable bool)
 
 	generateJobs   map[string]*generateJob
 	generateJobsMu sync.Mutex
