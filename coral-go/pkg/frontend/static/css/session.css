@@ -1747,7 +1747,7 @@
 .xt-head .update-state-dot { margin: 0; flex: none; }
 .xt-line { font-weight: 600; font-size: var(--fs-lg, 1rem); min-width: 0; overflow-wrap: anywhere; }
 .xt-row-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.xt-primary { text-decoration: none; display: inline-flex; align-items: center; }
+.xt-primary { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; text-align: center; white-space: normal; max-width: 100%; box-sizing: border-box; } /* the label wraps: at 200% text on a phone it was one line wider than the panel and cut off */
 .xt-switches { display: grid; gap: 4px; }
 .xt-switches label { display: flex; gap: 10px; align-items: center; min-height: 36px; font-weight: 500; }
 .xt-changed { margin: -2px 0 4px 26px; font-size: .75rem; color: var(--text-secondary); } /* under its switch, level with the label text */
