@@ -178,3 +178,17 @@ func TestTrayMainDoesNotTrackOnItsOwn(t *testing.T) {
 	start := strings.Index(src, "sup.start()")
 	assert.True(t, off > 0 && start > off, "tracking is off before the server child starts")
 }
+
+// #5702 review: the hook says the CURRENT setting. Called late with a stale "on" after a switch-off, it must still say off (a fail-open line would turn the tray's tracking back on).
+func TestTelemetryHookSaysTheCurrentSettingNotTheOneItWasCalledWith(t *testing.T) {
+	t.Cleanup(func() { tracking.SetTelemetryEnabled(true) })
+	t.Setenv("CORAL_TELEMETRY_DISABLED", "")
+	var out strings.Builder
+	hook := telemetryHook(&out)
+	tracking.SetTelemetryEnabled(false)
+	hook(true) // a late call from an earlier switch to on
+	assert.Equal(t, childSaysTelemetryOff+"\n", out.String(), "the setting is off now: the line is off")
+	tracking.SetTelemetryEnabled(true)
+	hook(false)
+	assert.Equal(t, childSaysTelemetryOff+"\n"+childSaysTelemetryOn+"\n", out.String())
+}

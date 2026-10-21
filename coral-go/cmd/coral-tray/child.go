@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -33,7 +34,19 @@ func sayTelemetry(w io.Writer, on bool) {
 // watchTelemetry tells the tray about each later change of the Usage analytics setting: the tray never reads the setting, and a switch-off after startup
 // would otherwise leave its tracking on until the next start.
 func watchTelemetry(w io.Writer) {
-	tracking.OnTelemetryChange(func(on bool) { sayTelemetry(w, on) })
+	tracking.OnTelemetryChange(telemetryHook(w))
+}
+
+// telemetryHook is what watchTelemetry registers. The hook is called after each switch from the goroutine that made it, so two quick switches could call it out of
+// order, and the second call would say a stale "on" after the "off". It therefore says what the setting is NOW (not the value it was called with), one line at a
+// time: the last line the tray reads is always the current setting, so a switch-off can never be undone by a late call (#5702 review).
+func telemetryHook(w io.Writer) func(on bool) {
+	var mu sync.Mutex
+	return func(bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		sayTelemetry(w, tracking.TelemetryOn())
+	}
 }
 
 // runServerChild is the server half of the tray (#4163): coral-tray --server-child runs
