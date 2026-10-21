@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/ptymanager"
 	"net/http"
 	"strings"
 
@@ -85,6 +86,13 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 	if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
 		writeExactTargetError(w, status, message)
 		return
+	}
+	// A terminal that can't send a name it doesn't know (the PTY's) refuses the request before anything is typed.
+	if kv, ok := h.terminal.(ptymanager.KeyValidator); ok {
+		if err := kv.ValidateKeys(body.Keys); err != nil {
+			errBadRequest(w, err.Error())
+			return
+		}
 	}
 
 	send := func(ctx context.Context) error {

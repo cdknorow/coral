@@ -28,7 +28,7 @@ func RenderScreen(data []byte, cols, rows int) string {
 func (p *PTYSessionTerminal) RenderedScreen(_ context.Context, name, _, sessionID string) (string, error) {
 	key, err := p.keyFor(name, sessionID)
 	if err != nil {
-		return "", nil // gone: nothing to show, and never another session's screen
+		return "", err // gone (ErrTerminalGone): never an empty screen, which reads as an agent still starting, and never another session's screen
 	}
 	data, err := p.backend.Replay(key)
 	if err != nil {

@@ -397,7 +397,7 @@ curl -s -X POST http://localhost:PORT/api/sessions/live/NAME/send \
 
 ### POST `/api/sessions/live/{name}/keys`
 
-Send raw tmux key codes to the terminal (e.g., Enter, Ctrl-C). The same exact-target rules and errors as `/send` apply (`agent_type` and `session_id` required; 409 for a sleeping or archived agent), except that a metadata failure is a plain 503 `{error}`. `keys` must be a non-empty list (else 400).
+Send raw tmux key codes to the terminal (e.g., Enter, Ctrl-C). The same exact-target rules and errors as `/send` apply (`agent_type` and `session_id` required; 409 for a sleeping or archived agent), except that a metadata failure is a plain 503 `{error}`. `keys` must be a non-empty list (else 400). Each entry is a tmux key name: `Enter`, `Escape`, `Tab`, `BTab`, `BSpace`, `Space`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `DC`, `IC`, `F1`-`F12`, `C-a`-`C-z` (Ctrl), `M-x` (Alt), or a single character or digits to type (`"1"`). The keys are sent one at a time, so `{"keys": ["Down"]}` then `{"keys": ["Enter"]}` (or both in one list) works on every backend. On the PTY backend (Windows, and wherever tmux is not used) an entry that is not one of these is refused with 400 and nothing is sent; tmux types a name it does not know as text.
 
 ```bash
 curl -s -X POST http://localhost:PORT/api/sessions/live/NAME/keys \

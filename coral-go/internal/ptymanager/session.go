@@ -53,6 +53,11 @@ type session struct {
 	bracketedPaste atomic.Bool
 	bpCarry        []byte
 
+	// cursorKeysApp is the application's DECCKM state (DECSET 1): the arrow keys are then sent as ESC O x. ckCarry
+	// holds a possible sequence split across reads (only readLoop touches it).
+	cursorKeysApp atomic.Bool
+	ckCarry       []byte
+
 	// promptSem serializes whole prompts (paste, delay, Enter) to this session.
 	promptSemOnce sync.Once
 	promptSem     chan struct{}
@@ -127,6 +132,7 @@ func (s *session) readLoop() {
 			s.writeLog(data)
 
 			s.trackBracketedPaste(data)
+			s.trackCursorKeys(data)
 
 			// Store in ring buffer for snapshot
 			s.ringMu.Lock()
@@ -412,4 +418,36 @@ func (s *session) trackBracketedPaste(data []byte) {
 		keep = len(buf)
 	}
 	s.bpCarry = append([]byte(nil), buf[len(buf)-keep:]...)
+}
+
+// trackCursorKeys records the application's DECCKM state from the private-mode sequences in its output
+// (ESC [ ? ... h to set, l to reset; mode 1 is the cursor keys), the last one winning.
+func (s *session) trackCursorKeys(data []byte) {
+	buf := append(s.ckCarry, data...)
+	for i := 0; i+3 < len(buf); i++ {
+		if buf[i] != 0x1b || buf[i+1] != '[' || buf[i+2] != '?' {
+			continue
+		}
+		j := i + 3
+		for j < len(buf) && (buf[j] == ';' || (buf[j] >= '0' && buf[j] <= '9')) {
+			j++
+		}
+		if j >= len(buf) || (buf[j] != 'h' && buf[j] != 'l') {
+			continue
+		}
+		for _, p := range strings.Split(string(buf[i+3:j]), ";") {
+			if p == "1" {
+				s.cursorKeysApp.Store(buf[j] == 'h')
+			}
+		}
+		i = j
+	}
+	// An unfinished "ESC [ ? 1 ;" at the end waits for the next read.
+	keep := min(len(buf), 24)
+	tail := buf[len(buf)-keep:]
+	if at := bytes.LastIndexByte(tail, 0x1b); at >= 0 {
+		s.ckCarry = append([]byte(nil), tail[at:]...)
+	} else {
+		s.ckCarry = nil
+	}
 }
