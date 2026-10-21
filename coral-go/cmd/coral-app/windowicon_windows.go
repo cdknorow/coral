@@ -4,7 +4,8 @@ package main
 
 import (
 	"fmt"
-	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 // The window's icon (title bar, taskbar, Alt-Tab). The exe carries the Coral icon as resource
@@ -12,8 +13,8 @@ import (
 // file; a window shows it only when its class or the window itself is given one, and webview's
 // window class has none, so the title bar showed the generic application icon.
 var (
-	user32icon    = syscall.NewLazyDLL("user32.dll")
-	kernel32icon  = syscall.NewLazyDLL("kernel32.dll")
+	user32icon    = windows.NewLazySystemDLL("user32.dll")
+	kernel32icon  = windows.NewLazySystemDLL("kernel32.dll")
 	procLoadImage = user32icon.NewProc("LoadImageW")
 	procSendMsg   = user32icon.NewProc("SendMessageW")
 	procSetClass  = user32icon.NewProc("SetClassLongPtrW")
