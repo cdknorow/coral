@@ -162,3 +162,25 @@ func TestTheConnectorStampsItsSessionAndTheCapabilityItLearnedOnThisConnection(t
 	assert.NotEqual(t, got[0].Get(HubLinksSessionHeader), got[3].Get(HubLinksSessionHeader), "another connection, another session id")
 	assert.Empty(t, got[4].Values(HubLinksCapHeader))
 }
+
+// A machine that drops back to View stops taking relayed messages, relayed files and link snapshots AT ONCE: each route is Interact tier and the mode is read on every request, so a stored link
+// table is inert whatever its freshness (#5572, coral-hub Security's question).
+func TestRelayedMessagesFilesAndSnapshotsAreInteractTierAndTheModeIsReadPerRequest(t *testing.T) {
+	routes := []string{"/api/board/team/external-messages", "/api/board/team/external-artifacts", HubLinksPath}
+	for _, p := range routes {
+		assert.Equal(t, TierInteract, Classify(http.MethodPost, p, ""), p)
+	}
+	mode := TierInteract
+	allow := AllowRequest(func() Mode { return mode })
+	for _, p := range routes {
+		assert.True(t, allow(http.MethodPost, p, ""), "interact: "+p)
+	}
+	mode = TierView // the owner lowers the cap; the same handler, the next request
+	for _, p := range routes {
+		assert.False(t, allow(http.MethodPost, p, ""), "view: "+p)
+	}
+	mode = TierLaunch
+	for _, p := range routes {
+		assert.True(t, allow(http.MethodPost, p, ""), "launch: "+p)
+	}
+}

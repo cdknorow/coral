@@ -85,7 +85,8 @@ type Hello struct {
 // CapCrossTeamAllowlist is this Coral's list-of-senders capability, version 1 (see Hello.Capabilities).
 const CapCrossTeamAllowlist = "cross_team_allowlist/1"
 
-// CapCrossTeamLinks is the capability a HUB advertises in Welcome.Capabilities when it keeps the cross-team link table and sends it to this Coral as full snapshots (#5572): "cross_team_links/1".
+// CapCrossTeamLinks is the cross-team link capability, version 1, "cross_team_links/1" (#5572), in BOTH directions. A Coral says it in Hello.Capabilities: it takes the hub's link snapshots, so a hub
+// sends them only to a Coral that says so. A hub says it in Welcome.Capabilities: it keeps the link table and sends it.
 // It is per connection. The connector stamps what it learned from THIS connection on the requests that carry a relayed message or a snapshot (HubLinksCapHeader), never what the hub says on a
 // request.
 const CapCrossTeamLinks = "cross_team_links/1"

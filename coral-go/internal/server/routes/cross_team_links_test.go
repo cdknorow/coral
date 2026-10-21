@@ -397,3 +397,23 @@ func TestTheOwnersStateShowsTheLinksTheirFreshnessAndTheOldPathUntilAHubAdvertis
 	links, _ = st["links"].([]any)
 	assert.Len(t, links, 1)
 }
+
+// Labels are optional display text (an empty one is fine and decides nothing), and the version is a whole int64 (Coral Hub sends milliseconds, about 1.8e12).
+func TestLabelsAreOptionalAndTheVersionIsAWholeInt64(t *testing.T) {
+	e := newLinksEnv(t)
+	hdr := stamped(linkSessionA, true)
+	body := fmt.Sprintf(`{"version":1800000000123,"this_server":"homelab","links":[{"source_server":"lab2","source_team":%q,"target_team":%q}]}`, srcTeam1, e.target)
+	require.Equal(t, 200, e.post(body, hdr).Code)
+	assert.True(t, e.admits("lab2", srcTeam1, e.target), "no labels at all")
+	stored, err := e.bs.TeamLinksTo(context.Background(), e.target)
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	assert.Empty(t, stored[0].SourceLabel)
+	assert.Empty(t, stored[0].TargetLabel)
+	older := fmt.Sprintf(`{"version":1800000000122,"this_server":"homelab","links":[]}`)
+	rec := e.post(older, hdr)
+	require.Equal(t, 200, rec.Code)
+	assert.True(t, e.admits("lab2", srcTeam1, e.target), "an older millisecond version in the session is ignored")
+	assert.Equal(t, 400, e.post(`{"version":1.8e12,"this_server":"homelab","links":[]}`, hdr).Code, "a float is not a version")
+	assert.Equal(t, 400, e.post(`{"version":"1800000000123","this_server":"homelab","links":[]}`, hdr).Code, "nor is a string")
+}
