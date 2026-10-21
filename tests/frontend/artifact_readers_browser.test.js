@@ -32,8 +32,13 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`document.querySelectorAll('.artifact-readers').length`), 0, 'a listing asks nothing: the disclosure comes with the details');
         await ev(`document.querySelector('.team-artifact-row .team-artifact-info-btn').click(); true`);
         await waitFor(`!!document.querySelector('.team-artifact-row .artifact-readers')`, 'the disclosure in the row', 15000, `({ rows: document.querySelectorAll('.team-artifact-row').length, rd: document.querySelectorAll('.artifact-readers').length, html: (document.querySelector('.team-artifact-row') || {}).outerHTML && document.querySelector('.team-artifact-row').outerHTML.slice(0, 300) })`);
-        assert.deepEqual(await ev(`(() => { const d = document.querySelector('.team-artifact-row .artifact-readers'); return { open: d.open, summary: d.querySelector('summary').textContent, inDetails: !!d.closest('.team-artifact-details') }; })()`), { open: false, summary: 'Who can read this', inDetails: true });
+        assert.deepEqual(await ev(`(() => { const d = document.querySelector('.team-artifact-row .artifact-readers'); return { open: d.open, summary: d.querySelector('summary').textContent.replace('expand_more', ''), chevron: !!d.querySelector('summary .artifact-readers-chevron'), inDetails: !!d.closest('.team-artifact-details') }; })()`), { open: false, summary: 'Who can read this', chevron: true, inDetails: true });
+        const turn = () => ev(`getComputedStyle(document.querySelector('.team-artifact-row .artifact-readers-chevron')).transform`);
+        assert.equal(await turn(), 'none', 'the chevron points down while it is closed');
         await ev(`document.querySelector('.team-artifact-row .artifact-readers > summary').click(); true`);
+        await waitFor(`document.querySelector('.team-artifact-row .artifact-readers').open`, 'open');
+        await new Promise(r => setTimeout(r, 250)); // sleep-ok: the chevron's turn is a 0.12 s transition, there is no event to wait for
+        assert.notEqual(await turn(), 'none', 'and turned once it is open');
         await waitFor(`document.querySelectorAll('.team-artifact-row .artifact-readers-body p').length >= 2`, 'the readers', 10000);
         const body = await ev(`[...document.querySelectorAll('.team-artifact-row .artifact-readers-body p')].map(p => p.textContent)`);
         assert.match(body[0], /^On this computer, the Operator reads, manages and deletes every artifact/, JSON.stringify(body));
@@ -49,6 +54,26 @@ const BASE = require('./test_base').BASE;
         await waitFor(`document.querySelectorAll('#artifact-viewer .artifact-readers-body p').length >= 2`, 'the readers in the viewer', 10000);
         await shot('readers-viewer', { x: 80, y: 290, width: 1240, height: 320 });
         await ev(`document.querySelector('#artifact-viewer .artifact-viewer-close').click(); true`);
+
+        console.log('2b. No answer is not remembered: a 404 or a network error hides it once, a later answer shows it');
+        const stubSeq = (answers) => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'artifact_readers.js'); m._resetForTests(); const real = window.__realFetch || (window.__realFetch = window.fetch); const seq = ${JSON.stringify(answers)}; let i = 0;
+            window.fetch = (u, o) => { if (!String(u).includes('/readers')) return real(u, o); const a = seq[Math.min(i++, seq.length - 1)]; return a === 'error' ? Promise.reject(new TypeError('offline')) : Promise.resolve(new Response(JSON.stringify(a.body), { status: a.status, headers: { 'content-type': 'application/json' } })); }; return true; })()`);
+        const GOOD = { status: 200, body: { id: hex, machine_owner: 'reads everything', owners: [], linked_teams: [], note: 'n' } };
+        const openViewer = () => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'artifact_viewer.js'); m.openArtifactViewer('${hex}', { filename: 'readers.txt' }); return true; })()`);
+        const closeViewer = () => ev(`document.querySelector('#artifact-viewer .artifact-viewer-close').click(); true`);
+        for (const first of ['error', { status: 404, body: { error: 'not found' } }, { status: 500, body: {} }]) {
+            await stubSeq([first, GOOD]);
+            await openViewer(); await new Promise(r => setTimeout(r, 500)); // sleep-ok: absence of a drawing
+            assert.equal(await ev(`document.querySelectorAll('#artifact-viewer .artifact-readers').length`), 0, 'no answer: not drawn');
+            await closeViewer();
+            await openViewer();
+            await waitFor(`!!document.querySelector('#artifact-viewer .artifact-readers')`, 'a later answer shows it (the failure was not remembered)', 8000);
+            await closeViewer();
+        }
+        await stubSeq([{ status: 403, body: { code: 'owner_only' } }, GOOD]);
+        await openViewer(); await new Promise(r => setTimeout(r, 500)); await closeViewer(); await openViewer(); await new Promise(r => setTimeout(r, 500)); // sleep-ok: absence of a drawing
+        assert.equal(await ev(`document.querySelectorAll('#artifact-viewer .artifact-readers').length`), 0, 'a refusal IS remembered for the page');
+        await closeViewer();
 
         console.log('3. Refused (anyone else): nothing is drawn; hostile names are text');
         const stub = (status, body) => ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'artifact_readers.js'); m._resetForTests();

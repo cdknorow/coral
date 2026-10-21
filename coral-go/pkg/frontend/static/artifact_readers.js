@@ -16,10 +16,21 @@ async function fetchReaders(hex, server) {
     return data && typeof data === 'object' && Array.isArray(data.owners) ? data : null;
 }
 
-/** Whether the person may see who can read an artifact: asked once with this artifact, then remembered (a refusal is the same for every artifact). */
+/** true (may see it), false (refused: the route is owner only), or null (no answer: a network error, a 404 for this artifact, a server fault). */
+async function probe(hex, server) {
+    try {
+        const r = await fetch(serverUrl(`/api/artifacts/${hex}/readers`, server), { cache: 'no-store' });
+        if (r.ok) return true;
+        return r.status === 401 || r.status === 403 ? false : null;
+    } catch { return null; }
+}
+
+/** Whether the person may see who can read an artifact: asked with this artifact, and a definite answer (yes, or refused) is remembered for the page. No answer is not remembered, so one failure does not hide it for every artifact until a reload. */
 export function readersAllowed(hex, server) {
     if (!HEX_RE.test(String(hex || ''))) return Promise.resolve(false);
-    return (_allowed ??= fetchReaders(hex, server).then(d => !!d, () => false));
+    if (_allowed !== undefined) return _allowed;
+    const asked = probe(hex, server).then(v => { if (v === null) { if (_allowed === asked) _allowed = undefined; return false; } return v; });
+    return (_allowed = asked);
 }
 
 function lines(data) {
@@ -42,7 +53,9 @@ export function readersDisclosure(hex, server) {
     const d = document.createElement('details');
     d.className = 'artifact-readers';
     const summary = document.createElement('summary');
-    summary.textContent = 'Who can read this';
+    const chevron = document.createElement('span'); // turns when open, as More options does
+    chevron.className = 'material-icons artifact-readers-chevron'; chevron.setAttribute('aria-hidden', 'true'); chevron.textContent = 'expand_more';
+    summary.append(chevron, 'Who can read this');
     const body = document.createElement('div');
     body.className = 'artifact-readers-body';
     body.setAttribute('role', 'status');

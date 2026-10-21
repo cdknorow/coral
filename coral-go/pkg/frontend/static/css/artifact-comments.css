@@ -101,7 +101,12 @@
 .artifact-viewer-readers { flex: none; padding: 0 16px; }
 .artifact-viewer-readers[hidden] { display: none; }
 .artifact-readers { font-size: var(--fs-sm, 0.8125rem); margin: 6px 0; }
-.artifact-readers > summary { cursor: pointer; color: var(--text-secondary); font-weight: 600; min-height: 24px; display: flex; align-items: center; }
+.artifact-readers > summary { cursor: pointer; color: var(--text-secondary); font-weight: 600; min-height: 24px; display: flex; align-items: center; gap: 2px; list-style: none; }
+.artifact-readers > summary::-webkit-details-marker { display: none; }
+.artifact-readers-chevron { font-size: 1.25rem; transition: transform .12s; }
+.artifact-readers[open] > summary .artifact-readers-chevron { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .artifact-readers-chevron { transition: none; } }
+.artifact-readers > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 .artifact-readers-body { display: grid; gap: 4px; padding: 4px 0 6px; color: var(--text-primary); }
 .artifact-readers-body p { margin: 0; overflow-wrap: anywhere; }
 .artifact-readers-note { color: var(--text-secondary); }
