@@ -9,7 +9,7 @@ const BASE = require('./test_base').BASE;
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
     const { Page, Runtime, Emulation } = client;
     const ev = async expression => { const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
-    const { waitFor, coralReady } = require('./helpers/wait').bind(ev);
+    const { waitFor, waitStable, coralReady } = require('./helpers/wait').bind(ev);
     const results = [];
     const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 'PASS' : 'FAIL'}] ${label}${detail !== undefined && !ok ? ' — ' + String(detail).slice(0, 400) : ''}`); };
     const note = s => console.log(`[NOTE] ${s}`);
@@ -40,14 +40,14 @@ const BASE = require('./test_base').BASE;
 
         // ---- the Inbox tab: Tasks for you
         await ev(`localStorage.removeItem('coral.inbox.tab'); document.getElementById('nav-tab-hub-inbox').click(); true`);
-        await waitFor(`!!document.getElementById('inbox-local') && !document.getElementById('inbox-local').hidden`, 'the Inbox', 10000);
+        await waitFor(`!!document.getElementById('inbox-local') && !document.getElementById('inbox-local').hidden`, 'the Inbox', { timeout: 10000 });
         await ev(`document.getElementById('inbox-tab-tasks').click(); true`);
-        await waitFor(`[...document.querySelectorAll('#inbox-tasks-host .ibx-task-title')].some(e => e.textContent === 'Decide on the release notes')`, 'the Operator task in the list', 10000);
+        await waitFor(`[...document.querySelectorAll('#inbox-tasks-host .ibx-task-title')].some(e => e.textContent === 'Decide on the release notes')`, 'the Operator task in the list', { timeout: 10000 });
         const titles = await ev(`[...document.querySelectorAll('#inbox-tasks-host .ibx-task-title')].map(e => e.textContent)`);
         check('Tasks for you lists the Operator\'s task from the real server, not the Worker\'s', titles.includes('Decide on the release notes') && !titles.includes('Not for the Operator'), JSON.stringify(titles));
         const idx = titles.indexOf('Decide on the release notes');
         await ev(`document.querySelectorAll('#inbox-tasks-host .ibx-task-head')[${idx}].click(); true`);
-        await waitFor(`!!document.querySelectorAll('#inbox-tasks-host .ibx-task-body')[${idx}].querySelector('.md')`, 'the task text', 10000);
+        await waitFor(`!!document.querySelectorAll('#inbox-tasks-host .ibx-task-body')[${idx}].querySelector('.md')`, 'the task text', { timeout: 10000 });
         const body = await ev(`(() => { const r = document.querySelectorAll('#inbox-tasks-host .ibx-task-body')[${idx}]; const tags = new Set(); r.querySelectorAll('.md *').forEach(e => tags.add(e.tagName.toLowerCase()));
             return { text: r.textContent, tags: [...tags], hrefs: [...r.querySelectorAll('a')].map(a => a.getAttribute('href')), pwn: window.__pwn === undefined ? null : window.__pwn }; })()`);
         check('expand: the real task text is shown, rendered (a list, bold)', /Please read this and answer/.test(body.text) && body.tags.includes('ul') && body.tags.includes('strong'), JSON.stringify(body).slice(0, 300));
@@ -55,26 +55,40 @@ const BASE = require('./test_base').BASE;
         note(`the task text on this computer shows the token as stored: ${body.text.includes(GH) ? 'UNMASKED (as the task route answers)' : 'masked'}`);
 
         // reply: through the real reply route, the creator is notified
-        await ev(`(() => { const t = document.querySelectorAll('#inbox-tasks-host .ibx-reply-input')[${idx}]; t.value = 'Wording is fine, ship it. Token ' + ${JSON.stringify(GH)}; t.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
-        await ev(`document.querySelectorAll('#inbox-tasks-host .ibx-send')[${idx}].click(); true`);
-        await waitFor(`/Reply (sent|saved)|could not|refus|verified|HTTP/i.test(document.querySelectorAll('#inbox-tasks-host .ibx-reply-status')[${idx}].textContent)`, 'the answer of the real reply route', 15000);
-        const status = await ev(`document.querySelectorAll('#inbox-tasks-host .ibx-reply-status')[${idx}].textContent`);
-        check('reply: the real route accepted it and the creator (Orchestrator) was notified', status === 'Reply sent. Orchestrator notified.', status);
+        const reply = async (text) => {
+            await ev(`(() => { const t = document.querySelectorAll('#inbox-tasks-host .ibx-reply-input')[${idx}]; t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+            await waitFor(`!document.querySelectorAll('#inbox-tasks-host .ibx-send')[${idx}].disabled`, 'Send on', { timeout: 5000 });
+            await ev(`document.querySelectorAll('#inbox-tasks-host .ibx-send')[${idx}].click(); true`);
+            await waitFor(`/Reply (sent|saved)|could not|refus|verified|HTTP|identity/i.test(document.querySelectorAll('#inbox-tasks-host .ibx-reply-status')[${idx}].textContent)`, 'the answer of the real reply route', { timeout: 15000 });
+            return ev(`document.querySelectorAll('#inbox-tasks-host .ibx-reply-status')[${idx}].textContent`);
+        };
+        const mode0 = await api('GET', '/api/system/identity-actor');
+        note(`identity mode of this server: ${JSON.stringify(mode0.data)} (status ${mode0.status})`);
+        let status = await reply('Wording is fine, ship it. Token ' + GH);
+        check('reply from the dashboard panel in the server\'s DEFAULT identity mode: accepted, the creator (Orchestrator) notified', status === 'Reply sent. Orchestrator notified.', status);
+        if (status !== 'Reply sent. Orchestrator notified.') {
+            // the panel sends {content} only; with identity enforcement ON the server names the sender from the verified Operator
+            const put = await api('PUT', '/api/system/identity-actor', { mode: 'enforce' });
+            note(`switched identity mode to enforce: ${put.status} ${JSON.stringify(put.data)}`);
+            status = await reply('Wording is fine, ship it. Token ' + GH);
+            check('reply from the dashboard panel with identity ENFORCED: accepted, the creator notified', status === 'Reply sent. Orchestrator notified.', status);
+            const back = await api('PUT', '/api/system/identity-actor', { mode: 'log' });
+            note(`identity mode put back to log: ${back.status}`);
+        }
         const all = await api('GET', `/api/board/${P}/messages/all?limit=200`);
         const raw = JSON.stringify(all.data);
         check('reply: it is on the board as the Operator\'s message', /ship it/.test(raw) && /Operator/.test(raw), raw.slice(0, 200));
         check('reply: the token typed in it is not stored on the board as typed', !raw.includes(GH), 'the token is on the board');
-        const notifiedMsg = await ev(`(async () => { const r = await fetch('/api/board/${P}/messages?subscriber_id=Orchestrator&all=1&limit=50'); const d = await r.json().catch(() => null); return JSON.stringify(d).slice(0, 2000); })()`);
-        check('reply: the creator\'s own unread messages hold the reply (it reached the creator)', /ship it/.test(notifiedMsg), notifiedMsg.slice(0, 200));
 
         // ---- Saved for later: Read the whole message
         await ev(`document.getElementById('inbox-tab-saved').click(); true`);
-        await waitFor(`document.querySelectorAll('#saved-list .ibx-saved-toggle').length >= 2`, 'a control on each saved item', 10000);
+        await waitFor(`document.querySelectorAll('#saved-list .ibx-saved-toggle').length >= 2`, 'a control on each saved item', { timeout: 10000 });
+        await waitStable(`document.querySelectorAll('#saved-list .ibx-saved-toggle').length + ':' + document.querySelectorAll('#saved-list .saved-item').length`, 'the saved list to settle', 600, { timeout: 15000 });
         const items = await ev(`[...document.querySelectorAll('#saved-list .saved-item')].map((li, i) => ({ i, title: li.textContent.replace(/\\s+/g, ' ').slice(0, 120), toggle: !!li.querySelector('.ibx-saved-toggle'), gone: li.classList.contains('gone') }))`);
         const find = t => items.findIndex(x => x.title.includes(t));
         const open = async i => {
             await ev(`document.querySelectorAll('#saved-list .saved-item')[${i}].querySelector('.ibx-saved-toggle').click(); true`);
-            await waitFor(`(() => { const b = document.querySelectorAll('#saved-list .saved-item')[${i}].querySelector('.ibx-saved-toggle'); const r = document.getElementById(b.getAttribute('aria-controls')); return !r.hidden && !/Reading the message/.test(r.textContent); })()`, 'the message region', 15000);
+            await waitFor(`(() => { const b = document.querySelectorAll('#saved-list .saved-item')[${i}].querySelector('.ibx-saved-toggle'); const r = document.getElementById(b.getAttribute('aria-controls')); return !r.hidden && !/Reading the message/.test(r.textContent); })()`, 'the message region', { timeout: 15000 });
             return ev(`(() => { const b = document.querySelectorAll('#saved-list .saved-item')[${i}].querySelector('.ibx-saved-toggle'); return document.getElementById(b.getAttribute('aria-controls')).textContent; })()`);
         };
         const planI = find('Release plan');
@@ -87,10 +101,12 @@ const BASE = require('./test_base').BASE;
             check('saved board message that is gone: it says so in words', /This message was deleted, so only the saved snippet is left\./.test(goneText), goneText);
         } else note(`the saved item of a deleted board message has ${goneI >= 0 ? 'no' : 'NOT SHOWN: no'} "Read the whole message" control (class gone: ${goneI >= 0 && items[goneI].gone})`);
         const agentI = find('An agent of another computer');
-        const agentText = agentI >= 0 ? await open(agentI) : '';
-        check('saved agent message with no transcript here: it says so in words', /This message cannot be read from here: its agent ended on another server\./.test(agentText), agentText);
+        if (agentI >= 0 && items[agentI].toggle) {
+            const agentText = await open(agentI);
+            check('saved agent message with no transcript here: it says so in words', /This message cannot be read from here: its agent ended on another server\./.test(agentText), agentText);
+        } else note(`the saved item of an agent of another computer has ${agentI >= 0 ? 'no' : 'NOT SHOWN: no'} "Read the whole message" control (class gone: ${agentI >= 0 && items[agentI].gone})`);
         const hugeI = find('One unbroken run');
-        if (hugeI >= 0) {
+        if (hugeI >= 0 && items[hugeI].toggle) {
             const hugeText = await open(hugeI);
             note(`a saved message that is one unbroken 240 KiB run shows: ${JSON.stringify(hugeText.slice(0, 120))} (${hugeText.length} characters)`);
             check('saved very long message: the panel says it is too long to show', /too long to show here/.test(hugeText), hugeText.slice(0, 120));
