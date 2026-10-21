@@ -85,7 +85,7 @@ func TestFetchLatestVersion_GitHubError(t *testing.T) {
 
 func TestFetchLatestVersion_HTTPError(t *testing.T) {
 	origURL := githubReleasesAPI
-	githubReleasesAPI = "http://127.0.0.1:1" // unreachable port
+	githubReleasesAPI = uniqueFeedURL("http://127.0.0.1:1") // unreachable port
 	t.Cleanup(func() { githubReleasesAPI = origURL })
 
 	version := FetchLatestVersion()
