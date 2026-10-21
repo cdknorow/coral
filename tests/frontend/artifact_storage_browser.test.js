@@ -41,17 +41,20 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
         // Settings: the store by age, and Prune/Shrink check first.
         await ev(`window.showSettingsModal(); true`);
-        await until(`/By age: /.test((document.getElementById('settings-storage-detail') || {}).textContent || '')`, 'the breakdown');
+        await until(`/by age: /i.test((document.getElementById('settings-storage-detail') || {}).textContent || '')`, 'the breakdown'); // the text says "Artifacts by age:": this wait looked for "By age: ", never matched, and cost its whole timeout every run
         const detail = await ev(`document.getElementById('settings-storage-detail').innerText`);
         check('Settings shows the store by age', /Artifacts by age: <1d /.test(detail) && /Task diffs by age: /.test(detail), JSON.stringify(detail));
+        // The store these two checks read is the server's own, which a session of this run, or an earlier suite on the same server, may have left saved diffs in: a Shrink that has something to shrink asks for a confirmation and says nothing in the line. The page's answer to an empty store is what is under test, so the dry run is answered empty.
+        await ev(`(() => { window.__realFetch = window.fetch; window.fetch = (u, o = {}) => String(u).includes('/api/artifacts/prune') && o.method === 'POST' ? Promise.resolve(new Response(JSON.stringify({ dry_run: true, kinds: {}, freed: 0, removed: 0 }), { status: 200, headers: { 'content-type': 'application/json' } })) : window.__realFetch(u, o); })(); true`);
         await ev(`document.getElementById('settings-prune-kind').value = 'objects'; document.getElementById('settings-prune-days').value = '7'; document.getElementById('settings-storage-prune').click(); true`);
         await until(`(document.getElementById('settings-storage-result') || {}).textContent === 'Nothing to do.'`, 'the prune check');
         check('Prune of week-old unlinked artifacts finds nothing on a fresh store, and asks nothing',
             (await ev(`document.getElementById('settings-storage-result').textContent`)) === 'Nothing to do.' &&
-            (await ev(`getComputedStyle(document.getElementById('confirm-modal')).display === 'none'`)));
+            (await ev(`getComputedStyle(document.getElementById('confirm-modal')).display === 'none'`)), JSON.stringify(await ev(`document.getElementById('settings-storage-result').textContent`)));
         await ev(`document.getElementById('settings-storage-shrink').click(); true`);
         await until(`(document.getElementById('settings-storage-result') || {}).textContent === 'Nothing to do.'`, 'the shrink check');
-        check('Shrink with no stored diffs: nothing to do', (await ev(`document.getElementById('settings-storage-result').textContent`)) === 'Nothing to do.');
+        { const t = await ev(`document.getElementById('settings-storage-result').textContent`); check('Shrink with no stored diffs: nothing to do', t === 'Nothing to do.', JSON.stringify(t)); }
+        await ev(`window.fetch = window.__realFetch; true`); // the real answers for what follows
         await ev(`window.hideSettingsModal && window.hideSettingsModal(); true`);
 
         // Automatic cleanup: turned on, it waits for a review.
