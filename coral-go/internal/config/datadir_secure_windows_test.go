@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/windows"
 )
 
 // usersCanRead makes dir's list the way a folder on a drive root looks: this user, SYSTEM and BUILTIN\Users with read, and what is
@@ -87,7 +88,7 @@ func TestDataFolderAnotherAccountOwnsIsRefusedUnlessAllowed(t *testing.T) {
 	require.NoError(t, os.Mkdir(dir, 0o700))
 	usersCanRead(t, dir)
 	prev := ownedByUs
-	ownedByUs = func(string) (bool, error) { return false, nil }
+	ownedByUs = func(windows.Handle) (bool, error) { return false, nil }
 	t.Cleanup(func() { ownedByUs = prev; SetAllowSharedDataDir(false); setDataDirNotice("") })
 
 	err := EnsureDataDir(dir)
@@ -95,6 +96,7 @@ func TestDataFolderAnotherAccountOwnsIsRefusedUnlessAllowed(t *testing.T) {
 	assert.Contains(t, err.Error(), dir, "the message names the folder")
 	assert.Contains(t, err.Error(), "--allow-shared-data-dir", "and the way out")
 	assert.Contains(t, err.Error(), "Users")
+	assert.Contains(t, err.Error(), "takeown /F", "the exact command to take it over")
 	assert.NotEmpty(t, readersOf(t, dir), "nothing was changed")
 
 	SetAllowSharedDataDir(true)
@@ -140,4 +142,39 @@ func TestDataFolderLinksAreNeverFollowed(t *testing.T) {
 	require.ErrorIs(t, err, ErrSharedDataDir)
 	assert.Contains(t, err.Error(), "link or junction")
 	assert.NotEmpty(t, readersOf(t, outside), "the target keeps its list")
+}
+
+// N1 (#96): a folder that grants a named account or a custom group is tightened too, and so is an old file inside it that carries an
+// explicit entry for one, though the folder itself lists only this user and SYSTEM.
+func TestExistingDataFolderGrantingOtherAccountsIsTightened(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "coral")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	// "Guest" stands for a named account; "Backup Operators" for a custom group.
+	for _, who := range []string{"Guest", "Backup Operators"} {
+		out, err := exec.Command("icacls", dir, "/grant", who+":(OI)(CI)R").CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	old := filepath.Join(dir, "old.db")
+	require.NoError(t, os.WriteFile(old, []byte("x"), 0o600))
+	out, err := exec.Command("icacls", old, "/inheritance:d", "/grant", "Guest:R").CombinedOutput()
+	require.NoError(t, err, string(out))
+	got := readersOf(t, dir)
+	require.Len(t, got, 2, got)
+
+	require.NoError(t, EnsureDataDir(dir))
+
+	assert.Empty(t, readersOf(t, dir))
+	assert.Empty(t, readersOf(t, old), "the explicit entry on the old file did not survive")
+	assert.Contains(t, DataDirWarning(dir), "Guest")
+}
+
+// A data folder whose only extra entries are Administrators, SYSTEM and this user is already private: nothing is done.
+func TestDataFolderWithOnlyAdministratorsIsLeftAlone(t *testing.T) {
+	setDataDirNotice("")
+	dir := filepath.Join(t.TempDir(), "coral")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	out, err := exec.Command("icacls", dir, "/grant", "*S-1-5-32-544:(OI)(CI)F").CombinedOutput()
+	require.NoError(t, err, string(out))
+	require.NoError(t, EnsureDataDir(dir))
+	assert.Empty(t, DataDirWarning(dir))
 }
