@@ -104,9 +104,9 @@ func credential(op string, req request, stdin io.Reader, stdout io.Writer, a *ap
 	if in["protocol"] != "https" || in["host"] != "github.com" {
 		return 0
 	}
+	// When git sends a path it must be exactly <owner>/<repo>, the organization's repository asked for: "evil/coral.git" shares only the last element and gets nothing (#5528 review).
 	if p, ok := in["path"]; ok && p != "" {
-		base := strings.TrimSuffix(filepath.Base(p), ".git")
-		if base != req.Repo {
+		if !strings.EqualFold(strings.TrimSuffix(p, ".git"), appOwner+"/"+req.Repo) {
 			return 0
 		}
 	}

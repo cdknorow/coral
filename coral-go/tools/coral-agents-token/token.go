@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	appID      int64 = 5405319 // the "coral-agents" GitHub App
+	appID      int64 = 5405319     // the "coral-agents" GitHub App
+	appOwner         = "subgentic" // the organization the App is installed on: a token for a repository of any other account is refused
 	apiBaseURL       = "https://api.github.com"
 
 	jwtLifetime = 9 * time.Minute  // from now: GitHub allows 10 minutes from the issue time
@@ -151,11 +152,22 @@ func (a *app) lookupInstallation(ctx context.Context, atr *ghinstallation.AppsTr
 		return 0, fmt.Errorf("the installation lookup answered %s", resp.Status)
 	}
 	var list []struct {
-		ID int64 `json:"id"`
+		ID      int64 `json:"id"`
+		Account struct {
+			Login string `json:"login"`
+		} `json:"account"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&list); err != nil {
 		return 0, errors.New("the installation lookup answered something unreadable")
 	}
+	// Only an installation on the organization counts (#5528 review): the App installed on another account by mistake must not be the one a token is minted for.
+	own := list[:0]
+	for _, in := range list {
+		if strings.EqualFold(in.Account.Login, appOwner) {
+			own = append(own, in)
+		}
+	}
+	list = own
 	switch len(list) {
 	case 1:
 		if list[0].ID <= 0 {
@@ -241,7 +253,7 @@ func checkNarrow(itr *ghinstallation.Transport, req request) error {
 		}
 	}
 	repos, err := itr.Repositories()
-	if err != nil || len(repos) != 1 || repos[0].GetName() != req.Repo {
+	if err != nil || len(repos) != 1 || repos[0].GetName() != req.Repo || !strings.EqualFold(repos[0].GetFullName(), appOwner+"/"+req.Repo) {
 		return fmt.Errorf("the token is not limited to the repository %s: refused", req.Repo)
 	}
 	return nil

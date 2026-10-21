@@ -61,6 +61,8 @@ type fakeGitHub struct {
 	lifetime      time.Duration      // expires_at = now + lifetime
 	grantExtra    map[string]string  // permissions added to the answer
 	grantAll      bool               // answer repository_selection all: no repositories
+	account       string             // the account the installations belong to ("" is the organization)
+	repoOwner     string             // the owner of the repositories in the token answer ("" is the organization)
 	status        int                // non-zero: answer this status with a body that echoes the request
 	redirectTo    string
 }
@@ -91,7 +93,11 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 		f.lookupCalls++
 		var out []map[string]any
 		for _, id := range f.installations {
-			out = append(out, map[string]any{"id": id})
+			acct := f.account
+			if acct == "" {
+				acct = appOwner
+			}
+			out = append(out, map[string]any{"id": id, "account": map[string]any{"login": acct}})
 		}
 		json.NewEncoder(w).Encode(out)
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/app/installations/") && strings.HasSuffix(r.URL.Path, "/access_tokens"):
@@ -115,7 +121,11 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 		if !f.grantAll {
 			var repos []map[string]any
 			for _, n := range body.Repositories {
-				repos = append(repos, map[string]any{"name": n})
+				owner := f.repoOwner
+				if owner == "" {
+					owner = appOwner
+				}
+				repos = append(repos, map[string]any{"name": n, "full_name": owner + "/" + n})
 			}
 			ans["repositories"] = repos
 		}
@@ -233,6 +243,7 @@ func TestAWiderTokenThanAskedForIsRefusedAndNotCached(t *testing.T) {
 		"extra permission":    func(f *fakeGitHub) { f.grantExtra = map[string]string{"administration": "write"} },
 		"upgraded permission": func(f *fakeGitHub) { f.grantExtra = map[string]string{"contents": "admin"} },
 		"all repositories":    func(f *fakeGitHub) { f.grantAll = true },
+		"another owner":       func(f *fakeGitHub) { f.repoOwner = "someone-else" }, // the repository name matches, the account does not (#5528 review)
 	} {
 		r := newRig(t)
 		tweak(r.fake)
@@ -709,5 +720,34 @@ func TestTheCredentialHelperFailsClosedOnABadKeyAndNeverPrintsASecret(t *testing
 	code, out, errs := r.runIn(gitGet, "--perms", "push", "--installation-id", "77", "credential", "get")
 	if code == 0 || out != "" || strings.Contains(errs, "BEGIN") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
+	}
+}
+
+// #5528 (Security): an installation on another account is not the organization's, and a credential request for another owner's repository of the same name gets nothing.
+func TestAnInstallationOnAnotherAccountIsNotUsed(t *testing.T) {
+	r := newRig(t)
+	r.fake.account = "someone-else"
+	code, out, errs := r.run("--perms", "push", "token")
+	if code == 0 || out != "" || !strings.Contains(errs, "no installation") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errs)
+	}
+	if tokens, _ := r.fake.calls(); tokens != 0 {
+		t.Fatal("a token was requested for an installation on another account")
+	}
+}
+
+func TestACredentialRequestForAnotherOwnersRepositoryGetsNothing(t *testing.T) {
+	r := newRig(t)
+	for _, path := range []string{"evil/coral.git", "evil/coral", "subgentic-evil/coral.git", "coral.git", "a/subgentic/coral.git"} {
+		code, out, _ := r.runIn("protocol=https\nhost=github.com\npath="+path+"\n\n", "--perms", "push", "--installation-id", "77", "credential", "get")
+		if code != 0 || out != "" {
+			t.Fatalf("%s: code=%d out=%q: a token for it must not be printed", path, code, out)
+		}
+	}
+	if tokens, _ := r.fake.calls(); tokens != 0 {
+		t.Fatal("a token was requested for another owner's repository")
+	}
+	if code, out, _ := r.runIn("protocol=https\nhost=github.com\npath=Subgentic/Coral.git\n\n", "--perms", "push", "--installation-id", "77", "credential", "get"); code != 0 || !strings.Contains(out, "password=ghs_fake1") {
+		t.Fatalf("the organization's own repository is answered: code=%d out=%q", code, out)
 	}
 }
