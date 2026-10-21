@@ -69,7 +69,7 @@ coral_test_watchdog() {
     # The limit is expanded now: secs is local, and gone by the time the trap runs.
     trap "echo \"[watchdog] \$(basename \"\$0\") still running after ${secs}s: stopping it\" >&2; exit 124" USR1
     (
-        trap 'kill "$sp" 2>/dev/null; exit 0' TERM
+        trap 'kill "${sp:-}" 2>/dev/null; exit 0' TERM
         sleep "$secs" & sp=$!
         wait "$sp" && kill -USR1 "$me" 2>/dev/null
     ) &
