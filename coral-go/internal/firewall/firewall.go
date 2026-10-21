@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/subgentic/coral/internal/psquote"
 )
 
 // Rule is one Windows Firewall rule as the registry stores it, reduced to what Coral looks at.
@@ -178,11 +180,10 @@ func expandPercent(s string, get func(string) string) string {
 	}
 }
 
-func psQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 
 // Fix is the commands that narrow the rule to Private networks or remove it, for an elevated PowerShell.
 func (f Finding) Fix() string {
-	id := psQuote(f.Rule.ID)
+	id := psquote.Literal(f.Rule.ID) // PowerShell also ends a quote at the curly single quotes: psquote doubles those too (#3904)
 	return fmt.Sprintf("Set-NetFirewallRule -Name %s -Profile Private   (or: Remove-NetFirewallRule -Name %s)", id, id)
 }
 

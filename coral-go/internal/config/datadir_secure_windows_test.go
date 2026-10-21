@@ -187,3 +187,19 @@ func privateRoot(t *testing.T) string {
 	require.NoError(t, protectDataDir(root))
 	return root
 }
+
+// #5698 (review of #96): a folder that is not Coral's own (a project, a drive) is never re-protected file by file: Coral refuses and changes nothing.
+func TestFolderThatIsNotCoralsIsRefusedAndLeftAlone(t *testing.T) {
+	dir := filepath.Join(privateRoot(t), "project")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	usersCanRead(t, dir)
+	other := filepath.Join(dir, "main.go")
+	require.NoError(t, os.WriteFile(other, []byte("package main"), 0o600))
+	t.Cleanup(func() { SetAllowSharedDataDir(false); setDataDirNotice("") })
+
+	err := EnsureDataDir(dir)
+	require.ErrorIs(t, err, ErrSharedDataDir)
+	assert.Contains(t, err.Error(), "main.go", "the message names a file that is not Coral's")
+	assert.NotEmpty(t, readersOf(t, dir), "the folder was not changed")
+	assert.NotEmpty(t, readersOf(t, other), "nor the file")
+}
