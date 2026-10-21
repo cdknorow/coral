@@ -310,7 +310,9 @@ SIGNER="$ID_REPO/.github/workflows/release.yml"
 REPO_RE="$(sed 's/\./\\./g' <<<"$ID_REPO")"; TAG_RE="$(sed 's/[.]/\\./g' <<<"$TAG")"
 for p in "${packages[@]+"${packages[@]}"}" SHA256SUMS.txt; do
   [ -f "$p" ] || continue
-  if out="$(gh attestation verify "$p" --repo "$ID_REPO" --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" 2>&1)"; then pass attest "$p" "release.yml at refs/tags/$TAG"
+  # By OWNER, not --repo: after a repository transfer GitHub's per-repository lookup answers 404 for the attestations made before it (they stay with the owner
+  # that built the release, #5525), while the owner lookup still finds them; --signer-workflow still pins the exact repository and workflow, and --source-ref the tag.
+  if out="$(gh attestation verify "$p" --owner "${ID_REPO%%/*}" --signer-workflow "$SIGNER" --source-ref "refs/tags/$TAG" 2>&1)"; then pass attest "$p" "release.yml at refs/tags/$TAG"
   else fail attest "$p" "$(tail -1 <<<"$out" | cut -c1-120)"; fi
 done
 
