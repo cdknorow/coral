@@ -28,7 +28,7 @@ func builtinWorkflowPresets() []WorkflowPreset {
 		{ID: "none", Name: "None", Builtin: true},
 		{ID: "shared_checkout", Name: "Shared checkout", Builtin: true, Instructions: "In the shared checkout, coordinate file ownership, preserve teammates' changes, and commit only your task's work."},
 		{ID: "worktrees", Name: "Worktrees", Builtin: true, Instructions: "Use an isolated Git worktree and branch from the agreed base; reuse your task's checkout if available. Leave teammates' checkouts untouched and publish the exact commit."},
-	}
+		{ID: "merge_queue", Name: "Merge queue", Builtin: true, Instructions: "Work in an isolated Git worktree from the agreed base. When your change is ready, attach it to your task as a patch (coral-board task submit-review <id> --artifacts manifest.json: a row of kind patch with its uri, its digest and, in revision, the base commit it applies to); answer review findings by attaching the next revision (coral-board task attach <id> --artifacts manifest.json) instead of posting patch ids. Reviewers approve the exact digest. Do not land or push to the target branch yourself: whoever lands (the orchestrator, or the role this team names) reads coral-board queue, applies what it lists, and records it with coral-board task mark-landed. A patch that cannot be applied comes back to you with coral-board task send-back and a note."}}
 }
 func builtinWorkflowPreset(id string) (WorkflowPreset, bool) {
 	for _, p := range builtinWorkflowPresets() {
