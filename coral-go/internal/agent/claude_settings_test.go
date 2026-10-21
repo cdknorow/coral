@@ -73,3 +73,31 @@ func TestReadSettingsFileIsBounded(t *testing.T) {
 
 	assert.Empty(t, readSettingsFile(filepath.Join(dir, "missing.json")))
 }
+
+// The Claude settings env puts the Coral tools folder first as its own PATH entry, joined with the platform's separator (#126 F2).
+func TestClaudeSettingsPutsTheToolsDirFirstOnPath(t *testing.T) {
+	tools := t.TempDir()
+	t.Setenv(HookDirEnv, tools)
+	rest := filepath.Join(t.TempDir(), "bin")
+	t.Setenv("PATH", rest)
+	files := &launchFiles{}
+	path := claudeSettingsFile(files, LaunchParams{WorkingDir: t.TempDir(), SessionID: "0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11"}, "0b7f0f4e-3c1b-4c55-9b0e-0f6b1b2f1a11")
+	require.NoError(t, files.err)
+	t.Cleanup(func() { os.Remove(path) })
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var settings struct {
+		Env map[string]string `json:"env"`
+	}
+	require.NoError(t, json.Unmarshal(data, &settings))
+	assert.Equal(t, []string{tools, rest}, filepath.SplitList(settings.Env["PATH"]))
+}
+
+// A POSIX shell's PATH prefix: the folder and ':' as one literal on Unix; on Windows through cygpath, never an empty entry (#126 F2).
+func TestBashPathPrefix(t *testing.T) {
+	assert.Equal(t, `export PATH='/opt/coral/bin:'"$PATH" && `, bashPathPrefix("/opt/coral/bin", false))
+	win := bashPathPrefix(`C:\Users\x y\bin`, true)
+	assert.Contains(t, win, `cygpath -u 'C:\Users\x y\bin'`)
+	assert.Contains(t, win, `printf %s 'C:\Users\x y\bin'`, "falls back to the folder as given")
+	assert.Contains(t, win, `)":"$PATH"`, "the folder and the old PATH are separated by one ':'")
+}
