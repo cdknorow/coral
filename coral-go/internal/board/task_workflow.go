@@ -119,7 +119,7 @@ func resolveReadyTasks(ctx context.Context, tx *sqlx.Tx, ids []int64) error {
 			continue
 		}
 		// By id alone: a dependent task may be on another board, and ids come from the dependency table.
-		res, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'pending' WHERE id = ? AND status = 'blocked'", id)
+		res, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'pending', edited_at = ? WHERE id = ? AND status = 'blocked'", nowUTC(), id)
 		if err != nil {
 			return err
 		}
@@ -228,7 +228,7 @@ func rewireRetryDependents(ctx context.Context, tx *sqlx.Tx) error {
 			if ready {
 				status = "pending"
 			}
-			if _, err := tx.ExecContext(ctx, `UPDATE board_tasks SET status=? WHERE id=? AND status IN ('pending','blocked')`, status, dependent.TaskID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE board_tasks SET status=?, edited_at=? WHERE id=? AND status IN ('pending','blocked')`, status, nowUTC(), dependent.TaskID); err != nil {
 				return err
 			}
 			if ready {

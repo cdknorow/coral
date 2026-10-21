@@ -96,8 +96,8 @@ func (s *Store) HandToOrchestrator(ctx context.Context, project string, id int64
 		return "", nil, err
 	}
 	// In progress, or pending with its author after a rejection (resubmitted unclaimed, #3889).
-	res, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='review_pending', assigned_to=? WHERE id=? AND board_id=? AND (status='in_progress' OR (? AND status='pending' AND assigned_to=?))",
-		orch, id, project, lastRoundRejected(w), author)
+	res, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='review_pending', assigned_to=?, edited_at=? WHERE id=? AND board_id=? AND (status='in_progress' OR (? AND status='pending' AND assigned_to=?))",
+		orch, nowUTC(), id, project, lastRoundRejected(w), author)
 	if err != nil {
 		return "", nil, err
 	}
@@ -132,7 +132,7 @@ func reopenReviews(ctx context.Context, tx *sqlx.Tx, project string, id int64, w
 	for _, r := range last.Reviewers {
 		body := reviewTaskBody(id, title, w.OriginalAuthor, round.Round)
 		if _, err := tx.ExecContext(ctx, `UPDATE board_tasks SET status=CASE WHEN status IN ('pending','in_progress') THEN status ELSE 'pending' END,
-			completed_by=NULL, completion_message=NULL, completed_at=NULL, body=? WHERE id=? AND board_id=?`, body, r.ReviewTaskID, project); err != nil {
+			completed_by=NULL, completion_message=NULL, completed_at=NULL, body=?, edited_at=? WHERE id=? AND board_id=?`, body, nowUTC(), r.ReviewTaskID, project); err != nil {
 			return nil, err
 		}
 		rw, err := loadWorkflow(ctx, tx, r.ReviewTaskID)
@@ -415,7 +415,7 @@ func checkReviewTaskOpen(ctx context.Context, tx *sqlx.Tx, project string, id, r
 func concludeRound(ctx context.Context, tx *sqlx.Tx, project string, id int64, w *TaskWorkflow, round *ReviewRound, approve bool, v *ReviewVerdict) error {
 	if !approve {
 		round.Result = "rejected"
-		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='pending', assigned_to=?, claimed_at=NULL WHERE id=? AND board_id=?", ptr.NullIfEmpty(w.OriginalAuthor), id, project); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='pending', assigned_to=?, claimed_at=NULL, edited_at=? WHERE id=? AND board_id=?", ptr.NullIfEmpty(w.OriginalAuthor), nowUTC(), id, project); err != nil {
 			return err
 		}
 		w.CompletionReview = nil
