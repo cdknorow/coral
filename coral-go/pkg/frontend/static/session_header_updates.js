@@ -95,7 +95,7 @@ export function updateWaitingIndicator(s) {
             text = s.waiting_kind === 'login' ? "⏳ Agent needs you to sign in (in its terminal)" : "⏳ Agent is waiting for input";
         } else if (bannerKey === 'check_terminal') {
             setClassName(banner, "waiting-banner waiting-banner-not-started");
-            text = "⏳ This agent hasn't done anything yet — check the terminal below. Some agents ask permission to trust a folder the first time they run in it.";
+            text = "⏳ This agent hasn't done anything yet. Open its terminal: some agents ask to trust the folder, or to sign in, the first time they run.";
         }
         setPill(banner, bannerKey === 'needs_input' || bannerKey === 'check_terminal', text);
     }
