@@ -18,6 +18,7 @@ const HOSTILE = '<img src=x onerror="window.__pwn=1">';
     const layer = () => ev(`(() => { if (!window.__realFetch) window.__realFetch = window.fetch; const R = window.__realFetch; window.__ct = window.__ct || { state: null, cand: null, log: null, puts: [] };
         const json = o => Promise.resolve(new Response(JSON.stringify(o), { status: 200, headers: { 'content-type': 'application/json' } }));
         window.fetch = (u, o = {}) => { const p = new URL(String(u && u.url || u), location.origin).pathname; const m = (o.method || 'GET').toUpperCase();
+            if (p === '/api/board/${TEAM}/cross-team-state' && m === 'GET' && window.__ct.stateStatus) return Promise.resolve(new Response(JSON.stringify(window.__ct.stateBody || {}), { status: window.__ct.stateStatus, headers: { 'content-type': 'application/json' } }));
             if (p === '/api/board/${TEAM}/cross-team-state' && m === 'GET' && window.__ct.state) return json(window.__ct.state);
             if (p === '/api/board/${TEAM}/cross-team-candidates' && m === 'GET' && window.__ct.cand) return json(window.__ct.cand);
             if (p === '/api/board/${TEAM}/settings/log' && m === 'GET' && window.__ct.log) return json(window.__ct.log);
@@ -85,6 +86,24 @@ const HOSTILE = '<img src=x onerror="window.__pwn=1">';
         })()`);
         check(`pick then Add by keyboard adds the team, every Remove has its own name, and Save sends exactly the list shown (${JSON.stringify(flow.rows)})`, flow.ok1 && JSON.stringify(flow.rows) === JSON.stringify(['Alpha', 'Delta']) && flow.names.every(n => /^Remove .+ from the list$/.test(n)) && flow.puts.length === 1 && flow.puts[0].cross_team_allowed.length === 2 && flow.puts[0].cross_team_allowed.every(e => e.server === 'local' && /^x-[a-z2-7]{16}$/.test(e.cross_team_id)));
 
+
+        console.log('5. the tab while the list is not in force (#5516)');
+        const base = `{ max_entries: 200, self_cross_team_id: '${XID('s')}', suggestions: [{ server: 'local', cross_team_id: '${XID('c')}', label: 'Gamma', label_is_a_claim: false, last_seen: '2026-10-20T10:00:00Z', count: 2, listable: true }], allowed: [] }`;
+        for (const [what, patch, expectTab] of [['the state route is local-only (403, as through Coral Hub)', `window.__ct.stateStatus = 403; window.__ct.stateBody = { code: 'local_only' }; window.__ct.state = null;`, false],
+            ['an older server has no such route (404)', `window.__ct.stateStatus = 404; window.__ct.stateBody = { error: 'not found' }; window.__ct.state = null;`, false],
+            ['an answer without a list is no state', `window.__ct.stateStatus = 0; window.__ct.state = { enforced: false };`, false]]) {
+            await ev(`${patch} true`);
+            await open(); await ev(`new Promise(r => setTimeout(r, 700))`); // sleep-ok: proves a negative, the tab gets this long to appear
+            check(`no Messaging tab when ${what}`, await ev(`!document.querySelector('[data-settings-tab=messaging]')`));
+        }
+        await ev(`window.__ct.stateStatus = 0; window.__ct.state = Object.assign({ enforced: false, was_open: true }, ${base}); window.__ct.cand = { candidates: [] }; window.__ct.log = { entries: [] }; true`);
+        await open(); await tabClick();
+        const off = await ev(`(() => ({ notice: !!document.querySelector('${P} .ct-notice'), text: (document.querySelector('${P} .ct-notice') || {}).textContent || '', prompt: !!document.querySelector('${P} .ct-prompt'), tabs: [...document.querySelectorAll('[data-settings-tab]')].map(t => t.dataset.settingsTab), role: (document.querySelector('${P} .ct-notice') || document.body).getAttribute('role') }))()`);
+        check(`not enforced: the line says it is not in force, there is no one-time prompt even for a board that was open, and the tab is last (${JSON.stringify(off.tabs)})`, off.notice && /not in force yet/.test(off.text) && !off.prompt && off.tabs[off.tabs.length - 1] === 'messaging' && off.role === 'status');
+        await ev(`window.__ct.state = Object.assign({ enforced: true, was_open: true }, ${base}); true`);
+        await open(); await tabClick();
+        const on = await ev(`(() => ({ notice: !!document.querySelector('${P} .ct-notice'), prompt: !!document.querySelector('${P} .ct-prompt') }))()`);
+        check('enforced: no "not in force" line, and the prompt is back for a board that was open', !on.notice && on.prompt);
         const failed = results.filter(r => !r).length;
         console.log(`${results.length - failed}/${results.length} checks passed`);
         process.exitCode = failed ? 1 : 0;
