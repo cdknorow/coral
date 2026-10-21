@@ -292,16 +292,19 @@ jobs:
         env:
           # A tag name may hold $( ) and quotes: it reaches the script as data, never as script text.
           REF_NAME: ${{ github.ref_name }}
+          BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
         run: |
           dotnet tool install --global wix --version 5.0.2
           wix extension add WixToolset.UI.wixext/5.0.2
           $version = $env:REF_NAME -replace "^v", ""
           if (-not ($version -match "^\d+\.\d+\.\d+")) { $version = "0.0.0" }
+          # The name the installer and Apps & features show follows the build tier (CLAUDE.md).
+          $product = if (",$env:BUILD_TAGS," -like "*,dropboxers,*") { "Coral For Dropbox" } else { "Coral" }
           $binDir = (Resolve-Path "dist\windows\bin").Path
           $buildDir = (Resolve-Path "dist\windows").Path
           Copy-Item "tools\license.rtf" $buildDir
           $msiPath = Join-Path $buildDir "Coral-$version-x64.msi"
-          wix build tools\coral.wxs -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
+          wix build tools\coral.wxs -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -d "ProductName=$product" -o $msiPath
           echo "MSI_PATH=$msiPath" >> $env:GITHUB_ENV
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
