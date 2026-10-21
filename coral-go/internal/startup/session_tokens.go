@@ -21,7 +21,8 @@ import (
 //
 // Threat model: the token stops mistakes and prompt-injected impersonation through
 // coral-board and the hooks. It does not stop a malicious process running as the same
-// user, which can read another process's environment (/proc/<pid>/environ, ps -E).
+// user, which can read another process's environment (/proc/<pid>/environ, ps -E). A Codex agent's file, which stays for the session (#13), is the one place that reads a live agent's
+// token from a folder instead: any process of the same user, another agent included, can read it (agent_docs/auth.md, Threat model).
 func setupSessionTokens(db *store.DB, coralDir string) {
 	dir := filepath.Join(coralDir, "session_tokens")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

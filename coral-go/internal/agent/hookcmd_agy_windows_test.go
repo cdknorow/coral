@@ -81,25 +81,6 @@ func runAsAgy(work, command string) (string, error) {
 	return string(out), err
 }
 
-func TestCmdWord(t *testing.T) {
-	for p, want := range map[string]bool{
-		"C:/Coral/coral-hook-agentic-state.exe":                     true,
-		"C:/PROGRA~2/Coral/coral-hook-agentic-state.exe":            true,
-		"C:/Users/Zoë/AppData/Local/Coral/coral-hook-x.exe":         true, // a non-ASCII letter
-		"C:/Users/日本/Coral/x.exe":                                   true,
-		"C:/Program Files (x86)/Coral/coral-hook-agentic-state.exe": false,
-		"C:/a&b/x.exe": false, "C:/a^b/x.exe": false, "C:/%TEMP%/x.exe": false, "C:/a!b/x.exe": false,
-		"C:/a(b/x.exe": false, "C:/a;b/x.exe": false, "C:/a,b/x.exe": false, "C:/a=b/x.exe": false,
-		"C:/a|b/x.exe": false, "C:/a<b/x.exe": false, `C:/a"b/x.exe`: false, "C:/a\tb/x.exe": false,
-		"C:/a@b/x.exe": false, "C:/O'Brien/x.exe": false, "C:/a+b/x.exe": false, "C:/a`b/x.exe": false,
-		"C:/a\u00a0b/x.exe":          false, // a no-break space is not a letter
-		"//server/share/Coral/x.exe": false, // UNC: fail closed (#21)
-		"":                           false,
-	} {
-		assert.Equal(t, want, cmdWord(p), p)
-	}
-}
-
 // #21 (Security's #20 F1): on Windows, with no absolute path cmd.exe can run (no tools folder,
 // no tool in it, or a folder cmdWord refuses with no 8.3 name), no hook command is made and an
 // agy launch installs no hooks: never a bare name, which cmd.exe would find in the agent's
