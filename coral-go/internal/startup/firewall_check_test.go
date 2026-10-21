@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
 	"testing"
 	"time"
 
@@ -90,6 +91,39 @@ func TestRunFirewallChecksStopsWhenTheContextEnds(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("it was still waiting after the context ended")
+	}
+}
+
+// The re-checks end with the server, whatever ctx Start was given (a caller may pass context.Background()): Shutdown cancels them, and
+// so does Close.
+func TestShutdownEndsTheFirewallRechecksWhateverContextStartWasGiven(t *testing.T) {
+	for _, end := range []string{"Shutdown", "Close"} {
+		t.Run(end, func(t *testing.T) {
+			captureLog(t)
+			stubRules(t)
+			fwCtx, fwCancel := context.WithCancel(context.Background()) // as Start derives it from the caller's ctx
+			done := make(chan struct{})
+			go func() {
+				runFirewallChecks(fwCtx, func() (string, error) { return "", nil }, []time.Duration{time.Hour})
+				close(done)
+			}()
+			rs := &RunningServer{HTTPServer: &http.Server{}, stopFirewall: fwCancel}
+			select {
+			case <-done:
+				t.Fatal("ended before the server did")
+			case <-time.After(100 * time.Millisecond):
+			}
+			if end == "Shutdown" {
+				rs.Shutdown(time.Second)
+			} else {
+				rs.Close()
+			}
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatalf("the re-checks outlived %s", end)
+			}
+		})
 	}
 }
 
