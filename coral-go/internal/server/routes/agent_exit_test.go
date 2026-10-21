@@ -275,7 +275,11 @@ func TestTeamLaunchOf15AnswersAtOnceAndStartsAllLater(t *testing.T) {
 		agents[i] = map[string]any{"name": fmt.Sprintf("Agent %02d", i+1), "prompt": "work"}
 	}
 	body, _ := json.Marshal(map[string]any{"board_name": team, "working_dir": t.TempDir(), "agent_type": "claude", "agents": agents})
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// The deadline is the hub's, scaled for a loaded host: waiting for the spacing would take 14 gaps of at least TeamGap each (about
+	// 28 s), well past it, so the call still shows it did not wait; a 5 s deadline failed when a loaded Windows run took longer than that
+	// to start 15 agents (#83).
+	deadline := 25 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
 	defer cancel()
 	req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(body)).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
@@ -284,7 +288,7 @@ func TestTeamLaunchOf15AnswersAtOnceAndStartsAllLater(t *testing.T) {
 	r.h.LaunchTeam(rec, req)
 	took := time.Since(start)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.Less(t, took, 5*time.Second, "answered within the deadline")
+	assert.Less(t, took, deadline, "answered within the deadline")
 	require.NoError(t, ctx.Err(), "the request's context was still live when it answered")
 
 	var resp struct {

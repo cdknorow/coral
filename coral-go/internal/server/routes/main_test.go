@@ -2,6 +2,7 @@ package routes
 
 import (
 	"fmt"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 	"github.com/subgentic/coral/internal/testleak"
 	"os"
 	"path/filepath"
@@ -26,8 +27,13 @@ func TestMain(m *testing.M) {
 	// so tests reusing a board name within seconds would see a start deferred. Here a deferred
 	// start is typed at once; a test about the spacing replaces afterTeamSlot itself.
 	afterTeamSlot = func(_ time.Duration, f func()) { f() }
+	// The package's temp files go to a folder of its own, private to this user, not the developer's %TEMP% (Windows): agent.CleanupTempFiles
+	// (every kill) globs the system temp folder, and on a machine whose %TEMP% holds hundreds of thousands of files that was a sixth of the
+	// package's time (#83); and what is in %TEMP% (a foreign ACL entry added by a Codex sandbox, leftovers) can't reach the tests (#28).
+	cleanupTemp := secfiletest.UsePrivateTemp()
 	before := packageArtifactFiles()
 	code := m.Run()
+	cleanupTemp()
 	// A test whose Config has no data folder writes artifacts and diffs under "artifacts" here,
 	// in the package folder, shared by every test in the run (#3566: the hourly upload cap then
 	// failed under -count). Such a test must use its own folder (cfg.UseCoralDir or config.Load).

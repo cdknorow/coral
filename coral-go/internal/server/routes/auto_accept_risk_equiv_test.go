@@ -248,7 +248,7 @@ func TestShellRiskAgreesWithBefore4599OnRandomCommands(t *testing.T) {
 	t.Parallel() // no shared state: these ran one after another (#5622)
 	wd, dirs := riskDirs(t)
 	words := riskWords(wd)
-	n := 200000
+	n := oracleN(200000)
 	if testing.Short() {
 		n = 20000
 	}

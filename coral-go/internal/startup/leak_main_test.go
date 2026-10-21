@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 	"github.com/subgentic/coral/internal/testleak"
 )
 
@@ -16,6 +17,9 @@ import (
 // this run's own, and the package fails if a sweep ever targets the real system temp folder.
 func TestMain(m *testing.M) {
 	real := resolvedDir(os.TempDir())
+	// The isolated folder is made inside one private to this user (Windows): a Codex sandbox adds an entry of its own to the real
+	// %TEMP%, everything made under it inherits that, and the private-file checks refuse what it holds (#83, #28).
+	cleanupPrivate := secfiletest.UsePrivateTemp()
 	iso, err := os.MkdirTemp("", "startup-tests-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "startup tests: no isolated folder:", err)
@@ -38,6 +42,7 @@ func TestMain(m *testing.M) {
 	}
 	code := testleak.Check(m.Run())
 	_ = os.RemoveAll(iso)
+	cleanupPrivate()
 	if len(hit) > 0 {
 		fmt.Fprintf(os.Stderr, "startup tests: the launch temp sweep targeted the real temp folder %v (#4381): tests must run isolated\n", hit)
 		code = 1
