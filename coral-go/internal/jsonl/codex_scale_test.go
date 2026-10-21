@@ -90,3 +90,28 @@ func TestCodexMarkerCacheIsAnLRUNotClearedWhole(t *testing.T) {
 	// more rollouts than the old limit of 4096 are all remembered
 	assert.Greater(t, codexMarkerMax, 4096)
 }
+
+// The list's lookup of a Codex rollout is by its link and its file name only: a rollout that holds the session id in its name is found; one that does not is "not told" (the scan
+// of every rollout for the session's marker is left to the one who opens the bookmark), and the scan is not run.
+func TestListFingerprintOfACodexRolloutIsByFileNameOnly(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", home)
+	writeRollouts(t, home, 200)
+	const named = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1"
+	dir := filepath.Join(home, "sessions", "2026", "10", "21")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "rollout-2026-10-21T10-00-00-"+named+".jsonl"), []byte(`{"type":"event_msg"}`+"\n"), 0o644))
+	resetCodexMarkers()
+	path, _, ok, aborted, unsure := TranscriptFingerprintListCtx(context.Background(), named, "", "codex")
+	assert.True(t, ok)
+	assert.False(t, aborted || unsure)
+	assert.Contains(t, path, named)
+	_, _, ok, aborted, unsure = TranscriptFingerprintListCtx(context.Background(), "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee2", "", "codex")
+	assert.False(t, ok)
+	assert.False(t, aborted)
+	assert.True(t, unsure, "not found by name: not told, not 'no transcript'")
+	assert.Zero(t, codexMarkerCount(), "no rollout was opened to look for a marker")
+	// another agent type is never unsure: its lookup is a stat
+	_, _, ok, _, unsure = TranscriptFingerprintListCtx(context.Background(), "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee2", "", "claude")
+	assert.False(t, ok || unsure)
+}

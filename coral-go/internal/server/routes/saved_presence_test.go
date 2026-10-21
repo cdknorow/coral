@@ -190,12 +190,18 @@ func TestSavedPresenceBelievesNoTranscriptForAMinute(t *testing.T) {
 	r.clock = r.clock.Add(2 * time.Second)
 	_, _ = r.ask("gone-session", "k")
 	assert.Equal(t, 2, r.fpCalls, "after the minute it is looked for again")
-	// a cut-off (the budget ended) says nothing and keeps nothing
+	// a lookup that is cut off (or that only a scan could answer) says nothing, and is not tried again for a minute: the next lists get on to the other bookmarks
 	r.aborted = true
 	for i := 0; i < 2; i++ {
-		_, _ = r.ask("slow-session", "k")
+		found, reachable, known := r.c.check(context.Background(), r.secret, "slow-session", "codex", []string{"k"})
+		assert.False(t, known, "not told")
+		assert.False(t, reachable)
+		assert.Nil(t, found)
 	}
-	assert.Equal(t, 4, r.fpCalls, "each cut-off asks again: it was not remembered as 'no transcript'")
+	assert.Equal(t, 3, r.fpCalls, "tried once, then believed not told")
+	r.clock = r.clock.Add(61 * time.Second)
+	_, _, _ = r.c.check(context.Background(), r.secret, "slow-session", "codex", []string{"k"})
+	assert.Equal(t, 4, r.fpCalls, "after the minute it is tried again")
 	r.aborted = false
 	keys := r.set("slow-session", "p|1|1", "now there")
 	got, ok := r.ask("slow-session", keys[0])

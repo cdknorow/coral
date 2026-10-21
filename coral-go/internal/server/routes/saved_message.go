@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/subgentic/coral/internal/store"
@@ -62,6 +63,10 @@ func (h *SystemHandler) markSavedReasons(ctx context.Context, items []store.Save
 			agentKeys[it.Ref] = append(agentKeys[it.Ref], it.Key)
 		}
 	}
+	// The cheap checks first (a Claude transcript is a stat), the Codex ones last: the budget runs out on those (#5820).
+	sort.SliceStable(agentOrder, func(i, j int) bool {
+		return (agentTypes[agentOrder[i]] == "codex") != (agentTypes[agentOrder[j]] == "codex") && agentTypes[agentOrder[j]] == "codex"
+	})
 	boardHave := map[string]map[int64]bool{}
 	if h.savedBoardHas != nil {
 		for project, ids := range boardIDs {

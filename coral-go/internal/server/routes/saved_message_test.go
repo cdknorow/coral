@@ -431,3 +431,22 @@ func TestSavedListWithThousandsOfCodexRolloutsAnswersInsideItsBudget(t *testing.
 	reason := out["items"].([]any)[0].(map[string]any)["reason"]
 	assert.Contains(t, []any{"", "not_reachable"}, reason, "cut off (unmarked) or found missing: never gone")
 }
+
+// #5820: the cheap checks (a Claude transcript is a stat) come before the Codex ones, whatever the order of the bookmarks, so the budget runs out on the expensive ones.
+func TestSavedListChecksClaudeBookmarksBeforeCodexOnes(t *testing.T) {
+	g := newSavedRig(t)
+	var order []string
+	g.h.SetSavedPresence(nil, func(_ context.Context, session, agentType string, keys []string) (map[string]bool, bool, bool) {
+		order = append(order, agentType)
+		return map[string]bool{}, true, true
+	})
+	for i, typ := range []string{"claude", "codex", "claude", "codex"} { // saved in this order, so listed newest first: codex, claude, codex, claude
+		m := agentSave(strings.Repeat("a1", 10), "x")
+		m["ref"], m["agent_type"] = fmt.Sprintf("aaaaaaaa-bbbb-4ccc-8ddd-%012x", i), typ
+		code, out := g.do("POST", "/api/saved", savedAsOperator, m)
+		require.Equal(t, http.StatusOK, code, out)
+	}
+	code, out := g.do("GET", "/api/saved?limit=50", savedAsOperator, nil)
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Equal(t, []string{"claude", "claude", "codex", "codex"}, order)
+}
