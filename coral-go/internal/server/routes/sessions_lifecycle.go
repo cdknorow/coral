@@ -595,13 +595,17 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 	if permMode == "" {
 		permMode = setreg.Enum(userSettings, "default_permission_mode")
 	}
+	cliPath, cerr := agent.LaunchCLI(userSettings, p.agentType) // a broken cli_path_<agent> refuses the restart (#115)
+	if cerr != nil {
+		return "", func(w http.ResponseWriter) { writeError(w, http.StatusUnprocessableEntity, "", cerr.Error()) }
+	}
 	cmd, err := launchCommand(agent.GetAgent(p.agentType), agent.LaunchParams{
 		SessionID:       p.newSessionID,
 		SessionName:     p.newSessionName,
 		ProtocolPath:    h.protocolPath(),
 		Flags:           p.flags,
 		WorkingDir:      p.workdir,
-		CLIPath:         agent.ResolveCLIPath(userSettings, p.agentType), // Settings > CLI paths (#3205)
+		CLIPath:         cliPath, // Settings > CLI paths (#3205)
 		BoardName:       p.board,
 		BoardLabel:      h.boardLabel(p.board),
 		Role:            naming.SubscriberID(p.displayName, p.agentType),
@@ -978,6 +982,10 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 	if permMode == "" {
 		permMode = setreg.Enum(userSettings, "default_permission_mode")
 	}
+	cliPath, cerr := agent.LaunchCLI(userSettings, p.agentType) // a broken cli_path_<agent> refuses the resume (#115)
+	if cerr != nil {
+		return "", func(w http.ResponseWriter) { writeError(w, http.StatusUnprocessableEntity, "", cerr.Error()) }
+	}
 	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
 		SessionID:       p.newSessionID,
 		SessionName:     p.newSessionName,
@@ -985,7 +993,7 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 		ResumeSessionID: resumeID,
 		Flags:           p.flags,
 		WorkingDir:      p.workdir,
-		CLIPath:         agent.ResolveCLIPath(userSettings, p.agentType), // Settings > CLI paths (#3205)
+		CLIPath:         cliPath, // Settings > CLI paths (#3205)
 		BoardName:       p.board,
 		BoardLabel:      h.boardLabel(p.board),
 		Role:            naming.SubscriberID(p.displayName, p.agentType),

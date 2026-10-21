@@ -238,11 +238,16 @@ func resolveLaunchCLI(agentType, cliPath string) (string, error) {
 	if agentType == at.Terminal {
 		return cliPath, nil
 	}
-	checkBin := cliPath
-	if checkBin == "" {
-		if info := agent.GetCLIInfo(agentType); info != nil {
-			checkBin = info.Binary
+	if cliPath != "" {
+		// A configured path that can't be run is an error, never another CLI found on PATH or in the common places (#115).
+		if _, err := agent.FindCLI(map[string]string{agent.CLIPathSettingKey(agentType): cliPath}, agentType); err != nil {
+			return "", err
 		}
+		return cliPath, nil
+	}
+	checkBin := ""
+	if info := agent.GetCLIInfo(agentType); info != nil {
+		checkBin = info.Binary
 	}
 	if checkBin == "" {
 		return cliPath, nil

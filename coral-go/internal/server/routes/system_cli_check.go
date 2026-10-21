@@ -5,6 +5,7 @@ package routes
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/subgentic/coral/internal/agentenv"
 	"net/http"
 	"os"
@@ -63,14 +64,15 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if p := agent.ResolveCLIPath(settings, agentType); p != "" {
-				if _, err := cliLookPath(p); err != nil {
+				if err := configuredCLIRunnable(p); err != nil {
 					writeJSON(w, http.StatusOK, hubCLIReply(r, map[string]any{
 						"found":      false,
 						"status":     tracking.PrereqMissing,
 						"binary":     p,
 						"agent_type": agentType,
 						"configured": true,
-						"message":    "the CLI path set in Settings > CLI paths can't be run: fix it or clear it to use the one on PATH",
+						"setting":    agent.CLIPathSettingKey(agentType), // launch refuses the same way (#115)
+						"message":    fmt.Sprintf("the CLI path set in Settings > CLI paths (%s = \"%s\") can't be run; Coral does not run another program in its place: fix it or clear it to use the one on PATH", agent.CLIPathSettingKey(agentType), p),
 					}))
 					return
 				}
@@ -150,6 +152,9 @@ func hubCLIReply(r *http.Request, m map[string]any) map[string]any {
 		return m
 	}
 	delete(m, "path")
+	if key, ok := m["setting"].(string); ok { // the message names the path; through the Hub it names the setting only
+		m["message"] = fmt.Sprintf("the CLI path set in Settings > CLI paths (%s) can't be run; Coral does not run another program in its place: fix it or clear it to use the one on PATH", key)
+	}
 	if info := agent.GetCLIInfo(r.URL.Query().Get("type")); info != nil {
 		if _, ok := m["binary"]; ok {
 			m["binary"] = info.Binary
@@ -236,4 +241,13 @@ func probeCLIVersion(parent context.Context, path string) (version, probe string
 		return "", probeTimeout
 	}
 	return "", probeFailed
+}
+
+// configuredCLIRunnable reports why a configured CLI path can't be run, as FindCLI does for launch (#115).
+func configuredCLIRunnable(p string) error {
+	resolved, err := cliLookPath(p)
+	if err != nil {
+		return err
+	}
+	return agent.CheckRunnable(resolved)
 }
