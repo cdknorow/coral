@@ -24,6 +24,7 @@ SERVER_PID=""
 
 cleanup() {
     local exit_code=$?
+    coral_test_watchdog_stop
     if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
@@ -43,6 +44,7 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+coral_test_watchdog   # a hang fails this runner within CORAL_TEST_WATCHDOG_S (default 900 s), not the whole run (#116)
 
 log()  { echo "[teams-test] $*"; }
 pass() { PASS=$((PASS + 1)); log "PASS: $*"; }

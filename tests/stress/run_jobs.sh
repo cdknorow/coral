@@ -23,6 +23,7 @@ SERVER_PID=""
 # ── Helpers ──────────────────────────────────────────────────────────
 
 cleanup() {
+    coral_test_watchdog_stop
     if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
@@ -31,6 +32,7 @@ cleanup() {
     coral_test_rm_tree "$TMPDIR_JOBS"
 }
 trap cleanup EXIT
+coral_test_watchdog   # a hang fails this runner within CORAL_TEST_WATCHDOG_S (default 900 s), not the whole run (#116)
 
 log()  { echo "[jobs-test] $*"; }
 pass() { PASS=$((PASS + 1)); log "PASS: $*"; }
