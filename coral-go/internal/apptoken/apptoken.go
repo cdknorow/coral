@@ -45,16 +45,23 @@ type Native struct {
 
 // ShimScript is the init script that gives the dashboard origin its page-facing functions. On any other
 // origin it deletes them (they are never installed there) and the natives stay token-checked.
-// The token lives only in the closure of each function: toString() on a shim shows no secret.
+// The token lives only in the closure of each function: toString() on a shim shows no secret. Each native is CAPTURED when the init
+// script runs (before the page's own scripts, and after the Bind scripts that define it) and Reflect.apply is captured too, so a
+// script on the dashboard origin that later replaces window.__coralNative* (or Function.prototype.apply, or Array.prototype.push) can not
+// make a shim hand it the token (#78 W1, QA's Q1). That script can still call the shims, which it could always do; and the webview's own
+// wrapper reads window.external.invoke and JSON.stringify when it runs, so the dashboard origin remains a trusted origin.
 func (g *Guard) ShimScript(origin string, natives []Native) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "(function(){ if (location.origin !== %s) {", strconv.Quote(origin))
 	for _, n := range natives {
 		fmt.Fprintf(&b, " try { delete window.%s; } catch (e) {}", n.Page)
 	}
-	b.WriteString(" return; } var T = " + strconv.Quote(g.token) + ";")
-	for _, n := range natives {
-		fmt.Fprintf(&b, " window.%s = function(){ var a = [T]; for (var i = 0; i < arguments.length; i++) a.push(arguments[i]); return window.%s.apply(window, a); };", n.Page, n.Native)
+	b.WriteString(" return; } var T = " + strconv.Quote(g.token) + "; var call = Reflect.apply;")
+	for i, n := range natives {
+		fmt.Fprintf(&b, " var n%d = window.%s;", i, n.Native)
+	}
+	for i, n := range natives {
+		fmt.Fprintf(&b, " if (typeof n%d === 'function') window.%s = function(){ var a = [T]; for (var i = 0; i < arguments.length; i++) a[i + 1] = arguments[i]; return call(n%d, window, a); }; else { try { delete window.%s; } catch (e) {} }", i, n.Page, i, n.Page)
 	}
 	b.WriteString(" })();")
 	return b.String()
