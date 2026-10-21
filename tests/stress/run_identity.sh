@@ -36,6 +36,8 @@ STRICT=0
 [[ "${1:-}" == "--strict" || "${IDENTITY_STRICT:-0}" == 1 ]] && STRICT=1
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/backend.sh"
+coral_test_backend_only tmux "its #3421 checks read the tmux server's global environment (show-environment -g)"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CORAL_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)/coral-go"
@@ -130,7 +132,7 @@ env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$TMP/h" PATH="$CORAL_TEST_ST
     CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 CORAL_TMUX_NO_FALLBACK=1 \
     MOCK_AGENT_CORAL_BOARD="$BIN/coral-board" MOCK_AGENT_ENV_DUMP="$DUMP" MOCK_AGENT_BLIND_PREFIX=id-blind \
     CORAL_TEST_LOGIN_TOKEN_TTL=3s \
-    "$BIN/coral" --home "$DATA" --no-browser --cloud-url off --host 127.0.0.1 --port "$PORT" --backend tmux \
+    "$BIN/coral" --home "$DATA" --no-browser --cloud-url off --host 127.0.0.1 --port "$PORT" --backend "$CORAL_TEST_BACKEND" \
     $([[ $STRICT == 1 ]] && echo --strict-local-auth || echo --strict-local-auth=false) >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
 wait_until 30 "the server" curl -fsS -m 2 "$BASE/api/health" -o /dev/null || exit 1

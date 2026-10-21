@@ -7,6 +7,7 @@ set -euo pipefail
 export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/backend.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -108,7 +109,7 @@ log "Starting coral server on port $PORT..."
 # ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
 mkdir -p "$TMPDIR_TEAMS/host-home"
 coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
-env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_TEAMS/host-home" PATH="$CORAL_TEST_STUB_BIN:$PATH" "$TMPDIR_TEAMS/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_TEAMS/server.log" 2>&1 &
+env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_TEAMS/host-home" PATH="$CORAL_TEST_STUB_BIN:$PATH" "$TMPDIR_TEAMS/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend "$CORAL_TEST_BACKEND" >"$TMPDIR_TEAMS/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 

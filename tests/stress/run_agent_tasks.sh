@@ -16,6 +16,7 @@
 set -euo pipefail
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/backend.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -170,7 +171,7 @@ mkdir -p "$TMPDIR_AT/env-dump"
 coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
 env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR -u CORAL_CLOUD_URL HOME="$TMPDIR_AT/host-home" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
     MOCK_AGENT_ENV_DUMP="$TMPDIR_AT/env-dump" \
-    "$TMPDIR_AT/coral" --home "$CORAL_DATA_DIR" --no-browser --cloud-url off --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_AT/server.log" 2>&1 &
+    "$TMPDIR_AT/coral" --home "$CORAL_DATA_DIR" --no-browser --cloud-url off --host "$HOST" --port "$PORT" --backend "$CORAL_TEST_BACKEND" >"$TMPDIR_AT/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 

@@ -20,6 +20,8 @@ set -euo pipefail
 export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/backend.sh"
+coral_test_backend_only tmux "its checks read the tmux socket (has-session) to see which agents a kill-all ended"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -79,7 +81,7 @@ log "Starting coral on $BASE_URL (data $CORAL_DATA_DIR) ..."
 mkdir -p "$TMP/host-home"
 coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
 env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u TMUX -u TMUX_PANE -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMP/host-home" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
-    "$TMP/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMP/server.log" 2>&1 &
+    "$TMP/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend "$CORAL_TEST_BACKEND" >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
 # Ready only when OUR server says it bound the port (its own log line), not when anything answers.
 for _ in $(seq 1 60); do

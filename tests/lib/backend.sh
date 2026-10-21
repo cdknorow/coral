@@ -57,3 +57,12 @@ coral_test_home_env() {
         printf 'HOME=%s\n' "$h"
     fi
 }
+
+# coral_test_backend_only BACKEND REASON: a runner whose checks read that backend's internals
+# (tmux sockets, show-environment) runs only on it; on another backend it says why and exits 0.
+coral_test_backend_only() {
+    if [[ "$CORAL_TEST_BACKEND" != "$1" ]]; then
+        echo "[SKIP] $(basename "$0") runs only with CORAL_TEST_BACKEND=$1: $2" >&2
+        exit 0
+    fi
+}

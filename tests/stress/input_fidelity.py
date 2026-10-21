@@ -153,6 +153,8 @@ def text_cases():
     ]
 
 
+AUTOMATED_SUBSET = {"plain", "keyname-text-Enter", "multiline-3", "unicode", "specials", "10KB-multiline"}
+
 KEY_CASES = [
     # (id, keys, the bytes an agent expects for them: a tmux key name means that key)
     ("key-Enter", ["Enter"], [b"\r"]),
@@ -259,7 +261,9 @@ def run(args):
     # ── 2. /send as a person (dashboard cookie: direct, no gate) and 3. as automation (gate) ──
     for human, path in ((True, "send (dashboard)"), (False, "send (automated, gate)")):
         for cid, text in text_cases():
-            if not human and cid.startswith("100KB"):
+            # The gate can hold each automated send while the agent is "in a turn" (a mock sends no
+            # hook events, so up to its 2-minute staleness): a representative subset there.
+            if not human and cid not in AUTOMATED_SUBSET:
                 continue
             off = agent.size()
             want = expect_text(text)
@@ -277,6 +281,8 @@ def run(args):
     # ── 4. /keys: tmux key names ──
     for human, path in ((True, "keys (dashboard)"), (False, "keys (automated, gate)")):
         for cid, keys, wants in KEY_CASES:
+            if not human and cid not in ("key-Enter", "key-Escape", "key-Up"):
+                continue  # held by the gate like automated sends: a subset
             off = agent.size()
             st, resp = coral.call("POST", "/api/sessions/live/%s/keys" % agent.name,
                                   dict(agent.target(), keys=keys), human=human)
