@@ -90,6 +90,8 @@ type RunningServer struct {
 	lockPath   string
 	// workflows runs workflow steps; Shutdown stops what is in progress (#3997).
 	workflows *background.WorkflowRunner
+	// stopFirewall ends the firewall re-checks (#97): Shutdown and Close call it.
+	stopFirewall context.CancelFunc
 }
 
 // NewLoginLink returns a fresh single-use dashboard sign-in link on this computer
@@ -112,6 +114,9 @@ func (rs *RunningServer) NewLoginLink(port int) (string, error) {
 func (rs *RunningServer) Shutdown(timeout time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	if rs.stopFirewall != nil {
+		rs.stopFirewall() // the firewall re-checks end with the server, whatever ctx Start was given (#97)
+	}
 	// Open sockets are hijacked connections, which Shutdown below neither waits for nor ends (#5366).
 	routes.CloseWebsockets()
 	if err := rs.HTTPServer.Shutdown(ctx); err != nil {
@@ -157,6 +162,9 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 // Close stops the server's background work and closes its databases (the board's, then the
 // sessions database) and the instance lock. Call it after Shutdown.
 func (rs *RunningServer) Close() {
+	if rs.stopFirewall != nil {
+		rs.stopFirewall()
+	}
 	if rs.Server != nil {
 		rs.Server.Close() // its loops and the board database, before the sessions database (#3914)
 	}
@@ -208,7 +216,9 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if err != nil {
 		return nil, err
 	}
+	stopFirewall := func() {} // ends the firewall re-checks (started below), whatever ctx the caller passed
 	closeDB := func(err error) (*RunningServer, error) {
+		stopFirewall()
 		db.Close()
 		return nil, err
 	}
@@ -235,7 +245,11 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	}
 	// The DNS-rebinding check accepts exactly the names Coral listens on (#3594).
 	auth.SetListenHosts(cfg.ListenHosts())
-	go startFirewallCheck(ctx) // Windows: warn about a firewall rule broader than Coral needs (read-only, #97)
+	// The re-checks end with the server (Shutdown, or a Start that fails later), not only with the caller's ctx: a caller may pass
+	// context.Background().
+	fwCtx, fwCancel := context.WithCancel(ctx)
+	stopFirewall = fwCancel
+	go startFirewallCheck(fwCtx) // Windows: warn about a firewall rule broader than Coral needs (read-only, #97)
 	if tlsConfig != nil {
 		for i := range lns {
 			lns[i] = newSniffListener(lns[i], tlsConfig)
@@ -297,14 +311,15 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 
 	releaseOnError = false
 	return &RunningServer{
-		workflows:  workflows,
-		HTTPServer: httpServer,
-		Server:     srv,
-		LoginToken: loginToken,
-		DB:         db,
-		Backend:    backend,
-		instance:   instance,
-		lockPath:   lockPath,
+		stopFirewall: fwCancel,
+		workflows:    workflows,
+		HTTPServer:   httpServer,
+		Server:       srv,
+		LoginToken:   loginToken,
+		DB:           db,
+		Backend:      backend,
+		instance:     instance,
+		lockPath:     lockPath,
 	}, nil
 }
 
