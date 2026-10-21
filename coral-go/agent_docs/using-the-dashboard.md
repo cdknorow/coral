@@ -25,12 +25,12 @@ A second change while one is still pending is refused with a message. The API be
 
 ## See the model and thinking level in the agent list
 
-Under each agent's name the list can show one line of what that agent runs: its provider, its model and its thinking level, for example `Claude · Opus 5.5 · High`. It is read from the CLI's own transcript, so it is what the newest turn used. Before an agent's first reply the level is the one it was *started* with, and the agent's hover card says so (`High (as started)`).
+Under each agent's name the list can show one line of what that agent runs: its provider, its model and its thinking level, for example `Claude · Opus 5.5 · High`. For Claude and Codex it is read from the CLI's own transcript, so it is what the newest turn used. Before an agent's first reply the level is the one it was *started* with, and the agent's hover card says so (`High (as started)`).
 
 ![The agent list with Show provider, Show model and Show thinking level on: three agents' lines: Claude · Opus 4.1 · High, Claude · Opus 4.1 · Medium, and Claude · Opus 4.1 with no level](docs-img/agent-line-options.png)
 
 - **Three options** in the **Display** panel (see [Filter and sort the agent list](#filter-and-sort-the-agent-list)): **Show provider**, **Show model** and **Show thinking level**. Each is on by default, is remembered in this browser, and turns one word of the line on or off. With **Show model** and **Show thinking level** both off, the provider alone is shown. Someone who had turned the old single "Show agent type" switch off keeps it off for all three until they change one.
-- **Only what is on record.** A plain terminal has none of the three, and Pi reports no thinking level, so its line has none. Claude, Codex and Antigravity show the level an agent was started with until its first reply records the real one. An agent started with no level shows none until then. An agent with nothing to show has no line, so the list does not grow a line per agent. Under the options the panel says how many agents have no thinking level on record.
+- **Only what is on record.** A plain terminal has none of the three, and Pi reports no thinking level, so its line has none. Claude and Codex show the level an agent was started with until its first reply records the real one; Antigravity keeps showing the level it was started with. An agent started with no level shows none until then. An agent with nothing to show has no line, so the list does not grow a line per agent. Under the options the panel says how many agents have no thinking level on record.
 - **The hover card.** Hover an agent row and its card has **Model** and **Thinking** rows, independent of the three options.
 
 ## See cost by provider, model and thinking level
