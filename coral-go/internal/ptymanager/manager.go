@@ -134,7 +134,22 @@ func (m *PTYBackend) SendInput(name string, data []byte) error {
 	if !ok || !s.isRunning() {
 		return fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
 	}
-	return s.sendInput(data)
+	if err := s.sendInput(data); err != nil {
+		if !s.isRunning() {
+			return fmt.Errorf("%w: session %q ended: %v", ErrTerminalGone, name, err) // the process went between the check and the write
+		}
+		return err
+	}
+	return nil
+}
+
+// CursorKeysApp reports whether the session's program turned on application cursor-key mode (DECCKM): its arrow
+// keys are then ESC O x, not ESC [ x.
+func (m *PTYBackend) CursorKeysApp(name string) bool {
+	m.mu.RLock()
+	s, ok := m.sessions[name]
+	m.mu.RUnlock()
+	return ok && s.cursorKeysApp.Load()
 }
 
 // promptSubmitDelay (a field of waits(), seams.go) separates a bracketed paste from the submitting Enter.
@@ -264,7 +279,7 @@ func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
 	s, ok := m.sessions[name]
 	m.mu.RUnlock()
 	if !ok {
-		return fmt.Errorf("session %q not found", name)
+		return fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
 	}
 	s.promptSemOnce.Do(func() { s.promptSem = make(chan struct{}, 1) })
 	select {

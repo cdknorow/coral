@@ -26,6 +26,8 @@ type waitTimings struct {
 	surveyRetryGap time.Duration
 	// promptSubmitDelay separates a bracketed paste from the submitting Enter.
 	promptSubmitDelay time.Duration
+	// rawKeyGap separates the keys of one /keys request.
+	rawKeyGap time.Duration
 }
 
 var waitsP atomic.Pointer[waitTimings]
@@ -40,6 +42,7 @@ func init() {
 		surveyPoll:            150 * time.Millisecond,
 		surveyRetryGap:        30 * time.Second,
 		promptSubmitDelay:     150 * time.Millisecond,
+		rawKeyGap:             100 * time.Millisecond,
 	})
 }
 

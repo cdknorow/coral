@@ -154,28 +154,58 @@ func (p *PTYSessionTerminal) SendEnter(_ context.Context, name, _, sessionID str
 	return p.backend.SendInput(key, []byte("\r"))
 }
 
-// SendArrow implements ArrowSender: the cursor key's escape sequence (Claude Code's and Codex's input
-// readers take it in either cursor-key mode).
+// SendArrow implements ArrowSender: the cursor key, encoded for the cursor-key mode the program asked for (DECCKM),
+// as tmux encodes Up and Down for its pane (agy's and Gemini's menus read it).
 func (p *PTYSessionTerminal) SendArrow(_ context.Context, name, _, sessionID string, up bool) error {
 	key, err := p.keyFor(name, sessionID)
 	if err != nil {
 		return err
 	}
-	seq := "\x1b[B"
+	arrow := "Down"
 	if up {
-		seq = "\x1b[A"
+		arrow = "Up"
 	}
-	return p.backend.SendInput(key, []byte(seq))
+	b, err := KeyBytes(arrow, p.backend.CursorKeysApp(key)) // ESC O A / ESC O B in application cursor-key mode, as tmux sends them
+	if err != nil {
+		return err
+	}
+	return p.backend.SendInput(key, b)
 }
 
-func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, sessionID string) error {
+// ValidateKeys implements KeyValidator: every entry of a /keys request is a key name, a single character or digits.
+func (p *PTYSessionTerminal) ValidateKeys(keys []string) error {
+	for _, k := range keys {
+		if _, err := KeyBytes(k, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SendRawInput sends key names as tmux does: Enter, Escape, Up, C-c and the rest of namedKeys become their bytes
+// (the arrows for the cursor-key mode the program is in), a single character or digits are typed, and any other
+// entry is refused with ErrUnknownKey before anything is sent. Keys go 100 ms apart, as tmux's go: a program reading
+// them one read at a time (Escape, Escape) takes each as its own key.
+func (p *PTYSessionTerminal) SendRawInput(ctx context.Context, name string, keys []string, _, sessionID string) error {
 	resolved, err := p.keyFor(name, sessionID)
 	if err != nil {
 		return err
 	}
-	for _, key := range keys {
-		if err := p.backend.SendInput(resolved, []byte(key)); err != nil {
+	if err := p.ValidateKeys(keys); err != nil {
+		return err
+	}
+	for i, key := range keys {
+		b, err := KeyBytes(key, p.backend.CursorKeysApp(resolved))
+		if err != nil {
 			return err
+		}
+		if err := p.backend.SendInput(resolved, b); err != nil {
+			return err
+		}
+		if i < len(keys)-1 {
+			if err := sleepCtx(ctx, waits().rawKeyGap); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
