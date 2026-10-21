@@ -1,0 +1,63 @@
+== person typed text
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=typed text="[typed 7 bytes]"
+== person Enter
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== person digits
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=typed text="[typed 6 bytes]"
+== person Ctrl-C
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="C-c"
+== person arrow key
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=raw len=3 text="\x1b[A"
+== person typed text with an arrow
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=typed text="[typed 6 bytes]"
+== coral terminal input
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=text len=11 text="coral's own"
+== person sent line
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=typed text="[typed 22 bytes]"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== coral sent line
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=text len=7 text="echo hi"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== person multi-line (a paste)
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=typed text="[typed 29 bytes]"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== person prompt, hint on
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=typed text="[typed 29 bytes]"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== person prompt, hint off
+error the agent terminal is not accepting multi-line paste right now (bracketed paste mode is off or could not be confirmed); try again when the agent is at its prompt
+== person prompt, hint unknown
+error the agent terminal is not accepting multi-line paste right now (bracketed paste mode is off or could not be confirmed); try again when the agent is at its prompt
+== coral line with control characters
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=text len=19 text="echo \ahi\x1b[31m there"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== coral multi-line
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=paste len=18 text="one\ntwo\x1b[201~three"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== coral CRLF paste
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=paste len=8 text="one\r\ntwo"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== coral text of only control characters
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=text len=7 text="\a\x1b[31m\x1b"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== coral multi-line of only control characters
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=paste len=3 text="\a\n\x1b"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== coral prompt, hint on
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=paste len=28 text="a prompt\nwith two lines[201~"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== coral prompt, hint off
+error the agent terminal is not accepting multi-line paste right now (bracketed paste mode is off or could not be confirmed); try again when the agent is at its prompt
+== coral prompt, hint unknown
+error the agent terminal is not accepting multi-line paste right now (bracketed paste mode is off or could not be confirmed); try again when the agent is at its prompt
+== unmarked multi-line (today it is logged in full)
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=paste len=29 text="line one\nline two: xyz-secret"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== unmarked prompt, hint on
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=paste len=29 text="line one\nline two: xyz-secret"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Enter"
+== named keys
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Escape"
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="C-c"
+== person named keys
+log target=T source=tmux.TestTerminalInputGoldenTmux kind=keys keys="Up"
