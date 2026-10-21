@@ -93,7 +93,7 @@
 1	chat_tool_cards.js	renderDiffLines(tool.old_string || "", tool.new_string || "")
 1	chat_tool_cards.js	renderPatchLines(tool.patch)
 1	chat_tool_cards.js	trim
-3	cli_dialogs.js	name
+2	cli_dialogs.js	name
 1	cli_dialogs.js	where
 1	commits.js	agent
 1	commits.js	branch

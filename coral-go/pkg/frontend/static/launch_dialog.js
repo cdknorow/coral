@@ -11,7 +11,7 @@ const { launch } = await importOnce('./launch_state.js');
 const { _effectiveServer, _loadServerSettings, _serverSettings, _settingsFor } = await importOnce('./launch_models.js');
 const { _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 const { _checkAgentCLI } = await importOnce('./cli_check.js');
-const { _syncACFModelField, getAgentConfig, renderAgentConfigForm } = await importOnce('./agent_config_form.js');
+const { _syncACFModelField, getAgentConfig, renderAgentConfigForm, cliWarningOf } = await importOnce('./agent_config_form.js');
 const { _checkPermissionFlag } = await importOnce('./cli_dialogs.js');
 const { _checkTeamGitDir, _initTeamForm, _loadExistingTeamBoards } = await importOnce('./team_dialogs.js');
 const { _initAgentPresets } = await importOnce('./persona_io.js');
@@ -35,6 +35,7 @@ function _selectLaunchType(type) {
             defaultNote: true,
             showPreset: false,
             showName: false,
+            cliSlot: 'launch-cli-slot', // a missing CLI is said under the folder, not only inside More options (#5835)
             sections: true, // New Agent is a sectioned dialog (#4950): Workspace, then the form's own sections, the board in Advanced
             adopt: { advanced: 'launch-advanced-extra' },
             value: { agentType: _settingsFor(_effectiveServer(launch.server)).default_agent_type || 'claude' },
@@ -176,7 +177,7 @@ async function _onLaunchServerChange(value, { force = false } = {}) {
     document.querySelectorAll('#launch-modal [data-acf-uid], #team-agent-modal [data-acf-uid]').forEach(c => {
         if (c.querySelector('.acf-agent-type')) {
             _syncACFModelField(c);
-            _checkAgentCLI(c.querySelector('.acf-agent-type').value || 'claude', c.querySelector('.acf-cli-warning'));
+            _checkAgentCLI(c.querySelector('.acf-agent-type').value || 'claude', cliWarningOf(c));
         }
     });
 }

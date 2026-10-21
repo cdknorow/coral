@@ -4460,3 +4460,11 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .settings-unit-field { display: inline-flex; align-items: center; gap: 6px; }
 .settings-unit-field input[type="number"] { width: 6rem; }
 .settings-field-unit { color: var(--text-secondary); font-size: var(--fs-base); }
+
+/* The missing-CLI line of the New Agent dialog sits under the folder, outside More options (#5835): nothing shows while it has nothing to say. */
+.launch-cli-slot:empty { display: none; }
+.launch-cli-slot { margin: 10px 26px 0; font-size: 0.8125rem; line-height: 1.5; color: var(--text-secondary); }
+.launch-cli-slot .acf-cli-warning { margin: 0 !important; } /* the form gave it a margin inline */
+.launch-cli-slot .acf-cli-warning code { color: var(--text-primary); overflow-wrap: anywhere; }
+.launch-cli-slot .acf-cli-warning .cli-install-link a { color: var(--link-text); }
+.launch-cli-slot .acf-cli-warning .btn { margin: 8px 0 0; }
