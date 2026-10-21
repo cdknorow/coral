@@ -159,7 +159,7 @@ func TestExitNoticeOncePerBurstWithFixedLabels(t *testing.T) {
 
 func TestExitNoticeSkipsAgentsWokenAndCleansNames(t *testing.T) {
 	r := newExitRig(t)
-	a := r.agent(1, "@all ​Worker‮\x1b[31m", "429")
+	a := r.agent(1, "@all \u200bWorker\u202e\x1b[31m", "429")
 	b := r.agent(2, "Woken", "429")
 	r.h.AgentsSlept(context.Background(), []string{a, b})
 	require.NoError(t, r.ss.SetSessionSleeping(context.Background(), b, false)) // woken within the window
@@ -169,7 +169,7 @@ func TestExitNoticeSkipsAgentsWokenAndCleansNames(t *testing.T) {
 	assert.Contains(t, notes[0], "1 agent stopped:\n- all Worker: rate limited.")
 	assert.NotContains(t, notes[0], "Woken")
 	assert.NotContains(t, notes[0], "@")
-	assert.NotContains(t, notes[0], "​")
+	assert.NotContains(t, notes[0], "\u200b")
 	assert.NotContains(t, notes[0], "\x1b")
 	assert.NotContains(t, notes[0], "[31m")
 

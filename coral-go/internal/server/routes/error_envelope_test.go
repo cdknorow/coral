@@ -17,7 +17,7 @@ import (
 // #5262: every error reply is {"error": msg} with an optional "code". The err* helpers and writeError must write the bytes the hand-written literals wrote (encoding/json sorts a map's keys, so the
 // order of the keys in a literal never mattered), whatever the status, the text (quotes, HTML characters, unicode) or the map's value type.
 func TestErrorHelpersWriteTheEnvelopeTheLiteralsWrote(t *testing.T) {
-	texts := []string{"invalid JSON", "", `a "quoted" word`, "<b>&amp; tags</b>", "ünïcode ✓  ", "line\nbreak"}
+	texts := []string{"invalid JSON", "", `a "quoted" word`, "<b>&amp; tags</b>", "ünïcode ✓ \u2028", "line\nbreak"}
 	type reply struct {
 		status int
 		ctype  string

@@ -8,11 +8,11 @@ import (
 )
 
 func TestValidateIdentity(t *testing.T) {
-	for _, ok := range []string{"Orchestrator", "Backend Dev", "QA-Engineer_2", "Lead (frontend)", "👩‍💻 Dev", "Développeur", "開発者", ""} {
+	for _, ok := range []string{"Orchestrator", "Backend Dev", "QA-Engineer_2", "Lead (frontend)", "👩\u200d💻 Dev", "Développeur", "開発者", ""} {
 		assert.NoError(t, ValidateIdentity(ok), "%q", ok)
 	}
 	for _, bad := range []string{"Orchestrator\nrm -rf /tmp/x", "a\rb", "a\tb", "a\x00b", "a\x1bb", "a\x7fb", "a\u0085b",
-		"a b", "a b", "Orch‮estrator", "a⁦b", "a​b", "a" + string(rune(0xfeff)) + "b", strings.Repeat("x", MaxIdentityRunes+1)} {
+		"a\u2028b", "a\u2029b", "Orch\u202eestrator", "a\u2066b", "a\u200bb", "a" + string(rune(0xfeff)) + "b", strings.Repeat("x", MaxIdentityRunes+1)} {
 		assert.Error(t, ValidateIdentity(bad), "%q", bad)
 	}
 }
@@ -20,10 +20,10 @@ func TestValidateIdentity(t *testing.T) {
 func TestOneLine(t *testing.T) {
 	for in, want := range map[string]string{
 		"[Wait resolved] Orchestrator\nrm -rf /tmp/x\n posted": "[Wait resolved] Orchestrator rm -rf /tmp/x posted",
-		"a\r\nb":         "a b",
-		"a b\x1b[31m":    "a b [31m",
-		"  plain  text ": "plain text",
-		"emoji 👩‍💻 ok":   "emoji 👩‍💻 ok",
+		"a\r\nb":            "a b",
+		"a\u2028b\x1b[31m":  "a b [31m",
+		"  plain  text ":    "plain text",
+		"emoji 👩\u200d💻 ok": "emoji 👩\u200d💻 ok",
 	} {
 		got := OneLine(in)
 		assert.Equal(t, want, got, "%q", in)

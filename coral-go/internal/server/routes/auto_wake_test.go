@@ -212,7 +212,7 @@ func TestAutoWakeNoticeGoesToThatAgentOnly(t *testing.T) {
 	const team = "team-3636"
 	// The agent's board row is the one its wake re-subscribes (subscriber ID and title: its
 	// display name), so the lookup after the wake can't pick another row of the same session.
-	const name = "Dev ‮One\x07"
+	const name = "Dev \u202eOne\x07"
 	r.add(sid(1), name, store.SleepReasonCoralStopped, "", false)
 	_, err := r.h.db.ExecContext(ctx, "UPDATE live_sessions SET board_name = ? WHERE session_id = ?", team, sid(1))
 	require.NoError(t, err)
@@ -307,8 +307,8 @@ func TestPendingAutoWakeIsTakenOnWake(t *testing.T) {
 }
 
 func TestCleanAgentName(t *testing.T) {
-	assert.Equal(t, "Dev One", cleanAgentName("Dev ‮One\x07"))
-	assert.Equal(t, "ab", cleanAgentName("a‏b⁦"))
+	assert.Equal(t, "Dev One", cleanAgentName("Dev \u202eOne\x07"))
+	assert.Equal(t, "ab", cleanAgentName("a\u200fb\u2066"))
 	assert.Len(t, []rune(cleanAgentName(strings.Repeat("x", 200))), 80)
 	// Zero-width and tag characters (Security's NIT), and a name on one line.
 	assert.Equal(t, "Dev One", cleanAgentName("De\u200bv\u200d One\U000E0041"))

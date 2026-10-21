@@ -73,7 +73,7 @@ const base = { enabled: true, installed: '1.4.141', state: 'none', staged: null,
         check('approved as a string and past_approved as the string "true" are ignored', n.approved === null && n.pastApproved === false);
 
         // 2. the pane with hostile notes and a hostile version: text, not markup
-        const NOTES = '<img src=x onerror="window.__pwn=1"><script>window.__pwn=2</script>‮ reversed <a href="javascript:window.__pwn=3">x</a>\n' + '- line\n'.repeat(400);
+        const NOTES = '<img src=x onerror="window.__pwn=1"><script>window.__pwn=2</script>\u202e reversed <a href="javascript:window.__pwn=3">x</a>\n' + '- line\n'.repeat(400);
         await load({ ...base, channel: 'agentic', approved: { version: '1.4.142', approved_at: day(1) }, waiting: [{ version: '1.4.144', published_at: day(9), notes: NOTES }, { version: '1.4.143<img src=x onerror=window.__pwn=4>', published_at: day(1), notes: 'x' }] });
         let p = await pane();
         await ev(`document.querySelector('.update-waiting').open = true; document.querySelector('.update-notes').open = true; true`); await settle(200);

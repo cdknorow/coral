@@ -12,7 +12,7 @@ import (
 //
 //	go test ./internal/board -run '^$' -fuzz FuzzUsableBoardKey -fuzztime 10m
 func FuzzUsableBoardKey(f *testing.F) {
-	for _, s := range []string{"", ".", "..", "team", "my-board_1.2", "a/b", `a\b`, "C:x", "a:b", "x\x00y", "ok\n", "‮txt", "⁦x", "‎", "é", strings.Repeat("a", 256), strings.Repeat("a", 257), "../x", "a/../b", "...", "-flag"} {
+	for _, s := range []string{"", ".", "..", "team", "my-board_1.2", "a/b", `a\b`, "C:x", "a:b", "x\x00y", "ok\n", "\u202etxt", "\u2066x", "\u200e", "é", strings.Repeat("a", 256), strings.Repeat("a", 257), "../x", "a/../b", "...", "-flag"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, key string) {

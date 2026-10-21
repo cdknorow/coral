@@ -188,7 +188,7 @@ func TestReceivedFileNameFollowsTheSniffedType(t *testing.T) {
 	for sent, want := range map[string]string{
 		"../../etc/passwd":             "passwd.png",
 		`..\..\windows\system32\x.exe`: "x.png",
-		"report‮gpj.exe":               "report_gpj.png",
+		"report\u202egpj.exe":          "report_gpj.png",
 		"CON":                          "_CON.png",
 		"CON.txt":                      "_CON.png",
 		"nul.tar.gz":                   "_nul.tar.png",

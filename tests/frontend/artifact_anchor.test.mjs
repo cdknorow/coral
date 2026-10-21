@@ -39,7 +39,7 @@ assert.equal(indexText([]).text, ''); assert.equal(indexText([{ nodeValue: '   '
 // the typed-array index says what the character-by-character one said (#5255): the same text and the same node and offset for every character, over every kind of white space JavaScript's \s knows
 {
     const reference = (ns) => { let text = ''; const at = []; for (const node of ns) { const s = node.nodeValue; for (let i = 0; i < s.length; i++) { const ws = /\s/.test(s[i]); if (ws && (text === '' || text.endsWith(' '))) continue; text += ws ? ' ' : s[i]; at.push({ node, offset: i }); } } if (text.endsWith(' ')) { text = text.slice(0, -1); at.pop(); } return { text, at }; };
-    const alphabet = ['a', 'b', 'é', ' ', ' ', '\n', '\t', '\r', '\v', '\f', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '　', '﻿', '​', '\u0085', '😀'];
+    const alphabet = ['a', 'b', 'é', ' ', ' ', '\n', '\t', '\r', '\v', '\f', ' ', ' ', ' ', ' ', '\u2028', '\u2029', ' ', ' ', '　', '\ufeff', '\u200b', '\u0085', '😀'];
     let seed = 12345; const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
     for (let round = 0; round < 300; round++) {
         const ns = Array.from({ length: rnd(6) }, () => ({ nodeValue: Array.from({ length: rnd(12) }, () => alphabet[rnd(alphabet.length)]).join('') }));

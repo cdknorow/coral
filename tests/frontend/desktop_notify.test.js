@@ -45,8 +45,8 @@ const { JSDOM } = require('jsdom');
     hidden = true;
 
     // hostile names are reduced to short plain text
-    const t = m.alertText('evil‮\n\u0000name' + 'x'.repeat(200), 'a\tb');
-    assert.ok(!/[\u0000-\u001f‮]/.test(t.body));
+    const t = m.alertText('evil\u202e\n\u0000name' + 'x'.repeat(200), 'a\tb');
+    assert.ok(!/[\u0000-\u001f\u202e]/.test(t.body));
     assert.ok(t.body.length < 160);
     assert.strictEqual(m.alertText('', '').body, 'An agent needs input');
 

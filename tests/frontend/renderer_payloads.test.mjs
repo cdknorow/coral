@@ -29,7 +29,7 @@ const PAYLOADS = [
     "&quot; onclick=&quot;sendKeys(1,2)",
     "x\n'); sendKeys('1','2'); ('\n",
     "${sendKeys('1','2')}", "`; sendKeys(1,2); `", "javascript:sendKeys(1,2)",
-    " '); sendKeys(1,2); (' ",
+    "\u2028'); sendKeys(1,2); ('\u2029",
 ];
 const BENIGN = 'agent-one';
 

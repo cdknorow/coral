@@ -33,7 +33,7 @@ const NAME_MAX = 200; // board.MaxIdentityRunes
     'date_from', 'date_to', 'min_duration_sec', 'max_duration_sec'];
 
 // eslint-disable-next-line no-control-regex
-const BAD_NAME_RE = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/;
+const BAD_NAME_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/;
 
 /** A board or team name from a URL segment: decoded once, no control or formatting
  *  characters, at most NAME_MAX characters, at least one visible character, and not "." or
