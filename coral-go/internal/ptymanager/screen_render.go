@@ -40,3 +40,14 @@ func (p *PTYSessionTerminal) RenderedScreen(_ context.Context, name, _, sessionI
 	}
 	return RenderScreen(data, cols, rows), nil
 }
+
+// AgentScreenStyled implements StyledScreenReader for the PTY backend: AgentScreen with each faint cell
+// (SGR 2) marked as tmux's capture-pane -e marks it, so Claude's faint prompt suggestion is not read as a
+// person's draft (#3468, F10).
+func (p *PTYSessionTerminal) AgentScreenStyled(_ context.Context, name, _, sessionID string) (string, error) {
+	key, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return "", err
+	}
+	return p.backend.renderedScreenStyled(key)
+}

@@ -128,7 +128,7 @@ func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterH
 	sr, _ := in.Term.(ScreenReader)
 	rendered := false
 	if rs, ok := in.Term.(RenderedScreen); ok && sr != nil {
-		rendered = rs.RenderedScreen()
+		rendered = rs.HasRenderedScreen()
 	}
 	if in.pasteRetry > 0 && sr != nil {
 		if held, err, decided := g.pasteRetryTurn(ctx, in, sr, rendered, agentType, sessionID); decided {

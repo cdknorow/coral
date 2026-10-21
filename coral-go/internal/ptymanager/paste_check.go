@@ -25,13 +25,16 @@ import (
 // and holds the send (to paste again) when it didn't.
 
 // RenderedScreen is implemented by terminals whose AgentScreen is the rendered pane
-// (tmux), not raw output (a PTY's replay), so the input box's contents can be read
-// from it.
+// (tmux's pane, a PTY session's vtscreen render, #4543), not raw output, so the input
+// box's contents can be read from it. The marker is HasRenderedScreen: the PTY
+// terminal's RenderedScreen(ctx, ...) is another method (RenderedScreenReader).
 type RenderedScreen interface {
-	RenderedScreen() bool
+	HasRenderedScreen() bool
 }
 
-func (t *TmuxSessionTerminal) RenderedScreen() bool { return true }
+func (t *TmuxSessionTerminal) HasRenderedScreen() bool { return true }
+
+func (p *PTYSessionTerminal) HasRenderedScreen() bool { return true }
 
 // pastePrefixRunes is how much of the text identifies it in the input box: enough to
 // tell it from a placeholder, short enough to be on screen however the box wraps.
@@ -56,8 +59,12 @@ func squeeze(s string) string {
 const boxScanLines = 400
 
 // boxStartLine is the index of the input box's first line in lines, or -1: the lowest line that
-// starts like one, then up through that same box (to its border or a blank line) to the topmost
-// such line, since a line of pasted text can itself start with "> " (a quote).
+// starts like one, then up through that same box to the topmost such line, since a line of
+// pasted text can itself start with "> " (a quote). A border or a blank line above the box
+// ends the walk. With neither (an unbordered box, as Codex's and the mock's are), the walk goes
+// only over what can belong to the box: a wrapped line under its marker is indented, so an
+// unindented line that is not the box's marker line ends it (F17: a prompt echoed above the box,
+// or a wrapped line that begins with "> ", is not the box).
 func boxStartLine(lines []string) int {
 	low := -1
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -67,13 +74,37 @@ func boxStartLine(lines []string) int {
 		}
 	}
 	start := low
+	bounded := false
 	for i := low - 1; i >= 0 && low >= 0; i-- {
 		t := strings.TrimSpace(lines[i])
 		if t == "" || isBoxBorder(t) {
+			bounded = true
 			break
 		}
 		if isInputBoxLine(lines[i]) {
 			start = i
+		}
+	}
+	if bounded || low < 0 {
+		return start
+	}
+	// Unbordered: stop at the first line that cannot be part of the box.
+	start = low
+	for i := low - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			break
+		}
+		indented := lines[i][0] == ' ' || lines[i][0] == '	'
+		belowIndented := lines[i+1][0] == ' ' || lines[i+1][0] == '	'
+		marker := isInputBoxLine(lines[i])
+		if !indented && !(marker && belowIndented) {
+			break
+		}
+		if marker {
+			start = i
+		}
+		if !indented {
+			break // the marker line of a wrapped box
 		}
 	}
 	return start

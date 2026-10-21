@@ -97,10 +97,10 @@ var allowedSenders = map[string]sender{
 	"internal/ptymanager/pty_windows.go\twindowsPTY.Write\tpty Write":     {guardPrimitive, "primitive: the ConPTY", ""},
 	"internal/ptymanager/pty_windows.go\twindowsPTY.Terminate\tpty Write": {guardPrimitive, "primitive: the Ctrl-C that starts a session's end on Windows (session.killWithin, recorded in the input log); nothing is typed after it", ""},
 	// The primitives' own implementations, one layer calling the next.
-	"internal/background/runtime_pty.go\tPTYRuntime.SendInput\tSendLine":                                             {guardPrimitive, "primitive", ""},
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendInput\tSendKeys":                                           {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/manager.go\tPTYBackend.SendLine\tSendLineCtx":                                               {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendInput\tSendLineCtx":                         {guardPrimitive, "primitive: carries ctx, so a person's send (inputlog.Human) is logged by length (#60 N3)", ""},
+	"internal/ptymanager/manager.go\tPTYBackend.SendHumanInput\tSendInput":                                           {guardHuman, "a person's keystrokes (the dashboard terminal), recorded for the gate's PTY rule (#3482)", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendPrompt\tSendPrompt":                         {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendRawInput\tSendInput":                        {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendTerminalInput\tSendInput":                   {guardPrimitive, "primitive", ""},

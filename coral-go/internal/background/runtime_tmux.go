@@ -175,7 +175,7 @@ func (r *TmuxRuntime) SendPrompt(ctx context.Context, name, text, agentType, ses
 }
 
 // RenderedScreen implements ptymanager.RenderedScreen: AgentScreen is the pane as drawn.
-func (r *TmuxRuntime) RenderedScreen() bool { return true }
+func (r *TmuxRuntime) HasRenderedScreen() bool { return true }
 
 // SendEnter implements ptymanager.EnterSender: the Enter a send withheld because
 // a prompt opened after its text (#3431).

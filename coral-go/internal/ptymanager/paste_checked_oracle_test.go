@@ -89,7 +89,7 @@ func (p *pcTerm) AgentScreenStyled(ctx context.Context, name, agentType, session
 	return p.AgentScreen(ctx, name, agentType, sessionID)
 }
 
-func (p *pcTerm) RenderedScreen() bool { return p.rendered }
+func (p *pcTerm) HasRenderedScreen() bool { return p.rendered }
 
 func (p *pcTerm) SendPrompt(ctx context.Context, _, text, _, _ string) error {
 	p.mu.Lock()
@@ -310,7 +310,7 @@ func (g *inputGate) pasteCheckedBefore4713(ctx context.Context, in AutomatedInpu
 	sr, _ := in.Term.(ScreenReader)
 	rendered := false
 	if rs, ok := in.Term.(RenderedScreen); ok && sr != nil {
-		rendered = rs.RenderedScreen()
+		rendered = rs.HasRenderedScreen()
 	}
 	if in.pasteRetry > 0 && sr != nil {
 		// Its turn again (#3457 v2): what is in the input box decides. Our text: only

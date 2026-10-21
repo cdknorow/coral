@@ -48,8 +48,8 @@ func (r *PTYRuntime) SpawnAgent(ctx context.Context, name, workDir, logFile, com
 }
 
 func (r *PTYRuntime) SendInput(ctx context.Context, name, text string) error {
-	// Type the text, then submit with the platform's Enter key.
-	return r.backend.SendLine(name, text)
+	// Type the text, then submit with the platform's Enter key (unless the gate's check withholds it).
+	return r.backend.SendLineCtx(ctx, name, text)
 }
 
 // SendPrompt implements ptymanager.PromptSender: automated text as one bracketed
@@ -101,8 +101,20 @@ func (r *PTYRuntime) AgentShellIdle(_ context.Context, name, _, _ string) (bool,
 	return r.backend.ShellIdle(name)
 }
 
-// AgentScreen implements ptymanager.ScreenReader: the end of the session's
-// output, read by the automated-input gate before typing (#3431).
+// AgentScreen implements ptymanager.ScreenReader: the session's output rendered as the
+// screen (as the HTTP senders read it), read by the automated-input gate before typing
+// (#3431). The raw tail only when nothing renders.
 func (r *PTYRuntime) AgentScreen(_ context.Context, name, _, _ string) (string, error) {
+	if s, err := r.backend.RenderedScreenText(name); err == nil && s != "" {
+		return s, nil
+	}
 	return r.backend.ReplayScreen(name)
 }
+
+// AgentScreenStyled implements ptymanager.StyledScreenReader: AgentScreen with faint cells marked.
+func (r *PTYRuntime) AgentScreenStyled(_ context.Context, name, _, _ string) (string, error) {
+	return r.backend.RenderedScreenStyledText(name)
+}
+
+// HasRenderedScreen implements ptymanager.RenderedScreen: AgentScreen is the rendered screen.
+func (r *PTYRuntime) HasRenderedScreen() bool { return true }

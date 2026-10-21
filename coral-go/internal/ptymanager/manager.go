@@ -153,13 +153,18 @@ func (m *PTYBackend) SendLine(name, text string) error {
 }
 
 // SendLineCtx is SendLine for input sent with ctx: a person's (inputlog.Human) is logged by its
-// length only (#60 review N3).
+// length only (#60 review N3), and ctx's WithBeforeEnter check is run just before the Enter, as
+// tmux's typeToTarget does: when a prompt opened after the text was typed it returns
+// tmux.ErrEnterWithheld and the gate holds the Enter (#3431), not letting it answer the prompt.
 func (m *PTYBackend) SendLineCtx(ctx context.Context, name, text string) error {
 	if text != "" {
 		if err := m.sendInput(ctx, name, []byte(text)); err != nil {
 			return err
 		}
 		time.Sleep(lineSubmitDelay)
+	}
+	if !tmux.EnterAllowed(ctx) {
+		return tmux.ErrEnterWithheld
 	}
 	return m.sendInput(ctx, name, []byte(EnterKey))
 }
