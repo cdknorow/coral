@@ -393,6 +393,8 @@ var forwardToConnector = map[string]bool{
 	"Cache-Control": true, "Last-Event-Id": true, "User-Agent": true,
 	// The Coral Hub user behind a board write (#3377, #3404); only on those routes, see below.
 	tunnel.HubUserHeader: true,
+	// The client's request id, only on the five routes that take it (#5841), see below.
+	tunnel.IdempotencyKeyHeader: true,
 }
 
 // allowlistHeaders keeps the allowlisted headers of a request to method and the
@@ -405,9 +407,10 @@ var forwardToConnector = map[string]bool{
 // it there too.
 func allowlistHeaders(h http.Header, method, decodedPath string) {
 	hubUser := tunnel.ForwardsHubUser(method, decodedPath)
+	idem := tunnel.ForwardsIdempotencyKey(method, decodedPath)
 	for k := range h {
 		canon := http.CanonicalHeaderKey(k)
-		if !forwardToConnector[canon] || (canon == tunnel.HubUserHeader && !hubUser) {
+		if !forwardToConnector[canon] || (canon == tunnel.HubUserHeader && !hubUser) || (canon == tunnel.IdempotencyKeyHeader && !idem) {
 			delete(h, k)
 		}
 	}

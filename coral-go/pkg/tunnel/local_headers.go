@@ -41,6 +41,8 @@ var forwardRequestHeaders = map[string]bool{
 	// The sending team of a relayed message or file, and the marker of a link snapshot (#5572): each forwarded only on its own routes (scrub).
 	"X-Coral-Hub-Source-Team": true,
 	"X-Coral-Hub-Links":       true,
+	// The client's request id for the five routes that start something (#5841): forwarded only on those routes (scrub).
+	"Idempotency-Key": true,
 }
 
 // HubUserHeader names the Coral Hub user behind a tunnel board write: the sender of a
@@ -53,13 +55,30 @@ const HubUserHeader = "X-Coral-Hub-User"
 var hubUserRoute = regexp.MustCompile(`^/api/board/[^/]+/.+$`)
 
 // ForwardsHubUser reports whether X-Coral-Hub-User is forwarded for a request: a write
-// (not GET or HEAD) to /api/board/{project}/... The hub (pkg/hubproxy) and the connector
-// apply the same rule.
+// (not GET or HEAD) to /api/board/{project}/..., and a POST to one of the five routes that
+// take an Idempotency-Key (#5841: the key is scoped to the hub user). The hub (pkg/hubproxy)
+// and the connector apply the same rule.
 func ForwardsHubUser(method, decodedPath string) bool {
+	if ForwardsIdempotencyKey(method, decodedPath) {
+		return true
+	}
 	if method == http.MethodGet || method == http.MethodHead {
 		return false
 	}
 	return hubUserRoute.MatchString(decodedPath)
+}
+
+// IdempotencyKeyHeader is the client's request id for a request that starts something (#5841): Coral answers a repeat of the same request (same hub user, same route, same key, same
+// body) with the first answer instead of starting a second agent or team.
+const IdempotencyKeyHeader = "Idempotency-Key"
+
+// idempotentRoute is the five routes that take an Idempotency-Key: launch, launch-team, one agent's resume and wake (not a team's), and a one-shot task run.
+var idempotentRoute = regexp.MustCompile(`^/api/(sessions/(launch|launch-team)|sessions/live/[^/]+/(resume|wake)|tasks/run)$`)
+
+// ForwardsIdempotencyKey reports whether Idempotency-Key is forwarded for a request: a POST to one of those five routes, and nothing else. The hub (pkg/hubproxy) and the connector apply
+// the same rule.
+func ForwardsIdempotencyKey(method, decodedPath string) bool {
+	return method == http.MethodPost && idempotentRoute.MatchString(decodedPath)
 }
 
 // HubServerHeader names the other Coral (its Coral Hub server id) that a relayed
@@ -127,6 +146,9 @@ func scrub(h http.Header, method, decodedPath string) http.Header {
 	}
 	if !ForwardsHubUser(method, decodedPath) {
 		out.Del(HubUserHeader)
+	}
+	if !ForwardsIdempotencyKey(method, decodedPath) {
+		out.Del(IdempotencyKeyHeader)
 	}
 	if !ForwardsHubServer(method, decodedPath) {
 		out.Del(HubServerHeader)
