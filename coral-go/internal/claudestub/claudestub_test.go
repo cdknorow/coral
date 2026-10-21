@@ -113,6 +113,7 @@ func TestPrintModeWhileALoginIsOpenOrAuthHangsWaitsAndIsLogged(t *testing.T) {
 		// Wait for the run to be on record (the stub writes it as it starts, so on a loaded machine that can take a while: no fixed limit), then show it is still waiting behind the login a moment
 		// later, and end it. A run killed before it recorded anything proved nothing (#5633).
 		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel() // a failing wait below must not leave the stub's sleeper running
 		cmd := exec.CommandContext(ctx, s.Path(), "-p", "--model", "haiku")
 		cmd.Stdin = strings.NewReader("")
 		require.NoError(t, cmd.Start(), st)
