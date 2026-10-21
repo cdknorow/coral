@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -202,16 +203,64 @@ func formatEnvExport(key, value string) string {
 }
 
 // formatCatSubstitution returns a command substitution that reads a file's
-// contents inline. On bash/zsh: $(cat 'path'). On PowerShell, embedded
-// double-quotes are escaped so the C runtime parses them correctly (see
-// FormatPromptFileArg for the full explanation).
+// contents inline. On bash/zsh: $(cat 'path'). On PowerShell: psFileContent.
 func formatCatSubstitution(path string) string {
 	switch detectShell() {
 	case ShellPowerShell:
-		return fmt.Sprintf("$((Get-Content -Raw -LiteralPath %s) -replace '\"', '\\\"')", shellQuoteLiteral(path))
+		return psFileContent(path)
 	default:
 		return fmt.Sprintf("$(cat %s)", shellQuoteLiteral(path))
 	}
+}
+
+// psFileContent is a PowerShell subexpression with a file's content, for an argument to a
+// native program. For Windows PowerShell 5.1 (legacyNativeArgs) it is escaped as
+// psquote.NativeArg escapes a value: each run of backslashes before a " doubled and the "
+// escaped, the backslashes at the end doubled (5.1 quotes a prompt, which has spaces). pwsh
+// 7.3+ escapes the argument itself. The file is read as UTF-8, as Coral writes it (5.1 reads
+// a file without a byte-order mark in the ANSI code page: a prompt's "—" arrived as "â€”").
+func psFileContent(path string) string {
+	if !legacyNativeArgs() {
+		return fmt.Sprintf("$(Get-Content -Raw -Encoding UTF8 -LiteralPath %s)", shellQuoteLiteral(path))
+	}
+	return fmt.Sprintf(`$((Get-Content -Raw -Encoding UTF8 -LiteralPath %s) -replace '(\\*)"', '$1$1\"' -replace '(\\+)\z', '$1$1')`, shellQuoteLiteral(path))
+}
+
+// legacyNativeArgs reports whether the PowerShell that runs the launch line passes arguments
+// to native programs the Windows PowerShell 5.1 way, so the line escapes them itself
+// (psquote.LegacyNativeArgs): the shell the agent's terminal starts (ptymanager's pickShell:
+// CORAL_SHELL unless it names cmd.exe, else the first of psquote.PowerShells on PATH).
+// Never on other OSes. The PATH search is remembered for the same CORAL_SHELL and PATH: a
+// launch asks several times, and on Windows each miss is a stat in every PATH folder.
+func legacyNativeArgs() bool {
+	if runtime.GOOS != "windows" {
+		return false
+	}
+	key := os.Getenv("CORAL_SHELL") + "\x00" + os.Getenv("PATH")
+	legacyArgsCache.Lock()
+	defer legacyArgsCache.Unlock()
+	if legacyArgsCache.key == key && legacyArgsCache.ok {
+		return legacyArgsCache.legacy
+	}
+	legacy := true
+	if sh := os.Getenv("CORAL_SHELL"); sh != "" && !isCmdShell(sh) {
+		legacy = psquote.LegacyNativeArgs(sh)
+	} else {
+		for _, ps := range psquote.PowerShells {
+			if _, err := exec.LookPath(ps); err == nil {
+				legacy = psquote.LegacyNativeArgs(ps)
+				break
+			}
+		}
+	}
+	legacyArgsCache.key, legacyArgsCache.legacy, legacyArgsCache.ok = key, legacy, true
+	return legacy
+}
+
+var legacyArgsCache struct {
+	sync.Mutex
+	key        string
+	legacy, ok bool
 }
 
 // PrefixWithPathEnv returns a shell command prefix that prepends the given
@@ -303,18 +352,13 @@ func FindCLIInCommonPaths(binary string) string {
 }
 
 // FormatPromptFileArg returns shell-appropriate syntax for reading a prompt
-// file and passing its content as a single CLI argument.
-//
-// On PowerShell 5.1, passing strings with embedded double-quotes to native
-// executables is broken: PS constructs the process command line without
-// escaping internal `"`, so the C runtime's argv parser splits at them.
-// The workaround is to `-replace '"', '\"'` so the command line contains
-// `\"` which the C runtime interprets as a literal `"`.
+// file and passing its content as a single CLI argument. On PowerShell the content
+// is escaped for the program's argv parser where the shell doesn't (psFileContent).
 func FormatPromptFileArg(promptFile string) string {
 	shell := detectShell()
 	switch shell {
 	case ShellPowerShell:
-		return fmt.Sprintf(`"$((Get-Content -Raw -LiteralPath %s) -replace '"', '\"')"`, shellQuoteLiteral(promptFile))
+		return `"` + psFileContent(promptFile) + `"`
 	default:
 		// bash, zsh, sh. The path is quoted like any value (#3362): it is Coral's own temp
 		// file, but its name carries a session id.
