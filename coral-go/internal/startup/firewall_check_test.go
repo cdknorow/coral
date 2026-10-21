@@ -2,9 +2,11 @@ package startup
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,6 +68,40 @@ func TestALaterLookFindsARuleCreatedAfterTheFirst(t *testing.T) {
 	last = checkFirewall(func() (string, error) { return `C:\Program Files\Coral\coral.exe`, nil }, last)
 	assert.NotEmpty(t, last)
 	assert.Contains(t, out.String(), "[firewall] WARNING")
+}
+
+// The later looks end with the server's context: a shutdown leaves no goroutine sleeping for an hour (the startup leak check).
+func TestRunFirewallChecksStopsWhenTheContextEnds(t *testing.T) {
+	captureLog(t)
+	stubRules(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		runFirewallChecks(ctx, func() (string, error) { return `C:\Program Files\Coral\coral.exe`, nil }, []time.Duration{time.Hour, time.Hour})
+		close(done)
+	}()
+	select {
+	case <-done:
+		t.Fatal("it returned before the context ended or a wait passed")
+	case <-time.After(100 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("it was still waiting after the context ended")
+	}
+}
+
+// With short waits every look runs: one now and one after each wait.
+func TestRunFirewallChecksLooksAfterEachWait(t *testing.T) {
+	captureLog(t)
+	var looks int
+	old := firewallRules
+	firewallRules = func() ([]firewall.Rule, error) { looks++; return nil, nil }
+	t.Cleanup(func() { firewallRules = old })
+	runFirewallChecks(context.Background(), func() (string, error) { return "", nil }, []time.Duration{time.Millisecond, time.Millisecond})
+	assert.Equal(t, 3, looks)
 }
 
 func TestCheckFirewallSaysNothingWhenTheRulesAreNarrowAndKeepsGoingOnAReadError(t *testing.T) {

@@ -1,6 +1,7 @@
 package startup
 
 import (
+	"context"
 	"log"
 	"os"
 	"runtime"
@@ -20,18 +21,28 @@ var firewallRecheck = []time.Duration{time.Minute, 10 * time.Minute, time.Hour}
 
 // startFirewallCheck, on Windows, reads the firewall rules that name Coral's programs and warns about any inbound allow rule on the
 // Public profile (#97, audit G4A): in the log, and on the dashboard through firewall.Warning. It looks once now and again after a minute,
-// ten minutes and an hour, logging only when the finding changes. It only reads: a rule is changed by the person, in an administrator
-// PowerShell, with the command in the warning.
-func startFirewallCheck() {
+// ten minutes and an hour, logging only when the finding changes, and it stops when ctx (the server's) ends, so a shutdown leaves no
+// goroutine behind. It only reads: a rule is changed by the person, in an administrator PowerShell, with the command in the warning.
+func startFirewallCheck(ctx context.Context) {
 	defer safego.Recover("startup/firewall_check")
 	if runtime.GOOS != "windows" {
 		return
 	}
-	last := ""
-	last = checkFirewall(os.Executable, last)
-	for _, wait := range firewallRecheck {
-		time.Sleep(wait)
-		last = checkFirewall(os.Executable, last)
+	runFirewallChecks(ctx, os.Executable, firewallRecheck)
+}
+
+// runFirewallChecks looks now and after each wait, until ctx ends.
+func runFirewallChecks(ctx context.Context, executable func() (string, error), waits []time.Duration) {
+	last := checkFirewall(executable, "")
+	for _, wait := range waits {
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		last = checkFirewall(executable, last)
 	}
 }
 

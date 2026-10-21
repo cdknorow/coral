@@ -235,7 +235,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	}
 	// The DNS-rebinding check accepts exactly the names Coral listens on (#3594).
 	auth.SetListenHosts(cfg.ListenHosts())
-	go startFirewallCheck() // Windows: warn about a firewall rule broader than Coral needs (read-only, #97)
+	go startFirewallCheck(ctx) // Windows: warn about a firewall rule broader than Coral needs (read-only, #97)
 	if tlsConfig != nil {
 		for i := range lns {
 			lns[i] = newSniffListener(lns[i], tlsConfig)
