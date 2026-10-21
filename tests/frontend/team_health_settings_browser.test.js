@@ -62,6 +62,16 @@ const { removeBoards } = require('./helpers/board_cleanup');
         assert.equal(form.held, true, 'the held-delivery card shows: the server returns held_notice (#4225)');
         assert.equal(form.save, true, 'Save starts disabled');
         ok('defaults from the server, limits 5 to 1440 minutes and 1 to 5 nudges on the inputs, every control labelled, members offered as recipients');
+        // The fields' accessible names and descriptions as the browser computes them (#5790: the number boxes and the reviewers box come from field_row.js): the label and the unit name a number, the limits describe it.
+        await ev(`document.querySelector('${P} details').open = true; true`);
+        await waitFor(`!!document.querySelector('${P} [name=claim_nudge_after_min]')?.getClientRects().length`, 'the folded rules showing', 5000);
+        const axNodes = (await client.Accessibility.getFullAXTree()).nodes.filter(n => !n.ignored && ['spinbutton', 'combobox', 'textbox'].includes(n.role && n.role.value));
+        const axPairs = axNodes.map(n => [n.name && n.name.value, n.description && n.description.value]).filter(([name]) => name);
+        assert.deepEqual(axPairs.filter(([name]) => /minutes|nudges|^Default reviewers$/.test(name)).map(([name, d]) => [name, /^Names of agents/.test(d) ? 'Names of agents' : d]), [
+            ['Every minutes', '5 to 1440'], ['Default reviewers', 'Names of agents'], ['After minutes idle', '5 to 1440'], ['Nudges before telling the orchestrator nudges', '1 to 5'],
+            ['Ask after minutes quiet', '5 to 1440'], ['Tell the orchestrator minutes later', '5 to 1440'], ['After minutes held', '5 to 1440'], ['After minutes', '5 to 1440']]);
+        await ev(`document.querySelector('${P} details').open = false; true`);
+        ok('every number box is named by its label and unit and described by its limits; the reviewers box by its label, described by its sentence');
 
         // 3. an out-of-range number is refused before any request
         await ev(`window.__puts = 0; { const w = window.fetch; window.fetch = (u, o = {}) => { if ((o.method || 'GET') === 'PUT' && /board\\/[^/]+\\/settings$/.test(String(u))) window.__puts++; return w(u, o); }; } true`);

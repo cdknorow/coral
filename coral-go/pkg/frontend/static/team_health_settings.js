@@ -12,6 +12,7 @@ import { switchRow } from './switch_row.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch } from './server_base.js';
 import { rebaseChanges } from './settings_diff.js';
+const { fieldRow } = await importOnce('./field_row.js');
 const { refusalOf, answeredLocally } = await importOnce('./owner_refusal.js'); // a lazy module loads the others it needs through importOnce, so a failed load is retried
 
 const HEALTH_LIMITS = { minutes: [5, 1440], nudges: [1, 5], reviewers: 8 };
@@ -31,8 +32,7 @@ const [N_LO, N_HI] = HEALTH_LIMITS.nudges;
 
 function knob(name, label, value, lo, hi, unit) {
     // The name is the label and the unit ("After minutes idle"); the limits are its description, not part of the name.
-    const id = `hk-${name}`;
-    return `<label class="health-knob"><span id="${escapeAttr(id)}-l">${escapeHtml(label)}</span><span class="health-knob-box"><input type="number" name="${escapeAttr(name)}" value="${Number(value)}" min="${Number(lo)}" max="${Number(hi)}" step="1" inputmode="numeric" required aria-labelledby="${escapeAttr(id)}-l ${escapeAttr(id)}-u" aria-describedby="${escapeAttr(id)}-d"> <span id="${escapeAttr(id)}-u">${escapeHtml(unit)}</span></span><span class="health-limits" id="${escapeAttr(id)}-d">${Number(lo)} to ${Number(hi)}</span></label>`;
+    return fieldRow({ id: `hk-${name}`, label, name, type: 'number', value, min: lo, max: hi, unit, desc: `${Number(lo)} to ${Number(hi)}` });
 }
 
 function rule(key, title, why, on, knobs, extra = '') {
@@ -47,8 +47,10 @@ function healthPanelHTML(h, members) {
     const options = [`<option value="">The orchestrator (default)</option>`]
         .concat(members.map(m => `<option value="${escapeAttr(m.subscriber_id)}"${m.subscriber_id === rcpt ? ' selected' : ''}>${escapeHtml(m.subscriber_id)}${m.job_title ? ` (${escapeHtml(m.job_title)})` : ''}</option>`));
     if (rcpt && !names.includes(rcpt)) options.push(`<option value="${escapeAttr(rcpt)}" selected>${escapeHtml(rcpt)} (not in the team now)</option>`);
-    const reviewers = `<label class="health-knob health-wide"><span id="hk-default_reviewers-l">Default reviewers</span> <span class="health-limits" id="hk-default_reviewers-d">Names of agents on this team, up to ${HEALTH_LIMITS.reviewers}, separated by commas. None: reviews wait for the orchestrator.</span>
-        <input type="text" name="default_reviewers" aria-labelledby="hk-default_reviewers-l" aria-describedby="hk-default_reviewers-d" value="${escapeAttr((h.default_reviewers || []).join(', '))}" list="health-members" autocomplete="off" maxlength="400" placeholder="Names, separated by commas"><datalist id="health-members">${names.map(n => `<option value="${escapeAttr(n)}">`).join('')}</datalist></label>`;
+    const reviewers = fieldRow({ id: 'hk-default_reviewers', label: 'Default reviewers', name: 'default_reviewers', value: (h.default_reviewers || []).join(', '), wide: true, descFirst: true,
+        desc: `Names of agents on this team, up to ${HEALTH_LIMITS.reviewers}, separated by commas. None: reviews wait for the orchestrator.`,
+        attrs: { list: 'health-members', autocomplete: 'off', maxlength: 400, placeholder: 'Names, separated by commas' },
+        after: `<datalist id="health-members">${names.map(n => `<option value="${escapeAttr(n)}">`).join('')}</datalist>` });
     const held = h.held_notice ? rule('held_notice', 'Tell the Operator about a held delivery',
         'A message Coral could not type into an agent (its terminal is on a dialog) and has held back for a while is reported to the Operator.',
         !!h.held_notice.on, knob('held_notice_after_min', 'After', h.held_notice.after_min, MIN_LO, MIN_HI, 'minutes held')) : '';
