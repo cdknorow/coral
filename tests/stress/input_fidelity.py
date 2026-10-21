@@ -153,6 +153,8 @@ def text_cases():
     ]
 
 
+PROMPT_TRIGGER = "OPEN_PROMPT_NOW"  # the mock opens a menu when its box holds this (MOCK_AGENT_PROMPT_TRIGGER)
+
 AUTOMATED_SUBSET = {"plain", "keyname-text-Enter", "multiline-3", "unicode", "specials", "10KB-multiline"}
 
 KEY_CASES = [
@@ -236,6 +238,64 @@ def run(args):
         time.sleep(1.0)
         return a, out
 
+    def finish():
+        doc = {"backend": args.backend, "os": platform.system(), "base": args.base, "results": results}
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=1, ensure_ascii=False)
+        fails = sum(r["verdict"] == "FAIL" for r in results)
+        print("[fidelity] backend=%s os=%s: %d PASS, %d FAIL, %d SKIP, %d INFO; results in %s" % (
+            args.backend, doc["os"], sum(r["verdict"] == "PASS" for r in results), fails,
+            sum(r["verdict"] == "SKIP" for r in results), sum(r["verdict"] == "INFO" for r in results), args.out), flush=True)
+        return 1 if fails else 0
+
+    def ctrl_cases(agent):
+        """Sections 11-12 on a fresh agent of their own: the gate holds nothing for it."""
+        # ── 11. Control characters in a short automated send (Security P1 on #62) ──
+        # Agent-bound text from Coral (a board message, a task title) must not reach the agent as keys:
+        # ESC, the paste-end marker, Ctrl-C, Ctrl-D and a C1 byte are stripped; a person's /send is theirs.
+        ctrl_text = "hello\x1b[201~world\x03\x04 bye\u009b end"
+        for human, path in ((False, "send ctrl chars (automated, gate)"), (True, "send ctrl chars (dashboard)")):
+            off = agent.size()
+            st, resp = coral.call("POST", "/api/sessions/live/%s/send" % agent.name, dict(agent.target(), command=ctrl_text), human=human)
+            got = agent.wait(off, lambda g: b"end" in g and g.endswith(b"\r"), timeout=40, quiet=8)
+            subs = parse(got)[0]
+            bad = [c for c in b"".join(subs) if c < 0x20 or c == 0x7f] + (["C1"] if "\u009b".encode() in got else [])
+            if human:
+                record("ctrl-chars", path, "INFO", "a person's text: HTTP %s, %d submission(s), control bytes kept: %r" % (st, len(subs), bad[:6]), got=got)
+            elif len(subs) == 1 and not bad and b"hello" in subs[0] and b"end" in subs[0]:
+                record("ctrl-chars", path, "PASS", "one submission, no control characters: %r" % subs[0][:60], got=got)
+            else:
+                record("ctrl-chars", path, "FAIL", "HTTP %s, %d submission(s), control bytes reached the agent: %r" % (st, len(subs), bad[:6]), got=got)
+            coral.call("POST", "/api/sessions/live/%s/keys" % agent.name, dict(agent.target(), keys=["\r"]))
+            agent.wait(agent.size(), lambda g: False, timeout=2, quiet=1.5)
+
+        # ── 12. A multi-line automated send to an agent without bracketed paste (Security P2 on #62) ──
+        # Without a paste every line break is an Enter: the message must not run line by line.
+        coral.call("POST", "/api/sessions/live/%s/send" % agent.name, dict(agent.target(), command="MOCK_BRACKETED_OFF"))
+        agent.wait(agent.size(), lambda g: False, timeout=3, quiet=2)
+        off = agent.size()
+        st, resp = coral.call("POST", "/api/sessions/live/%s/send" % agent.name,
+                              dict(agent.target(), command="first line\nsecond line\nthird line"), human=False)
+        got = agent.wait(off, lambda g: b"third" in g and g.endswith(b"\r"), timeout=40, quiet=8)
+        subs = parse(got)[0]
+        if len(subs) >= 3:
+            record("multiline-no-paste", "send multi-line, no paste (automated)", "FAIL",
+                   "HTTP %s: ran line by line, %d submissions" % (st, len(subs)), got=got)
+        elif st >= 400 and not subs:
+            record("multiline-no-paste", "send multi-line, no paste (automated)", "PASS", "refused (HTTP %s), nothing typed" % st, got=got)
+        else:
+            record("multiline-no-paste", "send multi-line, no paste (automated)", "PASS",
+                   "HTTP %s, %d submission(s): %r" % (st, len(subs), [s[:50] for s in subs]), got=got)
+        coral.call("POST", "/api/sessions/live/%s/send" % agent.name, dict(agent.target(), command="MOCK_BRACKETED_ON"))
+        agent.wait(agent.size(), lambda g: False, timeout=3, quiet=2)
+
+
+    if os.environ.get("FIDELITY_ONLY") == "ctrl":  # just sections 11-12 (control characters, no paste)
+        ctrl = launch("fidelity-ctrl")[0]
+        ctrl_cases(ctrl)
+        coral.call("POST", "/api/sessions/live/%s/kill" % ctrl.name, ctrl.target())
+        return finish()
+
     # ── 1. Launch prompt: handed to the agent CLI as an argument ──
     lp = "launch prompt: " + SPECIALS + " " + UNICODE
     agent, out = launch("fidelity-main", prompt=lp)
@@ -308,6 +368,33 @@ def run(args):
             agent.coral.call("POST", "/api/sessions/live/%s/keys" % agent.name,
                              dict(agent.target(), keys=["\r"]), human=True)
             agent.wait(agent.size(), lambda g: False, timeout=1.0, quiet=0.5)
+
+    # ── 4b. An unknown key name: tmux types it as text (send-keys), a PTY with key names refuses it ──
+    off = agent.size()
+    st, resp = coral.call("POST", "/api/sessions/live/%s/keys" % agent.name, dict(agent.target(), keys=["Enterr"]))
+    got = agent.wait(off, lambda g: False, timeout=3, quiet=2)
+    if st == 400 and not got:
+        record("key-unknown-name", "keys (dashboard)", "PASS", "refused (HTTP 400), nothing typed", got=got)
+    elif st == 200 and got == b"Enterr":
+        record("key-unknown-name", "keys (dashboard)", "INFO", "typed as text (HTTP 200): tmux send-keys types a name it doesn't know", got=got)
+    else:
+        record("key-unknown-name", "keys (dashboard)", "FAIL", "HTTP %s, typed %r" % (st, got[:40]), got=got)
+    if got:
+        coral.call("POST", "/api/sessions/live/%s/keys" % agent.name, dict(agent.target(), keys=["\r"]))
+        agent.wait(agent.size(), lambda g: False, timeout=1.5, quiet=1)
+
+    # ── 4c. Arrows follow the program's cursor-key mode (DECCKM, audit F13): ESC O A in application mode ──
+    for mode, want in (("ON", b"\x1bOA"), ("OFF", b"\x1b[A")):
+        coral.call("POST", "/api/sessions/live/%s/send" % agent.name, dict(agent.target(), command="MOCK_DECCKM_" + mode))
+        agent.wait(agent.size(), lambda g: False, timeout=2, quiet=1.5)
+        off = agent.size()
+        st, resp = coral.call("POST", "/api/sessions/live/%s/keys" % agent.name, dict(agent.target(), keys=["Up"]))
+        got = agent.wait(off, lambda g: g == want, timeout=6, quiet=1.5)
+        record("key-Up-decckm-" + mode.lower(), "keys (dashboard)", "PASS" if got == want else "FAIL",
+               "" if got == want else "cursor-key mode %s: expected %r, got %r" % (mode, want, got[:20]), sent=want, got=got)
+        if got != want and got:
+            coral.call("POST", "/api/sessions/live/%s/keys" % agent.name, dict(agent.target(), keys=["\r"]))
+            agent.wait(agent.size(), lambda g: False, timeout=1.5, quiet=1)
 
     # ── 5. Rapid fire: several senders at once, each text must arrive whole and on its own ──
     for human, path in ((True, "send x16 concurrent (dashboard)"),):
@@ -401,17 +488,49 @@ def run(args):
             record("draft-vs-notice", "gate draft check (#3478)", "PASS",
                    "held while the draft was in the box (not delivered within 180 s of clearing it)", got=got + got2)
 
+    # ── 9. A prompt that opens while an automated send is typed (#3431, audit F4) ──
+    # The mock opens a permission menu as soon as its box holds PROMPT_TRIGGER. The gate types the
+    # text, then checks the screen before its Enter: the Enter must be withheld, never answer a
+    # prompt nobody saw.
+    agent.coral.call("POST", "/api/sessions/live/%s/keys" % agent.name,
+                     dict(agent.target(), keys=["C-u" if args.backend == "tmux" else "\x15"]))  # an empty box first
+    agent.wait(agent.size(), lambda g: False, timeout=1.5, quiet=1)
+    off = agent.size()
+    text = "please run the tests " + PROMPT_TRIGGER + " now"
+    st, resp = coral.call("POST", "/api/sessions/live/%s/send" % agent.name, dict(agent.target(), command=text), human=False)
+    got = agent.wait(off, lambda g: b"\r" in g, timeout=12, quiet=8)
+    trig = got.find(PROMPT_TRIGGER.encode())
+    if trig < 0:
+        record("enter-on-prompt", "gate Enter check (F4)", "FAIL",
+               "HTTP %s: the text never reached the agent (%s)" % (st, str(resp)[:120]), got=got)
+    elif b"\r" in got[trig:]:
+        record("enter-on-prompt", "gate Enter check (F4)", "FAIL",
+               "the Enter was pressed on a prompt that opened while the text was typed (it answered it)", got=got)
+    else:
+        record("enter-on-prompt", "gate Enter check (F4)", "PASS",
+               "the Enter was withheld while the prompt was open (HTTP %s)" % st, got=got)
+    # Dismiss the menu as its owner would (a held Enter may then submit the text).
+    agent.coral.call("POST", "/api/sessions/live/%s/keys" % agent.name,
+                     dict(agent.target(), keys=["Escape" if args.backend == "tmux" else "\x1b"]))
+    agent.wait(agent.size(), lambda g: False, timeout=3, quiet=2)
+
+    ctrl = launch("fidelity-ctrl")[0]
+    ctrl_cases(ctrl)
+    coral.call("POST", "/api/sessions/live/%s/kill" % ctrl.name, ctrl.target())
+
     for a in (agent, bagent):
         coral.call("POST", "/api/sessions/live/%s/kill" % a.name, a.target())
 
-    doc = {"backend": args.backend, "os": platform.system(), "base": args.base, "results": results}
-    with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(doc, f, indent=1, ensure_ascii=False)
-    fails = sum(r["verdict"] == "FAIL" for r in results)
-    print("[fidelity] backend=%s os=%s: %d PASS, %d FAIL, %d SKIP; results in %s" % (
-        args.backend, doc["os"], sum(r["verdict"] == "PASS" for r in results), fails,
-        sum(r["verdict"] == "SKIP" for r in results), args.out), flush=True)
-    return 1 if fails else 0
+    # ── 10. Keys to an agent whose terminal is gone: an answer that says so, never a 500 (audit F15) ──
+    time.sleep(2)
+    st, resp = coral.call("POST", "/api/sessions/live/%s/keys" % agent.name, dict(agent.target(), keys=["Enter"]))
+    code = resp.get("code", "") if isinstance(resp, dict) else ""
+    if st in (404, 409, 410) or "gone" in str(resp).lower():
+        record("keys-gone-session", "keys (dashboard)", "PASS", "HTTP %s %s" % (st, code or str(resp)[:80]))
+    else:
+        record("keys-gone-session", "keys (dashboard)", "FAIL", "HTTP %s: %s" % (st, str(resp)[:120]))
+
+    return finish()
 
 
 def compare(a_path, b_path):

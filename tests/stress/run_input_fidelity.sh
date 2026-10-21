@@ -8,7 +8,8 @@
 # paths (the launch prompt, /send as a person and as automation, /keys, concurrent sends, a task
 # notification, a board nudge) with named keys, text that looks like key names, multi-line text,
 # 10 KB and 100 KB prompts, non-ASCII and emoji, quotes, backslashes, $(), %VAR%, ^ and Windows
-# paths, and compares what arrived with what was sent.
+# paths, and compares what arrived with what was sent. It also checks that a prompt opening while an
+# automated send is typed never takes that send's Enter (MOCK_AGENT_PROMPT_TRIGGER, audit F4).
 #
 # Run it once per backend and compare the two results files: any case that differs is a place
 # where Windows (pty) and Unix (tmux) agents get different input.
@@ -87,7 +88,7 @@ mapfile -t HOME_ENV < <(coral_test_home_env "$T/host-home")
 env -u CORAL_PORT -u CORAL_URL -u CORAL_HOST -u CORAL_DIR -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID \
     -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR -u CORAL_CLOUD_URL \
     "${HOME_ENV[@]}" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
-    MOCK_AGENT_RAW_DIR="$T/raw" MOCK_AGENT_ENV_DUMP="$T/env-dump" MOCK_AGENT_IDLE=1 \
+    MOCK_AGENT_RAW_DIR="$T/raw" MOCK_AGENT_ENV_DUMP="$T/env-dump" MOCK_AGENT_IDLE=1 MOCK_AGENT_PROMPT_TRIGGER=OPEN_PROMPT_NOW \
     "$T/coral$CORAL_TEST_EXE" --home "$CORAL_DATA_DIR" --no-browser --cloud-url off --host "$HOST" --port "$PORT" \
     --backend "$CORAL_TEST_BACKEND" >"$T/server.log" 2>&1 &
 SERVER_PID=$!
