@@ -55,3 +55,14 @@ func TestWinVerbFourthHostileMatrixLeavesTheBenignAlone(t *testing.T) {
 		assert.Empty(t, winVerbRisk(cmd, fakeOutside), "must pass: %s", cmd)
 	}
 }
+
+// A Windows Git Bash by its path (with a space in it, after shellRisk turns the backslashes into slashes) is read as bash: its -c text is judged (#5690 review).
+func TestShellWrapperWithAWindowsPathIsReadAsAShell(t *testing.T) {
+	wd := t.TempDir()
+	for _, cmd := range []string{
+		`"C:/Program Files/Git/bin/bash.exe" -c "rm -rf /"`, `C:/Git/bin/bash.exe -c "rm -rf /"`, `C:/Git/usr/bin/sh.exe -c "rm -rf /"`, `"C:/Program Files/Git/bin/bash.exe" -lc "rm -rf /"`,
+	} {
+		assert.NotEmpty(t, shellRiskFrom(cmd, wd, wd), "must wait: %s", cmd)
+	}
+	assert.Empty(t, shellRiskFrom(`"C:/Program Files/Git/bin/bash.exe" -c "ls -la"`, wd, wd))
+}
