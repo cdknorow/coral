@@ -1,8 +1,4 @@
 <p align="center">
-  <img alt="Coral" src="assets/icons/banner.png" width="100%" />
-</p>
-
-<p align="center">
   <strong>Coral: the control plane for the coding agents you already have.</strong>
 </p>
 
