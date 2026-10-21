@@ -111,11 +111,18 @@ func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) e
 // length.
 func (c *Client) typeToTarget(ctx context.Context, target, command string, launch bool) error {
 	if !launch && Automated(ctx) {
-		// Typed, automated text: no keystroke from the text itself, and no line break (which would submit line by line
-		// into whatever is reading: tmux cannot tell whether the pane asked for bracketed paste, and the gate pastes
-		// when it did, so what is typed here is the case it did not).
+		// Automated text: no keystroke from the text itself. A text with line breaks is flattened to one line only when the
+		// pane is KNOWN not to take bracketed paste (a hint, the gate's reading of the pane's log): otherwise it is pasted
+		// with paste-buffer -p as before, which brackets the paste when the pane asked for it and keeps the breaks. tmux
+		// cannot query the mode, so unknown is not off (QA on #62: every multi-line message to a bracketed agent was flattened).
 		var err error
-		if command, err = AutomatedTextChecked(command); err != nil {
+		if en, known := BracketedPasteHint(ctx); strings.ContainsAny(command, "\r\n") && !(known && !en) {
+			clean := SanitizePaste(command) // CRLF and CR are one LF; controls and ESC are dropped
+			if strings.TrimSpace(clean) == "" {
+				return ErrNothingToSend
+			}
+			command = clean
+		} else if command, err = AutomatedTextChecked(command); err != nil {
 			return err
 		}
 	}
