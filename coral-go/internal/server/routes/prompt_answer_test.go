@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // Screens captured from Claude Code 2.1.278 in a tmux pane.
@@ -252,6 +253,11 @@ func TestAnswerPrompt(t *testing.T) {
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, []string{"4", "4"}, sentKeys())
 	assert.Equal(t, []string{"Mango please"}, sentText(), "typed as one line, then Enter")
+	terminal.mu.Lock()
+	origins := append([]terminalinput.Origin(nil), terminal.origins["claude-ask"]...)
+	terminal.mu.Unlock()
+	assert.Equal(t, terminalinput.Person, origins[len(origins)-1], "the text a person typed into the field is a person's: logged by its length (#5715)")
+	assert.Equal(t, terminalinput.Unclassified, origins[len(origins)-2], "the option digit before it is a choice, logged as it is")
 	// Chat about this is just its digit
 	setScreen(screenQuestion)
 	code, _ = answer(5, "Chat about this")

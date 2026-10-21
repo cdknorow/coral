@@ -10,8 +10,7 @@
 //
 // The zero value, Unknown, is the origin of a value nobody set. It fails closed in both directions: its text is made safe like
 // Coral's (control characters, the paste terminator and line breaks never reach the terminal as keys) and it is recorded like a
-// person's. Recording an Unknown text is today still in full, as an unmarked text always was; "an unknown origin is logged by length
-// only" is a follow-up, and changes no caller in this refactor because no caller passes Unknown.
+// person's: by its length only (#5715). No caller passes Unknown today; a value nobody set cannot leak a text into the log.
 //
 // Unclassified is what the callers that were never marked as anyone's still are: their text is neither changed nor hidden, as
 // before. The census test (census_test.go) lists every exported sender's callers and the origin each passes, so marking them
@@ -30,7 +29,7 @@ import (
 type Origin int
 
 const (
-	// Unknown is the zero value: nobody said. Made safe as Coral's text; recorded as today (in full), see the package comment.
+	// Unknown is the zero value: nobody said. Made safe as Coral's text and recorded as a person's (by length), see the package comment.
 	Unknown Origin = iota
 	// Person is a person's own input from the dashboard (typed in its terminal, or sent from its chat box): never changed, and
 	// recorded by its length only, unless it is only control input (Enter, arrows, Ctrl-C), which is recorded as it is.
@@ -40,7 +39,7 @@ const (
 	Coral
 	// Internal is a control byte or key Coral sends itself (Enter, the Ctrl-C of a stop, a named key): sent as it is, recorded as it is.
 	Internal
-	// Unclassified is a sender nobody has classified yet: text neither changed nor hidden, as before this package. See the census.
+	// Unclassified is a sender nobody has classified yet: text neither changed nor hidden, as before this package. See the census (what is left: the option digits of the dashboard's answer cards, which are choices, not text).
 	Unclassified
 )
 
@@ -157,10 +156,10 @@ func AutomatedText(text string) string {
 
 func isControl(r rune) bool { return r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) }
 
-// Record logs one write to target when the input debug log is on: the only caller of inputlog.Write. A person's text is logged by
-// its length only, unless it is only control input; everything else as it is. Coral's own annotations are inputlog.Note.
+// Record logs one write to target when the input debug log is on: the only caller of inputlog.Write. A person's text (and an unknown
+// origin's) is logged by its length only, unless it is only control input; everything else as it is. Coral's own annotations are inputlog.Note.
 func Record(o Origin, target string, kind Kind, data string) {
-	if o == Person && kind != Keys && hasPrintable(data) {
+	if (o == Person || o == Unknown) && kind != Keys && hasPrintable(data) {
 		kind, data = inputlog.Typed, fmt.Sprintf("[typed %d bytes]", len(data))
 	}
 	inputlog.Write(target, kind, data)

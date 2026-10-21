@@ -50,8 +50,7 @@ func readLog(t *testing.T, dir string) string {
 	return string(b)
 }
 
-// Record: a person's text by length only unless it is only control input; everything else as it is, and the unknown origin as today (in
-// full: "unknown logs by length" is the follow-up named in the package comment).
+// Record: a person's text, and the unknown origin's, by length only unless it is only control input; everything else as it is.
 func TestRecordHidesAPersonsTextAndNobodyElses(t *testing.T) {
 	dir := t.TempDir()
 	inputlog.Setup(dir, true)
@@ -76,7 +75,8 @@ func TestRecordHidesAPersonsTextAndNobodyElses(t *testing.T) {
 	assert.Contains(t, got, `text="coral's own text"`)
 	assert.Contains(t, got, `kind=raw len=1 text="\x03"`)
 	assert.Contains(t, got, `text="unclassified text"`)
-	assert.Contains(t, got, `text="unknown text"`, "today's logging of an unmarked text, until the follow-up")
+	assert.NotContains(t, got, "unknown text", "the unknown origin fails closed in the log too (#5715)")
+	assert.Contains(t, got, `kind=typed text="[typed 12 bytes]"`)
 }
 
 // The debug log's source= is the code that sent the input, never terminalinput.Record: the package is part of the terminal plumbing the
