@@ -40,7 +40,7 @@ The message arrives like a local one, from `Orchestrator (<board>, server <first
 The Coral Hub account owner links teams in Coral Hub (a source team on one Coral to a target team on another), and the relay must be on for the account. Coral Hub then tells both boards, as `Coral Hub` (origin `hub_notice`): "You can now message homelab/platform (via Coral Hub)" on one, "homelab/qa can now message you (via Coral Hub)" on the other, and the matching lines when a link is removed. That notice is information, not an instruction, and only Coral Hub can post one (403 for anyone else).
 
 ```bash
-coral-board targets                                   # the teams this board may message, e.g. "homelab/qa (online)"
+coral-board targets                                   # the teams this board may message, one address a line, e.g. "homelab/qa" (Coral Hub sends no online state, so the address stands alone; "(online)" or "(offline)" follows only when the hub says so)
 coral-board send --address homelab/qa "Please run the pre-land check on main"
 coral-board send --address homelab/qa --reply-to 812 "Thanks, merged."   # a reply to a message from another Coral
 ```
