@@ -57,8 +57,11 @@ func TestModelListNeverStartsAClaudeRunWhileNotSignedIn(t *testing.T) {
 func TestModelListStillAsksClaudeWhenSignedIn(t *testing.T) {
 	claudestub.Isolate(t)
 	stub := claudestub.New(t, claudestub.SignedIn)
-	res, _ := fetched(t, stub.Path())
-	assert.False(t, strings.Contains(strings.ToLower(res.Error), "not signed in"), "signed in: %q", res.Error) // the stub's plain answer lists no models: that error is fine
+	res, took := fetched(t, stub.Path())
+	assert.False(t, strings.Contains(strings.ToLower(res.Error), "not signed in"), "signed in: %q", res.Error)
+	assert.Empty(t, res.Error, "signed in: the stub answers the initialize request, so the list is read")
+	assert.NotEmpty(t, res.Models, "the stub's one model is listed")
+	assert.Less(t, took, 5*time.Second, "the fetch ends when the reply is read, not when the test gives up (#5591: it used to wait out 12 s)")
 	runs := stub.PrintRuns()
 	require.Len(t, runs, 1, "one print-mode run")
 	assert.False(t, runs[0].TTY)
