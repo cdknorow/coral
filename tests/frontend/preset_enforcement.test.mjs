@@ -55,4 +55,36 @@ assert.match(e.text, /Allow pre-approves these tools and others still run after 
 e = pe.presetEnforcement('claude', AGENT_PRESETS.find(p => p.name === 'Backend Dev').capabilities, 'default');
 assert.match(e.text, /git patterns don't limit git while Shell is allowed/, 'Security F');
 assert.equal(pe.presetEnforcement('terminal', {}, 'default').text, '');
+
+// The permission mode a launch starts with when nobody picked one (#5836): Claude starts in Auto, not in a bypass of every prompt; the other CLIs keep their own default; a saved mode is
+// the person's and applies to every CLI as before.
+assert.equal(pe.defaultPermissionMode({}, 'claude'), 'auto');
+assert.equal(pe.defaultPermissionMode(undefined, 'claude'), 'auto');
+assert.equal(pe.defaultPermissionMode({}, ''), 'auto', 'no agent type named: Claude');
+assert.equal(pe.defaultPermissionMode({}, undefined), 'auto');
+for (const other of ['codex', 'agy', 'antigravity', 'gemini', 'pi']) assert.equal(pe.defaultPermissionMode({}, other), 'bypassPermissions', other + ' keeps its default');
+for (const saved of ['bypassPermissions', 'default', 'plan', 'acceptEdits', 'dontAsk', 'auto']) {
+    for (const type of ['claude', 'codex', 'agy', 'pi']) assert.equal(pe.defaultPermissionMode({ default_permission_mode: saved }, type), saved, `a saved ${saved} stays for ${type}`);
+}
+assert.equal(pe.defaultPermissionMode({ default_permission_mode: '' }, 'claude'), 'auto', 'an empty value is not a saved one');
+
+// A select that still shows the default follows the agent type; a mode the person picked is never overridden
+const fakeSelect = () => { const handlers = []; return { value: '', dataset: {}, addEventListener: (ev, fn) => { if (ev === 'change') handlers.push(fn); }, pick(v) { this.value = v; handlers.forEach(h => h()); } }; };
+let sel = fakeSelect();
+pe.syncDefaultPermissionMode(sel, {}, 'claude');
+assert.equal(sel.value, 'auto');
+pe.syncDefaultPermissionMode(sel, {}, 'codex');
+assert.equal(sel.value, 'bypassPermissions', 'the type changed while it still showed the default');
+pe.syncDefaultPermissionMode(sel, {}, 'claude');
+assert.equal(sel.value, 'auto');
+sel.pick('plan');
+pe.syncDefaultPermissionMode(sel, {}, 'codex');
+assert.equal(sel.value, 'plan', 'a picked mode stays when the agent type changes');
+pe.syncDefaultPermissionMode(sel, { default_permission_mode: 'dontAsk' }, 'claude');
+assert.equal(sel.value, 'plan');
+sel = fakeSelect();
+pe.syncDefaultPermissionMode(sel, { default_permission_mode: 'acceptEdits' }, 'claude');
+assert.equal(sel.value, 'acceptEdits', 'a saved default is the default');
+pe.syncDefaultPermissionMode(null, {}, 'claude'); // no select: nothing
+
 console.log(`preset_enforcement: ok (${checked} presets)`);

@@ -76,6 +76,10 @@ By default Coral stores data in `~/.coral`, uses port **8420**, and listens on t
 
 Launching successfully means the agent process was started. It does not prove the CLI is signed in or can reach its model. If an agent appears idle, look at its terminal.
 
+## Permission mode
+
+A new Claude agent starts in Claude's **Auto** permission mode: it runs without most prompts, and Claude's own background safety checks stay on. Coral no longer bypasses every prompt by default. Pick another mode in the launch form's **Permissions** section, or set your own default in **Settings > Agents > Default permission mode**; a mode you saved or chose stays as you set it, for every agent type. The other CLIs start as before: Codex and Antigravity use their own settings (Codex's Auto mode is a sandbox that cannot reach Coral's board on this computer, so Coral does not make it the default), and Pi has no permission modes.
+
 ## Auto-accept permission prompts
 
 For an agent you trust with its task, you can let Coral answer its permission prompts for you: open the agent's menu (⋮) and turn on **Auto-accept prompts**. Coral warns you first, because the agent will then run commands, edit and delete files and use tools without asking, and that can include risky actions; use it only for trusted tasks, ideally in a sandbox or a disposable worktree. You can give it a time limit.

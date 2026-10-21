@@ -142,7 +142,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 			if def := setreg.Enum(userSettings, "default_permission_mode"); def != "" {
 				return def
 			}
-			return "default"
+			return agent.DefaultLaunchPermissionMode(agentType) // Claude: Auto (#5836)
 		}(),
 		CoralDir:  h.cfg.CoralDir(),
 		CoralHost: h.cfg.AgentHost(),

@@ -5,7 +5,7 @@ import { loadLiveSessions } from './api.js';
 import { recordRecentDir } from './browser.js';
 const { launch } = await importOnce('./launch_state.js');
 const { _effectiveServer, _settingsFor } = await importOnce('./launch_models.js');
-const { _getPermissionFlagsForAgentMode } = await importOnce('./permission_flags.js');
+const { defaultPermissionMode, _getPermissionFlagsForAgentMode } = await importOnce('./permission_flags.js');
 const { _getSavedTeamTemplates, _upsertSavedTeamTemplates } = await importOnce('./persona_store.js');
 const { _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, showTeamLaunchFailures } = await importOnce('./launch_core.js');
 const { showSettingsModal } = await importOnce('./settings_dialog.js');
@@ -96,7 +96,7 @@ window._quickLaunchTeam = async function() {
     if (_launchBlocked(server)) { if (launchBtn) { launchBtn.disabled = false; launchBtn.textContent = 'Launch'; } return; }
     const ts = _settingsFor(server);
     const agentType = tmpl.agents?.[0]?.agent_type || ts.default_agent_type || 'claude';
-    const defaultPermMode = ts.default_permission_mode || 'bypassPermissions';
+    const defaultPermMode = defaultPermissionMode(ts, agentType);
     const permFlag = _getPermissionFlagsForAgentMode(agentType, defaultPermMode);
     const flags = permFlag ? permFlag.split(/\s+/) : [];
 

@@ -9,7 +9,7 @@ import { serverFetch, LOCAL_SERVER } from './server_base.js';
 const { launch } = await importOnce('./launch_state.js');
 const { _acfServer, _effectiveServer, _settingsFor } = await importOnce('./launch_models.js');
 const { AGENT_PRESETS } = await importOnce('./agent_presets.js');
-const { _getPermissionFlagsForAgentMode, _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
+const { syncDefaultPermissionMode, _getPermissionFlagsForAgentMode, _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 const { _findPersona, _getSavedTeamTemplates, _upsertSavedTeamTemplates } = await importOnce('./persona_store.js');
 const { getAgentConfig, renderAgentConfigForm, setAgentConfig } = await importOnce('./agent_config_form.js');
 const { markFieldInvalid, _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, hideLaunchModal, showTeamLaunchFailures } = await importOnce('./launch_core.js');
@@ -153,7 +153,9 @@ async function _initTeamForm() {
     _validateTeamName();
     const tapEl = document.getElementById("team-permission-mode");
     if (tapEl) {
-        tapEl.value = _settingsFor(_effectiveServer(launch.server)).default_permission_mode || 'bypassPermissions';
+        delete tapEl.dataset.pickedByPerson; // a new dialog: the default again, for the agent type the team starts with (#5836)
+        const teamSettings = _settingsFor(_effectiveServer(launch.server));
+        syncDefaultPermissionMode(tapEl, teamSettings, teamSettings.default_agent_type || 'claude');
         _updatePermModeDescription(tapEl);
     }
     launch.teamAgentCounter = 0;
@@ -180,7 +182,10 @@ async function _initTeamForm() {
         typeSelect.onchange = () => {
             const tfEl = document.getElementById("team-flags");
             if (tfEl) {
-                const mode = document.getElementById("team-permission-mode")?.value || 'default';
+                const modeEl = document.getElementById("team-permission-mode");
+                syncDefaultPermissionMode(modeEl, _settingsFor(_effectiveServer(launch.server)), typeSelect.value); // still the default: it follows the team's agent type (#5836)
+                if (modeEl) _updatePermModeDescription(modeEl);
+                const mode = modeEl?.value || 'default';
                 tfEl.value = _normalizePermFlagsForAgent(tfEl.value, typeSelect.value, mode);
             }
         };

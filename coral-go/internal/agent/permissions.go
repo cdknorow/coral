@@ -309,6 +309,16 @@ func PermissionFlagsForAgent(agentType, mode string) []string {
 	}
 }
 
+// DefaultLaunchPermissionMode is the permission mode a launch gets when nothing chose one (no mode, no permission flag, no saved default) (#5836): Claude starts in Auto, so a
+// new user is not met with an agent that bypasses every prompt and the agent is not stopped by prompts nobody is there to answer; every other CLI starts as its own default does
+// (Codex's Auto is a sandbox that cannot reach the board on localhost, Antigravity and Pi have no mode between asking and skipping).
+func DefaultLaunchPermissionMode(agentType string) string {
+	if agentType == "" || agentType == "claude" {
+		return "auto"
+	}
+	return "default"
+}
+
 // ValidPermissionMode reports whether mode is a recognized permission mode string.
 func ValidPermissionMode(mode string) bool {
 	switch mode {

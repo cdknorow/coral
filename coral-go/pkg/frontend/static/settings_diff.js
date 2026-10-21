@@ -20,7 +20,8 @@ function norm(v) {
 const SHARED_INPUT = [['cli_path_agy', 'cli_path_gemini'], ['default_model_agy', 'default_model_gemini']];
 
 // What a missing setting reads as in its field.
-const FIELD_DEFAULT = { artifact_retention_kinds: 'diffs', artifact_retention_days: '0' };
+// default_permission_mode: unset shows Auto (Claude's default, #5836), so a dialog saved without touching it does not turn the default into a saved mode
+const FIELD_DEFAULT = { artifact_retention_kinds: 'diffs', artifact_retention_days: '0', default_permission_mode: 'auto' };
 
 /**
  * changedSettings returns the part of payload (what the dialog's fields hold now) that differs from baseline (the

@@ -2,6 +2,7 @@
 import { importOnce } from './import_once.js';
 const { _acfServer, _settingsFor } = await importOnce('./launch_models.js');
 import { getEngineName } from './renderers.js';
+const { defaultPermissionMode, syncDefaultPermissionMode } = await importOnce('./preset_enforcement.js');
 import { state } from './state.js';
 
 /** Map agent type to its permission bypass flag. */
@@ -13,6 +14,8 @@ const PERM_FLAGS = {
     codex: '--full-auto',
     pi: '',
 };
+
+export { defaultPermissionMode, syncDefaultPermissionMode }; // pure, in preset_enforcement.js (node-tested)
 
 export const PERMISSION_MODE_DESCRIPTIONS = {
     default: 'Reads only — best for getting started and sensitive work',
@@ -29,7 +32,7 @@ export function _updatePermModeDescription(selectEl) {
 }
 
 export function _getPermissionFlagsForAgentMode(agentType, mode) {
-    const permMode = mode || (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+    const permMode = mode || defaultPermissionMode(state.settings, agentType);
     if (!permMode || permMode === 'default' || agentType === 'pi' || agentType === 'terminal') return '';
     if (agentType === 'claude') return `--permission-mode ${permMode}`;
     if (agentType === 'agy' || agentType === 'antigravity' || agentType === 'gemini') {
@@ -92,7 +95,7 @@ export function _permissionModeFromFlags(flagsStr) {
 }
 
 function _getPermFlagHelp(agentType) {
-    const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+    const mode = defaultPermissionMode(state.settings, agentType);
     const flag = _getPermissionFlagsForAgentMode(agentType, mode);
     const agentLabel = getEngineName(agentType || 'claude');
     if (agentType === 'pi') {
@@ -107,7 +110,7 @@ function _getPermFlagHelp(agentType) {
 /** Update permission flag shortcut buttons in the same modal as the agent type select. */
 function _updatePermFlagButtons(selectEl) {
     const agentType = selectEl.value || 'claude';
-    const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+    const mode = defaultPermissionMode(state.settings, agentType);
     const flag = _getPermissionFlagsForAgentMode(agentType, mode);
 
     // Find the enclosing modal content and update all flag-shortcut-btn that reference skip-permissions/full-auto
@@ -129,7 +132,7 @@ function _updatePermFlagButtons(selectEl) {
 
     // Also update the flags input value — replace any known perm flag with the new one
     modal.querySelectorAll('input[id*=flags]').forEach(input => {
-        const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+        const mode = defaultPermissionMode(state.settings, agentType);
         input.value = _normalizePermFlagsForAgent(input.value, agentType, mode);
     });
 }
@@ -158,8 +161,7 @@ export function _syncACFAutoPermissions(container) {
 
     const agentType = typeEl.value || 'claude';
     const mode = container.querySelector('.acf-permission-mode')?.value ||
-        _settingsFor(_acfServer(container)).default_permission_mode ||
-        'bypassPermissions';
+        defaultPermissionMode(_settingsFor(_acfServer(container)), agentType);
     const flag = _getPermissionFlagsForAgentMode(agentType, mode);
     flagEl.textContent = flag;
     noteEl.textContent = _getPermFlagHelp(agentType);

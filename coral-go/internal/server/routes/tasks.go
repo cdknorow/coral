@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/subgentic/coral/internal/agent"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/background"
 	"github.com/subgentic/coral/internal/cloud"
@@ -58,6 +59,32 @@ func hasAutoAcceptFlag(flags string) bool {
 		}
 	}
 	return false
+}
+
+// taskRunFlags is the CLI flags of a task run: the ones the caller gave, and for an auto-accepting run the permission flag of its agent type (#5836): Claude's Auto mode, not a
+// bypass of every prompt; Codex's --full-auto and Antigravity's skip-permissions as before. A permission flag the run names itself (a mode, or a bypass) is the person's choice and
+// stays: the default is added only when there is none.
+func taskRunFlags(agentType, rawFlags string, autoAccept bool) string {
+	flags := strings.TrimSpace(rawFlags)
+	if !autoAccept {
+		return flags
+	}
+	var skipFlag string
+	switch agentType {
+	case at.Codex:
+		skipFlag = "--full-auto"
+	case at.Agy, at.Antigravity, at.Gemini:
+		skipFlag = "--dangerously-skip-permissions"
+	default:
+		skipFlag = "--permission-mode auto"
+	}
+	if strings.Contains(flags, skipFlag) {
+		return flags
+	}
+	if skipFlag == "--permission-mode auto" && agent.PermissionModeFromFlags(strings.Fields(flags)) != "" {
+		return flags
+	}
+	return strings.TrimSpace(skipFlag + " " + flags)
 }
 
 // SubmitTask creates a one-shot task run.
@@ -143,21 +170,7 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-accept flag injection (agent-type-aware)
-	flags := strings.TrimSpace(body.Flags)
-	if body.AutoAccept {
-		var skipFlag string
-		switch body.AgentType {
-		case at.Codex:
-			skipFlag = "--full-auto"
-		case at.Agy, at.Antigravity, at.Gemini:
-			skipFlag = "--dangerously-skip-permissions"
-		default:
-			skipFlag = "--dangerously-skip-permissions"
-		}
-		if !strings.Contains(flags, skipFlag) {
-			flags = strings.TrimSpace(skipFlag + " " + flags)
-		}
-	}
+	flags := taskRunFlags(body.AgentType, body.Flags, body.AutoAccept)
 
 	createWT := true
 	if body.CreateWorktree != nil {
