@@ -34,6 +34,7 @@ import (
 
 	"github.com/subgentic/coral/internal/apptoken"
 	"github.com/subgentic/coral/internal/config"
+	_ "github.com/subgentic/coral/internal/dllpreload" // the webview's bare-name DLL loads find the system folder's modules (#5724)
 	"github.com/subgentic/coral/internal/executil"
 	"github.com/subgentic/coral/internal/loginlink"
 	"github.com/subgentic/coral/internal/logrotate"
