@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -19,6 +20,21 @@ import (
 	"github.com/subgentic/coral/internal/startup"
 	"github.com/subgentic/coral/internal/tracking"
 )
+
+// sayTelemetry writes the line the tray reads (childSaysTelemetryOn or childSaysTelemetryOff).
+func sayTelemetry(w io.Writer, on bool) {
+	if on {
+		fmt.Fprintln(w, childSaysTelemetryOn)
+	} else {
+		fmt.Fprintln(w, childSaysTelemetryOff)
+	}
+}
+
+// watchTelemetry tells the tray about each later change of the Usage analytics setting: the tray never reads the setting, and a switch-off after startup
+// would otherwise leave its tracking on until the next start.
+func watchTelemetry(w io.Writer) {
+	tracking.OnTelemetryChange(func(on bool) { sayTelemetry(w, on) })
+}
 
 // runServerChild is the server half of the tray (#4163): coral-tray --server-child runs
 // Coral's server and nothing else, under the tray's supervision (supervise.go).
@@ -97,11 +113,8 @@ func runServerChild(host string, port int, backendType string) {
 		log.Printf("Failed to start: %v", err)
 		os.Exit(childExitStartFailed)
 	}
-	if tracking.TelemetryOn() { // the setting startup applied (fail closed) and the environment's opt-out
-		fmt.Println(childSaysTelemetryOn)
-	} else {
-		fmt.Println(childSaysTelemetryOff)
-	}
+	sayTelemetry(os.Stdout, tracking.TelemetryOn()) // the setting startup applied (fail closed) and the environment's opt-out
+	watchTelemetry(os.Stdout)                       // and every later switch in Settings, so the tray follows it
 	fmt.Println(childSaysReady)
 
 	<-ctx.Done()

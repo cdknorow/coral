@@ -53,6 +53,13 @@ func TestHelperChild(t *testing.T) {
 		serve()
 	case "serve":
 		serve()
+	case "telemetry-switched-off": // on at startup, off a moment after ready: a switch in Settings (#5702)
+		fmt.Println(childSaysTelemetryOn)
+		fmt.Println(childSaysReady)
+		time.Sleep(50 * time.Millisecond)
+		fmt.Println(childSaysTelemetryOff)
+		io.Copy(io.Discard, os.Stdin)
+		os.Exit(0)
 	case "telemetry-on", "telemetry-off", "telemetry-on-then-off": // the line startup's applied setting becomes (#5184)
 		if mode == "telemetry-off" || (mode == "telemetry-on-then-off" && n == 2) {
 			fmt.Println(childSaysTelemetryOff)

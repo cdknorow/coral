@@ -19,11 +19,11 @@ This page describes what Coral sends and stores. It does not promise that Coral 
 
 Coral sends a fixed set of product events to help find startup and launch problems. Release builds enable analytics by default; builds without an analytics key send nothing.
 
-**Turn it off:** **Settings → Usage analytics** takes effect immediately. To suppress analytics regardless of the saved setting, start Coral with `CORAL_TELEMETRY_DISABLED=1`. If privacy settings cannot be read at startup, analytics stay off.
+**Turn it off:** **Settings → Usage analytics** takes effect immediately. To suppress analytics regardless of the saved setting, start Coral with `CORAL_TELEMETRY_DISABLED=1`. If privacy settings cannot be read at startup, analytics stay off. The Coral app (the tray) follows the switch: turn it off and the tray stops sending too, without a restart.
 
 ### What is sent
 
-Events come from a fixed allowlist, such as `app_opened`, `session_launched`, `team_launched`, `launch_requested`, `launch_result`, `dashboard_ready`, `dashboard_failed`, `task_completed`, and `prerequisite_check` (whether tmux, `claude` or `codex` was found, without paths or output). Properties are validated against per-event schemas, and unknown events or properties are dropped. The full, current list is available from `GET /api/system/telemetry` and in the in-app disclosure.
+Events come from a fixed allowlist, such as `app_opened`, `session_launched`, `team_launched`, `launch_requested`, `launch_result`, `dashboard_ready`, `dashboard_failed`, `task_completed`, and `prerequisite_check` (whether tmux, `claude` or `codex` was found, without paths or output). Properties are validated against per-event schemas, and unknown events or properties are dropped. The full, current list is available from `GET /api/system/telemetry` on your Coral server. The dashboard does not show it.
 
 Every event carries Coral version, edition, operating system, architecture, schema version, a random per-process run ID, and the entrypoint (server, tray, launcher). Events also use a random installation ID stored in `<data dir>/.install_id`. It is not derived from your hardware, hostname, username or email, and deleting it creates a new identity.
 

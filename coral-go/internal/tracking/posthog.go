@@ -59,8 +59,18 @@ func SetTelemetryEnabled(enabled bool) {
 		if !enabled {
 			clearPendingMilestones()
 		}
+		if fn := onTelemetryChange.Load(); fn != nil {
+			(*fn)(telemetryEnabled())
+		}
 	}
 }
+
+// onTelemetryChange is told, after every change of the setting, whether this process may now send (the setting and the environment's opt-out).
+var onTelemetryChange atomic.Pointer[func(on bool)]
+
+// OnTelemetryChange registers fn to hear every later change of the setting made by SetTelemetryEnabled (a switch in Settings), not the value that is
+// set now. The tray's server child uses it to tell the tray, which never reads the setting, so a switch-off stops the tray's tracking too.
+func OnTelemetryChange(fn func(on bool)) { onTelemetryChange.Store(&fn) }
 
 // telemetryGen is bumped whenever the telemetry setting changes. Each queued
 // event remembers the generation it was created in and is dropped, not sent,

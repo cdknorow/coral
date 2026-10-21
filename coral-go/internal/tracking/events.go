@@ -33,7 +33,7 @@ type EventDoc struct {
 // StandardProperties are attached to every event without exception.
 var StandardProperties = []string{
 	"version — the Coral version you are running",
-	"edition — the build tier (prod, beta, dev)",
+	"edition — the build tier (prod, beta, staging, dev, dropboxers)",
 	"os — your operating system (darwin, linux, windows)",
 	"arch — your CPU architecture (amd64, arm64)",
 	"platform — your client platform (darwin, linux, windows, wsl2)",
@@ -58,7 +58,7 @@ var NeverCollected = []string{
 var AllEvents = []EventDoc{
 	{Name: EventInstall, When: "The first time Coral runs on this machine."},
 	{Name: EventUpgrade, When: "The first run after Coral's version changes."},
-	{Name: EventAppOpened, When: "Every time the Coral server starts."},
+	{Name: EventAppOpened, When: "Every time Coral starts: the server sends it when you run coral, and the tray sends it, not the server, when you run the Coral app (coral-tray)."},
 	{Name: EventInstallationActiveWeek, When: "At most once per ISO week (UTC) that Coral runs: sent when Coral starts, and again the first time that week you open the dashboard, launch an agent or team, or complete a task, so a long-running Coral still counts every week it is used."},
 	{Name: EventSessionLaunched, When: "Every time you launch a single agent."},
 	{Name: EventTeamLaunched, When: "Every time a team launch starts at least one agent.", Extra: "agent_count — how many agents started; requested_agents, started_agents, failed_agents"},
