@@ -244,6 +244,8 @@ var routeTable = cat(
 	// What a viewer sees of a board's settings is the machine's to decide (the health setup is the owner's, #5307): the marker is stamped, the handler gives a non-owner less.
 	// The update status (#5280) shows the owner more, with the label optional for a machine linked before it was recorded.
 	owner(OwnerSees, rules(http.MethodGet, TierView, "/api/board/{project}/settings")),
+	// One team's cross-team switches, the lock and who changed them last, for Coral Hub's guided setup (#5636): the Hub owner's alone, refused to everyone else and to this computer.
+	owner(OwnerHubOnly, rules(http.MethodGet, TierView, "/api/board/{project}/cross-team/settings")),
 	owner(OwnerUpdate, rules(http.MethodGet, TierView, UpdateStatusPath)),
 
 	// ── interact: typing into running agents, and changing running work ──

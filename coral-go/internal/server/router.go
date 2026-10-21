@@ -692,6 +692,7 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 		// Coral Hub's full list of cross-team links (#5572): only through this computer's own connector, only from Coral Hub.
 		r.Post("/api/cloud/cross-team-links", boardHandler.PostCrossTeamLinks)
 		// Coral Hub's owner turns a team's two cross-team switches on or off (#5572): Launch tier, the owner marker, the local lock.
+		r.Get("/api/board/{project}/cross-team/settings", boardHandler.GetCrossTeamSettingsForHub)
 		r.Post("/api/board/{project}/cross-team/enable", boardHandler.HubCrossTeamEnable)
 		r.Post("/api/board/{project}/cross-team/disable", boardHandler.HubCrossTeamDisable)
 		r.Post("/api/board/{project}/cross-team/files/enable", boardHandler.HubCrossTeamFilesEnable)

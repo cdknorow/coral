@@ -61,6 +61,7 @@ GET /api/board/{project} view
 GET /api/board/{project}/artifacts view
 GET /api/board/{project}/cross-team-candidates never
 GET /api/board/{project}/cross-team-state never
+GET /api/board/{project}/cross-team/settings view
 GET /api/board/{project}/groups never
 GET /api/board/{project}/groups/{groupID}/members never
 GET /api/board/{project}/messages view

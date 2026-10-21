@@ -342,16 +342,7 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 	}
 	// Whether Coral Hub's owner can change the two switches of this team (#5572): this request (the owner on this computer) always can; owner_path_live says this build has the Coral Hub owner's routes;
 	// hub_may_change is the local lock "Let Coral Hub change cross-team settings" (a lock that cannot be read reads as off); last_changed is who changed each switch last, by hub user or on this computer.
-	lastChanged := map[string]any{}
-	if last, err := h.bs.LastSwitchChanges(ctx, project); err == nil {
-		for key, c := range last {
-			item := map[string]any{"via": c.Via, "at": c.At, "on": c.New}
-			if c.Via == board.SwitchViaHub {
-				item["by"] = c.Who
-			}
-			lastChanged[key] = item
-		}
-	}
+	lastChanged := h.lastChangedOf(ctx, project)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"can_change": true, "owner_path_live": true, "hub_may_change": h.hubMayChange(ctx), "last_changed": lastChanged,
 		"enforced": h.allowlistOn(ctx), "allowed": entries, "max_entries": board.MaxAllowedSenders, "self_cross_team_id": self,

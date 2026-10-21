@@ -5,6 +5,7 @@ GET /api/artifacts/{id}/comments view owner-only
 GET /api/artifacts/{id}/meta view owner-only
 GET /api/artifacts/{id}/readers view owner-only
 GET /api/board/{project}/artifacts view owner-only
+GET /api/board/{project}/cross-team/settings view owner-only-hub
 GET /api/board/{project}/settings view owner-sees
 GET /api/board/{project}/tasks/{taskID}/artifact-content view owner-only
 GET /api/session-artifacts view owner-only

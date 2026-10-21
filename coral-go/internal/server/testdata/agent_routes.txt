@@ -69,6 +69,7 @@ c GET /api/board/{project}
 a GET /api/board/{project}/artifacts
 b GET /api/board/{project}/cross-team-candidates
 b GET /api/board/{project}/cross-team-state
+b GET /api/board/{project}/cross-team/settings
 c GET /api/board/{project}/groups
 c GET /api/board/{project}/groups/{groupID}/members
 a GET /api/board/{project}/messages

@@ -126,7 +126,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	t.Cleanup(func() { routes.SetHubOwnerLabel(nil) })
 	owner := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubRoleHeader: "owner", tunnel.HubUserHeader: sweepOwner}
 	ownerOnly := map[string]bool{"/api/artifacts": true, "/api/artifacts/{id}": true, "/api/artifacts/{id}/meta": true, "/api/artifacts/{id}/comments": true, "/api/artifacts/{id}/readers": true,
-		"/api/board/{project}/artifacts": true, "/api/session-artifacts": true, "/api/board/{project}/tasks/{taskID}/artifact-content": true}
+		"/api/board/{project}/artifacts": true, "/api/board/{project}/cross-team/settings": true, "/api/session-artifacts": true, "/api/board/{project}/tasks/{taskID}/artifact-content": true}
 
 	golden, err := os.ReadFile("testdata/cloud_routes.golden")
 	require.NoError(t, err)

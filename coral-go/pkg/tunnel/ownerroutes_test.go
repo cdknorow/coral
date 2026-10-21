@@ -81,6 +81,10 @@ func TestTheOwnerTableAgreesWithTheHandWrittenListItReplaced(t *testing.T) {
 			if m == http.MethodHead { // the table treats HEAD as GET; the old list never saw one
 				continue
 			}
+			// The owner's read of one team's cross-team state (#5636) is new: the old list never had it.
+			if m == http.MethodGet && strings.HasSuffix(p, "/cross-team/settings") {
+				continue
+			}
 			// The one difference of #5610: the table's {id} is any one segment, so a task artifact-content path with a non-number id is stamped too (its handler refuses it).
 			if strings.HasPrefix(p, "/api/board/") && strings.HasSuffix(p, "/artifact-content") && m == http.MethodGet {
 				continue
