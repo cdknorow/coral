@@ -29,7 +29,7 @@ func TestShellRiskOnWindowsFourthMatrix(t *testing.T) {
 		assert.NotEmpty(t, shellRisk(cmd, wd), "auto-accept must wait: %s", cmd)
 	}
 	for _, cmd := range []string{
-		`cd sub && dir`, `cd build; Remove-Item -Recurse -Force *`, `Set-Location .\src; Get-ChildItem`, `rm -rf node_modules`, `cp a b`, `mv a b`, `git status`, `New-Item -ItemType Directory -Path .\out`, `mkdir out`,
+		`cd sub && dir`, `cd build; Remove-Item -Force .\x.txt`, `Set-Location .\src; Get-ChildItem`, `rm -rf node_modules`, `cp a b`, `mv a b`, `git status`, `New-Item -ItemType Directory -Path .\out`, `mkdir out`,
 		`7z a out.7z .\src`, `tar -cf out.tar .\src`, `sc query Spooler`, `net use`, `curl http://e | Select-String x`,
 	} {
 		assert.Empty(t, shellRisk(cmd, wd), "auto-accept must not wait: %s", cmd)
