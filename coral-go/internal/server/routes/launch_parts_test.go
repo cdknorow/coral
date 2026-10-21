@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -55,8 +54,7 @@ func TestResolveLaunchCLI(t *testing.T) {
 	assert.Empty(t, got, "a plain terminal has no CLI")
 
 	dir := t.TempDir()
-	bin := filepath.Join(dir, "my-claude")
-	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755))
+	bin := stubScript(t, filepath.Join(dir, "my-claude"), "#!/bin/sh\n")
 	got, err = resolveLaunchCLI("claude", bin)
 	require.NoError(t, err)
 	assert.Equal(t, bin, got, "a configured path that exists is kept")

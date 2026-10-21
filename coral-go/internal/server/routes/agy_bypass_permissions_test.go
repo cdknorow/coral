@@ -111,8 +111,7 @@ func lastSentCommand(term *mockSessionTerminal) string {
 func TestAgyBypassPermissions_Path1_FreshLaunch(t *testing.T) {
 	rig := setupAgyTestRig(t)
 
-	customCLI := filepath.Join(t.TempDir(), "mock-agy-bin")
-	require.NoError(t, os.WriteFile(customCLI, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+	customCLI := stubScript(t, filepath.Join(t.TempDir(), "mock-agy-bin"), "#!/bin/sh\nexit 0\n")
 	require.NoError(t, rig.h.ss.SetSetting(context.Background(), "cli_path_agy", customCLI))
 
 	body, _ := json.Marshal(map[string]any{

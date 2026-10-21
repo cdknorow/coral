@@ -2522,8 +2522,9 @@ func agentToken(t *testing.T, h *SessionsHandler, sid, name string) string {
 // that exercises CLI resolution itself sets or clears these settings as it needs.
 func stubCLIPaths(t *testing.T, ss *store.SessionStore) {
 	t.Helper()
+	stub := stubCLI(t)
 	for _, ct := range []string{"claude", "codex", "agy", "gemini", "pi"} {
-		if err := ss.SetSetting(context.Background(), "cli_path_"+ct, "/usr/bin/true"); err != nil {
+		if err := ss.SetSetting(context.Background(), "cli_path_"+ct, stub); err != nil {
 			t.Fatalf("stub cli_path_%s: %v", ct, err)
 		}
 	}
@@ -3187,6 +3188,7 @@ func TestWriteBoardStateFileWithoutDataDirWritesNothing(t *testing.T) {
 func TestWriteBoardStateFileNilConfigUsesHomeCoralDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows: without it this wrote into the real ~/.coral there
 
 	writeBoardStateFile("nil-config-session", "fixture-board", "Fixture", nil)
 	data, err := os.ReadFile(filepath.Join(home, ".coral", "board_state_nil-config-session.json"))

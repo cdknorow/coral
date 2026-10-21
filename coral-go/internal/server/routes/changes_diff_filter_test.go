@@ -154,7 +154,9 @@ func TestChangesDiffDedupe(t *testing.T) {
 	got, _ = os.ReadFile(b)
 	assert.Equal(t, diff, got)
 	if fi, _ := os.Stat(b); fi != nil {
-		assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+		if runtime.GOOS != "windows" { // NTFS has no Unix permission bits (Go reports 0666)
+			assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+		}
 	}
 }
 

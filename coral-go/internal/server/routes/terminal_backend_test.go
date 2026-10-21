@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
 	"github.com/subgentic/coral/internal/tmux"
@@ -200,7 +201,7 @@ func TestEndLeftoverRefusesASymlinkedSocket(t *testing.T) {
 	out, err := start.CombinedOutput()
 	require.NoError(t, err, string(out))
 	t.Cleanup(func() { exec.Command(bin, "-S", target, "kill-server").Run() })
-	require.NoError(t, os.Symlink(target, tmux.PrivateSocketPath(dataDir)))
+	linktest.Symlink(t, target, tmux.PrivateSocketPath(dataDir))
 
 	assert.Empty(t, tmux.PrivateAgentSessions(context.Background(), tmux.PrivateSocketPath(dataDir)))
 	b := newBackendRig(t, dataDir)

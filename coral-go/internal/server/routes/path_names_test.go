@@ -20,7 +20,7 @@ const goodID = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 func TestAPendingRecordThatNamesAPathIsNotOne(t *testing.T) {
 	dir := t.TempDir()
 	write := func(id string) string {
-		p := filepath.Join(dir, "p-"+strings.ReplaceAll(id[:min(len(id), 6)], "/", "_")+".json")
+		p := filepath.Join(dir, "p-"+strings.NewReplacer("/", "_", `\`, "_").Replace(id[:min(len(id), 6)])+".json")
 		b, _ := json.Marshal(pendingReceipt{Rec: crossTeamArtifactRecord{ID: id, Size: 1}, Source: "srv", RelayID: "r1"})
 		require.NoError(t, os.WriteFile(p, b, 0o600))
 		return p

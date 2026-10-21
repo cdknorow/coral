@@ -13,6 +13,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // A 1x1 PNG, a JPEG, a GIF and a WebP header: what the sniffer must recognise by content.
@@ -137,8 +139,8 @@ func TestGetUploadDoesNotFollowASymlinkOut(t *testing.T) {
 	h, dir := getUploadRouter(t)
 	outside := filepath.Join(filepath.Dir(dir), "outside.png")
 	require.NoError(t, os.WriteFile(outside, testPNG, 0o600))
-	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "link.png")))
-	require.NoError(t, os.Symlink(filepath.Dir(dir), filepath.Join(dir, "up")))
+	linktest.Symlink(t, outside, filepath.Join(dir, "link.png"))
+	linktest.Symlink(t, filepath.Dir(dir), filepath.Join(dir, "up"))
 	for _, raw := range []string{"link.png", "up%2Foutside.png"} {
 		rec := getUpload(h, raw)
 		assert.NotEqual(t, http.StatusOK, rec.Code, raw)

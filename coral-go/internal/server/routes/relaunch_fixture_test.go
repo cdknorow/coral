@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 const goodFixture = `{
@@ -76,7 +78,7 @@ func TestTheFixtureIsRefusedInAFolderOrFileThatIsNotPrivate(t *testing.T) {
 
 	// a link in place of the folder
 	link := filepath.Join(t.TempDir(), "link")
-	require.NoError(t, os.Symlink(dir, link))
+	linktest.Symlink(t, dir, link)
 	t.Setenv(fixtureDirEnv, link)
 	assert.ErrorContains(t, CheckRelaunchFixture(), "link")
 	t.Setenv(fixtureDirEnv, dir)
@@ -84,7 +86,7 @@ func TestTheFixtureIsRefusedInAFolderOrFileThatIsNotPrivate(t *testing.T) {
 	// a link in place of the file
 	real := filepath.Join(dir, "real.json")
 	require.NoError(t, os.Rename(filepath.Join(dir, fixtureFile), real))
-	require.NoError(t, os.Symlink(real, filepath.Join(dir, fixtureFile)))
+	linktest.Symlink(t, real, filepath.Join(dir, fixtureFile))
 	assert.Error(t, CheckRelaunchFixture(), "a link as the fixture")
 	require.NoError(t, os.Remove(filepath.Join(dir, fixtureFile)))
 	require.NoError(t, os.Rename(real, filepath.Join(dir, fixtureFile)))

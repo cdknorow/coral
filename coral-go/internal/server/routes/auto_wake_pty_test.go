@@ -21,7 +21,7 @@ import (
 // #3636 on a real pty backend: a coral_stopped agent is woken by the pass, resuming its
 // conversation (--resume <id>); an agent the Operator put to sleep stays asleep.
 func TestAutoWakeOnARealPTYResumesTheConversation(t *testing.T) {
-	dataDir, err := os.MkdirTemp("/tmp", "caw")
+	dataDir, err := os.MkdirTemp(shortTempBase(), "caw")
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(dataDir) })
 	cfg := config.Load(dataDir)
@@ -32,7 +32,7 @@ func TestAutoWakeOnARealPTYResumesTheConversation(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	ss := store.NewSessionStore(db)
 	ctx := context.Background()
-	require.NoError(t, ss.SetSetting(ctx, "cli_path_claude", "/usr/bin/true")) // never a real agent in a test
+	require.NoError(t, ss.SetSetting(ctx, "cli_path_claude", stubCLI(t))) // never a real agent in a test
 	stopped := "5c1e0a7d-2b3c-4d5e-8f60-718293a4b5c6"
 	slept := "6d2f1b8e-3c4d-4e6f-9071-8293a4b5c6d7"
 	for id, reason := range map[string]string{stopped: store.SleepReasonCoralStopped, slept: ""} {
@@ -53,7 +53,8 @@ func TestAutoWakeOnARealPTYResumesTheConversation(t *testing.T) {
 	var replay string
 	for time.Now().Before(deadline) {
 		b, _ := pty.Replay(name)
-		if replay = string(b); strings.Contains(replay, "--resume") {
+		// Escape sequences out: PowerShell's PSReadLine colours the echoed line on Windows, between the words.
+		if replay = statusActivityANSI.ReplaceAllString(string(b), ""); strings.Contains(replay, "--resume") {
 			break
 		}
 		time.Sleep(100 * time.Millisecond) // sleep-ok: the shell echoes the typed launch line

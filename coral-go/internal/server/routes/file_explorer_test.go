@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 func TestExplorerListsAllFilesAndPages(t *testing.T) {
@@ -47,7 +49,7 @@ func TestExplorerListsAllFilesAndPages(t *testing.T) {
 func TestExplorerBoundaryAndErrors(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
-	require.NoError(t, os.Symlink(outside, filepath.Join(root, "outside")))
+	linktest.Symlink(t, outside, filepath.Join(root, "outside"))
 	for _, tc := range []struct {
 		dir, query string
 		status     int

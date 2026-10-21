@@ -25,7 +25,7 @@ func TestLaunchRunsToItsEndWhenTheRequestIsDropped(t *testing.T) {
 	for _, at := range []string{"CreateSession", "StartLogging", "SendToTarget"} {
 		t.Run(at, func(t *testing.T) {
 			_, h, term, _ := setupSessionsTestServer(t)
-			req := dropAt(t, term, at, http.MethodPost, "/api/sessions/launch", `{"working_dir":"`+t.TempDir()+`","agent_type":"claude"}`, nil)
+			req := dropAt(t, term, at, http.MethodPost, "/api/sessions/launch", `{"working_dir":`+jsonString(t.TempDir())+`,"agent_type":"claude"}`, nil)
 			rec := httptest.NewRecorder()
 			h.Launch(rec, req)
 			assert.Equal(t, http.StatusOK, rec.Code, "the launch finished although the request ended at %s: %s", at, rec.Body.String())
@@ -41,7 +41,7 @@ func TestLaunchTeamRunsToItsEndWhenTheRequestIsDropped(t *testing.T) {
 	for _, at := range []string{"CreateSession", "StartLogging", "SendToTarget"} {
 		t.Run(at, func(t *testing.T) {
 			_, h, term, _ := setupSessionsTestServer(t)
-			body := `{"board_name":"drop-team-` + strings.ToLower(at) + `","working_dir":"` + t.TempDir() + `","agents":[{"name":"A","prompt":"work"},{"name":"B","prompt":"work"},{"name":"C","prompt":"work"}]}`
+			body := `{"board_name":"drop-team-` + strings.ToLower(at) + `","working_dir":` + jsonString(t.TempDir()) + `,"agents":[{"name":"A","prompt":"work"},{"name":"B","prompt":"work"},{"name":"C","prompt":"work"}]}`
 			req := dropAt(t, term, at, http.MethodPost, "/api/sessions/launch-team", body, nil)
 			rec := httptest.NewRecorder()
 			h.LaunchTeam(rec, req)

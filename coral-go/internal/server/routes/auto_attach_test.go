@@ -21,6 +21,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 var coralLinkRe = regexp.MustCompile(`coral://artifacts/([0-9a-f]{64})`)
@@ -145,7 +147,7 @@ func TestAutoAttachBounds(t *testing.T) {
 	rig := newAttachRig(t)
 	outside := realPath(t.TempDir())
 	rig.write(filepath.Join(outside, "out.png"), pngBytes(t, 4, 4))
-	require.NoError(t, os.Symlink(filepath.Join(outside, "out.png"), filepath.Join(rig.wd, "link.png")))
+	linktest.Symlink(t, filepath.Join(outside, "out.png"), filepath.Join(rig.wd, "link.png"))
 	rig.write(".hidden/a.png", pngBytes(t, 4, 4))
 	rig.write(".a.png", pngBytes(t, 4, 4))
 	rig.write("my-secret.png", pngBytes(t, 4, 4))

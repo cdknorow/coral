@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -59,8 +58,7 @@ func TestTeamLaunchUsesTheConfiguredCLIForEveryAgent(t *testing.T) {
 	term := &cancelAfterTerminal{mockSessionTerminal: mock, n: 2, cancel: cancel}
 	handler := NewSessionsHandler(db, &config.Config{LogDir: t.TempDir()}, nil, term, bs)
 
-	exe := filepath.Join(t.TempDir(), "mock-claude")
-	require.NoError(t, os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+	exe := stubScript(t, filepath.Join(t.TempDir(), "mock-claude"), "#!/bin/sh\nexit 0\n")
 	require.NoError(t, handler.ss.SetSetting(context.Background(), "cli_path_claude", exe))
 
 	const agents = 20

@@ -31,8 +31,8 @@ import (
 // a new terminal under the new name, the old one ended, the start command typed to the new session. Resume, which
 // had the same steps, too.
 func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())              // nothing the restart writes reaches the real home
-	dataDir, err := os.MkdirTemp("/tmp", "rp") // short: pty and socket paths have limits
+	t.Setenv("HOME", t.TempDir())                       // nothing the restart writes reaches the real home
+	dataDir, err := os.MkdirTemp(shortTempBase(), "rp") // short: pty and socket paths have limits
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(dataDir) })
 	cfg := config.Load(dataDir)
@@ -44,8 +44,9 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 	ss := store.NewSessionStore(db)
 	ctx := context.Background()
 	// The CLI the restart types is a harmless stand-in: never a real agent CLI in a test.
+	stub := stubCLI(t)
 	for _, agentType := range []string{"claude", "agy"} {
-		require.NoError(t, ss.SetSetting(ctx, "cli_path_"+agentType, "/usr/bin/true"))
+		require.NoError(t, ss.SetSetting(ctx, "cli_path_"+agentType, stub))
 	}
 
 	pty := ptymanager.NewPTYBackend()
@@ -133,7 +134,9 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 // typedStart reports whether a session's replay shows its start command typed: inline, or for one over the
 // inline limit (agy's, under a long TMPDIR such as macOS's /var/folders/...) the script that holds it sourced.
 func typedStart(replay []byte) bool {
-	return bytes.Contains(replay, []byte("/usr/bin/true")) || bytes.Contains(replay, []byte("/coral-command-"))
+	// The stand-in is /usr/bin/true, or true.cmd on Windows (stubCLI); a long command is a script, coral-command-*.
+	return bytes.Contains(replay, []byte("/usr/bin/true")) || bytes.Contains(replay, []byte("true.cmd")) ||
+		bytes.Contains(replay, []byte("coral-command-"))
 }
 
 // spawnFails is the pty backend with a Spawn that fails, as one does at a fork limit or for a working directory
@@ -145,17 +148,17 @@ func (spawnFails) Spawn(string, string, string, string, string, uint16, uint16) 
 }
 
 // livePTYFixture is a pty backend, a store and a data directory for restarting live pty agents, with
-// /usr/bin/true as the claude CLI; every pty session is ended at the end.
+// a stand-in CLI (stubCLI) as the claude CLI; every pty session is ended at the end.
 func livePTYFixture(t *testing.T) (string, *store.DB, *store.SessionStore, *ptymanager.PTYBackend) {
 	t.Setenv("HOME", t.TempDir())
-	dataDir, err := os.MkdirTemp("/tmp", "rp")
+	dataDir, err := os.MkdirTemp(shortTempBase(), "rp")
 	require.NoError(t, err)
 	t.Cleanup(func() { os.RemoveAll(dataDir) })
 	db, err := storetest.Open(t, filepath.Join(dataDir, "s.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	ss := store.NewSessionStore(db)
-	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", "/usr/bin/true"))
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", stubCLI(t)))
 	pty := ptymanager.NewPTYBackend()
 	t.Cleanup(func() {
 		var wg sync.WaitGroup
