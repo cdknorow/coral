@@ -184,7 +184,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			categories = append(categories, "")
 			continue
 		}
-		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID, autoDefaultAllowed(ctx, r, h.ss)) // read now, as the member's own check is (#5839)
+		entry, category := h.launchTeamMember(ctx, body, agentDef, userSettings, workingDir, worktreePath, teamID, (!fromAgent || inSavedTeamTemplate(userSettings, agentDef)) && autoDefaultAllowed(ctx, r, h.ss)) // an agent's own member is not started in Auto (#4032), a saved template's is; the Hub's rule is read now, as the member's own check is (#5839)
 		if category != "" && firstFailure == "" {
 			firstFailure = category
 		}
