@@ -58,6 +58,32 @@ coral_test_home_env() {
     fi
 }
 
+# coral_test_watchdog [SECONDS]: if the runner is still going after SECONDS (default
+# CORAL_TEST_WATCHDOG_S, else 900), it says so and exits 124, so its EXIT trap still stops the server
+# and cleans up. A hang then fails one runner instead of blocking a whole suite run (#116: on
+# Windows, run_agent_tasks hung on a path the server could not open). Bash acts on the signal
+# between commands, and every API call here has a curl -m limit, so it lands within seconds.
+# Call coral_test_watchdog_stop first thing in the runner's cleanup.
+coral_test_watchdog() {
+    local secs="${1:-${CORAL_TEST_WATCHDOG_S:-900}}" me=$$
+    # The limit is expanded now: secs is local, and gone by the time the trap runs.
+    trap "echo \"[watchdog] \$(basename \"\$0\") still running after ${secs}s: stopping it\" >&2; exit 124" USR1
+    (
+        trap 'kill "$sp" 2>/dev/null; exit 0' TERM
+        sleep "$secs" & sp=$!
+        wait "$sp" && kill -USR1 "$me" 2>/dev/null
+    ) &
+    CORAL_TEST_WATCHDOG_PID=$!
+}
+
+coral_test_watchdog_stop() {
+    if [[ -n "${CORAL_TEST_WATCHDOG_PID:-}" ]]; then
+        kill "$CORAL_TEST_WATCHDOG_PID" 2>/dev/null || true
+        CORAL_TEST_WATCHDOG_PID=""
+    fi
+    return 0
+}
+
 # coral_test_backend_only BACKEND REASON: a runner whose checks read that backend's internals
 # (tmux sockets, show-environment) runs only on it; on another backend it says why and exits 0.
 coral_test_backend_only() {
