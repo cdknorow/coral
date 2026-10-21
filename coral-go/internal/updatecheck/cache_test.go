@@ -32,7 +32,7 @@ func feed(t *testing.T, status int, body string, delay time.Duration) (*httptest
 }
 
 func TestCacheTwentyCallsMakeOneRequest(t *testing.T) {
-	srv, hits := feed(t, 200, `{"tag_name":"v9.9.9"}`, 0)
+	srv, hits := feed(t, 200, tag("v9.9.9"), 0)
 	c := NewCache()
 	for i := 0; i < 20; i++ {
 		v, err := c.Latest(context.Background(), srv.URL)
@@ -43,7 +43,7 @@ func TestCacheTwentyCallsMakeOneRequest(t *testing.T) {
 }
 
 func TestCacheConcurrentCallsShareOneRequest(t *testing.T) {
-	srv, hits := feed(t, 200, `{"tag_name":"v9.9.9"}`, 300*time.Millisecond)
+	srv, hits := feed(t, 200, tag("v9.9.9"), 300*time.Millisecond)
 	c := NewCache()
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
@@ -60,7 +60,7 @@ func TestCacheConcurrentCallsShareOneRequest(t *testing.T) {
 }
 
 func TestCacheAGoodAnswerExpiresAfterAnHour(t *testing.T) {
-	srv, hits := feed(t, 200, `{"tag_name":"v9.9.9"}`, 0)
+	srv, hits := feed(t, 200, tag("v9.9.9"), 0)
 	c := NewCache()
 	now := time.Now()
 	c.now = func() time.Time { return now }
@@ -89,7 +89,7 @@ func TestCacheAFailureIsKeptShortAndNotRetriedPerCall(t *testing.T) {
 }
 
 func TestCacheRefreshIsThrottled(t *testing.T) {
-	srv, hits := feed(t, 200, `{"tag_name":"v9.9.9"}`, 0)
+	srv, hits := feed(t, 200, tag("v9.9.9"), 0)
 	c := NewCache()
 	now := time.Now()
 	c.now = func() time.Time { return now }
@@ -105,7 +105,7 @@ func TestCacheRefreshIsThrottled(t *testing.T) {
 }
 
 func TestCacheACallerThatGivesUpDoesNotCancelTheRequest(t *testing.T) {
-	srv, hits := feed(t, 200, `{"tag_name":"v9.9.9"}`, 300*time.Millisecond)
+	srv, hits := feed(t, 200, tag("v9.9.9"), 300*time.Millisecond)
 	c := NewCache()
 	short, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
@@ -118,8 +118,8 @@ func TestCacheACallerThatGivesUpDoesNotCancelTheRequest(t *testing.T) {
 }
 
 func TestCacheFeedsAreSeparate(t *testing.T) {
-	a, ha := feed(t, 200, `{"tag_name":"v1.0.0"}`, 0)
-	b, hb := feed(t, 200, `{"tag_name":"v2.0.0"}`, 0)
+	a, ha := feed(t, 200, tag("v1.0.0"), 0)
+	b, hb := feed(t, 200, tag("v2.0.0"), 0)
 	c := NewCache()
 	va, _ := c.Latest(context.Background(), a.URL)
 	vb, _ := c.Latest(context.Background(), b.URL)
