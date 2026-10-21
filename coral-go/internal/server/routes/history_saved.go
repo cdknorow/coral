@@ -41,7 +41,8 @@ func (h *HistoryHandler) SavedAgentPresence(ctx context.Context, sessionID, agen
 			now: time.Now,
 			fingerprint: func(ctx context.Context, sid, agentType string) (path, fp string, ok, aborted bool) {
 				_, workingDir := h.sessionIdentity(ctx, sid)
-				return jsonl.TranscriptFingerprintCtx(ctx, sid, workingDir, agentType)
+				path, fp, ok, aborted, unsure := jsonl.TranscriptFingerprintListCtx(ctx, sid, workingDir, agentType)
+				return path, fp, ok, aborted || unsure // cut off, or a Codex rollout that only a scan could find: nothing is known (#5820)
 			},
 			read: func(ctx context.Context, sid, agentType string) ([]map[string]any, string) {
 				_, workingDir := h.sessionIdentity(ctx, sid)
@@ -73,13 +74,20 @@ const (
 // transcript's fingerprint (path, size, modification time) is the one it was made under; fingerprint and read are injected so a test counts the reads.
 type savedPresence struct {
 	now         func() time.Time
-	fingerprint func(ctx context.Context, sessionID, agentType string) (path, fingerprint string, ok, aborted bool) // the transcript file of that agent type, and its path, size and time
+	fingerprint func(ctx context.Context, sessionID, agentType string) (path, fingerprint string, ok, unknown bool) // the transcript file of that agent type, and its path, size and time; unknown: cut off, or not told without a scan
 	read        func(ctx context.Context, sessionID, agentType string) (messages []map[string]any, path string)     // the whole transcript and the file it was read from
 
 	mu        sync.Mutex
 	order     *list.List // most recently used first; elements are *presenceEntry
 	entries   map[string]*list.Element
-	noneUntil map[string]time.Time // session id + agent type -> when "no transcript here" stops being believed
+	noneUntil map[string]noneEntry // session id + agent type -> what was found and until when it is believed
+}
+
+// noneEntry is a believed outcome with no transcript to read: "no transcript here" (known) or "not told" (a lookup the budget cut off, or one only a scan could answer), which the
+// next lists do not try again for a minute, so that they get on to the other bookmarks.
+type noneEntry struct {
+	until time.Time
+	known bool
 }
 
 type presenceEntry struct {
@@ -90,22 +98,26 @@ type presenceEntry struct {
 func (c *savedPresence) check(ctx context.Context, secret []byte, sessionID, agentType string, keys []string) (found map[string]bool, reachable, known bool) {
 	noneKey := sessionID + "\x00" + agentType
 	c.mu.Lock()
-	if until, ok := c.noneUntil[noneKey]; ok && c.now().Before(until) {
+	if n, ok := c.noneUntil[noneKey]; ok && c.now().Before(n.until) {
 		c.mu.Unlock()
-		return nil, false, true
+		return nil, false, n.known
 	}
 	c.mu.Unlock()
-	statPath, fp, stat, aborted := c.fingerprint(ctx, sessionID, agentType)
-	if aborted {
-		return nil, false, false // the budget ended: nothing is known, and nothing is kept
+	remember := func(known bool) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.noneUntil == nil || len(c.noneUntil) >= maxSavedNoTranscript {
+			c.noneUntil = map[string]noneEntry{}
+		}
+		c.noneUntil[noneKey] = noneEntry{until: c.now().Add(savedNoTranscriptFor), known: known}
+	}
+	statPath, fp, stat, unknown := c.fingerprint(ctx, sessionID, agentType)
+	if unknown {
+		remember(false) // cut off, or only a scan could tell: not told, and not tried again for a minute
+		return nil, false, false
 	}
 	if !stat {
-		c.mu.Lock()
-		if c.noneUntil == nil || len(c.noneUntil) >= maxSavedNoTranscript {
-			c.noneUntil = map[string]time.Time{}
-		}
-		c.noneUntil[noneKey] = c.now().Add(savedNoTranscriptFor)
-		c.mu.Unlock()
+		remember(true)
 		return nil, false, true
 	}
 	found = make(map[string]bool, len(keys))

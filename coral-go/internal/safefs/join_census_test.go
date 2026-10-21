@@ -139,7 +139,7 @@ var joinSites = map[string]joinEntry{
 	"internal/jsonl/transcript_paths.go\tresolveAgyTranscriptFromHistory":                    {1, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
 	"internal/jsonl/transcript_paths.go\tresolveAgyTranscriptMode":                           {3, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
 	"internal/jsonl/transcript_paths.go\tresolveClaudeTranscript":                            {2, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
-	"internal/jsonl/transcript_paths.go\tresolveCodexTranscript":                             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
+	"internal/jsonl/transcript_paths.go\tresolveCodexTranscriptCtx":                          {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
 	"internal/naming/naming.go\tLogFile":                                                     {1, joinID, "transcriptlink.IsSessionID or safefs.IsSafeID before the join"},
 	"internal/peercred/peercred.go\tlookup":                                                  {1, joinOwn, "a fixed or program-made name in its own folder"},
 	"internal/safefs/safefs.go\tRoot.WriteFileUnless":                                        {2, joinContained, "the containment code itself"},

@@ -39,22 +39,34 @@ func TranscriptFingerprint(sessionID, workingDirectory, agentType string) (path,
 // has a time budget). aborted is true when it did: nothing is known then, which is not "no transcript". Only the agent type given is looked in: a Claude session never walks
 // ~/.codex.
 func TranscriptFingerprintCtx(ctx context.Context, sessionID, workingDirectory, agentType string) (path, fingerprint string, ok, aborted bool) {
+	path, fingerprint, ok, aborted, _ = transcriptFingerprint(ctx, sessionID, workingDirectory, agentType, false)
+	return path, fingerprint, ok, aborted
+}
+
+// TranscriptFingerprintListCtx is TranscriptFingerprintCtx for a list that must not wait (the Saved list, #5820): a Codex rollout is looked for by its explicit link and its file
+// name only, and when that finds none, unsure is true: the rollout may still exist under a name that does not hold the session id (found only by scanning every rollout for the
+// session's marker, which the one who opens the bookmark does). Nothing is known then, which is neither "found" nor "no transcript".
+func TranscriptFingerprintListCtx(ctx context.Context, sessionID, workingDirectory, agentType string) (path, fingerprint string, ok, aborted, unsure bool) {
+	return transcriptFingerprint(ctx, sessionID, workingDirectory, agentType, true)
+}
+
+func transcriptFingerprint(ctx context.Context, sessionID, workingDirectory, agentType string, nameOnly bool) (path, fingerprint string, ok, aborted, unsure bool) {
 	if agentType == at.Codex {
-		path = resolveCodexTranscriptCtx(ctx, sessionID)
+		path = resolveCodexTranscriptCtx(ctx, sessionID, nameOnly)
 	} else {
 		path = resolveTranscriptPath(sessionID, workingDirectory, agentType)
 	}
 	if ctx.Err() != nil {
-		return "", "", false, true
+		return "", "", false, true, false
 	}
 	if path == "" {
-		return "", "", false, false
+		return "", "", false, false, nameOnly && agentType == at.Codex && transcriptlink.IsSessionID(sessionID)
 	}
 	fi, err := os.Stat(path)
 	if err != nil || !fi.Mode().IsRegular() {
-		return "", "", false, false
+		return "", "", false, false, false
 	}
-	return path, fmt.Sprintf("%s|%d|%d", path, fi.Size(), fi.ModTime().UnixNano()), true, false
+	return path, fmt.Sprintf("%s|%d|%d", path, fi.Size(), fi.ModTime().UnixNano()), true, false, false
 }
 
 // resolveTranscriptPath finds the transcript file for a session.
@@ -288,11 +300,12 @@ func openTranscriptFile(path string) (*os.File, error) {
 func CodexTranscriptPath(sessionID string) string { return resolveCodexTranscript(sessionID) }
 
 func resolveCodexTranscript(sessionID string) string {
-	return resolveCodexTranscriptCtx(context.Background(), sessionID)
+	return resolveCodexTranscriptCtx(context.Background(), sessionID, false)
 }
 
-// resolveCodexTranscriptCtx finds the rollout of a Coral session; its walks of ~/.codex/sessions stop when ctx ends (the answer is then "" and ctx.Err() says why).
-func resolveCodexTranscriptCtx(ctx context.Context, sessionID string) string {
+// resolveCodexTranscriptCtx finds the rollout of a Coral session; its walks of ~/.codex/sessions stop when ctx ends (the answer is then "" and ctx.Err() says why). With nameOnly
+// it looks no further than the explicit link and the file name (one glob): the walks, and the scan of every rollout for the session's marker, are left to a caller that can wait.
+func resolveCodexTranscriptCtx(ctx context.Context, sessionID string, nameOnly bool) string {
 	if !transcriptlink.IsSessionID(sessionID) {
 		return ""
 	}
@@ -311,6 +324,9 @@ func resolveCodexTranscriptCtx(ctx context.Context, sessionID string) string {
 	matches, err := filepath.Glob(filepath.Join(basePath, "*", "*", "*", "rollout-*"+sessionID+"*.jsonl"))
 	if err == nil && len(matches) > 0 {
 		return matches[0]
+	}
+	if nameOnly {
+		return ""
 	}
 
 	// Fallback: search all rollout files for a matching session ID
