@@ -31,7 +31,9 @@ var beforeOpen func(path string)
 
 // OpenPlain opens a staged file for reading without following a link at the path: the open itself refuses a symbolic link, a junction and a
 // folder (secfile.OpenNoFollow), and what was opened is then checked to be a regular file (a FIFO or a device is not). There is no check before
-// the open that a swap could outrun (#5303; it was Lstat, then Open). The caller holds the returned file for as long as it relies on it.
+// the open that a swap could outrun (#5303; it was Lstat, then Open). On Windows the open file must also pass secfile.CheckOpen, as the state file
+// does: one name, owned by this user, an access list that lets no other account write it (an inherited one is made private) (#126 F8). The
+// caller holds the returned file for as long as it relies on it.
 func OpenPlain(path string) (*os.File, error) {
 	if beforeOpen != nil {
 		beforeOpen(path)
@@ -44,6 +46,10 @@ func OpenPlain(path string) (*os.File, error) {
 	if err != nil || !fi.Mode().IsRegular() {
 		f.Close()
 		return nil, fmt.Errorf("%s is not a plain file", filepath.Base(path))
+	}
+	if err := secfile.CheckOpen(f); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("staged file %s: %w", filepath.Base(path), err)
 	}
 	return f, nil
 }
