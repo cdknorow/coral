@@ -114,7 +114,7 @@ Subcommands:
   submit-review <id> --reason "review pending" [--revision N] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
                                    Hands the task to the team's orchestrator (frees your slot); with no orchestrator, completes it
   review <id> --to "Security Reviewer,QA Engineer"  The orchestrator delegates a task in review: one review task each
-  approve <id> [--round N] [--note "..."]  A reviewer approves, any time the task is in review; the last approval completes it
+  approve <id> [--round N] [--revision N] [--note "..."]  A reviewer approves, any time the task is in review; the last approval completes it
   reject <id> [--round N] --note "why"     A reviewer rejects: back to its author; the reviewers stay on it and review the resubmission
   attach <id> --artifacts manifest.json    Add patch rows to a task in review (a next revision, a reviewer's fix); a reviewer who had approved reviews the new bytes again
   send-back <id> --note "why"              The orchestrator returns an approved, completed task to its author (a fix after approval, a patch that would not apply)
@@ -733,6 +733,7 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	to := fs.String("to", "", "Reviewers, comma-separated (review)")
 	note := fs.String("note", "", "Your note (approve; required for reject)")
+	revision := fs.Int("revision", -1, "The revision of the round you read (approve): patches that joined it since it opened; default: the one task detail last showed you")
 	round := fs.Int("round", 0, "The review round you reviewed (default: the one task detail or your review task last showed you); a verdict on an earlier round is refused")
 	fs.Parse(args[1:])
 	explicitRound := false
@@ -767,6 +768,11 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	default:
 		body["note"] = *note
 		body["round"] = *round
+		if *revision >= 0 {
+			body["revision"] = *revision
+		} else {
+			body["revision"] = lastSeenRevision(st.Project, id)
+		}
 	}
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", url.PathEscape(st.Project), id, action), body)
 	if err != nil || status != http.StatusOK {
@@ -835,6 +841,8 @@ func noteSeenRound(project string, task map[string]any) {
 		if last, _ := rounds[len(rounds)-1].(map[string]any); last != nil {
 			if n, _ := last["round"].(float64); n > 0 {
 				seen[fmt.Sprintf("%s/%d", project, int64(id))] = int(n)
+				rev, _ := last["revision"].(float64) // patches that joined the round (#5689); absent is 0
+				seen[fmt.Sprintf("%s/%d#revision", project, int64(id))] = int(rev)
 				changed = true
 			}
 		}
@@ -871,4 +879,10 @@ func noteSeenRound(project string, task map[string]any) {
 // the current round).
 func lastSeenRound(project string, id int64) int {
 	return loadSeenRounds()[fmt.Sprintf("%s/%d", project, id)]
+}
+
+// lastSeenRevision is the revision of the round recorded for a task: how many patches joined it after it opened (#5689), 0 when none did
+// or none was recorded. An approval names it; the server refuses one that names an older revision.
+func lastSeenRevision(project string, id int64) int {
+	return loadSeenRounds()[fmt.Sprintf("%s/%d#revision", project, id)]
 }

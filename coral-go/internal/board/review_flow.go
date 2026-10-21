@@ -41,6 +41,9 @@ type ReviewRound struct {
 	// so the resubmission path is the one a rejection uses.
 	SentBackBy   string `json:"sent_back_by,omitempty"`
 	SentBackNote string `json:"sent_back_note,omitempty"`
+	// Revision counts the patches that joined this round after it opened (the burst rule, #5689): an approval must name the revision the
+	// reviewer read, so a join never lets an approval cover a row the approver did not read.
+	Revision int `json:"revision,omitempty"`
 	// SupersededBy: who attached the patch that opened this round (#5689): the burst rule lets their next attach join it.
 	SupersededBy string `json:"superseded_by,omitempty"`
 	// SentBackDigests: the patches that were approved and sent back, kept for the history (the queue never reads it).
@@ -268,6 +271,19 @@ func (s *Store) RejectReview(ctx context.Context, project string, id int64, acto
 }
 
 func (s *Store) reviewVerdict(ctx context.Context, project string, id int64, actor, note string, approve bool, reviewed int) (*ReviewVerdict, error) {
+	return s.reviewVerdictAt(ctx, project, id, actor, note, approve, reviewed, NoRevisionStated)
+}
+
+// NoRevisionStated is the revision of a verdict that does not name one (a caller that cannot): refused for an approval of a round a
+// patch joined, accepted anywhere else.
+const NoRevisionStated = -1
+
+// ApproveReviewAt is ApproveReview naming the revision of the round the reviewer read.
+func (s *Store) ApproveReviewAt(ctx context.Context, project string, id int64, actor, note string, round, revision int) (*ReviewVerdict, error) {
+	return s.reviewVerdictAt(ctx, project, id, actor, note, true, round, revision)
+}
+
+func (s *Store) reviewVerdictAt(ctx context.Context, project string, id int64, actor, note string, approve bool, reviewed, revision int) (*ReviewVerdict, error) {
 	if len(note) > 4096 {
 		return nil, fmt.Errorf("the note is too long (4096 characters at most)")
 	}
@@ -303,6 +319,9 @@ func (s *Store) reviewVerdict(ctx context.Context, project string, id int64, act
 		if err := checkOwnPatchApproval(id, &w, round, actor); err != nil {
 			return nil, err
 		}
+	}
+	if approve && round.Revision > 0 && revision != round.Revision {
+		return nil, fmt.Errorf("round %d of task #%d changed since you read it (a patch joined it, now revision %d): read it again (coral-board task detail %d) and approve with --revision %d", round.Round, id, round.Revision, id, round.Revision)
 	}
 	if err := checkReviewTaskOpen(ctx, tx, project, id, me.ReviewTaskID, actor); err != nil {
 		return nil, err

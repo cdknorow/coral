@@ -115,3 +115,44 @@ func TestSeenRoundsFileNameIsAHash(t *testing.T) {
 		}
 	}
 }
+
+// #5689: an approval also sends the revision of the round last read (patches that joined it), so a join after the reading is refused by
+// the server; --revision overrides it.
+func TestApproveSendsTheRevisionLastSeen(t *testing.T) {
+	isolateBoardEnv(t)
+	t.Setenv("CORAL_SUBSCRIBER_ID", "QA Engineer")
+	saveState(&boardState{Project: "team", JobTitle: "QA Engineer"})
+	var sent []any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/api/board/team/tasks/7":
+			json.NewEncoder(w).Encode(map[string]any{"id": 7, "workflow": map[string]any{"review_rounds": []any{map[string]any{"round": 2, "revision": 3}}}})
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/approve"):
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			sent = append(sent, body["revision"])
+			w.Write([]byte(`{"completed":false}`))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+	run := func(args ...string) {
+		before := os.Args
+		defer func() { os.Args = before }()
+		os.Args = append([]string{"coral-board", "task"}, args...)
+		cmdTask()
+	}
+	run("approve", "7") // never read: revision 0
+	run("detail", "7")
+	if got := lastSeenRevision("team", 7); got != 3 {
+		t.Fatalf("recorded revision = %d, want 3", got)
+	}
+	run("approve", "7")
+	run("approve", "7", "--revision", "5")
+	if len(sent) != 3 || sent[0] != float64(0) || sent[1] != float64(3) || sent[2] != float64(5) {
+		t.Fatalf("revisions sent: %v, want 0 (unread), 3 (read), 5 (explicit)", sent)
+	}
+}

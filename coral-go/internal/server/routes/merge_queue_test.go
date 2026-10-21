@@ -116,3 +116,35 @@ func TestMergeQueueReadAndMarkLandedAPI(t *testing.T) {
 	defer r.Body.Close()
 	require.Equal(t, http.StatusNotFound, r.StatusCode)
 }
+
+// An approval of a round a patch joined must name the revision it read: 409 otherwise (the stale-round refusal's twin).
+func TestApprovalOfAJoinedRoundNeedsItsRevisionAPI(t *testing.T) {
+	server, h := setupBoardTestServer(t)
+	ctx := context.Background()
+	for name, role := range map[string]string{"lead": "Orchestrator", "worker": "Developer", "rev": "QA"} {
+		_, err := h.bs.Subscribe(ctx, "mqr", name, role, name+"-session", nil, "all")
+		require.NoError(t, err)
+	}
+	task, err := h.bs.CreateTask(ctx, "mqr", "Fix", "", "medium", "lead", "worker")
+	require.NoError(t, err)
+	_, err = h.bs.ClaimTask(ctx, "mqr", "worker", task.ID)
+	require.NoError(t, err)
+	base := fmt.Sprintf("%s/api/board/mqr/tasks/%d/", server.URL, task.ID)
+	call := func(action string, body map[string]any, want int) {
+		t.Helper()
+		r := postJSON(t, base+action, body)
+		defer r.Body.Close()
+		require.Equal(t, want, r.StatusCode, action)
+	}
+	d := func(c string) string { return strings.Repeat(c, 64) }
+	call("submit-review", map[string]any{"subscriber_id": "worker", "reason": "patch", "artifacts": []board.TaskArtifact{queuePatch("fix", d("a"))}}, 200)
+	call("review", map[string]any{"subscriber_id": "lead", "reviewers": []string{"rev"}}, 200)
+	call("attach", map[string]any{"subscriber_id": "worker", "artifacts": []board.TaskArtifact{queuePatch("fix", d("b"))}}, 200) // round 2
+	call("attach", map[string]any{"subscriber_id": "worker", "artifacts": []board.TaskArtifact{queuePatch("fix", d("c"))}}, 200) // joins round 2: revision 1
+	call("approve", map[string]any{"subscriber_id": "rev", "round": 2}, http.StatusConflict)
+	call("approve", map[string]any{"subscriber_id": "rev", "round": 2, "revision": 0}, http.StatusConflict)
+	call("approve", map[string]any{"subscriber_id": "rev", "round": 2, "revision": 1}, 200)
+	got, err := h.bs.GetTask(ctx, "mqr", task.ID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", got.Status)
+}

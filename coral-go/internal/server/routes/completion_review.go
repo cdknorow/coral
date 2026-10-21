@@ -173,7 +173,8 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
 		Note         string `json:"note"`
-		Round        int    `json:"round"` // the round reviewed; an earlier one is refused (#3787)
+		Round        int    `json:"round"`    // the round reviewed; an earlier one is refused (#3787)
+		Revision     *int   `json:"revision"` // the revision of the round read (patches that joined it, #5689); absent: not stated
 	}
 	derr := decodeJSON(r, &body)
 	if derr == nil {
@@ -190,14 +191,18 @@ func (h *BoardHandler) reviewVerdict(w http.ResponseWriter, r *http.Request, app
 	ctx := r.Context()
 	var v *board.ReviewVerdict
 	if approve {
-		v, err = h.bs.ApproveReview(ctx, project, id, body.SubscriberID, body.Note, body.Round)
+		rev := board.NoRevisionStated
+		if body.Revision != nil {
+			rev = *body.Revision
+		}
+		v, err = h.bs.ApproveReviewAt(ctx, project, id, body.SubscriberID, body.Note, body.Round, rev)
 	} else {
 		v, err = h.bs.RejectReview(ctx, project, id, body.SubscriberID, body.Note, body.Round)
 	}
 	if err != nil {
 		if strings.Contains(err.Error(), "only the reviewers") {
 			errForbidden(w, err.Error())
-		} else if strings.Contains(err.Error(), "was resubmitted") {
+		} else if strings.Contains(err.Error(), "was resubmitted") || strings.Contains(err.Error(), "changed since you read it") {
 			errConflict(w, err.Error())
 		} else {
 			errBadRequest(w, err.Error())

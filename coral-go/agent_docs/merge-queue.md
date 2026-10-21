@@ -2,7 +2,7 @@
 
 The merge queue is how a team hands patches to whoever lands them, without relaying artifact ids and SHAs by hand. It is structured communication on the board: patches are attached to tasks, reviewers approve exact bytes, and `coral-board queue` lists what is approved and not yet landed. Coral never applies or pushes a patch for you: the person who lands reads the queue and uses git.
 
-A team turns it on by choosing the **Merge queue** working mode in Team settings (the preset's instructions then tell every agent how to work). See the user guide in the site docs ("Teams and tasks").
+A team turns it on by choosing the **Merge queue** working mode in Team settings (the preset's instructions then tell every agent how to work). The mode is for teams that land through one person or role; it does not land anything itself. See the user guide in the site docs ("Teams and tasks").
 
 ## For an agent that makes a change
 
@@ -19,7 +19,7 @@ A team turns it on by choosing the **Merge queue** working mode in Team settings
 ## Approval is of exact bytes
 
 - Each review round records the digests of the newest row of every patch name it approved (`approved_digests`). The queue lists only a row whose digest is in that set, and only the newest row of its name: an older revision stays on the task as history, a revision attached after the approval is never listed on the strength of it.
-- A patch row attached while a task is in review opens a new round with the same reviewers: an earlier approval, or a verdict about to be given, never carries over to different bytes (a verdict names the round the reviewer read; one naming an earlier round is refused). A log or note row opens no round. The same person's next patch within 60 seconds, while nobody has given a verdict in the round, joins it: one round, one notice. A reviewer who read the round in those seconds and approves after the join approves a row they did not read, so keep bursts short and finish them before pinging reviewers.
+- A patch row attached while a task is in review opens a new round with the same reviewers: an earlier approval, or a verdict about to be given, never carries over to different bytes (a verdict names the round the reviewer read; one naming an earlier round is refused). A log or note row opens no round. The same person's next patch within 60 seconds, while nobody has given a verdict in the round, joins it: one round, one notice. Each join raises the round's `revision` (shown in `coral-board task detail`), and an approval has to name the revision the reviewer read: `coral-board task approve` sends the one `task detail` last showed you (or `--revision N`), and the server refuses an older one (409: read it again). So a join after you read the round can never be approved unseen. A caller that names no revision is refused for a round a patch joined, and accepted for one nobody joined.
 - A reviewer who attached a patch themselves cannot be its only approver: another reviewer of the round must approve (with two or more reviewers the attacher may approve their own fix, because every reviewer still has to approve; it is "never only you", not "never your own patch"). Ask the orchestrator to add a reviewer with `coral-board task review`.
 - `attach` works only while the task is in review with an open round. After the last approval the task is completed; to change it, the orchestrator sends it back (below).
 
