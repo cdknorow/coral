@@ -14,7 +14,12 @@ import (
 )
 
 // Ignore are goroutines that live for the whole process by design, by their top function.
-var Ignore = []goleak.Option{}
+var Ignore = []goleak.Option{
+	// gopsutil's load average on Windows: the first load.Avg starts one sampler for the process
+	// (a sync.Once), and it can still be setting up its performance counter, inside a syscall,
+	// when the server context it was given has already ended.
+	goleak.IgnoreAnyFunction("github.com/shirou/gopsutil/v4/load.loadAvgGoroutine"),
+}
 
 // Check returns code, or 1 when the tests passed but left goroutines running (they are printed).
 func Check(code int, extra ...goleak.Option) int {
