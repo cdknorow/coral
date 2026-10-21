@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,9 @@ import (
 )
 
 func TestCLIVersionProbeBoundsExcessiveOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake CLIs are #!/bin/sh scripts, which Windows can't run (#28)")
+	}
 	// This checks the output bound, not the timeout: under a full parallel
 	// test run, writing 64KB through a shell can take longer than the
 	// production 3s, so allow time (restored after the test).
@@ -45,6 +49,9 @@ type fakeCLIs struct {
 
 func useFakeCLIs(t *testing.T) *fakeCLIs {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake CLIs are #!/bin/sh scripts, which Windows can't run (#28)")
+	}
 	f := &fakeCLIs{dir: t.TempDir(), present: map[string]string{}}
 	prevLook, prevCommon, prevTimeout, prevTmux := cliLookPath, cliCommonPath, cliProbeTimeout, tmuxProbe
 	cliLookPath = func(name string) (string, error) {

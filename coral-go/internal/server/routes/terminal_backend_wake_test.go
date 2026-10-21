@@ -54,7 +54,7 @@ func TestPTYWakeOfAnAgentStillInTheOldTmuxServer(t *testing.T) {
 	}))
 	require.NoError(t, ss.SetSessionSleeping(context.Background(), sid, true))
 	// The CLI the wake types is a harmless program: never the real Claude CLI in a test.
-	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", "/usr/bin/true"))
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", stubCLI(t)))
 	ls, err := ss.GetLiveSession(context.Background(), sid)
 	require.NoError(t, err)
 

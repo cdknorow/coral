@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/gitutil"
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/pkg/tunnel"
 )
@@ -34,6 +35,13 @@ type boundsEnv struct {
 
 func newBoundsEnv(t *testing.T) *boundsEnv {
 	t.Helper()
+	return newBoundsEnvLinks(t, true)
+}
+
+// newBoundsEnvLinks is newBoundsEnv with or without its three symbolic links: a test that never uses
+// them (the Windows junction test) still runs where this account can't make symlinks (#28).
+func newBoundsEnvLinks(t *testing.T, links bool) *boundsEnv {
+	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
@@ -44,6 +52,7 @@ func newBoundsEnv(t *testing.T) *boundsEnv {
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".ssh"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(home, "projects"), 0o755))
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	t.Setenv("CORAL_PROJECT_ROOTS", "")
 	require.NoError(t, os.MkdirAll(filepath.Join(repo, "app"), 0o755))
 	require.NoError(t, exec.Command("git", "init", "-q", repo).Run())
@@ -59,9 +68,11 @@ func newBoundsEnv(t *testing.T) *boundsEnv {
 	write(filepath.Join(base, "outside.txt"), "outside-secret")
 	write(filepath.Join(home, ".ssh", "id_rsa"), "PRIVATE")
 	write(filepath.Join(base, "outdir", "inner.txt"), "inner")
-	require.NoError(t, os.Symlink(filepath.Join(base, "outside.txt"), filepath.Join(repo, "app", "linkfile")))
-	require.NoError(t, os.Symlink(filepath.Join(base, "outdir"), filepath.Join(repo, "app", "linkdir")))
-	require.NoError(t, os.Symlink(base, filepath.Join(home, "projects", "escape")))
+	if links {
+		linktest.Symlink(t, filepath.Join(base, "outside.txt"), filepath.Join(repo, "app", "linkfile"))
+		linktest.Symlink(t, filepath.Join(base, "outdir"), filepath.Join(repo, "app", "linkdir"))
+		linktest.Symlink(t, base, filepath.Join(home, "projects", "escape"))
+	}
 
 	server, handler, _, ss := setupSessionsTestServer(t)
 	ss.RegisterLiveSession(context.Background(), &store.LiveSession{AgentName: "claude-fb", AgentType: "claude", WorkingDir: filepath.Join(repo, "app"), SessionID: "fb-1"})
@@ -476,7 +487,7 @@ func TestSensitivePathAgentCredentials(t *testing.T) {
 	assert.False(t, sensitivePath(filepath.Join(home, "projects", "authorize.json")))
 	// The home folder through a symlink is the same folder.
 	link := filepath.Join(t.TempDir(), "home-link")
-	require.NoError(t, os.Symlink(home, link))
+	linktest.Symlink(t, home, link)
 	t.Setenv("HOME", link)
 	assert.True(t, sensitivePath(filepath.Join(realPath(home), ".codex", "config.toml")), "the resolved home")
 	assert.True(t, sensitivePath(filepath.Join(link, ".codex", "config.toml")), "the home as given")
@@ -566,8 +577,8 @@ func TestSaveFileContentStaysInTheTree(t *testing.T) {
 	hooks := filepath.Join(e.repo, ".git", "hooks")
 	require.NoError(t, os.MkdirAll(hooks, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(hooks, "post-checkout"), []byte("#!/bin/sh\n"), 0o755))
-	require.NoError(t, os.Symlink(hooks, filepath.Join(e.repo, "tools-link")))
-	require.NoError(t, os.Symlink(filepath.Join(hooks, "post-checkout"), filepath.Join(e.repo, "notes-link")))
+	linktest.Symlink(t, hooks, filepath.Join(e.repo, "tools-link"))
+	linktest.Symlink(t, filepath.Join(hooks, "post-checkout"), filepath.Join(e.repo, "notes-link"))
 	require.NoError(t, exec.Command("git", "-C", e.repo, "config", "core.hooksPath", "ci/hooks").Run())
 	for _, fp := range []string{"tools-link/pre-commit", "notes-link", ".GIT/hooks/pre-push", ".Git/config", ".husky/pre-commit", "ci/hooks/pre-commit", "CI/Hooks/pre-commit", "sub/.git"} {
 		assert.Equal(t, 403, put("claude-fb", "fb-1", fp, kindTunnel), fp)

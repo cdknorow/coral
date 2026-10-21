@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -331,7 +332,9 @@ func TestShrinkRewritesClosedDiffsOnly(t *testing.T) {
 	assert.Equal(t, old, still, "the open task's diff, which shared the object, is untouched")
 	fi, err := os.Stat(rig.taskDiff(closed))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	if runtime.GOOS != "windows" { // NTFS has no Unix permission bits (Go reports 0666)
+		assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	}
 
 	rep = rig.run(pruneOptions{Shrink: true})
 	assert.Equal(t, 0, rep.Removed, "already shrunk: nothing to do")

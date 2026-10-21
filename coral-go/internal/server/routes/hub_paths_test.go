@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/pkg/tunnel"
 )
@@ -24,8 +25,9 @@ func hubTestHome(t *testing.T) (home, real string) {
 	real = filepath.Join(base, "real-home")
 	require.NoError(t, os.MkdirAll(real, 0o700))
 	home = filepath.Join(base, "home")
-	require.NoError(t, os.Symlink(real, home))
+	linktest.Symlink(t, real, home)
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)            // os.UserHomeDir on Windows
 	real, err := filepath.EvalSymlinks(real) // fully resolved, as Coral records working directories
 	require.NoError(t, err)
 	return home, real

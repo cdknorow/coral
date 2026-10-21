@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/store"
 )
 
@@ -54,8 +55,8 @@ func TestRefreshFilesCountsOnlyFilesInsideTheTree(t *testing.T) {
 	git("commit", "-qm", "init")
 	// 37 lines outside the tree, reached through a symlinked folder and a symlinked file.
 	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte(strings.Repeat("s\n", 37)), 0o600))
-	require.NoError(t, os.Symlink(outside, filepath.Join(repo, "linkdir")))
-	require.NoError(t, os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(repo, "linkfile.txt")))
+	linktest.Symlink(t, outside, filepath.Join(repo, "linkdir"))
+	linktest.Symlink(t, filepath.Join(outside, "secret.txt"), filepath.Join(repo, "linkfile.txt"))
 	// A real new file inside: still counted.
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "new.txt"), []byte("a\nb\nc\n"), 0o644))
 

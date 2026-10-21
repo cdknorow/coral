@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // #3598 (weak site W7): nothing outside the attach roots is resolved or opened. Resolving a UNC
@@ -31,7 +33,7 @@ func TestAttachLoadRefusesBeforeResolving(t *testing.T) {
 	// loop there would otherwise fail to resolve and report not_found.
 	outside := t.TempDir()
 	loop := filepath.Join(outside, "loop.png")
-	require.NoError(t, os.Symlink(loop, loop))
+	linktest.Symlink(t, loop, loop)
 	_, _, _, err := rig.a.load(rig.wd, rig.git, loop, true, 1<<20)
 	assert.EqualError(t, err, "outside_roots", "an outside path isn't resolved")
 
@@ -43,14 +45,14 @@ func TestAttachLoadRefusesBeforeResolving(t *testing.T) {
 	// An outside path that is a symlink INTO the repository is refused too: the path as written
 	// must be inside a root.
 	into := filepath.Join(outside, "into.png")
-	require.NoError(t, os.Symlink(filepath.Join(rig.wd, "ok.png"), into))
+	linktest.Symlink(t, filepath.Join(rig.wd, "ok.png"), into)
 	_, _, _, err = rig.a.load(rig.wd, rig.git, into, true, 1<<20)
 	assert.EqualError(t, err, "outside_roots")
 
 	// Still refused, as before: a symlink inside the repository that points outside it.
 	secret := filepath.Join(outside, "secret.png")
 	require.NoError(t, os.WriteFile(secret, img, 0o644))
-	require.NoError(t, os.Symlink(secret, filepath.Join(rig.wd, "link.png")))
+	linktest.Symlink(t, secret, filepath.Join(rig.wd, "link.png"))
 	_, _, _, err = rig.a.load(rig.wd, rig.git, "link.png", true, 1<<20)
 	assert.Error(t, err)
 

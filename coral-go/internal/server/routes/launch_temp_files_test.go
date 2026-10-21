@@ -23,6 +23,8 @@ func TestLaunchFailsWhenTheTempFolderRefusesItsFiles(t *testing.T) {
 	workDir := t.TempDir()
 	gone := filepath.Join(t.TempDir(), "no-such-folder")
 	t.Setenv("TMPDIR", gone)
+	t.Setenv("TMP", gone) // os.TempDir on Windows
+	t.Setenv("TEMP", gone)
 
 	body, _ := json.Marshal(map[string]any{"working_dir": workDir, "agent_type": "claude", "prompt": "do the thing"})
 	resp, err := http.Post(server.URL+"/api/sessions/launch", "application/json", bytes.NewReader(body))
@@ -52,7 +54,10 @@ func TestRestartAndResumeKeepTheOldAgentWhenTheTempFolderFails(t *testing.T) {
 	const sleepID = "11111111-aaaa-4bbb-8ccc-000000000002"
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sleepID, AgentType: "claude", AgentName: "sleepy", WorkingDir: t.TempDir()}))
 	require.NoError(t, ss.SetSessionSleeping(ctx, sleepID, true))
-	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "no-such-folder"))
+	missing := filepath.Join(t.TempDir(), "no-such-folder")
+	t.Setenv("TMPDIR", missing)
+	t.Setenv("TMP", missing) // os.TempDir on Windows
+	t.Setenv("TEMP", missing)
 
 	post := func(path, body string) int {
 		t.Helper()

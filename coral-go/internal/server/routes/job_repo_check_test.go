@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // A job's repo_path goes through the same directory check as a workflow's
@@ -26,9 +28,9 @@ func TestJobRepoErrorUsesTheWorkflowDirectoryCheck(t *testing.T) {
 	file := filepath.Join(base, "file")
 	require.NoError(t, os.WriteFile(file, nil, 0o644))
 	linkToRepo := filepath.Join(base, "link-repo")
-	require.NoError(t, os.Symlink(repo, linkToRepo))
+	linktest.Symlink(t, repo, linkToRepo)
 	linkToFile := filepath.Join(base, "link-file")
-	require.NoError(t, os.Symlink(file, linkToFile))
+	linktest.Symlink(t, file, linkToFile)
 
 	assert.Empty(t, jobRepoError(ctx, repo))
 	assert.Empty(t, jobRepoError(ctx, linkToRepo), "a symlink to a repository resolves like a workflow's")

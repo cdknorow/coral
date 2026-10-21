@@ -20,7 +20,7 @@ import (
 // leading to a folder outside it, never lets the file viewer, resolve-path, the diff of an
 // untracked file or the explorer read there, through the hub or on the local dashboard.
 func TestJunctionOutOfTheRepositoryIsRefusedEverywhere(t *testing.T) {
-	e := newBoundsEnv(t)
+	e := newBoundsEnvLinks(t, false) // junctions only: no symlink privilege needed
 	outdir := filepath.Join(e.base, "outdir")
 	require.NoError(t, os.WriteFile(filepath.Join(outdir, "j.txt"), []byte("junction-secret"), 0o644))
 	junc := filepath.Join(e.repo, "app", "juncdir")

@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // The high-risk list (#3182 E): each item is caught, including the usual
@@ -71,7 +73,7 @@ func TestFileRisk(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(wd, "src"), 0o755))
 	outside := t.TempDir()
 	// A symlink inside the repo that points out of it is outside.
-	require.NoError(t, os.Symlink(outside, filepath.Join(wd, "escape")))
+	linktest.Symlink(t, outside, filepath.Join(wd, "escape"))
 
 	for _, tc := range []struct {
 		tool, path string
@@ -150,7 +152,7 @@ func TestShellRiskSeesThroughWrappers(t *testing.T) {
 func TestShellWriteRisk(t *testing.T) {
 	wd := t.TempDir()
 	outside := t.TempDir()
-	require.NoError(t, os.Symlink(outside, filepath.Join(wd, "escape")))
+	linktest.Symlink(t, outside, filepath.Join(wd, "escape"))
 	risky := []string{
 		"echo x >> ~/.zshrc",
 		"echo x > /etc/hosts",
