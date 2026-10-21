@@ -10,6 +10,7 @@ import (
 	"time"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/ptymanager"
 )
 
@@ -176,6 +177,7 @@ func (h *SessionsHandler) humanScreen(ctx context.Context, name, agentType, sess
 // deliverHumanSend types a person's message into the agent's input box and submits it, with the care above. A
 // terminal whose screen can't be read, or an agent whose input box Coral doesn't know, gets the plain send.
 func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType, sessionID, text string) (err error) {
+	ctx = inputlog.Human(ctx) // a person's text: the input debug log keeps its length only (#60 review N3)
 	key := sessionID
 	if key == "" {
 		key = name
