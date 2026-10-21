@@ -22,7 +22,7 @@ import (
 func TestStartRaisesAnUnsetArtifactLimitOverASeventeenGiBStore(t *testing.T) {
 	const gib = int64(1) << 30
 	var home string
-	bootWithStubCLIs(t, func(ctx context.Context, db *store.DB, h string) {
+	bootWithStubCLIsNoWatch(t, func(ctx context.Context, db *store.DB, h string) {
 		home = h
 		seedSparseArtifact(t, h, 17*gib)
 	})
@@ -35,7 +35,7 @@ func TestStartRaisesAnUnsetArtifactLimitOverASeventeenGiBStore(t *testing.T) {
 func TestStartLeavesAnOperatorsArtifactLimitAlone(t *testing.T) {
 	const gib = int64(1) << 30
 	var home string
-	bootWithStubCLIs(t, func(ctx context.Context, db *store.DB, h string) {
+	bootWithStubCLIsNoWatch(t, func(ctx context.Context, db *store.DB, h string) {
 		home = h
 		seedSparseArtifact(t, h, 17*gib)
 		require.NoError(t, store.NewSessionStore(db).SetSetting(ctx, routes.ArtifactStoreMaxBytesSetting, "0"))
