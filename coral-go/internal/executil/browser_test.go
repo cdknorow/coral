@@ -77,12 +77,34 @@ func TestWindowsBrowserCommandUsesTheSystemRundll32(t *testing.T) {
 
 // OpenFile shows only an absolute, regular .log or .txt file: never a program, a link, a relative
 // path, an option or a web address.
-func TestOpenFileOnlyOpensAnAbsoluteRegularLog(t *testing.T) {
+func TestOpenFileOnlyOpensAnAbsoluteRegularLogInsideTheDataDir(t *testing.T) {
 	dir := t.TempDir()
+	other := t.TempDir()
 	exe := filepath.Join(dir, "evil.exe")
 	require.NoError(t, os.WriteFile(exe, []byte("x"), 0o700))
-	for _, bad := range []string{"", "tray.log", "-a", exe, filepath.Join(dir, "gone.log"), dir, "https://example.com/x.log", filepath.Join(dir, "tray.log.exe")} {
-		assert.False(t, OpenFile(bad), "%q", bad)
+	outside := filepath.Join(other, "elsewhere.log")
+	require.NoError(t, os.WriteFile(outside, []byte("x"), 0o600))
+	for _, bad := range []string{"", "tray.log", "-a", exe, filepath.Join(dir, "gone.log"), dir, "https://example.com/x.log", filepath.Join(dir, "tray.log.exe"),
+		outside, filepath.Join(dir, "..", filepath.Base(other), "elsewhere.log")} {
+		assert.False(t, OpenFile(dir, bad), "%q", bad)
+	}
+	assert.False(t, OpenFile("", filepath.Join(dir, "x.log")), "no folder, nothing opens")
+	assert.False(t, OpenFile("relative", filepath.Join(dir, "x.log")), "a relative folder is refused")
+}
+
+// insideDir is the confinement OpenFile uses: below the folder, cleaned, and not the folder itself.
+func TestInsideDir(t *testing.T) {
+	d := filepath.Join(string(filepath.Separator), "data", "coral")
+	if runtime.GOOS == "windows" {
+		d = `C:\Users\u\.coral`
+	}
+	assert.True(t, insideDir(d, filepath.Join(d, "tray.log")))
+	assert.True(t, insideDir(d, filepath.Join(d, "logs", "app.log")))
+	assert.False(t, insideDir(d, d))
+	assert.False(t, insideDir(d, filepath.Join(d, "..", "x.log")))
+	assert.False(t, insideDir(d, d+"2"+string(filepath.Separator)+"x.log"), "a sibling with the same prefix is not inside")
+	if runtime.GOOS == "windows" {
+		assert.True(t, insideDir(`C:\Users\U\.CORAL`, `c:\users\u\.coral\Tray.log`), "file names do not count case on Windows")
 	}
 }
 

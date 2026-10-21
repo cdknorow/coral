@@ -370,7 +370,9 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 				case <-mUpdate.ClickedCh:
 					go func() { defer safego.Recover("coral-tray/main:checkForUpdates"); checkForUpdates(url, dataDir) }()
 				case <-mLog.ClickedCh:
-					executil.OpenFile(filepath.Join(dataDir, "tray.log")) // a log file only, never a program (#78 T1)
+					if dir, err := filepath.Abs(dataDir); err == nil {
+						executil.OpenFile(dir, filepath.Join(dir, "tray.log")) // a log file in the data folder only, never a program (#78 T1)
+					}
 				case <-mRetry.ClickedCh:
 					log.Printf("[supervise] Retry from the menu")
 					sup.retry()
