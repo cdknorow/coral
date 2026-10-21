@@ -40,14 +40,26 @@ func browserCommand(goos, url string) []string {
 	}
 }
 
+// insideDir reports whether path, cleaned, is below dir, cleaned (case-insensitive on Windows, where file names are).
+func insideDir(dir, path string) bool {
+	dir, path = filepath.Clean(dir), filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		dir, path = strings.ToLower(dir), strings.ToLower(path)
+	}
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
 // openableFileExts are the files OpenFile shows: Coral's own logs.
 var openableFileExts = map[string]bool{".log": true, ".txt": true}
 
 // OpenFile shows a log file Coral wrote (the tray's "Open Log") in the system's default program:
-// an absolute path to a regular file with a .log or .txt extension, never a link, a program or a
-// script (the opener runs what it is given, #78 T1). It reports whether it started the opener.
-func OpenFile(path string) bool {
-	if path == "" || !filepath.IsAbs(path) || strings.HasPrefix(path, "-") || !openableFileExts[strings.ToLower(filepath.Ext(path))] {
+// a regular file inside dir (Coral's data folder) with a .log or .txt extension, never a link, a
+// program or a script, and nothing outside dir (the opener runs what it is given, #78 T1). path and
+// dir must be absolute. It reports whether it started the opener.
+func OpenFile(dir, path string) bool {
+	if dir == "" || path == "" || !filepath.IsAbs(dir) || !filepath.IsAbs(path) || strings.HasPrefix(path, "-") ||
+		!openableFileExts[strings.ToLower(filepath.Ext(path))] || !insideDir(dir, path) {
 		return false
 	}
 	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
