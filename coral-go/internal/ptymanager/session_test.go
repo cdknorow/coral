@@ -31,6 +31,7 @@ func TestNewSession_CreatesLogFile(t *testing.T) {
 }
 
 func TestNewSession_SetsEnvironment(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	s, err := newSession("env-test", "test", t.TempDir(), "sid-env", "env", 80, 24)
 	if err != nil {
@@ -180,6 +181,7 @@ func TestSession_ReadLoopFansOut(t *testing.T) {
 }
 
 func TestSession_RingBufferOverflow(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	s, err := newSession("ring-test", "test", t.TempDir(), "sid-ring", "cat", 80, 24)
 	if err != nil {
@@ -251,6 +253,7 @@ func TestSession_ProcessExitClosesReadLoop(t *testing.T) {
 }
 
 func TestSession_WorkingDirectory(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	tmpDir := t.TempDir()
 	s, err := newSession("workdir-test", "test", tmpDir, "sid-workdir", "pwd", 80, 24)
@@ -305,6 +308,7 @@ func TestParseCommand_ShellMetachars(t *testing.T) {
 }
 
 func TestSession_LogFileContainsOutput(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	s, err := newSession("log-content", "test", t.TempDir(), "sid-log-content", "echo LOG_MARKER_42", 80, 24)
 	if err != nil {
