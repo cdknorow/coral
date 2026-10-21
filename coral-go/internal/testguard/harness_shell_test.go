@@ -50,8 +50,8 @@ func TestRmTreeRemovesOnlyCoralTestFolders(t *testing.T) {
 	assert.Contains(t, string(out), "done", "it never fails the run")
 }
 
-// The watchdog checks that the runner is still there before it signals it (a number reused by another process must not get the signal), and still stops a runner
-// that hangs.
+// The watchdog signals only the process that started it (its start time is compared when the time is up: a number reused by another process must not get the
+// signal), and still stops a runner that hangs.
 func TestWatchdogSignalsOnlyARunnerThatIsStillThere(t *testing.T) {
 	lib := bashLib(t, "backend.sh")
 	root := t.TempDir()
@@ -69,18 +69,55 @@ func TestWatchdogSignalsOnlyARunnerThatIsStillThere(t *testing.T) {
 	b, _ := os.ReadFile(logf)
 	assert.NotContains(t, string(b), "-USR1", "no signal for a runner that is gone: %q", b)
 
-	// a runner that hangs: it is checked (kill -0) and then stopped with exit 124
+	// a runner that hangs: the watchdog stops it with exit 124
 	_ = os.Remove(logf)
-	hang := `source "$1"; ` + wrap + `; coral_test_watchdog 1; for i in $(seq 1 100); do sleep 0.1; done; echo not-stopped`
+	hang := `source "$1"; ` + wrap + `; [ -n "$(coral_test_proc_start $$)" ] || { echo cannot-tell; exit 0; }; coral_test_watchdog 1; for i in $(seq 1 100); do sleep 0.1; done; echo not-stopped`
 	cmd := exec.Command("bash", "-c", hang, "bash", lib)
 	cmd.Env = append(os.Environ(), "LOG="+logf)
 	out, err = cmd.CombinedOutput()
+	if strings.Contains(string(out), "cannot-tell") {
+		t.Skip("this system gives no start time for a process: the watchdog is not started here (and says so)")
+	}
 	var ee *exec.ExitError
 	require.ErrorAs(t, err, &ee, string(out))
 	assert.Equal(t, 124, ee.ExitCode(), string(out))
 	assert.Contains(t, string(out), "still running after 1s")
 	b, _ = os.ReadFile(logf)
-	s := string(b)
-	i0, iU := strings.Index(s, "kill -0 "), strings.Index(s, "kill -USR1 ")
-	assert.True(t, i0 >= 0 && iU > i0, "kill -0 comes before kill -USR1: %q", s)
+	assert.Contains(t, string(b), "kill -USR1 ", "the runner that is still there is signalled")
+
+	// a process that took the runner's number over (here: the start time read when the time is up is another one): no signal, the runner is left alone
+	_ = os.Remove(logf)
+	cnt := filepath.Join(root, "count")
+	reused := `source "$1"; ` + wrap + `; coral_test_proc_start() { n=$(cat "$CNT" 2>/dev/null || echo 0); echo $((n+1)) > "$CNT"; echo "start-$n"; }; ` +
+		`coral_test_watchdog 1; for i in $(seq 1 30); do sleep 0.1; done; echo not-stopped`
+	cmd2 := exec.Command("bash", "-c", reused, "bash", lib)
+	cmd2.Env = append(os.Environ(), "LOG="+logf, "CNT="+cnt)
+	out, err = cmd2.CombinedOutput()
+	require.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "not-stopped", "a different start time at fire time means a different process: it is not signalled")
+	b, _ = os.ReadFile(logf)
+	assert.NotContains(t, string(b), "-USR1", "%q", b)
+}
+
+// The identity the watchdog compares (#5776): a process's start time. The same process matches itself, another process, a dead one and an empty start do not.
+func TestProcStartTellsOneProcessFromAnother(t *testing.T) {
+	lib := bashLib(t, "backend.sh")
+	script := `source "$1"
+a=$(coral_test_proc_start $$)
+[ -n "$a" ] || { echo cannot-tell; exit 0; }
+coral_test_same_process $$ "$a" && echo self-same
+sleep 1.3   # ps shows start times to the second: the other process starts a clear second after this one
+sleep 5 & other=$!
+coral_test_same_process $other "$a" && echo other-same || echo other-differs
+kill $other; wait $other 2>/dev/null
+coral_test_same_process $other "$a" && echo dead-same || echo dead-differs
+coral_test_same_process $$ "" && echo empty-same || echo empty-differs`
+	out, err := exec.Command("bash", "-c", script, "bash", lib).CombinedOutput()
+	require.NoError(t, err, string(out))
+	if strings.Contains(string(out), "cannot-tell") {
+		t.Skip("this system gives no start time for a process")
+	}
+	for _, want := range []string{"self-same", "other-differs", "dead-differs", "empty-differs"} {
+		assert.Contains(t, string(out), want, string(out))
+	}
 }
