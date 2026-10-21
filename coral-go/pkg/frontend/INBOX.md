@@ -40,6 +40,7 @@ A plain object of functions, never evaluated text. `mountInbox` refuses one that
 | `readSavedMessage(item)` | `GET /api/saved/{id}/message`: `{ text, partial, reason }` with `reason` one of `''`, `gone`, `not_reachable`, `too_long` (optional: without it the saved control is not drawn) |
 | `contract` (optional) | the `INBOX_CONTRACT` the adapter was written for |
 | `linkPolicy(url)` (optional) | the host's link callback (see below) |
+| `prepareLinks(text)` (optional, async) | the lookup for ONE render of that text: returns the `linkPolicy` to use for it (Coral: `artifactLinkPolicy`, one `GET /api/artifacts/<hex>/meta` per distinct id, at most 20, only a 200 makes a link; 403, 404, any other status and a network error leave text). If it throws, the adapter's `linkPolicy` is used. Additive: `INBOX_CONTRACT` stays 1 |
 | `openTask(task)`, `taskHref(task)` (optional) | "Open the task": a button that calls `openTask`, or a link when `taskHref` returns a same-origin path (`safePath`: "/x", never "//host", a backslash, a blank or a control character; anything else makes no link) |
 | `now()` (optional) | the clock, for ages |
 

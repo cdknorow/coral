@@ -41,6 +41,14 @@ const STUB = `(() => {
         if (p === '/api/saved' && m === 'GET') return json({ items: SAVED, open: SAVED.length, done: 0 });
         r = /^\\/api\\/saved\\/(\\d+)\\/message$/.exec(p);
         if (r && m === 'GET') { const x = MSG[Number(r[1])]; return x ? json(x) : json({ error: 'the transcript could not be read' }, 500); }
+        r = /^\\/api\\/artifacts\\/([0-9a-f]{64})\\/meta$/.exec(p);
+        if (r && m === 'GET') {
+            const c = r[1][0];
+            if (c === 'a') return json({ id: r[1] });
+            if (c === 'b') return json({ error: 'not yours' }, 403);
+            if (c === 'c') return json({ error: 'not found' }, 404);
+            return Promise.reject(new TypeError('network'));
+        }
         if (p.startsWith('/api/sessions/history/')) return json({ found: true, index: 1 });
         return real(u, o);
     };
@@ -89,7 +97,7 @@ const STUB = `(() => {
             await head(0);
             await waitFor(`!!document.querySelector('#inbox-tasks-host .ibx-task-body .md')`, 'the task text', 4000);
             const body = await ev(`(() => { const r = document.querySelector('#inbox-tasks-host .ibx-task-body'); const tags = {}; r.querySelector('.md').querySelectorAll('*').forEach(e => { tags[e.tagName.toLowerCase()] = 1; }); tags.md = 1;
-                return { expanded: document.querySelector('#inbox-tasks-host .ibx-task-head').getAttribute('aria-expanded'), shown: !r.hidden, tags: Object.keys(tags), text: r.textContent, anchors: [...r.querySelectorAll('a')].map(a => [a.getAttribute('href'), a.getAttribute('rel'), a.getAttribute('target')]), pwn: window.__pwn, req: window.__reqs.filter(x => /\\/tasks\\/1$/.test(x.p)).length }; })()`);
+                return { expanded: document.querySelector('#inbox-tasks-host .ibx-task-head').getAttribute('aria-expanded'), shown: !r.hidden, tags: Object.keys(tags), text: r.textContent, anchors: [...r.querySelectorAll('.md a')].map(a => [a.getAttribute('href'), a.getAttribute('rel'), a.getAttribute('target')]), pwn: window.__pwn, req: window.__reqs.filter(x => /\\/tasks\\/1$/.test(x.p)).length }; })()`);
             check(`${dev}: it opens: aria-expanded true, the task read once, "From <creator>" and the status`, body.expanded === 'true' && body.shown && body.req === 1 && /From Orchestrator · pending/.test(body.text), JSON.stringify(body.text).slice(0, 160));
             check(`${dev}: the text is rendered (a list, bold) from a closed list of tags; raw HTML is shown as text and nothing ran`, ['ul', 'li', 'strong', 'p'].every(t => body.tags.includes(t)) && !body.tags.some(t => ['script', 'img', 'iframe', 'svg', 'form'].includes(t)) && body.text.includes('<script>window.__pwn=1</script>') && body.pwn === undefined, JSON.stringify(body.tags));
             check(`${dev}: a good link is a real link (noopener noreferrer, new tab) with its host shown; javascript: is text; the image is not loaded`, body.anchors.length === 1 && body.anchors[0][0] === 'https://example.com/plan' && body.anchors[0][1] === 'noopener noreferrer' && body.anchors[0][2] === '_blank' && body.text.includes('(example.com)') && body.text.includes('[click](javascript:alert(1))') && body.text.includes('(image not shown)'), JSON.stringify(body.anchors));
@@ -203,6 +211,31 @@ const STUB = `(() => {
         check('an adapter\'s link that is not a same-origin path makes no link, a half adapter, a non-object and an adapter written for another contract are refused (TypeError), the contract is 1', other.link === 0 && other.threw === 'TypeError' && other.threw2 === 'TypeError' && other.threw3 === 'TypeError' && other.contract === 1, JSON.stringify(other));
         check('safePath accepts a same-origin absolute path only', JSON.stringify(other.paths) === JSON.stringify(['/ok', '', '', '', '', '']), JSON.stringify(other.paths));
         check('destroy removes the panel', other.removed === true);
+
+        // artifact links (#5784): a coral://artifacts/<hex> in task text is a link only after GET /api/artifacts/<hex>/meta answered 200
+        console.log('artifact links');
+        const A = c => c.repeat(64);
+        const text = [`ok coral://artifacts/${A('a')} and [again](coral://artifacts/${A('a')})`, `forbidden coral://artifacts/${A('b')}`, `missing coral://artifacts/${A('c')}`, `offline coral://artifacts/${A('d')}`,
+            `upper coral://artifacts/${A('A')}`, `short coral://artifacts/${'a'.repeat(63)}`, `[trick](coral://artifacts/${A('a')}/../../x)`, `[pw](coral://artifacts/${A('e')}?x=1)`].join('\n\n');
+        await ev(`(async () => { window.__reqs.length = 0; const m = await import(${S} + 'inbox_panel.js'); const c = await import(${S} + 'inbox_coral.js'); const host = document.createElement('div'); host.id = 'link-host'; document.body.append(host);
+            const adapter = { ...c.coralInboxAdapter, listTasks: async () => [{ id: 7, project: 'team a', board: 'x', title: 'Links', priority: 'low', status: 'pending', created_by: 'X', updated_at: new Date().toISOString() }], getTask: async () => ({ body: ${JSON.stringify(text)}, created_by: 'X' }) };
+            window.__link = m.mountInbox(host, adapter); return true; })()`);
+        await waitFor(`!!document.querySelector('#link-host .ibx-task-head')`, 'the link host task', 4000);
+        await ev(`document.querySelector('#link-host .ibx-task-head').click(); true`);
+        await waitFor(`!!document.querySelector('#link-host .ibx-task-body .md')`, 'the link host text', 4000);
+        const lk = await ev(`(() => { const b = document.querySelector('#link-host .ibx-task-body'); const metas = window.__reqs.filter(r => /\\/meta$/.test(r.p)).map(r => r.p.split('/')[3][0]);
+            return { hrefs: [...b.querySelectorAll('.md a')].map(a => a.getAttribute('href')), metas, open: b.querySelector('a.ibx-open').getAttribute('href'), text: b.textContent }; })()`);
+        check('only the id that answered 200 is a link, to the fixed /api/artifacts/<hex> path (the markdown link; a bare id is text)', lk.hrefs.length === 1 && lk.hrefs.every(h => h === '/api/artifacts/' + 'a'.repeat(64)), JSON.stringify(lk.hrefs));
+        check('403, 404, a network failure, an uppercase id, a short id and an id with a tail stay text', ['b', 'c', 'd', 'A', 'e'].every(c => lk.text.includes('coral://artifacts/' + c.repeat(64))) && lk.text.includes('a'.repeat(63)), lk.text);
+        check('one meta request per distinct valid id (a, b, c, d, e), and none for the uppercase or short ones', JSON.stringify([...lk.metas].sort()) === JSON.stringify(['a', 'b', 'c', 'd']) || JSON.stringify([...lk.metas].sort()) === JSON.stringify(['a', 'b', 'c', 'd', 'e']), JSON.stringify(lk.metas));
+        check('"Open the task" is the board path of the task, encoded', lk.open === '/board/team%20a', lk.open);
+        const many = await ev(`(async () => { const c = await import(${S} + 'inbox_coral.js'); window.__reqs.length = 0;
+            const ids = Array.from({ length: 30 }, (_, i) => 'a' + String(i).padStart(2, '0').repeat(1) + 'f'.repeat(61));
+            const t = ids.concat(ids).map(x => 'coral://artifacts/' + x).join(' ');
+            const pol = await c.artifactLinkPolicy(t);
+            return { n: window.__reqs.filter(r => /\\/meta$/.test(r.p)).length, distinct: new Set(window.__reqs.map(r => r.p)).size, first: !!pol('coral://artifacts/' + ids[0]), beyond: pol('coral://artifacts/' + ids[25]) === undefined, junk: await c.artifactLinkPolicy(null).then(f => f('x')) === undefined }; })()`);
+        check('at most 20 lookups, each id once, and an id past the 20th stays text', many.n === 20 && many.distinct === 20 && many.first && many.beyond && many.junk, JSON.stringify(many));
+        await ev(`window.__link.destroy(); true`);
     } catch (e) {
         console.error(e && e.stack || e);
         results.push(false);
