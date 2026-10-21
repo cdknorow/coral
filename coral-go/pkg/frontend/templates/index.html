@@ -41,12 +41,13 @@
     <link rel="stylesheet" href="{{ $base }}css/mobile.css">
     <link rel="stylesheet" href="{{ $base }}css/popout.css">
     <link rel="stylesheet" href="{{ $base }}css/touch.css">
-    <link rel="stylesheet" href="{{ $base }}css/forced-colors.css">
     <link rel="stylesheet" href="{{ $base }}css/cloud.css">
     <!-- Platform-specific CSS — loaded for all targets, scoped by class selectors -->
     <link rel="stylesheet" href="{{ $base }}css/native.css">
     <link rel="stylesheet" href="{{ $base }}css/native-macos.css">
     <link rel="stylesheet" href="{{ $base }}css/native-windows.css">
+    <!-- Last, so its forced-colors rules win over every sheet above at equal specificity (#5707) -->
+    <link rel="stylesheet" href="{{ $base }}css/forced-colors.css">
     {{- end }}
     <!-- The startup module graph, hinted after the stylesheets so the render-blocking CSS is asked for first (#3900) -->
     {{- range .ModulePreloads }}

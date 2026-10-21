@@ -2,7 +2,8 @@
 // With forced colors emulated (Chrome's forced-colors media feature), this holds that the three that did are readable again:
 //   - a Settings switch: on and off differ in track, knob colour and knob position;
 //   - the selected tab (Settings, a dialog's section list, Team settings) differs from the others by more than weight;
-//   - the agent list's status dot: working, needs input, stuck and idle each have their own shape or fill.
+//   - the agent list's status dot: working, needs input, stuck and idle each have their own shape or fill, and so do the sidebar rail's, a machine's health dot, a Hub server's and a live job's (#5713);
+//   - a focused text field or list is outlined (its normal rule drops the outline and only changes the border colour).
 // Without forced colors nothing of this applies (the normal look is unchanged). Drives Chrome over CDP against the isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
@@ -50,6 +51,20 @@ const BASE = require('./test_base').BASE;
                 const out = {}; for (const n of names) { const cs = getComputedStyle(host.querySelector('.' + n)); out[n] = [cs.backgroundColor, cs.borderTopWidth, cs.borderTopLeftRadius, cs.transform].join(' | '); } host.remove(); return out; })()`);
              assert.equal(new Set(Object.values(dots)).size, 4, 'working, needs input, stuck and idle are four different dots: ' + JSON.stringify(dots));
             const fill = n => dots[n].split(' | ')[0]; assert.notEqual(fill('working'), fill('stale'), 'a working dot is filled and an idle one is a ring (the page background): ' + JSON.stringify(dots)); assert.equal(fill('working'), fill('waiting')); assert.equal(fill('working'), fill('stuck'));
+
+            console.log(`5. ${mode}: the other status dots each have their own look (#5713)`);
+            const groups = { 'avatar-status-dot': ['working', 'waiting', 'stuck', 'stale'], 'machine-health-dot': ['machine-health-ok', 'machine-health-busy', 'machine-health-stalled', 'machine-health-unknown'], 'cs-dot': ['online', 'offline'] };
+            for (const [base, names] of Object.entries(groups)) {
+                const shapes = await ev(`(() => { const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0'; host.innerHTML = ${JSON.stringify(names)}.map(n => '<span class="${base} ' + n + '"></span>').join(''); document.body.append(host);
+                    const out = {}; for (const n of ${JSON.stringify(names)}) { const cs = getComputedStyle(host.querySelector('.' + n)); out[n] = [cs.backgroundColor, cs.borderTopLeftRadius, cs.transform].join(' | '); } host.remove(); return out; })()`);
+                assert.equal(new Set(Object.values(shapes)).size, names.length, base + ' states are different dots: ' + JSON.stringify(shapes));
+            }
+            const jobs = await ev(`(() => { const host = document.createElement('div'); host.innerHTML = '<span class="status-dot status-dot-working"></span><span class="status-dot status-dot-stale"></span>'; document.body.append(host); const [a, b] = host.children; const o = [getComputedStyle(a).backgroundColor, getComputedStyle(b).backgroundColor]; host.remove(); return o; })()`);
+            assert.notEqual(jobs[0], jobs[1], 'a running job dot is filled and a pending one a ring: ' + JSON.stringify(jobs));
+
+            console.log(`6. ${mode}: a focused text field has an outline`);
+            const focus = await ev(`(() => { const i = document.createElement('input'); i.type = 'text'; i.className = 'sidebar-search-input'; document.body.append(i); i.focus(); const cs = getComputedStyle(i); const o = [cs.outlineStyle, cs.outlineWidth]; i.remove(); return o; })()`);
+            assert.ok(focus[0] !== 'none' && parseFloat(focus[1]) >= 2, 'a focused search field is outlined: ' + JSON.stringify(focus));
         }
         console.log('4. without forced colors the normal look stays');
         await start(false, true);

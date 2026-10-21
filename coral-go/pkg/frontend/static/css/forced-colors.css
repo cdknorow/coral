@@ -30,4 +30,25 @@
     .session-dot.stuck { background: CanvasText; border-radius: 0; }
     .session-dot.stale, .session-dot.task-idle, .session-dot.done { background: transparent; }
     .session-dot.your-turn, .session-dot.sleeping { border: 0; }
+
+    /* The other status dots, with the same shapes (#5713): the sidebar rail's avatar dot, a machine's health dot, a Hub server's online dot and a live job's dot.
+       Each is a coloured dot with no text beside it, so without colour it needs a shape. */
+    .avatar-status-dot { box-sizing: border-box; width: 9px; height: 9px; border: 1.5px solid CanvasText; }
+    .avatar-status-dot.working, .avatar-status-dot.done { background: CanvasText; animation: none; }
+    .avatar-status-dot.waiting { background: CanvasText; border-radius: 0; transform: rotate(45deg); animation: none; }
+    .avatar-status-dot.stuck { background: CanvasText; border-radius: 0; animation: none; }
+    .avatar-status-dot.stale, .avatar-status-dot.task-idle, .avatar-status-dot.sleeping { background: transparent; }
+    .machine-health-dot { border-color: CanvasText; }
+    .machine-health-dot.machine-health-ok { background: CanvasText; }
+    .machine-health-dot.machine-health-busy { background: CanvasText; border-radius: 0; transform: rotate(45deg); }
+    .machine-health-dot.machine-health-stalled { background: CanvasText; border-radius: 0; }
+    .cs-dot { box-sizing: border-box; border: 1.5px solid CanvasText; }
+    .cs-dot.online { background: CanvasText; }
+    .cs-dot.offline { background: transparent; }
+    .status-dot, .status-dot-stale { box-sizing: border-box; border: 1.5px solid CanvasText; }
+    .status-dot { background: CanvasText; animation: none; }
+    .status-dot.status-dot-stale, .status-dot-stale { background: transparent; }
+
+    /* A text field or a list loses its focus mark here: its rule drops the outline and changes only the border colour, which forced colors replaces. */
+    :is(input, select, textarea):focus-visible { outline: 2px solid Highlight !important; outline-offset: 2px !important; }
 }

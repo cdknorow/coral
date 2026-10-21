@@ -289,9 +289,10 @@
     position: relative;
 }
 .session-name-row .sidebar-kebab-btn::after {
+    /* its place and size are the 24 px square the generic rule below centres on the button (#5713); an inset here beat that rule's left and top while its transform
+       still applied, which moved the pad 12 px up and left of the button */
     content: "";
     position: absolute;
-    inset: -4px -2px;
 }
 
 .session-name-spacer {
@@ -395,6 +396,11 @@
     opacity: 0;
     transition: opacity 0.1s;
 }
+
+/* Target size (#5713, WCAG 2.5.8): the sidebar's kebab and open buttons and the Launch dialog's Back are 12 to 22 px across, which at 125 or 150% display scaling is a
+   small target to hit. An invisible 24 px square around each is part of the button, so the row does not change. */
+.sidebar-kebab-btn, .folder-copy-btn, .launch-back-btn { position: relative; }
+.sidebar-kebab-btn::after, .folder-copy-btn::after, .launch-back-btn::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 24px); height: max(100%, 24px); transform: translate(-50%, -50%); }
 
 /* The button has no fill of its own (#5121, #5127): hovered or keyboard-focused, only the dots take the primary text colour. At rest they are muted; on a hovered or selected
    row, the row's secondary text colour. The keyboard focus ring is the global button:focus-visible. */
