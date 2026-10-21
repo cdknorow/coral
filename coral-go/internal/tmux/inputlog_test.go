@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -58,7 +59,11 @@ func TestTmuxInputIsRecorded(t *testing.T) {
 	} {
 		assert.Contains(t, got, want)
 	}
-	assert.NotContains(t, coralLog.String(), "kind=", "input goes to the debug file only, never coral.log")
+	// The standard logger is process-wide: a line another test's background work wrote while this one ran (an agent priority "kind=tree" line from an earlier killed agent) is not this test's input.
+	// Only a line that names this test's own target can be its input leaking into coral.log (#5684).
+	for _, line := range strings.Split(coralLog.String(), "\n") {
+		assert.NotContains(t, line, "target="+target, "input goes to the debug file only, never coral.log")
+	}
 }
 
 func TestRecordSendKeysIgnoresOtherCommands(t *testing.T) {
