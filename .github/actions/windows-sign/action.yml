@@ -1,0 +1,34 @@
+name: Sign Windows files
+description: >-
+  Signs the files of one folder with Azure Trusted Signing. It wraps azure/trusted-signing-action so that the
+  nested actions/cache@v4 inside that action (a tag, not a SHA) is only resolved when a step really runs this
+  action: a job that merely lists it, with a false `if`, never prepares it, so the repository's "pin every action
+  to a full SHA" rule can stay on while Windows signing is off (v1.4.142's build-windows failed on exactly that).
+  DO NOT set WINDOWS_SIGNING=true yet: when the step really runs, the nested actions/cache@v4 is still resolved and, with the
+  pinning rule on, the job fails exactly like v1.4.142's did. Turning signing on is its own change: vendor the signing step or
+  use a pinned fork of the action, then flip the variable.
+inputs:
+  tenant-id: { description: Azure tenant id, required: true }
+  client-id: { description: Azure client id, required: true }
+  client-secret: { description: Azure client secret, required: true }
+  endpoint: { description: Trusted Signing endpoint, required: true }
+  account-name: { description: Trusted Signing account, required: true }
+  profile-name: { description: Certificate profile, required: true }
+  files-folder: { description: Folder holding the files to sign, required: true }
+  files-folder-filter: { description: File extension to sign, required: true }
+runs:
+  using: composite
+  steps:
+    - uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
+      with:
+        azure-tenant-id: ${{ inputs.tenant-id }}
+        azure-client-id: ${{ inputs.client-id }}
+        azure-client-secret: ${{ inputs.client-secret }}
+        endpoint: ${{ inputs.endpoint }}
+        trusted-signing-account-name: ${{ inputs.account-name }}
+        certificate-profile-name: ${{ inputs.profile-name }}
+        files-folder: ${{ inputs.files-folder }}
+        files-folder-filter: ${{ inputs.files-folder-filter }}
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256

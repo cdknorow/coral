@@ -247,19 +247,16 @@ jobs:
 
       - name: Sign executables
         if: vars.WINDOWS_SIGNING == 'true'
-        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
+        uses: ./.github/actions/windows-sign   # a local action: its nested actions/cache@v4 is resolved only when this step runs
         with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+          account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          profile-name: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
           files-folder: ${{ github.workspace }}\dist\windows\bin
           files-folder-filter: exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
 
       - name: Verify signed executables
         if: vars.WINDOWS_SIGNING == 'true'
@@ -293,19 +290,16 @@ jobs:
 
       - name: Sign MSI
         if: vars.WINDOWS_SIGNING == 'true'
-        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
+        uses: ./.github/actions/windows-sign   # a local action: its nested actions/cache@v4 is resolved only when this step runs
         with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+          account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          profile-name: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
           files-folder: ${{ github.workspace }}\dist\windows
           files-folder-filter: msi
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
 
       - name: Verify signed MSI
         if: vars.WINDOWS_SIGNING == 'true'

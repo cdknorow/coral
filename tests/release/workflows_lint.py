@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rules every workflow in .github/workflows keeps (#5369, Security's CI pass). Run from anywhere: python3 tests/release/workflows_lint.py
 
-1. Every `uses:` of an action is pinned by a full 40-hex commit (a local ./path action is exempt).
+1. Every `uses:` of an action, in a workflow or in a local composite (.github/actions/*/action.yml), is pinned by a full 40-hex commit (a local ./path action is exempt).
 2. Every actions/checkout step sets `persist-credentials: false`: the token must not stay in .git/config for the steps after it
    (the release job's token can write contents and mint a Sigstore identity).
 3. No workflow input, branch, tag, PR text or matrix value is interpolated into a run: script. It goes through env: instead.
@@ -97,6 +97,15 @@ def main():
             for e in re.findall(r"\$\{\{(.*?)\}\}", chunk):
                 if not SAFE_IN_SCRIPT.match(e.strip()):
                     bad.append(f"{name}:{no}: `${{{{ {e.strip()} }}}}` is interpolated into a run: script (pass it through env:)")
+    # A local composite action's own `uses:` lines follow rule 1 too (a composite is read from the checkout when its step runs).
+    # The lint reads each action.yml as text: it cannot resolve what a THIRD-PARTY action uses inside itself (a pinned
+    # azure/trusted-signing-action nests actions/cache@v4 by tag), which only the repository's SHA-pinning setting catches.
+    for path in sorted(glob.glob(os.path.join(ROOT, ".github", "actions", "*", "action.yml"))):
+        rel = os.path.relpath(path, ROOT)
+        for no, block in step_blocks(open(path).read().split("\n")):
+            m = re.search(r"uses:\s*(\S+)", "\n".join(block))
+            if m and not m.group(1).startswith("./") and not re.search(r"@[0-9a-f]{40}$", m.group(1)):
+                bad.append(f"{rel}:{no}: action {m.group(1)} is not pinned by a full commit")
     bad += seam_violations()
     for b in bad:
         print(b)
