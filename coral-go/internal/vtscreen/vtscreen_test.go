@@ -178,3 +178,42 @@ func TestStylingDoesNotCancelAPendingWrap(t *testing.T) {
 	got := Render([]byte("\x1b[1;1H"+strings.Repeat("a", 10)+"\x1b[1m\x1b[7mb"), 10, 3)
 	assert.Equal(t, "aaaaaaaaaa\nb\n", got)
 }
+
+// Double-width characters (CJK, emoji) take two cells: the cells after them are where the program put them, as in tmux.
+func TestDoubleWidthCharactersTakeTwoCells(t *testing.T) {
+	// X is in column 7 after three wide characters; "Y" written at column 7 replaces it, not the cell after.
+	assert.Equal(t, "日本語Y", Render([]byte("日本語X\x1b[1;7HY"), 20, 1))
+	// A cursor move over a wide character counts two columns.
+	assert.Equal(t, "日本Z", Render([]byte("日本\x1b[1;5HZ"), 20, 1))
+	assert.Equal(t, "日本  Z", Render([]byte("日本\x1b[1;7HZ"), 20, 1))
+	// Overwriting half of a wide character blanks the other half.
+	assert.Equal(t, "ab", Render([]byte("日\x1b[1;2Hb\x1b[1;1Ha"), 10, 1))
+	assert.Equal(t, "a  b", Render([]byte("a日\x1b[1;2H \x1b[1;4Hb"), 10, 1))
+	// A wide character that doesn't fit on the row goes to the next one.
+	assert.Equal(t, "abcd\n日", Render([]byte("abcd日"), 5, 2)[:len("abcd\n日")])
+	// Emoji are wide; a combining mark draws no cell of its own (the text keeps the base letter only).
+	assert.Equal(t, "🎉x", Render([]byte("🎉\x1b[1;3Hx"), 10, 1))
+	assert.Equal(t, "ex", Render([]byte("éx"), 10, 1))
+	// The styled render skips the right half too.
+	assert.Equal(t, "日本", RenderStyled([]byte("日本"), 10, 1))
+}
+
+// The alternate screen (DECSET 1049, 1047, 47): its content replaces the main screen while it is shown, and the main
+// screen is back when the program leaves it. Codex and agy switch to it.
+func TestAlternateScreenIsLeftBehind(t *testing.T) {
+	main := "main one\r\nmain two\r\n"
+	alt := "\x1b[?1049h\x1b[2J\x1b[H\x1b[1mALT SCREEN\x1b[m\r\nsecond alt row"
+	assert.Equal(t, "ALT SCREEN\nsecond alt row\n", Render([]byte(main+alt), 20, 3), "while it is shown")
+	got := Render([]byte(main+alt+"\x1b[?1049l"), 20, 3)
+	assert.Equal(t, "main one\nmain two\n", got, "after the program leaves it")
+	for _, mode := range []string{"47", "1047"} {
+		assert.Equal(t, "main one\nmain two\n", Render([]byte(main+"\x1b[?"+mode+"h\x1b[HALT\x1b[?"+mode+"l"), 20, 3), mode)
+	}
+	// Entering twice keeps the first main screen; leaving without entering does nothing.
+	assert.Equal(t, "main one\nmain two\n", Render([]byte(main+alt+"\x1b[?1049h\x1b[HX\x1b[?1049l"), 20, 3))
+	assert.Equal(t, "main one\nmain two\n", Render([]byte(main+"\x1b[?1049l"), 20, 3))
+	// The cursor comes back with the main screen: the next write continues after "main two".
+	assert.Equal(t, "main one\nmain two\nthree", Render([]byte(main+alt+"\x1b[?1049lthree"), 20, 3))
+	// Other private modes are skipped.
+	assert.Equal(t, "main one\nmain two\n", Render([]byte(main+"\x1b[?25l\x1b[?2004h\x1b[?25h"), 20, 3))
+}

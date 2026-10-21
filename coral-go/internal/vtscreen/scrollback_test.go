@@ -43,3 +43,15 @@ func TestRenderScrollbackIsCapped(t *testing.T) {
 	flood := []byte(strings.Repeat("\n", MaxInput)) // half a megabyte of line feeds
 	assert.Len(t, strings.Split(RenderScrollback(flood, 80, 24, MaxHistory), "\n"), MaxHistory+24)
 }
+
+// An application on the alternate screen (Codex, agy) scrolls there without leaving rows in the scrollback, as in tmux; the main
+// screen's own history and the screen it comes back to are what capture shows.
+func TestAlternateScreenLeavesNoScrollback(t *testing.T) {
+	out := append(numbered(6), []byte("\x1b[?1049h")...)
+	out = append(out, strings.ReplaceAll(string(numbered(8)), "a0", "alt")...)
+	out = append(out, []byte("\x1b[?1049l")...)
+	got := RenderScrollback(out, 20, 3, 100)
+	assert.NotContains(t, got, "alt", "nothing from the alternate screen")
+	assert.Contains(t, got, "a001\n", "the main screen's history is kept")
+	assert.Contains(t, got, "a006\n", "and the screen it comes back to")
+}
