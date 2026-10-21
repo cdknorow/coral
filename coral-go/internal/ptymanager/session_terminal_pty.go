@@ -9,6 +9,7 @@ import (
 	"github.com/subgentic/coral/internal/logparse"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/vtscreen"
 )
 
 // PTYSessionTerminal implements SessionTerminal using native PTY sessions.
@@ -103,7 +104,13 @@ func (p *PTYSessionTerminal) resolveSessionKey(name string) string {
 	return name
 }
 
-func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, _ int, _, sessionID string) (string, error) {
+// CaptureOutput is the session's screen as plain text with up to lines of the rows that scrolled off
+// above it, as tmux's capture-pane -p -S -<lines> gives a pane (#27, audit F9): its output (the replay
+// ring) rendered at the size its PTY was last given. Never the raw ring: that is every escape sequence and
+// every frame ever drawn (a peek of 30 lines returned 107 KB), which the dashboard's capture pane, coral-board
+// peek and the team's activity line show as text. The terminal view replays the raw ring itself
+// (websocket.go), not through here.
+func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, lines int, _, sessionID string) (string, error) {
 	key, err := p.keyFor(name, sessionID)
 	if err != nil {
 		return "", nil // gone: nothing to show, and never another session's output
@@ -112,7 +119,11 @@ func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, _ int
 	if err != nil {
 		return "", err
 	}
-	return string(data), nil
+	cols, rows, err := p.backend.PaneSize(key)
+	if err != nil {
+		return "", err
+	}
+	return vtscreen.RenderScrollback(data, cols, rows, lines), nil
 }
 
 func (p *PTYSessionTerminal) SendInput(ctx context.Context, name, command, _, sessionID string) error {

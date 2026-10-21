@@ -31,6 +31,8 @@ const (
 	// cells): a full input of ordinary output costs a few million; one of clear-screens stops here, well
 	// under a second.
 	Budget = 40_000_000
+	// The most scrolled-off rows RenderScrollback keeps (each is one row of at most MaxCols cells).
+	MaxHistory = 1000
 	// Parameters past this many are dropped, and each is capped while it is read.
 	maxParams, maxParam = 16, 9999
 )
@@ -42,13 +44,23 @@ var recovered atomic.Int64
 // capture-pane -e prints (ESC[2m ... ESC[22m... per row), so a reader of the styled screen can tell Claude's
 // faint prompt suggestion from a person's text (F10). No other styling is kept.
 func RenderStyled(output []byte, cols, rows int) (screen string) {
-	return render(output, cols, rows, true)
+	return render(output, cols, rows, true, 0)
 }
 
 // Render plays output through a cols x rows screen and returns its rows, each with trailing blanks trimmed.
-func Render(output []byte, cols, rows int) (screen string) { return render(output, cols, rows, false) }
+func Render(output []byte, cols, rows int) (screen string) {
+	return render(output, cols, rows, false, 0)
+}
 
-func render(output []byte, cols, rows int, styled bool) (screen string) {
+// RenderScrollback is Render with up to history of the rows that scrolled off the top kept above the
+// screen, as tmux's capture-pane -p -S -<history> gives them: the scrolled-off rows (oldest first), then
+// the screen's rows. history is capped at MaxHistory. Unlike tmux's scroll-on-clear, a screen cleared with
+// ED is not pushed into the history: a TUI that clears and redraws every frame would fill it with old frames.
+func RenderScrollback(output []byte, cols, rows, history int) string {
+	return render(output, cols, rows, false, clamp(history, 0, MaxHistory))
+}
+
+func render(output []byte, cols, rows int, styled bool, history int) (screen string) {
 	if cols <= 0 || rows <= 0 {
 		cols, rows = DefaultCols, DefaultRows
 	}
@@ -64,6 +76,7 @@ func render(output []byte, cols, rows int, styled bool) (screen string) {
 		}
 	}()
 	s := newTerm(cols, rows)
+	s.keep = history
 	s.write(output)
 	if styled {
 		return s.styledString()
@@ -79,6 +92,8 @@ type term struct {
 	x, y        int      // the cursor
 	wrapPending bool     // the last column was written: the next character goes to the next row first
 	budget      int
+	keep        int      // how many scrolled-off rows to keep (RenderScrollback), 0 for none
+	history     [][]rune // the rows scrolled off the top, oldest first (String shows the last keep)
 }
 
 func newTerm(cols, rows int) *term {
@@ -240,6 +255,14 @@ func (t *term) lineFeed() {
 	if !t.spend(t.cols) {
 		return
 	}
+	if t.keep > 0 {
+		// The row leaving the top is kept (its own slice: a scrolled-in row is always a new blankRow).
+		// Trimmed back to keep only when twice that, so a scroll costs O(1) however long the output.
+		t.history = append(t.history, t.grid[0])
+		if len(t.history) >= 2*t.keep {
+			t.history = append(t.history[:0:0], t.history[len(t.history)-t.keep:]...)
+		}
+	}
 	copy(t.grid, t.grid[1:])
 	t.grid[t.rows-1] = blankRow(t.cols)
 	copy(t.faintGrid, t.faintGrid[1:])
@@ -383,9 +406,16 @@ func (t *term) styledString() string {
 }
 
 func (t *term) String() string {
-	lines := make([]string, t.rows)
-	for i, row := range t.grid {
-		lines[i] = strings.TrimRight(string(row), " ")
+	history := t.history
+	if len(history) > t.keep {
+		history = history[len(history)-t.keep:]
+	}
+	lines := make([]string, 0, len(history)+t.rows)
+	for _, row := range history {
+		lines = append(lines, strings.TrimRight(string(row), " "))
+	}
+	for _, row := range t.grid {
+		lines = append(lines, strings.TrimRight(string(row), " "))
 	}
 	return strings.Join(lines, "\n")
 }
