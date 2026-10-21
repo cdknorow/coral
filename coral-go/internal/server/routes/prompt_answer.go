@@ -685,10 +685,16 @@ func (h *SessionsHandler) confirmAnswer(ctx context.Context, name, agentType, se
 	var heldSince time.Time
 	for {
 		now, ok, text, err := h.readPromptScreenText(ctx, name, agentType, sessionID)
-		if err == nil && ((!ok && !menuStillDrawn(text, before)) || (ok && !samePrompt(before, now))) {
+		drawn := menuStillDrawn(text, before)
+		// Gone: no prompt parses and the menu is not on screen, or another prompt parses and the menu is not on screen
+		// either. A menu still drawn whose question or context text changed (a count in a header) is not yet gone.
+		if err == nil && !drawn && (!ok || !samePrompt(before, now)) {
 			return true, nil
 		}
-		if err == nil && mayConfirm && n <= len(now.Options) && now.Options[n-1].Selected {
+		// The retry Enter goes only to the same prompt, whatever the early return above does (Security's N1). Two
+		// consecutive prompts with the same question and options cannot be told apart: one such Enter could reach the
+		// next, which needs that option selected and held for promptSettle, and is accepted (N3).
+		if err == nil && mayConfirm && ok && samePrompt(before, now) && n <= len(now.Options) && now.Options[n-1].Selected {
 			if heldSince.IsZero() {
 				heldSince = time.Now()
 			} else if time.Since(heldSince) >= promptSettle {
