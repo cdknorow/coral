@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/subgentic/coral/internal/agentenv"
@@ -81,12 +83,24 @@ func sessionToken() string {
 	if tok := strings.TrimSpace(os.Getenv(sessionTokenEnv)); tok != "" {
 		return tok
 	}
-	if p := strings.TrimSpace(os.Getenv(agentenv.SessionAuthFileEnv)); p != "" {
+	if p := strings.TrimSpace(os.Getenv(agentenv.SessionAuthFileEnv)); p != "" && inSessionTokens(p) {
 		if tok, err := cliauth.ReadPrivateFile(p); err == nil {
 			return tok
 		}
 	}
 	return ""
+}
+
+// inSessionTokens reports whether p is a file directly in this Coral's session_tokens folder
+// (<data dir>/session_tokens, the data dir as cliauth.DataDir finds it), the only place Coral
+// writes a session's token file: a variable naming any other file gives no token (#13 review N1).
+func inSessionTokens(p string) bool {
+	want := filepath.Clean(filepath.Join(cliauth.DataDir(), "session_tokens"))
+	got := filepath.Clean(filepath.Dir(p))
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(got, want)
+	}
+	return got == want
 }
 
 // tokenAllowed: the request goes to this agent's own Coral.

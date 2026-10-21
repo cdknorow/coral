@@ -558,6 +558,9 @@ func CleanupTempFiles(sessionID string) {
 	if !isCanonicalUUID(sessionID) {
 		return
 	}
+	if SessionTokenFileRemover != nil {
+		SessionTokenFileRemover(sessionID) // a Codex agent's kept token file (#13 review N2)
+	}
 	var matches []string
 	for _, dir := range launchTempDirs() {
 		m, err := filepath.Glob(filepath.Join(dir, "coral_*_"+sessionID+"*"))

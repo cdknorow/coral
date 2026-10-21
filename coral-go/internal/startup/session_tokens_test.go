@@ -79,3 +79,24 @@ func TestSessionTokenSweepKeepsLiveTokens(t *testing.T) {
 	assert.NoFileExists(t, old, "revoked")
 	assert.NoFileExists(t, unknown)
 }
+
+// #13 review N2: a session's kept token file goes with the session's other files
+// (agent.CleanupTempFiles), not only at the next startup, and a new token's file replaces the
+// earlier one.
+func TestSessionTokenFileGoesWithTheSession(t *testing.T) {
+	home := t.TempDir()
+	db, err := storetest.Open(t, filepath.Join(home, "sessions.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	setupSessionTokens(db, home)
+	t.Cleanup(func() { agent.SessionTokenMinter, agent.SessionTokenFileRemover = nil, nil })
+	sid := "a9f3c4d1-0000-4000-8000-000000000002" // canonical: CleanupTempFiles acts only on one
+	first := agent.SessionTokenMinter(sid, "codex-"+sid)
+	second := agent.SessionTokenMinter(sid, "codex-"+sid)
+	assert.NoFileExists(t, first, "a new token's file replaces the earlier one")
+	assert.FileExists(t, second)
+	other := agent.SessionTokenMinter("a9f3c4d1-0000-4000-8000-000000000003", "codex-other")
+	agent.CleanupTempFiles(sid)
+	assert.NoFileExists(t, second, "gone with the session")
+	assert.FileExists(t, other, "another session's stays")
+}

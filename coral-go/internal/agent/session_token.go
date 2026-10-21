@@ -16,6 +16,11 @@ const SessionTokenEnv = "CORAL_SESSION_TOKEN"
 // startup; with it unset (tests, other callers) launch lines carry no token.
 var SessionTokenMinter func(sessionID, sessionName string) string
 
+// SessionTokenFileRemover deletes a session's token file, if it is still there (a Codex
+// agent's, which its launch line keeps, #13): CleanupTempFiles calls it when the session's
+// files go. The server sets it with SessionTokenMinter.
+var SessionTokenFileRemover func(sessionID string)
+
 // sessionTokenPrefix is the start of a launch line that gives the agent its token
 // (#3387): the shell reads the token from the file into CORAL_SESSION_TOKEN and deletes
 // the file, before the CLI starts. Only the file's path is typed, so the token is never
