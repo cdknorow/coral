@@ -247,3 +247,14 @@ func guardPositionalPrompt(prompt string) string {
 	}
 	return prompt
 }
+
+// guardSlashPrompt keeps Claude's interactive launch from reading a prompt that starts with "/" as a slash command:
+// "/help" opens the Help dialog even after "--", where the same text with a newline (or a space) in front is an ordinary
+// prompt (checked against the real CLI). Team text and board messages reach launch prompts. Only Claude: agy expands
+// slash commands whatever is in front of them, and Codex has not been checked.
+func guardSlashPrompt(prompt string) string {
+	if strings.HasPrefix(prompt, "/") {
+		return "\n" + prompt
+	}
+	return prompt
+}
