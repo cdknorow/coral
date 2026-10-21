@@ -39,7 +39,7 @@ type inputBox struct {
 	text    bytes.Buffer // the submission so far, paste markers removed
 	pasted  bool         // part of it came in a bracketed paste
 	inPaste bool
-	pastes  int  // pastes so far, for the placeholder's number
+	pastes  int    // pastes so far, for the placeholder's number
 	pending []byte // a partial paste marker split across reads
 }
 
@@ -104,7 +104,23 @@ func (b *inputBox) feed(data []byte, submit func(string)) {
 
 // runRawInput reads stdin in raw mode until it ends, recording every byte. It never returns
 // an error to the caller: a test that finds no .raw file reports the failure.
-func runRawInput(dir, sessionID string, turn func(string)) {
+func runRawInput(dir, sessionID, settingsFile string, turn func(string)) {
+	// Hook events in order, off the read loop (a hook is a process and an HTTP call).
+	hooks := newHookRunner(settingsFile, sessionID)
+	events := make(chan func(), 256)
+	go func() {
+		for ev := range events {
+			ev()
+		}
+	}()
+	submit := func(s string) {
+		turn(s)
+		events <- func() {
+			hooks.fire("UserPromptSubmit", map[string]any{"prompt": s})
+			hooks.fire("Stop", map[string]any{"stop_hook_active": false})
+		}
+	}
+
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		if old, err := term.MakeRaw(int(os.Stdin.Fd())); err == nil {
 			defer term.Restore(int(os.Stdin.Fd()), old)
@@ -127,6 +143,10 @@ func runRawInput(dir, sessionID string, turn func(string)) {
 	defer f.Close()
 	fmt.Print("[mock-agent] raw input ready\r\n")
 
+	events <- func() {
+		hooks.fire("SessionStart", map[string]any{"source": "startup"})
+		hooks.fire("Stop", map[string]any{"stop_hook_active": false})
+	}
 	box := &inputBox{}
 	drawBox(box)
 	buf := make([]byte, 64*1024)
@@ -134,7 +154,7 @@ func runRawInput(dir, sessionID string, turn func(string)) {
 		n, err := os.Stdin.Read(buf)
 		if n > 0 {
 			_, _ = f.Write(buf[:n])
-			box.feed(buf[:n], turn)
+			box.feed(buf[:n], submit)
 			drawBox(box)
 		}
 		if err != nil {

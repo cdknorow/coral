@@ -169,7 +169,7 @@ func main() {
 	// exact input.
 	go func() {
 		if dir := rawInputDir(); dir != "" {
-			runRawInput(dir, sessionID, turn)
+			runRawInput(dir, sessionID, settingsFile, turn)
 			return
 		}
 		sc := bufio.NewScanner(os.Stdin)
