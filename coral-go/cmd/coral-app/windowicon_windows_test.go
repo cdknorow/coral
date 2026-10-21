@@ -10,12 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
+
+	"github.com/subgentic/coral/internal/winicon"
 )
 
 // The test exe links the same rsrc_windows_amd64.syso as coral-app, so the icon is there to load.
 func TestExeCarriesTheAppIcon(t *testing.T) {
 	for _, size := range []int{16, 32, 48} {
-		h, err := loadAppIcon(size, size)
+		h, err := winicon.LoadAppIcon(size, size)
 		require.NoError(t, err, "%dx%d", size, size)
 		assert.NotZero(t, h)
 	}
@@ -30,12 +32,12 @@ func TestSetWindowIconGivesTheWindowBothSizes(t *testing.T) {
 
 	const wmGetIcon = 0x007F
 	get := func(kind uintptr) uintptr {
-		v, _, _ := procSendMsg.Call(hwnd, wmGetIcon, kind, 0)
+		v, _, _ := user32.NewProc("SendMessageW").Call(hwnd, wmGetIcon, kind, 0)
 		return v
 	}
-	require.Zero(t, get(iconSmall), "a new window has no icon of its own")
+	require.Zero(t, get(0), "a new window has no icon of its own")
 
-	require.NoError(t, setWindowIcon(hwnd))
-	assert.NotZero(t, get(iconSmall), "the title bar's icon")
-	assert.NotZero(t, get(iconBig), "the taskbar's and Alt-Tab's icon")
+	require.NoError(t, winicon.SetWindowIcon(hwnd))
+	assert.NotZero(t, get(0), "the title bar's icon")
+	assert.NotZero(t, get(1), "the taskbar's and Alt-Tab's icon")
 }

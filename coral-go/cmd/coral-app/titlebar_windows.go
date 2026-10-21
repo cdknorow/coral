@@ -3,12 +3,15 @@
 package main
 
 import (
-	"golang.org/x/sys/windows"
 	"log"
 	"os"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
+
+	"github.com/subgentic/coral/internal/winicon"
 )
 
 var (
@@ -53,7 +56,7 @@ func setupNativeTitlebar() {
 		log.Printf("[TITLEBAR] found window HWND=%x", hwnd)
 
 		// The window's own icon: the exe's resource is not used for a window unless it is set on it.
-		if err := setWindowIcon(hwnd); err != nil {
+		if err := winicon.SetWindowIcon(hwnd); err != nil {
 			log.Printf("[TITLEBAR] window icon: %v", err)
 		}
 
