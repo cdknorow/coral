@@ -116,9 +116,8 @@ var (
 		"set-mppreference", "add-mppreference", "disable-netfirewallrule", "remove-netfirewallrule", "netsh", "schtasks",
 		"remove-service", "set-service", "stop-service", "new-service", "sc", "net", "net1", "taskkill", "wmic", "mklink")
 	// Cmdlets that only read or print: never risky for being given -Recurse or a path.
-	winReadOnly = regexp.MustCompile(`^(get|select|where|sort|measure|group|format|write|out|test|compare|convertto|convertfrom|join|split|resolve|set-location|push-location|pop-location|foreach|start-sleep|show|find|tee-object|new-object|import-module|measure-object)(-|$)`)
-	cmdletRe    = regexp.MustCompile(`^[A-Za-z]+-[A-Za-z]+$`)
-	providerRe  = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]+:`) // HKLM:, HKCU:, Env:, Cert:, Function:... (a drive letter is one character)
+	cmdletRe   = regexp.MustCompile(`^[A-Za-z]+-[A-Za-z]+$`)
+	providerRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]+:`) // HKLM:, HKCU:, Env:, Cert:, Function:... (a drive letter is one character)
 )
 
 func setOf(names ...string) map[string]bool {
@@ -185,7 +184,10 @@ var winPathParams = []struct {
 }{{"path", 1}, {"literalpath", 1}, {"destination", 3}, {"filepath", 2}, {"outfile", 3}}
 
 // winPaths are the path arguments of a stage: values of the path parameters, and every word that is not a switch.
-func winPaths(args []string) []string {
+func winPaths(args []string) []string { return winPathsMode(args, false) }
+
+// winPathsMode is winPaths; namedOnly keeps just the values of the path parameters (-Path, -LiteralPath, -Destination...).
+func winPathsMode(args []string, namedOnly bool) []string {
 	var out []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -211,7 +213,9 @@ func winPaths(args []string) []string {
 		if a[0] == '/' && winSwitches[strings.ToLower(a[1:])] { // cmd's /s /q /f /y and robocopy's /MIR; /etc is a path
 			continue
 		}
-		out = append(out, strings.Split(a, ",")...)
+		if !namedOnly {
+			out = append(out, strings.Split(a, ",")...)
+		}
 	}
 	return out
 }
@@ -222,6 +226,9 @@ func pathOutside(p string, outside func(string) bool) bool {
 	if p == "" {
 		return false
 	}
+	if strings.Contains(p, groupMark) || strings.HasPrefix(p, "@") || strings.HasPrefix(p, "(") {
+		return true // a subexpression, a script block or a splat: not a path Coral can read
+	}
 	if providerRe.MatchString(p) || strings.HasPrefix(p, "\\\\") {
 		return true // the registry, the environment, certificates; a share
 	}
@@ -230,7 +237,20 @@ func pathOutside(p string, outside func(string) bool) bool {
 
 // winVerbRisk is why a PowerShell or cmd command is high-risk, or "".
 func winVerbRisk(command string, outside func(string) bool) string {
-	for _, st := range winStages(command) {
+	// The text inside { } ( ) $( ) @( ) is a command of its own: judged on its own, and a group Coral cannot read asks.
+	body, inner, ok := extractGroups(command)
+	if !ok {
+		return "its brackets can't be read"
+	}
+	for _, in := range inner {
+		if why := winVerbRisk(in, outside); why != "" {
+			return why
+		}
+	}
+	if winHiddenRe.MatchString(stripQuoted(body)) {
+		return "it calls .NET or COM, or a method that deletes, moves or starts something"
+	}
+	for _, st := range winStages(body) {
 		if why := winStageRisk(st, outside); why != "" {
 			return why
 		}
@@ -247,15 +267,23 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	if len(st.words) == 0 {
 		return ""
 	}
-	words := st.words
+	words := splitGlued(st.words)
+	if strings.Contains(words[0], "^") {
+		return "its command is written with cmd escapes (^)"
+	}
+	words[0] = moduleQualified(words[0])
 	// The call operator and dot-sourcing: & 'path' args, . .\script.ps1.
 	if words[0] == "&" || words[0] == "." {
 		if len(words) == 1 {
 			return ""
 		}
-		words = words[1:]
-		if pathOutside(words[0], outside) {
+		words = splitGlued(words[1:])
+		words[0] = moduleQualified(words[0])
+		if !strings.Contains(words[0], groupMark) && !winKnownCommand(words[0]) && pathOutside(words[0], outside) {
 			return "it runs a script outside the working directory (" + words[0] + ")"
+		}
+		if strings.Contains(words[0], groupMark) {
+			return "" // a script block: its text was judged as a command
 		}
 	}
 	name := cmdName(words[0])
@@ -267,15 +295,39 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	case "cmd":
 		for i, a := range args {
 			if strings.EqualFold(a, "/c") || strings.EqualFold(a, "/k") || strings.EqualFold(a, "/r") {
-				return winVerbRisk(strings.Join(args[i+1:], " "), outside)
+				rest := strings.Join(args[i+1:], " ")
+				if strings.Contains(rest, "^") {
+					return "its cmd text is written with escapes (^)"
+				}
+				return winVerbRisk(rest, outside)
 			}
 		}
 		return ""
-	case "start-process", "start", "saps":
+	case "start":
+		// cmd's start and PowerShell's alias of Start-Process: the program it starts is judged, with -ArgumentList always asking.
+		for _, a := range args {
+			if isParam(a, "argumentlist", 2) || strings.EqualFold(a, "-args") {
+				return "it starts a program with arguments Coral can't judge"
+			}
+		}
+		for len(args) > 0 && strings.HasPrefix(args[0], "/") && len(args[0]) <= 8 { // start's own switches: /b /wait /min
+			args = args[1:]
+		}
+		if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+			return winVerbRisk(strings.Join(args, " "), outside)
+		}
+		return ""
+	case "start-process", "saps":
 		for i, a := range args {
 			if isParam(a, "verb", 1) && i+1 < len(args) && strings.EqualFold(args[i+1], "runas") {
 				return "it starts a process as administrator"
 			}
+			if isParam(a, "argumentlist", 2) || strings.EqualFold(a, "-args") {
+				return "it starts a program with arguments Coral can't judge (S2)"
+			}
+		}
+		if len(args) > 0 && !strings.HasPrefix(args[0], "-") && winKnownCommand(args[0]) {
+			return winVerbRisk(strings.Join(args, " "), outside) // Start-Process cmd, powershell: the program is judged
 		}
 		return ""
 	case "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "curl", "wget", "bitsadmin":
@@ -308,6 +360,9 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 			}
 		}
 		return ""
+	}
+	if winAsk[name] {
+		return "it runs " + words[0] + ", which can run anything"
 	}
 	if winSystem[name] {
 		switch name {
@@ -343,7 +398,7 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 
 	switch {
 	case winDelete[name]:
-		if len(paths) == 0 && (recurse || st.sink) {
+		if len(paths) == 0 {
 			return "it deletes what a pipeline or its defaults name, not a path inside the working directory"
 		}
 		for _, p := range paths {
@@ -358,6 +413,9 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 				return "it mirrors over a folder outside the working directory"
 			}
 		}
+		if len(paths) == 0 && !st.sink {
+			return "it writes without naming a path inside the working directory"
+		}
 		copyOnly := name == "copy-item" || name == "cp" || name == "copy" || name == "cpi" || name == "xcopy" || name == "robocopy"
 		check := paths
 		if copyOnly && len(paths) > 1 {
@@ -371,12 +429,17 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 		return ""
 	}
 
-	// An unknown PowerShell cmdlet.
-	if cmdletRe.MatchString(words[0]) && !winReadOnly.MatchString(name) {
+	// Any other PowerShell cmdlet: by its verb. Reading and printing verbs pass; the rest (Stop-Service, Set-Foo,
+	// Install-Thing, anything nobody has thought of yet) asks unless every path it names is inside the working folder.
+	if cmdletRe.MatchString(words[0]) && !cmdletReadOnly(name) {
 		if recurse || force {
 			return "it runs " + words[0] + " with -Recurse or -Force"
 		}
-		for _, p := range paths {
+		named := winPathsMode(args, true) // only a path parameter names a path here: a bare word may be a service, a name
+		if len(named) == 0 {
+			return "it runs " + words[0] + ", which is not known to only read"
+		}
+		for _, p := range named {
 			if pathOutside(p, outside) {
 				return "it runs " + words[0] + " on a path outside the working directory (" + p + ")"
 			}
