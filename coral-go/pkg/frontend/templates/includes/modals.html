@@ -641,9 +641,9 @@
                     </select>
                 </dd>
                 </div>
-                {{ template "includes/toggle_row" (toggle "settings-group-by-team" "Group agents by board or team" "Keeps related agents grouped together in the sidebar" "data-on-change=\"m-toggle-group-by-team\"") }}
+                {{ template "includes/toggle_row" (toggle "settings-group-by-team" "Group agents by board or team" "A heading in the sidebar for each board or team." "data-on-change=\"m-toggle-group-by-team\"") }}
                 {{ template "includes/toggle_row" (toggle "settings-show-summary" "Show a summary under each agent" "The goal line beneath an agent's name in the sidebar (off by default)" "data-on-change=\"m-toggle-session-summary\"") }}
-                {{ template "includes/toggle_row" (toggle "settings-show-scrollbars" "Show scrollbars" "Show scrollbars in terminal and chat views" "checked") }}
+                {{ template "includes/toggle_row" (toggle "settings-show-scrollbars" "Show scrollbars" "In the terminal and chat views. Turn off to hide them." "checked") }}
                 {{ template "includes/toggle_row" (toggle "settings-check-updates" "Check for updates" "Notify when a new version of Coral is available") }}
                         </dl>
                         <button class="btn settings-theme-btn" data-on-click="m-hide-settings-modal-then-show-theme-configurator">
@@ -811,7 +811,7 @@
                     </select>
                 </dd>
                 </div>
-                {{ template "includes/toggle_row" (toggle "settings-fit-pane-width" "Fit pane width" "Auto-resize tmux pane to match browser width") }}
+                {{ template "includes/toggle_row" (toggle "settings-fit-pane-width" "Fit pane width" "With the tmux backend, the terminal takes the size of this browser window.") }}
             <!-- Settings > Terminal backend (#3634): filled by terminal_backend.js; never shown through Coral Hub. -->
             <div class="tb-row" id="settings-terminal-backend" role="group" aria-labelledby="tb-label" hidden>
                 <div class="tb-head"><span class="tb-label" id="tb-label">Terminal backend</span><span class="tb-now" id="tb-now"></span></div>
@@ -836,7 +836,7 @@
                     <span class="toggle-desc" id="settings-debug-input-log-desc">Record everything Coral sends to agent terminals, for troubleshooting. Off by default; applies immediately.</span>
                 </dt>
                 <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-desc settings-debug-input-log-status"></label>
+                    <label class="check-hit"><input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-status settings-debug-input-log-desc"></label>
                     <div id="settings-debug-input-log-status" class="settings-hint" role="status" hidden></div>
                     <button class="btn btn-small" type="button" id="settings-debug-input-log-delete" hidden>Delete the log</button>
                 </dd>
@@ -1008,7 +1008,7 @@
                     <span class="toggle-desc" id="settings-remote-access-enabled-desc">Allow connections from other devices. Plain HTTP (unencrypted) unless Coral was started with --tls-cert and --tls-key.</span>
                 </dt>
                 <dd>
-                    <label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-enabled-desc settings-remote-access-status"></label>
+                    <label class="check-hit"><input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status settings-remote-access-enabled-desc"></label>
                     <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
                 </dd>
                 </div>
@@ -1104,7 +1104,7 @@
                 <div class="settings-row">
                 <dt class="toggle-dt">
                     <label for="settings-telemetry-enabled">Usage analytics</label>
-                    <span class="toggle-desc" id="settings-telemetry-enabled-desc">Allow anonymous product usage analytics. This applies immediately.</span>
+                    <span class="toggle-desc" id="settings-telemetry-enabled-desc">Anonymous product events only. Applies immediately.</span>
                 </dt>
                 <dd>
                     <label class="check-hit"><input type="checkbox" id="settings-telemetry-enabled" aria-describedby="settings-telemetry-enabled-desc settings-telemetry-help"></label>
