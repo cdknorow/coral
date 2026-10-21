@@ -232,6 +232,22 @@ func (h *BoardHandler) PeekAgent(w http.ResponseWriter, r *http.Request) {
 		"target":       target,
 		"session_name": targetSub.SessionName,
 		"lines":        lines,
-		"output":       output,
+		"output":       lastLines(output, lines),
 	})
+}
+
+// lastLines is peek's "the last N lines of their terminal" (#27): a capture is N rows of scrollback
+// above the whole screen on both backends (tmux's capture-pane -S -N, the PTY's rendered ring), so a
+// peek of 30 lines on a 50-row screen gave 80. A capture within n lines is returned exactly as it
+// was (what a peek of a small tmux pane always gave); a longer one has the blank rows under its last
+// output dropped first, so the lines are the agent's latest, not the empty bottom of its screen.
+func lastLines(text string, n int) string {
+	if n <= 0 || strings.Count(text, "\n") < n {
+		return text // no count asked for (lines=0), or already within it: unchanged
+	}
+	rows := strings.Split(strings.TrimRight(text, " \t\r\n"), "\n")
+	if len(rows) > n {
+		rows = rows[len(rows)-n:]
+	}
+	return strings.Join(rows, "\n")
 }
