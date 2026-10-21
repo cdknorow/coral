@@ -96,6 +96,14 @@ func (b *inputBox) feed(data []byte, submit func(string)) {
 			submit(s)
 		case c == '\r' && b.inPaste:
 			b.text.WriteByte('\n')
+		case c == 0x15 && !b.inPaste: // Ctrl-U: clear the line, as Claude Code's box does
+			b.text.Reset()
+			b.pasted = false
+		case (c == 0x7f || c == 0x08) && !b.inPaste: // Backspace: drop the last character
+			if r := []rune(b.text.String()); len(r) > 0 {
+				b.text.Reset()
+				b.text.WriteString(string(r[:len(r)-1]))
+			}
 		default:
 			b.text.WriteByte(c)
 		}

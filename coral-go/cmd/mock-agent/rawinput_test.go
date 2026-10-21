@@ -34,3 +34,15 @@ func TestSplitWords(t *testing.T) {
 		t.Errorf("splitWords = %q, want %q", got, want)
 	}
 }
+
+func TestInputBoxEditingKeys(t *testing.T) {
+	b := &inputBox{}
+	b.feed([]byte("xyz\x7f"), func(string) {})
+	if d := b.display(); d != "xy" {
+		t.Errorf("after Backspace = %q", d)
+	}
+	b.feed([]byte("\x15"), func(string) {})
+	if d := b.display(); d != "" {
+		t.Errorf("after Ctrl-U = %q", d)
+	}
+}
