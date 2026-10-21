@@ -58,6 +58,7 @@ var externalMessageOutcomes = map[string]int{
 // one answer the same, post the same messages on every board, write the same artifact records, notify the same
 // boards and spend the same quota.
 func TestPostExternalMessageAgreesWithBefore4838(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	counts := map[string]int{}
 	for seed := int64(1); seed <= 40; seed++ {
 		runExternalMessageOracle(t, seed, counts)

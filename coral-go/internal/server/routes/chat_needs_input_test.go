@@ -118,6 +118,7 @@ func TestChatReplyReadsPromptOptionsOnlyWhenAPromptMayBeOpen(t *testing.T) {
 }
 
 func TestChatReplyAlwaysReadsTheScreenOfAgentsWithoutPromptHooks(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, handler, terminal, ss := setupSessionsTestServer(t)
 	const sid = "00000000-0000-0000-0000-00000000c4a9"
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "codex", AgentName: "codex-need", WorkingDir: "/tmp/test"}))

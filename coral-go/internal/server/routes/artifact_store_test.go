@@ -44,6 +44,7 @@ func TestArtifactFirstWriterWins(t *testing.T) {
 // Finding 6: concurrent uploads of the same bytes never expose a sidecar without the whole
 // object, and all agree on one winner.
 func TestArtifactConcurrentSameDigest(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	dir := t.TempDir()
 	data := bytes.Repeat([]byte("0123456789abcdef"), 1<<19) // 8 MiB: a write takes long enough to be seen mid-way
 	objDir := filepath.Join(dir, "artifacts", "objects")

@@ -635,6 +635,7 @@ func boardMessagesContain(t *testing.T, base, needle string) bool {
 }
 
 func TestBoardCompleteTask_DoesNotNudgeOrchestratorForUnassignedTask(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, plannerHandler := setupBoardTestServer(t)
 	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
@@ -1407,6 +1408,7 @@ func (m *mockSessionTerminal) sentTo(session string) []string {
 }
 
 func TestBoardTaskNudge_UsesTheTasksBoard(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, handler := setupBoardTestServer(t)
 	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	registerTaskPlanner(t, handler, "other", "Orchestrator")

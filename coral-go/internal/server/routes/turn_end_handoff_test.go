@@ -94,6 +94,7 @@ func (idleBox) AgentScreen(context.Context, string, string, string) (string, err
 // and doesn't finish within the hand-off's wait, nothing is handed off. That send is
 // about to reach the agent; a hand-off too would be a second copy.
 func TestTurnEndHandoffSkipsWhileASendIsInProgress(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, h, _, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
 	sid := "eeeeeeee-3481-1b00-0000-000000000007"

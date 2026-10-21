@@ -21,6 +21,7 @@ import (
 // #4602 M8: past its panel count or its HTML total a publish is a 409 whose JSON says why (the coral-agent CLI prints
 // the whole answer), and nothing is stored; an update of an existing panel still works.
 func TestAgentUIPublishRefusalsAreClear(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	_, h, _, ss := setupSessionsTestServer(t)
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: "ui-bounds", AgentName: "ui-bounds", AgentType: "codex", WorkingDir: "/tmp"}))
 	r := chi.NewRouter()

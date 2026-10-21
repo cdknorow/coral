@@ -219,6 +219,7 @@ func TestArtifactImageMetadataByTheBytes(t *testing.T) {
 }
 
 func TestArtifactHourlyCap(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	rig := newArtifactRig(t)
 	for i := 0; i < uploadWindowCount; i++ {
 		code, out := rig.upload("s1", "n.txt", "", strings.NewReader(fmt.Sprintf("note %d", i)))
@@ -338,6 +339,7 @@ func TestArtifactDeleteIsTheOperators(t *testing.T) {
 // Uploads and deletes of one digest, at the same time: the store is never left half done (an
 // object without its sidecar, or a sidecar without its object), and the size stays exact.
 func TestArtifactUploadDeleteRace(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	rig := newArtifactRig(t)
 	data := []byte("raced artifact")
 	id := sha(data)

@@ -184,6 +184,7 @@ func TestDefaultThinkingSettingTakesOnlyTheTypesLevels(t *testing.T) {
 }
 
 func TestRestartAndResumeKeepOrChangeTheThinkingLevel(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	for _, op := range []string{"restart", "resume"} {
 		t.Run(op, func(t *testing.T) {
 			server, _, term, ss := setupSessionsTestServer(t)
