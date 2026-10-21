@@ -20,6 +20,7 @@ import (
 	"github.com/subgentic/coral/internal/dbcrypt"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/secrets"
 	"github.com/subgentic/coral/internal/server"
 	"github.com/subgentic/coral/internal/server/routes"
@@ -249,7 +250,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// context.Background().
 	fwCtx, fwCancel := context.WithCancel(ctx)
 	stopFirewall = fwCancel
-	go startFirewallCheck(fwCtx) // Windows: warn about a firewall rule broader than Coral needs (read-only, #97)
+	safego.Go("startup/firewall_check", func() { startFirewallCheck(fwCtx) }) // Windows: warn about a firewall rule broader than Coral needs (read-only, #97)
 	if tlsConfig != nil {
 		for i := range lns {
 			lns[i] = newSniffListener(lns[i], tlsConfig)
