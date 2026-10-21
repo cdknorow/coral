@@ -12,7 +12,7 @@ T=$(mktemp -d /tmp/x.XXXX); T2=$(mktemp -d /tmp/x.XXXX)
 trap 'rm -rf "$T" "$T2"; [ -L "$W/tests/frontend/node_modules" ] && rm "$W/tests/frontend/node_modules"' EXIT INT TERM
 check_binaries "$(git merge-base origin/main HEAD)" HEAD; echo no-binaries-ok   # (#5444)
 cd "$W/coral-go" || exit 1
-# gofmt of the toolchain the CI gofmt job uses (go-version-file: coral-go/go.mod), not the local default: Go 1.27 and 1.26.9 align a map literal differently (135 gate #2)
+# gofmt of the toolchain the CI gofmt job uses (go-version-file: coral-go/go.mod), not the local default: Go 1.27 and 1.26 align a map literal differently (135 gate #2)
 GOFMT_ROOT=$(GOTOOLCHAIN="go$(awk '/^go /{print $2; exit}' go.mod)" go env GOROOT) || die "no toolchain for go.mod's go line"
 F=$("$GOFMT_ROOT/bin/gofmt" -l .); [ -z "$F" ] || die "gofmt ($GOFMT_ROOT): $F"; echo gofmt-ok
 go build -o /dev/null ./... && go vet ./... && go vet -tags 'dev fts5' ./... && GOOS=windows go vet ./... || die "build/vet failed"; echo build-vet-ok

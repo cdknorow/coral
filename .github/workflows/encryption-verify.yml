@@ -105,7 +105,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
         run: sudo apt-get update && sudo apt-get install -y libssl-dev patchelf
@@ -143,7 +143,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       # mingw is pinned. OpenSSL is the runner image's own (C:\Program Files\OpenSSL), not a Chocolatey
       # package: Chocolatey's older openssl packages download from slproweb.com, which drops old
@@ -230,7 +230,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       # The OpenSSL build is cached by version, source checksum, Configure target and runner image
       # (#4126 item 4; the Intel build took 316 s, p90 490 s). Only main writes the cache, so a branch,
@@ -292,7 +292,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       # The OpenSSL build is cached by version, source checksum, Configure target and runner image
       # (#4126 item 4; the Intel build took 316 s, p90 490 s). Only main writes the cache, so a branch,
@@ -353,7 +353,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           cache-dependency-path: coral-go/go.sum
       # The OpenSSL build is cached by version, source checksum, Configure target and runner image
       # (#4126 item 4; the Intel build took 316 s, p90 490 s). Only main writes the cache, so a branch,
