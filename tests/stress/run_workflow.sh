@@ -28,8 +28,8 @@ cleanup() {
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
-    rm -rf "$TMPDIR_WF" 2>/dev/null || true
-    coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir (runs the check too on a crash)
+    coral_test_sandbox_cleanup   # #4354: its check first (a crash path reads the stub marker), then the folders
+    coral_test_rm_tree "$TMPDIR_WF"
 }
 trap cleanup EXIT
 coral_test_watchdog   # a hang fails this runner within CORAL_TEST_WATCHDOG_S (default 900 s), not the whole run (#116)
@@ -58,7 +58,8 @@ api_status() {
 jq_val() {
     python3 -c "
 import sys, json, signal
-signal.alarm(5)
+if hasattr(signal, 'alarm'):  # Unix only; Windows Python has no SIGALRM
+    signal.alarm(5)
 try:
     d = json.load(sys.stdin)
     print(d$1)
@@ -71,7 +72,8 @@ except:
 jq_py() {
     python3 -c "
 import sys, json, signal
-signal.alarm(5)
+if hasattr(signal, 'alarm'):  # Unix only; Windows Python has no SIGALRM
+    signal.alarm(5)
 try:
     d = json.load(sys.stdin)
     print(eval(sys.argv[1]))
@@ -119,6 +121,7 @@ export CORAL_DATA_DIR="$TMPDIR_WF"
 
 # Create a repo directory for workflows to use
 REPO_PATH="$TMPDIR_WF/test-repo"
+REPO_PATH_NATIVE="$(coral_test_native_path "$REPO_PATH")"  # as the server reads it from JSON (Windows)
 mkdir -p "$REPO_PATH"
 
 log "Building coral (dev mode)..."
@@ -143,7 +146,7 @@ log "Test 1: Create a workflow..."
 result=$(api POST "" -d "{
     \"name\": \"test-echo\",
     \"description\": \"A simple echo workflow\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {\"name\": \"step1\", \"type\": \"shell\", \"command\": \"echo hello-world\"}
     ]
@@ -282,7 +285,7 @@ log "Test 8: Multi-step workflow..."
 multi_result=$(api POST "" -d "{
     \"name\": \"test-multi\",
     \"description\": \"Multi-step workflow\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {\"name\": \"produce\", \"type\": \"shell\", \"command\": \"echo PIPELINE_DATA_42\"},
         {\"name\": \"consume\", \"type\": \"shell\", \"command\": \"cat \$CORAL_PREV_STDOUT\"}
@@ -319,7 +322,7 @@ log "Test 9: Step failure (no continue_on_failure)..."
 fail_result=$(api POST "" -d "{
     \"name\": \"test-fail\",
     \"description\": \"Failing workflow\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {\"name\": \"bad-step\", \"type\": \"shell\", \"command\": \"exit 1\"},
         {\"name\": \"should-skip\", \"type\": \"shell\", \"command\": \"echo never\"}
@@ -354,7 +357,7 @@ log "Test 10: continue_on_failure..."
 cof_result=$(api POST "" -d "{
     \"name\": \"test-continue\",
     \"description\": \"Continue on failure\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {\"name\": \"fail-ok\", \"type\": \"shell\", \"command\": \"exit 1\", \"continue_on_failure\": true},
         {\"name\": \"runs-anyway\", \"type\": \"shell\", \"command\": \"echo continued\"}
@@ -513,7 +516,7 @@ log "Test 16: Kill running workflow..."
 kill_result=$(api POST "" -d "{
     \"name\": \"test-kill\",
     \"description\": \"Long-running workflow for kill test\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {\"name\": \"long-step\", \"type\": \"shell\", \"command\": \"sleep 60\"}
     ]
@@ -557,7 +560,7 @@ log "Test 17: Trigger with context..."
 ctx_result=$(api POST "" -d "{
     \"name\": \"test-context\",
     \"description\": \"Context test\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {\"name\": \"check-ctx\", \"type\": \"shell\", \"command\": \"echo ctx-ok\"}
     ]
@@ -616,7 +619,7 @@ log "Test 19: Workflow environment variables..."
 env_result=$(api POST "" -d "{
     \"name\": \"test-env\",
     \"description\": \"Env var test\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {\"name\": \"check-env\", \"type\": \"shell\", \"command\": \"echo NAME=\$CORAL_WORKFLOW_NAME STEP=\$CORAL_WORKFLOW_STEP\"}
     ]
@@ -664,7 +667,7 @@ HOOK_MARKER="$TMPDIR_WF/hook_marker_complete"
 hook_result=$(api POST "" -d "{
     \"name\": \"test-hook-complete\",
     \"description\": \"Hook test\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {
             \"name\": \"hooked-step\",
@@ -706,7 +709,7 @@ FAIL_HOOK_MARKER="$TMPDIR_WF/hook_marker_failed"
 fail_hook_result=$(api POST "" -d "{
     \"name\": \"test-hook-failed\",
     \"description\": \"Failed hook test\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {
             \"name\": \"fail-hooked\",
@@ -747,7 +750,7 @@ WRONG_HOOK_MARKER="$TMPDIR_WF/hook_marker_wrong"
 wrong_hook_result=$(api POST "" -d "{
     \"name\": \"test-hook-wrong\",
     \"description\": \"Wrong event hook test\",
-    \"repo_path\": \"$REPO_PATH\",
+    \"repo_path\": \"$REPO_PATH_NATIVE\",
     \"steps\": [
         {
             \"name\": \"ok-step\",

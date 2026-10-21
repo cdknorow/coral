@@ -43,8 +43,8 @@ cleanup() {
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
-    rm -rf "$TMPDIR_STRESS" 2>/dev/null || true
-    coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir
+    coral_test_sandbox_cleanup   # #4354: its check first (a crash path reads the stub marker), then the folders
+    coral_test_rm_tree "$TMPDIR_STRESS"
 }
 trap cleanup EXIT
 
@@ -437,12 +437,14 @@ fi
 
 # Build the mock agent
 log "Building mock-agent for terminal nudge test..."
-go build -o "$TMPDIR_STRESS/mock-agent" ./cmd/mock-agent/
+go build -o "$TMPDIR_STRESS/mock-agent${CORAL_TEST_EXE}" ./cmd/mock-agent/
+# The mock as the server reads it: a native path, with .exe on Windows (a Windows server finds a CLI only by its extension).
+MOCK_AGENT_NATIVE="$(coral_test_native_path "$TMPDIR_STRESS/mock-agent${CORAL_TEST_EXE}")"
 
 # Override claude CLI to use mock-agent
 curl -s -m 10 -X PUT "${BASE_URL}/api/settings" \
     -H "Content-Type: application/json" \
-    -d "{\"cli_path_claude\": \"$TMPDIR_STRESS/mock-agent\"}" >/dev/null
+    -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}" >/dev/null
 
 TERM_BOARD="term-nudge-$$"
 term_api() {
@@ -497,7 +499,8 @@ print('yes' if 'task' in text and 'claim' in text else 'no')
     fi
 
     # Clean up the mock session
-    curl -s -m 10 -X POST "${BASE_URL}/api/sessions/live/${mock_session}/kill" >/dev/null
+    # A kill waits for the agent's graceful stop (up to ~10 s on Windows ConPTY), so more than 10 s here.
+    curl -s -m 30 -X POST "${BASE_URL}/api/sessions/live/${mock_session}/kill" >/dev/null
 fi
 
 # ── Test 12: Orchestrator notified when agent completes task ─────────
@@ -551,7 +554,7 @@ print('yes' if ('Task #{}: finished stress task'.format(${orch_task_id:-0}) in t
         fail "Orchestrator completion notification: worker could not claim task"
     fi
 
-    curl -s -m 10 -X POST "${BASE_URL}/api/sessions/live/${orch_session}/kill" >/dev/null
+    curl -s -m 30 -X POST "${BASE_URL}/api/sessions/live/${orch_session}/kill" >/dev/null
 fi
 
 # Reset CLI path

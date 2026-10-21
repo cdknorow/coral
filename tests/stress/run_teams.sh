@@ -36,12 +36,12 @@ cleanup() {
     if [[ -n "${CORAL_DATA_DIR:-}" && -S "$CORAL_DATA_DIR/tmux.sock" ]]; then
         tmux -S "$CORAL_DATA_DIR/tmux.sock" kill-server 2>/dev/null || true
     fi
+    coral_test_sandbox_cleanup   # #4354: its check first (a crash path reads the stub marker), then the folders
     if [[ $exit_code -ne 0 || $FAIL -gt 0 || ${KEEP_TEST_DATA:-0} == 1 ]]; then
         log "Test data and server log: $TMPDIR_TEAMS"
     else
-        rm -rf "$TMPDIR_TEAMS" 2>/dev/null || true
+        coral_test_rm_tree "$TMPDIR_TEAMS"
     fi
-    coral_test_sandbox_cleanup   # #4354
 }
 trap cleanup EXIT
 coral_test_watchdog   # a hang fails this runner within CORAL_TEST_WATCHDOG_S (default 900 s), not the whole run (#116)
@@ -96,7 +96,9 @@ cd "$CORAL_DIR"
 # This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
 # installed app's (#3492), so without them its agents would send no status events.
 go build -tags "dev fts5" -o "$TMPDIR_TEAMS/" ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync
-go build -o "$TMPDIR_TEAMS/mock-agent" ./cmd/mock-agent/
+go build -o "$TMPDIR_TEAMS/mock-agent${CORAL_TEST_EXE}" ./cmd/mock-agent/
+# The mock as the server reads it: a native path, with .exe on Windows (a Windows server finds a CLI only by its extension).
+MOCK_AGENT_NATIVE="$(coral_test_native_path "$TMPDIR_TEAMS/mock-agent${CORAL_TEST_EXE}")"
 
 # Create a temp git repo with an initial commit
 REPO_DIR="$TMPDIR_TEAMS/test-repo"
@@ -116,7 +118,7 @@ SERVER_PID=$!
 wait_for_server
 
 # Set CLI path to mock-agent so we don't need the real claude binary
-api PUT "/api/settings" -d "{\"cli_path_claude\": \"$TMPDIR_TEAMS/mock-agent\"}" >/dev/null
+api PUT "/api/settings" -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}" >/dev/null
 
 TEAM_NAME="wt-test-$$"
 # WORKTREE_PATH and WORKTREE_BRANCH are discovered from the launch result below: the product
@@ -129,7 +131,7 @@ WORKTREE_BRANCH=""
 log "Test 1: Launch team with worktree..."
 launch_result=$(api POST "/api/sessions/launch-team" -d "{
     \"board_name\": \"$TEAM_NAME\",
-    \"working_dir\": \"$REPO_DIR\",
+    \"working_dir\": \"$(coral_test_native_path "$REPO_DIR")\",
     \"worktree\": true,
     \"base_branch\": \"main\",
     \"agents\": [
@@ -229,8 +231,10 @@ for a in data.get('agents', []):
 
 # Kill each session sequentially with session_id in body (needed for worktree cleanup)
 while IFS=' ' read -r sname sid; do
+    sid="${sid%$'\r'}"   # Windows Python ends each printed line with CRLF; a CR in the JSON broke the kill body
     if [[ -n "$sname" && -n "$sid" ]]; then
-        api POST "/api/sessions/live/${sname}/kill" -d "{\"session_id\": \"$sid\"}" >/dev/null 2>&1
+        # A kill waits for the agent's graceful stop, up to ~10 s on Windows ConPTY: more than api's -m 10.
+        curl -s -m 30 -X POST "${BASE_URL}/api/sessions/live/${sname}/kill" -H "Content-Type: application/json" -d "{\"session_id\": \"$sid\"}" >/dev/null 2>&1
         sleep 1
     fi
 done <<< "$agent_info"
