@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // postTeam posts a team launch and returns the status and the decoded answer.
@@ -221,4 +224,18 @@ func TestTeamLaunchRollbackKeepsABoardAMemberJoinedMeanwhile(t *testing.T) {
 	rollBack(theirs.ID, false)
 	_, err = h.bs.GetBoard(ctx, theirs.ID)
 	assert.NoError(t, err)
+}
+
+// A configured CLI path that can't be run (an error carrying a Hub text, #115) is a setup problem: a team whose members all fail on it is a 422,
+// not a 500.
+type brokenCLIPathError struct{}
+
+func (brokenCLIPathError) Error() string   { return "claude CLI path \"x\" can't be run" }
+func (brokenCLIPathError) HubText() string { return "the claude CLI path set in Settings can't be run" }
+
+func TestAConfiguredCLIPathThatCantBeRunIsASetupProblem(t *testing.T) {
+	assert.Equal(t, tracking.FailProviderUnavailable, classifyLaunchError(brokenCLIPathError{}))
+	assert.Equal(t, tracking.FailProviderUnavailable, classifyLaunchError(fmt.Errorf("launching: %w", brokenCLIPathError{})), "wrapped too")
+	assert.NotEqual(t, tracking.FailProviderUnavailable, classifyLaunchError(errors.New("something else broke")))
+	assert.True(t, allConfigurationFailures([]string{classifyLaunchError(brokenCLIPathError{})}))
 }
