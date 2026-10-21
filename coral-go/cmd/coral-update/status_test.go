@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/updater/runrecord"
 	"github.com/subgentic/coral/internal/updater/verify"
 )
@@ -179,7 +180,7 @@ func TestStatusOfAnUnreadableRecordClaimsNothing(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "updates", "run.json"), 0o700))
 	assert.Equal(t, "unreadable", statusJSON(t, nil)["run_record"])
 	require.NoError(t, os.Remove(filepath.Join(dir, "updates", "run.json")))
-	require.NoError(t, os.Symlink(filepath.Join(dir, "elsewhere"), filepath.Join(dir, "updates", "run.json")))
+	linktest.Symlink(t, filepath.Join(dir, "elsewhere"), filepath.Join(dir, "updates", "run.json"))
 	assert.Equal(t, "unreadable", statusJSON(t, nil)["run_record"])
 }
 

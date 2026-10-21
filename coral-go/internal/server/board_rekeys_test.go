@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
 )
@@ -49,7 +50,7 @@ func TestApplyBoardRekeys(t *testing.T) {
 	require.NoError(t, os.Chmod(state, 0o640))
 	outside := filepath.Join(t.TempDir(), "elsewhere.json")
 	require.NoError(t, os.WriteFile(outside, []byte(`{"project":"."}`), 0o644))
-	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "board_state_link.json")))
+	linktest.Symlink(t, outside, filepath.Join(dir, "board_state_link.json"))
 	other := filepath.Join(dir, "board_state_claude-y.json")
 	require.NoError(t, os.WriteFile(other, []byte(`{"project":"fine","job_title":"Dev"}`), 0o644))
 

@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 func TestIsResumeID(t *testing.T) {
@@ -83,7 +85,7 @@ func TestPrepareResumeValidIDCopiesAndWriteNoFollowRefusesSymlink(t *testing.T) 
 	// a file that exists, so the only reason it isn't copied is the non-regular skip.
 	secretOutside := filepath.Join(t.TempDir(), "outside-secret")
 	require.NoError(t, os.WriteFile(secretOutside, []byte("secret-contents"), 0o600))
-	require.NoError(t, os.Symlink(secretOutside, filepath.Join(srcProj, id, "link")))
+	linktest.Symlink(t, secretOutside, filepath.Join(srcProj, id, "link"))
 
 	a := &ClaudeAgent{}
 	a.PrepareResume(id, "/work-abc")

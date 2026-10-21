@@ -5,6 +5,7 @@ package linktest
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -66,13 +67,30 @@ func plantSymlink(t *testing.T, path string) Planted {
 	if err := os.WriteFile(target, []byte(Sentinel), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(target, path); err != nil {
-		if os.Getenv("CI") != "" {
-			t.Fatalf("plant a symbolic link: %v (the CI runner must allow it, so the check runs)", err)
-		}
-		t.Skipf("can't create a symbolic link here: %v", err)
-	}
+	Symlink(t, target, path)
 	return Planted{Kind: "symlink", Target: target}
+}
+
+// Symlink makes link a symbolic link to target, or skips the test where this account can't
+// (Windows without Developer Mode or an elevated user: "A required privilege is not held by the
+// client"). On CI it fails instead: the runner must allow links, so the check always runs there.
+func Symlink(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("create a symbolic link: %v (the CI runner must allow it, so the check runs)", err)
+		}
+		t.Skipf("can't create a symbolic link here (Windows needs Developer Mode or an elevated user): %v", err)
+	}
+}
+
+// RequireSymlinks skips the test (fails it on CI) where this account can't create symbolic links,
+// for a test whose links are made by something else (a script's ln -s), which would otherwise
+// quietly make a plain file and leave the test checking nothing.
+func RequireSymlinks(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	Symlink(t, dir, filepath.Join(dir, "probe"))
 }
 
 // plantHardLink gives a file elsewhere a second name at path. Reading it is harmless (the same
