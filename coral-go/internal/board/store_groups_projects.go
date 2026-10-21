@@ -179,11 +179,35 @@ func (s *Store) SearchMessages(ctx context.Context, query string) ([]string, err
 // health counters and items, and its row in the boards table. Two audit trails stay: hub_operator_actions (the Hub's record of what its operators did) and
 // health_actions (what Coral's health rules did): a record of what happened is not part of the board. A board made again under the same name starts empty.
 func (s *Store) DeleteProject(ctx context.Context, project string) error {
+	_, err := s.deleteProject(ctx, project, false)
+	return err
+}
+
+// DeleteProjectIfUnused is DeleteProject for a board whose only maker is taking it back (a team launch that started nobody, #5762): it
+// deletes the board only when, in the same transaction, it holds no message, task, member, group, reminder or wait. A board that something else
+// has used meanwhile (another launch, an agent that joined, a message posted) is kept, with what it holds. deleted says which.
+func (s *Store) DeleteProjectIfUnused(ctx context.Context, project string) (deleted bool, err error) {
+	return s.deleteProject(ctx, project, true)
+}
+
+func (s *Store) deleteProject(ctx context.Context, project string, onlyIfUnused bool) (bool, error) {
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
+	if onlyIfUnused {
+		for _, table := range []struct{ name, col string }{{"board_messages", "project"}, {"board_tasks", "board_id"}, {"board_subscribers", "project"}, {"board_groups", "project"},
+			{"board_reminders", "project"}, {"board_waits", "project"}} {
+			var n int
+			if err := tx.GetContext(ctx, &n, "SELECT COUNT(*) FROM "+table.name+" WHERE "+table.col+" = ?", project); err != nil {
+				return false, err
+			}
+			if n > 0 {
+				return false, nil
+			}
+		}
+	}
 	s.unreadCounts.invalidate()
 	forgetMentionTokens(ctx, tx, "project = ?", project)
 	const mine = `(SELECT id FROM board_tasks WHERE board_id = ?)`
@@ -215,11 +239,11 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 			args[i] = project
 		}
 		if _, err := tx.ExecContext(ctx, q.sql, args...); err != nil {
-			return err
+			return false, err
 		}
 	}
 	err = tx.Commit()
 	s.unreadCounts.invalidate()
 	s.subscribersChanged()
-	return err
+	return err == nil, err
 }

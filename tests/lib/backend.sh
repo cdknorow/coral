@@ -71,7 +71,8 @@ coral_test_watchdog() {
     (
         trap 'kill "${sp:-}" 2>/dev/null; exit 0' TERM
         sleep "$secs" & sp=$!
-        wait "$sp" && kill -USR1 "$me" 2>/dev/null
+        # kill -0 first (#5762): the runner may be gone, and its number reused by an unrelated process this must not signal
+        wait "$sp" && kill -0 "$me" 2>/dev/null && kill -USR1 "$me" 2>/dev/null
     ) &
     CORAL_TEST_WATCHDOG_PID=$!
 }

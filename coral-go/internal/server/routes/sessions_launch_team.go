@@ -235,7 +235,7 @@ func teamLaunchFailureMessage(launched []map[string]any) string {
 }
 
 // rollBackTeamLaunch takes back what a team launch that started nobody made: its team record, its worktree, and the board when this
-// request created it (a board that was already there, with its messages and members, is never deleted). Failures are logged. What
+// request created it and nothing else has used it since (a board that was already there, or that holds a message, a task or a member, is never deleted). Failures are logged. What
 // restoreTeamTemplate wrote (knowledge files, working mode, presets) is not taken back: it goes with a board this request created, and on a
 // board that was already there it is the template the Operator asked to restore.
 func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTeamRequest, teamID int64, worktreePath string, branchCreated, boardCreated bool) {
@@ -261,8 +261,14 @@ func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTea
 		}
 	}
 	if boardCreated && h.bs != nil && body.BoardName != "" {
-		if err := h.bs.DeleteProject(ctx, body.BoardName); err != nil {
+		// Only while the board still holds nothing this launch did not make: another launch, or an agent that joined, between the failure and here
+		// (a member joins a board by itself) means the board is theirs now (#5762).
+		deleted, err := h.bs.DeleteProjectIfUnused(ctx, body.BoardName)
+		switch {
+		case err != nil:
 			log.Printf("[launch-team] could not remove the empty team's board %s: %v", body.BoardName, err)
+		case !deleted:
+			log.Printf("[launch-team] kept the board %s of the team that started nobody: something else joined or used it meanwhile", body.BoardName)
 		}
 	}
 }

@@ -148,7 +148,7 @@ task_states() {  # name sid -> "id:completed id:completed ..."
 
 # ── Setup ────────────────────────────────────────────────────────────
 
-TMPDIR_AT="$(mktemp -d)"
+TMPDIR_AT="$(mktemp -d "${TMPDIR:-/tmp}/coral-test-agent_tasks.XXXXXX")"
 export TMPDIR="$TMPDIR_AT"  # server os.TempDir() droppings land here, removed on exit (#3926)
 if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
     log "ERROR: Port $PORT is already in use; set CORAL_TEST_PORT to a free port."
