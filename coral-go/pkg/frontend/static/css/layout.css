@@ -937,7 +937,7 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p,
 .editions-cloud-actions:not(:has(> :not([hidden]))) { display: none; }
 .cloud-command-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cloud-command-row[hidden] { display: none; }
-.cloud-command-row code { padding: 4px 8px; border-radius: var(--radius-md); background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.8125rem; user-select: all; }
+.cloud-command-row code { white-space: pre-line; padding: 4px 8px; border-radius: var(--radius-md); background: var(--bg-tertiary); color: var(--text-primary); font-size: 0.8125rem; user-select: all; }
 .editions-mode { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .editions-mode label { color: var(--text-primary); font-size: 0.8125rem; font-weight: 500; }
 .editions-auto-accept { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 0.8125rem; }

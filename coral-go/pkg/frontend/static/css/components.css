@@ -860,8 +860,9 @@ button.subscriber-history-link {
 }
 
 #launch-step-chooser {
-    overflow-y: hidden;
+    overflow-y: auto; /* four stacked cards on a phone are taller than the window: the step scrolls, and its Cancel stays in view (it was clipped by the dialog's edge) */
 }
+#launch-step-chooser > .modal-actions { position: static; margin: 16px 0 0; padding: 16px 0 0; } /* not the sticky footer the form steps use: its -24px offset put the button's lower edge outside the step (clipped) */
 
 .launch-modal-step > h3 {
     position: sticky;
@@ -4426,3 +4427,9 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 #launch-step-team .sd-name-field #team-board-name { width: 100%; }
 @container sd (max-width: 40rem) { #launch-step-team .sd-name-grid { grid-template-columns: minmax(0, 1fr); gap: .3rem; } #launch-step-team .sd-name-grid > label { padding-top: 0; } }
 .launch-type-glyph { font-size: 2rem; } /* the agent card draws the same robot as the start page */
+
+/* Settings' footer: the note that something is not saved yet, on the left (UI audit #5589, finding 27); and the CLI paths behind one line. */
+.settings-unsaved { margin-right: auto; align-self: center; font-size: var(--fs-base); color: var(--text-secondary); }
+.settings-unsaved[hidden] { display: none; }
+.settings-cli-details > summary { cursor: pointer; font-weight: 600; font-size: var(--fs-md); min-height: 32px; display: flex; align-items: center; }
+.settings-cli-details[open] > summary { margin-bottom: 8px; }

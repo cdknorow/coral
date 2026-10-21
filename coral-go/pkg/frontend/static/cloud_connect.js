@@ -28,6 +28,8 @@ const HUB_OPERATOR_URL = '/api/system/hub-operator';
  const CONNECT_COMMAND = 'coral cloud connect';
 // The command a server with no hub is started with (the OFF_TEXT's first step), with a Copy button beside it (UI audit #5589, finding 21: a command to run in a terminal was text only).
  const START_COMMAND = 'coral --cloud-url https://app.coralhub.dev';
+// In Settings the sentence says it once and the row holds the whole sequence, which Copy takes (UI audit #5589); the connect dialog keeps the sentence the command line says too (#3285).
+ const OFF_SHORT = "Coral Hub isn't configured on this server. Run these in a terminal: the first starts Coral with the Hub address, the second connects it.";
 // Said when this server has no hub (a dev build, or --cloud-url off); the CLI says the same (#3285).
  const OFF_TEXT = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralhub.dev (or CORAL_CLOUD_URL=https://app.coralhub.dev), then run: coral cloud connect";
 
@@ -155,8 +157,14 @@ class CloudPanel {
         const show = (role, on) => { const el = this.part(role); if (el) el.hidden = !on; };
         // A server with no hub says what to run: the command is in the row, with Copy (a person copies it into a terminal).
         const startRow = this.part('command-row');
-        if (startRow && st.state === 'off') { show('command-row', true); const c = this.part('command'); if (c) c.textContent = START_COMMAND; this.command = START_COMMAND; }
-        else { show('command-row', false); if (this.command === START_COMMAND) this.command = null; }
+        if (startRow && st.state === 'off') {
+            const all = this.commandsInRow ? `${START_COMMAND}\n${CONNECT_COMMAND}` : START_COMMAND;
+            show('command-row', true);
+            const c = this.part('command'); if (c) c.textContent = all;
+            this.command = all;
+            if (this.commandsInRow) this.say(OFF_SHORT);
+        }
+        else { show('command-row', false); if (this.command && this.command.startsWith(START_COMMAND)) this.command = null; }
         show('connect', st.state === 'idle' || st.state === 'revoked');
         // While the code is shown: Cancel stops the enrollment (never undoes a connection).
         // A container without a Cancel keeps offering Disconnect, which also stops it.
@@ -370,7 +378,7 @@ export function mountCloudConnect(root, { onState } = {}) {
 // Settings > Coral Hub.
 export function initCloudConnect() {
     const root = document.getElementById('settings-cloud');
-    if (root && !root._cloudPanel) { const p = new CloudPanel(root); root._cloudPanel = p; p.bind(); }
+    if (root && !root._cloudPanel) { const p = new CloudPanel(root); p.commandsInRow = true; root._cloudPanel = p; p.bind(); }
 }
 
 export async function loadCloudStatus() {

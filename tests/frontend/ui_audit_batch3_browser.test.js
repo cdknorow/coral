@@ -47,9 +47,9 @@ const BASE = require('./test_base').BASE;
             const hubOff = await ev(`/isn't configured/.test(document.getElementById('settings-cloud-status').textContent)`);
             if (hubOff) {
                 const row = await ev(`(() => { const r = document.querySelector('#settings-cloud [data-cloud=command-row]'); return { shown: !r.hidden, cmd: r.querySelector('code').textContent, copy: r.querySelector('button').textContent }; })()`);
-                assert.deepEqual(row, { shown: true, cmd: 'coral --cloud-url https://app.coralhub.dev', copy: 'Copy' });
+                assert.deepEqual(row, { shown: true, cmd: 'coral --cloud-url https://app.coralhub.dev\ncoral cloud connect', copy: 'Copy' }); // the sequence: batch 4 puts both steps in the row
                 await ev(`window.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copied.push(t); return Promise.resolve(); } } }); document.querySelector('#settings-cloud [data-cloud=command-row] button').click(); true`);
-                await waitFor(`window.__copied.length === 1`, 'the copy'); assert.deepEqual(await ev(`window.__copied`), ['coral --cloud-url https://app.coralhub.dev']);
+                await waitFor(`window.__copied.length === 1`, 'the copy'); assert.deepEqual(await ev(`window.__copied`), ['coral --cloud-url https://app.coralhub.dev\ncoral cloud connect']);
                 await shot('network-off', w);
             }
             console.log(`4. (${w}) Settings footer says Save settings`);

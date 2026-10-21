@@ -718,6 +718,7 @@
                 <div class="settings-row settings-row-wide">
                 <dt>CLI paths</dt>
                 <dd class="settings-cli-paths">
+                    <details class="settings-cli-details"><summary>Set the paths to the agent CLIs</summary>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Claude</span>
                         <input type="text" id="settings-cli-path-claude" class="settings-input settings-mono-input" placeholder="claude">
@@ -742,6 +743,7 @@
                         <button class="btn btn-small" data-on-click="m-verify-all-c-l-is" id="verify-all-btn">Verify All</button>
                     </div>
                     <span class="settings-hint">Full path to agent CLI binary. Leave empty to use default from PATH.</span>
+                    </details>
                 </dd>
                 </div>
                 <div class="settings-row settings-row-wide">
@@ -838,7 +840,7 @@
                 </div>
                         </dl>
                         <button class="btn btn-primary settings-prompts-btn" data-on-click="m-hide-settings-modal-then-show-default-prompts-modal">
-                            <span style="font-size:1rem;vertical-align:middle;margin-right:6px">✏️</span>
+                            <span class="material-icons icon-inline" aria-hidden="true">edit</span>
                             Edit Default Prompts
                         </button>
                     </section>
@@ -1212,6 +1214,7 @@
                 </div>
             </div>
             <div class="modal-actions modal-footer">
+                <span class="settings-unsaved" id="settings-unsaved" role="status" aria-live="polite" hidden>Unsaved changes</span>
                 <button class="btn" data-on-click="m-hide-settings-modal">Cancel</button>
                 <button class="btn btn-primary" data-on-click="m-apply-settings">Save settings</button>
             </div>

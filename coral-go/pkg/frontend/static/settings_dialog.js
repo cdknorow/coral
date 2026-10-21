@@ -779,6 +779,18 @@ function _fillFilesAndGit(s) {
     if (agentLowPriority) agentLowPriority.checked = s.agent_priority !== 'normal';
 }
 
+/** The "Unsaved changes" note in Settings' footer (UI audit #5589, finding 27): shown while the form differs from what it held when it finished opening (or was last saved), or a database encryption or terminal backend or wake choice is pending. The baseline is the form's own payload, not the saved settings: a new install has no saved settings, so everything would differ. Changes to the custom models and the update switches are saved too but are not counted here. */
+let _formAtOpen = null;
+const formKey = () => { try { return JSON.stringify(readSettingsForm().payload); } catch { return null; } };
+export async function refreshUnsavedNote() {
+    const note = document.getElementById('settings-unsaved');
+    if (!note) return;
+    let dirty = _formAtOpen !== null && formKey() !== _formAtOpen;
+    if (!dirty && _formAtOpen !== null) { dirty = databaseEncryptionChanged(); }
+    if (!dirty && _formAtOpen !== null) { try { dirty = await importOnce('./terminal_backend.js').then(tb => tb.hasUnsavedBackendChange(), () => false); } catch { dirty = false; } }
+    note.hidden = !dirty;
+}
+
 export async function showSettingsModal(group) {
     // Focus moves in on open, Tab stays inside, and focus comes back on close (accessibility pass).
     attachDialogFocus(document.getElementById('settings-modal'));
@@ -819,6 +831,10 @@ export async function showSettingsModal(group) {
     if (isCloud()) applyCloudSettingsDialog();
 
     openSettingsGroup(typeof group === 'string' ? group : undefined); // the group last used here, or the one asked for
+    const modalEl = document.getElementById('settings-modal');
+    if (!modalEl._unsavedWired) { modalEl._unsavedWired = true; for (const type of ['input', 'change']) modalEl.addEventListener(type, () => { refreshUnsavedNote(); }); }
+    _formAtOpen = formKey(); // the form as it finished opening
+    refreshUnsavedNote();
     document.getElementById("settings-modal").style.display = "flex";
 }
 
@@ -1040,6 +1056,7 @@ export async function applySettings() {
         const modelsSaved = isCloud() ? false : await importOnce('./custom_models.js').then(m => m.applyCustomModels()); // the custom models (#5480)
         if (modelsSaved) { _invalidateAgentModels(); (await importOnce('./model_labels.js')).clearModelsCache(); }
         showToast(nothingToSave && !modelsSaved && !updatesSaved ? NOTHING_TO_SAVE : "Settings saved");
+        _formAtOpen = formKey(); refreshUnsavedNote();
     } catch (e) {
         showToast(e && e.userMessage ? `Failed to save settings: ${e.userMessage}` : "Failed to save settings", true);
         return;
