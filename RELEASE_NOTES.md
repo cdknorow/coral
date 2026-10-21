@@ -1,5 +1,27 @@
 # Release Notes
 
+## v1.4.146 — Artifacts have owners, and the owner of Coral Hub can switch cross-team messaging
+
+### Features
+
+- **Every artifact now has an owner.** An upload records the owner of the team the agent was launched onto (an image pasted in the dashboard belongs to that agent's team; a received file to the receiving team's owner); a record with no owner belongs to the owner of this computer. An agent can read an artifact only when it is owned by the owner of its team: anything else answers "not found", the same as an artifact that does not exist, so it does not even say that the artifact is there. The dashboard, the command line and an API key still read everything. **Two teams with the same owner can read each other's artifacts.**
+- **Who can read an artifact:** a new owner-only route, `GET /api/artifacts/{id}/readers`, lists the owners that hold it and the teams whose agents can therefore read it (a dashboard view follows).
+- **Coral Hub's owner can turn a team's cross-team messaging and file sharing on or off,** through four dedicated routes, behind a local lock: Settings > Network and Hub > "Let Coral Hub change cross-team settings" (on by default; off refuses Coral Hub in both directions). Team settings > Messaging says "Coral Hub can change these settings." while it can, and under each switch who changed it last ("Turned on by … via Coral Hub at …", or on this computer). This needs Coral Hub's matching update.
+- **New Agent opens on the folder and Launch:** the first screen is the working directory, a "More options" button and Launch; the rest sits behind the button, every field still reachable. The working directory leaves the Workspace section, which is now called "Name and persona".
+
+### Changes
+
+- **One size rule for every dialog:** each dialog is as high as its content up to 90% of the window, `clamp(360px, 92vw, 960px)` wide, with one scroll area and its footer in view (Launch, Create Agent, Settings and Team settings no longer have a fixed height).
+- **A launch problem shows as a line under its field, saying what to do next** ("Folder not found: /x. Pick one with Browse."), tied to the field for screen readers and cleared by the next edit; the toast stays.
+- **Controls that did nothing or repeated are gone:** Claude in Bypass Permissions mode has no Allow row (and no Shell patterns field), the Allow and Deny chips are buttons with a pressed state, Settings > Security shows no Database encryption row in a build without encryption, there is no Remind agent button on a terminal, and the Agent Team dialog has no health check option (it is in Team settings > Health check).
+- **`coral-board targets` lists a target by its address alone** when Coral Hub sends no reachable field, and says "(online)" or "(offline)" only when Coral Hub says so. The agent docs show the same.
+
+### Internal
+
+- The connector stamps the owner marker on the artifact routes for the owner's view through Coral Hub (the route list needs Coral Hub's matching update).
+- A settings test waits for rows that only fill on a machine before hiding them, which ended an occasional failure.
+- Test speed: the telemetry end-to-end test, the startup tests, the model-list fetch of the signed-in test CLI (12 s to 0.2 s) and the hanging-status tests of three packages no longer wait out long fixed limits.
+
 ## v1.4.145 — Artifacts through Coral Hub are for the owner
 
 ### Features
