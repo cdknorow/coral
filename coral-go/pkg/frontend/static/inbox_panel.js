@@ -7,7 +7,7 @@
  *   replyToTask({ project, taskId, content })-> { ok, notified: [names], warnings: [codes] }                                             POST /api/board/{project}/tasks/{id}/reply, {content} only
  *   canReply()                               -> { ok: true } | { ok: false, reason }                                                     (e.g. a Coral Hub viewer at the View tier)
  *   readSavedMessage(item)                   -> { text, partial, reason }   reason: '' | 'gone' | 'not_reachable' | 'too_long'          GET /api/saved/{id}/message
- *   optional: contract (the INBOX_CONTRACT it was written for: a different one is refused), linkPolicy(url), openTask(task), taskHref(task) (a same-origin path), now()
+ *   optional: contract (the INBOX_CONTRACT it was written for: a different one is refused), linkPolicy(url), prepareLinks(text) (async: the lookup for that text, returns the linkPolicy to use for it), openTask(task), taskHref(task) (a same-origin path), now()
  * Rules it keeps (Security's conditions on #5750): nothing here builds HTML from machine text: every title, name, count, error and reason is set with textContent, and the task and message text goes
  * through safe_markdown.js (the shared DOM-built renderer); it imports only same-origin modules and uses no eval or dynamic import; a path an adapter returns is used only if it is a same-origin path;
  * a reply draft is kept in memory only (never localStorage or sessionStorage) and dropped by clearInboxDrafts() (sign-out). inbox_no_html_census.test.js holds the first two to account. */
@@ -56,8 +56,14 @@ function checkAdapter(a) {
     return a;
 }
 
-function renderBody(text, adapter) {
-    const opts = typeof adapter.linkPolicy === 'function' ? { linkPolicy: adapter.linkPolicy } : undefined;
+/** The text as DOM. When the adapter has prepareLinks(text) (a lookup that must answer before a link is owned), it is awaited for THIS text and the policy it returns is the one used; if it throws, the
+ *  adapter's own linkPolicy (or none) is used, so a failed lookup leaves the links as text. */
+async function renderBody(text, adapter) {
+    let policy = adapter.linkPolicy;
+    if (typeof adapter.prepareLinks === 'function') {
+        try { const p = await adapter.prepareLinks(text); if (typeof p === 'function') policy = p; } catch { /* the links stay as the renderer's default has them */ }
+    }
+    const opts = typeof policy === 'function' ? { linkPolicy: policy } : undefined;
     return renderSafe(text, opts).node;
 }
 
@@ -118,7 +124,7 @@ export function mountInbox(host, adapter, options) {
             if (announce) say('Reading the task…');
             try {
                 const full = await adapter.getTask(task.project, task.id);
-                region.replaceChildren(...taskBody(task, full || {}));
+                region.replaceChildren(...await taskBody(task, full || {}));
                 loaded = true;
                 if (announce) say(`${task.title || 'The task'} is open.`);
             } catch (e) {
@@ -132,7 +138,7 @@ export function mountInbox(host, adapter, options) {
         return li;
     }
 
-    function taskBody(task, full) {
+    async function taskBody(task, full) {
         const out = [];
         const from = full.created_by || task.created_by;
         const facts = [from ? `From ${from}` : '', full.status || task.status || ''].filter(Boolean).join(' · ');
@@ -145,7 +151,7 @@ export function mountInbox(host, adapter, options) {
             out.push(b);
         }
         const text = full.body == null ? '' : String(full.body);
-        out.push(text ? renderBody(text, adapter) : el('p', 'ibx-empty', 'This task has no text.'));
+        out.push(text ? await renderBody(text, adapter) : el('p', 'ibx-empty', 'This task has no text.'));
         out.push(replyBox(task, from));
         return out;
     }
@@ -247,7 +253,7 @@ export function mountInbox(host, adapter, options) {
                 const parts = [];
                 const reason = res.reason && SAVED_WORDS[res.reason];
                 if (reason) parts.push(el('p', 'ibx-why', reason));
-                if (res.text) parts.push(renderBody(res.text, adapter));
+                if (res.text) parts.push(await renderBody(res.text, adapter));
                 if (res.partial && res.reason !== 'too_long') parts.push(el('p', 'ibx-why', 'Shown in part: the message is very long.'));
                 if (!parts.length) parts.push(el('p', 'ibx-why', 'There is no more text than the snippet.'));
                 region.replaceChildren(...parts);
