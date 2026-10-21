@@ -1,0 +1,41 @@
+name: trial-flake5695c
+on:
+  push:
+    branches: [trial/flake5695c]
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+jobs:
+  flake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: before, ref: "fa9aaafab7b5d93f3783e1ec5f7483d0e5b728ff", slow: "0"}
+          - {name: before-slow, ref: "fa9aaafab7b5d93f3783e1ec5f7483d0e5b728ff", slow: "1"}
+          - {name: after, ref: "", slow: "0"}
+          - {name: after-slow, ref: "", slow: "1"}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          ref: ${{ matrix.ref }}
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          path: tools
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - shell: bash
+        run: |
+          if [ "${{ matrix.slow }}" = 1 ]; then python3 tools/.github/inject5695.py; fi
+          cd coral-go
+          go version
+          go test -count=5 -v -run '^TestBackgroundCallersStillAskClaudeWhenSignedIn$' ./internal/background > /tmp/o.log 2>&1 || true
+          echo "VARIANT ${{ matrix.name }}"
+          grep -cE "^        --- PASS|^    --- PASS" /tmp/o.log | sed 's/^/pass-subtests /'
+          grep -cE "^    --- FAIL|^        --- FAIL" /tmp/o.log | sed 's/^/fail-subtests /'
+          grep -E "Messages|Error:" /tmp/o.log | sort | uniq -c | head -5
