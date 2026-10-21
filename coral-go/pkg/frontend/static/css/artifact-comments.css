@@ -45,8 +45,9 @@
 .ac-body { margin: 4px 0 0; font-size: var(--fs-md, 0.875rem); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-primary); }
 .ac-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 0; }
 .ac-actions:empty { display: none; }
-/* Edit and Delete show when the card is hovered, current or has focus (they are buttons the keyboard reaches: focus shows them), always on a touch screen */
-@media (hover: hover) and (pointer: fine) {
+/* Edit and Delete show when the card is hovered, current or has focus (they are buttons the keyboard reaches: focus shows them), always on a touch screen. The condition is "the pointer is not coarse",
+   not "(hover: hover)": a desktop browser with no pointing device reports (hover: none) (GitHub's headless Chrome), as session.css explains for the branch boxes. */
+@media not all and (pointer: coarse) {
     /* At rest the row takes no room (it left a gap of about 24 px under each comment): it is still in the tab order, and focus on a button inside it opens it again. */
     .ac-card:not(:hover):not(:focus-within):not(.ac-active) .ac-actions { opacity: 0; max-height: 0; min-height: 0; overflow: hidden; margin: 0; }
 }
