@@ -148,13 +148,13 @@ func TestPTYBackendReplay(t *testing.T) {
 	backend := NewPTYBackend()
 	defer backend.Close()
 
-	err := backend.Spawn("capture-test", "test", t.TempDir(), "sid-cap", "sh -c 'echo MARKER_123'", 80, 24)
+	// the command stays alive after printing: on macOS a process that exits before the first read can lose its output on a loaded machine (#5671)
+	err := backend.Spawn("capture-test", "test", t.TempDir(), "sid-cap", "sh -c 'echo MARKER_123; sleep 5'", 80, 24)
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
 
-	// Wait for output
-	time.Sleep(500 * time.Millisecond)
+	pollFor(func() string { d, _ := backend.Replay("capture-test"); return string(d) }, "MARKER_123")
 
 	data, err := backend.Replay("capture-test")
 	if err != nil {
@@ -242,7 +242,7 @@ func TestPTYBackendRestart(t *testing.T) {
 		t.Fatalf("Spawn failed: %v", err)
 	}
 
-	time.Sleep(300 * time.Millisecond)
+	pollFor(func() string { d, _ := backend.Replay("restart-test"); return string(d) }, "BEFORE")
 
 	// Capture initial output
 	data, err := backend.Replay("restart-test")
@@ -477,8 +477,8 @@ func TestPTYBackendRingBufferOverflow(t *testing.T) {
 		t.Fatalf("Spawn failed: %v", err)
 	}
 
-	// Wait for output to complete
-	time.Sleep(2 * time.Second)
+	// Wait for the last line, not for a guessed time
+	pollFor(func() string { d, _ := backend.Replay("overflow-test"); return string(d) }, "LINE_5000")
 
 	// Replay should not error even with large output (ring buffer handles overflow)
 	data, err := backend.Replay("overflow-test")

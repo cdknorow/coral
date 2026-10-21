@@ -13,7 +13,6 @@ import (
 // #4013: a command that prints nothing is running while its process is alive, and ended
 // promptly after it exits (an agent silent while it thinks is not stopped).
 func TestSilentCommandStaysRunningUntilItExits(t *testing.T) {
-	t.Parallel()
 	canFork(t)
 	backend := NewPTYBackend()
 	defer backend.Close()

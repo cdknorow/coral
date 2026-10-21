@@ -141,14 +141,12 @@ func TestPTYSessionTerminal_KillSession(t *testing.T) {
 	terminal, backend := newTestTerminal(t)
 
 	spawnTestSession(t, backend, "kill-me")
-	time.Sleep(100 * time.Millisecond)
-	assert.True(t, terminal.HasSession(context.Background(), "kill-me"))
+	eventually(t, "the session to be listed", func() bool { return terminal.HasSession(context.Background(), "kill-me") })
 
 	err := terminal.KillSession(context.Background(), "kill-me", "", "")
 	require.NoError(t, err)
-	time.Sleep(200 * time.Millisecond)
 
-	assert.False(t, terminal.HasSession(context.Background(), "kill-me"))
+	eventually(t, "the session to be gone", func() bool { return !terminal.HasSession(context.Background(), "kill-me") })
 }
 
 func TestPTYSessionTerminal_KillSession_NotFound(t *testing.T) {
@@ -175,11 +173,10 @@ func TestPTYSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
 	terminal, backend := newTestTerminal(t)
 
 	spawnTestSession(t, backend, "io-test")
-	time.Sleep(300 * time.Millisecond)
 
 	err := terminal.SendInput(context.Background(), "io-test", "echo hello-coral", "", "")
 	require.NoError(t, err)
-	time.Sleep(500 * time.Millisecond)
+	waitForPTYOutput(t, backend, "io-test", "hello-coral", pollWindow)
 
 	output, err := terminal.CaptureOutput(context.Background(), "io-test", 200, "", "")
 	require.NoError(t, err)
@@ -192,7 +189,6 @@ func TestPTYSessionTerminal_SendRawInput(t *testing.T) {
 	terminal, backend := newTestTerminal(t)
 
 	spawnTestSession(t, backend, "raw-test")
-	time.Sleep(200 * time.Millisecond)
 
 	// Send raw characters
 	err := terminal.SendRawInput(context.Background(), "raw-test", []string{"h", "i", "\n"}, "", "")
@@ -207,7 +203,6 @@ func TestPTYSessionTerminal_SendToTarget(t *testing.T) {
 	terminal, backend := newTestTerminal(t)
 
 	spawnTestSession(t, backend, "target-test")
-	time.Sleep(200 * time.Millisecond)
 
 	// SendToTarget uses the session name as target in PTY mode
 	err := terminal.SendToTarget(context.Background(), "target-test", "echo target-ok")
@@ -219,7 +214,6 @@ func TestPTYSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
 	skipIfWindows(t)
 	terminal, backend := newTestTerminal(t)
 	spawnTestSession(t, backend, "long-target-test")
-	time.Sleep(200 * time.Millisecond)
 
 	marker := "LONG_PTY_HANDOFF_MARKER"
 	value := strings.Repeat("x", inlineCommandLimit+300) + marker
@@ -227,7 +221,7 @@ func TestPTYSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
 	require.Greater(t, len(command), inlineCommandLimit)
 	require.NoError(t, terminal.SendToTarget(context.Background(), "long-target-test", command))
 
-	output := waitForPTYOutput(t, backend, "long-target-test", marker, 5*time.Second)
+	output := waitForPTYOutput(t, backend, "long-target-test", marker, pollWindow)
 	assert.Contains(t, output, marker)
 }
 
@@ -331,7 +325,6 @@ func TestPTYSessionTerminal_ConcurrentListAndKill(t *testing.T) {
 		err := backend.Spawn(name, "claude", dir, sessionID, "", 80, 24)
 		skipIfPTYSpawnDenied(t, err)
 	}
-	time.Sleep(200 * time.Millisecond)
 
 	// Concurrent list while killing
 	done := make(chan bool)

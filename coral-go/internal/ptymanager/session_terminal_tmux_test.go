@@ -152,9 +152,8 @@ func TestTmuxSessionTerminal_CreateSession(t *testing.T) {
 
 	err := terminal.CreateSession(ctx, "create-test", dir)
 	require.NoError(t, err)
-	time.Sleep(300 * time.Millisecond)
 
-	assert.True(t, terminal.HasSession(ctx, "create-test"))
+	eventually(t, "the session to be listed", func() bool { return terminal.HasSession(ctx, "create-test") })
 }
 
 func TestTmuxSessionTerminal_KillSession(t *testing.T) {
@@ -167,9 +166,8 @@ func TestTmuxSessionTerminal_KillSession(t *testing.T) {
 
 	err := terminal.KillSession(ctx, "claude-00003687-0002-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
-	time.Sleep(200 * time.Millisecond)
 
-	assert.False(t, terminal.HasSession(ctx, "claude-00003687-0002-4000-8000-000000000000"))
+	eventually(t, "the session to be gone", func() bool { return !terminal.HasSession(ctx, "claude-00003687-0002-4000-8000-000000000000") })
 }
 
 func TestTmuxSessionTerminal_KillSession_NotFound(t *testing.T) {
@@ -291,9 +289,8 @@ func TestTmuxSessionTerminal_RenameSession(t *testing.T) {
 
 	err := terminal.RenameSession(ctx, "old-name", "new-name")
 	require.NoError(t, err)
-	time.Sleep(200 * time.Millisecond)
 
-	assert.True(t, terminal.HasSession(ctx, "new-name"))
+	eventually(t, "the session under its new name", func() bool { return terminal.HasSession(ctx, "new-name") })
 	assert.False(t, terminal.HasSession(ctx, "old-name"))
 }
 
@@ -308,7 +305,7 @@ func TestTmuxSessionTerminal_RestartPane(t *testing.T) {
 
 	// Send a command, then restart
 	terminal.SendInput(ctx, "claude-00003687-0006-4000-8000-000000000000", "echo BEFORE_RESTART", "", "")
-	time.Sleep(500 * time.Millisecond)
+	waitForCapture(t, terminal, "claude-00003687-0006-4000-8000-000000000000", "BEFORE_RESTART", pollWindow)
 
 	pane, err := terminal.FindSession(ctx, "claude-00003687-0006-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
@@ -316,10 +313,9 @@ func TestTmuxSessionTerminal_RestartPane(t *testing.T) {
 
 	err = terminal.RestartPane(ctx, pane.Target, t.TempDir())
 	require.NoError(t, err)
-	time.Sleep(500 * time.Millisecond)
 
 	// Session should still exist after restart
-	assert.True(t, terminal.HasSession(ctx, "claude-00003687-0006-4000-8000-000000000000"))
+	eventually(t, "the session after the restart", func() bool { return terminal.HasSession(ctx, "claude-00003687-0006-4000-8000-000000000000") })
 }
 
 // ── Logging ──────────────────────────────────────────────────────────
@@ -378,7 +374,10 @@ func TestTmuxSessionTerminal_SetPaneTitle(t *testing.T) {
 	terminal.SetPaneTitle(ctx, pane.Target, "My Custom Title")
 
 	// Verify the title was set by re-listing sessions
-	time.Sleep(200 * time.Millisecond)
+	eventually(t, "the title to be set", func() bool {
+		p, err := terminal.FindSession(ctx, "claude-00003687-0022-4000-8000-000000000000", "", "")
+		return err == nil && p != nil && p.PaneTitle == "My Custom Title"
+	})
 	paneAfter, err := terminal.FindSession(ctx, "claude-00003687-0022-4000-8000-000000000000", "", "")
 	require.NoError(t, err)
 	require.NotNil(t, paneAfter)
