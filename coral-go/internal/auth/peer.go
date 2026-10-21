@@ -136,7 +136,7 @@ func PeerCheckWarning() string {
 	if !peerCheckLost.Load() {
 		return ""
 	}
-	return "Coral can't tell which account a connection from this computer comes from (this OS version's socket table isn't one this build reads), so every account on this computer gets the no-sign-in pass that is meant only for Coral's own. Keep strict local auth on, and update Coral."
+	return "Coral can't tell which account a connection from this computer comes from (this OS version's socket table isn't one this build reads), so every account on this computer gets the no-sign-in pass that is meant only for Coral's own, and nobody gets the local-only powers (reading the API key, the file explorer's relaxed bounds, Coral Hub settings, opening an editor) until Coral is updated. Keep strict local auth on, and update Coral."
 }
 
 // peerLog limits the line for a connection that is not Coral's own user's to one a minute per

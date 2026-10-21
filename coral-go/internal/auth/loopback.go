@@ -118,7 +118,16 @@ func hasProxyHeaders(r *http.Request) bool {
 // also reaches Coral from 127.0.0.1, so a request with its stamp, authentic or not, is never
 // local either (#3936): the hub's route table is the only gate for a hub user.
 func IsDirectLocal(r *http.Request) bool {
-	return localOperator(r) && !RequireAuthOnLoopback()
+	return localPower(r) && !RequireAuthOnLoopback()
+}
+
+// localPower is localOperator for a local-only power (IsDirectLocal's, and reading or rotating the API key): false for every
+// request, whoever's it is, once the peer-user check is lost on a system that has one (its socket table is a layout this build
+// can't read, peerCheckLost). Without the check Coral can't tell its own account from another one on the computer, so no account
+// gets a power until the layout is supported or the owner signs in; the credential-free pass (localOperator, IsDirectLocalPeer)
+// keeps its rule, as before #95. The flag is set while the request's connection is attributed, which localOperator does first.
+func localPower(r *http.Request) bool {
+	return localOperator(r) && !peerCheckLost.Load()
 }
 
 // localOperator is isDirectLocal without Coral Hub's tunnel: a loopback peer, no reverse-proxy
