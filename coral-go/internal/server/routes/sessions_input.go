@@ -3,12 +3,12 @@ package routes
 import (
 	"context"
 	"fmt"
-	"github.com/subgentic/coral/internal/ptymanager"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/tracking"
 )
 
