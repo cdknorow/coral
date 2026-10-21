@@ -2,6 +2,9 @@ package main
 
 import (
 	"os"
+	"os/exec"
+
+	"github.com/subgentic/coral/internal/windowmark"
 )
 
 // What the tray does about the Coral window (#5827): launching Coral.app by hand opens the window, a start that nobody asked for (a login item, the relaunch after an update, a
@@ -31,3 +34,14 @@ func handOver(pid int, ask func(pid int) error) bool {
 }
 
 var selfPID = os.Getpid
+
+// trackWindow records that the native window process is open (windowmark) and, when it exits, clears the record if it was the person who closed it: isCurrent says the tray has
+// not let go of the process itself (killCoralApp does, before it ends the window for an update or Quit, and then the record stays so the relaunch opens the window again).
+// It returns when the process has exited.
+func trackWindow(dataDir string, cmd *exec.Cmd, isCurrent func() bool) {
+	windowmark.Set(dataDir)
+	_ = cmd.Wait()
+	if isCurrent() {
+		windowmark.Clear(dataDir)
+	}
+}

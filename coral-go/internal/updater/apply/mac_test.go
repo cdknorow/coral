@@ -15,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/windowmark"
 )
 
 // fakeRunner answers the system's tools from a table and records every command.
@@ -321,10 +323,28 @@ func TestMacHealthNeedsTheNewInstallToStayUp(t *testing.T) {
 
 func TestMacStartAndShowRunTheFixedTools(t *testing.T) {
 	m, fr, install := newMac(t)
+	m.DataDir = t.TempDir()
 	require.NoError(t, m.Start(context.Background(), install))
 	require.NoError(t, m.Show(context.Background(), "/p/Coral.v1.4.130.dmg"))
-	// the relaunch after an update stays in the background: --no-browser (#5827)
+	// the tray alone was running: the relaunch stays in the background, --no-browser (#5827)
 	assert.Equal(t, []string{"/usr/bin/open " + install + " --args --no-browser", "/usr/bin/open /p/Coral.v1.4.130.dmg"}, fr.cmds)
 	assert.True(t, m.Pinned())
 	assert.False(t, (&Mac{}).Pinned(), "no team pinned, nothing installs")
+}
+
+// #5827: the relaunch reopens what the person had: the window if it was open when the update began, else only the tray.
+func TestMacRelaunchOpensTheWindowOnlyIfItWasOpen(t *testing.T) {
+	m, fr, install := newMac(t)
+	m.DataDir = t.TempDir()
+	windowmark.Set(m.DataDir)
+	require.NoError(t, m.Start(context.Background(), install))
+	assert.Equal(t, []string{"/usr/bin/open " + install}, fr.cmds, "the window was open: no --no-browser, the app opens it")
+	windowmark.Clear(m.DataDir)
+	fr.cmds = nil
+	require.NoError(t, m.Start(context.Background(), install))
+	assert.Equal(t, []string{"/usr/bin/open " + install + " --args --no-browser"}, fr.cmds, "the tray alone: stays in the background")
+	m.DataDir = ""
+	fr.cmds = nil
+	require.NoError(t, m.Start(context.Background(), install))
+	assert.Equal(t, []string{"/usr/bin/open " + install + " --args --no-browser"}, fr.cmds, "no data folder known: quiet")
 }
