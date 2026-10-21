@@ -124,6 +124,7 @@ func TestDataFolderLinksAreNeverFollowed(t *testing.T) {
 	dir := filepath.Join(root, "coral")
 	require.NoError(t, os.Mkdir(dir, 0o700))
 	usersCanRead(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sessions.db"), []byte("db"), 0o600)) // Coral's own folder (a folder that is not is refused, #5698)
 	out, err := exec.Command("cmd", "/c", "mklink", "/J", filepath.Join(dir, "link"), outside).CombinedOutput()
 	require.NoError(t, err, string(out))
 
