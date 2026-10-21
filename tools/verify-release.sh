@@ -7,7 +7,8 @@
 #
 # What it does (each result is a row in the table: PASS, FAIL or SKIP with the reason):
 #   1. release     the release exists, is published, and is a prerelease exactly when the tag's tier
-#                  says so (tests/release/resolve_release.sh); every expected asset is there
+#                  says so (tests/release/resolve_release.sh); every expected asset is there. With --stage agentic a plain
+#                  vX.Y.Z tag is expected to be a PRERELEASE (published, not yet approved: release channels, #5551)
 #   2. notes       the release body starts with this version's whole section of RELEASE_NOTES.md at the tag
 #   3. sha256      every asset is taken from the release run's artifacts (release.yml at the tag) into a fresh
 #                  folder, so our own check doesn't count as a download (#4936; --published downloads them from
@@ -15,7 +16,7 @@
 #                  metadata, not a download), so these are the published files byte for byte; SHA256SUMS.txt
 #                  matches each package, and lists every package (so nothing goes unchecked)
 #   4. attest      gh attestation verify for each package and for SHA256SUMS.txt, bound to release.yml at this tag
-#   3b. cask       the tap's Casks/coral.rb (written by the release's update-tap job) is at this version with the DMG's sha256 from
+#   3b. cask       the tap's Casks/coral.rb (written by the Approve release workflow; not touched at stage agentic) is at this version with the DMG's sha256 from
 #                  SHA256SUMS.txt; the repo's own cask is checked only once it is at this version. Authenticode is a Windows
 #                  signature and is not checked on macOS (the DMG gets spctl, stapler and codesign).
 #   5. cosign      cosign verify-blob of every .sigstore.json bundle, when cosign is installed (a
@@ -31,7 +32,8 @@
 # read it. Everything goes into a new folder under $TMPDIR (removed at the end unless --keep).
 #
 # Needs: gh (logged in), jq, tar, unzip, shasum or sha256sum. Optional: cosign, go, hdiutil.
-# Options: --repo OWNER/NAME (default: the current home in tools/release-homes.txt; a release is checked against the home that
+# Options: --stage agentic|approved (default approved: a plain tag is a normal release; agentic: published as a pre-release, not yet approved, cask untouched),
+#          --repo OWNER/NAME (default: the current home in tools/release-homes.txt; a release is checked against the home that
 # built it, also from that table, unless --repo is given), --prev TAG (default: the release before this one
 # of the same kind), --no-prev, --keep, --out DIR (use an empty folder you name; implies --keep),
 # --local DIR (check assets already in DIR instead of downloading: for a re-check, or to see a tampered copy fail),
@@ -45,12 +47,13 @@ export CORAL_TELEMETRY_DISABLED=1
 
 usage() { sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 2; }
 . "$(dirname "$0")/release-homes.sh"
-TAG=""; REPO="$(release_home_current)"; REPO_GIVEN=0; PREV=""; NOPREV=0; KEEP=0; OUT=""; LOCAL=""; PUBLISHED=0; REQUIRE_COSIGN=0
+TAG=""; REPO="$(release_home_current)"; REPO_GIVEN=0; PREV=""; NOPREV=0; KEEP=0; OUT=""; LOCAL=""; PUBLISHED=0; REQUIRE_COSIGN=0; STAGE=approved
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) REPO="${2:?}"; REPO_GIVEN=1; shift 2 ;;
     --published) PUBLISHED=1; shift ;;
     --require-cosign) REQUIRE_COSIGN=1; shift ;;
+    --stage) STAGE="${2:?}"; shift 2 ;;
     --prev) PREV="${2:?}"; shift 2 ;;
     --no-prev) NOPREV=1; shift ;;
     --keep) KEEP=1; shift ;;
@@ -90,6 +93,7 @@ res="$(bash "$RESOLVE" "$TAG")" || { echo "verify-release: $TAG is not a release
 want_ver="$(sed -n 's/^version=//p' <<<"$res")"
 want_tags="$(sed -n 's/^build_tags=//p' <<<"$res")"
 want_pre="$(sed -n 's/^prerelease=//p' <<<"$res")"
+case "$STAGE" in approved) ;; agentic) [ "$want_pre" = false ] && want_pre=true ;; *) echo "verify-release: --stage is agentic or approved" >&2; exit 2 ;; esac
 commands="$(sed -n 's/^commands=//p' <<<"$res")"
 echo "verify-release $TAG ($REPO): version $want_ver, build tags $want_tags, prerelease $want_pre" >&2
 
@@ -284,7 +288,7 @@ elif [ -f SHA256SUMS.txt ]; then
 fi
 
 # ---- 3b. the Homebrew cask: the sha256 users install with is the one SHA256SUMS.txt lists (#4997, Security's INFO) ----
-# The release workflow's update-tap job writes the tap's Casks/coral.rb before this runs, so it is checked here; the repo's own
+# The Approve release workflow's tap job writes the tap's Casks/coral.rb at the approval, so it is checked at --stage approved; the repo's own
 # Casks/coral.rb is made after verification (tools/devops/cask.sh), so it is checked only when it is already at this version.
 # Authenticode is not checked on macOS (it is a Windows signature): the DMG is checked below with spctl, stapler and codesign.
 if [ -f SHA256SUMS.txt ]; then
@@ -295,7 +299,8 @@ if [ -f SHA256SUMS.txt ]; then
     if [ -z "$cask" ]; then skip cask "$which_ Casks/coral.rb" "could not be read ($cask_repo)"; continue; fi
     cask_ver="$(awk -F'"' '/^  version /{print $2; exit}' <<<"$cask")"; cask_sum="$(awk -F'"' '/^  sha256 /{print $2; exit}' <<<"$cask")"
     if [ "$cask_ver" != "$want_ver" ]; then
-      if [ "$which_" = repo ]; then skip cask "$which_ Casks/coral.rb" "at $cask_ver: it is made after verification (tools/devops/cask.sh)"; else fail cask "$which_ Casks/coral.rb" "at version ${cask_ver:-none}, expected $want_ver"; fi
+      if [ "$STAGE" = agentic ]; then skip cask "$which_ Casks/coral.rb" "at $cask_ver: the cask follows the approval, not the publication (--stage agentic)"
+      elif [ "$which_" = repo ]; then skip cask "$which_ Casks/coral.rb" "at $cask_ver: it is made after verification (tools/devops/cask.sh)"; else fail cask "$which_ Casks/coral.rb" "at version ${cask_ver:-none}, expected $want_ver"; fi
     elif [ -n "$dmg_sum" ] && [ "$cask_sum" = "$dmg_sum" ]; then pass cask "$which_ Casks/coral.rb" "sha256 equals the DMG's line in SHA256SUMS.txt (${cask_sum:0:12}...)"
     else fail cask "$which_ Casks/coral.rb" "sha256 ${cask_sum:0:12}... is not the DMG's line in SHA256SUMS.txt (${dmg_sum:0:12}...)"; fi
   done

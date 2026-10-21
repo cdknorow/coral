@@ -36,5 +36,5 @@ echo "v$V is verified"
 if [ "$CASK" = --cask ]; then
   bash tools/devops/cask.sh "$V" || die "cask.sh failed"
 else
-  echo "cask not made: re-read the board, then: tools/devops/cask.sh $V (or rerun with --cask)"
+  echo "cask not made: it follows the APPROVAL (the Approve release workflow moves the tap); after the operator approved v$V, re-read the board, then: tools/devops/cask.sh $V"
 fi

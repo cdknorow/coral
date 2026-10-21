@@ -24,4 +24,5 @@ fi
 gh release edit "v$V" --notes-file "$B" >/dev/null || exit 1; echo "body set ($(wc -l < "$B" | tr -d ' ') lines)"; rm -f "$B"
 gh workflow run 373415903 -f tag="v$V" && sleep 6 && echo "runtime check: $(gh run list --workflow 373415903 --limit 1 --json databaseId -q '.[0].databaseId')"
 T=$(mktemp -d /tmp/vr.XXXX); trap 'rm -rf "$T"' EXIT
-TMPDIR=$T bash tools/verify-release.sh "v$V" --require-cosign
+# Every release is published as a pre-release (release channels, #5551): it is checked as AGENTIC; the operator's approval moves it on.
+TMPDIR=$T bash tools/verify-release.sh "v$V" --stage "${VERIFY_STAGE:-agentic}" --require-cosign
