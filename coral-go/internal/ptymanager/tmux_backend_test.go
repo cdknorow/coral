@@ -115,6 +115,7 @@ func TestTmuxBackend_SpawnCreatesLogFile(t *testing.T) {
 }
 
 func TestTmuxBackend_Replay(t *testing.T) {
+	t.Parallel()
 	b := newTestTmuxBackend(t)
 
 	err := b.Spawn("replay-test", "claude", t.TempDir(), "sid-cap", "sh -c 'echo MARKER_REPLAY_42'", 80, 24)
@@ -136,6 +137,7 @@ func TestTmuxBackend_Replay(t *testing.T) {
 }
 
 func TestTmuxBackend_SendInput(t *testing.T) {
+	t.Parallel()
 	b := newTestTmuxBackend(t)
 
 	err := b.Spawn("input-test", "claude", t.TempDir(), "sid-inp", "cat", 80, 24)
@@ -164,6 +166,7 @@ func TestTmuxBackend_SendInput(t *testing.T) {
 }
 
 func TestTmuxBackend_ListSessions(t *testing.T) {
+	t.Parallel()
 	b := newTestTmuxBackend(t)
 
 	// Use UUID-formatted session IDs so ParseSessionName can extract them
@@ -202,6 +205,7 @@ func TestTmuxBackend_ListSessions(t *testing.T) {
 }
 
 func TestTmuxBackend_Restart(t *testing.T) {
+	t.Parallel()
 	b := newTestTmuxBackend(t)
 
 	err := b.Spawn("restart-test", "claude", t.TempDir(), "sid-rst", "sleep 60", 80, 24)
@@ -230,6 +234,7 @@ func TestTmuxBackend_Restart(t *testing.T) {
 }
 
 func TestTmuxBackend_Resize(t *testing.T) {
+	t.Parallel()
 	b := newTestTmuxBackend(t)
 
 	err := b.Spawn("resize-test", "claude", t.TempDir(), "sid-rsz", "sleep 60", 80, 24)
@@ -319,6 +324,7 @@ func TestTmuxBackend_Close(t *testing.T) {
 // session both receive identical live bytes, Unsubscribe isolates one without
 // affecting the other, and no tail goroutines leak after both unsubscribe.
 func TestTmuxBackendFanOut(t *testing.T) {
+	t.Parallel()
 	b := newTestTmuxBackend(t)
 
 	err := b.Spawn("fanout", "claude", t.TempDir(), "sid-fan", "cat", 80, 24)
@@ -441,6 +447,7 @@ func waitForPaneQuiet(t *testing.T, logPath string) {
 // control chars (0x03 EOF, 0x1a SIGTSTP, etc.), which would mask the wire-level
 // property we want to verify: the log→tail→subscriber path is byte-transparent.
 func TestTmuxBackendAttachBytePreservation(t *testing.T) {
+	t.Parallel()
 	b := newTestTmuxBackend(t)
 
 	if err := b.Spawn("bytes", "claude", t.TempDir(), "sid-bytes", "sleep 60", 80, 24); err != nil {
@@ -512,6 +519,7 @@ func TestTmuxBackendAttachBytePreservation(t *testing.T) {
 // This guards against any code path that might try to decode partial UTF-8 and
 // drop the boundary bytes.
 func TestTmuxBackendAttachPartialUTF8Boundary(t *testing.T) {
+	t.Parallel()
 	b := newTestTmuxBackend(t)
 
 	if err := b.Spawn("utf8", "claude", t.TempDir(), "sid-utf8", "sleep 60", 80, 24); err != nil {
@@ -592,6 +600,7 @@ func bytesEqual(a, b []byte) bool {
 }
 
 func TestTmuxBackend_ConcurrentSpawnKill(t *testing.T) {
+	t.Parallel()
 	b := newTestTmuxBackend(t)
 
 	var wg sync.WaitGroup

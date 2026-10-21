@@ -15,6 +15,7 @@ import (
 // #3211: with a session id, the PTY terminal acts only on that session. A sibling in the
 // same folder, or whose name or key the caller passes, is never written to, read or killed.
 func TestPTYMissingSessionNeverReachesASibling(t *testing.T) {
+	t.Parallel()
 	withFastSubmit(t)
 	const sibSID = "99999999-8888-4777-8666-555555555555"
 	const goneSID = "11111111-2222-4333-8444-555555555555"

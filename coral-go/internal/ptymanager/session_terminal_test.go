@@ -136,6 +136,7 @@ func TestPTYSessionTerminal_CreateSession_Duplicate(t *testing.T) {
 }
 
 func TestPTYSessionTerminal_KillSession(t *testing.T) {
+	t.Parallel()
 	skipIfWindows(t)
 	terminal, backend := newTestTerminal(t)
 
@@ -169,6 +170,7 @@ func TestPTYSessionTerminal_HasSession_False(t *testing.T) {
 // ── SendInput / CaptureOutput ────────────────────────────────────────
 
 func TestPTYSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
+	t.Parallel()
 	skipIfWindows(t)
 	terminal, backend := newTestTerminal(t)
 
@@ -185,6 +187,7 @@ func TestPTYSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
 }
 
 func TestPTYSessionTerminal_SendRawInput(t *testing.T) {
+	t.Parallel()
 	skipIfWindows(t)
 	terminal, backend := newTestTerminal(t)
 
@@ -199,6 +202,7 @@ func TestPTYSessionTerminal_SendRawInput(t *testing.T) {
 // ── SendToTarget / SendTerminalInput ─────────────────────────────────
 
 func TestPTYSessionTerminal_SendToTarget(t *testing.T) {
+	t.Parallel()
 	skipIfWindows(t)
 	terminal, backend := newTestTerminal(t)
 
@@ -211,6 +215,7 @@ func TestPTYSessionTerminal_SendToTarget(t *testing.T) {
 }
 
 func TestPTYSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
+	t.Parallel()
 	skipIfWindows(t)
 	terminal, backend := newTestTerminal(t)
 	spawnTestSession(t, backend, "long-target-test")
@@ -314,6 +319,7 @@ func TestPTYSessionTerminal_FindTarget_NotFound(t *testing.T) {
 // ── Concurrent Access ────────────────────────────────────────────────
 
 func TestPTYSessionTerminal_ConcurrentListAndKill(t *testing.T) {
+	t.Parallel()
 	skipIfWindows(t)
 	terminal, backend := newTestTerminal(t)
 

@@ -143,6 +143,7 @@ func TestPTYBackendResize(t *testing.T) {
 }
 
 func TestPTYBackendReplay(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	backend := NewPTYBackend()
 	defer backend.Close()
@@ -230,6 +231,7 @@ func TestPTYBackendNotFound(t *testing.T) {
 }
 
 func TestPTYBackendRestart(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	backend := NewPTYBackend()
 	defer backend.Close()
@@ -463,6 +465,7 @@ func TestPTYBackendConcurrentSpawnKill(t *testing.T) {
 }
 
 func TestPTYBackendRingBufferOverflow(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	backend := NewPTYBackend()
 	defer backend.Close()

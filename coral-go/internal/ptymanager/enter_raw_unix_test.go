@@ -12,6 +12,7 @@ import (
 // arrive as the byte a keyboard's Enter sends, "\r" (a "\n" is Ctrl-J, a newline in the input box, not a
 // submit). A cooked shell turns "\r" into "\n" itself (ICRNL), so a command line still runs (#4606).
 func TestPTYSendLineDeliversACarriageReturnToARawModeReader(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	backend := NewPTYBackend()
 	defer backend.Close()
@@ -49,6 +50,7 @@ func TestPTYSendLineDeliversACarriageReturnToARawModeReader(t *testing.T) {
 
 // A cooked shell still runs a line typed with the carriage return.
 func TestPTYSendLineStillRunsACommandInACookedShell(t *testing.T) {
+	t.Parallel()
 	canFork(t)
 	backend := NewPTYBackend()
 	defer backend.Close()
