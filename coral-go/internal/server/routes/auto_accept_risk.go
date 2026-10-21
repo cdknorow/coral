@@ -55,7 +55,7 @@ var (
 	curlPipeRe     = regexp.MustCompile(`\b(curl|wget)\b[^|;&]*\|\s*(sudo\s+)?(ba|z|da|k)?sh\b`)
 	curlSubstRe    = regexp.MustCompile(`\b(ba|z|da|k)?sh\s+<\(\s*(curl|wget)\b`)
 	envAssignRe    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
-	shellWrapperRe = regexp.MustCompile(`(?i)^((/bin/|/usr/bin/)|(?:[^ ]*/))?(ba|z|da|k)?sh(\.exe)?$`)
+	shellWrapperRe = regexp.MustCompile(`(?i)^((/bin/|/usr/bin/)|(?:[^ ]*[/\\]))?(ba|z|da|k)?sh(\.exe)?$`)
 )
 
 // Tools whose path input is read or written.

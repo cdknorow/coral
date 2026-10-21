@@ -24,7 +24,7 @@ func TestShellRiskOnWindowsFourthMatrix(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(wd, f), []byte("x"), 0o644))
 	}
 	for _, cmd := range append([]string{
-		`bash.exe -c "rm -rf /mnt/c/Users"`, `sh.exe -c "rm -rf /"`, `echo x>C:\x`, `git -C C:\x reset --hard`, `rm -rf C:\x`, `rm C:\x -r -fo`,
+		`bash.exe -c "rm -rf /mnt/c/Users"`, `C:\Git\bin\bash.exe -c "rm -rf /mnt/c/Users"`, `"C:\Program Files\Git\bin\bash.exe" -c "rm -rf /"`, `sh.exe -c "rm -rf /"`, `echo x>C:\x`, `git -C C:\x reset --hard`, `rm -rf C:\x`, `rm C:\x -r -fo`,
 	}, winHostile4Waits...) {
 		assert.NotEmpty(t, shellRisk(cmd, wd), "auto-accept must wait: %s", cmd)
 	}
