@@ -92,6 +92,7 @@ function renderNeedsYou(force = false) {
 // The two tabs of the dashboard's own Inbox (as the hub's): one panel shows at a time. The chosen tab is kept for this browser (and across a reload) (browserLocal).
 const TAB_KEY = 'coral.inbox.tab';
 const TABS = ['needs', 'tasks', 'saved'];
+const TAB_TITLE = { needs: 'Needs you', tasks: 'Tasks for you', saved: 'Saved for later' };
 let _tab = null;
 const storedTab = () => { const v = browserLocal.get(TAB_KEY); return TABS.includes(v) ? v : 'needs'; };
 /** Which tab the dashboard's own Inbox is on. */
@@ -108,6 +109,8 @@ export function selectInboxTab(name, { focus = false } = {}) {
         if (b) { b.setAttribute('aria-selected', String(t === name)); b.tabIndex = t === name ? 0 : -1; }
         if (panel && panel.hidden !== (t !== name)) panel.hidden = t !== name;
     }
+    const title = document.getElementById('inbox-title'); // the page's heading is the tab it is on
+    if (title) title.textContent = TAB_TITLE[name];
     if (focus) document.getElementById(`inbox-tab-${name}`)?.focus();
     if (name === 'needs') renderNeedsYou(true);
     else if (name === 'tasks') importOnce('./inbox_coral.js').then(m => m.refreshTasks()).catch(() => {});

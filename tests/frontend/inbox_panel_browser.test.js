@@ -29,6 +29,7 @@ const STUB = `(() => {
         window.__reqs.push({ m, p, q: url.search, body: o.body ? String(o.body) : null });
         if (p === '/api/board/tasks' && m === 'GET') return json({ tasks: TASKS, total: TASKS.length });
         let r = /^\\/api\\/board\\/([^/]+)\\/tasks\\/(\\d+)$/.exec(p);
+        if (r && m === 'GET' && window.__failTask === Number(r[2])) return json({ error: 'the board is busy' }, 500);
         if (r && m === 'GET') { const t = TASKS.find(x => x.id === Number(r[2])); return t ? json({ ...t, body: BODY[t.id] }) : json({ error: 'task not found' }, 404); }
         r = /^\\/api\\/board\\/([^/]+)\\/tasks\\/(\\d+)\\/reply$/.exec(p);
         if (r && m === 'POST') {
@@ -63,7 +64,7 @@ const STUB = `(() => {
         await waitFor(`!!document.getElementById('inbox-local') && !document.getElementById('inbox-local').hidden`, 'the Inbox', 8000);
     };
     const tab = n => ev(`document.getElementById('inbox-tab-${n}').click(); true`);
-    const rows = () => ev(`[...document.querySelectorAll('#inbox-tasks-host .ibx-task')].map(li => { const h = li.querySelector('.ibx-task-head'); const r = li.querySelector('.ibx-task-body'); return { title: li.querySelector('.ibx-task-title').textContent, meta: li.querySelector('.ibx-task-meta').textContent, expanded: h.getAttribute('aria-expanded'), controls: h.getAttribute('aria-controls'), regionOk: !!r && r.id === h.getAttribute('aria-controls') && r.getAttribute('role') === 'region' && /^Task: /.test(r.getAttribute('aria-label')), hidden: r.hidden }; })`);
+    const rows = () => ev(`[...document.querySelectorAll('#inbox-tasks-host .ibx-task')].map(li => { const h = li.querySelector('.ibx-task-head'); const r = li.querySelector('.ibx-task-body'); return { title: li.querySelector('.ibx-task-title').textContent, meta: li.querySelector('.ibx-task-meta').textContent, expanded: h.getAttribute('aria-expanded'), controls: h.getAttribute('aria-controls'), regionOk: !!r && r.id === h.getAttribute('aria-controls') && !r.hasAttribute('role') && !r.hasAttribute('aria-label'), hidden: r.hidden }; })`);
     const head = i => ev(`document.querySelectorAll('#inbox-tasks-host .ibx-task-head')[${i}].click(); true`);
     const type = (i, text) => ev(`(() => { const t = document.querySelectorAll('#inbox-tasks-host .ibx-reply-input')[${i}]; t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
     const send = i => ev(`document.querySelectorAll('#inbox-tasks-host .ibx-send')[${i}].click(); true`);
@@ -108,6 +109,25 @@ const STUB = `(() => {
             check(`${dev}: the reply is posted to the task's reply route with {content} and nothing else`, sent.length === 1 && sent[0].p === '/api/board/team-a/tasks/1/reply' && JSON.stringify(JSON.parse(sent[0].body)) === JSON.stringify({ content: 'Friday the 8th, please.' }), JSON.stringify(sent));
             check(`${dev}: it says what happened ("Reply sent. Orchestrator notified."), clears the box and the draft`, (await status(0)) === 'Reply sent. Orchestrator notified.' && (await ev(`document.querySelector('#inbox-tasks-host .ibx-reply-input').value`)) === '', await status(0));
             check(`${dev}: the live region says it too`, /Reply sent/.test(await ev(`document.querySelector('#inbox-tasks-host .ibx-live').textContent`)));
+            // #5770 (from the #5768 findings): one spoken line, the focus on the box, a turning chevron, tasks that stay open
+            check(`${dev}: a sent reply is spoken once: only the panel's live region is a status, the line in the form is not`, (await ev(`document.querySelectorAll('#inbox-tasks-host [role=status]').length`)) === 1 && !(await ev(`document.querySelector('#inbox-tasks-host .ibx-reply-status').hasAttribute('role')`)));
+            check(`${dev}: after Send the focus is on the (empty) reply box, not on the page`, await ev(`document.activeElement === document.querySelector('#inbox-tasks-host .ibx-reply-input')`));
+            const chev = await ev(`(() => { const h = document.querySelectorAll('#inbox-tasks-host .ibx-task-head'); const t = e => getComputedStyle(e, '::after').transform; return { open: t(h[0]), closed: t(h[1]), content: getComputedStyle(h[1], '::after').content }; })()`);
+            check(`${dev}: a chevron on each row turns when the task is open`, chev.content !== 'none' && chev.open !== chev.closed, JSON.stringify(chev));
+            await ev(`document.querySelectorAll('#inbox-tasks-host .ibx-task-head')[0].focus(); true`);
+            await tab('needs'); await tab('tasks');
+            await waitFor(`document.querySelectorAll('#inbox-tasks-host .ibx-task').length === 3 && !!document.querySelector('#inbox-tasks-host .ibx-task-body:not([hidden]) .ibx-reply-input')`, 'the open task is open again', 6000);
+            check(`${dev}: leaving the tab and coming back keeps the open task open`, (await ev(`[...document.querySelectorAll('#inbox-tasks-host .ibx-task-head')].map(h => h.getAttribute('aria-expanded')).join()`)) === 'true,false,false');
+            check(`${dev}: the page heading is the tab it is on`, (await ev(`document.getElementById('inbox-title').textContent`)) === 'Tasks for you');
+            const lv = () => ev(`document.querySelector('#inbox-tasks-host .ibx-live').textContent.trim()`);
+            await head(1);
+            await waitFor(`!!document.querySelectorAll('#inbox-tasks-host .ibx-task-body')[1].querySelector('.ibx-reply-input')`, 'the second task', 4000);
+            check(`${dev}: opening a task says it is open (the live region), and it is no longer busy`, /is open\./.test(await lv()) && (await ev(`!document.querySelectorAll('#inbox-tasks-host .ibx-task-body')[1].hasAttribute('aria-busy')`)));
+            await ev(`window.__failTask = 3; true`); await head(2);
+            await waitFor(`/Could not read the task/.test(document.querySelector('#inbox-tasks-host .ibx-live').textContent)`, 'the error is spoken', 4000);
+            check(`${dev}: a task that cannot be read says so in the live region too: "${(await lv()).slice(0, 60)}"`, /board is busy/.test(await lv()));
+            await ev(`window.__failTask = undefined; true`);
+            await head(2); // closed again, as the steps below find it (opening it later reads it fresh)
 
             await shot(`inbox-tasks-${mobile ? 'phone' : 'desktop'}`);
             // creator not reachable, and a refusal
@@ -126,7 +146,7 @@ const STUB = `(() => {
             check(`${dev}: after sign-out's memory purge the unsent draft is gone`, (await ev(`document.querySelectorAll('#inbox-tasks-host .ibx-reply-input')[2].value`)) === '');
 
             // touch targets and sideways scroll
-            const sizes = await ev(`(() => { const h = [...document.querySelectorAll('#inbox-tasks-host .ibx-task-head, #inbox-tasks-host .ibx-send')].map(e => Math.round(e.getBoundingClientRect().height)); return { h, over: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
+            const sizes = await ev(`(() => { const h = [...document.querySelectorAll('#inbox-tasks-host .ibx-task-head, #inbox-tasks-host .ibx-send')].map(e => Math.round(e.getBoundingClientRect().height)).filter(x => x > 0); return { h, over: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
             if (mobile) check(`${dev}: every row and Send is 44 px tall on a touch phone`, sizes.h.every(x => x >= 44), JSON.stringify(sizes));
             check(`${dev}: nothing scrolls sideways`, sizes.over <= 0, JSON.stringify(sizes));
             const au = await auditRegion(ev, ['#inbox-tasks-host']);
@@ -137,12 +157,12 @@ const STUB = `(() => {
             await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 4`, 'four saved items', 8000);
             await waitFor(`document.querySelectorAll('#saved-list .ibx-saved-toggle').length === 4`, 'a control on each', 6000);
             const sv = await ev(`(() => { const b = document.querySelector('#saved-list .ibx-saved-toggle'); const r = document.getElementById(b.getAttribute('aria-controls')); return { text: b.textContent, exp: b.getAttribute('aria-expanded'), regionHidden: r.hidden, label: r.getAttribute('aria-label'), tag: b.tagName }; })()`);
-            check(`${dev}: each saved item has a "Read the whole message" button (closed, controlling a labelled region)`, sv.text === 'Read the whole message' && sv.exp === 'false' && sv.regionHidden && sv.label === 'The whole message' && sv.tag === 'BUTTON', JSON.stringify(sv));
+            check(`${dev}: each saved item has a "Read the whole message" button (closed, controlling its text, which is not a landmark)`, sv.text === 'Read the whole message' && sv.exp === 'false' && sv.regionHidden && sv.label === null && sv.tag === 'BUTTON', JSON.stringify(sv));
             const sb = i => `document.querySelectorAll('#saved-list .ibx-saved-toggle')[${i}]`;
             await ev(`${sb(0)}.focus(); ${sb(0)}.click(); true`);
             await waitFor(`!!document.querySelector('#saved-list .ibx-saved-body .md')`, 'the whole message', 4000);
             const first = await ev(`(() => { const b = ${sb(0)}; const r = document.getElementById(b.getAttribute('aria-controls')); return { text: b.textContent, exp: b.getAttribute('aria-expanded'), focus: document.activeElement === b, body: r.textContent, strong: r.querySelectorAll('strong').length, li: r.querySelectorAll('li').length, bold: r.querySelectorAll('b').length, req: window.__reqs.filter(x => /\\/api\\/saved\\/11\\/message$/.test(x.p)).length }; })()`);
-            check(`${dev}: it opens in place: "Hide the message", aria-expanded true, the focus stays on the button, the text rendered (bold, a list), a tag in it shown as text`, first.text === 'Hide the message' && first.exp === 'true' && first.focus && first.strong === 1 && first.li === 2 && first.bold === 0 && first.body.includes('<b>not bold</b>') && first.req === 1, JSON.stringify(first));
+            check(`${dev}: it opens in place: the label stays "Read the whole message", aria-expanded true, the focus stays on the button, the text rendered (bold, a list), a tag in it shown as text`, first.text === 'Read the whole message' && first.exp === 'true' && first.focus && first.strong === 1 && first.li === 2 && first.bold === 0 && first.body.includes('<b>not bold</b>') && first.req === 1, JSON.stringify(first));
             await ev(`${sb(0)}.click(); true`);
             check(`${dev}: a second press hides it again`, (await ev(`${sb(0)}.getAttribute('aria-expanded')`)) === 'false' && (await ev(`${sb(0)}.textContent`)) === 'Read the whole message');
             await ev(`${sb(0)}.click(); true`);
