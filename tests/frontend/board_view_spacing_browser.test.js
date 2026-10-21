@@ -56,7 +56,8 @@ const VIEWS = [
         safePaused(client, ({ requestId }) => Fetch.fulfillRequest({ requestId, responseCode: 200,
             responseHeaders: [{ name: 'Content-Type', value: 'image/png' }], body: png }).catch(() => {}));
 
-        for (const [id, title] of [['member-1', 'Developer member-1'], ['a-very-long-subscriber-identifier-0123456789abcdef', 'Senior Platform Reliability Developer With A Long Title']]) {
+        // The Operator is one of the rows: the page subscribes it itself when a board opens, but the list only shows it once its next refresh runs, which in some runs is after the wait below gave up (8 s). Subscribed here, the list has its three rows from the first render.
+        for (const [id, title] of [['Operator', 'Operator'], ['member-1', 'Developer member-1'], ['a-very-long-subscriber-identifier-0123456789abcdef', 'Senior Platform Reliability Developer With A Long Title']]) {
             await api('POST', `/api/board/${board}/subscribe`, { subscriber_id: id, job_title: title });
         }
         const open = async () => {
