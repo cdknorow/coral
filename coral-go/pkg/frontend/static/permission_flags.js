@@ -2,7 +2,7 @@
 import { importOnce } from './import_once.js';
 const { _acfServer, _settingsFor } = await importOnce('./launch_models.js');
 import { getEngineName } from './renderers.js';
-const { defaultPermissionMode, syncDefaultPermissionMode } = await importOnce('./preset_enforcement.js');
+const { defaultPermissionMode, syncDefaultPermissionMode, trackPermissionPick } = await importOnce('./preset_enforcement.js');
 import { state } from './state.js';
 
 /** Map agent type to its permission bypass flag. */
@@ -15,7 +15,7 @@ const PERM_FLAGS = {
     pi: '',
 };
 
-export { defaultPermissionMode, syncDefaultPermissionMode }; // pure, in preset_enforcement.js (node-tested)
+export { defaultPermissionMode, syncDefaultPermissionMode, trackPermissionPick }; // pure, in preset_enforcement.js (node-tested)
 
 export const PERMISSION_MODE_DESCRIPTIONS = {
     default: 'Reads only — best for getting started and sensitive work',

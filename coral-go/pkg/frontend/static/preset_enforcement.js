@@ -114,9 +114,13 @@ export function defaultPermissionMode(settings, agentType) {
  */
 export function syncDefaultPermissionMode(selectEl, settings, agentType) {
     if (!selectEl) return;
-    if (!selectEl.dataset.pickedByPerson && !selectEl.dataset.pickWired) {
-        selectEl.dataset.pickWired = '1';
-        selectEl.addEventListener('change', () => { selectEl.dataset.pickedByPerson = '1'; });
-    }
+    trackPermissionPick(selectEl);
     if (!selectEl.dataset.pickedByPerson) selectEl.value = defaultPermissionMode(settings, agentType);
+}
+
+/** Marks a permission mode select as picked when its value changes (a change event): wired once, as soon as the select exists, so a pick made before the first sync still counts. */
+export function trackPermissionPick(selectEl) {
+    if (!selectEl || selectEl.dataset.pickWired) return;
+    selectEl.dataset.pickWired = '1';
+    selectEl.addEventListener('change', () => { selectEl.dataset.pickedByPerson = '1'; });
 }

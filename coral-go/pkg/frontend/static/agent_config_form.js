@@ -1,7 +1,7 @@
 /* Moved out of modals.js as it was (#3844): no behaviour change. */
 import { importOnce } from './import_once.js';
 const { ALL_CAPABILITIES } = await importOnce('./agent_presets.js');
-const { PERMISSION_MODE_DESCRIPTIONS, defaultPermissionMode, syncDefaultPermissionMode, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions } = await importOnce('./permission_flags.js');
+const { PERMISSION_MODE_DESCRIPTIONS, defaultPermissionMode, syncDefaultPermissionMode, trackPermissionPick, _hasPermFlag, _normalizePermFlagsForAgent, _permissionModeFromFlags, _stripPermFlags, _syncACFAutoPermissions } = await importOnce('./permission_flags.js');
 const { _acfServer, _fillModelDatalist, _getAgentModels, _getDefaultModels, _settingsFor } = await importOnce('./launch_models.js');
 const { _checkAgentCLI } = await importOnce('./cli_check.js');
 const { _classifyLoadedACFModel } = await importOnce('./acf_models.js');
@@ -311,6 +311,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
     setThinking(container, v.thinking); // a form opened for a running agent shows the level it started with (#4969)
     setThinkingActual(container, v.thinking, v.thinkingActual); // and, under it, what the agent last ran at when that differs (#5105)
     _syncEnforcement(container);
+    trackPermissionPick(container.querySelector('.acf-permission-mode')); // a mode picked here is the person's, whatever the agent type does next (#5836)
     container.querySelector('.acf-permission-mode')?.addEventListener('change', () => _syncEnforcement(container));
     container.querySelector('.perms-shell-input')?.addEventListener('input', () => _syncEnforcement(container));
 
@@ -470,11 +471,14 @@ export function setAgentConfig(containerId, values) {
         const defaultMode = defaultPermissionMode(_settingsFor(_acfServer(container)), typeEl?.value || 'claude');
         if (flagMode) {
             permModeEl.value = flagMode;
+            permModeEl.dataset.pickedByPerson = '1'; // a saved configuration's mode is a choice
         } else if (_hasPermFlag(v.flags || '')) {
             // Legacy --dangerously-skip-permissions flag → map to bypassPermissions
             permModeEl.value = 'bypassPermissions';
+            permModeEl.dataset.pickedByPerson = '1';
         } else if (Object.prototype.hasOwnProperty.call(v, 'flags')) {
             permModeEl.value = 'default';
+            permModeEl.dataset.pickedByPerson = '1';
         } else {
             permModeEl.value = defaultMode;
         }
