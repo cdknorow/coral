@@ -22,7 +22,6 @@ var lintedPackages = []string{
 // with the reason a planted link can't steer it. Keyed package/file:function:call, never by line;
 // a listed site that no longer exists fails too, so the list stays true.
 var reviewedWriteOpens = map[string]string{
-	"agent/agy.go:agyHooksDir:WriteFile":     "into .agents, a folder this call has just made (os.Mkdir fails if anything is there)",
 	"agent/claude.go:writeNoFollow:OpenFile": "O_EXCL (and O_NOFOLLOW on Unix): any existing name, link or not, is refused (#3582)",
 }
 
