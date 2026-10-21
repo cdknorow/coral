@@ -91,7 +91,7 @@ function _launchBlocked(server) {
  * on success, or null after showing the error. Never falls back to another
  * server.
  */
-export async function _launchOn(server, path, payload, agentType, { dirInput = null, teamFailures = false } = {}) { // exported for board_ids_browser
+export async function _launchOn(server, path, payload, agentType, { dirInput = null, teamFailures = false, retry = null } = {}) { // exported for board_ids_browser
     let res = await postLaunch(server, path, payload);
     // A board of that name exists (#3536): the person chooses to join it or start another.
     if (!res.ok && isBoardNameExists(res)) {
@@ -107,7 +107,7 @@ export async function _launchOn(server, path, payload, agentType, { dirInput = n
     // template launcher) takes the answer as it is (data.ok is false) instead of one toast of the joined text.
     if (!res.ok && teamFailures && res.data && res.data.code === 'team_launch_failed' && Array.isArray(res.data.agents)) return res.data;
     if (!res.ok) {
-        if (agentType && res.error.includes('not found') && res.error.includes('CLI')) _showCLINotFoundModal(agentType, server);
+        if (agentType && res.error.includes('not found') && res.error.includes('CLI')) _showCLINotFoundModal(agentType, server, { retry }); // retry: the caller's own launch, run when Check again finds the CLI (none: the dialog says to press Launch again)
         else showToast(res.error, true);
         if (dirInput && res.data && res.data.field === 'working_dir') markFieldInvalid(dirInput, res.error);
         return null;

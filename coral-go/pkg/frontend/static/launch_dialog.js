@@ -11,7 +11,7 @@ const { launch } = await importOnce('./launch_state.js');
 const { _effectiveServer, _loadServerSettings, _serverSettings, _settingsFor } = await importOnce('./launch_models.js');
 const { defaultPermissionMode, syncDefaultPermissionMode, _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 const { _checkAgentCLI } = await importOnce('./cli_check.js');
-const { _syncACFModelField, getAgentConfig, renderAgentConfigForm } = await importOnce('./agent_config_form.js');
+const { _syncACFModelField, getAgentConfig, renderAgentConfigForm, cliWarningOf } = await importOnce('./agent_config_form.js');
 const { _checkPermissionFlag } = await importOnce('./cli_dialogs.js');
 const { _checkTeamGitDir, _initTeamForm, _loadExistingTeamBoards } = await importOnce('./team_dialogs.js');
 const { _initAgentPresets } = await importOnce('./persona_io.js');
@@ -35,6 +35,7 @@ function _selectLaunchType(type) {
             defaultNote: true,
             showPreset: false,
             showName: false,
+            cliSlot: 'launch-cli-slot', // a missing CLI is said under the folder, not only inside More options (#5835)
             sections: true, // New Agent is a sectioned dialog (#4950): Workspace, then the form's own sections, the board in Advanced
             adopt: { advanced: 'launch-advanced-extra' },
             value: { agentType: _settingsFor(_effectiveServer(launch.server)).default_agent_type || 'claude' },
@@ -178,7 +179,7 @@ async function _onLaunchServerChange(value, { force = false } = {}) {
     document.querySelectorAll('#launch-modal [data-acf-uid], #team-agent-modal [data-acf-uid]').forEach(c => {
         if (c.querySelector('.acf-agent-type')) {
             _syncACFModelField(c);
-            _checkAgentCLI(c.querySelector('.acf-agent-type').value || 'claude', c.querySelector('.acf-cli-warning'));
+            _checkAgentCLI(c.querySelector('.acf-agent-type').value || 'claude', cliWarningOf(c));
         }
     });
 }
@@ -308,7 +309,7 @@ export async function launchSession() {
 
     try {
         const dirInput = document.getElementById(launch.mode === "terminal" ? "launch-terminal-dir" : "launch-dir");
-        const result = await _launchOn(server, "/api/sessions/launch", payload, type, { dirInput });
+        const result = await _launchOn(server, "/api/sessions/launch", payload, type, { dirInput, retry: launchSession }); // the Not Found dialog's Check again launches again, from this dialog's own fields
         if (result) {
             recordRecentDir(dir, server);
             showToast(server === LOCAL_SERVER ? `Launched: ${result.session_name}` : `Launched on ${serverLabel(server, state.servers)}: ${result.session_name}`);

@@ -3,7 +3,7 @@ import { importOnce } from './import_once.js';
 import { registerDialog } from './modal_chrome.js';
 import { state } from './state.js';
 import { escapeHtml, escapeAttr } from './utils.js';
-import { normServer, LOCAL_SERVER } from './server_base.js';
+import { normServer, LOCAL_SERVER, serverFetch } from './server_base.js';
 import { serverLabel } from './launch_server.js';
 const { _settingsFor } = await importOnce('./launch_models.js');
 const { defaultPermissionMode, _getPermissionFlagsForAgentMode, _hasPermFlag } = await importOnce('./permission_flags.js');
@@ -54,11 +54,11 @@ window._verifyAllCLIs = async function() {
     if (btn) { btn.disabled = false; btn.textContent = 'Verify All'; }
 };
 
-function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
+function _showCLINotFoundModal(agentType, server = LOCAL_SERVER, { retry = null } = {}) {
     const info = CLI_INSTALL_INSTRUCTIONS[agentType] || { name: agentType, cmd: `Install ${agentType} CLI` };
     const name = escapeHtml(info.name); // an agent type the table does not know is shown as it came (#4853)
     const remote = normServer(server) !== LOCAL_SERVER;
-    const where = remote ? `on ${escapeHtml(serverLabel(server, state.servers))}` : 'on this system';
+    const where = remote ? `on ${escapeHtml(serverLabel(server, state.servers))}` : 'on this computer';
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.style.display = 'flex';
@@ -66,7 +66,7 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
         <div class="modal-content" style="width:480px">
             <h3>${name} CLI Not Found</h3>
             <p style="color:var(--text-secondary);font-size:0.8125rem;line-height:1.5;margin:8px 0 12px">
-                The <code>${name}</code> command was not found ${where}. Install it there to launch ${name} agents.
+                Coral could not find the <code>${name}</code> command ${where}. Install it, then press Check again.
             </p>
             <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:0.8125rem;display:flex;align-items:center;gap:8px">
                 <code style="flex:1;user-select:all">${escapeHtml(info.cmd)}</code>
@@ -74,9 +74,11 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
             </div>
             ${/^https:\/\/[^\s"'<>]+$/.test(info.url || '') ? `<p style="font-size:0.8125rem;margin:10px 0 0">Or follow the official install page:<br><a href="${escapeAttr(info.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);overflow-wrap:anywhere">${escapeHtml(info.url.replace(/^https:\/\//, ''))}</a></p>` : ''}
             ${info.note ? `<p style="color:var(--text-secondary);font-size:0.75rem;line-height:1.5;margin:8px 0 0">${escapeHtml(info.note)}</p>` : ''}
+            <p class="cli-recheck-status" role="status" aria-live="polite"></p>
             <div class="modal-actions" style="margin-top:16px">
                 ${remote ? '' : '<button class="btn" data-action="settings">Set CLI path</button>'}
-                <button class="btn btn-primary" data-action="close">OK</button>
+                <button class="btn" data-action="close">OK</button>
+                <button class="btn btn-primary" data-action="recheck">Check again</button>
             </div>
         </div>
     `;
@@ -85,7 +87,26 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
     modal.addEventListener('click', (e) => {
         if (e.target.dataset?.action === 'close') close();
         if (e.target.dataset?.action === 'settings') { close(); showSettingsModal(); }
+        if (e.target.dataset?.action === 'recheck') _recheckCLI(e.target, modal, agentType, server, close, retry);
     });
+}
+
+/** "Check again" in the Not Found dialog (#5835): ask the server to look again. When the CLI is there: with a retry (the caller's own launch) close the dialog and run it, as the person meant to;
+ *  without one say "Found it. Press Launch again." and close nothing (a launch from the board has no form to repeat). When it is not: say so (a Coral that was started before the install may not see
+ *  the new PATH until it is restarted). The status is a live region that is always displayed and only has its text set, so a screen reader hears each answer. */
+async function _recheckCLI(button, modal, agentType, server, close, retry) {
+    const status = modal.querySelector('.cli-recheck-status');
+    status.textContent = '';
+    button.disabled = true; button.textContent = 'Checking…';
+    try {
+        const resp = await serverFetch(server, `/api/system/cli-check?type=${encodeURIComponent(agentType)}&source=cli_recheck`, { cache: 'no-store' });
+        const data = await resp.json();
+        if (resp.ok && data && data.found) {
+            if (typeof retry === 'function') { close(); retry(); return; }
+            status.textContent = 'Found it. Press Launch again.';
+        } else status.textContent = resp.ok ? 'Still not found. If you just installed it, restart Coral so it sees the new install, or use Set CLI path.' : 'Could not check just now. Try again.';
+    } catch { status.textContent = 'Could not check just now. Try again.'; }
+    button.disabled = false; button.textContent = 'Check again';
 }
 
 function _checkPermissionFlag(flagsStr, agentType, server = LOCAL_SERVER) {
