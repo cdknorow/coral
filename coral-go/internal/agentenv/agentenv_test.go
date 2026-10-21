@@ -50,3 +50,31 @@ func TestAgentsNeverInheritTheCloudMaxMode(t *testing.T) {
 		t.Fatal("CORAL_CLOUD_MAX_MODE reaches agents")
 	}
 }
+
+// #19 (Security's #20 F1): Windows reads a variable whatever case it was set in, so the filter
+// compares names without case: a server setting spelled Coral_ or coral_ is still removed, and
+// an allowed one is still kept.
+func TestKeepIgnoresCase(t *testing.T) {
+	for name, want := range map[string]bool{
+		"CORAL_SECRET_KEY":    false,
+		"Coral_Secret_Key":    false,
+		"coral_secret_key":    false,
+		"cOrAl_CLOUD_URL":     false,
+		"CORAL_URL":           true,
+		"coral_url":           true,
+		"Coral_Session_Name":  true,
+		"coral_workflow_step": true,
+		"Coral_Step_Name":     true,
+		"coral_prev_output":   true,
+		"PATH":                true,
+		"Path":                true,
+		"CORAL":               true, // not a CORAL_ variable
+		"CORALX_Y":            true,
+	} {
+		assert.Equal(t, want, Keep(name), name)
+	}
+	assert.Equal(t, []string{"Path=C:/x", "coral_url=http://h"},
+		Filter([]string{"Path=C:/x", "Coral_Secret_Key=leak", "coral_url=http://h", "coral_secret_key=leak"}))
+	assert.True(t, IsCoral("coral_x"))
+	assert.False(t, IsCoral("CORA"))
+}

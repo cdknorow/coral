@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/subgentic/coral/internal/agentenv"
 	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/executil"
@@ -313,7 +314,7 @@ func cliCommand(ctx context.Context, path, dir string, args ...string) *exec.Cmd
 	cmd.WaitDelay = 2 * time.Second
 	var env []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "CORAL_") {
+		if name, _, _ := strings.Cut(kv, "="); !agentenv.IsCoral(name) { // any case (#19)
 			env = append(env, kv)
 		}
 	}
