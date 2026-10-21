@@ -52,20 +52,21 @@ const BASE = require('./test_base').BASE;
             const g = await geo();
             check(`${label}: the pane is usable (width ${g.col}, Chat ${g.chat}, in the centre ${g.bodyLeft}..${g.bodyLeft + g.body})`, usable(g), JSON.stringify(g));
         }
-        await open(1800, 900, 700);
-        await shot('preview-column-saved-700-at-1800');
+        // 1900 px: the side panel is clamp(420px, 30vw, 640px) wide now (570 px here), so a window must be this wide for the preview pane to have room for a saved 700 (at 1800 the room is 697).
+        await open(1900, 900, 700);
+        await shot('preview-column-saved-700-at-1900');
         let g = await geo();
         check('a saved 700 in a roomy window is 700', g.col === 700, String(g.col));
         await Emulation.setDeviceMetricsOverride({ width: 1500, height: 900, deviceScaleFactor: 1, mobile: false });
         await waitFor(`document.getElementById('preview-column').getBoundingClientRect().width < 700`, 'the pane to give room when the window shrinks', 4000);
         g = await geo();
         check('the window shrinking holds the pane to the room (and Chat keeps its minimum)', usable(g) && g.col < 700, JSON.stringify(g));
-        await Emulation.setDeviceMetricsOverride({ width: 1800, height: 900, deviceScaleFactor: 1, mobile: false });
+        await Emulation.setDeviceMetricsOverride({ width: 1900, height: 900, deviceScaleFactor: 1, mobile: false });
         await waitFor(`document.getElementById('preview-column').getBoundingClientRect().width === 700`, 'the saved width to come back', 4000);
         check('and growing it back brings the saved 700 back (the wish was kept)', true);
 
         console.log('2. Dragging the handle resizes the pane, both ways, within the room');
-        await open(1800, 900);
+        await open(1900, 900);
         g = await geo(); const start = g.col;
         g = await drag(-120);
         check('dragging left 120 px widens the pane by about 120', Math.abs(g.col - (start + 120)) <= 6, `${start} -> ${g.col}`);
@@ -83,7 +84,7 @@ const BASE = require('./test_base').BASE;
         check('and it can be dragged back narrower', Math.abs(g.col - (max1 - 100)) <= 6, String(g.col));
 
         console.log('3. The handle by keyboard');
-        await open(1800, 900);
+        await open(1900, 900);
         g = await geo(); const k0 = g.col;
         await ev(`document.getElementById('preview-column-resize-handle').focus(); true`);
         const key = async (k, shift) => { await Input.dispatchKeyEvent({ type: 'keyDown', key: k, code: k, windowsVirtualKeyCode: { ArrowLeft: 37, ArrowRight: 39, Home: 36, End: 35, Escape: 27 }[k], modifiers: shift ? 8 : 0 }); await Input.dispatchKeyEvent({ type: 'keyUp', key: k, code: k, windowsVirtualKeyCode: { ArrowLeft: 37, ArrowRight: 39, Home: 36, End: 35, Escape: 27 }[k] }); await ev(framesJs(1)); return geo(); };
@@ -94,7 +95,7 @@ const BASE = require('./test_base').BASE;
         check('the handle is a labelled vertical separator with a value', await ev(`(() => { const h = document.getElementById('preview-column-resize-handle'); return h.getAttribute('role') === 'separator' && h.getAttribute('aria-orientation') === 'vertical' && !!h.getAttribute('aria-label') && h.tabIndex === 0 && Number(h.getAttribute('aria-valuenow')) > 0; })()`));
 
         console.log('4. Maximise covers Chat; Restore and Escape bring it back');
-        await open(1800, 900, 600);
+        await open(1900, 900, 600);
         const btn = () => ev(`(() => { const b = document.getElementById('preview-max-btn'); const r = b.getBoundingClientRect(); return { shown: !b.hidden && getComputedStyle(b).display !== 'none', w: Math.round(r.width), h: Math.round(r.height), pressed: b.getAttribute('aria-pressed'), label: b.getAttribute('aria-label'), title: b.title }; })()`);
         let b = await btn();
         check('the toggle is in the pane\'s header, 44 px wide, labelled "Maximise ...", not pressed', b.shown && b.w >= 44 && b.pressed === 'false' && /^Maximise/.test(b.label), JSON.stringify(b));
@@ -127,7 +128,7 @@ const BASE = require('./test_base').BASE;
         await ev(`window.PP.setPreviewSession('another-agent'); true`);
         check('showing another agent that has its own tab ends it (its page opens with its Chat)', await ev(`!document.querySelector('.live-body').classList.contains('preview-maximised') && getComputedStyle(document.getElementById('preview-column')).display !== 'none'`));
         await ev(`window.PP.setPreviewSession('pv-a-id'); true`);
-        await open(1800, 900, 600);
+        await open(1900, 900, 600);
         check('nothing is saved: a reload opens with Chat', await ev(`!document.querySelector('.live-body').classList.contains('preview-maximised') && document.querySelector('.live-left-column') && getComputedStyle(document.querySelector('.live-left-column')).display !== 'none'`));
 
         console.log('6. Every way of opening the pane keeps Chat: only the Maximise toggle hides it (the operator saw it open full width on an image)');
@@ -137,7 +138,7 @@ const BASE = require('./test_base').BASE;
             ['a file from the Files tab (code)', `window.PP.openPreviewTab('/work/main.go')`],
             ['an image file from the Files tab (a 4000 x 2000 PNG)', `window.PP.openPreviewTab('/work/big.png')`],
         ];
-        for (const [saved, w] of [[undefined, 1400], [99999, 1400], [1200, 1000], [700, 1800]]) for (const [label, call] of wayOut) {
+        for (const [saved, w] of [[undefined, 1400], [99999, 1400], [1200, 1000], [700, 1900]]) for (const [label, call] of wayOut) {
             await Emulation.setDeviceMetricsOverride({ width: w, height: 900, deviceScaleFactor: 1, mobile: false });
             await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
             await ev(`localStorage.clear(); localStorage.setItem('coral-preview-pane-dock', 'column'); ${saved === undefined ? '' : `localStorage.setItem('coral-preview-column-width', ${JSON.stringify(String(saved))});`} true`);
