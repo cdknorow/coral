@@ -149,14 +149,16 @@ export async function selectDoc(name, { noteRoute = true } = {}) {
 
 }
 
+/** The Docs page's "Copy docs line for agents" button (its action is registered in app.js: the button is in the page, this file loads with the Docs tab). */
+export async function copyDocsLine() {
+    if (await copyText(DOCS_FOR_AGENTS)) showToast('Copied');
+    else showToast('Could not copy: select the text in the hint and copy it', true);
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 // A doc in the Docs list (#3645).
 registerActions({
-    'docs-copy-agent-line': async () => {
-        if (await copyText(DOCS_FOR_AGENTS)) showToast('Copied');
-        else showToast('Could not copy: select the text in the hint and copy it', true);
-    },
     'doc-open': el => { const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
     'doc-open-key': (el, event) => { if (event.target !== el || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
 });
