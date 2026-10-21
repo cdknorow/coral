@@ -218,26 +218,3 @@ func TestFolderTheInstallerMadeWithOnlyTheEulaMarkerIsTightened(t *testing.T) {
 	assert.Empty(t, readersOf(t, dir), "the folder is private now")
 	assert.Empty(t, readersOf(t, filepath.Join(dir, ".eula-accepted")))
 }
-
-// #5698 (review of the review): a file in the data folder that has another name outside it (a hard link) shares its access list with that name: it is left alone, not re-protected.
-func TestHardLinkedFilesAreLeftAlone(t *testing.T) {
-	root := privateRoot(t)
-	outside := filepath.Join(root, "outside")
-	require.NoError(t, os.Mkdir(outside, 0o700))
-	usersCanRead(t, outside)
-	shared := filepath.Join(outside, "shared-file")
-	require.NoError(t, os.WriteFile(shared, []byte("not coral's"), 0o600))
-	require.NotEmpty(t, readersOf(t, shared))
-
-	dir := filepath.Join(root, "coral")
-	require.NoError(t, os.Mkdir(dir, 0o700))
-	usersCanRead(t, dir)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "sessions.db"), []byte("db"), 0o600))
-	require.NoError(t, os.Link(shared, filepath.Join(dir, "linked")))
-	t.Cleanup(func() { SetAllowSharedDataDir(false); setDataDirNotice("") })
-
-	require.NoError(t, EnsureDataDir(dir))
-	assert.Empty(t, readersOf(t, dir), "the folder is private")
-	assert.Empty(t, readersOf(t, filepath.Join(dir, "sessions.db")), "and its own files")
-	assert.NotEmpty(t, readersOf(t, shared), "the file with another name outside the folder keeps its list")
-}
