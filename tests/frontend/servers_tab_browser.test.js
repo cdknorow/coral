@@ -8,6 +8,7 @@
 // finds CDP suites by that name.
 const assert = require('node:assert/strict');
 const { safePaused } = require('./helpers/paused');
+const { themeJs } = require('./helpers/theme');
 const fs = require('node:fs');
 const path = require('node:path');
 const { connect } = require('./agent_view_harness');
@@ -332,7 +333,7 @@ const contrast = (a, b) => {
         assert.ok(!rv.disabled && Number(rv.opacity) === 1, 'Revoke is enabled and fully opaque');
         assert.ok(ratio >= 4.5, `Revoke contrast ${ratio.toFixed(2)}:1 (${rv.color} on ${rv.bg})`);
         // And on the light theme.
-        await ev(`document.documentElement.setAttribute('data-theme', 'light'); true`);
+        await ev(`${themeJs('light')}; true`);
         await sleep(100);
         const lt = await ev(`(() => {
             const b = document.querySelector('#servers-view .cs-revoke');
@@ -341,7 +342,7 @@ const contrast = (a, b) => {
             return { color: getComputedStyle(b).color, bg };
         })()`);
         const lratio = contrast(lt.color, lt.bg);
-        await ev(`document.documentElement.setAttribute('data-theme', 'dark'); true`);
+        await ev(`${themeJs('dark')}; true`);
         assert.ok(lratio >= 4.5, `light theme: Revoke contrast ${lratio.toFixed(2)}:1 (${lt.color} on ${lt.bg})`);
         console.log(`   ✓ Revoke dark ${rv.color} on ${rv.bg}: ${ratio.toFixed(2)}:1; light ${lt.color} on ${lt.bg}: ${lratio.toFixed(2)}:1`);
 
