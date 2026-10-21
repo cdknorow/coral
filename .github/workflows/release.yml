@@ -48,6 +48,7 @@ jobs:
     name: build-linux (${{ matrix.arch }})
     needs: [resolve]
     runs-on: ${{ matrix.runner }}
+    environment: release # the release secrets live in this environment only: tags v* and the owner's approval (#5522)
     strategy:
       fail-fast: true
       matrix:
@@ -149,6 +150,7 @@ jobs:
   build-windows:
     needs: [resolve]
     runs-on: windows-latest
+    environment: release # the release secrets live in this environment only: tags v* and the owner's approval (#5522)
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -346,6 +348,7 @@ jobs:
   build-macos-arm64:
     needs: [resolve]
     runs-on: macos-14
+    environment: release # the release secrets live in this environment only: tags v* and the owner's approval (#5522)
     permissions:
       contents: read
       attestations: read # the cached tmux payload's attestation (bundled-tmux)
@@ -409,6 +412,7 @@ jobs:
   build-macos-amd64:
     needs: [resolve]
     runs-on: macos-15-intel
+    environment: release # the release secrets live in this environment only: tags v* and the owner's approval (#5522)
     permissions:
       contents: read
       attestations: read # the cached tmux payload's attestation (bundled-tmux)
@@ -469,6 +473,7 @@ jobs:
   build-macos:
     needs: [resolve, build-macos-arm64, build-macos-amd64]
     runs-on: macos-14
+    environment: release # the release secrets live in this environment only: tags v* and the owner's approval (#5522)
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -745,14 +750,17 @@ jobs:
           PRERELEASE: ${{ needs.resolve.outputs.prerelease }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          # Create the release unless it exists (a re-run). Test tiers (-dev, -beta, -rc,
+          # A DRAFT until every file is attached and the last step publishes it (#5522): an immutable release (a
+          # repository setting) takes no new asset and no deletion once published, so nothing is uploaded after that;
+          # its notes, title and prerelease flag stay editable (tools/devops/finish-release.sh sets the body).
+          # Create the release unless it exists (a re-run of a draft). Test tiers (-dev, -beta, -rc,
           # -forDropbox) are prereleases and never "Latest": installed Corals offer the
           # latest release as an update (resolve_release.sh decides). A failed create fails
           # the step here, not as a misleading upload error later (#3855).
           PRE=()
           if [ "$PRERELEASE" = true ]; then PRE=(--prerelease --latest=false); fi
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "$TAG" --generate-notes "${PRE[@]}"
+            gh release create "$TAG" --draft --verify-tag --title "$TAG" --generate-notes "${PRE[@]}"
           fi
           # Publish install packages only; native macOS slices are build inputs.
           # Linux and the macOS DMG are always built, so a missing package is an
@@ -857,6 +865,15 @@ jobs:
             artifacts/coral-windows-portable/*.zip
             SHA256SUMS.txt
 
+      # Publish last (#5522): every asset, the checksums and the Sigstore bundles are attached to the draft above; publishing makes the
+      # release visible (and, where the repository setting is on, immutable). update-tap and the checks run after this.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+
   # Proposal (#3570, v2 with Security's review): keep cdknorow/homebrew-coral's cask on the
   # latest release. Runs only for a plain vX.Y.Z tag (never -dev/-beta/-rc/-forDropbox),
   # after the release job has uploaded SHA256SUMS.txt and its Sigstore bundle. The sha256
@@ -872,6 +889,7 @@ jobs:
     needs: [release]
     if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
     runs-on: ubuntu-24.04
+    environment: release # the release secrets live in this environment only: tags v* and the owner's approval (#5522)
     permissions:
       contents: read
     concurrency:

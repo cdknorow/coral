@@ -1,0 +1,13 @@
+{
+  "comment": "What the required check \"gate\" (gate.yml) waits for before a pull request may merge (#5522). Read by tests/release/gate_check.py from the pull request's own checkout, so a change to this file is a change to the rule: it is owned by the code owners (CODEOWNERS), like every file under .github. A workflow named in \"always\" must have a run on the PR head commit (a push to a ci/ branch, or the PR's own run, or a manual dispatch) that ended in success; one in \"when\" is required only when the PR changes a file matching one of its paths (the workflow's own trigger filter, copied), so a path-filtered workflow that did not run never leaves the gate pending or red.",
+  "branch_prefix": "ci/",
+  "always": ["go-tests", "go-race", "cdp-gate"],
+  "when": [
+    {"workflow": "gofmt", "paths": ["coral-go/**.go", ".github/workflows/**", "tests/release/workflows_lint.py", "tests/release/gate_check.py", "tests/release/gate_check_test.py", ".github/gate.json"]},
+    {"workflow": "windows-tests", "paths": ["coral-go/**", "tests/windows/**", ".github/workflows/windows-tests.yml"]}
+  ],
+  "events": ["push", "pull_request", "workflow_dispatch"],
+  "appear_within_minutes": 15,
+  "timeout_minutes": 120,
+  "poll_seconds": 30
+}
