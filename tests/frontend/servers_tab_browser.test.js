@@ -33,7 +33,7 @@ const LIVE = [
     { id: 'm3', label: 'Box Three', status: 'offline', coral_version: '1.5.0', agents: 0, update: 'current' },
     { id: 'm4', label: 'Box Four', status: 'online', agents: 2, update: 'unknown' },
 ];
-const RELEASES = 'https://github.com/cdknorow/coral/releases/latest';
+const RELEASES = 'https://github.com/subgentic/coral/releases/latest';
 
 const CLOUD_PRELOAD = `(() => {
     window.__qaServers = ${JSON.stringify(SERVERS)};

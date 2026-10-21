@@ -1,6 +1,6 @@
 # Troubleshooting
 
-See the [agent troubleshooting guide](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/troubleshooting.md) for deeper notes.
+See the [agent troubleshooting guide](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/troubleshooting.md) for deeper notes.
 
 ## The agent launched but looks stuck
 

@@ -73,7 +73,7 @@ export function staleReason(s) {
 // update: current | available | required | unknown. Only available and
 // required show anything, and nothing is ever disabled. The link is this
 // constant, never built from a field the server sent.
-export const RELEASES_URL = 'https://github.com/cdknorow/coral/releases/latest';
+export const RELEASES_URL = 'https://github.com/subgentic/coral/releases/latest';
 const VERSION_SHAPE = /^v?\d{1,9}\.\d{1,9}\.\d{1,9}(?:-[0-9A-Za-z.]{1,40})?$/;
 
 /** {level, label, text} for an entry that needs an update, else null. */

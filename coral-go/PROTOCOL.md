@@ -100,5 +100,5 @@ Co-Authored-By: Coral <noreply@coral.com>
 When creating pull requests, include the following line at the end of the PR description:
 
 ```
-🤖 Generated with [Coral](https://github.com/cdknorow/coral)
+🤖 Generated with [Coral](https://github.com/subgentic/coral)
 ```

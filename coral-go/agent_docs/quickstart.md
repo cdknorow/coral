@@ -54,14 +54,14 @@ setting. The launch API rejects an unsupported `agent_type` (`ValidateAgentType`
 
 | Platform | Status |
 |---|---|
-| **macOS** | Signed and notarized universal app ([`Coral.dmg`](https://github.com/cdknorow/coral/releases/latest/download/Coral.dmg), Apple Silicon and Intel, macOS 13 minimum) with bundled tmux. The macOS 13 minimum is checked in the binaries but has not been run on a macOS 13 host. |
-| **Windows** | [`Coral-x64.msi`](https://github.com/cdknorow/coral/releases/latest/download/Coral-x64.msi) (installer) or [`Coral-x64-portable.zip`](https://github.com/cdknorow/coral/releases/latest/download/Coral-x64-portable.zip), x64. Not code-signed (SmartScreen warns of an unknown publisher; verify the download as the README shows). Agents run with the native pty backend (no tmux); the default port is 8450. |
-| **Linux** | [`coral-linux-amd64.tar.gz`](https://github.com/cdknorow/coral/releases/latest/download/coral-linux-amd64.tar.gz) (x86-64) or [`coral-linux-arm64.tar.gz`](https://github.com/cdknorow/coral/releases/latest/download/coral-linux-arm64.tar.gz) (ARM64), statically linked. CLI/server only — no tray or desktop app. tmux is not bundled. |
+| **macOS** | Signed and notarized universal app ([`Coral.dmg`](https://github.com/subgentic/coral/releases/latest/download/Coral.dmg), Apple Silicon and Intel, macOS 13 minimum) with bundled tmux. The macOS 13 minimum is checked in the binaries but has not been run on a macOS 13 host. |
+| **Windows** | [`Coral-x64.msi`](https://github.com/subgentic/coral/releases/latest/download/Coral-x64.msi) (installer) or [`Coral-x64-portable.zip`](https://github.com/subgentic/coral/releases/latest/download/Coral-x64-portable.zip), x64. Not code-signed (SmartScreen warns of an unknown publisher; verify the download as the README shows). Agents run with the native pty backend (no tmux); the default port is 8450. |
+| **Linux** | [`coral-linux-amd64.tar.gz`](https://github.com/subgentic/coral/releases/latest/download/coral-linux-amd64.tar.gz) (x86-64) or [`coral-linux-arm64.tar.gz`](https://github.com/subgentic/coral/releases/latest/download/coral-linux-arm64.tar.gz) (ARM64), statically linked. CLI/server only — no tray or desktop app. tmux is not bundled. |
 | **Homebrew** | `brew install --cask cdknorow/coral/coral` installs the release's macOS app; the release workflow updates the tap with each release's checksum. |
 
 ## 1. Install
 
-Download from [GitHub Releases](https://github.com/cdknorow/coral/releases/latest). The stable
+Download from [GitHub Releases](https://github.com/subgentic/coral/releases/latest). The stable
 names always point to the newest release: `Coral.dmg`, `Coral-x64.msi`, `Coral-x64-portable.zip`,
 `coral-linux-amd64.tar.gz` and `coral-linux-arm64.tar.gz`. Each release also keeps versioned names
 (`Coral.v<version>.dmg`, `coral-linux-<arch>-<version>.tar.gz`, `Coral-<version>-x64.msi`,
