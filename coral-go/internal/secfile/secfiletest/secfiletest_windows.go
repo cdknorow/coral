@@ -74,6 +74,15 @@ func AssertOwnerOnly(t *testing.T, path string) {
 	require.NoError(t, secfile.CheckOpen(f), path)
 }
 
+// AssertOwnerOnlyAccess is AssertOwnerOnly's access-list rule alone, for a file Coral stores as a
+// hard link (a deduplicated diff), which the secret-file open refuses for its second name: only
+// this user (and SYSTEM, Administrators) can open path, its list its own or inherited (0600 on Unix).
+func AssertOwnerOnlyAccess(t *testing.T, path string) {
+	t.Helper()
+	_, err := secfile.Explicit(path)
+	require.NoError(t, err, path)
+}
+
 // Expose lets another account read path: the built-in Users group (0644 on Unix).
 func Expose(t *testing.T, path string) {
 	t.Helper()

@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/board/boardtest"
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
 	"github.com/subgentic/coral/pkg/tunnel"
@@ -307,6 +307,7 @@ func TestPruneSharedDiffSweep(t *testing.T) {
 
 func TestShrinkRewritesClosedDiffsOnly(t *testing.T) {
 	rig := newPruneRig(t)
+	secfiletest.OwnerOnlyDir(t, rig.coralDir) // private, as Coral makes its data folder
 	secret := "OPENAI_API_KEY=qa-secret"
 	old := []byte("diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-a\n+b\n" +
 		"diff --git a/.env.local b/.env.local\nnew file mode 100644\n--- /dev/null\n+++ b/.env.local\n@@ -0,0 +1 @@\n+" + secret + "\n" +
@@ -330,11 +331,7 @@ func TestShrinkRewritesClosedDiffsOnly(t *testing.T) {
 	still, err := os.ReadFile(rig.taskDiff(open))
 	require.NoError(t, err)
 	assert.Equal(t, old, still, "the open task's diff, which shared the object, is untouched")
-	fi, err := os.Stat(rig.taskDiff(closed))
-	require.NoError(t, err)
-	if runtime.GOOS != "windows" { // NTFS has no Unix permission bits (Go reports 0666)
-		assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
-	}
+	secfiletest.AssertOwnerOnlyAccess(t, rig.taskDiff(closed)) // mode 0600; on Windows, owner-only from the private data folder (a hard link)
 
 	rep = rig.run(pruneOptions{Shrink: true})
 	assert.Equal(t, 0, rep.Removed, "already shrunk: nothing to do")

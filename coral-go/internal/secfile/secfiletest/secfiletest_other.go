@@ -21,6 +21,13 @@ func AssertOwnerOnly(t *testing.T, path string) {
 	assertMode(t, path)
 }
 
+// AssertOwnerOnlyAccess fails the test unless path has mode 0600 (on Windows: AssertOwnerOnly's
+// access-list rule alone, for a file stored as a hard link).
+func AssertOwnerOnlyAccess(t *testing.T, path string) {
+	t.Helper()
+	assertMode(t, path)
+}
+
 func assertMode(t *testing.T, path string) {
 	t.Helper()
 	fi, err := os.Stat(path)
