@@ -291,3 +291,54 @@ func TestSavedListMarksGoneAndNotReachableWithOneLookupPerSource(t *testing.T) {
 		assert.Equal(t, "", it.(map[string]any)["reason"])
 	}
 }
+
+// #5802 (Security's SHOULD 1): the list reads a transcript only for a ref that is a session id; any other stored ref (a glob, a path) never reaches the lookup and is marked not reachable.
+func TestSavedListNeverLooksUpARefThatIsNotASessionID(t *testing.T) {
+	g := newSavedRig(t)
+	var asked []string
+	g.h.SetSavedPresence(nil, func(_ context.Context, session string, keys []string) (map[string]bool, bool) {
+		asked = append(asked, session)
+		return map[string]bool{}, true
+	})
+	k := strings.Repeat("a1", 10)
+	for _, ref := range []string{"*", "[a-z]*", "../../etc", "sess-1", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee*", strings.ToUpper(sess1)} {
+		m := agentSave(k, "x")
+		m["ref"] = ref
+		code, out := g.do("POST", "/api/saved", savedAsOperator, m)
+		require.Equal(t, http.StatusOK, code, out)
+	}
+	code, out := g.do("GET", "/api/saved?limit=50", savedAsOperator, nil)
+	require.Equal(t, http.StatusOK, code, out)
+	items := out["items"].([]any)
+	require.Len(t, items, 6)
+	for _, it := range items {
+		m := it.(map[string]any)
+		assert.Equal(t, "not_reachable", m["reason"], m["ref"])
+	}
+	assert.Empty(t, asked, "no transcript lookup for any of them")
+}
+
+// #5802 (Security's SHOULD 2): one list reads at most maxSavedAgentChecks agents' transcripts; the rest are listed unmarked (their Open finds out).
+func TestSavedListReadsAtMostFiftyAgentTranscripts(t *testing.T) {
+	g := newSavedRig(t)
+	var asked int
+	g.h.SetSavedPresence(nil, func(_ context.Context, session string, keys []string) (map[string]bool, bool) {
+		asked++
+		return map[string]bool{}, true // reachable, and the message is not in it: gone
+	})
+	k := strings.Repeat("a1", 10)
+	for i := 0; i < maxSavedAgentChecks+5; i++ {
+		m := agentSave(k, "x")
+		m["ref"] = fmt.Sprintf("aaaaaaaa-bbbb-4ccc-8ddd-%012x", i)
+		code, out := g.do("POST", "/api/saved", savedAsOperator, m)
+		require.Equal(t, http.StatusOK, code, out)
+	}
+	code, out := g.do("GET", "/api/saved?limit=200", savedAsOperator, nil)
+	require.Equal(t, http.StatusOK, code, out)
+	reasons := map[string]int{}
+	for _, it := range out["items"].([]any) {
+		reasons[it.(map[string]any)["reason"].(string)]++
+	}
+	assert.Equal(t, maxSavedAgentChecks, asked)
+	assert.Equal(t, map[string]int{"gone": maxSavedAgentChecks, "": 5}, reasons, "the rest are unmarked")
+}
