@@ -1,0 +1,33 @@
+/* Windows High Contrast (forced colors, #5707): the browser drops every background colour and box-shadow the stylesheets set and draws text, borders and
+   outlines in the system palette. A control that shows its state only with a fill disappears. A system colour keyword (Canvas, CanvasText, Highlight,
+   HighlightText, ButtonText, GrayText) written by the page is kept, so each state below is drawn with those: a switch's track and knob, the selected
+   tab, and the dot that says what an agent is doing. Loaded after the other sheets so these win at equal specificity. */
+@media (forced-colors: active) {
+    /* The Settings switches: off is an empty track with the knob at the left, on is a Highlight track with the knob at the right. */
+    #settings-modal .settings-row .check-hit input[type="checkbox"],
+    #settings-modal .settings-hub-mode-toggle > input[type="checkbox"] { background: Canvas; border: 2px solid ButtonText; }
+    #settings-modal .settings-row .check-hit input[type="checkbox"]::before,
+    #settings-modal .settings-hub-mode-toggle > input[type="checkbox"]::before { background: ButtonText; }
+    #settings-modal .settings-row .check-hit input[type="checkbox"]:checked,
+    #settings-modal .settings-hub-mode-toggle > input[type="checkbox"]:checked { background: Highlight; border-color: Highlight; }
+    #settings-modal .settings-row .check-hit input[type="checkbox"]:checked::before,
+    #settings-modal .settings-hub-mode-toggle > input[type="checkbox"]:checked::before { background: HighlightText; }
+    #settings-modal .settings-row .check-hit input[type="checkbox"]:disabled,
+    #settings-modal .settings-hub-mode-toggle > input[type="checkbox"]:disabled { opacity: 1; border-color: GrayText; }
+    #settings-modal .settings-row .check-hit input[type="checkbox"]:disabled::before,
+    #settings-modal .settings-hub-mode-toggle > input[type="checkbox"]:disabled::before { background: GrayText; }
+
+    /* The selected tab (Settings and the dialogs' section lists, Team settings): a thick Highlight border, since the heavier weight alone is easy to miss and a
+       background fill is drawn behind a text backplate. */
+    .settings-tab[aria-selected="true"] { border-left: 4px solid Highlight; padding-left: calc(.7rem - 4px); }
+    .team-settings-tabs [role="tab"][aria-selected="true"] { border: 2px solid Highlight; padding: 6px 8px; font-weight: 600; }
+
+    /* What an agent is doing: a shape for each state, since a colour is not available. Working a filled circle, needs input a filled diamond, stuck a filled
+       square, idle a hollow ring; ready for input has no dot and sleeping is the moon glyph, as before. */
+    .session-dot { box-sizing: border-box; border: 1.5px solid CanvasText; }
+    .session-dot.working { background: CanvasText; }
+    .session-dot.waiting { background: CanvasText; border-radius: 0; transform: rotate(45deg); animation: none; }
+    .session-dot.stuck { background: CanvasText; border-radius: 0; }
+    .session-dot.stale, .session-dot.task-idle, .session-dot.done { background: transparent; }
+    .session-dot.your-turn, .session-dot.sleeping { border: 0; }
+}
