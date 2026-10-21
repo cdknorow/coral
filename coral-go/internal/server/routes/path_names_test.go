@@ -72,7 +72,7 @@ func TestATeamWorktreeFolderIsOneName(t *testing.T) {
 		require.NoError(t, err, string(out))
 	}
 	for _, name := range []string{"../escape", "a/b", "..", `..\x`, ""} {
-		wd, path, failure := h.createTeamWorktree(t.Context(), launchTeamRequest{BoardName: name, WorkingDir: work, Worktree: true})
+		wd, path, _, failure := h.createTeamWorktree(t.Context(), launchTeamRequest{BoardName: name, WorkingDir: work, Worktree: true})
 		assert.Empty(t, wd, "%q", name)
 		assert.Empty(t, path, "%q", name)
 		assert.NotEmpty(t, failure, "%q", name)

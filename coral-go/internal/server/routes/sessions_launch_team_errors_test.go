@@ -150,3 +150,39 @@ func TestTeamLaunchWhereNoMemberStartsRemovesItsWorktree(t *testing.T) {
 	_, err := os.Stat(filepath.Join(cfg.CoralDir(), "worktrees", boardKey))
 	assert.True(t, os.IsNotExist(err), "the empty team's worktree folder is gone: %v", err)
 }
+
+// The branch the launch made for that worktree goes too; a branch a previous run left is kept.
+func TestTeamLaunchWhereNoMemberStartsRemovesTheBranchItMade(t *testing.T) {
+	server, _, _, ss := setupSessionsTestServerWithConfig(t, config.Load(t.TempDir()))
+	stubCLIPaths(t, ss)
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", filepath.Join(t.TempDir(), "no-such-cli")))
+	repo := t.TempDir()
+	git := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repo, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...).CombinedOutput()
+		require.NoError(t, err, string(out))
+		return string(out)
+	}
+	git("init", "-q", "-b", "main")
+	git("commit", "-q", "--allow-empty", "-m", "init")
+	launch := func() string {
+		status, out := postTeam(t, server.URL, map[string]any{"board_name": "br-team", "working_dir": repo, "worktree": true, "base_branch": "main",
+			"agent_type": "claude", "agents": []map[string]any{{"name": "A", "prompt": "x"}}})
+		require.Equal(t, http.StatusUnprocessableEntity, status, "%v", out)
+		return out["board"].(string)
+	}
+	key := launch()
+	assert.NotContains(t, git("branch", "--list", "coral-team/"+key), "coral-team/", "the branch this launch made is removed")
+
+	// A branch that was there before is the user's: kept.
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", stubCLI(t)))
+	status, out := postTeam(t, server.URL, map[string]any{"board_name": "br-team2", "working_dir": t.TempDir(), "agent_type": "claude",
+		"agents": []map[string]any{{"name": "A", "prompt": "x"}}})
+	require.Equal(t, http.StatusOK, status, "%v", out)
+	boardID := out["board_id"].(string)
+	git("branch", "coral-team/"+boardID)
+	require.NoError(t, ss.SetSetting(context.Background(), "cli_path_claude", filepath.Join(t.TempDir(), "no-such-cli")))
+	status, out = postTeam(t, server.URL, map[string]any{"board_id": boardID, "board_name": boardID, "working_dir": repo, "worktree": true, "base_branch": "main",
+		"agent_type": "claude", "agents": []map[string]any{{"name": "B", "prompt": "y"}}})
+	require.Equal(t, http.StatusUnprocessableEntity, status, "%v", out)
+	assert.Contains(t, git("branch", "--list", "coral-team/"+boardID), "coral-team/"+boardID, "a branch that was already there stays")
+}

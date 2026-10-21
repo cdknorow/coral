@@ -12,7 +12,7 @@ const { AGENT_PRESETS } = await importOnce('./agent_presets.js');
 const { _getPermissionFlagsForAgentMode, _normalizePermFlagsForAgent, _updatePermModeDescription } = await importOnce('./permission_flags.js');
 const { _findPersona, _getSavedTeamTemplates, _upsertSavedTeamTemplates } = await importOnce('./persona_store.js');
 const { getAgentConfig, renderAgentConfigForm, setAgentConfig } = await importOnce('./agent_config_form.js');
-const { markFieldInvalid, _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, hideLaunchModal } = await importOnce('./launch_core.js');
+const { markFieldInvalid, _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, hideLaunchModal, showTeamLaunchFailures } = await importOnce('./launch_core.js');
 const { showSection } = await importOnce('./section_dialog.js');
 const { _syncFlagButtons } = await importOnce('./flag_shortcuts.js');
 const { showSettingsModal } = await importOnce('./settings_dialog.js');
@@ -478,43 +478,24 @@ async function launchTeam() {
     if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'Launching...'; }
 
     try {
-        const result = await _launchOn(server, "/api/sessions/launch-team", payload);
+        const result = await _launchOn(server, "/api/sessions/launch-team", payload, undefined, { teamFailures: true });
         if (result) {
             recordRecentDir(workingDir, server);
             // Check for per-agent errors in the launched array
             const launched = result.agents || result.launched || [];
             const failed = launched.filter(a => a.error);
-            if (failed.length > 0) {
-                const successCount = launched.length - failed.length;
-                const failList = failed.map(a => `<li><strong>${escapeHtml(a.name)}</strong>: ${escapeHtml(a.error)}</li>`).join('');
-                const modal = document.createElement('div');
-                modal.className = 'modal';
-                modal.style.display = 'flex';
-                modal.innerHTML = `
-                    <div class="modal-content" style="width:500px">
-                        <h3>Team Launch — ${failed.length} agent${failed.length > 1 ? 's' : ''} failed</h3>
-                        <p style="color:var(--text-secondary);font-size:0.8125rem;margin:8px 0">${successCount} launched successfully, ${failed.length} failed:</p>
-                        <ul style="color:var(--error);font-size:0.8125rem;line-height:1.6;margin:8px 0 16px;padding-left:20px">${failList}</ul>
-                        <div class="modal-actions">
-                            <button class="btn" data-action="settings">Set CLI paths</button>
-                            <button class="btn btn-primary" data-action="close">OK</button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(modal);
-                modal.addEventListener('click', (e) => {
-                    if (e.target.dataset?.action === 'close' || e.target === modal) modal.remove();
-                    if (e.target.dataset?.action === 'settings') { modal.remove(); showSettingsModal(); }
-                });
-            }
+            if (failed.length > 0) showTeamLaunchFailures(failed, launched.length - failed.length, showSettingsModal);
             if (launched.length - failed.length > 0) {
                 const wtNote = result.worktree_path ? ` in worktree ${result.worktree_path}` : '';
                 showToast(`Launched team: ${launched.length - failed.length} agents on "${boardName}"${_onServerSuffix(server)}${wtNote}`);
             }
-            hideLaunchModal();
-            setTimeout(loadLiveSessions, 2000);
-            setTimeout(loadBoardProjects, 4000);
-            _refreshAfterLaunch(server, { boardName });
+            // A team in which nobody started (the server answered an error, #122): the dialog stays open, to fix the setup and launch again.
+            if (result.ok !== false) {
+                hideLaunchModal();
+                setTimeout(loadLiveSessions, 2000);
+                setTimeout(loadBoardProjects, 4000);
+                _refreshAfterLaunch(server, { boardName });
+            }
         }
     } catch (e) {
         showToast("Failed to launch team", true);
