@@ -30,7 +30,7 @@ Subcommands:
   release-review <id> --reason "slot released pending review" (orchestrator only)
   review <id> --to "Security Reviewer,QA Engineer"   (orchestrator: delegate a task in review)
   approve <id> [--round N] [--note "..."] / reject <id> [--round N] --note "why"   (a delegated reviewer)
-  attach <id> --artifacts manifest.json / send-back <id> --note "why"   (the merge queue)
+  attach <id> --artifacts manifest.json / send-back <id> --note "why" / mark-landed <id> --digest D [--commit SHA[:subject]]   (the merge queue)
   complete <id> [--message "note"]`)
 		os.Exit(1)
 	}
@@ -80,7 +80,7 @@ Subcommands:
 		cmdTaskReview(st, taskArgs, sub)
 	case "review", "approve", "reject":
 		cmdTaskReviewFlow(st, taskArgs, sub)
-	case "attach", "send-back":
+	case "attach", "send-back", "mark-landed":
 		cmdTaskQueueVerb(st, taskArgs, sub)
 	case "complete":
 		cmdTaskComplete(st, taskArgs)
@@ -118,6 +118,7 @@ Subcommands:
   reject <id> [--round N] --note "why"     A reviewer rejects: back to its author; the reviewers stay on it and review the resubmission
   attach <id> --artifacts manifest.json    Add patch rows to a task in review (a next revision, a reviewer's fix); a reviewer who had approved reviews the new bytes again
   send-back <id> --note "why"              The orchestrator returns an approved, completed task to its author (a fix after approval, a patch that would not apply)
+  mark-landed <id> --digest D [--digest D2] [--commit SHA[:subject]]  The orchestrator (or the Operator) records that the approved patches with these digests landed, and the commits that landed them; a digest its round did not approve is refused
   release-review <id> --reason "slot released pending review" (orchestrator only; for a candidate submitted before v1.4.56)
   complete <id> [--revision N] [--message "note"] [--outcome success|failed] [--candidate-revision REVISION] [--artifacts manifest.json]
   cancel <id> [--message "reason"]

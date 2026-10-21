@@ -32,6 +32,8 @@ type ReviewRound struct {
 	DelegatedAt string          `json:"delegated_at"`
 	Reviewers   []ReviewerState `json:"reviewers"`
 	Result      string          `json:"result,omitempty"` // "", approved, rejected or superseded (a patch was attached after an approval, #5689)
+	// ConcludedAt: when the last reviewer approved the round (the merge queue lands oldest first by it, #5689).
+	ConcludedAt string `json:"concluded_at,omitempty"`
 	// ApprovedDigests: when the round was approved, the digest of the newest row of every patch the task had (#5689). The merge
 	// queue lands a patch only if its digest is here, so bytes attached after an approval are never landed on its strength.
 	ApprovedDigests []string `json:"approved_digests,omitempty"`
@@ -405,6 +407,7 @@ func concludeRound(ctx context.Context, tx *sqlx.Tx, project string, id int64, w
 		}
 	}
 	round.Result = "approved"
+	round.ConcludedAt = nowUTC()
 	round.ApprovedDigests = patchDigests(w.CompletionReview)
 	v.Complete = true
 	for _, r := range round.Reviewers {

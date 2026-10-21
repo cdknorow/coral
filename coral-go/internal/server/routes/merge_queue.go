@@ -119,3 +119,68 @@ func oneLine(note string, max int) string {
 	}
 	return line
 }
+
+// MergeQueue lists the approved, not yet landed tasks of a board (#5689): the newest row of each patch name that its approving round
+// approved, oldest approval first. A read of what the board holds, never in the tunnel (Security's decision, #5723).
+// GET /api/board/{project}/queue
+func (h *BoardHandler) MergeQueue(w http.ResponseWriter, r *http.Request) {
+	project := urlParam(r, "project")
+	h.setBoardIdentity(w, r, project)
+	q, err := h.bs.MergeQueue(r.Context(), project)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"queue": q})
+}
+
+// MarkLanded records that patches of an approved, completed task landed, and the commits that landed them (#5689). Only the board's
+// orchestrator or the Operator, bound to the caller's identity like attach: a task's author marking his own patch landed would hide it
+// from the queue. A digest the approving round did not approve is refused.
+// POST /api/board/{project}/tasks/{taskID}/mark-landed {subscriber_id, digests, commits: [{sha, subject}]}
+func (h *BoardHandler) MarkLanded(w http.ResponseWriter, r *http.Request) {
+	project := urlParam(r, "project")
+	id, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil {
+		errBadRequest(w, "invalid task ID")
+		return
+	}
+	var body struct {
+		SubscriberID string               `json:"subscriber_id"`
+		Digests      []string             `json:"digests"`
+		Commits      []board.LandedCommit `json:"commits"`
+	}
+	derr := decodeJSON(r, &body)
+	if derr == nil {
+		attrWho, attrOK := attributedTo(w, r, body.SubscriberID)
+		if !attrOK {
+			return
+		}
+		body.SubscriberID = attrWho
+	}
+	if derr != nil {
+		errBadRequest(w, "valid JSON required")
+		return
+	}
+	byOperator := callerActor(r).Kind == ActorOperator && (strings.TrimSpace(body.SubscriberID) == "" || board.IsOperatorName(body.SubscriberID))
+	if byOperator && strings.TrimSpace(body.SubscriberID) == "" {
+		body.SubscriberID = board.OperatorName
+	}
+	if body.SubscriberID == "" {
+		errBadRequest(w, "subscriber_id required")
+		return
+	}
+	task, err := h.bs.MarkLanded(r.Context(), project, id, body.SubscriberID, byOperator, body.Digests, body.Commits)
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "orchestrator is required"):
+			errForbidden(w, err.Error())
+		case strings.Contains(err.Error(), "is not on this board"):
+			writeError(w, http.StatusNotFound, "not_found", err.Error())
+		default:
+			errBadRequest(w, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"task": task})
+}

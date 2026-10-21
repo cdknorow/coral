@@ -70,6 +70,7 @@ GET /api/board/{project}/messages/check never
 GET /api/board/{project}/messages/search view
 GET /api/board/{project}/paused view
 GET /api/board/{project}/peek never
+GET /api/board/{project}/queue never
 GET /api/board/{project}/relay-targets never
 GET /api/board/{project}/settings view
 GET /api/board/{project}/settings/log never
@@ -257,6 +258,7 @@ POST /api/board/{project}/tasks/{taskID}/approve never
 POST /api/board/{project}/tasks/{taskID}/attach never
 POST /api/board/{project}/tasks/{taskID}/cancel interact
 POST /api/board/{project}/tasks/{taskID}/complete interact
+POST /api/board/{project}/tasks/{taskID}/mark-landed never
 POST /api/board/{project}/tasks/{taskID}/nudge interact
 POST /api/board/{project}/tasks/{taskID}/park never
 POST /api/board/{project}/tasks/{taskID}/publish interact
