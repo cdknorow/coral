@@ -196,3 +196,38 @@ func (c *Client) loadPromptBuffer(ctx context.Context, text string) (string, err
 	}
 	return buffer, nil
 }
+
+// SanitizeTyped makes text safe to type as keystrokes: ESC (an ESC[201~ would end a paste, an ESC sequence is a key),
+// every other C0 control (Ctrl-C, Ctrl-D, Tab, CR, LF...), DEL and the C1 range U+0080-009F are dropped. What remains is
+// printable text.
+func SanitizeTyped(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	for _, r := range text {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// AutomatedText is text from Coral for an agent, to be typed: line breaks (CRLF, CR, LF) become one space each run, then
+// SanitizeTyped. A person's own text is never changed by it.
+func AutomatedText(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	space := false
+	for _, r := range text {
+		if r == '\r' || r == '\n' {
+			space = true
+			continue
+		}
+		if space && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		space = false
+		b.WriteRune(r)
+	}
+	return SanitizeTyped(b.String())
+}

@@ -62,6 +62,17 @@ func WithBeforeEnter(ctx context.Context, ok func(context.Context) bool) context
 	return context.WithValue(ctx, beforeEnterKey{}, ok)
 }
 
+type automatedKey struct{}
+
+// WithAutomated marks a send as Coral's own (the automated-input gate's: a board message, a task notice, a nudge,
+// an agent's /send), as opposed to a person's. Text typed under it is made safe first (AutomatedText), on both backends.
+func WithAutomated(ctx context.Context) context.Context {
+	return context.WithValue(ctx, automatedKey{}, true)
+}
+
+// Automated says whether ctx carries WithAutomated.
+func Automated(ctx context.Context) bool { v, _ := ctx.Value(automatedKey{}).(bool); return v }
+
 // EnterAllowed runs ctx's WithBeforeEnter check (true when there is none).
 func EnterAllowed(ctx context.Context) bool { return enterAllowed(ctx) }
 
@@ -99,6 +110,12 @@ func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) e
 // long one goes through a script (commandInvocation); otherwise it is delivered as text at any
 // length.
 func (c *Client) typeToTarget(ctx context.Context, target, command string, launch bool) error {
+	if !launch && Automated(ctx) {
+		// Typed, automated text: no keystroke from the text itself, and no line break (which would submit line by line
+		// into whatever is reading: tmux cannot tell whether the pane asked for bracketed paste, and the gate pastes
+		// when it did, so what is typed here is the case it did not).
+		command = AutomatedText(command)
+	}
 	originalCommandLen := len(command)
 	cleanup := func() {}
 	if launch && len(command) > inlineCommandLimit {

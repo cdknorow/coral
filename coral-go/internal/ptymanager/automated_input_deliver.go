@@ -96,7 +96,7 @@ func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHe
 		footerOnly.Store(open && !isPromptHold(why))
 		return !open
 	}
-	err = in.Send(tmux.WithBeforeEnter(ctx, check))
+	err = in.Send(tmux.WithAutomated(tmux.WithBeforeEnter(ctx, check)))
 	if errors.Is(err, tmux.ErrEnterWithheld) {
 		kind := kindPrompt
 		if footerOnly.Load() {

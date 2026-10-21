@@ -184,6 +184,17 @@ func pastesAsText(text string) bool {
 // for each break, as tmux's paste-buffer gives them. Short single-line text is typed (SendLineCtx). ctx's
 // WithBeforeEnter check runs before the Enter, as for every typed send.
 func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
+	if tmux.Automated(ctx) {
+		// Coral's own text (the gate): what is typed has no control character in it and no line break, so nothing in a board
+		// message or a task title reaches the agent as a key, or runs a shell line by line when the agent dropped back to
+		// one. A multi-line text is kept only for a bracketed paste, which SanitizePaste has already made safe.
+		m.mu.RLock()
+		s, ok := m.sessions[name]
+		m.mu.RUnlock()
+		if !(ok && s.bracketedPaste.Load() && pastesAsText(text)) {
+			text = tmux.AutomatedText(text)
+		}
+	}
 	if !pastesAsText(text) {
 		return m.SendLineCtx(ctx, name, text)
 	}
