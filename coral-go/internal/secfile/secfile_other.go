@@ -8,6 +8,9 @@ import "os"
 // protection there, and the readers check the mode and the owner.
 func Protect(string) error { return nil }
 
+// ProtectDir does nothing outside Windows: the folder was made with mode 0700.
+func ProtectDir(string) error { return nil }
+
 // CheckOpen does nothing outside Windows: the callers check the mode and the owner of what they
 // opened (see the Windows CheckOpen).
 func CheckOpen(*os.File) error { return nil }

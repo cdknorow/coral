@@ -192,8 +192,22 @@ func Protect(path string) error {
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
 }
 
+// ProtectDir gives the folder at path the same protected access list as Protect, inherited by what is created
+// in it: this user and SYSTEM only, so a file made there is private whatever the folder's parent allows (os.Chmod
+// 0700 does nothing on Windows).
+func ProtectDir(path string) error {
+	acl, err := aclFor(windows.SUB_CONTAINERS_AND_OBJECTS_INHERIT)
+	if err != nil {
+		return err
+	}
+	return windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
+}
+
 // privateACL is the access list Protect sets: full control for this user and SYSTEM.
-func privateACL() (*windows.ACL, error) {
+func privateACL() (*windows.ACL, error) { return aclFor(windows.NO_INHERITANCE) }
+
+func aclFor(inheritance uint32) (*windows.ACL, error) {
 	p, err := currentPrincipals()
 	if err != nil {
 		return nil, err
@@ -202,7 +216,7 @@ func privateACL() (*windows.ACL, error) {
 		return windows.EXPLICIT_ACCESS{
 			AccessPermissions: windows.GENERIC_ALL,
 			AccessMode:        windows.SET_ACCESS,
-			Inheritance:       windows.NO_INHERITANCE,
+			Inheritance:       inheritance,
 			Trustee: windows.TRUSTEE{
 				TrusteeForm:  windows.TRUSTEE_IS_SID,
 				TrusteeType:  windows.TRUSTEE_IS_USER,

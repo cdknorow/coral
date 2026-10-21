@@ -3,6 +3,7 @@
 package main
 
 import (
+	"golang.org/x/sys/windows"
 	"log"
 	"os"
 	"syscall"
@@ -11,8 +12,8 @@ import (
 )
 
 var (
-	dwmapi   = syscall.NewLazyDLL("dwmapi.dll")
-	user32tb = syscall.NewLazyDLL("user32.dll")
+	dwmapi   = windows.NewLazySystemDLL("dwmapi.dll")
+	user32tb = windows.NewLazySystemDLL("user32.dll")
 
 	procEnumWindows              = user32tb.NewProc("EnumWindows")
 	procGetWindowThreadProcessId = user32tb.NewProc("GetWindowThreadProcessId")

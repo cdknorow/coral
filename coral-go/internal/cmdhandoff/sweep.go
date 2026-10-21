@@ -28,6 +28,9 @@ const MaxAge = 24 * time.Hour
 // only removes the current user's: a shared temp folder is never globbed.
 func Sweep() int { return sweepDir(os.TempDir(), time.Now(), MaxAge) }
 
+// SweepIn is Sweep for dir: the launch temp folder, where Windows handoff scripts are made.
+func SweepIn(dir string) int { return sweepDir(dir, time.Now(), MaxAge) }
+
 func sweepDir(dir string, now time.Time, maxAge time.Duration) int {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

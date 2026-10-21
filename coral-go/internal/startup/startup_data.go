@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/cmdhandoff"
 	"github.com/subgentic/coral/internal/config"
@@ -174,6 +175,11 @@ func prepareWithDatabase(ctx context.Context, db *store.DB, cfg *config.Config, 
 	removeOrphanProxyCA(cfg.CoralDir())
 	setupLaunchTempDir(db, cfg.CoralDir())
 	setupSessionStateSweep(db, cfg.CoralDir())
+	if dir := agent.LaunchTempDir(); dir != os.TempDir() {
+		if n := cmdhandoff.SweepIn(dir); n > 0 {
+			log.Printf("[startup] removed %d launch script(s) older than a day from %s", n, dir)
+		}
+	}
 	if n := cmdhandoff.Sweep(); n > 0 {
 		log.Printf("[startup] removed %d launch script(s) older than a day from the temp folder", n)
 	}

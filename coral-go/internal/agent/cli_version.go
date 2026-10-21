@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/agentenv"
 	"os"
 	"os/exec"
 	"regexp"
@@ -50,6 +51,7 @@ func CLIVersion(settings map[string]string, agentType string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "--version")
+	cmd.Env = agentenv.Filter(os.Environ()) // the server's own CORAL_* settings never reach a CLI
 	// A CLI that is a wrapper (node, npm shims) can leave a child holding stdout past
 	// the kill: stop waiting for the pipes 2 s after it (Backend's review).
 	cmd.WaitDelay = 2 * time.Second

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"golang.org/x/sys/windows"
 	"syscall"
 	"unsafe"
 
@@ -10,7 +11,7 @@ import (
 )
 
 var (
-	user32     = syscall.NewLazyDLL("user32.dll")
+	user32     = windows.NewLazySystemDLL("user32.dll")
 	messageBox = user32.NewProc("MessageBoxW")
 )
 

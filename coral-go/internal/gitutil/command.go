@@ -3,6 +3,7 @@ package gitutil
 import (
 	"bytes"
 	"context"
+	"github.com/subgentic/coral/internal/agentenv"
 	"os"
 	"os/exec"
 	"strings"
@@ -39,7 +40,7 @@ import (
 // repository's command-running config turned off.
 func Command(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	cmd := executil.Command(ctx, "git", Args(ctx, dir, args...)...)
-	cmd.Env = append(os.Environ(), Env()...)
+	cmd.Env = append(agentenv.Filter(os.Environ()), Env()...) // Coral's own CORAL_* settings never reach git (#25 H3)
 	return cmd
 }
 
@@ -145,7 +146,7 @@ func filterOverrides(ctx context.Context, dir string) []string {
 	}
 	args = append(args, "config", "--null", "--get-regexp", `^filter\.`)
 	cmd := executil.Command(ctx, "git", args...)
-	cmd.Env = append(os.Environ(), Env()...)
+	cmd.Env = append(agentenv.Filter(os.Environ()), Env()...) // Coral's own CORAL_* settings never reach git (#25 H3)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil // exit 1: no filter is configured
