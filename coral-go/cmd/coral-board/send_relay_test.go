@@ -73,6 +73,16 @@ func TestSendAddressAndTargets(t *testing.T) {
 	if out.String() != "homelab/qa (online)\nlab2/ops (offline)\n" {
 		t.Errorf("targets output %q", out.String())
 	}
+
+	// No reachable field (what Coral Hub sends): the address alone, never "(offline)" (#5598).
+	status, reply = http.StatusOK, `{"ok":true,"targets":[{"address":"homelab/qa"},{"address":"lab2/ops","reachable":false}]}`
+	out.Reset()
+	if err := runTargets("alpha", "Orchestrator", "tmux-1", &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "homelab/qa\nlab2/ops (offline)\n" {
+		t.Errorf("targets output without reachable %q", out.String())
+	}
 }
 
 // Through the real binary's dispatch (main, its help and free-text pre-checks), not

@@ -278,8 +278,9 @@ func runTargets(board, subscriberID, sessionName string, out io.Writer) error {
 		Error   string `json:"error"`
 		Message string `json:"message"`
 		Targets []struct {
-			Address   string `json:"address"`
-			Reachable bool   `json:"reachable"`
+			Address string `json:"address"`
+			// A pointer: Coral Hub does not send the field today, and an absent one is not "offline" (#5598).
+			Reachable *bool `json:"reachable"`
 		} `json:"targets"`
 	}
 	_ = json.Unmarshal(data, &result)
@@ -299,11 +300,14 @@ func runTargets(board, subscriberID, sessionName string, out io.Writer) error {
 		return nil
 	}
 	for _, t := range result.Targets {
-		state := "online"
-		if !t.Reachable {
-			state = "offline"
+		switch {
+		case t.Reachable == nil:
+			fmt.Fprintln(out, t.Address)
+		case *t.Reachable:
+			fmt.Fprintf(out, "%s (online)\n", t.Address)
+		default:
+			fmt.Fprintf(out, "%s (offline)\n", t.Address)
 		}
-		fmt.Fprintf(out, "%s (%s)\n", t.Address, state)
 	}
 	return nil
 }
