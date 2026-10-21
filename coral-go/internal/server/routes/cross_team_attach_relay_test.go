@@ -25,6 +25,7 @@ import (
 	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/board/boardtest"
 	"github.com/subgentic/coral/internal/cloud"
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/pkg/tunnel"
 )
@@ -438,11 +439,12 @@ func TestRelayAttachSwappedFileAbortsWithNothingSent(t *testing.T) {
 		},
 		"deleted": func(path string) { try(os.Remove(path)) },
 	}
-	if probe := t.TempDir(); os.Symlink(probe, filepath.Join(probe, "link")) != nil {
-		delete(cases, "replaced by a link") // no symlinks here (Windows without Developer Mode)
-	}
 	for name, tamper := range cases {
 		t.Run(name, func(t *testing.T) {
+			if name == "replaced by a link" {
+				// Here, on the test's goroutine, not in the tamper: skips where links can't be made, fails on CI.
+				linktest.RequireSymlinks(t)
+			}
 			tamperErr = nil
 			e := newRelayAttachEnv(t, true)
 			a := e.upload(alphaOrchSID, "# one\n")
