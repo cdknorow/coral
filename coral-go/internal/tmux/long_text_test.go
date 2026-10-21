@@ -149,10 +149,10 @@ func TestOnlyLaunchPathsWrapACommand(t *testing.T) {
 // method (SendKeys), never the launch typing function.
 func TestTmuxSessionTerminalSendInputIsTheTextPath(t *testing.T) {
 	path := filepath.Join("..", "ptymanager", "session_terminal_tmux.go")
-	body := funcBody(t, path, "func (t *TmuxSessionTerminal) SendInput(_ terminalinput.Origin, ")
+	body := funcBody(t, path, "func (t *TmuxSessionTerminal) SendInput(")
 	assert.Contains(t, body, "t.client.SendKeys(")
 	assert.NotContains(t, body, "SendKeysToTarget(")
-	launch := funcBody(t, path, "func (t *TmuxSessionTerminal) SendToTarget(_ terminalinput.Origin, ")
+	launch := funcBody(t, path, "func (t *TmuxSessionTerminal) SendToTarget(")
 	assert.Contains(t, launch, "SendKeysToTarget(", "the launch send is the one that may wrap")
 }
 
