@@ -104,7 +104,7 @@ func (s *Store) ListSubscribers(ctx context.Context, project string) ([]Subscrib
 func (s *Store) GetSubscription(ctx context.Context, subscriberID string) (*Subscriber, error) {
 	var sub Subscriber
 	err := s.reader().GetContext(ctx, &sub,
-		"SELECT * FROM board_subscribers WHERE subscriber_id = ? AND is_active = 1 ORDER BY subscribed_at DESC LIMIT 1", subscriberID)
+		"SELECT * FROM board_subscribers WHERE subscriber_id = ? AND is_active = 1 ORDER BY subscribed_at DESC, rowid DESC LIMIT 1", subscriberID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -142,7 +142,7 @@ func (s *Store) GetSubscriptionBySessionName(ctx context.Context, sessionName st
 func (s *Store) SessionSubscription(ctx context.Context, project, sessionName string) (*Subscriber, error) {
 	var sub Subscriber
 	err := s.reader().GetContext(ctx, &sub,
-		"SELECT * FROM board_subscribers WHERE project = ? AND session_name = ? AND is_active = 1 ORDER BY subscribed_at DESC LIMIT 1", project, sessionName)
+		"SELECT * FROM board_subscribers WHERE project = ? AND session_name = ? AND is_active = 1 ORDER BY subscribed_at DESC, rowid DESC LIMIT 1", project, sessionName)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
