@@ -19,8 +19,8 @@ const queueUsageText = `Usage: coral-board queue [--json]
 
 The merge queue (#5689): the approved tasks whose patches have not landed, oldest approval first. Each shows its patches: only the newest
 revision of each name that the approving round approved (an older revision stays on the task as history, a revision attached after the
-approval is never listed). Rows from submit-review carry no sequence number and sort as the oldest. How stale a patch's base is, and which
-patches conflict with each other, need git and are reported by the land command, not here.`
+approval is never listed). Rows from submit-review carry no sequence number and sort as the oldest. Whether a patch still applies to the target
+branch, and which patches conflict with each other, need git: the person who lands checks them there.`
 
 // cmdQueue prints the merge queue of the board this agent is subscribed to.
 func cmdQueue() {
@@ -75,9 +75,20 @@ func cmdQueue() {
 		return
 	}
 	for _, e := range out.Queue {
-		fmt.Printf("#%d  %s  (by %s, approved by %s at %s)\n", e.TaskID, e.Title, e.Author, strings.Join(e.Approvers, ", "), e.ApprovedAt)
+		fmt.Printf("#%d  %s  (by %s, approved by %s at %s)\n", e.TaskID, plainText(e.Title), plainText(e.Author), plainText(strings.Join(e.Approvers, ", ")), plainText(e.ApprovedAt))
 		for _, p := range e.Patches {
-			fmt.Printf("    %s  digest %s  base %s\n", p.Name, p.Digest, p.Revision)
+			fmt.Printf("    %s  digest %s  base %s\n", plainText(p.Name), plainText(p.Digest), plainText(p.Revision))
 		}
 	}
+}
+
+// plainText is s without control characters (ESC and so CSI sequences, the C0 range, DEL, the C1 range): what a task title or a name may
+// hold must not move the cursor, recolour or retitle the terminal of the person who reads the queue. --json prints the data as it is.
+func plainText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
+			return -1
+		}
+		return r
+	}, s)
 }
