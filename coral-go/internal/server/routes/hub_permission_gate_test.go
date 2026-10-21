@@ -182,3 +182,11 @@ func TestHubAutoAcceptOffSaysWhereToTurnItOn(t *testing.T) {
 		}
 	}
 }
+
+// #126 F4 (the Orchestrator's decision): the switch is off on an install where it was never set,
+// and a stored on stays on.
+func TestHubAutoAcceptSwitchIsOffUnlessTurnedOn(t *testing.T) {
+	assert.False(t, HubAutoAcceptAllowed(map[string]string{}), "never set")
+	assert.True(t, HubAutoAcceptAllowed(map[string]string{AllowHubAutoAcceptSetting: "true"}), "turned on")
+	assert.False(t, HubAutoAcceptAllowed(map[string]string{AllowHubAutoAcceptSetting: "false"}), "turned off")
+}
