@@ -32,6 +32,21 @@ const hex = i => i.toString(16).padStart(20, '0');
         const prev = window.fetch;
         window.fetch = async (url, opts = {}) => {
             const u = String(url);
+            // The real server marks a bookmark whose transcript it cannot read (#5802), and the harness's agents have none on disk: the marks are what the mock transcripts say.
+            if (/^\\/api\\/saved(\\?.*)?$/.test(u) && (opts.method || 'GET').toUpperCase() === 'GET') {
+                const resp = await prev(url, opts);
+                const body = await resp.clone().json().catch(() => null);
+                if (!body || !Array.isArray(body.items)) return resp;
+                body.items = body.items.map(it => {
+                    if (it.kind !== 'agent') return it;
+                    if (it.ref === 'dead0000-0000-4000-8000-000000000002') return { ...it, reason: 'not_reachable' }; // the agent with no transcript (7c)
+                    const idx = parseInt(it.key, 16);
+                    let total = it.ref === 'dead0000-0000-4000-8000-000000000001' ? 150 : 0; // the ended agent's mock history (7c)
+                    if (!total) { try { total = window.__m.byPathSeg(it.title).msgs.length; } catch (e) { total = 0; } }
+                    return { ...it, reason: idx >= 0 && idx < total ? '' : 'gone' };
+                });
+                return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+            }
             const m = u.match(/\\/api\\/sessions\\/live\\/([^/?]+)\\/chat\\?(.*)$/);
             if (!m) return prev(url, opts);
             const p = new URLSearchParams(m[2]);
