@@ -1701,7 +1701,7 @@ func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
 	}
 	for _, event := range []string{"SessionStart", "PreInvocation", "PreToolUse", "PostToolUse", "Stop"} {
 		b, _ := json.Marshal(spec["coral"][event])
-		want, _ := json.Marshal(ResolveHookCommand("coral-hook-agentic-state --agy " + event))
+		want, _ := json.Marshal(ResolveCmdHookCommand("coral-hook-agentic-state --agy " + event))
 		if !strings.Contains(string(b), string(want)) {
 			t.Errorf("%s: %s", event, b)
 		}
