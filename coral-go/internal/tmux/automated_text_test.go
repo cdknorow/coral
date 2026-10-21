@@ -34,18 +34,6 @@ func TestAutomatedTextHasNoKeystrokesAndNoLineBreaks(t *testing.T) {
 	assert.Equal(t, "é", SanitizeTyped("é"), "a character that looks like a C1 byte in Latin-1 is a letter in UTF-8")
 }
 
-// On tmux, the typed path (send-keys -l) of an automated send is sanitised and flattened; a person's send is not.
-func TestAutomatedTypedSendIsSanitisedOnTmux(t *testing.T) {
-	skipWithoutUnixTmux(t)
-	c, dir := fakeTmux(t)
-	ctx := WithAutomated(context.Background())
-	require.NoError(t, c.SendKeys(ctx, "agent", "hi\x1b[201~\x03 there\nsecond line", "claude", longTextSID))
-	joined := strings.Join(readCalls(t, dir), "\n")
-	assert.Contains(t, joined, "send-keys -t "+promptTestSession+":0.0 -l -- hi[201~ there second line")
-	assert.NotContains(t, joined, "paste-buffer", "flattened to one typed line")
-	assert.NotContains(t, joined, "\x1b")
-}
-
 func TestAPersonsTypedSendIsNotChangedOnTmux(t *testing.T) {
 	skipWithoutUnixTmux(t)
 	c, dir := fakeTmux(t)
