@@ -1,0 +1,103 @@
+== person typed text
+wrote "hunter2"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=typed text="[typed 7 bytes]"
+== person Enter
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== person digits
+wrote "123456"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=typed text="[typed 6 bytes]"
+== person Ctrl-C
+wrote "\x03"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\x03"
+== person arrow key
+wrote "\x1b[A"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=3 text="\x1b[A"
+== person typed text with an arrow
+wrote "ab\x1b[Ac"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=typed text="[typed 6 bytes]"
+== coral raw input
+wrote "coral's own"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=11 text="coral's own"
+== coral Enter
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== person sent line
+wrote "my token is xyz-secret"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=typed text="[typed 22 bytes]"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== coral sent line
+wrote "echo hi"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=7 text="echo hi"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== person sent line, empty
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== person paste, bracketed paste on
+wrote "\x1b[200~line one\nline two: xyz-secret\x1b[201~"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=typed text="[typed 41 bytes]"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== person paste, bracketed paste off
+wrote "line one\rline two: xyz-secret"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=typed text="[typed 29 bytes]"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== person long single line (a paste)
+wrote "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=typed text="[typed 905 bytes]"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== person prompt, on
+wrote "\x1b[200~line one\nline two: xyz-secret\x1b[201~"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=typed text="[typed 41 bytes]"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== person prompt, off (refused)
+error the agent terminal is not accepting multi-line paste right now (bracketed paste mode is off or could not be confirmed); try again when the agent is at its prompt
+== coral line with control characters
+wrote "echo hi[31m there"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=17 text="echo hi[31m there"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== coral multi-line, bracketed paste on
+wrote "\x1b[200~one\ntwo[201~three\x1b[201~"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=29 text="\x1b[200~one\ntwo[201~three\x1b[201~"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== coral multi-line, bracketed paste off
+wrote "one two[201~three"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=17 text="one two[201~three"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== coral CRLF paste, on
+wrote "\x1b[200~one\ntwo\x1b[201~"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=19 text="\x1b[200~one\ntwo\x1b[201~"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== coral text of only control characters
+wrote "[31m"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=4 text="[31m"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== coral multi-line of only control characters, on
+error the text has nothing left to send once control characters and line breaks are removed
+== coral prompt, on
+wrote "\x1b[200~a prompt\nwith two lines[201~\x1b[201~"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=40 text="\x1b[200~a prompt\nwith two lines[201~\x1b[201~"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== coral prompt, off (refused)
+error the agent terminal is not accepting multi-line paste right now (bracketed paste mode is off or could not be confirmed); try again when the agent is at its prompt
+== unmarked paste, on (today it is logged in full)
+wrote "\x1b[200~line one\nline two: xyz-secret\x1b[201~"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=41 text="\x1b[200~line one\nline two: xyz-secret\x1b[201~"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
+== unmarked sent line
+wrote "plain text"
+wrote "\r"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=10 text="plain text"
+log target=golden source=ptymanager.TestTerminalInputGoldenPTY kind=raw len=1 text="\r"
