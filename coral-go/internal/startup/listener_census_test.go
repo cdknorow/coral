@@ -183,7 +183,7 @@ func TestEveryWildcardAddressAndHostWriteIsCensused(t *testing.T) {
 	found := map[string]bool{}
 	hostWrites := map[string]bool{}
 	allowedWrites := map[string]string{
-		"cmd/coral/main.go:main": "--host: a host that was asked for, still gated by applyPrivacySettings",
+		"cmd/coral/main.go:main":                                     "--host: a host that was asked for, still gated by applyPrivacySettings",
 		"cmd/coral/relaunch_fixture_on.go:applyRelaunchFixtureBuild": "the relaunchfixture build only (a build tag no release uses): refuses --remote and any host that is not loopback, and sets 127.0.0.1 when none is given, so it only narrows the bind",
 		"cmd/coral-tray/child.go:runServerChild":                     "the tray's --host, handed on only when asked for (hostArgs), still gated by applyPrivacySettings",
 		"internal/config/config.go:Load":                             "the default 127.0.0.1, or CORAL_HOST (explicit, gated)",
