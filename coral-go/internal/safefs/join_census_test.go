@@ -89,7 +89,7 @@ var joinSites = map[string]joinEntry{
 	"internal/agent/claude.go\tClaudeAgent.PrepareResume":                                    {5, joinID, "the session id is checked (IsResumeID, a canonical UUID) before it is joined; the project folder name has its separators replaced"},
 	"internal/agent/claude.go\tcopyDir":                                                      {2, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
 	"internal/agent/codex.go\tCodexSessionSaved":                                             {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
-	"internal/agent/hookcmd.go\tResolveHookCommand":                                          {1, joinOwn, "a CLI or tool name constant"},
+	"internal/agent/hookcmd.go\thookToolPath":                                                {1, joinOwn, "a coral-hook-* name constant from Coral's callers, refused if it holds a separator"},
 	"internal/agent/pi.go\tPiAgent.LaunchCommand":                                            {1, joinID, "the session id is checked (IsResumeID, a canonical UUID) before it is joined; the project folder name has its separators replaced"},
 	"internal/agent/shell.go\tFindCLIInCommonPaths":                                          {7, joinOwn, "a CLI or tool name constant"},
 	"internal/agent/tempsweep.go\tSweepStaleTempFiles":                                       {1, joinFixed, "names from a directory listing or numbers and hashes the program makes"},
