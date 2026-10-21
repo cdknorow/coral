@@ -4,7 +4,7 @@
     "agentType": "claude",
     "model": "claude-opus-4",
     "prompt": "Be kind.",
-    "flags": "--permission-mode bypassPermissions",
+    "flags": "--permission-mode auto",
     "capabilities": {
       "allow": [
         "file_read"
@@ -14,7 +14,7 @@
   "restart_unchanged": {
     "agent_type": "claude",
     "session_id": "sid-r",
-    "extra_flags": "--permission-mode bypassPermissions",
+    "extra_flags": "--permission-mode auto",
     "prompt": "Be kind.",
     "model": "claude-opus-4",
     "capabilities": {
@@ -77,7 +77,7 @@
     "agentType": "claude",
     "model": "",
     "prompt": "",
-    "flags": "--permission-mode bypassPermissions",
+    "flags": "--permission-mode auto",
     "capabilities": null
   },
   "agent_minimal": {
@@ -86,7 +86,7 @@
     "backend": "tmux",
     "flags": [
       "--permission-mode",
-      "bypassPermissions"
+      "auto"
     ]
   },
   "agent_full_config": {
@@ -131,7 +131,7 @@
     "backend": "tmux",
     "flags": [
       "--permission-mode",
-      "bypassPermissions"
+      "auto"
     ],
     "board_name": "taken",
     "board_id": "taken"
