@@ -192,7 +192,7 @@ func Message(findings []Finding) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("Windows Firewall allows incoming connections to Coral's programs more widely than needed. Coral never makes firewall rules; these came from Windows' own \"allow this app\" prompt, which allows the whole program on every port. Allow Private networks only. In an administrator PowerShell:")
+	b.WriteString("Windows Firewall lets other computers reach Coral on every port, more than it needs. Coral never makes firewall rules: Windows made these when someone clicked Allow on its prompt. To limit each rule to Private networks, open PowerShell as an administrator and run:")
 	for _, f := range findings {
 		fmt.Fprintf(&b, "\n- %s (%s) %s: %s", f.Rule.Name, f.Rule.App, f.Why, f.Fix())
 	}

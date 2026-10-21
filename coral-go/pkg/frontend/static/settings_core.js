@@ -62,7 +62,7 @@ export function renderToolsFolderStatus(status) {
         el.textContent = '';
         return;
     }
-    el.textContent = `${tools.path} can be changed by ${who.join(', ')}, not only by an administrator: a program running as that account could replace the hooks every agent runs. Install Coral with the installer (Program Files) to keep them where only an administrator can change them.`;
+    el.textContent = `${tools.path} can be changed by ${who.join(', ')}, not only by an administrator. A program running as one of those accounts could replace the tools every agent runs. To fix it, install Coral with the installer: it goes in Program Files, where only an administrator can change it.`;
     row.hidden = false;
 }
 

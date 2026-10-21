@@ -121,7 +121,9 @@ function showWarningToast(id, heading, message) {
     title.textContent = heading;
     const close = document.createElement("button");
     close.className = "update-toast-close";
+    close.type = "button";
     close.title = "Dismiss";
+    close.setAttribute("aria-label", `Dismiss: ${heading}`); // the × alone is read as "times"
     close.textContent = "\u00d7";
     close.addEventListener("click", () => toast.remove());
     header.append(title, close);
@@ -130,7 +132,18 @@ function showWarningToast(id, heading, message) {
     text.textContent = message;
     body.append(header, text);
     toast.append(body);
-    document.body.appendChild(toast);
+    warningStack().appendChild(toast);
+}
+
+// The warnings (security, firewall, database) share one column at the bottom right: each used to sit at that same corner, so two at once were drawn over each other.
+function warningStack() {
+    let stack = document.getElementById("warning-toasts");
+    if (!stack) {
+        stack = document.createElement("div");
+        stack.id = "warning-toasts";
+        document.body.appendChild(stack);
+    }
+    return stack;
 }
 
 // The update toast's close button (#3645).

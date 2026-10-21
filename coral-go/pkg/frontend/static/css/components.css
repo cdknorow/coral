@@ -1387,7 +1387,27 @@ button.subscriber-history-link {
     margin: 0;
     line-height: 1.45;
     overflow-wrap: anywhere;
+    white-space: pre-line; /* the firewall warning is a line, then one line per rule: they ran together as one block */
+    max-height: 50vh;
+    overflow-y: auto;
 }
+
+/* The warnings share one column (security, firewall, database), so two at once do not sit on each other (#5737). */
+#warning-toasts {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 300;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 10px;
+    width: min(440px, calc(100vw - 40px));
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    pointer-events: none;
+}
+#warning-toasts > .security-warning-toast { position: static; min-width: 0; pointer-events: auto; animation: none; }
+#warning-toasts .security-warning-text { max-height: 26vh; } /* three can show at once: each scrolls its own text before the column outgrows the window */
 
 .update-toast-body {
     display: flex;
@@ -1424,6 +1444,8 @@ button.subscriber-history-link {
     padding: 0;
     line-height: 1;
     flex-shrink: 0;
+    min-width: 24px; /* a target the size of the smallest a pointer should have (WCAG 2.5.8): the × alone was 10 px */
+    min-height: 24px;
 }
 
 .update-toast-close:hover {
