@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/subgentic/coral/internal/firewall"
 	"github.com/subgentic/coral/internal/safego"
@@ -12,27 +13,42 @@ import (
 // firewallRules reads the machine's firewall rules (a variable so a test can stand in for the registry).
 var firewallRules = firewall.ReadRules
 
+// firewallRecheck are the waits before the later looks: the first listen on a network address makes Windows ask whether to allow
+// the program, and the rule the answer makes does not exist until the person has answered, so a single look just after the
+// listeners open would miss it until the next start (#97 L1).
+var firewallRecheck = []time.Duration{time.Minute, 10 * time.Minute, time.Hour}
+
 // startFirewallCheck, on Windows, reads the firewall rules that name Coral's programs and warns about any inbound allow rule on the
-// Public profile or for every port (#97, audit G4A): in the log, and on the dashboard through firewall.Warning. It only reads: a rule
-// is changed by the person, in an administrator PowerShell, with the command in the warning.
+// Public profile (#97, audit G4A): in the log, and on the dashboard through firewall.Warning. It looks once now and again after a minute,
+// ten minutes and an hour, logging only when the finding changes. It only reads: a rule is changed by the person, in an administrator
+// PowerShell, with the command in the warning.
 func startFirewallCheck() {
 	defer safego.Recover("startup/firewall_check")
 	if runtime.GOOS != "windows" {
 		return
 	}
-	checkFirewall(os.Executable)
+	last := ""
+	last = checkFirewall(os.Executable, last)
+	for _, wait := range firewallRecheck {
+		time.Sleep(wait)
+		last = checkFirewall(os.Executable, last)
+	}
 }
 
-func checkFirewall(executable func() (string, error)) {
+// checkFirewall records what the rules say now and logs the warning unless it is the one logged last time; it returns the message
+// that is now in effect.
+func checkFirewall(executable func() (string, error), last string) string {
 	rules, err := firewallRules()
 	if err != nil {
 		log.Printf("[firewall] could not read the Windows Firewall rules (%v); not checking them", err)
-		return
+		return last
 	}
 	exe, _ := executable()
 	found := firewall.Assess(rules, exe)
 	firewall.Set(found)
-	if msg := firewall.Message(found); msg != "" {
+	msg := firewall.Message(found)
+	if msg != "" && msg != last {
 		log.Print("[firewall] WARNING: " + msg)
 	}
+	return msg
 }
