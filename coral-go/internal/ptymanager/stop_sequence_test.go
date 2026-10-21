@@ -31,6 +31,9 @@ func (r *stopRecorder) writes() []string {
 	return out
 }
 
+func yesShell() bool { return true }
+func noShell() bool  { return false }
+
 var fastStop = stopTimings{secondAfter: 20 * time.Millisecond, poll: 5 * time.Millisecond, limit: 300 * time.Millisecond}
 
 // #68 (audit F12): a stop that is one Ctrl-C leaves a raw-mode CLI waiting out the whole grace. The second Ctrl-C follows,
@@ -38,7 +41,7 @@ var fastStop = stopTimings{secondAfter: 20 * time.Millisecond, poll: 5 * time.Mi
 func TestPoliteStopSendsASecondCtrlCThenExitForAnIdleShell(t *testing.T) {
 	var r stopRecorder
 	done := make(chan struct{})
-	politeStop(r.write, done, func() (bool, error) { return false, nil }, fastStop)
+	politeStop(r.write, done, func() (bool, error) { return false, nil }, yesShell, fastStop)
 	assert.Equal(t, []string{"\x03", "exit\r"}, r.writes())
 }
 
@@ -46,12 +49,12 @@ func TestPoliteStopNeverTypesExitWhileAProgramIsRunning(t *testing.T) {
 	var r stopRecorder
 	done := make(chan struct{})
 	start := time.Now()
-	politeStop(r.write, done, func() (bool, error) { return true, nil }, fastStop)
+	politeStop(r.write, done, func() (bool, error) { return true, nil }, yesShell, fastStop)
 	assert.Equal(t, []string{"\x03"}, r.writes(), "exit would be typed into the agent's input")
 	assert.GreaterOrEqual(t, time.Since(start), fastStop.limit, "it waited out its limit")
 	// A process list that can't be read is not an idle shell either.
 	var r2 stopRecorder
-	politeStop(r2.write, done, func() (bool, error) { return false, errors.New("snapshot") }, fastStop)
+	politeStop(r2.write, done, func() (bool, error) { return false, errors.New("snapshot") }, yesShell, fastStop)
 	assert.Equal(t, []string{"\x03"}, r2.writes())
 }
 
@@ -59,13 +62,38 @@ func TestPoliteStopStopsWhenTheProcessIsGone(t *testing.T) {
 	var r stopRecorder
 	done := make(chan struct{})
 	close(done) // exited on the first Ctrl-C
-	politeStop(r.write, done, func() (bool, error) { return false, nil }, fastStop)
+	politeStop(r.write, done, func() (bool, error) { return false, nil }, yesShell, fastStop)
 	assert.Empty(t, r.writes(), "no second Ctrl-C for a process that already went")
 
 	// Gone after the second.
 	var r2 stopRecorder
 	done2 := make(chan struct{})
 	go func() { time.Sleep(fastStop.secondAfter + 10*time.Millisecond); close(done2) }()
-	politeStop(r2.write, done2, func() (bool, error) { return true, nil }, fastStop)
+	politeStop(r2.write, done2, func() (bool, error) { return true, nil }, yesShell, fastStop)
 	assert.Equal(t, []string{"\x03"}, r2.writes())
+}
+
+// #5665: an agent started directly as the terminal's root has no child of its own, so "no child" does not mean "an idle shell": "exit" would be a
+// message typed into the agent. It is typed only when the root is a known shell; an unknown root is not one.
+func TestPoliteStopNeverTypesExitIntoAnAgentStartedAsTheRoot(t *testing.T) {
+	var r stopRecorder
+	done := make(chan struct{})
+	start := time.Now()
+	politeStop(r.write, done, func() (bool, error) { return false, nil }, noShell, fastStop) // no child, and the root is not a shell
+	assert.Equal(t, []string{"\x03"}, r.writes(), "the second Ctrl-C, and nothing typed into the agent")
+	assert.GreaterOrEqual(t, time.Since(start), fastStop.limit, "it waited out its limit and left the rest to the force kill")
+
+	// A shell with nothing running still gets "exit".
+	var r2 stopRecorder
+	politeStop(r2.write, done, func() (bool, error) { return false, nil }, yesShell, fastStop)
+	assert.Equal(t, []string{"\x03", "exit\r"}, r2.writes())
+}
+
+func TestIsShellImageKnowsTheWindowsShellsAndNothingElse(t *testing.T) {
+	for _, shell := range []string{"powershell.exe", "PowerShell.EXE", `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, "pwsh.exe", `C:\Program Files\PowerShell\7\pwsh.exe`, "cmd.exe", `C:\Windows\System32\CMD.EXE`, "C:/Windows/System32/cmd.exe"} {
+		assert.True(t, isShellImage(shell), shell)
+	}
+	for _, not := range []string{"", "claude.exe", "codex.exe", "node.exe", `C:\Users\x\claude.exe`, "powershell.exe.bak", "mycmd.exe", "cmd.exe.exe", "powershell", "cmd", `C:\tools\powershell.exe\claude.exe`, "pwsh"} {
+		assert.False(t, isShellImage(not), not)
+	}
 }

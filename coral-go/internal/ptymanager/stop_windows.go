@@ -57,3 +57,20 @@ func hasChildProcesses(pid int) (bool, error) {
 		}
 	}
 }
+
+// rootIsShell says whether the process the terminal started is a known shell (powershell, pwsh, cmd), read from the process's own
+// executable path through its handle, never from the command line text. Any failure, or a process that is gone, is "no": the polite stop
+// then types nothing (#5665).
+func rootIsShell(pid int) bool {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]uint16, windows.MAX_PATH*2)
+	n := uint32(len(buf))
+	if err := windows.QueryFullProcessImageName(h, 0, &buf[0], &n); err != nil {
+		return false
+	}
+	return isShellImage(windows.UTF16ToString(buf[:n]))
+}

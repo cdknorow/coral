@@ -1,6 +1,9 @@
 package ptymanager
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // stopTimings are the pauses of a polite stop where Terminate types into the console (Windows). A raw-mode CLI takes the
 // first Ctrl-C as "clear the input / press again to exit" (Claude Code, Codex), so one Ctrl-C left the stop to wait out the
@@ -16,8 +19,10 @@ var defaultStopTimings = stopTimings{secondAfter: 600 * time.Millisecond, poll: 
 // politeStop is what follows a first Ctrl-C: a second one after secondAfter if the process is still there, and then,
 // once the process the terminal started has no program left running under it (the agent has exited and its shell is back
 // at the prompt), "exit" and Enter to end the shell. "exit" is never typed while a program is still running, since it
-// would be typed into that program's input. It returns when done closes or limit passes.
-func politeStop(write func([]byte) error, done <-chan struct{}, hasChildren func() (bool, error), t stopTimings) {
+// would be typed into that program's input, and never when the process the terminal started is not a known shell
+// (rootIsShell): an agent started directly as the root has no child of its own, and "exit" would be a message to it.
+// An unknown root (rootIsShell false) is not a shell. It returns when done closes or limit passes.
+func politeStop(write func([]byte) error, done <-chan struct{}, hasChildren func() (bool, error), rootIsShell func() bool, t stopTimings) {
 	deadline := time.NewTimer(t.limit)
 	defer deadline.Stop()
 	second := time.NewTimer(t.secondAfter)
@@ -41,10 +46,24 @@ func politeStop(write func([]byte) error, done <-chan struct{}, hasChildren func
 		case <-deadline.C:
 			return
 		case <-tick.C:
-			if busy, err := hasChildren(); err == nil && !busy {
+			if busy, err := hasChildren(); err == nil && !busy && rootIsShell() {
 				_ = write([]byte("exit\r"))
 				return
 			}
 		}
 	}
+}
+
+// isShellImage says whether an executable's path or name is one of the Windows shells a terminal is started with: powershell.exe,
+// pwsh.exe or cmd.exe, whatever the folder and the case. Anything else, an empty name included, is not a shell.
+func isShellImage(image string) bool {
+	name := strings.ToLower(image)
+	if i := strings.LastIndexAny(name, `\/`); i >= 0 {
+		name = name[i+1:]
+	}
+	switch name {
+	case "powershell.exe", "pwsh.exe", "cmd.exe":
+		return true
+	}
+	return false
 }
