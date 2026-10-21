@@ -1,6 +1,7 @@
 package ptymanager
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,4 +33,20 @@ func TestPTYLogsAPersonsTypingByLengthOnly(t *testing.T) {
 	assert.Contains(t, text, `kind=typed text="[typed 7 bytes]"`)
 	assert.Contains(t, text, `kind=raw len=1 text="\r"`)
 	assert.Contains(t, text, `text="coral's own"`)
+}
+
+// #60 review N3: a person's text sent as a line (the dashboard's chat or send box) is logged by its
+// length only, and its Enter as it is.
+func TestPTYLogsAPersonsSentLineByLengthOnly(t *testing.T) {
+	dir := t.TempDir()
+	inputlog.Setup(dir, true)
+	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
+	b, _, proc := newFakeBackend(t, "codex-60")
+	require.NoError(t, b.SendLineCtx(inputlog.Human(context.Background()), "codex-60", "my token is xyz"))
+	assert.Equal(t, [][]byte{[]byte("my token is xyz"), []byte(EnterKey)}, proc.written())
+	inputlog.Flush()
+	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "my token")
+	assert.Contains(t, string(raw), `kind=typed text="[typed 15 bytes]"`)
 }

@@ -115,12 +115,12 @@ func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, _ int
 	return string(data), nil
 }
 
-func (p *PTYSessionTerminal) SendInput(_ context.Context, name, command, _, sessionID string) error {
+func (p *PTYSessionTerminal) SendInput(ctx context.Context, name, command, _, sessionID string) error {
 	key, err := p.keyFor(name, sessionID)
 	if err != nil {
 		return err
 	}
-	return p.backend.SendLine(key, command)
+	return p.backend.SendLineCtx(ctx, key, command)
 }
 
 // SendPrompt delivers text as one bracketed paste followed by Enter, only while

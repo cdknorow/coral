@@ -149,13 +149,19 @@ func (m *PTYBackend) sendInput(ctx context.Context, name string, data []byte) er
 // separately after a short delay: agent TUIs treat text that arrives in the same
 // read as a trailing newline as a paste, leaving it in the input box unsent.
 func (m *PTYBackend) SendLine(name, text string) error {
+	return m.SendLineCtx(context.Background(), name, text)
+}
+
+// SendLineCtx is SendLine for input sent with ctx: a person's (inputlog.Human) is logged by its
+// length only (#60 review N3).
+func (m *PTYBackend) SendLineCtx(ctx context.Context, name, text string) error {
 	if text != "" {
-		if err := m.SendInput(name, []byte(text)); err != nil {
+		if err := m.sendInput(ctx, name, []byte(text)); err != nil {
 			return err
 		}
 		time.Sleep(lineSubmitDelay)
 	}
-	return m.SendInput(name, []byte(EnterKey))
+	return m.sendInput(ctx, name, []byte(EnterKey))
 }
 
 // lineSubmitDelay separates typed text from the submitting Enter in SendLine.
@@ -200,7 +206,7 @@ func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
 		return ErrBracketedPasteUnavailable
 	}
 	payload := []byte("\x1b[200~" + tmux.SanitizePaste(text) + "\x1b[201~")
-	n, err := s.writeFull(payload)
+	n, err := s.writeFullCtx(ctx, payload) // a person's paste is logged by its length (#60 N3)
 	if err != nil {
 		if n > 0 {
 			return tmux.MarkDeliveryUnknown(fmt.Errorf("paste write failed after %d of %d bytes: %w", n, len(payload), err))

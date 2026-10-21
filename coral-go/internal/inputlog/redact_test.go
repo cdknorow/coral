@@ -123,3 +123,20 @@ func TestRetentionAndPrivacyOfTheFiles(t *testing.T) {
 	assert.NoFileExists(t, path+".1", "the rotated copy goes when the log is turned off")
 	assert.FileExists(t, path, "the log stays until the person deletes it (or retention)")
 }
+
+// #60 review N1: an entry keeps at most redactWindow bytes of the sent text, so the writer's queue
+// is bounded whatever is pasted; the redactor still sees well past the shown part.
+func TestEntriesAreBounded(t *testing.T) {
+	path := enable(t)
+	captureLog(t)
+	prev := redactText
+	t.Cleanup(func() { redactText = prev })
+	var seen []int
+	redactText = func(s string) (string, error) { seen = append(seen, len(s)); return s, nil }
+	Record("p", Paste, strings.Repeat("x", 1<<20))
+	Flush()
+	require.Len(t, seen, 1)
+	assert.Equal(t, redactWindow, seen[0])
+	assert.Greater(t, redactWindow, 4*maxText, "redaction sees well past the cut")
+	assert.Contains(t, readFile(t, path), "len=4096")
+}

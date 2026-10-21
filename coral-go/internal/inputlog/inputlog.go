@@ -42,10 +42,11 @@ const (
 	// maxText is how much of the sent text a line shows.
 	maxText    = 200
 	queueDepth = 4096
-	// redactWindow is how much of the sent text is checked for secrets before the line keeps
-	// maxText of it: a secret that starts in the shown part and runs past the cut is still found
-	// (#60, Security's condition a).
-	redactWindow = 16 << 10
+	// redactWindow is how much of the sent text an entry keeps, to be checked for secrets before
+	// the line keeps maxText of it: a secret that starts in the shown part and runs past the cut is
+	// still found (#60, Security's condition a). It also bounds the writer's queue: queueDepth
+	// entries of at most this much text, 16 MiB at worst on a stuck disk (#60 review N1).
+	redactWindow = 4 << 10
 	// retention: a log file not written for this long is deleted at startup and when the log
 	// turns on (#60).
 	retention = 7 * 24 * time.Hour
@@ -460,7 +461,7 @@ func (fw *fileWriter) write(line string) {
 		}
 		// Windows ignores the mode, and an older Coral may have made the file with the folder's
 		// access list: never append to one others can read (#60, Security's condition d).
-		if err := secfile.Protect(fw.path); err != nil {
+		if err := secfile.Protect(fw.path); err != nil || !sameFile(f, fw.path) {
 			f.Close()
 			fw.f = nil
 			return
@@ -516,4 +517,15 @@ func removeRegular(f string) {
 	if fi, err := os.Lstat(f); err == nil && fi.Mode().IsRegular() {
 		_ = os.Remove(f)
 	}
+}
+
+// sameFile reports whether path still names the file f has open: Protect acts by path after
+// the open, so a file swapped in between is never written to (#60 review N2).
+func sameFile(f *os.File, path string) bool {
+	opened, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	now, err := os.Lstat(path)
+	return err == nil && now.Mode().IsRegular() && os.SameFile(opened, now)
 }
