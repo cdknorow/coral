@@ -1,0 +1,33 @@
+name: trial-perf3-race-5622
+on:
+  push:
+    branches: [trial/perf3-race-5622]
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+jobs:
+  race:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: patched, ref: ""}
+          - {name: base, ref: "4cfa4ef98c175fefbe388193ccc312839e80000b"}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          ref: ${{ matrix.ref }}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - shell: bash
+        run: |
+          set -eo pipefail
+          nproc
+          cd coral-go
+          start=$(date +%s)
+          go test -race -count=1 ./internal/server/routes 2>&1 | tail -15
+          echo "ELAPSED $(( $(date +%s) - start )) s (${{ matrix.name }})"
