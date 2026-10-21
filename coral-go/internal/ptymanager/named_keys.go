@@ -119,6 +119,9 @@ func isDigits(s string) bool {
 
 // sleepCtx waits d, or until ctx ends (its error).
 func sleepCtx(ctx context.Context, d time.Duration) error {
+	if err := ctx.Err(); err != nil { // a request cancelled during the last key stops here even when the gap has already passed (select would pick either ready case)
+		return err
+	}
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
