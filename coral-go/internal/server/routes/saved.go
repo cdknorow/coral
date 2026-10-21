@@ -127,6 +127,7 @@ func (h *SystemHandler) SavedList(w http.ResponseWriter, r *http.Request) {
 			items = items[:n]
 		}
 	}
+	h.markSavedReasons(r.Context(), items) // only the bookmarks that are listed (limit=0, the badge's count, asks nothing)
 	open, done, err := h.ss.SavedCounts(r.Context(), scope)
 	if err != nil {
 		errInternalServer(w, "could not read the saved messages")

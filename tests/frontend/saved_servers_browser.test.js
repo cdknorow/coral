@@ -32,7 +32,7 @@ const REMOTE = `(() => {
             if (q.get('kind')) items = items.filter(i => i.kind === q.get('kind'));
             if (q.get('conv')) items = items.filter(i => i.ref === q.get('conv'));
             items.sort((a, b) => b.saved_at.localeCompare(a.saved_at));
-            return json({ open, done, items });
+            return json({ open, done, items: items.map(i => ({ ...i, reason: i.kind === 'board' && store.boardGone.has(i.key) ? 'gone' : '' })) }); // the server marks the gone ones itself (#5802)
         }
         if (path === '/api/saved' && method === 'POST') {
             const b = JSON.parse(opts.body);

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/subgentic/coral/internal/clitext"
 )
@@ -353,6 +354,31 @@ func (s *Store) GetMessageByID(ctx context.Context, project string, id int64) (*
 		return nil, err
 	}
 	return &msg, nil
+}
+
+// ExistingMessageIDs is which of these message ids are on the board: one query for all of them (a board's message ids are numbered across every board, so an id of another
+// board is not there). Saved for Later uses it to mark the bookmarks whose message was deleted (#5802).
+func (s *Store) ExistingMessageIDs(ctx context.Context, project string, ids []int64) (map[int64]bool, error) {
+	have := map[int64]bool{}
+	for len(ids) > 0 {
+		n := min(len(ids), 500) // SQLite's variable limit stays far away
+		chunk := ids[:n]
+		ids = ids[n:]
+		args := make([]any, 0, n+1)
+		args = append(args, project)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+		var found []int64
+		q := "SELECT id FROM board_messages WHERE project = ? AND id IN (?" + strings.Repeat(",?", n-1) + ")"
+		if err := s.reader().SelectContext(ctx, &found, q, args...); err != nil {
+			return nil, err
+		}
+		for _, id := range found {
+			have[id] = true
+		}
+	}
+	return have, nil
 }
 
 // SearchMessageHits returns bounded board messages containing query text. It

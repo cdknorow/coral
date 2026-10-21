@@ -162,7 +162,12 @@ const hex = i => i.toString(16).padStart(20, '0');
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 3`, 'three items', 6000);
         await waitFor(`!!document.querySelector('#saved-list .saved-item.gone .why:not([hidden])')`, 'the gone message to be found when the list opens', 8000);
         const g = await ev(`(() => { const li = document.querySelector('#saved-list .saved-item.gone'); return { text: li.querySelector('.why').textContent, chip: li.querySelector('.kind').textContent, actions: [...li.querySelectorAll('.acts .btn')].map(b => b.lastChild.textContent.trim()), snippet: li.querySelector('.snip').textContent, open: document.getElementById('agentic-panel-saved').classList.contains('active') }; })()`);
-        assert.match(g.text, /no longer has this message/); assert.equal(g.chip, 'Gone'); assert.deepEqual(g.actions, ['Remove'], 'a gone item can only be removed'); assert.match(g.snippet, /no longer has/); assert.ok(g.open, 'the Saved tab stays open');
+        assert.match(g.text, /no longer has this message|transcript is gone/); assert.equal(g.chip, 'Gone'); assert.deepEqual(g.actions, ['Remove'], 'a gone item can only be removed'); assert.match(g.snippet, /no longer has/); assert.ok(g.open, 'the Saved tab stays open');
+        // #5802: the list's own answer marks the gone ones, so opening the tab asks nothing per bookmark (QA's #5796: it was one request per row, up to 200)
+        const seen = await ev(`(async () => { const prev = window.fetch; const urls = []; window.fetch = (u, o) => { urls.push(String(u)); return prev(u, o); }; try { const m = await import((window.__coralStatic || '/static/') + 'saved.js'); await m.openSaved(); await new Promise(r => setTimeout(r, 800)); } finally { window.fetch = prev; } return urls; })()`);
+        assert.equal(seen.filter(u => /\/api\/saved(\?|$)/.test(u)).length, 1, 'the list is read once: ' + JSON.stringify(seen));
+        assert.deepEqual(seen.filter(u => /messages\/all\?|find_key=|\/api\/sessions\/history\//.test(u)), [], 'no request per bookmark');
+        assert.ok(await ev(`!!document.querySelector('#saved-list .saved-item.gone .why:not([hidden])')`), 'the gone one is still marked');
         await shot('saved-gone-desktop');
         await ev(`document.querySelector('#saved-list .saved-item.gone .saved-remove').click(); true`);
         await waitFor(`document.querySelectorAll('#saved-list .saved-item').length === 2`, 'the gone item removed', 6000);

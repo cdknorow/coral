@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/transcriptlink"
 	"github.com/subgentic/coral/pkg/redact"
 )
@@ -29,6 +30,81 @@ const (
 // SetSavedSources injects how the sources of the bookmarks are read: a board's message by id, an agent's message by session id and key.
 func (h *SystemHandler) SetSavedSources(board func(ctx context.Context, project string, id int64) (string, bool, error), agent func(ctx context.Context, sessionID, agentType, key string) (string, bool, bool)) {
 	h.savedBoardText, h.savedAgentText = board, agent
+}
+
+// SetSavedPresence injects how the list tells whether the bookmarked messages still exist (#5802).
+func (h *SystemHandler) SetSavedPresence(board func(ctx context.Context, project string, ids []int64) (map[int64]bool, error), agent func(ctx context.Context, sessionID string, keys []string) (map[string]bool, bool)) {
+	h.savedBoardHas, h.savedAgentHas = board, agent
+}
+
+// maxSavedAgentChecks bounds how many agents' transcripts one list reads: the rest are listed unchecked (reason "") and their Open finds out.
+const maxSavedAgentChecks = 50
+
+// markSavedReasons sets the Reason of each listed bookmark (#5802): a board's by one query per board, an agent's by one transcript read per agent, never one request per
+// bookmark. A source that cannot be asked leaves its bookmarks unmarked (an error is not "gone"). The refs are the stored client text: only a session id reaches a transcript
+// lookup (transcriptlink.IsSessionID), any other agent ref is no agent of this computer.
+func (h *SystemHandler) markSavedReasons(ctx context.Context, items []store.SavedMessage) {
+	boardIDs := map[string][]int64{}
+	agentKeys := map[string][]string{}
+	for _, it := range items {
+		switch it.Kind {
+		case "board":
+			if id, err := strconv.ParseInt(it.Key, 10, 64); err == nil {
+				boardIDs[it.Ref] = append(boardIDs[it.Ref], id)
+			}
+		case "agent":
+			agentKeys[it.Ref] = append(agentKeys[it.Ref], it.Key)
+		}
+	}
+	boardHave := map[string]map[int64]bool{}
+	if h.savedBoardHas != nil {
+		for project, ids := range boardIDs {
+			if have, err := h.savedBoardHas(ctx, project, ids); err == nil {
+				boardHave[project] = have
+			}
+		}
+	}
+	type agentState struct {
+		have      map[string]bool
+		reachable bool
+		checked   bool
+	}
+	agents := map[string]agentState{}
+	if h.savedAgentHas != nil {
+		for ref, keys := range agentKeys {
+			if len(agents) >= maxSavedAgentChecks {
+				break
+			}
+			if !transcriptlink.IsSessionID(ref) {
+				agents[ref] = agentState{checked: true} // no agent of this computer
+				continue
+			}
+			have, reachable := h.savedAgentHas(ctx, ref, keys)
+			agents[ref] = agentState{have: have, reachable: reachable, checked: true}
+		}
+	}
+	for i := range items {
+		it := &items[i]
+		switch it.Kind {
+		case "board":
+			id, err := strconv.ParseInt(it.Key, 10, 64)
+			have, asked := boardHave[it.Ref]
+			if err != nil {
+				it.Reason = savedReasonNotReachable
+			} else if asked && !have[id] {
+				it.Reason = savedReasonGone
+			}
+		case "agent":
+			st := agents[it.Ref]
+			switch {
+			case !st.checked:
+			case !st.reachable:
+				it.Reason = savedReasonNotReachable
+			case !st.have[it.Key]:
+				it.Reason = savedReasonGone
+			}
+		}
+	}
 }
 
 // SavedMessage: GET /api/saved/{id}/message. No query is read.

@@ -237,6 +237,11 @@ func (s *Server) newRouteHandlers() *routeHandlers {
 		}
 	}
 	sysHandler.SetSavedSources(savedBoard, histHandler.SavedAgentText)
+	var savedBoardHas func(ctx context.Context, project string, ids []int64) (map[int64]bool, error)
+	if s.boardStore != nil {
+		savedBoardHas = s.boardStore.ExistingMessageIDs // the Saved list marks a deleted message without a request per bookmark (#5802)
+	}
+	sysHandler.SetSavedPresence(savedBoardHas, histHandler.SavedAgentPresence)
 	schedHandler := routes.NewScheduleHandler(s.db, s.cfg)
 	workflowHandler := routes.NewWorkflowHandler(s.db, s.cfg)
 	s.workflowHandler = workflowHandler

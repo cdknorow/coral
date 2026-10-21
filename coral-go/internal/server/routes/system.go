@@ -33,6 +33,10 @@ type SystemHandler struct {
 	// it is gone or is not on that board), an agent's message by its session id, agent type and key (reachable false when this machine has no transcript of it).
 	savedBoardText func(ctx context.Context, project string, id int64) (text string, found bool, err error)
 	savedAgentText func(ctx context.Context, sessionID, agentType, key string) (text string, found, reachable bool)
+	// savedBoardHas and savedAgentHas say, for the list (#5802), which of a board's message ids exist (one query per board) and which of an agent's message keys are in its
+	// transcript (one read per agent), so the client asks nothing per bookmark.
+	savedBoardHas func(ctx context.Context, project string, ids []int64) (map[int64]bool, error)
+	savedAgentHas func(ctx context.Context, sessionID string, keys []string) (found map[string]bool, reachable bool)
 
 	generateJobs   map[string]*generateJob
 	generateJobsMu sync.Mutex
