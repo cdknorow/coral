@@ -112,6 +112,7 @@ func TestRestartAndResumeKeepTheAgentsPlaceInTheList(t *testing.T) {
 
 // Teams are placed by their earliest agent: the team of a restarted agent keeps its place among the teams, and a new team comes last.
 func TestTeamsKeepTheirOrderAcrossRestartsAndLaunches(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	const (
 		t1a = "11111111-2222-3333-4444-555555555555"
 		t1b = "22222222-2222-3333-4444-555555555555"

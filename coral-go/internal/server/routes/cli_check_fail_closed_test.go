@@ -168,6 +168,7 @@ func TestModelListingNeverRunsThePathCLIWhenOneIsConfigured(t *testing.T) {
 // Nothing in the program names an agent CLI to look up or run directly (exec.LookPath("claude"), exec.Command("codex", ...)):
 // the binary comes from agent.FindCLI, which honours Settings > CLI paths (#4354, the sweep of cmd, internal and pkg).
 func TestNoCodeRunsAnAgentCLIByBareName(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	agents := map[string]bool{"claude": true, "codex": true, "gemini": true, "agy": true, "pi": true, "antigravity": true}
 	isAgent := func(e ast.Expr) bool {
 		lit, ok := e.(*ast.BasicLit)

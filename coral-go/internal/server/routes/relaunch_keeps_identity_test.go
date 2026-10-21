@@ -19,6 +19,7 @@ import (
 // A sleeping agent comes back awake (#3273), and the old session's tag rows go
 // when no history entry shows them.
 func TestResumeAndRestartKeepTheAgentsIdentity(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	for _, op := range []string{"resume", "restart"} {
 		t.Run(op, func(t *testing.T) {
 			server, handler, term, ss := setupSessionsTestServer(t)

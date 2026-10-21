@@ -15,6 +15,7 @@ import (
 // The bookmark cap is a decision: a full list refuses a new message with 409 and stores nothing, but saving a message
 // that is already saved still answers with its bookmark.
 func TestSavingPastTheBookmarkCapIsRefusedAndNothingIsAdded(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	g := newSavedRig(t)
 	ctx := context.Background()
 	for i := 0; i < store.MaxSavedMessages; i++ {

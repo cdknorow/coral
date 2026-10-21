@@ -16,6 +16,7 @@ import (
 )
 
 func TestAgentUIRoundTrip(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	_, h, _, ss := setupSessionsTestServer(t)
 	for _, sid := range []string{"ui-a", "ui-b"} {
 		require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentName: sid, AgentType: "codex", WorkingDir: "/tmp"}))

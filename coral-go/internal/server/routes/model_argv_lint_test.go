@@ -17,6 +17,7 @@ import (
 // through agentmodels.ModelArgs, which refuses anything that is not a valid model id. So no code outside that package builds "--model" followed by a value that is not a string
 // literal (a literal such as "haiku" is Coral's own); a sixth site cannot be added silently.
 func TestNoCodeBuildsAModelArgumentButThroughModelArgs(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	isLit := func(e ast.Expr, s string) bool {
 		l, ok := e.(*ast.BasicLit)
 		return ok && l.Kind == token.STRING && strings.Trim(l.Value, "`\"") == s

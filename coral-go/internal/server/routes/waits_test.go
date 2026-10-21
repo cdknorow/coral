@@ -216,6 +216,7 @@ func TestBoardWaitRoutes_TaskResolutionNotifiesTerminal(t *testing.T) {
 }
 
 func TestBoardWaitRoutes_PollWait(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	server, handler := setupBoardTestServer(t)
 	project := "wait-poll"
 

@@ -90,6 +90,7 @@ func canonCoral(m map[string]any) string {
 }
 
 func TestCoralFeedAgreesWithBefore4713(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	kinds := map[string]int{}
 	base := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
 	heartbeat := 15 * time.Second

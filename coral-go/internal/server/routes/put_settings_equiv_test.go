@@ -315,6 +315,7 @@ var putSettingsLiveKeys = map[string]bool{"telemetry_enabled": true, inputlog.Se
 var rfc3339Like = regexp.MustCompile(`^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$`)
 
 func TestPutSettingsAgreesWithBefore4599(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	prio, loopback, replay := agentprio.Level(), auth.RequireAuthOnLoopback(), ptymanager.ReplayBytes()
 	t.Cleanup(func() {
 		agentprio.SetSetting(prio)

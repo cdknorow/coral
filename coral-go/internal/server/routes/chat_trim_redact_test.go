@@ -39,6 +39,7 @@ func trimFake(prefix string, n int, alphabet string) string {
 }
 
 func TestTrimNeverShowsAPieceOfAToken(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	const alnum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	type token struct{ text, secret string }
 	// Shapes betterleaks' rules find whole (#3808: they are Coral's rules now); the ones only
@@ -83,6 +84,7 @@ func TestTrimNeverShowsAPieceOfAToken(t *testing.T) {
 
 // A PEM key cut anywhere by trim shows none of its body.
 func TestTrimNeverShowsAPieceOfAPEMKey(t *testing.T) {
+	t.Parallel() // no shared state: these ran one after another (#5622)
 	var key strings.Builder
 	key.WriteString("-----BEGIN RSA PRIVATE KEY-----\n")
 	line := trimFake("", 64, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/")
