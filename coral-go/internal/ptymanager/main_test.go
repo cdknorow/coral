@@ -31,6 +31,8 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	if os.Getenv(argvEchoEnv) == "1" {
+		exe, _ := os.Executable()
+		fmt.Printf("EXE[%s]END\n", exe) // which copy ran (TestWindowsPTYQuotesAProgramWithASpace)
 		for _, a := range os.Args[1:] {
 			fmt.Printf("ARG[%s]END\n", a)
 		}

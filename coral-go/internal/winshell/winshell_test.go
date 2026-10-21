@@ -42,6 +42,10 @@ func TestPick(t *testing.T) {
 	// A relative answer (a lookPath that found it in the current folder) is never used.
 	rel := func(string) (string, error) { return `.\powershell.exe`, nil }
 	assert.Equal(t, "", Pick("", rel))
+	// Nor a UNC one: a PATH entry on another machine (#26 G1A F2).
+	unc := func(name string) (string, error) { return `\\server\share\` + name, nil }
+	assert.Equal(t, "", Pick("", unc))
+	assert.Equal(t, "", Pick(`\\server\share\pwsh.exe`, unc), "nor from CORAL_SHELL")
 	// With nothing on PATH: Windows PowerShell in the system folder.
 	t.Cleanup(SetSystemPowerShellForTest(func() string { return `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` }))
 	assert.Equal(t, `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`, Pick("", look()))
@@ -49,7 +53,7 @@ func TestPick(t *testing.T) {
 
 func TestAbsolute(t *testing.T) {
 	for p, want := range map[string]bool{
-		`C:\x`: true, `c:/x`: true, `\\server\share`: true, "//server/share": true,
+		`C:\x`: true, `c:/x`: true, `\\server\share`: false, "//server/share": false, `\\?\C:\x`: false,
 		`powershell.exe`: false, `.\powershell.exe`: false, `C:x`: false, `\x`: false, "": false,
 	} {
 		assert.Equal(t, want, absolute(p), p)

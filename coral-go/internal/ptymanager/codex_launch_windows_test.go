@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -120,4 +121,49 @@ func TestShellWrapRunsThePowerShellTheLineIsWrittenFor(t *testing.T) {
 	assert.Equal(t, `'"a""b c"'`, agent.ShellJoin([]string{"x", `a"b c`})[2:], "5.1: escaped")
 	t.Setenv("CORAL_SHELL", pwsh)
 	assert.Equal(t, `'a"b c'`, agent.ShellJoin([]string{"x", `a"b c`})[2:], "pwsh: not escaped")
+}
+
+// #26 G1A F1: a program path with a space starts that program, never a planted one named by
+// its prefix (D:\x\Dev.exe for D:\x\Dev Tools\pwsh.exe), which CreateProcessW tries first
+// for an unquoted command line.
+func TestWindowsPTYQuotesAProgramWithASpace(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "Dev Tools", "pwsh.exe")
+	require.NoError(t, os.MkdirAll(filepath.Dir(real), 0o700))
+	copyFile(t, os.Args[0], real)
+	decoy := filepath.Join(root, "Dev.exe")
+	copyFile(t, os.Args[0], decoy)
+
+	t.Setenv(argvEchoEnv, "1") // inherited as well as passed: before #19 ConPTY ignored env
+	env := append(os.Environ(), argvEchoEnv+"=1")
+	pkg, err := os.Getwd() // the package's folder: the test binary's init reads testdata/
+	require.NoError(t, err)
+	p, err := startPTYProcess(real, []string{"-NoProfile"}, pkg, env, 200, 30)
+	require.NoError(t, err)
+	defer p.Close()
+	var out []byte
+	buf := make([]byte, 4096)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			n, err := p.Read(buf)
+			out = append(out, buf[:n]...)
+			if err != nil || regexp.MustCompile(`ARG\[-NoProfile\]END`).Match(out) {
+				return
+			}
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatalf("no output: %q", out)
+	}
+	m := regexp.MustCompile(`EXE\[(.*?)\]END`).FindSubmatch(out)
+	require.NotNil(t, m, "%q", out)
+	ran, err := os.Stat(string(m[1]))
+	require.NoError(t, err)
+	want, err := os.Stat(real)
+	require.NoError(t, err)
+	assert.True(t, os.SameFile(want, ran), "ran %s, not %s", m[1], real)
 }
