@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,10 @@ import (
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
 )
+
+// ansiSeq matches the terminal's escape sequences (CSI, and OSC titles), which a colouring shell
+// puts between the words of the echoed line.
+var ansiSeq = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)`)
 
 // launchRecorder is the real terminal, with a note of every launch command it was given.
 type launchRecorder struct {
@@ -88,6 +93,19 @@ func TestAutoWakeOnARealPTYResumesTheConversation(t *testing.T) {
 	require.NotEmpty(t, sent, "the woken agent's terminal was given its launch command")
 	assert.Contains(t, sent[len(sent)-1], "--resume "+stopped, "it resumes its own conversation")
 	assert.Empty(t, launches.sentTo(naming.SessionName("claude", slept)), "nothing is launched for the Operator's sleep")
+	// And it reached the shell: the screen shows the launch line itself, or the handoff script's path
+	// (so a handoff that never runs still fails here).
+	reached := regexp.MustCompile(`--resume ` + stopped + `|coral-command-[0-9]+\.(ps1|sh)`)
+	deadline := time.Now().Add(5 * time.Second)
+	var replay string
+	for time.Now().Before(deadline) {
+		b, _ := pty.Replay(name)
+		if replay = ansiSeq.ReplaceAllString(string(b), ""); reached.MatchString(replay) { // PowerShell colours the words
+			break
+		}
+		time.Sleep(100 * time.Millisecond) // sleep-ok: the shell echoes the typed line
+	}
+	assert.Regexp(t, reached, replay, "the launch line, or its handoff script, reached the agent's shell")
 	ls, _ := ss.GetLiveSession(ctx, stopped)
 	assert.Equal(t, 0, ls.IsSleeping)
 	assert.Nil(t, ls.SleepReason)
