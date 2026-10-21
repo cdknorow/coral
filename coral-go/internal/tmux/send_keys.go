@@ -214,7 +214,7 @@ func clearInputLine(c *Client, target string) {
 // pasteToTarget loads text into a tmux buffer and pastes it into the target pane.
 // Uses paste-buffer -p which respects the pane's bracketed paste mode setting.
 func (c *Client) pasteToTarget(ctx context.Context, target, text string) error {
-	inputlog.Record(target, inputlog.Paste, text)
+	inputlog.RecordCtx(ctx, target, inputlog.Paste, text) // a person's paste (inputlog.Human) is logged by its length only (#60 N3, #5682)
 	// A private named buffer, deleted by the paste (-d) or on an error, as SendPrompt's (#4381,
 	// Security's #4371 SHOULD 2): the unnamed one stayed in tmux's buffer stack (its last 50), on a
 	// tmux server that outlives Coral's upgrades.

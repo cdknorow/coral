@@ -94,3 +94,27 @@ func TestTmuxLogsAPersonsTypingByLengthOnly(t *testing.T) {
 	assert.Contains(t, text, `kind=raw len=2 text="ok"`)
 	assert.NotContains(t, text, "6f")
 }
+
+// #5682 (found in the sweep of the assembled 148 tree): a person's multi-line or long text from the dashboard send box is PASTED into the pane (pasteToTarget), and that record took no context, so
+// the input debug log kept the text (after secret redaction, cut at 200 bytes) where a typed line is logged by its length only (#60 N3). Same class as #5673 on the PTY backend.
+func TestTmuxLogsAPersonsPastedTextByLengthOnly(t *testing.T) {
+	c := newTestClient(t)
+	const sid = "7e2f3041-5b6c-4d7e-9f80-a1b2c3d4e5f6"
+	name := "claude-" + sid
+	createTestSession(t, c, name, t.TempDir())
+	target := name + ".0"
+	dir := t.TempDir()
+	inputlog.Setup(dir, true)
+	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
+
+	require.NoError(t, c.SendKeysToTarget(inputlog.Human(context.Background()), target, "line one\nmy token is xyz-secret"))
+	require.NoError(t, c.SendKeysToTarget(context.Background(), target, "not a person\nsent by Coral"))
+	inputlog.Flush()
+	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
+	require.NoError(t, err)
+	text := string(raw)
+	assert.NotContains(t, text, "xyz-secret", "a person's pasted text is not in the input log")
+	assert.NotContains(t, text, "line one")
+	assert.Contains(t, text, `kind=typed text="[typed 31 bytes]"`)
+	assert.Contains(t, text, `kind=paste len=26 text="not a person\nsent by Coral"`, "what Coral itself sends is still logged")
+}
