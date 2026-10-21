@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"sync"
+
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // launchTempDirPath is where a launch's prompt, settings and instructions files go (#4381,
@@ -21,6 +23,9 @@ func SetTempDir(dir string) error {
 		return fmt.Errorf("can't create the launch temp folder %s: %w", dir, err)
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
+		return fmt.Errorf("can't make the launch temp folder %s private: %w", dir, err)
+	}
+	if err := secfile.ProtectDir(dir); err != nil { // Windows: a mode means nothing there; only this user and SYSTEM, inherited by the files in it
 		return fmt.Errorf("can't make the launch temp folder %s private: %w", dir, err)
 	}
 	launchTempDirMu.Lock()

@@ -5,7 +5,9 @@ package routes
 import (
 	"context"
 	"errors"
+	"github.com/subgentic/coral/internal/agentenv"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -212,6 +214,7 @@ func probeCLIVersion(parent context.Context, path string) (version, probe string
 	ctx, cancel := context.WithTimeout(parent, cliProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "--version")
+	cmd.Env = agentenv.Filter(os.Environ()) // the server's own CORAL_* settings never reach a CLI
 	// A wrapper script can leave a child holding the output pipe after it is
 	// killed; do not wait on it past this.
 	cmd.WaitDelay = 200 * time.Millisecond
