@@ -1,1 +1,2 @@
-Pillow==11.0.0
+# Python 3.11 or newer (Pillow 13 needs it). 13.0.0 reproduces the committed assets/installer/*.bmp and both coral.ico files byte for byte.
+Pillow==13.0.0
