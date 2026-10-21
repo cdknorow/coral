@@ -228,3 +228,136 @@ func TestShellRiskReadsWindowsCommandsOnWindows(t *testing.T) {
 		assert.Empty(t, shellRisk(cmd, wd), cmd)
 	}
 }
+
+// Round 2 (Security's S1-S5 on #53): commands reached through syntax a word list does not see. Each of these asks.
+func TestWindowsHiddenCommandsAreRisky(t *testing.T) {
+	for _, cmd := range []string{
+		// S1: script blocks and subexpressions are commands
+		`& { Remove-Item -Recurse -Force C:\Windows }`,
+		`Get-ChildItem C:\Windows -Recurse | ForEach-Object { Remove-Item $_.FullName -Force }`,
+		`gci C:\Users | % { ri $_.FullName -r }`,
+		`gci | ForEach-Object -Process { Remove-Item $_ }`,
+		`Invoke-Command -ScriptBlock { Remove-Item C:\x -Recurse }`,
+		`icm { del C:\x }`,
+		`Start-Job { Remove-Item C:\x -Recurse }`,
+		`Get-ChildItem | Where-Object { Remove-Item $_.Name } `,
+		`Remove-Item $(Get-Content list.txt)`,
+		`echo "$(Remove-Item C:\x -Recurse)"`,
+		`& { & { Remove-Item C:\x } }`,
+		`& { rd /s /q C:\Users }`,
+		`Get-ChildItem | ForEach-Object { Stop-Service $_.Name }`,
+		// unbalanced brackets
+		`& { Remove-Item .\x`,
+		`Get-ChildItem )`,
+		// S2: nested shells through Start-Process
+		`Start-Process cmd -ArgumentList "/c rd /s /q C:\Users"`,
+		`Start-Process powershell -ArgumentList "-Command Remove-Item -Recurse C:\x"`,
+		`saps cmd -Args "/c del /s C:\*"`,
+		`start /b cmd /c rd /s /q C:\Users`,
+		`Start-Process cmd "/c rd /s /q C:\Users"`,
+		// S3: .NET and COM
+		`[IO.File]::Delete("C:\x\y")`,
+		`[System.IO.Directory]::Delete("C:\x", $true)`,
+		`[Diagnostics.Process]::Start("cmd")`,
+		`(New-Object -ComObject Shell.Application).Namespace(0).Items().InvokeVerb("delete")`,
+		`New-Object -ComObject Scripting.FileSystemObject`,
+		`Add-Type -TypeDefinition "class X {}"`,
+		`$f = Get-Item C:\x; $f.Delete()`,
+		`(Get-Item C:\x).Delete()`,
+		// S4: cmd escapes and glued switches
+		`cmd /c del^ /s /q C:\*`,
+		`cmd /c "d^el /s /q C:\*"`,
+		`del/s/q C:\x`,
+		`rd/s/q C:\Users`,
+		`rd/s C:\Users`,
+		// S5: splat and subexpression arguments
+		`Remove-Item @args`,
+		`Remove-Item (Get-Content list.txt)`,
+		`Remove-Item -Path (Get-Content list.txt) -Recurse`,
+		`Remove-Item @{ Path = "C:\x" }`,
+		`Remove-Item`,
+		`del`,
+		// module-qualified and call forms
+		`Microsoft.PowerShell.Management\Remove-Item C:\x -Recurse`,
+		`& 'Remove-Item' C:\x -Recurse`,
+		`& "Remove-Item" -Path C:\x`,
+		// cmdlets nobody listed: asked by verb
+		`Stop-Service Spooler`,
+		`Set-Foo C:\x`,
+		`Install-Thing`,
+		`Register-ScheduledTask -TaskName x`,
+		`Invoke-Item C:\x\a.exe`,
+		`Invoke-CimMethod -ClassName Win32_Process -MethodName Create`,
+		`Restart-Service x`,
+		`Disable-NetAdapter x`,
+		`Start-Process -FilePath cmd -ArgumentList /c`,
+	} {
+		assert.NotEmpty(t, winVerbRisk(cmd, fakeOutside), cmd)
+	}
+}
+
+// What stays quiet: reading and printing, blocks that hold only that, and in-folder work.
+func TestWindowsCommonCommandsStayQuiet(t *testing.T) {
+	for _, cmd := range []string{
+		`Get-ChildItem | Where-Object { $_.Length -gt 1 }`,
+		`Get-ChildItem -Recurse | ForEach-Object { $_.Name }`,
+		`gci | % { Write-Host $_.Name }`,
+		`(Get-Date)`,
+		`Write-Host (Get-Date)`,
+		`Get-Content .\a.txt | Select-Object -First 3`,
+		`Get-ChildItem | Sort-Object Length | Select-Object -First 3`,
+		`$x = (Get-Item .\a.txt).Length`,
+		`Get-Process | Where-Object { $_.CPU -gt 10 }`,
+		`@(1,2,3) | Measure-Object`,
+		`Test-Path .\a.txt`,
+		`Remove-Item sub -Recurse`,
+		`Remove-Item .\build -Recurse -Force`,
+		`del sub\f.txt`,
+		`Copy-Item C:\Windows\x sub`,
+		`Get-ChildItem -Recurse C:\Windows`,
+		`New-Item -ItemType Directory build`,
+		`Set-Location sub; Get-ChildItem`,
+		`Write-Output "a (b) {c}"`,
+		`echo 'braces { } and (parens)'`,
+		`git commit -m "fix (thing) { x }"`,
+		`dotnet build`,
+		`npm run build`,
+		`go test ./...`,
+		`python -c "print(1)"`,
+		`node build.js`,
+		`cargo build`,
+		`pwsh -NoProfile -Command "Get-ChildItem | Select-Object -First 1"`,
+	} {
+		assert.Empty(t, winVerbRisk(cmd, fakeOutside), cmd)
+	}
+}
+
+func TestExtractGroups(t *testing.T) {
+	body, inner, ok := extractGroups(`gci | % { ri $_ } ; echo "$(Get-Date)" '(x)' (1+2)`)
+	assert.True(t, ok)
+	assert.Equal(t, []string{" ri $_ ", "Get-Date", "1+2"}, inner)
+	assert.Equal(t, "gci | % "+groupMark+" ; echo \""+groupMark+"\" '(x)' "+groupMark, body)
+	_, _, ok = extractGroups(`echo (a`)
+	assert.False(t, ok)
+	_, _, ok = extractGroups(`echo a)`)
+	assert.False(t, ok)
+	_, inner, ok = extractGroups(`& { & { ls } }`)
+	assert.True(t, ok)
+	assert.Equal(t, []string{" & { ls } "}, inner)
+}
+
+// Quoted text and ordinary POSIX syntax on Windows are not .NET calls.
+func TestWindowsQuotedMethodNamesAndPosixSyntaxStayQuiet(t *testing.T) {
+	for _, cmd := range []string{
+		`python -c "import sys; sys.stdout.write('x')"`,
+		`node -e "fs.write(1, 'x')"`,
+		`[ -f build.log ] && cat build.log`,
+		`grep -E "a::b" file.txt`,
+		`find . -name '*.o' -exec ls {} \;`,
+		`echo $(pwd)`,
+		`ls "$(pwd)"`,
+		`awk '{print $1}' file.txt`,
+	} {
+		assert.Empty(t, winVerbRisk(cmd, fakeOutside), cmd)
+	}
+}
