@@ -10,7 +10,7 @@ These guides cover the current **Go application**, including the macOS, Linux an
 2. Install and sign in to your agent CLI. Coral uses your installed agents and their provider accounts.
 3. Open Coral, select a project directory, and launch an agent or [create a team](teams-and-tasks.md).
 
-[Download the latest release](https://github.com/cdknorow/coral/releases/latest) · [Watch the team demo on Loom](https://www.loom.com/share/f2c52e824b1f41a8a18000a2df67adf8)
+[Download the latest release](https://github.com/subgentic/coral/releases/latest) · [Watch the team demo on Loom](https://www.loom.com/share/f2c52e824b1f41a8a18000a2df67adf8)
 
 ## Find the right guide
 
@@ -30,10 +30,10 @@ These guides cover the current **Go application**, including the macOS, Linux an
 
 Each release provides a universal macOS app, Linux archives for x86-64 and ARM64, and a Windows installer and portable ZIP. macOS bundles include tmux starting with **v1.3.23**. Remote access is off by default and requires explicit enablement and a restart.
 
-See [release notes](https://github.com/cdknorow/coral/releases) for changes and package verification. The macOS app targets macOS 13 or later; a deployment target check is not a claim that every older host configuration has been tested.
+See [release notes](https://github.com/subgentic/coral/releases) for changes and package verification. The macOS app targets macOS 13 or later; a deployment target check is not a claim that every older host configuration has been tested.
 
 ## Project and support
 
-Coral's source is available under [Apache License 2.0](https://github.com/cdknorow/coral/blob/main/LICENSE). For bugs, include your Coral version, operating system, install method, and steps to reproduce in a [GitHub issue](https://github.com/cdknorow/coral/issues). Remove tokens, private prompts, and sensitive paths before sharing logs.
+Coral's source is available under [Apache License 2.0](https://github.com/subgentic/coral/blob/main/LICENSE). For bugs, include your Coral version, operating system, install method, and steps to reproduce in a [GitHub issue](https://github.com/subgentic/coral/issues). Remove tokens, private prompts, and sensitive paths before sharing logs.
 
 The Python implementation and its documentation are historical. Do not use the old `pip install agent-coral` instructions to install this app.

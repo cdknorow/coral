@@ -10,7 +10,7 @@ A Coral server started with `--hub` (or `CORAL_HUB=1`) can register other standa
 - Hub mode adds the routes below on Coral's own listener: the same host, port, TLS and sign-in (the API key from other computers; Remote Access decides whether other computers can connect at all). Nothing new listens.
 - Turning it off only unroutes them: the registered servers and their keys stay in the database and are back when hub mode is.
 
-User guide: [Multi-server hub](https://cdknorow.github.io/coral/multi-server-hub/).
+User guide: [Multi-server hub](https://subgentic.github.io/coral/multi-server-hub/).
 
 ## Registry (hub only)
 

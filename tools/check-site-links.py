@@ -32,7 +32,7 @@ class Links(HTMLParser):
 
 def target_for(site, page, url):
     parsed = urlsplit(url)
-    if parsed.netloc and (parsed.scheme != "https" or parsed.netloc != "cdknorow.github.io"):
+    if parsed.netloc and (parsed.scheme != "https" or parsed.netloc != "subgentic.github.io"):
         return None
     if parsed.scheme and parsed.scheme != "https":
         return None

@@ -21,7 +21,7 @@ import { escapeAttr } from './utils.js';
 import { mountCloudConnect, enrolledRetrying } from './cloud_connect.js';
 import { trapTab } from './dialog_focus.js';
 
- const OWN_HUB_GUIDE_URL = 'https://cdknorow.github.io/coral/multi-server-hub/';
+ const OWN_HUB_GUIDE_URL = 'https://subgentic.github.io/coral/multi-server-hub/';
 
 function _available() {
     return !isCloud() && !isPopout();

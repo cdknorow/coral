@@ -21,7 +21,7 @@ The agent's header does not repeat the model (the chip and the agent row's toolt
 - **Switches after this reply.** You changed it while the agent was in the middle of a turn. Coral waits for the reply to end and never types into the middle of one.
 - **Apply with restart.** Shown in the menu for a CLI with no live switch (Codex, Antigravity, Pi: only Claude is checked so far). Choosing an item opens the Restart dialog with your choice filled in; the dialog is the confirmation.
 
-A second change while one is still pending is refused with a message. The API behind this is described in [Sessions](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/sessions.md).
+A second change while one is still pending is refused with a message. The API behind this is described in [Sessions](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/sessions.md).
 
 ## See cost by provider, model and thinking level
 
@@ -36,7 +36,7 @@ The **By Thinking Level** table has a row per provider, model and level.
 - **Not reported** (dimmed) in the Thinking level column is usage whose turn recorded no level: a CLI that writes none (Antigravity, Pi), turns that recorded none, and everything from before levels were tracked. Each model has its own: that model's total less what is tracked for it. It is never the level an agent was launched with. **Not reported** in the Model column is usage from before the model was kept with the levels, and calls that named none.
 - Click a column heading to sort. **Provider**, **Model** and **Thinking level** also have a filter (the small icon beside the name). On a phone the tables scroll sideways inside their card, and Cost and Share come right after the columns that name the row: in By Thinking Level those are Model and Thinking level, and Provider follows Share.
 
-The numbers come from `by_agent_type`, `by_model` and `by_thinking` in [Token usage](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/token-usage.md).
+The numbers come from `by_agent_type`, `by_model` and `by_thinking` in [Token usage](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/token-usage.md).
 
 ## Turn on the team health monitor
 
@@ -48,7 +48,7 @@ A team's health check is **off by default**. When it is on, Coral checks in on t
 - **Turn it on** in the Health check tab (**Send a health check to this team**), or tick **Team health monitor** in the Agent Team dialog when you launch the team (unticked by default).
 - **Also in that tab:** how often, who receives it, whether to post a short line when nothing needs attention, and each automatic rule (nudge an idle agent to claim its work, ask a quiet agent for a status, report a held delivery). Those rules act only while the check is on. Handing a review to the default reviewers works whether or not it is on.
 
-A separate switch, **Allow team health checks (all teams)** in Settings > Agents, is on by default and is read when Coral starts: turning it off stops the background monitor for every team, and each team's Health check tab then says it needs that switch, with a link to Settings. See [Teams](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/teams.md#board-health-monitor-setting).
+A separate switch, **Allow team health checks (all teams)** in Settings > Agents, is on by default and is read when Coral starts: turning it off stops the background monitor for every team, and each team's Health check tab then says it needs that switch, with a link to Settings. See [Teams](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/teams.md#board-health-monitor-setting).
 
 ## Filter and sort the agent list
 

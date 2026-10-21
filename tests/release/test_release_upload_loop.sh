@@ -66,7 +66,7 @@ run_case() {
   export COSIGN_LOG="$dir/cosign.log"; : > "$COSIGN_LOG"
   local rc=0
   ( cd "$dir" && PATH="$WORK/bin:$PATH" PRERELEASE="${PRERELEASE:-false}" GITHUB_REF_NAME=v0.0.0-test GITHUB_SERVER_URL=https://github.com \
-      GITHUB_WORKFLOW_REF=cdknorow/coral/.github/workflows/release.yml@refs/tags/v0.0.0-test \
+      GITHUB_WORKFLOW_REF=subgentic/coral/.github/workflows/release.yml@refs/tags/v0.0.0-test \
       bash --noprofile --norc -eo pipefail "$WORK/step.sh" ) > "$dir/out.log" 2>&1 || rc=$?
   local uploads signs
   uploads="$(grep -c '^gh release upload' "$GH_LOG" || true)"

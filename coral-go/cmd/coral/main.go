@@ -262,7 +262,7 @@ func main() {
 			time.Sleep(5 * time.Second)
 			latest := routes.FetchLatestVersion()
 			if updatecheck.Newer(latest, config.Version) {
-				log.Printf("[UPDATE] New version available: v%s (you have v%s) — %s", latest, config.Version, "https://github.com/cdknorow/coral/releases")
+				log.Printf("[UPDATE] New version available: v%s (you have v%s) — %s", latest, config.Version, updatecheck.ReleasesURL)
 			}
 		}()
 	}

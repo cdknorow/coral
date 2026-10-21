@@ -1,8 +1,8 @@
 site_name: Coral
 site_description: Documentation for Coral agent teams and workflows
-site_url: https://cdknorow.github.io/coral/
-repo_url: https://github.com/cdknorow/coral
-repo_name: cdknorow/coral
+site_url: https://subgentic.github.io/coral/
+repo_url: https://github.com/subgentic/coral
+repo_name: subgentic/coral
 edit_uri: edit/main/coral-go/site_docs/
 docs_dir: coral-go/site_docs
 use_directory_urls: true

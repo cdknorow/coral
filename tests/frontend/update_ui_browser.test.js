@@ -234,7 +234,7 @@ const upToDate = { ...idle, not_ready_reason: 'up_to_date' }; // what the server
                 ['failed', { ...idle, state: 'failed', last_result: { at: '2026-10-19T10:00:00Z', from: '1.4.125', to: '1.4.126', result: 'refused', by: 'local' } }, { title: 'Coral found an update (v1.4.126) it could not verify, so it was not installed.', sub: 'Your version is unchanged.', act: 'Try again' }],
                 ['Homebrew', { ...idle, install_kind: 'homebrew', upgrade_command: 'brew upgrade --cask coral', relaunch: { ...idle.relaunch, reason: 'unsupported_install' } }, { title: 'Homebrew updates this Coral', cmd: 'brew upgrade --cask coral', autoOff: true }],
                 ['Homebrew by its reason alone (no install_kind: an older server)', { ...idle, relaunch: { ...idle.relaunch, reason: 'unsupported_install' } }, { title: 'This install cannot update itself', autoOff: true }],
-                ['a folder it cannot write to', { ...idle, install_kind: 'unwritable', relaunch: { ...idle.relaunch, reason: 'unsupported_install' } }, { title: 'This install cannot update itself', link: 'https://github.com/cdknorow/coral/releases', autoOff: true }],
+                ['a folder it cannot write to', { ...idle, install_kind: 'unwritable', relaunch: { ...idle.relaunch, reason: 'unsupported_install' } }, { title: 'This install cannot update itself', link: 'https://github.com/subgentic/coral/releases', autoOff: true }],
             ]) {
                 await setStatus(st); await ev(`import(${S} + 'update_settings.js').then(m => m.showUpdatesPane())`); await settle(300); pn = await pane();
                 check(`${tag}: Updates, ${what} (${JSON.stringify(pn).slice(0, 140)})`, Object.entries(expect).every(([k, v]) => pn[k] === v), JSON.stringify(expect));

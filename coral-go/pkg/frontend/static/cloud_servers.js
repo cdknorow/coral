@@ -327,6 +327,9 @@ function row(s) {
         updateNote);
 }
 
+// The Homebrew tap stays cdknorow/homebrew-coral while an enterprise setting blocks deploy keys in the organisation (#5530): change it here when the tap moves.
+const BREW_INSTALL = 'brew install --cask cdknorow/coral/coral';
+
 function enrollBlock() {
     const input = h('input', { type: 'text', className: 'cloud-code', placeholder: 'XXXX-XXXX', maxLength: 9, autocomplete: 'off', spellcheck: false, 'aria-label': 'Enrollment code', id: 'cs-enroll-code' });
     const go = () => {
@@ -336,8 +339,8 @@ function enrollBlock() {
     return h('div', { className: 'cs-enroll' },
         h('h3', { className: 'cs-enroll-title', text: 'Add a machine' }),
         h('ol', {},
-            h('li', {}, h('strong', { text: 'Install Coral' }), ' on the machine: ', h('code', { text: 'brew install --cask cdknorow/coral/coral' }), ', or download it from ',
-                h('a', { href: 'https://github.com/cdknorow/coral/releases', target: '_blank', rel: 'noopener noreferrer', text: 'github.com/cdknorow/coral/releases' }), '.'),
+            h('li', {}, h('strong', { text: 'Install Coral' }), ' on the machine: ', h('code', { text: BREW_INSTALL }), ', or download it from ',
+                h('a', { href: 'https://github.com/subgentic/coral/releases', target: '_blank', rel: 'noopener noreferrer', text: 'github.com/subgentic/coral/releases' }), '.'),
             h('li', {}, 'Open Coral → Settings → ', h('strong', { text: 'Connect to Coral Hub' }), ' (or start it with ', h('code', { text: `--cloud-url ${location.origin}` }), ').'),
             h('li', { text: 'Coral shows a short code. Enter it below.' }),
             h('li', { text: 'Check the machine details on the next page and approve.' })),
