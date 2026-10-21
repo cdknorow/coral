@@ -2,7 +2,7 @@
 
 Push notifications to the Coral UI from workflows, scripts, or any HTTP client. Notifications appear in real-time via WebSocket.
 
-An agent sends one with `coral-agent notify --title "…" [--message "…"] [--level info|success|warning|error] [--alert]`, which carries its session token. A script sends the API key, as in the examples below (`coral api-key` prints it): a request with no credential is refused.
+An agent sends one with `coral-agent notify --title "…" [--message "…"] [--level info|success|warning|error] [--alert]`, which carries its session token. A script sends the API key, as in the examples below (`coral api-key` prints it; the key is for a script you run yourself, never an agent): a request with no credential is refused.
 
 ## Create Notification
 
@@ -53,7 +53,16 @@ POST /api/notifications
 
 Appears in the top-right corner and auto-dismisses after 8 seconds. User can click ✕ to dismiss early. Best for status updates and non-critical messages.
 
+An agent, through its own tool (it carries the agent's session token):
+
 ```bash
+coral-agent notify --title "Deploy Complete" --message "v1.2.0 is live" --level success
+```
+
+A script, through the API (with the API key):
+
+```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:${CORAL_PORT}/api/notifications \
   -H 'Content-Type: application/json' \
   -d '{"title": "Deploy Complete", "message": "v1.2.0 is live", "level": "success"}'
@@ -64,6 +73,7 @@ curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:${CORA
 Centered modal overlay that requires the user to click OK. Supports an optional link button. Best for important messages that require acknowledgment.
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -X POST http://localhost:${CORAL_PORT}/api/notifications \
   -H 'Content-Type: application/json' \
   -d '{
@@ -128,7 +138,7 @@ coral-agent notify --title "Deploy Complete" --message "v1.2.0 is live" --level 
 coral-agent notify --title "Review needed" --message "PR #42 is ready" --alert
 ```
 
-It sends the same request as the `curl` examples, with the caller's identity (an agent's session token, or the command-line signature in your own terminal or a workflow step), so it keeps working with [strict local auth](auth.md#strict-local-auth-the-default), where a plain `curl` is refused (401 `dashboard_auth_required`). A script that has to use `curl` can send the API key: `-H "Authorization: Bearer $(coral api-key)"`.
+It sends the same request as the `curl` examples, with the caller's identity (an agent's session token, or the command-line signature in your own terminal or a workflow step), so it keeps working with [strict local auth](auth.md#strict-local-auth-the-default), where a plain `curl` is refused (401 `dashboard_auth_required`). A script that has to use `curl` can send the API key: `-H "Authorization: Bearer $(coral api-key)"` (a script you run yourself, never an agent).
 
 ## Environment
 

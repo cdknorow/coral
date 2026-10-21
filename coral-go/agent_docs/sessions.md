@@ -376,6 +376,7 @@ Checks run in this order: required fields, `session_id` format, unknown session,
 **A request with a `session_id` only ever reaches that session's own terminal.** If it is gone, Coral answers `terminal_gone` and sends nothing; it never falls back to another terminal with the same name, folder or a similar name (teammates often share a folder). The same holds for `/keys`, `/resize` and `/answer-prompt` (409 `terminal_gone`); restart and resume instead start the agent in a fresh terminal in its own working directory; kill, sleep and Kill All (they end only that session), board and task nudges, and reads such as `/prompt-options` and capture (an empty result). `/send`, `/keys`, `/resize` and `/answer-prompt` require `session_id` and `agent_type` (400 `session_id_required` otherwise), so input is never routed by name; only reads and internal callers without a `session_id` still match by name.
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://localhost:PORT/api/sessions/live/NAME/send \
   -H 'Content-Type: application/json' \
   -d '{"command": "/compact", "agent_type": "claude", "session_id": "SID"}'
@@ -400,6 +401,7 @@ curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://localhost:POR
 Send raw tmux key codes to the terminal (e.g., Enter, Ctrl-C). The same exact-target rules and errors as `/send` apply (`agent_type` and `session_id` required; 409 for a sleeping or archived agent), except that a metadata failure is a plain 503 `{error}`. `keys` must be a non-empty list (else 400). Each entry is a tmux key name: `Enter`, `Escape`, `Tab`, `BTab`, `BSpace`, `Space`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `DC`, `IC`, `F1`-`F12`, `C-a`-`C-z` (Ctrl), `M-x` (Alt), or a single character or digits to type (`"1"`). The keys are sent one at a time, so `{"keys": ["Down"]}` then `{"keys": ["Enter"]}` (or both in one list) works on every backend. On the PTY backend (Windows, and wherever tmux is not used) an entry that is not one of these is refused with 400 and nothing is sent; tmux types a name it does not know as text.
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://localhost:PORT/api/sessions/live/NAME/keys \
   -H 'Content-Type: application/json' \
   -d '{"keys": ["Enter"], "agent_type": "claude", "session_id": "SID"}'
@@ -608,6 +610,7 @@ The response includes `changes_artifact` when the snapshot succeeds and `changes
 Download the current or persisted session changes using only the session ID:
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -fsS http://localhost:PORT/api/sessions/SID/changes -o changes.diff
 ```
 

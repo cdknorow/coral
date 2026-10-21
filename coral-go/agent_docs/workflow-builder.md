@@ -49,6 +49,7 @@ Do this proactively when you need specifics rather than relying on memory.
 ### Creating a workflow
 
 ```bash
+# a script you run yourself, never an agent
 curl -X POST http://localhost:${CORAL_PORT}/api/workflows \
   -H "Authorization: Bearer $(coral api-key)" \
   -H "Content-Type: application/json" \
@@ -96,6 +97,7 @@ Steps can reference output from earlier steps:
 ### Triggering and monitoring
 
 ```bash
+# a script you run yourself, never an agent
 # Trigger
 curl -X POST http://localhost:${CORAL_PORT}/api/workflows/{id}/trigger \
   -H "Authorization: Bearer $(coral api-key)"
@@ -110,6 +112,7 @@ The run response includes a `steps` array with per-step `status`, `exit_code`, `
 ### Updating a workflow
 
 ```bash
+# a script you run yourself, never an agent
 curl -X PUT http://localhost:${CORAL_PORT}/api/workflows/{id} \
   -H "Authorization: Bearer $(coral api-key)" \
   -H "Content-Type: application/json" \

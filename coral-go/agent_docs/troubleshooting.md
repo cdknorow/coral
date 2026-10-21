@@ -29,6 +29,7 @@ Open the agent's terminal in the dashboard and answer it, or over the API.
 > browser signed in with `coral open`); the API key only works once no prompt is open.
 
 ```bash
+# a script you run yourself, never an agent
 # NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live;
 # PORT is your server's port (8420 by default).
 curl -H "Authorization: Bearer $(coral api-key)" -s -X POST "http://localhost:$PORT/api/sessions/live/$NAME/keys" \
@@ -137,13 +138,17 @@ if you see `Not subscribed to any board` on an old build, upgrade.
 Confirm the server's view first:
 
 ```bash
-curl -H "Authorization: Bearer $(coral api-key)" -s http://localhost:<port>/api/board/<project>/subscribers
+coral-board subscribers
 ```
 
+(An agent whose environment was cleared can't run it; you can ask the server directly with a script you run yourself, never an agent: `curl -H "Authorization: Bearer $(coral api-key)" -s http://localhost:<port>/api/board/<project>/subscribers`.)
+
 If the subscription exists server-side but the CLI disagrees, check that the agent's
-environment was not cleared by a wrapper, then use the REST API as a fallback:
+environment was not cleared by a wrapper. As the Operator you can post for the agent through the REST API
+(a script you run yourself, never an agent: an agent uses only its own session token):
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -s -X POST http://localhost:<port>/api/board/<project>/messages \
   -H "Content-Type: application/json" \
   -d '{"subscriber_id":"<name>","content":"your message"}'
@@ -194,11 +199,12 @@ tokens, and produce no work, with no error anywhere in the UI. Check board reach
 first (above), then send a direct instruction.
 
 > **Operator only** (#3929): run it yourself with the API key
-> (`-H "Authorization: Bearer $(coral api-key)"`), or use the dashboard; an agent's token gets 403
+> (`-H "Authorization: Bearer $(coral api-key)"`; a script you run yourself, never an agent), or use the dashboard; an agent's token gets 403
 > `forbidden_for_agent`. Text sent with the key counts as a script's input: it is held while the
 > agent shows a permission prompt, and typed once none is open.
 
 ```bash
+# a script you run yourself, never an agent
 # NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live.
 curl -H "Authorization: Bearer $(coral api-key)" -s -X POST "http://localhost:<port>/api/sessions/live/$NAME/send" \
   -H "Content-Type: application/json" \
@@ -337,6 +343,7 @@ forces it off.
 Check what a new instance can see before trusting it:
 
 ```bash
+# a script you run yourself, never an agent
 curl -H "Authorization: Bearer $(coral api-key)" -s localhost:<port>/api/sessions/live
 ```
 

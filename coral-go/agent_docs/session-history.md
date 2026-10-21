@@ -126,6 +126,7 @@ The transcript of a live (or sleeping/archived) agent, read from its JSONL log. 
 **Poll response** (`after > 0`): `{"messages": [...], "total": N, "limit_notice": ..., "needs_login": false, "login_reason": null}`, never compressed, no `start`/`has_more`. Both responses carry `needs_login` and `login_reason` (see sessions.md: the agent waits for a sign-in in its terminal).
 
 ```bash
+# a script you run yourself, never an agent
 # Newest 100 messages, then the 200 above them
 curl -H "Authorization: Bearer $(coral api-key)" -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_id=SID&agent_type=claude&after=0&limit=100"
 curl -H "Authorization: Bearer $(coral api-key)" -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_id=SID&agent_type=claude&limit=200&before=742"
