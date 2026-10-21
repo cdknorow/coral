@@ -3,6 +3,8 @@ package jsonl
 import (
 	"bufio"
 	"bytes"
+	"container/list"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -29,15 +31,30 @@ func TranscriptPath(sessionID, workingDirectory, agentType string) string {
 // TranscriptFingerprint names the transcript file of a session as it is now: its path and a fingerprint of it (its size and modification time: a stat, never a read), and false
 // when the agent has no transcript here (#5802: the Saved list asks about a message only when this changed).
 func TranscriptFingerprint(sessionID, workingDirectory, agentType string) (path, fingerprint string, ok bool) {
-	path = resolveTranscriptPath(sessionID, workingDirectory, agentType)
+	path, fingerprint, ok, _ = TranscriptFingerprintCtx(context.Background(), sessionID, workingDirectory, agentType)
+	return path, fingerprint, ok
+}
+
+// TranscriptFingerprintCtx is TranscriptFingerprint that gives up when ctx ends (#5820: a Codex history of thousands of rollouts is walked to find a session, and the Saved list
+// has a time budget). aborted is true when it did: nothing is known then, which is not "no transcript". Only the agent type given is looked in: a Claude session never walks
+// ~/.codex.
+func TranscriptFingerprintCtx(ctx context.Context, sessionID, workingDirectory, agentType string) (path, fingerprint string, ok, aborted bool) {
+	if agentType == at.Codex {
+		path = resolveCodexTranscriptCtx(ctx, sessionID)
+	} else {
+		path = resolveTranscriptPath(sessionID, workingDirectory, agentType)
+	}
+	if ctx.Err() != nil {
+		return "", "", false, true
+	}
 	if path == "" {
-		return "", "", false
+		return "", "", false, false
 	}
 	fi, err := os.Stat(path)
 	if err != nil || !fi.Mode().IsRegular() {
-		return "", "", false
+		return "", "", false, false
 	}
-	return path, fmt.Sprintf("%s|%d|%d", path, fi.Size(), fi.ModTime().UnixNano()), true
+	return path, fmt.Sprintf("%s|%d|%d", path, fi.Size(), fi.ModTime().UnixNano()), true, false
 }
 
 // resolveTranscriptPath finds the transcript file for a session.
@@ -271,6 +288,11 @@ func openTranscriptFile(path string) (*os.File, error) {
 func CodexTranscriptPath(sessionID string) string { return resolveCodexTranscript(sessionID) }
 
 func resolveCodexTranscript(sessionID string) string {
+	return resolveCodexTranscriptCtx(context.Background(), sessionID)
+}
+
+// resolveCodexTranscriptCtx finds the rollout of a Coral session; its walks of ~/.codex/sessions stop when ctx ends (the answer is then "" and ctx.Err() says why).
+func resolveCodexTranscriptCtx(ctx context.Context, sessionID string) string {
 	if !transcriptlink.IsSessionID(sessionID) {
 		return ""
 	}
@@ -293,6 +315,9 @@ func resolveCodexTranscript(sessionID string) string {
 
 	// Fallback: search all rollout files for a matching session ID
 	_ = filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
+		if ctx.Err() != nil {
+			return filepath.SkipAll
+		}
 		if err != nil {
 			return nil
 		}
@@ -305,7 +330,7 @@ func resolveCodexTranscript(sessionID string) string {
 	if len(matches) > 0 {
 		return matches[0]
 	}
-	return resolveCodexTranscriptByMarker(basePath, sessionID)
+	return resolveCodexTranscriptByMarkerCtx(ctx, basePath, sessionID)
 }
 
 // A restart can keep Coral's identity while changing the native Codex thread.
@@ -321,12 +346,19 @@ func refreshCodexLink(c *sessionCache, sessionID string) {
 }
 
 func resolveCodexTranscriptByMarker(basePath, sessionID string) string {
+	return resolveCodexTranscriptByMarkerCtx(context.Background(), basePath, sessionID)
+}
+
+func resolveCodexTranscriptByMarkerCtx(ctx context.Context, basePath, sessionID string) string {
 	type candidate struct {
 		path string
 		mod  time.Time
 	}
 	var matches []candidate
 	_ = filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
+		if ctx.Err() != nil {
+			return filepath.SkipAll
+		}
 		if err != nil || info == nil || info.IsDir() {
 			return nil
 		}
@@ -338,7 +370,7 @@ func resolveCodexTranscriptByMarker(basePath, sessionID string) string {
 		}
 		return nil
 	})
-	if len(matches) == 0 {
+	if len(matches) == 0 || ctx.Err() != nil {
 		return ""
 	}
 	sort.Slice(matches, func(i, j int) bool { return matches[i].mod.After(matches[j].mod) })
@@ -416,9 +448,50 @@ type codexMarkerEntry struct {
 	stuck    bool
 }
 
+// codexMarkers keeps the answer for each rollout read, the least recently used going first when it is full (#5820: it was emptied whole at 4096 entries, so with more rollouts
+// than that every resolution of a session with no match read them all again, minutes for ten thousand). It is shared by the live chat, the history view and the Saved list.
 var codexMarkers struct {
 	sync.Mutex
-	entries map[string]codexMarkerEntry
+	entries map[string]*list.Element // path -> element of order, whose value is a *codexMarkerItem
+	order   *list.List               // most recently used first
+}
+
+// codexMarkerMax bounds the rollouts remembered: tens of thousands, a few hundred bytes each.
+const codexMarkerMax = 32768
+
+type codexMarkerItem struct {
+	path  string
+	entry codexMarkerEntry
+}
+
+func codexMarkerGet(path string) (codexMarkerEntry, bool) {
+	codexMarkers.Lock()
+	defer codexMarkers.Unlock()
+	el, ok := codexMarkers.entries[path]
+	if !ok {
+		return codexMarkerEntry{}, false
+	}
+	codexMarkers.order.MoveToFront(el)
+	return el.Value.(*codexMarkerItem).entry, true
+}
+
+func codexMarkerPut(path string, e codexMarkerEntry) {
+	codexMarkers.Lock()
+	defer codexMarkers.Unlock()
+	if codexMarkers.entries == nil {
+		codexMarkers.entries, codexMarkers.order = map[string]*list.Element{}, list.New()
+	}
+	if el, ok := codexMarkers.entries[path]; ok {
+		el.Value.(*codexMarkerItem).entry = e
+		codexMarkers.order.MoveToFront(el)
+		return
+	}
+	codexMarkers.entries[path] = codexMarkers.order.PushFront(&codexMarkerItem{path: path, entry: e})
+	for codexMarkers.order.Len() > codexMarkerMax {
+		last := codexMarkers.order.Back()
+		delete(codexMarkers.entries, last.Value.(*codexMarkerItem).path)
+		codexMarkers.order.Remove(last)
+	}
 }
 
 const codexMarkerHeadBytes = 4096
@@ -430,9 +503,7 @@ const codexMarkerHeadBytes = 4096
 // any: a file whose identity, size and mtime are unchanged is not opened.
 func codexTranscriptCoralSessionIDCached(path string, seen os.FileInfo) string {
 	if seen != nil {
-		codexMarkers.Lock()
-		prev, ok := codexMarkers.entries[path]
-		codexMarkers.Unlock()
+		prev, ok := codexMarkerGet(path)
 		if ok && os.SameFile(prev.info, seen) && seen.Size() == prev.size && seen.ModTime().Equal(prev.modTime) {
 			return prev.id
 		}
@@ -450,9 +521,7 @@ func codexTranscriptCoralSessionIDCached(path string, seen os.FileInfo) string {
 	n, _ := f.ReadAt(headBuf, 0)
 	head := sha256.Sum256(headBuf[:n])
 
-	codexMarkers.Lock()
-	prev, ok := codexMarkers.entries[path]
-	codexMarkers.Unlock()
+	prev, ok := codexMarkerGet(path)
 	var start int64
 	if ok && os.SameFile(prev.info, info) && prev.head == head && info.Size() >= prev.size {
 		if prev.id != "" || prev.stuck || info.Size() == prev.size {
@@ -465,12 +534,7 @@ func codexTranscriptCoralSessionIDCached(path string, seen os.FileInfo) string {
 	}
 	id, complete, stuck := scanCodexMarker(f)
 
-	codexMarkers.Lock()
-	if codexMarkers.entries == nil || len(codexMarkers.entries) >= 4096 {
-		codexMarkers.entries = make(map[string]codexMarkerEntry)
-	}
-	codexMarkers.entries[path] = codexMarkerEntry{info: info, size: info.Size(), modTime: info.ModTime(), head: head, complete: start + complete, id: id, stuck: stuck}
-	codexMarkers.Unlock()
+	codexMarkerPut(path, codexMarkerEntry{info: info, size: info.Size(), modTime: info.ModTime(), head: head, complete: start + complete, id: id, stuck: stuck})
 	return id
 }
 

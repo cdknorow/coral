@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -256,12 +259,12 @@ func TestSavedListMarksGoneAndNotReachableWithOneLookupPerSource(t *testing.T) {
 	g.h.SetSavedPresence(func(_ context.Context, project string, ids []int64) (map[int64]bool, error) {
 		boardAsks = append(boardAsks, fmt.Sprintf("%s:%d", project, len(ids)))
 		return map[int64]bool{1: true, 3: true}, nil // 2 was deleted
-	}, func(_ context.Context, session string, keys []string) (map[string]bool, bool) {
+	}, func(_ context.Context, session, _ string, keys []string) (map[string]bool, bool, bool) {
 		agentAsks = append(agentAsks, fmt.Sprintf("%s:%d", session, len(keys)))
 		if session == sessAway {
-			return nil, false
+			return nil, false, true
 		}
-		return map[string]bool{ka: true}, true // ka is in the transcript, kb is not
+		return map[string]bool{ka: true}, true, true // ka is in the transcript, kb is not
 	})
 	b1, b2, b3 := saveBoard(g, "teamA", "1"), saveBoard(g, "teamA", "2"), saveBoard(g, "teamA", "3")
 	a1, a2, a3 := saveAgent(g, sess1, ka), saveAgent(g, sess1, kb), saveAgent(g, sessAway, kc)
@@ -296,9 +299,9 @@ func TestSavedListMarksGoneAndNotReachableWithOneLookupPerSource(t *testing.T) {
 func TestSavedListNeverLooksUpARefThatIsNotASessionID(t *testing.T) {
 	g := newSavedRig(t)
 	var asked []string
-	g.h.SetSavedPresence(nil, func(_ context.Context, session string, keys []string) (map[string]bool, bool) {
+	g.h.SetSavedPresence(nil, func(_ context.Context, session, _ string, keys []string) (map[string]bool, bool, bool) {
 		asked = append(asked, session)
-		return map[string]bool{}, true
+		return map[string]bool{}, true, true
 	})
 	k := strings.Repeat("a1", 10)
 	for _, ref := range []string{"*", "[a-z]*", "../../etc", "sess-1", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee*", strings.ToUpper(sess1)} {
@@ -322,9 +325,9 @@ func TestSavedListNeverLooksUpARefThatIsNotASessionID(t *testing.T) {
 func TestSavedListReadsAtMostFiftyAgentTranscripts(t *testing.T) {
 	g := newSavedRig(t)
 	var asked int
-	g.h.SetSavedPresence(nil, func(_ context.Context, session string, keys []string) (map[string]bool, bool) {
+	g.h.SetSavedPresence(nil, func(_ context.Context, session, _ string, keys []string) (map[string]bool, bool, bool) {
 		asked++
-		return map[string]bool{}, true // reachable, and the message is not in it: gone
+		return map[string]bool{}, true, true // reachable, and the message is not in it: gone
 	})
 	k := strings.Repeat("a1", 10)
 	for i := 0; i < maxSavedAgentChecks+5; i++ {
@@ -341,4 +344,90 @@ func TestSavedListReadsAtMostFiftyAgentTranscripts(t *testing.T) {
 	}
 	assert.Equal(t, maxSavedAgentChecks, asked)
 	assert.Equal(t, map[string]int{"gone": maxSavedAgentChecks, "": 5}, reasons, "the rest are unmarked")
+}
+
+// #5820: the list passes each bookmark's own agent type to the check (a Claude bookmark is never looked for in the Codex store).
+func TestSavedListAsksForTheBookmarksOwnAgentType(t *testing.T) {
+	g := newSavedRig(t)
+	asked := map[string]string{}
+	g.h.SetSavedPresence(nil, func(_ context.Context, session, agentType string, keys []string) (map[string]bool, bool, bool) {
+		asked[session] = agentType
+		return map[string]bool{}, true, true
+	})
+	m := agentSave(strings.Repeat("a1", 10), "x")
+	m["ref"], m["agent_type"] = sess1, "codex"
+	code, out := g.do("POST", "/api/saved", savedAsOperator, m)
+	require.Equal(t, http.StatusOK, code, out)
+	m2 := agentSave(strings.Repeat("b2", 10), "x")
+	m2["ref"], m2["agent_type"] = sessAway, "claude"
+	code, out = g.do("POST", "/api/saved", savedAsOperator, m2)
+	require.Equal(t, http.StatusOK, code, out)
+	code, out = g.do("GET", "/api/saved?limit=50", savedAsOperator, nil)
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Equal(t, map[string]string{sess1: "codex", sessAway: "claude"}, asked)
+}
+
+// #5820: all the agents' checks share one time budget; a check that is still going when it ends is cut off, the bookmarks it did not reach are listed unmarked (not
+// "not reachable"), and the list answers inside the budget.
+func TestSavedListAnswersInsideItsBudgetWhenAChecksIsSlow(t *testing.T) {
+	was := savedCheckBudget
+	savedCheckBudget = 150 * time.Millisecond
+	t.Cleanup(func() { savedCheckBudget = was })
+	g := newSavedRig(t)
+	var started int
+	g.h.SetSavedPresence(nil, func(ctx context.Context, session, _ string, keys []string) (map[string]bool, bool, bool) {
+		started++
+		<-ctx.Done() // a walk of ten thousand rollouts: it ends only when it is told to
+		return nil, false, false
+	})
+	k := strings.Repeat("a1", 10)
+	for i := 0; i < 5; i++ {
+		m := agentSave(k, "x")
+		m["ref"] = fmt.Sprintf("aaaaaaaa-bbbb-4ccc-8ddd-%012x", i)
+		code, out := g.do("POST", "/api/saved", savedAsOperator, m)
+		require.Equal(t, http.StatusOK, code, out)
+	}
+	begin := time.Now()
+	code, out := g.do("GET", "/api/saved?limit=50", savedAsOperator, nil)
+	took := time.Since(begin)
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Less(t, took, 2*time.Second, "the list answered inside its budget, not after the slow check")
+	assert.Equal(t, 1, started, "the budget was spent on the first: the others were not started")
+	for _, it := range out["items"].([]any) {
+		assert.Equal(t, "", it.(map[string]any)["reason"], "unmarked: cut off is not 'not reachable'")
+	}
+}
+
+// #5820, the QA rig in small: a Codex history of thousands of rollouts and a bookmark of a session with no transcript here. The real check over the real tree; the list answers
+// inside its budget, and a second list does not walk the tree again (the cache of "no transcript" and of the marker scans).
+func TestSavedListWithThousandsOfCodexRolloutsAnswersInsideItsBudget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("writes 5000 files")
+	}
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", home)
+	line := `{"type":"event_msg","payload":{"type":"agent_message","message":"` + strings.Repeat("x", 80) + `"}}` + "\n"
+	body := []byte(strings.Repeat(line, 80))
+	for i := 0; i < 5000; i++ {
+		dir := filepath.Join(home, "sessions", "2026", fmt.Sprintf("%02d", 1+i%12), fmt.Sprintf("%02d", 1+i%28))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, fmt.Sprintf("rollout-x-%08d.jsonl", i)), body, 0o644))
+	}
+	was := savedCheckBudget
+	savedCheckBudget = 100 * time.Millisecond
+	t.Cleanup(func() { savedCheckBudget = was })
+	g := newSavedRig(t)
+	hist := &HistoryHandler{}
+	g.h.SetSavedPresence(nil, hist.SavedAgentPresence)
+	m := agentSave(strings.Repeat("a1", 10), "x")
+	m["ref"], m["agent_type"] = sess1, "codex"
+	code, out := g.do("POST", "/api/saved", savedAsOperator, m)
+	require.Equal(t, http.StatusOK, code, out)
+	begin := time.Now()
+	code, out = g.do("GET", "/api/saved?limit=50", savedAsOperator, nil)
+	took := time.Since(begin)
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Less(t, took, 700*time.Millisecond, "the list answers inside its budget even though walking the tree takes over a second")
+	reason := out["items"].([]any)[0].(map[string]any)["reason"]
+	assert.Contains(t, []any{"", "not_reachable"}, reason, "cut off (unmarked) or found missing: never gone")
 }
