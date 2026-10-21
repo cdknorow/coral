@@ -26,8 +26,9 @@ const (
 )
 
 // IsOwnerRoute reports whether the owner marker is stamped for (method, decodedPath): the two update routes, and the owner's reads and
-// writes of this computer's own configuration (#5307): GET and PUT /api/board/{project}/settings (the health check's setup) and
-// GET /api/settings/prompt-inspection, and the artifact routes (#5575, #5577), which are the owner's alone through the hub: an artifact can hold anything. The marker only says the hub account is the one this computer is linked to; every one of these routes
+// writes of this computer's own configuration (#5307): GET and PUT /api/board/{project}/settings (the health check's setup), the four POST
+// /api/board/{project}/cross-team[/files]/enable|disable (#5572) and GET /api/settings/prompt-inspection, and the artifact routes (#5575, #5577), which are the owner's alone through the hub: an artifact can hold anything.
+// The marker only says the hub account is the one this computer is linked to; every one of these routes
 // decides for itself what it gives the owner and refuses a viewer without it.
 func IsOwnerRoute(method, decodedPath string) bool {
 	if IsUpdateRoute(method, decodedPath) {
@@ -40,6 +41,8 @@ func IsOwnerRoute(method, decodedPath string) bool {
 		return boardSettingsRoute.MatchString(decodedPath)
 	case http.MethodDelete:
 		return artifactDeleteRoute.MatchString(decodedPath)
+	case http.MethodPost:
+		return crossTeamSwitchRoute.MatchString(decodedPath)
 	}
 	return false
 }
@@ -59,6 +62,9 @@ func isArtifactReadRoute(decodedPath string) bool {
 const PromptInspectionPath = "/api/settings/prompt-inspection"
 
 var boardSettingsRoute = regexp.MustCompile(`^/api/board/[^/]+/settings$`)
+
+// crossTeamSwitchRoute is the four routes on which Coral Hub's owner turns a team's cross-team messaging or file sharing on or off (#5572).
+var crossTeamSwitchRoute = regexp.MustCompile(`^/api/board/[^/]+/cross-team/(files/)?(enable|disable)$`)
 
 // IsUpdateRoute reports whether (method, decodedPath) is GET /api/system/update or POST /api/system/update/relaunch.
 func IsUpdateRoute(method, decodedPath string) bool {

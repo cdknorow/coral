@@ -57,7 +57,9 @@ func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bo
 			// guard; a forged X-Coral-Hub-Server still goes through it (and is refused).
 			// Coral Hub's own notice about a team link (#3489) is the hub's, not a user's:
 			// PostHubNotice accepts only that, with its fixed template.
-			if !ok || bs == nil || isBoardChatPost(r) || isAuthenticRelay(r) || isAuthenticHubNotice(r) {
+			// The Coral Hub owner's four switch routes (#5572) are not a use of the Operator identity: they name no actor, the handler admits only the owner (the stamp, the marker, the enrolled
+			// label) behind its own lock, and records the change and its Operator-actions row in one transaction, so the guard's after-the-fact record would only repeat it.
+			if !ok || bs == nil || isBoardChatPost(r) || isAuthenticRelay(r) || isAuthenticHubNotice(r) || isHubSwitchRoute(r) {
 				next.ServeHTTP(w, r)
 				return
 			}

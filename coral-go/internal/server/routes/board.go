@@ -58,6 +58,9 @@ type BoardHandler struct {
 	allowlistFlag func(ctx context.Context) bool
 	// listEdits limits how often one owner session edits a board's list (#5508).
 	listEdits editLimiter
+	// hubSwitches limits Coral Hub's requests to turn a team's cross-team switches on or off (#5572); hubCrossTeamLock reads the local lock.
+	hubSwitches      hubSwitchLimiter
+	hubCrossTeamLock func(ctx context.Context) (bool, error)
 	// relayCoarse are the coarse limits on what one source Coral can push (#5514).
 	relayCoarse relayCoarseLimits
 	// relay sends a cross-team message to another Coral through Coral Hub (#3489).

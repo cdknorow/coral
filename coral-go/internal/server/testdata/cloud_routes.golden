@@ -233,6 +233,10 @@ POST /api/auth/password/set never
 POST /api/auth/sessions/sign-out-others never
 POST /api/auto-accept/disable-all interact
 POST /api/board/remotes never
+POST /api/board/{project}/cross-team/disable launch
+POST /api/board/{project}/cross-team/enable launch
+POST /api/board/{project}/cross-team/files/disable launch
+POST /api/board/{project}/cross-team/files/enable launch
 POST /api/board/{project}/external-artifacts interact
 POST /api/board/{project}/external-messages interact
 POST /api/board/{project}/groups/{groupID}/members never
@@ -350,6 +354,7 @@ PUT /api/board/{project}/settings launch
 PUT /api/board/{project}/working-mode interact
 PUT /api/board/{project}/working-mode/presets/{presetID} never
 PUT /api/cloud/allow-auto-accept never
+PUT /api/cloud/hub-cross-team never
 PUT /api/cloud/hub-relaunch never
 PUT /api/cloud/max-mode never
 PUT /api/cloud/redact-tokens never

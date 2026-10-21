@@ -315,6 +315,14 @@ var routeTable = cat(
 	rules(http.MethodDelete, TierLaunch, "/api/board/{project}/messages/{id}"),
 
 	// ── launch: starts or wakes processes, browses folders, opens editors ─
+	// Coral Hub's owner turns a team's cross-team messaging or file sharing on or off (#5572): the owner marker is stamped on these four only (IsOwnerRoute), the server refuses anyone else
+	// and the local lock "Let Coral Hub change cross-team settings" refuses both directions. No body, no query.
+	rules(http.MethodPost, TierLaunch,
+		"/api/board/{project}/cross-team/enable",
+		"/api/board/{project}/cross-team/disable",
+		"/api/board/{project}/cross-team/files/enable",
+		"/api/board/{project}/cross-team/files/disable",
+	),
 	rules(http.MethodPost, TierLaunch,
 		// Auto-accept lets the agent run tools without asking, as much as launching one
 		// with permissions bypassed (#3182, Coral Hub review). The owner's local switch

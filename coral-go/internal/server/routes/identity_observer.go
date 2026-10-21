@@ -45,8 +45,8 @@ const (
 	identityLogKeysMax = 1024
 	identityRecentMax  = 50
 	// identityBreakKeysMax bounds the would-break breakdown (distinct caller, tool and
-	// route triples); later new triples are counted under "other".
-	identityBreakKeysMax = 200
+	// route triples); later new triples are counted under "other". One agent calling every guarded route (TestGuardMatchesEveryTableEntry) must fit: the tables passed 200 entries with #5572.
+	identityBreakKeysMax = 400
 )
 
 // wouldBreak are the caller types strict mode would refuse.
