@@ -4414,11 +4414,11 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 }
 /* Agent Team (UI audit #5589, findings 5 and 6): the team name, which every launch needs, is above the sections; the template tools are one disclosure after the picker, so the members come first. */
 .modal-content:has(.settings-shell) #launch-step-team .settings-modal-body { flex-direction: column; }
-.team-template-more { margin: 0 0 .75rem; }
-.team-template-more > summary { cursor: pointer; width: fit-content; padding: .25rem .5rem .25rem 0; color: var(--text-secondary); font-size: .8125rem; font-weight: 600; }
-.team-template-more[open] > summary { margin-bottom: .4rem; }
-.health-advanced > summary { cursor: pointer; width: fit-content; padding: .25rem .5rem .25rem 0; font-weight: 600; font-size: var(--fs-md); }
-.health-advanced[open] > summary { margin-bottom: 10px; }
+.team-template-more { margin: 0 0 .75rem; --dz-color: var(--text-secondary); --dz-size: .8125rem; }
+/* Folded section: one summary style. A user sets only the --dz-* variables that differ. */
+.disclosure > summary { cursor: pointer; width: var(--dz-width, fit-content); padding: var(--dz-pad, .25rem .5rem .25rem 0); color: var(--dz-color, inherit); font-size: var(--dz-size, var(--fs-md)); font-weight: 600; }
+.disclosure[open] > summary { margin-bottom: var(--dz-gap, .4rem); }
+.health-advanced { --dz-gap: 10px; }
 .health-advanced > fieldset + fieldset { margin-top: 16px; }
 #launch-step-team .sd-essentials { padding-bottom: .3rem; }
 #launch-step-team .sd-name-grid { display: grid; grid-template-columns: max-content minmax(0, 38rem); gap: .6rem; align-items: start; }

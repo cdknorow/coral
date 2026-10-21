@@ -61,7 +61,7 @@ function renderInspection(data, workingMode) {
     const block = (role, name, title, text) => `<h5>${title}</h5><pre>${escapeHtml(text ?? (role[name] || 'Not configured'))}</pre>`;
     // What the agent actually gets (the effective texts) is shown; the defaults and the override it came from are one click away, so the page starts short.
     const shown = (role, name, title, text) => `<section class="prompt-inspection-fragment">${block(role, name, title, text)}</section>`;
-    const folded = (role, name, title, text) => `<details class="prompt-inspection-fragment prompt-inspection-folded"><summary>${title}</summary><pre>${escapeHtml(text ?? (role[name] || 'Not configured'))}</pre></details>`;
+    const folded = (role, name, title, text) => `<details class="disclosure prompt-inspection-fragment prompt-inspection-folded"><summary>${title}</summary><pre>${escapeHtml(text ?? (role[name] || 'Not configured'))}</pre></details>`;
     const cards = roles.map(([key, label], index) => {
         const role = data?.[key] || {};
         const head = `<h4>${label}</h4><p class="prompt-inspection-meta"><span>Scope: ${escapeHtml(role.scope || 'global')}</span><span>Applies: ${escapeHtml(role.applicability || '—')}</span></p>`;
@@ -109,7 +109,7 @@ function _teamSettingsShell(workspaceMode) {
         <label>Additional instructions<textarea name="custom_instructions" rows="4" placeholder="Team-specific conventions"></textarea></label>
         <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
       </fieldset>
-      <details class="team-settings-section workflow-presets-section preset-editor">
+      <details class="disclosure team-settings-section workflow-presets-section preset-editor">
         <summary>Edit presets</summary>
         <p class="working-mode-hint">Choose the instructions captured on tasks when they are first claimed. Preset edits are local to this team.</p>
         <label>Preset<select name="preset"></select></label>

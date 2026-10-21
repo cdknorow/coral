@@ -229,8 +229,6 @@ svg[width="48"][height="48"] { width: 3rem; height: 3rem; }
     .preview-tab-close { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); display: inline-flex; align-items: center; justify-content: center; }
     .artifact-viewer-close, .artifact-viewer-download, .ac-toggle { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
     .ac-filter { min-width: var(--control-touch-height, 44px); }
-    .prompt-inspection-folded > summary { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
-    .workflow-presets-section > summary { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
-    .team-template-more > summary, .health-advanced > summary { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
+    .disclosure > summary { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
     .terminal-branch-text, .title-branch .branch-text { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); line-height: var(--control-touch-height, 44px); vertical-align: middle; }
 }

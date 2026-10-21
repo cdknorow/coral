@@ -59,7 +59,7 @@ function healthPanelHTML(h, members) {
           <label class="health-wide-select">Send it to<select name="recipient">${options.join('')}</select></label></div>
         <label class="health-rule-head"><input type="checkbox" name="all_clear"${h.all_clear ? ' checked' : ''} aria-labelledby="hc-clear-t" aria-describedby="hc-clear-w"><span><span id="hc-clear-t">Also post one short line when nothing needs attention</span><br><span class="health-why" id="hc-clear-w">So a quiet team is not mistaken for a stopped check. Off: say nothing when all is well.</span></span></label>
       </fieldset>
-      <details class="health-advanced"><summary>Reviews and automatic rules</summary>
+      <details class="disclosure health-advanced"><summary>Reviews and automatic rules</summary>
       <fieldset class="team-settings-section"><legend>Reviews</legend>
         <p class="working-mode-hint">Works whether or not the health check above is on.</p>
         ${rule('auto_delegate', 'Hand reviews to the default reviewers', 'When a task is submitted for review and nobody is assigned, Coral delegates it. On unless you turn it off here.', !!h.auto_delegate.on, '', reviewers)}
