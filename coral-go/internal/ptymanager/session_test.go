@@ -188,7 +188,8 @@ func TestSession_RingBufferOverflow(t *testing.T) {
 	}
 	defer s.kill()
 
-	// Send more data than ring buffer can hold (256KB)
+	// Send more data than ring buffer can hold (256KB). It does not get there: the terminal's line buffer stops the echo at about 62 KB, so this checks the
+	// path, not the cap; TestSession_RingKeepsTheNewestBytesPastItsCap writes past the cap from the process itself (#5726).
 	bigChunk := strings.Repeat("X", 1024) + "\n"
 	for i := 0; i < 300; i++ { // 300KB > 256KB ring
 		s.writeFull([]byte(bigChunk))
