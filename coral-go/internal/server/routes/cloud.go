@@ -37,11 +37,12 @@ const MaxModeSetting = "cloud_max_mode"
 
 // AllowHubAutoAcceptSetting is the local owner switch "Coral Hub can turn on
 // auto-accept" (#3182): auto-accept from the hub, and a hub launch, team launch,
-// restart or task run that skips permission prompts (#126 F4). It is off unless the
-// owner turned it on (an install where it was never set included, #126 F4; it was on
-// by default before): Launch lets the hub start agents, this lets them act without
-// asking. Local only, like the mode cap; turning it off ends every enable that came
-// from the hub.
+// restart or task run that skips permission prompts (#126 F4). It is ON unless the
+// owner turned it off (the Operator's decision, #5840: Coral Hub is the primary source
+// for a connected computer; an explicit off stays off): Launch lets the hub start agents,
+// this lets them act without asking. The owner of this computer sets it here (Settings >
+// Network and Hub, PUT /api/cloud/allow-auto-accept, local only), and the Coral Hub OWNER
+// (the account this computer is linked to) through POST /api/hub-auto-accept {"allow": bool}; turning it off ends every enable that came from the hub.
 const AllowHubAutoAcceptSetting = "cloud_allow_hub_auto_accept"
 
 // HubRelaunchSetting is the local switch "Let Coral Hub relaunch this Coral to install updates" (#5280). On unless set to "false",
@@ -137,7 +138,7 @@ func requestRedactor(r *http.Request) redact.Redactor {
 	return secrets.Redactor()
 }
 
-// HubAutoAcceptAllowed reads the switch (default off).
+// HubAutoAcceptAllowed reads the switch (default on, #5840).
 func HubAutoAcceptAllowed(settings map[string]string) bool {
 	return setreg.Bool(settings, AllowHubAutoAcceptSetting)
 }
@@ -264,6 +265,8 @@ type cloudStatus struct {
 	HubRelaunchUpdates bool `json:"hub_relaunch_updates"`
 	// HubCrossTeamSettings is the local lock "Let Coral Hub change cross-team settings" (#5572); on, the Coral Hub owner may turn a team's cross-team messaging and file sharing on or off.
 	HubCrossTeamSettings bool `json:"hub_cross_team_settings"`
+	// AllowHubAutoAcceptChanged is who last changed the auto-accept switch and when ({by: "hub"|"local", user, at}), shown beside it in Settings > Network and Hub (#5840); absent until it was changed.
+	AllowHubAutoAcceptChanged json.RawMessage `json:"allow_hub_auto_accept_changed,omitempty"`
 	// Bootstrap is the last one-time-credential enrollment's outcome
 	// ({status, detail, at}); absent when there was none.
 	Bootstrap json.RawMessage `json:"bootstrap,omitempty"`
@@ -281,14 +284,17 @@ func (h *CloudHandler) status() cloudStatus {
 		st = m.Status()
 	}
 	allow, redact, relaunch, crossTeam := true, true, true, true
-	var boot json.RawMessage
+	var boot, changed json.RawMessage
 	if s, err := h.ss.GetSettings(context.Background()); err == nil {
+		if v := setreg.Raw(s, setreg.HubAutoAcceptChanged); json.Valid([]byte(v)) {
+			changed = json.RawMessage(v)
+		}
 		allow, redact, relaunch, crossTeam = HubAutoAcceptAllowed(s), HubRedactTokens(s), HubRelaunchAllowed(s), HubCrossTeamAllowed(s)
 		if v := setreg.Raw(s, cloud.BootstrapStatusSetting); json.Valid([]byte(v)) {
 			boot = json.RawMessage(v)
 		}
 	}
-	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, HubRelaunchUpdates: relaunch, HubCrossTeamSettings: crossTeam, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
+	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, HubRelaunchUpdates: relaunch, HubCrossTeamSettings: crossTeam, AllowHubAutoAcceptChanged: changed, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
 	if rs := h.secrets(); rs != nil {
 		if ks, err := rs.KeyState(context.Background()); err == nil && ks.State == "refused" {
 			out.SecretKey = &ks
@@ -871,8 +877,82 @@ func (h *CloudHandler) SetAllowHubAutoAccept(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
+	h.recordAutoAcceptChange(r.Context(), "local", "")
 	writeJSON(w, http.StatusOK, h.status())
 }
+
+// hubAutoAcceptChange is who last changed the Coral Hub auto-accept switch and when (HubAutoAcceptChanged, #5840): By is "hub" (the Coral Hub owner, User the validated hub user) or "local"
+// (this computer's Settings), At an RFC 3339 time (UTC).
+type hubAutoAcceptChange struct {
+	By   string `json:"by"`
+	User string `json:"user,omitempty"`
+	At   string `json:"at"`
+}
+
+// recordAutoAcceptChange stores who changed the switch, to show beside it. A failure is logged and does not undo the change.
+func (h *CloudHandler) recordAutoAcceptChange(ctx context.Context, by, user string) hubAutoAcceptChange {
+	c := hubAutoAcceptChange{By: by, User: user, At: time.Now().UTC().Format(time.RFC3339)}
+	b, _ := json.Marshal(c)
+	if err := h.ss.SetSetting(context.WithoutCancel(ctx), setreg.HubAutoAcceptChanged, string(b)); err != nil {
+		slog.Warn("[cloud] could not record who changed the Coral Hub auto-accept switch", "error", err)
+	}
+	return c
+}
+
+// HubOwnerSetAutoAccept: POST /api/hub-auto-accept {"allow": bool} (#5840), Coral Hub's owner turning "Coral Hub can turn on auto-accept" on or off. The route table marks it owner-only for the
+// hub (tunnel.OwnerHubOnly, Launch tier): refuseNonOwner refuses anyone but the account this computer is linked to, and a request that did not come through Coral Hub, with 403 owner_only
+// before anything is read. The body is closed (exactly {"allow": true|false}, 64 bytes at most, no query). It sets the same setting as the Settings switch (PUT /api/cloud/allow-auto-accept);
+// turning it off ends every auto-accept the hub had enabled, as that route does. The change is recorded on this computer (who, when: shown beside the switch), in the Operator-actions
+// log and in the log.
+func (h *CloudHandler) HubOwnerSetAutoAccept(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if refuseNonOwner(w, r) {
+		return
+	}
+	id := hubOwnerRequest(r)
+	if r.URL.RawQuery != "" {
+		errBadRequest(w, textHubAutoAcceptBody)
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 65))
+	if err != nil || len(raw) > 64 {
+		errBadRequest(w, textHubAutoAcceptBody)
+		return
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var body struct {
+		Allow *bool `json:"allow"`
+	}
+	if err := dec.Decode(&body); err != nil || body.Allow == nil || dec.More() {
+		errBadRequest(w, textHubAutoAcceptBody)
+		return
+	}
+	allow := *body.Allow
+	v := "false"
+	if allow {
+		v = "true"
+	}
+	if err := h.ss.SetSetting(r.Context(), AllowHubAutoAcceptSetting, v); err != nil {
+		errInternalServer(w, "Could not save the setting")
+		return
+	}
+	ended := 0
+	if !allow {
+		n, err := h.ss.ClearHubAutoAccept(r.Context(), store.AutoAcceptHubAllowOff)
+		if err != nil {
+			errInternalServer(w, "Could not turn off Coral Hub auto-accept")
+			return
+		}
+		ended = n
+	}
+	change := h.recordAutoAcceptChange(r.Context(), "hub", id.pseudo)
+	recordHubOperatorAction(r.Context(), h.bs, id.pseudo, r.Method, r.URL.Path+" allow="+v, "", http.StatusOK)
+	slog.Info("[cloud] Coral Hub's owner set the Coral Hub auto-accept switch", "allow", allow, "auto_accepts_ended", ended, "hub_user", id.pseudo)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "allow_hub_auto_accept": allow, "auto_accepts_ended": ended, "changed_by": change})
+}
+
+const textHubAutoAcceptBody = `the body is {"allow": true} or {"allow": false} and nothing else (and no query)`
 
 // localCLI admits only a command-line client on this computer: a loopback peer
 // with a localhost Host, no tunnel stamp (any value), and nothing a browser

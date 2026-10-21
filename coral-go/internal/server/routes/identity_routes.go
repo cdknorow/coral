@@ -92,6 +92,7 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/system/terminal-backend/end-leftover": "end agents left in Coral's old tmux server",
 	"PUT /api/cloud/max-mode":                        "change what Coral Hub may do",
 	"PUT /api/cloud/allow-auto-accept":               "change whether Coral Hub may turn on auto-accept",
+	"POST /api/hub-auto-accept":                      "change whether Coral Hub may turn on auto-accept (Coral Hub's owner)", // #5840
 	"PUT /api/cloud/redact-tokens":                   "change whether tokens are hidden from Coral Hub viewers",
 	"PUT /api/cloud/hub-relaunch":                    "change whether Coral Hub may relaunch Coral for an update",                         // #5280
 	"PUT /api/cloud/hub-cross-team":                  "change whether Coral Hub may turn cross-team messaging and file sharing on or off", // #5572

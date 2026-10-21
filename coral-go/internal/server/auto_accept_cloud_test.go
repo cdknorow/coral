@@ -66,7 +66,8 @@ func TestAutoAcceptRouteTiers(t *testing.T) {
 	assert.NotEqual(t, 403, code(disable))
 	assert.Equal(t, 200, code(all))
 	setMode("launch")
-	assert.Equal(t, 403, code(enable), "Launch, but the owner's switch is off unless turned on (#126 F4)")
+	require.Equal(t, 200, call(h, "PUT", "/api/cloud/allow-auto-accept", `{"allow":false}`, js).Code)
+	assert.Equal(t, 403, code(enable), "Launch, but the owner turned the switch off (an explicit off stays off, #5840)")
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/allow-auto-accept", `{"allow":true}`, js).Code)
 	assert.NotEqual(t, 403, code(enable), "Launch and the switch on reach the handler (404: no such session)")
 	for _, m := range []string{"view", "interact", "launch"} {
@@ -131,9 +132,12 @@ func TestAutoAcceptHubAllowSwitchAndModeDrop(t *testing.T) {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
 		return out
 	}
-	assert.Equal(t, false, status()["allow_hub_auto_accept"], "off by default (#126 F4)")
+	assert.Equal(t, true, status()["allow_hub_auto_accept"], "on by default (the Operator's decision, #5840)")
+	assert.NotContains(t, status(), "allow_hub_auto_accept_changed", "nobody changed it yet")
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/allow-auto-accept", `{"allow":true}`, js).Code)
 	assert.Equal(t, true, status()["allow_hub_auto_accept"], "turned on")
+	changed, _ := status()["allow_hub_auto_accept_changed"].(map[string]any)
+	assert.Equal(t, "local", changed["by"], "the Settings switch records itself: %v", changed)
 
 	sids := map[string]string{"hub": "11111111-2222-3333-4444-555555555555", "local": "22222222-2222-3333-4444-555555555555"}
 	seed := func() {

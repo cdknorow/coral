@@ -346,6 +346,9 @@ var routeTable = cat(
 		"/api/board/{project}/cross-team/files/enable",
 		"/api/board/{project}/cross-team/files/disable",
 	)),
+	// The Coral Hub OWNER turns "Coral Hub can turn on auto-accept" on or off (#5840, the Operator's decision): the machine refuses anyone else (403 owner_only) and a request that did
+	// not come through Coral Hub; a person here uses the Settings switch (PUT /api/cloud/allow-auto-accept, never in this table). The body is closed: {"allow": bool}; no query.
+	owner(OwnerHubOnly, rules(http.MethodPost, TierLaunch, "/api/hub-auto-accept")),
 	rules(http.MethodPost, TierLaunch,
 		// Auto-accept lets the agent run tools without asking, as much as launching one
 		// with permissions bypassed (#3182, Coral Hub review). The owner's local switch

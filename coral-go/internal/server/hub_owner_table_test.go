@@ -104,6 +104,7 @@ func TestTheOwnerRoutesOfTheTableAreTheReviewedSet(t *testing.T) {
 		"POST /api/saved":                   "owner-only",
 		"PATCH /api/saved/{id}":             "owner-only",
 		"DELETE /api/saved/{id}":            "owner-only",
+		"POST /api/hub-auto-accept":         "owner-only-hub",
 		"GET /api/board/{project}/settings": "owner-sees", "GET /api/system/update": "owner-update", "POST /api/system/update/relaunch": "owner-update",
 	}
 	got := map[string]string{}

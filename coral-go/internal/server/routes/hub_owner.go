@@ -84,9 +84,12 @@ var ownerRefusals = map[string]string{
 	tunnel.OwnerRouteKey("POST", "/api/board/{project}/cross-team/disable"):         textHubSwitchOwnerOnly,
 	tunnel.OwnerRouteKey("POST", "/api/board/{project}/cross-team/files/enable"):    textHubSwitchOwnerOnly,
 	tunnel.OwnerRouteKey("POST", "/api/board/{project}/cross-team/files/disable"):   textHubSwitchOwnerOnly,
+	tunnel.OwnerRouteKey("POST", "/api/hub-auto-accept"):                            textHubAutoAcceptOwnerOnly,
 }
 
 const textSavedOwnerOnly = "through Coral Hub the saved messages are for the account this computer is linked to only (#5753)"
+
+const textHubAutoAcceptOwnerOnly = "through Coral Hub only the account this computer is linked to can turn Coral Hub auto-accept on or off; on this computer use Settings > Network and Hub"
 
 const textArtifactsOwnerOnly = "through Coral Hub artifacts and pasted images are for the account this computer is linked to only"
 

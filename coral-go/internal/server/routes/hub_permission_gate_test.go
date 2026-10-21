@@ -152,8 +152,12 @@ func TestHubLaunchesThatSkipPermissionPrompts(t *testing.T) {
 			before := len(term.sentCommands())
 			rec := call("hub", tc.skips)
 			refused(rec, "hub_auto_accept_disabled", "the owner's switch is off")
-			assert.Contains(t, rec.Body.String(), "Coral Hub can turn on auto-accept", "the refusal says where to turn it on")
-			assert.Contains(t, rec.Body.String(), "Settings › General › About", "the refusal says where to turn it on")
+			var refusal struct {
+				Error string `json:"error"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &refusal))
+			assert.Contains(t, refusal.Error, "Coral Hub can turn on auto-accept", "the refusal says where to turn it on")
+			assert.Contains(t, refusal.Error, "Settings > Network and Hub", "the refusal says where to turn it on")
 			assert.Equal(t, before, len(term.sentCommands()), "nothing started")
 			passed(call("local", tc.skips), "from this computer: unchanged")
 			passed(call("hub", tc.safe), "choices that keep the prompts need no switch")
@@ -171,25 +175,23 @@ func TestHubLaunchesThatSkipPermissionPrompts(t *testing.T) {
 // owner can follow it.
 func TestHubAutoAcceptOffSaysWhereToTurnItOn(t *testing.T) {
 	for file, labels := range map[string][]string{
-		"../../../pkg/frontend/templates/includes/modals.html": {"Connect to Coral Hub…"},
-		"../../../pkg/frontend/static/editions.js":             {"Coral Hub can turn on auto-accept", "Most Coral Hub may do on this computer"},
+		"../../../pkg/frontend/templates/includes/modals.html": {"Network and Hub", "Coral Hub can turn on auto-accept"},
+		"../../../pkg/frontend/static/editions.js":             {"Coral Hub can turn on auto-accept"},
 	} {
 		b, err := os.ReadFile(file)
 		require.NoError(t, err)
 		for _, label := range labels {
 			assert.Contains(t, string(b), label, file)
+			if label == "Network and Hub" {
+				assert.Contains(t, hubAutoAcceptOff, "Settings > "+label)
+				continue
+			}
 			assert.Contains(t, hubAutoAcceptOff, `"`+label+`"`)
 		}
 	}
 }
 
-// #126 F4 (the Orchestrator's decision): the switch is off on an install where it was never set,
-// and a stored on stays on.
-func TestHubAutoAcceptSwitchIsOffUnlessTurnedOn(t *testing.T) {
-	assert.False(t, HubAutoAcceptAllowed(map[string]string{}), "never set")
-	assert.True(t, HubAutoAcceptAllowed(map[string]string{AllowHubAutoAcceptSetting: "true"}), "turned on")
-	assert.False(t, HubAutoAcceptAllowed(map[string]string{AllowHubAutoAcceptSetting: "false"}), "turned off")
-}
+// The switch's default is TestHubAutoAcceptDefaultsOnAndAnExplicitOffStaysOff (#5840, the Operator's decision).
 
 // #126 F4 (the Orchestrator's decision with the Security Reviewer's conditions): through the Coral Hub, with the switch off,
 // a team whose every member is exactly an agent of a team template the owner saved launches with its allow rules, tools and

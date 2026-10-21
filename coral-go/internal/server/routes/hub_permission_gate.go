@@ -13,7 +13,7 @@ import (
 
 // hubAutoAcceptOff is the hub_auto_accept_disabled refusal: what is off, and where on this computer
 // the owner turns it on.
-const hubAutoAcceptOff = `Coral Hub auto-accept is turned off on this computer. To turn it on, open Settings › General › About › "Connect to Coral Hub…" on this computer, set "Most Coral Hub may do on this computer" to Launch, and turn on "Coral Hub can turn on auto-accept".`
+const hubAutoAcceptOff = `Coral Hub auto-accept is turned off on this computer. To turn it on, open Settings > Network and Hub on this computer and turn on "Coral Hub can turn on auto-accept" (the account this computer is linked to can also turn it on from Coral Hub).`
 
 // hubAsksToSkip reports whether a launch, team member or restart asks for an agent that acts
 // without asking: flags that skip permission prompts (agent.SkipsPermissionPrompts, an allowlist),
