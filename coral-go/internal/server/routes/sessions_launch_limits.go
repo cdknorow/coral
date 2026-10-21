@@ -84,7 +84,10 @@ func keepAgentLaunchFlags(flags []string) []string {
 
 // inSavedTeamTemplate reports whether a team member's definition is exactly an agent entry of
 // a team template the Operator saved, after normalising (flags as words, JSON key order), so
-// an agent launching that template gets what the Operator chose (#4032).
+// an agent launching that template gets what the Operator chose (#4032), and so does a Coral Hub
+// user (#126 F4). Exactly: every field, its knowledge text included (the agent reads it as it
+// reads its prompt). The templates are read from this computer's settings, which neither an
+// agent's token nor the tunnel can write; nothing in the request says which template it is.
 func inSavedTeamTemplate(settings map[string]string, def launchTeamAgent) bool {
 	var templates []struct {
 		Agents []struct {
@@ -98,12 +101,13 @@ func inSavedTeamTemplate(settings map[string]string, def launchTeamAgent) bool {
 			Flags        json.RawMessage        `json:"flags"`
 			Tools        []string               `json:"tools"`
 			Hooks        map[string]interface{} `json:"hooks"`
+			Knowledge    string                 `json:"knowledge"`
 		} `json:"agents"`
 	}
 	if json.Unmarshal([]byte(setreg.Raw(settings, "saved_team_templates")), &templates) != nil {
 		return false
 	}
-	want := teamAgentKey(def.Name, def.Prompt, def.AgentType, def.Model, def.Flags, def.Capabilities, def.Tools, def.Hooks)
+	want := teamAgentKey(def.Name, def.Prompt, def.AgentType, def.Model, def.Flags, def.Capabilities, def.Tools, def.Hooks, def.Knowledge)
 	for _, t := range templates {
 		for _, a := range t.Agents {
 			name, prompt := a.Name, a.Prompt
@@ -115,12 +119,14 @@ func inSavedTeamTemplate(settings map[string]string, def launchTeamAgent) bool {
 			}
 			var flags []string
 			var asText string
-			if json.Unmarshal(a.Flags, &asText) == nil {
+			if len(a.Flags) == 0 || string(a.Flags) == "null" {
+				// no flags key: no flags (it used to fail both reads below, so such an entry never matched)
+			} else if json.Unmarshal(a.Flags, &asText) == nil {
 				flags = strings.Fields(asText)
 			} else if json.Unmarshal(a.Flags, &flags) != nil {
 				continue
 			}
-			if teamAgentKey(name, prompt, a.AgentType, a.Model, flags, a.Capabilities, a.Tools, a.Hooks) == want {
+			if teamAgentKey(name, prompt, a.AgentType, a.Model, flags, a.Capabilities, a.Tools, a.Hooks, a.Knowledge) == want {
 				return true
 			}
 		}
@@ -129,7 +135,7 @@ func inSavedTeamTemplate(settings map[string]string, def launchTeamAgent) bool {
 }
 
 // teamAgentKey is a team member's definition in one canonical JSON form.
-func teamAgentKey(name, prompt, agentType, model string, flags []string, caps *agent.Capabilities, tools []string, hooks map[string]interface{}) string {
+func teamAgentKey(name, prompt, agentType, model string, flags []string, caps *agent.Capabilities, tools []string, hooks map[string]interface{}, knowledge string) string {
 	var words []string
 	for _, f := range flags {
 		words = append(words, strings.Fields(f)...)
@@ -143,7 +149,7 @@ func teamAgentKey(name, prompt, agentType, model string, flags []string, caps *a
 	if len(hooks) == 0 {
 		hooks = nil
 	}
-	b, _ := json.Marshal([]any{name, prompt, agentType, model, words, caps, tools, hooks}) // maps marshal with sorted keys
+	b, _ := json.Marshal([]any{name, prompt, agentType, model, words, caps, tools, hooks, knowledge}) // maps marshal with sorted keys
 	return string(b)
 }
 

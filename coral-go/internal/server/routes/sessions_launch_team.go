@@ -18,6 +18,7 @@ import (
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/background"
 	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/internal/gitutil"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/tracking"
@@ -96,9 +97,17 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Through the Coral Hub, a team with any member that skips permission prompts needs the owner's local switch, checked
-	// before anything is written or started (#126 F4).
-	if refuseHubSkip(w, r, h.ss, teamAsksToSkip(body)) {
-		return
+	// before anything is written or started (#126 F4). A member that is exactly one of the owner's saved templates may keep
+	// its allow rules, tools and hooks; its flags are checked all the same.
+	if cloud.Tunneled(r) {
+		settings, err := h.ss.GetSettings(r.Context())
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		if refuseHubSkip(w, r, h.ss, teamAsksToSkip(body, settings)) {
+			return
+		}
 	}
 	// Which board the team joins or starts (#3536), decided before anything is written
 	// (knowledge files, working mode, presets, worktrees, the teams row). From here on
@@ -272,9 +281,12 @@ func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTea
 	}
 }
 
-// teamAsksToSkip reports whether any member of a team launch asks to skip permission prompts (hubAsksToSkip), with the
-// flags launchTeamMember gives it: its own, or the team's when it has none.
-func teamAsksToSkip(body launchTeamRequest) bool {
+// teamAsksToSkip reports whether any member of a team launch asks to skip permission prompts, with the flags
+// launchTeamMember gives it (its own, or the team's when it has none): flags that do (agent.SkipsPermissionPrompts), for
+// every member; or capability allow rules, tools or hooks, unless the member is exactly an agent of a team template the
+// owner saved (inSavedTeamTemplate, every field). The built-in templates are not the owner's choice: their allow rules
+// count (#126 F4, the Orchestrator's decision). One member is enough to refuse the team.
+func teamAsksToSkip(body launchTeamRequest, settings map[string]string) bool {
 	for _, def := range body.Agents {
 		agentType, flags := body.AgentType, def.Flags
 		if def.AgentType != "" {
@@ -283,7 +295,10 @@ func teamAsksToSkip(body launchTeamRequest) bool {
 		if len(flags) == 0 {
 			flags = body.Flags
 		}
-		if hubAsksToSkip(agentType, flags, def.Capabilities, def.Tools, def.Hooks) {
+		if agent.SkipsPermissionPrompts(agentType, flags) {
+			return true
+		}
+		if hubWidens(def.Capabilities, def.Tools, def.Hooks) && !inSavedTeamTemplate(settings, def) {
 			return true
 		}
 	}
