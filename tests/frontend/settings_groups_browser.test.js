@@ -107,7 +107,7 @@ const GROUPS = {
         await open('general');
         // A hub page never loads the machine-only rows that fill themselves (browser sign-in, terminal backend); this local page did. They fill from fetches that answer when they answer (loadSecurityRow
         // shows its row after /api/system/auth-status): wait for each to have filled, THEN hide it, or a slow fill (a throttled CPU) shows the row again after the hiding and its tab joins the list (#5602).
-        for (const row of ['settings-security', 'settings-terminal-backend']) await waitFor(`!document.getElementById('${row}').hidden`, `the ${row} row has filled`, { timeout: 10000, soft: true });
+        for (const row of ['settings-security', 'settings-terminal-backend']) await waitFor(`!document.getElementById('${row}').hidden`, `the ${row} row has filled`, 10000).catch(() => {}); // a row that never fills (nothing to show here) is hidden already
         await ev(`document.getElementById('settings-security').hidden = true; document.getElementById('settings-terminal-backend').hidden = true; true`);
         await ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'cloud_settings.js'); m.applyCloudSettingsDialog(); return true; })()`);
         const listed = await ev(`[...document.querySelectorAll('#settings-tabs [role=tab]')].filter(t => !t.hidden).map(t => t.id.replace('settings-tab-', ''))`);
