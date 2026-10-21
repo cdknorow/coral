@@ -203,13 +203,13 @@ func claudeSettingsFile(files *launchFiles, params LaunchParams, effectiveID str
 		if existingPath, ok := envMap["PATH"].(string); ok {
 			// Prepend if not already present
 			if !strings.Contains(existingPath, macosDir) {
-				envMap["PATH"] = macosDir + ":" + existingPath
+				envMap["PATH"] = PathWithDir(macosDir, existingPath)
 			}
 		} else {
 			// Resolve $PATH from the actual environment — JSON settings files
 			// are not shell-expanded, so literal "$PATH" would be passed as-is.
 			currentPath := os.Getenv("PATH")
-			envMap["PATH"] = macosDir + ":" + currentPath
+			envMap["PATH"] = PathWithDir(macosDir, currentPath)
 		}
 		merged["env"] = envMap
 	}
