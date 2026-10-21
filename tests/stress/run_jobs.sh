@@ -71,7 +71,7 @@ wait_for_server() {
 
 # ── Setup ────────────────────────────────────────────────────────────
 
-TMPDIR_JOBS="$(mktemp -d)"
+TMPDIR_JOBS="$(mktemp -d "${TMPDIR:-/tmp}/coral-test-jobs.XXXXXX")"
 export TMPDIR="$TMPDIR_JOBS"  # (#3926)
 export CORAL_DATA_DIR="$TMPDIR_JOBS"
 export CORAL_NO_DEMO_SEED=1  # no demo workflow/job: a test server never runs a real agent on its own

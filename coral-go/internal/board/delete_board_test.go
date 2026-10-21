@@ -156,3 +156,70 @@ func TestDeleteProjectUnblocksTasksOnOtherBoards(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, still, "the other board's task is still there")
 }
+
+// #5762: a team launch that started nobody takes back the board it made, but only while nothing else has used it: a member, a message, a task, a group,
+// a reminder or a wait is someone else's, and the board stays with it. A board with only what the launch writes (settings, a working mode, presets) goes.
+func TestDeleteProjectIfUnusedKeepsABoardSomethingElseUsed(t *testing.T) {
+	ctx := context.Background()
+	for _, use := range []struct {
+		name string
+		do   func(t *testing.T, s *Store)
+	}{
+		{"a member joined", func(t *testing.T, s *Store) {
+			_, err := s.Subscribe(ctx, "made", "Dev", "Developer", "claude-made-dev", nil, "all")
+			require.NoError(t, err)
+		}},
+		{"a message was posted", func(t *testing.T, s *Store) {
+			_, err := s.Subscribe(ctx, "made", "Dev", "Developer", "claude-made-dev", nil, "all")
+			require.NoError(t, err)
+			_, err = s.Unsubscribe(ctx, "made", "Dev") // the member left again: the message stays
+			require.NoError(t, err)
+			_, err = s.PostMessage(ctx, "made", "Dev", "hello", nil)
+			require.NoError(t, err)
+		}},
+		{"a task was made", func(t *testing.T, s *Store) {
+			_, err := s.CreateTask(ctx, "made", "a task", "", "medium", "Boss")
+			require.NoError(t, err)
+		}},
+		{"a group", func(t *testing.T, s *Store) {
+			_, err := s.db.ExecContext(ctx, `INSERT INTO board_groups (project, group_id, session_id) VALUES ('made', 'g1', 'claude-x')`)
+			require.NoError(t, err)
+		}},
+		{"a reminder", func(t *testing.T, s *Store) {
+			_, err := s.db.ExecContext(ctx, `INSERT INTO board_reminders (project, subscriber_id, message, interval_seconds) VALUES ('made', 'Dev', 'remind', 60)`)
+			require.NoError(t, err)
+		}},
+		{"a wait", func(t *testing.T, s *Store) {
+			_, err := s.RegisterWait(ctx, "made", "Dev", "claude-made-dev", "task", "1", "waiting", time.Hour)
+			require.NoError(t, err)
+		}},
+	} {
+		t.Run(use.name, func(t *testing.T) {
+			s := testStore(t)
+			require.NoError(t, s.SetBoardSetting(ctx, "made", "health", `{"on":true}`)) // what the launch wrote
+			_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO boards (id, label, created_at) VALUES ('made', 'made', '2026-10-19T00:00:00Z')`)
+			require.NoError(t, err)
+			use.do(t, s)
+			deleted, err := s.DeleteProjectIfUnused(ctx, "made")
+			require.NoError(t, err)
+			assert.False(t, deleted, "the board is kept")
+			assert.Equal(t, 1, countRows(t, s, "boards", "id = ?", "made"))
+			assert.Equal(t, 1, countRows(t, s, "board_settings", "project = ?", "made"), "with everything on it")
+		})
+	}
+}
+
+func TestDeleteProjectIfUnusedTakesABoardNobodyUsed(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	require.NoError(t, s.SetBoardSetting(ctx, "made", "health", `{"on":true}`))
+	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO boards (id, label, created_at) VALUES ('made', 'made', '2026-10-19T00:00:00Z')`)
+	require.NoError(t, err)
+	fillBoard(t, s, "other")
+	deleted, err := s.DeleteProjectIfUnused(ctx, "made")
+	require.NoError(t, err)
+	assert.True(t, deleted)
+	assert.Equal(t, 0, countRows(t, s, "boards", "id = ?", "made"))
+	assert.Equal(t, 0, countRows(t, s, "board_settings", "project = ?", "made"))
+	assert.Greater(t, countRows(t, s, "board_tasks", "board_id = ?", "other"), 0, "another board is untouched")
+}

@@ -186,3 +186,39 @@ func TestTeamLaunchWhereNoMemberStartsRemovesTheBranchItMade(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, status, "%v", out)
 	assert.Contains(t, git("branch", "--list", "coral-team/"+boardID), "coral-team/"+boardID, "a branch that was already there stays")
 }
+
+// #5762: the rollback of a launch that started nobody deletes the board it made only while nothing else has used it: a member that joined between the
+// failure and the rollback (an agent joins a board by itself, or another launch on it) keeps the board, with the member.
+func TestTeamLaunchRollbackKeepsABoardAMemberJoinedMeanwhile(t *testing.T) {
+	_, h, _, _ := setupSessionsTestServerWithConfig(t, config.Load(t.TempDir()))
+	ctx := context.Background()
+	rollBack := func(id string, made bool) {
+		h.rollBackTeamLaunch(ctx, launchTeamRequest{BoardName: id}, 0, "", false, made)
+	}
+
+	// nothing joined: the board this request made is taken back
+	unused, err := h.bs.CreateBoard(ctx, "raced", "tester")
+	require.NoError(t, err)
+	rollBack(unused.ID, true)
+	_, err = h.bs.GetBoard(ctx, unused.ID)
+	assert.Error(t, err, "an unused board is deleted")
+
+	// a member joined meanwhile: the board stays, with the member
+	used, err := h.bs.CreateBoard(ctx, "raced too", "tester")
+	require.NoError(t, err)
+	_, err = h.bs.Subscribe(ctx, used.ID, "Late", "Developer", "claude-raced-late", nil, "all")
+	require.NoError(t, err)
+	rollBack(used.ID, true)
+	_, err = h.bs.GetBoard(ctx, used.ID)
+	assert.NoError(t, err, "the board a member joined is kept")
+	subs, err := h.bs.ListSubscribers(ctx, used.ID)
+	require.NoError(t, err)
+	assert.Len(t, subs, 1, "and so is the member")
+
+	// a board this request did not make is never deleted, used or not
+	theirs, err := h.bs.CreateBoard(ctx, "theirs", "tester")
+	require.NoError(t, err)
+	rollBack(theirs.ID, false)
+	_, err = h.bs.GetBoard(ctx, theirs.ID)
+	assert.NoError(t, err)
+}
