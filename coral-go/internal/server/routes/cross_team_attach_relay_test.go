@@ -413,31 +413,48 @@ func TestRelayAttachTransportErrors(t *testing.T) {
 // A file swapped (same size, other bytes) or removed after the check fails the send with nothing sent
 // and nothing recorded.
 func TestRelayAttachSwappedFileAbortsWithNothingSent(t *testing.T) {
-	for name, tamper := range map[string]func(path string){
+	// A tamper runs inside the handler, on the server's goroutine: it must never call t.Skip, require or
+	// FailNow there (that ended the server goroutine, the hook stayed set for every later test, and the
+	// package run aborted with "test executed panic(nil) or runtime.Goexit" on Windows). It records its
+	// error, checked on the test's own goroutine.
+	var tamperErr error
+	try := func(err error) {
+		if err != nil && tamperErr == nil {
+			tamperErr = err
+		}
+	}
+	cases := map[string]func(path string){
 		"rewritten in place": func(path string) {
 			data, _ := os.ReadFile(path)
 			for i := range data {
 				data[i] ^= 0x01
 			}
-			require.NoError(t, os.WriteFile(path, data, 0o600))
+			try(os.WriteFile(path, data, 0o600))
 		},
 		"replaced by a link": func(path string) {
-			require.NoError(t, os.Remove(path))
-			require.NoError(t, os.WriteFile(path+".other", []byte("# one\n"), 0o600))
-			if err := os.Symlink(path+".other", path); err != nil {
-				t.Skip("no symlinks")
-			}
+			try(os.Remove(path))
+			try(os.WriteFile(path+".other", []byte("# one\n"), 0o600))
+			try(os.Symlink(path+".other", path))
 		},
-		"deleted": func(path string) { require.NoError(t, os.Remove(path)) },
-	} {
-		e := newRelayAttachEnv(t, true)
-		a := e.upload(alphaOrchSID, "# one\n")
-		attachBeforeLoad = tamper
-		code, out, _ := e.relay(alphaOrchSID, "", uri(a))
-		attachBeforeLoad = nil
-		assert.Equal(t, http.StatusConflict, code, name)
-		assert.Equal(t, "attach_changed", out["code"], name)
-		e.nothingSent(name)
+		"deleted": func(path string) { try(os.Remove(path)) },
+	}
+	if probe := t.TempDir(); os.Symlink(probe, filepath.Join(probe, "link")) != nil {
+		delete(cases, "replaced by a link") // no symlinks here (Windows without Developer Mode)
+	}
+	for name, tamper := range cases {
+		t.Run(name, func(t *testing.T) {
+			tamperErr = nil
+			e := newRelayAttachEnv(t, true)
+			a := e.upload(alphaOrchSID, "# one\n")
+			attachBeforeLoad = tamper
+			t.Cleanup(func() { attachBeforeLoad = nil }) // whatever ends the test, no later test runs this hook
+			code, out, _ := e.relay(alphaOrchSID, "", uri(a))
+			attachBeforeLoad = nil
+			require.NoError(t, tamperErr, "the tamper itself")
+			assert.Equal(t, http.StatusConflict, code)
+			assert.Equal(t, "attach_changed", out["code"])
+			e.nothingSent(name)
+		})
 	}
 }
 
@@ -548,14 +565,22 @@ func TestRelayAttachUnsupportedRefundsTheRateToken(t *testing.T) {
 func TestRelayAttachSameBytesInAnotherFileAbortsWithNothingSent(t *testing.T) {
 	e := newRelayAttachEnv(t, true)
 	a := e.upload(alphaOrchSID, "# one\n")
+	// Runs in the handler: errors are recorded, never require'd there (see the swapped-file test).
+	var hookErr error
 	attachAfterRead = func(path string) {
 		data, err := os.ReadFile(path)
-		require.NoError(t, err)
-		require.NoError(t, os.Remove(path))
-		require.NoError(t, os.WriteFile(path, data, 0o600))
+		if err == nil {
+			err = os.Remove(path)
+		}
+		if err == nil {
+			err = os.WriteFile(path, data, 0o600)
+		}
+		hookErr = err
 	}
+	t.Cleanup(func() { attachAfterRead = nil })
 	code, out, _ := e.relay(alphaOrchSID, "", uri(a))
 	attachAfterRead = nil
+	require.NoError(t, hookErr, "the hook itself")
 	assert.Equal(t, http.StatusConflict, code, out)
 	assert.Equal(t, "attach_changed", out["code"])
 	e.nothingSent("same bytes, another file")

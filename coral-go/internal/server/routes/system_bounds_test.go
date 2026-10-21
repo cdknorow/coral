@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/linktest"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
 )
@@ -92,10 +93,10 @@ func TestImportTeamNeverFollowsASymlink(t *testing.T) {
 	dir := newTeamDir(t)
 	secret := filepath.Join(t.TempDir(), "outside.md")
 	writeFile(t, secret, "---\nname: Leaked\n---\nOUTSIDE-SECRET-TEXT")
-	require.NoError(t, os.Symlink(secret, filepath.Join(dir, "agents", "x.md")))
+	linktest.Symlink(t, secret, filepath.Join(dir, "agents", "x.md"))
 	outsideDir := filepath.Join(t.TempDir(), "elsewhere")
 	writeFile(t, filepath.Join(outsideDir, "y.md"), "OUTSIDE-SECRET-TEXT")
-	require.NoError(t, os.Symlink(outsideDir, filepath.Join(dir, "agents", "sub")))
+	linktest.Symlink(t, outsideDir, filepath.Join(dir, "agents", "sub"))
 
 	code, out := importTeam(t, h, dir, asOperator)
 	require.Equal(t, http.StatusOK, code, out)
@@ -106,8 +107,8 @@ func TestImportTeamNeverFollowsASymlink(t *testing.T) {
 	// A symlinked SKILL.md and a symlinked agents/ folder are not read either.
 	dir2 := filepath.Join(t.TempDir(), "team2")
 	require.NoError(t, os.MkdirAll(dir2, 0o755))
-	require.NoError(t, os.Symlink(secret, filepath.Join(dir2, "SKILL.md")))
-	require.NoError(t, os.Symlink(outsideDir, filepath.Join(dir2, "agents")))
+	linktest.Symlink(t, secret, filepath.Join(dir2, "SKILL.md"))
+	linktest.Symlink(t, outsideDir, filepath.Join(dir2, "agents"))
 	code, out = importTeam(t, h, dir2, asOperator)
 	raw, _ = json.Marshal(out)
 	assert.NotContains(t, string(raw), "OUTSIDE-SECRET-TEXT", "status %d", code)
@@ -226,7 +227,7 @@ func TestCLICheckRefusesAnAgentsWorkdirAndTheDataDir(t *testing.T) {
 	// A symlink outside to a binary inside is refused too.
 	script, _ := markerCLI(t, filepath.Join(repo, "bin2"), "claude")
 	link := filepath.Join(t.TempDir(), "claude")
-	require.NoError(t, os.Symlink(script, link))
+	linktest.Symlink(t, script, link)
 	assert.Equal(t, http.StatusBadRequest, cliCheckAs(h, "binary="+link, asOperator).Code)
 }
 

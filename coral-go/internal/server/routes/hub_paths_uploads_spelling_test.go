@@ -16,6 +16,7 @@ func TestAPastedImagesPathIsFoundWhateverWaysItIsSpelledOnWindows(t *testing.T) 
 	id := strings.Repeat("ab", 32)
 	link := " coral://artifacts/" + id
 	t.Setenv("HOME", `C:\Users\alice`)
+	t.Setenv("USERPROFILE", `C:\Users\alice`) // os.UserHomeDir on Windows
 	uploadDir = `C:\Users\alice\.coral\uploads`
 
 	hubFold, hubSlashes = true, true // Windows
@@ -38,6 +39,7 @@ func TestAPastedImagesPathIsFoundWhateverWaysItIsSpelledOnWindows(t *testing.T) 
 	hubFold, hubSlashes = false, false // Linux: a backslash is a character, and case matters
 	uploadDir = "/home/alice/.coral/uploads"
 	t.Setenv("HOME", "/home/alice")
+	t.Setenv("USERPROFILE", "/home/alice")
 	assert.Equal(t, "~/.coral/uploads/shot.png"+link, hubUploadText("/home/alice/.coral/uploads/shot.png"+link))
 	assert.Equal(t, "/HOME/alice/.coral/uploads/shot.png", hubUploadText("/HOME/alice/.coral/uploads/shot.png"))
 }

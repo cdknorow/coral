@@ -1,13 +1,13 @@
 package routes
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/linktest"
 )
 
 // #3633: a path that can't be resolved (a symlink loop here; on Windows a junction on the way
@@ -19,7 +19,7 @@ func TestUnresolvablePathsAreNeverInside(t *testing.T) {
 	}
 	wd := realPath(t.TempDir())
 	loop := filepath.Join(wd, "loop")
-	require.NoError(t, os.Symlink(loop, loop))
+	linktest.Symlink(t, loop, loop)
 	for _, p := range []string{loop, filepath.Join(loop, "x.txt")} {
 		assert.False(t, isPathWithinDir(wd, p), "isPathWithinDir %s", p)
 		assert.False(t, pathInside(p, wd), "pathInside %s", p)
