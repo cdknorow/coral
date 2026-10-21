@@ -93,9 +93,12 @@ const STUB = `(() => {
             check(`${dev}: a row per task: title, board, priority and age; each a button that says it is closed and which region it controls`, rs.length === 3 && rs[0].title === 'Pick the release date' && /team-a · high · 2 hours ago/.test(rs[0].meta) && rs.every(r => r.expanded === 'false' && r.regionOk && r.hidden) && /review/.test(rs[2].meta), JSON.stringify(rs));
             check(`${dev}: a title with markup is text: the second title is its own characters, no element was made, nothing ran`, rs[1].title === 'Check <img src=x onerror="window.__pwn=1"> the logo' && (await ev(`document.querySelectorAll('#inbox-tasks-host img').length === 0 && window.__pwn === undefined`)) === true, JSON.stringify(rs[1]));
 
+            // the shared renderer is not loaded by the page: it loads once, when the first text is shown (#5818)
+            check(`${dev}: before any text is shown the renderer is not loaded`, (await ev(`typeof window.AccountMarkdown`)) === 'undefined');
             // expand: the full task through the shared renderer
             await head(0);
             await waitFor(`!!document.querySelector('#inbox-tasks-host .ibx-task-body .md')`, 'the task text', 4000);
+            check(`${dev}: opening the first task loaded the renderer, once`, (await ev(`typeof window.AccountMarkdown`)) === 'object' && (await ev(`performance.getEntriesByType('resource').filter(e => /vendor\\/safe-markdown\\.js/.test(e.name)).length`)) === 1);
             const body = await ev(`(() => { const r = document.querySelector('#inbox-tasks-host .ibx-task-body'); const tags = {}; r.querySelector('.md').querySelectorAll('*').forEach(e => { tags[e.tagName.toLowerCase()] = 1; }); tags.md = 1;
                 return { expanded: document.querySelector('#inbox-tasks-host .ibx-task-head').getAttribute('aria-expanded'), shown: !r.hidden, tags: Object.keys(tags), text: r.textContent, anchors: [...r.querySelectorAll('.md a')].map(a => [a.getAttribute('href'), a.getAttribute('rel'), a.getAttribute('target')]), pwn: window.__pwn, req: window.__reqs.filter(x => /\\/tasks\\/1$/.test(x.p)).length }; })()`);
             check(`${dev}: it opens: aria-expanded true, the task read once, "From <creator>" and the status`, body.expanded === 'true' && body.shown && body.req === 1 && /From Orchestrator · pending/.test(body.text), JSON.stringify(body.text).slice(0, 160));

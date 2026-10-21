@@ -43,7 +43,9 @@ window.run = function (text, policy) {
         await Page.enable(); await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         await Emulation.setDeviceMetricsOverride({ width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
-        await waitFor(`typeof window.AccountMarkdown === 'object'`, 'the shared renderer is loaded by the page (vendor/safe-markdown.js)', 15000);
+        ok(await ev(`typeof window.AccountMarkdown`) === 'undefined', 'a cold page does not load the shared renderer (it loads on first use, #5818)');
+        await ev(`import((window.__coralStatic || '/static/') + 'vendor_loader.js').then(m => m.loadSafeMarkdown()).then(() => true)`);
+        await waitFor(`typeof window.AccountMarkdown === 'object'`, 'the shared renderer is loaded on demand (vendor/safe-markdown.js)', 15000);
         await ev(`(() => { const o = document.createElement('div'); o.id = 'out'; document.body.append(o); return true; })()`);
         await ev(HARNESS);
         const { checkCorpus, HIDDEN } = await import(path.join(__dirname, 'fixtures', 'markdown-corpus.mjs'));
