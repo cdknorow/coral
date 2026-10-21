@@ -68,6 +68,9 @@ func winStages(command string) []winStage {
 		case c == '&' && i+1 < len(rs) && rs[i+1] == '&':
 			i++
 			flushStage(false)
+		case c == '&' && !strings.HasSuffix(word.String(), ">") && (have || len(cur.words) > 0):
+			// cmd's single & separates commands (echo hi & format C:); PowerShell's call operator is a & that starts a stage, and 2>&1 is a redirection.
+			flushStage(false)
 		case c == '|' && i+1 < len(rs) && rs[i+1] == '|':
 			i++
 			flushStage(false)
@@ -81,6 +84,15 @@ func winStages(command string) []winStage {
 	flushStage(false)
 	return stages
 }
+
+// winVarCommandRe: a command word that is a cmd variable (%COMSPEC%, %SystemRoot%\\System32\\format.com) or PowerShell's environment variable ($env:ComSpec). A bare %, $_ or $x.Name is
+// an alias or an expression in a pipeline, not a command.
+var winVarCommandRe = regexp.MustCompile(`^(%[A-Za-z_][A-Za-z0-9_]*%|\$env:[A-Za-z_][A-Za-z0-9_]*$)`)
+
+// winAssignRe: the word after a variable that makes the stage an assignment ($env:FOO = 'x', $x += 1), not a command.
+var winAssignRe = regexp.MustCompile(`^[+\-*/%.]?=`)
+
+var winCompareOps = setOf("equ", "neq", "lss", "leq", "gtr", "geq", "not", "exist", "defined", "errorlevel", "cmdextversion")
 
 var redirWordRe = regexp.MustCompile(`^(\d?>>?)(.*)$`)
 
@@ -115,7 +127,10 @@ var (
 		"remove-itemproperty", "set-itemproperty", "new-itemproperty", "clear-eventlog", "remove-eventlog", "wevtutil",
 		"set-mppreference", "add-mppreference", "disable-netfirewallrule", "remove-netfirewallrule", "netsh", "schtasks",
 		"remove-service", "set-service", "stop-service", "new-service", "sc", "net", "net1", "taskkill", "wmic", "mklink",
-		"format", "convert", "label", "fsutil", "vssadmin", "mountvol")
+		"format", "convert", "label", "fsutil", "vssadmin", "mountvol",
+		// Disk, boot, image and backup tools, secure delete, run-as, and programs that fetch and run code or load a library (#5662): never judged by their arguments.
+		"chkdsk", "sfc", "dism", "bootrec", "bootsect", "wbadmin", "diskshadow", "sdelete", "sdelete64", "runas", "certutil", "bitsadmin", "msiexec",
+		"regsvr32", "mshta", "rundll32", "wscript", "cscript", "installutil", "cmstp", "odbcconf")
 	// Cmdlets that only read or print: never risky for being given -Recurse or a path.
 	cmdletRe   = regexp.MustCompile(`^[A-Za-z]+-[A-Za-z]+$`)
 	providerRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]+:`) // HKLM:, HKCU:, Env:, Cert:, Function:... (a drive letter is one character)
@@ -272,6 +287,15 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	if strings.Contains(words[0], "^") {
 		return "its command is written with cmd escapes (^)"
 	}
+	// cmd's echo-off prefix (@format C:) and the call operator glued to its command (&cmd /c ...): the command is what follows.
+	if len(words[0]) > 1 && (words[0][0] == '@' || words[0][0] == '&') {
+		words = append([]string{words[0][1:]}, words[1:]...)
+		words = splitGlued(words)
+	}
+	// A command held in a variable (%COMSPEC% /c format C:, $env:ComSpec ...) cannot be read; an assignment ($x = 1, $x=1) is not a command.
+	if first := words[0]; winVarCommandRe.MatchString(first) && !(len(words) > 1 && winAssignRe.MatchString(words[1])) {
+		return "its command (" + first + ") comes from a variable Coral can't read"
+	}
 	words[0] = moduleQualified(words[0])
 	// The call operator and dot-sourcing: & 'path' args, . .\script.ps1.
 	if words[0] == "&" || words[0] == "." {
@@ -293,8 +317,43 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	switch name {
 	case "powershell", "pwsh", "powershell_ise":
 		return winShellWrapper(args, outside)
+	case "call":
+		return winVerbRisk(strings.Join(args, " "), outside) // call format C: runs format
+	case "for":
+		for i, a := range args {
+			if strings.EqualFold(a, "do") {
+				return winVerbRisk(strings.Join(args[i+1:], " "), outside)
+			}
+		}
+		return ""
+	case "forfiles":
+		for i, a := range args {
+			if strings.EqualFold(a, "/c") && i+1 < len(args) {
+				return winVerbRisk(args[i+1], outside)
+			}
+		}
+		return ""
+	case "if", "else":
+		// if exist x del C:\x: the command is somewhere after the condition, so every tail of the stage is judged.
+		for j := 0; j < len(args); j++ {
+			if strings.Contains(args[j], "==") || winCompareOps[strings.ToLower(args[j])] {
+				continue // a comparison ("%A%"=="1", a equ b), not the command
+			}
+			if why := winStageRisk(winStage{words: args[j:]}, outside); why != "" {
+				return why
+			}
+		}
+		return ""
 	case "cmd":
 		for i, a := range args {
+			if l := strings.ToLower(a); len(a) > 2 && (strings.HasPrefix(l, "/c") || strings.HasPrefix(l, "/k") || strings.HasPrefix(l, "/r")) {
+				// cmd /c"format C:" and cmd /cformat C:: the command text follows the switch with no space.
+				rest := strings.Join(append([]string{a[2:]}, args[i+1:]...), " ")
+				if strings.Contains(rest, "^") {
+					return "its cmd text is written with escapes (^)"
+				}
+				return winVerbRisk(rest, outside)
+			}
 			if strings.EqualFold(a, "/c") || strings.EqualFold(a, "/k") || strings.EqualFold(a, "/r") {
 				rest := strings.Join(args[i+1:], " ")
 				if strings.Contains(rest, "^") {
@@ -319,6 +378,7 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 		}
 		return ""
 	case "start-process", "saps":
+		filePath := ""
 		for i, a := range args {
 			if isParam(a, "verb", 1) && i+1 < len(args) && strings.EqualFold(args[i+1], "runas") {
 				return "it starts a process as administrator"
@@ -326,14 +386,35 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 			if isParam(a, "argumentlist", 2) || strings.EqualFold(a, "-args") {
 				return "it starts a program with arguments Coral can't judge (S2)"
 			}
+			if isParam(a, "filepath", 2) && i+1 < len(args) {
+				filePath = args[i+1]
+			}
+		}
+		if filePath != "" {
+			return winVerbRisk(filePath, outside) // Start-Process -FilePath format.com: the program is judged
 		}
 		if len(args) > 0 && !strings.HasPrefix(args[0], "-") && winKnownCommand(args[0]) {
 			return winVerbRisk(strings.Join(args, " "), outside) // Start-Process cmd, powershell: the program is judged
 		}
 		return ""
-	case "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "curl", "wget", "bitsadmin":
+	case "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "curl", "wget":
+		for _, a := range args {
+			// --output=path, --output-document=path, --directory-prefix=path: the path is glued on.
+			if k := strings.IndexByte(a, '='); k > 0 && strings.HasPrefix(a, "--") {
+				switch strings.ToLower(a[:k]) {
+				case "--output", "--output-document", "--directory-prefix":
+					if pathOutside(a[k+1:], outside) {
+						return "it writes outside the working directory (" + a[k+1:] + ")"
+					}
+				}
+			}
+		}
 		for i, a := range args {
-			if isParam(a, "outfile", 3) && i+1 < len(args) && pathOutside(args[i+1], outside) {
+			if i+1 >= len(args) {
+				break
+			}
+			// -OutFile (PowerShell), curl's -o / --output and wget's -O / --output-document / -P: where the download is written.
+			if (isParam(a, "outfile", 3) || a == "-o" || strings.EqualFold(a, "--output") || (name == "wget" && (a == "-O" || strings.EqualFold(a, "--output-document") || a == "-P" || strings.EqualFold(a, "--directory-prefix")))) && pathOutside(args[i+1], outside) {
 				return "it writes outside the working directory (" + args[i+1] + ")"
 			}
 		}
@@ -507,7 +588,14 @@ func winSystemWhy(name string) string {
 func winShellWrapper(args []string, outside func(string) bool) string {
 	for i := 0; i < len(args); i++ {
 		name := strings.ToLower(strings.TrimLeft(args[i], "-/"))
-		if args[i] == "" || (args[i][0] != '-' && args[i][0] != '/') || name == "" {
+		if args[i] != "" && args[i] != "-" && args[i][0] != '-' && args[i][0] != '/' {
+			// powershell Remove-Item -Recurse C:\x: a first argument that is not a switch is the command text.
+			return winVerbRisk(strings.Join(args[i:], " "), outside)
+		}
+		if args[i] == "-" {
+			return "it reads its PowerShell command from standard input"
+		}
+		if args[i] == "" || name == "" {
 			continue
 		}
 		switch {
@@ -518,6 +606,9 @@ func winShellWrapper(args []string, outside func(string) bool) string {
 			len(name) >= 2 && strings.HasPrefix("workingdirectory", name):
 			i++ // a switch with a value
 		case name == "c" || strings.HasPrefix("command", name):
+			if i+1 < len(args) && args[i+1] == "-" {
+				return "it reads its PowerShell command from standard input"
+			}
 			return winVerbRisk(strings.Join(args[i+1:], " "), outside)
 		case name == "f" || strings.HasPrefix("file", name):
 			if i+1 < len(args) && pathOutside(args[i+1], outside) {
