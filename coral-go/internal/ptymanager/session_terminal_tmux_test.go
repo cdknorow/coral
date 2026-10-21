@@ -439,3 +439,22 @@ func TestTmuxSessionTerminal_ConcurrentListAndKill(t *testing.T) {
 func TestTmuxSessionTerminal_ImplementsInterface(t *testing.T) {
 	var _ SessionTerminal = (*TmuxSessionTerminal)(nil)
 }
+
+// #27 (audit F9): a capture is the pane as plain text, up to `lines` rows of scrollback above its
+// screen (capture-pane -p -S -<lines>): what the PTY backend's capture now gives too.
+func TestTmuxSessionTerminal_CaptureOutputIsPlainTextWithBoundedScrollback(t *testing.T) {
+	terminal := newTmuxTestTerminal(t)
+	ctx := context.Background()
+	name := "claude-00000027-0027-4000-8000-000000000000"
+	spawnTmuxSession(t, terminal, name, t.TempDir())
+
+	require.NoError(t, terminal.SendInput(ctx, name, `printf '\033[32mgreen\033[0m\n'; seq -f 'row %03g' 1 300; echo CAPTURE_DONE`, "", ""))
+	waitForCapture(t, terminal, name, "CAPTURE_DONE", 10*time.Second)
+
+	out, err := terminal.CaptureOutput(ctx, name, 30, "", "")
+	require.NoError(t, err)
+	assert.NotContains(t, out, "\x1b", "no escape sequences")
+	assert.Contains(t, out, "row 300")
+	assert.NotContains(t, out, "row 001", "only the last lines of scrollback")
+	assert.LessOrEqual(t, len(strings.Split(strings.TrimRight(out, "\n"), "\n")), 30+50, "at most lines above a screen of at most 50 rows")
+}
