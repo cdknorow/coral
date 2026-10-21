@@ -57,8 +57,8 @@ func TestThePinsNameTheWorkflowsOfThisRepository(t *testing.T) {
 	require.NoError(t, err, "the pinned release workflow exists")
 	assert.Contains(t, string(b), "name: Release", "the certificate's workflow name is Release")
 	assert.Regexp(t, `(?m)^\s*-\s*['"]?v\*`, string(b), "release.yml runs on v* tags, which is what the pinned SAN's ref names")
-	assert.Equal(t, "https://github.com/cdknorow/coral/.github/workflows/release.yml@refs/tags/v1.4.120", releaseSAN(Repo, "v1.4.120"))
+	assert.Equal(t, "https://github.com/subgentic/coral/.github/workflows/release.yml@refs/tags/v1.4.120", releaseSAN(Repo, "v1.4.120"))
 	p := DefaultPins()
-	assert.Equal(t, "https://github.com/cdknorow/coral-promote/.github/workflows/promote.yml@refs/heads/main", promoteIdentity(p).SAN)
+	assert.Equal(t, "https://github.com/subgentic/coral-promote/.github/workflows/promote.yml@refs/heads/main", promoteIdentity(p).SAN)
 	assert.Equal(t, "https://token.actions.githubusercontent.com", p.Issuer)
 }

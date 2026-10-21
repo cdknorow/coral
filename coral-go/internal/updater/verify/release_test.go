@@ -51,7 +51,7 @@ func (f *fakeSigner) VerifyBundle(bundleJSON, artifact []byte, want Identity) (C
 var (
 	testNow    = time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 	testCommit = strings.Repeat("ab", 20)
-	testPins   = DefaultPins()
+	testPins   = withPromoteID(DefaultPins())
 )
 
 // release is a well-formed promoted release 1.4.130 for linux amd64, built by the fake signer; each test changes one thing.
@@ -104,8 +104,8 @@ func TestAWellFormedReleaseIsVerifiedInOrder(t *testing.T) {
 	assert.Equal(t, asset("1.4.130"), rec.Asset)
 	// The manifest's signature is checked first, the sums file's second, and for exactly this tag.
 	require.Len(t, f.calls, 2)
-	assert.Equal(t, "https://github.com/cdknorow/coral-promote/.github/workflows/promote.yml@refs/heads/main", f.calls[0].SAN)
-	assert.Equal(t, "https://github.com/cdknorow/coral/.github/workflows/release.yml@refs/tags/v1.4.130", f.calls[1].SAN)
+	assert.Equal(t, "https://github.com/subgentic/coral-promote/.github/workflows/promote.yml@refs/heads/main", f.calls[0].SAN)
+	assert.Equal(t, "https://github.com/subgentic/coral/.github/workflows/release.yml@refs/tags/v1.4.130", f.calls[1].SAN)
 	assert.Equal(t, "https://token.actions.githubusercontent.com", f.calls[1].Issuer)
 	assert.Equal(t, "refs/tags/v1.4.130", f.calls[1].SourceRepositoryRef)
 	// The package is checked against the verified sums entry, at staging and again at install.

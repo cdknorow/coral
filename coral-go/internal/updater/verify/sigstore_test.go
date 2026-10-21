@@ -27,7 +27,7 @@ func realFixture(t *testing.T) (sums, bundle []byte, v Sigstore) {
 
 func TestTheRealV14120BundleVerifiesAgainstTheReleaseIdentity(t *testing.T) {
 	sums, bundle, v := realFixture(t)
-	id := releaseIdentity(DefaultPins(), "v1.4.120")
+	id := releaseIdentity(oldHomePins(), "v1.4.120")
 	cert, err := v.VerifyBundle(bundle, sums, id)
 	require.NoError(t, err)
 	assert.Equal(t, id.SAN, cert.SAN)
@@ -38,16 +38,18 @@ func TestTheRealV14120BundleVerifiesAgainstTheReleaseIdentity(t *testing.T) {
 
 func TestTheRealBundleIsRefusedForEveryWrongPin(t *testing.T) {
 	sums, bundle, v := realFixture(t)
-	right := releaseIdentity(DefaultPins(), "v1.4.120")
+	right := releaseIdentity(oldHomePins(), "v1.4.120")
 	wrong := map[string]func(Identity) Identity{
-		"another tag":               func(i Identity) Identity { i.SAN = releaseSAN(Repo, "v1.4.121"); return i },
+		"another tag":               func(i Identity) Identity { i.SAN = releaseSAN(oldHomePins().Repo, "v1.4.121"); return i },
 		"another repository":        func(i Identity) Identity { i.SAN = releaseSAN("someone/coral", "v1.4.120"); return i },
 		"another workflow":          func(i Identity) Identity { i.SAN = strings.Replace(i.SAN, "release.yml", "promote.yml", 1); return i },
-		"the promote identity":      func(i Identity) Identity { return promoteIdentity(DefaultPins()) },
+		"the promote identity":      func(i Identity) Identity { return promoteIdentity(oldHomePins()) },
 		"another issuer":            func(i Identity) Identity { i.Issuer = "https://accounts.google.com"; return i },
 		"another ref extension":     func(i Identity) Identity { i.SourceRepositoryRef = "refs/tags/v1.4.121"; return i },
 		"another source repository": func(i Identity) Identity { i.SourceRepositoryURI = "https://github.com/someone/coral"; return i },
 		"another trigger":           func(i Identity) Identity { i.BuildTrigger = "workflow_dispatch"; return i },
+		"another repository id":     func(i Identity) Identity { i.SourceRepositoryID = "1160696365"; return i }, // the name and everything else right, the id not: a re-created name (#5536)
+		"no repository id":          func(i Identity) Identity { i.SourceRepositoryID = ""; return i },
 		"another runner":            func(i Identity) Identity { i.RunnerEnvironment = "self-hosted"; return i },
 		"a prefix of the SAN":       func(i Identity) Identity { i.SAN = strings.TrimSuffix(i.SAN, "0"); return i },
 	}
@@ -62,7 +64,7 @@ func TestTheRealBundleIsRefusedForEveryWrongPin(t *testing.T) {
 
 func TestTheRealBundleIsRefusedWhenAnythingElseChanges(t *testing.T) {
 	sums, bundle, v := realFixture(t)
-	id := releaseIdentity(DefaultPins(), "v1.4.120")
+	id := releaseIdentity(oldHomePins(), "v1.4.120")
 	// Another artifact.
 	other := append([]byte{}, sums...)
 	other[0] ^= 1
@@ -112,21 +114,21 @@ func TestTheRealBundleIsRefusedWhenAnythingElseChanges(t *testing.T) {
 // Release, with the manifest's own signature made by the fake signer (a real promote workflow does not exist yet).
 func TestReleaseWithTheRealSumsBundle(t *testing.T) {
 	sums, bundle, v := realFixture(t)
-	cert, err := v.VerifyBundle(bundle, sums, releaseIdentity(DefaultPins(), "v1.4.120"))
+	cert, err := v.VerifyBundle(bundle, sums, releaseIdentity(oldHomePins(), "v1.4.120"))
 	require.NoError(t, err)
-	m := Manifest{Schema: 1, Repo: Repo, Tag: "v1.4.120", Version: "1.4.120", SourceSHA: cert.SourceRepositoryDigest, SHA256SumsSHA: sha256Hex(sums), Sequence: 3,
+	m := Manifest{Schema: 1, Repo: oldHomePins().Repo, Tag: "v1.4.120", Version: "1.4.120", SourceSHA: cert.SourceRepositoryDigest, SHA256SumsSHA: sha256Hex(sums), Sequence: 3,
 		PromotedAt: "2026-10-20T10:00:00Z", ExpiresAt: "2026-11-20T10:00:00Z", Revoked: []string{}}
 	doc, _ := json.Marshal(m)
 	both := splitVerifier{manifest: &fakeSigner{}, release: v}
-	c := Candidate{Manifest: doc, ManifestBundle: sign(doc, promoteIdentity(DefaultPins()), ""), Sums: sums, SumsBundle: bundle}
-	rec, err := Release(both, DefaultPins(), c, func(ver string) string { return "coral-linux-amd64-" + ver + ".tar.gz" }, State{}, "1.4.119", testNow)
+	c := Candidate{Manifest: doc, ManifestBundle: sign(doc, promoteIdentity(oldHomePins()), ""), Sums: sums, SumsBundle: bundle}
+	rec, err := Release(both, oldHomePins(), c, func(ver string) string { return "coral-linux-amd64-" + ver + ".tar.gz" }, State{}, "1.4.119", testNow)
 	require.NoError(t, err)
 	assert.Equal(t, "bbc5ee38ac4a36315c2041c4052ba0e98bbd3be06917559f7b539b0399abb0d5", rec.PackageSHA256)
 	// The same real bundle with a manifest naming another commit: refused at the commit stage.
 	m.SourceSHA = strings.Repeat("ee", 20)
 	doc, _ = json.Marshal(m)
-	c.Manifest, c.ManifestBundle = doc, sign(doc, promoteIdentity(DefaultPins()), "")
-	_, err = Release(both, DefaultPins(), c, func(ver string) string { return "coral-linux-amd64-" + ver + ".tar.gz" }, State{}, "1.4.119", testNow)
+	c.Manifest, c.ManifestBundle = doc, sign(doc, promoteIdentity(oldHomePins()), "")
+	_, err = Release(both, oldHomePins(), c, func(ver string) string { return "coral-linux-amd64-" + ver + ".tar.gz" }, State{}, "1.4.119", testNow)
 	var f *Failure
 	require.ErrorAs(t, err, &f)
 	assert.Equal(t, StageSumsCommit, f.Stage)
