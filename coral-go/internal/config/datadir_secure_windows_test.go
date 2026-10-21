@@ -34,7 +34,7 @@ func readersOf(t *testing.T, path string) []string {
 
 // G2A (#96): an existing data folder that Users can read is made private to this user, and so are the files and folders in it.
 func TestExistingDataFolderOthersCanReadIsTightened(t *testing.T) {
-	root := t.TempDir()
+	root := privateRoot(t)
 	dir := filepath.Join(root, "coral")
 	require.NoError(t, os.Mkdir(dir, 0o700))
 	usersCanRead(t, dir)
@@ -75,7 +75,7 @@ func TestExistingDataFolderOthersCanReadIsTightened(t *testing.T) {
 // A folder that is already private is left alone, with no notice.
 func TestPrivateDataFolderIsLeftAlone(t *testing.T) {
 	setDataDirNotice("")
-	dir := filepath.Join(t.TempDir(), "coral")
+	dir := filepath.Join(privateRoot(t), "coral")
 	require.NoError(t, EnsureDataDir(dir)) // new: protected
 	require.NoError(t, EnsureDataDir(dir)) // existing, already private
 	assert.Empty(t, DataDirWarning(dir))
@@ -84,7 +84,7 @@ func TestPrivateDataFolderIsLeftAlone(t *testing.T) {
 // A folder another account owns can't be made private by this one: Coral refuses to start, naming the folder and the way out; the
 // opt-out lets it run, and says so.
 func TestDataFolderAnotherAccountOwnsIsRefusedUnlessAllowed(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "coral")
+	dir := filepath.Join(privateRoot(t), "coral")
 	require.NoError(t, os.Mkdir(dir, 0o700))
 	usersCanRead(t, dir)
 	prev := ownedByUs
@@ -113,7 +113,7 @@ func TestDataFolderAnotherAccountOwnsIsRefusedUnlessAllowed(t *testing.T) {
 // Nothing is followed: a junction inside the data folder is left alone and not entered, so a folder outside it keeps its list; and a
 // data folder that is itself a junction is refused rather than changed.
 func TestDataFolderLinksAreNeverFollowed(t *testing.T) {
-	root := t.TempDir()
+	root := privateRoot(t)
 	outside := filepath.Join(root, "outside")
 	require.NoError(t, os.Mkdir(outside, 0o700))
 	usersCanRead(t, outside)
@@ -147,7 +147,7 @@ func TestDataFolderLinksAreNeverFollowed(t *testing.T) {
 // N1 (#96): a folder that grants a named account or a custom group is tightened too, and so is an old file inside it that carries an
 // explicit entry for one, though the folder itself lists only this user and SYSTEM.
 func TestExistingDataFolderGrantingOtherAccountsIsTightened(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "coral")
+	dir := filepath.Join(privateRoot(t), "coral")
 	require.NoError(t, os.Mkdir(dir, 0o700))
 	// "Guest" stands for a named account; "Backup Operators" for a custom group.
 	for _, who := range []string{"Guest", "Backup Operators"} {
@@ -171,10 +171,19 @@ func TestExistingDataFolderGrantingOtherAccountsIsTightened(t *testing.T) {
 // A data folder whose only extra entries are Administrators, SYSTEM and this user is already private: nothing is done.
 func TestDataFolderWithOnlyAdministratorsIsLeftAlone(t *testing.T) {
 	setDataDirNotice("")
-	dir := filepath.Join(t.TempDir(), "coral")
+	dir := filepath.Join(privateRoot(t), "coral")
 	require.NoError(t, os.Mkdir(dir, 0o700))
 	out, err := exec.Command("icacls", dir, "/grant", "*S-1-5-32-544:(OI)(CI)F").CombinedOutput()
 	require.NoError(t, err, string(out))
 	require.NoError(t, EnsureDataDir(dir))
 	assert.Empty(t, DataDirWarning(dir))
+}
+
+// privateRoot is a temp folder only this user and SYSTEM can use, so a folder made in it starts private wherever TEMP is (a drive root's
+// entries for Users and Authenticated Users are inherited otherwise).
+func privateRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	require.NoError(t, protectDataDir(root))
+	return root
 }
