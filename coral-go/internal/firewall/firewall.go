@@ -180,10 +180,11 @@ func expandPercent(s string, get func(string) string) string {
 	}
 }
 
-// Fix is the commands that narrow the rule to Private networks or remove it, for an elevated PowerShell.
+// Fix is the commands that narrow the rule to Private networks or remove it, for an elevated PowerShell, each on a line of its own so a
+// pasted line is only a command (the one that narrows, a line saying the next one removes the rule instead, and that one).
 func (f Finding) Fix() string {
 	id := psquote.Literal(f.Rule.ID) // PowerShell also ends a quote at the curly single quotes: psquote doubles those too (#3904)
-	return fmt.Sprintf("Set-NetFirewallRule -Name %s -Profile Private   (or: Remove-NetFirewallRule -Name %s)", id, id)
+	return fmt.Sprintf("Set-NetFirewallRule -Name %s -Profile Private\nOr, to remove the rule instead:\nRemove-NetFirewallRule -Name %s", id, id)
 }
 
 // Message is the warning for findings, or "" for none.
@@ -194,7 +195,7 @@ func Message(findings []Finding) string {
 	var b strings.Builder
 	b.WriteString("Windows Firewall lets other computers reach Coral on every port, more than it needs. Coral never makes firewall rules: Windows made these when someone clicked Allow on its prompt. To limit each rule to Private networks, open PowerShell as an administrator and run:")
 	for _, f := range findings {
-		fmt.Fprintf(&b, "\n- %s (%s) %s: %s", f.Rule.Name, f.Rule.App, f.Why, f.Fix())
+		fmt.Fprintf(&b, "\n- %s (%s) %s:\n%s", f.Rule.Name, f.Rule.App, f.Why, f.Fix())
 	}
 	return b.String()
 }

@@ -119,6 +119,22 @@ func TestFixNamesTheRuleExactlyAndMessageListsEachRule(t *testing.T) {
 	assert.Contains(t, f.Fix(), `Remove-NetFirewallRule -Name 'TCP Query User{26C1}C:\x\it''s coral.exe'`)
 	msg := Message([]Finding{f, f})
 	assert.Equal(t, 2, strings.Count(msg, "\n- "))
+	// Each command is a line of its own, so what is pasted from it is only the command: nothing before it on the line, nothing after.
+	var commands []string
+	for _, line := range strings.Split(msg, "\n") {
+		if strings.Contains(line, "-NetFirewallRule") {
+			commands = append(commands, line)
+		}
+	}
+	require.Len(t, commands, 4, "two commands for each of the two rules")
+	for i, line := range commands {
+		want := "Set-NetFirewallRule -Name 'TCP Query User{26C1}C:\\x\\it''s coral.exe' -Profile Private"
+		if i%2 == 1 {
+			want = "Remove-NetFirewallRule -Name 'TCP Query User{26C1}C:\\x\\it''s coral.exe'"
+		}
+		assert.Equal(t, want, line)
+	}
+	assert.Contains(t, msg, "\nOr, to remove the rule instead:\n")
 	assert.Contains(t, msg, "Coral never makes firewall rules")
 	assert.Empty(t, Message(nil))
 }

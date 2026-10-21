@@ -71,7 +71,7 @@ func TestBroadDataFolderIsReported(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, groups, "Everyone")
 	msg := DataDirWarning(dir)
-	assert.Contains(t, msg, "WARNING")
+	assert.NotContains(t, msg, "WARNING", "the dashboard's toast is already titled Security warning")
 	assert.Contains(t, msg, "Everyone")
 	assert.Contains(t, msg, "API key")
 

@@ -26,7 +26,7 @@ func TestSystemStatusCarriesTheDataFolderWarning(t *testing.T) {
 		return out
 	}
 
-	const warning = "WARNING: Coral's data folder C:\\coral can be read by Everyone. Move the folder (CORAL_DATA_DIR) to one only you can read, or remove those groups from its permissions (Properties > Security)."
+	const warning = "Coral's data folder C:\\coral can be read by Everyone. Move the folder (CORAL_DATA_DIR) to one only you can read, or remove those groups from its permissions (Properties > Security)."
 	dataDirWarning = func(string) string { return warning }
 	assert.Equal(t, warning, status()["security_warning"])
 
