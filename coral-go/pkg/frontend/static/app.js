@@ -174,6 +174,7 @@ registerActions({
     'm-save-team-agent-from-modal': el => { window.saveTeamAgentFromModal(); },
     'm-save-team-template': el => { window._saveTeamTemplate(); },
     'm-save-view': el => { window._saveView(); },
+    'm-toggle-launch-more': () => window._toggleLaunchMore(),
     'm-select-launch-type': el => { if (["agent", "back", "team", "terminal"].includes(el.dataset.arg)) { window._selectLaunchType(el.dataset.arg); } },
     'm-show-mobile-connect-modal': el => { window._showMobileConnectModal(); },
     'm-show-open-folder-modal': el => { window.showOpenFolderModal(); },

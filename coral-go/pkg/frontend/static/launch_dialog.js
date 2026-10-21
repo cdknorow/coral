@@ -15,7 +15,7 @@ const { _syncACFModelField, getAgentConfig, renderAgentConfigForm } = await impo
 const { _checkPermissionFlag } = await importOnce('./cli_dialogs.js');
 const { _checkTeamGitDir, _initTeamForm, _loadExistingTeamBoards } = await importOnce('./team_dialogs.js');
 const { _initAgentPresets } = await importOnce('./persona_io.js');
-const { markFieldInvalid, _launchBlocked, _launchOn, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, hideLaunchModal } = await importOnce('./launch_core.js');
+const { markFieldInvalid, _launchBlocked, _launchOn, _refreshAfterLaunch, _resetDirInputs, _showLaunchStep, _syncMobileLaunchSections, hideLaunchModal, setLaunchMore } = await importOnce('./launch_core.js');
 const { initSectionDialog, showSection } = await importOnce('./section_dialog.js');
 
 function _selectLaunchType(type) {
@@ -25,6 +25,7 @@ function _selectLaunchType(type) {
         return;
     }
     launch.mode = type;
+    if (type === "agent") setLaunchMore(false); // New Agent always opens on the folder; its sections are behind "More options" (#5595)
     _showLaunchStep(type);
     if (type === "agent") {
         _loadAgentBoardProjects();
@@ -47,6 +48,7 @@ function _selectLaunchType(type) {
     }
 }
 window._selectLaunchType = _selectLaunchType;
+window._toggleLaunchMore = () => setLaunchMore(document.getElementById('launch-agent-more')?.hidden === true);
 
 /**
  * Open the launch modal. `server` (hub mode) pre-selects a launch target; with

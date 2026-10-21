@@ -52,6 +52,8 @@ const AGY_MODE = {
     'default': 'it asks before acting (its default mode)',
 };
 
+const BYPASS_NOTE = 'Claude, in Bypass Permissions mode: nothing asks, so Allow restricts nothing; only Deny blocks.';
+
 function _agentFamily(agentType) {
     if (agentType === 'agy' || agentType === 'antigravity' || agentType === 'gemini') return 'agy';
     return agentType || 'claude';
@@ -59,16 +61,17 @@ function _agentFamily(agentType) {
 
 /**
  * What agentType enforces for caps under permMode (the form's Permission Mode).
- * @returns {{ text: string, denyEnforced: boolean, patternsEnforced: boolean }}
+ * @returns {{ text: string, denyEnforced: boolean, patternsEnforced: boolean, quiet?: boolean }} quiet: the plain Bypass line, which a mirror of this text elsewhere leaves out
  */
 export function presetEnforcement(agentType, caps, permMode) {
     const family = _agentFamily(agentType);
     const allow = _set(caps?.allow);
     if (family === 'claude') {
         let text = 'Claude: Allow pre-approves these tools and others still run after it asks; Deny blocks.';
-        if (permMode === 'bypassPermissions') text = 'Claude, in Bypass Permissions mode: nothing asks, so Allow restricts nothing; only Deny blocks.';
+        if (permMode === 'bypassPermissions') text = BYPASS_NOTE;
+        const quiet = text === BYPASS_NOTE; // the plain Bypass line is the default case: it is said on Permissions only, not again under the persona (#5595)
         if (allow.has('shell') && allow.has('git_write')) text += " Git Write's git patterns don't limit git while Shell is allowed.";
-        return { text, denyEnforced: true, patternsEnforced: true };
+        return { text, denyEnforced: true, patternsEnforced: true, quiet };
     }
     if (family === 'codex') {
         const m = codexEnforced(caps);

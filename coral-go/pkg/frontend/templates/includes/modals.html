@@ -92,28 +92,35 @@
                     <p class="sd-sub">Pick a folder and launch. Everything else has a default.</p>
                 </div>
                 <div class="settings-modal-body">
+                    <div class="sd-essentials">
+                    <label>Working Directory:
+                        <div class="dir-input-row">
+                            <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
+                            <button class="btn" id="btn-browse" data-on-click="m-toggle-browser" data-browser="launch-dir dir-browser browser-list browser-current-path">Browse</button>
+                        </div>
+                    </label>
+                    <div id="dir-browser" class="dir-browser" style="display:none">
+                        <div class="dir-browser-header">
+                            <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
+                            <span class="dir-browser-path" id="browser-current-path">~</span>
+                        </div>
+                        <ul class="dir-browser-list" id="browser-list">
+                            <li class="empty-state">Loading...</li>
+                        </ul>
+                    </div>
+                    </div>
+                    <div class="sd-more-row">
+                        <button type="button" class="sd-more-btn" id="launch-agent-more-btn" aria-expanded="false" aria-controls="launch-agent-more" data-on-click="m-toggle-launch-more"><span class="material-icons" aria-hidden="true">expand_more</span>More options</button>
+                        <span class="sd-more-hint" id="launch-agent-more-hint">Name, persona, agent, model, prompt, permissions, board</span>
+                    </div>
+                    <div id="launch-agent-more" class="sd-more" data-sd-more hidden>
                     <div class="settings-shell">
                         <nav class="settings-nav" aria-label="New agent sections">
                             <div class="settings-group-pick"><select class="settings-select" aria-label="New agent section"></select></div>
                             <div class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="New agent sections"></div>
                         </nav>
                         <div class="settings-panes">
-                        <section class="settings-pane" data-section="workspace" data-title="Workspace" data-icon="folder_open" data-desc="Where the agent works, and who it is." hidden>
-                <label>Working Directory:
-                    <div class="dir-input-row">
-                        <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
-                        <button class="btn" id="btn-browse" data-on-click="m-toggle-browser" data-browser="launch-dir dir-browser browser-list browser-current-path">Browse</button>
-                    </div>
-                </label>
-                <div id="dir-browser" class="dir-browser" style="display:none">
-                    <div class="dir-browser-header">
-                        <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
-                        <span class="dir-browser-path" id="browser-current-path">~</span>
-                    </div>
-                    <ul class="dir-browser-list" id="browser-list">
-                        <li class="empty-state">Loading...</li>
-                    </ul>
-                </div>
+                        <section class="settings-pane" data-section="workspace" data-title="Name and persona" data-icon="badge" data-desc="What the agent is called, and the role it starts with." hidden>
                 <label>Name / Role <span class="text-muted-sm">(optional)</span>:
                     <input type="text" id="launch-agent-name-input" placeholder="e.g. QA Engineer, Frontend Dev">
                 </label>
@@ -153,6 +160,7 @@
                         </label>
                         </div>
                         </div>
+                    </div>
                     </div>
                 </div>
                 <div class="modal-actions">

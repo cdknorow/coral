@@ -97,7 +97,7 @@ function _syncEnforcement(container) {
     for (const line of lines) {
         if (!line) continue;
         line.textContent = e.text;
-        line.hidden = !e.text;
+        line.hidden = !e.text || (e.quiet && line !== container.querySelector('.acf-perms-enforced')); // the plain Bypass line is said once, on Permissions (#5595)
     }
     for (const chip of container.querySelectorAll(`#${CSS.escape(uid)}-perms-deny .perm-chip`)) {
         chip.disabled = !e.denyEnforced && !chip.classList.contains('active');

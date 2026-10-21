@@ -20,6 +20,18 @@ function _syncMobileLaunchSections(step) {
     });
 }
 
+/** New Agent opens on the folder alone; the name, persona, agent, prompt, permissions and board sit behind "More options" (#5595). */
+export function setLaunchMore(open) {
+    const more = document.getElementById("launch-agent-more");
+    if (!more) return;
+    more.hidden = !open;
+    document.getElementById("launch-agent-more-btn")?.setAttribute("aria-expanded", String(open));
+    const content = document.querySelector("#launch-modal .modal-content");
+    if (content) content.classList.toggle("launch-simple", !open && document.getElementById("launch-step-agent").style.display !== "none");
+}
+// A field that is about to take the focus (a rejected board name, say) opens "More options" when it sits inside (section_dialog.js revealField).
+document.addEventListener("sd-more-open", e => { if (e.target.id === "launch-agent-more") setLaunchMore(true); });
+
 function _showLaunchStep(step) {
     document.getElementById("launch-step-chooser").style.display = step === "chooser" ? "flex" : "none";
     document.getElementById("launch-step-agent").style.display = step === "agent" ? "flex" : "none";
@@ -34,6 +46,7 @@ function _showLaunchStep(step) {
         content.classList.toggle("sd-modal-content", sectioned);
         content.classList.toggle("modal-content-wide", !sectioned);
         content.classList.toggle("launch-choosing", step === "chooser"); // four choices in a row (#3630)
+        content.classList.toggle("launch-simple", step === "agent" && document.getElementById("launch-agent-more")?.hidden === true);
     }
     _syncMobileLaunchSections(step);
 }
