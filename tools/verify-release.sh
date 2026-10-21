@@ -47,6 +47,7 @@ export CORAL_TELEMETRY_DISABLED=1
 
 usage() { sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 2; }
 . "$(dirname "$0")/release-homes.sh"
+. "$(dirname "$0")/release-notes-edits.sh"
 TAG=""; REPO="$(release_home_current)"; REPO_GIVEN=0; PREV=""; NOPREV=0; KEEP=0; OUT=""; LOCAL=""; PUBLISHED=0; REQUIRE_COSIGN=0; STAGE=approved
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -176,6 +177,7 @@ if [ -n "$meta" ]; then
   else
     # this version's section: the lines after its "## vX.Y.Z" heading, up to the next "## "
     section="$(awk -v v="## v$want_ver" 'index($0, v) == 1 && substr($0, length(v)+1, 1) !~ /[0-9.]/ {on=1; next} on && /^## / {exit} on {print}' <<<"$notes" | sed '/./,$!d')"
+    section="$(notes_drop_edited "$TAG" <<<"$section")"   # lines removed from the published body on purpose (tools/release-notes-edits.txt)
     if [ -z "$section" ]; then
       fail notes "section for v$want_ver" "RELEASE_NOTES.md at the tag has none"
     else
