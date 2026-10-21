@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/winshell"
 )
 
 // #25 G3A: a stock Windows client's execution policy is Restricted, which refuses the .ps1 the long-command handoff
@@ -52,7 +54,11 @@ func TestLaunchScriptRunsUnderARestrictedExecutionPolicy(t *testing.T) {
 
 // shellWrap (a command with shell syntax) has no policy override either: it runs no script.
 func TestShellWrapKeepsTheMachinePolicy(t *testing.T) {
-	assert.Equal(t, []string{"powershell.exe", "-NoProfile", "-Command", "x | y"}, shellWrap("x | y"))
+	ps := winshell.PowerShell() // the PowerShell the launch line was written for, by absolute path (#26 G1A)
+	if ps == "" {
+		ps = "powershell.exe"
+	}
+	assert.Equal(t, []string{ps, "-NoProfile", "-Command", "x | y"}, shellWrap("x | y"))
 }
 
 // Security's N1: -ExecutionPolicy sets PSExecutionPolicyPreference in the handoff child's environment, and every PowerShell the
