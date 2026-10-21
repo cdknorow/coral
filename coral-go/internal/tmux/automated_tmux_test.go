@@ -2,6 +2,8 @@ package tmux
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -48,4 +50,35 @@ func TestAutomatedMultiLineTextOfOnlyControlCharactersIsRefusedOnTmux(t *testing
 	c, _ := fakeTmux(t)
 	err := c.SendKeys(WithAutomated(context.Background()), "agent", "\n\x03\n", "claude", longTextSID)
 	assert.ErrorIs(t, err, ErrNothingToSend)
+}
+
+// Security's note on #62: with the bracketed-paste mode unknown, a pane whose foreground program is a plain shell is treated
+// as "off": a shell never enabled bracketed paste and paste-buffer would turn each LF into Enter. Any other program, or a
+// known "on", is still pasted.
+func TestAutomatedMultiLineTextToAShellPaneIsFlattenedWhenTheModeIsUnknown(t *testing.T) {
+	skipWithoutUnixTmux(t)
+	text := "echo one\necho two"
+	for name, tc := range map[string]struct {
+		fg       string
+		ctx      context.Context
+		wantFlat bool
+	}{
+		"bash, unknown":     {"bash\n", WithAutomated(context.Background()), true},
+		"pwsh, unknown":     {"pwsh\n", WithAutomated(context.Background()), true},
+		"-zsh, unknown":     {"-zsh\n", WithAutomated(context.Background()), true},
+		"claude, unknown":   {"claude\n", WithAutomated(context.Background()), false},
+		"node, unknown":     {"node\n", WithAutomated(context.Background()), false},
+		"unreadable":        {"", WithAutomated(context.Background()), false},
+		"bash, known on":    {"bash\n", WithBracketedPasteHint(WithAutomated(context.Background()), true), false},
+		"claude, known off": {"claude\n", WithBracketedPasteHint(WithAutomated(context.Background()), false), true},
+	} {
+		c, dir := fakeTmux(t)
+		if tc.fg != "" {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "fgcmd"), []byte(tc.fg), 0o600))
+		}
+		require.NoError(t, c.SendKeys(tc.ctx, "agent", text, "claude", longTextSID), name)
+		joined := strings.Join(readCalls(t, dir), "\n")
+		assert.Equal(t, tc.wantFlat, strings.Contains(joined, "send-keys -t "+promptTestSession+":0.0 -l -- echo one echo two"), name)
+		assert.Equal(t, !tc.wantFlat, strings.Contains(joined, "paste-buffer"), name)
+	}
 }
