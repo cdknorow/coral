@@ -161,12 +161,16 @@ let _acfCounter = 0;
  * @param {string} containerId - DOM element ID to render into
  * @param {object} opts - { mode: 'full'|'compact-card', showPreset: bool, showName: bool, value: {...} }
  */
+/** The form's missing-CLI line: in the form, or where the dialog asked for it (opts.cliSlot). */
+export function cliWarningOf(container) { return container._acfCliWarning || container.querySelector('.acf-cli-warning'); }
+
 export function renderAgentConfigForm(containerId, opts = {}) {
     const container = document.getElementById(containerId);
     if (!container) return;
     _acfCounter++;
     const uid = `acf-${_acfCounter}`;
     container.dataset.acfUid = uid;
+    delete container._acfCliWarning;
 
     const showPreset = opts.showPreset !== false;
     const showName = opts.showName !== false;
@@ -339,12 +343,17 @@ export function renderAgentConfigForm(containerId, opts = {}) {
         });
     }
 
+    // A dialog that keeps the form's sections behind "More options" can ask for the missing-CLI line to sit outside them (opts.cliSlot, an element id): the first run's
+    // most common stop is a CLI that is not installed, and it was found only after pressing Launch (#5835).
+    const cliSlot = opts.cliSlot && document.getElementById(opts.cliSlot);
+    const cliLine = container.querySelector('.acf-cli-warning');
+    if (cliSlot && cliLine) { cliSlot.replaceChildren(cliLine); container._acfCliWarning = cliLine; }
     // Populate datalist + apply visibility + pre-fill for the initial agent type.
     _syncACFModelField(container);
-    _checkAgentCLI(container.querySelector('.acf-agent-type')?.value || 'claude', container.querySelector('.acf-cli-warning'));
+    _checkAgentCLI(container.querySelector('.acf-agent-type')?.value || 'claude', cliWarningOf(container));
     container.querySelector('.acf-agent-type')?.addEventListener('change', () => {
         const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
-        _checkAgentCLI(agentType, container.querySelector('.acf-cli-warning'));
+        _checkAgentCLI(agentType, cliWarningOf(container));
         const permMode = container.querySelector('.acf-permission-mode')?.value || 'default';
         const flagsEl = container.querySelector('.acf-flags');
         if (flagsEl) flagsEl.value = _stripPermFlags(_normalizePermFlagsForAgent(flagsEl.value, agentType, permMode));
@@ -483,6 +492,6 @@ export function setAgentConfig(containerId, values) {
 
     // Re-sync Model combo and prerequisite warning after a preset/type change.
     _syncACFModelField(container);
-    _checkAgentCLI(typeEl?.value || 'claude', container.querySelector('.acf-cli-warning'));
+    _checkAgentCLI(typeEl?.value || 'claude', cliWarningOf(container));
 }
 (window.__coral ||= {}).setAgentConfig = setAgentConfig;
