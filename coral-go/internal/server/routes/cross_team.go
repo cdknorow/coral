@@ -287,12 +287,27 @@ func (h *BoardHandler) UpdateBoardSettings(w http.ResponseWriter, r *http.Reques
 		body.CrossTeamAllowed = &clean
 		before, _ = h.bs.GetBoardSettings(r.Context(), project)
 	}
+	var beforeSwitches board.BoardSettings
+	touchesSwitch := body.CrossTeamMessaging != nil || body.CrossTeamArtifacts != nil
+	if touchesSwitch {
+		beforeSwitches, _ = h.bs.GetBoardSettings(r.Context(), project)
+	}
 	settings, err := h.bs.UpdateBoardSettings(r.Context(), project, body.BoardSettingsUpdate)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
 	listEditRefused = false
+	if touchesSwitch {
+		// So "last changed by" on the Messaging tab never names a hub user after the owner here changed the switch again (#5572).
+		ctx := context.WithoutCancel(r.Context())
+		if body.CrossTeamMessaging != nil && *body.CrossTeamMessaging != beforeSwitches.CrossTeamMessaging {
+			_ = h.bs.NoteSwitchChangeLocal(ctx, project, board.SwitchMessaging, beforeSwitches.CrossTeamMessaging, *body.CrossTeamMessaging)
+		}
+		if body.CrossTeamArtifacts != nil && *body.CrossTeamArtifacts != beforeSwitches.CrossTeamArtifacts {
+			_ = h.bs.NoteSwitchChangeLocal(ctx, project, board.SwitchFiles, beforeSwitches.CrossTeamArtifacts, *body.CrossTeamArtifacts)
+		}
+	}
 	if body.CrossTeamAllowed != nil {
 		// Every successful edit is audited by id: who (the verified Operator identity), when, and the list before and after (ids only).
 		actor := callerActor(r).Name

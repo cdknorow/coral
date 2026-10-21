@@ -31,6 +31,7 @@ const (
 	HubSharePastedImages     = "hub_share_pasted_images"
 	CloudAllowHubAutoAccept  = "cloud_allow_hub_auto_accept"
 	HubRelaunchUpdates       = "hub_relaunch_updates"
+	HubCrossTeamSettings     = "hub_cross_team_settings"
 	UpdateChannel            = "update_channel"
 	CloudMaxMode             = "cloud_max_mode"
 	IdentityActor            = "identity_actor"
@@ -202,6 +203,7 @@ func init() {
 	ownRoute(CloudMaxMode, KindText, "", "The most access Coral Hub may have.")
 	ownRoute(CloudAllowHubAutoAccept, KindBool, "true", "The Hub may auto-accept.")
 	ownRoute(HubRelaunchUpdates, KindBool, "true", "The Hub's owner may relaunch this Coral to install a staged update (#5280).")
+	ownRoute(HubCrossTeamSettings, KindBool, "true", "Coral Hub's owner may turn cross-team messaging and file sharing on or off for this computer's teams (#5572); off, Coral Hub changes neither, in either direction.")
 	ownRoute(HubRedactTokens, KindBool, "true", "Redact tokens in what the Hub sees.")
 	ownRoute(HubSharePastedImages, KindBool, "true", "Coral Hub viewers can see images pasted or attached in the dashboard (#5284); off, the Hub gets 404 for them.")
 	ownRoute("hub_signin_enabled", KindBool, "false", "Sign in with the Hub.")

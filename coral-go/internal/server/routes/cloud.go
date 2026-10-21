@@ -46,6 +46,15 @@ const AllowHubAutoAcceptSetting = "cloud_allow_hub_auto_accept"
 // PUT /api/settings refuses it like the mode cap.
 const HubRelaunchSetting = "hub_relaunch_updates"
 
+// HubCrossTeamSetting is the local lock "Let Coral Hub change cross-team settings" (#5572). On unless set to "false" (the default is the settings registry's, written by code); when it is off the Coral Hub
+// owner's dedicated routes refuse both directions. Written only by PUT /api/cloud/hub-cross-team, never through the tunnel: its write has its own route, and PUT /api/settings refuses it like the mode cap.
+const HubCrossTeamSetting = "hub_cross_team_settings"
+
+// HubCrossTeamAllowed reads the lock (default on).
+func HubCrossTeamAllowed(settings map[string]string) bool {
+	return setreg.Bool(settings, HubCrossTeamSetting)
+}
+
 // HubRelaunchAllowed reads the switch (default on).
 func HubRelaunchAllowed(settings map[string]string) bool {
 	return setreg.Bool(settings, HubRelaunchSetting)
@@ -261,6 +270,8 @@ type cloudStatus struct {
 	HubRelaunchUpdates bool `json:"hub_relaunch_updates"`
 	// SharePastedImages: Coral Hub viewers can see images pasted in the dashboard (#5284).
 	SharePastedImages bool `json:"share_pasted_images"`
+	// HubCrossTeamSettings is the local lock "Let Coral Hub change cross-team settings" (#5572); on, the Coral Hub owner may turn a team's cross-team messaging and file sharing on or off.
+	HubCrossTeamSettings bool `json:"hub_cross_team_settings"`
 	// Bootstrap is the last one-time-credential enrollment's outcome
 	// ({status, detail, at}); absent when there was none.
 	Bootstrap json.RawMessage `json:"bootstrap,omitempty"`
@@ -277,15 +288,15 @@ func (h *CloudHandler) status() cloudStatus {
 	if m := h.manager(); m != nil {
 		st = m.Status()
 	}
-	allow, redact, relaunch, share := true, true, true, true
+	allow, redact, relaunch, share, crossTeam := true, true, true, true, true
 	var boot json.RawMessage
 	if s, err := h.ss.GetSettings(context.Background()); err == nil {
-		allow, redact, relaunch, share = HubAutoAcceptAllowed(s), HubRedactTokens(s), HubRelaunchAllowed(s), HubSharePastedImages(s)
+		allow, redact, relaunch, share, crossTeam = HubAutoAcceptAllowed(s), HubRedactTokens(s), HubRelaunchAllowed(s), HubSharePastedImages(s), HubCrossTeamAllowed(s)
 		if v := setreg.Raw(s, cloud.BootstrapStatusSetting); json.Valid([]byte(v)) {
 			boot = json.RawMessage(v)
 		}
 	}
-	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, HubRelaunchUpdates: relaunch, SharePastedImages: share, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
+	out := cloudStatus{Status: st, AllowHubAutoAccept: allow, RedactTokens: redact, HubRelaunchUpdates: relaunch, SharePastedImages: share, HubCrossTeamSettings: crossTeam, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
 	if rs := h.secrets(); rs != nil {
 		if ks, err := rs.KeyState(context.Background()); err == nil && ks.State == "refused" {
 			out.SecretKey = &ks
@@ -814,6 +825,26 @@ func (h *CloudHandler) SetHubRelaunch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.ss.SetSetting(r.Context(), HubRelaunchSetting, strconv.FormatBool(*body.Allow)); err != nil {
+		errInternalServer(w, "Could not save the setting")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.status())
+}
+
+// SetHubCrossTeam: PUT /api/cloud/hub-cross-team {"allow": bool}. Local dashboard and the signed command line only (never through the tunnel, any role): whether Coral Hub's owner may turn
+// cross-team messaging and file sharing on or off for this computer's teams (#5572). Off refuses the Hub in both directions.
+func (h *CloudHandler) SetHubCrossTeam(w http.ResponseWriter, r *http.Request) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
+		return
+	}
+	var body struct {
+		Allow *bool `json:"allow"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.Allow == nil {
+		errBadRequest(w, "allow is required")
+		return
+	}
+	if err := h.ss.SetSetting(r.Context(), HubCrossTeamSetting, strconv.FormatBool(*body.Allow)); err != nil {
 		errInternalServer(w, "Could not save the setting")
 		return
 	}

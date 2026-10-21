@@ -19,6 +19,9 @@ const teamSettingsMessaging = "Team settings > Messaging"
 // settingsCoralHub is where a Coral is connected to Coral Hub.
 const settingsCoralHub = "Settings > Coral Hub"
 
+// settingsNetworkHub is where the local lock "Let Coral Hub change cross-team settings" is (#5572, Security's condition 8).
+const settingsNetworkHub = "Settings > Network and Hub"
+
 // What a sender on another Coral is told, whatever the cause: no such team, unlinked, switched off, stale or nobody to tell. The status and the bytes are the same for all.
 const (
 	relayedRefusedStatus = 404
@@ -111,4 +114,30 @@ func statusFor(linkable, on bool, linked int, stale bool, heard string) crossTea
 		return crossTeamStatus{statusReady, "1 team on another Coral can message this team."}
 	}
 	return crossTeamStatus{statusReady, fmt.Sprintf("%d teams on other Corals can message this team.", linked)}
+}
+
+// The Coral Hub owner's switch routes (#5572): refusals toward the hub, and the notice a team reads when its switch was changed. The notice is a fixed template; the only variable parts are the
+// validated hub user (hub-user-<8 hex>) and the two switch names, never a label or a word from the hub.
+const (
+	textHubSwitchOwnerOnly   = "Only the Coral Hub account this computer is linked to can change a team's cross-team switches through Coral Hub."
+	textHubSwitchRateLimited = "Too many changes of this team's cross-team switches from Coral Hub; try again in a minute."
+	textHubSwitchNoBody      = "These routes take no body and no query."
+	textHubChangesOff        = "Coral Hub may not change cross-team settings on this computer: it is turned off in " + settingsNetworkHub + "."
+	textHubSwitchNotRecorded = "The change could not be recorded, so nothing was changed."
+)
+
+// textHubSwitchNotice is the board notice for one request of Coral Hub's owner: what was asked, and whether it changed anything.
+func textHubSwitchNotice(hubUser string, files, on, changed bool) string {
+	what := "cross-team messaging"
+	if files {
+		what = "file sharing with other teams"
+	}
+	state := "off"
+	if on {
+		state = "on"
+	}
+	if !changed {
+		return "Coral Hub's owner (" + hubUser + ") asked to turn " + what + " " + state + " for this team; it already was " + state + ". See " + teamSettingsMessaging + "."
+	}
+	return "Coral Hub's owner (" + hubUser + ") turned " + what + " " + state + " for this team. See " + teamSettingsMessaging + "."
 }

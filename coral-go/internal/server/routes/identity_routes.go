@@ -51,14 +51,18 @@ var operatorOnlyRoutes = map[string]string{
 	// #3445: stopping the Operator's runs, and changing Coral's settings (the whole PUT: it holds
 	// cli_path_* (persistent code execution for every later launch), auto-accept, remote access,
 	// cloud and hub-operator keys and the debug input log, and no agent tool sends it).
-	"POST /api/workflows/runs/{runID}/kill":          "stop a workflow run",
-	"POST /api/tasks/runs/{runID}/kill":              "stop a task run",
-	"PUT /api/settings":                              "change Coral's settings",
-	"GET /api/board/{project}/cross-team-state":      "read who may message a board",
-	"GET /api/board/{project}/cross-team-candidates": "list the boards that may be put on a board's list",
-	"GET /api/board/{project}/settings/log":          "read a board's settings log",
-	"GET /api/custom-models":                         "read the custom models",
-	"PUT /api/custom-models":                         "change the custom models",
+	"POST /api/workflows/runs/{runID}/kill":              "stop a workflow run",
+	"POST /api/tasks/runs/{runID}/kill":                  "stop a task run",
+	"PUT /api/settings":                                  "change Coral's settings",
+	"POST /api/board/{project}/cross-team/disable":       "turn a team's cross-team switch on or off",
+	"POST /api/board/{project}/cross-team/enable":        "turn a team's cross-team switch on or off",
+	"POST /api/board/{project}/cross-team/files/disable": "turn a team's cross-team switch on or off",
+	"POST /api/board/{project}/cross-team/files/enable":  "turn a team's cross-team switch on or off",
+	"GET /api/board/{project}/cross-team-state":          "read who may message a board",
+	"GET /api/board/{project}/cross-team-candidates":     "list the boards that may be put on a board's list",
+	"GET /api/board/{project}/settings/log":              "read a board's settings log",
+	"GET /api/custom-models":                             "read the custom models",
+	"PUT /api/custom-models":                             "change the custom models",
 	// #4432 (Security's #4431 INFO 1): reading them too: the CLI paths, prompts and storage and access switches
 	// are the Operator's, and no agent tool reads them.
 	"GET /api/settings": "read Coral's settings",
@@ -87,8 +91,9 @@ var operatorOnlyRoutes = map[string]string{
 	"PUT /api/cloud/max-mode":                        "change what Coral Hub may do",
 	"PUT /api/cloud/allow-auto-accept":               "change whether Coral Hub may turn on auto-accept",
 	"PUT /api/cloud/redact-tokens":                   "change whether tokens are hidden from Coral Hub viewers",
-	"PUT /api/cloud/hub-relaunch":                    "change whether Coral Hub may relaunch Coral for an update", // #5280
-	"PUT /api/cloud/share-pasted-images":             "change whether Coral Hub viewers can see pasted images",    // #5284
+	"PUT /api/cloud/hub-relaunch":                    "change whether Coral Hub may relaunch Coral for an update",                         // #5280
+	"PUT /api/cloud/hub-cross-team":                  "change whether Coral Hub may turn cross-team messaging and file sharing on or off", // #5572
+	"PUT /api/cloud/share-pasted-images":             "change whether Coral Hub viewers can see pasted images",                            // #5284
 	"PUT /api/system/identity-actor":                 "change how Coral decides who is calling",
 	"POST /api/cloud/connect":                        "connect to Coral Hub",
 	"POST /api/cloud/connect/cancel":                 "cancel connecting to Coral Hub",

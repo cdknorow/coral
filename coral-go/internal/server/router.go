@@ -401,7 +401,8 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
 	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
 	r.Put("/api/cloud/redact-tokens", s.cloudHandler.SetRedactTokens)
-	r.Put("/api/cloud/hub-relaunch", s.cloudHandler.SetHubRelaunch) // #5280
+	r.Put("/api/cloud/hub-relaunch", s.cloudHandler.SetHubRelaunch)    // #5280
+	r.Put("/api/cloud/hub-cross-team", s.cloudHandler.SetHubCrossTeam) // #5572
 	// Coral Hub's relaunch into a staged update (#5280): 404 until the feature is switched on and the updater exists.
 	// Where the owner routes read the owner's label recorded at enrolment (#5307).
 	routes.SetHubOwnerLabel(store.NewCloudStore(s.db, store.NewRemoteServerStore(s.db, s.cfg.CoralDir())).OwnerUser)
@@ -616,6 +617,7 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
 	sessStore := store.NewSessionStore(s.db)
 	boardHandler.SetAllowlistFlag(routes.AllowlistEnabled(sessStore))
+	boardHandler.SetHubCrossTeamLock(routes.HubCrossTeamLockFromSettings(sessStore.GetSettings))
 	boardHandler.SetAutoAttacher(routes.NewAutoAttacher(s.cfg.CoralDir(), routes.AutoAttachEnabled(sessStore), routes.SessionDirs(sessStore)))
 	s.goBackground(boardHandler.RecoverTaskNotifications)
 	s.goBackground(func(ctx context.Context) {
@@ -680,6 +682,11 @@ func (s *Server) registerBoard(r *chi.Mux, h *routeHandlers) {
 		r.Post("/api/board/{project}/relay-messages", boardHandler.PostRelayMessage)
 		r.Get("/api/board/{project}/relay-targets", boardHandler.ListRelayTargets)
 		r.Post("/api/board/{project}/hub-notice", boardHandler.PostHubNotice)
+		// Coral Hub's owner turns a team's two cross-team switches on or off (#5572): Launch tier, the owner marker, the local lock.
+		r.Post("/api/board/{project}/cross-team/enable", boardHandler.HubCrossTeamEnable)
+		r.Post("/api/board/{project}/cross-team/disable", boardHandler.HubCrossTeamDisable)
+		r.Post("/api/board/{project}/cross-team/files/enable", boardHandler.HubCrossTeamFilesEnable)
+		r.Post("/api/board/{project}/cross-team/files/disable", boardHandler.HubCrossTeamFilesDisable)
 		r.Delete("/api/board/{project}", boardHandler.DeleteBoard)
 		r.Get("/api/board/{project}", boardHandler.GetBoardInfo)
 		r.Patch("/api/board/{project}", boardHandler.RenameBoard)

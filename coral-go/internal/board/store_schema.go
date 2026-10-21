@@ -227,6 +227,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	if err := s.ensureHubOperatorActionsSchema(ctx); err != nil {
 		return err
 	}
+	if err := s.ensureSwitchLogSchema(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureHealthSchema(ctx); err != nil {
 		return err
 	}

@@ -245,6 +245,10 @@ b POST /api/auth/password/set
 b POST /api/auth/sessions/sign-out-others
 b POST /api/auto-accept/disable-all
 b POST /api/board/remotes
+b POST /api/board/{project}/cross-team/disable
+b POST /api/board/{project}/cross-team/enable
+b POST /api/board/{project}/cross-team/files/disable
+b POST /api/board/{project}/cross-team/files/enable
 a POST /api/board/{project}/external-messages
 a POST /api/board/{project}/external-artifacts
 b POST /api/board/{project}/groups/{groupID}/members
@@ -365,6 +369,7 @@ b PUT /api/board/{project}/settings
 b PUT /api/board/{project}/working-mode
 b PUT /api/board/{project}/working-mode/presets/{presetID}
 b PUT /api/cloud/allow-auto-accept
+b PUT /api/cloud/hub-cross-team
 b PUT /api/cloud/hub-relaunch
 b PUT /api/cloud/max-mode
 b PUT /api/cloud/redact-tokens
