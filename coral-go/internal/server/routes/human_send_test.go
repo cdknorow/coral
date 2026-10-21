@@ -21,6 +21,7 @@ import (
 
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // agentTerm is a stand-in agent terminal for a person's message (#4587): its screen, what a typed message and an
@@ -43,7 +44,7 @@ func (a *agentTerm) AgentScreen(context.Context, string, string, string) (string
 
 func (a *agentTerm) show(s string) { a.mu.Lock(); a.screen = s; a.mu.Unlock() }
 
-func (a *agentTerm) SendInput(_ context.Context, _, text, _, _ string) error {
+func (a *agentTerm) SendInput(_ context.Context, _ terminalinput.Origin, _, text, _, _ string) error {
 	a.mu.Lock()
 	a.typed = append(a.typed, text)
 	f := a.onType

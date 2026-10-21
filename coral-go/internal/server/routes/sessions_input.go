@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tracking"
 )
 
@@ -42,8 +43,9 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only the automated path sends through this closure (a person's send is deliverHumanSend, as a person's): Coral's text.
 	send := func(ctx context.Context) error {
-		return h.terminal.SendInput(ctx, name, body.Command, body.AgentType, body.SessionID)
+		return h.terminal.SendInput(ctx, terminalinput.Coral, name, body.Command, body.AgentType, body.SessionID)
 	}
 	// A person (the dashboard, Coral Hub at Interact, the operator's signed CLI)
 	// types directly. Anything else (an agent's tool, a script, an API key) is
@@ -99,15 +101,16 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	send := func(ctx context.Context) error {
-		return h.terminal.SendRawInput(ctx, name, body.Keys, body.AgentType, body.SessionID)
+	// The origin of the keys: a person's (the dashboard's) are Unclassified as before, anything else goes through the gate as Coral's.
+	send := func(ctx context.Context, o terminalinput.Origin) error {
+		return h.terminal.SendRawInput(ctx, o, name, body.Keys, body.AgentType, body.SessionID)
 	}
 	// As for Send: keys from anything but a person go through the gate (#3431).
 	if !humanInputCaller(r) {
-		if held := h.sendAutomatedHTTP(w, r, name, body.AgentType, body.SessionID, strings.Join(body.Keys, " "), "/keys", send); held {
+		if held := h.sendAutomatedHTTP(w, r, name, body.AgentType, body.SessionID, strings.Join(body.Keys, " "), "/keys", func(ctx context.Context) error { return send(ctx, terminalinput.Coral) }); held {
 			return
 		}
-	} else if err := send(r.Context()); err != nil {
+	} else if err := send(r.Context(), terminalinput.Unclassified); err != nil {
 		writeTerminalError(w, err)
 		return
 	}

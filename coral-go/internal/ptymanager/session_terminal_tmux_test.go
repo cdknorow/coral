@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -193,7 +194,7 @@ func TestTmuxSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
 
 	spawnTmuxSession(t, terminal, "claude-00003687-0003-4000-8000-000000000000", t.TempDir())
 
-	err := terminal.SendInput(ctx, "claude-00003687-0003-4000-8000-000000000000", "echo TMUX_MARKER_42", "", "")
+	err := terminal.SendInput(ctx, terminalinput.Unclassified, "claude-00003687-0003-4000-8000-000000000000", "echo TMUX_MARKER_42", "", "")
 	require.NoError(t, err)
 
 	output := waitForCapture(t, terminal, "claude-00003687-0003-4000-8000-000000000000", "TMUX_MARKER_42", 5*time.Second)
@@ -223,7 +224,7 @@ func TestTmuxSessionTerminal_SendRawInput(t *testing.T) {
 	spawnTmuxSession(t, terminal, "claude-00003687-0004-4000-8000-000000000000", t.TempDir())
 
 	// Send raw keys — should not error
-	err := terminal.SendRawInput(ctx, "claude-00003687-0004-4000-8000-000000000000", []string{"h", "i"}, "", "")
+	err := terminal.SendRawInput(ctx, terminalinput.Unclassified, "claude-00003687-0004-4000-8000-000000000000", []string{"h", "i"}, "", "")
 	require.NoError(t, err)
 }
 
@@ -241,7 +242,7 @@ func TestTmuxSessionTerminal_SendToTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, pane)
 
-	err = terminal.SendToTarget(ctx, pane.Target, "echo TARGET_OK")
+	err = terminal.SendToTarget(ctx, terminalinput.Unclassified, pane.Target, "echo TARGET_OK")
 	require.NoError(t, err)
 
 	output := waitForCapture(t, terminal, "claude-00003687-0005-4000-8000-000000000000", "TARGET_OK", 5*time.Second)
@@ -258,7 +259,7 @@ func TestTmuxSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
 	value := strings.Repeat("x", 1200) + marker
 	command := "printf '%s' '" + value + "'"
 	require.Greater(t, len(command), 900)
-	require.NoError(t, terminal.SendToTarget(ctx, "claude-00003687-0009-4000-8000-000000000000:0.0", command))
+	require.NoError(t, terminal.SendToTarget(ctx, terminalinput.Unclassified, "claude-00003687-0009-4000-8000-000000000000:0.0", command))
 
 	output := waitForCapture(t, terminal, "claude-00003687-0009-4000-8000-000000000000", marker, 5*time.Second)
 	assert.Contains(t, output, marker)
@@ -304,7 +305,7 @@ func TestTmuxSessionTerminal_RestartPane(t *testing.T) {
 	spawnTmuxSession(t, terminal, "claude-00003687-0006-4000-8000-000000000000", t.TempDir())
 
 	// Send a command, then restart
-	terminal.SendInput(ctx, "claude-00003687-0006-4000-8000-000000000000", "echo BEFORE_RESTART", "", "")
+	terminal.SendInput(ctx, terminalinput.Unclassified, "claude-00003687-0006-4000-8000-000000000000", "echo BEFORE_RESTART", "", "")
 	waitForCapture(t, terminal, "claude-00003687-0006-4000-8000-000000000000", "BEFORE_RESTART", pollWindow)
 
 	pane, err := terminal.FindSession(ctx, "claude-00003687-0006-4000-8000-000000000000", "", "")
@@ -465,7 +466,7 @@ func TestTmuxSessionTerminal_CaptureOutputIsPlainTextWithBoundedScrollback(t *te
 	name := "claude-00000027-0027-4000-8000-000000000000"
 	spawnTmuxSession(t, terminal, name, t.TempDir())
 
-	require.NoError(t, terminal.SendInput(ctx, name, `printf '\033[32mgreen\033[0m\n'; seq -f 'row %03g' 1 300; echo CAPTURE_DONE`, "", ""))
+	require.NoError(t, terminal.SendInput(ctx, terminalinput.Unclassified, name, `printf '\033[32mgreen\033[0m\n'; seq -f 'row %03g' 1 300; echo CAPTURE_DONE`, "", ""))
 	waitForCapture(t, terminal, name, "CAPTURE_DONE", 10*time.Second)
 
 	out, err := terminal.CaptureOutput(ctx, name, 30, "", "")

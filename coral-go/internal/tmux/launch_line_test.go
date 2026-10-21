@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #5171: a restarted agent was left at a bare shell with ". '/tmp/coral-command-N.sh'" typed and unsubmitted, and the next text typed into the
@@ -38,12 +40,12 @@ func TestLaunchLineIsSubmittedWhenTheContextEndsAfterTheTyping(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	ctx = WithBeforeEnter(ctx, func(context.Context) bool { cancel(); return true }) // the request ends just before the Enter
-	require.NoError(t, c.SendKeysToTarget(ctx, "launch-cancel:0.0", longLaunch(marker)), "the typed line is submitted whatever happened to the request")
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, "launch-cancel:0.0", longLaunch(marker)), "the typed line is submitted whatever happened to the request")
 
 	require.Eventually(t, func() bool { _, err := os.Stat(marker); return err == nil }, 5*time.Second, 50*time.Millisecond, "the launch command ran")
 	assert.Empty(t, tempHandoffs(t), "the script removed itself")
 	// Text typed afterwards is its own line.
-	require.NoError(t, c.SendKeysToTarget(context.Background(), "launch-cancel:0.0", "echo AFTER_$((20+22))"))
+	require.NoError(t, c.SendKeysToTarget(context.Background(), terminalinput.Unclassified, "launch-cancel:0.0", "echo AFTER_$((20+22))"))
 	require.Eventually(t, func() bool { return strings.Contains(paneText(t, c, "launch-cancel:0.0"), "AFTER_42") }, 5*time.Second, 50*time.Millisecond)
 	assert.NotContains(t, paneText(t, c, "launch-cancel:0.0"), "no such file")
 }
@@ -57,11 +59,11 @@ func TestLaunchLineIsClearedWhenItsEnterIsWithheld(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "marker")
 
 	ctx := WithBeforeEnter(context.Background(), func(context.Context) bool { return false })
-	require.ErrorIs(t, c.SendKeysToTarget(ctx, "launch-held:0.0", longLaunch(marker)), ErrEnterWithheld)
+	require.ErrorIs(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, "launch-held:0.0", longLaunch(marker)), ErrEnterWithheld)
 	assert.Empty(t, tempHandoffs(t), "the script is removed")
 
 	// The next text typed into the pane (a nudge) must not be appended to the abandoned line.
-	require.NoError(t, c.SendKeysToTarget(context.Background(), "launch-held:0.0", "echo NUDGE_$((20+22))"))
+	require.NoError(t, c.SendKeysToTarget(context.Background(), terminalinput.Unclassified, "launch-held:0.0", "echo NUDGE_$((20+22))"))
 	require.Eventually(t, func() bool { return strings.Contains(paneText(t, c, "launch-held:0.0"), "NUDGE_42") }, 5*time.Second, 50*time.Millisecond)
 	text := paneText(t, c, "launch-held:0.0")
 	assert.NotContains(t, text, "no such file", "the nudge ran as its own line")

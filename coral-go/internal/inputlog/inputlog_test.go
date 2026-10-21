@@ -57,7 +57,7 @@ func TestOffByDefaultRecordsNothing(t *testing.T) {
 	}{
 		{Text, "hello"}, {Keys, "C-c"}, {Keys, "Escape"}, {Raw, "\x04"}, {Text, "/exit"},
 	} {
-		Record("claude-x", c.kind, c.data)
+		Write("claude-x", c.kind, c.data)
 	}
 	Flush()
 	_, err := os.Stat(filepath.Join(dir, FileName))
@@ -77,12 +77,12 @@ func TestSettingTogglesLive(t *testing.T) {
 	assert.True(t, State().Enabled)
 	assert.Contains(t, out.String(), "terminal input debug log is ON (the Log terminal input setting)")
 	assert.Contains(t, out.String(), "with the secrets Coral recognises redacted")
-	Record("p", Text, "while on")
+	Write("p", Text, "while on")
 
 	SetSetting(false)
 	assert.False(t, State().Enabled)
 	assert.Contains(t, out.String(), "terminal input debug log is OFF")
-	Record("p", Text, "while off")
+	Write("p", Text, "while off")
 
 	got := readFile(t, filepath.Join(dir, FileName))
 	assert.Contains(t, got, "while on")
@@ -106,7 +106,7 @@ func TestForcedOnIgnoresTheSetting(t *testing.T) {
 func TestDebugFileIsPrivate(t *testing.T) {
 	path := enable(t)
 	captureLog(t)
-	Record("p", Text, "secret-ish")
+	Write("p", Text, "secret-ish")
 	readFile(t, path)
 	secfiletest.AssertPrivate(t, path)
 }
@@ -116,10 +116,10 @@ func TestDebugFileIsPrivate(t *testing.T) {
 func TestDebugFileRecordsEveryWrite(t *testing.T) {
 	path := enable(t)
 	captureLog(t)
-	Record("claude-a:0.0", Text, "echo hi")
-	Record("claude-a:0.0", Keys, "Enter")
-	Record("claude-a", Raw, "\x1b[A")
-	Record("claude-a", Paste, strings.Repeat("x", 250)+"\n")
+	Write("claude-a:0.0", Text, "echo hi")
+	Write("claude-a:0.0", Keys, "Enter")
+	Write("claude-a", Raw, "\x1b[A")
+	Write("claude-a", Paste, strings.Repeat("x", 250)+"\n")
 	got := readFile(t, path)
 	lines := strings.Split(strings.TrimSpace(got), "\n")
 	require.Len(t, lines, 4)
@@ -132,7 +132,7 @@ func TestDebugFileRecordsEveryWrite(t *testing.T) {
 func TestHexKeysAreDecoded(t *testing.T) {
 	path := enable(t)
 	captureLog(t)
-	RecordHexKeys("p", []string{"1b", "5b", "41"})
+	recordHexKeys("p", []string{"1b", "5b", "41"})
 	assert.Contains(t, readFile(t, path), `kind=raw len=3 text="\x1b[A"`)
 }
 
@@ -218,7 +218,7 @@ func TestDeleteKeptLog(t *testing.T) {
 	Setup(dir, false)
 	t.Cleanup(func() { Setup("", false); SetSetting(false) })
 	SetSetting(true)
-	Record("p", Text, "x")
+	Write("p", Text, "x")
 	Flush()
 	require.NoError(t, os.WriteFile(path+".1", []byte("old\n"), 0o600))
 
@@ -249,7 +249,7 @@ func TestLogFileIsNotFollowed(t *testing.T) {
 	t.Cleanup(func() { Setup("", false); SetSetting(false) })
 	linktest.Each(t, path, func(t *testing.T, p linktest.Planted) {
 		Setup(dir, true)
-		Record("p", Text, "must not land in the link target")
+		Write("p", Text, "must not land in the link target")
 		Flush()
 		Setup(dir, false)
 		_, err := Delete()
@@ -270,7 +270,7 @@ func TestLogFileIsMadePrivate(t *testing.T) {
 	require.NoError(t, os.WriteFile(path2, []byte("earlier\n"), 0o644))
 	secfiletest.Expose(t, path2)
 	Setup(dir2, true)
-	Record("p", Text, "now")
+	Write("p", Text, "now")
 	Flush()
 	secfiletest.AssertPrivate(t, path2) // an existing looser file is made private
 }

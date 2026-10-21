@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // mockRuntime records SendInput calls for verification.
@@ -25,7 +26,7 @@ type sendCall struct {
 }
 
 func (m *mockRuntime) SpawnAgent(_ context.Context, _, _, _, _ string) error { return nil }
-func (m *mockRuntime) SendInput(_ context.Context, name, text string) error {
+func (m *mockRuntime) SendInput(_ context.Context, _ terminalinput.Origin, name, text string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sent = append(m.sent, sendCall{session: name, text: text})

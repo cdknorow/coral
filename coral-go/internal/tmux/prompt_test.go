@@ -11,23 +11,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 const promptTestSession = "claude-5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f"
-
-func TestSanitizePasteKeepsTextButRemovesControlInput(t *testing.T) {
-	for in, want := range map[string]string{
-		"a\nb\n\tc":                    "a\nb\n\tc",
-		"crlf\r\nline\rmac":            "crlf\nline\nmac",
-		"esc\x1b[201~inject":           "esc[201~inject",
-		"nul\x00bell\acontrol\x7f":     "nulbellcontrol",
-		"unicode — ✓ é":                "unicode — ✓ é",
-		"c1\u0085\u009bstripped":       "c1stripped",
-		"[Coral UI panel request x] y": "[Coral UI panel request x] y",
-	} {
-		require.Equal(t, want, SanitizePaste(in), "%q", in)
-	}
-}
 
 // fakeTmux is a tmux stand-in that records every invocation (and load-buffer
 // stdin) so the exact protocol can be asserted without a tmux server.
@@ -77,7 +65,7 @@ func TestSendPromptPastesOnceThenEnterWithoutScriptHandoff(t *testing.T) {
 	// Far beyond the 900-byte limit that SendKeys turns into a shell script.
 	text := strings.Repeat("line of a long panel request\n", 400) + "end"
 	require.Greater(t, len(text), 900)
-	require.NoError(t, c.SendPrompt(WithBracketedPasteHint(context.Background(), true), "agent", text, "claude", "5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f"))
+	require.NoError(t, c.SendPrompt(WithBracketedPasteHint(context.Background(), true), terminalinput.Unclassified, "agent", text, "claude", "5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f"))
 
 	calls := readCalls(t, dir)
 	var kinds []string
@@ -102,7 +90,7 @@ func TestSendPromptRefusesWithoutBracketedPasteAndTypesNothing(t *testing.T) {
 	fastSubmit(t)
 	c, dir := fakeTmux(t)
 	ctx := WithBracketedPasteHint(context.Background(), false)
-	err := c.SendPrompt(ctx, "agent", "a\nb", "claude", "5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f")
+	err := c.SendPrompt(ctx, terminalinput.Unclassified, "agent", "a\nb", "claude", "5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f")
 	require.True(t, errors.Is(err, ErrBracketedPasteUnavailable), "got %v", err)
 	for _, call := range readCalls(t, dir) {
 		k := strings.Fields(call)[0]
@@ -114,7 +102,7 @@ func TestSendPromptStripsEscapesBeforeLoadingTheBuffer(t *testing.T) {
 	skipWithoutUnixTmux(t)
 	fastSubmit(t)
 	c, dir := fakeTmux(t)
-	require.NoError(t, c.SendPrompt(WithBracketedPasteHint(context.Background(), true), "agent", "x\x1b[201~y\nz", "claude", "5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f"))
+	require.NoError(t, c.SendPrompt(WithBracketedPasteHint(context.Background(), true), terminalinput.Unclassified, "agent", "x\x1b[201~y\nz", "claude", "5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f"))
 	got, err := os.ReadFile(filepath.Join(dir, "stdin.txt"))
 	require.NoError(t, err)
 	require.Equal(t, "x[201~y\nz", string(got))
@@ -136,7 +124,7 @@ func TestSendPromptWithRealTmuxIsOneBracketedPaste(t *testing.T) {
 	time.Sleep(400 * time.Millisecond)
 
 	text := "first line\nsecond \"quoted\" line\n\nlast"
-	require.NoError(t, c.SendPrompt(WithBracketedPasteHint(ctx, true), "agent", text, "claude", sid))
+	require.NoError(t, c.SendPrompt(WithBracketedPasteHint(ctx, true), terminalinput.Unclassified, "agent", text, "claude", sid))
 	time.Sleep(400 * time.Millisecond)
 	screen, err := run("capture-pane", "-p", "-t", name)
 	require.NoError(t, err)
@@ -161,7 +149,7 @@ func TestSendPromptWithRealTmuxRefusesWhenPasteModeIsOff(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(400 * time.Millisecond)
 
-	err = c.SendPrompt(WithBracketedPasteHint(context.Background(), false), "agent", "a\nb", "claude", sid)
+	err = c.SendPrompt(WithBracketedPasteHint(context.Background(), false), terminalinput.Unclassified, "agent", "a\nb", "claude", sid)
 	require.True(t, errors.Is(err, ErrBracketedPasteUnavailable), "got %v", err)
 	time.Sleep(200 * time.Millisecond)
 	screen, _ := run("capture-pane", "-p", "-t", name)
@@ -186,7 +174,7 @@ func TestSendPromptCancelledBeforeStartRunsNothing(t *testing.T) {
 	c, dir := fakeTmux(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := c.SendPrompt(WithBracketedPasteHint(ctx, true), "agent", "a\nb", "claude", promptSID)
+	err := c.SendPrompt(WithBracketedPasteHint(ctx, true), terminalinput.Unclassified, "agent", "a\nb", "claude", promptSID)
 	require.True(t, errors.Is(err, context.Canceled) && !errors.Is(err, ErrDeliveryUnknown), "got %v", err)
 	require.Empty(t, readCalls(t, dir), "no tmux command may run for a cancelled prompt")
 }
@@ -213,7 +201,7 @@ func TestSendPromptCancelledAfterPasteStillSubmits(t *testing.T) {
 			time.Sleep(5 * time.Millisecond)
 		}
 	}()
-	require.NoError(t, c.SendPrompt(WithBracketedPasteHint(ctx, true), "agent", "a\nb", "claude", promptSID))
+	require.NoError(t, c.SendPrompt(WithBracketedPasteHint(ctx, true), terminalinput.Unclassified, "agent", "a\nb", "claude", promptSID))
 	require.Error(t, ctx.Err(), "the request context was cancelled mid-delivery")
 	require.Equal(t, []string{"list-panes", "load-buffer", "paste-buffer", "send-keys"}, kinds(t, dir))
 }
@@ -224,13 +212,13 @@ func TestSendPromptFailuresAfterInputStartedAreUnknownAndNotRetryable(t *testing
 	for name, marker := range map[string]string{"paste-buffer fails": "fail-paste", "Enter fails": "fail-enter"} {
 		c, dir := fakeTmux(t)
 		require.NoError(t, os.WriteFile(filepath.Join(dir, marker), nil, 0o600))
-		err := c.SendPrompt(WithBracketedPasteHint(context.Background(), true), "agent", "a\nb", "claude", promptSID)
+		err := c.SendPrompt(WithBracketedPasteHint(context.Background(), true), terminalinput.Unclassified, "agent", "a\nb", "claude", promptSID)
 		require.True(t, errors.Is(err, ErrDeliveryUnknown), "%s: got %v", name, err)
 	}
 	// Before any input (buffer load) a failure is a plain, retry-safe error.
 	c, dir := fakeTmux(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "fail-load"), nil, 0o600))
-	err := c.SendPrompt(WithBracketedPasteHint(context.Background(), true), "agent", "a\nb", "claude", promptSID)
+	err := c.SendPrompt(WithBracketedPasteHint(context.Background(), true), terminalinput.Unclassified, "agent", "a\nb", "claude", promptSID)
 	require.Error(t, err)
 	require.False(t, errors.Is(err, ErrDeliveryUnknown), "got %v", err)
 	require.NotContains(t, kinds(t, dir), "paste-buffer")
@@ -247,7 +235,7 @@ func TestSendPromptSerializesConcurrentPromptsPerPane(t *testing.T) {
 	done := make(chan error, 2)
 	for _, text := range []string{"first\nprompt", "second\nprompt"} {
 		go func() {
-			done <- c.SendPrompt(WithBracketedPasteHint(context.Background(), true), "agent", text, "claude", promptSID)
+			done <- c.SendPrompt(WithBracketedPasteHint(context.Background(), true), terminalinput.Unclassified, "agent", text, "claude", promptSID)
 		}()
 	}
 	require.NoError(t, <-done)
@@ -264,7 +252,7 @@ func TestSendPromptSerializesConcurrentPromptsPerPane(t *testing.T) {
 func TestSendPromptUnknownPasteModeWritesNothing(t *testing.T) {
 	skipWithoutUnixTmux(t)
 	c, dir := fakeTmux(t)
-	err := c.SendPrompt(context.Background(), "agent", "a\nb", "claude", promptSID)
+	err := c.SendPrompt(context.Background(), terminalinput.Unclassified, "agent", "a\nb", "claude", promptSID)
 	require.ErrorIs(t, err, ErrBracketedPasteUnavailable)
 	for _, call := range readCalls(t, dir) {
 		require.Equal(t, "list-panes", strings.Fields(call)[0])

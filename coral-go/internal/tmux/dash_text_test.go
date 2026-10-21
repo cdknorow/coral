@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #3690 (#3689 finding 1): text starting with '-' is typed as text, not read as tmux options
@@ -22,14 +24,14 @@ func TestDashLeadingTextIsTyped(t *testing.T) {
 	ctx := context.Background()
 	createTestSession(t, c, "dash-text", t.TempDir())
 	target := "dash-text:0.0"
-	require.NoError(t, c.SendKeysToTarget(ctx, target, "exec cat"))
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, target, "exec cat"))
 
 	lines := []string{"- fix the tests", "--help", "-N 3 abc", "-X cancel", "-t elsewhere", "-1"}
 	for _, l := range lines {
-		require.NoError(t, c.SendKeysToTarget(ctx, target, l), l)
+		require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, target, l), l)
 	}
-	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "-l raw"))
-	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "\r"))
+	require.NoError(t, c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, target, "-l raw"))
+	require.NoError(t, c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, target, "\r"))
 
 	want := append(lines, "-l raw")
 	var out string
@@ -73,7 +75,7 @@ func TestNoEnterAfterAFailedSend(t *testing.T) {
 	restore := SetSendKeysSettleForTest(time.Millisecond)
 	defer restore()
 
-	err := c.SendKeysToTarget(context.Background(), "agent:0.0", "- fix the tests")
+	err := c.SendKeysToTarget(context.Background(), terminalinput.Unclassified, "agent:0.0", "- fix the tests")
 	require.Error(t, err)
 	got, rerr := os.ReadFile(calls)
 	require.NoError(t, rerr)

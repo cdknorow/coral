@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 func skipIfWindows(t *testing.T) {
@@ -174,7 +176,7 @@ func TestPTYSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
 
 	spawnTestSession(t, backend, "io-test")
 
-	err := terminal.SendInput(context.Background(), "io-test", "echo hello-coral", "", "")
+	err := terminal.SendInput(context.Background(), terminalinput.Unclassified, "io-test", "echo hello-coral", "", "")
 	require.NoError(t, err)
 	waitForPTYOutput(t, backend, "io-test", "hello-coral", pollWindow)
 
@@ -191,7 +193,7 @@ func TestPTYSessionTerminal_SendRawInput(t *testing.T) {
 	spawnTestSession(t, backend, "raw-test")
 
 	// Send raw characters
-	err := terminal.SendRawInput(context.Background(), "raw-test", []string{"h", "i", "\n"}, "", "")
+	err := terminal.SendRawInput(context.Background(), terminalinput.Unclassified, "raw-test", []string{"h", "i", "\n"}, "", "")
 	require.NoError(t, err)
 }
 
@@ -205,7 +207,7 @@ func TestPTYSessionTerminal_SendToTarget(t *testing.T) {
 	spawnTestSession(t, backend, "target-test")
 
 	// SendToTarget uses the session name as target in PTY mode
-	err := terminal.SendToTarget(context.Background(), "target-test", "echo target-ok")
+	err := terminal.SendToTarget(context.Background(), terminalinput.Unclassified, "target-test", "echo target-ok")
 	require.NoError(t, err)
 }
 
@@ -219,7 +221,7 @@ func TestPTYSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
 	value := strings.Repeat("x", inlineCommandLimit+300) + marker
 	command := "printf '%s' '" + value + "'"
 	require.Greater(t, len(command), inlineCommandLimit)
-	require.NoError(t, terminal.SendToTarget(context.Background(), "long-target-test", command))
+	require.NoError(t, terminal.SendToTarget(context.Background(), terminalinput.Unclassified, "long-target-test", command))
 
 	output := waitForPTYOutput(t, backend, "long-target-test", marker, pollWindow)
 	assert.Contains(t, output, marker)

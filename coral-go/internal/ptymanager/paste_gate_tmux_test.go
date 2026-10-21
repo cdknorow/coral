@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // pasteAwareAgent stands in for Claude in a real tmux pane, reading raw bytes with
@@ -124,7 +125,7 @@ func startPasteAgent(t *testing.T, state, tag string) (*raceTerminal, string, st
 	t.Cleanup(func() { naming.SetDefaultLogDir("") })
 	require.NoError(t, os.WriteFile(naming.LogFile(logDir, "claude", sid), []byte("\x1b[?2004h"), 0o644))
 	spawnTmuxSession(t, term.TmuxSessionTerminal, name, dir)
-	require.NoError(t, term.SendToTarget(context.Background(), name+".0", "bash "+script+" "+dir+" "+state))
+	require.NoError(t, term.SendToTarget(context.Background(), terminalinput.Unclassified, name+".0", "bash "+script+" "+dir+" "+state))
 	marker := "Esc to cancel"
 	if state == "box" {
 		marker = "for shortcuts"
@@ -140,7 +141,9 @@ func readFile(dir, f string) string {
 
 func pasteInput(term *raceTerminal, name string) AutomatedInput {
 	return AutomatedInput{Term: term, Name: name, Text: pasteTestText, What: "board nudge", Paste: true,
-		Send: func(ctx context.Context) error { return term.SendInput(ctx, name, pasteTestText, "", "") }}
+		Send: func(ctx context.Context) error {
+			return term.SendInput(ctx, terminalinput.Unclassified, name, pasteTestText, "", "")
+		}}
 }
 
 // #3457: a menu that opens just after the gate looked, before it sent: the paste
@@ -158,7 +161,7 @@ func TestAMenuThatOpensJustBeforeThePasteIgnoresIt(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	assert.Empty(t, readFile(dir, "answered"), "the menu took no answer from the automated text")
 
-	require.NoError(t, term.SendRawInput(ctx, name, []string{"1"}, "", "")) // a person answers
+	require.NoError(t, term.SendRawInput(ctx, terminalinput.Unclassified, name, []string{"1"}, "", "")) // a person answers
 	require.Eventually(t, func() bool { return readFile(dir, "received") != "" }, 15*time.Second, 100*time.Millisecond, "the held send was pasted again and sent")
 	time.Sleep(500 * time.Millisecond)
 	assert.Equal(t, "1", readFile(dir, "answered"), "only the person's answer")
@@ -178,7 +181,7 @@ func TestAHeldPasteSendsOnlyItsEnterWhenItsTextIsInTheBox(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	assert.Empty(t, readFile(dir, "received"))
 
-	require.NoError(t, term.SendRawInput(ctx, name, []string{"1"}, "", ""))
+	require.NoError(t, term.SendRawInput(ctx, terminalinput.Unclassified, name, []string{"1"}, "", ""))
 	require.Eventually(t, func() bool { return readFile(dir, "received") != "" }, 15*time.Second, 100*time.Millisecond)
 	time.Sleep(500 * time.Millisecond)
 	assert.Equal(t, pasteTestText+"\n", readFile(dir, "received"), "sent once, not pasted twice")
@@ -223,7 +226,7 @@ func TestAHeldPasteNeverAddsToSomeoneElsesDraft(t *testing.T) {
 	require.Eventually(t, func() bool { return readFile(dir, "ignored") == pasteTestText }, 10*time.Second, 50*time.Millisecond, "the menu got the paste and ignored it")
 	// A person answers the menu; the box comes back holding their draft.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "draft"), []byte("my own draft"), 0o644))
-	require.NoError(t, term.SendRawInput(ctx, name, []string{"1"}, "", ""))
+	require.NoError(t, term.SendRawInput(ctx, terminalinput.Unclassified, name, []string{"1"}, "", ""))
 	time.Sleep(1500 * time.Millisecond) // several of the gate's turns
 	assert.Empty(t, readFile(dir, "received"))
 	// A turn takes the send off the queue before looking and puts it back after, so
@@ -257,7 +260,7 @@ func TestTheFirstPasteNeverJoinsAPersonsDraft(t *testing.T) {
 	require.NoError(t, os.WriteFile(naming.LogFile(logDir, "claude", sid), []byte("\x1b[?2004h"), 0o644))
 	spawnTmuxSession(t, term.TmuxSessionTerminal, name, dir)
 	ctx := context.Background()
-	require.NoError(t, term.SendToTarget(ctx, name+".0", "bash "+script+" "+dir+" box"))
+	require.NoError(t, term.SendToTarget(ctx, terminalinput.Unclassified, name+".0", "bash "+script+" "+dir+" box"))
 	waitForCapture(t, term.TmuxSessionTerminal, name, "half-written question", 10*time.Second)
 
 	in := pasteInput(term, name)
@@ -297,7 +300,7 @@ func startBoxAgent(t *testing.T, tag, marker string, files map[string]string) (*
 	t.Cleanup(func() { naming.SetDefaultLogDir("") })
 	require.NoError(t, os.WriteFile(naming.LogFile(logDir, "claude", sid), []byte("\x1b[?2004h"), 0o644))
 	spawnTmuxSession(t, term.TmuxSessionTerminal, name, dir)
-	require.NoError(t, term.SendToTarget(context.Background(), name+".0", "bash "+script+" "+dir+" box"))
+	require.NoError(t, term.SendToTarget(context.Background(), terminalinput.Unclassified, name+".0", "bash "+script+" "+dir+" box"))
 	waitForCapture(t, term.TmuxSessionTerminal, name, marker, 10*time.Second)
 	in := pasteInput(term, name)
 	in.AgentType, in.SessionID = "claude", sid

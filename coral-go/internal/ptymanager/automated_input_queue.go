@@ -65,7 +65,7 @@ func (g *inputGate) hold(in AutomatedInput, why, kind string) {
 
 func (g *inputGate) logHeld(in AutomatedInput, why, what string) {
 	slog.Info("automated input "+what, "session", in.Name, "sender", in.What, "why", why)
-	inputlog.Record(in.Name, inputlog.Text, "[HELD, "+why+"] "+in.Text)
+	inputlog.Note(in.Name, inputlog.Text, "[HELD, "+why+"] "+in.Text)
 }
 
 // flush types what is held for name if the agent is no longer waiting. It
@@ -395,6 +395,6 @@ func DropHeld(name, why string) {
 	forgetSessionMemos(name)
 	if n > 0 {
 		slog.Info("automated input: dropped held sends", "session", name, "count", n, "why", why)
-		inputlog.Record(name, inputlog.Text, "[DROPPED "+strconv.Itoa(n)+" held, "+why+"]")
+		inputlog.Note(name, inputlog.Text, "[DROPPED "+strconv.Itoa(n)+" held, "+why+"]")
 	}
 }

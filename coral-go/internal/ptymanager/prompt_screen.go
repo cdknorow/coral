@@ -2,6 +2,7 @@ package ptymanager
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -417,7 +418,7 @@ func (m *PTYBackend) ReplayScreen(name string) (string, error) {
 // a prompt opened after its text (#3431). PTY sends write text and Enter in one
 // write, so they never withhold it.
 func (t *TmuxSessionTerminal) SendEnter(ctx context.Context, name, agentType, sessionID string) error {
-	return t.client.SendRawKeys(ctx, name, []string{"Enter"}, agentType, sessionID)
+	return t.client.SendRawKeys(ctx, terminalinput.Internal, name, []string{"Enter"}, agentType, sessionID)
 }
 
 // SendArrow implements ArrowSender for tmux: its key names, which it sends in the pane's cursor-key mode.
@@ -426,5 +427,5 @@ func (t *TmuxSessionTerminal) SendArrow(ctx context.Context, name, agentType, se
 	if up {
 		key = "Up"
 	}
-	return t.client.SendRawKeys(ctx, name, []string{key}, agentType, sessionID)
+	return t.client.SendRawKeys(ctx, terminalinput.Internal, name, []string{key}, agentType, sessionID)
 }

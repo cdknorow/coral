@@ -1,12 +1,9 @@
-package tmux
+package terminalinput
 
 import (
-	"context"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Security's P1/P2 on #40: Coral's own text, typed, has no control character and no line break.
@@ -34,24 +31,19 @@ func TestAutomatedTextHasNoKeystrokesAndNoLineBreaks(t *testing.T) {
 	assert.Equal(t, "é", SanitizeTyped("é"), "a character that looks like a C1 byte in Latin-1 is a letter in UTF-8")
 }
 
-func TestAPersonsTypedSendIsNotChangedOnTmux(t *testing.T) {
-	skipWithoutUnixTmux(t)
-	c, dir := fakeTmux(t)
-	require.NoError(t, c.SendKeys(context.Background(), "agent", "line one\nline two", "claude", longTextSID))
-	joined := strings.Join(readCalls(t, dir), "\n")
-	assert.Contains(t, joined, "paste-buffer", "multi-line text from a person is still pasted as it was")
-}
-
 func TestAutomatedTextOfOnlyControlCharactersIsRefused(t *testing.T) {
 	for _, in := range []string{"\x03", "\x1b", "\u009b", "\n\r\n", "\x1b\x04\x03"} {
-		out, err := AutomatedTextChecked(in)
+		out, err := automatedTextChecked(in)
 		assert.ErrorIs(t, err, ErrNothingToSend, "%q", in)
 		assert.Empty(t, out)
 	}
-	out, err := AutomatedTextChecked("")
+	out, err := automatedTextChecked("")
 	assert.NoError(t, err)
 	assert.Empty(t, out)
-	out, err = AutomatedTextChecked("ok\x03")
+	out, err = automatedTextChecked("ok\x03")
 	assert.NoError(t, err)
 	assert.Equal(t, "ok", out)
 }
+
+// automatedTextChecked is what PrepareTyped does for Coral's text.
+func automatedTextChecked(text string) (string, error) { return PrepareTyped(Coral, text) }

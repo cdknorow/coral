@@ -19,6 +19,7 @@ import (
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // readWSFrame returns the next JSON text frame that satisfies match (binary output and
@@ -207,14 +208,14 @@ type blockingTerminal struct {
 	entered atomic.Int32
 }
 
-func (b *blockingTerminal) SendInput(ctx context.Context, name, text, agentType, sessionID string) error {
+func (b *blockingTerminal) SendInput(ctx context.Context, _ terminalinput.Origin, name, text, agentType, sessionID string) error {
 	b.entered.Add(1)
 	select {
 	case <-b.release:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	return b.SessionTerminal.SendInput(ctx, name, text, agentType, sessionID)
+	return b.SessionTerminal.SendInput(ctx, terminalinput.Unclassified, name, text, agentType, sessionID)
 }
 
 // A flood of composer_send frames on one socket (Security's MUST on #4587): at most composerSendsPerSocket deliveries

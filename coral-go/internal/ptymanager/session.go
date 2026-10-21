@@ -2,7 +2,6 @@ package ptymanager
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,9 +16,9 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/agentenv"
-	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/winshell"
 )
 
@@ -175,16 +174,18 @@ func (s *session) closeLog() {
 	}
 }
 
-// writeFull writes data once and reports a short write (fewer bytes than
-// requested with a nil error) as io.ErrShortWrite instead of ignoring it. It
-// returns how many bytes reached the PTY.
-func (s *session) writeFull(data []byte) (int, error) {
-	return s.writeFullCtx(context.Background(), data)
-}
-
-// writeFullCtx is writeFull for input sent with ctx: a person's own (inputlog.Human) is logged by
-// its length only (#60).
-func (s *session) writeFullCtx(ctx context.Context, data []byte) (int, error) {
+// writeInput is the ONE function that writes input to the session's process (a census test fails on any other, #5706). It records the
+// write as o's input, then writes data once and reports a short write (fewer bytes than requested with a nil error) as io.ErrShortWrite
+// instead of ignoring it. It returns how many bytes reached the PTY. What is recorded is what tmux logs for the same input (#60 step 4):
+// a paste (pasted is not nil) as a paste of the cleaned text, whatever markers surround it on the wire; anything else as typed input
+// (terminalinput.RecordInput: text, an Enter or other key, an escape sequence). o is a parameter, not a value in a context: a caller must say
+// whose input it is.
+func (s *session) writeInput(o terminalinput.Origin, data []byte, pasted *string) (int, error) {
+	if pasted != nil {
+		terminalinput.Record(o, s.name, terminalinput.Paste, *pasted)
+	} else {
+		terminalinput.RecordInput(o, s.name, string(data))
+	}
 	n, err := s.proc.Write(data)
 	if err == nil && n < len(data) {
 		err = io.ErrShortWrite
@@ -262,7 +263,7 @@ func (s *session) killWithin(grace time.Duration) error {
 	// Graceful termination
 	if terminateTypesCtrlC {
 		// On Windows, Terminate types Ctrl-C into the console (pty_windows.go).
-		inputlog.Record(s.name, inputlog.Keys, "C-c") // as tmux sends (and logs) it (#60 step 4)
+		terminalinput.RecordInput(terminalinput.Internal, s.name, "\x03") // a key, as tmux sends (and logs) it (#60 step 4)
 	}
 	s.proc.Terminate()
 

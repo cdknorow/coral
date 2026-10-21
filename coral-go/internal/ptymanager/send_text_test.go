@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -17,7 +18,7 @@ func sendTextWrites(t *testing.T, bracketed bool, text string) []string {
 	withFastSubmit(t)
 	b, s, proc := newFakeBackend(t, "claude-7-text")
 	s.bracketedPaste.Store(bracketed)
-	require.NoError(t, b.SendText(context.Background(), "claude-7-text", text))
+	require.NoError(t, b.SendText(context.Background(), terminalinput.Unclassified, "claude-7-text", text))
 	var got []string
 	for _, w := range proc.written() {
 		got = append(got, string(w))
@@ -59,7 +60,7 @@ func sendTextWritesTyped(t *testing.T, text string) []string {
 	t.Helper()
 	b, s, proc := newFakeBackend(t, "claude-7-typed")
 	s.bracketedPaste.Store(true) // asked for, and still not used for a short line
-	require.NoError(t, b.SendText(context.Background(), "claude-7-typed", text))
+	require.NoError(t, b.SendText(context.Background(), terminalinput.Unclassified, "claude-7-typed", text))
 	var got []string
 	for _, w := range proc.written() {
 		got = append(got, string(w))
@@ -80,7 +81,7 @@ func TestPTYSendTextWithholdsEnterWhenAPromptOpened(t *testing.T) {
 	b, s, proc := newFakeBackend(t, "claude-7-withheld")
 	s.bracketedPaste.Store(true)
 	ctx := tmux.WithBeforeEnter(context.Background(), func(context.Context) bool { return false })
-	err := b.SendText(ctx, "claude-7-withheld", "a\nb")
+	err := b.SendText(ctx, terminalinput.Unclassified, "claude-7-withheld", "a\nb")
 	assert.True(t, errors.Is(err, tmux.ErrEnterWithheld), "%v", err)
 	w := proc.written()
 	require.Len(t, w, 1, "the paste went, the Enter did not")
@@ -88,6 +89,6 @@ func TestPTYSendTextWithholdsEnterWhenAPromptOpened(t *testing.T) {
 }
 
 func TestPTYSendTextToAGoneSessionIsTerminalGone(t *testing.T) {
-	err := NewPTYBackend().SendText(context.Background(), "claude-gone", "a\nb")
+	err := NewPTYBackend().SendText(context.Background(), terminalinput.Unclassified, "claude-gone", "a\nb")
 	assert.True(t, errors.Is(err, ErrTerminalGone), "%v", err)
 }

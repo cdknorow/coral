@@ -2,6 +2,7 @@ package ptymanager
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"sync/atomic"
 )
 
@@ -66,7 +67,7 @@ type TerminalBackend interface {
 	Restart(name, command string) error
 
 	// SendInput writes raw bytes to the session's terminal input.
-	SendInput(name string, data []byte) error
+	SendInput(o terminalinput.Origin, name string, data []byte) error
 
 	// Resize changes the terminal dimensions.
 	Resize(name string, cols, rows uint16) error

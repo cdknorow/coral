@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // newTestPTYRuntime creates a PTYRuntime backed by a fresh PTYBackend.
@@ -122,7 +123,7 @@ func TestPTYRuntime_SendInput_NotExists(t *testing.T) {
 	rt := newTestPTYRuntime()
 	ctx := context.Background()
 
-	err := rt.SendInput(ctx, "nonexistent-agent", "hello")
+	err := rt.SendInput(ctx, terminalinput.Unclassified, "nonexistent-agent", "hello")
 	if err == nil {
 		t.Error("expected error when sending to nonexistent agent")
 	}
@@ -267,7 +268,7 @@ func TestPTYRuntime_SendInput(t *testing.T) {
 
 	time.Sleep(300 * time.Millisecond)
 
-	err = rt.SendInput(ctx, name, "hello world")
+	err = rt.SendInput(ctx, terminalinput.Unclassified, name, "hello world")
 	if err != nil {
 		t.Fatalf("SendInput failed: %v", err)
 	}

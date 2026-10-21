@@ -35,6 +35,7 @@ import (
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/startup"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 	"github.com/subgentic/coral/internal/tracking"
 
@@ -235,7 +236,7 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 		tc.SetPaneTitle(ctx, sessionName+".0", fmt.Sprintf("%s — %s", folderName, agentType))
 
 		// Send the launch command
-		if err := tc.SendKeysToTarget(ctx, sessionName+".0", launchCmd); err != nil {
+		if err := tc.SendKeysToTarget(ctx, terminalinput.Internal, sessionName+".0", launchCmd); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: the start command could not be typed into %s: %v\n", sessionName, err) // the terminal stays at its shell (#5171)
 		}
 

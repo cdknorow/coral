@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 func TestPTYBackendSendLineSubmitsSeparately(t *testing.T) {
@@ -19,7 +21,7 @@ func TestPTYBackendSendLineSubmitsSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Attach failed: %v", err)
 	}
-	if err := backend.SendLine("line-test", "submitted-line"); err != nil {
+	if err := backend.SendLine(terminalinput.Unclassified, "line-test", "submitted-line"); err != nil {
 		t.Fatalf("SendLine failed: %v", err)
 	}
 

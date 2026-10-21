@@ -2,6 +2,7 @@ package ptymanager
 
 import (
 	"context"
+	"github.com/subgentic/coral/internal/terminalinput"
 
 	"github.com/subgentic/coral/internal/tmux"
 )
@@ -58,26 +59,26 @@ func (t *TmuxSessionTerminal) CaptureOutput(ctx context.Context, name string, li
 	return t.client.CapturePane(ctx, name, lines, agentType, sessionID)
 }
 
-func (t *TmuxSessionTerminal) SendInput(ctx context.Context, name, command, agentType, sessionID string) error {
-	return t.client.SendKeys(ctx, name, command, agentType, sessionID)
+func (t *TmuxSessionTerminal) SendInput(ctx context.Context, o terminalinput.Origin, name, command, agentType, sessionID string) error {
+	return t.client.SendKeys(ctx, o, name, command, agentType, sessionID)
 }
 
 // SendPrompt delivers text as one bracketed paste followed by Enter.
-func (t *TmuxSessionTerminal) SendPrompt(ctx context.Context, name, text, agentType, sessionID string) error {
-	return t.client.SendPrompt(ctx, name, text, agentType, sessionID)
+func (t *TmuxSessionTerminal) SendPrompt(ctx context.Context, o terminalinput.Origin, name, text, agentType, sessionID string) error {
+	return t.client.SendPrompt(ctx, o, name, text, agentType, sessionID)
 }
 
-func (t *TmuxSessionTerminal) SendRawInput(ctx context.Context, name string, keys []string, agentType, sessionID string) error {
-	return t.client.SendRawKeys(ctx, name, keys, agentType, sessionID)
+func (t *TmuxSessionTerminal) SendRawInput(ctx context.Context, o terminalinput.Origin, name string, keys []string, agentType, sessionID string) error {
+	return t.client.SendRawKeys(ctx, o, name, keys, agentType, sessionID)
 }
 
-func (t *TmuxSessionTerminal) SendToTarget(ctx context.Context, target, command string) error {
+func (t *TmuxSessionTerminal) SendToTarget(ctx context.Context, o terminalinput.Origin, target, command string) error {
 	DropHeld(target, "a launch command is typed") // nothing held for the old process is typed into a new one (#3431)
-	return t.client.SendKeysToTarget(ctx, target, command)
+	return t.client.SendKeysToTarget(ctx, o, target, command)
 }
 
-func (t *TmuxSessionTerminal) SendTerminalInput(ctx context.Context, target, data string) error {
-	return t.client.SendTerminalInputToTarget(ctx, target, data)
+func (t *TmuxSessionTerminal) SendTerminalInput(ctx context.Context, o terminalinput.Origin, target, data string) error {
+	return t.client.SendTerminalInputToTarget(ctx, o, target, data)
 }
 
 func (t *TmuxSessionTerminal) CreateSession(ctx context.Context, name, workDir string) error {

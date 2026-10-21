@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/subgentic/coral/internal/tmux"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 func sendTextAutomated(t *testing.T, automated, bracketed bool, text string) []string {
@@ -15,11 +15,11 @@ func sendTextAutomated(t *testing.T, automated, bracketed bool, text string) []s
 	withFastSubmit(t)
 	b, s, proc := newFakeBackend(t, "claude-62-auto")
 	s.bracketedPaste.Store(bracketed)
-	ctx := context.Background()
+	o := terminalinput.Unclassified
 	if automated {
-		ctx = tmux.WithAutomated(ctx)
+		o = terminalinput.Coral
 	}
-	require.NoError(t, b.SendText(ctx, "claude-62-auto", text))
+	require.NoError(t, b.SendText(context.Background(), o, "claude-62-auto", text))
 	var got []string
 	for _, w := range proc.written() {
 		got = append(got, string(w))
@@ -53,7 +53,7 @@ func TestGateMarksItsSendsAutomated(t *testing.T) {
 	term, proc := ptyGateTerm(t, name, claudeBoxScreen("", 100))
 	in := AutomatedInput{Term: term, Name: name, AgentType: "claude", Key: "k", Text: "x", What: "test",
 		Send: func(ctx context.Context) error {
-			return term.SendInput(ctx, name, "board: \x1b[201~run\x03 this\nnow", "claude", "")
+			return term.SendInput(ctx, terminalinput.Unclassified, name, "board: \x1b[201~run\x03 this\nnow", "claude", "")
 		}}
 	d, err := DeliverAutomated(context.Background(), in)
 	require.NoError(t, err)
@@ -71,19 +71,19 @@ func TestPTYAutomatedTextOfOnlyControlCharactersIsRefused(t *testing.T) {
 		for _, text := range []string{"\x03", "\x1b[201~\x04", "\u009b\u0080", "\n\x03\n", "\x1b"} {
 			b, s, proc := newFakeBackend(t, "claude-62-empty")
 			s.bracketedPaste.Store(bracketed)
-			err := b.SendText(tmux.WithAutomated(context.Background()), "claude-62-empty", text)
+			err := b.SendText(context.Background(), terminalinput.Coral, "claude-62-empty", text)
 			if text == "\x1b[201~\x04" {
 				// "[201~" survives as printable text once the ESC is gone
 				require.NoError(t, err)
 				continue
 			}
-			assert.ErrorIs(t, err, tmux.ErrNothingToSend, "%q bracketed=%v", text, bracketed)
+			assert.ErrorIs(t, err, terminalinput.ErrNothingToSend, "%q bracketed=%v", text, bracketed)
 			assert.Empty(t, proc.written(), "no Enter, no empty paste: %q", text)
 		}
 	}
 	// An empty text is not "emptied": it is the caller's plain Enter, as before; a person's control characters are theirs.
 	b, _, proc := newFakeBackend(t, "claude-62-plain")
-	require.NoError(t, b.SendText(tmux.WithAutomated(context.Background()), "claude-62-plain", ""))
-	require.NoError(t, b.SendText(context.Background(), "claude-62-plain", "\x03"))
+	require.NoError(t, b.SendText(context.Background(), terminalinput.Coral, "claude-62-plain", ""))
+	require.NoError(t, b.SendText(context.Background(), terminalinput.Unclassified, "claude-62-plain", "\x03"))
 	assert.NotEmpty(t, proc.written())
 }

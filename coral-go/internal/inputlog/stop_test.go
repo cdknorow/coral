@@ -23,9 +23,9 @@ func TestTurningTheLogOffOrMovingItStopsTheWriter(t *testing.T) {
 	before := writers()
 	a, b := t.TempDir(), t.TempDir()
 	Setup(a, true)
-	Record("claude-x:0.0", Text, "first")
+	Write("claude-x:0.0", Text, "first")
 	Setup(b, true) // moved: a's writer ends, after writing what it had
-	Record("claude-x:0.0", Text, "second")
+	Write("claude-x:0.0", Text, "second")
 	Flush()
 	require.Eventually(t, func() bool { return writers() == before+1 }, 2*time.Second, 10*time.Millisecond, "one writer, for b")
 	got, err := os.ReadFile(filepath.Join(a, FileName))

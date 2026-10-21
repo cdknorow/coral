@@ -3,6 +3,7 @@ package ptymanager
 import (
 	"context"
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -96,7 +97,7 @@ func surveyQuestionAboveInputBox(lines []string) bool {
 // RawInputSender is implemented by terminals that can type single keys into an agent's terminal (tmux key names, or
 // the bytes on a PTY): what answers a digit-key dialog.
 type RawInputSender interface {
-	SendRawInput(ctx context.Context, name string, keys []string, agentType, sessionID string) error
+	SendRawInput(ctx context.Context, o terminalinput.Origin, name string, keys []string, agentType, sessionID string) error
 }
 
 // surveyGoneWait is how long after the 0 the screen is read for the survey to be gone, surveyPoll how often, and
@@ -144,7 +145,7 @@ func (g *inputGate) dismissSurvey(ctx context.Context, in AutomatedInput) bool {
 	}
 	g.surveyTried[in.Name] = g.now()
 	g.mu.Unlock()
-	if err := keys.SendRawInput(ctx, in.Name, []string{"0"}, in.AgentType, in.SessionID); err != nil {
+	if err := keys.SendRawInput(ctx, terminalinput.Internal, in.Name, []string{"0"}, in.AgentType, in.SessionID); err != nil {
 		slog.Warn("automated input: could not dismiss the agent's session survey", "session", in.Name, "error", err)
 		return false
 	}

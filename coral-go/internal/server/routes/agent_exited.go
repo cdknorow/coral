@@ -13,6 +13,7 @@ import (
 	"github.com/subgentic/coral/internal/logparse"
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // errAgentExited is returned for automated input to an agent whose CLI has
@@ -151,7 +152,7 @@ func deliverAutomated(ctx context.Context, term ptymanager.SessionTerminal, name
 			if automatedInputBlocked(ctx, term, name, agentType, sessionID, what) {
 				return errAgentExited
 			}
-			return term.SendInput(ctx, name, text, agentType, sessionID)
+			return term.SendInput(ctx, terminalinput.Coral, name, text, agentType, sessionID) // Coral's own text
 		},
 	})
 	return err

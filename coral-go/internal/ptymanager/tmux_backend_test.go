@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -141,7 +142,7 @@ func TestTmuxBackend_SendInput(t *testing.T) {
 	}
 	defer b.Kill("input-test")
 
-	err = b.SendInput("input-test", []byte("echo SEND_TEST_MARKER\n"))
+	err = b.SendInput(terminalinput.Unclassified, "input-test", []byte("echo SEND_TEST_MARKER\n"))
 	if err != nil {
 		t.Fatalf("SendInput failed: %v", err)
 	}
@@ -333,7 +334,7 @@ func TestTmuxBackendFanOut(t *testing.T) {
 	}
 
 	// Trigger output — cat echoes input
-	if err := b.SendInput("fanout", []byte("FANOUT_MARKER\n")); err != nil {
+	if err := b.SendInput(terminalinput.Unclassified, "fanout", []byte("FANOUT_MARKER\n")); err != nil {
 		t.Fatalf("SendInput failed: %v", err)
 	}
 
@@ -367,7 +368,7 @@ func TestTmuxBackendFanOut(t *testing.T) {
 
 	// Unsubscribe A; confirm B still receives.
 	b.Unsubscribe("fanout", "subA")
-	if err := b.SendInput("fanout", []byte("SECOND_MARKER\n")); err != nil {
+	if err := b.SendInput(terminalinput.Unclassified, "fanout", []byte("SECOND_MARKER\n")); err != nil {
 		t.Fatalf("SendInput failed: %v", err)
 	}
 	gotB2 := readUntil(chB, "SECOND_MARKER", 3*time.Second)

@@ -26,6 +26,7 @@ import (
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // WSTerminal, split into its admission, a per-connection stream (replay, size, frames, composer, output) and the
@@ -62,7 +63,7 @@ func (b *wstBackend) IsRunning(string) bool                                     
 func (b *wstBackend) LogPath(string) string                                              { return "" }
 func (b *wstBackend) Close() error                                                       { return nil }
 
-func (b *wstBackend) SendInput(name string, data []byte) error {
+func (b *wstBackend) SendInput(_ terminalinput.Origin, name string, data []byte) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.note("input " + string(data))
@@ -690,7 +691,7 @@ func (h *SessionsHandler) wsTerminalBefore4713(w http.ResponseWriter, r *http.Re
 					if hs, ok := h.backend.(ptymanager.HumanInputSender); ok {
 						sendErr = hs.SendHumanInput(name, []byte(msg.Data))
 					} else {
-						sendErr = h.backend.SendInput(name, []byte(msg.Data))
+						sendErr = h.backend.SendInput(terminalinput.Unclassified, name, []byte(msg.Data))
 					}
 				}
 			case "terminal_resize":

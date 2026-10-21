@@ -13,6 +13,7 @@ import (
 
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // ── Hooks Tests ─────────────────────────────────────────────
@@ -234,7 +235,9 @@ func (m *wfMockRuntime) SpawnAgent(_ context.Context, name, _, _, _ string) erro
 	m.alive[name] = true
 	return nil
 }
-func (m *wfMockRuntime) SendInput(_ context.Context, _, _ string) error { return nil }
+func (m *wfMockRuntime) SendInput(_ context.Context, _ terminalinput.Origin, _, _ string) error {
+	return nil
+}
 func (m *wfMockRuntime) KillAgent(_ context.Context, name string) error {
 	m.killed = append(m.killed, name)
 	delete(m.alive, name)

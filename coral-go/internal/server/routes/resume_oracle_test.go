@@ -31,6 +31,7 @@ import (
 	"github.com/subgentic/coral/internal/ptr"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // resumeTerm records what a resume does to the terminal, and fails the steps a scenario says to.
@@ -80,11 +81,11 @@ func (t *resumeTerm) SetPaneTitle(context.Context, string, string) {
 	t.titles++
 	t.mu.Unlock()
 }
-func (t *resumeTerm) SendToTarget(ctx context.Context, target, cmd string) error {
+func (t *resumeTerm) SendToTarget(ctx context.Context, _ terminalinput.Origin, target, cmd string) error {
 	if err := t.rec("send " + target); err != nil {
 		return err
 	}
-	return t.mockSessionTerminal.SendToTarget(ctx, target, cmd)
+	return t.mockSessionTerminal.SendToTarget(ctx, terminalinput.Unclassified, target, cmd)
 }
 
 // resumeBackend is a pty backend that records its spawns and kills, and fails the ones a scenario says to.

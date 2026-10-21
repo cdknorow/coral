@@ -25,6 +25,7 @@ import (
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // TestBoardStatusLoad measures GET /api/board/{project}/status latency under
@@ -239,10 +240,12 @@ func TestBoardStatusLoad(t *testing.T) {
 type loadTestRuntime struct{}
 
 func (*loadTestRuntime) SpawnAgent(context.Context, string, string, string, string) error { return nil }
-func (*loadTestRuntime) SendInput(context.Context, string, string) error                  { return nil }
-func (*loadTestRuntime) KillAgent(context.Context, string) error                          { return nil }
-func (*loadTestRuntime) IsAlive(context.Context, string) bool                             { return true }
-func (*loadTestRuntime) ListAgents(context.Context) ([]background.AgentInfo, error)       { return nil, nil }
+func (*loadTestRuntime) SendInput(context.Context, terminalinput.Origin, string, string) error {
+	return nil
+}
+func (*loadTestRuntime) KillAgent(context.Context, string) error                    { return nil }
+func (*loadTestRuntime) IsAlive(context.Context, string) bool                       { return true }
+func (*loadTestRuntime) ListAgents(context.Context) ([]background.AgentInfo, error) { return nil, nil }
 
 func reportLatency(t *testing.T, label string, ds []time.Duration) time.Duration {
 	t.Helper()

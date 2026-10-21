@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 const longTextSID = "5b8f1c2e-9d3a-4e7b-8c11-0a2b3c4d5e6f"
@@ -35,7 +37,7 @@ func TestSendKeysDeliversLongTextAsTextNeverAScript(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			c, dir := fakeTmux(t)
-			require.NoError(t, c.SendKeys(WithBracketedPasteHint(context.Background(), true), "agent", text, "claude", longTextSID))
+			require.NoError(t, c.SendKeys(WithBracketedPasteHint(context.Background(), true), terminalinput.Unclassified, "agent", text, "claude", longTextSID))
 
 			var kinds []string
 			calls := readCalls(t, dir)
@@ -58,7 +60,7 @@ func TestSendKeysDeliversLongTextAsTextNeverAScript(t *testing.T) {
 func TestSendKeysTypesAShortLine(t *testing.T) {
 	skipWithoutUnixTmux(t)
 	c, dir := fakeTmux(t)
-	require.NoError(t, c.SendKeys(context.Background(), "agent", "hello there", "claude", longTextSID))
+	require.NoError(t, c.SendKeys(context.Background(), terminalinput.Unclassified, "agent", "hello there", "claude", longTextSID))
 	joined := strings.Join(readCalls(t, dir), "\n")
 	assert.Contains(t, joined, "send-keys -t "+promptTestSession+":0.0 -l -- hello there")
 	assert.NotContains(t, joined, "paste-buffer")
@@ -74,7 +76,7 @@ func TestLaunchCommandWrapIsRemovedOnFailure(t *testing.T) {
 
 	// The typing fails: the script is removed.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "fail-enter"), nil, 0o600))
-	err := c.SendKeysToTarget(context.Background(), promptTestSession+":0.0", cmd)
+	err := c.SendKeysToTarget(context.Background(), terminalinput.Unclassified, promptTestSession+":0.0", cmd)
 	require.Error(t, err, "the typing failed")
 	assert.Empty(t, tempHandoffs(t), "the script is removed when the send fails")
 	assert.Contains(t, strings.Join(readCalls(t, dir), "\n"), "coral-command-", "a long command was handed over as a script")
@@ -82,11 +84,11 @@ func TestLaunchCommandWrapIsRemovedOnFailure(t *testing.T) {
 	// The typing works and only the Enter fails: removed too. And with the Enter withheld.
 	require.NoError(t, os.Remove(filepath.Join(dir, "fail-enter")))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "fail-only-enter"), nil, 0o600))
-	err = c.SendKeysToTarget(context.Background(), promptTestSession+":0.0", cmd)
+	err = c.SendKeysToTarget(context.Background(), terminalinput.Unclassified, promptTestSession+":0.0", cmd)
 	require.Error(t, err, "the Enter failed")
 	assert.Empty(t, tempHandoffs(t), "the script is removed when the Enter fails")
 	require.NoError(t, os.Remove(filepath.Join(dir, "fail-only-enter")))
-	err = c.SendKeysToTarget(WithBeforeEnter(context.Background(), func(context.Context) bool { return false }), promptTestSession+":0.0", cmd)
+	err = c.SendKeysToTarget(WithBeforeEnter(context.Background(), func(context.Context) bool { return false }), terminalinput.Unclassified, promptTestSession+":0.0", cmd)
 	require.ErrorIs(t, err, ErrEnterWithheld)
 	assert.Empty(t, tempHandoffs(t), "the script is removed when the Enter is withheld")
 }
@@ -140,7 +142,7 @@ func TestOnlyLaunchPathsWrapACommand(t *testing.T) {
 	body := funcBody(t, "send_keys.go", "func (c *Client) SendKeys(")
 	assert.NotContains(t, body, "SendKeysToTarget(")
 	assert.NotContains(t, body, "commandInvocation(")
-	assert.Contains(t, body, "typeToTarget(ctx, target, command, false)")
+	assert.Contains(t, body, "typeToTarget(ctx, o, target, command, false)")
 }
 
 // The dashboard's /send reaches a tmux agent through TmuxSessionTerminal.SendInput: it calls the text
