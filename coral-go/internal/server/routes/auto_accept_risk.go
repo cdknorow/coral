@@ -71,20 +71,15 @@ var autoAcceptFileTools = map[string]string{
 	"view_file":            "reads",
 }
 
-// winRootedWordRe: an argument (after another word, not in command position: sudo stays sudo) that starts with a backslash (PowerShell's \Windows, \server\share).
-var winRootedWordRe = regexp.MustCompile(`[^\s;&|(]\s+\\[\\\w.]\S*`)
-
-// shellRisk returns why a shell command is high-risk, or "".
+// shellRisk returns why a shell command is high-risk, or "". On Windows the words are split as a POSIX shell's, where
+// a backslash escapes the next character, so PowerShell's `rm -rf ..\..` would read as the file "...." and `\Windows` as
+// the relative "Windows": the command is judged a second time with every backslash turned into "/", and the first risk
+// found is the answer (a path with backslashes is then the path it names).
 func shellRisk(command, workDir string) string {
-	if runtime.GOOS == "windows" {
-		// Words are read as a POSIX shell's, where a backslash escapes the next character: PowerShell's `\Windows` or
-		// `\server\share` (a root) would read as the relative "Windows" and "serversshare". A word that starts with a
-		// backslash after the command is therefore not judged: it waits for the user.
-		if m := winRootedWordRe.FindString(command); m != "" {
-			return "it names a path from a drive or share root (" + strings.TrimSpace(m) + ")"
-		}
+	if why := shellRiskFrom(command, workDir, workDir); why != "" || runtime.GOOS != "windows" || !strings.Contains(command, `\`) {
+		return why
 	}
-	return shellRiskFrom(command, workDir, workDir)
+	return shellRiskFrom(strings.ReplaceAll(command, `\`, "/"), workDir, workDir)
 }
 
 // shellRiskFrom is shellRisk for a command that starts in dir (a bash -c after a cd).

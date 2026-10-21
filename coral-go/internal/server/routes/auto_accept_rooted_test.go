@@ -134,3 +134,37 @@ func TestDrivelessWorkingFolderIsComparedAsText(t *testing.T) {
 	assert.False(t, pathInside("/etc/passwd", wd))
 	assert.False(t, pathInside(`C:\Windows`, wd))
 }
+
+// Security's B1: on Windows a command is also judged with its backslashes as separators (either reading being risky is
+// enough, so a native C:...in-folder path is asked about rather than approved, the safe side), since the POSIX word split
+// reads `..\..` as the file "...." (rated safe) and `sub\..\..\..` likewise.
+func TestBackslashPathsAreJudgedAsPathsOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("backslash paths")
+	}
+	wd := t.TempDir()
+	for _, cmd := range []string{
+		`rm -rf ..\..`,
+		`rm -rf sub\..\..\..`,
+		`rm -rf ..\sibling`,
+		`rm -rf "C:\Program Files\x"`,
+		`rm -rf 'C:\Program Files\x'`,
+		`rm -rf C:\Windows\Temp`,
+		`cd ..\.. && rm -rf build`,
+		`rm -rf \Windows`,
+		`rm -rf \server\share`,
+		`chmod -R 777 ..\other`,
+	} {
+		assert.NotEmpty(t, shellRisk(cmd, wd), cmd)
+	}
+	for _, cmd := range []string{
+		`rm -rf sub\x`,
+		`rm -rf .\build`,
+		`rm -rf sub\..\x`,
+		`rm -rf build\obj dist`,
+		`cd sub\deep && rm -rf out`,
+	} {
+		assert.Empty(t, shellRisk(cmd, wd), cmd)
+	}
+	assert.Contains(t, shellRisk(`make && \sudo cp x y`, wd), "sudo", `a command-position \sudo is still sudo`)
+}
