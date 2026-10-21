@@ -311,7 +311,11 @@ func TestArtifactDeleteIsTheOperators(t *testing.T) {
 	} {
 		code, out := rig.del(id, hdr)
 		assert.Equal(t, http.StatusForbidden, code, name)
-		assert.Equal(t, "operator_only", out["code"], name)
+		want := "operator_only"
+		if hdr[tunnel.ViaHeader] != "" {
+			want = "owner_only" // through the hub only the machine's owner may delete (#5575)
+		}
+		assert.Equal(t, want, out["code"], name)
 	}
 	_, err := os.Stat(rig.object(id))
 	require.NoError(t, err, "still there after the refusals")

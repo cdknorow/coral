@@ -49,6 +49,11 @@ type agentUploadRecord struct {
 	UploadedBy string `json:"uploaded_by,omitempty"`
 	// Source is "paste" for such an image. It follows the uploads retention, the switch that keeps it from Coral Hub viewers, and is not an upload of the agent (a task result cannot name it).
 	Source string `json:"source,omitempty"`
+	// Board, Uploader and Role say who made it, as they were at the upload (#5575): the board's id, the agent's name and its role there. Absent on a record made before they were kept
+	// (the Operator's Artifacts tab then says "unknown") and on a received file, which no agent here uploaded.
+	Board    string `json:"board,omitempty"`
+	Uploader string `json:"uploader,omitempty"`
+	Role     string `json:"role,omitempty"`
 }
 
 // sourcePaste marks an upload record made from an image pasted or attached in the dashboard.
@@ -76,6 +81,7 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	st.receivedMaxBytes = h.receivedArtifactsMaxBytes
 	st.mu.Unlock()
 	r.Post("/api/agent/artifacts", h.uploadAgentArtifact)
+	r.Get("/api/artifacts", h.listAllArtifacts) // the machine-wide list, the owner's (#5575)
 	r.Get("/api/artifacts/{id}", h.getAgentArtifact)
 	r.Get("/api/artifacts/{id}/meta", h.getAgentArtifactMeta) // metadata only: do you have it (#5465)
 	r.Delete("/api/artifacts/{id}", h.deleteAgentArtifact)
@@ -299,7 +305,7 @@ func storeArtifactBy(coralDir, sessionID, name, mediaType, uploadedBy, source st
 	}
 	if up := uploadsDir(coralDir, sessionID); up != "" {
 		if os.MkdirAll(up, 0o700) == nil {
-			rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: mine, CreatedAt: time.Now().UTC().Format(time.RFC3339), UploadedBy: uploadedBy, Source: source})
+			rec, _ := json.Marshal(newUploadRecord(mine, sessionID, uploadedBy, source))
 			_ = writeFileAtomic(filepath.Join(up, hexID+".json"), rec, 0o600)
 		}
 	}
@@ -561,7 +567,7 @@ func storeArtifactFile(coralDir, sessionID, name, mediaType, tmpPath, hexID stri
 	}
 	if up := uploadsDir(coralDir, sessionID); up != "" {
 		if os.MkdirAll(up, 0o700) == nil {
-			rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta: mine, CreatedAt: time.Now().UTC().Format(time.RFC3339)})
+			rec, _ := json.Marshal(newUploadRecord(mine, sessionID, "", ""))
 			_ = writeFileAtomic(filepath.Join(up, hexID+".json"), rec, 0o600)
 		}
 	}
@@ -688,13 +694,33 @@ func deleteArtifactFilesLocked(coralDir, id string) (freed int64, records int, f
 // deleteAgentArtifact: DELETE /api/artifacts/{id}, the Operator removes an artifact (#3553,
 // from the #3551 audit): its object, its sidecar and every agent's upload record of it. A
 // person only: the dashboard on this computer or the operator's signed command line, in every
-// mode; an agent's token, a script, an API key and Coral Hub get 403 (and the tunnel never
-// forwards it). Links to it in posts and task results stay and show "unavailable".
+// mode, and through Coral Hub the machine's OWNER alone (#5575: the stamped owner marker and the
+// enrolled label, as hubOwnerRequest; Launch tier, and each delete is recorded in the Operator
+// actions with the hub user). An agent's token, a script, an API key and any other Hub caller get
+// 403. Links to it in posts and task results stay and show "unavailable".
 func (h *SessionsHandler) deleteAgentArtifact(w http.ResponseWriter, r *http.Request) {
-	if cloud.Tunneled(r) || !humanInputCaller(r) {
+	if cloud.Tunneled(r) {
+		owner := hubOwnerRequest(r)
+		if !owner.owner || owner.pseudo == "" {
+			writeError(w, http.StatusForbidden, "owner_only", "through Coral Hub only the account this computer is linked to can delete an artifact")
+			return
+		}
+		rec := &statusRecorder{ResponseWriter: w}
+		h.deleteArtifactCore(rec, r)
+		if rec.status == 0 {
+			rec.status = http.StatusOK
+		}
+		recordHubOperatorAction(r.Context(), h.bs, owner.pseudo, r.Method, r.URL.Path, "", rec.status)
+		return
+	}
+	if !humanInputCaller(r) {
 		writeError(w, http.StatusForbidden, "operator_only", "only the Operator can delete an artifact, from this computer's dashboard or the signed command line")
 		return
 	}
+	h.deleteArtifactCore(w, r)
+}
+
+func (h *SessionsHandler) deleteArtifactCore(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !objectNameRe.MatchString(id) {
 		errBadRequest(w, "invalid artifact id")
@@ -728,10 +754,6 @@ func validArtifactID(id string) bool { return artifactIDRe.MatchString(id) }
 // through Coral Hub (404), a missing or unreadable record or object (404), and a stored object whose length disagrees with its record (500, artifact_corrupt: a damaged store
 // is said, not served). The object is opened once, without following a link, and the caller uses that handle. On false the answer has been written.
 func (h *SessionsHandler) openArtifactForRead(w http.ResponseWriter, r *http.Request, id string) (*os.File, agentArtifactMeta, os.FileInfo, bool) {
-	if h.hubMayNotSeePastedImage(r, id) { // #5284: the owner's switch
-		errNotFound(w, "artifact not found")
-		return nil, agentArtifactMeta{}, nil, false
-	}
 	path := filepath.Join(h.artifactDir(), id)
 	meta := agentArtifactMeta{}
 	metaData, err := os.ReadFile(path + ".json")
@@ -763,6 +785,9 @@ func (h *SessionsHandler) openArtifactForRead(w http.ResponseWriter, r *http.Req
 }
 
 func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Request) {
+	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	if !validArtifactID(id) {
 		errBadRequest(w, "invalid artifact id")
@@ -797,6 +822,9 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 // It is the content read with the bytes left out: the same id check, the same 404 when the artifact is absent or hidden from Coral Hub by the paste share switch, the same refusal of a damaged
 // copy, from the same code (openArtifactForRead); no query parameter is read. The answer is never cached (no-store): an artifact can be deleted at any time.
 func (h *SessionsHandler) getAgentArtifactMeta(w http.ResponseWriter, r *http.Request) {
+	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+		return
+	}
 	id := chi.URLParam(r, "id")
 	if !validArtifactID(id) {
 		errBadRequest(w, "invalid artifact id")

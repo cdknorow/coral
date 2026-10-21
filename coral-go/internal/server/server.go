@@ -111,6 +111,9 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	if boardStore != nil && db != nil {
 		boardStore.SetSessionsDB(db.Reader())
 	}
+	if db != nil {
+		routes.SetUploaderLookup(routes.NewUploaderLookup(store.NewSessionStore(db), boardStore)) // each upload records its board, agent and role (#5575)
+	}
 	applyBoardRekeys(context.Background(), boardStore, db, cfg.CoralDir())
 
 	// Coral doesn't configure MCP servers (#3644): every stored MCP configuration, with the

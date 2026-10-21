@@ -49,6 +49,7 @@ a GET /api/agent/ui
 a GET /api/agent/ui/{id}/content
 a GET /api/agent/ui/{id}/events
 b GET /api/agents/models
+b GET /api/artifacts
 a GET /api/artifacts/{id}
 a GET /api/artifacts/{id}/comments
 a GET /api/artifacts/{id}/meta
@@ -368,7 +369,6 @@ b PUT /api/cloud/allow-auto-accept
 b PUT /api/cloud/hub-relaunch
 b PUT /api/cloud/max-mode
 b PUT /api/cloud/redact-tokens
-b PUT /api/cloud/share-pasted-images
 b PUT /api/custom-models
 b PUT /api/system/identity-actor
 b PUT /api/remote/{server}/*

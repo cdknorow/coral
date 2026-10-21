@@ -60,6 +60,7 @@ var reviewedFileOpens = map[string]string{
 	"uploads.go:UploadFile:WriteFile":                                          "a random hex prefix + filepath.Base of the name, an extension allowlist",
 	"workflow.go:stepFileType:Open":                                            "a workflow step file: Clean + prefix check, realPath + within, sensitivePath",
 	"shared_images.go:readUploadRecord:ReadFile":                               "uploads/<uploadsDir(session): a safe id>/<64 lower-case hex>.json, a record the server wrote (#5284)",
+	"artifacts_list_all.go:listAllArtifactRows:ReadFile":                       "the machine-wide list (#5575): objects/<64 lower-case hex>.json sidecars (size-bounded) and artifacts/received/<32-hex board>/<64-hex>.json rows the server wrote; every name is checked against objectNameRe and boardDirName",
 }
 
 func TestFileOpensInRoutesAreReviewed(t *testing.T) {

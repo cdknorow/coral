@@ -89,6 +89,8 @@ var (
 	// The operator's own credential and the tunnel's stamp on one request: through the tunnel it is a hub viewer, whoever's credential it carries.
 	cmtAsOwnerThroughTunnel = map[string]string{testDashboardHeader: "1", tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubUserHeader: cmtHubUser}
 	cmtAsAgent              = map[string]string{testAgentHeader: "s1"}
+	// Through Coral Hub the comments of an artifact are read by the machine's owner alone (#5575): the stamp, the owner marker and the enrolled label (withLabel(t, cmtHubUser)).
+	cmtAsHubOwner = map[string]string{testDashboardHeader: "1", tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubUserHeader: cmtHubUser, tunnel.HubRoleHeader: "owner"}
 )
 
 func (rig *cmtRig) do(method, path string, header map[string]string, body any) (int, map[string]any) {
@@ -217,7 +219,10 @@ func TestArtifactCommentsAStampedRequestIsNeverTheOwner(t *testing.T) {
 	rig := newCmtRig(t)
 	id := rig.ownerComment("owner's")
 	// The operator's credential carried through the tunnel is a hub viewer: it reads, it does not write (the hub flag is off), it cannot lock, and it is not the author.
+	withLabel(t, cmtHubUser, nil)
 	code, out := rig.do("GET", cp(cmtDoc), cmtAsOwnerThroughTunnel, nil)
+	assert.Equal(t, 403, code, "through the hub the comments are the owner's to read: the operator's credential with the stamp but no owner marker is refused")
+	code, out = rig.do("GET", cp(cmtDoc), cmtAsHubOwner, nil)
 	require.Equal(t, 200, code)
 	assert.Equal(t, "hub", out["you"].(map[string]any)["kind"])
 	assert.Equal(t, false, out["you"].(map[string]any)["can_comment"])
@@ -266,13 +271,16 @@ func TestArtifactCommentsForgedStampAndUnstampedHeaders(t *testing.T) {
 		assert.Equal(t, 403, code, fmt.Sprint(h))
 	}
 	code, _ = rig.do("GET", cp(cmtDoc), map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}, nil)
-	assert.Equal(t, 200, code, "a hub viewer reads without a user id")
+	assert.Equal(t, 403, code, "a hub viewer with no user id, and no owner marker, reads nothing (#5575)")
 }
 
 func TestArtifactCommentsHubViewersReadOnlyUntilTheFlagIsOn(t *testing.T) {
 	rig := newCmtRig(t)
 	rig.ownerComment("one")
+	withLabel(t, cmtHubUser, nil)
 	code, out := rig.do("GET", cp(cmtDoc), cmtAsHub, nil)
+	assert.Equal(t, 403, code, "a hub viewer who is not the owner reads nothing (#5575)")
+	code, out = rig.do("GET", cp(cmtDoc), cmtAsHubOwner, nil)
 	require.Equal(t, 200, code)
 	assert.Len(t, out["comments"], 1)
 	assert.Equal(t, false, out["you"].(map[string]any)["can_comment"])

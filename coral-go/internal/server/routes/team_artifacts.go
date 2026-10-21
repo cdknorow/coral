@@ -98,6 +98,9 @@ func parseBoundedInt(raw string, def, min, max int) (int, bool) {
 // With only limit, offset and session_id the reply is the plain list. Any of the others makes it a query (team_artifacts_query.go,
 // #4572): the reply then also has total, and next_cursor when there is another page.
 func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request) {
+	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+		return
+	}
 	project := urlParam(r, "project")
 	// A query string Go cannot parse (a ";" or a bad %-escape) is dropped part by part by r.URL.Query(), which would answer a mistyped
 	// filter with the unfiltered list: refuse it. An unknown parameter is refused by name (#4572).
@@ -160,7 +163,6 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 		items = h.uploads.merge(items, h.coralDir, teamUploadSessions(tasks, subscribers))
 		items = h.mergeCrossTeamRows(items, project)
 	}
-	items = hidePastedFromHub(r, h.coralDir, items)
 	if tq != nil {
 		h.queryTeamArtifacts(w, r, project, items, scanTruncated, limit, offset, sessionFilter, tq)
 		return
@@ -335,6 +337,9 @@ func enrichTeamArtifact(it *teamArtifact, objectDir string) {
 // TeamArtifactContent serves an inline task artifact as plain text.
 // GET /api/board/{project}/tasks/{taskID}/artifact-content?source=completion|review&index=N
 func (h *BoardHandler) TeamArtifactContent(w http.ResponseWriter, r *http.Request) {
+	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+		return
+	}
 	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
@@ -548,6 +553,9 @@ func (c *uploadDirCache) merge(items []teamArtifact, coralDir string, sessions m
 // results.
 // GET /api/session-artifacts?session_id=&limit=&offset=
 func (h *BoardHandler) ListSessionArtifacts(w http.ResponseWriter, r *http.Request) {
+	if refuseArtifactsToNonOwner(w, r) { // through Coral Hub the owner's alone (#5575)
+		return
+	}
 	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
 	if sessionID == "" || len(sessionID) > 128 || querypage.HasControl(sessionID) {
 		errBadRequest(w, "session_id is required")
@@ -563,7 +571,7 @@ func (h *BoardHandler) ListSessionArtifacts(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusForbidden, "forbidden_for_agent", "an agent can list only its own uploads or those of its board's agents")
 		return
 	}
-	items := hidePastedFromHub(r, h.coralDir, h.uploads.merge(nil, h.coralDir, map[string]string{sessionID: ""}))
+	items := h.uploads.merge(nil, h.coralDir, map[string]string{sessionID: ""})
 	end := offset + limit
 	hasMore := end < len(items)
 	if offset > len(items) {

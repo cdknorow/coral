@@ -88,7 +88,6 @@ var operatorOnlyRoutes = map[string]string{
 	"PUT /api/cloud/allow-auto-accept":               "change whether Coral Hub may turn on auto-accept",
 	"PUT /api/cloud/redact-tokens":                   "change whether tokens are hidden from Coral Hub viewers",
 	"PUT /api/cloud/hub-relaunch":                    "change whether Coral Hub may relaunch Coral for an update", // #5280
-	"PUT /api/cloud/share-pasted-images":             "change whether Coral Hub viewers can see pasted images",    // #5284
 	"PUT /api/system/identity-actor":                 "change how Coral decides who is calling",
 	"POST /api/cloud/connect":                        "connect to Coral Hub",
 	"POST /api/cloud/connect/cancel":                 "cancel connecting to Coral Hub",
@@ -97,6 +96,8 @@ var operatorOnlyRoutes = map[string]string{
 	"POST /api/cloud/rekey":                          "replace the secret key and discard what it sealed", // #3698
 	// #3553: the Operator removes an artifact (also refused to anyone but a person, in every mode).
 	"DELETE /api/artifacts/{id}": "delete an artifact",
+	// #5575: the machine-wide list of every artifact (the owner's, here or through Coral Hub): never an agent's.
+	"GET /api/artifacts": "list every artifact on this computer",
 	// #5284: the Operator removes one session's shared copy of an image pasted in the dashboard.
 	"DELETE /api/shared-images/{id}": "remove a pasted image's shared copy",
 	// #3554: pruning, and the keep mark that protects an artifact from it.

@@ -408,7 +408,6 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	upd := routes.NewUpdateRelaunchHandler(store.NewSessionStore(s.db), s.cfg.CoralDir(), func() string { return routes.TerminalKind(s.terminal) }, routes.BuildRelaunchUpdater())
 	r.Get("/api/system/update", upd.Status)
 	r.Post("/api/system/update/relaunch", upd.Relaunch)
-	r.Put("/api/cloud/share-pasted-images", s.cloudHandler.SetSharePastedImages) // #5284
 	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)
 	r.Post("/api/cloud/cli-hello", s.cloudHandler.CLIHello)
 }

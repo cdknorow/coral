@@ -24,7 +24,6 @@ import (
 
 	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/pkg/redact"
-	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 type taEnv struct {
@@ -393,7 +392,7 @@ func TestTeamArtifactsQueryCannotSeeBehindTheRedaction(t *testing.T) {
 	tunneled := func(query string) (int, taReply, string) {
 		req, err := http.NewRequest("GET", e.srv.URL+"/api/board/alpha/artifacts"+query, nil)
 		require.NoError(t, err)
-		req.Header.Set(tunnel.ViaHeader, "1")
+		setHubOwner(t, req)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
@@ -478,7 +477,7 @@ func TestTeamArtifactsQueryRedactsTheSidecarName(t *testing.T) {
 	req := func(query string) taReply {
 		r, err := http.NewRequest("GET", e.srv.URL+"/api/board/alpha/artifacts"+query, nil)
 		require.NoError(t, err)
-		r.Header.Set(tunnel.ViaHeader, "1")
+		setHubOwner(t, r)
 		resp, err := http.DefaultClient.Do(r)
 		require.NoError(t, err)
 		defer resp.Body.Close()
@@ -501,7 +500,7 @@ func TestTeamArtifactsQueryTunneledMatchFailsClosed(t *testing.T) {
 	t.Cleanup(func() { shownRedactor = prev })
 	r, err := http.NewRequest("GET", e.srv.URL+"/api/board/alpha/artifacts?q=zeta", nil)
 	require.NoError(t, err)
-	r.Header.Set(tunnel.ViaHeader, "1")
+	setHubOwner(t, r)
 	resp, err := http.DefaultClient.Do(r)
 	require.NoError(t, err)
 	defer resp.Body.Close()

@@ -316,11 +316,12 @@ a `session_id` that is not a live session of this Coral, the store's size cap, t
 window for these (100 a hour, 512 MiB, separate from every agent's). BMP and TIFF are artifacts that the chat shows as a
 chip, not a thumbnail. The text the dashboard types into the agent for each image is `<path> coral://artifacts/<id>`.
 
-**Who sees it.** An image cannot be redacted. With `PUT /api/cloud/share-pasted-images {"share": bool}` on (the default; the
-Operator's, local only, never through Coral Hub; Settings > Network and Hub) anyone who can view this Coral through Coral
-Hub at View tier can open a pasted image from the link in the chat. With it off a request that came through the tunnel for an
-image that is only a pasted one answers `404`; this computer still serves it. The dashboard says so once after each Coral Hub
-connect, before the first paste, and offers to turn it off.
+**Who sees it.** An image cannot be redacted. Through Coral Hub every artifact, a pasted image included, is for this
+computer's OWNER only (the account it is linked to; #5575): a request through the tunnel for an artifact, its metadata, its
+comments or a list of them is answered `403 owner_only` unless the connector's stamp, the owner marker and the enrolled owner
+label all match; a grantee, a view-only user and an agent get nothing. There is no switch for it and no notice before a paste:
+the setting `hub_share_pasted_images` and `PUT /api/cloud/share-pasted-images` are gone, and a stored value is ignored. This
+computer's dashboard and the command line are not affected.
 
 ```
 DELETE /api/shared-images/{id}?session_id=<agent session>

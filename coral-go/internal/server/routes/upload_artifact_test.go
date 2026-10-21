@@ -231,9 +231,9 @@ func TestDashboardBucketIsSeparateFromAnAgents(t *testing.T) {
 	assert.NotContains(t, dashboardUploadBucket, "s1")
 }
 
-// An agent token is refused for the routes that make and remove shared images, and the switch's own route: they are the Operator's.
+// An agent token is refused for the routes that make and remove shared images: they are the Operator's.
 func TestPastedImageRoutesAreOperatorOnly(t *testing.T) {
-	for _, key := range []string{"POST /api/upload", "DELETE /api/shared-images/{id}", "PUT /api/cloud/share-pasted-images"} {
+	for _, key := range []string{"POST /api/upload", "DELETE /api/shared-images/{id}"} {
 		_, ok := operatorOnlyRoutes[key]
 		assert.True(t, ok, key+" is in the operator-only table")
 	}
@@ -245,30 +245,12 @@ func getArtifact(t *testing.T, rig *artifactRig, id string, tunneled bool) int {
 	require.NoError(t, err)
 	req.Header.Set(testDashboardHeader, "1")
 	if tunneled {
-		req.Header.Set(tunnel.ViaHeader, "x")
+		setHubOwner(t, req)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	resp.Body.Close()
 	return resp.StatusCode
-}
-
-// The owner's switch: with it off a tunneled read of an image that was only pasted is a 404; locally it is served; and an artifact an agent also uploaded is served as before.
-func TestSharePastedImagesSwitchHidesPasteOnlyArtifactsFromTheHub(t *testing.T) {
-	rig := uploadRig(t)
-	_, out := postImage(t, "p.png", cleanPNG(t), "s1")
-	id := artifactOf(out)["id"].(string)
-	require.Equal(t, http.StatusOK, getArtifact(t, rig, id, true), "on by default: the Hub sees it")
-	require.NoError(t, rig.ss.SetSetting(context.Background(), SharePastedImagesSetting, "false"))
-	assert.Equal(t, http.StatusNotFound, getArtifact(t, rig, id, true), "off: a tunneled read is 404")
-	assert.Equal(t, http.StatusOK, getArtifact(t, rig, id, false), "off: this computer still sees it")
-	// the same bytes uploaded by an agent are the agent's artifact too: served
-	_, _, err := storeArtifact(rig.coralDir, "s2", "agent.png", "image/png", cleanPNG(t))
-	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, getArtifact(t, rig, id, true), "an artifact with an agent's own record is not hidden")
-	// an artifact with no records at all (a received file) is not a pasted image
-	_, _, err = storeArtifact(rig.coralDir, "", "recv.txt", "text/plain", []byte("received"))
-	require.NoError(t, err)
 }
 
 // Removing one session's shared copy never takes another's: two agents given the same bytes share one object, which goes with the last record.
