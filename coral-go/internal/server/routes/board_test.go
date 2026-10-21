@@ -448,6 +448,47 @@ func TestBoardListProjects(t *testing.T) {
 	assert.Len(t, projects, 2)
 }
 
+// boardMessageContents is every message of a board, as the dashboard lists them.
+func boardMessageContents(t *testing.T, base string) []string {
+	t.Helper()
+	msgResp, err := http.Get(base + "/messages/all?format=dashboard")
+	require.NoError(t, err)
+	defer msgResp.Body.Close()
+	var body struct {
+		Messages []struct {
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	require.NoError(t, json.NewDecoder(msgResp.Body).Decode(&body))
+	var out []string
+	for _, m := range body.Messages {
+		out = append(out, m.Content)
+	}
+	return out
+}
+
+// containsMessage reports whether some message of the board is exactly content.
+func containsMessage(t *testing.T, base, content string) bool {
+	t.Helper()
+	for _, c := range boardMessageContents(t, base) {
+		if c == content {
+			return true
+		}
+	}
+	return false
+}
+
+// messageStartingWith reports whether some message of the board starts with prefix.
+func messageStartingWith(t *testing.T, base, prefix string) bool {
+	t.Helper()
+	for _, c := range boardMessageContents(t, base) {
+		if strings.HasPrefix(c, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestBoardCreateTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
 	server, plannerHandler := setupBoardTestServer(t)
 	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
@@ -480,23 +521,11 @@ func TestBoardCreateTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	require.Eventually(t, func() bool {
-		msgResp, err := http.Get(base + "/messages/all?format=dashboard")
-		require.NoError(t, err)
-		defer msgResp.Body.Close()
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(msgResp.Body).Decode(&body))
-		messages, ok := body["messages"].([]any)
-		if !ok || len(messages) == 0 {
-			return false
-		}
-		last, ok := messages[len(messages)-1].(map[string]any)
-		if !ok {
-			return false
-		}
-		content, _ := last["content"].(string)
-		return content == "[Task #2 (high) assigned to Backend Dev — notification deferred while they have an active task] Follow-up task"
-	}, 2*time.Second, 50*time.Millisecond)
+	// The task notices are posted by background goroutines after each answer, so an earlier task's notice can land after a later one: the deferred notice is waited for among ALL the
+	// messages, not as the last one (it failed "Condition never satisfied" on a loaded CI runner when the last message was an earlier task's notice, #5628).
+	const deferred = "[Task #2 (high) assigned to Backend Dev — notification deferred while they have an active task] Follow-up task"
+	require.Eventually(t, func() bool { return containsMessage(t, base, deferred) }, 10*time.Second, 25*time.Millisecond)
+	assert.False(t, messageStartingWith(t, base, "@Backend Dev [Task #2"), "a busy assignee is not told the task is theirs to start")
 }
 
 func TestBoardReassignTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
@@ -535,23 +564,10 @@ func TestBoardReassignTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	require.Eventually(t, func() bool {
-		msgResp, err := http.Get(base + "/messages/all?format=dashboard")
-		require.NoError(t, err)
-		defer msgResp.Body.Close()
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(msgResp.Body).Decode(&body))
-		messages, ok := body["messages"].([]any)
-		if !ok || len(messages) == 0 {
-			return false
-		}
-		last, ok := messages[len(messages)-1].(map[string]any)
-		if !ok {
-			return false
-		}
-		content, _ := last["content"].(string)
-		return content == "[Task #2 reassigned to Backend Dev — notification deferred while they have an active task] Unassigned task"
-	}, 2*time.Second, 50*time.Millisecond)
+	// Not the last message: the create of this task posts its own notice from a background goroutine, which can land after the reassign's (#5628).
+	const deferred = "[Task #2 reassigned to Backend Dev — notification deferred while they have an active task] Unassigned task"
+	require.Eventually(t, func() bool { return containsMessage(t, base, deferred) }, 10*time.Second, 25*time.Millisecond)
+	assert.False(t, messageStartingWith(t, base, "@Backend Dev [Task #2 reassigned to you]"), "a busy assignee is not told the task is theirs to start")
 }
 
 func TestBoardUpdateTask_AssigneeChangeNudgesNewOwner(t *testing.T) {
