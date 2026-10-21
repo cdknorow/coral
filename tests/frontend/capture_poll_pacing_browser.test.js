@@ -39,11 +39,11 @@ const BASE = require('./test_base').BASE;
             const up = xt.isTerminalWsOpen();
             cap.startCaptureRefresh();
             const wait = ms => new Promise(r => setTimeout(r, ms));
-            await wait(7200);
+            await wait(7200); // sleep-ok: the observation window for the poll rate (an immediate poll, then one every 3 s): time is what is measured
             const whileUp = polls;          // the immediate one, then one every 3 s
             sock.readyState = 3;            // the terminal socket dropped
             const downFrom = polls;
-            await wait(3200);
+            await wait(3200); // sleep-ok: the observation window after the socket drops: no poll may start in the interval (a negative)
             const whileDown = polls - downFrom;
             cap.stopCaptureRefresh();
             window.WebSocket = RealWS; window.fetch = realFetch; state.currentSession = null;

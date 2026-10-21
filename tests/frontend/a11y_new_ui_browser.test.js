@@ -19,7 +19,8 @@ const LABELS = ['Feels like a slideshow', "Doesn't show the game", 'Tone/story i
     const S = `(window.__coralStatic || '/static/')`;
     const results = [];
     const check = (label, cond, detail) => { results.push(!!cond); console.log(`[${cond ? 'PASS' : 'FAIL'}] ${label}${detail !== undefined ? ' — ' + detail : ''}`); };
-    const settle = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: a layout settle after a key or a slide; there is no event for it
+    const pageSettle = require('./helpers/wait').bind(ev).settle;
+    const settle = ms => ms >= 300 ? pageSettle(ms) : new Promise(r => setTimeout(r, ms)); // sleep-ok: a pause under 300 ms after a key stays fixed (nothing to wait for); a longer one ends as soon as the page's geometry holds still (helpers/wait settle, #4768), at most ms
     const shot = async name => { const d = process.env.CORAL_SCREENSHOT_DIR; if (!d) return; fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, name.replace(/[^a-z0-9-]+/gi, '-') + '.png'), Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); };
 
     // ── keys, as a keyboard sends them

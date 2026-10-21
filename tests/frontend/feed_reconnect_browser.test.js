@@ -64,7 +64,7 @@ const BASE = require('./test_base').BASE;
             window.__closeCode = 4401;
             window.__deliver = true;                          // a delivered message resets the backoff to 1-2 s
             { const n = times.length; await waitFor(() => times.length > n, 'the delivering attempt'); }
-            await new Promise(r => setTimeout(r, 400));       // drain the attempt that was already scheduled (max 15 s / SPEED)
+            await new Promise(r => setTimeout(r, 400));       // sleep-ok: drain the attempt that was already scheduled (max 15 s / SPEED); no event for a timer firing
             const out = { cases: {} };
             for (const c of ['false', 'true', 503, 'badjson', 'error']) {
                 answer = c; signedOutCalls = 0;
@@ -72,7 +72,7 @@ const BASE = require('./test_base').BASE;
                 m.connectCoralWs();
                 if (c === 'false') {
                     await waitFor(() => signedOutCalls >= 1, 'sign-out (' + c + ')');
-                    await new Promise(r => setTimeout(r, 400));   // longer than any scaled retry: none may follow
+                    await new Promise(r => setTimeout(r, 400));   // sleep-ok: longer than any scaled retry: none may follow (a negative)
                 } else {
                     await waitFor(() => times.length - t0 - 1 >= 1 && sessionChecks - checks0 >= 1, 'a retry (' + c + ')');
                 }
@@ -80,7 +80,7 @@ const BASE = require('./test_base').BASE;
                 // stop this chain before the next case: park every further attempt as signed out
                 answer = 'false';
                 if (c !== 'false') await waitFor(() => signedOutCalls >= 1, 'parking (' + c + ')');
-                await new Promise(r => setTimeout(r, 400));
+                await new Promise(r => setTimeout(r, 400)); // sleep-ok: once parked, no further attempt may follow within this window (a negative)
             }
             window.fetch = realFetch;
             window.WebSocket = RealWS;

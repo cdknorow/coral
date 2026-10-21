@@ -22,7 +22,7 @@ const BASE = require('./test_base').BASE;
             const { state } = await import((window.__coralStatic||'/static/')+'state.js');
             // Silence the page's own feed and let its start-up renders finish, so only the messages below move the sidebar.
             if (state.coralWs) { state.coralWs.onmessage = null; state.coralWs.onclose = null; state.coralWs.close(); }
-            await new Promise(r => setTimeout(r, 2500));
+            await new Promise(r => setTimeout(r, 2500)); // sleep-ok: the start-up renders have no completion event once the page's own feed is silenced; a window with nothing left to arrive
             let renders = 0;
             // Renders are counted by the page's own event, not by DOM changes: a row's tooltip is built on hover now (#4497), so a render that has nothing new to show changes no node.
             window.addEventListener('coral:live-list-rendered', () => { renders++; });

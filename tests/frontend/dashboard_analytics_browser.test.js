@@ -38,7 +38,7 @@ const base=require('./test_base').BASE;
  try{
   await c.Page.enable();await page('deferred');
   assert.deepEqual(await events(),[],'no readiness until list rendered and startup complete');
-  await ev(`window.__startup=true`);await wait(2100);assert.deepEqual(await events(),[],'startup alone is insufficient');
+  await ev(`window.__startup=true`);await wait(2100);assert.deepEqual(await events(),[],'startup alone is insufficient'); // sleep-ok: a negative: nothing may be sent in the time a load would have taken
   await ev(`window.__mode='normal';__release.splice(0).forEach(r=>r())`);await wait(150);
   const readyEvent=(await events())[0];assert.equal(readyEvent.event,'dashboard_ready');assert.match(readyEvent.props.page_id,/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);assert.deepEqual(Object.keys(readyEvent.props),['page_id']);assert.deepEqual((await events())[1],{event:'dashboard_active_day',props:{}});
   await ev(`(async()=>{const a=await import((window.__coralStatic||'/static/')+'dashboard_analytics.js');a.dashboardInitialized();a.dashboardSessionsLoaded(true);a.dashboardStartupComplete();document.dispatchEvent(new Event('visibilitychange'));const chat=await import((window.__coralStatic||'/static/')+'live_chat.js');chat.renderTranscript([{type:'user',content:'SECRET_PROMPT'},{type:'assistant',text:'SECRET_RESPONSE'}],document.createElement('div'));})()`);
@@ -53,11 +53,11 @@ const base=require('./test_base').BASE;
    assert.equal((await events()).length,1,'bounded fixed-code failures');
   }
   // Recovery is observable: failures do not permanently suppress readiness.
-  await ev(`window.__mode='normal';window.__startup=true`);await wait(2200);
+  await ev(`window.__mode='normal';window.__startup=true`);await wait(2200); // sleep-ok: the window in which the recovered load would have to report; no completion event
   assert.deepEqual((await events()).map(x=>x.event),['dashboard_failed','dashboard_ready','dashboard_active_day']);
   assert.notEqual((await events()).find(x=>x.event==='dashboard_ready').props.page_id,readyEvent.props.page_id,'reload creates a new ephemeral page ID');
   assert.ok(!(JSON.stringify(await events())).includes('SECRET'));
-  await page('normal',true);await ev(`window.__startup=true`);await wait(2100);assert.deepEqual(await events(),[],'agent popout is not a dashboard load');
+  await page('normal',true);await ev(`window.__startup=true`);await wait(2100);assert.deepEqual(await events(),[],'agent popout is not a dashboard load'); // sleep-ok: a negative, as above
   for(const transport of ['ws','http','send_failure']){
    await page(transport);
    await ev(`(async()=>{const {state}=await import((window.__coralStatic||'/static/')+'state.js');state.currentSession={type:'live',name:'test-agent',agent_type:'claude',session_id:'analytics-fixture'};window.controls=await import((window.__coralStatic||'/static/')+'controls.js');document.getElementById('command-input').value='';await controls.sendCommand();})()`);

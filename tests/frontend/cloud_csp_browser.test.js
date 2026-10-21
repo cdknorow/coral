@@ -60,7 +60,7 @@ async function load(policy, { strict }) {
     });
     await Page.navigate({ url: BASE + '/' });
     await Page.loadEventFired();
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 3000)); // sleep-ok: a negative: the page must NOT redirect to sign-in in the time a redirect would take (a wait on the first request returned before it could have)
     assert.equal(served, 1, 'the page was served through the policy interception');
     if (strict) {
       const where = await Runtime.evaluate({ expression: `location.pathname`, returnByValue: true });
@@ -73,7 +73,7 @@ async function load(policy, { strict }) {
       for (const expr of [
         `import((window.__coralStatic||'/static/')+'modals.js').then(m => m.showSettingsModal && m.showSettingsModal())`,
         `import((window.__coralStatic||'/static/')+'utils.js').then(() => 1)`,
-      ]) { await Runtime.evaluate({ expression: expr, awaitPromise: true, returnByValue: true }); await new Promise(r => setTimeout(r, 800)); }
+      ]) { await Runtime.evaluate({ expression: expr, awaitPromise: true, returnByValue: true }); await new Promise(r => setTimeout(r, 800)); /* sleep-ok: each probe's CSP violation report has no completion event */ }
     }
     return { violations, exceptions, blocked };
   } finally { await client.close(); await CDP.Close({ port, id: tab.id }).catch(() => {}); }

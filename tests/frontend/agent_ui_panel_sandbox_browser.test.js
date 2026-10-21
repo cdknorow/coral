@@ -140,7 +140,7 @@ const base = require('./test_base').BASE;
             const u = URLX + '&v=' + i, w = WSX + '?v=' + i;
             await ev(`window.runPanel(${JSON.stringify(label + ':' + names[i])}, ${JSON.stringify(page(vectors[names[i]](u, w)))}, ${JSON.stringify(hostUrl || '')}, ${JSON.stringify(outerSandbox || '')})`);
         }
-        await sleep(2500);
+        await sleep(2500); // sleep-ok: a negative: the panel's requests would have reached the listener within this window
         for (const h of hits.slice(before)) {
             const i = Number((h.match(/[?&]v=(\d+)/) || [])[1]);
             leaks.push('"' + (names[i] || h) + '" reached the counting server');
@@ -173,7 +173,7 @@ const base = require('./test_base').BASE;
                 'webrtc': `try { var pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:127.0.0.1:${udp.address().port}' }] }); pc.createDataChannel('x'); pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }); } catch (e) {}`,
             };
             for (const [n, body] of Object.entries(gap)) await ev(`window.runPanel(${JSON.stringify('gap:' + n)}, ${JSON.stringify(page(body))}, '', '')`);
-            await sleep(3000);
+            await sleep(3000); // sleep-ok: a negative window for the known gaps: whatever would reach the listener arrives within it
             console.log(`  known gaps (not gates): webrtc STUN packets seen on loopback: ${udpHits}; dns-prefetch: not observable from here`);
             udp.close();
             await ev(`for (const f of window.hostFrames) f.remove(); window.hostFrames.length = 0`);
