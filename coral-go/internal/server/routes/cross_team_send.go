@@ -416,10 +416,11 @@ func (h *BoardHandler) relayDelivered(w http.ResponseWriter, ctx context.Context
 
 // relayTarget is one address Coral Hub says this board may message.
 type relayTarget struct {
-	Address   string `json:"address"`
-	Server    string `json:"server"`
-	Team      string `json:"team"`
-	Reachable bool   `json:"reachable"`
+	Address string `json:"address"`
+	Server  string `json:"server"`
+	Team    string `json:"team"`
+	// A pointer, omitted when Coral Hub sends none: an absent field is passed on as absent, never turned into false, which `coral-board targets` shows as "(offline)" (#5598, QA #5599).
+	Reachable *bool `json:"reachable,omitempty"`
 }
 
 // ListRelayTargets asks Coral Hub which other Corals' teams this board may message.
