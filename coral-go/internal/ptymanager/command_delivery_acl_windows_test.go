@@ -19,7 +19,7 @@ import (
 func TestHandoffScriptIsMadeInThePrivateLaunchTempFolder(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "tmp")
 	require.NoError(t, agent.SetTempDir(dir))
-	t.Cleanup(func() { _ = agent.SetTempDir(os.TempDir()) })
+	t.Cleanup(func() { _ = agent.SetTempDir("") })
 
 	invocation, cleanup, err := commandInvocation("Write-Output hi")
 	require.NoError(t, err)
