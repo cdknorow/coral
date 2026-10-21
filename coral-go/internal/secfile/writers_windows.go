@@ -10,6 +10,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/subgentic/coral/internal/safego"
 )
 
 // writeMask are the rights that let an account put another program in a folder or in place of a
@@ -201,7 +203,8 @@ func startLookup(sid *windows.SID) *lookup {
 	l := &lookup{done: make(chan struct{})}
 	lookups.m[key] = l
 	go func() {
-		defer close(l.done)
+		defer safego.Recover("secfile/account lookup")
+		defer close(l.done) // runs first, so a waiting Writers is released even after a panic
 		if account, domain, err := lookupAccount(sid); err == nil && account != "" {
 			if domain != "" {
 				account = domain + `\` + account

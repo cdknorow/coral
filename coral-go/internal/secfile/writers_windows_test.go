@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +27,9 @@ func TestWriters(t *testing.T) {
 	mine := t.TempDir()
 	who, err = Writers(mine)
 	require.NoError(t, err)
-	assert.Contains(t, who, "this user")
+	// This user holds it, by an entry of its own or as its owner (a temp folder on another drive
+	// inherits that drive's list instead of the profile's).
+	assert.True(t, slices.ContainsFunc(who, func(w string) bool { return strings.HasPrefix(w, "this user") }), "%v", who)
 
 	open := t.TempDir()
 	ps := `$d = Get-Item -LiteralPath $env:D; $a = $d.GetAccessControl('Access'); ` +
