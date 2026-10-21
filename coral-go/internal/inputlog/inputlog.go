@@ -14,7 +14,6 @@
 package inputlog
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -207,26 +206,17 @@ func EnabledFromEnv() bool {
 	return config.Truthy(os.Getenv("CORAL_DEBUG_INPUT"))
 }
 
-// Record logs one write to the terminal target (a tmux target or a PTY session
-// name) when the debug log is on. For Keys, data is the tmux key names separated
-// by spaces.
-func Record(target string, kind Kind, data string) {
-	RecordCtx(context.Background(), target, kind, data)
-}
-
-// RecordCtx is Record for input sent with ctx: a person's own input from the dashboard terminal
-// (Human) is logged by its length only, unless it is only control input (Enter, arrows, Ctrl-C,
-// named keys), which stays as it is: a typed password or a pasted token is never logged (#60).
-func RecordCtx(ctx context.Context, target string, kind Kind, data string) {
+// Write logs one write to the terminal target (a tmux target or a PTY session name) when the debug log is on. For Keys,
+// data is the tmux key names separated by spaces. It records exactly what it is given: whose input it is, and so whether the
+// text may be kept or only its length, is decided by the caller, and the only caller of Write is internal/terminalinput.Record
+// (a census test fails on any other, #5706). Coral's own annotations go through Note.
+func Write(target string, kind Kind, data string) {
 	if !enabled.Load() {
 		return
 	}
 	fw := w.Load()
 	if fw == nil {
 		return
-	}
-	if IsHuman(ctx) && kind != Keys && hasPrintable(data) {
-		kind, data = Typed, fmt.Sprintf("[typed %d bytes]", len(data))
 	}
 	if len(data) > redactWindow {
 		data = data[:redactWindow]
@@ -238,35 +228,10 @@ func RecordCtx(ctx context.Context, target string, kind Kind, data string) {
 	})
 }
 
-type humanKey struct{}
-
-// Human marks ctx as carrying a person's own input from the dashboard terminal (RecordCtx).
-func Human(ctx context.Context) context.Context { return context.WithValue(ctx, humanKey{}, true) }
-
-// IsHuman reports whether ctx carries a person's own input.
-func IsHuman(ctx context.Context) bool {
-	on, _ := ctx.Value(humanKey{}).(bool)
-	return on
-}
-
-// hasPrintable reports whether s holds anything but control bytes and escape sequences: text a
-// person typed, as opposed to Enter, Tab, arrows or Ctrl-<key>.
-func hasPrintable(s string) bool {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == 0x1b { // an escape sequence: ESC [ A, ESC O P, ESC [ 1 ; 5 C ...
-			i++
-			for i < len(s) && (s[i] == '[' || s[i] == 'O' || s[i] >= '0' && s[i] <= '9' || s[i] == ';') {
-				i++
-			}
-			continue // the sequence's final byte
-		}
-		if c >= 0x20 && c != 0x7f {
-			return true
-		}
-	}
-	return false
-}
+// Note logs a line of Coral's own about the terminal (a held, dropped or given-up send, the auto-accept note): not input, and
+// never a person's. It is a line like any other: the text is cut, redacted and capped by the same writer (entry.line), so a
+// board message quoted in a note is masked like the same text sent.
+func Note(target string, kind Kind, text string) { Write(target, kind, text) }
 
 // entry is one line to write: its metadata, and the sent text, redacted and cut by the writer.
 type entry struct {
@@ -306,17 +271,6 @@ func (e entry) line() (out string) {
 	return e.prefix + " " + describe(e.kind, data) + "\n"
 }
 
-// RecordHexKeys logs a tmux send-keys -H call (one hex byte per argument).
-func RecordHexKeys(target string, hexBytes []string) {
-	b := make([]byte, 0, len(hexBytes))
-	for _, h := range hexBytes {
-		if v, err := strconv.ParseUint(h, 16, 8); err == nil {
-			b = append(b, byte(v))
-		}
-	}
-	Record(target, Raw, string(b))
-}
-
 func describe(kind Kind, data string) string {
 	if kind == Keys {
 		return "keys=" + strconv.Quote(data)
@@ -333,7 +287,7 @@ func describe(kind Kind, data string) string {
 }
 
 // Source names the code path that sent the input: the first caller outside the
-// terminal plumbing (this package, internal/tmux and internal/ptymanager), such as
+// terminal plumbing (this package, internal/terminalinput, internal/tmux and internal/ptymanager), such as
 // "background.(*BoardNotifier).deliver" or "routes.(*SessionsHandler).Send".
 func Source() string {
 	pcs := make([]uintptr, 32)
@@ -351,7 +305,7 @@ func Source() string {
 }
 
 func plumbing(fn string) bool {
-	for _, p := range []string{"/internal/inputlog.", "/internal/tmux.", "/internal/ptymanager.", "runtime."} {
+	for _, p := range []string{"/internal/inputlog.", "/internal/terminalinput.", "/internal/tmux.", "/internal/ptymanager.", "runtime."} {
 		if strings.Contains(fn, p) && !strings.Contains(fn, ".Test") {
 			return true
 		}

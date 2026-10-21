@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // fakePTYProcess is a ptyProcess that never starts a real program: reads come
@@ -115,7 +117,7 @@ func TestSendPromptWritesOneBracketedPasteThenEnter(t *testing.T) {
 	s.bracketedPaste.Store(true)
 
 	text := "line one\n\nline three with \"quotes\"\n\ttabbed\nlast"
-	if err := b.SendPrompt(context.Background(), "claude-x", text); err != nil {
+	if err := b.SendPrompt(context.Background(), terminalinput.Unclassified, "claude-x", text); err != nil {
 		t.Fatal(err)
 	}
 	writes := proc.written()
@@ -139,7 +141,7 @@ func TestSendPromptRemovesEscapesSoTextCannotEndThePasteEarly(t *testing.T) {
 	b, s, proc := newFakePTYProcess2(t)
 	s.bracketedPaste.Store(true)
 	hostile := "before\x1b[201~echo injected\x1b[200~ after\r\nnext\x00line\a"
-	if err := b.SendPrompt(context.Background(), "claude-x", hostile); err != nil {
+	if err := b.SendPrompt(context.Background(), terminalinput.Unclassified, "claude-x", hostile); err != nil {
 		t.Fatal(err)
 	}
 	paste := string(proc.written()[0])
@@ -159,14 +161,14 @@ func newFakePTYProcess2(t *testing.T) (*PTYBackend, *session, *fakePTYProcess) {
 func TestSendPromptRefusesAndWritesNothingWhenBracketedPasteIsOff(t *testing.T) {
 	withFastSubmit(t)
 	b, _, proc := newFakeBackend(t, "claude-x")
-	err := b.SendPrompt(context.Background(), "claude-x", "a\nb")
+	err := b.SendPrompt(context.Background(), terminalinput.Unclassified, "claude-x", "a\nb")
 	if !errors.Is(err, ErrBracketedPasteUnavailable) {
 		t.Fatalf("err = %v, want ErrBracketedPasteUnavailable", err)
 	}
 	if got := proc.written(); len(got) != 0 {
 		t.Fatalf("nothing may be written without bracketed paste, got %q", got)
 	}
-	if err := b.SendPrompt(context.Background(), "missing", "x"); err == nil {
+	if err := b.SendPrompt(context.Background(), terminalinput.Unclassified, "missing", "x"); err == nil {
 		t.Fatal("unknown session accepted")
 	}
 }
@@ -179,7 +181,7 @@ func TestSendPromptCancelledBeforeStartWritesZeroBytes(t *testing.T) {
 	s.bracketedPaste.Store(true)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := b.SendPrompt(ctx, "claude-x", "a\nb")
+	err := b.SendPrompt(ctx, terminalinput.Unclassified, "claude-x", "a\nb")
 	if !errors.Is(err, context.Canceled) || errors.Is(err, ErrDeliveryUnknown) {
 		t.Fatalf("err = %v, want plain context.Canceled", err)
 	}
@@ -201,7 +203,7 @@ func TestSendPromptCancelledAfterPasteStillSubmits(t *testing.T) {
 		}
 		return len(p), nil
 	}
-	if err := b.SendPrompt(ctx, "claude-x", "a\nb"); err != nil {
+	if err := b.SendPrompt(ctx, terminalinput.Unclassified, "claude-x", "a\nb"); err != nil {
 		t.Fatalf("cancel after paste must still finish: %v", err)
 	}
 	got := proc.written()
@@ -238,7 +240,7 @@ func TestSendPromptShortOrFailedWritesAreUnknownOnlyWhenInputMayHaveStarted(t *t
 		b, s, proc := newFakeBackend(t, "claude-x")
 		s.bracketedPaste.Store(true)
 		proc.writeFn = c.hook
-		err := b.SendPrompt(context.Background(), "claude-x", "a\nb")
+		err := b.SendPrompt(context.Background(), terminalinput.Unclassified, "claude-x", "a\nb")
 		if err == nil {
 			t.Fatalf("%s: expected an error", c.name)
 		}
@@ -268,7 +270,7 @@ func TestSendPromptSerializesConcurrentPromptsPerSession(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := b.SendPrompt(context.Background(), "claude-x", text); err != nil {
+			if err := b.SendPrompt(context.Background(), terminalinput.Unclassified, "claude-x", text); err != nil {
 				t.Errorf("SendPrompt(%q): %v", text, err)
 			}
 		}()
@@ -300,12 +302,12 @@ func TestSendPromptWaitingForTheLockHonoursCancellation(t *testing.T) {
 		return len(p), nil
 	}
 	done := make(chan error, 1)
-	go func() { done <- b.SendPrompt(context.Background(), "claude-x", "holder") }()
+	go func() { done <- b.SendPrompt(context.Background(), terminalinput.Unclassified, "claude-x", "holder") }()
 	<-started
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	err := b.SendPrompt(ctx, "claude-x", "waiter")
+	err := b.SendPrompt(ctx, terminalinput.Unclassified, "claude-x", "waiter")
 	if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrDeliveryUnknown) {
 		t.Fatalf("waiter err = %v, want plain deadline exceeded", err)
 	}
@@ -330,7 +332,7 @@ func TestPTYSessionTerminalImplementsPromptSender(t *testing.T) {
 	if !ok {
 		t.Fatal("PTYSessionTerminal must implement PromptSender")
 	}
-	if err := sender.SendPrompt(context.Background(), "claude-sid", "p\nq", "claude", "sid"); err != nil {
+	if err := sender.SendPrompt(context.Background(), terminalinput.Unclassified, "claude-sid", "p\nq", "claude", "sid"); err != nil {
 		t.Fatal(err)
 	}
 	if got := proc.written(); len(got) != 2 || string(got[0]) != "\x1b[200~p\nq\x1b[201~" {

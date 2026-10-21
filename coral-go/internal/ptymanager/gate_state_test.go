@@ -14,6 +14,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // withState installs a fixed signal state for every session and restores the gate. It returns the function that changes the state
@@ -227,7 +229,7 @@ func (s syncWriter) Write(p []byte) (int, error) {
 func TestPTYBackendRecordsHumanInput(t *testing.T) {
 	b := NewPTYBackend()
 	before := time.Now().Add(-time.Second)
-	_ = b.SendInput("claude-x", []byte("automated")) // no session: an error, and no record
+	_ = b.SendInput(terminalinput.Unclassified, "claude-x", []byte("automated")) // no session: an error, and no record
 	assert.False(t, b.HumanInputSince("claude-x", before), "Coral's own input is not a person's")
 	_ = b.SendHumanInput("claude-x", []byte("h"))
 	assert.True(t, b.HumanInputSince("claude-x", before))

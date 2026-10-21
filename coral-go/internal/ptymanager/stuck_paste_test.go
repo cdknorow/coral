@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -88,7 +89,7 @@ func (s *stuckTerm) AgentScreen(context.Context, string, string, string) (string
 	return screen, nil
 }
 func (s *stuckTerm) HasRenderedScreen() bool { return true }
-func (s *stuckTerm) SendPrompt(ctx context.Context, _, text, _, _ string) error {
+func (s *stuckTerm) SendPrompt(ctx context.Context, _ terminalinput.Origin, _, text, _, _ string) error {
 	s.mu.Lock()
 	s.pasted = append(s.pasted, text)
 	if s.echo {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -96,7 +97,7 @@ func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHe
 		footerOnly.Store(open && !isPromptHold(why))
 		return !open
 	}
-	sctx := tmux.WithAutomated(tmux.WithBeforeEnter(ctx, check))
+	sctx := tmux.WithBeforeEnter(ctx, check) // Coral's own text: the closure of the send names its origin (terminalinput.Coral)
 	if _, known := BracketedPasteHint(ctx); !known {
 		at, sid := in.identity()
 		if enabled, known := BracketedPasteFromLog(naming.DefaultLogDir(), at, sid); known {
@@ -277,7 +278,7 @@ func (g *inputGate) pasteAndEnter(ctx context.Context, in AutomatedInput, ps Pro
 		}
 	}
 	g.setLastPasted(in.Name, in.Text) // Coral's, until its Enter is seen to submit it (#4104)
-	err = ps.SendPrompt(tmux.WithBeforeEnter(pctx, check), in.Name, in.Text, agentType, sessionID)
+	err = ps.SendPrompt(tmux.WithBeforeEnter(pctx, check), terminalinput.Coral, in.Name, in.Text, agentType, sessionID)
 	if err == nil {
 		held, err := g.confirmSubmitted(ctx, in, sr, rendered, agentType, sessionID)
 		return held, err, true
@@ -419,6 +420,6 @@ func (g *inputGate) holdEnter(in AutomatedInput, kind string) {
 // It is logged in the input debug log. Nothing else may call it (a test
 // enforces that).
 func AutoAcceptSend(ctx context.Context, name string, send func(ctx context.Context) error) error {
-	inputlog.Record(name, inputlog.Keys, "[auto-accept answers an approval prompt]")
+	inputlog.Note(name, inputlog.Keys, "[auto-accept answers an approval prompt]")
 	return send(ctx)
 }

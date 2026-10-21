@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // reconMockRuntime lets tests control what ListAgents reports and what
@@ -19,7 +20,9 @@ type reconMockRuntime struct {
 func (m *reconMockRuntime) SpawnAgent(context.Context, string, string, string, string) error {
 	return nil
 }
-func (m *reconMockRuntime) SendInput(context.Context, string, string) error { return nil }
+func (m *reconMockRuntime) SendInput(context.Context, terminalinput.Origin, string, string) error {
+	return nil
+}
 func (m *reconMockRuntime) KillAgent(_ context.Context, name string) error {
 	m.killed = append(m.killed, name)
 	return nil

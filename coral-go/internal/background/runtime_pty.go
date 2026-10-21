@@ -6,6 +6,7 @@ import (
 
 	"github.com/subgentic/coral/internal/naming"
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // PTYRuntime implements AgentRuntime using native PTY sessions.
@@ -47,20 +48,20 @@ func (r *PTYRuntime) SpawnAgent(ctx context.Context, name, workDir, logFile, com
 	return r.backend.Spawn(name, agentType, workDir, sessionID, command, 200, 50)
 }
 
-func (r *PTYRuntime) SendInput(ctx context.Context, name, text string) error {
+func (r *PTYRuntime) SendInput(ctx context.Context, o terminalinput.Origin, name, text string) error {
 	// Type the text, then submit with the platform's Enter key (unless the gate's check withholds it).
-	return r.backend.SendText(ctx, name, text)
+	return r.backend.SendText(ctx, o, name, text)
 }
 
 // SendPrompt implements ptymanager.PromptSender: automated text as one bracketed
 // paste and its Enter, while the agent has bracketed paste on (#3457).
-func (r *PTYRuntime) SendPrompt(ctx context.Context, name, text, _, _ string) error {
-	return r.backend.SendPrompt(ctx, name, text)
+func (r *PTYRuntime) SendPrompt(ctx context.Context, o terminalinput.Origin, name, text, _, _ string) error {
+	return r.backend.SendPrompt(ctx, o, name, text)
 }
 
 // SendEnter implements ptymanager.EnterSender (#3431, #3457).
 func (r *PTYRuntime) SendEnter(_ context.Context, name, _, _ string) error {
-	return r.backend.SendInput(name, []byte("\r"))
+	return r.backend.SendInput(terminalinput.Internal, name, []byte("\r"))
 }
 
 func (r *PTYRuntime) KillAgent(ctx context.Context, name string) error {

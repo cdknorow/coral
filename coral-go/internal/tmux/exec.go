@@ -23,7 +23,6 @@ import (
 var runObserver func(args []string)
 
 func (c *Client) run(ctx context.Context, args ...string) (string, error) {
-	recordSendKeys(ctx, args)
 	if runObserver != nil {
 		runObserver(args)
 	}

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 func canFork(t *testing.T) {
@@ -80,7 +82,7 @@ func TestPTYBackendSendInputAndRead(t *testing.T) {
 	}
 
 	// Send input
-	err = backend.SendInput("echo-test", []byte("hello\n"))
+	err = backend.SendInput(terminalinput.Unclassified, "echo-test", []byte("hello\n"))
 	if err != nil {
 		t.Fatalf("SendInput failed: %v", err)
 	}
@@ -214,7 +216,7 @@ func TestPTYBackendNotFound(t *testing.T) {
 		t.Error("expected error for nonexistent session")
 	}
 
-	err = backend.SendInput("nonexistent", []byte("test"))
+	err = backend.SendInput(terminalinput.Unclassified, "nonexistent", []byte("test"))
 	if err == nil {
 		t.Error("expected error for nonexistent session")
 	}
@@ -312,7 +314,7 @@ func TestPTYBackendAttachUnsubscribe(t *testing.T) {
 	}
 
 	// Send input
-	backend.SendInput("sub-test", []byte("fan-out-test\n"))
+	backend.SendInput(terminalinput.Unclassified, "sub-test", []byte("fan-out-test\n"))
 
 	// Both subscribers should receive output
 	got1 := readFromChan(ch1, 2*time.Second)
@@ -329,7 +331,7 @@ func TestPTYBackendAttachUnsubscribe(t *testing.T) {
 	backend.Unsubscribe("sub-test", "ws-1")
 
 	// Send more input — only ws-2 should receive
-	backend.SendInput("sub-test", []byte("after-unsub\n"))
+	backend.SendInput(terminalinput.Unclassified, "sub-test", []byte("after-unsub\n"))
 
 	got2 = readFromChan(ch2, 2*time.Second)
 	if !strings.Contains(got2, "after-unsub") {
@@ -523,7 +525,7 @@ func TestPTYBackendAttachFanOut(t *testing.T) {
 	}
 
 	// Send input
-	backend.SendInput("fanout-test", []byte("broadcast\n"))
+	backend.SendInput(terminalinput.Unclassified, "fanout-test", []byte("broadcast\n"))
 
 	// All subscribers should receive
 	for i, ch := range channels {

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // TestTask1648_ComprehensiveStartupAndNotificationRetest independently exercises
@@ -293,9 +295,9 @@ type faultyRuntime struct {
 	failSend bool
 }
 
-func (f *faultyRuntime) SendInput(ctx context.Context, name, text string) error {
+func (f *faultyRuntime) SendInput(ctx context.Context, _ terminalinput.Origin, name, text string) error {
 	if f.failSend {
 		return fmt.Errorf("delivery failure")
 	}
-	return f.mockRuntime.SendInput(ctx, name, text)
+	return f.mockRuntime.SendInput(ctx, terminalinput.Unclassified, name, text)
 }

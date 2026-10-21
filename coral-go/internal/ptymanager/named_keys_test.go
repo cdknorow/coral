@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #17 (audit F2): the key names Coral and its docs send become the bytes a terminal sends; the PTY used to type the
@@ -78,7 +80,7 @@ func TestPTYSendRawInputSendsKeyBytes(t *testing.T) {
 	setWaits(t, func(w *waitTimings) { w.rawKeyGap = 1 })
 	name := "claude-17-keys"
 	term, _, proc := rawKeysTerm(t, name)
-	require.NoError(t, term.SendRawInput(context.Background(), name, []string{"Escape", "Escape", "Down", "Enter", "0"}, "claude", ""))
+	require.NoError(t, term.SendRawInput(context.Background(), terminalinput.Unclassified, name, []string{"Escape", "Escape", "Down", "Enter", "0"}, "claude", ""))
 	var got []string
 	for _, w := range proc.written() {
 		got = append(got, string(w))
@@ -86,7 +88,7 @@ func TestPTYSendRawInputSendsKeyBytes(t *testing.T) {
 	assert.Equal(t, []string{"\x1b", "\x1b", "\x1b[B", "\r", "0"}, got)
 
 	before := len(proc.written())
-	err := term.SendRawInput(context.Background(), name, []string{"Enter", "Enterr"}, "claude", "")
+	err := term.SendRawInput(context.Background(), terminalinput.Unclassified, name, []string{"Enter", "Enterr"}, "claude", "")
 	assert.True(t, errors.Is(err, ErrUnknownKey), "%v", err)
 	assert.Len(t, proc.written(), before, "an unknown name stops the request before the valid keys before it are sent")
 	assert.Error(t, term.ValidateKeys([]string{"Down", "DownEnter"}))
@@ -111,9 +113,9 @@ func TestAGonePTYSessionIsTerminalGone(t *testing.T) {
 	term := NewPTYSessionTerminal(b)
 	_, err := term.RenderedScreen(context.Background(), "claude-gone", "claude", "00000000-0000-4000-8000-00000000f015")
 	assert.True(t, errors.Is(err, ErrTerminalGone), "RenderedScreen: %v", err)
-	assert.True(t, errors.Is(b.SendPrompt(context.Background(), "claude-gone", "x"), ErrTerminalGone), "SendPrompt of a session that isn't there")
-	assert.True(t, errors.Is(b.SendInput("claude-gone", []byte("x")), ErrTerminalGone))
-	assert.True(t, errors.Is(term.SendRawInput(context.Background(), "claude-gone", []string{"Enter"}, "claude", "00000000-0000-4000-8000-00000000f015"), ErrTerminalGone))
+	assert.True(t, errors.Is(b.SendPrompt(context.Background(), terminalinput.Unclassified, "claude-gone", "x"), ErrTerminalGone), "SendPrompt of a session that isn't there")
+	assert.True(t, errors.Is(b.SendInput(terminalinput.Unclassified, "claude-gone", []byte("x")), ErrTerminalGone))
+	assert.True(t, errors.Is(term.SendRawInput(context.Background(), terminalinput.Unclassified, "claude-gone", []string{"Enter"}, "claude", "00000000-0000-4000-8000-00000000f015"), ErrTerminalGone))
 }
 
 // Security's N1/N2 on #39: a request is bounded, the whole list is checked before anything is sent, and every key
@@ -129,12 +131,12 @@ func TestPTYKeysRequestIsBoundedAndWholeSequencesAreWritten(t *testing.T) {
 		too[i] = "Down"
 	}
 	assert.Error(t, term.ValidateKeys(too))
-	assert.True(t, errors.Is(term.SendRawInput(context.Background(), name, too, "claude", ""), ErrUnknownKey))
+	assert.True(t, errors.Is(term.SendRawInput(context.Background(), terminalinput.Unclassified, name, too, "claude", ""), ErrUnknownKey))
 	assert.Empty(t, proc.written(), "nothing is sent over the bound")
 	assert.NoError(t, term.ValidateKeys(too[:MaxKeysPerRequest]))
 
 	// Every multi-byte key is one write.
-	require.NoError(t, term.SendRawInput(context.Background(), name, []string{"Up", "PageDown", "F5", "BTab", "M-x"}, "claude", ""))
+	require.NoError(t, term.SendRawInput(context.Background(), terminalinput.Unclassified, name, []string{"Up", "PageDown", "F5", "BTab", "M-x"}, "claude", ""))
 	var got []string
 	for _, w := range proc.written() {
 		got = append(got, string(w))
@@ -150,7 +152,7 @@ func TestPTYKeysRequestIsBoundedAndWholeSequencesAreWritten(t *testing.T) {
 		}
 		return len(p), nil
 	}
-	err := term.SendRawInput(ctx, name, []string{"F5", "F6", "F7"}, "claude", "")
+	err := term.SendRawInput(ctx, terminalinput.Unclassified, name, []string{"F5", "F6", "F7"}, "claude", "")
 	assert.True(t, errors.Is(err, context.Canceled), "%v", err)
 	after := proc.written()[n:]
 	require.NotEmpty(t, after)

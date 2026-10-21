@@ -22,6 +22,8 @@ var sendCalls = map[string]bool{
 	"SendKeysToTarget": true, "SendKeys": true, "SendTerminalInput": true, "SendLine": true, "SendLineCtx": true,
 	"SendTerminalInputToTarget": true, "SendRawKeys": true, "pasteToTarget": true,
 	"AutoAcceptSend": true, "SendEnter": true, "SendArrow": true,
+	// #5706: the two choke points (tmux Client.sendKeys, the PTY session's writeInput), so every caller of them is listed too.
+	"sendKeys": true, "writeInput": true,
 }
 
 // A sender declares the guard that decides when it may type (#5254). guard is one of:
@@ -84,22 +86,29 @@ var allowedSenders = map[string]sender{
 	"internal/ptymanager/tmux_backend.go\tTmuxBackend.Spawn\tSendKeysToTarget":      {guardLaunch, "launch command", ""},
 	"internal/ptymanager/tmux_backend.go\tTmuxBackend.Restart\tSendKeysToTarget":    {guardLaunch, "launch command", ""},
 	// The tmux commands themselves (#5254): every key or paste that reaches a pane is one of these.
-	"internal/tmux/prompt.go\tClient.SendPrompt\ttmux paste-buffer":                {guardPrimitive, "primitive: the paste of SendPrompt, whose callers are listed", ""},
-	"internal/tmux/prompt.go\tClient.SendPrompt\ttmux send-keys":                   {guardPrimitive, "primitive: the Enter of SendPrompt, withheld by enterAllowed (the gate's re-check)", ""},
-	"internal/tmux/send_keys.go\tClient.SendRawKeys\ttmux send-keys":               {guardPrimitive, "primitive: named keys, one at a time", ""},
-	"internal/tmux/send_keys.go\tClient.SendTerminalInputToTarget\ttmux send-keys": {guardPrimitive, "primitive: a person's terminal input", ""},
-	"internal/tmux/send_keys.go\tClient.pasteToTarget\ttmux paste-buffer":          {guardPrimitive, "primitive: a private named buffer, deleted by the paste", ""},
-	"internal/tmux/send_keys.go\tClient.typeToTarget\ttmux send-keys":              {guardPrimitive, "primitive: text then Enter, no Enter after a failed send or when enterAllowed says no", ""},
-	"internal/tmux/send_keys.go\tclearInputLine\ttmux send-keys":                   {guardLaunch, "launch: the Ctrl-U that clears a launch command typed into a fresh shell whose Enter did not go (#5171); never reached for text typed to an agent", "TestLaunchLineIsClearedWhenItsEnterIsWithheld"},
+	"internal/tmux/prompt.go\tClient.SendPrompt\ttmux paste-buffer":       {guardPrimitive, "primitive: the paste of SendPrompt, whose callers are listed", ""},
+	"internal/tmux/send_keys.go\tClient.pasteToTarget\ttmux paste-buffer": {guardPrimitive, "primitive: a private named buffer, deleted by the paste", ""},
+	// #5706: the choke points and who calls them. Every key or text that reaches a tmux pane goes through Client.sendKeys, and every
+	// byte typed to a PTY agent through session.writeInput, each taking the Origin as an argument.
+	"internal/tmux/prompt.go\tClient.SendPrompt\tsendKeys":                   {guardPrimitive, "primitive: the Enter of SendPrompt, withheld by enterAllowed (the gate's re-check)", ""},
+	"internal/tmux/send_keys.go\tClient.SendRawKeys\tsendKeys":               {guardPrimitive, "primitive: named keys, one at a time", ""},
+	"internal/tmux/send_keys.go\tClient.SendTerminalInputToTarget\tsendKeys": {guardPrimitive, "primitive: a person's terminal input", ""},
+	"internal/tmux/send_keys.go\tClient.typeToTarget\tsendKeys":              {guardPrimitive, "primitive: text then Enter, no Enter after a failed send or when enterAllowed says no", ""},
+	"internal/tmux/send_keys.go\tclearInputLine\tsendKeys":                   {guardLaunch, "launch: the Ctrl-U that clears a launch command typed into a fresh shell whose Enter did not go (#5171); never reached for text typed to an agent", "TestLaunchLineIsClearedWhenItsEnterIsWithheld"},
+	"internal/ptymanager/session.go\tsession.writeInput\tpty Write":          {guardPrimitive, "primitive: the ONE write to a PTY's process, reached by the senders above and by PTYBackend.SendHumanInput (a person's keystrokes, the gate's PTY rule #3482, logged by length only #60)", ""},
+	"internal/ptymanager/manager.go\tPTYBackend.SendHumanInput\tSendInput":   {guardPrimitive, "primitive: a person's keystrokes, as Person", ""},
+	"internal/ptymanager/manager.go\tPTYBackend.SendLineCtx\tSendInput":      {guardPrimitive, "primitive: the line, then its Enter as Internal", ""},
+	"internal/ptymanager/manager.go\tPTYBackend.SendInput\twriteInput":       {guardPrimitive, "primitive", ""},
+	"internal/ptymanager/manager.go\tPTYBackend.SendText\twriteInput":        {guardPrimitive, "primitive: the paste, then its Enter as Internal", ""},
+	"internal/ptymanager/manager.go\tPTYBackend.SendPrompt\twriteInput":      {guardPrimitive, "primitive: the paste, then its Enter as Internal", ""},
 	// The PTY master itself: every byte typed to a PTY agent goes through session.writeFull.
-	"internal/ptymanager/session.go\tsession.writeFullCtx\tpty Write":     {guardPrimitive, "primitive: the PTY's write, reached by the senders above and by PTYBackend.SendHumanInput (a person's keystrokes, the gate's PTY rule #3482, logged by length only #60)", ""},
 	"internal/ptymanager/pty_unix.go\tunixPTY.Write\tpty Write":           {guardPrimitive, "primitive: the PTY file", ""},
 	"internal/ptymanager/pty_windows.go\twindowsPTY.Write\tpty Write":     {guardPrimitive, "primitive: the ConPTY", ""},
 	"internal/ptymanager/pty_windows.go\twindowsPTY.Terminate\tpty Write": {guardPrimitive, "primitive: the Ctrl-C that starts a session's end on Windows (session.killWithin, recorded in the input log); nothing is typed after it", ""},
 	// The primitives' own implementations, one layer calling the next.
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendInput\tSendKeys":                                           {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/manager.go\tPTYBackend.SendLine\tSendLineCtx":                                               {guardPrimitive, "primitive", ""},
-	"internal/ptymanager/manager.go\tPTYBackend.SendText\tSendLineCtx":                                               {guardPrimitive, "primitive: carries ctx, so a person's send (inputlog.Human) is logged by length (#60 N3); the text was sanitised and pasted by SendText", ""},
+	"internal/ptymanager/manager.go\tPTYBackend.SendText\tSendLineCtx":                                               {guardPrimitive, "primitive: carries ctx, so a person's send (terminalinput.Person) is logged by length (#60 N3); the text was sanitised and pasted by SendText", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendPrompt\tSendPrompt":                         {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendRawInput\tSendInput":                        {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendTerminalInput\tSendInput":                   {guardPrimitive, "primitive", ""},

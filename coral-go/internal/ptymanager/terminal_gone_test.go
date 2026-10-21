@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #3211: with a session id, the PTY terminal acts only on that session. A sibling in the
@@ -39,9 +41,9 @@ func TestPTYMissingSessionNeverReachesASibling(t *testing.T) {
 			if pane, _ := p.FindSession(ctx, name, "claude", sid); pane != nil {
 				t.Errorf("FindSession(%q, %q) = %+v", name, sid, pane)
 			}
-			gone("SendInput "+name, p.SendInput(ctx, name, "echo hi", "claude", sid))
-			gone("SendPrompt "+name, p.SendPrompt(ctx, name, "hi", "claude", sid))
-			gone("SendRawInput "+name, p.SendRawInput(ctx, name, []string{"1"}, "claude", sid))
+			gone("SendInput "+name, p.SendInput(ctx, terminalinput.Unclassified, name, "echo hi", "claude", sid))
+			gone("SendPrompt "+name, p.SendPrompt(ctx, terminalinput.Unclassified, name, "hi", "claude", sid))
+			gone("SendRawInput "+name, p.SendRawInput(ctx, terminalinput.Unclassified, name, []string{"1"}, "claude", sid))
 			gone("ResizeSession "+name, p.ResizeSession(ctx, name, 33, "claude", sid))
 			gone("KillSessionOnly "+name, p.KillSessionOnly(ctx, name, "claude", sid))
 			gone("KillSession "+name, p.KillSession(ctx, name, "claude", sid))
@@ -58,7 +60,7 @@ func TestPTYMissingSessionNeverReachesASibling(t *testing.T) {
 	}
 
 	// Its own session id still reaches it, whatever name is passed; and the legacy name match stays.
-	if err := p.SendInput(ctx, "team", "own", "claude", sibSID); err != nil {
+	if err := p.SendInput(ctx, terminalinput.Unclassified, "team", "own", "claude", sibSID); err != nil {
 		t.Fatalf("own sid: %v", err)
 	}
 	if pane, _ := p.FindSession(ctx, sibKey, "", ""); pane == nil {

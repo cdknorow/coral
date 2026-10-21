@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // draftSurveyTerm shows a fixed screen and records the raw keys typed into it.
@@ -21,7 +23,7 @@ func (d *draftSurveyTerm) AgentScreen(context.Context, string, string, string) (
 	return d.screen, nil
 }
 
-func (d *draftSurveyTerm) SendRawInput(_ context.Context, _ string, keys []string, _, _ string) error {
+func (d *draftSurveyTerm) SendRawInput(_ context.Context, _ terminalinput.Origin, _ string, keys []string, _, _ string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.keys = append(d.keys, keys...)

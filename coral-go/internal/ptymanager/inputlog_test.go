@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // Every write to a PTY is recorded with the code path that sent it, and Ctrl-D
@@ -35,10 +36,10 @@ func TestPTYWritesAreRecorded(t *testing.T) {
 
 	b, sess, _ := newFakeBackend(t, "claude-pty1")
 	sess.bracketedPaste.Store(true) // the CLI asked for bracketed paste, so the prompt is pasted
-	require.NoError(t, b.SendInput("claude-pty1", []byte("ls\r")))
-	require.NoError(t, b.SendInput("claude-pty1", []byte("\x04")))
+	require.NoError(t, b.SendInput(terminalinput.Unclassified, "claude-pty1", []byte("ls\r")))
+	require.NoError(t, b.SendInput(terminalinput.Unclassified, "claude-pty1", []byte("\x04")))
 	ctx := context.Background()
-	require.NoError(t, b.SendPrompt(ctx, "claude-pty1", "do the task"))
+	require.NoError(t, b.SendPrompt(ctx, terminalinput.Unclassified, "claude-pty1", "do the task"))
 
 	inputlog.Flush()
 	data, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))

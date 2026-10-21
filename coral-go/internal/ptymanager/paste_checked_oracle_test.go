@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -91,7 +92,7 @@ func (p *pcTerm) AgentScreenStyled(ctx context.Context, name, agentType, session
 
 func (p *pcTerm) HasRenderedScreen() bool { return p.rendered }
 
-func (p *pcTerm) SendPrompt(ctx context.Context, _, text, _, _ string) error {
+func (p *pcTerm) SendPrompt(ctx context.Context, _ terminalinput.Origin, _, text, _, _ string) error {
 	p.mu.Lock()
 	p.tries++
 	switch p.onPaste {
@@ -144,8 +145,8 @@ func (s pcScreenOnly) AgentScreen(ctx context.Context, a, b, c string) (string, 
 // pcBlind pastes and presses Enter but can't show its screen.
 type pcBlind struct{ t *pcTerm }
 
-func (s pcBlind) SendPrompt(ctx context.Context, a, b, c, d string) error {
-	return s.t.SendPrompt(ctx, a, b, c, d)
+func (s pcBlind) SendPrompt(ctx context.Context, _ terminalinput.Origin, a, b, c, d string) error {
+	return s.t.SendPrompt(ctx, terminalinput.Unclassified, a, b, c, d)
 }
 func (s pcBlind) SendEnter(ctx context.Context, a, b, c string) error {
 	return s.t.SendEnter(ctx, a, b, c)
@@ -427,7 +428,7 @@ func (g *inputGate) pasteCheckedBefore4713(ctx context.Context, in AutomatedInpu
 		}
 	}
 	g.setLastPasted(in.Name, in.Text) // Coral's, until its Enter is seen to submit it (#4104)
-	err = ps.SendPrompt(tmux.WithBeforeEnter(pctx, check), in.Name, in.Text, agentType, sessionID)
+	err = ps.SendPrompt(tmux.WithBeforeEnter(pctx, check), terminalinput.Unclassified, in.Name, in.Text, agentType, sessionID)
 	if err == nil {
 		held, err := g.confirmSubmitted(ctx, in, sr, rendered, agentType, sessionID)
 		return held, err, true

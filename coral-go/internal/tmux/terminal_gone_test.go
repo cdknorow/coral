@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // #3211: an agent whose own pane is gone must never reach another agent's pane. Before the
@@ -60,11 +62,11 @@ func TestMissingSessionPaneNeverReachesASibling(t *testing.T) {
 				assert.Nil(t, pane, "FindPane(%q, sid %q) resolved to %v", name, sid, pane)
 
 				marker := "GONE_" + strings.ReplaceAll(name, "-", "_")
-				err = c.SendKeys(ctx, name, "echo "+marker+"_keys", "claude", sid)
+				err = c.SendKeys(ctx, terminalinput.Unclassified, name, "echo "+marker+"_keys", "claude", sid)
 				assert.True(t, errors.Is(err, ErrTerminalGone), "SendKeys: %v", err)
-				err = c.SendPrompt(ctx, name, "echo "+marker+"_prompt", "claude", sid)
+				err = c.SendPrompt(ctx, terminalinput.Unclassified, name, "echo "+marker+"_prompt", "claude", sid)
 				assert.True(t, errors.Is(err, ErrTerminalGone), "SendPrompt: %v", err)
-				err = c.SendRawKeys(ctx, name, []string{"ZQXRAW", "Enter"}, "claude", sid)
+				err = c.SendRawKeys(ctx, terminalinput.Unclassified, name, []string{"ZQXRAW", "Enter"}, "claude", sid)
 				assert.True(t, errors.Is(err, ErrTerminalGone), "SendRawKeys: %v", err)
 				err = c.ResizePane(ctx, name, 33, "claude", sid)
 				assert.True(t, errors.Is(err, ErrTerminalGone), "ResizePane: %v", err)

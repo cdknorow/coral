@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // surveyTerm is dialogTerm that also takes single keys: the 0 closes the survey unless it is told to ignore it, and every key
@@ -45,7 +47,7 @@ func (s *surveyTerm) keys() []string {
 	return out
 }
 
-func (s *surveyTerm) SendRawInput(_ context.Context, _ string, keys []string, _, _ string) error {
+func (s *surveyTerm) SendRawInput(_ context.Context, _ terminalinput.Origin, _ string, keys []string, _, _ string) error {
 	for _, k := range keys {
 		s.record("key:" + k)
 		if k == "0" && !s.ignore {
@@ -55,9 +57,9 @@ func (s *surveyTerm) SendRawInput(_ context.Context, _ string, keys []string, _,
 	return nil
 }
 
-func (s *surveyTerm) SendPrompt(ctx context.Context, name, text, agentType, sessionID string) error {
+func (s *surveyTerm) SendPrompt(ctx context.Context, _ terminalinput.Origin, name, text, agentType, sessionID string) error {
 	s.record("paste:" + text)
-	return s.dialogTerm.SendPrompt(ctx, name, text, agentType, sessionID)
+	return s.dialogTerm.SendPrompt(ctx, terminalinput.Unclassified, name, text, agentType, sessionID)
 }
 
 func surveyGate(t *testing.T, retryGap time.Duration) {

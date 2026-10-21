@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // Every way Coral types into a tmux pane is recorded with its target and the code
@@ -34,13 +35,13 @@ func TestTmuxInputIsRecorded(t *testing.T) {
 	inputlog.Setup(dir, true)
 	t.Cleanup(func() { inputlog.Setup("", false) })
 
-	require.NoError(t, c.SendKeysToTarget(ctx, target, "echo one"))
-	require.NoError(t, c.SendKeysToTarget(ctx, target, "-t x --help")) // after "--", all text (#3690)
-	require.NoError(t, c.SendKeysToTarget(ctx, target, "line a\nline b"))
-	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "\x1b[A"))
-	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "\x03"))
-	require.NoError(t, c.SendRawKeys(ctx, name, []string{"Escape"}, "claude", sid))
-	_ = c.SendPrompt(WithBracketedPasteHint(ctx, true), name, "the prompt text", "claude", sid)
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, target, "echo one"))
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, target, "-t x --help")) // after "--", all text (#3690)
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, target, "line a\nline b"))
+	require.NoError(t, c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, target, "\x1b[A"))
+	require.NoError(t, c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, target, "\x03"))
+	require.NoError(t, c.SendRawKeys(ctx, terminalinput.Unclassified, name, []string{"Escape"}, "claude", sid))
+	_ = c.SendPrompt(WithBracketedPasteHint(ctx, true), terminalinput.Unclassified, name, "the prompt text", "claude", sid)
 
 	inputlog.Flush()
 	data, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
@@ -66,28 +67,37 @@ func TestTmuxInputIsRecorded(t *testing.T) {
 	}
 }
 
-func TestRecordSendKeysIgnoresOtherCommands(t *testing.T) {
+// #5706: recording is done by sendKeys, the one place send-keys is issued: run records nothing, so a command that is not input
+// (list-panes, capture-pane) leaves no line, and a send-keys that skipped sendKeys would leave none either (the census catches it).
+func TestOnlySendKeysRecords(t *testing.T) {
+	skipWithoutUnixTmux(t)
+	c, _ := fakeTmux(t)
 	dir := t.TempDir()
 	inputlog.Setup(dir, true)
 	t.Cleanup(func() { inputlog.Setup("", false) })
-	recordSendKeys(context.Background(), []string{"list-panes", "-a"})
-	recordSendKeys(context.Background(), []string{"capture-pane", "-t", "x", "-p"})
+	_, _ = c.run(context.Background(), "list-panes", "-a")
+	_, _ = c.run(context.Background(), "capture-pane", "-t", "x", "-p")
 	inputlog.Flush()
 	_, err := os.Stat(filepath.Join(dir, inputlog.FileName))
 	assert.True(t, os.IsNotExist(err), "nothing was written")
+	_, _ = c.sendKeys(context.Background(), terminalinput.Coral, "-t", "x", "-l", "--", "hi")
+	inputlog.Flush()
+	data, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `target=x `)
+	assert.Contains(t, string(data), `text="hi"`)
 }
 
-// #60: on the tmux backend, a person's own input (inputlog.Human) is logged by its length only,
+// #60: on the tmux backend, a person's own input (terminalinput.Person) is logged by its length only,
 // literal or as hex bytes; key names stay; hex is logged decoded, never as a hex copy.
 func TestTmuxLogsAPersonsTypingByLengthOnly(t *testing.T) {
 	dir := t.TempDir()
 	inputlog.Setup(dir, true)
 	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
-	human := inputlog.Human(context.Background())
-	recordSendKeys(human, []string{"send-keys", "-t", "%1", "-l", "--", "hunter2"})
-	recordSendKeys(human, []string{"send-keys", "-t", "%1", "-H", "68", "-H", "69"}) // "hi"
-	recordSendKeys(human, []string{"send-keys", "-t", "%1", "--", "Enter"})
-	recordSendKeys(context.Background(), []string{"send-keys", "-t", "%1", "-H", "6f", "-H", "6b"}) // "ok"
+	recordSendKeys(terminalinput.Person, []string{"-t", "%1", "-l", "--", "hunter2"})
+	recordSendKeys(terminalinput.Person, []string{"-t", "%1", "-H", "68", "-H", "69"}) // "hi"
+	recordSendKeys(terminalinput.Person, []string{"-t", "%1", "--", "Enter"})
+	recordSendKeys(terminalinput.Unclassified, []string{"-t", "%1", "-H", "6f", "-H", "6b"}) // "ok"
 	inputlog.Flush()
 	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
 	require.NoError(t, err)
@@ -112,8 +122,8 @@ func TestTmuxLogsAPersonsPastedTextByLengthOnly(t *testing.T) {
 	inputlog.Setup(dir, true)
 	t.Cleanup(func() { inputlog.Setup("", false); inputlog.SetSetting(false) })
 
-	require.NoError(t, c.SendKeysToTarget(inputlog.Human(context.Background()), target, "line one\nmy token is xyz-secret"))
-	require.NoError(t, c.SendKeysToTarget(context.Background(), target, "not a person\nsent by Coral"))
+	require.NoError(t, c.SendKeysToTarget(context.Background(), terminalinput.Person, target, "line one\nmy token is xyz-secret"))
+	require.NoError(t, c.SendKeysToTarget(context.Background(), terminalinput.Unclassified, target, "not a person\nsent by Coral"))
 	inputlog.Flush()
 	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
 	require.NoError(t, err)

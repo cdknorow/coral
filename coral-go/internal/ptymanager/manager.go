@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/subgentic/coral/internal/inputlog"
 	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
@@ -118,7 +118,7 @@ func (m *PTYBackend) SendHumanInput(name string, data []byte) error {
 		}
 	}
 	m.mu.Unlock()
-	return m.sendInput(inputlog.Human(context.Background()), name, data)
+	return m.SendInput(terminalinput.Person, name, data)
 }
 
 // HumanInputSince reports whether a person typed in the session's terminal after t.
@@ -128,20 +128,15 @@ func (m *PTYBackend) HumanInputSince(name string, t time.Time) bool {
 	return m.humanAt[name].After(t)
 }
 
-func (m *PTYBackend) SendInput(name string, data []byte) error {
-	return m.sendInput(context.Background(), name, data)
-}
-
-// sendInput writes data to the session's terminal; ctx says whose input it is (inputlog.Human).
-func (m *PTYBackend) sendInput(ctx context.Context, name string, data []byte) error {
+// SendInput writes data to the session's terminal as o's input.
+func (m *PTYBackend) SendInput(o terminalinput.Origin, name string, data []byte) error {
 	m.mu.RLock()
 	s, ok := m.sessions[name]
 	m.mu.RUnlock()
 	if !ok || !s.isRunning() {
 		return fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
 	}
-	logTerminalInput(ctx, name, string(data)) // logged as tmux logs the same input (#60 step 4)
-	if _, err := s.writeFullCtx(ctx, data); err != nil {
+	if _, err := s.writeInput(o, data, nil); err != nil { // recorded as tmux records the same input: a typed line is text, Enter a key (#60 step 4)
 		if !s.isRunning() {
 			return fmt.Errorf("%w: session %q ended: %v", ErrTerminalGone, name, err) // the process went between the check and the write
 		}
@@ -164,17 +159,17 @@ func (m *PTYBackend) CursorKeysApp(name string) bool {
 // SendLine types text and then submits it with Enter. The Enter is written
 // separately after a short delay: agent TUIs treat text that arrives in the same
 // read as a trailing newline as a paste, leaving it in the input box unsent.
-func (m *PTYBackend) SendLine(name, text string) error {
-	return m.SendLineCtx(context.Background(), name, text)
+func (m *PTYBackend) SendLine(o terminalinput.Origin, name, text string) error {
+	return m.SendLineCtx(context.Background(), o, name, text)
 }
 
-// SendLineCtx is SendLine for input sent with ctx: a person's (inputlog.Human) is logged by its
+// SendLineCtx is SendLine for input sent with ctx: a person's (terminalinput.Person) is logged by its
 // length only (#60 review N3), and ctx's WithBeforeEnter check is run just before the Enter, as
 // tmux's typeToTarget does: when a prompt opened after the text was typed it returns
 // tmux.ErrEnterWithheld and the gate holds the Enter (#3431), not letting it answer the prompt.
-func (m *PTYBackend) SendLineCtx(ctx context.Context, name, text string) error {
+func (m *PTYBackend) SendLineCtx(ctx context.Context, o terminalinput.Origin, name, text string) error {
 	if text != "" {
-		if err := m.sendInput(ctx, name, []byte(text)); err != nil {
+		if err := m.SendInput(o, name, []byte(text)); err != nil {
 			return err
 		}
 		time.Sleep(lineSubmitDelay)
@@ -182,7 +177,7 @@ func (m *PTYBackend) SendLineCtx(ctx context.Context, name, text string) error {
 	if !tmux.EnterAllowed(ctx) {
 		return tmux.ErrEnterWithheld
 	}
-	return m.sendInput(ctx, name, []byte(EnterKey))
+	return m.SendInput(terminalinput.Internal, name, []byte(EnterKey))
 }
 
 // pastesAsText reports whether text for an agent goes in as one paste rather than as typed keys: it has a line break
@@ -198,8 +193,8 @@ func pastesAsText(text string) bool {
 // does, so the lines are one input and CRLF is one line break; an application that did not is given the lines with CR
 // for each break, as tmux's paste-buffer gives them. Short single-line text is typed (SendLineCtx). ctx's
 // WithBeforeEnter check runs before the Enter, as for every typed send.
-func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
-	if tmux.Automated(ctx) {
+func (m *PTYBackend) SendText(ctx context.Context, o terminalinput.Origin, name, text string) error {
+	if o.SafeText() {
 		// Coral's own text (the gate): what is typed has no control character in it and no line break, so nothing in a board
 		// message or a task title reaches the agent as a key, or runs a shell line by line when the agent dropped back to
 		// one. A multi-line text is kept only for a bracketed paste, which SanitizePaste has already made safe.
@@ -208,13 +203,13 @@ func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
 		m.mu.RUnlock()
 		if !(ok && s.bracketedPaste.Load() && pastesAsText(text)) {
 			var err error
-			if text, err = tmux.AutomatedTextChecked(text); err != nil {
+			if text, err = terminalinput.PrepareTyped(o, text); err != nil {
 				return err // only control characters: no Enter over whatever is in the input
 			}
 		}
 	}
 	if !pastesAsText(text) {
-		return m.SendLineCtx(ctx, name, text)
+		return m.SendLineCtx(ctx, o, name, text)
 	}
 	m.mu.RLock()
 	s, ok := m.sessions[name]
@@ -232,17 +227,17 @@ func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	body := tmux.SanitizePaste(text) // CRLF and CR are one LF; control characters, ESC included, are dropped
-	if tmux.Automated(ctx) && text != "" && strings.TrimSpace(body) == "" {
-		return tmux.ErrNothingToSend // only control characters: no empty paste and Enter over whatever is in the input
+	body, err := terminalinput.PreparePaste(o, text) // CRLF and CR are one LF; control characters, ESC included, are dropped; Coral's text of only those is refused: no empty paste and Enter over whatever is in the input
+	if err != nil {
+		return err
 	}
-	inputlog.RecordCtx(ctx, name, inputlog.Paste, body) // the text pasted, as tmux logs a paste (#60 step 4)
+	pasted := body // what the log records: the cleaned text, as tmux logs a paste (#60 step 4)
 	if s.bracketedPaste.Load() {
 		body = "\x1b[200~" + body + "\x1b[201~"
 	} else {
 		body = strings.ReplaceAll(body, "\n", EnterKey)
 	}
-	if n, err := s.writeFullCtx(ctx, []byte(body)); err != nil { // a person's paste is logged by its length (#60 N3)
+	if n, err := s.writeInput(o, []byte(body), &pasted); err != nil { // a person's paste is logged by its length (#60 N3)
 		if n > 0 {
 			return tmux.MarkDeliveryUnknown(fmt.Errorf("paste write failed after %d of %d bytes: %w", n, len(body), err))
 		}
@@ -253,8 +248,7 @@ func (m *PTYBackend) SendText(ctx context.Context, name, text string) error {
 	if !tmux.EnterAllowed(ctx) {
 		return tmux.ErrEnterWithheld // a prompt opened: the gate holds the Enter (#3431)
 	}
-	inputlog.RecordCtx(ctx, name, inputlog.Keys, "Enter")
-	if n, err := s.writeFull([]byte(EnterKey)); err != nil || n != len(EnterKey) {
+	if n, err := s.writeInput(terminalinput.Internal, []byte(EnterKey), nil); err != nil || n != len(EnterKey) { // Enter: logged as the key it is
 		if err == nil {
 			err = io.ErrShortWrite
 		}
@@ -281,7 +275,7 @@ var lineSubmitDelay = 400 * time.Millisecond
 // the paste starts, the delay and Enter always complete, and any short write or
 // error from then on is returned as ErrDeliveryUnknown, which must not be
 // retried because the text may already sit in the agent's input line.
-func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
+func (m *PTYBackend) SendPrompt(ctx context.Context, o terminalinput.Origin, name, text string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -304,10 +298,9 @@ func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
 	if !s.bracketedPaste.Load() {
 		return ErrBracketedPasteUnavailable
 	}
-	pasted := tmux.SanitizePaste(text)
-	inputlog.RecordCtx(ctx, name, inputlog.Paste, pasted) // the text pasted (a person's by its length), as tmux logs it (#60)
+	pasted := terminalinput.SanitizePaste(text)
 	payload := []byte("\x1b[200~" + pasted + "\x1b[201~")
-	n, err := s.writeFullCtx(ctx, payload)
+	n, err := s.writeInput(o, payload, &pasted) // recorded as a paste of the cleaned text, as tmux logs it; a person's by its length
 	if err != nil {
 		if n > 0 {
 			return tmux.MarkDeliveryUnknown(fmt.Errorf("paste write failed after %d of %d bytes: %w", n, len(payload), err))
@@ -319,8 +312,7 @@ func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
 	if !tmux.EnterAllowed(ctx) {
 		return tmux.ErrEnterWithheld // a prompt opened: the gate holds the Enter (#3457)
 	}
-	inputlog.RecordCtx(ctx, name, inputlog.Keys, "Enter")
-	if n, err := s.writeFull([]byte("\r")); err != nil || n != 1 {
+	if n, err := s.writeInput(terminalinput.Internal, []byte("\r"), nil); err != nil || n != 1 {
 		if err == nil {
 			err = io.ErrShortWrite
 		}

@@ -15,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // failingTmux is a tmux that fails every command, the way tmux does when its server or pane is
@@ -37,10 +39,10 @@ func TestFailedTmuxCommandsNeverLogWhatWasTyped(t *testing.T) {
 	ctx := context.Background()
 	const secret = "typed-secret-4112"
 
-	_ = c.SendTerminalInputToTarget(ctx, "claude-x:0.0", "echo "+secret)                     // a person's keystrokes
-	_ = c.SendKeysToTarget(ctx, "claude-x:0.0", "please run "+secret)                        // a typed command
-	_ = c.SendRawKeys(ctx, "claude-x", []string{"HUNTER2-KEY"}, "claude", "x")               // a raw key the request named
-	_, _ = c.run(ctx, "new-session", "-d", "-s", "claude-x", "claude --prompt '"+secret+"'") // a launch line
+	_ = c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, "claude-x:0.0", "echo "+secret)       // a person's keystrokes
+	_ = c.SendKeysToTarget(ctx, terminalinput.Unclassified, "claude-x:0.0", "please run "+secret)          // a typed command
+	_ = c.SendRawKeys(ctx, terminalinput.Unclassified, "claude-x", []string{"HUNTER2-KEY"}, "claude", "x") // a raw key the request named
+	_, _ = c.run(ctx, "new-session", "-d", "-s", "claude-x", "claude --prompt '"+secret+"'")               // a launch line
 	_, _ = c.run(ctx, "set-buffer", "-b", "coral-x", secret)
 
 	out := buf.String()
@@ -52,7 +54,7 @@ func TestFailedTmuxCommandsNeverLogWhatWasTyped(t *testing.T) {
 	assert.NotContains(t, out, "HUNTER2-KEY", "no key name, not even tmux's own repeat of it")
 	assert.NotContains(t, out, "please run")
 
-	err := c.SendRawKeys(ctx, "claude-x", []string{"HUNTER2-KEY"}, "claude", "x")
+	err := c.SendRawKeys(ctx, terminalinput.Unclassified, "claude-x", []string{"HUNTER2-KEY"}, "claude", "x")
 	if err != nil {
 		assert.NotContains(t, err.Error(), "HUNTER2-KEY", "the error (which callers log) doesn't carry the key either")
 	}
@@ -80,20 +82,20 @@ func TestRepeatedTmuxFailuresAreCoalesced(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 100; i++ {
-		_ = c.SendTerminalInputToTarget(ctx, "claude-gone:0.0", "x")
+		_ = c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, "claude-gone:0.0", "x")
 	}
 	assert.Equal(t, 1, strings.Count(buf.String(), "[tmux] exec failed"), "one line for 100 identical failures")
 	before := strings.Count(buf.String(), "\n")
 	for i := 0; i < 100; i++ {
-		_ = c.SendKeysToTarget(ctx, "claude-gone2:0.0", "echo hi")
+		_ = c.SendKeysToTarget(ctx, terminalinput.Unclassified, "claude-gone2:0.0", "echo hi")
 	}
 	assert.Equal(t, before+2, strings.Count(buf.String(), "\n"), "a failing send-keys: its exec line and its send-keys line once, not 200 lines")
-	_ = c.SendTerminalInputToTarget(ctx, "claude-other:0.0", "x")
+	_ = c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, "claude-other:0.0", "x")
 	assert.Equal(t, 3, strings.Count(buf.String(), "[tmux] exec failed"), "another pane's failure is its own line (after claude-gone and claude-gone2)")
 
 	mu.Lock()
 	at = at.Add(execFailureEvery)
 	mu.Unlock()
-	_ = c.SendTerminalInputToTarget(ctx, "claude-gone:0.0", "x")
+	_ = c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, "claude-gone:0.0", "x")
 	assert.Contains(t, buf.String(), "(and 99 more like it in the last 5m0s)")
 }

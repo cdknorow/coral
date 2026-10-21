@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // TestBundledPayloadSmoke exercises the Go tmux client against a REAL bundled
@@ -92,7 +94,7 @@ func TestBundledPayloadSmoke(t *testing.T) {
 	assert.Contains(t, panes[0].SessionName, "claude-")
 
 	// 4. Send text and capture it back.
-	require.NoError(t, c.SendKeysToTarget(ctx, target, "payload smoke ok"))
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, target, "payload smoke ok"))
 	time.Sleep(300 * time.Millisecond)
 	captured, err := c.CapturePaneTarget(ctx, target, 50)
 	require.NoError(t, err)

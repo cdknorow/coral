@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // Screens captured from the real CLIs (#3457 rig): whether a paste is in the input box.
@@ -90,7 +91,7 @@ func TestBracketedPasteFromLog(t *testing.T) {
 // paste terminal: a PromptSender whose agent has bracketed paste off.
 type noPasteTerm struct{ typed []string }
 
-func (n *noPasteTerm) SendPrompt(context.Context, string, string, string, string) error {
+func (n *noPasteTerm) SendPrompt(context.Context, terminalinput.Origin, string, string, string, string) error {
 	return ErrBracketedPasteUnavailable
 }
 func (n *noPasteTerm) AgentScreen(context.Context, string, string, string) (string, error) {
@@ -173,7 +174,7 @@ func (f *fixtureTerm) AgentScreenStyled(context.Context, string, string, string)
 	return f.styled, nil
 }
 func (f *fixtureTerm) HasRenderedScreen() bool { return true }
-func (f *fixtureTerm) SendPrompt(_ context.Context, _, text, _, _ string) error {
+func (f *fixtureTerm) SendPrompt(_ context.Context, _ terminalinput.Origin, _, text, _, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pasted = append(f.pasted, text)

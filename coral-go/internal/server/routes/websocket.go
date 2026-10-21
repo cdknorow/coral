@@ -20,6 +20,7 @@ import (
 	"github.com/subgentic/coral/internal/httputil"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/safego"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // composerSendsPerSocket bounds the composer_send deliveries under way on one terminal socket (#4587, Security):
@@ -699,7 +700,7 @@ func (t *terminalStream) handleFrame(msg terminalFrame) {
 			if hs, ok := t.h.backend.(ptymanager.HumanInputSender); ok {
 				sendErr = hs.SendHumanInput(t.name, []byte(msg.Data))
 			} else {
-				sendErr = t.h.backend.SendInput(t.name, []byte(msg.Data))
+				sendErr = t.h.backend.SendInput(terminalinput.Person, t.name, []byte(msg.Data)) // still a person's keystrokes
 			}
 		}
 	case "terminal_resize":

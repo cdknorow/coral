@@ -1,11 +1,11 @@
 package inputlog
 
 import (
-	"context"
 	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,13 +26,13 @@ func TestSecretsAreRedactedBeforeTheCut(t *testing.T) {
 	path := enable(t)
 	captureLog(t)
 	split := strings.Repeat("a", maxText-10) + " " + fakeToken + " tail"
-	Record("p", Text, split)
-	Record("p", Paste, "token: "+fakeToken+"\n")
+	Write("p", Text, split)
+	Write("p", Paste, "token: "+fakeToken+"\n")
 	var hexBytes []string // as tmux send-keys -H gets them
 	for _, c := range []byte(fakeToken) {
 		hexBytes = append(hexBytes, hex.EncodeToString([]byte{c}))
 	}
-	RecordHexKeys("p", hexBytes)
+	recordHexKeys("p", hexBytes)
 	text := readFile(t, path)
 	assert.NotContains(t, text, fakeToken)
 	assert.NotContains(t, text, fakeToken[:20], "not even the part before the cut")
@@ -48,50 +48,17 @@ func TestRedactionFailureFailsClosed(t *testing.T) {
 	t.Cleanup(func() { redactText = prev })
 	// Each line is written by the writer goroutine: Flush before the redactor changes.
 	redactText = func(string) (string, error) { return "", errors.New("budget exceeded") }
-	Record("p", Text, "secret-ish "+fakeToken)
+	Write("p", Text, "secret-ish "+fakeToken)
 	Flush()
 	redactText = func(string) (string, error) { panic("redactor bug") }
-	Record("p", Text, "more "+fakeToken)
+	Write("p", Text, "more "+fakeToken)
 	Flush()
 	redactText = prev
-	Record("p", Text, "after")
+	Write("p", Text, "after")
 	text := readFile(t, path)
 	assert.NotContains(t, text, fakeToken)
 	assert.Equal(t, 2, strings.Count(text, "text=[not logged: redaction failed]"), text)
 	assert.Contains(t, text, `text="after"`, "the writer survived the panic")
-}
-
-// #60 (Security's condition b): a person's own input from the dashboard terminal is logged by
-// its length only, typed or pasted; Enter, arrows and Ctrl-C stay as they are.
-func TestAPersonsOwnInputIsLoggedByLengthOnly(t *testing.T) {
-	path := enable(t)
-	captureLog(t)
-	human := Human(context.Background())
-	RecordCtx(human, "p", Raw, "hunter2")
-	RecordCtx(human, "p", Text, "pasted "+fakeToken)
-	RecordCtx(human, "p", Raw, "\r")
-	RecordCtx(human, "p", Raw, "\x1b[A")
-	RecordCtx(human, "p", Raw, "\x03")
-	RecordCtx(human, "p", Keys, "Enter")
-	RecordCtx(context.Background(), "p", Text, "coral's own text")
-	text := readFile(t, path)
-	assert.NotContains(t, text, "hunter2")
-	assert.NotContains(t, text, "pasted")
-	assert.Contains(t, text, `kind=typed text="[typed 7 bytes]"`)
-	assert.Contains(t, text, `kind=raw len=1 text="\r"`)
-	assert.Contains(t, text, `kind=raw len=3 text="\x1b[A"`)
-	assert.Contains(t, text, `kind=raw len=1 text="\x03"`)
-	assert.Contains(t, text, `keys="Enter"`)
-	assert.Contains(t, text, `text="coral's own text"`)
-}
-
-func TestHasPrintable(t *testing.T) {
-	for s, want := range map[string]bool{
-		"a": true, "hunter2": true, " ": true, "\x1b[Ax": true, "é": true,
-		"": false, "\r": false, "\x03": false, "\x1b[A": false, "\x1bOP": false, "\x1b[1;5C": false, "\x7f": false, "\t\r": false,
-	} {
-		assert.Equal(t, want, hasPrintable(s), "%q", s)
-	}
 }
 
 // #60: a log not written for retention is deleted at startup; turning the log off removes its
@@ -115,7 +82,7 @@ func TestRetentionAndPrivacyOfTheFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("recent\n"), 0o644))
 	require.NoError(t, os.WriteFile(path+".1", []byte("rotated\n"), 0o644))
 	SetSetting(true)
-	Record("p", Text, "x")
+	Write("p", Text, "x")
 	Flush()
 	secfiletest.AssertPrivate(t, path)
 	secfiletest.AssertPrivate(t, path+".1")
@@ -133,10 +100,21 @@ func TestEntriesAreBounded(t *testing.T) {
 	t.Cleanup(func() { redactText = prev })
 	var seen []int
 	redactText = func(s string) (string, error) { seen = append(seen, len(s)); return s, nil }
-	Record("p", Paste, strings.Repeat("x", 1<<20))
+	Write("p", Paste, strings.Repeat("x", 1<<20))
 	Flush()
 	require.Len(t, seen, 1)
 	assert.Equal(t, redactWindow, seen[0])
 	assert.Greater(t, redactWindow, 4*maxText, "redaction sees well past the cut")
 	assert.Contains(t, readFile(t, path), "len=4096")
+}
+
+// recordHexKeys logs hex bytes (one per argument) as the tmux send-keys -H call decodes them.
+func recordHexKeys(target string, hexBytes []string) {
+	b := make([]byte, 0, len(hexBytes))
+	for _, h := range hexBytes {
+		if v, err := strconv.ParseUint(h, 16, 8); err == nil {
+			b = append(b, byte(v))
+		}
+	}
+	Write(target, Raw, string(b))
 }

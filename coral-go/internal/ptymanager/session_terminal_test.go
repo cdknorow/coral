@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 func skipIfWindows(t *testing.T) {
@@ -175,7 +177,7 @@ func TestPTYSessionTerminal_SendInput_CaptureOutput(t *testing.T) {
 	spawnTestSession(t, backend, "io-test")
 	time.Sleep(300 * time.Millisecond)
 
-	err := terminal.SendInput(context.Background(), "io-test", "echo hello-coral", "", "")
+	err := terminal.SendInput(context.Background(), terminalinput.Unclassified, "io-test", "echo hello-coral", "", "")
 	require.NoError(t, err)
 	time.Sleep(500 * time.Millisecond)
 
@@ -192,7 +194,7 @@ func TestPTYSessionTerminal_SendRawInput(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Send raw characters
-	err := terminal.SendRawInput(context.Background(), "raw-test", []string{"h", "i", "\n"}, "", "")
+	err := terminal.SendRawInput(context.Background(), terminalinput.Unclassified, "raw-test", []string{"h", "i", "\n"}, "", "")
 	require.NoError(t, err)
 }
 
@@ -206,7 +208,7 @@ func TestPTYSessionTerminal_SendToTarget(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// SendToTarget uses the session name as target in PTY mode
-	err := terminal.SendToTarget(context.Background(), "target-test", "echo target-ok")
+	err := terminal.SendToTarget(context.Background(), terminalinput.Unclassified, "target-test", "echo target-ok")
 	require.NoError(t, err)
 }
 
@@ -220,7 +222,7 @@ func TestPTYSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
 	value := strings.Repeat("x", inlineCommandLimit+300) + marker
 	command := "printf '%s' '" + value + "'"
 	require.Greater(t, len(command), inlineCommandLimit)
-	require.NoError(t, terminal.SendToTarget(context.Background(), "long-target-test", command))
+	require.NoError(t, terminal.SendToTarget(context.Background(), terminalinput.Unclassified, "long-target-test", command))
 
 	output := waitForPTYOutput(t, backend, "long-target-test", marker, 5*time.Second)
 	assert.Contains(t, output, marker)

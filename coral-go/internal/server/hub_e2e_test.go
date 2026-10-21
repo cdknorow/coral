@@ -54,6 +54,7 @@ import (
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // ── shared plumbing ─────────────────────────────────────────────────
@@ -1477,7 +1478,7 @@ func (f *fakeBackend) Kill(name string) error {
 
 func (f *fakeBackend) Restart(name, command string) error { return nil }
 
-func (f *fakeBackend) SendInput(name string, data []byte) error {
+func (f *fakeBackend) SendInput(_ terminalinput.Origin, name string, data []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.sessions[name]

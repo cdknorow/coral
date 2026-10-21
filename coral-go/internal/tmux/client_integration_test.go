@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // newTestClient creates a tmux Client with an isolated socket for testing.
@@ -219,7 +221,7 @@ func TestClient_SendKeys_CapturePane(t *testing.T) {
 	createTestSession(t, c, "send-capture", t.TempDir())
 
 	// Send a command
-	err := c.SendKeysToTarget(ctx, "send-capture:0.0", "echo TMUX_MARKER_42")
+	err := c.SendKeysToTarget(ctx, terminalinput.Unclassified, "send-capture:0.0", "echo TMUX_MARKER_42")
 	require.NoError(t, err)
 	time.Sleep(500 * time.Millisecond)
 
@@ -236,7 +238,7 @@ func TestClient_SendKeys_MultiLine(t *testing.T) {
 	createTestSession(t, c, "multiline-test", t.TempDir())
 
 	// Send multi-line via paste-buffer path
-	err := c.SendKeysToTarget(ctx, "multiline-test:0.0", "echo LINE_A\necho LINE_B")
+	err := c.SendKeysToTarget(ctx, terminalinput.Unclassified, "multiline-test:0.0", "echo LINE_A\necho LINE_B")
 	require.NoError(t, err)
 	time.Sleep(500 * time.Millisecond)
 
@@ -256,7 +258,7 @@ func TestClient_RespawnPane(t *testing.T) {
 	createTestSession(t, c, "respawn-test", dir)
 
 	// Send initial command
-	c.SendKeysToTarget(ctx, "respawn-test:0.0", "echo BEFORE_RESPAWN")
+	c.SendKeysToTarget(ctx, terminalinput.Unclassified, "respawn-test:0.0", "echo BEFORE_RESPAWN")
 	time.Sleep(500 * time.Millisecond)
 
 	// Respawn the pane
@@ -265,7 +267,7 @@ func TestClient_RespawnPane(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Send new command
-	c.SendKeysToTarget(ctx, "respawn-test:0.0", "echo AFTER_RESPAWN")
+	c.SendKeysToTarget(ctx, terminalinput.Unclassified, "respawn-test:0.0", "echo AFTER_RESPAWN")
 	time.Sleep(500 * time.Millisecond)
 
 	content, err := c.CapturePaneTarget(ctx, "respawn-test:0.0", 200)
@@ -371,7 +373,7 @@ func TestClient_ClearHistory(t *testing.T) {
 	createTestSession(t, c, "clear-hist", t.TempDir())
 
 	// Generate scrollback: 50 lines is more than the pane shows.
-	require.NoError(t, c.SendKeysToTarget(ctx, "clear-hist:0.0", "for i in $(seq 1 50); do echo SCROLLBACK_LINE; done"))
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, "clear-hist:0.0", "for i in $(seq 1 50); do echo SCROLLBACK_LINE; done"))
 
 	// Capture with large scrollback should have all of it
 	// Polled here rather than with assert.Eventually, whose condition runs in its own goroutine and
@@ -432,7 +434,7 @@ func TestClient_PipePane(t *testing.T) {
 	require.NoError(t, err)
 
 	// Send output that should be logged
-	c.SendKeysToTarget(ctx, "pipe-test:0.0", "echo PIPE_MARKER")
+	c.SendKeysToTarget(ctx, terminalinput.Unclassified, "pipe-test:0.0", "echo PIPE_MARKER")
 	time.Sleep(500 * time.Millisecond)
 
 	// Close pipe
@@ -449,7 +451,7 @@ func TestClient_SendTerminalInputToTarget_Enter(t *testing.T) {
 	createTestSession(t, c, "terminal-input", t.TempDir())
 
 	// Send Enter key
-	err := c.SendTerminalInputToTarget(ctx, "terminal-input:0.0", "\r")
+	err := c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, "terminal-input:0.0", "\r")
 	require.NoError(t, err)
 }
 
@@ -460,7 +462,7 @@ func TestClient_SendTerminalInputToTarget_CtrlC(t *testing.T) {
 	createTestSession(t, c, "ctrl-test", t.TempDir())
 
 	// Send Ctrl+C (0x03)
-	err := c.SendTerminalInputToTarget(ctx, "ctrl-test:0.0", "\x03")
+	err := c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, "ctrl-test:0.0", "\x03")
 	require.NoError(t, err)
 }
 
@@ -470,7 +472,7 @@ func TestClient_SendTerminalInputToTarget_LiteralText(t *testing.T) {
 
 	createTestSession(t, c, "literal-test", t.TempDir())
 
-	err := c.SendTerminalInputToTarget(ctx, "literal-test:0.0", "hello world")
+	err := c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, "literal-test:0.0", "hello world")
 	require.NoError(t, err)
 	time.Sleep(300 * time.Millisecond)
 
@@ -488,7 +490,7 @@ func TestClient_SendRawKeys(t *testing.T) {
 	createTestSession(t, c, "claude-00003687-0043-4000-8000-000000000000", t.TempDir())
 
 	// Send raw keys (Enter)
-	err := c.SendRawKeys(ctx, "claude-00003687-0043-4000-8000-000000000000", []string{"Enter"}, "", "")
+	err := c.SendRawKeys(ctx, terminalinput.Unclassified, "claude-00003687-0043-4000-8000-000000000000", []string{"Enter"}, "", "")
 	require.NoError(t, err)
 }
 
@@ -496,7 +498,7 @@ func TestClient_SendRawKeys_NotFound(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 
-	err := c.SendRawKeys(ctx, "nonexistent", []string{"Enter"}, "", "")
+	err := c.SendRawKeys(ctx, terminalinput.Unclassified, "nonexistent", []string{"Enter"}, "", "")
 	assert.Error(t, err)
 }
 
@@ -542,8 +544,8 @@ func TestClient_SendTerminalInputToTarget_SubmitsTrailingCR(t *testing.T) {
 	createTestSession(t, c, "zsh-cr", t.TempDir())
 	target := "zsh-cr:0.0"
 
-	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "exec env PROMPT='ZSH> ' "+zsh+" -f -i"))
-	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "\r"))
+	require.NoError(t, c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, target, "exec env PROMPT='ZSH> ' "+zsh+" -f -i"))
+	require.NoError(t, c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, target, "\r"))
 	// A line that starts with the prompt: the typed command's echo holds "ZSH> " too, behind the
 	// old shell's prompt, before zsh is running (#3788).
 	require.Eventually(t, func() bool {
@@ -562,7 +564,7 @@ func TestClient_SendTerminalInputToTarget_SubmitsTrailingCR(t *testing.T) {
 		{"two lines then CR", "echo A_$((2+2))\necho B_$((2+3))\r", "B_5"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.NoError(t, c.SendTerminalInputToTarget(ctx, target, tc.data))
+			require.NoError(t, c.SendTerminalInputToTarget(ctx, terminalinput.Unclassified, target, tc.data))
 			require.Eventually(t, func() bool {
 				out, _ := c.CapturePaneTarget(ctx, target, 100)
 				for _, line := range strings.Split(out, "\n") {

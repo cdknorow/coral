@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // shellWait bounds how long a pane may take to show a command as the foreground job or the shell as idle again.
@@ -48,19 +50,19 @@ func TestAgentShellIdleFollowsTheCLI(t *testing.T) {
 	require.Eventually(t, idle, shellWait, 25*time.Millisecond, "a fresh pane is at an idle shell prompt")
 
 	// A long-running command stands in for the agent CLI.
-	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sleep 30"))
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, name+".0", "sleep 30"))
 	require.Eventually(t, busy, shellWait, 25*time.Millisecond, "a running CLI keeps the shell busy")
-	require.NoError(t, c.SendRawKeys(ctx, name, []string{"C-c"}, "claude", sid))
+	require.NoError(t, c.SendRawKeys(ctx, terminalinput.Unclassified, name, []string{"C-c"}, "claude", sid))
 	require.Eventually(t, idle, shellWait, 25*time.Millisecond, "idle again once it exits")
 
 	// A CLI started through a shell wrapper script shows 'sh' in the foreground, yet
 	// it is running: the pane's shell has a child, so it is not taken as exited.
-	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sh -c 'sleep 30; true'"))
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, name+".0", "sh -c 'sleep 30; true'"))
 	require.Eventually(t, func() bool {
 		fg, err := c.DisplayMessage(ctx, name+".0", "#{pane_current_command}")
 		return err == nil && fg != "" && busy()
 	}, shellWait, 25*time.Millisecond, "a wrapper script is not an exited agent")
-	require.NoError(t, c.SendRawKeys(ctx, name, []string{"C-c"}, "claude", sid))
+	require.NoError(t, c.SendRawKeys(ctx, terminalinput.Unclassified, name, []string{"C-c"}, "claude", sid))
 	require.Eventually(t, idle, shellWait, 25*time.Millisecond)
 }
 
@@ -86,7 +88,7 @@ func TestAgentShellIdleIgnoresBackgroundJobs(t *testing.T) {
 	require.Eventually(t, func() bool { v, ok := state(); return ok && v }, shellWait, 25*time.Millisecond)
 
 	// A job in the background: the shell is back at its prompt.
-	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sleep 60 &"))
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, name+".0", "sleep 60 &"))
 	// The job exists: a sleep under the pane's shell. The pane's pid alone is there from the
 	// start, so it said nothing about the job (#3788).
 	pid, err := c.DisplayMessage(ctx, name+".0", "#{pane_pid}")
@@ -101,9 +103,9 @@ func TestAgentShellIdleIgnoresBackgroundJobs(t *testing.T) {
 	assert.True(t, idle, "a background job is not the agent: the shell is idle")
 
 	// A foreground command on top of the background job is still busy.
-	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sleep 30"))
+	require.NoError(t, c.SendKeysToTarget(ctx, terminalinput.Unclassified, name+".0", "sleep 30"))
 	require.Eventually(t, func() bool { v, ok := state(); return ok && !v }, shellWait, 25*time.Millisecond, "a foreground command keeps the shell busy")
-	require.NoError(t, c.SendRawKeys(ctx, name, []string{"C-c"}, "claude", sid))
+	require.NoError(t, c.SendRawKeys(ctx, terminalinput.Unclassified, name, []string{"C-c"}, "claude", sid))
 	require.Eventually(t, func() bool { v, ok := state(); return ok && v }, shellWait, 25*time.Millisecond)
 }
 

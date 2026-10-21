@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 func TestNewSession_CreatesLogFile(t *testing.T) {
@@ -146,7 +148,7 @@ func TestSession_ReadLoopFansOut(t *testing.T) {
 	ch2 := s.subscribe("sub-2")
 
 	// Send input
-	s.writeFull([]byte("FANOUT_MARKER\n"))
+	s.writeInput(terminalinput.Unclassified, []byte("FANOUT_MARKER\n"), nil)
 
 	// Both subscribers should receive the echoed output
 	received := make([]bool, 2)
@@ -190,7 +192,7 @@ func TestSession_RingBufferOverflow(t *testing.T) {
 	// Send more data than ring buffer can hold (256KB)
 	bigChunk := strings.Repeat("X", 1024) + "\n"
 	for i := 0; i < 300; i++ { // 300KB > 256KB ring
-		s.writeFull([]byte(bigChunk))
+		s.writeInput(terminalinput.Unclassified, []byte(bigChunk), nil)
 	}
 
 	time.Sleep(time.Second)

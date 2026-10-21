@@ -5,19 +5,22 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
-// recordSendKeys logs a send-keys command (every one goes through run): literal
-// text (-l), hex bytes (-H) or key names, with the pane it targets (#3256).
-func recordSendKeys(ctx context.Context, args []string) {
-	if len(args) == 0 || args[0] != "send-keys" {
-		return
-	}
+// sendKeys runs one tmux send-keys command on behalf of o, and records it: the ONE place a key or text reaches a pane through
+// send-keys (a census test fails on any other, #5706). args are send-keys' arguments, without the word itself.
+func (c *Client) sendKeys(ctx context.Context, o terminalinput.Origin, args ...string) (string, error) {
+	recordSendKeys(o, args)
+	return c.run(ctx, append([]string{"send-keys"}, args...)...)
+}
+
+// recordSendKeys logs a send-keys command: literal text (-l), hex bytes (-H) or key names, with the pane it targets (#3256).
+func recordSendKeys(o terminalinput.Origin, args []string) {
 	var target string
 	var literal bool
 	var hexBytes, rest []string
-	for i := 1; i < len(args); i++ {
+	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
 		case a == "--": // the end of the options: the rest is text, even "-t" (#3690)
 			rest = append(rest, args[i+1:]...)
@@ -44,10 +47,10 @@ func recordSendKeys(ctx context.Context, args []string) {
 				b = append(b, byte(v))
 			}
 		}
-		inputlog.RecordCtx(ctx, target, inputlog.Raw, string(b))
+		terminalinput.Record(o, target, terminalinput.Raw, string(b))
 	case literal:
-		inputlog.RecordCtx(ctx, target, inputlog.Text, strings.Join(rest, " "))
+		terminalinput.Record(o, target, terminalinput.Text, strings.Join(rest, " "))
 	default:
-		inputlog.RecordCtx(ctx, target, inputlog.Keys, strings.Join(rest, " "))
+		terminalinput.Record(o, target, terminalinput.Keys, strings.Join(rest, " "))
 	}
 }

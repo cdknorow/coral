@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/subgentic/coral/internal/inputlog"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // ErrBracketedPasteUnavailable means the target application is not currently
@@ -37,28 +37,6 @@ func BracketedPasteHint(ctx context.Context) (enabled, known bool) {
 
 // promptSubmitDelay separates the paste from the submitting Enter.
 var promptSubmitDelay = 300 * time.Millisecond
-
-// SanitizePaste prepares text for a bracketed paste: it keeps the text intact
-// (including newlines and tabs) but removes ESC and other control characters
-// that could end the paste early (ESC [ 2 0 1 ~) or act as input, and
-// normalizes CRLF/CR to LF.
-func SanitizePaste(text string) string {
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
-	var b strings.Builder
-	b.Grow(len(text))
-	for _, r := range text {
-		switch {
-		case r == '\n' || r == '\t':
-			b.WriteRune(r)
-		case r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0):
-			// dropped
-		default:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
 
 // ErrDeliveryUnknown marks a failure after input may already have reached the
 // pane (a paste or Enter that errored or timed out). The prompt may be fully,
@@ -121,7 +99,7 @@ func lockPromptTarget(ctx context.Context, key string) (unlock func(), err error
 // (zero bytes, safe to retry). Once the paste starts, paste and Enter finish
 // under a bounded context detached from ctx, and any later failure is returned
 // as ErrDeliveryUnknown, which must not be retried.
-func (c *Client) SendPrompt(ctx context.Context, agentName, text, agentType, sessionID string) error {
+func (c *Client) SendPrompt(ctx context.Context, o terminalinput.Origin, agentName, text, agentType, sessionID string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -143,9 +121,8 @@ func (c *Client) SendPrompt(ctx context.Context, agentName, text, agentType, ses
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	sanitized := SanitizePaste(text)
-	inputlog.RecordCtx(ctx, target, inputlog.Paste, sanitized) // what is pasted, not what was asked (#60)
-	buffer, err := c.loadPromptBuffer(ctx, sanitized)
+	sanitized := terminalinput.SanitizePaste(text) // what is pasted, not what was asked (#60)
+	buffer, err := c.recordedBuffer(ctx, o, target, sanitized)
 	if err != nil {
 		return err
 	}
@@ -168,10 +145,17 @@ func (c *Client) SendPrompt(ctx context.Context, agentName, text, agentType, ses
 	if !enterAllowed(ctx) {
 		return ErrEnterWithheld
 	}
-	if _, err := c.run(dctx, "send-keys", "-t", target, "Enter"); err != nil {
+	if _, err := c.sendKeys(dctx, terminalinput.Internal, "-t", target, "Enter"); err != nil {
 		return MarkDeliveryUnknown(fmt.Errorf("pasted the prompt but sending Enter failed: %w", err))
 	}
 	return nil
+}
+
+// recordedBuffer records text as o's paste into target, then loads it into a private buffer: the ONE place a paste is recorded
+// (SendPrompt and pasteToTarget both come here, #5706). Recording comes first, as it always did, so a failed load is still in the log.
+func (c *Client) recordedBuffer(ctx context.Context, o terminalinput.Origin, target, text string) (string, error) {
+	terminalinput.Record(o, target, terminalinput.Paste, text)
+	return c.loadPromptBuffer(ctx, text)
 }
 
 // loadPromptBuffer loads text into a private named buffer; paste-buffer -d then
@@ -195,52 +179,4 @@ func (c *Client) loadPromptBuffer(ctx context.Context, text string) (string, err
 		return "", fmt.Errorf("load-buffer failed: %w", err)
 	}
 	return buffer, nil
-}
-
-// ErrNothingToSend: an automated text was only control characters and line breaks, so nothing is left to type. The send is
-// refused: typing nothing and pressing Enter would submit whatever else is in the agent's input (a person's draft).
-var ErrNothingToSend = errors.New("the text has nothing left to send once control characters and line breaks are removed")
-
-// AutomatedTextChecked is AutomatedText, refusing (ErrNothingToSend) a non-empty text that comes out empty.
-func AutomatedTextChecked(text string) (string, error) {
-	out := AutomatedText(text)
-	if text != "" && strings.TrimSpace(out) == "" {
-		return "", ErrNothingToSend
-	}
-	return out, nil
-}
-
-// SanitizeTyped makes text safe to type as keystrokes: ESC (an ESC[201~ would end a paste, an ESC sequence is a key),
-// every other C0 control (Ctrl-C, Ctrl-D, Tab, CR, LF...), DEL and the C1 range U+0080-009F are dropped. What remains is
-// printable text.
-func SanitizeTyped(text string) string {
-	var b strings.Builder
-	b.Grow(len(text))
-	for _, r := range text {
-		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
-
-// AutomatedText is text from Coral for an agent, to be typed: line breaks (CRLF, CR, LF) become one space each run, then
-// SanitizeTyped. A person's own text is never changed by it.
-func AutomatedText(text string) string {
-	var b strings.Builder
-	b.Grow(len(text))
-	space := false
-	for _, r := range text {
-		if r == '\r' || r == '\n' {
-			space = true
-			continue
-		}
-		if space && b.Len() > 0 {
-			b.WriteByte(' ')
-		}
-		space = false
-		b.WriteRune(r)
-	}
-	return SanitizeTyped(b.String())
 }
