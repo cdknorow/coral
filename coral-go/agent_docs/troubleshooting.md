@@ -471,7 +471,7 @@ at 200 characters.
 - Automated text Coral held because the agent was waiting on a prompt (a permission or
   selection menu) is logged as `[HELD, <why>]`; it is typed once the prompt is answered. The
   opt-in auto-accept's answer to an approval is logged as `[auto-accept answers an approval prompt]`.
-- A person's own typing (the dashboard terminal, the chat and send boxes) is logged by its length only
+- A person's own typing (the dashboard terminal, the chat and send boxes, the text typed into a prompt's answer field, keys sent from the dashboard) is logged by its length only
   (`[typed 12 bytes]`), the same way on both terminal backends; Enter, the arrow keys and Ctrl-<key>
   are logged as they are. Coral's own text is logged as it was typed, after secrets are masked.
 - On Windows, ending an agent types Ctrl-C into its console, a second Ctrl-C a moment later, and,

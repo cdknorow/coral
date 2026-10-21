@@ -259,8 +259,14 @@ func TestEveryCallOfASenderPassesAReviewedOrigin(t *testing.T) {
 				if !ok {
 					return true
 				}
-				sel, ok := c.Fun.(*ast.SelectorExpr)
-				if !ok || !senders[sel.Sel.Name] {
+				name := ""
+				switch fun := c.Fun.(type) {
+				case *ast.SelectorExpr:
+					name = fun.Sel.Name
+				case *ast.Ident:
+					name = fun.Name // a route's local send closure that takes the origin: its call names the origin too
+				}
+				if !senders[name] && name != "send" {
 					return true
 				}
 				origin := "?"
@@ -276,7 +282,10 @@ func TestEveryCallOfASenderPassesAReviewedOrigin(t *testing.T) {
 						}
 					}
 				}
-				got[fmt.Sprintf("%s\t%s\t%s\t%s", f.rel, funcName(fd), sel.Sel.Name, origin)] = true
+				if name == "send" && origin == "?" {
+					return true // a send closure that takes no origin
+				}
+				got[fmt.Sprintf("%s\t%s\t%s\t%s", f.rel, funcName(fd), name, origin)] = true
 				return true
 			})
 		}
@@ -339,10 +348,12 @@ var reviewedOrigins = map[string]bool{
 	"internal/server/routes/agent_ui_request.go	SessionsHandler.agentUIRequest	SendPrompt	Coral":                     true,
 	"internal/server/routes/auto_accept.go	AutoAcceptor.check	SendRawInput	Internal":                                 true,
 	"internal/server/routes/human_send.go	SessionsHandler.deliverHumanSend	SendInput	Person":                         true,
-	"internal/server/routes/prompt_answer.go	SessionsHandler.AnswerPrompt	SendInput	Unclassified":                    true, // not classified yet: today's behaviour (the dashboard's answer, a person's /keys): a follow-up marks it Person
-	"internal/server/routes/prompt_answer.go	SessionsHandler.AnswerPrompt	SendRawInput	Unclassified":                 true, // not classified yet: today's behaviour (the dashboard's answer, a person's /keys): a follow-up marks it Person
-	"internal/server/routes/prompt_answer.go	SessionsHandler.toggleMulti	SendRawInput	Unclassified":                  true, // not classified yet: today's behaviour (the dashboard's answer, a person's /keys): a follow-up marks it Person
+	"internal/server/routes/prompt_answer.go	SessionsHandler.AnswerPrompt	SendInput	Person":                          true, // the text typed into a prompt's field (#5715)
+	"internal/server/routes/prompt_answer.go	SessionsHandler.AnswerPrompt	SendRawInput	Unclassified":                 true, // the option digits of the answer cards: choices, not text a person typed; logged as they are
+	"internal/server/routes/prompt_answer.go	SessionsHandler.toggleMulti	SendRawInput	Unclassified":                  true, // the option digits of the answer cards: choices, not text a person typed; logged as they are
 	"internal/server/routes/sessions_input.go	SessionsHandler.Keys	SendRawInput	o":                                   true,
+	"internal/server/routes/sessions_input.go	SessionsHandler.Keys	send	Coral":                                       true, // /keys from anything but a person: through the gate
+	"internal/server/routes/sessions_input.go	SessionsHandler.Keys	send	Person":                                      true, // /keys from a person (#5715)
 	"internal/server/routes/sessions_input.go	SessionsHandler.Send	SendInput	Coral":                                  true,
 	"internal/server/routes/sessions_lifecycle.go	sendLaunchCommand	SendToTarget	Internal":                           true,
 	"internal/server/routes/websocket.go	terminalStream.handleFrame	SendInput	Person":                                true,

@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/internal/terminalinput"
 )
 
 // validatingTerminal is the mock terminal with the PTY terminal's key check.
@@ -73,4 +76,33 @@ func TestKeysRouteBoundsTheList(t *testing.T) {
 	assert.Empty(t, terminal.raw["claude-"+sid])
 	terminal.mu.Unlock()
 	assert.Equal(t, http.StatusOK, post(ptymanager.MaxKeysPerRequest))
+}
+
+// #5715: /keys from a person (the dashboard) reaches the terminal as a person's input, so a character typed through it is logged by its
+// length; from anything that is not a person it goes through the gate as Coral's.
+func TestKeysRouteNamesWhoseInputItIs(t *testing.T) {
+	_, h, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-0000000000c5"
+	name := "claude-" + sid
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "repo", WorkingDir: "/tmp/test"}))
+	terminal.addSession(name, "/tmp/test")
+	send := func(ctx context.Context) {
+		req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/keys",
+			bytes.NewBufferString(`{"keys": ["x"], "agent_type": "claude", "session_id": "`+sid+`"}`))
+		rc := chi.NewRouteContext()
+		rc.URLParams.Add("name", name)
+		req = req.WithContext(context.WithValue(ctx, chi.RouteCtxKey, rc))
+		w := httptest.NewRecorder()
+		h.Keys(w, req)
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	}
+	send(context.WithValue(context.Background(), callerKindKey{}, callerDashCookie))
+	terminal.mu.Lock()
+	got := append([]terminalinput.Origin(nil), terminal.origins[name]...)
+	terminal.mu.Unlock()
+	assert.Equal(t, []terminalinput.Origin{terminalinput.Person}, got, "the dashboard's /keys is a person's input")
+	send(context.Background())
+	terminal.mu.Lock()
+	defer terminal.mu.Unlock()
+	assert.Equal(t, terminalinput.Coral, terminal.origins[name][1], "a caller that is not a person goes through the gate as Coral's")
 }
