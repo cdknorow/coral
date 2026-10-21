@@ -189,3 +189,10 @@ func (c *Client) AgentShellIdle(ctx context.Context, agentName, agentType, sessi
 	}
 	return ShellIdle(pid)
 }
+
+// foregroundIsShell says whether the program in the foreground of the pane is a plain shell (pane_current_command).
+// An unreadable answer is not a shell.
+func (c *Client) foregroundIsShell(ctx context.Context, target string) bool {
+	out, err := c.DisplayMessage(ctx, target, "#{pane_current_command}")
+	return err == nil && IsShellCommand(strings.TrimSpace(out))
+}
