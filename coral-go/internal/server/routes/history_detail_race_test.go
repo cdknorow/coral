@@ -44,7 +44,7 @@ func TestHistoryDetail_ConcurrentReadsEachGetTheWholeTranscript(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/api/sessions/history/{sessionID}", h.GetSessionDetail)
 
-	for round := 0; round < 50; round++ {
+	for round := 0; round < oracleN(50); round++ {
 		const parallel = 64
 		var wg sync.WaitGroup
 		errs := make(chan string, parallel)
