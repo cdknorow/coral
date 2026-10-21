@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/secfile"
@@ -53,7 +54,40 @@ func setupSessionTokens(db *store.DB, coralDir string) {
 			os.Remove(f.Name())
 			return ""
 		}
+		files.put(sessionID, f.Name())
 		return f.Name()
+	}
+	agent.SessionTokenFileRemover = files.remove
+}
+
+// tokenFiles are the token file each session was last given. A new token revokes the
+// session's earlier one, so its earlier file is removed then; the last one goes when the
+// session's files are cleaned up (agent.SessionTokenFileRemover). A file the agent's shell
+// already deleted (every agent but Codex, #13) is simply not there.
+type tokenFiles struct {
+	mu    sync.Mutex
+	paths map[string]string
+}
+
+var files = &tokenFiles{paths: map[string]string{}}
+
+func (t *tokenFiles) put(sessionID, path string) {
+	t.mu.Lock()
+	prev := t.paths[sessionID]
+	t.paths[sessionID] = path
+	t.mu.Unlock()
+	if prev != "" && prev != path {
+		_ = os.Remove(prev)
+	}
+}
+
+func (t *tokenFiles) remove(sessionID string) {
+	t.mu.Lock()
+	p := t.paths[sessionID]
+	delete(t.paths, sessionID)
+	t.mu.Unlock()
+	if p != "" {
+		_ = os.Remove(p)
 	}
 }
 

@@ -163,7 +163,10 @@ func TestTrustedServerURL(t *testing.T) {
 // file agentenv.SessionAuthFileEnv names, read only when the variable is missing, never over
 // it, and only from a private regular file.
 func TestSessionTokenFallsBackToTheAuthFile(t *testing.T) {
-	dir := t.TempDir()
+	data := t.TempDir()
+	t.Setenv("CORAL_DATA_DIR", data)
+	dir := filepath.Join(data, "session_tokens")
+	require.NoError(t, os.Mkdir(dir, 0o700))
 	file := filepath.Join(dir, "t-13")
 	require.NoError(t, secfile.WriteFileNoFollow(file, []byte("filetok\n"), 0o600))
 	t.Setenv(agentenv.SessionAuthFileEnv, file)
@@ -187,6 +190,14 @@ func TestSessionTokenFallsBackToTheAuthFile(t *testing.T) {
 		t.Setenv(agentenv.SessionAuthFileEnv, link)
 		assert.Empty(t, sessionToken(), "never through a link")
 	}
+	// A private file anywhere but this Coral's session_tokens folder: no token (#13 review N1).
+	elsewhere := filepath.Join(t.TempDir(), "t-13")
+	require.NoError(t, secfile.WriteFileNoFollow(elsewhere, []byte("othertok"), 0o600))
+	t.Setenv(agentenv.SessionAuthFileEnv, elsewhere)
+	assert.Empty(t, sessionToken(), "outside <data>/session_tokens")
+	t.Setenv(agentenv.SessionAuthFileEnv, filepath.Join(dir, "..", "session_tokens", "..", "t-13"))
+	assert.Empty(t, sessionToken(), "a path that leaves the folder")
+
 	t.Setenv(agentenv.SessionAuthFileEnv, "")
 	assert.Empty(t, sessionToken())
 }
