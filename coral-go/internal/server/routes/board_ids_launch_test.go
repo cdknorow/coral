@@ -75,7 +75,7 @@ func TestLaunchBoardChoice(t *testing.T) {
 	require.NotNil(t, promptFile, "the launch command reads its prompt from a file")
 	prompt, err := os.ReadFile(promptFile[1])
 	require.NoError(t, err)
-	assert.Contains(t, string(prompt), `message board "alpha"`, "the agent's prompt shows the label, not the id")
+	assert.Contains(t, promptReceived(t, string(prompt)), `message board "alpha"`, "the agent's prompt shows the label, not the id")
 
 	// The same name again: a choice, nothing created.
 	code, out = call(handler.LaunchTeam, team(map[string]any{"board_name": "alpha"}))
