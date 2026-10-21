@@ -19,7 +19,7 @@ import (
 // (routes.deliverAutomated, background.deliverAutomated) instead.
 var sendCalls = map[string]bool{
 	"SendInput": true, "SendRawInput": true, "SendPrompt": true, "SendToTarget": true,
-	"SendKeysToTarget": true, "SendKeys": true, "SendTerminalInput": true, "SendLine": true,
+	"SendKeysToTarget": true, "SendKeys": true, "SendTerminalInput": true, "SendLine": true, "SendLineCtx": true,
 	"SendTerminalInputToTarget": true, "SendRawKeys": true, "pasteToTarget": true,
 	"AutoAcceptSend": true, "SendEnter": true, "SendArrow": true,
 }
@@ -99,8 +99,8 @@ var allowedSenders = map[string]sender{
 	// The primitives' own implementations, one layer calling the next.
 	"internal/background/runtime_pty.go\tPTYRuntime.SendInput\tSendLine":                                             {guardPrimitive, "primitive", ""},
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendInput\tSendKeys":                                           {guardPrimitive, "primitive", ""},
-	"internal/ptymanager/manager.go\tPTYBackend.SendLine\tSendInput":                                                 {guardPrimitive, "primitive", ""},
-	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendInput\tSendLine":                            {guardPrimitive, "primitive", ""},
+	"internal/ptymanager/manager.go\tPTYBackend.SendLine\tSendLineCtx":                                               {guardPrimitive, "primitive", ""},
+	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendInput\tSendLineCtx":                         {guardPrimitive, "primitive: carries ctx, so a person's send (inputlog.Human) is logged by length (#60 N3)", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendPrompt\tSendPrompt":                         {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendRawInput\tSendInput":                        {guardPrimitive, "primitive", ""},
 	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendTerminalInput\tSendInput":                   {guardPrimitive, "primitive", ""},
