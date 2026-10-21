@@ -12,6 +12,7 @@ import (
 	"github.com/subgentic/coral/internal/agentmodels"
 	"github.com/subgentic/coral/internal/agentsignin"
 	"github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/auth"
 	"github.com/subgentic/coral/internal/background"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/tmux"
@@ -109,7 +110,7 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		"tmux_install_command": tmuxInstallCommand(),
 		// A data folder other people on this computer can read (Windows; #3637): shown on the
 		// dashboard's first page, not only in the log. "" when there is nothing to say.
-		"security_warning": dataDirWarning(h.cfg.CoralDir()),
+		"security_warning": securityWarning(dataDirWarning(h.cfg.CoralDir()), auth.PeerCheckWarning()),
 		// Damage the integrity check found a minute after start (#4157); "" when none.
 		"database_warning": background.DatabaseWarning(),
 	}
@@ -120,6 +121,17 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		out["claude_checked_at"] = st.CheckedAt.UTC().Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// securityWarning joins the security warnings that are set, for the dashboard's one banner.
+func securityWarning(warnings ...string) string {
+	var set []string
+	for _, w := range warnings {
+		if w != "" {
+			set = append(set, w)
+		}
+	}
+	return strings.Join(set, " ")
 }
 
 // dataDirWarning is config.DataDirWarning (a variable so a test can stand in for a Windows
