@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/subgentic/coral/internal/inputlog"
 )
@@ -159,10 +160,32 @@ func isControl(r rune) bool { return r < 0x20 || r == 0x7f || (r >= 0x80 && r < 
 // Record logs one write to target when the input debug log is on: the only caller of inputlog.Write. A person's text (and an unknown
 // origin's) is logged by its length only, unless it is only control input; everything else as it is. Coral's own annotations are inputlog.Note.
 func Record(o Origin, target string, kind Kind, data string) {
-	if (o == Person || o == Unknown) && kind != Keys && hasPrintable(data) {
-		kind, data = inputlog.Typed, fmt.Sprintf("[typed %d bytes]", len(data))
+	if o == Person || o == Unknown {
+		switch {
+		case kind != Keys && hasPrintable(data):
+			kind, data = inputlog.Typed, fmt.Sprintf("[typed %d bytes]", len(data))
+		case kind == Keys && onlyTypedChars(data):
+			// tmux sends one character typed through /keys as a key name ("s"): that is text, not a named key (Enter, Up, C-c)
+			kind, data = inputlog.Typed, fmt.Sprintf("[typed %d bytes]", len(strings.ReplaceAll(data, " ", "")))
+		}
 	}
 	inputlog.Write(target, kind, data)
+}
+
+// onlyTypedChars reports whether the key names in data (separated by spaces) are all single printable characters: characters a person
+// typed, as opposed to a named key (Enter, Up, Escape, C-c, F1).
+func onlyTypedChars(data string) bool {
+	keys := strings.Fields(data)
+	if len(keys) == 0 {
+		return false
+	}
+	for _, k := range keys {
+		r, n := utf8.DecodeRuneInString(k)
+		if n != len(k) || r == utf8.RuneError || r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
+			return false
+		}
+	}
+	return true
 }
 
 // hasPrintable reports whether s holds anything but control bytes and escape sequences: text a person typed, as opposed to Enter,

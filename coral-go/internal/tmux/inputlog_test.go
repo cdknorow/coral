@@ -92,6 +92,8 @@ func TestTmuxLogsAPersonsTypingByLengthOnly(t *testing.T) {
 	recordSendKeys(terminalinput.Person, []string{"-t", "%1", "-l", "--", "hunter2"})
 	recordSendKeys(terminalinput.Person, []string{"-t", "%1", "-H", "68", "-H", "69"}) // "hi"
 	recordSendKeys(terminalinput.Person, []string{"-t", "%1", "--", "Enter"})
+	recordSendKeys(terminalinput.Person, []string{"-t", "%1", "--", "C-c"})
+	recordSendKeys(terminalinput.Person, []string{"-t", "%1", "--", "s"})                    // a password typed through /keys
 	recordSendKeys(terminalinput.Unclassified, []string{"-t", "%1", "-H", "6f", "-H", "6b"}) // "ok"
 	inputlog.Flush()
 	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
@@ -101,6 +103,9 @@ func TestTmuxLogsAPersonsTypingByLengthOnly(t *testing.T) {
 	assert.Contains(t, text, `kind=typed text="[typed 7 bytes]"`)
 	assert.Contains(t, text, `kind=typed text="[typed 2 bytes]"`)
 	assert.Contains(t, text, `keys="Enter"`)
+	assert.Contains(t, text, `keys="C-c"`)
+	assert.NotContains(t, text, `keys="s"`, "a character typed through /keys on tmux is hidden like the PTY's (#5715)")
+	assert.Contains(t, text, `kind=typed text="[typed 1 bytes]"`)
 	assert.Contains(t, text, `kind=raw len=2 text="ok"`)
 	assert.NotContains(t, text, "6f")
 }
