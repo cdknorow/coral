@@ -1,5 +1,5 @@
 {
-  "comment": "What the required check \"gate\" (gate.yml) waits for before a pull request may merge (#5522). Read by tests/release/gate_check.py from the pull request's own checkout, so a change to this file is a change to the rule: it is owned by the code owners (CODEOWNERS), like every file under .github. A workflow named in \"always\" must have a run on the PR head commit (a push to a ci/ branch, or the PR's own run, or a manual dispatch) that ended in success; one in \"when\" is required only when the PR changes a file matching one of its paths (the workflow's own trigger filter, copied), so a path-filtered workflow that did not run never leaves the gate pending or red.",
+  "comment": "What the required check \"gate\" (gate.yml) waits for before a pull request may merge (#5522). Read by tests/release/gate_check.py from the BASE commit of the pull request (gate.yml checks the base out), so a pull request cannot loosen its own gate by editing it; a change to this file is a change to the rule and needs the code owners (CODEOWNERS), like every file under .github: it is owned by the code owners (CODEOWNERS), like every file under .github. A workflow named in \"always\" must have a run on the PR head commit (a push to a ci/ branch, or the PR's own run, or a manual dispatch) that ended in success; one in \"when\" is required only when the PR changes a file matching one of its paths (the workflow's own trigger filter, copied), so a path-filtered workflow that did not run never leaves the gate pending or red.",
   "branch_prefix": "ci/",
   "always": ["go-tests", "go-race", "cdp-gate"],
   "when": [
@@ -7,6 +7,14 @@
     {"workflow": "windows-tests", "paths": ["coral-go/**", "tests/windows/**", ".github/workflows/windows-tests.yml"]}
   ],
   "events": ["push", "pull_request", "workflow_dispatch"],
+  "always_events": ["push", "workflow_dispatch"],
+  "workflow_files": {
+    "go-tests": ".github/workflows/go-tests.yml",
+    "go-race": ".github/workflows/go-race.yml",
+    "cdp-gate": ".github/workflows/cdp-gate.yml",
+    "gofmt": ".github/workflows/gofmt.yml",
+    "windows-tests": ".github/workflows/windows-tests.yml"
+  },
   "appear_within_minutes": 15,
   "timeout_minutes": 120,
   "poll_seconds": 30
