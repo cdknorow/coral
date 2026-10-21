@@ -7,7 +7,8 @@ const { launch } = await importOnce('./launch_state.js');
 const { _effectiveServer, _settingsFor } = await importOnce('./launch_models.js');
 const { _getPermissionFlagsForAgentMode } = await importOnce('./permission_flags.js');
 const { _getSavedTeamTemplates, _upsertSavedTeamTemplates } = await importOnce('./persona_store.js');
-const { _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch } = await importOnce('./launch_core.js');
+const { _launchBlocked, _launchOn, _onServerSuffix, _refreshAfterLaunch, showTeamLaunchFailures } = await importOnce('./launch_core.js');
+const { showSettingsModal } = await importOnce('./settings_dialog.js');
 const { getAgentConfig } = await importOnce('./agent_config_form.js');
 
 const BUILTIN_TEAM_TEMPLATES = [
@@ -118,12 +119,17 @@ window._quickLaunchTeam = async function() {
                 team_knowledge_index: tmpl.team_knowledge_index || '',
                 working_mode: tmpl.working_mode || null,
                 workflow_presets: tmpl.workflow_presets || null,
-        });
+        }, undefined, { teamFailures: true });
         if (!data) return;
-        recordRecentDir(workDir, server);
-        document.getElementById('quick-launch-modal').style.display = 'none';
         const launched = data.agents || [];
         const failed = launched.filter(a => a.error);
+        // Nobody started (the server answered an error, #122): each member's error, and the dialog stays open to try again.
+        if (data.ok === false) {
+            showTeamLaunchFailures(failed, 0, showSettingsModal);
+            return;
+        }
+        recordRecentDir(workDir, server);
+        document.getElementById('quick-launch-modal').style.display = 'none';
         if (failed.length > 0) {
             showToast(`Launched ${launched.length - failed.length} of ${launched.length} agents (${failed.length} failed)`, 'error');
         } else {
