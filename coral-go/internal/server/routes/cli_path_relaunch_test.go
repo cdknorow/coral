@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -172,17 +173,27 @@ func TestLaunchAndWakeRefuseABrokenConfiguredCLIPath(t *testing.T) {
 	launchBody, err := json.Marshal(map[string]string{"working_dir": t.TempDir(), "agent_type": "claude"})
 	require.NoError(t, err)
 	launch := string(launchBody)
+	teamBody := func(hub bool) string { // a board per call: a second launch of the same name joins the first
+		b, err := json.Marshal(map[string]any{"board_name": fmt.Sprintf("t-%v", hub), "working_dir": t.TempDir(), "agent_type": "claude", "agents": []map[string]string{{"name": "A"}}})
+		require.NoError(t, err)
+		return string(b)
+	}
 	for label, call := range map[string]func(hub bool) (int, string){
-		"launch": func(hub bool) (int, string) { return post(server.URL, "/api/sessions/launch", launch, hub) },
-		"wake":   func(hub bool) (int, string) { return post(wakeServer.URL, "/api/sessions/live/"+id+"/wake", "{}", hub) },
+		"launch-team": func(hub bool) (int, string) { return post(server.URL, "/api/sessions/launch-team", teamBody(hub), hub) },
+		"launch":      func(hub bool) (int, string) { return post(server.URL, "/api/sessions/launch", launch, hub) },
+		"wake":        func(hub bool) (int, string) { return post(wakeServer.URL, "/api/sessions/live/"+id+"/wake", "{}", hub) },
 	} {
+		want := http.StatusUnprocessableEntity
+		if label == "launch-team" {
+			want = http.StatusOK // a team answers per member
+		}
 		code, body := call(false)
-		assert.Equal(t, http.StatusUnprocessableEntity, code, "%s: %s", label, body)
+		assert.Equal(t, want, code, "%s: %s", label, body)
 		assert.Contains(t, body, agent.CLIPathSettingKey("claude"), label)
 		assert.Contains(t, body, "gone-dir", label+": a local caller is told the path")
 
 		code, body = call(true)
-		assert.Equal(t, http.StatusUnprocessableEntity, code, "%s via the Hub: %s", label, body)
+		assert.Equal(t, want, code, "%s via the Hub: %s", label, body)
 		assert.Contains(t, body, agent.CLIPathSettingKey("claude"), label)
 		assert.NotContains(t, body, "gone-dir", label+": the Hub is told the setting only")
 	}
