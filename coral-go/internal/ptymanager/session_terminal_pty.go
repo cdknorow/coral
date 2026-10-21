@@ -174,6 +174,9 @@ func (p *PTYSessionTerminal) SendArrow(_ context.Context, name, _, sessionID str
 
 // ValidateKeys implements KeyValidator: every entry of a /keys request is a key name, a single character or digits.
 func (p *PTYSessionTerminal) ValidateKeys(keys []string) error {
+	if len(keys) > MaxKeysPerRequest {
+		return fmt.Errorf("%w: %d keys in one request, at most %d", ErrUnknownKey, len(keys), MaxKeysPerRequest)
+	}
 	for _, k := range keys {
 		if _, err := KeyBytes(k, false); err != nil {
 			return err

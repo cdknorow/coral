@@ -115,3 +115,47 @@ func TestAGonePTYSessionIsTerminalGone(t *testing.T) {
 	assert.True(t, errors.Is(b.SendInput("claude-gone", []byte("x")), ErrTerminalGone))
 	assert.True(t, errors.Is(term.SendRawInput(context.Background(), "claude-gone", []string{"Enter"}, "claude", "00000000-0000-4000-8000-00000000f015"), ErrTerminalGone))
 }
+
+// Security's N1/N2 on #39: a request is bounded, the whole list is checked before anything is sent, and every key
+// goes out as one write, so a request that ends early (its context cancelled) can't leave half an escape sequence typed.
+func TestPTYKeysRequestIsBoundedAndWholeSequencesAreWritten(t *testing.T) {
+	setWaits(t, func(w *waitTimings) { w.rawKeyGap = 1 })
+	name := "claude-39-bound"
+	term, s, proc := rawKeysTerm(t, name)
+	s.trackCursorKeys([]byte("\x1b[?1h"))
+
+	too := make([]string, MaxKeysPerRequest+1)
+	for i := range too {
+		too[i] = "Down"
+	}
+	assert.Error(t, term.ValidateKeys(too))
+	assert.True(t, errors.Is(term.SendRawInput(context.Background(), name, too, "claude", ""), ErrUnknownKey))
+	assert.Empty(t, proc.written(), "nothing is sent over the bound")
+	assert.NoError(t, term.ValidateKeys(too[:MaxKeysPerRequest]))
+
+	// Every multi-byte key is one write.
+	require.NoError(t, term.SendRawInput(context.Background(), name, []string{"Up", "PageDown", "F5", "BTab", "M-x"}, "claude", ""))
+	var got []string
+	for _, w := range proc.written() {
+		got = append(got, string(w))
+	}
+	assert.Equal(t, []string{"\x1bOA", "\x1b[6~", "\x1b[15~", "\x1b[Z", "\x1bx"}, got, "one write per key, whole sequences")
+
+	// A request cancelled between keys stops there: what was written is whole keys.
+	ctx, cancel := context.WithCancel(context.Background())
+	n := len(proc.written())
+	proc.writeFn = func(call int, p []byte) (int, error) {
+		if call == n+1 {
+			cancel()
+		}
+		return len(p), nil
+	}
+	err := term.SendRawInput(ctx, name, []string{"F5", "F6", "F7"}, "claude", "")
+	assert.True(t, errors.Is(err, context.Canceled), "%v", err)
+	after := proc.written()[n:]
+	require.NotEmpty(t, after)
+	for _, w := range after {
+		assert.Contains(t, []string{"\x1b[15~", "\x1b[17~", "\x1b[18~"}, string(w), "only whole sequences")
+	}
+	assert.Less(t, len(after), 3, "the cancel stopped the request")
+}

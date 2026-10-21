@@ -15,6 +15,10 @@ import (
 // (and not a single character), and the /keys route answers 400.
 var ErrUnknownKey = errors.New("unknown key name")
 
+// MaxKeysPerRequest bounds the entries of one /keys request: a request takes 100 ms a key, and holds the agent's input
+// the whole time.
+const MaxKeysPerRequest = 64
+
 // KeyValidator is implemented by terminals that refuse key names they can't send (the PTY terminal), so a route can
 // answer 400 before anything is typed.
 type KeyValidator interface {
