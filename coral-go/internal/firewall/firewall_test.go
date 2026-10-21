@@ -46,7 +46,7 @@ func TestParseRuleReadsTheFieldsCoralLooksAt(t *testing.T) {
 func TestAssessReportsOnlyBroadInboundAllowRulesForCoral(t *testing.T) {
 	exe := `C:\Program Files\Coral\coral.exe`
 	var rules []Rule
-	for i, v := range []string{publicAll, privateAll, privatePort, publicPort, anyProfile, blocked, blockCoral, outbound, inactive, otherApp} {
+	for i, v := range []string{publicAll, privateAll, privatePort, publicPort, anyProfile, blocked, outbound, inactive, otherApp} {
 		rules = append(rules, rule(t, string(rune('a'+i)), v))
 	}
 	got := map[string]string{}
@@ -55,11 +55,54 @@ func TestAssessReportsOnlyBroadInboundAllowRulesForCoral(t *testing.T) {
 	}
 	assert.Equal(t, map[string]string{
 		"coral-tray": "on the Public profile, for every port",
-		"coral":      "for every port", // Private, but every port
 		"coral p":    "on the Public profile",
 		"coral any":  "on the Public profile", // no Profile entry: every profile
 	}, got)
-	// Private + one port, Block, outbound, inactive, another program and a test binary: nothing.
+	// Private + every port (what Coral recommends), Private + one port, Block, outbound, inactive, another program and a test
+	// binary: nothing.
+}
+
+// M1: the rule Coral tells the person to make (Private networks only, which the Windows prompt makes program-wide) is not a finding.
+func TestAPrivateOnlyProgramWideRuleIsNotAFinding(t *testing.T) {
+	exe := `C:\Program Files\Coral\coral.exe`
+	assert.Empty(t, Assess([]Rule{rule(t, "a", privateAll)}, exe), "Private, TCP, every port")
+	udpPrivate := rule(t, "b", `v2.10|Action=Allow|Active=TRUE|Dir=In|Protocol=17|Profile=Private|App=C:\Program Files\Coral\coral.exe|Name=coral|`)
+	assert.Empty(t, Assess([]Rule{udpPrivate}, exe), "the UDP half of the same prompt, Private")
+	domain := rule(t, "c", `v2.10|Action=Allow|Active=TRUE|Dir=In|Profile=Domain|App=C:\Program Files\Coral\coral.exe|Name=coral|`)
+	assert.Empty(t, Assess([]Rule{domain}, exe), "Domain only")
+	multi := rule(t, "d", `v2.10|Action=Allow|Active=TRUE|Dir=In|Profile=Domain|Profile=Private|App=C:\Program Files\Coral\coral.exe|Name=coral|`)
+	assert.Empty(t, Assess([]Rule{multi}, exe), "Domain and Private")
+}
+
+func TestExpandPercentExpandsKnownNamesOnly(t *testing.T) {
+	env := map[string]string{"ProgramFiles": `C:\Program Files`, "EMPTY": ""}
+	get := func(n string) string { return env[n] }
+	assert.Equal(t, `C:\Program Files\Coral\coral.exe`, expandPercent(`%ProgramFiles%\Coral\coral.exe`, get))
+	assert.Equal(t, `%UNKNOWN%\x.exe`, expandPercent(`%UNKNOWN%\x.exe`, get), "an unset name stays")
+	assert.Equal(t, `%EMPTY%\x`, expandPercent(`%EMPTY%\x`, get))
+	assert.Equal(t, `100%\x`, expandPercent(`100%\x`, get), "a lone percent sign stays")
+	assert.Equal(t, `%%\x`, expandPercent(`%%\x`, get))
+	assert.Equal(t, `C:\Program Files\a\C:\Program Files`, expandPercent(`%ProgramFiles%\a\%ProgramFiles%`, get))
+}
+
+func TestAPublicUDPRuleIsFlaggedAsUnneeded(t *testing.T) {
+	exe := `C:\Program Files\Coral\coral.exe`
+	udp := rule(t, "a", `v2.10|Action=Allow|Active=TRUE|Dir=In|Protocol=17|Profile=Public|App=C:\Program Files\Coral\coral.exe|Name=coral|`)
+	got := Assess([]Rule{udp}, exe)
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0].Why, "UDP rule and Coral listens on TCP only")
+}
+
+// L4: an active inbound Block rule for the same program on a common profile wins over the allow, so the allow is not in effect.
+func TestAMatchingBlockRuleOverridesTheAllow(t *testing.T) {
+	exe := `C:\Program Files\Coral\coral.exe`
+	allow := rule(t, "a", `v2.10|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Public|App=C:\Program Files\Coral\coral.exe|Name=coral|`)
+	block := rule(t, "b", `v2.10|Action=Block|Active=TRUE|Dir=In|Protocol=6|Profile=Public|App=C:\Program Files\Coral\coral.exe|Name=coral block|`)
+	blockPrivate := rule(t, "c", `v2.10|Action=Block|Active=TRUE|Dir=In|Profile=Private|App=C:\Program Files\Coral\coral.exe|Name=coral block private|`)
+	blockInactive := rule(t, "d", `v2.10|Action=Block|Active=FALSE|Dir=In|Profile=Public|App=C:\Program Files\Coral\coral.exe|Name=coral block off|`)
+	assert.Empty(t, Assess([]Rule{allow, block}, exe))
+	assert.Len(t, Assess([]Rule{allow, blockPrivate}, exe), 1, "a block on another profile does not cancel it")
+	assert.Len(t, Assess([]Rule{allow, blockInactive}, exe), 1, "an inactive block does not")
 }
 
 func TestACoralBuildBesideTheRunningExecutableCounts(t *testing.T) {

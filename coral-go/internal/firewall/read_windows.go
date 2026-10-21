@@ -3,8 +3,15 @@
 package firewall
 
 import (
+	"os"
+
 	"golang.org/x/sys/windows/registry"
 )
+
+// expandApp expands environment strings in a rule's App (%ProgramFiles%\Coral\coral.exe, %USERPROFILE%\...), which the firewall
+// stores unexpanded for rules made by hand or by a script; the name match works either way, but the "beside the running
+// executable" match compares folders.
+func expandApp(app string) string { return expandPercent(app, os.Getenv) }
 
 // rulesKey holds the firewall's rules as one string value each. It is readable without elevation (the rules a person sees in
 // "Windows Defender Firewall with Advanced Security" come from it), and Coral only reads it.
@@ -28,6 +35,7 @@ func ReadRules() ([]Rule, error) {
 			continue
 		}
 		if r, ok := ParseRule(n, v); ok {
+			r.App = expandApp(r.App)
 			rules = append(rules, r)
 		}
 	}

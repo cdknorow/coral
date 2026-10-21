@@ -6,6 +6,9 @@
 // rule for the whole PROGRAM on the profiles ticked (Public is ticked by default for an app in a
 // user folder): every port, TCP and UDP, from any address. Coral only warns and says how to narrow
 // or remove such a rule; changing one needs elevation and is the person's decision.
+//
+// Only the rules in the firewall's own store (the registry key the Windows Firewall console edits) are read. Rules a Group Policy
+// sets (HKLM\SOFTWARE\Policies\Microsoft\WindowsFirewall\FirewallRules) are an administrator's and are not looked at.
 package firewall
 
 import (
@@ -25,6 +28,7 @@ type Rule struct {
 	Profiles []string // Domain, Private, Public; empty means every profile
 	LPorts   []string // local ports or ranges; empty means every port
 	App      string   // the program the rule names
+	Protocol string   // 6 TCP, 17 UDP; empty means any
 }
 
 // ParseRule reads a FirewallRules registry value ("v2.10|Action=Allow|Active=TRUE|Dir=In|Profile=Public|App=C:\x.exe|Name=x|...").
@@ -51,6 +55,8 @@ func ParseRule(id, value string) (r Rule, ok bool) {
 			r.Profiles = append(r.Profiles, v)
 		case "LPort", "LPort2_10", "LPort2_20":
 			r.LPorts = append(r.LPorts, v)
+		case "Protocol":
+			r.Protocol = v
 		case "App":
 			r.App = v
 		case "Name":
@@ -98,27 +104,78 @@ func (r Rule) onPublic() bool {
 	return false
 }
 
+// profilesOverlap reports whether two rules apply to a common profile (no entry means every profile).
+func profilesOverlap(a, b Rule) bool {
+	if len(a.Profiles) == 0 || len(b.Profiles) == 0 {
+		return true
+	}
+	for _, p := range a.Profiles {
+		for _, q := range b.Profiles {
+			if strings.EqualFold(p, q) || strings.EqualFold(p, "All") || strings.EqualFold(q, "All") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// blockedAnyway reports whether an active inbound BLOCK rule names the same program on a common profile: Windows lets a block win
+// over an allow, so the allow is not in effect.
+func blockedAnyway(rules []Rule, allow Rule) bool {
+	for _, b := range rules {
+		if !b.Allow && b.Active && b.Inbound && strings.EqualFold(b.App, allow.App) && profilesOverlap(b, allow) {
+			return true
+		}
+	}
+	return false
+}
+
 // Assess returns the active inbound ALLOW rules for Coral's programs (exe is the running executable) that are on the Public
-// profile or cover every port. A Block rule, an outbound rule and an inactive one are not findings.
+// profile or on no profile in particular (so on Public too). A rule on the Private (or Domain) profile only is what Coral
+// recommends and is NOT a finding, whatever its ports: the Windows prompt always makes a program-wide rule. A Block rule, an outbound
+// rule, an inactive one and an allow that a matching Block rule overrides are not findings either. A UDP allow on Public is noted
+// as unneeded: Coral listens on TCP only.
 func Assess(rules []Rule, exe string) []Finding {
 	var out []Finding
 	for _, r := range rules {
-		if !r.Allow || !r.Active || !r.Inbound || !namesCoral(r.App, exe) {
+		if !r.Allow || !r.Active || !r.Inbound || !namesCoral(r.App, exe) || !r.onPublic() || blockedAnyway(rules, r) {
 			continue
 		}
-		var why []string
-		if r.onPublic() {
-			why = append(why, "on the Public profile")
-		}
+		why := "on the Public profile"
 		if len(r.LPorts) == 0 {
-			why = append(why, "for every port")
+			why += ", for every port"
 		}
-		if len(why) == 0 {
-			continue
+		if r.Protocol == "17" {
+			why += "; it is a UDP rule and Coral listens on TCP only, so it can simply be removed"
 		}
-		out = append(out, Finding{Rule: r, Why: strings.Join(why, ", ")})
+		out = append(out, Finding{Rule: r, Why: why})
 	}
 	return out
+}
+
+// expandPercent replaces each %NAME% in s with get(NAME) (an unset name stays as it was), as Windows expands environment strings.
+func expandPercent(s string, get func(string) string) string {
+	var b strings.Builder
+	for {
+		i := strings.IndexByte(s, '%')
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		j := strings.IndexByte(s[i+1:], '%')
+		if j < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		name := s[i+1 : i+1+j]
+		b.WriteString(s[:i])
+		if v := get(name); name != "" && v != "" {
+			b.WriteString(v)
+		} else {
+			b.WriteString(s[i : i+j+2])
+		}
+		s = s[i+j+2:]
+	}
 }
 
 func psQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
