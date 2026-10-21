@@ -239,11 +239,9 @@ func resolveLaunchCLI(agentType, cliPath string) (string, error) {
 		return cliPath, nil
 	}
 	if cliPath != "" {
-		// A configured path that can't be run is an error, never another CLI found on PATH or in the common places (#115).
-		if _, err := agent.FindCLI(map[string]string{agent.CLIPathSettingKey(agentType): cliPath}, agentType); err != nil {
-			return "", err
-		}
-		return cliPath, nil
+		// A configured path that can't be run is an error, never another CLI found on PATH or in the common places (#115); the one
+		// that runs is the resolved one, as for a restart (an extensionless claude is its claude.cmd).
+		return agent.FindCLI(map[string]string{agent.CLIPathSettingKey(agentType): cliPath}, agentType)
 	}
 	checkBin := ""
 	if info := agent.GetCLIInfo(agentType); info != nil {

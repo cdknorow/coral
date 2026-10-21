@@ -151,6 +151,10 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		attempt.Finish(tracking.OutcomeFailure, classifyLaunchError(err), 0, 1)
+		if refuse, ok := cliPathRefusal(viaHub(r.Context(), r), err); ok { // a setting to fix, not a server fault (#115)
+			refuse(w)
+			return
+		}
 		errInternalServer(w, err.Error())
 		return
 	}
