@@ -22,14 +22,19 @@ type windowsPTY struct {
 }
 
 func startPTYProcess(name string, args []string, dir string, env []string, cols, rows uint16) (ptyProcess, error) {
-	// ConPTY takes a single command line string. Joining with spaces, unquoted, is right only for
-	// what newSession passes (#3690, #3689 finding 5): defaultShell (one word), shellWrap
-	// (powershell.exe -NoProfile -Command <cmd>: PowerShell reads everything after -Command as the
+	// ConPTY takes a single command line string. The program is quoted (windowsProgram): it is
+	// often an absolute path with a space (C:\Program Files\PowerShell\7\pwsh.exe, #26 G1A), and
+	// unquoted CreateProcessW would try C:\Program.exe first. The arguments are joined with
+	// spaces, unquoted, which is right only for what newSession passes (#3690, #3689 finding 5):
+	// shellWrap's (-NoProfile -Command <cmd>: PowerShell reads everything after -Command as the
 	// command) and strings.Fields of a command with no shell metacharacters or quotes. Any other
 	// caller must quote its arguments itself.
-	cmdLine := name
+	cmdLine, err := windowsProgram(name)
+	if err != nil {
+		return nil, err
+	}
 	if len(args) > 0 {
-		cmdLine = name + " " + strings.Join(args, " ")
+		cmdLine += " " + strings.Join(args, " ")
 	}
 
 	// The agent gets env, newSession's filtered environment (#3389), as on Unix (cmd.Env): without

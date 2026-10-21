@@ -68,12 +68,10 @@ var systemPowerShell = func() string {
 	return ""
 }
 
-// absolute reports whether p is an absolute Windows path (C:\x, C:/x, \\server\share), on
-// any OS.
+// absolute reports whether p is an absolute path on a local drive (C:\x, C:/x), on any OS. A
+// UNC path (\\server\share\pwsh.exe, from a PATH entry) is not: the shell is never a program
+// on another machine (#26 G1A F2).
 func absolute(p string) bool {
-	if strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, "//") {
-		return true
-	}
 	return len(p) > 2 && p[1] == ':' && (p[2] == '\\' || p[2] == '/') &&
 		(p[0] >= 'a' && p[0] <= 'z' || p[0] >= 'A' && p[0] <= 'Z')
 }
