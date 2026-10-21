@@ -126,7 +126,7 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	}
 	cmd := exec.CommandContext(stepCtx, shell, "-c", expandedCmd)
 	cmd.Dir = repoPath
-	cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
+	cmd.Env = withShellDirs(append(agentenv.Filter(os.Environ()), env...), shell) // #3389: no server-only settings
 	// Set process group for clean kill
 	configureChildProcess(cmd)
 
