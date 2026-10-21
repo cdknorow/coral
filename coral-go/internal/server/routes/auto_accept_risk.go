@@ -307,6 +307,24 @@ func redirections(seg string) (string, []string) {
 	var targets []string
 	b := []byte(seg)
 	for i := 0; i < len(b); i++ {
+		if b[i] == '<' && !(i+1 < len(b) && b[i+1] == '(') {
+			// An input redirection (<, <<, <<<) and its operand name no file the command writes: they are not its arguments.
+			k := i
+			for k < len(b) && b[k] == '<' {
+				k++
+			}
+			for k < len(b) && (b[k] == ' ' || b[k] == '	') {
+				k++
+			}
+			for k < len(b) && !strings.ContainsRune(" 	;&|<>", rune(b[k])) {
+				k++
+			}
+			for x := i; x < k; x++ {
+				b[x] = ' '
+			}
+			i = k - 1
+			continue
+		}
 		if b[i] != '>' {
 			continue
 		}

@@ -168,3 +168,15 @@ func TestBackslashPathsAreJudgedAsPathsOnWindows(t *testing.T) {
 	}
 	assert.Contains(t, shellRisk(`make && \sudo cp x y`, wd), "sudo", `a command-position \sudo is still sudo`)
 }
+
+// QA on #46: an input redirection and its operand are not arguments of the command (`tee < in.txt` took "<" as a file
+// to write, which fails closed on Windows where "<" is not a name). A real output target still counts.
+func TestInputRedirectionsAreNotWriteTargets(t *testing.T) {
+	wd := t.TempDir()
+	for _, cmd := range []string{"tee < in.txt", "tee <in.txt", "sort < in.txt", "tee out.txt < in.txt", "cat <<< hello", "tee <<EOF", "tee < in.txt >> log.txt"} {
+		assert.Empty(t, shellRisk(cmd, wd), cmd)
+	}
+	for _, cmd := range []string{"tee < in.txt /etc/hosts", "sort < in.txt > /etc/hosts", "cat <<< x | tee /etc/motd"} {
+		assert.NotEmpty(t, shellRisk(cmd, wd), cmd)
+	}
+}
