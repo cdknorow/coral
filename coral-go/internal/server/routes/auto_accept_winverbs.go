@@ -476,6 +476,14 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 			}
 		}
 		return "" // piped into iex, the sink is judged
+	case "bash", "sh", "zsh", "dash", "ksh":
+		// Git Bash and the like, by any path (a path with a space in it too): the -c text is judged, as PowerShell's and cmd's own text is.
+		for i, a := range args {
+			if strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "c") && i+1 < len(args) {
+				return winVerbRisk(strings.Join(args[i+1:], " "), outside)
+			}
+		}
+		return ""
 	case "tar", "bsdtar":
 		for i, a := range args {
 			v := ""
