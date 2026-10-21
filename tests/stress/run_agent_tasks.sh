@@ -51,12 +51,12 @@ cleanup() {
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
+    coral_test_sandbox_cleanup   # #4354: its check first (a crash path reads the stub marker), then the folders
     if [[ $exit_code -ne 0 || $FAIL -gt 0 || ${KEEP_TEST_DATA:-0} == 1 ]]; then
         log "Test data and server log: ${TMPDIR_AT:-}"
     else
-        rm -rf "${TMPDIR_AT:-}" 2>/dev/null || true
+        coral_test_rm_tree "${TMPDIR_AT:-}"
     fi
-    coral_test_sandbox_cleanup   # #4354
 }
 trap cleanup EXIT
 coral_test_watchdog   # a hang fails this runner within CORAL_TEST_WATCHDOG_S (default 900 s), not the whole run (#116)
@@ -134,7 +134,7 @@ wait_for_input() {
 launch_agent() {
     local dir="$1" display="$2"
     mkdir -p "$dir"
-    api POST "/api/sessions/launch" -d "{\"working_dir\": \"$dir\", \"agent_type\": \"claude\", \"display_name\": \"$display\"}"
+    api POST "/api/sessions/launch" -d "{\"working_dir\": \"$(coral_test_native_path "$dir")\", \"agent_type\": \"claude\", \"display_name\": \"$display\"}"
 }
 
 create_task() {  # name sid title body notify
@@ -162,8 +162,10 @@ cd "$CORAL_DIR"
 # This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
 # installed app's (#3492), so without them its agents would send no status events.
 go build -p 1 -tags "dev fts5" -o "$TMPDIR_AT/" ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync
-go build -p 1 -o "$TMPDIR_AT/mock-agent" ./cmd/mock-agent/
-go build -p 1 -o "$TMPDIR_AT/coral-board" ./cmd/coral-board/
+go build -p 1 -o "$TMPDIR_AT/mock-agent${CORAL_TEST_EXE}" ./cmd/mock-agent/
+go build -p 1 -o "$TMPDIR_AT/coral-board${CORAL_TEST_EXE}" ./cmd/coral-board/
+# The mock as the server reads it: a native path, with .exe on Windows (a Windows server finds a CLI only by its extension).
+MOCK_AGENT_NATIVE="$(coral_test_native_path "$TMPDIR_AT/mock-agent${CORAL_TEST_EXE}")"
 
 log "Starting coral server on port $PORT..."
 # The server gets its own HOME and no host-data dirs, so it never indexes this machine's real
@@ -189,7 +191,7 @@ COOKIE=$(awk '$6 ~ /^coral_session/ {print $6 "=" $7}' "$JAR" | tail -1)
 DASHBOARD_HEADERS+=(-H "Cookie: $COOKIE")
 
 # The dummy agent stands in for the Claude CLI
-api PUT "/api/settings" -d "{\"cli_path_claude\": \"$TMPDIR_AT/mock-agent\"}" >/dev/null
+api PUT "/api/settings" -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}" >/dev/null
 
 # ── Test 1: launch a dummy agent (no board) ──────────────────────────
 
