@@ -101,6 +101,18 @@ the first failed check.
    `cask: Coral X.Y.Z` commit on `main` (it reads the DMG's sha256 from the release's metadata, not by downloading anything).
    `tools/devops/release-cadence.sh` prints every release with its channel and how long it has waited.
 
+## Release provenance (#5550)
+
+- **At every tag**: the first step of `release.yml`'s resolve job runs `tests/release/release_provenance.py`. It writes into the run's
+  summary who pushed the tag, the tagged commit, whether that commit is the tip of `main` (or on it), and whether `go-tests`, `go-race` and
+  `cdp-gate` (`.github/gate.json`, "always") passed on that exact code. The heavy gates run on the commit pushed to a `ci/` branch; the tagged
+  commit is that tree plus the release notes, so a notes-only tagged commit is judged by its single parent's runs. A failed, cancelled or
+  missing gate fails the release before anything is built.
+- **Every Monday** (`reverify-releases.yml`, also by hand from `main`): the three newest published releases are verified again
+  with `verify-release.sh --require-cosign` (stage by their state), from the release runs' artifacts, no download from the release. A release
+  that changed after publication, or whose signatures stop verifying, turns the run red. The macOS-only rows (DMG signature, stapling) SKIP on
+  the Linux runner; they are the smoke's job.
+
 ## Downloads from a release by our own automation
 
 A download of a release asset counts in the release's download numbers, so our own checks don't download them (#4936).
