@@ -98,6 +98,10 @@ export function showSecurityWarning(message) {
 }
 
 /** Damage the server's integrity check found in a database (#4157): what to do, as text. */
+export function showFirewallWarning(message) {
+    showWarningToast("firewall-warning-toast", "Windows Firewall", message);
+}
+
 export function showDatabaseWarning(message) {
     showWarningToast("database-warning-toast", "Database damage", message);
 }

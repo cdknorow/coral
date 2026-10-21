@@ -14,6 +14,7 @@ import (
 	"github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/background"
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/firewall"
 	"github.com/subgentic/coral/internal/tmux"
 	"github.com/subgentic/coral/internal/tracking"
 )
@@ -110,6 +111,9 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		// A data folder other people on this computer can read (Windows; #3637): shown on the
 		// dashboard's first page, not only in the log. "" when there is nothing to say.
 		"security_warning": dataDirWarning(h.cfg.CoralDir()),
+		// A Windows Firewall rule for Coral's programs that allows more than it needs (Public profile, every port), found by the
+		// read-only startup check (#97): shown as its own warning with the commands that narrow or remove it. "" when none.
+		"firewall_warning": firewall.Warning(),
 		// Damage the integrity check found a minute after start (#4157); "" when none.
 		"database_warning": background.DatabaseWarning(),
 	}
