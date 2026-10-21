@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"unicode"
 )
 
 // listFlag is a flag that may be given more than once.
@@ -19,8 +20,8 @@ const queueUsageText = `Usage: coral-board queue [--json]
 
 The merge queue (#5689): the approved tasks whose patches have not landed, oldest approval first. Each shows its patches: only the newest
 revision of each name that the approving round approved (an older revision stays on the task as history, a revision attached after the
-approval is never listed). Rows from submit-review carry no sequence number and sort as the oldest. How stale a patch's base is, and which
-patches conflict with each other, need git and are reported by the land command, not here.`
+approval is never listed. Rows from submit-review carry no sequence number and sort as the oldest. How stale a patch's base is, and which
+patches conflict with each other, need git: the person who lands checks them (see the merge queue guide in agent_docs/merge-queue.md).`
 
 // cmdQueue prints the merge queue of the board this agent is subscribed to.
 func cmdQueue() {
@@ -75,9 +76,20 @@ func cmdQueue() {
 		return
 	}
 	for _, e := range out.Queue {
-		fmt.Printf("#%d  %s  (by %s, approved by %s at %s)\n", e.TaskID, e.Title, e.Author, strings.Join(e.Approvers, ", "), e.ApprovedAt)
+		fmt.Printf("#%d  %s  (by %s, approved by %s at %s)\n", e.TaskID, printable(e.Title), printable(e.Author), printable(strings.Join(e.Approvers, ", ")), printable(e.ApprovedAt))
 		for _, p := range e.Patches {
-			fmt.Printf("    %s  digest %s  base %s\n", p.Name, p.Digest, p.Revision)
+			fmt.Printf("    %s  digest %s  base %s\n", printable(p.Name), printable(p.Digest), printable(p.Revision))
 		}
 	}
+}
+
+// printable is s with every control and formatting character dropped (ESC and the CSI sequences it starts, C1, a direction override, a
+// zero-width mark): what a task title or a name written by someone else may do to the terminal that prints it.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029' {
+			return -1
+		}
+		return r
+	}, s)
 }

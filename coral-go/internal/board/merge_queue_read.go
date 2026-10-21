@@ -72,7 +72,7 @@ func candidatePatches(w *TaskWorkflow) []TaskArtifact {
 }
 
 // MergeQueue lists the approved, not yet landed tasks of a board, oldest approval first. It reads only what the board holds: how stale a
-// base is and which patches conflict need git, and are the land command's.
+// base is and which patches conflict need git: the person who lands checks them (agent_docs/merge-queue.md).
 func (s *Store) MergeQueue(ctx context.Context, project string) ([]QueueEntry, error) {
 	rows, err := s.reader().QueryxContext(ctx, `SELECT t.id, t.title, t.completed_at, w.data FROM board_tasks t JOIN task_workflows w ON w.task_id = t.id
 		WHERE t.board_id = ? AND t.status = 'completed' AND w.data LIKE '%"approved_digests"%' ORDER BY t.id`, project)
