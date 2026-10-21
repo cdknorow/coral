@@ -178,6 +178,8 @@ func newAutoAcceptRig(t *testing.T) *autoAcceptRig {
 	h.SetNotificationStore(rig.notifs)
 	rig.a = NewAutoAcceptor(h)
 	rig.a.now = func() time.Time { return rig.now }
+	// The owner has let the Coral Hub turn auto-accept on (off unless turned on, #126 F4).
+	require.NoError(t, h.ss.SetSetting(context.Background(), AllowHubAutoAcceptSetting, "true"))
 	return rig
 }
 
@@ -561,7 +563,12 @@ func TestAutoAcceptEnableProvenance(t *testing.T) {
 	assert.Nil(t, body["auto_accept_paused_code"])
 	require.Len(t, r.events(sid, "auto_accept_disabled"), 1)
 
-	// The Cloud Hub through the connector: a hub enable, an hour by default.
+	// The Cloud Hub through the connector, while the owner's switch is unset: off by default (#126 F4).
+	_, err := r.h.ss.DeleteSetting(context.Background(), AllowHubAutoAcceptSetting)
+	require.NoError(t, err)
+	refused(map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}, "hub_auto_accept_disabled")
+	require.NoError(t, r.h.ss.SetSetting(context.Background(), AllowHubAutoAcceptSetting, "true"))
+	// With it on: a hub enable, an hour by default.
 	code, body = r.enableAs(sid, sid, map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}, nil)
 	require.Equal(t, http.StatusOK, code, body)
 	assert.Equal(t, "hub", body["auto_accept_source"])

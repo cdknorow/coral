@@ -27,7 +27,7 @@ func hubAsksToSkip(agentType string, flags []string, caps *agent.Capabilities, t
 // owner allowed that on this computer, and reports whether it refused: the agent auto-accept rule
 // (#3182, #3377 SEC-JB-01), on every route that starts an agent with the request's choices (launch,
 // launch-team, restart, tasks/run). The request must carry the Hub's provenance, the local switch
-// "Coral Hub can turn on auto-accept" must be on and the Launch
+// "Coral Hub can turn on auto-accept" must be on (off unless the owner turned it on) and the Launch
 // mode must be set. It is refused, never stripped, so the person sees why. A local request is not
 // gated: the owner chooses at the dashboard, the command line or with the API key.
 func refuseHubSkip(w http.ResponseWriter, r *http.Request, ss *store.SessionStore, skips bool) bool {

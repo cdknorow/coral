@@ -66,7 +66,9 @@ func TestAutoAcceptRouteTiers(t *testing.T) {
 	assert.NotEqual(t, 403, code(disable))
 	assert.Equal(t, 200, code(all))
 	setMode("launch")
-	assert.NotEqual(t, 403, code(enable), "Launch reaches the handler (404: no such session)")
+	assert.Equal(t, 403, code(enable), "Launch, but the owner's switch is off unless turned on (#126 F4)")
+	require.Equal(t, 200, call(h, "PUT", "/api/cloud/allow-auto-accept", `{"allow":true}`, js).Code)
+	assert.NotEqual(t, 403, code(enable), "Launch and the switch on reach the handler (404: no such session)")
 	for _, m := range []string{"view", "interact", "launch"} {
 		setMode(m)
 		assert.Equal(t, 403, call(h, "PUT", "/api/cloud/allow-auto-accept", `{"allow":true}`, hub).Code, m)
@@ -81,6 +83,7 @@ func TestAutoAcceptForgedTunnelStampIsRefused(t *testing.T) {
 	h := r.srv.Router()
 	js := map[string]string{"Content-Type": "application/json"}
 	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"launch"}`, js).Code)
+	require.Equal(t, 200, call(h, "PUT", "/api/cloud/allow-auto-accept", `{"allow":true}`, js).Code) // off unless turned on (#126 F4)
 	ss := store.NewSessionStore(r.db)
 	sid := "11111111-2222-3333-4444-555555555555"
 	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "dev", WorkingDir: r.work}))
@@ -111,7 +114,7 @@ func TestAutoAcceptForgedTunnelStampIsRefused(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), `"auto_accept_source":"local"`)
 }
 
-// The owner's switch "Cloud Hub can turn on auto-accept" is on by default, set
+// The owner's switch "Cloud Hub can turn on auto-accept" is off by default (#126 F4), set
 // only from the local dashboard, and turning it off ends the hub's enables (not
 // local ones). Lowering the access mode below Launch ends them too.
 func TestAutoAcceptHubAllowSwitchAndModeDrop(t *testing.T) {
@@ -128,7 +131,9 @@ func TestAutoAcceptHubAllowSwitchAndModeDrop(t *testing.T) {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
 		return out
 	}
-	assert.Equal(t, true, status()["allow_hub_auto_accept"], "on by default")
+	assert.Equal(t, false, status()["allow_hub_auto_accept"], "off by default (#126 F4)")
+	require.Equal(t, 200, call(h, "PUT", "/api/cloud/allow-auto-accept", `{"allow":true}`, js).Code)
+	assert.Equal(t, true, status()["allow_hub_auto_accept"], "turned on")
 
 	sids := map[string]string{"hub": "11111111-2222-3333-4444-555555555555", "local": "22222222-2222-3333-4444-555555555555"}
 	seed := func() {

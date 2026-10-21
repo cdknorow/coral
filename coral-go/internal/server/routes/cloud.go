@@ -35,10 +35,13 @@ import (
 // routes are not in the tunnel route table).
 const MaxModeSetting = "cloud_max_mode"
 
-// AllowHubAutoAcceptSetting is the local owner switch "Cloud Hub can turn on
-// auto-accept" (#3182). It is on unless set to "false": the Launch access cap is
-// already an explicit local opt-in, and this is the kill switch. Local only, like
-// the mode cap; turning it off ends every enable that came from the hub.
+// AllowHubAutoAcceptSetting is the local owner switch "Coral Hub can turn on
+// auto-accept" (#3182): auto-accept from the hub, and a hub launch, team launch,
+// restart or task run that skips permission prompts (#126 F4). It is off unless the
+// owner turned it on (an install where it was never set included, #126 F4; it was on
+// by default before): Launch lets the hub start agents, this lets them act without
+// asking. Local only, like the mode cap; turning it off ends every enable that came
+// from the hub.
 const AllowHubAutoAcceptSetting = "cloud_allow_hub_auto_accept"
 
 // HubRelaunchSetting is the local switch "Let Coral Hub relaunch this Coral to install updates" (#5280). On unless set to "false",
@@ -134,7 +137,7 @@ func requestRedactor(r *http.Request) redact.Redactor {
 	return secrets.Redactor()
 }
 
-// HubAutoAcceptAllowed reads the switch (default on).
+// HubAutoAcceptAllowed reads the switch (default off).
 func HubAutoAcceptAllowed(settings map[string]string) bool {
 	return setreg.Bool(settings, AllowHubAutoAcceptSetting)
 }
