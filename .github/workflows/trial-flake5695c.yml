@@ -36,6 +36,6 @@ jobs:
           go version
           go test -count=5 -v -run '^TestBackgroundCallersStillAskClaudeWhenSignedIn$' ./internal/background > /tmp/o.log 2>&1 || true
           echo "VARIANT ${{ matrix.name }}"
-          grep -cE "^        --- PASS|^    --- PASS" /tmp/o.log | sed 's/^/pass-subtests /'
-          grep -cE "^    --- FAIL|^        --- FAIL" /tmp/o.log | sed 's/^/fail-subtests /'
-          grep -E "Messages|Error:" /tmp/o.log | sort | uniq -c | head -5
+          grep -cE "^        --- PASS|^    --- PASS" /tmp/o.log | sed "s/^/pass-subtests /" || true
+          grep -E "^ *--- FAIL" /tmp/o.log | sort | uniq -c || true
+          grep -E "Messages|Error:|Should be less" /tmp/o.log | sort | uniq -c | head -5 || true
