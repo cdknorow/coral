@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,4 +84,62 @@ func TestPTYStyledScreenMarksAFaintSuggestion(t *testing.T) {
 	styled2, err := term2.AgentScreenStyled(context.Background(), "claude-10-typed", "claude", "")
 	require.NoError(t, err)
 	assert.False(t, suggestionOnly(styled2), "text a person typed is not a suggestion: %q", styled2)
+}
+
+// An empty render is not replaced by the raw output's tail: the gate holds on it.
+func TestPTYAgentScreenIsNeverTheRawTail(t *testing.T) {
+	name := "claude-6-empty"
+	term, _ := ptyGateTerm(t, name, "\x1b[2J") // nothing on screen
+	screen, err := term.AgentScreen(context.Background(), name, "claude", "")
+	require.NoError(t, err)
+	assert.Empty(t, strings.TrimSpace(screen))
+}
+
+// recTerm records the order of the gate's screen reads and Enters.
+type recTerm struct {
+	*PTYSessionTerminal
+	mu  sync.Mutex
+	log []string
+}
+
+func (r *recTerm) note(s string) { r.mu.Lock(); r.log = append(r.log, s); r.mu.Unlock() }
+func (r *recTerm) AgentScreen(ctx context.Context, n, a, s string) (string, error) {
+	r.note("screen")
+	return r.PTYSessionTerminal.AgentScreen(ctx, n, a, s)
+}
+func (r *recTerm) SendEnter(ctx context.Context, n, a, s string) error {
+	r.note("enter")
+	return r.PTYSessionTerminal.SendEnter(ctx, n, a, s)
+}
+
+// A held Enter (the Enter of a typed send withheld because a prompt opened) is always preceded by the gate
+// reading the screen again, and is not sent while a prompt is open.
+func TestHeldEnterIsRetriedOnlyAfterTheGateReadsTheScreen(t *testing.T) {
+	setWaits(t, func(w *waitTimings) { w.promptSubmitDelay = time.Millisecond })
+	name := "claude-7-heldenter"
+	base, proc := ptyGateTerm(t, name, " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n")
+	term := &recTerm{PTYSessionTerminal: base}
+	in := AutomatedInput{Term: term, Name: name, AgentType: "claude", Key: "k", Text: "hello", What: "test"}
+	gate.holdEnter(in, kindPrompt)
+	t.Cleanup(func() { DropHeld(name, "test") })
+
+	gate.flush(context.Background(), name)
+	assert.Empty(t, proc.written(), "no Enter while the prompt is open")
+	assert.NotContains(t, term.log, "enter")
+
+	b, ok := base.backend.sessions[name]
+	require.True(t, ok)
+	b.ringMax = 1 << 16
+	b.ring = []byte(crlf(claudeBoxScreen("hello", 100)))
+	term.mu.Lock()
+	term.log = nil
+	term.mu.Unlock()
+	gate.flush(context.Background(), name)
+	require.Contains(t, term.log, "enter", "the Enter goes once the prompt is gone")
+	assert.Equal(t, "screen", term.log[0], "the screen was read before the Enter")
+	for i, e := range term.log {
+		if e == "enter" {
+			assert.Equal(t, "screen", term.log[i-1], "every Enter directly follows a screen read: %v", term.log)
+		}
+	}
 }
