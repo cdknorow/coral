@@ -76,6 +76,8 @@ func TestTelemetrySinkE2E(t *testing.T) {
 
 	// run starts the dev binary against a fresh fake sink and returns the events captured within the deadline.
 	// seed, when set, writes settings into the data dir's database before the server starts.
+	quietWindow := 4 * time.Second // how long an opt-out run watches for a send: 4 s, or 4 times what the plain run needed once it has run
+	var plainDelay time.Duration
 	run := func(t *testing.T, extraEnv []string, seed func(ctx context.Context, ss *store.SessionStore)) telemetryRun {
 		var mu sync.Mutex
 		var events []capturedEvent
@@ -166,12 +168,17 @@ func TestTelemetrySinkE2E(t *testing.T) {
 			}
 			return i && a
 		}
-		for time.Now().Before(deadline) && !has() {
+		optOut := len(extraEnv) > 0 || seed != nil
+		upAt := time.Now()
+		// A run that may send waits until both events are in (or the deadline). An opt-out run must send nothing, so waiting for events would only wait out the whole deadline
+		// (30 s a run, #5591): it watches a quiet window instead, as long as the plain run needed to receive both events (at least 4 s), so a stray send is still caught.
+		for time.Now().Before(deadline) && !optOut && !has() {
 			time.Sleep(200 * time.Millisecond)
 		}
-		// With an opt-out, nothing should ever arrive: wait a fixed moment so a stray send would be caught.
-		if len(extraEnv) > 0 || seed != nil {
-			time.Sleep(4 * time.Second)
+		if optOut {
+			time.Sleep(quietWindow)
+		} else {
+			plainDelay = time.Since(upAt)
 		}
 		mu.Lock()
 		defer mu.Unlock()
@@ -182,6 +189,9 @@ func TestTelemetrySinkE2E(t *testing.T) {
 
 	// Case A: a plain dev build sends install and app_opened with the safe standard properties, no 'internal'.
 	plain := run(t, nil, nil)
+	if w := 4 * plainDelay; w > quietWindow {
+		quietWindow = min(w, 20*time.Second)
+	}
 	require.True(t, plain.up, "the server answered, so the sends below come from a running Coral")
 	names := map[string]bool{}
 	for _, e := range plain.events {
