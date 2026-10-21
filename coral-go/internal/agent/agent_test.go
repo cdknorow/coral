@@ -401,7 +401,23 @@ func TestBuildBoardSystemPrompt_PromptOnly(t *testing.T) {
 
 // ── Codex LaunchCommand Tests ──────────────────────────
 
+// withHookTool gives the test a tools folder holding Coral's activity hook (CORAL_HOOK_DIR): on
+// Windows a Codex launch has no hooks without one (#49).
+func withHookTool(t *testing.T) {
+	t.Helper()
+	tools := t.TempDir()
+	exe := ""
+	if runtime.GOOS == "windows" {
+		exe = ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(tools, "coral-hook-agentic-state"+exe), nil, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(HookDirEnv, tools)
+}
+
 func TestCodex_BasicLaunch(t *testing.T) {
+	withHookTool(t)
 	a := &CodexAgent{}
 	cmd := launchBody(buildLaunch(a, LaunchParams{}))
 	if !strings.HasPrefix(cmd, "codex ") {
@@ -1188,6 +1204,7 @@ func TestCodex_EnvVarsExported(t *testing.T) {
 }
 
 func TestCodex_InjectsCoralAgenticHooks(t *testing.T) {
+	withHookTool(t)
 	cmd := buildLaunch((&CodexAgent{}), LaunchParams{SessionID: "codex-hooks-test", SessionName: "codex-hooks-test"})
 	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"} {
 		want := fmt.Sprintf("hooks.%s=", event)

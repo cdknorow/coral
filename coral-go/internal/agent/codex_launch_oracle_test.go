@@ -216,9 +216,8 @@ func (a *CodexAgent) launchCommandBefore4845(params LaunchParams) (string, error
 	// Codex does not read Claude's settings.json, so install Coral's activity
 	// hook directly in its config. Without these hooks Codex sessions can still
 	// appear active, but no tool/thinking/stop events reach the activity view.
-	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"} {
-		parts = append(parts, "-c", fmt.Sprintf(`hooks.%s=[{hooks=[{type="command",command=%s}]}]`, event, tomlString(ResolveHookCommand("coral-hook-agentic-state"))))
-	}
+	// (The hooks' form is #49's in both builders: not what #4845 changed.)
+	parts = append(parts, codexHookArgs(params.SessionID)...)
 
 	// Note: Codex's sandbox may strip env vars from child processes.
 	// coral-board handles this via board_state file fallback (reads job_title
