@@ -15,6 +15,12 @@ import (
 
 // "Read the whole message" of a bookmark (#5753, Security's conditions 3 and 4).
 
+// A Coral session id is a lowercase UUID (transcriptlink.IsSessionID): the only shape a saved agent bookmark's ref is read for (#5763).
+const (
+	sess1    = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee1"
+	sessAway = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee9"
+)
+
 const savedFakeToken = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789"
 
 type savedSources struct {
@@ -72,7 +78,7 @@ func TestSavedMessageIsReadFromTheStoredItemOnly(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, "the whole board message", out["text"])
 	assert.Equal(t, false, out["partial"])
-	assert.Nil(t, out["reason"])
+	assert.Equal(t, "", out["reason"], "reason is always there: empty when the whole text is")
 	assert.Equal(t, []string{"teamA/7"}, src.boardCalls, "the source asked is the stored board and message id")
 	// a board's message id that exists on ANOTHER board is not found on the bookmark's own board: gone, nothing of the other board's text
 	other := saveBoard(g, "teamC", "7")
@@ -86,18 +92,18 @@ func TestSavedMessageIsReadFromTheStoredItemOnly(t *testing.T) {
 func TestSavedMessageOfAnAgentUsesItsStoredSessionAndKey(t *testing.T) {
 	g := newSavedRig(t)
 	k1, k2, k3 := strings.Repeat("a1", 10), strings.Repeat("b2", 10), strings.Repeat("c3", 10)
-	src := &savedSources{agentText: map[string]string{"sess-1/" + k1: "what the agent said, whole"}, unreachable: map[string]bool{"sess-away": true}}
+	src := &savedSources{agentText: map[string]string{sess1 + "/" + k1: "what the agent said, whole"}, unreachable: map[string]bool{sessAway: true}}
 	g.h.SetSavedSources(src.board, src.agent)
-	id := saveAgent(g, "sess-1", k1)
+	id := saveAgent(g, sess1, k1)
 	code, out := read(g, id, "?ref=sess-away&key="+k2)
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, "what the agent said, whole", out["text"])
-	assert.Equal(t, []string{"sess-1/claude/" + k1}, src.agentCalls, "the session, agent type and key of the stored item")
+	assert.Equal(t, []string{sess1 + "/claude/" + k1}, src.agentCalls, "the session, agent type and key of the stored item")
 	// gone: there is a transcript and the message is not in it
-	_, out = read(g, saveAgent(g, "sess-1", k3), "")
+	_, out = read(g, saveAgent(g, sess1, k3), "")
 	assert.Equal(t, "gone", out["reason"])
 	// not reachable: no transcript of that agent on this machine
-	_, out = read(g, saveAgent(g, "sess-away", k2), "")
+	_, out = read(g, saveAgent(g, sessAway, k2), "")
 	assert.Equal(t, "not_reachable", out["reason"])
 	assert.Empty(t, out["text"])
 }
@@ -105,7 +111,7 @@ func TestSavedMessageOfAnAgentUsesItsStoredSessionAndKey(t *testing.T) {
 func TestSavedMessageReasonsWhenTheSourcesAreMissingOrFail(t *testing.T) {
 	g := newSavedRig(t)
 	// no readers wired: not reachable, never an error
-	b, a := saveBoard(g, "teamA", "1"), saveAgent(g, "sess-1", strings.Repeat("a1", 10))
+	b, a := saveBoard(g, "teamA", "1"), saveAgent(g, sess1, strings.Repeat("a1", 10))
 	for _, id := range []float64{b, a} {
 		code, out := read(g, id, "")
 		require.Equal(t, http.StatusOK, code)
@@ -179,4 +185,63 @@ func TestSavedMessageIsTheOwnersAloneThroughTheHub(t *testing.T) {
 		assert.Equal(t, "owner_only", out["code"], name)
 		assert.Contains(t, fmt.Sprint(out["error"]), "saved messages", name)
 	}
+}
+
+// The stored ref of an agent bookmark is client text: a ref that is not a session id (a glob pattern, a path) is never handed to a transcript lookup (#5763).
+func TestSavedMessageNeverLooksUpARefThatIsNotASessionID(t *testing.T) {
+	g := newSavedRig(t)
+	src := &savedSources{agentText: map[string]string{}}
+	g.h.SetSavedSources(src.board, src.agent)
+	k := strings.Repeat("a1", 10)
+	for _, ref := range []string{"*", "[a-z]*", "../../etc", "sess-1", "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee*", strings.ToUpper(sess1)} {
+		m := agentSave(k, "x")
+		m["ref"] = ref
+		code, out := g.do("POST", "/api/saved", savedAsOperator, m)
+		require.Equal(t, http.StatusOK, code, out)
+		_, reply := read(g, out["id"].(float64), "")
+		assert.Equal(t, "not_reachable", reply["reason"], ref)
+		assert.Empty(t, reply["text"], ref)
+	}
+	assert.Empty(t, src.agentCalls, "no transcript lookup for any of them")
+}
+
+// The reply is message text: never cached (#5763).
+func TestSavedRepliesAreNotCached(t *testing.T) {
+	g := newSavedRig(t)
+	src := &savedSources{boardText: map[string]string{"t/1": "text"}}
+	g.h.SetSavedSources(src.board, src.agent)
+	id := saveBoard(g, "t", "1")
+	for _, path := range []string{fmt.Sprintf("/api/saved/%d/message", int64(id)), "/api/saved", "/api/saved/99999/message"} {
+		req, err := http.NewRequest("GET", g.srv.URL+path, nil)
+		require.NoError(t, err)
+		req.Header.Set(testDashboardHeader, "1")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		assert.Equal(t, "no-store", resp.Header.Get("Cache-Control"), path)
+	}
+}
+
+// Saving, marking done and removing are the owner's alone through the hub too (#5763, Security's SHOULD 3): a hub grantee at Interact can neither read nor change the
+// owner's bookmarks.
+func TestSavedChangesAreTheOwnersAloneThroughTheHub(t *testing.T) {
+	g := newSavedRig(t)
+	withLabel(t, cmtHubUser, nil)
+	id := saveAgent(g, sess1, strings.Repeat("a1", 10))
+	for name, hdr := range map[string]map[string]string{"a hub grantee": cmtAsHub, "the owner's credential with no owner marker": cmtAsOwnerThroughTunnel, "a forged stamp": cmtAsForged} {
+		for _, c := range []struct{ m, p string }{{"POST", "/api/saved"}, {"PATCH", fmt.Sprintf("/api/saved/%d", int64(id))}, {"DELETE", fmt.Sprintf("/api/saved/%d", int64(id))}} {
+			code, out := g.do(c.m, c.p, hdr, agentSave(strings.Repeat("b2", 10), "x"))
+			assert.Equal(t, http.StatusForbidden, code, name+" "+c.m)
+			assert.Equal(t, "owner_only", out["code"], name+" "+c.m)
+		}
+	}
+	_, list := g.do("GET", "/api/saved", savedAsOperator, nil)
+	assert.Len(t, list["items"], 1, "nothing was saved or removed by a refused caller")
+	// the owner through the hub may
+	code, _ := g.do("PATCH", fmt.Sprintf("/api/saved/%d", int64(id)), cmtAsHubOwner, map[string]any{"done": true})
+	assert.Equal(t, http.StatusOK, code)
+	code, _ = g.do("DELETE", fmt.Sprintf("/api/saved/%d", int64(id)), cmtAsHubOwner, nil)
+	assert.Equal(t, http.StatusOK, code)
+	code, _ = g.do("POST", "/api/saved", cmtAsHubOwner, agentSave(strings.Repeat("b2", 10), "x"))
+	assert.Equal(t, http.StatusOK, code)
 }

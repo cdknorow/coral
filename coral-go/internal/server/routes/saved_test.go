@@ -108,8 +108,8 @@ func TestSavedMessagesAreTheOperatorsAndKeptOnce(t *testing.T) {
 			code, out := g.do(c.m, c.p, hdr, agentSave(k1, "x"))
 			assert.Equal(t, http.StatusForbidden, code, name+" "+c.m+" "+c.p)
 			want := "operator_only"
-			if name == "a forged hub stamp" && c.m == "GET" {
-				want = "owner_only" // the list is the Hub owner's alone through the hub (#5753): a stamp that is not the connector's is a hub request with no owner
+			if name == "a forged hub stamp" {
+				want = "owner_only" // every saved route is the Hub owner's alone through the hub (#5753, #5763): a stamp that is not the connector's is a hub request with no owner
 			}
 			assert.Equal(t, want, out["code"], name)
 		}
