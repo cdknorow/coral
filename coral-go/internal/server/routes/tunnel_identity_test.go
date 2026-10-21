@@ -293,8 +293,8 @@ func hubTestGitRepo(t *testing.T) string {
 	return dir
 }
 
-// #3377 (SEC-JB-01): through the tunnel an auto-accepting run (the flag, or the CLI flags
-// themselves) needs the local allow-hub-auto-accept switch and Launch mode; repo_path
+// #3377 (SEC-JB-01): through the tunnel an auto-accepting run (the flag, or CLI flags that skip
+// permission prompts in any spelling, agent.SkipsPermissionPrompts, #126 F4) needs the local allow-hub-auto-accept switch and Launch mode; repo_path
 // must be a git work tree for everyone.
 func TestTasksRunAutoAcceptThroughTheHub(t *testing.T) {
 	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "t.db"))
@@ -317,6 +317,10 @@ func TestTasksRunAutoAcceptThroughTheHub(t *testing.T) {
 	}
 	auto := `{"prompt":"p","repo_path":` + jsonString(repo) + `,"auto_accept":true}`
 	flags := `{"prompt":"p","repo_path":` + jsonString(repo) + `,"flags":"--dangerously-skip-permissions"}`
+	// Spellings the old substring list missed (#126 F4).
+	codexNever := `{"prompt":"p","repo_path":` + jsonString(repo) + `,"agent_type":"codex","flags":"-a never"}`
+	claudeEdits := `{"prompt":"p","repo_path":` + jsonString(repo) + `,"flags":"--permission-mode acceptEdits"}`
+	geminiYolo := `{"prompt":"p","repo_path":` + jsonString(repo) + `,"agent_type":"gemini","flags":"--approval-mode yolo"}`
 
 	code, c := run(true, true, auto)
 	assert.Equal(t, http.StatusForbidden, code)
@@ -328,7 +332,7 @@ func TestTasksRunAutoAcceptThroughTheHub(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, code)
 	assert.Equal(t, "no_dashboard_provenance", c, "a forged stamp")
 	require.NoError(t, ss.SetSetting(context.Background(), AllowHubAutoAcceptSetting, "false"))
-	for _, b := range []string{auto, flags} {
+	for _, b := range []string{auto, flags, codexNever, claudeEdits, geminiYolo} {
 		code, c = run(true, true, b)
 		assert.Equal(t, http.StatusForbidden, code, b)
 		assert.Equal(t, "hub_auto_accept_disabled", c, b)
@@ -337,6 +341,8 @@ func TestTasksRunAutoAcceptThroughTheHub(t *testing.T) {
 	assert.Equal(t, http.StatusOK, code, "from this computer: unchanged")
 	code, _ = run(true, true, `{"prompt":"p","repo_path":`+jsonString(repo)+`}`)
 	assert.Equal(t, http.StatusOK, code, "no auto-accept: no switch needed")
+	code, _ = run(true, true, `{"prompt":"p","repo_path":`+jsonString(repo)+`,"agent_type":"codex","flags":"--sandbox read-only -a on-request"}`)
+	assert.Equal(t, http.StatusOK, code, "flags that keep the prompts: no switch needed")
 
 	notGit := t.TempDir()
 	code, _ = run(false, false, `{"prompt":"p","repo_path":`+jsonString(notGit)+`}`)
