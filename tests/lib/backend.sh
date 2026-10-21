@@ -84,6 +84,17 @@ coral_test_watchdog_stop() {
     return 0
 }
 
+# coral_test_require_ok BODY WHAT: a settings write the runner depends on must have taken (the server answers
+# {"ok":true}); otherwise the runner stops with the server's answer, and its EXIT trap cleans up. A refused
+# cli_path_claude (a Git Bash path on Windows: 'no file at /tmp/...') left the CLI on PATH in place and the
+# nudge test passed against it (#121 N2).
+coral_test_require_ok() {
+    if [[ "$1" != *'"ok":true'* ]]; then
+        echo "ERROR: $2 was not accepted by the server: ${1:-no answer}" >&2
+        exit 1
+    fi
+}
+
 # coral_test_backend_only BACKEND REASON: a runner whose checks read that backend's internals
 # (tmux sockets, show-environment) runs only on it; on another backend it says why and exits 0.
 coral_test_backend_only() {

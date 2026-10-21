@@ -118,7 +118,7 @@ SERVER_PID=$!
 wait_for_server
 
 # Set CLI path to mock-agent so we don't need the real claude binary
-api PUT "/api/settings" -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}" >/dev/null
+coral_test_require_ok "$(api PUT "/api/settings" -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}")" "cli_path_claude=$MOCK_AGENT_NATIVE"
 
 TEAM_NAME="wt-test-$$"
 # WORKTREE_PATH and WORKTREE_BRANCH are discovered from the launch result below: the product
