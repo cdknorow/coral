@@ -156,12 +156,12 @@ func TestIsOwnerRouteIsTheUpdateRoutesAndTheOwnersConfiguration(t *testing.T) {
 		{http.MethodPut, "/api/settings", false},
 		{http.MethodGet, "/api/settings/default-prompts", false},
 		{http.MethodGet, "/api/board/team/status", false},
-		// the artifact routes (#5575): the machine answers them to the owner alone, so the marker must be stamped on them
+		// the artifact routes (#5575, #5577): the machine answers them to the owner alone, so the marker must be stamped on them
 		{http.MethodGet, "/api/artifacts", true},
 		{http.MethodGet, "/api/artifacts/" + hexID, true},
 		{http.MethodGet, "/api/artifacts/" + hexID + "/meta", true},
 		{http.MethodGet, "/api/artifacts/" + hexID + "/comments", true},
-		{http.MethodGet, "/api/artifacts/" + hexID + "/readers", false}, // not in this release
+		{http.MethodGet, "/api/artifacts/" + hexID + "/readers", true},
 		{http.MethodDelete, "/api/artifacts/" + hexID, true},
 		{http.MethodGet, "/api/board/team/artifacts", true},
 		{http.MethodGet, "/api/board/team/tasks/12/artifact-content", true},
