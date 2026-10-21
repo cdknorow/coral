@@ -1,5 +1,20 @@
 # Release Notes
 
+## v1.4.143 — The Go module is now github.com/subgentic/coral
+
+### Changes
+
+- **The Go module path is now `github.com/subgentic/coral`** (it was `github.com/cdknorow/coral`), to match the repository's new home. This matters only if you build Coral from source with your own changes or import its `pkg/` packages in your own Go code: change the import paths from `github.com/cdknorow/coral/pkg/...` to `github.com/subgentic/coral/pkg/...`. Nothing changes for an installed Coral, and you do not need to reinstall or change any setting.
+
+### Fixes
+
+- **Windows builds made with `tools/build_windows.ps1` now report their version.** They reported none before: `coral --version` said "development build" and such a build never checked for updates.
+
+### Internal
+
+- **Every build now checks that its version and settings flags take effect**, so a build that quietly ignored them can no longer be published.
+- The Python packages that build the documentation site, and the build tool for the CodeMirror editor bundle, were updated to clear security alerts. Nothing in a package or in the dashboard changes.
+
 ## v1.4.142 — Coral has a new home: github.com/subgentic/coral
 
 ### Changes
