@@ -177,6 +177,7 @@ func promoteIdentity(p Pins) Identity {
 		SourceRepositoryRef: p.PromoteRef,
 		RunnerEnvironment:   RunnerEnvironment,
 		BuildTrigger:        PromoteTrigger,
+		SourceRepositoryID:  p.PromoteRepoID,
 	}
 }
 
@@ -188,6 +189,7 @@ func releaseIdentity(p Pins, tag string) Identity {
 		SourceRepositoryRef: "refs/tags/" + tag,
 		RunnerEnvironment:   RunnerEnvironment,
 		BuildTrigger:        ReleaseTrigger,
+		SourceRepositoryID:  p.RepoID,
 	}
 }
 

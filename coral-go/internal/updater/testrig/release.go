@@ -18,6 +18,9 @@ const (
 	FakeIssuer      = "https://oidc.rehearsal.invalid"
 	FakeRepo        = "rehearsal.invalid/coral"
 	FakePromoteRepo = "rehearsal.invalid/coral-promote"
+	// The rehearsal repositories' numeric ids: the pins require them (#5536).
+	FakeRepoID        = "9000001"
+	FakePromoteRepoID = "9000002"
 	// FakeCommit is the commit the fake release workflow says it built.
 	FakeCommit = "0123456789abcdef0123456789abcdef01234567"
 )
@@ -25,8 +28,8 @@ const (
 // Pins are the updater's pins for the fake identities: the same fields as verify.DefaultPins, with the repositories and issuer of the rehearsal.
 func Pins() verify.Pins {
 	return verify.Pins{
-		Repo: FakeRepo, Issuer: FakeIssuer,
-		PromoteRepo: FakePromoteRepo, PromoteWorkflow: ".github/workflows/promote.yml", PromoteRef: "refs/heads/main",
+		Repo: FakeRepo, RepoID: FakeRepoID, Issuer: FakeIssuer,
+		PromoteRepo: FakePromoteRepo, PromoteRepoID: FakePromoteRepoID, PromoteWorkflow: ".github/workflows/promote.yml", PromoteRef: "refs/heads/main",
 		MaxManifestLifetime: 60 * 24 * time.Hour, MaxSkew: 5 * time.Minute,
 	}
 }
@@ -36,7 +39,7 @@ func ReleaseCert(tag string) CertID {
 	return CertID{
 		SAN: "https://github.com/" + FakeRepo + "/.github/workflows/release.yml@refs/tags/" + tag, Issuer: FakeIssuer,
 		SourceRepositoryURI: "https://github.com/" + FakeRepo, SourceRepositoryRef: "refs/tags/" + tag, SourceRepositoryDigest: FakeCommit,
-		RunnerEnvironment: "github-hosted", BuildTrigger: "push",
+		RunnerEnvironment: "github-hosted", BuildTrigger: "push", SourceRepositoryID: FakeRepoID,
 	}
 }
 
@@ -46,7 +49,7 @@ func PromoteCert() CertID {
 	return CertID{
 		SAN: "https://github.com/" + p.PromoteRepo + "/" + p.PromoteWorkflow + "@" + p.PromoteRef, Issuer: FakeIssuer,
 		SourceRepositoryURI: "https://github.com/" + p.PromoteRepo, SourceRepositoryRef: p.PromoteRef, SourceRepositoryDigest: FakeCommit,
-		RunnerEnvironment: "github-hosted", BuildTrigger: "workflow_dispatch",
+		RunnerEnvironment: "github-hosted", BuildTrigger: "workflow_dispatch", SourceRepositoryID: FakePromoteRepoID,
 	}
 }
 

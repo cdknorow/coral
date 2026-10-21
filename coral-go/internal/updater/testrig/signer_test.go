@@ -13,7 +13,7 @@ import (
 
 func idOf(c CertID) verify.Identity {
 	return verify.Identity{SAN: c.SAN, Issuer: c.Issuer, SourceRepositoryURI: c.SourceRepositoryURI, SourceRepositoryRef: c.SourceRepositoryRef,
-		RunnerEnvironment: c.RunnerEnvironment, BuildTrigger: c.BuildTrigger}
+		RunnerEnvironment: c.RunnerEnvironment, BuildTrigger: c.BuildTrigger, SourceRepositoryID: c.SourceRepositoryID}
 }
 
 // The real verifier (verify.Sigstore, the one coral-update links, with the same options: an SCT, a transparency log entry and an observer timestamp
@@ -58,6 +58,7 @@ func TestTheRealVerifierAcceptsTheFakeSigstoreAndRefusesWhatIsMissingOrWrong(t *
 		"another ref":                func(c *CertID) { c.SourceRepositoryRef = "refs/heads/main" },
 		"a hosted-by-someone runner": func(c *CertID) { c.RunnerEnvironment = "self-hosted" },
 		"another trigger":            func(c *CertID) { c.BuildTrigger = "workflow_dispatch" },
+		"another repository id":      func(c *CertID) { c.SourceRepositoryID = "9000099" }, // the re-created name (#5536)
 		"another OIDC issuer":        func(c *CertID) { c.Issuer = "https://oidc.other.invalid" },
 	}
 	for name, mod := range wrong {

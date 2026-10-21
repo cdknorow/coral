@@ -39,6 +39,7 @@ type CertID struct {
 	SourceRepositoryURI, SourceRepositoryRef  string
 	SourceRepositoryDigest, RunnerEnvironment string
 	BuildTrigger                              string
+	SourceRepositoryID                        string // the numeric repository id (extension 1.3.6.1.4.1.57264.1.15)
 }
 
 // Omit says which parts of a real Sigstore bundle to leave out, for the cases a strict verifier must refuse.
@@ -67,7 +68,7 @@ func (s *Signer) Bundle(artifact []byte, id CertID, omit Omit) ([]byte, error) {
 	for _, e := range []struct {
 		oid int
 		v   string
-	}{{11, id.RunnerEnvironment}, {12, id.SourceRepositoryURI}, {13, id.SourceRepositoryDigest}, {14, id.SourceRepositoryRef}, {20, id.BuildTrigger}} {
+	}{{11, id.RunnerEnvironment}, {12, id.SourceRepositoryURI}, {13, id.SourceRepositoryDigest}, {14, id.SourceRepositoryRef}, {15, id.SourceRepositoryID}, {20, id.BuildTrigger}} {
 		if e.v == "" {
 			continue
 		}

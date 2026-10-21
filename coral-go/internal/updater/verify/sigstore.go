@@ -20,6 +20,8 @@ type Identity struct {
 	SourceRepositoryRef string
 	RunnerEnvironment   string
 	BuildTrigger        string
+	// SourceRepositoryID is the repository's numeric id (extension .15). Unlike the other extensions it is REQUIRED: a name can be re-created by someone else, an id cannot.
+	SourceRepositoryID string
 }
 
 // Cert is what a verified certificate says, for the checks that need more than the identity (the release certificate's commit).
@@ -28,6 +30,7 @@ type Cert struct {
 	SourceRepositoryURI    string
 	SourceRepositoryRef    string
 	SourceRepositoryDigest string
+	SourceRepositoryID     string
 }
 
 // BundleVerifier verifies a Sigstore bundle over an artifact against an identity. Sigstore is the real one; tests stand in for it to make the
@@ -49,6 +52,9 @@ func (s Sigstore) VerifyBundle(bundleJSON, artifact []byte, id Identity) (Cert, 
 	}
 	if id.SAN == "" || id.Issuer == "" {
 		return Cert{}, errors.New("an identity needs a SAN and an issuer")
+	}
+	if id.SourceRepositoryID == "" {
+		return Cert{}, errors.New("an identity needs the repository id: a pin on the name alone can be taken over by re-creating the name")
 	}
 	if len(bundleJSON) == 0 || len(bundleJSON) > MaxBundleBytes {
 		return Cert{}, fmt.Errorf("bundle size %d is outside 1..%d", len(bundleJSON), MaxBundleBytes)
@@ -74,10 +80,11 @@ func (s Sigstore) VerifyBundle(bundleJSON, artifact []byte, id Identity) (Cert, 
 		return Cert{}, err
 	}
 	ci, err := sgverify.NewCertificateIdentity(san, iss, certificate.Extensions{
-		SourceRepositoryURI: id.SourceRepositoryURI,
-		SourceRepositoryRef: id.SourceRepositoryRef,
-		RunnerEnvironment:   id.RunnerEnvironment,
-		BuildTrigger:        id.BuildTrigger,
+		SourceRepositoryURI:        id.SourceRepositoryURI,
+		SourceRepositoryRef:        id.SourceRepositoryRef,
+		RunnerEnvironment:          id.RunnerEnvironment,
+		BuildTrigger:               id.BuildTrigger,
+		SourceRepositoryIdentifier: id.SourceRepositoryID,
 	})
 	if err != nil {
 		return Cert{}, err
@@ -90,7 +97,7 @@ func (s Sigstore) VerifyBundle(bundleJSON, artifact []byte, id Identity) (Cert, 
 		return Cert{}, errors.New("the bundle has no certificate")
 	}
 	c := res.Signature.Certificate
-	out := Cert{SAN: c.SubjectAlternativeName, SourceRepositoryURI: c.SourceRepositoryURI, SourceRepositoryRef: c.SourceRepositoryRef, SourceRepositoryDigest: c.SourceRepositoryDigest}
+	out := Cert{SAN: c.SubjectAlternativeName, SourceRepositoryURI: c.SourceRepositoryURI, SourceRepositoryRef: c.SourceRepositoryRef, SourceRepositoryDigest: c.SourceRepositoryDigest, SourceRepositoryID: c.SourceRepositoryIdentifier}
 	// The library compared them; they are compared again here, so a change in how it treats an empty or partial match cannot loosen a pin.
 	if out.SAN != id.SAN || c.Issuer != id.Issuer {
 		return Cert{}, fmt.Errorf("identity %q (issuer %q) is not %q (issuer %q)", out.SAN, c.Issuer, id.SAN, id.Issuer)
@@ -100,6 +107,7 @@ func (s Sigstore) VerifyBundle(bundleJSON, artifact []byte, id Identity) (Cert, 
 		{"source ref", id.SourceRepositoryRef, c.SourceRepositoryRef},
 		{"runner environment", id.RunnerEnvironment, c.RunnerEnvironment},
 		{"trigger", id.BuildTrigger, c.BuildTrigger},
+		{"source repository id", id.SourceRepositoryID, c.SourceRepositoryIdentifier},
 	} {
 		if p[1] != "" && p[1] != p[2] {
 			return Cert{}, fmt.Errorf("%s %q is not %q", p[0], p[2], p[1])
