@@ -475,6 +475,12 @@ func (h *HistoryHandler) sessionIdentity(ctx context.Context, sid string) (agent
 // sessionTranscript reads the whole transcript of a session by its id, live or ended, from this machine: the messages (nil when there is none) and the agent
 // type the history index or the live row says (a Codex or Agy transcript is found by its Coral marker). The history view and the saved-message read use it.
 func (h *HistoryHandler) sessionTranscript(ctx context.Context, sid string) (messages []map[string]any, agentType string) {
+	messages, agentType, _ = h.sessionTranscriptFile(ctx, sid)
+	return messages, agentType
+}
+
+// sessionTranscriptFile is sessionTranscript and the transcript file the messages were read from ("" when there are none).
+func (h *HistoryHandler) sessionTranscriptFile(ctx context.Context, sid string) (messages []map[string]any, agentType, path string) {
 	agentType, workingDir := h.sessionIdentity(ctx, sid)
 
 	// Each request reads through its own reader (#3651). The reader is incremental: one shared
@@ -506,7 +512,7 @@ func (h *HistoryHandler) sessionTranscript(ctx context.Context, sid string) (mes
 			agentType = "agy"
 		}
 	}
-	return messages, agentType
+	return messages, agentType, rd.SessionPath(sid)
 }
 
 // GetSessionDetail returns all messages for a historical session.

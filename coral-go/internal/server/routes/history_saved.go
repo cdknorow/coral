@@ -35,7 +35,7 @@ func (h *HistoryHandler) SavedAgentText(ctx context.Context, sessionID, agentTyp
 func (h *HistoryHandler) SavedAgentPresence(ctx context.Context, sessionID string, keys []string) (found map[string]bool, reachable bool) {
 	h.presenceOnce.Do(func() {
 		h.presence = &savedPresence{
-			fingerprint: func(ctx context.Context, sid string) (string, bool) {
+			fingerprint: func(ctx context.Context, sid string) (string, string, bool) {
 				agentType, workingDir := h.sessionIdentity(ctx, sid)
 				tried := map[string]bool{}
 				for _, t := range []string{agentType, "claude", "codex", "agy"} { // the order sessionTranscript reads in
@@ -43,15 +43,15 @@ func (h *HistoryHandler) SavedAgentPresence(ctx context.Context, sessionID strin
 						continue
 					}
 					tried[t] = true
-					if fp, ok := jsonl.TranscriptFingerprint(sid, workingDir, t); ok {
-						return fp, true
+					if path, fp, ok := jsonl.TranscriptFingerprint(sid, workingDir, t); ok {
+						return path, fp, true
 					}
 				}
-				return "", false
+				return "", "", false
 			},
-			read: func(ctx context.Context, sid string) []map[string]any {
-				messages, _ := h.sessionTranscript(ctx, sid)
-				return messages
+			read: func(ctx context.Context, sid string) ([]map[string]any, string) {
+				messages, _, path := h.sessionTranscriptFile(ctx, sid)
+				return messages, path
 			},
 		}
 	})
@@ -64,8 +64,8 @@ const maxSavedPresenceEntries = 512
 // savedPresence is the Saved list's cache of whether a message is in a session's transcript (#5802: 50 transcripts of 10 MB cost 650 ms on every list). An answer holds while the
 // transcript's fingerprint (path, size, modification time) is the one it was made under; fingerprint and read are injected so a test counts the reads.
 type savedPresence struct {
-	fingerprint func(ctx context.Context, sessionID string) (string, bool)
-	read        func(ctx context.Context, sessionID string) []map[string]any
+	fingerprint func(ctx context.Context, sessionID string) (path, fingerprint string, ok bool)      // the first transcript file that exists, and its path, size and time
+	read        func(ctx context.Context, sessionID string) (messages []map[string]any, path string) // the whole transcript and the file it was read from
 
 	mu      sync.Mutex
 	order   *list.List // most recently used first; elements are *presenceEntry
@@ -78,10 +78,10 @@ type presenceEntry struct {
 }
 
 func (c *savedPresence) check(ctx context.Context, secret []byte, sessionID string, keys []string) (map[string]bool, bool) {
-	fp, stat := c.fingerprint(ctx, sessionID)
+	statPath, fp, stat := c.fingerprint(ctx, sessionID)
 	if !stat {
 		// Nothing to stat: the transcript is read as the history view reads it (and nothing is kept), or there is none.
-		messages := c.read(ctx, sessionID)
+		messages, _ := c.read(ctx, sessionID)
 		if messages == nil {
 			return nil, false
 		}
@@ -102,11 +102,19 @@ func (c *savedPresence) check(ctx context.Context, secret []byte, sessionID stri
 	if len(missed) == 0 {
 		return found, true
 	}
-	messages := c.read(ctx, sessionID)
+	messages, readPath := c.read(ctx, sessionID)
 	if messages == nil {
 		return nil, false // not kept: the file went between the stat and the read
 	}
 	read := presentKeys(secret, messages, missed)
+	if readPath != statPath {
+		// The history view's read fell through to another file than the one that was stat'ed (an empty first file of the same session): the answer is true of that file, which
+		// the fingerprint does not watch, so it is not kept (#5802, Security's LOW 1).
+		for _, k := range missed {
+			found[k] = read[k]
+		}
+		return found, true
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
