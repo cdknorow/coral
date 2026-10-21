@@ -17,9 +17,18 @@ trap 'rm -f "$H"' EXIT
 printf 'v0.0.0 cdknorow/coral\nv1.5.0 neworg/coral\n' > "$H"
 moved=$(RELEASE_HOMES_FILE="$H" bash "$root/tools/devops/download-section.sh" v1.5.1)
 ok "a release after a move names the new home" "$(echo "$moved" | grep -c 'https://github.com/neworg/coral/releases/download/v1.5.1/Coral.dmg')" 1
-ok "and its Homebrew line the new owner" "$(echo "$moved" | grep -c 'brew install --cask neworg/coral/coral')" 1
+ok "and its Homebrew line is the tap variable's, not the new owner's" "$(echo "$moved" | grep -c 'brew install --cask cdknorow/coral/coral')" 1
+moved2=$(RELEASE_TAP_REPO=neworg/homebrew-coral RELEASE_HOMES_FILE="$H" bash "$root/tools/devops/download-section.sh" v1.5.1)
+ok "a tap that moved is named by changing the variable" "$(echo "$moved2" | grep -c 'brew install --cask neworg/coral/coral')" 1
 old=$(RELEASE_HOMES_FILE="$H" bash "$root/tools/devops/download-section.sh" v1.4.133)
 ok "a release before the move keeps the old home" "$(echo "$old" | grep -c 'https://github.com/cdknorow/coral/releases/download/v1.4.133/Coral.dmg')" 1
+# the shipped table (#5530): v1.4.141 still names cdknorow, v1.4.142 the new home, and both keep the one tap
+for v in 1.4.141:cdknorow 1.4.142:subgentic 1.4.150:subgentic; do
+  t=${v%%:*}; o=${v##*:}; s=$(bash "$root/tools/devops/download-section.sh" "v$t")
+  ok "shipped table: v$t links name $o" "$(echo "$s" | grep -c "https://github.com/$o/coral/releases/download/v$t/Coral.dmg")" 1
+  ok "shipped table: v$t keeps the one tap" "$(echo "$s" | grep -c 'brew install --cask cdknorow/coral/coral')" 1
+  ok "shipped table: v$t names no other owner" "$(echo "$s" | grep -c "github.com/$([ "$o" = cdknorow ] && echo subgentic || echo cdknorow)/")" 0
+done
 rc=0; bash "$root/tools/devops/download-section.sh" v1.4.129 >/dev/null 2>&1 || rc=$?
 ok "a release before 1.4.130 is refused" "$rc" 1
 for bad in 'v1.9.0)[x](http://evil.example/a' 'v1.4.200 x' 'v1.4.200-$(id)' 'v1.4.200

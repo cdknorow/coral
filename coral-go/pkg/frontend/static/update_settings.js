@@ -77,7 +77,7 @@ function managed(s) {
         t.append(mk('p', 'update-calm', 'Coral still tells you when a new version is out.'));
     } else {
         t.append(mk('b', null, 'This install cannot update itself'), mk('p', null, 'Coral can only update installs it can replace safely (the app, the installer or the archive from the releases page). Install the new release by hand.'));
-        const a = mk('a', 'update-link', 'Open the releases page'); a.href = 'https://github.com/cdknorow/coral/releases'; a.target = '_blank'; a.rel = 'noopener noreferrer'; t.append(a);
+        const a = mk('a', 'update-link', 'Open the releases page'); a.href = 'https://github.com/subgentic/coral/releases'; a.target = '_blank'; a.rel = 'noopener noreferrer'; t.append(a);
     }
     m.append(icon, t);
     return m;

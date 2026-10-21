@@ -18,20 +18,20 @@ These links open the maintained source documentation on GitHub. They follow `mai
 
 | Topic | Reference |
 | --- | --- |
-| Team board commands and API | [Message board](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/board.md) |
-| Task dependencies, results, and artifacts | [Task workflows](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/task-workflows.md) |
-| Personal agent tasks | [Agent tasks](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/agent-tasks.md) |
-| Publishing interactive panels | [Agent UI](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/agent-ui.md) |
-| Team configuration | [Team configuration](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/team-config.md) |
-| Sessions and terminal actions | [Sessions](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/sessions.md) |
-| One-time jobs | [Jobs](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/jobs.md) |
-| Scheduled jobs | [Scheduled jobs](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/scheduled-jobs.md) |
-| Multi-step workflows | [Workflows](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/workflows.md) |
-| Settings and system status | [Settings and system](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/settings-system.md) |
-| Analytics events and controls | [Telemetry](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/telemetry.md) |
-| Themes | [Themes](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/themes.md) |
+| Team board commands and API | [Message board](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/board.md) |
+| Task dependencies, results, and artifacts | [Task workflows](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/task-workflows.md) |
+| Personal agent tasks | [Agent tasks](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/agent-tasks.md) |
+| Publishing interactive panels | [Agent UI](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/agent-ui.md) |
+| Team configuration | [Team configuration](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/team-config.md) |
+| Sessions and terminal actions | [Sessions](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/sessions.md) |
+| One-time jobs | [Jobs](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/jobs.md) |
+| Scheduled jobs | [Scheduled jobs](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/scheduled-jobs.md) |
+| Multi-step workflows | [Workflows](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/workflows.md) |
+| Settings and system status | [Settings and system](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/settings-system.md) |
+| Analytics events and controls | [Telemetry](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/telemetry.md) |
+| Themes | [Themes](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/themes.md) |
 
-The [reference index](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/README.md) lists the full set of topics. Authentication requirements vary by endpoint; see the [authentication reference](https://github.com/cdknorow/coral/blob/main/coral-go/agent_docs/auth.md) before writing an integration.
+The [reference index](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/README.md) lists the full set of topics. Authentication requirements vary by endpoint; see the [authentication reference](https://github.com/subgentic/coral/blob/main/coral-go/agent_docs/auth.md) before writing an integration.
 
 ## Documentation changes
 

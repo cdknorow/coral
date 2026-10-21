@@ -7,25 +7,25 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cdknorow/coral/releases/latest"><strong>Download the latest release</strong></a><br>
-  <a href="https://github.com/cdknorow/coral/releases/latest/download/Coral.dmg">macOS (.dmg)</a> &bull;
-  <a href="https://github.com/cdknorow/coral/releases/latest/download/Coral-x64.msi">Windows installer (.msi)</a> &bull;
-  <a href="https://github.com/cdknorow/coral/releases/latest/download/Coral-x64-portable.zip">Windows portable (.zip)</a> &bull;
-  <a href="https://github.com/cdknorow/coral/releases/latest/download/coral-linux-amd64.tar.gz">Linux x86-64</a> &bull;
-  <a href="https://github.com/cdknorow/coral/releases/latest/download/coral-linux-arm64.tar.gz">Linux ARM64</a><br>
+  <a href="https://github.com/subgentic/coral/releases/latest"><strong>Download the latest release</strong></a><br>
+  <a href="https://github.com/subgentic/coral/releases/latest/download/Coral.dmg">macOS (.dmg)</a> &bull;
+  <a href="https://github.com/subgentic/coral/releases/latest/download/Coral-x64.msi">Windows installer (.msi)</a> &bull;
+  <a href="https://github.com/subgentic/coral/releases/latest/download/Coral-x64-portable.zip">Windows portable (.zip)</a> &bull;
+  <a href="https://github.com/subgentic/coral/releases/latest/download/coral-linux-amd64.tar.gz">Linux x86-64</a> &bull;
+  <a href="https://github.com/subgentic/coral/releases/latest/download/coral-linux-arm64.tar.gz">Linux ARM64</a><br>
   <sub>or with Homebrew: <code>brew install --cask cdknorow/coral/coral</code></sub>
 </p>
 
 <p align="center">
-  <a href="https://github.com/cdknorow/coral/stargazers"><img src="https://img.shields.io/github/stars/cdknorow/coral?style=social" alt="GitHub Stars"></a>
-  <a href="https://github.com/cdknorow/coral/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0 License"></a>
-  <a href="https://cdknorow.github.io/coral/"><img src="https://img.shields.io/badge/docs-live-blue" alt="Documentation"></a>
+  <a href="https://github.com/subgentic/coral/stargazers"><img src="https://img.shields.io/github/stars/subgentic/coral?style=social" alt="GitHub Stars"></a>
+  <a href="https://github.com/subgentic/coral/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0 License"></a>
+  <a href="https://subgentic.github.io/coral/"><img src="https://img.shields.io/badge/docs-live-blue" alt="Documentation"></a>
   <a href="https://discord.gg/qhfgY57AZn"><img src="https://img.shields.io/discord/placeholder?label=Discord&color=5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &bull;
-  <a href="https://cdknorow.github.io/coral/">Documentation</a> &bull;
+  <a href="https://subgentic.github.io/coral/">Documentation</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#how-it-works">How It Works</a> &bull;
   <a href="https://discord.gg/qhfgY57AZn">Discord</a>
@@ -95,23 +95,23 @@ Everything else — cron-scheduled runs, shell-and-agent workflows with OAuth to
 
 ### Download a release
 
-Download the latest release from [GitHub Releases](https://github.com/cdknorow/coral/releases/latest). These links always point to the newest version:
+Download the latest release from [GitHub Releases](https://github.com/subgentic/coral/releases/latest). These links always point to the newest version:
 
-- **macOS**: [`Coral.dmg`](https://github.com/cdknorow/coral/releases/latest/download/Coral.dmg) (universal binary), or `brew install --cask cdknorow/coral/coral`
-- **Linux**: [`coral-linux-amd64.tar.gz`](https://github.com/cdknorow/coral/releases/latest/download/coral-linux-amd64.tar.gz) (x86-64) or [`coral-linux-arm64.tar.gz`](https://github.com/cdknorow/coral/releases/latest/download/coral-linux-arm64.tar.gz) (ARM64, e.g. Graviton or Docker on Apple silicon)
-- **Windows**: [`Coral-x64.msi`](https://github.com/cdknorow/coral/releases/latest/download/Coral-x64.msi) (installer) or [`Coral-x64-portable.zip`](https://github.com/cdknorow/coral/releases/latest/download/Coral-x64-portable.zip). These are currently **not code-signed**, so Windows SmartScreen warns that the publisher is unknown. Verify the file with the attestation check below before you run it.
+- **macOS**: [`Coral.dmg`](https://github.com/subgentic/coral/releases/latest/download/Coral.dmg) (universal binary), or `brew install --cask cdknorow/coral/coral`
+- **Linux**: [`coral-linux-amd64.tar.gz`](https://github.com/subgentic/coral/releases/latest/download/coral-linux-amd64.tar.gz) (x86-64) or [`coral-linux-arm64.tar.gz`](https://github.com/subgentic/coral/releases/latest/download/coral-linux-arm64.tar.gz) (ARM64, e.g. Graviton or Docker on Apple silicon)
+- **Windows**: [`Coral-x64.msi`](https://github.com/subgentic/coral/releases/latest/download/Coral-x64.msi) (installer) or [`Coral-x64-portable.zip`](https://github.com/subgentic/coral/releases/latest/download/Coral-x64-portable.zip). These are currently **not code-signed**, so Windows SmartScreen warns that the publisher is unknown. Verify the file with the attestation check below before you run it.
 
 Each release also keeps its versioned file names (`Coral.v<version>.dmg`, `coral-linux-<arch>-<version>.tar.gz`, `Coral-<version>-x64.msi`, `Coral-<version>-x64-portable.zip`): the same files.
 
 #### Verify your download
 
-Every release is built and signed by Coral's release workflow on GitHub, with no long-lived keys (Sigstore keyless signing). You can check that a download came from that workflow, from a release tag of `cdknorow/coral`.
+Every release is built and signed by Coral's release workflow on GitHub, with no long-lived keys (Sigstore keyless signing). You can check that a download came from that workflow, from a release tag of `subgentic/coral`. Releases up to v1.4.141 were built before the repository moved, in `cdknorow/coral`: use that name in the commands below to check one of them.
 
 With the [GitHub CLI](https://cli.github.com/) (any package):
 
 ```bash
-gh attestation verify coral-linux-amd64.tar.gz --repo cdknorow/coral \
-  --signer-workflow cdknorow/coral/.github/workflows/release.yml
+gh attestation verify coral-linux-amd64.tar.gz --repo subgentic/coral \
+  --signer-workflow subgentic/coral/.github/workflows/release.yml
 ```
 
 Offline, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v2.4 or later: download `SHA256SUMS.txt` and `SHA256SUMS.txt.sigstore.json` from the same release, then:
@@ -119,17 +119,17 @@ Offline, with [cosign](https://docs.sigstore.dev/cosign/system_config/installati
 ```bash
 cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json --new-bundle-format \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/cdknorow/coral/\.github/workflows/release\.yml@refs/tags/v'
+  --certificate-identity-regexp '^https://github\.com/subgentic/coral/\.github/workflows/release\.yml@refs/tags/v'
 sha256sum --check --ignore-missing SHA256SUMS.txt   # macOS: shasum -a 256 --check --ignore-missing
 ```
 
 The checksum command must print `<your file>: OK` for the file you downloaded; if it prints nothing, nothing was checked.
 
-On Windows, check the MSI or the portable ZIP you downloaded the same way (PowerShell, with the GitHub CLI); it must report the attestation as verified for `release.yml` on a tag of `cdknorow/coral`:
+On Windows, check the MSI or the portable ZIP you downloaded the same way (PowerShell, with the GitHub CLI); it must report the attestation as verified for `release.yml` on a tag of `subgentic/coral`:
 
 ```powershell
-gh attestation verify Coral-x64.msi --repo cdknorow/coral `
-  --signer-workflow cdknorow/coral/.github/workflows/release.yml
+gh attestation verify Coral-x64.msi --repo subgentic/coral `
+  --signer-workflow subgentic/coral/.github/workflows/release.yml
 ```
 
 This proves the file came from Coral's release workflow. It is not Windows code signing: the MSI and the programs in it carry no Authenticode signature yet. The `SHA256SUMS.txt` check above covers the Windows files too.
@@ -268,7 +268,8 @@ Where the single-vendor tools are stronger: per-session worktree isolation is on
 Other open-source projects in this space — Claude Squad, Conductor, Crystal, and vibe-kanban — take a similar tmux-and-worktrees approach. Frameworks like AutoGen and CrewAI are a different job: they help you build agents in code, whereas Coral runs the CLIs you already have.
 
 ## Documentation
-Full documentation at **[https://subgentic.github.io/coral/](https://subgentic.github.io/coral/)**.
+
+Full documentation at **[subgentic.github.io/coral](https://subgentic.github.io/coral/)**.
 
 ## Contributing
 
@@ -283,7 +284,7 @@ Apache 2.0 License. See [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <a href="https://github.com/cdknorow/coral">Star the repo</a> &bull;
+  <a href="https://github.com/subgentic/coral">Star the repo</a> &bull;
   <a href="https://discord.gg/qhfgY57AZn">Join Discord</a> &bull;
-  <a href="https://cdknorow.github.io/coral/">Read the docs</a>
+  <a href="https://subgentic.github.io/coral/">Read the docs</a>
 </p>

@@ -26,9 +26,9 @@ import (
 
 const (
 	// ReleasesAPI is GitHub's latest-release endpoint for Coral (prereleases excluded).
-	ReleasesAPI = "https://api.github.com/repos/cdknorow/coral/releases/latest"
+	ReleasesAPI = "https://api.github.com/repos/subgentic/coral/releases/latest"
 	// ReleasesURL is the page the update notice links to.
-	ReleasesURL = "https://github.com/cdknorow/coral/releases"
+	ReleasesURL = "https://github.com/subgentic/coral/releases"
 	// MaxBody caps the reply read: a release object is a few KB.
 	MaxBody = 64 << 10
 	// Timeout bounds the whole request.

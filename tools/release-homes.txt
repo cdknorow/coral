@@ -3,5 +3,8 @@
 # One line per home: FIRST_TAG OWNER/REPO. A tag belongs to the last line whose FIRST_TAG is not newer than it (compared as
 # versions). The signing certificate of a release names the repository that built it, and a release keeps that name for ever,
 # so a release cut before the repository moved is checked against its old home and a later one against the new home.
-# The LAST line is the current home: where releases are downloaded from and where the tap lives.
+# The LAST line is the current home: where releases are downloaded from. The Homebrew tap is NOT derived from it: see RELEASE_TAP_REPO in
+# tools/release-homes.sh (the tap stays cdknorow/homebrew-coral while an enterprise setting blocks deploy keys in the organisation).
+# v1.4.141 and earlier were built and signed in cdknorow/coral (their certificates name it for ever); v1.4.142 is the first release of subgentic/coral.
 v0.0.0 cdknorow/coral
+v1.4.142 subgentic/coral

@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 const BASE = require('./test_base').BASE;
-const RELEASES = 'https://github.com/cdknorow/coral/releases/latest';
+const RELEASES = 'https://github.com/subgentic/coral/releases/latest';
 const HOSTILE_V = '<img src=x onerror="window.__pwned=1">';
 const HOSTILE_L = '"><script>window.__pwned=2</script><a href="javascript:window.__pwned=3">';
 
