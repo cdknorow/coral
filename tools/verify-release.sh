@@ -189,7 +189,7 @@ if [ -n "$meta" ]; then
       fi
     fi
   fi
-  # The Download section (#5467), from 1.4.134 on: the five stable-name files of this tag, named by the release home, and the Homebrew line.
+  # The Download section (#5467), from 1.4.134 on: the five stable-name files of this tag, named by the release home. A Homebrew line is neither required nor refused (releases before 144 carry one; later ones do not advertise the tap).
   if [ "$(printf '%s\n%s\n' 1.4.134 "${want_ver%%-*}" | sort -V | head -1)" = 1.4.134 ]; then
     if [ -z "$dlsec" ]; then
       fail notes "Download section" "the body does not start with '### Download'"
@@ -198,8 +198,7 @@ if [ -n "$meta" ]; then
       for f in Coral.dmg Coral-x64.msi Coral-x64-portable.zip coral-linux-amd64.tar.gz coral-linux-arm64.tar.gz; do
         grep -qF "($dlbase/$f)" <<<"$dlsec" || dlmiss="$dlmiss $f"
       done
-      grep -qF "brew install --cask $(release_tap_name "$dlhome")/coral" <<<"$dlsec" || dlmiss="$dlmiss brew-line"
-      [ -z "$dlmiss" ] && pass notes "Download section" "the five stable files of $TAG and the Homebrew line" || fail notes "Download section" "missing:$dlmiss"
+      [ -z "$dlmiss" ] && pass notes "Download section" "the five stable files of $TAG" || fail notes "Download section" "missing:$dlmiss"
     fi
   fi
 fi
