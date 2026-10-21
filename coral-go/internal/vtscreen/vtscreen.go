@@ -89,6 +89,7 @@ type term struct {
 	grid        [][]rune
 	faintGrid   [][]bool // cells written faint (SGR 2)
 	faint       bool     // the pen
+	alt         *altSave // the main screen, while the alternate screen is shown (nil otherwise)
 	x, y        int      // the cursor
 	wrapPending bool     // the last column was written: the next character goes to the next row first
 	budget      int
@@ -136,6 +137,7 @@ func (t *term) write(data []byte) {
 	state := stText
 	params := make([]int, 0, maxParams)
 	cur, have, private, intermediate := 0, false, false, false
+	var privChar byte
 	for i := 0; i < len(data) && t.budget > 0; {
 		b := data[i]
 		switch state {
@@ -194,7 +196,7 @@ func (t *term) write(data []byte) {
 				}
 				cur, have = 0, false
 			case b >= '<' && b <= '?':
-				private = true
+				private, privChar = true, b
 			case b >= 0x20 && b <= 0x2f:
 				intermediate = true
 			case b >= 0x40 && b <= 0x7e:
@@ -203,6 +205,8 @@ func (t *term) write(data []byte) {
 				}
 				if !private && !intermediate {
 					t.csi(b, params)
+				} else if private && privChar == '?' && !intermediate && (b == 'h' || b == 'l') {
+					t.privateMode(params, b == 'h')
 				}
 				state = stText
 			case b == 0x1b:
@@ -237,13 +241,78 @@ func (t *term) put(r rune) {
 	if r == utf8.RuneError {
 		r = ' '
 	}
+	w := runeWidth(r)
+	if w == 0 {
+		return // a combining mark or a zero-width character: it draws no cell of its own
+	}
+	if w == 2 && t.x == t.cols-1 {
+		// A double-width character that does not fit on this row goes to the next.
+		t.grid[t.y][t.x] = ' '
+		t.x = 0
+		t.lineFeed()
+	}
+	t.breakWide(t.y, t.x)
+	if w == 2 {
+		t.breakWide(t.y, t.x+1)
+	}
 	t.grid[t.y][t.x] = r
 	t.faintGrid[t.y][t.x] = t.faint
-	if t.x == t.cols-1 {
+	if w == 2 {
+		t.grid[t.y][t.x+1] = 0 // the right half of the character: draws nothing
+		t.faintGrid[t.y][t.x+1] = t.faint
+	}
+	if t.x+w >= t.cols {
+		t.x = t.cols - 1
 		t.wrapPending = true
 	} else {
-		t.x++
+		t.x += w
 	}
+}
+
+// breakWide blanks the other half of a double-width character that a write at (y, x) is about to cut in two.
+func (t *term) breakWide(y, x int) {
+	if x >= t.cols {
+		return
+	}
+	if t.grid[y][x] == 0 && x > 0 {
+		t.grid[y][x-1] = ' ' // x is the right half: the left half goes
+	} else if x+1 < t.cols && t.grid[y][x+1] == 0 {
+		t.grid[y][x+1] = ' ' // x is a left half: the right half goes
+	}
+}
+
+// runeWidth is the number of cells r takes: 2 for East Asian wide and fullwidth characters and emoji, 0 for combining and
+// zero-width ones, else 1 (as wcwidth, which tmux and the other emulators use).
+func runeWidth(r rune) int {
+	switch {
+	case r >= 0x0300 && r <= 0x036f, r >= 0x200b && r <= 0x200f, r >= 0xfe00 && r <= 0xfe0f, r == 0x2060, r == 0xfeff,
+		r >= 0x1ab0 && r <= 0x1aff, r >= 0x20d0 && r <= 0x20ff, r >= 0xe0100 && r <= 0xe01ef:
+		return 0
+	case r >= 0x1100 && r <= 0x115f, r >= 0x231a && r <= 0x231b, r >= 0x2329 && r <= 0x232a, r >= 0x23e9 && r <= 0x23ec,
+		r == 0x23f0, r == 0x23f3, r >= 0x25fd && r <= 0x25fe, r >= 0x2614 && r <= 0x2615, r >= 0x2648 && r <= 0x2653,
+		r == 0x267f, r == 0x2693, r == 0x26a1, r >= 0x26aa && r <= 0x26ab, r >= 0x26bd && r <= 0x26be, r >= 0x26c4 && r <= 0x26c5,
+		r == 0x26ce, r == 0x26d4, r == 0x26ea, r >= 0x26f2 && r <= 0x26f3, r == 0x26f5, r == 0x26fa, r == 0x26fd, r == 0x2705,
+		r >= 0x270a && r <= 0x270b, r == 0x2728, r == 0x274c, r == 0x274e, r >= 0x2753 && r <= 0x2755, r == 0x2757,
+		r >= 0x2795 && r <= 0x2797, r == 0x27b0, r == 0x27bf, r >= 0x2b1b && r <= 0x2b1c, r == 0x2b50, r == 0x2b55,
+		r >= 0x2e80 && r <= 0x303e, r >= 0x3041 && r <= 0x33ff, r >= 0x3400 && r <= 0x4dbf, r >= 0x4e00 && r <= 0xa4cf,
+		r >= 0xa960 && r <= 0xa97f, r >= 0xac00 && r <= 0xd7a3, r >= 0xf900 && r <= 0xfaff, r >= 0xfe10 && r <= 0xfe19,
+		r >= 0xfe30 && r <= 0xfe6f, r >= 0xff00 && r <= 0xff60, r >= 0xffe0 && r <= 0xffe6,
+		r >= 0x1f300 && r <= 0x1f64f, r >= 0x1f680 && r <= 0x1f6ff, r >= 0x1f900 && r <= 0x1f9ff, r >= 0x1fa70 && r <= 0x1faff,
+		r >= 0x20000 && r <= 0x3fffd:
+		return 2
+	}
+	return 1
+}
+
+// rowText is a row's text: the right halves of double-width characters draw nothing, and trailing blanks go.
+func rowText(row []rune) string {
+	var b strings.Builder
+	for _, r := range row {
+		if r != 0 {
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimRight(b.String(), " ")
 }
 
 // lineFeed moves the cursor down a row, scrolling the whole screen up a row at its bottom.
@@ -255,7 +324,7 @@ func (t *term) lineFeed() {
 	if !t.spend(t.cols) {
 		return
 	}
-	if t.keep > 0 {
+	if t.keep > 0 && t.alt == nil { // the alternate screen has no scrollback, as in tmux
 		// The row leaving the top is kept (its own slice: a scrolled-in row is always a new blankRow).
 		// Trimmed back to keep only when twice that, so a scroll costs O(1) however long the output.
 		t.history = append(t.history, t.grid[0])
@@ -379,9 +448,9 @@ func (t *term) sgr(params []int) {
 func (t *term) styledString() string {
 	lines := make([]string, t.rows)
 	for y, row := range t.grid {
-		runes := []rune(string(row))
+		runes := row
 		end := len(runes)
-		for end > 0 && runes[end-1] == ' ' {
+		for end > 0 && (runes[end-1] == ' ' || runes[end-1] == 0) {
 			end--
 		}
 		var b strings.Builder
@@ -395,7 +464,9 @@ func (t *term) styledString() string {
 				}
 				faint = f
 			}
-			b.WriteRune(runes[x])
+			if runes[x] != 0 {
+				b.WriteRune(runes[x])
+			}
 		}
 		if faint {
 			b.WriteString("\x1b[22m")
@@ -412,10 +483,43 @@ func (t *term) String() string {
 	}
 	lines := make([]string, 0, len(history)+t.rows)
 	for _, row := range history {
-		lines = append(lines, strings.TrimRight(string(row), " "))
+		lines = append(lines, rowText(row))
 	}
 	for _, row := range t.grid {
-		lines = append(lines, strings.TrimRight(string(row), " "))
+		lines = append(lines, rowText(row))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// altSave is the main screen kept while an application is on the alternate screen (DECSET 47, 1047, 1049).
+type altSave struct {
+	grid      [][]rune
+	faintGrid [][]bool
+	x, y      int
+}
+
+// privateMode handles DECSET and DECRST: only the alternate screen is interpreted (47, 1047, 1049). Codex and agy switch to
+// it; the main screen they leave comes back when they exit, as in a real terminal. Every other mode is skipped.
+func (t *term) privateMode(params []int, set bool) {
+	for _, p := range params {
+		if p != 47 && p != 1047 && p != 1049 {
+			continue
+		}
+		if set && t.alt == nil {
+			if !t.spend(t.rows * t.cols) {
+				return
+			}
+			t.alt = &altSave{grid: t.grid, faintGrid: t.faintGrid, x: t.x, y: t.y}
+			t.grid = make([][]rune, t.rows)
+			t.faintGrid = make([][]bool, t.rows)
+			for i := range t.grid {
+				t.grid[i] = blankRow(t.cols)
+				t.faintGrid[i] = make([]bool, t.cols)
+			}
+			t.wrapPending = false
+		} else if !set && t.alt != nil {
+			t.grid, t.faintGrid, t.x, t.y = t.alt.grid, t.alt.faintGrid, t.alt.x, t.alt.y
+			t.alt, t.wrapPending = nil, false
+		}
+	}
 }

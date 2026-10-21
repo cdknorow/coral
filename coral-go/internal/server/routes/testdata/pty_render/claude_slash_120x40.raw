@@ -1,0 +1,23 @@
+[?9001h[?1004h[?25l[2J[m[H]0;claude[?25h[?25l[?2004h[?2031h[?1004h[>0q[?u]7501;?[38;2;255;193;7m
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[1m[3;2HAccessing[1Cworkspace:[m[1m[5;2HC:\Users\user\scratch-fx\work[22m[7;2HQuick[1Csafety[1Ccheck:[1CIs[1Cthis[1Ca[1Cproject[1Cyou[1Ccreated[1Cor[1Cone[1Cyou[1Ctrust?[1C(Like[1Cyour[1Cown[1Ccode,[1Ca[1Cwell-known[1Copen[1Csource[8;2Hproject,[1Cor[1Cwork[1Cfrom[1Cyour[1Cteam).[1CIf[1Cnot,[1Ctake[1Ca[1Cmoment[1Cto[1Creview[1Cwhat's[1Cin[1Cthis[1Cfolder[1Cfirst.[10;2HClaude[1CCode'll[1Cbe[1Cable[1Cto[1Cread,[1Cedit,[1Cand[1Cexecute[1Cfiles[1Chere.[38;2;153;153;153m[12;2HSecurity[1Cguide[38;2;177;185;249m[14;2H❯[1CNo,[1Cexit[m[15;4HYes,[1CI[1Ctrust[1Cthis[1Cfolder[38;2;153;153;153m[17;2HEnter[1Cto[1Cconfirm[1C·[1CEsc[1Cto[1Ccancel[?2004h[m[14;2H [1CNo, exit[38;2;177;185;249m[15;2H❯[1CYes, I trust this folder[>4m[?2031l[?2004l[m[H[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K[120C[?2004h[?2031h[?1004h]0;✳ Claude Code[38;2;215;119;87m[H ▐[48;2;0;0;0m▛███▛█[m[1m[3CClaude[1CCode[38;2;153;153;153m[22m[1Cv2.1.306[38;2;215;119;87m
+▝▜[48;2;0;0;0m█████[49m█▀[38;2;153;153;153m[2CSonnet[1C5.5[1C·[1CClaude[1CMax[38;2;215;119;87m
+ ▝▝[3C▝▝[38;2;153;153;153m[3C~\scratch-fx\work[38;2;136;136;136m[6;1H────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[m
+❯ [2mTry[1C"refactor[1C<filepath>"[38;2;136;136;136m[22m
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[38;2;255;193;7m[9;3H⚠[1CTranscript[1Csaving[1Cis[1Coff[1C—[1Cinherited[1CCLAUDE_CODE_CHILD_SESSION[1Cmarker [38;2;153;153;153m·[1Crestart[1Cwith[1CCLAUDE_CODE_FORCE_SESSION_PE…[38;2;255;193;7m[10;3H⏵⏵[1Cauto[1Cmode[1Con [38;2;153;153;153m(shift+tab[1Cto[1Ccycle)[62C◐[1Cmedium[1C·[1C/effort[7;3H[?25h[m[>0q[?25l/[K[38;2;177;185;249m[10;3H❯ /run                              Launch and drive this project's app to see a change working. Use when asked to    [11;39Hrun,[1Cstart,[1Cor[1Cscreenshot[1Cthe[1Capp,[1Cor[1Cto[1Cconfirm[1Ca[1Cchange[1Cworks[1Cin[1Cthe[1Creal[1Capp…[38;2;153;153;153m[12;3H [1C/add-dir[26CAdd[1Ca[1Cnew[1Cworking[1Cdirectory[13;3H [1C/advisor[26CLet[1CClaude[1Cconsult[1Ca[1Cstronger[1Cmodel[1Cat[1Ckey[1Cmoments[14;3H [1C/artifacts[24CBrowse[1Cyour[1Cpublished[1Cand[1Cshared[1Cartifacts[15;3H [1C/auto-mode-setup[18CTeach[1Cauto[1Cmode[1Cabout[1Cyour[1Cenvironment,[1Cplus[1Coptional[1Crule[1Ctweaks[16;3H [1C/autocompact[22CSet[1Chow[1Cfull[1Cthe[1Ccontext[1Cgets[1Cbefore[1Cauto-summarizing[17;3H [1C/autofix-pr[23CMonitor[1Cand[1Cautofix[1Cany[1Cissues[1Cwith[1Cthe[1Ccurrent[1CPR[18;3H [1C/background[23CSend[1Cthis[1Csession[1Cto[1Cthe[1Cbackground[1Cand[1Cfree[1Cthe[1Cterminal[19;3H [1C/branch[27CCreate[1Ca[1Cbranch[1Cof[1Cthe[1Ccurrent[1Cconversation[1Cat[1Cthis[1Cpoint[20;3H [1C/btw[30CAsk[1Ca[1Cquick[1Cside[1Cquestion[1Cwithout[1Cinterrupting[1Cthe[1Cmain[1Cconversation[21;3H [1C/bug[30CReport[1Ca[1Cbug[1Cor[1Cshare[1Cyour[1Cconversation[22;3H [1C/cd[31CMove[1Cthis[1Csession[1Cto[1Ca[1Cnew[1Cworking[1Cdirectory[23;3H [1C/chrome[27COpen[1CClaude[1Cin[1CChrome[1Csettings[24;3H [1C/clear[28CStart[1Ca[1Cnew[1Csession[1Cwith[1Cempty[1Ccontext;[1Cprevious[1Csession[1Cstays[1Con[1Cdisk[25;39H(resumable[1Cwith[1C/resume)[26;3H [1C/color[28CSet[1Cthe[1Cprompt[1Cbar[1Ccolor[1Cfor[1Cthis[1Csession[27;3H [1C/compact[26CFree[1Cup[1Ccontext[1Cby[1Csummarizing[1Cthe[1Cconversation[1Cso[1Cfar[28;3H [1C/config[27COpen[1Csettings[29;3H [1C/context[26CVisualize[1Ccurrent[1Ccontext[1Cusage[1Cas[1Ca[1Ccolored[1Cgrid[7;4H[?25h[m
