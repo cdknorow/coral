@@ -515,10 +515,7 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 		// git clone <url> <dir>: the directory it creates.
 		for i, a := range args {
 			if strings.EqualFold(a, "clone") {
-				if p := winPaths(args[i+1:]); len(p) > 1 && pathOutside(p[len(p)-1], outside) {
-					return "it clones into a folder outside the working directory (" + p[len(p)-1] + ")"
-				}
-				break
+				return gitCloneRisk(args[i+1:], outside)
 			}
 		}
 		return ""
@@ -807,4 +804,41 @@ func winHasCmdCommand(args []string) bool {
 		}
 	}
 	return false
+}
+
+// gitCloneValueOpts are the options of git clone that take a value in the next word (the value is a branch, a count, a name or a URL, not the folder).
+var gitCloneValueOpts = setOf("-b", "--branch", "--depth", "-o", "--origin", "--reference", "--reference-if-able", "--template", "-c", "--config", "-j", "--jobs", "--filter",
+	"--shallow-since", "--shallow-exclude", "-u", "--upload-pack", "--server-option", "--bundle-uri", "--revision")
+
+// gitCloneRisk judges git clone's arguments (after "clone"): the second positional word is the folder it creates, and --separate-git-dir names where its .git goes. The repository (a URL, a
+// path, git@host:path) and the values of options like -b and --depth are never the folder.
+func gitCloneRisk(args []string, outside func(string) bool) string {
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			positional = append(positional, args[i+1:]...)
+			i = len(args)
+		case a == "--separate-git-dir" && i+1 < len(args):
+			if pathOutside(args[i+1], outside) {
+				return "it puts a repository's .git outside the working directory (" + args[i+1] + ")"
+			}
+			i++
+		case strings.HasPrefix(a, "--separate-git-dir="):
+			if v := a[len("--separate-git-dir="):]; pathOutside(v, outside) {
+				return "it puts a repository's .git outside the working directory (" + v + ")"
+			}
+		case gitCloneValueOpts[a]:
+			i++
+		case strings.HasPrefix(a, "-"):
+			// a flag, or an option with its value glued on (--depth=1, -bmain)
+		default:
+			positional = append(positional, a)
+		}
+	}
+	if len(positional) > 1 && pathOutside(positional[1], outside) {
+		return "it clones into a folder outside the working directory (" + positional[1] + ")"
+	}
+	return ""
 }
