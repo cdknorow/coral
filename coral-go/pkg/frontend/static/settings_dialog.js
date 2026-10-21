@@ -58,6 +58,10 @@ function renderDatabaseEncryptionStatus(status, loadError = false) {
     const select = document.getElementById('settings-database-encryption');
     const hint = document.getElementById('settings-database-encryption-status');
     if (!select || !hint) return;
+    // A build without database encryption has nothing to choose: the row is not shown (UI audit #5589, finding 17),
+    // and a save leaves the setting alone (the select is disabled).
+    const row = select.closest('.settings-row');
+    if (row) row.hidden = loadError || !status || status.encryption_compiled === false;
     if (loadError || !status) {
         select.disabled = true;
         hint.textContent = 'Database encryption settings are unavailable in this server build.';
@@ -66,7 +70,7 @@ function renderDatabaseEncryptionStatus(status, loadError = false) {
     const mode = status.saved_mode || status.effective_mode || 'disabled';
     select.value = mode;
     select.dataset.shown = mode; // what Save compares with, to tell a changed choice from none
-    select.disabled = status.feature_available === false;
+    select.disabled = status.feature_available === false || status.encryption_compiled === false;
     const effective = status.effective_mode || 'disabled';
     const restart = status.restart_required === true;
     const surface = status.unlock_surface || 'unknown';

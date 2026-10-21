@@ -34,6 +34,7 @@ const { connect } = require('./agent_view_harness');
             // A checkbox is a box (a 2.5rem switch since #4566), never the full-width field of #3981.
             assert.deepEqual(boxes.filter(b => b.w > 44), [], dev + ': every checkbox is a small switch, not a full-width box: ' + JSON.stringify(boxes.filter(b => b.w > 44)));
             await ev(`document.getElementById('settings-tab-security')?.click(); document.getElementById('settings-group-select') && true`);
+            await ev(`document.getElementById('settings-database-encryption').closest('.settings-row').hidden = false; true`); // a standard build has no encryption and hides the row (#5589); this checks the select's width where it is shown
             const sel = await ev(`(() => { const s = document.getElementById('settings-database-encryption'); const c = document.createElement('canvas').getContext('2d'); const cs = getComputedStyle(s); c.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily; const text = s.options[s.selectedIndex].text; return { text, need: Math.ceil(c.measureText(text).width) + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 22, have: Math.floor(s.getBoundingClientRect().width) }; })()`);
             assert.ok(sel.need <= sel.have, `${dev}: the Database encryption select shows "${sel.text}" whole (needs ${sel.need} px, has ${sel.have})`);
             assert.equal(sel.text, 'Off (plaintext database)');

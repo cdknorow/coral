@@ -29,6 +29,7 @@ export function showAddAgentToBoard(boardName, workDir) {
 
     const open = () => {
         renderAgentConfigForm('add-agent-board-acf', {
+            defaultNote: true,
             showPreset: true,
             showName: true,
             value: { agentType: _settingsFor(server).default_agent_type || 'claude' },

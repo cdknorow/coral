@@ -37,7 +37,6 @@ function _showLaunchStep(step) {
     document.getElementById("launch-step-agent").style.display = step === "agent" ? "flex" : "none";
     document.getElementById("launch-step-terminal").style.display = step === "terminal" ? "flex" : "none";
     document.getElementById("launch-step-team").style.display = step === "team" ? "flex" : "none";
-    if (step === "team") { const health = document.getElementById("launch-team-health"); if (health) health.checked = false; } // the health monitor is off for each new team (#4962)
     // Widen the modal for multi-column layouts
     const content = document.querySelector("#launch-modal .modal-content");
     if (content) {
@@ -112,12 +111,30 @@ export async function _launchOn(server, path, payload, agentType, { dirInput = n
     return res.data;
 }
 
-/** Mark a form field the server rejected: aria-invalid, a red outline and the
- *  reason as its title, focused. Cleared by the next edit, typed or set by
- *  Browse ('change'), and when the dialog closes or its fields reset (#3152). */
+/** The words shown under a rejected field: what is wrong and what to do next (UI audit #5589, finding 25). */
+function inlineProblem(input, message) {
+    const dir = /^launch-(terminal-)?dir$|^launch-team-dir$/.test(input.id || '');
+    if (message === 'Working directory is required') return 'Choose a working directory: type a path, or use Browse.';
+    if (message === 'Team name is required') return "Type a name for the team, for example auth-feature. Letters, digits, '-' and '_' only.";
+    if (message === 'Agent name is required') return 'Type a name for the agent.';
+    if (dir && !/browse/i.test(message)) return `${message.replace(/^directory not found/i, 'Folder not found').replace(/[.\s]+$/, '')}. Pick one with Browse.`;
+    return message;
+}
+
+/** Mark a form field the server rejected: aria-invalid, a red outline, the reason as its title
+ *  and as a line under the field (with what to do next, tied to it by aria-describedby), focused.
+ *  The toast still says it; the line stays until it is fixed. Cleared by the next edit, typed or
+ *  set by Browse ('change'), and when the dialog closes or its fields reset (#3152). */
  function markFieldInvalid(input, message) {
     clearFieldInvalid(input);
     const previousTitle = input.title;
+    const previousDescribedBy = input.getAttribute('aria-describedby');
+    const line = document.createElement('p');
+    line.className = 'field-error';
+    line.id = `${input.id || 'field'}-error`;
+    line.textContent = inlineProblem(input, message);
+    (input.closest('.dir-input-row') || input).insertAdjacentElement('afterend', line);
+    input.setAttribute('aria-describedby', previousDescribedBy ? `${previousDescribedBy} ${line.id}` : line.id);
     input.setAttribute('aria-invalid', 'true');
     input.classList.add('input-invalid');
     input.title = message;
@@ -130,6 +147,8 @@ export async function _launchOn(server, path, payload, agentType, { dirInput = n
         input.removeAttribute('aria-invalid');
         input.classList.remove('input-invalid');
         input.title = previousTitle;
+        if (previousDescribedBy === null) input.removeAttribute('aria-describedby'); else input.setAttribute('aria-describedby', previousDescribedBy);
+        line.remove();
     };
     input.addEventListener('input', clear);
     input.addEventListener('change', clear);

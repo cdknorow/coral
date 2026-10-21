@@ -281,13 +281,6 @@
                                     </label>
                                 </div>
                             </div>
-                            <label class="settings-toggle team-settings-toggle" id="team-health-option">
-                                <input type="checkbox" id="launch-team-health">
-                                <span>
-                                    <strong>Team health monitor</strong>
-                                    <div class="team-settings-note">Checks in on the team every few minutes to spot stuck or idle agents. It uses tokens each time. Off by default.</div>
-                                </span>
-                            </label>
                                     <div>
                                         <label>Remote Server <span class="text-muted-sm">(optional)</span>:
                                             <input type="text" id="team-board-server" placeholder="e.g. http://remote-machine:8420">
@@ -304,6 +297,7 @@
                                                 <option value="codex">Codex</option>
                                                 <option value="pi">Pi</option>
                                             </select>
+                                            <span class="settings-hint acf-default-note">Starts from the default in Settings &gt; General.</span>
                                         </label>
                                     </div>
                                     <label style="display:none">Backend:
@@ -322,6 +316,7 @@
                                             <option value="dontAsk">Don't Ask</option>
                                         </select>
                                         <span class="settings-hint perm-mode-desc">Everything except protected paths — isolated containers and VMs only</span>
+                                        <span class="settings-hint acf-default-note">Starts from the default in Settings &gt; Agents.</span>
                                     </label>
 
                         </section>

@@ -151,6 +151,7 @@ export function showTeamAvailability(team, options = {}) {
             content.querySelectorAll('.availability-agent').forEach((card, index) => {
                 const agent = data.agents[index];
                 if (!agent) return;
+                if (agent.agent_type === 'terminal' && !agent.reminder) return; // a terminal is not an agent: a reminder to it does nothing (UI audit #5589)
                 const button = document.createElement('button');
                 button.type = 'button'; button.className = 'btn'; button.textContent = agent.reminder ? 'Edit reminder' : 'Remind agent';
                 button.onclick = () => remindAgent(team, agent.subscriber_id || agent.name, agent);

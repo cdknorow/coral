@@ -49,7 +49,7 @@ function _renderPermChips(containerId, type, capabilities) {
         const isActive = baseCaps.includes(cap);
         const cls = `perm-chip${isActive ? ' active' : ''}`;
         const title = CAPABILITY_TITLES[cap] ? ` title="${escapeAttr(CAPABILITY_TITLES[cap])}"` : '';
-        html += `<button class="${escapeAttr(cls)}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" data-on-click="perm-chip-toggle"${title}>${CAPABILITY_LABELS[cap] || cap}</button>`;
+        html += `<button type="button" class="${escapeAttr(cls)}" aria-pressed="${escapeAttr(isActive ? 'true' : 'false')}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" data-on-click="perm-chip-toggle"${title}>${CAPABILITY_LABELS[cap] || cap}</button>`;
     }
     container.innerHTML = html;
 
@@ -67,6 +67,7 @@ function _renderPermChips(containerId, type, capabilities) {
 export function _togglePermChip(btn) {
     if (btn.disabled) return;
     btn.classList.toggle('active');
+    btn.setAttribute('aria-pressed', String(btn.classList.contains('active')));
     // Toggle shell patterns visibility
     const cap = btn.dataset.cap;
     const type = btn.dataset.type;
@@ -99,6 +100,10 @@ function _syncEnforcement(container) {
         line.textContent = e.text;
         line.hidden = !e.text || (e.quiet && line !== container.querySelector('.acf-perms-enforced')); // the plain Bypass line is said once, on Permissions (#5595)
     }
+    // Claude in Bypass Permissions mode never asks, so Allow pre-approves nothing: the row is not shown (its
+    // chips keep their state, so a saved preset is not changed by looking at it) and the line above says why.
+    const allowGroup = container.querySelector(`#${CSS.escape(uid)}-perms-allow`)?.closest('.perms-group');
+    if (allowGroup) allowGroup.hidden = _agentFamilyIsClaude(agentType) && permMode === 'bypassPermissions';
     for (const chip of container.querySelectorAll(`#${CSS.escape(uid)}-perms-deny .perm-chip`)) {
         chip.disabled = !e.denyEnforced && !chip.classList.contains('active');
     }
@@ -106,6 +111,10 @@ function _syncEnforcement(container) {
     if (denyNote) denyNote.textContent = e.denyEnforced ? '' : 'Not enforced by this agent';
     const patternsNote = container.querySelector('.perms-patterns-note');
     if (patternsNote) patternsNote.textContent = e.patternsEnforced ? '' : 'Not enforced by this agent';
+}
+
+function _agentFamilyIsClaude(agentType) {
+    return !agentType || agentType === 'claude';
 }
 
 function _getPermissions(editorId) {
@@ -160,6 +169,9 @@ export function renderAgentConfigForm(containerId, opts = {}) {
     const showName = opts.showName !== false;
     const showAutoPermissions = opts.showAutoPermissions !== false;
     const v = opts.value || {};
+    // A form that starts from the Settings defaults says so under those two fields: Settings is where the default lives
+    // (UI audit #5589, finding 22), the field here is this launch's own choice.
+    const fromSettings = opts.defaultNote === true;
 
     const agentTypeVal = v.agentType || v.agent_type || _settingsFor(_acfServer(container)).default_agent_type || '';
     const modelVal = v.model || '';
@@ -211,6 +223,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                     <option value="dontAsk"${permModeVal === 'dontAsk' ? ' selected' : ''}>Don't Ask</option>
                 </select>
                 <span class="settings-hint perm-mode-desc">${escapeHtml(permModeDesc)}</span>
+                ${fromSettings ? '<span class="settings-hint acf-default-note">Starts from the default in Settings > Agents.</span>' : ''}
             </label>`;
     }
 
@@ -224,6 +237,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                     <option value="pi"${agentTypeVal === 'pi' ? ' selected' : ''}>Pi</option>
                     <option value="terminal"${agentTypeVal === 'terminal' ? ' selected' : ''}>Terminal</option>
                 </select>
+                ${fromSettings ? '<span class="settings-hint acf-default-note">Starts from the default in Settings > General.</span>' : ''}
             </label>
             <label class="acf-model-wrap">Model <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
                 ${modelPickerHtml()}
@@ -237,12 +251,12 @@ export function renderAgentConfigForm(containerId, opts = {}) {
             <p class="settings-hint acf-perms-enforced" aria-live="polite" hidden></p>
             <div id="${escapeAttr(uid)}-perms" class="permissions-editor"${open ? '' : ' style="display:none"'}>
                 <div class="perms-group">
-                    <label class="perms-label">Allow:</label>
-                    <div id="${escapeAttr(uid)}-perms-allow" class="perms-chips"></div>
+                    <span class="perms-label" id="${escapeAttr(uid)}-perms-allow-label">Allow:</span>
+                    <div id="${escapeAttr(uid)}-perms-allow" class="perms-chips" role="group" aria-labelledby="${escapeAttr(uid)}-perms-allow-label"></div>
                 </div>
                 <div class="perms-group">
-                    <label class="perms-label">Deny: <span class="perms-deny-note settings-hint"></span></label>
-                    <div id="${escapeAttr(uid)}-perms-deny" class="perms-chips"></div>
+                    <span class="perms-label" id="${escapeAttr(uid)}-perms-deny-label">Deny: <span class="perms-deny-note settings-hint"></span></span>
+                    <div id="${escapeAttr(uid)}-perms-deny" class="perms-chips" role="group" aria-labelledby="${escapeAttr(uid)}-perms-deny-label"></div>
                 </div>
                 <div class="perms-shell-patterns" style="display:none">
                     <label class="perms-label">Shell patterns <span style="color:var(--text-muted);font-weight:normal">(comma-separated)</span>: <span class="perms-patterns-note settings-hint"></span></label>

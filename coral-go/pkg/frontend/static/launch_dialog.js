@@ -32,6 +32,7 @@ function _selectLaunchType(type) {
         _initAgentPresets();
         // Render agent config form
         renderAgentConfigForm('launch-agent-acf', {
+            defaultNote: true,
             showPreset: false,
             showName: false,
             sections: true, // New Agent is a sectioned dialog (#4950): Workspace, then the form's own sections, the board in Advanced

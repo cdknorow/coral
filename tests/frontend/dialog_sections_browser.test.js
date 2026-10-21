@@ -63,6 +63,11 @@ const BASE = require('./test_base').BASE;
         await shot('restart-prompt-desktop');
         await ev(`{ const p = document.querySelector('#restart-acf .acf-prompt'); p.value = 'Edited prompt'; p.dispatchEvent(new Event('input', { bubbles: true })); } true`);
         await go('#restart-modal', 'permissions'); await shot('restart-permissions-desktop');
+        // Claude in Bypass Permissions mode never asks, so Allow pre-approves nothing and its row is not shown (UI audit #5589); any other mode shows it.
+        if (await ev(`document.querySelector('#restart-acf .acf-permission-mode').value === 'bypassPermissions'`)) {
+            assert.equal(await ev(vis('#restart-acf [data-type="allow"][data-cap="shell"]')), false, 'Bypass Permissions: no Allow row');
+            await ev(`{ const m = document.querySelector('#restart-acf .acf-permission-mode'); m.value = 'default'; m.dispatchEvent(new Event('change', { bubbles: true })); } true`);
+        }
         assert.ok(await ev(vis('#restart-acf .acf-permission-mode')) && await ev(vis('#restart-acf [data-type="allow"][data-cap="shell"]')) && await ev(vis('#restart-acf [data-type="deny"][data-cap="web_access"]')), 'mode, allow and deny are all shown (no fold)');
         await ev(`document.querySelector('#restart-acf [data-type="allow"][data-cap="shell"]').click(); true`);
         assert.ok(await ev(vis('#restart-acf .perms-shell-input')), 'the shell patterns box appears with Shell');
@@ -131,8 +136,11 @@ const BASE = require('./test_base').BASE;
         await shot('new-agent-workspace-desktop');
         for (const [id, sel] of [['workspace', '#launch-agent-name-input'], ['agent', '#launch-agent-acf .acf-agent-type'], ['agent', '#launch-agent-acf .acf-model-wrap'], ['prompt', '#launch-agent-acf .acf-prompt'], ['permissions', '#launch-agent-acf .acf-permission-mode'], ['permissions', '#launch-agent-acf [data-type="allow"][data-cap="shell"]'], ['advanced', '#launch-board-select'], ['advanced', '#launch-agent-acf .acf-flags']]) {
             await go(NA, id);
+            // The Allow row is not shown in Claude's Bypass Permissions mode (it pre-approves nothing, #5589): any other mode shows it.
+            if (sel.includes('[data-type="allow"]')) await ev(`{ const m = document.querySelector('#launch-agent-acf .acf-permission-mode'); m.value = 'default'; m.dispatchEvent(new Event('change', { bubbles: true })); } true`);
             assert.ok(await ev(vis(sel)), `${sel} is reached in ${id}`);
         }
+        await ev(`{ const m = document.querySelector('#launch-agent-acf .acf-permission-mode'); m.value = 'bypassPermissions'; m.dispatchEvent(new Event('change', { bubbles: true })); } true`); // the mode this suite started with
         await go(NA, 'advanced'); await shot('new-agent-advanced-desktop');
         await fillId('launch-board-select', '__new__'); assert.ok(await ev(vis('#launch-board-name')), 'a new board asks for its name in Advanced');
         await fillId('launch-board-name', 'bad name!');

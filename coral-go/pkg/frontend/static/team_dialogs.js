@@ -468,7 +468,6 @@ async function launchTeam() {
         agents,
     };
     if (boardServer) payload.board_server = boardServer;
-    if (document.getElementById("launch-team-health")?.checked) payload.health_monitor = true; // off unless asked for (#4962)
     if (useWorktree) {
         payload.worktree = true;
         if (baseBranch) payload.base_branch = baseBranch;
