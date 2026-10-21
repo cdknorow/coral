@@ -76,8 +76,16 @@ var autoAcceptFileTools = map[string]string{
 // the relative "Windows": the command is judged a second time with every backslash turned into "/", and the first risk
 // found is the answer (a path with backslashes is then the path it names).
 func shellRisk(command, workDir string) string {
-	if why := shellRiskFrom(command, workDir, workDir); why != "" || runtime.GOOS != "windows" || !strings.Contains(command, `\`) {
+	why := shellRiskFrom(command, workDir, workDir)
+	if why != "" || runtime.GOOS != "windows" {
 		return why
+	}
+	// PowerShell's and cmd's own destructive commands (Remove-Item, del /s, rd /s, ...), read as they read them.
+	if why := winVerbRisk(command, func(p string) bool { return unreadablePath(p) || !pathInside(p, workDir) }); why != "" {
+		return why
+	}
+	if !strings.Contains(command, `\`) {
+		return ""
 	}
 	return shellRiskFrom(strings.ReplaceAll(command, `\`, "/"), workDir, workDir)
 }
