@@ -30,6 +30,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         const open = async () => {
             await ev(`document.getElementById('team-settings-workspace')?.remove(); import((window.__coralStatic || '/static/') + 'team_working_mode.js').then(m => m.showTeamWorkingMode(${JSON.stringify(TEAM)}, { workspace: false })); true`);
             await waitFor(`!!document.querySelector('[data-settings-tab=health]')`, 'the Health check tab', 15000);
+            await waitFor(`!!document.querySelector('[data-settings-tab=messaging]')`, 'the Messaging tab (drawn after the board\'s cross-team state is read, #5516)', 15000); // so the tab order read below is the settled one
         };
         // The dialog can be drawn again after the Health check tab first appears (the page's settings arrive after it): a click at that instant finds no tab (null),
         // or lands on the one about to be replaced, and the panel's form is drawn only after the board's settings are read, so a read of it straight after finds null. So click in the same evaluation that finds the tab, until the panel and its form are showing (#4992: TypeError null.click and null.elements, ~10%).
