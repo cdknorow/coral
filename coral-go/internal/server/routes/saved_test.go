@@ -61,6 +61,7 @@ func newSavedRig(t *testing.T) *savedRig {
 	})
 	r.Get("/api/saved", h.SavedList)
 	r.Post("/api/saved", h.SavedAdd)
+	r.Get("/api/saved/{id}/message", h.SavedMessage)
 	r.Patch("/api/saved/{id}", h.SavedUpdate)
 	r.Delete("/api/saved/{id}", h.SavedDelete)
 	srv := httptest.NewServer(r)
@@ -106,7 +107,11 @@ func TestSavedMessagesAreTheOperatorsAndKeptOnce(t *testing.T) {
 		for _, c := range []struct{ m, p string }{{"GET", "/api/saved"}, {"POST", "/api/saved"}, {"PATCH", "/api/saved/1"}, {"DELETE", "/api/saved/1"}} {
 			code, out := g.do(c.m, c.p, hdr, agentSave(k1, "x"))
 			assert.Equal(t, http.StatusForbidden, code, name+" "+c.m+" "+c.p)
-			assert.Equal(t, "operator_only", out["code"], name)
+			want := "operator_only"
+			if name == "a forged hub stamp" && c.m == "GET" {
+				want = "owner_only" // the list is the Hub owner's alone through the hub (#5753): a stamp that is not the connector's is a hub request with no owner
+			}
+			assert.Equal(t, want, out["code"], name)
 		}
 	}
 	_, list := g.do("GET", "/api/saved", savedAsOperator, nil)
@@ -499,7 +504,14 @@ func TestSavedSearch(t *testing.T) {
 		assert.Contains(t, fmt.Sprint(out["error"]), want, query)
 	}
 	// through the hub: the Operator's own request with the connector's stamp; a q holding a secret is refused, the marker finds the title
-	hub := map[string]string{testDashboardHeader: "1", tunnel.ViaHeader: "1"}
+	// (the list is the Hub owner's alone since #5753: the owner's request, with the connector's stamp, the owner marker and the enrolled label)
+	withLabel(t, cmtHubUser, nil)
+	hub := cmtAsHubOwner
+	for name, hdr := range map[string]map[string]string{"a hub viewer": cmtAsHub, "the owner's credential on a request with no owner marker": cmtAsOwnerThroughTunnel} {
+		code, out = get("q=parser", hdr)
+		assert.Equal(t, 403, code, name)
+		assert.Equal(t, "owner_only", out["code"], name)
+	}
 	code, out = get("q="+tok, hub)
 	assert.Equal(t, 400, code)
 	assert.Contains(t, fmt.Sprint(out["error"]), "q can't contain a secret")

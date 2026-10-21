@@ -85,6 +85,10 @@ func TestTheOwnerTableAgreesWithTheHandWrittenListItReplaced(t *testing.T) {
 			if m == http.MethodGet && strings.HasSuffix(p, "/cross-team/settings") {
 				continue
 			}
+			// Saved for later is the owner's alone since #5753 (the list, and the whole message of a bookmark, new): the old list never had them.
+			if m == http.MethodGet && (p == "/api/saved" || strings.HasPrefix(p, "/api/saved/") && strings.HasSuffix(p, "/message")) {
+				continue
+			}
 			// The one difference of #5610: the table's {id} is any one segment, so a task artifact-content path with a non-number id is stamped too (its handler refuses it).
 			if strings.HasPrefix(p, "/api/board/") && strings.HasSuffix(p, "/artifact-content") && m == http.MethodGet {
 				continue
