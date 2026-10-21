@@ -245,6 +245,9 @@ func (t *term) put(r rune) {
 	if w == 0 {
 		return // a combining mark or a zero-width character: it draws no cell of its own
 	}
+	if w == 2 && t.cols < 2 {
+		w = 1 // a one-column screen has no room for the right half
+	}
 	if w == 2 && t.x == t.cols-1 {
 		// A double-width character that does not fit on this row goes to the next.
 		t.grid[t.y][t.x] = ' '
