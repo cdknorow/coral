@@ -185,6 +185,11 @@ func (h *SessionsHandler) launchBoard(w http.ResponseWriter, r *http.Request, bo
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "board_not_found", "code": "board_not_found", "message": "No board has that id"})
 			return "", false
 		}
+		// A launch is how an agent is given a team, and a team decides whose artifacts an agent reads (#5577): an agent may put a new agent only onto a team its own owner owns.
+		if !mayLaunchOnto(r, b.ID) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden_for_agent", "code": "forbidden_for_agent", "message": "An agent can start agents only on teams of its own owner"})
+			return "", false
+		}
 		return b.ID, true
 	}
 	boardName = strings.TrimSpace(boardName)
@@ -231,7 +236,13 @@ func (h *SessionsHandler) launchBoard(w http.ResponseWriter, r *http.Request, bo
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_board_name", "code": "invalid_board_name", "message": problem})
 		return "", false
 	}
-	b, err := h.bs.CreateBoard(ctx, boardName, "Operator")
+	// A board made by an agent is its owner's, never the machine owner's by default; one a hub user launched through Coral Hub is that user's (#5577).
+	owner, ok := launchOwner(r)
+	if !ok {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden_for_agent", "code": "forbidden_for_agent", "message": "This agent's team could not be established"})
+		return "", false
+	}
+	b, err := h.bs.CreateBoard(ctx, boardName, owner.creator())
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return "", false

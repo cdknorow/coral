@@ -19,6 +19,8 @@ var identityWords = map[string]bool{"subscriber": true, "session": true, "sender
 // from or for: each with why. A new one needs a line here, or to be added to identityKeys.
 var notIdentityFields = map[string]string{
 	"agent_type":         "which CLI to launch, not a participant",
+	"owner_kind":         "written by the server into the upload record (#5577) from the launch path's team owner; read back from the data folder, never from a request",
+	"owner_id":           "as owner_kind: the owner a record names, a validated hub-user id or the machine owner, set by the server at the upload, never read from a request",
 	"uploaded_by":        "written by the server into the upload record of an image pasted in the dashboard (\"owner\", #5284); never read from a request",
 	"author":             "a Saved bookmark's label of who wrote a board message (POST /api/saved, the Operator's own bookmark; the board decides it when wired, #4816), not who a request is from",
 	"agents":             "a list of launch specs for a team launch, validated as names by the launcher",

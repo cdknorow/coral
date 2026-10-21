@@ -163,6 +163,7 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 		items = h.uploads.merge(items, h.coralDir, teamUploadSessions(tasks, subscribers))
 		items = h.mergeCrossTeamRows(items, project)
 	}
+	items = filterReadable(r, h.coralDir, items) // an agent's list holds only what the one read check lets it read, so the totals and the cursor count nothing else (#5577)
 	if tq != nil {
 		h.queryTeamArtifacts(w, r, project, items, scanTruncated, limit, offset, sessionFilter, tq)
 		return
@@ -571,7 +572,7 @@ func (h *BoardHandler) ListSessionArtifacts(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusForbidden, "forbidden_for_agent", "an agent can list only its own uploads or those of its board's agents")
 		return
 	}
-	items := h.uploads.merge(nil, h.coralDir, map[string]string{sessionID: ""})
+	items := filterReadable(r, h.coralDir, h.uploads.merge(nil, h.coralDir, map[string]string{sessionID: ""})) // #5577
 	end := offset + limit
 	hasMore := end < len(items)
 	if offset > len(items) {

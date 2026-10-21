@@ -72,5 +72,24 @@ func uploaderOf(sessionID string) (boardID, name, role string) {
 // newUploadRecord is the record of an upload by sessionID of the object described by meta, made now.
 func newUploadRecord(meta agentArtifactMeta, sessionID, uploadedBy, source string) agentUploadRecord {
 	b, n, r := uploaderOf(sessionID)
-	return agentUploadRecord{agentArtifactMeta: meta, CreatedAt: time.Now().UTC().Format(time.RFC3339), UploadedBy: uploadedBy, Source: source, Board: b, Uploader: n, Role: r}
+	rec := agentUploadRecord{agentArtifactMeta: meta, CreatedAt: time.Now().UTC().Format(time.RFC3339), UploadedBy: uploadedBy, Source: source, Board: b, Uploader: n, Role: r}
+	owner := recordOwnerOf(sessionID, uploadedBy)
+	rec.OwnerKind, rec.OwnerID = owner.Kind, owner.ID
+	return rec
+}
+
+// recordOwnerOf is who owns an upload (#5577): the owner of the team the session was LAUNCHED onto (the launch path's board, never a subscription the agent made itself). An image the person
+// pastes or attaches in the dashboard belongs to the team of the agent it is for, not to the person: the machine owner reads it anyway, and the agent it was pasted to must be able to.
+// A session that cannot be placed is the machine owner's (the record then reads as legacy).
+func recordOwnerOf(sessionID, uploadedBy string) artifactPrincipal {
+	if sessionID == "" {
+		return operatorPrincipal
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	owner, _, err := circleOf(ctx, sessionID)
+	if err != nil {
+		return operatorPrincipal
+	}
+	return owner
 }

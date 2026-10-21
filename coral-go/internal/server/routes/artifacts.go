@@ -54,6 +54,10 @@ type agentUploadRecord struct {
 	Board    string `json:"board,omitempty"`
 	Uploader string `json:"uploader,omitempty"`
 	Role     string `json:"role,omitempty"`
+	// OwnerKind and OwnerID say who owns this record (#5577): "operator" (the machine owner) or "hub_user" and its id. Recorded at the upload from authentication (an agent's team's owner;
+	// the operator for a dashboard paste). Absent on a record made before they were kept: the machine owner's.
+	OwnerKind string `json:"owner_kind,omitempty"`
+	OwnerID   string `json:"owner_id,omitempty"`
 }
 
 // sourcePaste marks an upload record made from an image pasted or attached in the dashboard.
@@ -754,6 +758,11 @@ func validArtifactID(id string) bool { return artifactIDRe.MatchString(id) }
 // through Coral Hub (404), a missing or unreadable record or object (404), and a stored object whose length disagrees with its record (500, artifact_corrupt: a damaged store
 // is said, not served). The object is opened once, without following a link, and the caller uses that handle. On false the answer has been written.
 func (h *SessionsHandler) openArtifactForRead(w http.ResponseWriter, r *http.Request, id string) (*os.File, agentArtifactMeta, os.FileInfo, bool) {
+	// The one read check (#5577), before the record or the object is touched: an agent that may not read this answers exactly as for an artifact that does not exist.
+	if !artifactReadable(r, h.cfg.CoralDir(), id) {
+		errNotFound(w, "artifact not found")
+		return nil, agentArtifactMeta{}, nil, false
+	}
 	path := filepath.Join(h.artifactDir(), id)
 	meta := agentArtifactMeta{}
 	metaData, err := os.ReadFile(path + ".json")

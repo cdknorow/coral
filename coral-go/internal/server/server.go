@@ -113,6 +113,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	}
 	if db != nil {
 		routes.SetUploaderLookup(routes.NewUploaderLookup(store.NewSessionStore(db), boardStore)) // each upload records its board, agent and role (#5575)
+		routes.SetArtifactCircle(routes.NewArtifactCircle(store.NewSessionStore(db), boardStore)) // the one artifact read check: an agent reads what its team's owner owns (#5577)
 	}
 	applyBoardRekeys(context.Background(), boardStore, db, cfg.CoralDir())
 

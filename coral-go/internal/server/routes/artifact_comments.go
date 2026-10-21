@@ -197,6 +197,10 @@ func (h *SessionsHandler) commentArtifact(w http.ResponseWriter, r *http.Request
 		errBadRequest(w, "invalid artifact id")
 		return "", false
 	}
+	if !artifactReadable(r, h.cfg.CoralDir(), id) { // the one read check (#5577): not yours answers as missing
+		errNotFound(w, "artifact not found")
+		return "", false
+	}
 	var meta agentArtifactMeta
 	data, err := readSmallFile(filepath.Join(h.artifactDir(), id+".json"), 64<<10)
 	if err != nil || json.Unmarshal(data, &meta) != nil {
