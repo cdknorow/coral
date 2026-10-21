@@ -472,8 +472,8 @@ var codexMarkers struct {
 	order   *list.List               // most recently used first
 }
 
-// codexMarkerMax bounds the rollouts remembered: tens of thousands, a few hundred bytes each.
-const codexMarkerMax = 32768
+// codexMarkerMax bounds the rollouts remembered: tens of thousands, a few hundred bytes each. A variable so that a test can use a small bound.
+var codexMarkerMax = 32768
 
 type codexMarkerItem struct {
 	path  string
