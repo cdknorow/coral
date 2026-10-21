@@ -18,7 +18,7 @@ import (
 // needed (a sanitiser, or a test of one), write it as an escape (\u200b) so it shows; this test fails with file:line:column and the code point for any literal one, except where the
 // allowlist below names the file and the character with the reason a literal is needed there.
 //
-// It scans the tracked files of these types (git ls-files; a walk of the tree when git is not there): .go .js .mjs .css .html .md .json .sh .py .yml. The characters: every Unicode
+// It scans every tracked text file (git ls-files; a walk of the tree when git is not there): see isTextSource. The characters: every Unicode
 // format character (category Cf: zero-width, bidi marks and embeddings and isolates, word joiner, soft hyphen, the invisible operators, tag characters, BOM), the line and paragraph
 // separators U+2028 and U+2029, and the combining grapheme joiner U+034F. Variation selectors are not on the list (an emoji needs them) and neither are the non-ASCII spaces.
 //
@@ -27,11 +27,55 @@ import (
 // invisibleAllowed is "path:U+XXXX" with the reason this character may be literal in that file. Keep it short: an escape is nearly always the better way.
 var invisibleAllowed = map[string]string{}
 
-var invisibleExts = map[string]bool{".go": true, ".js": true, ".mjs": true, ".css": true, ".html": true, ".md": true, ".json": true, ".sh": true, ".py": true, ".yml": true}
-
 // isInvisible reports whether r is one of the characters this census refuses.
 func isInvisible(r rune) bool {
 	return unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029' || r == '\u034f'
+}
+
+// isTextSource says whether a file is text a reviewer reads: no NUL byte in its first 8 KiB and valid UTF-8 throughout (a Latin-1 or binary file is not scanned), and at most 8 MiB. Every tracked
+// file of that kind is scanned whatever its extension: an invisible character hides as well in a .yaml, a .rb cask, a .ps1, a .wxs, a golden file or a text list as in a .go.
+func isTextSource(src []byte) bool {
+	if len(src) > 8<<20 {
+		return false
+	}
+	head := src
+	if len(head) > 8<<10 {
+		head = head[:8<<10]
+	}
+	return !bytes.Contains(head, []byte{0}) && utf8.Valid(src)
+}
+
+// variationSelectorFindings returns "line:col U+XXXX" for each variation selector that does not belong to an emoji: the supplementary ones (U+E0100 to U+E01EF) and U+FE00 to U+FE0D are never
+// needed in source (they can carry hidden data), and U+FE0E and U+FE0F (text and emoji presentation) only follow a non-ASCII character or a keycap base (a digit, # or *).
+func variationSelectorFindings(src []byte) []string {
+	var out []string
+	line, col := 1, 1
+	var prev rune
+	for i := 0; i < len(src); {
+		r, n := utf8.DecodeRune(src[i:])
+		if r == utf8.RuneError && n == 1 {
+			i++
+			col++
+			continue
+		}
+		switch {
+		case r >= 0xE0100 && r <= 0xE01EF, r >= 0xFE00 && r <= 0xFE0D:
+			out = append(out, fmt.Sprintf("%d:%d U+%04X", line, col, r))
+		case r == 0xFE0E || r == 0xFE0F:
+			if !(prev >= 0x80 || prev == '#' || prev == '*' || (prev >= '0' && prev <= '9')) {
+				out = append(out, fmt.Sprintf("%d:%d U+%04X", line, col, r))
+			}
+		}
+		prev = r
+		if r == '\n' {
+			line++
+			col = 1
+		} else {
+			col++
+		}
+		i += n
+	}
+	return out
 }
 
 // invisibleFindings returns "line:col U+XXXX" for each literal invisible character of src, in order.
@@ -104,15 +148,15 @@ func TestNoLiteralInvisibleCharactersInCommittedSource(t *testing.T) {
 	var bad []string
 	scanned := 0
 	for _, rel := range trackedFiles(t, root) {
-		if !invisibleExts[strings.ToLower(filepath.Ext(rel))] {
-			continue
-		}
 		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			continue // a tracked file that is not there (a sparse checkout): nothing to read
 		}
+		if !isTextSource(src) {
+			continue // an image, an archive, a binary: nothing a reviewer reads
+		}
 		scanned++
-		for _, f := range invisibleFindings(src) {
+		for _, f := range append(invisibleFindings(src), variationSelectorFindings(src)...) {
 			cp := f[strings.Index(f, "U+"):]
 			key := rel + ":" + cp
 			if _, ok := invisibleAllowed[key]; ok {
@@ -154,7 +198,7 @@ func TestInvisibleCharacterCensusKnowsWhatItIsFor(t *testing.T) {
 		}
 	}
 	for name, s := range map[string]string{
-		"plain text": "hello, world\n", "an accented letter": "café", "an emoji with its variation selector": "⚠️", "a non-breaking space": "a b",
+		"plain text": "hello, world\n", "an accented letter": "café", "an emoji with its variation selector": "⚠\ufe0f", "a non-breaking space": "a b",
 		"CJK": "日本", "the escape written out": `"\u200b"`, "a tab and CRLF": "a\tb\r\n",
 	} {
 		if got := invisibleFindings([]byte(s)); len(got) != 0 {
@@ -165,5 +209,40 @@ func TestInvisibleCharacterCensusKnowsWhatItIsFor(t *testing.T) {
 	want := []string{"2:5 U+200B", "3:6 U+202E"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("positions: got %v, want %v", got, want)
+	}
+}
+
+// Variation selectors can carry hidden data when they are not part of an emoji: the census refuses the ones an emoji never needs and the others unless they follow what they belong to.
+func TestVariationSelectorsThatAreNotEmojiAreFound(t *testing.T) {
+	for name, s := range map[string]string{
+		"a supplementary selector": "a\U000e0100b", "a selector VS1": "a\ufe00", "an emoji selector after ASCII text": "ab\ufe0f", "a text selector after a letter": "x\ufe0e",
+		"a run of hidden ones": "⚠\U000e0101\U000e0102",
+	} {
+		if got := variationSelectorFindings([]byte(s)); len(got) == 0 {
+			t.Errorf("%s: not found", name)
+		}
+	}
+	for name, s := range map[string]string{
+		"an emoji with its selector": "⚠\ufe0f", "a keycap": "1\ufe0f⃣", "a text-presentation arrow": "↔\ufe0e", "plain text": "hello",
+	} {
+		if got := variationSelectorFindings([]byte(s)); len(got) != 0 {
+			t.Errorf("%s: wrongly found %v", name, got)
+		}
+	}
+	if got := variationSelectorFindings([]byte("one\ntwo ⚠\nx\U000e0100")); strings.Join(got, "|") != "3:2 U+E0100" {
+		t.Errorf("position: %v", got)
+	}
+}
+
+// Every tracked text file is read, whatever its extension; a binary or a non-UTF-8 file is not.
+func TestIsTextSourceReadsTextOfAnyExtensionAndNotBinaries(t *testing.T) {
+	if !isTextSource([]byte("name: x\non: push\n")) || !isTextSource([]byte("cask \"coral\" do\nend\n")) || !isTextSource(nil) {
+		t.Error("text is not text")
+	}
+	if isTextSource([]byte("PK\x03\x04\x00\x00")) || isTextSource([]byte{0x89, 'P', 'N', 'G', 0x00}) || isTextSource([]byte("caf\xe9 latin-1")) {
+		t.Error("a binary or a non-UTF-8 file is text")
+	}
+	if isTextSource(make([]byte, 9<<20)) {
+		t.Error("a file over 8 MiB is scanned")
 	}
 }
