@@ -3,6 +3,7 @@ package routes
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -51,7 +52,6 @@ func TestShellRisk(t *testing.T) {
 		"rm -rf build",
 		"rm -rf ./dist node_modules",
 		"rm -r " + filepath.ToSlash(filepath.Join(wd, "out")), // a shell word: forward slashes, as a Git Bash command has them
-		"rm file.txt /tmp/one-file",                           // not recursive
 		"git push origin main",
 		"git push -u origin feature",
 		"git reset --soft HEAD~1",
@@ -65,6 +65,16 @@ func TestShellRisk(t *testing.T) {
 	}
 	for _, cmd := range safe {
 		assert.Empty(t, shellRisk(cmd, wd), cmd)
+	}
+
+	// A delete that is not recursive, of a path outside the folder. On Unix that is not a shell risk (shell writes are not path-checked,
+	// documented above). On Windows rm is also PowerShell's Remove-Item alias, and /tmp is a rooted path with no drive to compare: outside the
+	// working folder, never joined onto it (QA #28 C1), so it is held. The product rule is deliberate; the case was Unix-only.
+	if runtime.GOOS == "windows" {
+		assert.Contains(t, shellRisk("rm file.txt /tmp/one-file", wd), "deletes outside the working directory")
+		assert.Empty(t, shellRisk("rm file.txt "+filepath.ToSlash(filepath.Join(wd, "one-file")), wd), "the same delete inside the folder")
+	} else {
+		assert.Empty(t, shellRisk("rm file.txt /tmp/one-file", wd), "not recursive")
 	}
 }
 
