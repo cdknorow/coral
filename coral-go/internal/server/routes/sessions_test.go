@@ -1355,14 +1355,9 @@ func TestSessionsLaunchTeam_PreservesToolsAndNeverMCP(t *testing.T) {
 
 	commands := strings.Join(terminal.sentCommands(), "\n")
 	require.NotEmpty(t, commands)
-	parts := strings.Fields(commands)
-	settingsPath := ""
-	for i := 0; i < len(parts)-1; i++ {
-		if parts[i] == "--settings" {
-			settingsPath = parts[i+1]
-			break
-		}
-	}
+	m := oracleSettingsArg.FindStringSubmatch(commands) // a quoted path on Windows (PowerShell)
+	require.Len(t, m, 2, "launch has a settings file: %s", commands)
+	settingsPath := strings.Trim(m[1], `'"`)
 	require.NotEmpty(t, settingsPath)
 	settingsJSON, err := os.ReadFile(settingsPath)
 	require.NoError(t, err)
