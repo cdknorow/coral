@@ -1718,3 +1718,68 @@ func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
 		t.Errorf("cleanup left %s", dir)
 	}
 }
+
+// Every agent's system prompt says where Coral's docs are, with or without a team board: the one
+// command that works from inside its sandbox (a plain curl of the docs route has no credential).
+func TestInstructionPromptsNameTheDocsCommand(t *testing.T) {
+	agents := []struct {
+		name      string
+		agent     Agent
+		prefix    string
+		extension string
+	}{
+		{"claude", &ClaudeAgent{}, "settings", "json"},
+		{"agy", &AgyAgent{}, "agy_prompt", "txt"},
+		{"codex", &CodexAgent{}, "codex_instructions", "md"},
+		{"pi", &PiAgent{}, "pi_sys", "md"},
+	}
+	for _, tt := range agents {
+		for _, board := range []string{"", "dev-board"} {
+			t.Run(tt.name+"/board="+board, func(t *testing.T) {
+				sid := tt.name + "-docs-" + strings.ReplaceAll(board, "-", "")
+				buildLaunch(tt.agent, LaunchParams{SessionID: sid, CoralDir: t.TempDir(), BoardName: board, Role: "developer"})
+				content, err := os.ReadFile(findTempFile(t, tt.prefix, sid, tt.extension))
+				if err != nil {
+					t.Fatal(err)
+				}
+				text := string(content)
+				if tt.name == "claude" { // the prompt sits inside settings JSON: compare as the JSON string it is
+					var settings map[string]any
+					if json.Unmarshal(content, &settings) == nil {
+						if s, ok := settings["systemPrompt"].(string); ok {
+							text = s
+						}
+					}
+				}
+				docs, marker := strings.Index(text, DocsPromptLine), strings.Index(text, "CORAL_SESSION_ID: "+sid)
+				if docs < 0 || marker < 0 || docs > marker {
+					t.Fatalf("want the docs line before the session marker (docs %d, marker %d) in %q", docs, marker, text)
+				}
+			})
+		}
+	}
+}
+
+// The line the Docs tab's button copies is the line agents are given: one text, two places.
+func TestDocsPromptLineMatchesTheCopyButton(t *testing.T) {
+	src, err := os.ReadFile("../../pkg/frontend/static/docs.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`export const DOCS_FOR_AGENTS = "((?:[^"\\]|\\.)*)";`).FindSubmatch(src)
+	if m == nil {
+		t.Fatal("docs.js has no DOCS_FOR_AGENTS constant")
+	}
+	var js string
+	if err := json.Unmarshal([]byte(`"`+string(m[1])+`"`), &js); err != nil {
+		t.Fatal(err)
+	}
+	if js != DocsPromptLine {
+		t.Fatalf("docs.js copies %q, agents are told %q", js, DocsPromptLine)
+	}
+	for _, want := range []string{"coral-agent docs", "coral-agent docs <topic>", "coral-agent docs all"} {
+		if !strings.Contains(DocsPromptLine, want) {
+			t.Errorf("the line does not name %q", want)
+		}
+	}
+}

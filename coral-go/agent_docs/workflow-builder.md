@@ -34,13 +34,13 @@ You have access to the Coral API at `http://localhost:${CORAL_PORT}`. Use `curl`
 
 ## Looking Up Documentation
 
-When you need details about workflow schemas, hooks, agent configuration, or other Coral features, fetch the docs from the API instead of guessing:
+When you need details about workflow schemas, hooks, agent configuration, or other Coral features, read the docs with `coral-agent docs <topic>` (it carries your session token; a plain curl of the API is refused) instead of guessing:
 
-- `curl http://localhost:${CORAL_PORT}/api/agent-docs/workflows` — Workflow schema, step rules, run management
-- `curl http://localhost:${CORAL_PORT}/api/agent-docs/hooks` — Hook events and format for step lifecycle
-- `curl http://localhost:${CORAL_PORT}/api/agent-docs/team-config` — Agent configuration schema (for agent steps)
-- `curl http://localhost:${CORAL_PORT}/api/agent-docs/sessions` — Session/launch API reference
-- `curl http://localhost:${CORAL_PORT}/api/agent-docs/scheduled-jobs` — Scheduling workflows with cron
+- `coral-agent docs workflows` — Workflow schema, step rules, run management
+- `coral-agent docs hooks` — Hook events and format for step lifecycle
+- `coral-agent docs team-config` — Agent configuration schema (for agent steps)
+- `coral-agent docs sessions` — Session/launch API reference
+- `coral-agent docs scheduled-jobs` — Scheduling workflows with cron
 
 Do this proactively when you need specifics rather than relying on memory.
 

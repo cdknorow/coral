@@ -33,6 +33,12 @@ func TestHelperRunAgent(t *testing.T) {
 // from the calling agent, pointed at serverURL.
 func runAgent(t *testing.T, serverURL string, args ...string) (int, string, string) {
 	t.Helper()
+	return runAgentEnv(t, serverURL, nil, args...)
+}
+
+// runAgentEnv is runAgent with more environment variables (kept after the cleaned ones).
+func runAgentEnv(t *testing.T, serverURL string, extraEnv []string, args ...string) (int, string, string) {
+	t.Helper()
 	encoded, _ := json.Marshal(args)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperRunAgent$")
 	for _, kv := range os.Environ() {
@@ -44,6 +50,7 @@ func runAgent(t *testing.T, serverURL string, args ...string) (int, string, stri
 	cmd.Env = append(cmd.Env, "CORAL_AGENT_HELPER=1", "CORAL_AGENT_ARGS="+string(encoded),
 		"CORAL_URL="+serverURL, testguard.TestURLEnv+"=1", "CORAL_DATA_DIR="+dir, "CORAL_DIR="+dir, "HOME="+t.TempDir(),
 		"CORAL_SESSION_NAME=claude-00000000-0000-4000-8000-000000000000")
+	cmd.Env = append(cmd.Env, extraEnv...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()

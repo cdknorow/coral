@@ -62,6 +62,7 @@ Commands:
   search <query> [flags]         Shortcut for 'history search'
   notify --title T [--message M] [--level L] [--alert]
                                  Show a notification on the dashboard
+  docs [topic|all]               List Coral's docs for agents, or print one
 
 Output:
   --raw       Print what the server sent byte for byte. Without it, terminal control
@@ -115,6 +116,11 @@ func main() {
 		cmdHistory(os.Args[2:])
 	case "search":
 		cmdHistorySearch(os.Args[2:])
+	case "docs":
+		if err := cmdDocs(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "notify":
 		if err := cmdNotify(os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)

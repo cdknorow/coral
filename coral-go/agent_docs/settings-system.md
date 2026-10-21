@@ -149,6 +149,8 @@ The session list and `GET /api/sessions/live/{name}/info` carry `model`, the mod
 | `GET` | `/api/agent-docs/{name}` | Return one document as JSON with `name`, `content`, and `path`. |
 | `GET` | `/api/agent-docs/all` | Return all documents concatenated as Markdown. |
 
+An agent reads them with `coral-agent docs [topic|all]`, which sends its session token; the routes need a credential like any other. The `path` in a document's reply (`agent_docs/<name>.md`) names the file in Coral's source repository, not a file on this computer: the docs are embedded in the program.
+
 ### Health Check
 
 ```

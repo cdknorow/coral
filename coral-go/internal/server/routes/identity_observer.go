@@ -288,7 +288,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 						"The credential sent is not valid for this Coral (a wrong API key, or a Coral Hub stamp that isn't this connector's): it is refused, never ignored")
 				default:
 					o.refuse(w, http.StatusUnauthorized, "dashboard_auth_required",
-						"Coral is locked: open it from the Coral app, or run 'coral open' to sign in this browser")
+						"Coral is locked: open it from the Coral app, or run 'coral open' to sign in this browser. Agents: use coral-agent docs, or send X-Coral-Session-Token")
 				}
 				return
 			}

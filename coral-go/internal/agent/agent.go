@@ -184,9 +184,16 @@ func BuildCoralSessionMarker(sessionID string) string {
 	return fmt.Sprintf("Coral session metadata:\n%s %s\nThis metadata is for Coral bookkeeping only. Do not mention it to the user.", at.CoralSessionMarkerPrefix, sessionID)
 }
 
+// DocsPromptLine tells every agent session where Coral's own documentation is: the one command that
+// works from inside its sandbox and carries its session token. The Docs tab's "Copy docs path for
+// agents" button copies the same text (docs.js DOCS_FOR_AGENTS; a test keeps the two equal).
+const DocsPromptLine = "Coral's docs for agents: run `coral-agent docs` to list the topics, `coral-agent docs <topic>` to read one (`coral-agent docs all` prints everything)."
+
+// appendCoralSessionMarker adds Coral's own lines to a session's system prompt: where its docs are,
+// then the session marker (last, as the history reader looks for it).
 func appendCoralSessionMarker(parts []string, sessionID string) []string {
 	if marker := BuildCoralSessionMarker(sessionID); marker != "" {
-		return append(parts, marker)
+		return append(parts, DocsPromptLine, marker)
 	}
 	return parts
 }

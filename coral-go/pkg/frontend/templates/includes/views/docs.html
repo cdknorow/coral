@@ -1,6 +1,12 @@
 {{ define "includes/views/docs.html" }}
 <!-- Documentation View -->
 <div id="docs-view" class="docs-view" style="display:none">
+    <div class="docs-toolbar">
+        <button type="button" class="btn btn-small" id="docs-copy-agent-line" data-on-click="docs-copy-agent-line" title="Copies one line you can paste to an agent so it can read these docs">
+            <span class="material-icons" aria-hidden="true">content_copy</span> Copy docs line for agents
+        </button>
+        <span class="docs-toolbar-hint">Paste it to an agent: it reads these docs with <code>coral-agent docs</code>.</span>
+    </div>
     <article class="docs-content" id="docs-content">
         <div class="docs-empty">
             <span class="material-icons" style="font-size:2.5rem;opacity:0.3" aria-hidden="true">menu_book</span>

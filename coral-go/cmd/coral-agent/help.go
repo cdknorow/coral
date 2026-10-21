@@ -10,7 +10,7 @@ import (
 // commands are the top-level commands main dispatches.
 var commands = map[string]bool{
 	"bind-codex": true, "ui": true, "launch": true, "artifact": true,
-	"task": true, "history": true, "search": true, "notify": true,
+	"task": true, "history": true, "search": true, "notify": true, "docs": true,
 }
 
 // textFlags take free text that is sent to the server.
@@ -59,6 +59,8 @@ func commandUsage(cmd string, rest []string) string {
 		return artifactUsageText
 	case "notify":
 		return notifyUsageText
+	case "docs":
+		return docsUsageText
 	}
 	if lines := clihelp.UsageLines(agentUsageText, cmd); lines != "" {
 		return "Usage: coral-agent <command> [args]\n\n" + lines

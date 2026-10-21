@@ -1,10 +1,14 @@
 /* Documentation: browsable agent_docs viewer */
 
-import { escapeHtml as esc, showView, showToast, renderDocsMarkdown, escapeAttr } from './utils.js';
+import { escapeHtml as esc, showView, showToast, renderDocsMarkdown, escapeAttr, copyText } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { apiFetch } from './api.js';
 import { loadHighlight } from './vendor_loader.js';
 import { note, currentRoute } from './nav.js';
+
+/** The line the "Copy docs line for agents" button copies: what a user pastes to an agent so it can read
+ *  these docs. The agent prompt says the same (internal/agent DocsPromptLine; a Go test keeps them equal). */
+export const DOCS_FOR_AGENTS = "Coral's docs for agents: run `coral-agent docs` to list the topics, `coral-agent docs <topic>` to read one (`coral-agent docs all` prints everything).";
 
 let docsList = [];
 let selectedDoc = null;
@@ -149,6 +153,10 @@ export async function selectDoc(name, { noteRoute = true } = {}) {
 
 // A doc in the Docs list (#3645).
 registerActions({
+    'docs-copy-agent-line': async () => {
+        if (await copyText(DOCS_FOR_AGENTS)) showToast('Copied');
+        else showToast('Could not copy: select the text in the hint and copy it', true);
+    },
     'doc-open': el => { const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
     'doc-open-key': (el, event) => { if (event.target !== el || (event.key !== 'Enter' && event.key !== ' ')) return; event.preventDefault(); const d = textOf(el.dataset.doc, 200); if (d) window.selectDoc(d); },
 });
