@@ -379,6 +379,24 @@ func ResolveCLIPath(settings map[string]string, agentType string) string {
 	return ""
 }
 
+// CLIPathError is a configured cli_path_<type> that can't be run (#115). Error names the setting and the path; HubText names the
+// setting only, for an answer that goes through Coral Hub (as the CLI check's does).
+type CLIPathError struct {
+	AgentType string
+	Path      string
+	Err       error
+}
+
+func (e *CLIPathError) Error() string {
+	return fmt.Sprintf("%s CLI path \"%s\" (the setting %s, in Settings > CLI paths) can't be run (%v): fix it or clear it to use the one on PATH; Coral does not run another program in its place", e.AgentType, e.Path, CLIPathSettingKey(e.AgentType), e.Err)
+}
+
+func (e *CLIPathError) Unwrap() error { return e.Err }
+
+func (e *CLIPathError) HubText() string {
+	return fmt.Sprintf("the %s CLI path set in Settings > CLI paths (%s) can't be run; Coral does not run another program in its place: fix it or clear it to use the one on PATH", e.AgentType, CLIPathSettingKey(e.AgentType))
+}
+
 // FindCLI returns the executable to run for agentType, the way launch finds
 // it: the configured path (cli_path_<type> in settings), then the binary on
 // PATH, then the common install locations. The macOS app started from Finder
@@ -395,7 +413,7 @@ func FindCLI(settings map[string]string, agentType string) (string, error) {
 			err = CheckRunnable(resolved)
 		}
 		if err != nil {
-			return "", fmt.Errorf("%s CLI path \"%s\" (the setting %s, in Settings > CLI paths) can't be run (%v): fix it or clear it to use the one on PATH; Coral does not run another program in its place", agentType, p, CLIPathSettingKey(agentType), err)
+			return "", &CLIPathError{AgentType: agentType, Path: p, Err: err}
 		}
 		return resolved, nil
 	}

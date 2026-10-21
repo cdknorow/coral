@@ -3,22 +3,26 @@ package routes
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
-// stubCLI writes a file LookPath accepts as a program (.exe on Windows, executable elsewhere) and returns its path.
-func stubCLI(t *testing.T, name string) string {
+// cliPathStub writes a file LookPath accepts as a program (.exe on Windows, executable elsewhere) and returns its path.
+func cliPathStub(t *testing.T, name string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		name += ".exe"
@@ -37,7 +41,7 @@ func TestRestartUsesTheConfiguredCLIPath(t *testing.T) {
 	const oldName = "codex-" + oldID
 	term.addSession(oldName, t.TempDir())
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: oldID, AgentType: "codex", AgentName: "proj"}))
-	custom := stubCLI(t, "codex")
+	custom := cliPathStub(t, "codex")
 	require.NoError(t, ss.SetSetting(ctx, agent.CLIPathSettingKey("codex"), custom))
 
 	resp, err := http.Post(server.URL+"/api/sessions/live/"+oldName+"/restart", "application/json",
@@ -63,7 +67,7 @@ func TestResumeUsesTheConfiguredCLIPath(t *testing.T) {
 	const curName = "claude-" + curID
 	term.addSession(curName, t.TempDir())
 	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: curID, AgentType: "claude", AgentName: "proj"}))
-	custom := stubCLI(t, "claude")
+	custom := cliPathStub(t, "claude")
 	require.NoError(t, ss.SetSetting(ctx, agent.CLIPathSettingKey("claude"), custom))
 
 	resp, err := http.Post(server.URL+"/api/sessions/live/"+curName+"/resume", "application/json",
@@ -111,11 +115,73 @@ func TestRestartAndResumeRefuseABrokenConfiguredCLIPath(t *testing.T) {
 	assert.Empty(t, term.sent, "nothing was started")
 }
 
-// harmlessCLI is a real program that does nothing to stand in as an agent's configured CLI: a configured path that can't be run is
-// refused (#115), so the Unix-only /usr/bin/true is not enough on Windows.
-func harmlessCLI() string {
+// harmlessCLI is a real program that does nothing and prints nothing, to stand in as an agent's configured CLI: a configured path that can't
+// be run is refused (#115), so the Unix-only /usr/bin/true is not enough on Windows, where it is a .cmd that exits 0.
+func harmlessCLI(t testing.TB) string {
+	if runtime.GOOS != "windows" {
+		return "/usr/bin/true"
+	}
+	p := filepath.Join(t.TempDir(), "harmless-cli.cmd")
+	if err := os.WriteFile(p, []byte("@exit /b 0\r\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// harmlessCLIName is what harmlessCLI's program is called in a terminal's output.
+func harmlessCLIName() string {
 	if runtime.GOOS == "windows" {
-		return filepath.Join(os.Getenv("SystemRoot"), "System32", "whoami.exe")
+		return "harmless-cli"
 	}
 	return "/usr/bin/true"
+}
+
+// The launch and the wake refuse a broken configured path with the text and a 422, not a 500 or a bare 200 "failed"; through Coral Hub
+// the text names the setting only, never this computer's path (#115).
+func TestLaunchAndWakeRefuseABrokenConfiguredCLIPath(t *testing.T) {
+	server, h, term, ss := setupSessionsTestServer(t)
+	wr := chi.NewRouter()
+	wr.Post("/api/sessions/live/{sessionID}/wake", h.WakeSession)
+	wakeServer := httptest.NewServer(wr)
+	t.Cleanup(wakeServer.Close)
+	ctx := context.Background()
+	const id = "broken-wake"
+	const name = "claude-" + id
+	term.addSession(name, t.TempDir())
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: id, AgentType: "claude", AgentName: "proj"}))
+	require.NoError(t, ss.SetSessionSleeping(ctx, id, true))
+	gone := filepath.Join(t.TempDir(), "gone-dir", "claude")
+	require.NoError(t, ss.SetSetting(ctx, agent.CLIPathSettingKey("claude"), gone))
+
+	post := func(base, path, body string, hub bool) (int, string) {
+		req, err := http.NewRequest(http.MethodPost, base+path, bytes.NewBufferString(body))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		if hub {
+			req.Header.Set(tunnel.ViaHeader, "hub")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(resp.Body)
+		return resp.StatusCode, buf.String()
+	}
+	launchBody, err := json.Marshal(map[string]string{"working_dir": t.TempDir(), "agent_type": "claude"})
+	require.NoError(t, err)
+	launch := string(launchBody)
+	for label, call := range map[string]func(hub bool) (int, string){
+		"launch": func(hub bool) (int, string) { return post(server.URL, "/api/sessions/launch", launch, hub) },
+		"wake":   func(hub bool) (int, string) { return post(wakeServer.URL, "/api/sessions/live/"+id+"/wake", "{}", hub) },
+	} {
+		code, body := call(false)
+		assert.Equal(t, http.StatusUnprocessableEntity, code, "%s: %s", label, body)
+		assert.Contains(t, body, agent.CLIPathSettingKey("claude"), label)
+		assert.Contains(t, body, "gone-dir", label+": a local caller is told the path")
+
+		code, body = call(true)
+		assert.Equal(t, http.StatusUnprocessableEntity, code, "%s via the Hub: %s", label, body)
+		assert.Contains(t, body, agent.CLIPathSettingKey("claude"), label)
+		assert.NotContains(t, body, "gone-dir", label+": the Hub is told the setting only")
+	}
 }

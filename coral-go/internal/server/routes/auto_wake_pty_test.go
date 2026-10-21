@@ -32,7 +32,7 @@ func TestAutoWakeOnARealPTYResumesTheConversation(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	ss := store.NewSessionStore(db)
 	ctx := context.Background()
-	require.NoError(t, ss.SetSetting(ctx, "cli_path_claude", harmlessCLI())) // never a real agent in a test
+	require.NoError(t, ss.SetSetting(ctx, "cli_path_claude", harmlessCLI(t))) // never a real agent in a test
 	stopped := "5c1e0a7d-2b3c-4d5e-8f60-718293a4b5c6"
 	slept := "6d2f1b8e-3c4d-4e6f-9071-8293a4b5c6d7"
 	for id, reason := range map[string]string{stopped: store.SleepReasonCoralStopped, slept: ""} {

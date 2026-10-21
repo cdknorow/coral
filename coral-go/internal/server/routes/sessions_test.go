@@ -1692,7 +1692,8 @@ func TestSessionsRestartInfersStoredAgentTypeWhenOmitted(t *testing.T) {
 // launchedAs matches a launch line that runs the named CLI as a command: at the start or after
 // a shell separator, followed by a space or the end.
 func launchedAs(cli string) *regexp.Regexp {
-	return regexp.MustCompile(`(^|[;&|]\s*|\s)` + regexp.QuoteMeta(cli) + `(\s|$)`)
+	// the CLI may run by an absolute path (a launch resolves it, #115), quoted, with a Windows extension
+	return regexp.MustCompile(`(^|[;&|]\s*|\s)['"]?(?:[^'";&|]*[\\/])?` + regexp.QuoteMeta(cli) + `(?:\.exe|\.cmd|\.bat)?['"]?(\s|$)`)
 }
 
 func TestValidateAgentModelRejectsKnownCrossProviderOnly(t *testing.T) {
@@ -2523,7 +2524,7 @@ func agentToken(t *testing.T, h *SessionsHandler, sid, name string) string {
 func stubCLIPaths(t *testing.T, ss *store.SessionStore) {
 	t.Helper()
 	for _, ct := range []string{"claude", "codex", "agy", "gemini", "pi"} {
-		if err := ss.SetSetting(context.Background(), "cli_path_"+ct, harmlessCLI()); err != nil {
+		if err := ss.SetSetting(context.Background(), "cli_path_"+ct, harmlessCLI(t)); err != nil {
 			t.Fatalf("stub cli_path_%s: %v", ct, err)
 		}
 	}

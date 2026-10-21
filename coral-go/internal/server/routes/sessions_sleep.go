@@ -424,6 +424,10 @@ func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "code": "still_in_old_tmux"})
 			return
 		}
+		if refuse, ok := cliPathRefusal(viaHub(ctx, r), err); ok { // the setting to fix, not a bare "failed" (#115)
+			refuse(w)
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Failed to relaunch session"})
 		return
 	}

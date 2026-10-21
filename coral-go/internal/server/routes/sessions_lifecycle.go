@@ -20,6 +20,7 @@ import (
 	"github.com/subgentic/coral/internal/agentmodels"
 	at "github.com/subgentic/coral/internal/agenttypes"
 	"github.com/subgentic/coral/internal/board"
+	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/internal/gitutil"
 	"github.com/subgentic/coral/internal/logparse"
 	"github.com/subgentic/coral/internal/naming"
@@ -223,6 +224,27 @@ func lifecycleCtxN(ctx context.Context, n int) (context.Context, context.CancelF
 	return context.WithTimeout(context.WithoutCancel(ctx), lifecycleTimeout+time.Duration(n)*lifecyclePerSession)
 }
 
+type tunneledKey struct{}
+
+// viaHub marks ctx with whether the request came through Coral Hub, for answers that must not name this computer's paths.
+func viaHub(ctx context.Context, r *http.Request) context.Context {
+	return context.WithValue(ctx, tunneledKey{}, cloud.Tunneled(r))
+}
+
+// cliPathRefusal is the 422 answer for a configured CLI path that can't be run (#115): the setting and the path, and through Coral Hub the
+// setting only, as the CLI check says it. ok is false for any other error.
+func cliPathRefusal(ctx context.Context, err error) (answer, bool) {
+	var cpe *agent.CLIPathError
+	if !errors.As(err, &cpe) {
+		return nil, false
+	}
+	msg := cpe.Error()
+	if hub, _ := ctx.Value(tunneledKey{}).(bool); hub {
+		msg = cpe.HubText()
+	}
+	return func(w http.ResponseWriter) { writeError(w, http.StatusUnprocessableEntity, "cli_path_unusable", msg) }, true
+}
+
 // beginRestart takes the session's turn (h.restarting: the sessions with a restart or resume running now, by name) and says whether it was free; the caller
 // ends it with the returned func. A second request for one of them (a double click, a client that retries while the first still runs, now that the first
 // no longer ends with its request) is refused, so one agent starts, not two (#5213).
@@ -323,7 +345,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer end()
-	ctx := r.Context()
+	ctx := viaHub(r.Context(), r)
 	plan, fail := h.restartResolve(ctx, name, req)
 	if fail != nil {
 		fail(w)
@@ -596,7 +618,8 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 	}
 	cliPath, cerr := agent.LaunchCLI(userSettings, p.agentType) // a broken cli_path_<agent> refuses the restart (#115)
 	if cerr != nil {
-		return "", func(w http.ResponseWriter) { writeError(w, http.StatusUnprocessableEntity, "", cerr.Error()) }
+		refuse, _ := cliPathRefusal(ctx, cerr)
+		return "", refuse
 	}
 	cmd, err := launchCommand(agent.GetAgent(p.agentType), agent.LaunchParams{
 		SessionID:       p.newSessionID,
@@ -818,7 +841,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer end()
-	ctx := r.Context()
+	ctx := viaHub(r.Context(), r)
 	p, fail := h.resumeResolve(ctx, name, &body)
 	if fail != nil {
 		fail(w)
@@ -983,7 +1006,8 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 	}
 	cliPath, cerr := agent.LaunchCLI(userSettings, p.agentType) // a broken cli_path_<agent> refuses the resume (#115)
 	if cerr != nil {
-		return "", func(w http.ResponseWriter) { writeError(w, http.StatusUnprocessableEntity, "", cerr.Error()) }
+		refuse, _ := cliPathRefusal(ctx, cerr)
+		return "", refuse
 	}
 	cmd, err := launchCommand(agentImpl, agent.LaunchParams{
 		SessionID:       p.newSessionID,
