@@ -446,7 +446,7 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, req
 		}
 		if !ready {
 			// Reconcile stale queue metadata and continue searching this claim.
-			if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND board_id = ? AND status = 'pending'", taskID, project); err != nil {
+			if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked', edited_at = ? WHERE id = ? AND board_id = ? AND status = 'pending'", nowUTC(), taskID, project); err != nil {
 				tx.Rollback()
 				return nil, err
 			}
@@ -707,7 +707,7 @@ func (s *Store) PublishTask(ctx context.Context, project string, taskID int64) (
 
 	result, err := s.db.ExecContext(ctx,
 		"UPDATE board_tasks SET status = ? WHERE id = ? AND board_id = ? AND status = 'draft'",
-		newStatus, taskID, project)
+		newStatus, taskID, project) // not an edit: every new task is published here as it is created
 	if err != nil {
 		return nil, err
 	}

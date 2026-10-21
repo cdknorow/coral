@@ -55,7 +55,7 @@ func (s *Store) RemoveTaskBlockers(ctx context.Context, project string, id, bloc
 		if ready {
 			next = "pending"
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status=? WHERE id=? AND board_id=?", next, id, project); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status=?, edited_at=? WHERE id=? AND board_id=?", next, nowUTC(), id, project); err != nil {
 			return nil, "", err
 		}
 	}

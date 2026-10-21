@@ -47,7 +47,7 @@ func (s *Store) StallDownstreamTasks(ctx context.Context, project string, upstre
 			if status != "pending" {
 				continue
 			}
-			if _, err := s.db.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND board_id = ? AND status = 'pending'", childID, project); err != nil {
+			if _, err := s.db.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked', edited_at = ? WHERE id = ? AND board_id = ? AND status = 'pending'", nowUTC(), childID, project); err != nil {
 				return nil, err
 			}
 			if task, err := s.getTaskByID(ctx, project, childID); err == nil {
@@ -267,7 +267,7 @@ func replaceTaskDependencies(ctx context.Context, tx *sqlx.Tx, project string, t
 	if ready {
 		status = "pending"
 	}
-	_, err = tx.ExecContext(ctx, "UPDATE board_tasks SET status = ? WHERE id = ? AND board_id = ? AND status IN ('pending', 'blocked')", status, taskID, project)
+	_, err = tx.ExecContext(ctx, "UPDATE board_tasks SET edited_at = CASE WHEN status <> ? THEN ? ELSE edited_at END, status = ? WHERE id = ? AND board_id = ? AND status IN ('pending', 'blocked')", status, nowUTC(), status, taskID, project) // only a real change of status is an edit: a new task is not
 	return err
 }
 
@@ -378,7 +378,7 @@ func (s *Store) ReblockDownstreamTasks(ctx context.Context, project string, regr
 		// Has unresolved blockers — set back to blocked if currently pending. By id alone: a
 		// downstream task may be on another board, and tid comes from the dependency table.
 		result, err := s.db.ExecContext(ctx,
-			"UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND status = 'pending'", tid)
+			"UPDATE board_tasks SET status = 'blocked', edited_at = ? WHERE id = ? AND status = 'pending'", nowUTC(), tid)
 		if err != nil {
 			continue
 		}

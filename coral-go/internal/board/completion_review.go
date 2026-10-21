@@ -149,7 +149,7 @@ func (s *Store) ReleaseCompletionReview(ctx context.Context, project string, id 
 	if w.CompletionReview == nil {
 		return nil, fmt.Errorf("submit candidate evidence before releasing the slot")
 	}
-	res, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='review_pending' WHERE id=? AND board_id=? AND status='in_progress'", id, project)
+	res, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status='review_pending', edited_at=? WHERE id=? AND board_id=? AND status='in_progress'", nowUTC(), id, project)
 	if err != nil {
 		return nil, err
 	}
