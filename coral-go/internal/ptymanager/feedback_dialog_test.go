@@ -104,7 +104,7 @@ func (d *dialogTerm) AgentScreen(context.Context, string, string, string) (strin
 // layout, neutral text).
 const surveyLines = "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n\n"
 
-func (d *dialogTerm) RenderedScreen() bool { return true }
+func (d *dialogTerm) HasRenderedScreen() bool { return true }
 func (d *dialogTerm) SendPrompt(ctx context.Context, _, text, _, _ string) error {
 	d.mu.Lock()
 	d.pasted = append(d.pasted, text)

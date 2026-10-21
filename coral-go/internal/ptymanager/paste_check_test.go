@@ -172,7 +172,7 @@ func (f *fixtureTerm) AgentScreenStyled(context.Context, string, string, string)
 	defer f.mu.Unlock()
 	return f.styled, nil
 }
-func (f *fixtureTerm) RenderedScreen() bool { return true }
+func (f *fixtureTerm) HasRenderedScreen() bool { return true }
 func (f *fixtureTerm) SendPrompt(_ context.Context, _, text, _, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
