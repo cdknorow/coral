@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 
 	"go.uber.org/goleak"
 )
@@ -33,6 +34,10 @@ func Check(code int, extra ...goleak.Option) int {
 	}
 	if err := goleak.Find(append(append([]goleak.Option{}, Ignore...), extra...)...); err != nil {
 		fmt.Fprintf(os.Stderr, "testleak: goroutines still running after the tests (#4167):\n%v\n", err)
+		// A leaked goroutine's creator may be gone (a database/sql Rows.awaitDone names none), so what else is running
+		// at this moment is the only way to find who held it (#146).
+		buf := make([]byte, 1<<20)
+		fmt.Fprintf(os.Stderr, "testleak: every goroutine at this moment:\n%s\n", buf[:runtime.Stack(buf, true)])
 		return 1
 	}
 	return code
