@@ -53,6 +53,9 @@ async function httpJson(method, p, body, headers = {}) {
             const up = await ev(`window.__rec.uploads[window.__rec.uploads.length - 1]`);
             check(`${tag}: the upload answers with the path and an artifact`, up && up.ok && up.path && up.artifact && /^coral:\/\/artifacts\/[0-9a-f]{64}$/.test(up.artifact.uri) && up.artifact.inline === true && !up.artifact_error, JSON.stringify(up).slice(0, 200));
             check(`${tag}: the composer shows the attachment`, await ev(`document.querySelectorAll('#image-attachments .image-attachment').length === 1`));
+            const comp = await ev(`(() => { const c = document.querySelector('#image-attachments .image-attachment'); const i = c.querySelector('img').getBoundingClientRect(), x = c.querySelector('.image-attachment-remove').getBoundingClientRect(), r = c.getBoundingClientRect();
+                return { names: c.querySelectorAll('.image-attachment-name').length, label: c.querySelector('.image-attachment-remove').getAttribute('aria-label'), alt: c.querySelector('img').alt, title: c.title, chipH: Math.round(r.height), xW: Math.round(x.width), xH: Math.round(x.height), imgH: Math.round(i.height), side: x.left >= i.right - 1 }; })()`);
+            check(`${tag}: the composer's chip is the thumbnail and a remove button, with no name pill; the button is named and no path shows`, comp.names === 0 && /^Remove .+/.test(comp.label) && comp.alt && !/uploads|\//.test(comp.title) && comp.chipH <= 48 && comp.side && comp.xH === comp.imgH && (!mobile || comp.xW >= 44), JSON.stringify(comp));
 
             // 2. Send types ONLY the link and one hint (never the uploads path), then the text (#5481)
             await ev(`document.getElementById('command-input').value = 'what is this'; import(${S} + 'controls.js').then(m => m.sendCommand())`);
@@ -70,6 +73,9 @@ async function httpJson(method, p, body, headers = {}) {
             const bub = await ev(`(() => { const b = document.querySelector('#pia-box .chat-bubble.human'); const t = b.querySelector('.chat-attachment-thumb'); const x = b.querySelector('.chat-attachment-unshare'); const xr = x && x.getBoundingClientRect();
                 return { text: b.querySelector('.message-text').innerText.trim(), chip: (b.querySelector('.chat-attachment-chip') || {}).textContent, art: t.dataset.artifact, unshare: !!x && !x.hidden, unshareH: xr && Math.round(xr.height), raw: b.innerHTML.includes('coral://artifacts') || b.innerHTML.includes('/uploads/') }; })()`);
             check(`${tag}: the bubble shows the typed text alone, the file's name as a chip, a thumbnail of the artifact`, bub.text === 'what is this' && bub.chip === 'Pasted image' && bub.art === up.artifact.id && !bub.raw, JSON.stringify(bub));
+            const geo = await ev(`(() => { const w = document.querySelector('#pia-box .chat-attachment-image'); const t = w.querySelector('.chat-attachment-thumb').getBoundingClientRect(), x = w.querySelector('.chat-attachment-unshare').getBoundingClientRect(), r = w.getBoundingClientRect(), n = getComputedStyle(w.querySelector('.chat-attachment-name')).display;
+                return { nameShown: n !== 'none', chipH: Math.round(r.height), chipW: Math.round(r.width), thumbW: Math.round(t.width), xW: Math.round(x.width), xH: Math.round(x.height), thumbH: Math.round(t.height), xRightOfThumb: x.left >= t.right - 1, sameTop: Math.abs(x.top - t.top) < 2, boxed: getComputedStyle(w).borderTopWidth }; })()`);
+            check(`${tag}: a pasted image is one compact chip: the thumbnail and its remove button side by side, no 'Pasted image' pill`, !geo.nameShown && geo.chipH <= 52 && geo.xRightOfThumb && geo.sameTop && geo.xH === geo.thumbH && parseFloat(geo.boxed) >= 1 && geo.chipW <= geo.thumbW + geo.xW + 4, JSON.stringify(geo));
             check(`${tag}: a "Remove shared copy" button is there${mobile ? ' and 44 px' : ''}`, bub.unshare && (!mobile || bub.unshareH >= 44), JSON.stringify(bub));
 
             // 4. old messages and a user's own link are left as they were
@@ -98,6 +104,25 @@ async function httpJson(method, p, body, headers = {}) {
             await waitFor(`window.__rec.deletes.length === 1 && document.querySelector('#pia-box .chat-attachment-thumb').hidden === true`, `${tag}: the thumbnail turns back into the chip`, { timeout: 8000 });
             check(`${tag}: the chip ("Pasted image") stays`, (await ev(`(document.querySelector('#pia-box .chat-attachment-chip') || {}).textContent`)) === 'Pasted image');
             check(`${tag}: the shared copy is gone from the artifact route (asked past the browser's cache: an artifact is cached for good)`, (await ev(`fetch('/api/artifacts/${up.artifact.id}?v=2', { cache: 'no-store' }).then(r => r.status)`)) === 404, JSON.stringify(await ev(`window.__rec.deletes`)));
+
+            if (process.env.CORAL_SCREENSHOT_DIR) { // CORAL_SCREENSHOT_DIR=<dir>: three images in the composer, then three in a message, for a look (generated images only)
+                const dir = process.env.CORAL_SCREENSHOT_DIR; require('node:fs').mkdirSync(dir, { recursive: true });
+                const shot = async n => require('node:fs').writeFileSync(require('node:path').join(dir, n + '.png'), Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64'));
+                const n1 = await ev(`window.__rec.uploads.length`);
+                for (let k = 0; k < 3; k++) await upload();
+                const ups = await ev(`window.__rec.uploads.slice(${n1})`);
+                const mk = ups.map(u => `${u.path} ${u.artifact.uri}`).join(' ') + ' what are these three';
+                for (const theme of ['dark', 'light']) {
+                    await ev(`document.getElementById('pia-box')?.remove(); document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)}); true`);
+                    await waitFor(`document.querySelectorAll('#image-attachments img').length === 3 && [...document.querySelectorAll('#image-attachments img')].every(i => i.complete && i.naturalWidth > 0)`, `${tag}: three composer thumbnails`, { timeout: 10000 });
+                    const cr = await ev(`(() => { const r = document.getElementById('image-attachments').getBoundingClientRect(); return { x: Math.max(0, r.left - 20), y: Math.max(0, r.top - 20), width: Math.min(innerWidth, r.width + 40), height: 110, scale: 1 }; })()`);
+                    require('node:fs').writeFileSync(require('node:path').join(dir, `composer-${tag}-${theme}.png`), Buffer.from((await Page.captureScreenshot({ format: 'png', clip: cr })).data, 'base64'));
+                    await render([{ type: 'user', content: mk, key: 'k9', timestamp: '2026-10-19T00:09:00Z' }]);
+                    await waitFor(`document.querySelectorAll('#pia-box .chat-attachment-thumb:not([hidden])').length === 3`, `${tag}: three thumbnails`, { timeout: 10000 });
+                    await shot(`chat-${tag}-${theme}`);
+                }
+                await ev(`document.documentElement.setAttribute('data-theme', 'dark'); true`);
+            }
 
             // 7. no notice before a paste, whatever the Coral Hub state: pasted images are the owner's alone through the hub, so there is nothing to warn about or switch off (#5575)
             await ev(`document.getElementById('pia-box')?.remove(); sessionStorage.clear(); window.__hub = { state: 'connected', at: 'T1' }; true`);
