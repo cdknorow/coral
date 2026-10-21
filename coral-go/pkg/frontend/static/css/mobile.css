@@ -1394,3 +1394,9 @@
     /* the goal's box was a fixed 14px, which cut a 13px line (that base rule is for 12px on a desktop row): on a phone it is as high as its lines, up to the two this list's clamp allows */
     body #mobile-session-list .session-goal { height: auto; }
 }
+
+/* Close buttons and the "Who can read this" disclosure are 44px targets on a phone-width window on any pointer (the touch rule covers a coarse pointer only) (#5681). */
+@media (max-width: 767px) {
+    .modal-close-btn, .artifact-viewer-close { min-width: 44px; min-height: 44px; }
+    .artifact-readers > summary { min-height: 44px; }
+}

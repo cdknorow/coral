@@ -126,7 +126,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
     console.log('✓ Team working mode selection with custom preset saved');
 
     // 5. Close dialog and reopen: verify persistence across reopen
-    await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);
+    await ev(`document.querySelector('#team-working-mode-dialog header .modal-close-btn').click()`);
     await dialogGone();
     assert.equal(await ev(`document.getElementById('team-working-mode-dialog')`), null, 'Dialog should be closed');
 
@@ -208,7 +208,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
     console.log('✓ Validation and edit preservation verified');
 
     // Close dialog
-    await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);
+    await ev(`document.querySelector('#team-working-mode-dialog header .modal-close-btn').click()`);
     await dialogGone();
 
     // 8. Team isolation: team-beta should NOT have team-alpha's custom preset
@@ -221,7 +221,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
     const betaMode = await ev(`document.querySelector('.working-mode-form').elements.mode.value`);
     assert.equal(betaMode, 'none', 'team-beta mode should be isolated');
 
-    await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);
+    await ev(`document.querySelector('#team-working-mode-dialog header .modal-close-btn').click()`);
     await dialogGone();
 
     console.log('✓ Team isolation verified');

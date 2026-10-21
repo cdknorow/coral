@@ -1753,6 +1753,7 @@
 .xt-changed { margin: -2px 0 4px 26px; font-size: .75rem; color: var(--text-secondary); } /* under its switch, level with the label text */
 .xt-hub-may { margin: 6px 0 0; }
 .xt-h { margin: 0 0 6px; font-size: var(--fs-md); color: var(--text-secondary); font-weight: 600; }
+.xt-h-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; } /* the heading holds its words, the link sits beside it (a link inside a heading made its name longer) */
 .xt-teams { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .xt-teams li { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-primary); min-width: 0; }
 .xt-teams b { overflow-wrap: anywhere; }

@@ -77,7 +77,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
    await Input.dispatchKeyEvent({type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27});await Input.dispatchKeyEvent({type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27});
 
    results.push({name,stage:'escape',closed:!await ev(`document.querySelector('#team-working-mode-dialog')?.open || false`)});
-   await ev(`document.querySelector('#team-working-mode-dialog header button')?.click()`);
+   await ev(`document.querySelector('#team-working-mode-dialog header .modal-close-btn')?.click()`);
   }
   fs.writeFileSync('/tmp/coral-1273-geometry.json',JSON.stringify(results,null,2));
   console.log(JSON.stringify(results,null,2));

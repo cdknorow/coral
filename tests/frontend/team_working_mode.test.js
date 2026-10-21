@@ -29,7 +29,7 @@ const BOARD = 'working-mode-browser-' + Date.now().toString(36); // a fresh boar
   await ev(`(async()=>{const form=document.querySelector('.working-mode-form');form.elements.mode.value='none';form.elements.dependency_guidance.checked=false;form.elements.custom_instructions.value='';await form.onsubmit({preventDefault(){}})})()`);
   const retained=await ev(`fetch('/api/board/${BOARD}/tasks/'+modeTaskID).then(r=>r.json())`);
   assert.equal(retained.workflow.instructions,claimed.workflow.instructions);
-  await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);
+  await ev(`document.querySelector('#team-working-mode-dialog header .modal-close-btn').click()`);
   console.log('PASS team working mode editor, API claim instructions and immutable snapshot');
  }finally{await removeBoards(ev, [BOARD]); await client.close()}
 })().catch(e=>{console.error(e);process.exit(1)});

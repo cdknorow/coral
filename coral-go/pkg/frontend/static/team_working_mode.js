@@ -148,7 +148,7 @@ function _mountTeamSettings(dialog, team, workspaceMode) {
         document.getElementById('agentic-panel-team-settings')?.replaceChildren(dialog);
     } else {
         document.body.append(dialog);
-        dialog.querySelector('header button').onclick = () => dialog.close();
+        dialog.querySelector('header .modal-close-btn').onclick = () => dialog.close(); // the Close button: `header button` was the first button, "Rename board", which then closed the dialog while Close did nothing
         dialog.addEventListener('close', () => dialog.remove());
         dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
         dialog.showModal();

@@ -101,7 +101,7 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
           ${hubMay() ? '<p class="working-mode-hint xt-hub-may" id="xt-hub-may">Coral Hub can change these settings.</p>' : ''}
           ${canChange() ? '' : `<p class="working-mode-hint xt-locked" id="xt-locked">${escapeHtml(lockedText())}</p>`}
         </div>
-        ${links.length ? `<div class="xt-links"><h3 class="xt-h">Linked teams that can message this one <a href="${escapeAttr(HUB_LINKS_URL)}" class="update-link" target="_blank" rel="noopener noreferrer">Manage in Coral Hub</a></h3>
+        ${links.length ? `<div class="xt-links"><div class="xt-h-row"><h3 class="xt-h">Linked teams that can message this one</h3> <a href="${escapeAttr(HUB_LINKS_URL)}" class="update-link" target="_blank" rel="noopener noreferrer">Manage in Coral Hub</a></div>
           <ul class="xt-teams">${links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l.machine), l.sid && 'server ' + escapeHtml(l.sid), l.refreshed && 'confirmed ' + escapeHtml(l.refreshed)].filter(Boolean).join(' · ')}</span></li>`).join('')}</ul></div>` : ''}
         <details class="xt-how"${how ? ' open' : ''}><summary>How this works</summary>
           <p class="working-mode-hint">Another team can message this team only when its Coral Hub account has linked the two teams <b>and</b> cross-team messaging is on here. Linking happens in Coral Hub (Team links). Messages from other teams are requests, not instructions. Files are shared only while Share files with other teams is on; they are not scanned, and artifact bytes are not redacted.</p>

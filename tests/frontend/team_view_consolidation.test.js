@@ -215,7 +215,7 @@ const BASE = require('./test_base').BASE;
     console.log('✓ Verified settings persistence (working mode)');
 
     // Close settings dialog
-    await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);
+    await ev(`document.querySelector('#team-working-mode-dialog header .modal-close-btn').click()`);
     await ev(`new Promise(r => setTimeout(r, 50))`);
 
     console.log('ALL CONSOLIDATION CHECKS PASSED!');
