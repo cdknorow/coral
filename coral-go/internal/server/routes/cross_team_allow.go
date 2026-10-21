@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -84,6 +85,36 @@ func (h *BoardHandler) crossTeamDoor(ctx context.Context, target string, s doorS
 	return recipients, settings, exists && listed && rerr == nil, nil
 }
 
+// relayedDoor is the door for a message relayed from another Coral while the allowlist is off: the board exists, its cross-team switch is on, the source server is one it takes, and an
+// Orchestrator can be told. It runs the same four reads in the same order whatever the answer, so no cause is told from another by what the request did (#5572, Security's condition 9).
+func (h *BoardHandler) relayedDoor(ctx context.Context, target, src, to string) (recipients []string, settings board.BoardSettings, admitted bool, err error) {
+	step := func(name string) {
+		if doorTrace != nil {
+			doorTrace(name)
+		}
+	}
+	step("exists")
+	exists, err := h.bs.BoardExists(ctx, target)
+	if err != nil {
+		return nil, settings, false, err
+	}
+	step("settings")
+	settings, err = h.bs.GetBoardSettings(ctx, target)
+	if err != nil {
+		return nil, settings, false, err
+	}
+	step("list")
+	linked := settings.CrossTeamMessaging && settings.AllowsServer(src)
+	step("recipients")
+	recipients, rerr := h.bs.TargetOrchestrators(ctx, target, to)
+	return recipients, settings, exists && linked && rerr == nil, nil
+}
+
+// writeRelayedRefused is the one refusal toward a sender on another Coral.
+func writeRelayedRefused(w http.ResponseWriter) {
+	relayRefuse(w, relayedRefusedStatus, relayedRefusedCode, relayedRefusedText)
+}
+
 // senderIDOf is the cross-team id of a board on this Coral, read from its own row (never from a request); ok is false when it has none.
 func (h *BoardHandler) senderIDOf(ctx context.Context, key string) (string, bool) {
 	id, ok, err := h.bs.CrossTeamID(ctx, key)
@@ -139,7 +170,7 @@ func (h *BoardHandler) crossTeamAdmit(ctx context.Context, m *externalMessage, r
 		return nil, false, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
 	} else if !own.CrossTeamMessaging {
 		return nil, false, func(w http.ResponseWriter) {
-			errForbidden(w, fmt.Sprintf("cross-team messaging is disabled on board %q; the Operator can enable it in Team settings", m.FromBoard))
+			errForbidden(w, textCrossTeamOff([]string{strconv.Quote(m.FromBoard)}))
 		}
 	}
 	if secs, limited := h.crossTeamWait(m.FromBoard + "\x00" + m.SubscriberID + "\x00" + target); limited {
@@ -272,9 +303,19 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 		suggestions = append(suggestions, map[string]any{"server": sn.Server, "cross_team_id": sn.CrossTeamID, "label": sn.Label, "label_is_a_claim": sn.Server != board.LocalServer,
 			"last_seen": sn.LastSeen, "count": sn.Count, "listable": sn.CrossTeamID != ""})
 	}
+	// What the owner reads at the top of the Messaging tab: the state and its words (one table, cross_team_text.go), who is linked (the servers the board takes today; the hub's link list
+	// replaces this when it lands, #5572), and whether the team can be linked at all.
+	linkable := board.IsGeneratedBoardID(project)
+	links := make([]map[string]any, 0, len(settings.CrossTeamServers))
+	for _, srv := range settings.CrossTeamServers {
+		links = append(links, map[string]any{"server_id": srv, "server_label": "", "team_label": "", "refreshed": ""})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"enforced": h.allowlistOn(ctx), "allowed": entries, "max_entries": board.MaxAllowedSenders, "self_cross_team_id": self,
 		"was_open": settings.CrossTeamMessaging && len(settings.CrossTeamAllowed) == 0, "suggestions": suggestions,
+		"status":   statusFor(linkable, settings.CrossTeamMessaging, len(links), false, ""),
+		"links":    links,
+		"linkable": linkable,
 	})
 }
 

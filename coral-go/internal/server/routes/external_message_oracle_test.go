@@ -253,7 +253,7 @@ func runExternalMessageOracle(t *testing.T, seed int64, counts map[string]int) {
 			counts["sender not an Orchestrator"]++
 		case strings.Contains(r.body, "session_name does not match"):
 			counts["session doesn't match"]++
-		case strings.Contains(r.body, "cross-team messaging is disabled"):
+		case strings.Contains(r.body, "Cross-team messaging is off on"):
 			counts["messaging off on a board"]++
 		case strings.Contains(r.body, "no active Orchestrator to receive"):
 			counts["no Orchestrator to receive"]++
@@ -393,7 +393,7 @@ func (h *BoardHandler) postExternalMessageBefore4838(w http.ResponseWriter, r *h
 		}
 	}
 	if len(disabled) > 0 {
-		errForbidden(w, fmt.Sprintf("cross-team messaging is disabled on board %s; the Operator can enable it in Team settings", strings.Join(disabled, " and ")))
+		errForbidden(w, fmt.Sprintf("Cross-team messaging is off on %s. Turn it on in Team settings > Messaging.", strings.Join(disabled, " and ")))
 		return
 	}
 
@@ -429,7 +429,7 @@ func (h *BoardHandler) postExternalMessageBefore4838(w http.ResponseWriter, r *h
 			}
 		}
 		if len(off) > 0 {
-			writeJSON(w, http.StatusForbidden, map[string]string{"code": "artifacts_off", "error": fmt.Sprintf("sending artifacts is off on board %s; the Operator can turn on cross_team_artifacts in Team settings on this computer", strings.Join(off, " and "))})
+			writeJSON(w, http.StatusForbidden, map[string]string{"code": "artifacts_off", "error": fmt.Sprintf("Sharing files with other teams is off on %s. Turn on Share files with other teams in Team settings > Messaging.", strings.Join(off, " and "))})
 			return
 		}
 		sender := h.attachSenderFor(ctx, r, body.FromBoard, body.SubscriberID, senderSession)
