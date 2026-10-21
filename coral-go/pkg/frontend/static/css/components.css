@@ -2374,7 +2374,7 @@ button.subscriber-history-link {
     border-radius: var(--radius-ml);
     border: 2px dashed var(--border);
     background: transparent;
-    color: var(--accent);
+    color: var(--accent-light); /* the text-contrast accent: 4.5:1 on the light panel (--accent was 4.14) */
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
 }
@@ -2423,12 +2423,12 @@ button.subscriber-history-link {
 }
 
 .team-template-actions .btn:last-of-type {
-    color: var(--accent);
+    color: var(--accent-light); /* 4.5:1 on the light panel (--accent was 4.14) */
 }
 
 .team-generate-ai-btn {
     border-color: rgba(var(--fx-indigo-rgb), 0.35) !important;
-    color: var(--accent) !important;
+    color: var(--accent-light) !important; /* 4.5:1 on the light panel (--accent was 3.8) */
     background: rgba(var(--fx-indigo-rgb), 0.08) !important;
 }
 
