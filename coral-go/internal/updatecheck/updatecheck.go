@@ -25,8 +25,9 @@ import (
 )
 
 const (
-	// ReleasesAPI is GitHub's latest-release endpoint for Coral (prereleases excluded).
-	ReleasesAPI = "https://api.github.com/repos/subgentic/coral/releases/latest"
+	// ReleasesAPI is GitHub's latest-release endpoint for Coral (prereleases excluded), asked by the repository's numeric id like the Agentic list: a repository
+	// re-created under the same name has another id and is not followed (#5557).
+	ReleasesAPI = "https://api.github.com/repositories/1160696364/releases/latest"
 	// ReleasesURL is the page the update notice links to.
 	ReleasesURL = "https://github.com/subgentic/coral/releases"
 	// MaxBody caps the reply read: a release object is a few KB.

@@ -114,7 +114,7 @@ func cleanNotes(s string) string {
 		case r == '\r':
 			continue
 		case r == '\n' || r == '\t':
-		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r):
+		case unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r): // Zl and Zp: U+2028 and U+2029 break lines in some readers
 			continue
 		}
 		if n == MaxNotes {
@@ -161,6 +161,10 @@ func parseLatest(r io.Reader, now time.Time) (*Feed, error) {
 	}
 	if a.Draft || a.Prerelease {
 		return nil, errors.New("updatecheck: the latest release is not an approved release")
+	}
+	// The release's page must be this repository's page for that tag, as for the list: a reply about another repository offers nothing.
+	if a.HTMLURL != tagPagePrefix+a.TagName {
+		return nil, errors.New("updatecheck: the latest release is not a release of this repository")
 	}
 	rel := a.release(now)
 	return &Feed{Channel: Approved, Offer: rel, Approved: &rel}, nil
