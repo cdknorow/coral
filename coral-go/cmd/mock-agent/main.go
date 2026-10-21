@@ -168,6 +168,10 @@ func main() {
 	// notifications) with a fixed prefix, so tests can check the pane for the
 	// exact input.
 	go func() {
+		if dir := rawInputDir(); dir != "" {
+			runRawInput(dir, sessionID, turn)
+			return
+		}
 		sc := bufio.NewScanner(os.Stdin)
 		sc.Buffer(make([]byte, 64*1024), 1024*1024)
 		for sc.Scan() {
