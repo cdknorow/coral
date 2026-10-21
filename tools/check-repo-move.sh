@@ -77,6 +77,7 @@ fi
 
 for need in curl jq git shasum; do command -v "$need" >/dev/null 2>&1 || { echo "check-repo-move: $need is required" >&2; exit 2; }; done
 here="$(cd "$(dirname "$0")" && pwd)"
+[ -f "$here/release-homes.sh" ] && . "$here/release-homes.sh"
 TMP="$(mktemp -d /tmp/check-repo-move.XXXX)" || exit 2
 cleanup() { [ "$KEEP" = 1 ] && { echo "kept: $TMP"; return; }; case "$TMP" in /tmp/check-repo-move.*) rm -rf "$TMP" ;; esac; }
 trap cleanup EXIT
@@ -250,7 +251,7 @@ for which in old new; do
     [ "$syn" = ok ] || ok=0
     [ "$cv" = "${TAG#v}" ] || { ok=0; detail="$detail; version is not $TAG"; }
     [ -n "$dmg_sum" ] && [ "$dmg_sum" != "$cs" ] && { ok=0; detail="$detail; sha256 differs from SHA256SUMS.txt's DMG"; }
-    [ "$curepo" = "$HOME_REPO" ] || { ok=0; detail="$detail; the url points at $curepo, the home is $HOME_REPO"; }
+    [ "$curepo" = "$HOME_REPO" ] || { ok=0; detail="$detail; the url points at $curepo, the home is $HOME_REPO"; [ "$EXPECT" = after ] && [ "$curepo" = "$OLD" ] && detail="$detail (the old home still works through GitHub's redirect, see the release download row; the tap moves with the first release from the new home)"; }
     [ "$ok" = 1 ] && row PASS "tap: $trepo's cask" "$detail, sha256 equals the DMG's in SHA256SUMS.txt" || row FAIL "tap: $trepo's cask" "$detail"
   else
     if [ "$which" = old ]; then row FAIL "tap: $trepo" "could not clone it: $(head -c 160 "$TMP/clone.log")"; else row FAIL "tap: $trepo" "could not clone it after the move: $(head -c 160 "$TMP/clone.log")"; fi
@@ -278,6 +279,18 @@ if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
   gos="$(git -C "$root" grep -nI "https\?://[^ \"']*$OLD" -- '*.go' 2>/dev/null | grep -v '_test.go' || true)"
   nfiles="$(printf '%s' "$names" | grep -c . | tr -d ' ')"; gfiles="$(printf '%s' "$gos" | grep -c . | tr -d ' ')"
   row INFO "tree: places that still name $OLD" "$nfiles lines outside Go sources ($(printf '%s' "$names" | cut -d: -f1 | sort -u | grep -c . | tr -d ' ') files), $gfiles URLs in Go sources: $(printf '%s\n' "$gos" | cut -d: -f1 | sort -u | tr '\n' ' ')"
+fi
+
+# 7b. attestations: a transferred repository keeps its releases' provenance with the OWNER that built them; the per-repository lookup stops finding it
+if command -v gh >/dev/null 2>&1 && [ -s "$sums" ] && command -v release_home_for_tag >/dev/null 2>&1; then
+  idrepo="$(release_home_for_tag "$TAG")"; [ -n "$idrepo" ] || idrepo="$OLD"
+  signer="$idrepo/.github/workflows/release.yml"
+  if gh attestation verify "$sums" --owner "${idrepo%%/*}" --signer-workflow "$signer" --source-ref "refs/tags/$TAG" >"$TMP/att1.log" 2>&1; then
+    row PASS "attestation: SHA256SUMS.txt by owner ${idrepo%%/*}" "verified against $signer at refs/tags/$TAG"
+  else row FAIL "attestation: SHA256SUMS.txt by owner ${idrepo%%/*}" "$(tail -1 "$TMP/att1.log" | cut -c1-140)"; fi
+  if gh attestation verify "$sums" --repo "$idrepo" --signer-workflow "$signer" --source-ref "refs/tags/$TAG" >"$TMP/att2.log" 2>&1; then
+    row INFO "attestation: the same by repository $idrepo" "found (the per-repository lookup works)"
+  else row INFO "attestation: the same by repository $idrepo" "not found: $(tail -1 "$TMP/att2.log" | cut -c1-110) (tools/verify-release.sh looks up by owner for this reason)"; fi
 fi
 
 # 8. the release verification with the OLD identity: a release is checked against the home that built it (tools/release-homes.txt)
