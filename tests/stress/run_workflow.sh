@@ -129,7 +129,7 @@ log "Starting coral server on port $PORT..."
 # sandbox supplies that isolated HOME and puts a stub for every agent CLI first on PATH, so a launch
 # that fell back to a PATH CLI (the hang-up bug) hits the stub, not the operator's real CLI.
 coral_test_sandbox
-env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" "$TMPDIR_WF/coral" --host "$HOST" --port "$PORT" --backend "$CORAL_TEST_BACKEND" >"$TMPDIR_WF/server.log" 2>&1 &
+env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$CORAL_TEST_HOME" USERPROFILE="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" "$TMPDIR_WF/coral" --host "$HOST" --port "$PORT" --backend "$CORAL_TEST_BACKEND" >"$TMPDIR_WF/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 

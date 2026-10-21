@@ -5,7 +5,7 @@
 # client hang-up plus the cli_path PATH-fallback), and a mock run wrote transcripts into the real
 # ~/.claude/projects. A harness that starts a test Coral with mock agents calls coral_test_sandbox
 # before starting the server, runs the server (and thus its mock agents) with
-# HOME="$CORAL_TEST_HOME" and PATH="$CORAL_TEST_STUB_BIN:$PATH", and calls coral_test_sandbox_check
+# HOME="$CORAL_TEST_HOME" (and USERPROFILE, which Go reads for the home folder on Windows) and PATH="$CORAL_TEST_STUB_BIN:$PATH", and calls coral_test_sandbox_check
 # at the end (coral_test_sandbox_cleanup in its trap). This makes two failures impossible to miss:
 #  - a stub for every CLI-backed agent type (claude, codex, gemini, agy, pi, antigravity; see
 #    CORAL_TEST_STUB_CLIS) is first on PATH, so if a launch ever falls back to the PATH CLI (the

@@ -111,7 +111,7 @@ mkdir -p "$CORAL_HOME/host-home"
 # back to a PATH CLI (the hang-up bug) hits the stub, not the operator's real CLI, and mock transcripts
 # stay out of the real ~/.claude. The check at the end asserts it.
 coral_test_sandbox
-env -u CORAL_PORT -u CORAL_URL -u CORAL_DATA_DIR -u CORAL_DIR -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR CORAL_TEST_HOOKS=1 CORAL_INITIAL_PASSWORD_FILE="$CORAL_HOME/initial-password" HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
+env -u CORAL_PORT -u CORAL_URL -u CORAL_DATA_DIR -u CORAL_DIR -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR CORAL_TEST_HOOKS=1 CORAL_INITIAL_PASSWORD_FILE="$CORAL_HOME/initial-password" HOME="$CORAL_TEST_HOME" USERPROFILE="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
     "$CORAL_BIN" --host 127.0.0.1 --port "$CORAL_PORT" --home "$CORAL_HOME" --no-browser --cloud-url off --strict-local-auth=false \
     > "$CORAL_HOME/server.log" 2>&1 &
 CORAL_PID=$!

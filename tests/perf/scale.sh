@@ -80,7 +80,7 @@ mkdir -p "$WORK/repo" && git -C "$WORK/repo" init -q -b main && echo hi > "$WORK
 
 start_server() {  # starts the server on the data dir; sets SRV, waits for it to listen, reads KEY
   env -u TMUX -u CORAL_CLOUD_URL -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CORAL_SESSION_TOKEN -u CLAUDE_PROJECTS_DIR \
-    HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" CORAL_DATA_DIR="$WORK/d1" CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
+    HOME="$CORAL_TEST_HOME" USERPROFILE="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" CORAL_DATA_DIR="$WORK/d1" CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
     CORAL_PPROF_ADDR="127.0.0.1:$PPROF" ${TRANSCRIPT_ENV[@]+"${TRANSCRIPT_ENV[@]}"} \
     "$WORK/bin/coral" --home "$WORK/d1" --no-browser --host 127.0.0.1 --port "$PORT" --cloud-url off >>"$OUT/server.log" 2>&1 &
   SRV=$!
@@ -108,7 +108,7 @@ time_startup() {
   stop_server; forget_pid "$SRV"
   local t0 t1 t2; t0=$(date +%s.%N)
   env -u TMUX -u CORAL_CLOUD_URL -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CORAL_SESSION_TOKEN -u CLAUDE_PROJECTS_DIR \
-    HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" CORAL_DATA_DIR="$WORK/d1" CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
+    HOME="$CORAL_TEST_HOME" USERPROFILE="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" CORAL_DATA_DIR="$WORK/d1" CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
     CORAL_PPROF_ADDR="127.0.0.1:$PPROF" ${TRANSCRIPT_ENV[@]+"${TRANSCRIPT_ENV[@]}"} \
     "$WORK/bin/coral" --home "$WORK/d1" --no-browser --host 127.0.0.1 --port "$PORT" --cloud-url off >>"$OUT/server.log" 2>&1 &
   SRV=$!; PIDS+=($SRV)

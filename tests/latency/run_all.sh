@@ -94,7 +94,7 @@ cp "$TARGETS" "$WORK/targets.json"
 coral_test_sandbox   # #4354: isolated HOME + stub-CLI PATH
 log "starting server on $BASE (isolated data dir, cloud off)"
 env -u CORAL_CLOUD_URL \
-  HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
+  HOME="$CORAL_TEST_HOME" USERPROFILE="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" \
   CORAL_DATA_DIR="$DATADIR" \
   CLAUDE_PROJECTS_DIR="$PROJECTS" \
   CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 \
