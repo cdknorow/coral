@@ -1,4 +1,4 @@
-// Draft harness for AGENT_LIST_COMPACT.md (items 1-19). Written against the
+// Draft harness for the internal Agent List Compact spec (items 1-19). Written against the
 // spec's selectors before #150 lands; moved into tests/frontend and registered
 // in run.sh once the implementation is in the tree. Uses the same isolation
 // pattern as agent_bar_tweaks.test.js (pre-navigation fetch + WebSocket stub).

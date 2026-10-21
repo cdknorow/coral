@@ -54,3 +54,9 @@ icons/main_loop.mp4
 *.pem
 coral-go/Users*.coral/*
 
+
+# Private session summaries, and the links to the private notes repository (tools/link-internal.sh)
+.claude/task_summaries.md
+.claude/task_summaries.local.md
+.claude/skills
+.claude/commands

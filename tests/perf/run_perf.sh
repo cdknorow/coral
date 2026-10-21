@@ -41,7 +41,7 @@ CORALGO="$REPO/coral-go"
 # HOME with a stub for every agent CLI first on PATH; a CLI reach falls on the stub, never the
 # operator's real CLI, and the end check fails the run if the stub was hit.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/mock_sandbox.sh"
-# Epoch rule (tests/EPOCH.md): keep temp + seeded data under /sd2/$USER/qa-tmp (830 GB free,
+# Epoch rule (see the team's internal notes): keep temp + seeded data under /sd2/$USER/qa-tmp (830 GB free,
 # not the ~92%-full /), delete on exit. Fall back to /tmp when /sd2 is absent (a non-epoch box).
 QA_BASE="${QA_BASE:-$([ -d "/sd2/$USER" ] && echo "/sd2/$USER/qa-tmp" || echo /tmp)}"
 mkdir -p "$QA_BASE" 2>/dev/null || true
@@ -89,7 +89,7 @@ cleanup() {
   stop_server   # kills the server's whole process group (reaps the coral child under strace too)
   [[ -S "$SOCKET" ]] && "$TMUX_BIN" -S "$SOCKET" kill-server 2>/dev/null
   rm -rf "$CORALGO/cmd/qa3851seed" 2>/dev/null   # leave the repo as found (seeder copy)
-  # Delete the run's data on exit (tests/EPOCH.md); the table is on stdout. Keep with KEEP_PERF_DATA=1.
+  # Delete the run's data on exit (see the team's internal notes); the table is on stdout. Keep with KEEP_PERF_DATA=1.
   if [[ "${KEEP_PERF_DATA:-}" != "1" ]]; then
     rm -rf "$QA" "$WORK" 2>/dev/null
   else

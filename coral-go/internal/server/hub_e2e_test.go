@@ -1,6 +1,6 @@
 package server
 
-// End-to-end tests for the multi-server hub (docs/spec-multi-server-hub.md,
+// End-to-end tests for the multi-server hub (the team's internal hub spec,
 // WP7). One hub (cfg.HubMode) and two real remote servers are stood up
 // in-process, each with its own data dir, SQLite DBs, API key store and PTY
 // backend. Everything the tests do to a remote goes through the hub's HTTP API

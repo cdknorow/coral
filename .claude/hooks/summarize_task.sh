@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: summarizes the submitted prompt with Claude
-# and appends the result to .claude/task_summaries.md in the project root.
+# and appends the result to .claude/task_summaries.local.md in the project root (untracked).
 
 INPUT=$(cat)
 
@@ -21,7 +21,8 @@ print(d.get('cwd', ''))
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-OUTPUT_FILE="$PROJECT_ROOT/.claude/task_summaries.md"
+# An untracked file (the .gitignore lists it), or the path in CORAL_TASK_SUMMARIES: the summaries are private and never belong in the repository.
+OUTPUT_FILE="${CORAL_TASK_SUMMARIES:-$PROJECT_ROOT/.claude/task_summaries.local.md}"
 
 # Run in background so it doesn't block the prompt
 (

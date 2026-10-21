@@ -1,5 +1,5 @@
 // End-to-end acceptance test for the Agents sidebar tweaks
-// (specs/AGENT_BAR_TWEAKS.md D1–D7, badge-only D5):
+// (the team's internal Agent Bar Tweaks spec, D1–D7, badge-only D5):
 //   - identity chain display_name -> auto_name -> board_job_title -> Agent on
 //     row label, avatar initials, header, terminal label and Sending-to
 //     placeholder (summary and first_prompt are goal text only, never names or

@@ -62,7 +62,7 @@ check workdir, stores the command/result/log digest, and rejects unavailable,
 failed, stale, or unmerged checks. A caller cannot submit a passing check
 result in the completion JSON. The local runner is bounded and secret-minimal;
 production deployments still need an OS sandbox for stronger network/process
-isolation. See [task completion gates](../../specs/task_completion_gates.md).
+isolation.
 
 ### Orchestrator capability map
 

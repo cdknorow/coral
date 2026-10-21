@@ -27,7 +27,7 @@ CORALGO="$REPO/coral-go"
 # under an isolated HOME with a stub for every agent CLI first on PATH; a CLI reach hits the stub, not
 # the operator's real CLI, and the end check fails the run if it was hit.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/mock_sandbox.sh"
-# Epoch rule (tests/EPOCH.md): keep temp + seeded data under /sd2/$USER/qa-tmp (830 GB free,
+# Epoch rule (see the team's internal notes): keep temp + seeded data under /sd2/$USER/qa-tmp (830 GB free,
 # not the ~92%-full /), delete on exit. Fall back to /tmp when /sd2 is absent (a non-epoch box).
 QA_BASE="${QA_BASE:-$([ -d "/sd2/$USER" ] && echo "/sd2/$USER/qa-tmp" || echo /tmp)}"
 mkdir -p "$QA_BASE" 2>/dev/null || true
@@ -65,7 +65,7 @@ cleanup() {
   # Leave ~coral as found: the seeder is copied into the module only for the build (Security on #3740),
   # so drop it here too in case the script died between the copy and its own rm.
   rm -rf "$CORALGO/cmd/qa3713seed" 2>/dev/null
-  # Delete the run's data on exit (tests/EPOCH.md); the table and pass/fail are on stdout.
+  # Delete the run's data on exit (see the team's internal notes); the table and pass/fail are on stdout.
   [[ "${KEEP_TEST_DATA:-0}" == 1 ]] && log "KEEP_TEST_DATA=1: left $QA and $WORK" || rm -rf "$QA" "$WORK" 2>/dev/null
   coral_test_sandbox_cleanup   # #4354: isolated HOME + stub-CLI dir (runs the check too on a crash)
 }

@@ -1,8 +1,8 @@
 package background
 
 // RemoteAgentHub keeps an in-memory view of the agents running on registered
-// remote Coral servers, for the multi-server hub (docs/spec-multi-server-hub.md
-// section 3).
+// remote Coral servers, for the multi-server hub (see the team's internal notes,
+// section 3 of the hub spec).
 //
 // FRONTEND CONTRACT (what the hub's list and feed expose):
 //   - every session object carries "server" (string): "local" for hub agents,

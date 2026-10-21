@@ -1,6 +1,6 @@
 # Platform Layer
 
-Centralizes browser vs native app differences. See `docs/frontend-app-separation-spec.md` for full design.
+Centralizes browser vs native app differences (the design notes are in the team's internal repository).
 
 ## Key Rules
 

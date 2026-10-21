@@ -107,4 +107,4 @@ A failure before the executable starts, such as a missing host loader library, c
 
 Use schema/version cohorts when comparing historical events. In particular, earlier team counts included attempted members that failed, and historical first task completion events had no outcome. Keep test traffic separate and retain incomplete observation windows when interpreting funnels.
 
-See `specs/TELEMETRY_FUNNEL.md` for the baseline analysis, dashboard definitions, and remaining blind spots.
+The baseline analysis, dashboard definitions and remaining blind spots are kept in the team's internal notes.

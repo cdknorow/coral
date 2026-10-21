@@ -1,4 +1,4 @@
-// Acceptance harness for the single-agent popout (specs/SINGLE_AGENT_POPOUT.md).
+// Acceptance harness for the single-agent popout (the team's internal Single-Agent Popout spec).
 //
 // Numbers in check labels refer to the checklist in the spec (1-37).
 // Selector/hook contract: task #129 (Frontend Dev) + #128 (Lead Developer), as
