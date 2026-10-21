@@ -58,7 +58,7 @@ func TestLogTailMatchesAFreshRead(t *testing.T) {
 		"⏺ Working… ", "\x07", "\t", "\x1b[2K\r"}
 	var tail *logTail
 	appends := 0
-	for step := 0; step < 3000; step++ {
+	for step := 0; step < oracleN(3000); step++ {
 		switch r := rng.Intn(100); {
 		case r < 2: // truncated (a new log in the same place)
 			require.NoError(t, os.Truncate(path, 0))
@@ -99,7 +99,7 @@ func TestLogTailMatchesAFreshRead(t *testing.T) {
 		require.LessOrEqual(t, len(tail.lines), recentLines, "only the last lines are kept")
 		require.LessOrEqual(t, int64(len(tail.part)), logTailBytes, "a long partial line isn't kept whole")
 	}
-	require.Greater(t, appends, 2500)
+	require.Greater(t, appends, oracleN(3000)*5/6) // the steps that append: most of them
 }
 
 // A log that can't be read gives the empty status, and no tail to keep.

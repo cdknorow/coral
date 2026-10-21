@@ -246,7 +246,7 @@ func riskWords(wd string) []string {
 func TestShellRiskAgreesWithBefore4599OnRandomCommands(t *testing.T) {
 	wd, dirs := riskDirs(t)
 	words := riskWords(wd)
-	n := 200000
+	n := oracleN(200000)
 	if testing.Short() {
 		n = 20000
 	}
