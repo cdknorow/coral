@@ -1,6 +1,9 @@
 //go:build windows
 
-package main
+// Package winicon gives a window the Coral icon the exe carries as a resource (the desktop app: its
+// webview window class has none). It is its own package so cmd/coral-app, whose own files need cgo and
+// webview, builds nothing on Windows without them.
+package winicon
 
 import (
 	"fmt"
@@ -38,9 +41,9 @@ const (
 	gclpHIconSm = -34
 )
 
-// loadAppIcon loads the exe's own icon at cx x cy pixels (the closest size in the icon group,
+// LoadAppIcon loads the exe's own icon at cx x cy pixels (the closest size in the icon group,
 // scaled if none matches). It returns an error when the exe has no icon resource.
-func loadAppIcon(cx, cy int) (uintptr, error) {
+func LoadAppIcon(cx, cy int) (uintptr, error) {
 	hinst, _, _ := procModule.Call(0)
 	if hinst == 0 {
 		return 0, fmt.Errorf("GetModuleHandle failed")
@@ -57,15 +60,15 @@ func metric(index int) int {
 	return int(v)
 }
 
-// setWindowIcon gives hwnd the Coral icon at the system's small and large sizes, and its window
+// SetWindowIcon gives hwnd the Coral icon at the system's small and large sizes, and its window
 // class too so windows made later from it get it. Shared icons are owned by the system: nothing
 // to free.
-func setWindowIcon(hwnd uintptr) error {
-	small, err := loadAppIcon(metric(smCxSmIcon), metric(smCySmIcon))
+func SetWindowIcon(hwnd uintptr) error {
+	small, err := LoadAppIcon(metric(smCxSmIcon), metric(smCySmIcon))
 	if err != nil {
 		return err
 	}
-	big, err := loadAppIcon(metric(smCxIcon), metric(smCyIcon))
+	big, err := LoadAppIcon(metric(smCxIcon), metric(smCyIcon))
 	if err != nil {
 		return err
 	}
