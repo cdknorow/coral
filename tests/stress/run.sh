@@ -99,6 +99,11 @@ mkdir -p "$TMPDIR_STRESS/home"
 python3 - "$HOST" "$PORT" <<'PYPORT'
 import socket, sys
 with socket.socket() as sock:
+    # As Go's listener does on Unix: connections a previous run left in TIME_WAIT don't make a free
+    # port look taken (a tmux run then a pty run back to back failed here). Not on Windows, where
+    # SO_REUSEADDR would let the bind succeed over a live listener.
+    if sys.platform != "win32":
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((sys.argv[1], int(sys.argv[2])))
 PYPORT
 export GOMAXPROCS="${GOMAXPROCS:-2}"
