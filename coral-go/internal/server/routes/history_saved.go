@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/subgentic/coral/internal/jsonl"
 )
@@ -30,46 +31,55 @@ func (h *HistoryHandler) SavedAgentText(ctx context.Context, sessionID, agentTyp
 	return "", false, true
 }
 
-// SavedAgentPresence is which of these message keys are in the transcript of that session (#5802, the Saved list's marks). reachable is false when there is no transcript of the
-// session here. The answer for a key is kept while the transcript file is as it was (same path, size and modification time: a stat per session, a read only when it changed).
-func (h *HistoryHandler) SavedAgentPresence(ctx context.Context, sessionID string, keys []string) (found map[string]bool, reachable bool) {
+// SavedAgentPresence is which of these message keys are in the transcript of that session (#5802, the Saved list's marks). The transcript is looked for in the store of the
+// bookmark's own agent type only (a Claude bookmark never walks ~/.codex, #5820). reachable is false when there is no transcript of the session here; known is false when the
+// list's time budget ended before that could be told. The answer for a key is kept while the transcript file is as it was (same path, size and modification time: a stat per
+// session, a read only when it changed), and "no transcript" for a short while.
+func (h *HistoryHandler) SavedAgentPresence(ctx context.Context, sessionID, agentType string, keys []string) (found map[string]bool, reachable, known bool) {
 	h.presenceOnce.Do(func() {
 		h.presence = &savedPresence{
-			fingerprint: func(ctx context.Context, sid string) (string, string, bool) {
-				agentType, workingDir := h.sessionIdentity(ctx, sid)
-				tried := map[string]bool{}
-				for _, t := range []string{agentType, "claude", "codex", "agy"} { // the order sessionTranscript reads in
-					if tried[t] {
-						continue
-					}
-					tried[t] = true
-					if path, fp, ok := jsonl.TranscriptFingerprint(sid, workingDir, t); ok {
-						return path, fp, true
-					}
-				}
-				return "", "", false
+			now: time.Now,
+			fingerprint: func(ctx context.Context, sid, agentType string) (path, fp string, ok, aborted bool) {
+				_, workingDir := h.sessionIdentity(ctx, sid)
+				return jsonl.TranscriptFingerprintCtx(ctx, sid, workingDir, agentType)
 			},
-			read: func(ctx context.Context, sid string) ([]map[string]any, string) {
-				messages, _, path := h.sessionTranscriptFile(ctx, sid)
-				return messages, path
+			read: func(ctx context.Context, sid, agentType string) ([]map[string]any, string) {
+				_, workingDir := h.sessionIdentity(ctx, sid)
+				rd := jsonl.NewSessionReader() // each request reads through its own reader (#3651)
+				messages, _ := rd.ReadNewMessages(sid, workingDir, agentType)
+				return messages, rd.SessionPath(sid)
 			},
 		}
 	})
-	return h.presence.check(ctx, messageKeySecretFor(h.cfg), sessionID, keys)
+	if agentType == "" {
+		agentType, _ = h.sessionIdentity(ctx, sessionID)
+	}
+	return h.presence.check(ctx, messageKeySecretFor(h.cfg), sessionID, agentType, keys)
 }
 
 // maxSavedPresenceEntries bounds the kept answers ("is key K in session S"): the oldest used go first.
 const maxSavedPresenceEntries = 512
 
+// The Saved list's checks: how long all of them may take together (the bookmarks not reached are listed unmarked), how long "no transcript here" is believed, and how many
+// sessions that is remembered for (#5820).
+var savedCheckBudget = 1500 * time.Millisecond
+
+const (
+	savedNoTranscriptFor = 60 * time.Second
+	maxSavedNoTranscript = 1024
+)
+
 // savedPresence is the Saved list's cache of whether a message is in a session's transcript (#5802: 50 transcripts of 10 MB cost 650 ms on every list). An answer holds while the
 // transcript's fingerprint (path, size, modification time) is the one it was made under; fingerprint and read are injected so a test counts the reads.
 type savedPresence struct {
-	fingerprint func(ctx context.Context, sessionID string) (path, fingerprint string, ok bool)      // the first transcript file that exists, and its path, size and time
-	read        func(ctx context.Context, sessionID string) (messages []map[string]any, path string) // the whole transcript and the file it was read from
+	now         func() time.Time
+	fingerprint func(ctx context.Context, sessionID, agentType string) (path, fingerprint string, ok, aborted bool) // the transcript file of that agent type, and its path, size and time
+	read        func(ctx context.Context, sessionID, agentType string) (messages []map[string]any, path string)     // the whole transcript and the file it was read from
 
-	mu      sync.Mutex
-	order   *list.List // most recently used first; elements are *presenceEntry
-	entries map[string]*list.Element
+	mu        sync.Mutex
+	order     *list.List // most recently used first; elements are *presenceEntry
+	entries   map[string]*list.Element
+	noneUntil map[string]time.Time // session id + agent type -> when "no transcript here" stops being believed
 }
 
 type presenceEntry struct {
@@ -77,19 +87,31 @@ type presenceEntry struct {
 	found  bool
 }
 
-func (c *savedPresence) check(ctx context.Context, secret []byte, sessionID string, keys []string) (map[string]bool, bool) {
-	statPath, fp, stat := c.fingerprint(ctx, sessionID)
-	if !stat {
-		// Nothing to stat: the transcript is read as the history view reads it (and nothing is kept), or there is none.
-		messages, _ := c.read(ctx, sessionID)
-		if messages == nil {
-			return nil, false
-		}
-		return presentKeys(secret, messages, keys), true
+func (c *savedPresence) check(ctx context.Context, secret []byte, sessionID, agentType string, keys []string) (found map[string]bool, reachable, known bool) {
+	noneKey := sessionID + "\x00" + agentType
+	c.mu.Lock()
+	if until, ok := c.noneUntil[noneKey]; ok && c.now().Before(until) {
+		c.mu.Unlock()
+		return nil, false, true
 	}
-	found := make(map[string]bool, len(keys))
+	c.mu.Unlock()
+	statPath, fp, stat, aborted := c.fingerprint(ctx, sessionID, agentType)
+	if aborted {
+		return nil, false, false // the budget ended: nothing is known, and nothing is kept
+	}
+	if !stat {
+		c.mu.Lock()
+		if c.noneUntil == nil || len(c.noneUntil) >= maxSavedNoTranscript {
+			c.noneUntil = map[string]time.Time{}
+		}
+		c.noneUntil[noneKey] = c.now().Add(savedNoTranscriptFor)
+		c.mu.Unlock()
+		return nil, false, true
+	}
+	found = make(map[string]bool, len(keys))
 	var missed []string
 	c.mu.Lock()
+	delete(c.noneUntil, noneKey)
 	for _, k := range keys {
 		if el, ok := c.entries[sessionID+"\x00"+k]; ok && el.Value.(*presenceEntry).fp == fp {
 			c.order.MoveToFront(el)
@@ -100,20 +122,19 @@ func (c *savedPresence) check(ctx context.Context, secret []byte, sessionID stri
 	}
 	c.mu.Unlock()
 	if len(missed) == 0 {
-		return found, true
+		return found, true, true
 	}
-	messages, readPath := c.read(ctx, sessionID)
+	messages, readPath := c.read(ctx, sessionID, agentType)
 	if messages == nil {
-		return nil, false // not kept: the file went between the stat and the read
+		return nil, false, true // not kept: the file went between the stat and the read
 	}
 	read := presentKeys(secret, messages, missed)
 	if readPath != statPath {
-		// The history view's read fell through to another file than the one that was stat'ed (an empty first file of the same session): the answer is true of that file, which
-		// the fingerprint does not watch, so it is not kept (#5802, Security's LOW 1).
+		// The read came from another file than the one that was stat'ed: the answer is true of a file the fingerprint does not watch, so it is not kept (#5802, Security's LOW 1).
 		for _, k := range missed {
 			found[k] = read[k]
 		}
-		return found, true
+		return found, true, true
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -135,7 +156,7 @@ func (c *savedPresence) check(ctx context.Context, secret []byte, sessionID stri
 		delete(c.entries, last.Value.(*presenceEntry).id)
 		c.order.Remove(last)
 	}
-	return found, true
+	return found, true, true
 }
 
 // presentKeys is which of keys are the key of one of the messages.

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,21 +14,26 @@ import (
 
 // #5802 (QA's measurement: 50 transcripts of 10 MB cost 650 ms on every Saved list): whether a key is in a session's transcript is kept while the transcript file is as it was.
 type presenceRig struct {
-	c      *savedPresence
-	secret []byte
-	fp     map[string]string           // session -> fingerprint ("" = no file)
-	readAt map[string]string           // session -> the file the read comes from ("" = the stat'ed one)
-	msgs   map[string][]map[string]any // session -> the transcript
-	reads  []string
+	c       *savedPresence
+	secret  []byte
+	fp      map[string]string           // session -> fingerprint ("" = no file)
+	readAt  map[string]string           // session -> the file the read comes from ("" = the stat'ed one)
+	msgs    map[string][]map[string]any // session -> the transcript
+	reads   []string
+	fpCalls int
+	clock   time.Time
+	aborted bool // the fingerprint ran out of budget
 }
 
 func newPresenceRig() *presenceRig {
-	r := &presenceRig{secret: []byte("s"), fp: map[string]string{}, readAt: map[string]string{}, msgs: map[string][]map[string]any{}}
+	r := &presenceRig{clock: time.Unix(1_000_000, 0), secret: []byte("s"), fp: map[string]string{}, readAt: map[string]string{}, msgs: map[string][]map[string]any{}}
 	r.c = &savedPresence{
-		fingerprint: func(_ context.Context, sid string) (string, string, bool) {
-			return "file-" + sid, r.fp[sid], r.fp[sid] != ""
+		now: func() time.Time { return r.clock },
+		fingerprint: func(_ context.Context, sid, _ string) (string, string, bool, bool) {
+			r.fpCalls++
+			return "file-" + sid, r.fp[sid], r.fp[sid] != "", r.aborted
 		},
-		read: func(_ context.Context, sid string) ([]map[string]any, string) {
+		read: func(_ context.Context, sid, _ string) ([]map[string]any, string) {
 			r.reads = append(r.reads, sid)
 			if at := r.readAt[sid]; at != "" {
 				return r.msgs[sid], at
@@ -51,7 +57,11 @@ func (r *presenceRig) set(sid, fp string, texts ...string) []string {
 }
 
 func (r *presenceRig) ask(sid string, keys ...string) (map[string]bool, bool) {
-	return r.c.check(context.Background(), r.secret, sid, keys)
+	found, reachable, known := r.c.check(context.Background(), r.secret, sid, "claude", keys)
+	if !known {
+		return nil, false
+	}
+	return found, reachable
 }
 
 func TestSavedPresenceIsKeptWhileTheTranscriptFileIsUnchanged(t *testing.T) {
@@ -129,7 +139,7 @@ func TestSavedAgentPresenceReadsARealTranscriptAndSeesItGrow(t *testing.T) {
 	msgs, _ := h.sessionTranscript(ctx, sid)
 	require.Len(t, msgs, 1)
 	k1 := messageKey(secret, msgs[0])
-	got, ok := h.SavedAgentPresence(ctx, sid, []string{k1})
+	got, ok, _ := h.SavedAgentPresence(ctx, sid, "claude", []string{k1})
 	require.True(t, ok)
 	assert.Equal(t, map[string]bool{k1: true}, got)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
@@ -140,10 +150,10 @@ func TestSavedAgentPresenceReadsARealTranscriptAndSeesItGrow(t *testing.T) {
 	msgs, _ = h.sessionTranscript(ctx, sid)
 	require.Len(t, msgs, 2)
 	k2 := messageKey(secret, msgs[1])
-	got, ok = h.SavedAgentPresence(ctx, sid, []string{k1, k2})
+	got, ok, _ = h.SavedAgentPresence(ctx, sid, "claude", []string{k1, k2})
 	require.True(t, ok)
 	assert.Equal(t, map[string]bool{k1: true, k2: true}, got, "the file changed: the new message is found")
-	_, ok = h.SavedAgentPresence(ctx, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee2", []string{k1})
+	_, ok, _ = h.SavedAgentPresence(ctx, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeee2", "claude", []string{k1})
 	assert.False(t, ok, "no transcript: not reachable")
 }
 
@@ -162,4 +172,34 @@ func TestSavedPresenceKeepsNothingReadFromAnotherFileThanTheOneWatched(t *testin
 	_, _ = r.ask("s1", keys[0])
 	_, _ = r.ask("s1", keys[0])
 	assert.Len(t, r.reads, 3, "kept once the read is of the watched file")
+}
+
+// #5820: "no transcript here" is believed for a minute per session, so a list of bookmarks of sessions that have none does not look for them again on every visit; a cut-off
+// is not "no transcript" and is never kept; once the transcript appears, or the minute is over, it is looked for again.
+func TestSavedPresenceBelievesNoTranscriptForAMinute(t *testing.T) {
+	r := newPresenceRig()
+	_, ok := r.ask("gone-session", "k")
+	assert.False(t, ok)
+	assert.Equal(t, 1, r.fpCalls)
+	_, ok = r.ask("gone-session", "k")
+	assert.False(t, ok)
+	assert.Equal(t, 1, r.fpCalls, "believed: not looked for again")
+	r.clock = r.clock.Add(59 * time.Second)
+	_, _ = r.ask("gone-session", "k")
+	assert.Equal(t, 1, r.fpCalls, "still inside the minute")
+	r.clock = r.clock.Add(2 * time.Second)
+	_, _ = r.ask("gone-session", "k")
+	assert.Equal(t, 2, r.fpCalls, "after the minute it is looked for again")
+	// a cut-off (the budget ended) says nothing and keeps nothing
+	r.aborted = true
+	for i := 0; i < 2; i++ {
+		_, _ = r.ask("slow-session", "k")
+	}
+	assert.Equal(t, 4, r.fpCalls, "each cut-off asks again: it was not remembered as 'no transcript'")
+	r.aborted = false
+	keys := r.set("slow-session", "p|1|1", "now there")
+	got, ok := r.ask("slow-session", keys[0])
+	require.True(t, ok)
+	assert.Equal(t, map[string]bool{keys[0]: true}, got)
+	// a transcript that appears within the minute is found once the belief is over; one asked about before it existed was never believed absent by a cut-off
 }

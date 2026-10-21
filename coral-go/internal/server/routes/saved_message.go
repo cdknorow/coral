@@ -33,7 +33,7 @@ func (h *SystemHandler) SetSavedSources(board func(ctx context.Context, project 
 }
 
 // SetSavedPresence injects how the list tells whether the bookmarked messages still exist (#5802).
-func (h *SystemHandler) SetSavedPresence(board func(ctx context.Context, project string, ids []int64) (map[int64]bool, error), agent func(ctx context.Context, sessionID string, keys []string) (map[string]bool, bool)) {
+func (h *SystemHandler) SetSavedPresence(board func(ctx context.Context, project string, ids []int64) (map[int64]bool, error), agent func(ctx context.Context, sessionID, agentType string, keys []string) (map[string]bool, bool, bool)) {
 	h.savedBoardHas, h.savedAgentHas = board, agent
 }
 
@@ -46,6 +46,8 @@ const maxSavedAgentChecks = 50
 func (h *SystemHandler) markSavedReasons(ctx context.Context, items []store.SavedMessage) {
 	boardIDs := map[string][]int64{}
 	agentKeys := map[string][]string{}
+	agentTypes := map[string]string{}
+	var agentOrder []string // the list's order: the newest bookmarks are checked first, and the ones the budget does not reach are the oldest
 	for _, it := range items {
 		switch it.Kind {
 		case "board":
@@ -53,6 +55,10 @@ func (h *SystemHandler) markSavedReasons(ctx context.Context, items []store.Save
 				boardIDs[it.Ref] = append(boardIDs[it.Ref], id)
 			}
 		case "agent":
+			if _, seen := agentKeys[it.Ref]; !seen {
+				agentOrder = append(agentOrder, it.Ref)
+				agentTypes[it.Ref] = it.AgentType
+			}
 			agentKeys[it.Ref] = append(agentKeys[it.Ref], it.Key)
 		}
 	}
@@ -71,16 +77,22 @@ func (h *SystemHandler) markSavedReasons(ctx context.Context, items []store.Save
 	}
 	agents := map[string]agentState{}
 	if h.savedAgentHas != nil {
-		for ref, keys := range agentKeys {
-			if len(agents) >= maxSavedAgentChecks {
+		// All the agents' checks share one time budget (#5820): a Codex history of thousands of rollouts is walked to find a session, and a list must not wait for that. The
+		// agents not reached, or cut off, are listed unmarked.
+		bctx, cancel := context.WithTimeout(ctx, savedCheckBudget)
+		defer cancel()
+		for _, ref := range agentOrder {
+			if len(agents) >= maxSavedAgentChecks || bctx.Err() != nil {
 				break
 			}
 			if !transcriptlink.IsSessionID(ref) {
 				agents[ref] = agentState{checked: true} // no agent of this computer
 				continue
 			}
-			have, reachable := h.savedAgentHas(ctx, ref, keys)
-			agents[ref] = agentState{have: have, reachable: reachable, checked: true}
+			have, reachable, known := h.savedAgentHas(bctx, ref, agentTypes[ref], agentKeys[ref])
+			if known {
+				agents[ref] = agentState{have: have, reachable: reachable, checked: true}
+			}
 		}
 	}
 	for i := range items {
