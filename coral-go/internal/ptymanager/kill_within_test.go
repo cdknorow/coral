@@ -12,7 +12,6 @@ import (
 // spent in full on every pty restart; a restart ends the old terminal with KillWithin and a short one. The process is a real one on a real
 // pty: one that ignores SIGTERM (the signal stays ignored through exec), and one that does not.
 func TestKillWithinForceKillsAProcessThatIgnoresSIGTERMAfterTheGrace(t *testing.T) {
-	t.Parallel()
 	canFork(t)
 	b := NewPTYBackend()
 	t.Cleanup(func() { b.Close() })
@@ -35,7 +34,6 @@ func TestKillWithinForceKillsAProcessThatIgnoresSIGTERMAfterTheGrace(t *testing.
 }
 
 func TestKillWithinDoesNotWaitForAProcessThatExitsOnSIGTERM(t *testing.T) {
-	t.Parallel()
 	canFork(t)
 	b := NewPTYBackend()
 	t.Cleanup(func() { b.Close() })

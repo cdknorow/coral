@@ -124,14 +124,9 @@ func TestTmuxBackend_Replay(t *testing.T) {
 	}
 	defer b.Kill("replay-test")
 
-	var content string
-	for i := 0; i < 20; i++ {
-		time.Sleep(200 * time.Millisecond)
-		data, _ := b.Replay("replay-test")
-		content = string(data)
-		if strings.Contains(content, "MARKER_REPLAY_42") {
-			return // success
-		}
+	content := pollFor(func() string { data, _ := b.Replay("replay-test"); return string(data) }, "MARKER_REPLAY_42")
+	if strings.Contains(content, "MARKER_REPLAY_42") {
+		return // success
 	}
 	t.Errorf("expected replay to contain MARKER_REPLAY_42, got: %q", content)
 }
@@ -146,21 +141,14 @@ func TestTmuxBackend_SendInput(t *testing.T) {
 	}
 	defer b.Kill("input-test")
 
-	time.Sleep(500 * time.Millisecond)
-
 	err = b.SendInput("input-test", []byte("echo SEND_TEST_MARKER\n"))
 	if err != nil {
 		t.Fatalf("SendInput failed: %v", err)
 	}
 
-	var content string
-	for i := 0; i < 20; i++ {
-		time.Sleep(200 * time.Millisecond)
-		data, _ := b.Replay("input-test")
-		content = string(data)
-		if strings.Contains(content, "SEND_TEST_MARKER") {
-			return
-		}
+	content := pollFor(func() string { data, _ := b.Replay("input-test"); return string(data) }, "SEND_TEST_MARKER")
+	if strings.Contains(content, "SEND_TEST_MARKER") {
+		return
 	}
 	t.Errorf("expected replay to contain SEND_TEST_MARKER, got: %q", content)
 }
@@ -185,7 +173,7 @@ func TestTmuxBackend_ListSessions(t *testing.T) {
 	}
 	defer b.Kill("agent2")
 
-	time.Sleep(500 * time.Millisecond)
+	eventually(t, "both sessions to be listed", func() bool { return len(b.ListSessions()) >= 2 })
 
 	sessions := b.ListSessions()
 	if len(sessions) < 2 {
@@ -214,21 +202,16 @@ func TestTmuxBackend_Restart(t *testing.T) {
 	}
 	defer b.Kill("restart-test")
 
-	time.Sleep(500 * time.Millisecond)
+	eventually(t, "the session to be running", func() bool { return b.IsRunning("restart-test") })
 
 	err = b.Restart("restart-test", "echo RESTARTED_MARKER")
 	if err != nil {
 		t.Fatalf("Restart failed: %v", err)
 	}
 
-	var content string
-	for i := 0; i < 20; i++ {
-		time.Sleep(200 * time.Millisecond)
-		data, _ := b.Replay("restart-test")
-		content = string(data)
-		if strings.Contains(content, "RESTARTED_MARKER") {
-			return
-		}
+	content := pollFor(func() string { data, _ := b.Replay("restart-test"); return string(data) }, "RESTARTED_MARKER")
+	if strings.Contains(content, "RESTARTED_MARKER") {
+		return
 	}
 	t.Errorf("expected capture to contain RESTARTED_MARKER after restart, got: %q", content)
 }
@@ -243,7 +226,7 @@ func TestTmuxBackend_Resize(t *testing.T) {
 	}
 	defer b.Kill("resize-test")
 
-	time.Sleep(300 * time.Millisecond)
+	eventually(t, "the session to be running", func() bool { return b.IsRunning("resize-test") })
 
 	err = b.Resize("resize-test", 120, 40)
 	if err != nil {
@@ -332,7 +315,7 @@ func TestTmuxBackendFanOut(t *testing.T) {
 		t.Fatalf("Spawn failed: %v", err)
 	}
 	defer b.Kill("fanout")
-	time.Sleep(300 * time.Millisecond)
+	eventually(t, "the session to be running", func() bool { return b.IsRunning("fanout") })
 
 	chA, err := b.Attach("fanout", "subA")
 	if err != nil {
@@ -615,7 +598,14 @@ func TestTmuxBackend_ConcurrentSpawnKill(t *testing.T) {
 	}
 	wg.Wait()
 
-	time.Sleep(500 * time.Millisecond)
+	eventually(t, "the three sessions to be running", func() bool {
+		for _, n := range []string{"conc-a", "conc-b", "conc-c"} {
+			if !b.IsRunning(n) {
+				return false
+			}
+		}
+		return true
+	})
 
 	var wg2 sync.WaitGroup
 	for i := 0; i < 3; i++ {

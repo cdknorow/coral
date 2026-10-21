@@ -33,15 +33,14 @@ func TestNewSession_CreatesLogFile(t *testing.T) {
 func TestNewSession_SetsEnvironment(t *testing.T) {
 	t.Parallel()
 	canFork(t)
-	s, err := newSession("env-test", "test", t.TempDir(), "sid-env", "env", 80, 24)
+	// the command stays alive after printing: on macOS a process that exits before the first read can lose its output on a loaded machine (#5671)
+	s, err := newSession("env-test", "test", t.TempDir(), "sid-env", "env; sleep 5", 80, 24)
 	if err != nil {
 		t.Fatalf("newSession failed: %v", err)
 	}
 	defer s.kill()
 
-	// Wait for output
-	time.Sleep(500 * time.Millisecond)
-	content := string(s.replayBytes())
+	content := pollFor(func() string { return string(s.replayBytes()) }, "TERM=xterm-256color")
 
 	if !strings.Contains(content, "TERM=xterm-256color") {
 		t.Errorf("expected TERM=xterm-256color in env output, got: %q", content)
@@ -195,9 +194,15 @@ func TestSession_RingBufferOverflow(t *testing.T) {
 		s.sendInput([]byte(bigChunk))
 	}
 
-	time.Sleep(time.Second)
-
+	// Wait until what has come back stops growing (300 ms without a new byte), not for a second.
 	content := string(s.replayBytes())
+	for last, since, deadline := len(content), time.Now(), time.Now().Add(pollWindow); time.Since(since) < 300*time.Millisecond && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+		content = string(s.replayBytes())
+		if len(content) != last {
+			last, since = len(content), time.Now()
+		}
+	}
 	if len(content) > s.ringMax+1024 {
 		t.Errorf("ring buffer exceeded max: got %d bytes, max %d", len(content), s.ringMax)
 	}
@@ -256,17 +261,23 @@ func TestSession_WorkingDirectory(t *testing.T) {
 	t.Parallel()
 	canFork(t)
 	tmpDir := t.TempDir()
-	s, err := newSession("workdir-test", "test", tmpDir, "sid-workdir", "pwd", 80, 24)
+	// the command stays alive after printing: on macOS a process that exits before the first read can lose its output on a loaded machine (#5671)
+	s, err := newSession("workdir-test", "test", tmpDir, "sid-workdir", "pwd; sleep 5", 80, 24)
 	if err != nil {
 		t.Fatalf("newSession failed: %v", err)
 	}
 	defer s.kill()
 
-	time.Sleep(500 * time.Millisecond)
-	content := string(s.replayBytes())
-
 	// Resolve symlinks for comparison (macOS /tmp → /private/tmp)
 	resolvedTmp, _ := filepath.EvalSymlinks(tmpDir)
+	var content string
+	for deadline := time.Now().Add(pollWindow); ; {
+		content = string(s.replayBytes())
+		if strings.Contains(content, resolvedTmp) || strings.Contains(content, tmpDir) || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if !strings.Contains(content, resolvedTmp) && !strings.Contains(content, tmpDir) {
 		t.Errorf("expected working directory %q in output, got %q", tmpDir, content)
 	}
@@ -310,13 +321,14 @@ func TestParseCommand_ShellMetachars(t *testing.T) {
 func TestSession_LogFileContainsOutput(t *testing.T) {
 	t.Parallel()
 	canFork(t)
-	s, err := newSession("log-content", "test", t.TempDir(), "sid-log-content", "echo LOG_MARKER_42", 80, 24)
+	// the command stays alive after printing: on macOS a process that exits before the first read can lose its output on a loaded machine (#5671)
+	s, err := newSession("log-content", "test", t.TempDir(), "sid-log-content", "echo LOG_MARKER_42; sleep 5", 80, 24)
 	if err != nil {
 		t.Fatalf("newSession failed: %v", err)
 	}
 
-	// Wait for output to be written
-	time.Sleep(time.Second)
+	// Wait for the output to be written to the log
+	pollFor(func() string { b, _ := os.ReadFile(s.logPath); return string(b) }, "LOG_MARKER_42")
 	s.kill()
 
 	// Read log file
