@@ -203,6 +203,10 @@ jobs:
           $version = $env:VERSION
           $ldflags = "-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=$env:POSTHOG_PROJECT_KEY -X github.com/subgentic/coral/internal/config.Version=$version"
           $buildTags = $env:BUILD_TAGS
+          # The exes' version information (what the taskbar and Task Manager name the app by): this release's version and the tier's product name.
+          $product = if (",$buildTags," -like "*,dropboxers,*") { "Coral For Dropbox" } else { "Coral" }
+          bash ../tools/gen_windows_resources.sh $version $product
+          if ($LASTEXITCODE -ne 0) { throw "gen_windows_resources.sh failed" }
           New-Item -ItemType Directory -Force -Path ..\dist\windows\bin | Out-Null
 
           $env:CGO_ENABLED = "0"

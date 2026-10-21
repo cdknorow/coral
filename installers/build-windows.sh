@@ -35,6 +35,25 @@ fi
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
+# The exes' version information (the name the taskbar and Task Manager show): this version and the
+# tier's product name, written into the committed resource files for the build and put back after.
+if [ "$VERSION" != "dev" ]; then
+    SYSO_BACKUP="$(mktemp -d)"
+    for cmd in coral launch-coral coral-tray coral-app; do
+        cp "$GO_DIR/cmd/$cmd/rsrc_windows_amd64.syso" "$SYSO_BACKUP/$cmd.syso"
+    done
+    restore_syso() {
+        for cmd in coral launch-coral coral-tray coral-app; do
+            cp "$SYSO_BACKUP/$cmd.syso" "$GO_DIR/cmd/$cmd/rsrc_windows_amd64.syso"
+        done
+        rm -rf "$SYSO_BACKUP"
+    }
+    trap restore_syso EXIT
+    PRODUCT="Coral"
+    [ "$CORAL_TIER" = "dropboxers" ] && PRODUCT="Coral For Dropbox"
+    "$PROJECT_DIR/tools/gen_windows_resources.sh" "$VERSION" "$PRODUCT"
+fi
+
 cd "$GO_DIR"
 
 echo "==> Compiling coral.exe"
