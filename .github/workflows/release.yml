@@ -19,6 +19,9 @@ jobs:
   # these outputs (tests/release/resolve_release.sh, its table in resolve_release_test.sh).
   resolve:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read   # the provenance record reads the heavy gates' runs on the tagged code
     outputs:
       version: ${{ steps.r.outputs.version }}
       build_tags: ${{ steps.r.outputs.build_tags }}
@@ -34,10 +37,20 @@ jobs:
         with:
           go-version-file: coral-go/go.mod
           cache: false
+      # The release provenance record (#5550): who pushed the tag, which commit, whether it is on main, and whether go-tests, go-race and
+      # cdp-gate passed on that exact code (the tagged notes commit is gated by its parent). A release is not built from code whose gates failed.
+      - name: Record the release provenance
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          python3 tests/release/release_provenance.py "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$ACTOR" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Resolve the tier, version and program lists
         id: r
         run: |
           set -euo pipefail
+          python3 -I tests/release/release_provenance_test.py
           bash tests/release/resolve_release_test.sh
           bash tests/release/install_cli_tools_test.sh
           bash tests/release/require_cosign_test.sh

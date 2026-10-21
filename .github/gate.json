@@ -3,7 +3,7 @@
   "branch_prefix": "ci/",
   "always": ["go-tests", "go-race", "cdp-gate"],
   "when": [
-    {"workflow": "gofmt", "paths": ["coral-go/**.go", ".github/workflows/**", "tests/release/workflows_lint.py", "tests/release/gate_check.py", "tests/release/gate_check_test.py", ".github/gate.json"]},
+    {"workflow": "gofmt", "paths": ["coral-go/**.go", ".github/workflows/**", "tests/release/workflows_lint.py", "tests/release/gate_check.py", "tests/release/gate_check_test.py", "tests/release/release_provenance.py", "tests/release/release_provenance_test.py", ".github/gate.json"]},
     {"workflow": "windows-tests", "paths": ["coral-go/**", "tests/windows/**", ".github/workflows/windows-tests.yml"]}
   ],
   "events": ["push", "pull_request", "workflow_dispatch"],
