@@ -83,7 +83,7 @@ jobs:
       - name: Build Linux binaries (${{ matrix.arch }})
         working-directory: coral-go
         env:
-          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          POSTHOG_PROJECT_KEY: ${{ vars.POSTHOG_PROJECT_KEY }}
           ARCH: ${{ matrix.arch }}
           VERSION: ${{ needs.resolve.outputs.version }}
           BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
@@ -170,7 +170,7 @@ jobs:
       - name: Build Windows binaries (amd64)
         working-directory: coral-go
         env:
-          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          POSTHOG_PROJECT_KEY: ${{ vars.POSTHOG_PROJECT_KEY }}
           VERSION: ${{ needs.resolve.outputs.version }}
           BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
           COMMANDS: ${{ needs.resolve.outputs.commands }}
@@ -366,7 +366,7 @@ jobs:
       - name: Build arm64 binaries
         working-directory: coral-go
         env:
-          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          POSTHOG_PROJECT_KEY: ${{ vars.POSTHOG_PROJECT_KEY }}
           VERSION: ${{ needs.resolve.outputs.version }}
           BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
           COMMANDS: ${{ needs.resolve.outputs.commands }}
@@ -429,7 +429,7 @@ jobs:
       - name: Build amd64 binaries
         working-directory: coral-go
         env:
-          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          POSTHOG_PROJECT_KEY: ${{ vars.POSTHOG_PROJECT_KEY }}
           VERSION: ${{ needs.resolve.outputs.version }}
           BUILD_TAGS: ${{ needs.resolve.outputs.build_tags }}
           COMMANDS: ${{ needs.resolve.outputs.commands }}
