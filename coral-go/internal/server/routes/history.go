@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 
@@ -27,6 +28,9 @@ type HistoryHandler struct {
 	bs          *board.Store
 	cfg         *config.Config
 	summarizeFn func(ctx context.Context, sessionID string) error
+
+	presenceOnce sync.Once
+	presence     *savedPresence // the Saved list's kept answers (#5802)
 }
 
 // SetSummarizeFn sets the function used for synchronous summarization.
@@ -440,11 +444,10 @@ func (h *HistoryHandler) GetSessionTasks(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, emptyIfNil(tasks))
 }
 
-// sessionTranscript reads the whole transcript of a session by its id, live or ended, from this machine: the messages (nil when there is none) and the agent
-// type the history index or the live row says (a Codex or Agy transcript is found by its Coral marker). The history view and the saved-message read use it.
-func (h *HistoryHandler) sessionTranscript(ctx context.Context, sid string) (messages []map[string]any, agentType string) {
+// sessionIdentity is the agent type and working directory the history index and the live row give for a session id (a Codex or Agy transcript is found by its Coral marker).
+func (h *HistoryHandler) sessionIdentity(ctx context.Context, sid string) (agentType, workingDir string) {
 	agentType = "claude"
-	workingDir := ""
+	workingDir = ""
 
 	// The history index is authoritative for provider identity. A session ID
 	// can be a Coral marker (Codex/Antigravity) rather than the native file ID;
@@ -466,6 +469,13 @@ func (h *HistoryHandler) sessionTranscript(ctx context.Context, sid string) (mes
 			}
 		}
 	}
+	return agentType, workingDir
+}
+
+// sessionTranscript reads the whole transcript of a session by its id, live or ended, from this machine: the messages (nil when there is none) and the agent
+// type the history index or the live row says (a Codex or Agy transcript is found by its Coral marker). The history view and the saved-message read use it.
+func (h *HistoryHandler) sessionTranscript(ctx context.Context, sid string) (messages []map[string]any, agentType string) {
+	agentType, workingDir := h.sessionIdentity(ctx, sid)
 
 	// Each request reads through its own reader (#3651). The reader is incremental: one shared
 	// by concurrent requests hands the transcript to whichever reads first, and the others find
