@@ -214,8 +214,7 @@ func (a *PiAgent) LaunchCommand(params LaunchParams) (string, error) {
 
 	// System prompt via --append-system-prompt with temp file
 	if len(sysParts) > 0 {
-		sysFile := files.write("pi_sys", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
-		arg := FormatPromptFileArg(sysFile)
+		arg := files.promptArg("pi_sys", params.SessionID, "md", "", strings.Join(sysParts, "\n\n"))
 		raw = append(raw, arg)
 		parts = append(parts, "--append-system-prompt", arg)
 	}
@@ -226,8 +225,7 @@ func (a *PiAgent) LaunchCommand(params LaunchParams) (string, error) {
 		cliPrompt = params.Prompt
 	}
 	if cliPrompt != "" {
-		promptFile := files.write("pi_prompt", params.SessionID, "txt", []byte(cliPrompt))
-		arg := FormatPromptFileArg(promptFile)
+		arg := files.promptArg("pi_prompt", params.SessionID, "txt", "", cliPrompt)
 		raw = append(raw, arg)
 		parts = append(parts, arg)
 	}

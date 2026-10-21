@@ -1,24 +1,9 @@
 package psquote
 
 import (
-	"path/filepath"
 	"strings"
 	"unicode"
 )
-
-// PowerShells are the shells Coral starts a Windows terminal with, in order of preference
-// (ptymanager's pickShell). The launch line is written for the one that runs it (LegacyNativeArgs).
-var PowerShells = []string{"pwsh.exe", "powershell.exe"}
-
-// LegacyNativeArgs reports whether shell, a path or name, passes arguments to native programs
-// the way Windows PowerShell 5.1 does, so a launch line must escape them itself (NativeArg):
-// every shell but pwsh. pwsh 7.3 and later escape each argument for the program's argv parser
-// ($PSNativeCommandArgumentPassing), so an argument escaped here would arrive with the escapes
-// in it; pwsh 7.2 and earlier, out of support, are not told apart.
-func LegacyNativeArgs(shell string) bool {
-	base := strings.ToLower(filepath.Base(strings.ReplaceAll(shell, `\`, "/")))
-	return strings.TrimSuffix(base, ".exe") != "pwsh"
-}
 
 // NativeArg returns the text that makes Windows PowerShell 5.1 hand a native program s as one
 // argument, as the program's argv parser (the C runtime's, CommandLineToArgvW, Rust's and Go's

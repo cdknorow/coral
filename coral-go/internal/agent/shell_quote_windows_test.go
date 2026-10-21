@@ -39,9 +39,11 @@ func TestShellQuotePowerShell(t *testing.T) {
 	t.Setenv("CORAL_SHELL", `C:\Program Files\PowerShell\7\pwsh.exe`)
 	assert.Equal(t, "'"+toml+"'", shellQuote(toml))
 	assert.Equal(t, `'say "hi"'`, shellQuote(`say "hi"`))
+	// A prompt file is read back as it is, whichever PowerShell: promptArg wrote it escaped for
+	// 5.1 when 5.1 runs the line (#29).
 	assert.Equal(t, `"$(Get-Content -Raw -Encoding UTF8 -LiteralPath 'p.txt')"`, FormatPromptFileArg("p.txt"))
 	t.Setenv("CORAL_SHELL", "powershell.exe")
-	assert.Equal(t, `"$((Get-Content -Raw -Encoding UTF8 -LiteralPath 'p.txt') -replace '(\\*)"', '$1$1\"' -replace '(\\+)\z', '$1$1')"`, FormatPromptFileArg("p.txt"))
+	assert.Equal(t, `"$(Get-Content -Raw -Encoding UTF8 -LiteralPath 'p.txt')"`, FormatPromptFileArg("p.txt"))
 
 	raw := `"$((Get-Content -Raw 'C:\t\p.txt') -replace '"', '\"')"`
 	assert.Equal(t, `& 'C:\Program Files\claude.exe' '$(calc)' `+raw,

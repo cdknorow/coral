@@ -265,8 +265,7 @@ func codexInstructions(files *launchFiles, params LaunchParams) string {
 	if len(sysParts) == 0 {
 		return ""
 	}
-	sysFile := files.write("codex_instructions", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
-	return fmt.Sprintf(`developer_instructions="%s"`, formatCatSubstitution(sysFile))
+	return files.promptArg("codex_instructions", params.SessionID, "md", "developer_instructions=", strings.Join(sysParts, "\n\n"))
 }
 
 // codexHookEvents are the Codex hooks Coral's activity hook is installed for.
@@ -374,7 +373,7 @@ func codexActionPrompt(files *launchFiles, params LaunchParams) string {
 	if actionPrompt == "" {
 		return ""
 	}
-	return FormatPromptFileArg(files.write("codex_prompt", params.SessionID, "txt", []byte(actionPrompt)))
+	return files.promptArg("codex_prompt", params.SessionID, "txt", "", actionPrompt)
 }
 
 // codexPermissionFlag says which setting the token at parts[i] sets, 's' for the sandbox (--sandbox X, -s X, --sandbox=X, -s=X) or 'a' for the approval policy (-a X,

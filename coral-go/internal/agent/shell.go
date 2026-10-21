@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/subgentic/coral/internal/psquote"
+	"github.com/subgentic/coral/internal/winshell"
 )
 
 // cmdShellIgnored logs once that a CORAL_SHELL naming cmd.exe is ignored (#3692).
@@ -202,65 +202,44 @@ func formatEnvExport(key, value string) string {
 	}
 }
 
-// formatCatSubstitution returns a command substitution that reads a file's
-// contents inline. On bash/zsh: $(cat 'path'). On PowerShell: psFileContent.
-func formatCatSubstitution(path string) string {
-	switch detectShell() {
-	case ShellPowerShell:
-		return psFileContent(path)
-	default:
-		return fmt.Sprintf("$(cat %s)", shellQuoteLiteral(path))
+// promptArg writes content into a launch temp file and returns the shell syntax that passes
+// lead+content to the CLI as one argument (a prompt, or Codex's developer_instructions=<text>),
+// the content read back from the file: lead"$(cat 'file')" on bash/zsh, and on PowerShell
+// lead"$(Get-Content … 'file')" with the file holding the content as the shell must pass it,
+// read back as it is. For Windows PowerShell 5.1, which escapes nothing for the program's argv
+// parser, it is written escaped by psquote.NativeArg, the same rule as every other argument. An
+// escape done in PowerShell (a -replace) missed the arguments 5.1 doesn't quote although they
+// have spaces, so prompt text with an odd number of quotes before its first space split into
+// options ("Review --sandbox ... became three arguments; #29, Security's #20 F1). lead is
+// Coral's own text of plain characters (promptLeadOK): no quote, backslash or space, so the
+// argv parser reads it the same inside or outside 5.1's quotes and NativeArg(content) after it
+// is NativeArg(lead+content)'s reading.
+func (l *launchFiles) promptArg(prefix, id, ext, lead, content string) string {
+	if !promptLeadOK(lead) {
+		panic(fmt.Sprintf("promptArg: lead %q is not plain text", lead))
 	}
+	if detectShell() == ShellPowerShell && legacyNativeArgs() {
+		content = psquote.NativeArg(content)
+	}
+	return lead + FormatPromptFileArg(l.write(prefix, id, ext, []byte(content)))
 }
 
-// psFileContent is a PowerShell subexpression with a file's content, for an argument to a
-// native program. For Windows PowerShell 5.1 (legacyNativeArgs) it is escaped as
-// psquote.NativeArg escapes a value: each run of backslashes before a " doubled and the "
-// escaped, the backslashes at the end doubled (5.1 quotes a prompt, which has spaces). pwsh
-// 7.3+ escapes the argument itself. The file is read as UTF-8, as Coral writes it (5.1 reads
-// a file without a byte-order mark in the ANSI code page: a prompt's "—" arrived as "â€”").
-func psFileContent(path string) string {
-	if !legacyNativeArgs() {
-		return fmt.Sprintf("$(Get-Content -Raw -Encoding UTF8 -LiteralPath %s)", shellQuoteLiteral(path))
+// promptLeadOK reports whether lead is only letters, digits and _ . = - (see promptArg).
+func promptLeadOK(lead string) bool {
+	for _, c := range lead {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("_.=-", c)) {
+			return false
+		}
 	}
-	return fmt.Sprintf(`$((Get-Content -Raw -Encoding UTF8 -LiteralPath %s) -replace '(\\*)"', '$1$1\"' -replace '(\\+)\z', '$1$1')`, shellQuoteLiteral(path))
+	return true
 }
 
 // legacyNativeArgs reports whether the PowerShell that runs the launch line passes arguments
-// to native programs the Windows PowerShell 5.1 way, so the line escapes them itself
-// (psquote.LegacyNativeArgs): the shell the agent's terminal starts (ptymanager's pickShell:
-// CORAL_SHELL unless it names cmd.exe, else the first of psquote.PowerShells on PATH).
-// Never on other OSes. The PATH search is remembered for the same CORAL_SHELL and PATH: a
-// launch asks several times, and on Windows each miss is a stat in every PATH folder.
+// to native programs the Windows PowerShell 5.1 way, so the line escapes them itself: that
+// shell is winshell.PowerShell, which ptymanager starts the agent's terminal and wraps its
+// launch command with. Never on other OSes.
 func legacyNativeArgs() bool {
-	if runtime.GOOS != "windows" {
-		return false
-	}
-	key := os.Getenv("CORAL_SHELL") + "\x00" + os.Getenv("PATH")
-	legacyArgsCache.Lock()
-	defer legacyArgsCache.Unlock()
-	if legacyArgsCache.key == key && legacyArgsCache.ok {
-		return legacyArgsCache.legacy
-	}
-	legacy := true
-	if sh := os.Getenv("CORAL_SHELL"); sh != "" && !isCmdShell(sh) {
-		legacy = psquote.LegacyNativeArgs(sh)
-	} else {
-		for _, ps := range psquote.PowerShells {
-			if _, err := exec.LookPath(ps); err == nil {
-				legacy = psquote.LegacyNativeArgs(ps)
-				break
-			}
-		}
-	}
-	legacyArgsCache.key, legacyArgsCache.legacy, legacyArgsCache.ok = key, legacy, true
-	return legacy
-}
-
-var legacyArgsCache struct {
-	sync.Mutex
-	key        string
-	legacy, ok bool
+	return runtime.GOOS == "windows" && winshell.LegacyNativeArgs(winshell.PowerShell())
 }
 
 // PrefixWithPathEnv returns a shell command prefix that prepends the given
@@ -352,13 +331,15 @@ func FindCLIInCommonPaths(binary string) string {
 }
 
 // FormatPromptFileArg returns shell-appropriate syntax for reading a prompt
-// file and passing its content as a single CLI argument. On PowerShell the content
-// is escaped for the program's argv parser where the shell doesn't (psFileContent).
+// file and passing its content as a single CLI argument. On PowerShell the file is
+// read as it is, as UTF-8 (5.1 reads a file without a byte-order mark in the ANSI
+// code page: a prompt's "—" arrived as "â€”"), so it must hold the argument as the
+// shell is to pass it: write it with promptArg.
 func FormatPromptFileArg(promptFile string) string {
 	shell := detectShell()
 	switch shell {
 	case ShellPowerShell:
-		return `"` + psFileContent(promptFile) + `"`
+		return fmt.Sprintf(`"$(Get-Content -Raw -Encoding UTF8 -LiteralPath %s)"`, shellQuoteLiteral(promptFile))
 	default:
 		// bash, zsh, sh. The path is quoted like any value (#3362): it is Coral's own temp
 		// file, but its name carries a session id.
