@@ -70,9 +70,10 @@ func TestWindowsBrowserCommandUsesTheSystemRundll32(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("the absolute path is Windows' only")
 	}
-	t.Setenv("SystemRoot", `C:\Windows`)
 	argv := browserCommand("windows", "https://example.com/")
-	assert.Equal(t, `C:\Windows\System32\rundll32.exe`, argv[0])
+	// The system folder Windows reports (GetSystemDirectory), not the SystemRoot variable; its case is Windows' own (system32), so compare without case.
+	assert.True(t, filepath.IsAbs(argv[0]), argv[0])
+	assert.True(t, strings.HasSuffix(strings.ToLower(argv[0]), `\system32\rundll32.exe`), argv[0])
 }
 
 // OpenFile shows only an absolute, regular .log or .txt file: never a program, a link, a relative
