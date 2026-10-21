@@ -151,7 +151,7 @@ func (h *BoardHandler) SetOwnServerID(fn func(ctx context.Context) (string, erro
 
 func (h *BoardHandler) linksSeen(ctx context.Context) bool {
 	if h.linksSeenRead == nil {
-		return true
+		return false // not wired (a test handler): nothing says a hub ever advertised links. The server always wires it.
 	}
 	seen, err := h.linksSeenRead(ctx)
 	return err != nil || seen
@@ -189,6 +189,7 @@ type snapshotLink struct {
 	SourceServer      string `json:"source_server"`
 	SourceTeam        string `json:"source_team"`
 	TargetTeam        string `json:"target_team"`
+	TargetServer      string `json:"target_server"`
 	SourceLabel       string `json:"source_label"`
 	TargetLabel       string `json:"target_label"`
 	SourceServerLabel string `json:"source_server_label"`
@@ -248,6 +249,7 @@ func (h *BoardHandler) PostCrossTeamLinks(w http.ResponseWriter, r *http.Request
 		return
 	}
 	own, err := h.ownServerID(ctx)
+	own = strings.ToLower(own)
 	if err != nil || own == "" || !strings.EqualFold(own, body.ThisServer) {
 		writeLinksRefusal(w, http.StatusForbidden, "wrong_server", "this link list is for another computer")
 		return
@@ -282,22 +284,37 @@ func (h *BoardHandler) PostCrossTeamLinks(w http.ResponseWriter, r *http.Request
 	targetOK := map[string]bool{}
 	for _, l := range body.Links {
 		src := strings.ToLower(strings.TrimSpace(l.SourceServer))
-		if !relayIDRe.MatchString(src) || !linkTeamRe.MatchString(l.SourceTeam) || !linkTeamRe.MatchString(l.TargetTeam) {
+		tgtServer := strings.ToLower(strings.TrimSpace(l.TargetServer))
+		if tgtServer == own {
+			tgtServer = "" // a target on this computer, said out loud
+		}
+		if !relayIDRe.MatchString(src) || !linkTeamRe.MatchString(l.SourceTeam) || !linkTeamRe.MatchString(l.TargetTeam) || (tgtServer != "" && !relayIDRe.MatchString(tgtServer)) {
 			h.links.count(&h.links.dropped)
 			continue
 		}
-		ok, seen := targetOK[l.TargetTeam]
+		// The team here is the SOURCE when the link names another computer as its target: kept to show "this team can message X", never read by the door.
+		local := l.TargetTeam
+		if tgtServer != "" {
+			local = l.SourceTeam
+			if src != own {
+				h.links.count(&h.links.dropped) // neither end is on this computer
+				continue
+			}
+		}
+		ok, seen := targetOK[local]
 		if !seen {
-			b, err := h.bs.GetBoard(ctx, l.TargetTeam)
-			ok = err == nil && b != nil && b.ID == l.TargetTeam && board.IsGeneratedBoardID(b.ID)
-			targetOK[l.TargetTeam] = ok
+			b, err := h.bs.GetBoard(ctx, local)
+			ok = err == nil && b != nil && b.ID == local && board.IsGeneratedBoardID(b.ID)
+			targetOK[local] = ok
 		}
 		if !ok {
 			h.links.count(&h.links.dropped)
 			continue
 		}
-		kept = append(kept, teamLink{src, l.SourceTeam, l.TargetTeam})
-		stored = append(stored, board.TeamLink{SourceServer: src, SourceTeam: l.SourceTeam, TargetTeam: l.TargetTeam,
+		if tgtServer == "" {
+			kept = append(kept, teamLink{src, l.SourceTeam, l.TargetTeam})
+		}
+		stored = append(stored, board.TeamLink{SourceServer: src, SourceTeam: l.SourceTeam, TargetTeam: l.TargetTeam, TargetServer: tgtServer,
 			SourceLabel: board.CleanClaimedLabel(l.SourceLabel), TargetLabel: board.CleanClaimedLabel(l.TargetLabel), SourceServerLabel: board.CleanClaimedLabel(l.SourceServerLabel)})
 	}
 	now := h.linkNow()

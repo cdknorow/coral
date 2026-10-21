@@ -333,6 +333,13 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 			links = append(links, map[string]any{"server_id": srv, "server_label": "", "team_label": "", "refreshed": ""})
 		}
 	}
+	// What this team may message elsewhere (links where it is the source): display only, never read by the door.
+	linksOut := []map[string]any{}
+	if stored, err := h.bs.TeamLinksFrom(ctx, project); err == nil {
+		for _, l := range stored {
+			linksOut = append(linksOut, map[string]any{"server_id": l.TargetServer, "team_id": l.TargetTeam, "team_label": l.TargetLabel, "refreshed": l.AppliedAt})
+		}
+	}
 	// Whether Coral Hub's owner can change the two switches of this team (#5572): this request (the owner on this computer) always can; owner_path_live says this build has the Coral Hub owner's routes;
 	// hub_may_change is the local lock "Let Coral Hub change cross-team settings" (a lock that cannot be read reads as off); last_changed is who changed each switch last, by hub user or on this computer.
 	lastChanged := map[string]any{}
@@ -349,9 +356,10 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 		"can_change": true, "owner_path_live": true, "hub_may_change": h.hubMayChange(ctx), "last_changed": lastChanged,
 		"enforced": h.allowlistOn(ctx), "allowed": entries, "max_entries": board.MaxAllowedSenders, "self_cross_team_id": self,
 		"was_open": settings.CrossTeamMessaging && len(settings.CrossTeamAllowed) == 0, "suggestions": suggestions,
-		"status":   statusFor(linkable, settings.CrossTeamMessaging, len(links), stale, heard),
-		"links":    links,
-		"linkable": linkable,
+		"status":    statusFor(linkable, settings.CrossTeamMessaging, len(links), stale, heard),
+		"links":     links,
+		"links_out": linksOut,
+		"linkable":  linkable,
 	})
 }
 

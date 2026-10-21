@@ -417,3 +417,30 @@ func TestLabelsAreOptionalAndTheVersionIsAWholeInt64(t *testing.T) {
 	assert.Equal(t, 400, e.post(`{"version":1.8e12,"this_server":"homelab","links":[]}`, hdr).Code, "a float is not a version")
 	assert.Equal(t, 400, e.post(`{"version":"1800000000123","this_server":"homelab","links":[]}`, hdr).Code, "nor is a string")
 }
+
+// A snapshot may also carry the links where a team HERE is the source: kept to show "this team can message X", never admitting anything.
+func TestLinksWhereThisComputerIsTheSourceAreDisplayOnly(t *testing.T) {
+	e := newLinksEnv(t)
+	hdr := stamped(linkSessionA, true)
+	out := snapshotLink{SourceServer: "homelab", SourceTeam: e.target, TargetServer: "lab2", TargetTeam: srcTeam1, TargetLabel: "Their QA"}
+	neither := snapshotLink{SourceServer: "lab3", SourceTeam: srcTeam2, TargetServer: "lab2", TargetTeam: srcTeam1} // not about this computer at all
+	in := e.link("lab2", srcTeam1, e.target)
+	rec := e.post(e.snapshot(1, in, out, neither), hdr)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.True(t, e.admits("lab2", srcTeam1, e.target), "the link TO this team admits")
+	assert.False(t, e.admits("homelab", e.target, srcTeam1), "the link FROM this team admits nothing here")
+	assert.False(t, e.admits("lab2", srcTeam1, srcTeam1))
+	assert.Equal(t, 1, e.h.links.dropped, "a link between two other computers is dropped")
+	to, err := e.bs.TeamLinksTo(context.Background(), e.target)
+	require.NoError(t, err)
+	assert.Len(t, to, 1)
+	from, err := e.bs.TeamLinksFrom(context.Background(), e.target)
+	require.NoError(t, err)
+	require.Len(t, from, 1)
+	assert.Equal(t, "lab2", from[0].TargetServer)
+	assert.Equal(t, srcTeam1, from[0].TargetTeam)
+	// Saying "this computer" out loud as the target server is the same as leaving it out.
+	explicit := snapshotLink{SourceServer: "lab2", SourceTeam: srcTeam2, TargetServer: "HOMELAB", TargetTeam: e.target}
+	require.Equal(t, 200, e.post(e.snapshot(2, in, explicit), hdr).Code)
+	assert.True(t, e.admits("lab2", srcTeam2, e.target))
+}

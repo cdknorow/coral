@@ -8,9 +8,11 @@ import (
 // TeamLink is one link Coral Hub keeps between two teams, as its owner made it (#5572): the team on another Coral (SourceServer, SourceTeam) may message TargetTeam, a team on THIS computer.
 // The labels are display text from the hub (cleaned, never trusted for anything).
 type TeamLink struct {
-	SourceServer      string `db:"source_server" json:"source_server"`
-	SourceTeam        string `db:"source_team" json:"source_team"`
-	TargetTeam        string `db:"target_team" json:"target_team"`
+	SourceServer string `db:"source_server" json:"source_server"`
+	SourceTeam   string `db:"source_team" json:"source_team"`
+	TargetTeam   string `db:"target_team" json:"target_team"`
+	// TargetServer is "" for a link whose target is a team on THIS computer (the rows that admit); a link from a team here to a team on another computer names that computer. Those rows are display only.
+	TargetServer      string `db:"target_server" json:"target_server"`
 	SourceLabel       string `db:"source_label" json:"source_label"`
 	TargetLabel       string `db:"target_label" json:"target_label"`
 	SourceServerLabel string `db:"source_server_label" json:"source_server_label"`
@@ -22,11 +24,12 @@ func (s *Store) ensureTeamLinksSchema(ctx context.Context) error {
 		source_server       TEXT NOT NULL,
 		source_team         TEXT NOT NULL,
 		target_team         TEXT NOT NULL,
+		target_server       TEXT NOT NULL DEFAULT '',
 		source_label        TEXT NOT NULL DEFAULT '',
 		target_label        TEXT NOT NULL DEFAULT '',
 		source_server_label TEXT NOT NULL DEFAULT '',
 		applied_at          TEXT NOT NULL,
-		PRIMARY KEY (target_team, source_server, source_team)
+		PRIMARY KEY (target_team, target_server, source_server, source_team)
 	)`)
 	return err
 }
@@ -45,18 +48,26 @@ func (s *Store) ReplaceTeamLinks(ctx context.Context, links []TeamLink, at time.
 	stamp := at.UTC().Format(time.RFC3339)
 	for _, l := range links {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT OR REPLACE INTO cross_team_links (source_server, source_team, target_team, source_label, target_label, source_server_label, applied_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			l.SourceServer, l.SourceTeam, l.TargetTeam, l.SourceLabel, l.TargetLabel, l.SourceServerLabel, stamp); err != nil {
+			`INSERT OR REPLACE INTO cross_team_links (source_server, source_team, target_team, target_server, source_label, target_label, source_server_label, applied_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			l.SourceServer, l.SourceTeam, l.TargetTeam, l.TargetServer, l.SourceLabel, l.TargetLabel, l.SourceServerLabel, stamp); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-// TeamLinksTo lists the stored links whose target is team, newest applied first then by source.
+// TeamLinksFrom lists the stored links whose source is the team here: what it may message elsewhere, for display only.
+func (s *Store) TeamLinksFrom(ctx context.Context, team string) ([]TeamLink, error) {
+	out := []TeamLink{}
+	err := s.reader().SelectContext(ctx, &out,
+		`SELECT source_server, source_team, target_team, target_server, source_label, target_label, source_server_label, applied_at FROM cross_team_links WHERE source_team = ? AND target_server <> '' ORDER BY target_server, target_team`, team)
+	return out, err
+}
+
+// TeamLinksTo lists the stored links whose target is team on this computer, by source.
 func (s *Store) TeamLinksTo(ctx context.Context, team string) ([]TeamLink, error) {
 	out := []TeamLink{}
 	err := s.reader().SelectContext(ctx, &out,
-		`SELECT source_server, source_team, target_team, source_label, target_label, source_server_label, applied_at FROM cross_team_links WHERE target_team = ? ORDER BY source_server, source_team`, team)
+		`SELECT source_server, source_team, target_team, target_server, source_label, target_label, source_server_label, applied_at FROM cross_team_links WHERE target_team = ? AND target_server = '' ORDER BY source_server, source_team`, team)
 	return out, err
 }

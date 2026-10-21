@@ -184,3 +184,31 @@ func TestRelayedMessagesFilesAndSnapshotsAreInteractTierAndTheModeIsReadPerReque
 		assert.True(t, allow(http.MethodPost, p, ""), "launch: "+p)
 	}
 }
+
+// The hub reads what the connector said in its Hello, and only a well-formed list counts at all.
+func TestTheHubReadsThePeersHelloCapabilities(t *testing.T) {
+	hub := newHub(t, fastCfg())
+	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }), nil)
+	assert.ElementsMatch(t, []string{CapCrossTeamAllowlist, CapCrossTeamLinks}, sess.PeerCapabilities())
+	assert.True(t, sess.HasPeerCapability(CapCrossTeamLinks))
+	assert.True(t, sess.HasPeerCapability(CapCrossTeamAllowlist))
+	assert.False(t, sess.HasPeerCapability("cross_team_links/2"), "another version is another capability")
+	assert.False(t, sess.HasPeerCapability("relay/1"))
+	got := sess.PeerCapabilities()
+	got[0] = "tampered"
+	assert.NotContains(t, sess.PeerCapabilities(), "tampered", "a copy")
+
+	tooMany := make([]string, maxCapabilities+1)
+	for i := range tooMany {
+		tooMany[i] = "cap_x/1"
+	}
+	for name, list := range map[string][]string{
+		"a malformed entry": {CapCrossTeamLinks, "Bad Cap"},
+		"too many":          tooMany,
+	} {
+		assert.Nil(t, wellFormedCapabilities(list), name+": supports nothing, never a partial read")
+	}
+	assert.Equal(t, []string{CapCrossTeamLinks}, wellFormedCapabilities([]string{CapCrossTeamLinks}))
+	assert.Empty(t, (&Session{}).PeerCapabilities())
+	assert.False(t, (&Session{}).HasPeerCapability(CapCrossTeamLinks))
+}
