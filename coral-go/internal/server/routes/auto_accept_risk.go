@@ -3,8 +3,10 @@ package routes
 import (
 	"errors"
 	"io/fs"
+	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
@@ -69,8 +71,21 @@ var autoAcceptFileTools = map[string]string{
 	"view_file":            "reads",
 }
 
+// winRootedWordRe: an argument (after another word, not in command position: sudo stays sudo) that starts with a backslash (PowerShell's \Windows, \server\share).
+var winRootedWordRe = regexp.MustCompile(`[^\s;&|(]\s+\\[\\\w.]\S*`)
+
 // shellRisk returns why a shell command is high-risk, or "".
-func shellRisk(command, workDir string) string { return shellRiskFrom(command, workDir, workDir) }
+func shellRisk(command, workDir string) string {
+	if runtime.GOOS == "windows" {
+		// Words are read as a POSIX shell's, where a backslash escapes the next character: PowerShell's `\Windows` or
+		// `\server\share` (a root) would read as the relative "Windows" and "serversshare". A word that starts with a
+		// backslash after the command is therefore not judged: it waits for the user.
+		if m := winRootedWordRe.FindString(command); m != "" {
+			return "it names a path from a drive or share root (" + strings.TrimSpace(m) + ")"
+		}
+	}
+	return shellRiskFrom(command, workDir, workDir)
+}
 
 // shellRiskFrom is shellRisk for a command that starts in dir (a bash -c after a cd).
 func shellRiskFrom(command, workDir, dir string) string {
@@ -443,7 +458,7 @@ func bareCommand(w string) string {
 func fromDir(args []string, dir string) []string {
 	out := make([]string, 0, len(args))
 	for _, a := range args {
-		if !strings.HasPrefix(a, "-") && !filepath.IsAbs(a) && !strings.ContainsAny(a, "$`~") {
+		if !strings.HasPrefix(a, "-") && !rooted(a) && !unreadablePath(a) {
 			if dir == "" {
 				a = "$CWD/" + a // unknown directory: never a literal path inside
 			} else {
@@ -466,11 +481,14 @@ func changeDir(dir string, args []string) string {
 		target = a
 		break
 	}
-	if target == "" || target == "-" || dir == "" || strings.ContainsAny(target, "$`~") {
+	if target == "" || target == "-" || dir == "" || unreadablePath(target) {
 		return ""
 	}
-	if filepath.IsAbs(target) {
-		return filepath.Clean(target)
+	if isRooted, abs := rootedPath(runtime.GOOS, target); isRooted {
+		if abs == "" {
+			return "" // a root with no drive to read (/etc, \Windows, \\server\share, C:foo): not a folder inside this one
+		}
+		return filepath.Clean(abs)
 	}
 	return filepath.Join(dir, target)
 }
@@ -655,7 +673,7 @@ func outsideTarget(args []string, workDir string) string {
 		if strings.HasPrefix(a, "-") {
 			continue
 		}
-		if strings.ContainsAny(a, "$`~") || !pathInside(a, workDir) {
+		if unreadablePath(a) || !pathInside(a, workDir) {
 			return a
 		}
 	}
@@ -668,7 +686,17 @@ func pathInside(p, workDir string) bool {
 	if workDir == "" {
 		return false
 	}
-	if !filepath.IsAbs(p) {
+	if wdRooted, wdAbs := rootedPath(runtime.GOOS, workDir); wdRooted && wdAbs == "" {
+		// The working folder is itself a path with no drive (an agent in WSL or on another host reports /home/me/proj):
+		// nothing here can resolve it, so p is inside only by its text, cleaned, below the folder's text.
+		return textInside(p, workDir)
+	}
+	if isRooted, abs := rootedPath(runtime.GOOS, p); isRooted {
+		if abs == "" {
+			return false // rooted with no drive to compare (/etc, \Windows, UNC, C:foo): outside, never joined onto workDir
+		}
+		p = abs
+	} else {
 		p = filepath.Join(workDir, p)
 	}
 	wd, target := resolvePath(workDir), resolvePath(p)
@@ -677,6 +705,22 @@ func pathInside(p, workDir string) bool {
 	}
 	rel, err := filepath.Rel(wd, target)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// textInside is pathInside for a working folder this OS cannot resolve: a relative p is under it, a rooted p only when
+// its cleaned text is the folder's or below it. No symlink is followed, so this only ever says "inside" for a path
+// written under the folder.
+func textInside(p, workDir string) bool {
+	wd := path.Clean(strings.ReplaceAll(workDir, `\`, "/"))
+	if r, _ := rootedPath("windows", p); r && p[0] != '/' && p[0] != '\\' {
+		return false // a path on a drive (C:\x, C:x) is not below a folder that has none
+	}
+	p = strings.ReplaceAll(p, `\`, "/")
+	if r, _ := rootedPath("linux", p); !r {
+		p = path.Join(wd, p)
+	}
+	p = path.Clean(p)
+	return p == wd || strings.HasPrefix(p, strings.TrimSuffix(wd, "/")+"/")
 }
 
 // resolvePath cleans p and resolves symlinks in its longest existing prefix.
@@ -706,7 +750,7 @@ func fileRisk(tool, path, workDir string) string {
 	if !ok || strings.TrimSpace(path) == "" {
 		return ""
 	}
-	if strings.ContainsAny(path, "$`") || strings.HasPrefix(path, "~") || !pathInside(path, workDir) {
+	if strings.ContainsAny(path, "$`") || strings.HasPrefix(path, "~") || unreadablePath(path) || !pathInside(path, workDir) {
 		return "it " + verb + " a file outside the working directory (" + path + ")"
 	}
 	return ""
