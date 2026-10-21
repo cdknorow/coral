@@ -315,12 +315,23 @@ export async function launchSession() {
             hideLaunchModal();
             setTimeout(loadLiveSessions, 2000);
             _refreshAfterLaunch(server, { sessionName: result.session_name, sessionId: result.session_id });
+            if (normServer(server) === LOCAL_SERVER) _openLaunched(result, type);
         }
     } catch (e) {
         showToast("Failed to launch session", true);
     } finally {
         if (launchBtn) { launchBtn.disabled = false; launchBtn.textContent = 'Launch'; }
     }
+}
+
+/** Open what was just launched (#5835): a person who pressed Launch expects to land in the new agent, not on the home screen with a row to find (the first run's biggest drop:
+ *  launched, never prompted). The list is read first so the row exists; the composer is focused by selecting it. A failure leaves the toast and the row, as before. */
+async function _openLaunched(result, type) {
+    try {
+        await loadLiveSessions();
+        const { selectLiveSession } = await importOnce('./sessions.js');
+        await selectLiveSession(result.session_name, type, result.session_id, LOCAL_SERVER);
+    } catch { /* the toast and the list row are still there */ }
 }
 
 // ── Agent Board Select ────────────────────────────────────────────────────
