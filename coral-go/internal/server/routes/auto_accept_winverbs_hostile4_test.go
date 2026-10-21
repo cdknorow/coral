@@ -56,13 +56,15 @@ func TestWinVerbFourthHostileMatrixLeavesTheBenignAlone(t *testing.T) {
 	}
 }
 
-// A Windows Git Bash by its path (with a space in it, after shellRisk turns the backslashes into slashes) is read as bash: its -c text is judged (#5690 review).
+// A Windows Git Bash by its path (a space in it too) is read as a shell: its -c text is judged (#5690 review). The POSIX reader splits a quoted path at its space, so the Windows reader does it.
 func TestShellWrapperWithAWindowsPathIsReadAsAShell(t *testing.T) {
-	wd := t.TempDir()
 	for _, cmd := range []string{
-		`"C:/Program Files/Git/bin/bash.exe" -c "rm -rf /"`, `C:/Git/bin/bash.exe -c "rm -rf /"`, `C:/Git/usr/bin/sh.exe -c "rm -rf /"`, `"C:/Program Files/Git/bin/bash.exe" -lc "rm -rf /"`,
+		`"C:\Program Files\Git\bin\bash.exe" -c "rm -rf /"`, `"C:/Program Files/Git/bin/bash.exe" -c "rm -rf /"`, `C:\Git\bin\bash.exe -c "rm -rf /"`, `"C:\Git\usr\bin\sh.exe" -c "rm -rf /"`,
+		`"C:/Program Files/Git/bin/bash.exe" -lc "rm -rf /mnt/c/Users"`, `bash -c "rm -rf /"`, `bash -c "rm -r C:\x"`,
 	} {
-		assert.NotEmpty(t, shellRiskFrom(cmd, wd, wd), "must wait: %s", cmd)
+		assert.NotEmpty(t, winVerbRisk(cmd, fakeOutside), "must wait: %s", cmd)
 	}
-	assert.Empty(t, shellRiskFrom(`"C:/Program Files/Git/bin/bash.exe" -c "ls -la"`, wd, wd))
+	for _, cmd := range []string{`"C:/Program Files/Git/bin/bash.exe" -c "ls -la"`, `bash -c "echo hi"`, `bash script.sh`, `bash`, `sh -c "git status"`} {
+		assert.Empty(t, winVerbRisk(cmd, fakeOutside), "must pass: %s", cmd)
+	}
 }
