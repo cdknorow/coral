@@ -362,20 +362,13 @@ func (t *TmuxSessionTerminal) AgentScreenStyled(ctx context.Context, name, agent
 }
 
 // AgentScreen implements ScreenReader for the PTY backend: the session's output rendered
-// as the screen (#4543), else (nothing rendered) the end of its raw output.
+// as the screen (#4543). An empty render stays empty: the gate holds on a screen with no
+// input box rather than reading box text from raw output it can't place.
 func (p *PTYSessionTerminal) AgentScreen(ctx context.Context, name, agentType, sessionID string) (string, error) {
-	if rendered, err := p.RenderedScreen(ctx, name, agentType, sessionID); err == nil && rendered != "" {
-		return rendered, nil
-	}
-	key, err := p.keyFor(name, sessionID)
-	if err != nil {
+	if _, err := p.keyFor(name, sessionID); err != nil {
 		return "", err
 	}
-	data, err := p.backend.Replay(key)
-	if err != nil {
-		return "", err
-	}
-	return screenTail(data), nil
+	return p.RenderedScreen(ctx, name, agentType, sessionID)
 }
 
 // RenderedScreenText is the session's output rendered at the size its PTY was last given

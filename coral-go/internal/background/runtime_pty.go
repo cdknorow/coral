@@ -103,12 +103,9 @@ func (r *PTYRuntime) AgentShellIdle(_ context.Context, name, _, _ string) (bool,
 
 // AgentScreen implements ptymanager.ScreenReader: the session's output rendered as the
 // screen (as the HTTP senders read it), read by the automated-input gate before typing
-// (#3431). The raw tail only when nothing renders.
+// (#3431).
 func (r *PTYRuntime) AgentScreen(_ context.Context, name, _, _ string) (string, error) {
-	if s, err := r.backend.RenderedScreenText(name); err == nil && s != "" {
-		return s, nil
-	}
-	return r.backend.ReplayScreen(name)
+	return r.backend.RenderedScreenText(name) // an empty render stays empty: the gate holds rather than guessing
 }
 
 // AgentScreenStyled implements ptymanager.StyledScreenReader: AgentScreen with faint cells marked.
