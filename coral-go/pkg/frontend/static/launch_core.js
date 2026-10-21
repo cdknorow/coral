@@ -121,7 +121,7 @@ export function showTeamLaunchFailures(failed, started, openSettings) {
     const failList = failed.map(a => `<li><strong>${escapeHtml(a.name)}</strong>: ${escapeHtml(a.error)}</li>`).join('');
     const modal = document.createElement('div');
     modal.className = 'modal';
-    modal.style.display = 'flex';
+    modal.style.display = 'flex'; // display-ok: a script-built dialog is shown as the flex container the .modal rule centres; registerDialog removes it on close
     modal.innerHTML = `
         <div class="modal-content" style="width:500px">
             <h3>Team Launch — ${failed.length} agent${failed.length > 1 ? 's' : ''} failed</h3>
