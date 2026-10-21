@@ -146,7 +146,7 @@ func TestSession_ReadLoopFansOut(t *testing.T) {
 	ch2 := s.subscribe("sub-2")
 
 	// Send input
-	s.sendInput([]byte("FANOUT_MARKER\n"))
+	s.writeFull([]byte("FANOUT_MARKER\n"))
 
 	// Both subscribers should receive the echoed output
 	received := make([]bool, 2)
@@ -190,7 +190,7 @@ func TestSession_RingBufferOverflow(t *testing.T) {
 	// Send more data than ring buffer can hold (256KB)
 	bigChunk := strings.Repeat("X", 1024) + "\n"
 	for i := 0; i < 300; i++ { // 300KB > 256KB ring
-		s.sendInput([]byte(bigChunk))
+		s.writeFull([]byte(bigChunk))
 	}
 
 	time.Sleep(time.Second)
