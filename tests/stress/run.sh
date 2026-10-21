@@ -7,6 +7,7 @@ set -euo pipefail
 export CORAL_TELEMETRY_DISABLED=1 # our own runs send no usage events (#4936)
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/backend.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -119,7 +120,7 @@ log "Starting coral server on port $PORT..."
 # This runner tests board logic, and its coral-board "agents" (run_cli) have no session token,
 # which strict local auth (the default since #3936) refuses by design; so its server runs with
 # strict local auth off. run_identity.sh covers auth. Its own curls still send the API key.
-env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux --no-browser --cloud-url off --strict-local-auth=false >>"$TMPDIR_STRESS/server.log" 2>&1 &
+env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$CORAL_TEST_HOME" PATH="$CORAL_TEST_STUB_BIN:$PATH" "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend "$CORAL_TEST_BACKEND" --no-browser --cloud-url off --strict-local-auth=false >>"$TMPDIR_STRESS/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 }
