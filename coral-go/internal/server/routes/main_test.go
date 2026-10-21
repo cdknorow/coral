@@ -2,13 +2,13 @@ package routes
 
 import (
 	"fmt"
-	"github.com/subgentic/coral/internal/secfile/secfiletest"
-	"github.com/subgentic/coral/internal/testleak"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/subgentic/coral/internal/secfile/secfiletest"
+	"github.com/subgentic/coral/internal/testleak"
 	"github.com/subgentic/coral/internal/tmux"
 )
 
