@@ -1,4 +1,5 @@
 DELETE /api/artifacts/{id} launch owner-only
+DELETE /api/saved/{id} interact owner-only
 GET /api/artifacts view owner-only
 GET /api/artifacts/{id} view owner-only
 GET /api/artifacts/{id}/comments view owner-only
@@ -13,9 +14,11 @@ GET /api/saved/{id}/message view owner-only
 GET /api/session-artifacts view owner-only
 GET /api/settings/prompt-inspection launch owner-only
 GET /api/system/update view owner-update
+PATCH /api/saved/{id} interact owner-only
 POST /api/board/{project}/cross-team/disable launch owner-only-hub
 POST /api/board/{project}/cross-team/enable launch owner-only-hub
 POST /api/board/{project}/cross-team/files/disable launch owner-only-hub
 POST /api/board/{project}/cross-team/files/enable launch owner-only-hub
+POST /api/saved interact owner-only
 POST /api/system/update/relaunch launch owner-update
 PUT /api/board/{project}/settings launch owner-only
