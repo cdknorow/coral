@@ -191,7 +191,7 @@ COOKIE=$(awk '$6 ~ /^coral_session/ {print $6 "=" $7}' "$JAR" | tail -1)
 DASHBOARD_HEADERS+=(-H "Cookie: $COOKIE")
 
 # The dummy agent stands in for the Claude CLI
-api PUT "/api/settings" -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}" >/dev/null
+coral_test_require_ok "$(api PUT "/api/settings" -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}")" "cli_path_claude=$MOCK_AGENT_NATIVE"
 
 # ── Test 1: launch a dummy agent (no board) ──────────────────────────
 

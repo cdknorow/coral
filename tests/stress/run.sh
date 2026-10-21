@@ -441,10 +441,11 @@ go build -o "$TMPDIR_STRESS/mock-agent${CORAL_TEST_EXE}" ./cmd/mock-agent/
 # The mock as the server reads it: a native path, with .exe on Windows (a Windows server finds a CLI only by its extension).
 MOCK_AGENT_NATIVE="$(coral_test_native_path "$TMPDIR_STRESS/mock-agent${CORAL_TEST_EXE}")"
 
-# Override claude CLI to use mock-agent
-curl -s -m 10 -X PUT "${BASE_URL}/api/settings" \
+# Override claude CLI to use mock-agent (and stop if the server refused it: the nudge test would run the PATH CLI)
+put_out=$(curl -s -m 10 -X PUT "${BASE_URL}/api/settings" \
     -H "Content-Type: application/json" \
-    -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}" >/dev/null
+    -d "{\"cli_path_claude\": \"$MOCK_AGENT_NATIVE\"}")
+coral_test_require_ok "$put_out" "cli_path_claude=$MOCK_AGENT_NATIVE"
 
 TERM_BOARD="term-nudge-$$"
 term_api() {
