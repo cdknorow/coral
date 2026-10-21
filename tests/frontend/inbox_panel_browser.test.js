@@ -14,7 +14,7 @@ const STUB = `(() => {
     const real = window.fetch; window.__reqs = []; window.__pwn = undefined;
     const ago = ms => new Date(Date.now() - ms).toISOString();
     const TASKS = [
-        { id: 1, board_id: 'team-a', board_label: 'team-a', title: 'Pick the release date', priority: 'high', status: 'pending', created_by: 'Orchestrator', created_at: ago(7200000), updated_at: ago(7200000) },
+        { id: 1, board_id: 'team-a', board_label: 'team-a', title: 'Pick the release date', priority: 'high', status: 'pending', created_by: 'Orchestrator', created_at: ago(7200000), updated_at: ago(7200000), revision: 1 },
         { id: 2, board_id: 'team-a', board_label: 'team-a', title: 'Check <img src=x onerror="window.__pwn=1"> the logo', priority: 'medium', status: 'in_progress', created_by: 'Designer', created_at: ago(86400000 * 3), updated_at: ago(86400000 * 3) },
         { id: 3, board_id: 'team-b', board_label: 'team-b', title: 'Approve the budget', priority: 'low', status: 'review_pending', created_by: 'Lead', created_at: ago(60000), updated_at: ago(60000) },
     ];
@@ -219,7 +219,8 @@ const STUB = `(() => {
         const text = [`ok ${L('ok', A('a'))} and ${L('again', A('a'))}`, `forbidden ${L('forbidden', A('b'))}`, `missing ${L('missing', A('c'))}`, `offline ${L('offline', A('d'))}`,
             `upper ${L('upper', A('A'))}`, `short ${L('short', 'a'.repeat(63))}`, `[trick](coral://artifacts/${A('a')}/../../x)`, `[pw](coral://artifacts/${A('e')}?x=1)`, `bare coral://artifacts/${A('f')}`].join('\n\n');
         await ev(`(async () => { window.__reqs.length = 0; const m = await import(${S} + 'inbox_panel.js'); const c = await import(${S} + 'inbox_coral.js'); const host = document.createElement('div'); host.id = 'link-host'; document.body.append(host);
-            const adapter = { ...c.coralInboxAdapter, listTasks: async () => [{ id: 7, project: 'team a', board: 'x', title: 'Links', priority: 'low', status: 'pending', created_by: 'X', updated_at: new Date().toISOString() }], getTask: async () => ({ body: ${JSON.stringify(text)}, created_by: 'X' }) };
+            const adapter = { ...c.coralInboxAdapter, listTasks: async () => [{ id: 7, project: 'team a', board: 'x', title: 'Links', priority: 'low', status: 'pending', created_by: 'X', updated_at: window.__linkStamp, revision: window.__linkRev }], getTask: async () => { window.__reads = (window.__reads || 0) + 1; return { body: ${JSON.stringify(text)}, created_by: 'X' }; } };
+            window.__linkStamp = '2026-10-21T10:00:00Z'; window.__linkRev = 1; window.__reads = 0;
             window.__link = m.mountInbox(host, adapter); return true; })()`);
         await waitFor(`!!document.querySelector('#link-host .ibx-task-head')`, 'the link host task', 4000);
         await ev(`document.querySelector('#link-host .ibx-task-head').click(); true`);
@@ -236,6 +237,30 @@ const STUB = `(() => {
             const pol = await c.artifactLinkPolicy(t);
             return { n: window.__reqs.filter(r => /\\/meta$/.test(r.p)).length, distinct: new Set(window.__reqs.map(r => r.p)).size, first: !!pol('coral://artifacts/' + ids[0]), beyond: pol('coral://artifacts/' + ids[25]) === undefined, junk: await c.artifactLinkPolicy(null).then(f => f('x')) === undefined }; })()`);
         check('at most 20 lookups, each id once, and an id past the 20th stays text', many.n === 20 && many.distinct === 20 && many.first && many.beyond && many.junk, JSON.stringify(many));
+        // a refresh (the tab shown again) draws an open task whose updated_at did not change again without a read and without the lookups (#5803); a changed one is read and looked up again
+        const metaCount = () => ev(`window.__reqs.filter(r => /\\/meta$/.test(r.p)).length`);
+        const metasBefore = await metaCount();
+        await ev(`(() => { const b = document.querySelector('#link-host .ibx-task-body'); b.dataset.mark = 'kept'; b.querySelector('textarea').value = 'half a reply'; b.querySelector('textarea').dispatchEvent(new Event('input', { bubbles: true })); window.__markNode = b.querySelector('.md'); return true; })()`);
+        await ev(`window.__link.refresh(); true`);
+        await waitFor(`document.querySelector('#link-host .ibx-task-head')?.getAttribute('aria-expanded') === 'true' && !document.querySelector('#link-host .ibx-task-body').hidden && !document.querySelector('#link-host .ibx-task-body [aria-busy]')`, 'the open task after a refresh', 4000);
+        const again = await ev(`(() => { const b = document.querySelector('#link-host .ibx-task-body'); return { reads: window.__reads, same: b.querySelector('.md') === window.__markNode, draft: b.querySelector('textarea').value, hrefs: b.querySelectorAll('.md a').length }; })()`);
+        check('a refresh with the task unchanged: no new read, no new lookup, the same drawn text, the draft and the links as they were', again.reads === 1 && (await metaCount()) === metasBefore && again.same && again.draft === 'half a reply' && again.hrefs === 2, JSON.stringify(again) + ' metas ' + metasBefore + '/' + await metaCount());
+        await ev(`window.__linkStamp = '2026-10-21T11:00:00Z'; window.__link.refresh(); true`);
+        await waitFor(`window.__reads === 2 && !!document.querySelector('#link-host .ibx-task-body .md') && !document.querySelector('#link-host .ibx-task-body [aria-busy]')`, 'the changed task read again', 4000);
+        await waitFor(`window.__reqs.filter(r => /\\/meta$/.test(r.p)).length > ${metasBefore}`, 'the lookups again', 4000);
+        check('a refresh with a changed updated_at reads the task and looks its links up again', (await metaCount()) > metasBefore && (await ev(`document.querySelector('#link-host .ibx-task-body textarea').value`)) === 'half a reply');
+        // an amendment moves the revision and not updated_at: it is read again too
+        const metasMid = await metaCount();
+        await ev(`window.__linkRev = 2; window.__link.refresh(); true`);
+        await waitFor(`window.__reads === 3 && !document.querySelector('#link-host .ibx-task-body [aria-busy]') && !!document.querySelector('#link-host .ibx-task-body .md')`, 'the amended task read again', 4000);
+        await waitFor(`window.__reqs.filter(r => /\\/meta$/.test(r.p)).length > ${metasMid}`, 'the lookups again after an amendment', 4000);
+        check('a refresh with a changed revision and the same updated_at reads the task and looks its links up again', (await metaCount()) > metasMid);
+        // a task the list gives no revision for has no stamp: read every time
+        await ev(`window.__linkRev = undefined; window.__link.refresh(); true`);
+        await waitFor(`window.__reads === 4 && !document.querySelector('#link-host .ibx-task-body [aria-busy]')`, 'a task with no revision read again', 4000);
+        await ev(`window.__link.refresh(); true`);
+        await waitFor(`window.__reads === 5 && !document.querySelector('#link-host .ibx-task-body [aria-busy]')`, 'and again', 4000);
+        check('a task with no revision (no stamp) is read on every refresh', (await ev(`window.__reads`)) === 5);
         await ev(`window.__link.destroy(); true`);
     } catch (e) {
         console.error(e && e.stack || e);

@@ -2,7 +2,7 @@
  * Coral owns it; Coral Hub mounts the same file at its Coral pin (see INBOX.md next to this folder's static/ for the contract, the adapter and the integrity attribute the hub puts on its script tag).
  *
  * It knows nothing of Coral's pages. Everything it needs from its host comes through an ADAPTER: a plain object of functions, never evaluated text:
- *   listTasks()                              -> [{ id, project, board, title, priority, status, created_by, updated_at, created_at }]   the tasks assigned to the Operator, open ones
+ *   listTasks()                              -> [{ id, project, board, title, priority, status, created_by, updated_at, created_at, revision }]   the tasks assigned to the Operator, open ones
  *   getTask(project, id)                     -> { body, created_by, status, ... }                                                        the full task
  *   replyToTask({ project, taskId, content })-> { ok, notified: [names], warnings: [codes] }                                             POST /api/board/{project}/tasks/{id}/reply, {content} only
  *   canReply()                               -> { ok: true } | { ok: false, reason }                                                     (e.g. a Coral Hub viewer at the View tier)
@@ -95,6 +95,11 @@ export function mountInbox(host, adapter, options) {
     let gone = false;
 
     const openIds = new Set(); // tasks that are open, kept across a refresh (the list is rebuilt each time the tab is shown)
+    // The drawn body of each open task with the updated_at it was read at (#5803): a refresh draws the same body again, without a read and without the host's link lookups, when the list says the task has
+    // not changed (the same updated_at and revision). A task that changed, or one the list gives no updated_at for, is read and drawn again. Links that went stale in between are still refused by the server when they are followed.
+    const drawn = new Map();
+    // The change stamp: updated_at AND revision (an amendment moves the revision, an edit or a claim moves updated_at). A task the list gives either of no value for has no stamp, so it is read again every time.
+    const stampOf = t => (t && t.updated_at != null && t.updated_at !== '' && t.revision != null && t.revision !== '' ? `${t.updated_at}#${t.revision}` : '');
     function taskRow(task) {
         const li = el('li', 'ibx-task');
         li.dataset.key = draftKey(task.project, task.id);
@@ -126,6 +131,7 @@ export function mountInbox(host, adapter, options) {
                 const full = await adapter.getTask(task.project, task.id);
                 region.replaceChildren(...await taskBody(task, full || {}));
                 loaded = true;
+                if (stampOf(task)) drawn.set(li.dataset.key, { stamp: stampOf(task), nodes: [...region.childNodes] });
                 if (announce) say(`${task.title || 'The task'} is open.`);
             } catch (e) {
                 const msg = `Could not read the task (${e && e.message ? e.message : 'no answer'}).`;
@@ -134,7 +140,11 @@ export function mountInbox(host, adapter, options) {
             } finally { loading = false; region.removeAttribute('aria-busy'); }
         }
         head.addEventListener('click', () => setOpen(head.getAttribute('aria-expanded') !== 'true', true));
-        if (openIds.has(li.dataset.key)) setOpen(true, false);
+        if (openIds.has(li.dataset.key)) {
+            const hit = drawn.get(li.dataset.key);
+            if (hit && hit.stamp === stampOf(task)) { region.replaceChildren(...hit.nodes); loaded = true; } // unchanged since it was drawn: the same body, the draft in it as it was
+            setOpen(true, false);
+        }
         return li;
     }
 
@@ -214,6 +224,8 @@ export function mountInbox(host, adapter, options) {
             if (gone) return;
             const rows = Array.isArray(tasks) ? tasks : [];
             const kept = document.activeElement && list.contains(document.activeElement) ? document.activeElement.closest('.ibx-task')?.dataset.key : '';
+            const stillListed = new Set(rows.map(t => draftKey(t.project, t.id)));
+            for (const k of [...drawn.keys()]) if (!stillListed.has(k)) drawn.delete(k);
             list.replaceChildren(...rows.map(taskRow));
             if (kept) list.querySelector(`.ibx-task[data-key="${CSS.escape(kept)}"] .ibx-task-head`)?.focus(); // a refresh does not take the focus from the task being read
             empty.hidden = rows.length > 0;

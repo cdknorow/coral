@@ -8,7 +8,7 @@ import { keyLabel, pathId, serverFetch } from './server_base.js';
 const { mountInbox, clearInboxDrafts, INBOX_CONTRACT } = await importOnce('./inbox_panel.js'); // the component (shared with the hub); this file is the one that is Coral's
 
 const OPEN_STATUSES = ['pending', 'in_progress', 'review_pending', 'blocked'];
-const FIELDS = 'id,board_id,board_label,title,priority,status,created_by,created_at,updated_at';
+const FIELDS = 'id,board_id,board_label,title,priority,status,created_by,created_at,updated_at,revision'; // updated_at and revision are the change stamp the panel keeps a drawn task by (#5803)
 
 async function json(resp) {
     let data = {};
@@ -39,7 +39,7 @@ export const coralInboxAdapter = {
         for (const s of OPEN_STATUSES) q.append('status', s);
         const d = await json(await fetch(`/api/board/tasks?${q}`));
         return (d.tasks || []).map(t => ({ id: t.id, project: t.board_id, board: t.board_label || keyLabel(t.board_id), title: t.title, priority: t.priority, status: t.status,
-            created_by: t.created_by, created_at: t.created_at, updated_at: t.updated_at }));
+            created_by: t.created_by, created_at: t.created_at, updated_at: t.updated_at, revision: t.revision }));
     },
     async getTask(project, id) {
         return json(await fetch(`/api/board/${encodeURIComponent(project)}/tasks/${pathId(id)}`));

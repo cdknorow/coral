@@ -33,7 +33,7 @@ A plain object of functions, never evaluated text. `mountInbox` refuses one that
 
 | Function | Answers |
 |---|---|
-| `listTasks()` | `[{ id, project, board, title, priority, status, created_by, created_at, updated_at }]`: the open tasks assigned to the Operator |
+| `listTasks()` | `[{ id, project, board, title, priority, status, created_by, created_at, updated_at, revision }]`: the open tasks assigned to the Operator |
 | `getTask(project, id)` | `{ body, created_by, status, ... }`: the full task |
 | `replyToTask({ project, taskId, content })` | `POST /api/board/{project}/tasks/{id}/reply` with `{content}` and nothing else; `{ ok, notified: [names], warnings: [codes] }`; a refusal is a thrown `Error` whose message is the server's reason |
 | `canReply()` | `{ ok: true }` or `{ ok: false, reason }` (a Coral Hub viewer at the View tier) |
@@ -45,6 +45,8 @@ A plain object of functions, never evaluated text. `mountInbox` refuses one that
 | `now()` (optional) | the clock, for ages |
 
 `INBOX_CONTRACT` is 1. A breaking change to the adapter or to `mountInbox` bumps it and is a line in the release notes; the hub adapts when it takes the pin.
+
+A refresh (the tab shown again) keeps the drawn body of an open task, and does not call `getTask` or `prepareLinks` for it, when `listTasks` gives the same `updated_at` AND `revision` as when it was drawn (an amendment moves the revision, an edit, a claim or a status change moves `updated_at`); a changed task, or one missing either, is read and drawn again (#5803). An adapter's `listTasks` rows therefore carry `revision` as well.
 
 `mountInbox(host, adapter, { load: false })` does not read the tasks at once (the host calls `refresh()` when the list is shown). `savedExpand(item)` returns `{ root, button, region }`: the "Read the whole message" control for one saved item; the host puts `root` in its item. `destroy()` removes the panel and drops the drafts.
 
