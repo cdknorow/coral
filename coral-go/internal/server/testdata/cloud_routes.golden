@@ -45,6 +45,7 @@ GET /api/artifacts view
 GET /api/artifacts/{id} view
 GET /api/artifacts/{id}/comments view
 GET /api/artifacts/{id}/meta view
+GET /api/artifacts/{id}/readers view
 GET /api/auth/hub-origins never
 GET /api/auth/hub-signin never
 GET /api/auth/sessions never

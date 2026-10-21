@@ -476,6 +476,11 @@ func TestArtifactRouteIsExactDigestOnly(t *testing.T) {
 	assert.False(t, AllowRequest(func() Mode { return TierView })("DELETE", "/api/artifacts/"+hex, ""), "a delete needs launch mode")
 	assert.False(t, AllowRequest(func() Mode { return TierInteract })("DELETE", "/api/artifacts/"+hex, ""), "a delete needs launch mode")
 	assert.True(t, AllowRequest(func() Mode { return TierLaunch })("DELETE", "/api/artifacts/"+hex, ""))
+	// Who can read an artifact (#5577): a View read of exactly the id, no query, owner only (the machine checks)
+	assert.Equal(t, TierView, Classify("GET", "/api/artifacts/"+hex+"/readers", ""))
+	assert.Equal(t, TierNever, Classify("GET", "/api/artifacts/"+hex+"/readers", "x=1"), "no query")
+	assert.Equal(t, TierNever, Classify("POST", "/api/artifacts/"+hex+"/readers", ""))
+	assert.Equal(t, TierNever, Classify("GET", "/api/artifacts/"+hex[:63]+"/readers", ""))
 	for _, probe := range []struct{ method, path, query string }{
 		{"GET", "/api/artifacts/" + hex[:63], ""},                    // 63 digits
 		{"GET", "/api/artifacts/" + hex + "0", ""},                   // 65 digits

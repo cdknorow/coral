@@ -218,6 +218,8 @@ var routeTable = cat(
 		"/api/artifacts",
 		// The same artifact without its bytes (#5465, coral-hub): id, size, the media type a download is served as and the stored name, 404 exactly as the content read is, never cached.
 		"/api/artifacts/{hex64}/meta",
+		// Who can read an artifact (#5577), for the computer's OWNER only (the machine checks the stamped marker, hubrole.go): the owners that hold it and the teams whose agents read it. No query.
+		"/api/artifacts/{hex64}/readers",
 		// The comments on an artifact (#5176): reads only, for every viewer tier (an agent's own artifact, so the same trust as the artifact). Writing, replying, resolving and the owner's lock are
 		// unlisted (never) from here: a hub viewer cannot comment until coral-hub settles a stable user identity, and the owner comments on this computer.
 		"/api/artifacts/{hex64}/comments",

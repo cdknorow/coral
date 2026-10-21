@@ -53,6 +53,7 @@ b GET /api/artifacts
 a GET /api/artifacts/{id}
 a GET /api/artifacts/{id}/comments
 a GET /api/artifacts/{id}/meta
+b GET /api/artifacts/{id}/readers
 b GET /api/auth/hub-origins
 b GET /api/auth/hub-signin
 b GET /api/auth/sessions

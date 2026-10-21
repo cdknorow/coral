@@ -433,3 +433,56 @@ func listAt(t *testing.T, url, session string) []string {
 		return ids
 	}
 }
+
+// The owner's view of who can read an artifact: the owners that hold it and their teams, from the same records the read check uses. Owner only.
+func TestTheReadersViewShowsTheOwnersAndIsTheOwnersAlone(t *testing.T) {
+	rig, _ := ownerRig(t)
+	id := rig.uploadText("a1", "n.txt", "the same bytes")
+	require.Equal(t, id, rig.uploadText("b1", "n.txt", "the same bytes"))
+
+	status, body := rig.getAs("", "/api/artifacts/"+id+"/readers")
+	require.Equal(t, http.StatusOK, status, body)
+	var out struct {
+		ID           string `json:"id"`
+		MachineOwner string `json:"machine_owner"`
+		Owners       []struct {
+			Kind, ID string
+			Records  int
+			Teams    []struct{ ID string }
+		} `json:"owners"`
+		LinkedTeams []any  `json:"linked_teams"`
+		Note        string `json:"note"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &out))
+	assert.Equal(t, id, out.ID)
+	require.Len(t, out.Owners, 2, body)
+	assert.Equal(t, aliceUser, out.Owners[0].ID)
+	assert.Equal(t, "team-a", out.Owners[0].Teams[0].ID)
+	assert.Equal(t, 1, out.Owners[0].Records)
+	assert.Equal(t, 1, out.Owners[1].Records)
+	assert.Equal(t, bobUser, out.Owners[1].ID)
+	assert.NotNil(t, out.LinkedTeams)
+	assert.Empty(t, out.LinkedTeams, "no cross-team read exists yet")
+	assert.Contains(t, out.Note, "not an operating-system boundary")
+
+	// an agent, even the owner's own agent, is refused; an artifact that does not exist is 404 for the owner
+	for _, who := range []string{"a1", "b1", "o1"} {
+		status, _ = rig.getAs(who, "/api/artifacts/"+id+"/readers")
+		assert.Equal(t, http.StatusForbidden, status, who)
+	}
+	status, _ = rig.getAs("", "/api/artifacts/"+strings.Repeat("0", 64)+"/readers")
+	assert.Equal(t, http.StatusNotFound, status)
+	status, _ = rig.getAs("", "/api/artifacts/not-an-id/readers")
+	assert.Equal(t, http.StatusBadRequest, status)
+
+	// through Coral Hub: the owner only
+	for _, c := range hubCallers() {
+		withLabel(t, c.label, nil)
+		status, _ := hubGet(t, rig.srv.URL+"/api/artifacts/"+id+"/readers", c.header)
+		if c.allow {
+			assert.Equal(t, http.StatusOK, status, c.name)
+		} else {
+			assert.Equal(t, http.StatusForbidden, status, c.name)
+		}
+	}
+}

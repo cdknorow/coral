@@ -97,7 +97,8 @@ var operatorOnlyRoutes = map[string]string{
 	// #3553: the Operator removes an artifact (also refused to anyone but a person, in every mode).
 	"DELETE /api/artifacts/{id}": "delete an artifact",
 	// #5575: the machine-wide list of every artifact (the owner's, here or through Coral Hub): never an agent's.
-	"GET /api/artifacts": "list every artifact on this computer",
+	"GET /api/artifacts":              "list every artifact on this computer",
+	"GET /api/artifacts/{id}/readers": "see who can read an artifact (#5577)",
 	// #5284: the Operator removes one session's shared copy of an image pasted in the dashboard.
 	"DELETE /api/shared-images/{id}": "remove a pasted image's shared copy",
 	// #3554: pruning, and the keep mark that protects an artifact from it.

@@ -125,7 +125,7 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	routes.SetHubOwnerLabel(func(context.Context) (string, error) { return sweepOwner, nil })
 	t.Cleanup(func() { routes.SetHubOwnerLabel(nil) })
 	owner := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubRoleHeader: "owner", tunnel.HubUserHeader: sweepOwner}
-	ownerOnly := map[string]bool{"/api/artifacts": true, "/api/artifacts/{id}": true, "/api/artifacts/{id}/meta": true, "/api/artifacts/{id}/comments": true,
+	ownerOnly := map[string]bool{"/api/artifacts": true, "/api/artifacts/{id}": true, "/api/artifacts/{id}/meta": true, "/api/artifacts/{id}/comments": true, "/api/artifacts/{id}/readers": true,
 		"/api/board/{project}/artifacts": true, "/api/session-artifacts": true, "/api/board/{project}/tasks/{taskID}/artifact-content": true}
 
 	golden, err := os.ReadFile("testdata/cloud_routes.golden")
@@ -147,6 +147,9 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 		}
 		if f[1] == "/api/artifacts/{id}/meta" { // the facts of that artifact (#5465)
 			path = "/api/artifacts/" + artifactHex + "/meta"
+		}
+		if f[1] == "/api/artifacts/{id}/readers" { // who can read that artifact (#5577)
+			path = "/api/artifacts/" + artifactHex + "/readers"
 		}
 		if f[1] == "/api/artifacts/{id}/comments" { // the comments of that artifact (#5176)
 			path = "/api/artifacts/" + artifactHex + "/comments"

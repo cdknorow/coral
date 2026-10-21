@@ -88,6 +88,7 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	r.Get("/api/artifacts", h.listAllArtifacts) // the machine-wide list, the owner's (#5575)
 	r.Get("/api/artifacts/{id}", h.getAgentArtifact)
 	r.Get("/api/artifacts/{id}/meta", h.getAgentArtifactMeta) // metadata only: do you have it (#5465)
+	r.Get("/api/artifacts/{id}/readers", h.artifactReaders)   // who can read it, for its owner (#5577)
 	r.Delete("/api/artifacts/{id}", h.deleteAgentArtifact)
 	r.Delete("/api/shared-images/{id}", h.deleteSharedImage)                         // #5284: one session's shared copy of a pasted image
 	r.Post("/api/artifacts/received/unlisted/delete", h.deleteUnlistedReceivedRoute) // #4441
