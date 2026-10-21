@@ -460,8 +460,10 @@ func (fw *fileWriter) write(line string) {
 			return
 		}
 		// Windows ignores the mode, and an older Coral may have made the file with the folder's
-		// access list: never append to one others can read (#60, Security's condition d).
-		if err := secfile.Protect(fw.path); err != nil || !sameFile(f, fw.path) {
+		// access list: never append to one others can read (#60, Security's condition d). Protect
+		// acts by path, so the path is checked to be the opened file before it (no other file's
+		// access list is changed) and after (nothing is written to a file swapped in meanwhile).
+		if !sameFile(f, fw.path) || secfile.Protect(fw.path) != nil || !sameFile(f, fw.path) {
 			f.Close()
 			fw.f = nil
 			return
