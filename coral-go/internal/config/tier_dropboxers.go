@@ -10,6 +10,8 @@ var (
 	TierSkipEULA         = true
 	TierChecksForUpdates = false
 	TierName             = "dropboxers"
+	// TierDevTools: only a dev build may open the app window's DevTools (script access to the signed-in dashboard), #78 W2.
+	TierDevTools = false
 	// The Coral Hub this build offers to connect to (#3221); nothing is sent until the user connects.
 	TierDefaultCloudURL = ""
 )
