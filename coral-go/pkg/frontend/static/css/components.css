@@ -4575,3 +4575,7 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* Default models (#6042): four short boxes, two by two, not four full-width boxes stacked (the loudest block of Settings > Agents for a rarely changed setting); one column on a phone. */
 .settings-cli-paths.settings-model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; align-items: end; }
 @media (max-width: 600px) { .settings-cli-paths.settings-model-grid { grid-template-columns: minmax(0, 1fr); } }
+/* The whole deletion-request identifier stays readable on a narrow Settings row. */
+.telemetry-install-id { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 28rem; }
+.telemetry-install-id code { min-width: 0; flex: 1; overflow-wrap: anywhere; text-align: left; }
+.telemetry-install-id .btn { flex: none; }

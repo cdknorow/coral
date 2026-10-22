@@ -1103,6 +1103,13 @@
                 <dd>
                     <label class="check-hit"><input type="checkbox" id="settings-telemetry-enabled" aria-describedby="settings-telemetry-enabled-desc settings-telemetry-help"></label>
                     <span id="settings-telemetry-help" class="settings-hint">No prompts, transcripts, or secrets are sent.</span>
+                    <div class="settings-hint">Install ID</div>
+                    <div class="telemetry-install-id">
+                        <code id="settings-telemetry-install-id" aria-describedby="settings-telemetry-install-hint">Loading…</code>
+                        <button type="button" class="btn" id="settings-telemetry-install-copy" aria-label="Copy install ID" disabled>Copy</button>
+                    </div>
+                    <span id="settings-telemetry-install-hint" class="settings-hint">Send it with a deletion request.</span>
+                    <span id="settings-telemetry-install-status" class="settings-hint" role="status"></span>
                 </dd>
                 </div>
                         </dl>

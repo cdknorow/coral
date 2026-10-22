@@ -50,6 +50,33 @@ function _wireApiKeyControls(input) {
     });
 }
 
+// The deletion-request ID is read only when Settings opens, even if analytics is off.
+async function loadTelemetryInstallID() {
+    const input = document.getElementById('settings-telemetry-install-id');
+    const copy = document.getElementById('settings-telemetry-install-copy');
+    const status = document.getElementById('settings-telemetry-install-status');
+    if (!input || !copy || isCloud()) return;
+    input.textContent = 'Loading…';
+    copy.disabled = true;
+    if (status) status.textContent = '';
+    if (!copy.dataset.wired) {
+        copy.dataset.wired = '1';
+        copy.addEventListener('click', async () => {
+            if (copy.disabled) return;
+            const ok = await copyText(input.textContent);
+            if (status) status.textContent = ok ? 'Install ID copied.' : 'Could not copy. Select the ID and copy it.';
+        });
+    }
+    try {
+        const data = await requestJson('GET', '/api/system/telemetry');
+        const available = data.install_id_status === 'available' && typeof data.install_id === 'string' && data.install_id.length > 0;
+        input.textContent = available ? data.install_id : data.install_id_status === 'missing' ? 'No install ID has been created.' : 'Install ID unavailable.';
+        copy.disabled = !available;
+    } catch (_) {
+        input.textContent = 'Install ID unavailable.';
+    }
+}
+
 // ── Settings Modal ────────────────────────────────────────────────────────
 
 
@@ -814,6 +841,8 @@ export async function showSettingsModal(group) {
     _fillDefaults(s);
 
     _fillApiKey();
+
+    await loadTelemetryInstallID();
 
     _fillCliAndModels(s);
 

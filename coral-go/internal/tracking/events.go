@@ -50,7 +50,7 @@ var NeverCollected = []string{
 	"Your source code",
 	"Repository, branch, and file names",
 	"Agent output",
-	"Your name, email address, or IP-derived location",
+	"Your name or email address",
 	"Your API keys or passwords",
 }
 
