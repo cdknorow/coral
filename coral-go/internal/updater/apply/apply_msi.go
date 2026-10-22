@@ -140,6 +140,10 @@ type msiJournal struct {
 // version the person installed by hand.
 const maxMSIJournalAge = time.Hour
 
+// msiRecoveryTimeout bounds the recovery a timed-out apply runs when the install landed anyway: a health check and, if the new version
+// doesn't come up, the rollback's two consent prompts.
+const msiRecoveryTimeout = 15 * time.Minute
+
 // RunMSI applies the staged update on a Windows MSI install. It never returns an error: every outcome is a Result, recorded in the state.
 func RunMSI(ctx context.Context, mc MSIConfig) Result {
 	cfg := mc.cfg()
@@ -281,6 +285,18 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 		// N3: coral-update's time ran out (30 minutes: an unanswered consent prompt) and msiexec was ended. Windows Installer rolls back an
 		// install whose client is gone; the journal stays all the same, so the next run checks what is registered (recoverMSI drops it when
 		// the old version still is). The old Coral is started again.
+		//
+		// Unless the new product is registered already (the prompt was answered at the last moment and the install landed after msiexec was
+		// ended): then the recovery runs now, as the next run's would, rather than starting the old Coral into a folder Windows Installer
+		// replaced. It gets a context of its own, the apply's having ended.
+		if reg, rerr := m.RegisteredProduct(); rerr == nil && sameProductCode(reg, product) {
+			rctx, cancel := context.WithTimeout(context.Background(), msiRecoveryTimeout)
+			r, ok := recoverMSI(rctx, mc, cfg, dir, install)
+			cancel()
+			if ok {
+				return r
+			}
+		}
 		cfg.history(&st, cfg.Installed, rec.Version, "failed", "timeout")
 		_ = verify.SaveState(dir, st)
 		return fail("timeout")
