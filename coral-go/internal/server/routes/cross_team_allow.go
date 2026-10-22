@@ -211,7 +211,7 @@ func (h *BoardHandler) crossTeamAdmit(ctx context.Context, m *externalMessage, r
 	}
 	if own, err := h.bs.GetBoardSettings(ctx, m.FromBoard); err != nil {
 		return nil, false, func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
-	} else if !own.CrossTeamMessaging {
+	} else if !own.LocalMessagingOn() {
 		return nil, false, func(w http.ResponseWriter) {
 			errForbidden(w, textCrossTeamOff([]string{strconv.Quote(m.FromBoard)}))
 		}

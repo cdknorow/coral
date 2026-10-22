@@ -193,10 +193,11 @@ func TestReceivedArtifactSwitchesAnswerUniformly(t *testing.T) {
 	body := frame(meta(data, "n.txt"), data)
 	var answers []string
 	for name, set := range map[string]map[string]any{
-		"everything off":     {},
-		"messaging off":      {"cross_team_servers": []string{relaySrc}, "cross_team_artifacts": true},
+		"everything off":     {"cross_team_messaging": false, "cross_team_artifacts": false},
+		"messaging off":      {"cross_team_messaging": false, "cross_team_servers": []string{relaySrc}, "cross_team_artifacts": true},
 		"source not allowed": {"cross_team_messaging": true, "cross_team_artifacts": true},
-		"artifacts off":      {"cross_team_messaging": true, "cross_team_servers": []string{relaySrc}},
+		"artifacts off":      {"cross_team_messaging": true, "cross_team_servers": []string{relaySrc}, "cross_team_artifacts": false},
+		"defaults, no list":  {}, // the switches default to on (#5916), and with no list the old door admits nothing
 	} {
 		e := newArtifactEnv(t)
 		set["subscriber_id"] = "Operator"
@@ -236,11 +237,13 @@ func TestCrossTeamArtifactsSettingIsTheOperatorsAtThisComputer(t *testing.T) {
 	e.r.ServeHTTP(rec, req)
 	var s map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &s))
-	assert.Equal(t, false, s["cross_team_artifacts"], "off by default")
+	assert.Equal(t, true, s["cross_team_artifacts"], "on by default: a kill switch (#5916)")
+	code, out := e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_artifacts": false}, false)
+	require.Equal(t, http.StatusOK, code, out)
 
-	code, _ := e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_artifacts": true}, true)
+	code, _ = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_artifacts": true}, true)
 	assert.Equal(t, http.StatusForbidden, code, "through the tunnel")
-	code, out := e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Dev", "cross_team_artifacts": true}, false)
+	code, out = e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Dev", "cross_team_artifacts": true}, false)
 	assert.Equal(t, http.StatusForbidden, code, out)
 	rec = httptest.NewRecorder()
 	e.r.ServeHTTP(rec, httptest.NewRequest("GET", "/api/board/beta/settings", nil))

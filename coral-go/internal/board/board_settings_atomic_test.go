@@ -12,7 +12,10 @@ import (
 func TestBoardSettingsUpdateIsAllOrNothing(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
-	_, err := s.db.ExecContext(ctx, `CREATE TRIGGER refuse_artifacts BEFORE INSERT ON board_settings WHEN NEW.key = '`+settingCrossTeamArtifacts+`'
+	off := false // the switches default to on (#5916): the board starts explicitly off, so a half-applied update would show
+	_, err := s.UpdateBoardSettings(ctx, "alpha", BoardSettingsUpdate{CrossTeamMessaging: &off, CrossTeamArtifacts: &off})
+	require.NoError(t, err)
+	_, err = s.db.ExecContext(ctx, `CREATE TRIGGER refuse_artifacts BEFORE INSERT ON board_settings WHEN NEW.key = '`+settingCrossTeamArtifacts+`'
 		BEGIN SELECT RAISE(ABORT, 'refused'); END`)
 	require.NoError(t, err)
 	on := true

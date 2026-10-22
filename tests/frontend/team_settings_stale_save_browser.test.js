@@ -38,6 +38,8 @@ const { removeBoards } = require('./helpers/board_cleanup');
         };
 
         console.log('1. A change made elsewhere while the dialog is open survives a Save of an unrelated switch');
+        // the two cross-team switches default to on (#5916): this team starts with both explicitly off
+        assert.equal((await put('/settings', { subscriber_id: 'Operator', cross_team_messaging: false, cross_team_artifacts: false })).status, 200);
         await open();
         assert.equal((await put('/working-mode', { mode: 'none', dependency_guidance: false, custom_instructions: 'from another client' })).status, 200);
         assert.equal((await put('/settings', { subscriber_id: 'Operator', cross_team_artifacts: true })).status, 200);

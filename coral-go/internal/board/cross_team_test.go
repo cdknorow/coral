@@ -6,29 +6,44 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBoardSettingsDefaultOffAndUpdate(t *testing.T) {
+// #5916: the two cross-team switches are kill switches that default to ON for a board that never set them, an owner's explicit off stays off, and the same-Coral doors need an explicit opt-in.
+func TestBoardSettingsDefaultOnAndUpdate(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	got, err := s.GetBoardSettings(ctx, "alpha")
 	require.NoError(t, err)
-	require.False(t, got.CrossTeamMessaging, "off by default")
+	require.True(t, got.CrossTeamMessaging, "on by default")
+	require.True(t, got.CrossTeamArtifacts, "files too")
+	assert.False(t, got.MessagingStored)
+	assert.False(t, got.ArtifactsStored)
+	assert.False(t, got.LocalMessagingOn(), "two teams of one computer are not opened to each other by a default")
+	assert.False(t, got.LocalFilesOn())
+	assert.Empty(t, got.CrossTeamServers, "and no list: nothing is admitted by the old door")
 
 	on, off := true, false
-	got, err = s.UpdateBoardSettings(ctx, "alpha", BoardSettingsUpdate{CrossTeamMessaging: &on})
-	require.NoError(t, err)
-	require.True(t, got.CrossTeamMessaging)
-	other, err := s.GetBoardSettings(ctx, "beta")
-	require.NoError(t, err)
-	require.False(t, other.CrossTeamMessaging, "settings are per board")
-	got, err = s.UpdateBoardSettings(ctx, "alpha", BoardSettingsUpdate{}) // no change
-	require.NoError(t, err)
-	require.True(t, got.CrossTeamMessaging)
 	got, err = s.UpdateBoardSettings(ctx, "alpha", BoardSettingsUpdate{CrossTeamMessaging: &off})
 	require.NoError(t, err)
-	require.False(t, got.CrossTeamMessaging)
+	require.False(t, got.CrossTeamMessaging, "an explicit off")
+	require.True(t, got.CrossTeamArtifacts, "the other switch is still the default")
+	other, err := s.GetBoardSettings(ctx, "beta")
+	require.NoError(t, err)
+	require.True(t, other.CrossTeamMessaging, "settings are per board")
+	got, err = s.UpdateBoardSettings(ctx, "alpha", BoardSettingsUpdate{}) // no change
+	require.NoError(t, err)
+	require.False(t, got.CrossTeamMessaging, "an explicit off stays off")
+	again, err := s.GetBoardSettings(ctx, "alpha")
+	require.NoError(t, err)
+	require.False(t, again.CrossTeamMessaging)
+	assert.True(t, again.MessagingStored)
+	got, err = s.UpdateBoardSettings(ctx, "alpha", BoardSettingsUpdate{CrossTeamMessaging: &on, CrossTeamArtifacts: &on})
+	require.NoError(t, err)
+	require.True(t, got.CrossTeamMessaging)
+	assert.True(t, got.LocalMessagingOn(), "an explicit on opens the same-Coral door")
+	assert.True(t, got.LocalFilesOn())
 }
 
 func TestTargetOrchestrators(t *testing.T) {

@@ -88,10 +88,10 @@ func TestCrossTeamSettingsAreOperatorOnly(t *testing.T) {
 	e := newCrossTeamEnv(t)
 	code, out := e.do("GET", "/api/board/alpha/settings", nil)
 	require.Equal(t, http.StatusOK, code)
-	require.Equal(t, false, out["cross_team_messaging"], "off by default")
+	require.Equal(t, true, out["cross_team_messaging"], "on by default: a kill switch (#5916)")
 	for _, who := range []string{"Orchestrator", "Dev", ""} {
-		code, _ = e.do("PUT", "/api/board/alpha/settings", map[string]any{"subscriber_id": who, "cross_team_messaging": true})
-		require.Equal(t, http.StatusForbidden, code, "%q cannot open its board", who)
+		code, _ = e.do("PUT", "/api/board/alpha/settings", map[string]any{"subscriber_id": who, "cross_team_messaging": false})
+		require.Equal(t, http.StatusForbidden, code, "%q cannot change its board's switch", who)
 	}
 	e.enable("alpha", true)
 }
@@ -231,11 +231,13 @@ func TestCrossTeamArtifactsSwitch(t *testing.T) {
 	e := newCrossTeamEnv(t)
 	code, out := e.do("GET", "/api/board/alpha/settings", nil)
 	require.Equal(t, http.StatusOK, code)
-	require.Equal(t, false, out["cross_team_artifacts"], "off by default")
+	require.Equal(t, true, out["cross_team_artifacts"], "on by default: a kill switch (#5916)")
 	for _, who := range []string{"Orchestrator", "Dev", ""} {
-		code, _ = e.do("PUT", "/api/board/alpha/settings", map[string]any{"subscriber_id": who, "cross_team_artifacts": true})
-		require.Equal(t, http.StatusForbidden, code, "%q cannot turn it on", who)
+		code, _ = e.do("PUT", "/api/board/alpha/settings", map[string]any{"subscriber_id": who, "cross_team_artifacts": false})
+		require.Equal(t, http.StatusForbidden, code, "%q cannot turn it off", who)
 	}
+	code, out = e.do("PUT", "/api/board/alpha/settings", map[string]any{"subscriber_id": "Operator", "cross_team_artifacts": false})
+	require.Equal(t, http.StatusOK, code, out)
 	put := func(hub bool) (int, map[string]any) {
 		b, _ := json.Marshal(map[string]any{"subscriber_id": "Operator", "cross_team_artifacts": true})
 		req, _ := http.NewRequest("PUT", e.url+"/api/board/alpha/settings", bytes.NewReader(b))
@@ -260,5 +262,5 @@ func TestCrossTeamArtifactsSwitch(t *testing.T) {
 	code, out = put(false)
 	require.Equal(t, http.StatusOK, code, out)
 	require.Equal(t, true, out["cross_team_artifacts"])
-	require.Equal(t, false, out["cross_team_messaging"], "a separate switch")
+	require.Equal(t, true, out["cross_team_messaging"], "a separate switch: still its default")
 }
