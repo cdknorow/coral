@@ -151,7 +151,7 @@ func downloadArtifactOpts(base, ref, output string, force bool) (string, error) 
 			return output, nil
 		}
 		// Publish without overwriting an existing file, including concurrent writers.
-		if err := os.Link(f.Name(), output); err != nil {
+		if err := publishNew(f.Name(), output, id); err != nil {
 			if errors.Is(err, fs.ErrExist) {
 				return "", fmt.Errorf("the file %s already exists; choose another --output or add --force to replace it", output)
 			}
@@ -185,6 +185,42 @@ func openLocalArtifact(id string) (*os.File, string, error) {
 		}
 	}
 	return f, mediaType, nil
+}
+
+// linkFile makes dst a hard link to src (a variable so a test can stand in for a file system that has none).
+var linkFile = os.Link
+
+// publishNew puts the verified file src at dst, which must not exist (ErrExist if it does, also when another writer got there first). A hard link does it in one atomic
+// step; where the file system has none (FAT and exFAT on a USB stick or an SD card, some network shares) the bytes are copied into a file created exclusively and checked
+// against the SHA-256 again, and the temporary file is left for the caller to remove.
+func publishNew(src, dst, id string) error {
+	err := linkFile(src, dst)
+	if err == nil || errors.Is(err, fs.ErrExist) || !linkUnsupported(err) {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // exclusive: never over a file that is there
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	if err := verifyObject(dst, id); err != nil { // read back from where it now is
+		os.Remove(dst)
+		return err
+	}
+	return nil
 }
 
 // verifyObject reports whether the file at path holds exactly the bytes whose SHA-256 is id.

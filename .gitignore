@@ -60,3 +60,11 @@ coral-go/Users*.coral/*
 .claude/task_summaries.local.md
 .claude/skills
 .claude/commands
+
+# go build with no -o leaves the program in the package's own folder (coral-go/cmd/<name>/<name>[.exe]): never to be committed
+/coral-go/cmd/*/*.exe
+/coral-go/cmd/*/coral
+/coral-go/cmd/*/coral-*
+!/coral-go/cmd/*/coral-*.go
+/coral-go/cmd/*/launch-coral
+/coral-go/cmd/*/mock-agent
