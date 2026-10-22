@@ -16,6 +16,7 @@ on:
     paths:
       - "coral-go/**"
       - "tests/windows/**"
+      - "tests/frontend/**"
       - "tests/release/**"
       - "tools/coral.wxs"
       - "installers/**"
@@ -25,6 +26,7 @@ on:
     paths:
       - "coral-go/**"
       - "tests/windows/**"
+      - "tests/frontend/**"
       - "tests/release/**"
       - "tools/coral.wxs"
       - "installers/**"
@@ -73,6 +75,13 @@ jobs:
         shell: bash
         working-directory: coral-go
     steps:
+      # Sources are LF, as they ship: Git for Windows' default (autocrlf=true) checks every text file out CRLF, which makes the embedded static tree
+      # ~87 KB bigger than the shipped one (TestStaticTreeWithinBudget measured 6453300 bytes here against 6366382 on Linux, budget 6422528) and breaks
+      # the dashboard tests that read source lines (action_census.test.mjs's ^registerActions regex). Set before the checkout.
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
@@ -80,6 +89,11 @@ jobs:
         with:
           go-version-file: coral-go/go.mod
           cache-dependency-path: coral-go/go.sum
+      # The agent docs are embedded from static/agent_docs, which only the Makefile, the package job below and the release fill:
+      # without them pkg/frontend's TestStaticTreeWithinBudget measures a smaller tree than ships and passes when the shipped
+      # one is over its budget (#101's docs page was, 2026-10-22, and this workflow did not see it).
+      - name: Sync agent docs
+        run: bash ../tools/sync-agent-docs.sh
       - name: vet (the whole module, natively on Windows)
         if: matrix.shard == 'slow-1'
         run: go vet -tags fts5 ./...
@@ -290,3 +304,110 @@ jobs:
           if ($env:MSI_PATH) { $smoke.Msi = $env:MSI_PATH } else { Write-Host "the installer did not change: the MSI is not built or checked" }
           ./tests/release/smoke_windows.ps1 @smoke
           if ($LASTEXITCODE -ne 0) { throw "smoke_windows.ps1 failed" }
+
+  # The dashboard's node tests (npm run test:cloud), on Windows as cloud-tests.yml runs them on Linux: path, line-ending and
+  # child-process differences (#94) were invisible to CI. Nothing is cached; install scripts never run.
+  frontend:
+    name: test:cloud (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+    defaults:
+      run:
+        shell: bash
+        working-directory: tests/frontend
+    steps:
+      # Sources are LF, as they ship: Git for Windows' default (autocrlf=true) checks every text file out CRLF, which makes the embedded static tree
+      # ~87 KB bigger than the shipped one (TestStaticTreeWithinBudget measured 6453300 bytes here against 6366382 on Linux, budget 6422528) and breaks
+      # the dashboard tests that read source lines (action_census.test.mjs's ^registerActions regex). Set before the checkout.
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: install
+        run: npm ci --ignore-scripts --no-audit --no-fund # exactly package-lock.json, no install scripts (#3675)
+      - name: cloud-mode frontend tests
+        run: npm run test:cloud
+
+  # The dashboard CDP suites on Windows (#106: 39 of them failed there and no CI ran them), in three parts by recorded duration
+  # (--part K/3: each default-mode suite in exactly one part; the sequences and the strict phase stay on cdp-gate.yml's Linux
+  # runs). Same rules as cdp-gate.yml: one retry per suite, a suite that passes only on its retry fails the part, a suite that
+  # leaves settings changed fails it (--fail-on-leak), stub agent CLIs first on PATH so no real CLI can start (#4354), nothing
+  # cached. Chrome is the runner image's. The runner's run folder is put under runner.temp (TEMP/TMP), so the logs of a failed
+  # part can be uploaded; nothing is uploaded when a part passes.
+  cdp:
+    name: cdp (windows-latest, part ${{ matrix.part }}/3)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CORAL_TELEMETRY_DISABLED: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Sources are LF, as they ship: Git for Windows' default (autocrlf=true) checks every text file out CRLF, which makes the embedded static tree
+      # ~87 KB bigger than the shipped one (TestStaticTreeWithinBudget measured 6453300 bytes here against 6366382 on Linux, budget 6422528) and breaks
+      # the dashboard tests that read source lines (action_census.test.mjs's ^registerActions regex). Set before the checkout.
+      - name: Check out LF line endings
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false # nothing cached here, as in cdp-gate.yml
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: install
+        working-directory: tests/frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: stub agent CLIs first on PATH
+        run: |
+          stub="$RUNNER_TEMP/stub-cli"
+          mkdir -p "$stub"
+          for c in claude codex gemini; do
+            printf '@echo stub %s: a CDP suite tried to run a real agent CLI 1>&2\r\n@exit /b 1\r\n' "$c" > "$stub/$c.cmd"
+          done
+          echo "$stub" >> "$GITHUB_PATH"
+      - name: Chrome from the runner image
+        id: chrome
+        run: |
+          p='C:\Program Files\Google\Chrome\Application\chrome.exe'
+          [ -f "$p" ] || { echo "::error::no Chrome at $p on this runner image"; exit 1; }
+          echo "path=$p" >> "$GITHUB_OUTPUT"
+      - name: run part ${{ matrix.part }}/3
+        working-directory: tests/frontend
+        env:
+          CHROME: ${{ steps.chrome.outputs.path }}
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          CORAL_TELEMETRY_DISABLED: "1"
+        run: |
+          set -o pipefail
+          node run_cdp_suites.mjs --timeout 180 --keep --fail-on-leak --part "${{ matrix.part }}/3" --results-out "$RUNNER_TEMP/results.json" 2>&1 | tee "$RUNNER_TEMP/run.log"
+      - name: upload the logs (failure only)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-cdp-${{ matrix.part }}-a${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/run.log
+            ${{ runner.temp }}/results.json
+            ${{ runner.temp }}/coral-cdp-*/**/coral.log
+          retention-days: 7
+          if-no-files-found: warn
