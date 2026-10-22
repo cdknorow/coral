@@ -102,6 +102,9 @@ func shellRiskFrom(command, workDir, dir string) string {
 	// ">|" (overwrite despite noclobber) is a redirection, not a pipe.
 	for _, seg := range shellSplitRe.Split(strings.ReplaceAll(command, ">|", "> "), -1) {
 		seg, targets := redirections(seg)
+		if p := firstGitHookPath(at(notDevices(targets))); p != "" {
+			return gitHookWhy(p) // a redirect into a hook or git's config (#186)
+		}
 		if o := outsideTarget(at(notDevices(targets)), workDir); o != "" {
 			return "it writes outside the working directory (" + o + ")"
 		}
@@ -116,6 +119,9 @@ func shellRiskFrom(command, workDir, dir string) string {
 		}
 		cmd := filepath.Base(bareCommand(words[0]))
 		args := words[1:]
+		if why := posixHookWriteRisk(cmd, args, nil, at); why != "" {
+			return why
+		}
 		if cmd == "cd" || cmd == "pushd" {
 			cwd = changeDir(cwd, args)
 			continue

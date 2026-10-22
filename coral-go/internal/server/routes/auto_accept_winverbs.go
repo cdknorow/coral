@@ -228,6 +228,9 @@ func winPathsMode(args []string, namedOnly bool) []string {
 			}
 			continue
 		}
+		if a == "" {
+			continue // an empty argument ('' or "") names nothing
+		}
 		if a[0] == '/' && winSwitches[strings.ToLower(a[1:])] { // cmd's /s /q /f /y and robocopy's /MIR; /etc is a path
 			continue
 		}
@@ -310,6 +313,11 @@ func winMovesOutside(st winStage, outside func(string) bool) bool {
 
 func winStageRisk(st winStage, outside func(string) bool) string {
 	for _, t := range st.redir {
+		if !isDiscard(t) && gitHookPath(t) {
+			return gitHookWhy(t) // a redirect into a hook or git's config (#186)
+		}
+	}
+	for _, t := range st.redir {
 		if !isDiscard(t) && pathOutside(t, outside) {
 			return "it writes outside the working directory (" + t + ")"
 		}
@@ -347,6 +355,9 @@ func winStageRisk(st winStage, outside func(string) bool) string {
 	}
 	name := cmdName(words[0])
 	args := words[1:]
+	if why := winHookWriteRisk(name, args, winPaths(args)); why != "" {
+		return why
+	}
 
 	switch name {
 	case "powershell", "pwsh", "powershell_ise":
