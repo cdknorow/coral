@@ -31,6 +31,28 @@ func (g *inputGate) noteOwnText(name, text string) { g.noteOwn(name, text, false
 // noteOwnTyped records that the gate is typing text into name with a send whose Enter is not confirmed from the screen: remembered for ownTypedMaxAge.
 func (g *inputGate) noteOwnTyped(name, text string) { g.noteOwn(name, text, true) }
 
+// markTyped says the paste of text into name, already noted by noteOwnText and setLastPasted, is really typed (the agent has bracketed
+// paste off): its Enter is not confirmed from the screen, so both records are kept only for ownTypedMaxAge.
+func (g *inputGate) markTyped(name, text string) {
+	t := squeeze(text)
+	now := g.now()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.lastPasted[name] == t {
+		if g.lastPastedTypedAt == nil {
+			g.lastPastedTypedAt = map[string]time.Time{}
+		}
+		g.lastPastedTypedAt[name] = now
+	}
+	list := g.ownTexts[name]
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i].text == t {
+			list[i].typed, list[i].at = true, now
+			break
+		}
+	}
+}
+
 func (g *inputGate) noteOwn(name, text string, typed bool) {
 	t := squeeze(text)
 	if t == "" {
@@ -60,7 +82,10 @@ func (g *inputGate) ownLeftover(name, box string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.lastPasted[name] == b {
-		return true
+		// A typed send's Enter is never seen to empty the box: its record counts as Coral's only for ownTypedMaxAge, like its ownTexts entry.
+		if at, typed := g.lastPastedTypedAt[name]; !typed || now.Sub(at) <= ownTypedMaxAge {
+			return true
+		}
 	}
 	var recent []string
 	for _, o := range g.ownTexts[name] {
