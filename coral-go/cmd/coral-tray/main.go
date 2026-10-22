@@ -400,36 +400,36 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		systray.AddSeparator()
 		var mShutdown, mQuit *systray.MenuItem
 		var runningBackend atomic.Value // "tmux" or "pty": what the server runs (watchBackend)
-		if runtime.GOOS == "windows" {
-			// On Windows (PTY backend), agents cannot survive without the server,
-			// so there is only one exit action.
-			mShutdown = systray.AddMenuItem("Quit and stop all agents", "Stop all agents and exit Coral")
-			mQuit = mShutdown // both point to the same item
-		} else {
-			// The built-in terminal (pty) is the default (#6064): quitting Coral ends its agents, so there is one exit; with tmux there are two. The server says which it runs.
-			runningBackend.Store("pty")
-			items := exitItemsFor(runtime.GOOS, runningBackend.Load().(string))
-			mShutdown = systray.AddMenuItem(items.shutdown, items.shutTip)
-			mQuit = systray.AddMenuItem(items.quit, items.quitTip)
-			if items.oneExit {
-				mShutdown.Hide()
-			}
-			go func() {
-				defer safego.Recover("coral-tray/main:watchBackend")
-				watchBackend(ctx.Done(), url, dataDir, &runningBackend, func(b string) {
-					it := exitItemsFor(runtime.GOOS, b)
-					mShutdown.SetTitle(it.shutdown)
-					mShutdown.SetTooltip(it.shutTip)
-					mQuit.SetTitle(it.quit)
-					mQuit.SetTooltip(it.quitTip)
-					if it.oneExit {
-						mShutdown.Hide()
-					} else {
-						mShutdown.Show()
-					}
-				})
-			}()
+		var runningCount atomic.Int64   // agents running now, for what Quit says (#6131)
+		// The built-in terminal (pty) is the default (#6064), and always on Windows: Quit stops the server the normal way, so the agents wake next time and there is one exit; with tmux
+		// there are two. The server says which it runs.
+		runningBackend.Store("pty")
+		items := exitItemsFor(runtime.GOOS, runningBackend.Load().(string), 0)
+		mShutdown = systray.AddMenuItem(items.shutdown, items.shutTip)
+		mQuit = systray.AddMenuItem(items.quit, items.quitTip)
+		if items.oneExit {
+			mShutdown.Hide()
 		}
+		refreshExit := func() {
+			it := exitItemsFor(runtime.GOOS, runningBackend.Load().(string), int(runningCount.Load()))
+			mShutdown.SetTitle(it.shutdown)
+			mShutdown.SetTooltip(it.shutTip)
+			mQuit.SetTitle(it.quit)
+			mQuit.SetTooltip(it.quitTip)
+			if it.oneExit {
+				mShutdown.Hide()
+			} else {
+				mShutdown.Show()
+			}
+		}
+		go func() {
+			defer safego.Recover("coral-tray/main:watchBackend")
+			watchBackend(ctx.Done(), url, dataDir, &runningBackend, func(string) { refreshExit() })
+		}()
+		go func() {
+			defer safego.Recover("coral-tray/main:watchAgents")
+			watchAgents(ctx.Done(), url, dataDir, &runningCount, refreshExit)
+		}()
 
 		go func() {
 			defer safego.Recover("coral-tray/main:347")
@@ -468,15 +468,11 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 						systray.Quit()
 					}()
 				case <-mQuit.ClickedCh:
-					if exitItemsFor(runtime.GOOS, runningBackend.Load().(string)).oneExit {
-						// On the built-in terminal Quit stops the agents too, as the Windows tray's only exit does.
+					if exitItemsFor(runtime.GOOS, runningBackend.Load().(string), 0).oneExit {
+						// On the built-in terminal Quit stops the server the normal way, with no kill: each running agent is marked and wakes next time (#6131). Ending one for good is its own Kill.
 						go func() {
-							defer safego.Recover("coral-tray/main:quitStopsAgents")
-							killed := killAllAgents(url, dataDir)
-							killCoralApp()
-							stopServer()
-							beeep.Notify("Coral", fmt.Sprintf("Stopped %d agent(s) and quit Coral.", killed), "")
-							systray.Quit()
+							defer safego.Recover("coral-tray/main:quitKeepsAgentsPlace")
+							quitKeepingAgentsPlace(url, dataDir, killCoralApp, stopServer, func(m string) { beeep.Notify("Coral", m, "") }, systray.Quit)
 						}()
 						continue
 					}
