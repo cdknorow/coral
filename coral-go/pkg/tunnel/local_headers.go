@@ -55,9 +55,10 @@ const HubUserHeader = "X-Coral-Hub-User"
 var hubUserRoute = regexp.MustCompile(`^/api/board/[^/]+/.+$`)
 
 // ForwardsHubUser reports whether X-Coral-Hub-User is forwarded for a request: a write
-// (not GET or HEAD) to /api/board/{project}/..., and a POST to one of the five routes that
-// take an Idempotency-Key (#5841: the key is scoped to the hub user). The hub (pkg/hubproxy)
-// and the connector apply the same rule.
+// (not GET or HEAD) to /api/board/{project}/..., a POST to one of the five routes that
+// take an Idempotency-Key (#5841: the key is scoped to the hub user). The hub (pkg/hubproxy) and
+// the connector apply the same rule. (The image upload gets the hub user too, but from the stream's
+// own HubUser field, never from a header: see stampUploader.)
 func ForwardsHubUser(method, decodedPath string) bool {
 	if ForwardsIdempotencyKey(method, decodedPath) {
 		return true

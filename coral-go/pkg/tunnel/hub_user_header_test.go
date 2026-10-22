@@ -29,6 +29,12 @@ func TestScrubForwardsTheHubUserHeaderOnlyOnBoardWrites(t *testing.T) {
 		{http.MethodPost, "/api/board/team/tasks/7/complete", true},
 		{http.MethodPost, "/api/board/team/external-messages", true},
 		{http.MethodDelete, "/api/board/team/waits", true},
+		// The image upload (#6088) gets the hub account from the stream's own field (stampUploader), never from a header: scrub drops it here, as on every route that is not a board write.
+		{http.MethodPost, "/api/upload", false},
+		{http.MethodGet, "/api/upload/shot.png", false},
+		{http.MethodDelete, "/api/upload/shot.png", false},
+		{http.MethodPost, "/api/upload/shot.png", false},
+		{http.MethodPut, "/api/upload", false},
 		{http.MethodGet, "/api/board/team/messages", false},
 		{http.MethodHead, "/api/board/team/tasks", false},
 		{http.MethodPost, "/api/board/messages", false},

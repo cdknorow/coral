@@ -170,7 +170,8 @@ func (s *artifactStore) admitUpload(key string) (ok bool, retryIn time.Duration)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	u := s.usageLocked(key)
-	if u.count >= uploadWindowCount || u.bytes >= uploadWindowBytes {
+	count, bytes := windowLimits(key)
+	if u.count >= count || u.bytes >= bytes {
 		return false, uploadWindow - s.now().Sub(u.start)
 	}
 	u.count++
@@ -184,7 +185,17 @@ func (s *artifactStore) chargeUpload(key string, n int64) bool {
 	defer s.mu.Unlock()
 	u := s.usageLocked(key)
 	u.bytes += n
-	return u.bytes <= uploadWindowBytes
+	_, bytes := windowLimits(key)
+	return u.bytes <= bytes
+}
+
+// windowLimits are the uploads and bytes a window key may use in an hour: the full allowance, or half of it for an image sent through Coral Hub (#6088), so one hub account can never
+// use up the allowance of this computer's own dashboard (its key is dashboardUploadBucket).
+func windowLimits(key string) (count int, bytes int64) {
+	if strings.HasPrefix(key, dashboardHubBucket) {
+		return uploadWindowCount / 2, uploadWindowBytes / 2
+	}
+	return uploadWindowCount, uploadWindowBytes
 }
 
 func (s *artifactStore) usageLocked(key string) *uploadUsage {

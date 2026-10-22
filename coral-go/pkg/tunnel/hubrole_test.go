@@ -243,3 +243,82 @@ func TestTheOwnerMarkerReachesTheConfigurationRoutesOnlyForAnOwnerStream(t *test
 	assert.Empty(t, got[4].role)
 	assert.Empty(t, got[5].role, "another route: no marker even for an owner stream")
 }
+
+// #6088: the image upload's hub account comes from the stream's own HubUser field and from nothing the request carried: a header from the browser or the hub is replaced by it or removed.
+func TestStampUploaderTakesTheAccountFromTheStreamOnly(t *testing.T) {
+	const acct, forged = "hub-user-0a1b2c3d", "hub-user-ffffffff"
+	for _, tc := range []struct {
+		name         string
+		method, path string
+		stream       string // the stream's HubUser
+		carried      string // a header the request itself carried
+		want         string
+	}{
+		{"the stream's account", http.MethodPost, UploadPath, acct, "", acct},
+		{"a carried header is replaced", http.MethodPost, UploadPath, acct, forged, acct},
+		{"a carried header with no account on the stream is removed", http.MethodPost, UploadPath, "", forged, ""},
+		{"an account that is not a hub user id is not stamped", http.MethodPost, UploadPath, "alice@example.com", forged, ""},
+		{"a too-long value is not stamped", http.MethodPost, UploadPath, "hub-user-0a1b2c3d00", "", ""},
+		{"another route is left alone", http.MethodPost, "/api/upload/shot.png", acct, "", ""},
+		{"another method is left alone", http.MethodGet, UploadPath, acct, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := http.Header{}
+			if tc.carried != "" {
+				out.Set(HubUserHeader, tc.carried)
+			}
+			stampUploader(out, Header{HubUser: tc.stream}, tc.method, tc.path)
+			if tc.method == http.MethodPost && tc.path == UploadPath {
+				assert.Equal(t, tc.want, out.Get(HubUserHeader))
+			} else {
+				assert.Equal(t, tc.carried, out.Get(HubUserHeader), "untouched")
+			}
+		})
+	}
+}
+
+// #6088, end to end through a real session: the hub account reaches the server's upload handler from the stream's field alone; a forged header, in any spelling, never does; a stream with no
+// account sends none; and no other route gets it.
+func TestTheUploadsHubAccountReachesTheServerFromTheStreamOnly(t *testing.T) {
+	var mu sync.Mutex
+	var got []http.Header
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		got = append(got, r.Header.Clone())
+		mu.Unlock()
+		w.WriteHeader(200)
+	})
+	hub := newHub(t, fastCfg())
+	launch := func() Mode { return TierLaunch }
+	sess, _ := connect(t, hub, local, func(l *LocalHandler) {
+		l.MaxMode = launch
+		l.AllowPath = nil
+		l.AllowRequest = AllowRequest(launch)
+	})
+	do := func(method, path string, ctx context.Context, hdr http.Header) {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(ctx, method, "http://x"+path, nil)
+		for k, vs := range hdr {
+			req.Header[k] = vs
+		}
+		resp, err := sess.RoundTrip(req)
+		require.NoError(t, err, "%s %s", method, path)
+		resp.Body.Close()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	user := WithHubUser(WithHubTier(ctx, "launch"), "hub-user-0a1b2c3d")
+	forged := http.Header{"X-Coral-Hub-User": {"hub-user-ffffffff"}, "x-coral-hub-user": {"hub-user-eeeeeeee"}}
+
+	do(http.MethodPost, UploadPath, user, nil)
+	do(http.MethodPost, UploadPath, user, forged)
+	do(http.MethodPost, UploadPath, WithHubTier(ctx, "launch"), forged)
+	do(http.MethodGet, "/api/health", user, forged)
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, got, 4)
+	assert.Equal(t, []string{"hub-user-0a1b2c3d"}, got[0].Values(HubUserHeader))
+	assert.Equal(t, []string{"hub-user-0a1b2c3d"}, got[1].Values(HubUserHeader), "the stream's account replaces any the request carried")
+	assert.Empty(t, got[2].Values(HubUserHeader), "no account on the stream: none, and the carried copies are gone")
+	assert.Empty(t, got[3].Values(HubUserHeader), "another route: the header is dropped")
+}

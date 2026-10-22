@@ -436,7 +436,8 @@ func TestHEICIsRefusedByNameAndOtherwiseOnlyKeptForTheAgentUnstripped(t *testing
 	rig := uploadRig(t)
 	code, out := postImage(t, "IMG_0042.heic", heicWithEXIF(), "s1")
 	assert.Equal(t, http.StatusBadRequest, code, "a .heic name is not an allowed type")
-	assert.Contains(t, out["error"], "Unsupported file type")
+	assert.Contains(t, out["error"], "HEIC", "the refusal says what to do (#6088)")
+	assert.Contains(t, out["error"], "JPEG")
 
 	code, out = postImage(t, "photo.png", heicWithEXIF(), "s1")
 	require.Equal(t, http.StatusOK, code, out)

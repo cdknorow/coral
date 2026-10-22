@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,8 +19,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/internal/safefs"
 	"github.com/subgentic/coral/internal/uploads"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 var (
@@ -47,7 +51,20 @@ var (
 	}
 
 	maxFileSize int64 = 20 * 1024 * 1024 // 20 MB
+
+	// An iPhone's own photo format. Coral keeps images the agent can read; the picker converts a library photo to JPEG, so a HEIC that arrives was sent as the original (#6088).
+	heicExtensions = map[string]bool{".heic": true, ".heif": true, ".heics": true, ".avif": true}
 )
+
+// heicRefusal is said when a HEIC (or AVIF) image is sent: a sentence the person can act on, not a list of allowed extensions.
+const heicRefusal = "Coral can't read HEIC photos. Send it as a JPEG or PNG (on an iPhone: Settings > Camera > Formats > Most Compatible, or pick the photo again from Photos)."
+
+func headerContentType(h *multipart.FileHeader) string {
+	if h == nil {
+		return ""
+	}
+	return h.Header.Get("Content-Type")
+}
 
 // uploadSettings reads the user settings for the uploads cap (#3364); nil uses the
 // defaults.
@@ -98,6 +115,10 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if heicExtensions[ext] || strings.Contains(strings.ToLower(headerContentType(header)), "heic") || strings.Contains(strings.ToLower(headerContentType(header)), "heif") {
+		errBadRequest(w, heicRefusal)
+		return
+	}
 	if ext == "" || !allowedExtensions[ext] {
 		allowed := make([]string, 0, len(allowedExtensions))
 		for k := range allowedExtensions {
@@ -170,10 +191,20 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	if !safefs.IsSafeID(sid) {
 		sid = ""
 	}
-	if art, why := shareUploadedImage(r.Context(), uploadCoralDir, sid, orDefault(filename, safeName), ext, content); art != nil {
+	via := uploadVia{Hub: cloud.Tunneled(r)}
+	if via.Hub {
+		if u := r.Header.Get(tunnel.HubUserHeader); tunnel.ValidHubUser(u) { // the hub account (hub-user-<8 hex>), never a name or an email; the connector forwards it on this route only (#6088)
+			via.User = u
+		}
+		slog.Info("image uploaded through Coral Hub", "hub_user", via.User, "bytes", len(content))
+	}
+	if art, why, retryAt := shareUploadedImage(r.Context(), uploadCoralDir, sid, orDefault(filename, safeName), ext, content, via); art != nil {
 		reply["artifact"] = art
 	} else {
 		reply["artifact_error"] = why
+		if !retryAt.IsZero() {
+			reply["artifact_retry_at"] = retryAt.UTC().Format(time.RFC3339) // the dashboard says "try again at HH:MM" in the viewer's own time
+		}
 	}
 	writeJSON(w, http.StatusOK, reply)
 }

@@ -21,6 +21,23 @@ import (
 // sends names it.
 const dashboardUploadBucket = "dashboard"
 
+// dashboardHubBucket is the prefix of the windows of images sent through Coral Hub (#6088): one per hub account ("dashboard-hub:hub-user-<8 hex>"), or "dashboard-hub:" when the hub sent no account,
+// each with half the allowance (windowLimits), and none of them this computer's own.
+const dashboardHubBucket = "dashboard-hub:"
+
+// uploadVia says an image came through Coral Hub: Hub is true for any request the connector executed, User the hub account (hub-user-<8 hex>) when the hub sent one, "" otherwise.
+type uploadVia struct {
+	Hub  bool
+	User string
+}
+
+func (v uploadVia) bucket() string {
+	if !v.Hub {
+		return dashboardUploadBucket
+	}
+	return dashboardHubBucket + v.User
+}
+
 // uploadSessionLive says whether a session id is a live session of this server; nil (a test) accepts a safe id. A pasted image's record is made only for a session that exists, so a stream of
 // uploads cannot create folders for ids that do not.
 var uploadSessionLive func(ctx context.Context, sessionID string) bool
@@ -69,56 +86,57 @@ func strippedUpload(content []byte) []byte {
 
 // shareUploadedImage stores the image as an artifact on the session's record, as a pasted image (uploaded_by owner, source paste). It returns the artifact, or the reason there is none (a
 // sentence for the user). data is what strippedUpload gave.
-func shareUploadedImage(ctx context.Context, coralDir, sessionID, name, ext string, data []byte) (*uploadArtifact, string) {
+func shareUploadedImage(ctx context.Context, coralDir, sessionID, name, ext string, data []byte, via uploadVia) (*uploadArtifact, string, time.Time) {
 	if coralDir == "" {
-		return nil, "the artifact store is not available"
+		return nil, "the artifact store is not available", time.Time{}
 	}
 	if ext == ".svg" {
-		return nil, "SVG is kept for the agent only; it is not shared"
+		return nil, "SVG is kept for the agent only; it is not shared", time.Time{}
 	}
 	mt := uploadImageType(ext, data)
 	if mt == "" {
-		return nil, "this file is not a picture Coral recognises, so it is kept for the agent only"
+		return nil, "this file is not a picture Coral recognises, so it is kept for the agent only", time.Time{}
 	}
 	if sessionID == "" {
-		return nil, "the agent this image is for is not known, so it is kept for the agent only"
+		return nil, "the agent this image is for is not known, so it is kept for the agent only", time.Time{}
 	}
 	if uploadSessionLive != nil && !uploadSessionLive(ctx, sessionID) {
-		return nil, "the agent this image is for is not running here, so it is kept for the agent only"
+		return nil, "the agent this image is for is not running here, so it is kept for the agent only", time.Time{}
 	}
 	if mt != "image/bmp" {
 		cleaned, _, err := cleanUploadedImage(data) // a WebP or TIFF with camera or location data is refused here; a JPEG, PNG or GIF is already clean
 		if err != nil {
 			var meta errImageMetadata
 			if errors.As(err, &meta) {
-				return nil, string(meta)
+				return nil, string(meta), time.Time{}
 			}
-			return nil, err.Error()
+			return nil, err.Error(), time.Time{}
 		}
 		data = cleaned
 	}
 	if low, _ := diskguard.Low(); low {
-		return nil, "the disk Coral stores its data on is almost full"
+		return nil, "the disk Coral stores its data on is almost full", time.Time{}
 	}
 	if !board.ValidLabel(name, 160) {
 		name = "image" + ext
 	}
 	st := storeFor(coralDir)
-	if ok, retry := st.admitUpload(dashboardUploadBucket); !ok {
-		return nil, fmt.Sprintf("the hourly limit for shared images is used up; try again in %s", retry.Round(time.Minute))
+	key := via.bucket()
+	if ok, retry := st.admitUpload(key); !ok {
+		return nil, fmt.Sprintf("the hourly limit for shared images is used up; try again in %s", retry.Round(time.Minute)), time.Now().Add(retry)
 	}
-	if !st.chargeUpload(dashboardUploadBucket, int64(len(data))) {
-		return nil, "the hourly size limit for shared images is used up; try again later"
+	if !st.chargeUpload(key, int64(len(data))) {
+		return nil, "the hourly size limit for shared images is used up; try again later", time.Now().Add(uploadWindow)
 	}
-	id, meta, err := storeArtifactBy(coralDir, sessionID, name, mt, uploadedByOwner, sourcePaste, data)
+	id, meta, err := storeArtifactVia(coralDir, sessionID, name, mt, uploadedByOwner, sourcePaste, via.User, data)
 	if err != nil {
 		if errors.Is(err, errStoreFull) {
-			return nil, "the artifact store is full (its limit is in Settings > Storage)"
+			return nil, "the artifact store is full (its limit is in Settings > Storage)", time.Time{}
 		}
-		return nil, "the image could not be stored as an artifact"
+		return nil, "the image could not be stored as an artifact", time.Time{}
 	}
 	// The stored name and type are the first uploader's (the sidecar is written once): the reply says what is stored.
-	return &uploadArtifact{ID: id, URI: "coral://artifacts/" + id, MediaType: meta.MediaType, Size: meta.Size, Name: meta.Name, Inline: inlineImageTypes[strings.ToLower(meta.MediaType)]}, ""
+	return &uploadArtifact{ID: id, URI: "coral://artifacts/" + id, MediaType: meta.MediaType, Size: meta.Size, Name: meta.Name, Inline: inlineImageTypes[strings.ToLower(meta.MediaType)]}, "", time.Time{}
 }
 
 // uploadedByOwner is the upload record's uploaded_by for an image from the dashboard.

@@ -62,3 +62,19 @@ func stampRole(out http.Header, h Header, method, decodedPath string) {
 		}
 	}
 }
+
+// UploadPath is the image upload of the dashboard's composer (the Add image button, a paste, a drop).
+const UploadPath = "/api/upload"
+
+// stampUploader sets HubUserHeader on a POST to UploadPath from the stream's own HubUser field (#6088), the account Coral Hub says is behind the request: the upload record and the log line name it,
+// and its hourly share is its own. Whatever the request carried under that name is removed first, so only the stream's value can reach the handler, and a stream with no valid account (a connector
+// older than the field, or a hub that did not send one) leaves the header unset. Any other route and method is untouched here: scrub has already dropped the header from them.
+func stampUploader(out http.Header, h Header, method, decodedPath string) {
+	if method != http.MethodPost || decodedPath != UploadPath {
+		return
+	}
+	out.Del(HubUserHeader)
+	if ValidHubUser(h.HubUser) {
+		out.Set(HubUserHeader, h.HubUser)
+	}
+}

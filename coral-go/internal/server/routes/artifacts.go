@@ -58,6 +58,8 @@ type agentUploadRecord struct {
 	// the operator for a dashboard paste). Absent on a record made before they were kept: the machine owner's.
 	OwnerKind string `json:"owner_kind,omitempty"`
 	OwnerID   string `json:"owner_id,omitempty"`
+	// HubUser is the Coral Hub account (hub-user-<8 hex>, never a name or an email) that sent an image through Coral Hub (#6088); UploadedBy stays "owner". Absent on an image from this computer's own dashboard.
+	HubUser string `json:"hub_user,omitempty"`
 }
 
 // sourcePaste marks an upload record made from an image pasted or attached in the dashboard.
@@ -283,6 +285,11 @@ func storeArtifact(coralDir, sessionID, name, mediaType string, data []byte) (st
 
 // storeArtifactBy is storeArtifact with the uploader and the record's source named ("owner" and "paste" for the dashboard, #5284); "" and "" is the agent itself.
 func storeArtifactBy(coralDir, sessionID, name, mediaType, uploadedBy, source string, data []byte) (string, agentArtifactMeta, error) {
+	return storeArtifactVia(coralDir, sessionID, name, mediaType, uploadedBy, source, "", data)
+}
+
+// storeArtifactVia is storeArtifactBy for an image that came through Coral Hub: hubUser (hub-user-<8 hex>, or "") is kept on the upload record (#6088).
+func storeArtifactVia(coralDir, sessionID, name, mediaType, uploadedBy, source, hubUser string, data []byte) (string, agentArtifactMeta, error) {
 	digestBytes := sha256.Sum256(data)
 	hexID := hex.EncodeToString(digestBytes[:])
 	defer lockArtifact(hexID)() // a delete of the same digest waits (#3553)
@@ -310,7 +317,9 @@ func storeArtifactBy(coralDir, sessionID, name, mediaType, uploadedBy, source st
 	}
 	if up := uploadsDir(coralDir, sessionID); up != "" {
 		if os.MkdirAll(up, 0o700) == nil {
-			rec, _ := json.Marshal(newUploadRecord(mine, sessionID, uploadedBy, source))
+			r := newUploadRecord(mine, sessionID, uploadedBy, source)
+			r.HubUser = hubUser
+			rec, _ := json.Marshal(r)
 			_ = writeFileAtomic(filepath.Join(up, hexID+".json"), rec, 0o600)
 		}
 	}

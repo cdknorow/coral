@@ -139,6 +139,7 @@ func TestDashboardModeTextMatchesTheRouteTable(t *testing.T) {
 		"team-sleep":    {"POST /api/sessions/live/team/{boardName}/sleep", "POST /api/sessions/live/team/{boardName}/wake"},
 		"mb-pause":      {"POST /api/board/{project}/pause", "POST /api/board/{project}/resume"},
 		"mb-msg-delete": {"DELETE /api/board/{project}/messages/{messageID}"},
+		"attach-image":  {"POST /api/upload"}, // the Add image button (#6088): Launch through the hub, as its route is
 	}
 	for action, rs := range controls {
 		want := modeOf(rs...)
