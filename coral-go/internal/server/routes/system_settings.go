@@ -55,7 +55,8 @@ var hubTrustSettingRoutes = map[string]string{
 	MaxModeSetting:            "PUT /api/cloud/max-mode",
 	AllowHubAutoAcceptSetting: "PUT /api/cloud/allow-auto-accept",
 	RedactTokensSetting:       "PUT /api/cloud/redact-tokens",
-	HubRelaunchSetting:        "PUT /api/cloud/hub-relaunch", // #5280
+	HubRelaunchSetting:        "PUT /api/cloud/hub-relaunch",       // #5280
+	CodexTrustHooksSetting:    "PUT /api/system/codex-trust-hooks", // #153
 }
 
 // hubSigninSettingKey: a Sign in with Coral Hub setting (server.HubSigninEnabledSetting and its

@@ -97,6 +97,8 @@ var operatorOnlyRoutes = map[string]string{
 	"PUT /api/cloud/hub-relaunch":                    "change whether Coral Hub may relaunch Coral for an update",                         // #5280
 	"PUT /api/cloud/hub-cross-team":                  "change whether Coral Hub may turn cross-team messaging and file sharing on or off", // #5572
 	"PUT /api/system/identity-actor":                 "change how Coral decides who is calling",
+	"PUT /api/system/codex-trust-hooks":              "change whether Coral trusts its own hooks for the Codex agents it launches", // #153
+	"GET /api/system/codex-trust-hooks":              "read whether Coral trusts its own hooks for the Codex agents it launches",   // #153
 	"POST /api/cloud/connect":                        "connect to Coral Hub",
 	"POST /api/cloud/connect/cancel":                 "cancel connecting to Coral Hub",
 	"POST /api/cloud/disconnect":                     "disconnect from Coral Hub",
