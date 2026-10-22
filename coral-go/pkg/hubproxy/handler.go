@@ -226,6 +226,8 @@ const (
 
 // proxyDeadlines bounds the upload separately from waiting for response headers.
 // An early response stops only the header timer: its upload still has bounds.
+// Progress means the target consumed body bytes; a target that stops reading
+// for 30 s also counts as a stall, even if the browser has more bytes available.
 // All transitions, including timeout callbacks, serialize with handler cleanup.
 type proxyDeadlines struct {
 	mu                                 sync.Mutex

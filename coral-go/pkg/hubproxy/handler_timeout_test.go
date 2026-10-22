@@ -198,3 +198,73 @@ func TestProxyUploadOverallTimeout(t *testing.T) {
 		require.Greater(t, body.remaining, int64(0), "the trickle never reached EOF")
 	})
 }
+
+// Receiving response headers must not remove the limits on an ongoing upload.
+func TestProxyUploadTimeoutAfterEarlyResponse(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		interval time.Duration
+		cutoff   time.Duration
+	}{
+		{name: "silent body", interval: time.Hour, cutoff: 30 * time.Second},
+		{name: "endless trickle", interval: time.Second, cutoff: 10 * time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				body := &pacedUpload{remaining: 1 << 60, interval: tc.interval, cancel: func() {}}
+				received := make(chan int64, 1)
+				started := time.Now()
+				target := uploadTimeoutTarget{roundTrip: func(r *http.Request) (*http.Response, error) {
+					body.ctx = r.Context()
+					reader, writer := io.Pipe()
+					go func() {
+						n, _ := io.Copy(io.Discard, r.Body)
+						received <- n
+						_ = writer.Close()
+					}()
+					// Reply at once, but keep the response and upload open until
+					// the proxy cancels the request rather than returning EOF.
+					require.Zero(t, time.Since(started))
+					return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: reader}, nil
+				}}
+				req := httptest.NewRequest(http.MethodPost, "/api/remote/a/api/upload", body)
+				req.ContentLength = -1
+				recorder := httptest.NewRecorder()
+				(&Handler{}).proxyHTTP(recorder, req, "a", target, "/api/upload", "/api/upload")
+				require.Equal(t, http.StatusOK, recorder.Code, "the early response was forwarded")
+				require.Equal(t, tc.cutoff, time.Since(started))
+				if tc.name == "silent body" {
+					require.Zero(t, <-received)
+				} else {
+					require.Greater(t, <-received, int64(0))
+				}
+				require.Greater(t, body.remaining, int64(0), "the body did not reach EOF")
+			})
+		})
+	}
+}
+
+func TestProxyUploadProgressResetsStall(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		body := &pacedUpload{remaining: 1 << 60, interval: 20 * time.Second, cancel: func() {}}
+		started := time.Now()
+		target := uploadTimeoutTarget{roundTrip: func(r *http.Request) (*http.Response, error) {
+			body.ctx = r.Context()
+			// The browser sends one byte at 20 s, then goes silent. The
+			// callback at 30 s must rearm for the remaining 20 s of idle time.
+			n, err := r.Body.Read(make([]byte, 1))
+			require.NoError(t, err)
+			require.Equal(t, 1, n)
+			require.Equal(t, 20*time.Second, time.Since(started))
+			body.interval = time.Hour
+			_, err = io.Copy(io.Discard, r.Body)
+			return nil, err
+		}}
+		req := httptest.NewRequest(http.MethodPost, "/api/remote/a/api/upload", body)
+		req.ContentLength = -1
+		recorder := httptest.NewRecorder()
+		(&Handler{}).proxyHTTP(recorder, req, "a", target, "/api/upload", "/api/upload")
+		require.Equal(t, http.StatusBadGateway, recorder.Code)
+		require.Equal(t, 50*time.Second, time.Since(started), "stall time starts at the most recent body byte")
+	})
+}
