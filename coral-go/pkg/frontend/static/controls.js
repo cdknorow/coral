@@ -778,43 +778,58 @@ export function requestGoal(name, agentType, sessionId) {
     });
 }
 
-// Claude Code modes cycle via Shift+Tab (BTab in tmux).
-// Order: default -> plan -> auto-accept -> default
-const MODE_CYCLE = ["default", "auto", "plan"];
+// Claude Code's permission modes cycle with Shift+Tab (BTab in tmux). Verified in Claude Code 2.1.307 (Codex Test, an isolated scratch HOME: four single presses from Manual gave accept edits, plan, auto,
+// and the footer said so each time) and in 2.1.308's own next-mode function: Manual -> Accept edits -> Plan -> Bypass Permissions (only when the session has it available) -> Auto (only when auto
+// mode is available) -> Manual; from Auto the first press goes to Manual; Don't Ask goes to Manual. Which of Bypass and Auto follow Plan depends on the session, so only the steps that always hold are
+// named ahead (Manual -> Accept edits -> Plan, Auto -> Manual); after Plan the button says "the next mode" and the footer shows which.
+// Each state is named as Claude names it, from its footer: "manual mode on", "accept edits on", "plan mode on", "auto mode on", "bypass permissions on" (Claude's Auto is Auto, not Accept Edits).
+const MODES = {
+    default: { label: "Manual", short: "Manual", next: "acceptEdits" }, // the mode a session starts in unless told otherwise (Coral's Settings call it Default)
+    acceptEdits: { label: "Accept Edits", short: "Accept", next: "plan" },
+    plan: { label: "Plan", short: "Plan", next: null },
+    auto: { label: "Auto", short: "Auto", next: "default" },
+    bypassPermissions: { label: "Bypass Permissions", short: "Bypass", next: null },
+    dontAsk: { label: "Don't Ask", short: "Don't Ask", next: "default" },
+};
+const MODE_CYCLE = ["default", "acceptEdits", "plan"]; // the steps that hold in every session
 
 /**
- * Read the current Claude Code mode from the last terminal buffer scan.
- * Returns "default" | "plan" | "auto", or null when nothing usable has been
- * captured yet (empty buffer or a non-Claude session).
+ * Read the current Claude Code mode: the footer of the last terminal buffer scan (the CLI's own mode line), else the live feed's live_permission_mode (from the hook). Returns a key of MODES, or null when there is no mode line to read (nothing
+ * captured yet, a non-Claude session, a screen that is not at the prompt). The footer is the last lines: words about a mode higher up (a conversation about plan mode) do not count.
  */
 function detectCurrentMode() {
+    if (state.currentSession?.agent_type === "terminal") return null;
+    // The CLI's mode line is read first: it is the status line NOW, and Shift+Tab at an idle prompt sends no hook event, so the hook's mode (live_permission_mode: Claude's permission_mode, kept by the
+    // server) is the mode as of the last event. It answers when there is no mode line to read (the screen is not at the prompt, or nothing is captured yet).
     const el = document.getElementById("pane-capture");
     const text = (el?.textContent || "").trim().toLowerCase();
-    if (!text || text === "no capture available") return null;
-    if (el?.dataset.captureState === "error") return null;
-    if (state.currentSession?.agent_type === "terminal") return null;
-    if (text.includes("plan mode")) return "plan";
-    if (text.includes("auto-accept") || text.includes("accept edits")) return "auto";
-    return "default";
+    if (text && text !== "no capture available" && el?.dataset.captureState !== "error") {
+        const footer = text.split("\n").filter(l => l.trim()).slice(-8).join("\n");
+        if (footer.includes("manual mode") || footer.includes("? for shortcuts")) return "default"; // 2.1.307 says "manual mode on"; an older Claude showed "? for shortcuts" in it
+        if (footer.includes("plan mode")) return "plan";
+        if (footer.includes("auto mode")) return "auto";
+        if (footer.includes("bypass permissions")) return "bypassPermissions";
+        if (footer.includes("don't ask")) return "dontAsk";
+        if (footer.includes("accept edits") || footer.includes("auto-accept")) return "acceptEdits"; // "auto-accept edits" is an older Claude's words
+    }
+    const sig = state.currentSession?.live_permission_mode;
+    if (typeof sig === "string" && Object.prototype.hasOwnProperty.call(MODES, sig)) return sig;
+    return null; // no mode line and no hook mode: unknown, never guessed
 }
-
-const MODE_SHORT_LABELS = { default: "Default", plan: "Plan", auto: "Accept" };
 
 function _modeLabelInfo() {
     const current = detectCurrentMode();
     if (!current) {
         return {
             label: "Mode",
-            tooltip: "Cycles through Default → Plan → Accept Edits modes (Shift+Tab). Each click advances one step.",
-            aria: "Mode: unknown. Click to cycle Default, Plan, Accept Edits (Shift+Tab).",
+            tooltip: "Cycles Claude's permission mode (Shift+Tab). Each click advances one step.",
+            aria: "Mode: unknown. Click to cycle Claude's permission mode (Shift+Tab).",
         };
     }
-    const next = MODE_CYCLE[(MODE_CYCLE.indexOf(current) + 1) % MODE_CYCLE.length];
-    return {
-        label: MODE_SHORT_LABELS[current],
-        tooltip: `Current: ${MODE_LABELS[current]}. Click to switch to ${MODE_LABELS[next]} (Shift+Tab).`,
-        aria: `Mode: ${MODE_LABELS[current]}. Click to switch to ${MODE_LABELS[next]} (Shift+Tab).`,
-    };
+    const m = MODES[current];
+    const next = m.next ? MODES[m.next].label : "";
+    const tail = next ? `Click to switch to ${next} (Shift+Tab).` : "Click for the next mode (Shift+Tab).";
+    return { label: m.short, tooltip: `Current: ${m.label}. ${tail}`, aria: `Mode: ${m.label}. ${tail}` };
 }
 
 /** Sync the Mode quick-action label/tooltip with the terminal buffer. */
@@ -838,12 +853,13 @@ if (typeof document !== "undefined") {
 export function sendModeToggle(targetMode) {
     const current = detectCurrentMode() || "default";
     if (current === targetMode) {
-        showToast(`Already in ${targetMode === "plan" ? "Plan" : targetMode === "auto" ? "Accept Edits" : "Base"} mode`);
+        showToast(`Already in ${MODES[targetMode] ? MODES[targetMode].label : "that"} mode`);
         return;
     }
-
+    // Only the steps that hold in every session can be counted ahead (Default, Accept edits, Plan); from or to another mode the Mode button steps one at a time and the footer says where it is.
     const currentIdx = MODE_CYCLE.indexOf(current);
     const targetIdx = MODE_CYCLE.indexOf(targetMode);
+    if (currentIdx < 0 || targetIdx < 0) { showToast("Use the Mode button to step to that mode"); return; }
     let presses = (targetIdx - currentIdx + MODE_CYCLE.length) % MODE_CYCLE.length;
     if (presses === 0) presses = MODE_CYCLE.length;
 
@@ -851,13 +867,9 @@ export function sendModeToggle(targetMode) {
     sendRawKeys(keys);
 }
 
-const MODE_LABELS = { default: "Default", plan: "Plan", auto: "Accept Edits" };
-
 export function cycleModeToggle() {
-    const current = detectCurrentMode() || "default";
-    const currentIdx = MODE_CYCLE.indexOf(current);
-    const nextMode = MODE_CYCLE[(currentIdx + 1) % MODE_CYCLE.length];
-    showToast(`Switching to ${MODE_LABELS[nextMode]} mode`);
+    const m = MODES[detectCurrentMode() || ""];
+    showToast(m && m.next ? `Switching to ${MODES[m.next].label} mode` : "Switching to the next mode");
     sendRawKeys(["BTab"], { silent: true });
 }
 

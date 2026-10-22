@@ -467,6 +467,7 @@ func (h *SessionsHandler) agentRow(trace *phaseTrace, agent AgentInfo, lv liveIn
 		"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
 		"waiting_summary":       nilIf(!state.NeedsInput, state.WaitingSummary),
 		"waiting_kind":          nilIf(!state.NeedsInput || state.WaitingKind == "", state.WaitingKind),
+		"live_permission_mode":  h.liveMode(sid),
 		"working":               state.Working,
 		"stuck":                 state.Stuck,
 		"changed_file_count":    fc,

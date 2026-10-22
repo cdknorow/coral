@@ -147,6 +147,9 @@ func main() {
 	if hooksRev > 0 {
 		event["hooks_rev"] = hooksRev // which hook set this agent loaded at launch (#3655 F3)
 	}
+	if mode := claudePermissionMode(d); mode != "" && agyEvent == "" && strings.HasPrefix(os.Getenv("CORAL_SESSION_NAME"), "claude-") {
+		event["permission_mode"] = mode // the CLI's mode now (it follows Shift+Tab): the dashboard's Mode button reads it
+	}
 	if _, err := hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/events"), event); err != nil {
 		hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", hooks.RedactedURL(base), agentName, event["event_type"], err))
 		return
@@ -165,6 +168,16 @@ func main() {
 	}
 
 	hooks.DebugLog(fmt.Sprintf("DONE: agent=%s event_type=%s", agentName, event["event_type"]))
+}
+
+// claudePermissionMode is the permission mode a Claude hook payload carries (permission_mode), when it is one of the six words the CLI has, and the empty string otherwise. The server checks again.
+func claudePermissionMode(d map[string]any) string {
+	m, _ := d["permission_mode"].(string)
+	switch m {
+	case "default", "acceptEdits", "plan", "auto", "bypassPermissions", "dontAsk":
+		return m
+	}
+	return ""
 }
 
 // hookArgs are the hook's own arguments, from the command Coral installed.

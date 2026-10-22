@@ -316,20 +316,32 @@ async function run() {
         // The fixture session has no real terminal, so the poll returns an
         // error placeholder rather than a buffer -> label must fall back.
         check('Mode label falls back to "Mode" when undetectable', header.modeLabel === 'Mode', header.modeLabel);
-        check('Mode aria-label explains unknown state', /^Mode: unknown\. Click to cycle Default, Plan, Accept Edits/.test(await evalInPage(`document.getElementById('btn-mode-toggle').getAttribute('aria-label')`)));
+        check('Mode aria-label explains unknown state', /^Mode: unknown\. Click to cycle Claude's permission mode/.test(await evalInPage(`document.getElementById('btn-mode-toggle').getAttribute('aria-label')`)));
 
         // D4: feed a fake terminal buffer and trigger the rescan hook.
         await evalInPage(`const pc = document.getElementById('pane-capture'); pc.dataset.captureState = 'ok'; pc.textContent = '⏸ plan mode on (shift+tab to cycle)'; document.dispatchEvent(new CustomEvent('coral:terminal-updated')); true`);
         const plan = await evalInPage(`(() => ({ label: document.querySelector('#btn-mode-toggle .btn-label').textContent, tip: document.getElementById('btn-mode-toggle').getAttribute('data-tooltip') }))()`);
         check('Mode label tracks buffer: Plan', plan.label === 'Plan', plan.label);
-        check('Mode tooltip names current and next mode', plan.tip === 'Current: Plan. Click to switch to Default (Shift+Tab).', plan.tip);
-        check('Mode aria-label names current and next mode', await evalInPage(`document.getElementById('btn-mode-toggle').getAttribute('aria-label')`) === 'Mode: Plan. Click to switch to Default (Shift+Tab).');
+        check('Mode tooltip: Plan is followed by a mode that depends on the session (Bypass, Auto or Default), so it is not named ahead', plan.tip === 'Current: Plan. Click for the next mode (Shift+Tab).', plan.tip);
+        check('Mode aria-label names current and next mode', await evalInPage(`document.getElementById('btn-mode-toggle').getAttribute('aria-label')`) === 'Mode: Plan. Click for the next mode (Shift+Tab).');
         await evalInPage(`document.getElementById('pane-capture').textContent = '⏵⏵ accept edits on (shift+tab to cycle)'; document.dispatchEvent(new CustomEvent('coral:terminal-updated')); true`);
         check('Mode label tracks buffer: Accept', await evalInPage(`document.querySelector('#btn-mode-toggle .btn-label').textContent`) === 'Accept');
+        // Claude's own names for every state (Claude 2.1.308's mode table): an agent started in Auto is told Auto, not Accept Edits
+        for (const [footer, label, tip] of [['⏵⏵ auto mode on (shift+tab to cycle)', 'Auto', 'Current: Auto. Click to switch to Manual (Shift+Tab).'], ['⏵⏵ bypass permissions on (shift+tab to cycle)', 'Bypass', 'Current: Bypass Permissions. Click for the next mode (Shift+Tab).'], ['⏵⏵ accept edits on (shift+tab to cycle)', 'Accept', 'Current: Accept Edits. Click to switch to Plan (Shift+Tab).']]) {
+            await evalInPage(`document.getElementById('pane-capture').textContent = ${JSON.stringify(footer)}; document.dispatchEvent(new CustomEvent('coral:terminal-updated')); true`);
+            const got = await evalInPage(`(() => ({ label: document.querySelector('#btn-mode-toggle .btn-label').textContent, tip: document.getElementById('btn-mode-toggle').getAttribute('data-tooltip') }))()`);
+            check(`Mode button names the footer "${footer.slice(3, 20)}" as ${label}`, got.label === label && got.tip === tip, JSON.stringify(got));
+        }
+        // only the footer counts: a conversation that mentions another mode higher up does not change the state
+        await evalInPage(`document.getElementById('pane-capture').textContent = 'we should try plan mode and auto mode later\\n' + '\\n'.repeat(1) + 'more\\n'.repeat(10) + '❯ \\n  ⏵⏵ auto mode on (shift+tab to cycle)'; document.dispatchEvent(new CustomEvent('coral:terminal-updated')); true`);
+        check('Mode button reads the footer, not words higher up', await evalInPage(`document.querySelector('#btn-mode-toggle .btn-label').textContent`) === 'Auto');
         await evalInPage(`document.getElementById('pane-capture').textContent = '> some prompt'; document.dispatchEvent(new CustomEvent('coral:terminal-updated')); true`);
         const def = await evalInPage(`(() => ({ label: document.querySelector('#btn-mode-toggle .btn-label').textContent, tip: document.getElementById('btn-mode-toggle').getAttribute('data-tooltip') }))()`);
-        check('Mode label tracks buffer: Default', def.label === 'Default', def.label);
-        check('Default tooltip points at Accept Edits next', def.tip === 'Current: Default. Click to switch to Accept Edits (Shift+Tab).', def.tip);
+        check('Mode label: a screen with no mode line is unknown (Mode), never guessed as Default', def.label === 'Mode', def.label);
+        await evalInPage(`document.getElementById('pane-capture').textContent = '❯ \\n  ⏸ manual mode on (shift+tab to cycle)'; document.dispatchEvent(new CustomEvent('coral:terminal-updated')); true`);
+        const man = await evalInPage(`(() => ({ label: document.querySelector('#btn-mode-toggle .btn-label').textContent, tip: document.getElementById('btn-mode-toggle').getAttribute('data-tooltip') }))()`);
+        check('Mode label tracks buffer: Manual (Claude 2.1.307: "manual mode on")', man.label === 'Manual' && man.tip === 'Current: Manual. Click to switch to Accept Edits (Shift+Tab).', JSON.stringify(man));
+        
 
         // Regression: a live coral_diff tick that omits first_prompt (and has no
         // display_name/summary) must not blank the row goal, initials, header

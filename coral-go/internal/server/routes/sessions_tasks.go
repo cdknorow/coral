@@ -403,6 +403,8 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		DurationMs *int64 `json:"duration_ms"`
 		ToolUseID  string `json:"tool_use_id"`
 		HooksRev   int    `json:"hooks_rev"`
+		// PermissionMode is the Claude CLI's current permission mode, from its hook payload (live_permission_mode.go)
+		PermissionMode string `json:"permission_mode"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -471,6 +473,9 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	if body.SessionID != "" {
 		if ls, err := h.ss.GetLiveSession(r.Context(), body.SessionID); err == nil && ls != nil {
 			agentName = ls.AgentName
+			if hasToken {
+				h.noteLiveMode(body.SessionID, ls.AgentType, body.PermissionMode) // from the agent's own hooks only
+			}
 		}
 	}
 
@@ -529,6 +534,7 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		// typed into whatever runs in that terminal next (#3481). Not on SessionStart:
 		// a launch's first prompt is a held send waiting for that very start.
 		ptymanager.DropHeld(owner.SessionName, "the agent's session ended")
+		h.liveModes.Delete(body.SessionID) // an ended session keeps no mode (and the map no id for the life of the process)
 	}
 	// Only the agent's own (token-verified) notification wakes auto-accept early; the sweep
 	// itself acts only on the state derived from such events.

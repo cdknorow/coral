@@ -50,7 +50,8 @@ func lsrRows(t *testing.T, h *SessionsHandler, old, full bool) string {
 	} else {
 		rows, err = h.liveSessionRows(req, newPhaseTrace("oracle"), full)
 		for _, r := range rows {
-			delete(r, "team_health_on") // new in #4962: the old implementation has no such field
+			delete(r, "team_health_on")       // new in #4962: the old implementation has no such field
+			delete(r, "live_permission_mode") // new in #5951: the old implementation has no such field
 		}
 	}
 	b, merr := json.Marshal(rows)
