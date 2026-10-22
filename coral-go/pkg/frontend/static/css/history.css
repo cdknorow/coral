@@ -42,6 +42,7 @@
     transition: all 0.15s;
 }
 
+@media (pointer: coarse), (max-width: 767px) { .history-tab-btn { min-height: var(--control-touch-height, 44px); } } /* a chat's tabs are 44 px targets on a phone (#6094) */
 .history-tab-btn:hover {
     color: var(--text-primary);
 }

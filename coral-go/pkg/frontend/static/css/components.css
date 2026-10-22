@@ -389,6 +389,11 @@
     margin-left: auto;
 }
 .mb-save-btn + .mb-delete-msg-btn { margin-left: 0; }
+/* On touch or a phone-width window the board message's Save and Delete are 44 px targets (they were 17-24 px): History and the Board are reachable on a phone through the Hub now (#6115, #6094) */
+@media (pointer: coarse), (max-width: 767px) {
+    .mb-message-header { align-items: center; }
+    .mb-save-btn, .mb-delete-msg-btn { display: inline-flex; align-items: center; justify-content: center; min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
+}
 .mb-save-btn svg { width: var(--icon-inline-size, 1rem); height: var(--icon-inline-size, 1rem); }
 .mb-message:hover .mb-save-btn,
 .mb-message:focus-within .mb-save-btn,
