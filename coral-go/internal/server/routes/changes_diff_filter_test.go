@@ -135,7 +135,7 @@ func TestGeneratePersistedDiffCap(t *testing.T) {
 	diff, err := h.generatePersistedDiff(context.Background(), repo)
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(diff), diffPersistMax)
-	assert.Regexp(t, `# Coral: \d+ more new files are not in this diff`, string(diff))
+	assert.Regexp(t, `# Coral: \d+ new files are left out of this diff`, string(diff))
 	assert.NotContains(t, string(diff), "diff cut at")
 
 	// As tracked changes (45 small committed files that each grew by 200 KiB): cut at 8 MiB, with the note.
@@ -336,7 +336,7 @@ func TestGeneratePersistedDiffManyNewFiles(t *testing.T) {
 
 	out := string(diff)
 	assert.True(t, strings.HasPrefix(out, "# Coral: "), "the notes come first, so the cap never cuts them off")
-	assert.Regexp(t, `# Coral: \d+ more new files are not in this diff`, out)
+	assert.Regexp(t, `# Coral: \d+ new files are left out of this diff`, out)
 	assert.Contains(t, out, "+++ b/gen/f0000.txt")
 	assert.LessOrEqual(t, len(diff), diffPersistMax+512)
 
@@ -363,7 +363,7 @@ func TestGeneratePersistedDiffNewFileNames(t *testing.T) {
 		assert.Contains(t, string(diff), "+content of "+n, n)
 	}
 	assert.Equal(t, 1, strings.Count(string(diff), "+content of a.txt"), "a.txt once: [a].txt did not match it as a pattern")
-	assert.NotContains(t, string(diff), "more new files are not in this diff")
+	assert.NotContains(t, string(diff), "left out of this diff")
 
 	batched, err := diffNewFiles(context.Background(), repo, names)
 	require.NoError(t, err)
@@ -382,4 +382,13 @@ func TestGeneratePersistedDiffNewFileNames(t *testing.T) {
 		assert.NotEmpty(t, section(batched, n), n)
 		assert.Equal(t, section(oneByOne, n), section(batched, n), "the same patch for %s either way", n)
 	}
+}
+
+// #279: the note names how many new files were left out, the limit that applied (the file limit only on the older-git path),
+// and that they are still in the folder; one file reads in the singular.
+func TestSkippedNewFilesNoteWording(t *testing.T) {
+	assert.Equal(t, "3000 new files are left out of this diff, which is limited to 8 MiB. They are still in the agent's working folder.",
+		skippedNewFilesNote(3000, false))
+	assert.Equal(t, "1 new file is left out of this diff, which is limited to 8 MiB and, with this computer's older git, to 300 new files. They are still in the agent's working folder.",
+		skippedNewFilesNote(1, true))
 }

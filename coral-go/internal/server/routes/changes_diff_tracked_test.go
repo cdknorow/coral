@@ -45,7 +45,7 @@ func TestPersistedDiffKeepsTrackedChangesBeforeNewFiles(t *testing.T) {
 	assert.LessOrEqual(t, len(diff), diffPersistMax)
 	assert.NotContains(t, out, "diff cut at", "whole new files only: nothing is cut mid-file")
 	in := strings.Count(out, "+++ b/u/")
-	m := regexp.MustCompile(`# Coral: (\d+) more new files are not in this diff`).FindStringSubmatch(out)
+	m := regexp.MustCompile(`# Coral: (\d+) new files are left out of this diff`).FindStringSubmatch(out)
 	require.NotNil(t, m)
 	more, err := strconv.Atoi(m[1])
 	require.NoError(t, err)
