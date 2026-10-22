@@ -85,14 +85,14 @@ const hex = i => i.toString(16).padStart(20, '0');
         assert.ok(first.human && first.assistant && first.copyAlso, 'on your messages and the agent\'s, beside Copy: ' + JSON.stringify(first));
         const lastIdx = parseInt(first.k, 16);
         let st = await btnState(lastIdx);
-        assert.deepEqual(st, { pressed: 'false', label: 'Save for later', hidden: false });
+        assert.deepEqual({ ...st, label: st.label.split(':')[0] }, { pressed: 'false', label: 'Save for later', hidden: false }); // the name goes on with the message it is on
 
         console.log('2. Saving by the keyboard (a real Enter on the focused button): filled, named "Remove from saved", on the server');
         await ev(`${C}.querySelector('[data-msg-key="${hex(lastIdx)}"] .chat-save-btn').focus(); true`);
         await key('Enter', 'Enter', 13);
         await waitFor(`${C}.querySelector('[data-msg-key="${hex(lastIdx)}"] .chat-save-btn').getAttribute('aria-pressed') === 'true'`, 'the button to show saved', 6000);
         st = await btnState(lastIdx);
-        assert.deepEqual(st, { pressed: 'true', label: 'Remove from saved', hidden: false });
+        assert.deepEqual({ ...st, label: st.label.split(':')[0] }, { pressed: 'true', label: 'Remove from saved', hidden: false });
         assert.equal(await ev(`document.activeElement.classList.contains('chat-save-btn')`), true, 'the focus stays on the button');
         const toast1 = await ev(`(() => { const t = document.querySelector('.toast'); return t ? { text: t.querySelector('.toast-message').textContent, action: (t.querySelector('.toast-action') || {}).textContent } : null; })()`);
         assert.deepEqual(toast1, { text: 'Saved.', action: 'View saved' }, 'a toast says so and offers the list');
@@ -195,7 +195,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         await key('Enter', 'Enter', 13);
         await waitFor(TAB_OPEN, 'Enter on the Saved tab to show it', 6000, `({ active: document.activeElement && (document.activeElement.id || document.activeElement.tagName), tabCls: document.getElementById('agentic-tab-saved').className, tabDisp: getComputedStyle(document.getElementById('agentic-tab-saved')).display, panelCls: document.getElementById('agentic-panel-saved').className, collapsed: document.getElementById('agentic-state').className })`);
         assert.equal(await ev(`document.activeElement.id`), 'agentic-tab-saved', 'the focus stays on the tab, as with every tab');
-        assert.equal(await ev(`document.getElementById('agentic-tab-saved').getAttribute('aria-label')`), 'Saved for later');
+        assert.equal(await ev(`document.getElementById('agentic-tab-saved').getAttribute('aria-label')`), 'Saved for later on this page'); // not the top bar button's name: that one opens everything's list
         await ev(`document.getElementById('agentic-tab-files').click(); true`);
         // The top bar's bookmark is the Inbox's, from an agent's page too (#4905): Enter on it opens the page with the focus inside, and pressing it again goes back to the agent.
         await ev(`document.getElementById('saved-btn').focus(); true`);
@@ -222,7 +222,7 @@ const hex = i => i.toString(16).padStart(20, '0');
         await ev(`window.selectBoardProject(${JSON.stringify(BOARD)}); true`);
         await waitFor(`document.querySelectorAll('#mb-messages .mb-message').length === 3`, 'the board rows', 8000);
         const bb = await ev(`(() => { const b = document.querySelector('#mb-messages [data-message-id="${keep.id}"] .mb-save-btn'); return b ? { label: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), hidden: b.hidden } : null; })()`);
-        assert.deepEqual(bb, { label: 'Save for later', pressed: 'false', hidden: false });
+        assert.deepEqual({ ...bb, label: bb.label.split(':')[0] }, { label: 'Save for later', pressed: 'false', hidden: false });
         for (const id of [keep.id, drop.id]) {
             await ev(`document.querySelector('#mb-messages [data-message-id="${id}"] .mb-save-btn').click(); true`);
             await waitFor(`document.querySelector('#mb-messages [data-message-id="${id}"] .mb-save-btn').getAttribute('aria-pressed') === 'true'`, 'the board message saved', 6000);

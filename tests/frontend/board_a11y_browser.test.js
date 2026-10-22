@@ -21,14 +21,25 @@ const BASE = require('./test_base').BASE;
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install(); await ev(`window.__coralReady.then(() => true)`);
         for (const [id, t] of [['Boss', 'Orchestrator'], ['dev-1', 'Developer']]) assert.equal(await api('POST', `/api/board/${B}/subscribe`, { subscriber_id: id, job_title: t, session_name: id + '-s' }), 200);
         for (let i = 1; i <= 8; i++) assert.equal(await api('POST', `/api/board/${B}/messages`, { subscriber_id: i % 2 ? 'dev-1' : 'Boss', content: `Message ${i}: ${'a line of status text '.repeat(i)}` }), 200);
+        assert.equal(await api('POST', `/api/board/${B}/messages`, { subscriber_id: 'dev-1', content: '<img src=x onerror="window.__pwn=1"> "quoted" <b>markup</b> in a message that runs on well past the forty characters' }), 200);
         assert.equal(await api('POST', `/api/board/${B}/tasks`, { subscriber_id: 'Boss', title: 'Ship the queue', body: 'Do it.', priority: 'high', assignee: 'dev-1' }), 201);
         await Page.navigate({ url: `${BASE}/board/${B}` }); await Page.loadEventFired(); await install(); await ev(`window.__coralReady.then(() => true)`);
         await waitFor(`document.querySelectorAll('#mb-messages .mb-message').length >= 8`, 'the messages', 15000);
 
         console.log('1. the delete button names its message; the announcer is a polite status');
         const del = await ev(`(() => { const b = document.querySelector('#mb-messages .mb-delete-msg-btn'); const a = document.getElementById('mb-announce'); return { label: b.getAttribute('aria-label'), live: a.getAttribute('aria-live'), role: a.getAttribute('role') }; })()`);
-        assert.ok(/^Delete the message from (Developer|Orchestrator), /.test(del.label), 'a delete button says whose message: ' + del.label);
+        assert.ok(/^Delete the message from (Developer|Orchestrator): Message \d/.test(del.label), 'a delete button says whose message: ' + del.label);
         assert.equal(del.live, 'polite'); assert.equal(del.role, 'status');
+
+        console.log('1a. Save and Delete name their row: no two alike, the message text only as an attribute value, cut at a word');
+        const btnNames = await ev(`(() => { const rows = [...document.querySelectorAll('#mb-messages .mb-message')]; const pick = sel => rows.map(r => r.querySelector(sel).getAttribute('aria-label')); const marked = rows.find(r => r.textContent.includes('markup')); return { save: pick('.mb-save-btn'), del: pick('.mb-delete-msg-btn'), pwn: window.__pwn || 0, imgInBtn: document.querySelectorAll('#mb-messages .mb-save-btn img, #mb-messages .mb-delete-msg-btn img').length, markedDel: marked.querySelector('.mb-delete-msg-btn').getAttribute('aria-label'), markedSave: marked.querySelector('.mb-save-btn').getAttribute('aria-label') }; })()`);
+        assert.equal(new Set(btnNames.save).size, btnNames.save.length, 'every Save has its own name: ' + JSON.stringify(btnNames.save));
+        assert.equal(new Set(btnNames.del).size, btnNames.del.length, 'every Delete has its own name: ' + JSON.stringify(btnNames.del));
+        assert.ok(btnNames.save.every(n => /^Save for later: message from /.test(n)), 'Save btnNames the message: ' + JSON.stringify(btnNames.save));
+        assert.equal(btnNames.pwn, 0); assert.equal(btnNames.imgInBtn, 0);
+        // the board shows the message's markup as text or a chip: the name is what is on screen, cut at a word, and never longer than the cut
+        assert.ok(/^Delete the message from Developer: .*"quoted".*[a-z]…$/.test(btnNames.markedDel) && btnNames.markedDel.length <= 'Delete the message from Developer: '.length + 42, btnNames.markedDel);
+        assert.ok(btnNames.markedSave.startsWith('Save for later: message from Developer: ') && btnNames.markedSave.endsWith('…'), btnNames.markedSave);
 
         console.log('1b. the messages are a list: every direct child is an item (#5813)');
         const list = await ev(`(() => { const c = document.getElementById('mb-messages'); const kids = [...c.children]; return { role: c.getAttribute('role'), name: c.getAttribute('aria-label'), kids: kids.length, notItems: kids.filter(k => k.getAttribute('role') !== 'listitem').map(k => k.className), messages: c.querySelectorAll(':scope > .mb-message[role=listitem]').length }; })()`);

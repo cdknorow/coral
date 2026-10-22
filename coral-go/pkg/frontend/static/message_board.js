@@ -10,7 +10,7 @@ import { resolveBoardArtifacts } from './board_artifacts.js';
 import { messageAttachmentAttrs, messageAttachmentsHtml } from './board_attachments.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { platform } from './platform/detect.js';
-import { BOARD_SAVE_BUTTON } from './saved_marks.js';
+import { BOARD_SAVE_BUTTON, aboutRow, nameSaveButton } from './saved_marks.js';
 import { messageTimeHtml } from './message_time.js';
 import { paintPauseButton } from './board_pause_button.js';
 import { pathId, keyLabel, noteBoardLabel, hasBoardLabel, onBoardLabelsChanged, splitKey, boardFetch, teamFetch, isCloud, inTeam } from './server_base.js';
@@ -325,6 +325,17 @@ function boardHeaderHtml(messages) {
     return loadEarlierHtml + countHtml;
 }
 
+// Names each row's Save and Delete by its message, so a list of them reads as different buttons. The text is the message's own (untrusted), so it goes in as an attribute value, never as markup.
+function nameBoardButtons(root) {
+    const rows = root.matches && root.matches('.mb-message') ? [root] : [...(root.querySelectorAll ? root.querySelectorAll('.mb-message') : [])];
+    for (const row of rows) {
+        const save = row.querySelector('.mb-save-btn');
+        if (save) nameSaveButton(save);
+        const about = aboutRow(save);
+        row.querySelector('.mb-delete-msg-btn')?.setAttribute('aria-label', `Delete the message from ${about}`);
+    }
+}
+
 // One row: a message, or a collapsed run of task-queue lines. prev is the item before it (grouping by sender).
 function renderBoardItem(item, prev) {
     if (item.kind === 'queue') return renderTaskQueueRun(item, formatTime);
@@ -386,7 +397,7 @@ function prependEarlier(container, count) {
     const grouped = !!prev && prev.kind === 'msg' && (prev.m.job_title || 'Unknown') === (tail.m.job_title || 'Unknown');
     first.className = first.className.replace(/mb-message-(first|grouped)/, grouped ? 'mb-message-grouped' : 'mb-message-first'); // in place: the same class order as a whole render
     first.before(tmp.content);
-    for (const el of added) resolveBoardArtifacts(el, state.currentBoardServer);
+    for (const el of added) { nameBoardButtons(el); resolveBoardArtifacts(el, state.currentBoardServer); }
     updateBoardHeader(container);
     return true;
 }
@@ -446,6 +457,7 @@ function renderMessages(messages, { keepAnchor = false, prepended = 0 } = {}) {
     if (!(prepended > 0 && prependEarlier(container, prepended))) {
         const items = groupTaskQueueRuns(messages, !isSelectMode());
         container.innerHTML = boardHeaderHtml(messages) + items.map((item, i) => renderBoardItem(item, i > 0 ? items[i - 1] : null)).join('');
+        nameBoardButtons(container);
         resolveBoardArtifacts(container, state.currentBoardServer);
     }
     if (earlierFocused) {
@@ -513,7 +525,7 @@ function appendNewMessages(count) {
     tmp.innerHTML = items.map((item, i) => renderBoardItem(item, i > 0 ? items[i - 1] : prev)).join('');
     const added = [...tmp.content.children];
     if (replace) replace.replaceWith(tmp.content); else container.appendChild(tmp.content);
-    for (const el of added) resolveBoardArtifacts(el, state.currentBoardServer);
+    for (const el of added) { nameBoardButtons(el); resolveBoardArtifacts(el, state.currentBoardServer); }
     if (wasAtBottom) trimBoardWindow(container);
     updateBoardHeader(container);
     highlightBoard(container);

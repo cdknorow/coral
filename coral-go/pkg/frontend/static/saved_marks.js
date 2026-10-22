@@ -58,11 +58,39 @@ function setFor(c) {
     return e.loaded; // resolves to the entry once the conversation's bookmarks are read
 }
 
+/** A message's words for a button name: collapsed, cut at a word boundary near 40 characters. */
+export function snippet(text, max = 40) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim();
+    if (t.length <= max) return t;
+    const cut = t.slice(0, max + 1);
+    const at = cut.lastIndexOf(' ');
+    return (at > max / 2 ? cut.slice(0, at) : cut.slice(0, max)).trim() + '…';
+}
+
+/** Who said it and the start of it, for naming a row's buttons ("Save for later: message from Developer: Build is green"), kept on the button as a property so a repaint keeps it.
+ *  The words are the message's own (untrusted): they only ever go in as a value, never as markup. */
+export function aboutRow(btn) {
+    if (!btn) return '';
+    const board = btn.classList.contains('mb-save-btn');
+    const row = board ? btn.closest('.mb-message') : btn.closest('[data-msg-key]');
+    if (!row) return '';
+    const who = board ? row.querySelector('.mb-agent-name')?.textContent.trim() || 'Unknown' : row.querySelector('.role-label')?.textContent.trim() || '';
+    const words = snippet(row.querySelector(board ? '.mb-message-body' : '.message-text')?.textContent);
+    btn.dataset.about = [who, words].filter(Boolean).join(': ');
+    return btn.dataset.about;
+}
+
+/** The button's name for its state, with the message it is on (a list of these must not read as the same button). */
+export function nameSaveButton(btn) {
+    const label = btn.getAttribute('aria-pressed') === 'true' ? 'Remove from saved' : 'Save for later';
+    const about = aboutRow(btn);
+    btn.setAttribute('aria-label', about ? `${label}: message from ${about}` : label);
+    return label;
+}
+
 function paint(btn, saved) {
     btn.setAttribute('aria-pressed', saved ? 'true' : 'false');
-    const label = saved ? 'Remove from saved' : 'Save for later';
-    btn.setAttribute('aria-label', label);
-    btn.title = label;
+    const label = nameSaveButton(btn);
     btn.classList.toggle('saved', saved);
 }
 
