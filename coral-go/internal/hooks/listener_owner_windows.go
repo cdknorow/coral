@@ -82,10 +82,15 @@ func sameExecutable(image string) bool {
 	if err != nil || image == "" {
 		return false
 	}
-	if real, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = real
+	// Windows may report the listener through a DOS 8.3 path while this
+	// executable resolves to its long path. Compare file identity so aliases
+	// pass only when they refer to this exact test executable.
+	self, err := os.Stat(exe)
+	if err != nil {
+		return false
 	}
-	return strings.EqualFold(filepath.Clean(exe), filepath.Clean(image))
+	other, err := os.Stat(image)
+	return err == nil && os.SameFile(self, other)
 }
 
 // isCoralImage: image is coral.exe or coral-tray.exe directly in one of folders.
