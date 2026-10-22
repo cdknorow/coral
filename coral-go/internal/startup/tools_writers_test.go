@@ -2,6 +2,7 @@ package startup
 
 import (
 	"bytes"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"runtime"
@@ -28,7 +29,7 @@ func TestStartupWarnsAboutAWritableToolsFolder(t *testing.T) {
 	t.Cleanup(func() { log.SetOutput(prev); log.SetFlags(flags); agent.SetToolsFolderWriters("", nil) })
 
 	warnWritableTools(dir)
-	assert.Contains(t, buf.String(), "[tools] WARNING: the tools folder "+dir+" can be changed by")
+	assert.Contains(t, buf.String(), "[tools] WARNING: the tools folder "+logsafe.Path(dir)+" can be changed by", "the folder is named with the home folder as ~ (#6053)")
 	gotDir, who := agent.ToolsFolderWriters()
 	assert.Equal(t, dir, gotDir)
 	assert.NotEmpty(t, who)

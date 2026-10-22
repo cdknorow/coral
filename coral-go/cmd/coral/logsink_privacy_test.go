@@ -29,7 +29,8 @@ func TestCoralLogCarriesNoHomeFolderOrUserName(t *testing.T) {
 			t.Errorf("coral.log carries %q: %s", leak, got)
 		}
 	}
-	if !strings.Contains(got, "~/.coral/sessions.db") {
+	sep := string(filepath.Separator) // the redactor keeps the system's own separator after "~"
+	if !strings.Contains(got, "~"+sep+".coral"+sep+"sessions.db") {
 		t.Errorf("the home folder is not written as ~: %s", got)
 	}
 }
