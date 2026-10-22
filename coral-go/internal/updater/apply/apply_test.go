@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/updater/stage"
+	"github.com/subgentic/coral/internal/updater/status"
 	"github.com/subgentic/coral/internal/updater/verify"
 )
 
@@ -82,11 +83,18 @@ type fakePlatform struct {
 	verifyHook func() error
 	// restartWhy is CanRestart's answer: why Coral could not be started again ("" = it can).
 	restartWhy string
+	// restartHook, when set, answers CanRestart instead (a test makes the answer change between the two asks).
+	restartHook func() string
 }
 
 func (f *fakePlatform) rec(s string) { f.calls = append(f.calls, s) }
 
-func (f *fakePlatform) CanRestart(string) string { return f.restartWhy }
+func (f *fakePlatform) CanRestart(string) string {
+	if f.restartHook != nil {
+		return f.restartHook()
+	}
+	return f.restartWhy
+}
 
 func (f *fakePlatform) Pinned() bool { return f.pinned }
 func (f *fakePlatform) Install() (string, error) {
@@ -239,7 +247,7 @@ func TestAnUpdateIsAppliedInTheOrderOfTheDesign(t *testing.T) {
 	res := r.run()
 	require.Equal(t, ResultRelaunched, res.Result, "%+v", res)
 	assert.Equal(t, "1.4.130", res.To)
-	assert.Equal(t, []string{"wait", "build", "verify", "wait", "verify", "swap", "start", "healthy", "cleanup"}, r.plat.calls)
+	assert.Equal(t, []string{"build", "verify", "wait", "verify", "swap", "start", "healthy", "cleanup"}, r.plat.calls, "everything that can be done while Coral runs comes before the one wait for it to end")
 	assert.Equal(t, "new", r.installMarker(), "the new install is in place")
 	_, err := os.Stat(filepath.Join(r.plat.root, ".Coral.app.new"))
 	assert.ErrorIs(t, err, os.ErrNotExist, "the old install goes only after the new one is up")
@@ -268,7 +276,7 @@ func TestNothingIsInstalledWithoutAPinnedSignerOrWhileCoralRuns(t *testing.T) {
 	r = newRig(t)
 	r.plat.coralGone = false
 	assert.Equal(t, ResultCoralRunning, r.run().Result)
-	assert.Equal(t, []string{"wait"}, r.plat.calls, "it waits, builds nothing and swaps nothing")
+	assert.Equal(t, []string{"build", "verify", "wait", "cleanup"}, r.plat.calls, "it builds and checks the new install while Coral runs, waits for Coral, swaps nothing and starts nothing")
 	assert.Equal(t, "old", r.installMarker())
 	assert.NotNil(t, r.staged(), "the staged update is kept")
 }
@@ -301,7 +309,7 @@ func TestAnInstallTheUserCannotWriteGetsTheVerifiedPackageOpenedNotASwap(t *test
 	r.plat.writable = false
 	res := r.run()
 	require.Equal(t, ResultNeedsManual, res.Result)
-	assert.Equal(t, []string{"wait", "show"}, r.plat.calls)
+	assert.Equal(t, []string{"show"}, r.plat.calls, "the package is shown while Coral runs: nothing is swapped, so nothing waits")
 	assert.NotEqual(t, r.staged().PackagePath, r.plat.shown, "the copy that was verified is shown, not the staged file")
 	assert.Equal(t, "old", r.installMarker())
 }
@@ -457,13 +465,14 @@ func TestAnInterruptedApplyIsPutRightAtTheNextOne(t *testing.T) {
 }
 
 // #5338: Coral started again while the package was being copied and checked: nothing is swapped, and the copy is removed.
-func TestACoralStartedDuringTheBuildIsNotSwappedUnderAndTheCopyIsRemoved(t *testing.T) {
+func TestACoralThatDoesNotEndIsNotSwappedUnderAndTheCopyIsRemoved(t *testing.T) {
 	r := newRig(t)
-	waits := 0
-	r.plat.waitHook = func() bool { waits++; return waits < 2 }
+	r.plat.waitHook = func() bool { return false } // Coral is still running when the apply is ready
 	res := r.run()
 	assert.Equal(t, ResultCoralRunning, res.Result)
 	assert.NotContains(t, r.plat.calls, "swap")
+	assert.NotContains(t, r.plat.calls, "start", "Coral never ended: it is not started again")
+	assert.False(t, res.RestartFailed)
 	assert.Equal(t, "old", r.installMarker())
 	_, err := os.Stat(filepath.Join(r.plat.root, ".Coral.app.new"))
 	assert.ErrorIs(t, err, os.ErrNotExist, "the copy is removed")
@@ -545,4 +554,81 @@ func TestANewInstallChangedBetweenItsChecksIsNotSwapped(t *testing.T) {
 	_, err := os.Stat(filepath.Join(r.plat.root, ".Coral.app.new"))
 	assert.ErrorIs(t, err, os.ErrNotExist)
 	assert.NotEqual(t, "1.4.130", r.state().Version)
+}
+
+// #5982: the apply does steps 2 to 4 while Coral still runs and says "ready to swap" only after them; the server ends itself on that and not before.
+func TestAPackageThatFailsVerificationAgainLeavesCoralRunningAndNeverWaitsForIt(t *testing.T) {
+	r := newRig(t)
+	r.plat.verifyErr = errors.New("signature does not match")
+	res := r.run()
+	require.Equal(t, ResultRefused, res.Result)
+	assert.Equal(t, "platform_signature", res.FailedStage)
+	assert.NotContains(t, r.plat.calls, "wait", "nothing asked Coral to end")
+	assert.NotContains(t, r.plat.calls, "start", "and nothing started it: it never stopped")
+	assert.Equal(t, "old", r.installMarker())
+	_, err := os.Stat(filepath.Join(r.data, stage.UpdatesDir, status.ReadyFile))
+	assert.ErrorIs(t, err, os.ErrNotExist, "no ready marker for a package that was refused")
+
+	// the same for a staged file whose bytes are not the verified ones (the copy refuses it)
+	r = newRig(t)
+	require.NoError(t, os.WriteFile(r.staged().PackagePath, []byte("tampered"), 0o600))
+	res = r.run()
+	assert.Contains(t, []string{ResultRefused, ResultFailed}, res.Result)
+	assert.Empty(t, r.plat.calls, "not even built")
+	_, err = os.Stat(filepath.Join(r.data, stage.UpdatesDir, status.ReadyFile))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestTheReadyMarkerIsWrittenBeforeTheWaitForCoralAndRemovedWhenTheApplyEnds(t *testing.T) {
+	r := newRig(t)
+	marker := filepath.Join(r.data, stage.UpdatesDir, status.ReadyFile)
+	var seen status.Ready
+	r.plat.waitHook = func() bool {
+		b, err := os.ReadFile(marker)
+		require.NoError(t, err, "the marker is there when the apply starts waiting for Coral to end")
+		require.NoError(t, json.Unmarshal(b, &seen))
+		return true
+	}
+	require.Equal(t, ResultRelaunched, r.run().Result)
+	assert.Equal(t, "1.4.130", seen.Version)
+	assert.Equal(t, os.Getpid(), seen.PID, "it says whose apply is ready")
+	_, err := os.Stat(marker)
+	assert.ErrorIs(t, err, os.ErrNotExist, "it is true only while the apply runs")
+}
+
+func TestAnApplyThatStopsAfterCoralEndedWithoutSwappingStartsThePreviousCoralAgain(t *testing.T) {
+	for name, setup := range map[string]func(r *rig) (wantResult string){
+		"the new install no longer verifies": func(r *rig) string {
+			calls := 0
+			r.plat.verifyHook = func() error { calls++; return map[bool]error{true: errors.New("changed under us")}[calls == 2] }
+			return ResultRefused
+		},
+		"Coral could not be started again by the time of the swap": func(r *rig) string {
+			calls := 0
+			// CanRestart is asked before anything is built, and again before the swap: it goes away in between
+			r.plat.restartHook = func() string { calls++; return map[bool]string{true: "no_run_record"}[calls >= 2] }
+			return ResultUnsupported
+		},
+		"the swap fails": func(r *rig) string { r.plat.swapErr = errors.New("cross-device"); return ResultFailed },
+	} {
+		r := newRig(t)
+		want := setup(r)
+		res := r.run()
+		assert.Equal(t, want, res.Result, name)
+		assert.Contains(t, r.plat.calls, "start", name+": the previous Coral is started again, Coral had ended")
+		assert.False(t, res.RestartFailed, name)
+		assert.Equal(t, "old", r.installMarker(), name)
+	}
+}
+
+func TestWhenThePreviousCoralCannotBeStartedAgainTheResultSaysSoAndTheHistoryRecordsIt(t *testing.T) {
+	r := newRig(t)
+	r.plat.swapErr = errors.New("cross-device")
+	r.plat.startErrs = []error{errors.New("the app would not open")}
+	res := r.run()
+	assert.Equal(t, ResultFailed, res.Result)
+	assert.True(t, res.RestartFailed, "nothing is running now: said, never silence (#5419)")
+	st := r.state()
+	require.NotEmpty(t, st.History)
+	assert.Equal(t, "restart_failed", st.History[len(st.History)-1].Result)
 }
