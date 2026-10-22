@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/subgentic/coral/internal/agent"
@@ -111,9 +112,8 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		"requested_backend", body.Backend,
 		"terminal_type", fmt.Sprintf("%T", h.terminal),
 		"backend_type", fmt.Sprintf("%T", h.backend),
-		"path", os.Getenv("PATH"),
-		"shell", os.Getenv("SHELL"),
-		"coral_tmux_bin", os.Getenv("CORAL_TMUX_BIN"),
+		"shell", filepath.Base(os.Getenv("SHELL")),
+		"coral_tmux_bin_set", os.Getenv("CORAL_TMUX_BIN") != "",
 	)
 
 	// Validate resume support
