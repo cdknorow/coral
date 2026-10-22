@@ -117,5 +117,5 @@ func TestLaunchesRefuseANewBadBoardName(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), "invalid_board_name")
 	assert.Empty(t, terminal.sentCommands())
-	assert.True(t, strings.Contains(rec.Body.String(), "letters, digits"))
+	assert.True(t, strings.Contains(rec.Body.String(), "English letters (A-Z), digits"), "the rule says which letters (#297)")
 }

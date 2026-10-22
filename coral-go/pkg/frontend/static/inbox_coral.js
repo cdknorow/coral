@@ -2,6 +2,7 @@
  * (the Inbox tab's "Tasks for you" and the "Read the whole message" control of a Saved for later item). The component itself is inbox_panel.js; Coral Hub mounts the same file with its own adapter. */
 import { importOnce } from './import_once.js';
 import { makeLinkPolicy } from './safe_markdown.js';
+import { cleanArtifactName } from './artifact_names.js';
 import { build as buildRoute } from './routes.js';
 import { onAccountForgotten } from './local_store.js';
 import { loadSafeMarkdown } from './vendor_loader.js';
@@ -26,11 +27,17 @@ export const ARTIFACT_LOOKUPS_MAX = 20;
  *  only an answer of exactly 200 makes it a link. 403, 404, any other status and a network failure leave it as text; no path is built from text without that 200. Nothing is kept between renders. */
 export async function artifactLinkPolicy(text) {
     const ids = [...new Set([...String(text == null ? '' : text).matchAll(ARTIFACT_LINK_RE)].map(m => m[1]))].slice(0, ARTIFACT_LOOKUPS_MAX);
-    const found = new Set();
+    const found = new Map(); // hex -> the name it was stored under ('' when none), for the link's text (#297)
     await Promise.all(ids.map(async hex => {
-        try { if ((await fetch(`/api/artifacts/${hex}/meta`)).status === 200) found.add(hex); } catch { /* text */ }
+        try {
+            const r = await fetch(`/api/artifacts/${hex}/meta`);
+            if (r.status !== 200) return;
+            let name = '';
+            try { name = cleanArtifactName((await r.json()).name); } catch { /* no body: the short id */ }
+            found.set(hex, name);
+        } catch { /* text */ }
     }));
-    return makeLinkPolicy({ artifactExists: hex => found.has(hex) });
+    return makeLinkPolicy({ artifactExists: hex => found.has(hex), artifactName: hex => found.get(hex) || '' });
 }
 
 /** The adapter for this Coral (the Operator's own, on this computer). */

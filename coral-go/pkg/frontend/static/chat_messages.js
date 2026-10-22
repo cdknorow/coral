@@ -4,6 +4,7 @@ import { makeBubble } from './chat_bubbles.js';
 import { unwrapPastedContent } from './pasted_content.js';
 import { isCoralNudge, INTERRUPT_RE, appendCoralNotice, isCoralHealthNudge, normalizeNudgeText } from './pending_messages.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
+import { CHAT_MARKDOWN } from './markdown.js';
 import { thumbHtml, wireThumbs, sharedImageChips } from './chat_thumbs.js';
 import { splitSharedImages } from './shared_images.js';
 import { chatAgentAdapter } from './chat_agents.js';
@@ -61,14 +62,14 @@ function renderOneMessage(msg, container, agentType) {
         // Images pasted in the dashboard lead the turn as "<path> coral://artifacts/<hex>" pairs (#5284): shown as artifact thumbnails, not as the text of a path and a link.
         const lead = splitSharedImages(unwrapPastedContent(msg.content));
         const bubble = makeBubble("chat-bubble human",
-            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(lead.rest, undefined, 'chat')}</div>${attachmentChips(msg.attachments)}${sharedImageChips(lead.images)}${msg.key ? SAVE_BUTTON : ""}${messageTimeHtml(msg.timestamp)}`);
+            `<div class="role-label">You</div><div class="message-text">${renderMarkdown(lead.rest, CHAT_MARKDOWN, 'chat')}</div>${attachmentChips(msg.attachments)}${sharedImageChips(lead.images)}${msg.key ? SAVE_BUTTON : ""}${messageTimeHtml(msg.timestamp)}`);
         if (msg.key) { bubble.dataset.msgKey = msg.key; bubble.dataset.said = msg.timestamp || ""; } // Save for Later finds the message again by this (#4510)
         wireThumbs(bubble);
         appendContent(container, bubble);
     } else if (msg.type === "assistant") {
         if (msg.text) {
             const bubble = makeBubble(`chat-bubble assistant${msg.phase === "commentary" ? " commentary" : ""}`,
-                `<div class="message-text">${renderMarkdown(msg.text, undefined, 'chat')}</div>${msg.key ? SAVE_BUTTON : ""}${COPY_BUTTON}${messageTimeHtml(msg.timestamp)}`);
+                `<div class="message-text">${renderMarkdown(msg.text, CHAT_MARKDOWN, 'chat')}</div>${msg.key ? SAVE_BUTTON : ""}${COPY_BUTTON}${messageTimeHtml(msg.timestamp)}`);
             bubbleSource.set(bubble, msg.text);
             if (msg.key) { bubble.dataset.msgKey = msg.key; bubble.dataset.said = msg.timestamp || ""; } // Save for Later finds the message again by this (#4510)
             // Prose in a message that also makes tool calls is a one-line preamble ("Checking the CSS first."): it goes
