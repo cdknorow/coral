@@ -229,6 +229,7 @@ func callClaude(ctx context.Context, settings map[string]string, transcript stri
 		"--model", "haiku",
 		"--no-session-persistence",
 	)
+	cmd.Env = agent.CLIEnv(os.Environ(), claudePath) // an npm-installed CLI runs with its own node (#5899)
 	cmd.Stdin = strings.NewReader(prompt)
 	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	out, err := cmd.Output()

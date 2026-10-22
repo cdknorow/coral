@@ -782,6 +782,7 @@ func runGoalCLI(ctx context.Context, bin, prompt string) (goalCLIResult, error) 
 		"--setting-sources", "user",
 		"--settings", `{"disableAllHooks":true}`,
 	)
+	cmd.Env = agent.CLIEnv(os.Environ(), bin) // an npm-installed CLI runs with its own node (#5899)
 	// The prompt (built from the session's own messages) goes on stdin, not argv, where it
 	// would show in the process list (#3519).
 	cmd.Stdin = strings.NewReader(prompt)

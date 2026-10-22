@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/agentenv"
 	"github.com/subgentic/coral/internal/agentsignin"
 	at "github.com/subgentic/coral/internal/agenttypes"
@@ -318,7 +319,7 @@ func cliCommand(ctx context.Context, path, dir string, args ...string) *exec.Cmd
 			env = append(env, kv)
 		}
 	}
-	cmd.Env = env
+	cmd.Env = agent.CLIEnv(env, path) // an npm-installed CLI runs with its own node (#5899)
 	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	return cmd
 }

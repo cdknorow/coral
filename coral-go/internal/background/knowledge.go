@@ -564,6 +564,7 @@ func checkClaudeCLI(ctx context.Context, settings map[string]string) (string, er
 	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := executil.Command(checkCtx, claudePath, "--version")
+	cmd.Env = agent.CLIEnv(os.Environ(), claudePath) // an npm-installed CLI runs with its own node (#5899)
 	setSysProcAttr(cmd)
 	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
 	out, err := cmd.CombinedOutput()
@@ -601,6 +602,7 @@ func callClaudeForKnowledge(ctx context.Context, claudePath string, timeout time
 		"--model", "sonnet",
 		"--no-session-persistence",
 	)
+	cmd.Env = agent.CLIEnv(os.Environ(), claudePath) // an npm-installed CLI runs with its own node (#5899)
 	cmd.Stdin = strings.NewReader(input)
 	setSysProcAttr(cmd)
 	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run

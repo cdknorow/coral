@@ -349,7 +349,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	cmd := exec.CommandContext(ctx, binPath, args...)
 	cmd.Stdin = stdin
 	cmd.Dir = repoPath
-	cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
+	cmd.Env = agent.CLIEnv(append(agentenv.Filter(os.Environ()), env...), binPath) // #3389: no server-only settings; an npm-installed CLI runs with its own node (#5899)
 	configureChildProcess(cmd)
 
 	// Capture stdout and stderr to files, through a pipe and a capped copy (#5079): a runaway command cannot fill the disk before its timeout. The child gets

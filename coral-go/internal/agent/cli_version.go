@@ -52,7 +52,7 @@ func CLIVersion(settings map[string]string, agentType string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "--version")
-	cmd.Env = agentenv.Filter(os.Environ()) // the server's own CORAL_* settings never reach a CLI
+	cmd.Env = CLIEnv(agentenv.Filter(os.Environ()), path) // the server's own CORAL_* settings never reach a CLI; an npm-installed one runs with its own node (#5899)
 	// A CLI that is a wrapper (node, npm shims) can leave a child holding stdout past
 	// the kill: stop waiting for the pipes 2 s after it (Backend's review).
 	cmd.WaitDelay = 2 * time.Second

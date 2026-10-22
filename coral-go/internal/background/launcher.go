@@ -126,7 +126,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 			return nil, fmt.Errorf("launch command: %w", err)
 		}
 		// Ensure coral-hook-* binaries are reachable from app bundles
-		launchCmd = agent.WrapWithBundlePath(launchCmd)
+		launchCmd = agent.WrapWithBundlePath(agent.WrapWithCLINode(launchCmd, cliPath)) // an npm-installed CLI runs with its own node (#5899)
 	}
 
 	// Spawn agent session via the runtime

@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/subgentic/coral/internal/agent"
 	"github.com/subgentic/coral/internal/agentenv"
 	"github.com/subgentic/coral/internal/executil"
 )
@@ -218,8 +219,8 @@ func CheckIn(ctx context.Context, agentType, bin, dir string) State {
 			cmd.Dir = dir
 		}
 	}
-	cmd.Env = agentenv.Filter(os.Environ())
-	cmd.WaitDelay = 2 * time.Second // a child that holds the pipes open cannot hold this call
+	cmd.Env = agent.CLIEnv(agentenv.Filter(os.Environ()), bin) // an npm-installed CLI runs with its own node (#5899)
+	cmd.WaitDelay = 2 * time.Second                            // a child that holds the pipes open cannot hold this call
 	var out, errOut limited
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut

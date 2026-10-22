@@ -440,6 +440,19 @@ func (e *CLINotFoundError) Error() string {
 // broken wrapper never has the unwrapped CLI run background jobs instead
 // (Security's #4431 SHOULD 4).
 func FindCLI(settings map[string]string, agentType string) (string, error) {
+	p, err := FindCLIForLaunch(settings, agentType)
+	if err != nil {
+		return "", err
+	}
+	// A CLI that needs node, with none Coral can use for it, fails every run it makes itself (version, sign-in check, models) with "env: node: No such file or directory": say so.
+	if _, nerr := NodeDirFor(p, os.Environ()); nerr != nil {
+		return "", nerr
+	}
+	return p, nil
+}
+
+// FindCLIForLaunch is FindCLI without the node check: an agent's launch line carries its own (NodePathPrefix), and the agent's shell may have a node Coral's process does not.
+func FindCLIForLaunch(settings map[string]string, agentType string) (string, error) {
 	if p := ResolveCLIPath(settings, agentType); p != "" {
 		resolved, err := exec.LookPath(p)
 		if err == nil {
@@ -478,7 +491,7 @@ func LaunchCLI(settings map[string]string, agentType string) (string, error) {
 		return ResolveCLIPath(settings, agentType), nil
 	}
 	if ResolveCLIPath(settings, agentType) != "" {
-		return FindCLI(settings, agentType)
+		return FindCLIForLaunch(settings, agentType)
 	}
 	if p, err := exec.LookPath(info.Binary); err == nil && filepath.IsAbs(p) {
 		return p, nil

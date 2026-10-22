@@ -134,14 +134,19 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 		tracking.TrackPrerequisite(tool, status, source)
 	}
 
-	writeJSON(w, http.StatusOK, hubCLIReply(r, map[string]any{
+	reply := map[string]any{
 		"found":      true,
 		"status":     status,
 		"probe":      probe,
 		"path":       resolvedPath,
 		"version":    version,
 		"agent_type": agentType,
-	}))
+	}
+	// An npm-installed CLI that needs node with none to run it on: say so, instead of leaving "the probe failed" to be guessed (#5899).
+	if _, nerr := agent.NodeDirFor(resolvedPath, os.Environ()); nerr != nil {
+		reply["node_error"] = nerr.Error()
+	}
+	writeJSON(w, http.StatusOK, hubCLIReply(r, reply))
 }
 
 // hubCLIReply shapes a prerequisite-check answer for the caller (#4579). Through Coral Hub nothing in it names this computer's
@@ -165,6 +170,9 @@ func hubCLIReply(r *http.Request, m map[string]any) map[string]any {
 	}
 	if v, ok := m["version"].(string); ok {
 		m["version"] = agent.VersionNumber(v)
+	}
+	if _, ok := m["node_error"]; ok { // the message names this computer's path and folders: through the Hub only the fact
+		m["node_error"] = "node not found: this CLI is a node script and needs node, but none that is safe to use is on PATH or beside it"
 	}
 	return m
 }
@@ -220,7 +228,7 @@ func probeCLIVersion(parent context.Context, path string) (version, probe string
 	ctx, cancel := context.WithTimeout(parent, cliProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "--version")
-	cmd.Env = agentenv.Filter(os.Environ()) // the server's own CORAL_* settings never reach a CLI
+	cmd.Env = agent.CLIEnv(agentenv.Filter(os.Environ()), path) // the server's own CORAL_* settings never reach a CLI; an npm-installed one runs with its own node (#5899)
 	// A wrapper script can leave a child holding the output pipe after it is
 	// killed; do not wait on it past this.
 	cmd.WaitDelay = 200 * time.Millisecond
