@@ -236,7 +236,7 @@ export function mountInbox(host, adapter, options) {
             list.replaceChildren(...rows.map(taskRow));
             if (kept) list.querySelector(`.ibx-task[data-key="${CSS.escape(kept)}"] .ibx-task-head`)?.focus(); // a refresh does not take the focus from the task being read
             empty.hidden = rows.length > 0;
-            empty.textContent = rows.length ? '' : 'No tasks are assigned to you.';
+            empty.textContent = rows.length ? '' : 'No assigned tasks.';
         } catch (e) {
             if (gone) return;
             list.replaceChildren();

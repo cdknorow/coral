@@ -202,7 +202,10 @@ function syncBar(shownCount) {
     bar.setOptions('conv', refs, Object.fromEntries(refs.map(r => [r, convLabel(r)])));
     bar.showField('conv', refs.length > 1 || !!filters.conv);
     const all = tab === 'done' ? totals.done : totals.open;
-    bar.set(filters, { matched: shownCount, all: Math.max(all, shownCount) });
+    const counts = { matched: shownCount, all: Math.max(all, shownCount) };
+    // The Inbox's empty state says what to do; a second zero-message label adds nothing. Keep filtered counts.
+    if (scope.kind === 'all' && counts.all === 0 && !savedFiltered(filters)) counts.text = '';
+    bar.set(filters, counts);
 }
 
 function render() {
