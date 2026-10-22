@@ -197,6 +197,7 @@
         min-height: var(--control-touch-height);
     }
     .list-bar-kept { min-height: var(--control-touch-height); }
+    .list-bar-filter-btn, .list-bar-clear-all { min-width: var(--control-touch-height); } /* "First" was 43 px wide (#6130) */
     .list-bar-kept input[type="checkbox"] { width: 1.5rem; height: 1.5rem; }
     .list-bar-clear-q { width: var(--control-touch-height); height: var(--control-touch-height); right: 0; }
 }
