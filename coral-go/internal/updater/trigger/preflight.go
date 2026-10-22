@@ -28,11 +28,16 @@ var (
 // maxStatusBytes bounds what is read from the updater's answer.
 const maxStatusBytes = 1 << 20
 
-// statusAnswer is the part of "coral-update status --json" Preflight reads.
+// statusAnswer is the part of "coral-update status --json" Preflight reads: the feature, the apply's switch and the install object every platform fills (kind, the apply's word for
+// an install it will not touch, and whether the updater can replace it: internal/updater/status.Install).
 type statusAnswer struct {
-	Feature      string  `json:"feature"`
-	ApplyEnabled *bool   `json:"apply_enabled"`
-	Install      *string `json:"install"` // "supported", or why not (cmd/coral-update/status.go); absent where the question does not apply
+	Feature      string `json:"feature"`
+	ApplyEnabled *bool  `json:"apply_enabled"`
+	Install      *struct {
+		Kind        string `json:"kind"`
+		Unsupported string `json:"unsupported"`
+		Writable    bool   `json:"writable"`
+	} `json:"install"` // absent where the question does not apply, or an updater older than this field
 }
 
 // runStatus runs the installed updater's status; windows runs the program beside the server (launch_windows.go), a test replaces it.
@@ -58,8 +63,8 @@ func Preflight(ctx context.Context, dataDir string) error {
 		return ErrUpdatesOff
 	case !*a.ApplyEnabled:
 		return ErrApplyDisabled
-	case *a.Install != "supported":
-		return ErrInstallUnsupported
+	case a.Install.Unsupported != "" || !a.Install.Writable || a.Install.Kind != "msi":
+		return ErrInstallUnsupported // only a per-machine MSI the apply can replace; any other kind, or any word, is no install to quit for
 	}
 	return nil
 }
