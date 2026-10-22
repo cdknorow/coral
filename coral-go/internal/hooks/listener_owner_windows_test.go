@@ -202,3 +202,71 @@ func TestAListenerRunningThisToolsOwnExecutablePasses(t *testing.T) {
 	var foreign *ForeignListenerError
 	assert.True(t, errors.As(checkListener("127.0.0.1", 8450), &foreign), "the same name in another folder is not this tool's executable")
 }
+
+// Security's spec for #224 B: the listener that WINS the connection is the one checked, in both orders. Coral (this user) on
+// 0.0.0.0 with another account's program on 127.0.0.1 of the same port: the impostor wins, refused. Another account's program
+// on 0.0.0.0 with Coral on 127.0.0.1: Coral wins, allowed. The same for [::] and [::1].
+func TestTheWinnerIsCheckedInBothOrders(t *testing.T) {
+	me, err := currentUserSID()
+	require.NoError(t, err)
+	system, err := windows.CreateWellKnownSid(windows.WinLocalSystemSid)
+	require.NoError(t, err)
+	folder := t.TempDir()
+	owners := map[uint32]*windows.SID{100: me, 200: system}
+	for _, c := range []struct {
+		name        string
+		rows        []listenRow
+		host        string
+		wantRefused bool
+	}{
+		{"0.0.0.0 mine, 127.0.0.1 foreign", []listenRow{{net.IPv4zero.To4(), 8450, 100}, {net.IPv4(127, 0, 0, 1).To4(), 8450, 200}}, "127.0.0.1", true},
+		{"0.0.0.0 foreign, 127.0.0.1 mine", []listenRow{{net.IPv4zero.To4(), 8450, 200}, {net.IPv4(127, 0, 0, 1).To4(), 8450, 100}}, "127.0.0.1", false},
+		{"[::] mine, [::1] foreign", []listenRow{{net.IPv6unspecified, 8450, 100}, {net.IPv6loopback, 8450, 200}}, "::1", true},
+		{"[::] foreign, [::1] mine", []listenRow{{net.IPv6unspecified, 8450, 200}, {net.IPv6loopback, 8450, 100}}, "::1", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			rows := c.rows
+			resetListenerCheck(t, tcpListenerPIDs, func(pid uint32) (*windows.SID, string, error) { return owners[pid], folder + `\coral-tray.exe`, nil })
+			tcpRows = func(uint32) ([]listenRow, error) { return rows, nil }
+			coralFolders = func() []string { return []string{folder} }
+			err := checkListener(c.host, 8450)
+			if c.wantRefused {
+				var foreign *ForeignListenerError
+				require.True(t, errors.As(err, &foreign), "refused: %v", err)
+				assert.Equal(t, uint32(200), foreign.PID, "the impostor on the specific address is the one named")
+			} else {
+				assert.NoError(t, err, "Coral holds the specific address, so it gets the connection")
+			}
+		})
+	}
+}
+
+// Security's note on #224: a tool running as another local account (Codex's elevated Windows sandbox) still reaches the real
+// user's Coral: the listener's owner is compared with the owner of Coral's data folder and of the session's token file too, not
+// only with the tool's own account. A service account owning the data folder is never added.
+func TestTheDataFolderOwnerIsAnAllowedListenerOwner(t *testing.T) {
+	me, err := currentUserSID()
+	require.NoError(t, err)
+	sandbox, err := windows.StringToSid("S-1-5-21-1111111111-2222222222-3333333333-1501") // the sandbox's own account
+	require.NoError(t, err)
+	system, err := windows.CreateWellKnownSid(windows.WinLocalSystemSid)
+	require.NoError(t, err)
+	folder := t.TempDir()
+
+	resetListenerCheck(t, func(string, int) ([]uint32, error) { return []uint32{100}, nil },
+		func(uint32) (*windows.SID, string, error) { return me, folder + `\coral.exe`, nil })
+	coralFolders = func() []string { return []string{folder} }
+	selfSID = func() (*windows.SID, error) { return sandbox, nil }
+	fileOwner = func(string) (*windows.SID, error) { return me, nil }
+	assert.NoError(t, checkListener("127.0.0.1", 8450), "a sandbox account reaches the Coral of the user who owns the data folder")
+
+	listenerVerified = sync.Map{}
+	fileOwner = func(string) (*windows.SID, error) { return nil, windows.ERROR_FILE_NOT_FOUND }
+	var foreign *ForeignListenerError
+	assert.True(t, errors.As(checkListener("127.0.0.1", 8450), &foreign), "without the data folder's owner, the real user's Coral is not the sandbox account's")
+
+	listenerVerified = sync.Map{}
+	pidOwner = func(uint32) (*windows.SID, string, error) { return system, folder + `\coral.exe`, nil }
+	fileOwner = func(string) (*windows.SID, error) { return system, nil }
+	assert.True(t, errors.As(checkListener("127.0.0.1", 8450), &foreign), "a data folder owned by SYSTEM does not make a SYSTEM listener Coral")
+}
