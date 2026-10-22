@@ -1,5 +1,5 @@
 // The generic "hasn't done anything yet" pill is hidden only beside the signed-out card, which is for a Claude agent on this computer (#5852): a status that says Claude is not signed in
-// (applySigninStatus) must not hide the pill of another agent that has not started, here a Codex agent. Drives Chrome over CDP against the isolated dev server; fetch and the coral WebSocket are stubbed.
+// (applySigninStatus) must not hide the pill of another agent that has not started, here a Codex agent. The pill's own state is read (hidden), not its look: over the chat the card is the one message and CSS hides the pill (#5895). Drives Chrome over CDP against the isolated dev server; fetch and the coral WebSocket are stubbed.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const BASE = require('./test_base').BASE;
@@ -24,11 +24,11 @@ const SID = require('crypto').randomUUID();
         await ev(`window.__coralReady.startup('liveList', 'liveListLoaded', 'settings')`);
         await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
         await ev(`Promise.resolve(window.selectLiveSession('cx', 'codex', ${JSON.stringify(SID)})).then(() => { window.setLiveViewMode('chat'); return true; })`);
-        await waitFor(`(() => { const b = document.getElementById('waiting-banner'); return !!b && !b.hidden && b.getBoundingClientRect().height > 0; })()`, 'the pill for a not-started codex agent', 15000);
+        await waitFor(`(() => { const b = document.getElementById('waiting-banner'); return !!b && !b.hidden; })()`, 'the pill for a not-started codex agent', 15000);
         // Claude is not signed in on this computer: a codex agent's pill must stay
         await ev(`import((window.__coralStatic || '/static/') + 'signin_line.js').then(m => { m.applySigninStatus({ claude_signed_in: false }); return true; })`);
         await require('./helpers/wait').nextFrame(ev); // the pill is hidden at once (setPill), so two frames are enough to see it go if it were going to
-        const shown = await ev(`(() => { const b = document.getElementById('waiting-banner'); return !!b && !b.hidden && b.getBoundingClientRect().height > 0; })()`);
+        const shown = await ev(`(() => { const b = document.getElementById('waiting-banner'); return !!b && !b.hidden; })()`);
         assert.equal(shown, true, 'a Codex agent keeps its pill when Claude is not signed in');
         console.log('PASS another agent keeps its pill');
     } finally { await client.close(); }

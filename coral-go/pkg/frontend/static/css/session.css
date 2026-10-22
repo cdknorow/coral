@@ -1239,6 +1239,8 @@
 .live-pills-stack:has(> .server-unreachable-banner:not([hidden])) > .waiting-banner { display: none; }
 /* On the Terminal tab the agent's waiting state is on the screen itself, and the pill sat on top of the terminal's first lines: it shows over the chat only (#5895). The unreachable pill stays. */
 #capture-wrapper:not(.chat-mode) .waiting-banner { display: none; }
+/* Over the chat the pill repeated the card that is in the chat (a permission, a question, the startup prompt, a sign-in): one message, the card (#5895). It shows only while no card is. */
+#capture-wrapper:has(#live-history-messages > .chat-needs-input) .waiting-banner { display: none; }
 
 .waiting-banner {
     background: var(--bg-primary);

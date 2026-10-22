@@ -45,11 +45,16 @@ const SESSIONS = [
         assert.ok(p.hidden || p.h === 0, 'no pill beside the login card: ' + JSON.stringify(p));
         await shot('pill-login-chat');
 
-        console.log('2. a generic wait: the pill shows over the chat');
+        console.log('2. a generic wait: its card is the message, the pill does not repeat it');
         await open('ask-agent', ASK, 'chat');
+        await waitFor(`!!document.querySelector('#live-history-messages > .chat-needs-input')`, 'the permission card', 10000);
         p = await pill();
-        assert.ok(!p.hidden && p.h > 0 && /waiting for input/.test(p.text), 'the pill shows over the chat: ' + JSON.stringify(p));
+        assert.ok(p.display === 'none' && p.h === 0, 'no pill beside the permission card: ' + JSON.stringify(p));
         await shot('pill-ask-chat');
+        // with no card in the chat the pill is the message: take the card away, as before the chat has drawn it
+        await ev(`document.querySelector('#live-history-messages > .chat-needs-input').remove(); true`);
+        p = await pill();
+        assert.ok(p.display !== 'none' && p.h > 0 && /waiting for input/.test(p.text), 'with no card the pill shows: ' + JSON.stringify(p));
 
         console.log('3. the Terminal tab: no waiting pill on top of the terminal');
         await ev(`window.setLiveViewMode('terminal'); true`);
@@ -57,10 +62,6 @@ const SESSIONS = [
         p = await pill();
         assert.ok(p.display === 'none' && p.h === 0, 'no pill over the terminal: ' + JSON.stringify(p));
         await shot('pill-ask-terminal');
-        await ev(`window.setLiveViewMode('chat'); true`);
-        await settle();
-        p = await pill();
-        assert.ok(p.h > 0, 'and it is back over the chat: ' + JSON.stringify(p));
         console.log('PASS the sign-in is said once, and the terminal is not covered');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

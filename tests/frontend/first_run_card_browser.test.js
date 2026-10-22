@@ -31,17 +31,16 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
             await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
             await ev(`Promise.resolve(window.selectLiveSession('first-agent', 'claude', ${JSON.stringify(SID)})).then(() => { window.setLiveViewMode('chat'); return true; })`);
             await waitFor(`!!document.querySelector('#live-history-messages > .chat-needs-input')`, `${w}: the card`, 15000);
-            await waitFor(`(() => { const b = document.getElementById('waiting-banner'); return !!b && !b.hidden && b.getBoundingClientRect().height > 0; })()`, `${w}: the pill`, 15000);
+            await ev(`import((window.__coralStatic || '/static/') + 'session_header_updates.js').then(m => { m.updateWaitingIndicator(window.__sessions[0]); return new Promise(r => setTimeout(() => r(true), 1800)); })`); // the page's own timer, longer than the pill's 1.5 s show delay
             const g = await ev(`(() => { const b = document.getElementById('waiting-banner').getBoundingClientRect(), c = document.querySelector('#live-history-messages > .chat-needs-input'), r = c.getBoundingClientRect();
-                return { pillBottom: Math.round(b.bottom), cardTop: Math.round(r.top), pill: document.getElementById('waiting-banner').textContent.trim(), card: c.textContent.replace(/\\s+/g, ' ').trim(), open: !!c.querySelector('[data-on-click="terminal-view-open"]') }; })()`);
-            assert.ok(g.cardTop >= g.pillBottom, `${w}: the pill (bottom ${g.pillBottom}) does not cover the card (top ${g.cardTop})`);
-            assert.ok(!/below/.test(g.pill) && /Open its terminal/.test(g.pill), `${w}: the pill names the terminal as something to open: ${g.pill}`);
+                return { pillHeight: Math.round(b.height), cardTop: Math.round(r.top), card: c.textContent.replace(/\\s+/g, ' ').trim(), open: !!c.querySelector('[data-on-click="terminal-view-open"]') }; })()`);
+            assert.ok(g.pillHeight === 0, `${w}: the card is the one message: no pill beside it (height ${g.pillHeight})`);
             assert.match(g.card, /Open the terminal, answer it there, then come back and type your first message/);
             assert.ok(g.open, `${w}: the card has Open terminal`);
             const t = await ev(`(() => { const b = document.querySelector('#live-history-messages > .chat-needs-input [data-on-click="terminal-view-open"]'), cs = getComputedStyle(b); return { h: Math.round(b.getBoundingClientRect().height), underline: cs.textDecorationLine === 'underline' && cs.textDecorationColor !== 'rgba(0, 0, 0, 0)' && !/transparent/.test(cs.textDecorationColor) }; })()`);
             assert.ok(t.underline, `${w}: Open terminal is underlined at rest, so it reads as the action`);
             assert.ok(t.h >= (mobile ? 44 : 24), `${w}: Open terminal is a big enough target (${t.h})`);
-            console.log(`   ok ${w}: pill ${g.pillBottom}, card ${g.cardTop}`);
+            console.log(`   ok ${w}: card ${g.cardTop}, no pill`);
         }
 
         // Claude's sign-in as the server says it (#5852, after #5838's check): not signed in -> the card says so; signed in or not said -> the generic words
