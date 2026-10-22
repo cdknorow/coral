@@ -1,0 +1,17 @@
+name: probe-psreadline
+on:
+  push:
+    branches: [trial/psreadline-6071]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: PSReadLine under each execution policy
+        shell: pwsh
+        run: ./probe/psreadline.ps1
