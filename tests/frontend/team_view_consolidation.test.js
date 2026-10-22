@@ -184,7 +184,7 @@ const BASE = require('./test_base').BASE;
 
     // Verify fieldset sectioning (then the Health check tab's, #4230 and #4962, the Messaging tab has no fieldset, #5572)
     const legends = await ev(`Array.from(document.querySelectorAll('.team-settings-section legend')).map(l => l.textContent)`);
-    assert.deepEqual(legends, ['Team working mode', 'Prompt inspection', 'The check', 'Reviews', 'Automatic rules'], 'Form has team sections only: no Global settings');
+    assert.deepEqual(legends, ['Team working mode', 'Reviews', 'Automatic rules'], 'Form has team sections only: no Global settings');
     console.log('✓ Fieldset sections verified (no Global settings)');
 
     // A failed working-mode save says so
