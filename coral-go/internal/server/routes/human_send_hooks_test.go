@@ -190,3 +190,32 @@ func TestHumanSendWithGoneHooks(t *testing.T) {
 		assert.Equal(t, http.StatusOK, code, res.body)
 	})
 }
+
+// A server whose tools folder holds coral-board and no hook programs (source "this build (coral-board only)") started its agents with hooks found elsewhere on their PATH: nothing is recorded, so
+// no agent of it is ever flagged or told "can't reach this agent's hooks" (#6089 review).
+func TestAToolsFolderWithNoHooksIsNotRecordedAndNeverFlagged(t *testing.T) {
+	boardOnly := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(boardOnly, "coral-board"), []byte("#!/bin/sh\n"), 0o755))
+	t.Setenv("CORAL_HOOK_DIR", boardOnly)
+	h := setupHooksGone(t, "")
+	ctx := context.Background()
+	h.h.noteLaunchedHooks(ctx, h.sid, "codex")
+	dirs, err := h.h.ss.HookDirs(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, dirs, h.sid, "a folder with no hook program is not recorded")
+	assert.False(t, h.h.hooksUnreachable(ctx, h.sid))
+	// even when the folder later disappears, nothing was recorded: nothing is flagged
+	require.NoError(t, os.RemoveAll(boardOnly))
+	assert.False(t, h.h.hooksUnreachable(ctx, h.sid))
+
+	// a folder with a hook is recorded, and is flagged only when it is lost
+	withHooks := liveDir(t)
+	t.Setenv("CORAL_HOOK_DIR", withHooks)
+	h.h.noteLaunchedHooks(ctx, h.sid, "codex")
+	dirs, err = h.h.ss.HookDirs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, withHooks, dirs[h.sid])
+	assert.False(t, h.h.hooksUnreachable(ctx, h.sid))
+	require.NoError(t, os.RemoveAll(withHooks))
+	assert.True(t, h.h.hooksUnreachable(ctx, h.sid), "had hooks, lost them")
+}

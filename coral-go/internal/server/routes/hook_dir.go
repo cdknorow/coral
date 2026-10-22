@@ -20,9 +20,24 @@ func (h *SessionsHandler) noteLaunchedHookDir(ctx context.Context, sessionID str
 	if sessionID == "" || h.ss == nil {
 		return
 	}
-	if err := h.ss.SetHookDir(ctx, sessionID, agent.CoralToolsDir()); err != nil {
+	// Only a folder that holds hook programs is recorded (#6089 review): a server whose tools folder has coral-board and no hooks ("this build (coral-board only)") started its agents with hooks found
+	// elsewhere on their PATH, so "gone" must mean "had hooks here and lost them", never "had none here".
+	dir := agent.CoralToolsDir()
+	if !dirHasHooks(dir) {
+		dir = ""
+	}
+	if err := h.ss.SetHookDir(ctx, sessionID, dir); err != nil {
 		slog.Warn("could not record an agent's tools folder", "session_id", sessionID, "error", err)
 	}
+}
+
+// dirHasHooks reports whether dir holds at least one coral-hook program.
+func dirHasHooks(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "coral-hook-*"))
+	return err == nil && len(matches) > 0
 }
 
 // hookDirGone reports whether the tools folder an agent was started with can no longer run its hooks: the folder is gone, or no coral-hook program is left in it. A folder that cannot be
