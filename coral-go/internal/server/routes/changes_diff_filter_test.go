@@ -392,3 +392,34 @@ func TestSkippedNewFilesNoteWording(t *testing.T) {
 	assert.Equal(t, "1 new file is left out of this diff, which is limited to 8 MiB and, with this computer's older git, to 300 new files. They are still in the agent's working folder.",
 		skippedNewFilesNote(1, true))
 }
+
+// #6144: a fresh "git init" has no commit, so HEAD does not exist and "git diff HEAD" fails: Kill then answered ok with changes_artifact_error. The diff is against the empty tree: a file that was added to
+// the index and one that was not are both new, and the filters still apply.
+func TestGeneratePersistedDiffOfARepoWithNoCommit(t *testing.T) {
+	_, h, _, _ := setupSessionsTestServer(t)
+	repo, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	run := func(args ...string) {
+		out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	run("init", "-q")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644))
+	run("add", "main.go") // in the index, never committed
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "notes.md"), []byte("a plain new file\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, ".env.local"), []byte(secretEnv+"\n"), 0o644))
+
+	diff, err := h.generatePersistedDiff(context.Background(), repo)
+	require.NoError(t, err, "no changes_artifact_error for a repo with no commit")
+	out := string(diff)
+	assert.Contains(t, out, "+package main", "the staged file")
+	assert.Contains(t, out, "+a plain new file", "the untracked file")
+	assert.NotContains(t, out, "sekrit", "a sensitive file is still not shown")
+
+	// and the artifact is written, as for any other repo
+	path := filepath.Join(t.TempDir(), "artifacts", "sessions", "s1", "changes.diff")
+	require.NoError(t, writeChangesArtifact(path, diff))
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(b), "+package main")
+}
