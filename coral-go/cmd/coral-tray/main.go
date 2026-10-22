@@ -272,6 +272,11 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	sup.onTelemetry = trayTelemetry(tracking.TrackInstallAsync)
 	status := &trayStatus{}
 	sup.onState = status.set
+	// The local "Install update" started the updater and the server quit (#166): end the dashboard window and the tray, so nothing runs from the install folder.
+	sup.onQuitForUpdate = func() {
+		killCoralApp()
+		systray.Quit()
+	}
 	ready, err := sup.start()
 	if err != nil {
 		log.Printf("Failed to start: %v", err)

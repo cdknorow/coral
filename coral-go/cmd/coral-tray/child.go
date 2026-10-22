@@ -58,8 +58,9 @@ func telemetryHook(w io.Writer) func(on bool) {
 //     tray's native prompt answers with one line on standard input.
 //   - Its standard input closing is the tray asking it to stop, as is SIGTERM/interrupt; a
 //     tray that dies closes it too, so a server never outlives its tray.
-//   - It exits 0 after a stop, childExitStartFailed when the server could not start and
-//     childExitRestart when Settings > Restart asked for a new server.
+//   - It exits 0 after a stop, childExitStartFailed when the server could not start,
+//     childExitRestart when Settings > Restart asked for a new server and childExitQuitForUpdate
+//     when the local "Install update" started the updater (#166).
 func runServerChild(host string, port int, backendType string) {
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
@@ -84,7 +85,7 @@ func runServerChild(host string, port int, backendType string) {
 		cancel()
 	}()
 
-	var restart atomic.Bool
+	var restart, quitForUpdate atomic.Bool
 	cfg := config.Load()
 	if host != "" {
 		cfg.Host, cfg.HostExplicit = host, true
@@ -98,6 +99,17 @@ func runServerChild(host string, port int, backendType string) {
 			restart.Store(true)
 			go func() {
 				defer safego.Recover("coral-tray/child:restart")
+				time.Sleep(500 * time.Millisecond) // let the request that asked be answered
+				cancel()
+			}()
+			return nil
+		},
+		// The local "Install update" (#166): the updater has just been started and must have Coral to itself, so this server stops and exits with
+		// childExitQuitForUpdate, which the tray's supervisor takes as "do not start it again".
+		QuitForUpdate: func() error {
+			quitForUpdate.Store(true)
+			go func() {
+				defer safego.Recover("coral-tray/child:quit-for-update")
 				time.Sleep(500 * time.Millisecond) // let the request that asked be answered
 				cancel()
 			}()
@@ -137,5 +149,8 @@ func runServerChild(host string, port int, backendType string) {
 	log.Println("[SHUTDOWN] done")
 	if restart.Load() {
 		os.Exit(childExitRestart)
+	}
+	if quitForUpdate.Load() {
+		os.Exit(childExitQuitForUpdate)
 	}
 }

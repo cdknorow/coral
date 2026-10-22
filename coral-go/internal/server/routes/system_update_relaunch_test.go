@@ -76,6 +76,10 @@ type relaunchEnv struct {
 
 func newRelaunchEnv(t *testing.T) *relaunchEnv {
 	t.Helper()
+	// These tests are about the relaunch itself, on every OS: Windows' refusal (#166) is tested on its own (TestRelaunchIsRefusedOnWindows).
+	was := relaunchNeedsLocalApproval
+	relaunchNeedsLocalApproval = false
+	t.Cleanup(func() { relaunchNeedsLocalApproval = was })
 	e := &relaunchEnv{t: t, settings: map[string]string{MaxModeSetting: "launch"}, label: ownerA, on: true,
 		now:    time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC),
 		agents: []RestartAgent{{SessionID: "claude-1", Name: "Dev", Backend: "pty", State: "idle"}}}

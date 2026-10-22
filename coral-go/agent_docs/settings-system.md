@@ -657,6 +657,20 @@ Jobs expire after 10 minutes (`404` after expiry).
 
 ## Middleware
 
+### Install update (Windows)
+
+```
+POST /api/system/update/install
+```
+
+On Windows an update installs from its MSI, and Windows Installer asks the person at the computer (UAC) to allow it. So only that person starts it: the dashboard on this computer, or the signed command line, as the user Coral runs as. Never through Coral Hub (403; the route is not in the tunnel table), never an agent (its session token is refused with 403 `operator_only`), never another local user. The request has no body (`{}` is accepted): it names no version, path or URL, and the update is the one Coral staged and verified, which the updater verifies again.
+
+What happens: the server writes a one-time marker (`<data>/updates/install-trigger.json`, private, good for 2 minutes), copies the installed `coral-update.exe` into `<data>/updates/apply` (hash-checked against the installed program, so a running updater never holds the install folder open), starts that copy as `apply` detached from Coral (no console, its own process group, out of Coral's job objects where the job allows breakaway, no inherited handle), and answers 202 `{"ok":true,"version":...,"quitting":true}`. The server then quits with exit code 5; the tray's supervisor takes 5 as "the updater has Coral" and ends itself and the dashboard window instead of starting the server again. `coral-update apply` consumes the marker first: run by hand, from a script or stale, it prints `not_requested` (or `request_expired`, `request_invalid`) and asks Windows nothing.
+
+409 answers (the server keeps running, nothing changed): `unsupported_platform` (not Windows: those platforms apply an update without asking anyone), `install_unavailable` (this Coral is not under the tray), `nothing_staged`, `busy` (one is already under way); 500 `updater_not_started` when the copy or the start failed.
+
+Coral Hub's relaunch (`POST /api/system/update/relaunch`, and the status's `relaunch` view) is refused on Windows with 409 `local_approval_needed`: it would leave Coral stopped behind a prompt nobody sees. macOS and Linux keep it. The apply itself stays off in releases (`windowsApplyEnabled`) until the coral-go-team has reviewed it.
+
 ### API Key Middleware
 
 - Localhost connections bypass authentication

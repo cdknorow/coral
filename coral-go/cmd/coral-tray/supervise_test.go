@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/server/routes"
 )
 
 // TestHelperChild is the fake server child for the supervisor tests: this test binary,
@@ -40,6 +42,9 @@ func TestHelperChild(t *testing.T) {
 	case "startfail":
 		fmt.Fprintln(os.Stderr, "2026/10/17 01:00:00 Failed to start: can't listen on 127.0.0.1 port 8420 (in use?)")
 		os.Exit(childExitStartFailed)
+	case "quit-for-update": // the local "Install update" started the updater (#166)
+		fmt.Println(childSaysReady)
+		os.Exit(childExitQuitForUpdate)
 	case "restart-once":
 		if n == 1 {
 			fmt.Println(childSaysReady)
@@ -220,6 +225,34 @@ func TestSupervisorRestartsOnRequest(t *testing.T) {
 	s.mu.Lock()
 	assert.Empty(t, s.policy.times)
 	s.mu.Unlock()
+}
+
+// The local "Install update" (#166): the server exits with childExitQuitForUpdate; the supervisor does not start it again, calls onQuitForUpdate once (the tray ends itself so
+// nothing runs from the install folder), and counts nothing as a crash.
+func TestSupervisorQuitsForAnUpdateAndNeverRestarts(t *testing.T) {
+	s, states, starts, _ := newTestSupervisor(t, "quit-for-update")
+	quit := make(chan struct{}, 4)
+	s.onQuitForUpdate = func() { quit <- struct{}{} }
+	startAndRun(t, s)
+	select {
+	case <-quit:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the tray was not asked to quit")
+	}
+	time.Sleep(500 * time.Millisecond) // a restart, if there were one, would have happened by now (the crash backoff starts at 1 s, a restart is at once)
+	assert.Equal(t, 1, starts(), "not started again")
+	assert.False(t, states.has(stateRestarting), "not a crash")
+	assert.Len(t, quit, 0, "asked to quit once")
+	s.mu.Lock()
+	assert.Empty(t, s.policy.times, "not counted as a crash")
+	s.mu.Unlock()
+}
+
+// The exit code is the one the server uses (routes.UpdateQuitExitCode), and it is not one of the codes that restart or fail.
+func TestQuitForUpdateExitCode(t *testing.T) {
+	assert.Equal(t, routes.UpdateQuitExitCode, childExitQuitForUpdate)
+	assert.NotEqual(t, childExitRestart, childExitQuitForUpdate)
+	assert.NotEqual(t, childExitStartFailed, childExitQuitForUpdate)
 }
 
 // One crash, then a server that runs: it is restarted after the first backoff step.
