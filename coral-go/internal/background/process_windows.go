@@ -6,6 +6,7 @@ import (
 	"context"
 	"os/exec"
 	"sync"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -20,6 +21,12 @@ import (
 var stepJobs sync.Map // *exec.Cmd -> windows.Handle
 
 func configureChildProcess(cmd *exec.Cmd) {
+	// Started suspended: trackChildProcess puts it in its job before it runs a single instruction, so
+	// nothing it spawns can start outside the job (and escape a kill).
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.CreationFlags |= windows.CREATE_SUSPENDED
 	cmd.Cancel = func() error {
 		killChildProcess(cmd)
 		return nil
@@ -36,12 +43,25 @@ func setJobKillOnClose(job windows.Handle, on bool) error {
 	return err
 }
 
-// trackChildProcess puts the started cmd in a new job. A failure leaves it unjobbed (the kill
-// then reaches sh only, as before).
+var procNtResumeProcess = windows.NewLazySystemDLL("ntdll.dll").NewProc("NtResumeProcess")
+
+// resumeProcess lets a process created suspended (configureChildProcess) run.
+func resumeProcess(pid int) {
+	h, err := windows.OpenProcess(windows.PROCESS_SUSPEND_RESUME, false, uint32(pid))
+	if err != nil {
+		return
+	}
+	defer windows.CloseHandle(h)
+	procNtResumeProcess.Call(uintptr(h))
+}
+
+// trackChildProcess puts the started (suspended) cmd in a new job, then lets it run. A failure
+// leaves it unjobbed (the kill then reaches sh only, as before), but it always runs.
 func trackChildProcess(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
+	defer resumeProcess(cmd.Process.Pid)
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return

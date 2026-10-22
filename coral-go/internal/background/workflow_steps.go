@@ -113,7 +113,18 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 		result.ErrorTail = msg
 		return terr
 	}
-	cmd := exec.CommandContext(stepCtx, "sh", "-c", expandedCmd)
+	shell, serr := workflowShell()
+	if serr != nil {
+		msg := "coral: " + serr.Error() + "\n"
+		sf.writeNew("stderr.txt", []byte(msg))
+		sf.writeNew("stdout.txt", nil)
+		code := 1
+		result.ExitCode = &code
+		sf.writeNew("exit_code", []byte("1"))
+		result.ErrorTail = msg
+		return serr
+	}
+	cmd := exec.CommandContext(stepCtx, shell, "-c", expandedCmd)
 	cmd.Dir = repoPath
 	cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
 	// Set process group for clean kill

@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/subgentic/coral/internal/background"
+	"github.com/subgentic/coral/internal/cloud"
 	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/gitutil"
 	"github.com/subgentic/coral/internal/httputil"
@@ -613,9 +614,15 @@ func (h *WorkflowHandler) GetStepFile(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "file not found")
 		return
 	}
-	if sensitivePath(realFile) {
-		errNotFound(w, "file not found")
-		return
+	// The run's own folder lives in the data folder, which sensitivePath walls off as a whole, so a local
+	// request (the dashboard) is bounded by the step folder alone. A tunneled one is also refused names
+	// sensitivePath lists (keys, credential files), judged by the path inside the step folder.
+	if cloud.Tunneled(r) {
+		rel, rerr := filepath.Rel(realStep, realFile)
+		if rerr != nil || sensitivePath(filepath.VolumeName(realStep) + string(os.PathSeparator) + "step" + string(os.PathSeparator) + rel) {
+			errNotFound(w, "file not found")
+			return
+		}
 	}
 
 	// Check file exists

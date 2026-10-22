@@ -91,8 +91,13 @@ func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interf
 				continue
 			}
 
+			shell, serr := workflowShell()
+			if serr != nil {
+				wr.logger.Warn("hook execution failed", "event", event, "command", command, "error", serr)
+				continue
+			}
 			hookCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-			cmd := exec.CommandContext(hookCtx, "sh", "-c", command)
+			cmd := exec.CommandContext(hookCtx, shell, "-c", command)
 			cmd.Dir = dir
 			cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
 			configureChildProcess(cmd)
