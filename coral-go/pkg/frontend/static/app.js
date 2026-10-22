@@ -215,6 +215,8 @@ registerActions({
     'm-tmux-banner-close': () => { const b = document.getElementById('tmux-missing-banner'); if (b) b.style.display = 'none'; },
     'm-toggle-agentic-panel': () => { window.toggleAgenticPanel(); },
     'm-toggle-tablet-sidebar': () => { window.toggleTabletSidebar(); },
+    // The skip link (#290): focus the main area without changing the address (a '#main-stage' href would be read as a route).
+    'skip-to-main': (el, event) => { event.preventDefault(); const t = document.getElementById('main-stage'); if (t) t.focus(); },
     'm-toggle-top-bar-settings': (el, event) => { window.__coral.toggleTopBarSettings(event); },
     'm-wake-pending-agents': () => { window.wakePendingAgents(); },
 });

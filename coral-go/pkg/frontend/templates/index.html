@@ -57,6 +57,7 @@
 </head>
 
 <body data-coral-root="{{ .CoralRoot }}" data-entry-mode="{{ .EntryMode }}" data-target-session-id="{{ .TargetSessionID }}" data-target-server="{{ .TargetServer }}">
+    <a class="skip-link" href="#main-stage" data-on-click="skip-to-main">Skip to main content</a>
     <header class="top-bar">
         <div class="top-bar-brand">
             <button class="tablet-sidebar-toggle" data-on-click="m-toggle-tablet-sidebar" title="Toggle sidebar" aria-label="Toggle sidebar">
@@ -257,7 +258,7 @@
 
             <!-- The views and the right sidebar share a row (#4539): the sidebar is part of the app layout, not of the agent page. -->
             <div class="main-row">
-            <div class="main-stage" id="main-stage">
+            <div class="main-stage" id="main-stage" tabindex="-1">
             <!-- Mobile Agent List (shown on mobile instead of sidebar) -->
             <div id="mobile-agent-list" class="mobile-agent-list"></div>
 

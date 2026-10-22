@@ -185,7 +185,8 @@ export async function sendCommand({ nudge = false } = {}) {
                 // Said under the composer (#3218); a gone terminal also marks the agent and offers Restart.
                 const { text, code, exited } = await responseError(resp, sessionServer(targetSession), `The message was not sent (HTTP ${resp.status}).`);
                 reportSendError(targetSession, text, code, exited);
-                console.error("Send failed:", resp.status);
+                // The refusal is already said under the composer: a 409 (held, or a dialog to answer) is expected, not an error (#290).
+                (resp.status === 409 ? console.debug : console.error)("Send failed:", resp.status);
                 return;
             }
             const result = await resp.json();
