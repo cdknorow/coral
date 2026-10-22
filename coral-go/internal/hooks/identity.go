@@ -119,6 +119,9 @@ func (e *PlainHTTPTokenError) Error() string {
 		"the token would cross the network unencrypted. Use an https:// CORAL_URL, or a loopback address (127.0.0.1) for a Coral on this computer"
 }
 
+// TokenWithheld marks the error as Coral's own refusal to send the token (see ForeignListenerError.TokenWithheld).
+func (e *PlainHTTPTokenError) TokenWithheld() bool { return true }
+
 // tokenAllowed: the request goes to this agent's own Coral, over a channel that keeps the token on this computer or encrypted:
 // loopback, https to a configured host, or plain http to a configured host that is an address of this computer itself (a
 // Coral started with --host on one LAN address gives its agents that address, and the traffic never leaves the computer).

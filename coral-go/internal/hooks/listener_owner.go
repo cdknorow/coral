@@ -22,6 +22,11 @@ func (e *ForeignListenerError) Error() string {
 		"Is another account's program on Coral's port? Start Coral, or check what is listening there", e.Port, e.PID, e.Why)
 }
 
+// TokenWithheld marks the error as Coral's own refusal to send the token, not a server that couldn't be reached: the CLIs exit
+// "refused" (5) for it, not "cannot reach" (3), so a script never takes a foreign listener for a Coral that isn't running and
+// starts or retries one (Security's #260 pass). A method, not a type the CLIs' error classes import.
+func (e *ForeignListenerError) TokenWithheld() bool { return true }
+
 // AllowTestServerListener lets a test's own server pass the Windows check: the test process itself, or a process running this
 // tool's own executable (a test that runs the CLI as a child of the test binary, which serves on the port). Tests set it (the
 // hooks tests' TestMain, coral-agent's helper process); a shipped tool never does, so the rule there is exactly Coral's image and
