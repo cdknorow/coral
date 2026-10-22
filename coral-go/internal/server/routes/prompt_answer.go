@@ -59,6 +59,9 @@ type promptReviewItem struct {
 }
 
 type promptScreen struct {
+	// Title: the dialog's heading, when its top line is one ("Hooks need review" over "2 hooks are new or changed ...", #306).
+	// Question still begins with it; the card shows the title as a heading and the rest of Question under it.
+	Title    string             `json:"title,omitempty"`
 	Question string             `json:"question"`
 	Options  []promptOption     `json:"options"`
 	Review   []promptReviewItem `json:"review,omitempty"`
@@ -142,7 +145,7 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 		return parseUnnumberedMenu(lines)
 	}
 	var opts []promptOption
-	question := ""
+	question, title := "", ""
 	questionAt := -1
 	sawContinuation := false
 	boxes := 0
@@ -222,6 +225,15 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 			question = t + " " + question
 			questionAt = j
 		}
+		// The dialog's heading ("Hooks need review" over "2 hooks are new or changed. ...", #306), for the card to show on a line
+		// of its own: the top line, when it is no wrapped part of the line below it (that line's first word would have fitted on
+		// it) and ends no sentence. Question stays the whole text, as auto-accept, samePrompt and the session state read it.
+		if questionAt < i {
+			top, below := strings.TrimSpace(lines[questionAt]), strings.TrimSpace(lines[questionAt+1])
+			if !wrapsInto(top, below) && !strings.ContainsAny(top[len(top)-1:], ".?!:;,") {
+				title = top
+			}
+		}
 		break
 	}
 	if len(opts) < 2 {
@@ -252,7 +264,7 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 			}
 		}
 	}
-	return promptScreen{Question: question, Options: opts, Review: parseReview(lines, questionAt), Multi: multi, Submit: submit, boxes: boxes, context: promptContext(lines, questionAt)}, true
+	return promptScreen{Title: title, Question: question, Options: opts, Review: parseReview(lines, questionAt), Multi: multi, Submit: submit, boxes: boxes, context: promptContext(lines, questionAt)}, true
 }
 
 var (
@@ -839,4 +851,12 @@ func (h *SessionsHandler) waitPromptScreen(ctx context.Context, name, agentType,
 		case <-time.After(promptPollEvery):
 		}
 	}
+}
+
+// wrapsInto reports whether above can be the line a wrapped text broke before below: a terminal (or the CLI) wraps a word onto
+// the next line only when it does not fit, so the line above is never short enough to have taken below's first word (#306).
+// below is the full width the text had, so a line whose length plus that word fits within it was not wrapped.
+func wrapsInto(above, below string) bool {
+	first, _, _ := strings.Cut(below, " ")
+	return utf8.RuneCountInString(above)+1+utf8.RuneCountInString(first) > utf8.RuneCountInString(below)
 }

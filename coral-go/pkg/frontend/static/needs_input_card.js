@@ -160,6 +160,7 @@ function needsInputHtml(info, session) {
     const screen = info.screen || {};
     const onScreen = (screen.options || []).length > 0;
     const screenQuestion = onScreen ? (screen.question || "") : "";
+    const screenTitle = onScreen ? (screen.title || "") : ""; // the dialog's heading line, when it has one (#306)
     const name = agentDisplayName(session);
     let kicker = (info.kind === "question") ? `${name} is asking` : (KICKERS[info.kind] || "Needs your input");
     let question = "";
@@ -223,8 +224,15 @@ function needsInputHtml(info, session) {
 
     const controls = answerControlsHtml(info, descriptions, fullLabels);
     const hint = !onScreen && info.kind !== "startup" ? `<span class="cni-hint">Answer in the terminal</span>` : "";
+    // A dialog with a heading (Codex's "Hooks need review", #306): the heading is the card's heading, its text a line under it,
+    // instead of the two run together as one line.
+    let questionHtml = question ? `<div class="cni-question">${escapeHtml(question)}</div>` : "";
+    if (screenTitle && question.startsWith(screenTitle + " ")) {
+        questionHtml = `<h3 class="cni-question">${escapeHtml(screenTitle)}</h3>`
+            + `<div class="cni-question-detail">${escapeHtml(question.slice(screenTitle.length).trim())}</div>`;
+    }
     return `<div class="cni-head"><span class="cni-dot" aria-hidden="true"></span><span class="cni-kicker">${kicker}</span></div>`
-        + (question ? `<div class="cni-question">${escapeHtml(question)}</div>` : "")
+        + questionHtml
         + context
         + reviewHtml(info)
         + controls.body
