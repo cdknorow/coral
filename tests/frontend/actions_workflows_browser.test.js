@@ -28,7 +28,7 @@ const JOB_RUNS = { runs: [{ id: 44, status: 'completed', scheduled_at: '2026-10-
 
 (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
-    const { Page, Runtime } = client;
+    const { Page, Runtime, Input } = client;
     const ev = async expression => {
         const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true });
         if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400));
@@ -178,6 +178,11 @@ const JOB_RUNS = { runs: [{ id: 44, status: 'completed', scheduled_at: '2026-10-
         await ev(`window.__hist = []; window.selectHistorySession = id => window.__hist.push(id); true`);
         await click('#scheduled-jobs-list [data-on-click="job-select"][data-job-id="6"]');
         await until(`!!document.querySelector('#scheduler-view [data-on-click="job-run-session"]')`, 'the agent job\'s runs', 5000);
+        check('the full job prompt starts folded', await ev(`(() => { const d=document.querySelector('.sched-prompt-section');return !d.open && !d.querySelector('pre').checkVisibility() && d.querySelector('pre').textContent==='p'; })()`));
+        await ev(`document.querySelector('.sched-prompt-section > summary').focus();true`);
+        await Input.dispatchKeyEvent({type:'keyDown',key:' ',code:'Space',windowsVirtualKeyCode:32,text:' '});
+        await Input.dispatchKeyEvent({type:'keyUp',key:' ',code:'Space',windowsVirtualKeyCode:32});
+        check('Space opens the complete prompt in a bounded scroll region', await ev(`(() => { const d=document.querySelector('.sched-prompt-section'),p=d.querySelector('pre');return d.open && p.checkVisibility() && p.textContent==='p' && getComputedStyle(p).overflowY==='auto' && parseFloat(getComputedStyle(p).maxHeight)<=innerHeight*0.4+1; })()`));
         await click('#scheduler-view [data-on-click="job-run-session"]');
         check('a run\'s session link opens that session\'s history', JSON.stringify(await ev(`window.__hist`)) === JSON.stringify([SID]), JSON.stringify(await ev(`window.__hist`)));
         await ev(`(() => { const b = document.createElement('a'); b.setAttribute('data-on-click', 'job-run-session'); b.dataset.sessionId = '../../etc'; document.body.appendChild(b); b.click(); b.remove(); return true; })()`);

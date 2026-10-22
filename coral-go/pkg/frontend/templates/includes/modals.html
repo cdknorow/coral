@@ -1188,7 +1188,7 @@
     <div id="job-modal" class="modal" role="dialog" aria-labelledby="job-modal-title" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
-                <h3 id="job-modal-title">New Scheduled Job</h3>
+                <h3 id="job-modal-title">New job</h3>
             </div>
             <div class="modal-body">
                 <!-- Job type toggle -->
@@ -1201,7 +1201,7 @@
                     </button>
                 </div>
 
-                <label>Job Name:
+                <label>Name:
                     <input type="text" id="job-modal-name" placeholder="e.g. Nightly Tests">
                 </label>
                 <label>Description <span class="text-muted-sm">(optional)</span>:
@@ -1243,10 +1243,10 @@
                         <input type="text" id="job-modal-repo" placeholder="/path/to/repo" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
                     </label>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                        <label>Base Branch:
+                        <label>Base branch:
                             <input type="text" id="job-modal-branch" placeholder="main" value="main">
                         </label>
-                        <label>Agent Type:
+                        <label>Agent:
                             <select id="job-modal-agent" data-on-change="flag-agent-change">
                                 <option value="claude">Claude</option>
                                 <option value="agy">Antigravity (agy)</option>
@@ -1268,7 +1268,7 @@
                 </div>
 
                 <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end">
-                    <label>Max Duration (seconds):
+                    <label>Timeout (seconds):
                         <input type="number" id="job-modal-timeout" value="3600" min="60">
                     </label>
                     <label class="job-cleanup-option" style="display:flex;align-items:center;gap:6px;padding-bottom:6px">
