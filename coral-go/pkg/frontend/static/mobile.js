@@ -154,6 +154,23 @@ function restoreSidebarList() {
     _sidebarHome = null;
 }
 
+// One History section: the phone Chats page owns it; wider screens use the sidebar.
+// Moving it preserves search/filter listeners, current values, results and pagination.
+let _historyHome = null;
+function syncMobileHistoryList() {
+    const section = document.querySelector('[data-section="history"]');
+    const host = document.getElementById('mobile-history-list');
+    if (!section || !host) return;
+    if (isMobile()) {
+        if (!_historyHome) _historyHome = { parent: section.parentElement, next: section.nextSibling };
+        if (section.parentElement !== host) host.appendChild(section);
+    } else if (_historyHome) {
+        const { parent, next } = _historyHome;
+        parent.insertBefore(section, next?.parentNode === parent ? next : null);
+        _historyHome = null;
+    }
+}
+
 // ── Intercept Session Selection on Mobile ─────────────────────────────────
 
  function wrapSelectLiveSession() {
@@ -380,6 +397,7 @@ export function initMobile() {
         _initKeyboardDetection();
         return;
     }
+    syncMobileHistoryList();
     // Set default tab
     if (isMobile()) {
         switchMobileTab('agents');
@@ -400,6 +418,7 @@ export function initMobile() {
     window.addEventListener('resize', () => {
         const mobile = isMobile();
         if (mobile !== wasMobile) {
+            syncMobileHistoryList();
             const list = document.getElementById('mobile-agent-list');
             const welcome = document.getElementById('welcome-screen');
             if (mobile) {

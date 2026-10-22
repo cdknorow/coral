@@ -260,6 +260,11 @@ registerActions({
     'tag-create': () => createTag(),
     'summary-generate': () => generateSummary(),
     'resume-show': () => showResumeModal(),
+    'history-list': () => {
+        state.currentSession = null;
+        switchNavTab('history');
+        document.getElementById('history-search')?.focus();
+    },
     'history-tab': el => { if (HISTORY_TABS.has(el.dataset.tab)) switchHistoryTab(el.dataset.tab); },
     'notes-edit': () => toggleNotesEdit(),
     'notes-cancel': () => cancelNotesEdit(),
