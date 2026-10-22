@@ -1404,6 +1404,7 @@
 /* Chats on phones: the existing History controls live in the page (#6013). */
 #mobile-history-list,
 .mobile-history-back { display: none; }
+#chats-empty-view > .welcome-shell { margin-top: auto; }
 @media (max-width: 767px) {
     #chats-empty-view { padding: 0; align-items: stretch; text-align: left; }
     #chats-empty-view > .welcome-shell { display: none; }

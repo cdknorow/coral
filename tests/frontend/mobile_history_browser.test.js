@@ -49,12 +49,14 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
         for (const theme of ['dark','light']) { await setTheme(ev,theme); await shot(`${theme}-390-search`); }
         await size(1280);
         assert.ok(await ev(`document.querySelector('.sidebar').contains(window.__historySection) && window.__historySection===document.querySelector('[data-section="history"]') && document.getElementById('history-search').value==='needle' && document.querySelector('[data-chat-type="agent"]').classList.contains('active')`), 'desktop restores same controls with filter/query state');
+        assert.ok(await ev(`(() => { const v=document.getElementById('chats-empty-view').getBoundingClientRect(),s=document.querySelector('#chats-empty-view > .welcome-shell').getBoundingClientRect();return Math.abs((s.top+s.bottom)-(v.top+v.bottom))<2; })()`), 'desktop Chats hero stays vertically centered beside the sidebar');
         await shot('light-1280-search');
         await size(390);
         assert.ok(await ev(`document.querySelector('#mobile-history-list').contains(window.__historySection) && document.getElementById('hf-advanced').checkVisibility()`), 'phone restores same expanded filters');
         await ev(`document.querySelector('.chat-search-hit').click();true`);
         await waitFor(`document.querySelector('#history-messages .chat-search-target')?.textContent.includes('needle')`, 'search hit opens transcript');
         assert.equal(await ev(`document.getElementById('history-search').checkVisibility()`),false,'list hidden while reading transcript');
+        assert.equal(await ev(`document.querySelector('.mobile-history-back').getAttribute('aria-label')`), 'Back to chats', 'return button says where it goes');
         const target = await ev(`(() => {const r=document.querySelector('.mobile-history-back').getBoundingClientRect(); return {w:r.width,h:r.height};})()`);
         assert.ok(target.w>=44 && target.h>=44,'Chats return target '+JSON.stringify(target));
         for (const theme of ['dark','light']) { await setTheme(ev,theme); await shot(`${theme}-390-transcript`); }
