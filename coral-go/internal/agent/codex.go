@@ -201,6 +201,7 @@ func (a *CodexAgent) LaunchCommand(params LaunchParams) (string, error) {
 		parts, _, _ = appendCodexPermissionMode(parts, bypassSandbox, params.PermissionMode)
 	}
 	parts = collapseCodexSandboxFlags(parts, presetApplied)
+	parts = codexCoralSandboxNetwork(parts, params)
 	if arg := codexActionPrompt(files, params); arg != "" {
 		raw = append(raw, arg)
 		// "--": a prompt that is only a flag ("--dangerously-skip-permissions") is the
@@ -494,4 +495,63 @@ func appendCodexPermissionMode(parts []string, bypassSandbox bool, mode string) 
 		slog.Warn("dropping unsupported permission mode for Codex agent", "mode", mode)
 		return parts, bypassSandbox, false
 	}
+}
+
+// codexCoralSandboxNetwork lets the autonomous workspace sandbox reach Coral's
+// HTTP API. Command hooks run in Codex's host process, outside this sandbox, so
+// they need no writable roots. The token and board state are read-only inputs;
+// prompt handoffs are read before Codex starts, and artifact downloads use temp.
+// Do not grant write access to Coral's data directory or session token files.
+//
+// Codex's network_access switch permits outbound networking, including loopback;
+// it is not a localhost-only firewall. Keep explicit flags/config authoritative:
+// this default is inserted before the user's -c overrides. Restrictive capability
+// presets and the other permission modes do not acquire network access here.
+func codexCoralSandboxNetwork(parts []string, params LaunchParams) []string {
+	if !params.Capabilities.IsEmpty() || (params.PermissionMode != "auto" && params.PermissionMode != "dontAsk") {
+		return parts
+	}
+	sandbox, approval := "", ""
+	insert := -1
+	for i := 0; i < len(parts); i++ {
+		if strings.HasPrefix(parts[i], "--config=") || strings.HasPrefix(parts[i], "-c=") {
+			if insert < 0 {
+				insert = i
+			}
+			continue
+		}
+		if parts[i] == "-c" || parts[i] == "--config" {
+			if insert < 0 {
+				insert = i
+			}
+			i++ // a config value is never a permission flag
+			continue
+		}
+		if parts[i] == "--dangerously-bypass-approvals-and-sandbox" || parts[i] == "--yolo" {
+			return parts
+		}
+		if kind, n := codexPermissionFlag(parts, i); n > 0 {
+			value := ""
+			if n == 2 {
+				value = parts[i+1]
+			} else {
+				_, value, _ = strings.Cut(parts[i], "=")
+			}
+			if kind == 's' {
+				sandbox = value
+			} else {
+				approval = value
+			}
+			i += n - 1
+		}
+	}
+	if sandbox != "workspace-write" || approval != "never" {
+		return parts
+	}
+	if insert < 0 {
+		insert = len(parts)
+	}
+	out := append([]string(nil), parts[:insert]...)
+	out = append(out, "-c", "sandbox_workspace_write.network_access=true")
+	return append(out, parts[insert:]...)
 }

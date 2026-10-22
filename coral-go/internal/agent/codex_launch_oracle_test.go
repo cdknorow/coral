@@ -86,6 +86,9 @@ func TestCodexLaunchCommandAgreesWithBefore4845(t *testing.T) {
 		}
 		want, werr := a.launchCommandBefore4845(p)
 		got, gerr := a.LaunchCommand(p)
+		// #5925 adds Coral networking to autonomous workspace launches; its policy
+		// and precedence have separate tests. Compare the pre-existing behavior here.
+		got = strings.ReplaceAll(got, " -c sandbox_workspace_write.network_access=true", "")
 		label := fmt.Sprintf("seed %d %+v", seed, p)
 		require.Equal(t, werr == nil, gerr == nil, label)
 		files := func(cmd string) []string {

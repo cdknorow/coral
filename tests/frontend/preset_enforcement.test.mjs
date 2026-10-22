@@ -62,7 +62,8 @@ assert.equal(pe.defaultPermissionMode({}, 'claude'), 'auto');
 assert.equal(pe.defaultPermissionMode(undefined, 'claude'), 'auto');
 assert.equal(pe.defaultPermissionMode({}, ''), 'auto', 'no agent type named: Claude');
 assert.equal(pe.defaultPermissionMode({}, undefined), 'auto');
-for (const other of ['codex', 'agy', 'antigravity', 'gemini', 'pi']) assert.equal(pe.defaultPermissionMode({}, other), 'bypassPermissions', other + ' keeps its default');
+assert.equal(pe.defaultPermissionMode({}, 'codex'), 'auto', 'Codex uses the workspace sandbox');
+for (const other of ['agy', 'antigravity', 'gemini', 'pi']) assert.equal(pe.defaultPermissionMode({}, other), 'bypassPermissions', other + ' keeps its default');
 for (const saved of ['bypassPermissions', 'default', 'plan', 'acceptEdits', 'dontAsk', 'auto']) {
     for (const type of ['claude', 'codex', 'agy', 'pi']) assert.equal(pe.defaultPermissionMode({ default_permission_mode: saved }, type), saved, `a saved ${saved} stays for ${type}`);
 }
@@ -74,6 +75,8 @@ let sel = fakeSelect();
 pe.syncDefaultPermissionMode(sel, {}, 'claude');
 assert.equal(sel.value, 'auto');
 pe.syncDefaultPermissionMode(sel, {}, 'codex');
+assert.equal(sel.value, 'auto', 'Codex also uses Auto while the select follows the default');
+pe.syncDefaultPermissionMode(sel, {}, 'agy');
 assert.equal(sel.value, 'bypassPermissions', 'the type changed while it still showed the default');
 pe.syncDefaultPermissionMode(sel, {}, 'claude');
 assert.equal(sel.value, 'auto');

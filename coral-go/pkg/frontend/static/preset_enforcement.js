@@ -98,14 +98,14 @@ export function presetEnforcement(agentType, caps, permMode) {
 }
 
 /**
- * The permission mode a launch starts with when the person did not pick one (#5836): the mode they saved in Settings, else Auto for Claude (Claude's own safety checks stay on, and a new
- * user is not met with an agent that bypasses every prompt). The other CLIs keep what they had: Codex's Auto is a workspace-write sandbox that cannot reach the board on localhost, Antigravity
- * has no mode between its edits-only one and skip-permissions, and Pi has none. A saved mode is the person's choice and applies to every CLI as before.
+ * A saved Settings mode wins. Otherwise Claude uses Auto and Codex uses its
+ * workspace-write sandbox with no approval prompts and Coral connectivity (#5925).
+ * The remaining CLIs keep their existing defaults.
  */
 export function defaultPermissionMode(settings, agentType) {
     const saved = settings && settings.default_permission_mode;
     if (saved) return saved;
-    return !agentType || agentType === 'claude' ? 'auto' : 'bypassPermissions';
+    return !agentType || agentType === 'claude' || agentType === 'codex' ? 'auto' : 'bypassPermissions';
 }
 
 /**
