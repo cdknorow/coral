@@ -25,17 +25,25 @@ import (
 //  2. No SQL in a file that mentions one of those tables may ORDER BY (first key), MAX or MIN one of those columns. Order by id (write order) or rowid, or store a fixed-width stamp (ISOFormat).
 //     A comparison against a cutoff (created_at < ?) is allowed: it is exact to the second, which is what a retention cutoff needs.
 
-// nanoWriters: file (under internal/) -> the number of Format(time.RFC3339Nano) calls, with where they go.
-var nanoWriters = map[string]int{
-	"store/artifact_comments.go":   1, // artifact_comments.created_at, edited_at, resolved_at, deleted_at (listed by id)
-	"store/saved_messages.go":      2, // saved_messages.created_at, done_at (listed by id)
-	"store/sessions_tags.go":       1, // pinned_folders.pinned_at (listed by rowid)
-	"store/ui_requests.go":         3, // agent_ui_requests.created_at, updated_at (only a retention cutoff compares them)
-	"store/call_metrics.go":        4, // call_metrics.created_at (hour-prefix ranges and a prune cutoff)
-	"store/cloud_enrollment.go":    1, // cloud_enrollment times, parsed to time.Time, never compared as text
-	"tracking/milestones.go":       1, // a JSON file, parsed
-	"server/routes/token_usage.go": 1, // a response field, not stored
-	"background/health_held.go":    1, // part of an episode id, not compared
+// nanoWriter is a file that writes a time as RFC3339Nano text: how many Format calls, the tables whose columns it fills (each must be in nanoColumns, which is what the order rule checks), or, for a
+// writer whose text is never stored in a column, why that is all right.
+type nanoWriter struct {
+	calls  int
+	tables []string
+	why    string
+}
+
+// nanoWriters: file (under internal/) -> what it writes.
+var nanoWriters = map[string]nanoWriter{
+	"store/artifact_comments.go":   {calls: 1, tables: []string{"artifact_comments"}}, // created_at, edited_at, resolved_at, deleted_at (listed by id)
+	"store/saved_messages.go":      {calls: 2, tables: []string{"saved_messages"}},    // created_at, done_at (listed by id)
+	"store/sessions_tags.go":       {calls: 1, tables: []string{"pinned_folders"}},    // pinned_at (listed by rowid)
+	"store/ui_requests.go":         {calls: 3, tables: []string{"agent_ui_requests"}}, // created_at, updated_at (only a retention cutoff compares them)
+	"store/call_metrics.go":        {calls: 4, tables: []string{"call_metrics"}},      // created_at (hour-prefix ranges and a prune cutoff)
+	"store/cloud_enrollment.go":    {calls: 1, tables: []string{"cloud_enrollment"}},  // parsed to time.Time, never compared as text
+	"tracking/milestones.go":       {calls: 1, why: "a JSON file, parsed"},
+	"server/routes/token_usage.go": {calls: 1, why: "a response field, not stored"},
+	"background/health_held.go":    {calls: 1, why: "part of an episode id, not compared"},
 }
 
 // nanoTables and their time columns that hold such text.
@@ -88,25 +96,89 @@ func stringLiterals(f *ast.File) []string {
 	return out
 }
 
+// nanoLayout is time.RFC3339Nano's text, for a layout written out.
+const nanoLayout = "2006-01-02T15:04:05.999999999Z07:00"
+
+func isNanoLayout(e ast.Expr, held map[string]bool) bool {
+	switch x := e.(type) {
+	case *ast.SelectorExpr:
+		return x.Sel.Name == "RFC3339Nano"
+	case *ast.BasicLit:
+		s, err := strconv.Unquote(x.Value)
+		return x.Kind == token.STRING && err == nil && s == nanoLayout
+	case *ast.Ident:
+		return held[x.Name]
+	case *ast.ParenExpr:
+		return isNanoLayout(x.X, held)
+	}
+	return false
+}
+
 func TestEveryRFC3339NanoWriterIsListed(t *testing.T) {
 	found := map[string]int{}
 	for name, f := range goFilesUnderInternal(t) {
+		// a layout held in a name (const layout = time.RFC3339Nano, or the layout written out) is the same layout when it reaches Format
+		held := map[string]bool{}
+		for changed := true; changed; {
+			changed = false
+			ast.Inspect(f, func(n ast.Node) bool {
+				if vs, ok := n.(*ast.ValueSpec); ok {
+					for i, v := range vs.Values {
+						if i < len(vs.Names) && !held[vs.Names[i].Name] && isNanoLayout(v, held) {
+							held[vs.Names[i].Name] = true
+							changed = true
+						}
+					}
+				}
+				if as, ok := n.(*ast.AssignStmt); ok && len(as.Lhs) == len(as.Rhs) {
+					for i, v := range as.Rhs {
+						if id, ok := as.Lhs[i].(*ast.Ident); ok && !held[id.Name] && isNanoLayout(v, held) {
+							held[id.Name] = true
+							changed = true
+						}
+					}
+				}
+				return true
+			})
+		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
 				return true
 			}
 			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || sel.Sel.Name != "Format" || len(call.Args) != 1 {
+			if !ok || len(call.Args) != 1 || (sel.Sel.Name != "Format" && sel.Sel.Name != "AppendFormat") {
 				return true
 			}
-			if arg, ok := call.Args[0].(*ast.SelectorExpr); ok && arg.Sel.Name == "RFC3339Nano" {
+			if isNanoLayout(call.Args[0], held) {
 				found[name]++
 			}
 			return true
 		})
 	}
-	assert.Equal(t, nanoWriters, found, "a time written as RFC3339Nano text does not sort as a time: list the new writer in nanoWriters with its column, and make sure no list is ordered by it (use id), or write a fixed-width stamp (ISOFormat)")
+	calls := map[string]int{}
+	for file, w := range nanoWriters {
+		calls[file] = w.calls
+	}
+	assert.Equal(t, calls, found, "a time written as RFC3339Nano text does not sort as a time: list the new writer in nanoWriters with its tables (and those tables' columns in nanoColumns), and make sure no list is ordered by it (use id), or write a fixed-width stamp (ISOFormat)")
+}
+
+// The two lists cannot drift: a writer names the tables it fills, each must have its columns in nanoColumns (so the order rule looks at them), a writer with no table says why, and no table in
+// nanoColumns is left without a writer.
+func TestEveryNanoWriterNamesItsColumns(t *testing.T) {
+	claimed := map[string]bool{}
+	for file, w := range nanoWriters {
+		if len(w.tables) == 0 {
+			assert.NotEmpty(t, w.why, "%s writes RFC3339Nano text into no listed table: say why that is all right", file)
+		}
+		for _, table := range w.tables {
+			claimed[table] = true
+			assert.NotEmpty(t, nanoColumns[table], "%s fills %s, which has no columns in nanoColumns: the order rule would not look at them", file, table)
+		}
+	}
+	for table := range nanoColumns {
+		assert.True(t, claimed[table], "nanoColumns lists %s but no writer in nanoWriters names it", table)
+	}
 }
 
 func TestNoSQLOrdersByATimeStoredAsRFC3339Nano(t *testing.T) {
