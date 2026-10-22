@@ -929,7 +929,6 @@
                     </section>
                     <section class="settings-pane" id="settings-pane-cleanup" data-group="cleanup" data-icon="inventory_2" data-title="Storage and cleanup" role="tabpanel" aria-labelledby="settings-tab-cleanup" tabindex="-1" hidden>
                         <h4 class="settings-pane-title">Storage and cleanup</h4>
-                        <p class="settings-pane-sub">Disk space Coral uses, and how to free it.</p>
                         <dl class="info-grid settings-grid">
                 <div class="settings-row">
                 <dt class="toggle-dt">
@@ -939,7 +938,7 @@
                 <dd>
                     <span class="settings-unit-field"><input type="number" id="settings-artifact-store-max" min="0" step="1" inputmode="numeric" aria-describedby="settings-artifact-store-size settings-artifact-store-max-unit"><span class="settings-field-unit" id="settings-artifact-store-max-unit">GiB</span></span>
                     <div id="settings-artifact-store-size" class="settings-hint" role="status">Loading…</div>
-                    <div id="settings-storage-detail" class="settings-hint"></div>
+                    <details class="disclosure settings-storage-breakdown"><summary>By age and board</summary><div id="settings-storage-detail" class="settings-hint"></div></details>
                 </dd>
                 </div>
                 <div class="settings-row">

@@ -86,10 +86,10 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
         // Settings: the store's size, the diffs on their own lines, the limit.
         await ev(`window.showSettingsModal(); true`);
-        await until(`/^Artifacts: /.test((document.getElementById('settings-artifact-store-size') || {}).textContent || '')`, 'the size lines');
+        await until(`/ of 20\\.0 GiB/.test((document.getElementById('settings-artifact-store-size') || {}).textContent || '')`, 'the size lines');
         const sizes = await ev(`({ text: document.getElementById('settings-artifact-store-size').innerText, limit: document.getElementById('settings-artifact-store-max').value })`);
-        check('Settings shows the artifacts, the task diffs and the session diffs, and the limit (the 20 GiB default)',
-            /^Artifacts: .* in \d+ files?/m.test(sizes.text) && /Saved task diffs: .*\(not limited\)/.test(sizes.text) && /Saved session diffs: .*\(not limited\)/.test(sizes.text) && sizes.limit === '20' && /\(limit 20\.0 GiB\)/.test(sizes.text), JSON.stringify(sizes));
+        check('Settings shows the artifacts against the limit (the 20 GiB default), and the diffs',
+            /^.* of 20\.0 GiB/m.test(sizes.text) && /Diffs: .* in \d+ files?/.test(sizes.text) && sizes.limit === '20', JSON.stringify(sizes));
         await ev(`window.hideSettingsModal && window.hideSettingsModal(); true`);
     } catch (e) {
         check('no error', false, e.message);

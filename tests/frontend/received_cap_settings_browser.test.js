@@ -39,11 +39,11 @@ const GIB = 1024 ** 3;
 
         console.log('1. The row: the total, the limit, a labelled field');
         await ev(`window.showSettingsModal('cleanup'); true`);
-        await waitFor(`/Received: /.test((document.getElementById('settings-received-size') || {}).textContent || '')`, 'the received line', 8000);
+        await waitFor(`/ GiB| B/.test((document.getElementById('settings-received-size') || {}).textContent || '')`, 'the received line', 8000);
         const row = await ev(`(() => { const i = document.getElementById('settings-received-max'); const d = document.getElementById(i.getAttribute('aria-describedby').split(' ')[0]); const l = document.querySelector('label[for=settings-received-max]');
             return { value: i.value, loaded: i.dataset.loaded, text: d.textContent, label: l && l.textContent.trim(), type: i.type, min: i.min }; })()`);
         assert.equal(row.value, '2'); assert.equal(row.loaded, '1'); assert.equal(row.label, 'Received files limit'); assert.equal(row.type, 'number'); assert.equal(row.min, '0');
-        assert.match(row.text, /^Received: 1\.7 GiB in 3 files \(limit 2\.0 GiB, 85% full\)\. Delete received files in Team Artifacts to make room, or raise the limit\.$/, 'from 80% on: how full, and what to do');
+        assert.match(row.text, /^1\.7 GiB of 2\.0 GiB \(85% full\)\. Delete received files in Team Artifacts to make room, or raise the limit\.$/, 'from 80% on: how full, and what to do');
         assert.equal(await ev(`document.getElementById('settings-received-size').dataset.state || ''`), '', 'the warning colour is for the limit itself');
         await showRow(); await sleep(300); // sleep-ok: the scroll settles
         await shot('received-cap-desktop');
@@ -52,14 +52,14 @@ const GIB = 1024 ** 3;
         const reopenWith = async status => {
             await waitFor(`(window.hideSettingsModal(), getComputedStyle(document.getElementById('settings-modal')).display === 'none')`, 'Settings to close', 6000);
             await ev(`window.__status = ${JSON.stringify(status)}; window.showSettingsModal('cleanup'); true`);
-            await waitFor(`/Received: /.test(document.getElementById('settings-received-size').textContent) && document.getElementById('settings-received-max').dataset.loaded === '1'`, 'the line', 8000);
+            await waitFor(`/ GiB| B/.test(document.getElementById('settings-received-size').textContent) && document.getElementById('settings-received-max').dataset.loaded === '1'`, 'the line', 8000);
             await sleep(300); // sleep-ok: the rest of the dialog finishes laying out
             return ev(`({ text: document.getElementById('settings-received-size').textContent, state: document.getElementById('settings-received-size').dataset.state || '', color: getComputedStyle(document.getElementById('settings-received-size')).color })`);
         };
         const calm = await reopenWith({ bytes: GIB / 2, objects: 3, max_bytes: 2 * GIB, default_bytes: 2 * GIB, notice: false });
-        assert.equal(calm.text, 'Received: 0.5 GiB in 3 files (limit 2.0 GiB)'); assert.equal(calm.state, '');
+        assert.equal(calm.text, '0.5 GiB of 2.0 GiB'); assert.equal(calm.state, '');
         const full = await reopenWith({ bytes: 2 * GIB, objects: 3, max_bytes: 2 * GIB, default_bytes: 2 * GIB, notice: false });
-        assert.equal(full.text, 'Received: 2.0 GiB in 3 files (limit 2.0 GiB reached: new received files are refused). Delete received files in Team Artifacts to make room, or raise the limit.');
+        assert.equal(full.text, '2.0 GiB of 2.0 GiB: new received files are refused. Delete received files in Team Artifacts to make room, or raise the limit.');
         await showRow(); await sleep(300); // sleep-ok: the scroll settles
         await shot('received-cap-at-limit');
         assert.equal(full.state, 'warn', 'at the limit the line is in the warning colour'); assert.notEqual(full.color, calm.color, 'and the colour differs from the calm one');
@@ -80,7 +80,7 @@ const GIB = 1024 ** 3;
         await save();
         assert.ok(!(await ev(`window.__puts.some(b => 'received_artifacts_max_bytes' in b || 'artifact_store_max_bytes' in b)`)), 'an emptied GiB field saves nothing');
         await ev(`window.hideSettingsModal(); window.__status = { ...window.__status, max_bytes: 0 }; window.showSettingsModal('cleanup'); true`);
-        await waitFor(`/no limit/.test((document.getElementById('settings-received-size') || {}).textContent || '')`, 'the no-limit line', 8000);
+        await waitFor(`document.getElementById('settings-received-max').dataset.loaded === '1' && !/ of /.test((document.getElementById('settings-received-size') || {}).textContent || ' of ')`, 'the no-limit line (just the total, no "of")', 8000);
         assert.equal(await ev(`document.getElementById('settings-received-max').value`), '0');
         await ev(`window.hideSettingsModal(); window.__status = { bytes: ${Math.round(1.7 * GIB)}, objects: 3, max_bytes: ${2 * GIB}, default_bytes: ${2 * GIB}, notice: false }; true`);
         // showSettingsModal finishes opening after its requests answer, which can land after a hide: hide again on every poll until it stays closed.
@@ -91,7 +91,7 @@ const GIB = 1024 ** 3;
         const TOAST = /Files from other teams take 1\.7 GiB of the 2\.0 GiB limit\. Above it, new ones are refused\. Raise it in Settings > Storage\./;
         // With Settings open the line says it: remembered, no toast.
         await ev(`window.__puts.length = 0; window.__status = { ...window.__status, bytes: ${Math.round(1.7 * GIB)}, notice: true }; window.showSettingsModal('cleanup'); true`);
-        await waitFor(`/Received: /.test(document.getElementById('settings-received-size').textContent)`, 'Settings open', 8000);
+        await waitFor(`/ GiB| B/.test(document.getElementById('settings-received-size').textContent)`, 'Settings open', 8000);
         await waitFor(`window.__puts.some(b => 'received_cap_notice_ack' in b)`, 'the notice remembered while Settings is open', 8000);
         await sleep(400); // sleep-ok: shows that no toast follows (no condition to wait for)
         assert.ok(!TOAST.test(await ev(`document.body.innerText`)), 'no toast over the dialog it points to');
@@ -126,7 +126,7 @@ const GIB = 1024 ** 3;
         assert.match(un.text, /Not listed on any board: 3 files, 3 MiB\. Another Coral sent them but the message that names them never came\. They count toward the limit\.$/);
         assert.equal(un.role, 'status'); assert.equal(un.described, 'settings-received-size settings-received-max-unit', 'one status region, described by the field (then its unit, GiB)'); assert.equal(un.buttonInRegion, false, 'the button is outside the announced text');
         assert.equal(un.button, 'Delete 3 unlisted files (3 MiB)', 'it names what it deletes'); assert.equal(un.disabled, false);
-        await waitFor(`/Received: /.test(document.getElementById('settings-received-size').textContent) && document.getElementById('settings-received-max').dataset.loaded === '1'`, 'the dialog to finish loading', 8000);
+        await waitFor(`/ GiB| B/.test(document.getElementById('settings-received-size').textContent) && document.getElementById('settings-received-max').dataset.loaded === '1'`, 'the dialog to finish loading', 8000);
         await sleep(400); // sleep-ok: the rest of the dialog finishes laying out
         await showRow(); await sleep(300); // sleep-ok: the scroll settles
         await shot('received-cap-unlisted');
@@ -153,7 +153,7 @@ const GIB = 1024 ** 3;
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
         await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 });
         await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); document.documentElement.style.fontSize = '32px'; window.__status = { ...window.__status, bytes: ${Math.round(1.7 * GIB)}, notice: false, unlisted: { count: 3, bytes: 3000000, items: ${JSON.stringify(ids.map(id => ({ id, size: 1000000, at: '2026-10-17T09:00:00Z', source: 'src' })))} } }; window.showSettingsModal('cleanup'); true`);
-        await waitFor(`/Received: /.test((document.getElementById('settings-received-size') || {}).textContent || '')`, 'the received line on a phone', 8000);
+        await waitFor(`/ GiB| B/.test((document.getElementById('settings-received-size') || {}).textContent || '')`, 'the received line on a phone', 8000);
         await sleep(400); // sleep-ok: the font-size layout settles
         await showRow(); await sleep(300); // sleep-ok: the scroll settles
         const fit = await ev(`(() => { const box = document.querySelector('#settings-modal .modal-content, #settings-modal .modal') || document.getElementById('settings-modal'); const br = box.getBoundingClientRect();
