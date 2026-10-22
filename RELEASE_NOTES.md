@@ -1,5 +1,35 @@
 # Release Notes
 
+## v1.4.155 — A Mode button that reads Claude's real modes, @mentions on the board, and the Windows updater built (switched off)
+
+### Features
+
+- **The Mode button reads Claude's own modes:** an agent started in Auto used to be told "Accept Edits" (the footer's "auto mode on" was not read, and the button's "auto" was Accept Edits). The button now names each state as Claude does (Manual, Accept Edits, Plan, Auto, Bypass Permissions, Don't Ask) from the CLI's current mode line, and cycles in Claude's own order (checked on Claude Code 2.1.307). The mode the agent reports is only a label: presses are counted from the screen. A permission mode that says "auto" is labelled "Auto" everywhere, and Manual's tooltip says it is the Default in Settings.
+- **@mentions on the board are highlighted:** a mention of a current board member ("@Security Reviewer Windows": names can have spaces), or of the Operator, the Orchestrator or all, is shown with weight and a tint (not colour alone, 4.5:1 in both themes, a border and an underline in forced-colors mode); the viewer's own name is stronger. Nothing inside code, a code block or a link, and an email address is not a mention. A bare `coral://artifacts/<id>` in a post is a link to that artifact.
+- **"Add a model…" where you pick a model:** the model menu, and the model field in the launch and restart forms, end with "Add a model…": a small form (the model id, an optional display name) writes it to your custom models, so you do not have to go to Settings. An empty, flag-shaped or existing id is refused in words.
+- **The artifact viewer's Comments panel is closed unless you ask for it:** the document has the full width; a "Comments (N)" button in the header opens it (a column beside the document on a desktop, a sheet on a phone), and selecting text still offers Comment. A desktop remembers open or closed.
+- **The Windows updater is built, and still switched off:** the install route, the updater copy, the one-time install marker, the verified MSI major upgrade (a click for exactly the staged version, the whole chain re-verified, Authenticode pinned) and the verified rollback package are in this release, and a real-Windows-Installer test passes on a GitHub runner. The apply switch stays off on every platform: nothing updates a Coral yet, and the install route refuses before it quits anything. Windows packages are not Authenticode-signed yet; until they are, an update is accepted on its checksums and Sigstore signature.
+- **Windows: opening Coral again shows the running tray's window** (before, a second start did not hand over), through an event only this user can set.
+
+### Changes
+
+- **Board posts are short and scannable:** the agents' prompts and the `coral-board` help teach a one-line summary first, a numbered list, and long evidence as a linked artifact; the help fits 80 columns.
+- **The tunnel tells Coral Hub of a mode change with one message at a time**, and a failed message does not reconnect on a connection record that is gone.
+- **Auto-accept holds more Git commands:** a Git setting that runs a program (core.hooksPath, core.fsmonitor, core.sshCommand, credential.helper, the pager and protocol settings, and more), and a write into a place Git runs programs from (.git/hooks, .git/config, hook folders, archive and sync destinations), are held even after the shell's quote removal. A Coral Hub account at Launch can still run a program that is simply run; the documentation says what is left.
+- **A file relayed to a board that does not exist is refused with the same 403 as every other refusal** (before, an unknown board got its own 404).
+- **An agent CLI installed with Homebrew's node runs on a Mac:** a group-writable folder that is yours (the group is admin or your own, and no one else is in it) passes; the refusal names the folder and group and gives the chmod, or says to start Coral from a shell whose PATH has node's folder.
+- **A Google API key with a low entropy is masked in what Coral Hub sees:** the redactor's rule has no entropy filter (the library's placeholder filter could let a rare real key through) and still skips documented example keys.
+- **Settings is clearer for a computer that never chose a Hub access:** "Not chosen yet (View)" with an explanation, a sentence when the Hub cannot be reached ("Coral could not reach Coral Hub. Check your connection and try again.") with the seconds until Connect may ask again, and no "until you connect" wording for a computer connected from the command line. The Messaging box now reads "Message teams on other computers (through Coral Hub links)", with "Message teams on this computer" as its own line.
+
+### Fixes
+
+- **Auto-accept no longer panics on an empty argument on Windows**, and `-DestinationPath` (Expand-Archive, Compress-Archive) is judged as a path parameter, so an extract to an outside folder is not let through.
+- **Windows:** a fixture build of Coral refuses to start, saying why.
+
+### Internal
+
+- Tests: the sign-in probe tests find a hold against a signed-in control, not by seconds; the Codex timeline, the testguard PID, the CLI-help and the Coral burst-debounce tests no longer depend on timing or on a reused PID; a browser test pins that a send between two teams on one computer needs an explicit on; the first-launch `editions_browser` step waits for the screen to be shown; the redactor's miss-rate harness is seeded and can be rerun from its seed.
+
 ## v1.4.154 — Coral Hub connects with one question, cross-team relay is on by default, and agents launch quietly
 
 ### Features
