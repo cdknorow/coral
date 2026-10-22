@@ -312,7 +312,9 @@ export async function launchSession() {
         const result = await _launchOn(server, "/api/sessions/launch", payload, type, { dirInput, retry: launchSession }); // the Not Found dialog's Check again launches again, from this dialog's own fields
         if (result) {
             recordRecentDir(dir, server);
-            showToast(server === LOCAL_SERVER ? `Launched: ${result.session_name}` : `Launched on ${serverLabel(server, state.servers)}: ${result.session_name}`);
+            // The agent as the list names it (its name, else "Agent" or "Terminal"), not the session's raw id (#5895)
+            const shown = agentName || (type === 'terminal' ? 'Terminal' : 'Agent');
+            showToast(server === LOCAL_SERVER ? `Launched: ${shown}` : `Launched on ${serverLabel(server, state.servers)}: ${shown}`);
             hideLaunchModal();
             setTimeout(loadLiveSessions, 2000);
             _refreshAfterLaunch(server, { sessionName: result.session_name, sessionId: result.session_id });

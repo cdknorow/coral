@@ -106,7 +106,7 @@ export async function launchWorkflowAgent() {
             return;
         }
 
-        showToast(`Launched: ${result.session_name}`);
+        showToast('Launched: Workflow Builder'); // the name it was sent with (the list shows it), not the session's raw id (#5895)
 
         // Switch to agents tab and navigate to the new session
         setTimeout(async () => {

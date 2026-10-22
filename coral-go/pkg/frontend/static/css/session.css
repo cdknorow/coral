@@ -1237,6 +1237,8 @@
 .live-pills-stack > [hidden] { display: none; }
 /* One notice at a time: while the server is unreachable the agent's "waiting for input" is only its last known state, so the unreachable pill has the slot. */
 .live-pills-stack:has(> .server-unreachable-banner:not([hidden])) > .waiting-banner { display: none; }
+/* On the Terminal tab the agent's waiting state is on the screen itself, and the pill sat on top of the terminal's first lines: it shows over the chat only (#5895). The unreachable pill stays. */
+#capture-wrapper:not(.chat-mode) .waiting-banner { display: none; }
 
 .waiting-banner {
     background: var(--bg-primary);

@@ -61,6 +61,9 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
         assert.equal(await ev(`document.activeElement && document.activeElement.dataset.action`), 'recheck', 'focus is back on Check again after the answer (the button is disabled while it looks)');
         await ev(`window.__found = true; document.querySelector('body > .modal:not([id]) [data-action="recheck"]').click(); true`);
         await waitFor(`window.__launches.length === 2`, 'the launch after the CLI was found', 8000);
+        // the toast names the agent as the list does ("Agent"), not the session's raw id (#5895): the stubbed launch answers session_name 'first'
+        await waitFor(`[...document.querySelectorAll('.toast .toast-message')].some(t => /^Launched: /.test(t.textContent))`, 'the launch toast', 8000);
+        assert.deepEqual(await ev(`[...document.querySelectorAll('.toast .toast-message')].map(t => t.textContent).filter(t => /^Launched/.test(t))`), ['Launched: Agent'], 'Launched: Agent, not the session id');
         assert.equal(await ev(`!!document.querySelector('body > .modal:not([id]) [data-action="recheck"]')`), false, 'the dialog closed');
 
         console.log('4. a launch that is not the New Agent dialog (a board launch) has no form to repeat: Check again says to press Launch again, and never calls launchSession');

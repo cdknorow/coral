@@ -44,7 +44,7 @@ const BASE = require('./test_base').BASE;
         let sent = await lastLaunch();
         assert.equal(sent.working_dir, '/work/project'); assert.equal(sent.display_name, 'Ada'); assert.equal(typeof sent.agent_type, 'string'); assert.equal('board_name' in sent, false);
         await waitFor(`!document.querySelector('#launch-step-agent .btn-primary') || document.querySelector('#launch-step-agent .btn-primary').textContent === 'Launch'`, 'the button back');
-        assert.equal(await hasToast(/Launched: s1/), true); assert.equal(await modalOpen(), false, 'closed');
+        assert.equal(await hasToast(/Launched: Ada/), true); assert.equal(await hasToast(/Launched: s1/), false, 'the name, not the session id (#5895)'); assert.equal(await modalOpen(), false, 'closed');
 
         console.log('Joining a board sends its id; a new board needs a valid name');
         await flush();
