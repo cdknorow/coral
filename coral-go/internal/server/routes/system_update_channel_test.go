@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/tracking"
 )
 
 // The release channels on the server side (#5557): the update_channel setting chooses between two feeds, GET /api/system/update-check and
@@ -287,4 +288,16 @@ func TestAHandlerWithoutFeedsNamesTheChannelAndAsksNothing(t *testing.T) {
 	assert.Equal(t, "agentic", out["channel"])
 	assert.NotContains(t, out, "approved")
 	assert.EqualValues(t, 0, approvedHits.Load()+agenticHits.Load())
+}
+
+// #5952: the update check is what tells the tracking package which release the dashboard may report an update event for; a check that finds nothing newer offers nothing.
+func TestUpdateCheckNotesTheOfferedReleaseForTheDashboardsUpdateEvents(t *testing.T) {
+	skipWhenUpdateCheckIsOff(t)
+	withVersion(t, "1.4.141")
+	t.Cleanup(func() { tracking.NoteOfferedRelease("") })
+	channelFeeds(t, channelRelease("v1.4.142", true, "n"), channelRelease("v1.4.144", false, "n"), channelRelease("v1.4.142", true, "n"))
+	server, _ := setupSystemTestServer(t)
+	got := channelGetJSON(t, server.URL+"/api/system/update-check")
+	require.Equal(t, true, got["available"])
+	assert.Equal(t, "1.4.142", tracking.OfferedRelease())
 }

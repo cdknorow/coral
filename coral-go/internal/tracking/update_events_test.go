@@ -136,6 +136,7 @@ func TestUpdateEventsSendNothingAndRememberNothingWithAnalyticsOff(t *testing.T)
 	t.Cleanup(func() { SetTelemetryEnabled(true) })
 	TrackUpdateNotice("1.4.154", UpdateSourceDashboard, UpdateChannelApproved)
 	TrackUpdateOffer("1.4.154", UpdateSourceDashboard, UpdateChannelApproved)
+	offerRelease(t, "1.4.154")
 	TrackBrowserEvent(EventUpdateNoticeShown, map[string]string{"to_version": "1.4.154"})
 	waitForAsync()
 	assert.Zero(t, len(rec.all()))
@@ -150,6 +151,7 @@ func TestUpdateEventsSendNothingAndRememberNothingWithAnalyticsOff(t *testing.T)
 // A page can report only a version and a channel: the source is the dashboard whatever it says, and it cannot name the method or anything else.
 func TestTheDashboardReportsOnlyAVersionAndAChannel(t *testing.T) {
 	rec, _ := newTestTracking(t)
+	offerRelease(t, "1.4.154")
 	assert.True(t, BrowserEvents[EventUpdateNoticeShown] && BrowserEvents[EventUpdateOfferOpened])
 	TrackBrowserEvent(EventUpdateNoticeShown, map[string]string{"to_version": "1.4.154", "channel": "agentic", "source": "tray", "method": "in_app", "x": "y"})
 	TrackBrowserEvent(EventUpdateOfferOpened, map[string]string{"to_version": "1.4.154", "channel": "approved", "source": "tray", "method": "in_app"})
@@ -166,4 +168,59 @@ func TestTheDashboardReportsOnlyAVersionAndAChannel(t *testing.T) {
 			assert.NotContains(t, e.Properties, "method")
 		}
 	}
+}
+
+// offerRelease is the server's update check saying release is newer than this build; the offer is forgotten when the test ends.
+func offerRelease(t *testing.T, release string) {
+	t.Helper()
+	NoteOfferedRelease(release)
+	t.Cleanup(func() { offeredRelease.Store("") })
+}
+
+// The page cannot name a release (Security Reviewer Windows, #5952 round 1): a dashboard report counts only for the release this server's own update check offered, so a page that invents
+// release numbers sends and remembers nothing.
+func TestThePageCannotReportAReleaseTheServerDidNotOffer(t *testing.T) {
+	rec, dir := newTestTracking(t)
+	t.Cleanup(func() { offeredRelease.Store("") })
+	for i := 0; i < 50; i++ {
+		TrackBrowserEvent(EventUpdateNoticeShown, map[string]string{"to_version": "9.0." + strings.Repeat("1", 1+i%3) + string(rune('0'+i%10))})
+		TrackBrowserEvent(EventUpdateOfferOpened, map[string]string{"to_version": "9.1.1"})
+	}
+	waitForAsync()
+	assert.Zero(t, len(rec.all()), "no release offered yet: nothing from the page")
+	_, err := os.Stat(filepath.Join(dir, milestonesFileName))
+	assert.True(t, os.IsNotExist(err), "and nothing remembered")
+
+	NoteOfferedRelease("not a release") // a bad value is never kept
+	assert.Empty(t, OfferedRelease())
+	NoteOfferedRelease("1.4.154")
+	TrackBrowserEvent(EventUpdateNoticeShown, map[string]string{"to_version": "1.4.155"})
+	TrackBrowserEvent(EventUpdateNoticeShown, map[string]string{"to_version": "1.4.154"})
+	waitForAsync()
+	require.Equal(t, 1, len(rec.all()), rec.names())
+	assert.Equal(t, "1.4.154", rec.all()[0].Properties["to_version"])
+}
+
+// However the keys come (the tray names its own release), an install remembers at most maxUpdateMilestones update keys; past that nothing is sent and nothing is stored, and a key it already
+// has still counts as itself.
+func TestAnInstallRemembersAtMostAFewUpdateKeys(t *testing.T) {
+	rec, dir := newTestTracking(t)
+	for i := 0; i < 3*maxUpdateMilestones; i++ {
+		TrackUpdateNotice("9.0."+strings.Repeat("1", 1)+string(rune('0'+i%10))+strings.Repeat("0", i/10), UpdateSourceTray, UpdateChannelApproved)
+	}
+	waitForAsync()
+	assert.Equal(t, maxUpdateMilestones, rec.count(EventUpdateNoticeShown), "the cap, no more events")
+	st := loadMilestonesAt(filepath.Join(dir, milestonesFileName))
+	n := 0
+	for k := range st.Reached {
+		if strings.HasPrefix(k, EventUpdateNoticeShown+"|") {
+			n++
+		}
+	}
+	assert.Equal(t, maxUpdateMilestones, n, "and no more keys written")
+	// a release already remembered is still itself: sent again only if it was never confirmed, never counted twice
+	before := rec.count(EventUpdateNoticeShown)
+	TrackUpdateNotice("9.011.0", UpdateSourceTray, UpdateChannelApproved)
+	waitForAsync()
+	assert.Equal(t, before, rec.count(EventUpdateNoticeShown))
 }
