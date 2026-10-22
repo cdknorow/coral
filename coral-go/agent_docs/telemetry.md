@@ -57,7 +57,7 @@ Every event carries `version`, `edition`, `os`, `arch`, `platform` (the operatin
 
 For tests only, a `-tags dev` build reads `CORAL_TELEMETRY_TEST_SINK=<url>`: it gives that server a dummy key and sends its events to the local capture endpoint at that URL. The code is in a `//go:build dev` file; `TestDefaultBuildHasNoTestSinkSeam` fails if a default-tags build contains the variable's name, so a release binary cannot be redirected.
 
-Events use a random installation UUID stored in `<coralDir>/.install_id`. This identifies a data directory, not necessarily a person. It is not derived from hardware, hostname, username, or email. Deleting it changes the analytics identity.
+Events use a random installation UUID stored in `<coralDir>/.install_id`. This identifies a data directory, not necessarily a person. It is not derived from hardware, hostname, username, or email. Deleting it changes the analytics identity. In **Settings → Usage analytics**, copy the **Install ID** and send it with a deletion request. Viewing or copying it does not create or change the ID, and an existing ID stays available when analytics is off. If no ID has been created, Settings says so.
 
 Event properties are validated against per-event schemas. Provider, backend, outcome, and failure codes use controlled values; counts and durations are bounded and typed. Unknown properties and invalid values are dropped. Unknown event names are not emitted.
 
@@ -69,10 +69,10 @@ Event payloads do not include:
 - Repository, branch, and file names or paths.
 - Agent output or transcripts.
 - Raw error messages or executed commands.
-- Your name, email address, or IP-derived location.
+- Your name or email address.
 - Passwords or API keys.
 
-These statements describe Coral's payloads. The analytics service receives the network connection; this does not claim it cannot observe a source IP.
+These statements describe Coral's event payloads: they never carry code, prompts, or work content. The analytics service receives the source IP of incoming events and derives an approximate location from it; IP-derived location is not part of Coral's payloads.
 
 ## Controls and delivery
 
@@ -101,7 +101,7 @@ Allowed dashboard failure codes identify sessions/status HTTP, network, or inval
 
 ## Disclosure API
 
-`GET /api/system/telemetry` returns the event descriptions, standard properties, never-collected list, disclosure acknowledgment, and display paths for local telemetry state. Its `enabled` field describes whether the build has a project key; it is not confirmation of network delivery. Read privacy settings and the environment override when determining effective collection.
+`GET /api/system/telemetry` returns the event descriptions, standard properties, never-collected list, disclosure acknowledgment, and display paths for local telemetry state. For the Operator, it also returns the existing `install_id` and its availability; agent requests do not receive the ID. It separately discloses the analytics service's IP-derived approximate location. Its `enabled` field describes whether the build has a project key; it is not confirmation of network delivery. Read privacy settings and the environment override when determining effective collection.
 
 `POST /api/system/telemetry/acknowledge` records that the disclosure was seen. Acknowledging the disclosure is separate from the usage analytics setting.
 

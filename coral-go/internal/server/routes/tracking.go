@@ -12,8 +12,8 @@ import (
 // TrackingHandler exposes the small set of funnel events that can only be
 // observed in the browser (the dashboard loading, failing, a prompt submitted). Everything else is emitted server-side.
 type TrackingHandler struct {
-	// coralDir is this instance's data directory, used only to show the user
-	// where their install ID and failure log live. Passed in rather than read
+	// coralDir is this instance's data directory, used to read its existing
+	// install ID and display where its telemetry state lives. Passed in rather than read
 	// from package state so the paths shown always belong to this instance.
 	coralDir string
 }
@@ -63,17 +63,26 @@ func (h *TrackingHandler) TrackEvent(w http.ResponseWriter, r *http.Request) {
 func (h *TrackingHandler) TelemetryDisclosure(w http.ResponseWriter, r *http.Request) {
 	installIDPath := telemetryDisplayPath(filepath.Join(h.coralDir, ".install_id"))
 	failureLogPath := telemetryDisplayPath(filepath.Join(h.coralDir, "tracking-failures.log"))
+	// The identifier is for the Operator's deletion request, not for agents or
+	// unauthenticated callers of the general disclosure.
+	installID, installIDStatus := "", "unavailable"
+	if callerActor(r).IsOperator() {
+		installID, installIDStatus = telemetryInstallID(h.coralDir)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		// enabled is false for builds compiled from source, which carry no
 		// analytics key and send nothing. The disclosure is not shown then:
 		// warning users about collection that is not happening is misleading.
-		"enabled":         tracking.Enabled(),
-		"acknowledged":    tracking.DisclosureAcknowledged(),
-		"events":          tracking.AllEvents,
-		"properties":      tracking.StandardProperties,
-		"never_collected": tracking.NeverCollected,
-		"install_id_path": installIDPath,
-		"failure_log":     failureLogPath,
+		"enabled":           tracking.Enabled(),
+		"acknowledged":      tracking.DisclosureAcknowledged(),
+		"events":            tracking.AllEvents,
+		"properties":        tracking.StandardProperties,
+		"never_collected":   tracking.NeverCollected,
+		"install_id_path":   installIDPath,
+		"install_id":        installID,
+		"install_id_status": installIDStatus,
+		"service_location":  "The analytics service derives an approximate location from the IP address of incoming events.",
+		"failure_log":       failureLogPath,
 	})
 }
 

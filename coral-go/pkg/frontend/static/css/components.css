@@ -4574,3 +4574,8 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 /* New Agent (#5990): a Launch that is off (the CLI it needs is missing) looks off; the line under the folder is its reason. */
 #launch-modal .btn:disabled { opacity: .5; cursor: not-allowed; }
 .launch-dir-note { margin: 6px 0 0; }
+
+/* The whole deletion-request identifier stays readable on a narrow Settings row. */
+.telemetry-install-id { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 28rem; }
+.telemetry-install-id code { min-width: 0; flex: 1; overflow-wrap: anywhere; text-align: left; }
+.telemetry-install-id .btn { flex: none; }
