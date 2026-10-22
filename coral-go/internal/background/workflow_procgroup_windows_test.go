@@ -4,7 +4,9 @@ package background
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 	"unsafe"
@@ -67,29 +69,6 @@ func TestKillChildProcessEndsTheStepsJob(t *testing.T) {
 	assert.Eventually(t, func() bool { return activeInJob(t, job) == 0 }, 10*time.Second, 20*time.Millisecond, "nothing in the job survived")
 }
 
-// A step starts suspended and joins its job before it runs: a grandchild it spawns at once is in the
-// job, so killing the step ends it too (a child started in the old gap escaped the kill).
-func TestQuicklySpawnedGrandchildDiesWithTheStep(t *testing.T) {
-	shell, err := workflowShell()
-	require.NoError(t, err)
-	for i := 0; i < 20; i++ {
-		cmd := exec.CommandContext(context.Background(), shell, "-c", "sleep 600 & sleep 600 & wait")
-		configureChildProcess(cmd)
-		require.NoError(t, cmd.Start())
-		trackChildProcess(cmd)
-		v, ok := stepJobs.Load(cmd)
-		require.True(t, ok)
-		var job windows.Handle
-		self := windows.CurrentProcess()
-		require.NoError(t, windows.DuplicateHandle(self, v.(windows.Handle), self, &job, 0, false, windows.DUPLICATE_SAME_ACCESS))
-		require.Eventually(t, func() bool { return activeInJob(t, job) >= 3 }, 10*time.Second, 10*time.Millisecond, "sh and both sleeps are in the job")
-		killChildProcess(cmd)
-		_ = cmd.Wait()
-		assert.Eventually(t, func() bool { return activeInJob(t, job) == 0 }, 10*time.Second, 20*time.Millisecond, "nothing survived")
-		windows.CloseHandle(job)
-	}
-}
-
 func TestStepProcessRunsAfterTrackingStartedItSuspended(t *testing.T) {
 	shell, err := workflowShell()
 	require.NoError(t, err)
@@ -101,4 +80,31 @@ func TestStepProcessRunsAfterTrackingStartedItSuspended(t *testing.T) {
 	require.ErrorAs(t, cmd.Wait(), &ee)
 	assert.Equal(t, 7, ee.ExitCode())
 	releaseChildProcess(cmd)
+}
+
+// Adapted from QA's #131 R2.
+// QA #131: the step has not run before trackChildProcess (it was started suspended), however long the gap,
+// so a grandchild it spawns at once is in the job and dies with the step. Fails without CREATE_SUSPENDED.
+func TestStepDoesNotRunBeforeItIsTracked(t *testing.T) {
+	shell, err := workflowShell()
+	require.NoError(t, err)
+	mark := filepath.ToSlash(filepath.Join(t.TempDir(), "ran"))
+	cmd := exec.CommandContext(context.Background(), shell, "-c", "echo x > '"+mark+"'; /usr/bin/sleep 600 & /usr/bin/sleep 600 & wait")
+	configureChildProcess(cmd)
+	require.NoError(t, cmd.Start())
+	time.Sleep(1500 * time.Millisecond) // the old gap, made wide
+	_, statErr := os.Stat(mark)
+	assert.True(t, os.IsNotExist(statErr), "the step ran before it was in its job")
+	trackChildProcess(cmd)
+	require.Eventually(t, func() bool { _, err := os.Stat(mark); return err == nil }, 10*time.Second, 20*time.Millisecond, "it runs once tracked")
+	v, ok := stepJobs.Load(cmd)
+	require.True(t, ok)
+	var job windows.Handle
+	self := windows.CurrentProcess()
+	require.NoError(t, windows.DuplicateHandle(self, v.(windows.Handle), self, &job, 0, false, windows.DUPLICATE_SAME_ACCESS))
+	defer windows.CloseHandle(job)
+	require.Eventually(t, func() bool { return activeInJob(t, job) >= 3 }, 10*time.Second, 10*time.Millisecond)
+	killChildProcess(cmd)
+	_ = cmd.Wait()
+	assert.Eventually(t, func() bool { return activeInJob(t, job) == 0 }, 10*time.Second, 20*time.Millisecond, "nothing survived")
 }

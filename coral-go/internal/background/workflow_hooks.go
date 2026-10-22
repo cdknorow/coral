@@ -99,7 +99,7 @@ func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interf
 			hookCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			cmd := exec.CommandContext(hookCtx, shell, "-c", command)
 			cmd.Dir = dir
-			cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
+			cmd.Env = withShellDirs(append(agentenv.Filter(os.Environ()), env...), shell) // #3389: no server-only settings
 			configureChildProcess(cmd)
 			err := cmd.Start()
 			if err == nil {
