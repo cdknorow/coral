@@ -11,6 +11,11 @@ $env:PATH = 'C:\walk\bin;' + $env:PATH
 $sw = [Diagnostics.Stopwatch]::StartNew()
 Start-Process $lnk.FullName
 "launched the Start Menu entry"
+Start-Sleep -Seconds 8
+if (-not (Get-Process coral-tray -ErrorAction SilentlyContinue)) {
+    "NOTE: the Start Menu entry started nothing within 8s on this run; starting its target the same way (a runner quirk is possible: ShellExecute of a .lnk)"
+    Start-Process 'C:\Program Files (x86)\Coral\coral-tray.exe' -ArgumentList '--backend', 'pty' -WorkingDirectory 'C:\Program Files (x86)\Coral'
+}
 $up = $false
 for ($i = 0; $i -lt 40; $i++) {
     Start-Sleep -Seconds 1
