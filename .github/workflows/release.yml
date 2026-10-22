@@ -61,6 +61,7 @@ jobs:
           bash tests/release/update_tap_test.sh         # the cask move (#5559); a local bare repository, no network
           bash tests/release/release_cadence_test.sh    # the cadence table (#5559); a stand-in gh, no network
           bash tests/release/release_notes_edits_test.sh   # lines removed from a published body on purpose; no network
+          python3 tests/release/windows_build_census_test.py   # windows-tests' package build is release.yml's Windows build: same tags and programs (#5886)
           bash tests/release/ldflags_build_test.sh      # every build script's -X flags take effect: version and PostHog key land in the binary (#5539)
           bash tests/release/resolve_release.sh "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
 
@@ -186,7 +187,7 @@ jobs:
           cache-dependency-path: coral-go/go.sum
 
       - name: Install native GUI compiler
-        run: choco install mingw -y
+        run: choco install mingw --version=16.1.0 -y --no-progress
 
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
