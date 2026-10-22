@@ -3,8 +3,11 @@ package routes
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -188,27 +191,28 @@ func safeDiff(diff []byte) []byte {
 // generatePersistedDiff is generateChangesDiff for a diff Coral stores or sends through
 // Coral Hub: tracked changes are filtered (filterPatch), and an untracked file that is
 // hidden, binary or over 256 KiB is never read into a patch, only noted; the whole is capped.
+//
+// The untracked files go into one git diff (diffWithNewFiles), not one git diff --no-index each: at
+// about 0.1 s a file, a tree with a few thousand new files ran past the 2-minute bound of a task's
+// changes.diff, and the artifact silently went missing (#243). New files are taken until the diff's
+// size limit is reached; the rest are counted in a note. The notes come first, so the cap never cuts
+// one off.
 func (h *SessionsHandler) generatePersistedDiff(ctx context.Context, workdir string) ([]byte, error) {
 	base := gitutil.GetDiffBase(ctx, workdir, h.getDiffMode(ctx))
-	tracked, err := gitOutput(ctx, workdir, "diff", "--binary", base, "--")
-	if err != nil {
-		return nil, err
-	}
-	diff := filterPatch(tracked)
 	untracked, err := gitOutput(ctx, workdir, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}
+	var notes []byte
+	var files []string
+	size, skipped := 0, 0
 	for _, raw := range bytes.Split(untracked, []byte{0}) {
 		if len(raw) == 0 {
 			continue
 		}
 		rel := string(raw)
-		if len(diff) > 0 && diff[len(diff)-1] != '\n' {
-			diff = append(diff, '\n')
-		}
 		if diffPathHidden(rel) {
-			diff = append(diff, diffNote("a new sensitive file not shown")...)
+			notes = append(notes, diffNote("a new sensitive file not shown")...)
 			continue
 		}
 		fi, err := os.Lstat(filepath.Join(workdir, rel))
@@ -216,25 +220,111 @@ func (h *SessionsHandler) generatePersistedDiff(ctx context.Context, workdir str
 			continue
 		}
 		if fi.Size() > diffSectionMax {
-			diff = append(diff, diffNote("new file %q, %d bytes, not stored", rel, fi.Size())...)
+			notes = append(notes, diffNote("new file %q, %d bytes, not stored", rel, fi.Size())...)
+			continue
+		}
+		if size > diffPersistMax {
+			skipped++ // the diff is full; the file that crossed the limit is in, so the cap below cuts it and says so
 			continue
 		}
 		if isBinaryFile(filepath.Join(workdir, rel)) {
-			diff = append(diff, diffNote("new file %q, %d bytes, not stored (binary)", rel, fi.Size())...)
+			notes = append(notes, diffNote("new file %q, %d bytes, not stored (binary)", rel, fi.Size())...)
 			continue
+		}
+		files = append(files, rel)
+		size += int(fi.Size())
+	}
+	diff, err := diffWithNewFiles(ctx, workdir, base, files)
+	if err != nil {
+		// An older git (no --pathspec-from-file, git before 2.26) or an index it can't copy: one file at a time, as before, but bounded.
+		slog.Debug("changes diff: new files in one git diff failed; diffing them one at a time", "workdir", workdir, "error", err)
+		var dropped int
+		if diff, dropped, err = diffNewFilesOneByOne(ctx, workdir, base, files); err != nil {
+			return nil, err
+		}
+		skipped += dropped
+	}
+	if skipped > 0 {
+		notes = append(notes, diffNote("%d more new files are not in this diff (it is limited to %d MiB, and to %d files when diffed one at a time); they stay in the working directory", skipped, diffPersistMax>>20, untrackedOneByOneMax)...)
+	}
+	return capDiff(append(notes, diff...), diffPersistMax), nil
+}
+
+// untrackedOneByOneMax bounds diffNewFilesOneByOne: at about 0.1 s a file, a few hundred stay well inside a task's 2 minutes.
+const untrackedOneByOneMax = 300
+
+// diffWithNewFiles is git diff --binary base, filtered, with files (untracked paths) in it as new files. They are added
+// intent-to-add (git add -N) to a copy of the index, so one git diff carries them all and the real index is never touched.
+func diffWithNewFiles(ctx context.Context, workdir, base string, files []string) ([]byte, error) {
+	var env []string
+	if len(files) > 0 {
+		tmp, err := os.MkdirTemp("", "coral-diff-index-")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(tmp)
+		index := filepath.Join(tmp, "index")
+		src, err := gitOutput(ctx, workdir, "rev-parse", "--path-format=absolute", "--git-path", "index")
+		if err != nil {
+			return nil, err
+		}
+		switch b, err := os.ReadFile(strings.TrimSpace(string(src))); {
+		case err == nil:
+			if err := os.WriteFile(index, b, 0o600); err != nil {
+				return nil, err
+			}
+		case !errors.Is(err, fs.ErrNotExist): // no index yet (nothing staged): git starts one
+			return nil, err
+		}
+		// Literal pathspecs: a file named "[a].txt" or "*.go" is that file, not a pattern.
+		env = []string{"GIT_INDEX_FILE=" + index, "GIT_LITERAL_PATHSPECS=1"}
+		add := gitutil.Command(ctx, workdir, "add", "--intent-to-add", "--pathspec-from-file=-", "--pathspec-file-nul")
+		add.Env = append(add.Env, env...)
+		add.Stdin = strings.NewReader(strings.Join(files, "\x00"))
+		var stderr bytes.Buffer
+		add.Stderr = &stderr
+		if err := add.Run(); err != nil {
+			return nil, fmt.Errorf("git add --intent-to-add: %w: %s", err, strings.TrimSpace(stderr.String()))
+		}
+	}
+	cmd := gitutil.Command(ctx, workdir, "diff", "--binary", base, "--")
+	cmd.Env = append(cmd.Env, env...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return filterPatch(out), nil
+}
+
+// diffNewFilesOneByOne is diffWithNewFiles the way it was done before: the tracked diff, then one git diff --no-index per
+// new file, for at most untrackedOneByOneMax files; dropped is how many it left out.
+func diffNewFilesOneByOne(ctx context.Context, workdir, base string, files []string) (diff []byte, dropped int, err error) {
+	tracked, err := gitOutput(ctx, workdir, "diff", "--binary", base, "--")
+	if err != nil {
+		return nil, 0, err
+	}
+	diff = filterPatch(tracked)
+	if len(files) > untrackedOneByOneMax {
+		files, dropped = files[:untrackedOneByOneMax], len(files)-untrackedOneByOneMax
+	}
+	for _, rel := range files {
+		if len(diff) > 0 && diff[len(diff)-1] != '\n' {
+			diff = append(diff, '\n')
 		}
 		fileDiff, ferr := gitutil.Command(ctx, workdir, "diff", "--no-index", "--", os.DevNull, rel).Output()
 		if ferr != nil {
 			if exitErr, ok := ferr.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
-				return nil, fmt.Errorf("diff untracked file %q: %w", rel, ferr)
+				return nil, 0, fmt.Errorf("diff untracked file %q: %w", rel, ferr)
 			}
 		}
 		diff = append(diff, fileDiff...)
 		if len(diff) > diffPersistMax {
-			break // capped below anyway
+			break // capped by the caller anyway
 		}
 	}
-	return capDiff(diff, diffPersistMax), nil
+	return diff, dropped, nil
 }
 
 // isBinaryFile: a NUL in the first 8000 bytes, git's own rule.
