@@ -1563,6 +1563,13 @@
 }
 .chat-find-bar button:hover:not(:disabled) { background: var(--bg-hover, rgba(var(--white-rgb), 0.08)); color: var(--text-primary); }
 .chat-find-older { color: var(--accent) !important; }
+/* On touch or a phone-width window the find bar's controls are 44 px targets and the bar spans the screen: a 200 px input and three 44 px buttons do not fit one row at 390 (#6130) */
+@media (pointer: coarse), (max-width: 767px) {
+    .chat-find-bar { left: 8px; right: 8px !important; gap: 4px; }
+    .chat-find-input { flex: 1 1 0; min-width: 0; width: auto; min-height: var(--control-touch-height, 44px); box-sizing: border-box; }
+    .chat-find-bar button { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
+    .chat-find-count { min-width: 0; }
+}
 
 /* Terminal view: the xterm accepts input directly, so the bottom command bar
    is redundant on desktop. Mobile keeps it (no hardware keyboard to type into
