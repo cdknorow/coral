@@ -67,6 +67,10 @@ async function renderBody(text, adapter) {
     return renderSafe(text, opts).node;
 }
 
+/** The panel the message body sits in, apart from the list and from the actions around it (#5882). */
+function inset(node) { const p = el('div', 'ibx-panel'); p.append(node); return p; }
+
+const SAVED_OPEN_LABEL = 'Read the whole message', SAVED_CLOSE_LABEL = 'Show less';
 const SAVED_WORDS = {
     gone: 'This message was deleted, so only the saved snippet is left.',
     not_reachable: 'This message cannot be read from here: its agent ended on another server.',
@@ -149,19 +153,22 @@ export function mountInbox(host, adapter, options) {
     }
 
     async function taskBody(task, full) {
+        // The meta line (who it is from, its status, and the link to the task at its right end), the message body alone in its panel, then the reply: boxes in boxes are not drawn (#5882).
         const out = [];
         const from = full.created_by || task.created_by;
         const facts = [from ? `From ${from}` : '', full.status || task.status || ''].filter(Boolean).join(' · ');
-        if (facts) out.push(el('p', 'ibx-task-facts', facts));
+        const metaRow = el('div', 'ibx-task-metarow');
+        if (facts) metaRow.append(el('p', 'ibx-task-facts', facts));
         const href = typeof adapter.taskHref === 'function' ? safePath(adapter.taskHref(task)) : '';
-        if (href) { const a = el('a', 'ibx-open', 'Open the task'); a.setAttribute('href', safePath(href)); out.push(a); }
+        if (href) { const a = el('a', 'ibx-open', 'Open the task'); a.setAttribute('href', safePath(href)); metaRow.append(a); }
         else if (typeof adapter.openTask === 'function') {
             const b = el('button', 'btn ibx-open', 'Open the task'); b.type = 'button';
             b.addEventListener('click', () => adapter.openTask(task));
-            out.push(b);
+            metaRow.append(b);
         }
+        if (metaRow.childNodes.length) out.push(metaRow);
         const text = full.body == null ? '' : String(full.body);
-        out.push(text ? await renderBody(text, adapter) : el('p', 'ibx-empty', 'This task has no text.'));
+        out.push(inset(text ? await renderBody(text, adapter) : el('p', 'ibx-empty', 'This task has no text.')));
         out.push(replyBox(task, from));
         return out;
     }
@@ -241,7 +248,7 @@ export function mountInbox(host, adapter, options) {
     function savedExpand(item) {
         const wrap = el('div', 'ibx-saved');
         const regionId = uid('ibx-saved-body');
-        const button = el('button', 'btn ibx-saved-toggle', 'Read the whole message');
+        const button = el('button', 'btn ibx-saved-toggle', SAVED_OPEN_LABEL);
         button.type = 'button';
         button.setAttribute('aria-expanded', 'false');
         button.setAttribute('aria-controls', regionId);
@@ -253,7 +260,8 @@ export function mountInbox(host, adapter, options) {
         let loaded = false, loading = false;
         button.addEventListener('click', async () => {
             const open = button.getAttribute('aria-expanded') === 'true';
-            button.setAttribute('aria-expanded', String(!open)); // the label stays: aria-expanded says which it is
+            button.setAttribute('aria-expanded', String(!open));
+            button.textContent = open ? SAVED_OPEN_LABEL : SAVED_CLOSE_LABEL; // a toggle: the words say what the next press does (#5882, the Operator's choice over a label that stays); aria-expanded still says which state it is in
             region.hidden = open;
             if (open || loaded || loading) return;
             loading = true;
@@ -265,7 +273,7 @@ export function mountInbox(host, adapter, options) {
                 const parts = [];
                 const reason = res.reason && SAVED_WORDS[res.reason];
                 if (reason) parts.push(el('p', 'ibx-why', reason));
-                if (res.text) parts.push(await renderBody(res.text, adapter));
+                if (res.text) parts.push(inset(await renderBody(res.text, adapter)));
                 if (res.partial && res.reason !== 'too_long') parts.push(el('p', 'ibx-why', 'Shown in part: the message is very long.'));
                 if (!parts.length) parts.push(el('p', 'ibx-why', 'There is no more text than the snippet.'));
                 region.replaceChildren(...parts);

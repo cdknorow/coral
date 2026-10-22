@@ -4171,20 +4171,31 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .ibx-task-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ibx-task-title { font-weight: 600; overflow-wrap: anywhere; }
 .ibx-task-meta { font-size: var(--fs-sm, 0.8125rem); color: var(--text-secondary); }
-.ibx-task-body, .ibx-saved-body { padding: 4px 12px 12px; min-width: 0; }
+/* The expanded message: only its BODY sits in an inset panel (#5882), apart from the list and from the meta line above and the reply below it. One padding token (--ibx-pad) gives the card content,
+   the panel and the reply box the same left and right edge; 8px from the meta line (or the button) to the panel and 12px from the panel to what follows. The panel is one clear step from the
+   card (a lighter surface) with a 1px border that holds 3:1 against the row, the panel and the page. Named tokens, so the values coral-hub sends for its Saved expand are the only thing to change
+   (INBOX_CONTRACT does not move: this is the component's own style). */
+.ibx, .ibx-saved { --ibx-pad: 12px; --ibx-inset-bg: var(--bg-hover); --ibx-inset-border: var(--control-border); --ibx-inset-radius: var(--radius-md); --ibx-inset-pad: 12px 14px; --ibx-inset-gap-above: 8px; --ibx-inset-gap-below: 12px; }
+[data-theme="light"] .ibx, [data-theme="light"] .ibx-saved { --ibx-inset-bg: rgb(var(--white-rgb)); } /* raised in the light theme is lighter than the row, as the dark one is */
+.ibx-task-body { padding: 8px var(--ibx-pad) var(--ibx-pad); min-width: 0; } /* 8px from the header row to the meta line, as from the meta line to the panel */
+.ibx-saved-body { padding: 0; min-width: 0; }
+.ibx-panel { min-width: 0; margin: var(--ibx-inset-gap-above) 0 var(--ibx-inset-gap-below); padding: var(--ibx-inset-pad); background: var(--ibx-inset-bg); border: 1px solid var(--ibx-inset-border); border-radius: var(--ibx-inset-radius); }
+.ibx-panel > :first-child { margin-top: 0; }
+.ibx-panel > :last-child { margin-bottom: 0; }
+.ibx-task-metarow { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
 .ibx-task-body[hidden], .ibx-saved-body[hidden] { display: none; }
 .ibx-saved { margin-top: 4px; }
-.ibx-saved-body { padding: 8px 0 0; }
 .ibx-saved-toggle { font-size: var(--fs-sm, 0.8125rem); }
-.ibx-task-facts { margin: 0 0 6px; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
+.ibx-task-facts { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
 .ibx-loading, .ibx-why, .ibx-note, .ibx-empty { margin: 4px 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
 .ibx-error { margin: 4px 0; color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); }
-.ibx-reply { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.ibx-reply { display: flex; flex-direction: column; gap: 6px; margin: 0; }
 .ibx-reply-label { font-weight: 600; font-size: var(--fs-sm, 0.8125rem); }
 .ibx-reply-input { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .ibx-reply-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ibx-reply-status { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); overflow-wrap: anywhere; }
-.ibx-open { align-self: flex-start; margin: 2px 0 6px; }
+.ibx-open { margin: 0; font-size: var(--fs-sm, 0.8125rem); font-weight: 400; }
+a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .ibx .md, .ibx-saved-body .md { overflow-wrap: anywhere; line-height: 1.5; font-size: var(--fs-md, 0.875rem); color: var(--text-primary); }
 .md > :first-child { margin-top: 0; }
 .md p, .md ul, .md ol, .md blockquote, .md pre, .md table { margin: 0 0 8px; }
@@ -4201,6 +4212,10 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
 .md-partial { color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
 @media (pointer: coarse) {
     .ibx-task-head, .ibx-saved-toggle, .ibx-send, .ibx-open { min-height: var(--control-touch-height, 44px); }
+}
+/* On a touch screen the small "Open the task" link on the meta line keeps its 44 px target without making the line 44 px tall: the target is padding taken back with a negative margin (#5882). */
+@media (pointer: coarse) {
+    .ibx-task-metarow .ibx-open { min-height: 0; padding-block: 14px; margin-block: -14px; display: inline-block; }
 }
 .saved-item { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-ml); padding: 10px 12px; }
 .saved-item .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -4237,6 +4252,13 @@ body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[dat
     .saved-item .snip, .saved-item .src { font-size: 0.9375rem; }
     .saved-tab { font-size: 0.875rem; }
 }
+/* Phone: Open in Chats, Done and Remove stay on one row at 390 px (a little less padding and gap); a narrower screen may wrap (#5882). */
+@media (max-width: 600px) {
+    .saved-item .acts { gap: 6px; }
+    .saved-item .acts .btn { padding-inline: 10px; }
+}
+/* While the full message is shown the snippet is not (it is the first lines of the same text); when only a reason is shown (deleted, too long) the snippet stays, it is what is left (#5882). */
+.saved-item:has(.ibx-saved-body:not([hidden]) .ibx-panel) .snip { display: none; }
 /* The top bar's Saved button: a bookmark with the number open. */
 .saved-top-btn { position: relative; }
 .saved-top-btn.on { color: var(--accent); }
