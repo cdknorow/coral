@@ -93,7 +93,7 @@ Five things Coral does that your agent's own tooling doesn't:
 
 4. **Teams that survive you closing the lid.** Sleep a whole team; the processes stop, the conversations don't. Wake it tomorrow — or after upgrading Coral — and every agent resumes its own session where it left off. Crashed agents are detected and parked the same way.
 
-5. **Run it anywhere, operate it from anywhere — including your phone.** Put Coral on a build server or a spare Mac and the agents run there, whether or not your laptop is open (they stop if Coral quits there; choose tmux in Settings to keep them running). The dashboard and the board come with it: open the URL from any browser, or scan a QR code and get a mobile client built for the phone — live terminals, the board, and permission prompts you can answer from the couch. Slack or Discord pings you when someone's stuck.
+5. **Run it anywhere, operate it from anywhere — including your phone.** Put Coral on a build server or a spare Mac and the agents run there, whether or not your laptop is open. (Agents stop if Coral quits there; choose tmux in Settings to keep them running.) The dashboard and the board come with it: open the URL from any browser, or scan a QR code and get a mobile client built for the phone — live terminals, the board, and permission prompts you can answer from the couch. Slack or Discord pings you when someone's stuck.
 
 Everything else — cron-scheduled runs, shell-and-agent workflows with OAuth tokens injected, per-task cost, one searchable history across every vendor's transcripts, a board-health monitor that escalates idle work to the orchestrator, agents that publish their own UI panels — is in the [feature list](#features) below.
 

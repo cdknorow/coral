@@ -238,7 +238,7 @@ returns an error listing the supported types instead of silently starting Claude
 launch types are `claude`, `codex`, `agy` and `pi`; `gemini` is a deprecated alias for `agy`.
 An empty `agent_type` uses the default (Claude).
 
-### Which terminal backend runs, and agent launch fails with a tmux error
+### Terminal backend and tmux launch errors
 
 Coral runs each agent in its own built-in terminal (pty) by default, so agents stop when you quit
 Coral. tmux is a choice: Settings > Terminal, or `--backend tmux`, keeps agents running when Coral
