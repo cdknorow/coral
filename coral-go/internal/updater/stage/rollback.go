@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -41,6 +42,9 @@ func (c *checker) keepRollback(ctx context.Context) error {
 			c.prune(root, version) // other versions go; this one is kept
 			return nil
 		}
+		// A kept copy that no longer verifies (a later release revoked the version, or the files changed) goes, so nothing stale is left to
+		// find; a fresh copy is fetched below, and verified again.
+		_ = os.RemoveAll(s.Dir)
 	}
 	base := c.cfg.DownloadBase + "v" + version + "/"
 	files := map[string][]byte{}
