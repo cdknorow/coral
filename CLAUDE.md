@@ -83,9 +83,9 @@ To spin up a test server for manual verification, use `0.0.0.0` (not `127.0.0.1`
 
 **CRITICAL: Always use a separate data directory for test servers.** The production Coral instance uses `~/.coral/` — running a test server against the same database will corrupt live sessions, kill running agents, and lose state. Use `CORAL_DATA_DIR` to isolate test data:
 ```bash
-cd coral-go && go build -tags dev -o coral ./cmd/coral/ && CORAL_DATA_DIR=/tmp/coral-test ./coral --host 0.0.0.0 --port 8450 --cloud-url off
+cd coral-go && go build -tags dev -o coral ./cmd/coral/ && CORAL_DATA_DIR=/tmp/coral-test ./coral --host 0.0.0.0 --port 8450 --cloud-url off --no-browser
 ```
-`--cloud-url off` keeps a test server away from the real Coral Hub (a release build connects to app.coralhub.dev by default, and a `CORAL_CLOUD_URL` in the shell would point it there).
+`--cloud-url off` keeps a test server away from the real Coral Hub (a release build connects to app.coralhub.dev by default, and a `CORAL_CLOUD_URL` in the shell would point it there). `--no-browser` keeps it from opening its dashboard in the operator's default browser at startup (with an isolated profile that is a fresh-profile browser window on their desktop).
 Build the agent tools with the server (`go build -tags dev -o <dir>/ ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-*`, which `make dev` does), or set `CORAL_HOOK_DIR`: a dev or test server never uses the installed app's hooks, and its startup log names where its agents' hooks come from.
 
 ### Database
