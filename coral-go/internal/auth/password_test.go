@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/appmarker"
 )
 
 // #3949: the hash is argon2id with its parameters in the string; NFKC is applied; any non-empty
@@ -219,6 +221,19 @@ func TestSessionLabelIsPlainText(t *testing.T) {
 	assert.NotContains(t, l, "\x1b")
 	assert.NotContains(t, l, "\u200b")
 	assert.Equal(t, "Unknown browser", sessionLabel("\x00\x01"))
+}
+
+// #6100: the Coral app's web view adds the marker to its User-Agent (Edge on Windows, WebKit on macOS), and the Sessions page names those
+// sessions "Coral app", so a person can tell them from their own browser. The label follows the marker, nothing else.
+func TestSessionLabelFollowsTheCoralAppMarker(t *testing.T) {
+	edge := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.3537.71"
+	assert.Equal(t, "Edge on Windows", sessionLabel(edge), "the person's own Edge")
+	assert.Equal(t, "Coral app on Windows", sessionLabel(edge+" "+appmarker.Marker("1.4.157")), "the app's window on the same Edge")
+	safari := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)"
+	assert.Equal(t, "Coral app on macOS", sessionLabel(safari+" "+appmarker.Marker("1.4.157")), "WebKit has no Safari/ token in a web view")
+	assert.Equal(t, "Coral app", sessionLabel(appmarker.Marker("1.4.157")))
+	assert.Equal(t, "Safari on macOS", sessionLabel(safari+" Version/17.4 Safari/605.1.15"), "no marker, no change")
+	assert.Equal(t, "Chrome on Linux", sessionLabel("Mozilla/5.0 (X11; Linux x86_64) Chrome/141.0 CoralAppX/1"), "a token that only starts like the marker")
 }
 
 // Security, #3949 round 1: the code is printed only when stderr is a terminal; the tray and the

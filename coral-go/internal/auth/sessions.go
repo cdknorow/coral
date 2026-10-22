@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/subgentic/coral/internal/appmarker"
 )
 
 // Browser sessions (#3949): every sign-in (a sign-in link, the API-key form, the password)
@@ -197,6 +199,7 @@ func sessionHash(token string) string {
 func sessionLabel(ua string) string {
 	browser := ""
 	for _, b := range []struct{ token, name string }{
+		{appmarker.Token + "/", "Coral app"}, // the Coral app's own window (its web view adds the marker); before the browser it is built on
 		{"Edg/", "Edge"}, {"OPR/", "Opera"}, {"Firefox/", "Firefox"}, {"Chrome/", "Chrome"}, {"Safari/", "Safari"},
 	} {
 		if strings.Contains(ua, b.token) {

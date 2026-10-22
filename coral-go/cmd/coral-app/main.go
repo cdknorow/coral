@@ -158,6 +158,8 @@ func main() {
 	if useLocalWebViewProfile() != "" {
 		log.Println("[WEBVIEW] the profile is in a local folder (not the Roaming folder)") // no path: the log carries no user name
 	}
+	// The app's sign-ins are named "Coral app" on the Sessions page: the marker goes into the web view's User-Agent (Windows: before the window).
+	markAppUserAgentBeforeWindow()
 	log.Printf("[WEBVIEW] creating webview (devtools=%v)", devTools)
 	w := webview.New(devTools)
 	webviewInstance = w
@@ -170,6 +172,8 @@ func main() {
 
 	log.Printf("[WEBVIEW] setting title=%q size=%dx%d", *title, *width, *height)
 	installFilePanel(w.Window()) // a file input opens the system chooser (#5743)
+	// macOS: the app's marker, once the web view exists and before the first page loads.
+	markAppUserAgent(w.Window())
 	w.SetTitle(*title)
 	workW, workH := workArea()
 	fw, fh := fitSize(*width, *height, workW, workH)
