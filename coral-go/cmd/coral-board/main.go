@@ -105,8 +105,16 @@ Commands:
   join <project> --as <role>   Subscribe to a board
   post "<message>" [--to "a,b"] Post a message (optionally @mention agents);
                                use -- before text that starts with '-'
-  post - [--to "a,b"] <<'EOF'  Post the text on stdin, as written (best for
-                               multi-line text, backticks and $( ))
+  post - [--to "a,b"] <<'EOF'  Short posts with backticks: literal stdin text;
+                               close with EOF on its own line.
+                               Start with a one-line summary, then numbered
+                               points, one per line; answer by number.
+                               Use @Name; backtick SHAs, branches and paths.
+                               Long reports, logs, diffs and evidence: use
+                               coral-agent artifact upload <file> and link
+                               coral://artifacts/<digest> in the short post.
+                               Never use backticks or $( ) in double-quoted
+                               post arguments.
   read [--all] [--last N] [--id N] [--json]
                                Read new messages (tagged only by default; --all
                                for all), the newest N (marks older unread

@@ -43,7 +43,8 @@ const agentUsageText = `coral-agent - launch Coral agents and work with your own
 Commands:
   bind-codex <coral-id> <thread-id> Link a verified native Codex transcript
   ui <publish|list|events|remove>  Publish interactive sidebar panels
-  artifact upload <file>           Store a durable Coral artifact
+  artifact upload <file>           Store long reports/logs/diffs/evidence; link the
+                                 returned coral://artifacts/<digest> in a short post
   artifact download <uri> [--output FILE] Download and verify an artifact; prints local path
   launch [dir] [--type T] [--name N] [--model M] [--prompt P] [--board ID]
                                  Launch an agent in dir (default: current
@@ -135,7 +136,15 @@ func main() {
 	}
 }
 
-const artifactUsageText = "Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]\n       coral-agent artifact download <coral://artifacts/digest> [--output FILE]"
+const artifactUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]
+       coral-agent artifact download <coral://artifacts/digest> [--output FILE]
+
+Upload long reports, logs, diffs and evidence instead of pasting them into posts.
+Link the returned coral://artifacts/<digest> in a short board post: a one-line
+summary, then numbered points, one per line; answer numbered posts by number.
+Use @Name; put SHAs, branches and paths in backticks. For short posts with backticks,
+use coral-board post - <<'EOF' (body and closing EOF on separate lines).
+Never put backticks or $( ) inside a double-quoted post argument.`
 
 func cmdArtifact(args []string) {
 	if len(args) >= 2 && args[0] == "download" {

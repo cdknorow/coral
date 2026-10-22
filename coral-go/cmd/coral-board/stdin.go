@@ -43,7 +43,7 @@ func readStdinText(what string) (string, error) {
 	}
 	stdinRead = true
 	if stdinIsTerminal() {
-		return "", errUsage{fmt.Sprintf("'-' reads the %s from stdin, but stdin is a terminal. Pipe the text in (coral-board post - <<'EOF' ... EOF), or put -- before a literal '-'", what)}
+		return "", errUsage{fmt.Sprintf("'-' reads the %s from stdin, but stdin is a terminal. For a short post with backticks, use coral-board post - <<'EOF' (body and closing EOF on separate lines), or put -- before a literal '-'. Upload long reports/logs/diffs/evidence with coral-agent artifact upload <file> and link the returned coral://artifacts/<digest>.", what)}
 	}
 	data, err := io.ReadAll(io.LimitReader(stdinReader, maxStdinMessage+1))
 	if err != nil {
@@ -115,7 +115,7 @@ func checkShellSyntax(w io.Writer, cmdName, text string) error {
 		if cmdName == "send" {
 			cmdExample = "coral-board send --board <target>"
 		}
-		return fmt.Errorf("error: refusing message with literal unexpanded command substitution.\nIf you intended the shell to run the command, use double quotes instead of single quotes:\n  %s \"$(cat file)\"\nOr pass '-' to provide the message via stdin:\n  %s - <<'EOF'", cmdExample, cmdExample)
+		return fmt.Errorf("error: refusing message with literal unexpanded command substitution.\nFor a short post with backticks, pass literal text through a quoted heredoc:\n  %s - <<'EOF'\n@Lead Developer: review requested.\n1. Review the linked evidence.\nEOF\nStart with a one-line summary, then numbered points, one per line; answer by number.\nUse @Name; put SHAs, branches and paths in backticks.\nLong reports/logs/diffs/evidence: coral-agent artifact upload <file>, then link the returned coral://artifacts/<digest>.\nNever put backticks or $( ) inside a double-quoted post argument.", cmdExample)
 	}
 	warnShellSyntax(w, text)
 	return nil
@@ -126,6 +126,6 @@ func checkShellSyntax(w io.Writer, cmdName, text string) error {
 // goes out as written. Only a warning: posts quote shell syntax on purpose too.
 func warnShellSyntax(w io.Writer, text string) {
 	if strings.Contains(text, "$(") || strings.Contains(text, "`") {
-		fmt.Fprintln(w, "Note: the message holds a literal $( or backtick, sent as written. If you meant the shell to run it, it didn't; for multi-line text use: coral-board post - <<'EOF'")
+		fmt.Fprintln(w, "Note: the message holds a literal $( or backtick, sent as written. For a short post with backticks use coral-board post - <<'EOF' (body and closing EOF on separate lines); never put backticks or $( ) in double-quoted post arguments. Long reports/logs/diffs/evidence: coral-agent artifact upload <file>, then link coral://artifacts/<digest> in the short post.")
 	}
 }

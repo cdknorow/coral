@@ -146,8 +146,11 @@ func TestPostRefusesUnexpandedCommandSubstitution(t *testing.T) {
 		if !strings.Contains(res.stderr, "refusing message with literal unexpanded command substitution") {
 			t.Errorf("args %v: stderr %q; want refusal message", args, res.stderr)
 		}
-		if !strings.Contains(res.stderr, `coral-board post "$(cat file)"`) {
-			t.Errorf("args %v: stderr %q; want double quote suggestion", args, res.stderr)
+		if strings.Contains(res.stderr, `coral-board post "$(cat file)"`) {
+			t.Errorf("args %v: stderr %q; must not recommend shell substitution", args, res.stderr)
+		}
+		if !strings.Contains(res.stderr, "coral-agent artifact upload <file>") || !strings.Contains(res.stderr, "coral://artifacts/<digest>") {
+			t.Errorf("args %v: stderr %q; want long-content artifact guidance", args, res.stderr)
 		}
 		if !strings.Contains(res.stderr, "coral-board post - <<'EOF'") {
 			t.Errorf("args %v: stderr %q; want stdin heredoc suggestion", args, res.stderr)

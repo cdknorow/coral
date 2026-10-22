@@ -219,7 +219,7 @@ func TestSendRefusesUnexpandedCommandSubstitution(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "refusing message with literal unexpanded command substitution") {
 			t.Fatalf("text %q: want refusal error, got: %v", text, err)
 		}
-		if !strings.Contains(err.Error(), `coral-board send --board <target> "$(cat file)"`) {
+		if !strings.Contains(err.Error(), "coral-board send --board <target> - <<'EOF'") {
 			t.Fatalf("text %q: want right form hint, got: %v", text, err)
 		}
 	}

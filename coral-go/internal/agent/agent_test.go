@@ -352,6 +352,18 @@ func TestBuildBoardSystemPrompt_Orchestrator(t *testing.T) {
 
 func TestDefaultPromptGuidanceKeepsCorrectionsAndHandoffsActionable(t *testing.T) {
 	for name, prompt := range map[string]string{
+		"orchestrator system": DefaultOrchestratorSystemPrompt,
+		"worker system":       DefaultWorkerSystemPrompt,
+		"orchestrator action": DefaultOrchestratorActionPrompt,
+		"worker action":       DefaultWorkerActionPrompt,
+	} {
+		for _, want := range []string{"How to post:", "one-line summary", "numbered points, one per line", "Answer numbered posts by number", "@Name", "SHAs, branches and paths in backticks", "coral-agent artifact upload <file>", "coral://artifacts/<digest>", "coral-board post - <<'EOF'", "never put backticks or $(...) inside a double-quoted post argument"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("%s prompt missing board posting guidance %q", name, want)
+			}
+		}
+	}
+	for name, prompt := range map[string]string{
 		"orchestrator": DefaultOrchestratorSystemPrompt,
 		"worker":       DefaultWorkerSystemPrompt,
 	} {

@@ -149,7 +149,7 @@ func main() {
 	// Post an introduction
 	if boardName != "" {
 		post(baseURL, boardName, sessionName,
-			fmt.Sprintf("Mock agent online (session=%s)", short(sessionID)))
+			fmt.Sprintf("Mock agent: online (session=%s)", short(sessionID)))
 	}
 
 	var tr *transcript
@@ -213,7 +213,7 @@ func main() {
 			// Post a heartbeat every 3rd tick
 			if boardName != "" && count%3 == 0 {
 				post(baseURL, boardName, sessionName,
-					fmt.Sprintf("heartbeat #%d from %s", count, short(sessionID)))
+					fmt.Sprintf("Mock agent: heartbeat #%d (session=%s)", count, short(sessionID)))
 			}
 			// Print to stdout so tmux pipe-pane captures activity
 			fmt.Printf("[%s] heartbeat #%d\n", time.Now().Format("15:04:05"), count)
