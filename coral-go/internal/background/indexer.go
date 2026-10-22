@@ -75,7 +75,7 @@ const indexerFTSBatch = 100
 // RunOnce performs a single indexing pass over all registered scanners.
 func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 	started := time.Now()
-	knownMtimes, err := idx.store.GetIndexedMtimes(ctx)
+	knownMtimes, err := idx.store.GetHistoryMtimes(ctx)
 	if err != nil {
 		return err
 	}
@@ -126,7 +126,7 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 	}
 	for _, s := range allSessions {
 		if s.Excluded {
-			if err := idx.store.RemoveExcludedSessionSource(ctx, s.SourceType, s.SourceFile); err != nil {
+			if err := idx.store.RemoveExcludedSessionSource(ctx, s.SourceType, s.SourceFile, s.FileMtime, s.IndexVersion); err != nil {
 				return err
 			}
 			continue
@@ -140,6 +140,7 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 			MessageCount:   s.MessageCount,
 			DisplaySummary: s.DisplaySummary,
 			FileMtime:      s.FileMtime,
+			IndexVersion:   s.IndexVersion,
 		}
 		if names, ok := agentNames[s.SessionID]; ok {
 			si.AgentName = names[0]

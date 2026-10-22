@@ -39,6 +39,7 @@ type SessionIndex struct {
 	DisplayName    string  `db:"display_name" json:"display_name,omitempty"`
 	IndexedAt      string  `db:"indexed_at" json:"-"`
 	FileMtime      float64 `db:"file_mtime" json:"-"`
+	IndexVersion   int     `db:"index_version" json:"-"`
 }
 
 // LiveSession represents a persistent live session record.

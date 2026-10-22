@@ -98,6 +98,7 @@ func CoralEnv(params LaunchParams) [][2]string {
 type IndexedSession struct {
 	// Excluded removes derived History/search rows for this source, never the source file.
 	Excluded       bool
+	IndexVersion   int // source parser version; zero denotes a legacy index
 	SessionID      string
 	SourceType     string
 	SourceFile     string  // path to the history file this session came from

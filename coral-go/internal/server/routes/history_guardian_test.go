@@ -70,6 +70,14 @@ func TestHistoryGuardianReindexListTranscriptAndSearch(t *testing.T) {
 			}
 			idx := background.NewSessionIndexer(ss, []agent.HistoryScanner{&agent.CodexAgent{}}, time.Hour, 0)
 			require.NoError(t, idx.RunOnce(ctx))
+			checked, err := ss.GetHistoryMtimes(ctx)
+			require.NoError(t, err)
+			require.Len(t, checked, 3, "normal, worker and excluded guardian are remembered")
+			for _, path := range paths {
+				require.Contains(t, checked, path)
+			}
+			// Restart the indexer: persistent versions/cache must skip old files.
+			idx = background.NewSessionIndexer(ss, []agent.HistoryScanner{&agent.CodexAgent{}}, time.Hour, 0)
 			require.NoError(t, idx.RunOnce(ctx))
 			stale, err := ss.GetIndexedSession(ctx, "stale-guardian")
 			require.NoError(t, err)

@@ -323,6 +323,7 @@ var columnMigrations = []struct {
 	{"browser_sessions", "hub_last_ok", "INTEGER NOT NULL DEFAULT 0"},
 	{"session_index", "agent_name", "TEXT"},
 	{"session_index", "display_name", "TEXT"},
+	{"session_index", "index_version", "INTEGER NOT NULL DEFAULT 0"},
 	{"token_usage", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"token_usage", "cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"token_usage", "session_start_at", "TEXT"},
@@ -554,6 +555,15 @@ CREATE TABLE IF NOT EXISTS live_sessions (
 	flags         TEXT,
 	is_job        INTEGER NOT NULL DEFAULT 0,
 	created_at    TEXT NOT NULL
+);
+
+-- Derived metadata only: excluded rollout files still stay on disk.
+CREATE TABLE IF NOT EXISTS history_exclusions (
+ source_type TEXT NOT NULL,
+ source_file TEXT NOT NULL,
+ file_mtime REAL NOT NULL,
+ index_version INTEGER NOT NULL,
+ PRIMARY KEY (source_type, source_file)
 );
 
 CREATE TABLE IF NOT EXISTS store_meta (

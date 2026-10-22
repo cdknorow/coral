@@ -74,3 +74,43 @@ func TestGetIndexedMtimesMatchesTheOldQueryAndDoesNotScanPerSession(t *testing.T
 	assert.Contains(t, all, "LIST SUBQUERY", "the ids in session_fts are read once, into a list")
 	assert.NotContains(t, all, "EXISTS", "no per-session lookup of session_fts, which is a scan of every transcript's text")
 }
+
+func TestHistoryMtimesRechecksLegacyCodexOnceAndRemembersExclusions(t *testing.T) {
+	db := openTestDB(t)
+	s := NewSessionStore(db)
+	ctx := context.Background()
+	normal := &SessionIndex{SessionID: "parent", SourceType: "codex", SourceFile: "/history/parent.jsonl", FileMtime: 42}
+	require.NoError(t, s.UpsertSessionIndex(ctx, normal))
+	require.NoError(t, s.UpsertFTS(ctx, normal.SessionID, "ordinary chat"))
+	legacy, err := s.GetIndexedMtimes(ctx)
+	require.NoError(t, err)
+	require.Equal(t, float64(42), legacy[normal.SourceFile])
+	known, err := s.GetHistoryMtimes(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, known, normal.SourceFile, "an old unchanged Codex row is checked once")
+	normal.IndexVersion = 1
+	require.NoError(t, s.UpsertSessionIndex(ctx, normal))
+	require.NoError(t, s.RemoveExcludedSessionSource(ctx, "codex", "/history/guardian.jsonl", 43, 1))
+	// New store wrapper models a restart without keeping any in-memory sweep state.
+	s = NewSessionStore(db)
+	known, err = s.GetHistoryMtimes(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]float64{normal.SourceFile: 42, "/history/guardian.jsonl": 43}, known)
+	_, err = db.ExecContext(ctx, `DELETE FROM session_fts WHERE session_id = 'parent'`)
+	require.NoError(t, err)
+	known, err = s.GetHistoryMtimes(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, known, normal.SourceFile, "missing FTS still backfills")
+	// A changed rollout that becomes ordinary clears the exclusion cache.
+	normal.SourceFile = "/history/guardian.jsonl"
+	normal.SessionID = "changed"
+	normal.FileMtime = 44
+	require.NoError(t, s.UpsertSessionIndex(ctx, normal))
+	require.NoError(t, s.UpsertFTS(ctx, normal.SessionID, "now ordinary"))
+	known, err = s.GetHistoryMtimes(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, float64(44), known[normal.SourceFile])
+	var exclusions int
+	require.NoError(t, db.GetContext(ctx, &exclusions, `SELECT count(*) FROM history_exclusions`))
+	assert.Zero(t, exclusions)
+}
