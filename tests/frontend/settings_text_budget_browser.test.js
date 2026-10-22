@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 // words a person can see in a group now, per the audit (artifact 141071b6); a group with no number has not been cut yet
-const BUDGET = { 'Network and Hub': 90 };
+const BUDGET = { 'Network and Hub': 90, 'Agents': 130 };
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();

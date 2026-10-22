@@ -235,7 +235,7 @@ export async function showTeamWorkingMode(team, options = {}) {
     const workingModeURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode`, teamServer);
     const presetsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode/presets`, teamServer);
     const boardSettingsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/settings`, teamServer);
-    let healthMonitorOn = true; // Settings > Agents: "Allow team health checks (all teams)", on unless turned off
+    let healthMonitorOn = true; // Settings > Agents: "Team health checks", on unless turned off
     const inspectionURL = serverUrl(`/api/settings/prompt-inspection?board=${encodeURIComponent(teamName)}`, teamServer);
     let presets = [];
     let workingMode = null;
@@ -265,7 +265,7 @@ export async function showTeamWorkingMode(team, options = {}) {
         if (!healthMonitorOn) {
             const note = document.createElement('p');
             note.className = 'working-mode-hint health-global-off'; note.setAttribute('role', 'status');
-            note.append('Team health checks are turned off for all of Coral, so this team\'s check will not run. Turn on "Allow team health checks (all teams)" in ');
+            note.append('Team health checks are turned off for all of Coral, so this team\'s check will not run. Turn on "Team health checks" in ');
             const link = document.createElement('button');
             link.type = 'button'; link.className = 'working-mode-settings-link'; link.textContent = 'Settings';
             link.addEventListener('click', () => {
