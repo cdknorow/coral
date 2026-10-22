@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 // unixPTY wraps creack/pty for Unix systems (macOS, Linux).
@@ -17,6 +18,7 @@ type unixPTY struct {
 	cmd     *exec.Cmd
 	ptyFile *os.File
 	done    chan struct{}
+	root    member // the shell as it was when it started: pid and start time (zero if they could not be read)
 	seen    seen   // the tree as Terminate found it
 	tag     string // CORAL_PTY_RUN in the environment of everything this terminal runs: how its whole tree is found (proc_tree_unix.go)
 }
@@ -56,6 +58,11 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 		done:    make(chan struct{}),
 		tag:     tag,
 	}
+	if cp, err := process.NewProcess(int32(cmd.Process.Pid)); err == nil {
+		if created, err := cp.CreateTime(); err == nil {
+			p.root = member{cmd.Process.Pid, created}
+		}
+	}
 
 	go func() {
 		defer safego.Recover("ptymanager/pty_unix:55")
@@ -82,7 +89,7 @@ func (p *unixPTY) Terminate() error {
 	if p.cmd.Process == nil {
 		return nil
 	}
-	tree := treeMembers(p.Pid(), p.tag) // before the shell goes: what descends from it, and what is tagged, is found while it is still the parent (#6125)
+	tree := treeMembers(p.root, p.tag) // before the shell goes: what descends from it, and what is tagged, is found while it is still the parent (#6125)
 	p.seen.add(tree)
 	pgid, err := syscall.Getpgid(p.cmd.Process.Pid)
 	if err == nil && pgid > 0 {
@@ -101,7 +108,7 @@ func (p *unixPTY) ForceKill() error {
 	if p.cmd.Process == nil {
 		return nil
 	}
-	killTree(p.seen.all(), p.Pid(), p.tag) // the whole tree, not only the shell's group (#6125)
+	killTree(p.seen.all(), p.root, p.tag) // the whole tree, not only the shell's group (#6125)
 	pgid, err := syscall.Getpgid(p.cmd.Process.Pid)
 	if err == nil && pgid > 0 {
 		return syscall.Kill(-pgid, syscall.SIGKILL)

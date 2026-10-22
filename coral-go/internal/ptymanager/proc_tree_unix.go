@@ -49,9 +49,10 @@ func (m member) current() bool {
 	return err == nil && created == m.created
 }
 
-// treeMembers is every live process of the terminal that started root and carries tag: root and what descends from it, and what carries the tag wherever it now is. Never Coral's own process
-// or group, and never PID 1.
-func treeMembers(root int, tag string) []member {
+// treeMembers is every live process of the terminal whose shell is root and that carries tag: root and what descends from it, and what carries the tag wherever it now is. root counts only while
+// it is still the process the terminal started (its pid and start time were recorded then): once the shell is gone its pid can belong to an unrelated process, which must not seed the tree. Never
+// Coral's own process or group, and never PID 1.
+func treeMembers(root member, tag string) []member {
 	procs, err := process.Processes()
 	if err != nil {
 		return nil
@@ -66,9 +67,9 @@ func treeMembers(root int, tag string) []member {
 		}
 	}
 	members := map[int]bool{}
-	if root > 1 {
-		if _, ok := parent[root]; ok {
-			members[root] = true
+	if root.pid > 1 && root.current() {
+		if _, ok := parent[root.pid]; ok {
+			members[root.pid] = true
 		}
 	}
 	for grown := true; grown; {
@@ -96,10 +97,7 @@ func treeMembers(root int, tag string) []member {
 	}
 	var out []member
 	for pid := range members {
-		if pid <= 1 || pid == self {
-			continue
-		}
-		if g, err := syscall.Getpgid(pid); err == nil && g == selfGroup {
+		if excluded(pid, self, selfGroup) {
 			continue
 		}
 		created, err := byPID[pid].CreateTime()
@@ -109,6 +107,15 @@ func treeMembers(root int, tag string) []member {
 		out = append(out, member{pid, created})
 	}
 	return out
+}
+
+// excluded: a process that is never part of a terminal's tree, whatever carries its tag: PID 1, Coral itself, and anything in Coral's own process group.
+func excluded(pid, self, selfGroup int) bool {
+	if pid <= 1 || pid == self {
+		return true
+	}
+	g, err := syscall.Getpgid(pid)
+	return err == nil && g == selfGroup
 }
 
 // signalTree sends sig to each member that is still the process it was and, for one that leads its own group, to the group too (what it started there and did not tag).
@@ -127,7 +134,7 @@ func signalTree(ms []member, sig syscall.Signal) {
 // killTree ends known and what else is found of the terminal's tree. A process can fork between the sweep that found the tree and the signal that ends it, and its child would be missed, so the
 // tree is first stopped (SIGSTOP: nothing in it can fork), swept again, and stopped again until a sweep finds nothing new, and only then killed; a stopped process dies of SIGKILL like any other.
 // It returns what it killed.
-func killTree(known []member, root int, tag string) []member {
+func killTree(known []member, root member, tag string) []member {
 	set := unionOf(known, treeMembers(root, tag))
 	for i := 0; i < 5; i++ {
 		signalTree(set, syscall.SIGSTOP)
@@ -190,10 +197,10 @@ func (p *unixPTY) reapTree(grace time.Duration) {
 	for anyAlive(known) && time.Now().Before(deadline) {
 		time.Sleep(25 * time.Millisecond)
 	}
-	if !anyAlive(unionOf(known, treeMembers(p.Pid(), p.tag))) {
+	if !anyAlive(unionOf(known, treeMembers(p.root, p.tag))) {
 		return
 	}
-	left := killTree(known, p.Pid(), p.tag)
+	left := killTree(known, p.root, p.tag)
 	for end := time.Now().Add(time.Second); anyAlive(left) && time.Now().Before(end); {
 		time.Sleep(10 * time.Millisecond)
 	}

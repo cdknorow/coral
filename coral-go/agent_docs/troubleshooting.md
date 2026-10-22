@@ -258,6 +258,14 @@ you chose it. An install that ran on the older tmux default and still has agents
 keeps tmux for that one start, so nothing is hidden; the first start without them runs the built-in
 terminal.
 
+On the built-in terminal, ending an agent (quitting Coral, Kill, Restart) ends everything that agent
+started, however it started it: a helper in a session of its own, and a background process the agent
+began on purpose (`nohup`, a dev server) end with it. Run something that must outlive the agent from
+your own terminal, or choose tmux. On macOS, a helper that had already detached from the agent before
+the terminal ended cannot be found (macOS does not let Coral read other processes' environments);
+whatever is still attached is ended. A Coral that is killed or crashes ends nothing itself: the
+terminals are hung up by the system, which ends an agent that exits on hangup and may leave its helpers.
+
 With tmux chosen, Coral does not fail at startup when tmux is missing — it logs a warning, the dashboard
 loads normally, and only agent launch fails:
 

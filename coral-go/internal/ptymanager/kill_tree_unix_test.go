@@ -3,6 +3,7 @@
 package ptymanager
 
 import (
+	"github.com/shirou/gopsutil/v4/process"
 	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"
@@ -69,7 +70,7 @@ func orphanTagReadable(t *testing.T) bool {
 	}
 	defer func() { c.Process.Kill(); c.Wait() }()
 	time.Sleep(50 * time.Millisecond)
-	return len(treeMembers(0, "probe")) > 0
+	return len(treeMembers(member{}, "probe")) > 0
 }
 
 const daemon = `perl -e 'use POSIX; if (!fork) { POSIX::setsid(); if (!fork) { %s open F, ">%s"; print F $$; close F; exec "sleep", "600" } exit 0 } exit 0'`
@@ -184,5 +185,83 @@ func TestKillLeavesAnotherTerminalsProcessesAlone(t *testing.T) {
 	waitGone(t, a, 3*time.Second)
 	if err := syscall.Kill(other, 0); err != nil {
 		t.Fatalf("the other terminal's child was ended too: %v", err)
+	}
+}
+
+// createdOf is the start time of pid, as treeMembers reads it.
+func createdOf(t *testing.T, pid int) int64 {
+	t.Helper()
+	p, err := process.NewProcess(int32(pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := p.CreateTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return created
+}
+
+// Never a process outside the terminal: Coral itself, its own process group, and PID 1 are excluded whatever puts them in the set (a tagged process in Coral's group, the shell being Coral's own
+// pid). The child here is in this test process's group and carries the tag, and is the root of the tree.
+func TestTheTreeNeverHoldsCoralItsGroupOrPID1(t *testing.T) {
+	canFork(t)
+	self, group := os.Getpid(), syscall.Getpgrp()
+	if !excluded(1, self, group) || !excluded(self, self, group) {
+		t.Fatal("PID 1 and Coral itself are excluded")
+	}
+	child := exec.Command("sleep", "600")
+	child.Env = append(os.Environ(), runTagEnv+"=excl")
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { child.Process.Kill(); child.Wait() })
+	if g, _ := syscall.Getpgid(child.Process.Pid); g != group {
+		t.Fatalf("the child should be in this process's group (%d, not %d)", g, group)
+	}
+	if !excluded(child.Process.Pid, self, group) {
+		t.Fatal("a process in Coral's own group is excluded")
+	}
+	root := member{child.Process.Pid, createdOf(t, child.Process.Pid)}
+	for _, m := range treeMembers(root, "excl") {
+		if m.pid == child.Process.Pid || m.pid == self || m.pid == 1 {
+			t.Fatalf("the tree holds %d, which is Coral, its group or PID 1", m.pid)
+		}
+	}
+	for _, m := range treeMembers(member{self, createdOf(t, self)}, "excl") {
+		if m.pid == self {
+			t.Fatal("Coral itself is in its own tree")
+		}
+	}
+	killTree(nil, root, "excl")
+	time.Sleep(200 * time.Millisecond)
+	if err := syscall.Kill(child.Process.Pid, 0); err != nil {
+		t.Fatalf("a process in Coral's own group was signalled: %v", err)
+	}
+}
+
+// A shell's pid is only the root of its tree while it is still the process the terminal started: after it is reaped the number can be given to an unrelated process, whose children must not be
+// ended. A root whose start time is not the recorded one seeds nothing.
+func TestARootThatIsNoLongerTheShellSeedsNothing(t *testing.T) {
+	canFork(t)
+	sh := exec.Command("sh", "-c", "sleep 600 & wait")
+	sh.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // a group of its own: not Coral's
+	if err := sh.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { syscall.Kill(-sh.Process.Pid, syscall.SIGKILL); sh.Wait() })
+	created := createdOf(t, sh.Process.Pid)
+	var got []member
+	for end := time.Now().Add(3 * time.Second); time.Now().Before(end) && len(got) < 2; time.Sleep(50 * time.Millisecond) {
+		got = treeMembers(member{sh.Process.Pid, created}, "no-such-tag")
+	}
+	if len(got) < 2 {
+		t.Fatalf("the shell and its child are the tree while the root is the recorded process: %v", got)
+	}
+	if got := treeMembers(member{sh.Process.Pid, created + 1}, "no-such-tag"); len(got) != 0 {
+		t.Fatalf("a pid that is no longer the recorded process seeded the tree: %v", got)
+	}
+	if got := treeMembers(member{}, "no-such-tag"); len(got) != 0 {
+		t.Fatalf("an unknown root seeded the tree: %v", got)
 	}
 }
