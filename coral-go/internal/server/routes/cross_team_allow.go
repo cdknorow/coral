@@ -16,6 +16,7 @@ import (
 	"github.com/subgentic/coral/internal/httputil"
 	setreg "github.com/subgentic/coral/internal/settings"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // Who may message a board (#5508, coral-hub's spec): with the allowlist in force, a board takes a cross-team message, and the files that come with it, only from a sender on its list of
@@ -108,6 +109,48 @@ func (h *BoardHandler) relayedDoor(ctx context.Context, target, src, to string) 
 	step("recipients")
 	recipients, rerr := h.bs.TargetOrchestrators(ctx, target, to)
 	return recipients, settings, exists && linked && rerr == nil, nil
+}
+
+// linksDoor is the door for a message relayed through a hub that advertised cross_team_links/1 (#5862): the board exists, its cross-team switch is on, the sending team is linked to it
+// in a fresh table of the hub's snapshots (linkTable.admits(the source server and the source team, both set by Coral Hub, this board), never the board's own server list, which the Messaging tab no longer
+// edits), and an Orchestrator can be told. refuse is doorRefuse: a connection whose hub no longer advertises links, for a computer that has seen one that did, is never sent back to the
+// old door; it runs the same four reads in the same order and admits nothing. Like relayedDoor, every cause takes the same steps in the same order (#5572, Security's condition 9).
+func (h *BoardHandler) linksDoor(ctx context.Context, target string, srcServer, srcTeam, to string, refuse bool) (recipients []string, settings board.BoardSettings, admitted bool, err error) {
+	step := func(name string) {
+		if doorTrace != nil {
+			doorTrace(name)
+		}
+	}
+	step("exists")
+	exists, err := h.bs.BoardExists(ctx, target)
+	if err != nil {
+		return nil, settings, false, err
+	}
+	step("settings")
+	settings, err = h.bs.GetBoardSettings(ctx, target)
+	if err != nil {
+		return nil, settings, false, err
+	}
+	step("list")
+	linked := h.links.admits(srcServer, srcTeam, target, h.linkNow()) // read whatever the other answers are: a stale or missing table, or no source team, admits nothing
+	linked = linked && settings.CrossTeamMessaging && !refuse
+	step("recipients")
+	recipients, rerr := h.bs.TargetOrchestrators(ctx, target, to)
+	return recipients, settings, exists && linked && rerr == nil, nil
+}
+
+// hubSourceTeam is the sending team of a relayed request as Coral Hub names it (X-Coral-Hub-Source-Team, the generated board id of the team in the link pair; the hub overwrites any value a
+// sending Coral supplied, and the connector forwards it only where X-Coral-Hub-Server is): exactly one value in the generated shape, else "" (no team, which no link admits). Read only on a
+// request carrying the per-process stamp, as the server header is; the body's own claim of its cross-team id is not this and is never used for a link.
+func hubSourceTeam(r *http.Request) string {
+	if !cloud.TunneledAuthentic(r) {
+		return ""
+	}
+	v := r.Header.Values(tunnel.HubSourceTeamHeader)
+	if len(v) != 1 || !linkTeamRe.MatchString(v[0]) {
+		return ""
+	}
+	return v[0]
 }
 
 // writeRelayedRefused is the one refusal toward a sender on another Coral.
