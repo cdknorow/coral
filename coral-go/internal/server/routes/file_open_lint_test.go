@@ -31,8 +31,6 @@ var reviewedFileOpens = map[string]string{
 	"artifacts.go:readSidecar:ReadFile":                                        "an object's sidecar, hex name",
 	"auto_attach.go:NewAutoAttacher:ReadFile":                                  "server data folder (auto-attach-bytes)",
 	"board_task_read.go:BoardHandler.TaskChangesDiff:ReadFile":                 "the task id is an int64; the server's artifacts folder",
-	"changes_diff_filter.go:diffWithNewFiles:ReadFile":                         "the working tree's own index, at the path git rev-parse --git-path index gives (git reads the same file on every command); copied only into a private temp folder, never served (#243)",
-	"changes_diff_filter.go:diffWithNewFiles:WriteFile":                        "the index copy in this call's own os.MkdirTemp folder, 0600, removed when it returns (#243)",
 	"changes_diff_filter.go:isBinaryFile:Open":                                 "an untracked name git lists, under diffPathHidden and an Lstat regular-file check",
 	"file_explorer.go:serveExplorerDirectory:Open":                             "the explorer: no abs or '..', EvalSymlinks + Rel inside the root, strict roots",
 	"sessions_changes.go:SessionsHandler.Diff:ReadFile":                        "isPathWithinDir on the resolved path; strict callers get diffPathRefused",
