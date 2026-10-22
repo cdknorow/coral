@@ -52,7 +52,7 @@ func TestCodexLaunchCommandAgreesWithBefore4845(t *testing.T) {
 	a := &CodexAgent{}
 	flagWords := []string{"--permission-mode", "acceptEdits", "--permission-mode=plan", "--permission-mode=bypassPermissions",
 		"--dangerously-skip-permissions", "--dangerously-bypass-approvals-and-sandbox", "--full-auto", "-a", "untrusted", "never",
-		"-a=untrusted", "--approval-mode", "on-request", "--approval-mode=untrusted", "--sandbox", "read-only", "--sandbox=workspace-write",
+		"-a=untrusted", "--approval-mode", "on-request", "--approval-mode=untrusted", "--ask-for-approval", "--ask-for-approval=untrusted", "on-failure", "--sandbox", "read-only", "--sandbox=workspace-write",
 		"--settings", "--session-id", "--resume", "--model", "o3", "--search", "-c", "model=\"gpt-5\""}
 	capSets := [][]string{nil, {CapWebAccess}, {CapShell}, {CapShell, CapFileRead, CapFileWrite, CapGitWrite}, {CapFileRead}, {CapShell, CapWebAccess}}
 	counts := map[string]int{}
@@ -292,27 +292,24 @@ func (a *CodexAgent) launchCommandBefore4845(params LaunchParams) (string, error
 			}
 			continue
 		}
-		if flag == "-a" && i+1 < len(params.Flags) {
-			// Older Coral permission profiles used Codex's former "untrusted"
-			// policy. Current Codex accepts only on-request or never.
-			parts = append(parts, flag, normalizeCodexApprovalPolicy(params.Flags[i+1]))
+		if (flag == "-a" || flag == "--ask-for-approval" || flag == "--approval-mode") && i+1 < len(params.Flags) {
+			// Older Coral permission profiles used Codex's former "untrusted" policy. Current Codex accepts only on-request or never, and its flag is
+			// -a / --ask-for-approval, not --approval-mode (#5890: the one deliberate change from the builder this oracle was taken from).
+			name := flag
+			if name == "--approval-mode" {
+				name = "-a"
+			}
+			parts = append(parts, name, normalizeCodexApprovalPolicy(params.Flags[i+1]))
 			i++
 			permissionApplied = true
 			continue
 		}
-		if strings.HasPrefix(flag, "-a=") {
-			parts = append(parts, "-a="+normalizeCodexApprovalPolicy(strings.TrimPrefix(flag, "-a=")))
-			permissionApplied = true
-			continue
-		}
-		if flag == "--approval-mode" && i+1 < len(params.Flags) {
-			parts = append(parts, flag, normalizeCodexApprovalPolicy(params.Flags[i+1]))
-			i++
-			permissionApplied = true
-			continue
-		}
-		if strings.HasPrefix(flag, "--approval-mode=") {
-			parts = append(parts, "--approval-mode="+normalizeCodexApprovalPolicy(strings.TrimPrefix(flag, "--approval-mode=")))
+		if p := strings.Index(flag, "="); p > 0 && (flag[:p] == "-a" || flag[:p] == "--ask-for-approval" || flag[:p] == "--approval-mode") {
+			name := flag[:p]
+			if name == "--approval-mode" {
+				name = "-a"
+			}
+			parts = append(parts, name+"="+normalizeCodexApprovalPolicy(flag[p+1:]))
 			permissionApplied = true
 			continue
 		}

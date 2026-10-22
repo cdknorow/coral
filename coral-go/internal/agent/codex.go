@@ -353,15 +353,15 @@ func codexUserFlags(parts, flags []string, bypass, applied bool) ([]string, bool
 				parts = append(parts, flag)
 				bypass, applied = true, true
 			}
-		case (flag == "-a" || flag == "--approval-mode") && i+1 < len(flags):
-			// Older Coral permission profiles used Codex's former "untrusted" policy. Current Codex accepts only
-			// on-request or never.
-			parts = append(parts, flag, normalizeCodexApprovalPolicy(flags[i+1]))
+		case (flag == "-a" || flag == "--ask-for-approval" || flag == "--approval-mode") && i+1 < len(flags):
+			// Older Coral permission profiles used Codex's former "untrusted" policy (and on-failure). Current Codex accepts only on-request or never, and
+			// no longer has --approval-mode (its flag is -a / --ask-for-approval): the old name is emitted as -a (#5890).
+			parts = append(parts, codexApprovalFlagName(flag), normalizeCodexApprovalPolicy(flags[i+1]))
 			i++
 			applied = true
-		case strings.HasPrefix(flag, "-a="), strings.HasPrefix(flag, "--approval-mode="):
+		case strings.HasPrefix(flag, "-a="), strings.HasPrefix(flag, "--ask-for-approval="), strings.HasPrefix(flag, "--approval-mode="):
 			name, value, _ := strings.Cut(flag, "=")
-			parts = append(parts, name+"="+normalizeCodexApprovalPolicy(value))
+			parts = append(parts, codexApprovalFlagName(name)+"="+normalizeCodexApprovalPolicy(value))
 			applied = true
 		case claudeOnlyFlags[flag]:
 			slog.Warn("dropping Claude-specific flag for Codex agent", "flag", flag)
@@ -447,11 +447,22 @@ func collapseCodexSandboxFlags(parts []string, keepFirst bool) []string {
 	return out
 }
 
+// normalizeCodexApprovalPolicy maps the policies Codex 0.163 no longer takes to the nearest one it does, never to a wider one: untrusted and on-failure ask (on-request). The rest
+// (on-request, never, anything else) is passed as it is, so a value Codex does not know is Codex's to refuse.
 func normalizeCodexApprovalPolicy(policy string) string {
-	if policy == "untrusted" {
+	switch policy {
+	case "untrusted", "on-failure":
 		return "on-request"
 	}
 	return policy
+}
+
+// codexApprovalFlagName is the flag Codex 0.163 has for an approval policy: -a and --ask-for-approval as they are, and the former --approval-mode, which it rejects, as -a.
+func codexApprovalFlagName(flag string) string {
+	if flag == "--approval-mode" {
+		return "-a"
+	}
+	return flag
 }
 
 func appendCodexFullAuto(parts []string) []string {
