@@ -247,6 +247,7 @@ const BASE = require('./test_base').BASE;
             const out = {};
             out.never = await read({ allow_hub_auto_accept: true });
             out.hubOn = await read({ allow_hub_auto_accept: true, allow_hub_auto_accept_changed: { by: 'hub', user: 'hub-user-3f2a', at: '2026-10-21T20:15:00Z' } });
+            out.gap = parseFloat(getComputedStyle(line).marginTop); // the pane may not be shown here, so the spacing is read from the style, not measured
             out.hubOff = await read({ allow_hub_auto_accept: false, allow_hub_auto_accept_changed: { by: 'hub', user: 'hub-user-3f2a', at: '2026-10-21T20:15:00Z' } });
             out.local = await read({ allow_hub_auto_accept: false, allow_hub_auto_accept_changed: { by: 'local', at: '2026-10-21T20:15:00Z' } });
             out.nasty = await read({ allow_hub_auto_accept: true, allow_hub_auto_accept_changed: { by: 'hub', user: '<img src=x onerror=1>\u202e\u0007Eve', at: 'not a time' } });
@@ -263,6 +264,7 @@ const BASE = require('./test_base').BASE;
         assert.ok(/^Turned on from Coral Hub by <img src=x onerror=1>Eve$/.test(lines.nasty.text) && lines.img === 0, 'a hub user label is text, stripped of control and bidi characters: ' + JSON.stringify(lines.nasty));
         assert.deepEqual(lines.badBy, { text: '', shown: false }, 'an unknown "by" says nothing');
         assert.equal(lines.belowLaunch.shown, false, 'hidden with its row below Launch');
+        assert.ok(lines.gap >= 6, 'the last-changed line has its own spacing under the description, not butted against it: ' + lines.gap);
         assert.ok(/settings-cloud-auto-accept-desc/.test(lines.described) && /settings-cloud-auto-accept-changed/.test(lines.described), 'the switch is described by the line too: ' + lines.described);
         console.log('   ✓ the last-changed line: hub user or this computer, on or off, nothing before a change, text only');
 

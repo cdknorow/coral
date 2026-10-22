@@ -1340,14 +1340,16 @@
     color: var(--text-secondary);
     font: inherit;
     cursor: pointer;
-    text-decoration: underline;
-    text-decoration-color: transparent;
+    text-decoration: underline; /* underlined at rest: without it the first-run card's only action reads as a label */
     text-underline-offset: 3px;
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px; /* WCAG 2.5.8; 44 px on a phone below */
 }
 .cni-link:hover:not(:disabled) {
     color: var(--text-primary);
-    text-decoration-color: currentColor;
 }
+@media (max-width: 600px) { .cni-link { min-height: 44px; } }
 .cni-hint {
     color: var(--text-muted);
 }

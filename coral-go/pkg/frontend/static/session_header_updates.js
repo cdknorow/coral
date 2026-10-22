@@ -1,5 +1,6 @@
 /* Live updates to the open agent's header: its folder, branch, waiting state, goal and status (moved out of render.js, #4996; no behaviour change). */
 import { _shortPath, _gitStateSummary, _repoBranch, deriveSessionState } from './session_state.js';
+import { startupSignedOut } from './signin_line.js';
 import { setText, setHidden, setTitle, setHtml, setDisplay, setClassName, setPill } from './dom_write.js';
 
 export function updateSessionStatus(status) {
@@ -93,11 +94,11 @@ export function updateWaitingIndicator(s) {
         if (bannerKey === 'needs_input') {
             setClassName(banner, "waiting-banner");
             text = s.waiting_kind === 'login' ? "⏳ Agent needs you to sign in (in its terminal)" : "⏳ Agent is waiting for input";
-        } else if (bannerKey === 'check_terminal') {
+        } else if (bannerKey === 'check_terminal' && !startupSignedOut(s)) { // signed out: the card says so, once
             setClassName(banner, "waiting-banner waiting-banner-not-started");
             text = "⏳ This agent hasn't done anything yet. Open its terminal: some agents ask to trust the folder, or to sign in, the first time they run.";
         }
-        setPill(banner, bannerKey === 'needs_input' || bannerKey === 'check_terminal', text);
+        setPill(banner, !!text, text);
     }
 }
 

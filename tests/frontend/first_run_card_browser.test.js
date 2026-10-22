@@ -38,6 +38,9 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
             assert.ok(!/below/.test(g.pill) && /Open its terminal/.test(g.pill), `${w}: the pill names the terminal as something to open: ${g.pill}`);
             assert.match(g.card, /Open the terminal, answer it there, then come back and type your first message/);
             assert.ok(g.open, `${w}: the card has Open terminal`);
+            const t = await ev(`(() => { const b = document.querySelector('#live-history-messages > .chat-needs-input [data-on-click="terminal-view-open"]'), cs = getComputedStyle(b); return { h: Math.round(b.getBoundingClientRect().height), underline: cs.textDecorationLine === 'underline' && cs.textDecorationColor !== 'rgba(0, 0, 0, 0)' && !/transparent/.test(cs.textDecorationColor) }; })()`);
+            assert.ok(t.underline, `${w}: Open terminal is underlined at rest, so it reads as the action`);
+            assert.ok(t.h >= (mobile ? 44 : 24), `${w}: Open terminal is a big enough target (${t.h})`);
             console.log(`   ok ${w}: pill ${g.pillBottom}, card ${g.cardTop}`);
         }
 
@@ -50,6 +53,11 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
         let c = await card();
         assert.match(c.text, /Sign-in needed.*Claude is not signed in.*Open the terminal and sign in, then come back and type\./); assert.ok(c.open, 'Open terminal stays');
         assert.ok(!/startup prompt/.test(c.text), 'not the generic words');
+        await waitFor(`document.getElementById('waiting-banner').hidden`, 'the generic pill gone beside the signed-out card', 8000);
+        assert.ok(await ev(`document.getElementById('waiting-banner').hidden`), 'the signed-out card is the one message: the "hasn\'t done anything yet" pill is not shown with it');
+        // and a later update of the same agent (the WebSocket tick) does not bring it back: wait out the pill's show delay with animation frames, then look
+        await ev(`import((window.__coralStatic || '/static/') + 'session_header_updates.js').then(m => { m.updateWaitingIndicator(window.__sessions[0]); return new Promise(r => { const t0 = performance.now(); (function f() { performance.now() - t0 > 1800 ? r(true) : requestAnimationFrame(f); })(); }); })`);
+        assert.ok(await ev(`document.getElementById('waiting-banner').hidden`), 'a live update does not bring the generic pill back beside the signed-out card');
         await withStatus(true);
         await waitFor(`/startup prompt/.test((document.querySelector('#live-history-messages > .chat-needs-input') || {}).textContent || '')`, 'the generic card when signed in', 10000);
         assert.ok(!/not signed in/.test((await card()).text));

@@ -107,11 +107,16 @@ function applyViewOnly(on) {
         input.dataset.hubPlaceholder = input.placeholder;
         input.disabled = true;
         input.placeholder = VIEW_ONLY_PLACEHOLDER;
+        // A disabled box is not in the tab order and a placeholder is not a name: the name says why it is off
+        input.dataset.hubAriaLabel = input.getAttribute('aria-label') || '';
+        input.setAttribute('aria-label', VIEW_ONLY_PLACEHOLDER);
     } else if (input.dataset.hubDisabled) {
         input.disabled = false;
         input.placeholder = input.dataset.hubPlaceholder || input.placeholder;
+        if (input.dataset.hubAriaLabel) input.setAttribute('aria-label', input.dataset.hubAriaLabel); else input.removeAttribute('aria-label');
         delete input.dataset.hubDisabled;
         delete input.dataset.hubPlaceholder;
+        delete input.dataset.hubAriaLabel;
     }
 }
 

@@ -4,6 +4,8 @@
 import { fetchSystemStatus } from './system_status.js';
 import { pollEvery } from './overload.js';
 import { registerActions } from './actions.js';
+import { isCloud, normServer, sessionServer, LOCAL_SERVER } from './server_base.js';
+import { setPill } from './dom_write.js';
 
 const RECHECK_MS = 60_000;
 
@@ -12,6 +14,14 @@ let _askedAt = 0;
 
 /** What the last status said about Claude's sign-in: true, false, or undefined when it did not say (#5852). */
 export function claudeSignedIn() { return _known; }
+
+/** Whether the sign-in status is about this agent's Claude: a claude agent on THIS computer, not one on another server or seen through Coral Hub (claude_signed_in is this computer's Claude). */
+export function isLocalClaude(row) {
+    return !!row && row.agent_type === 'claude' && !isCloud() && normServer(sessionServer(row)) === LOCAL_SERVER;
+}
+
+/** A new Claude agent that has not started, on a computer where Claude is not signed in: the card says so (#5852), so the generic "hasn't done anything yet" pill is not shown beside it (one message, not two). */
+export function startupSignedOut(row) { return _known === false && isLocalClaude(row); }
 
 /** A card that is waiting to say whether Claude is signed in asks for a fresh status, at most every 10 seconds (the server checks once after the first Claude launch, #5838). */
 export function askSigninSoon() {
@@ -24,6 +34,7 @@ export function askSigninSoon() {
 /** Shows the line for a status with claude_signed_in === false, hides it otherwise (absent is "not known": nothing to say). */
 export function applySigninStatus(data) {
     _known = data && typeof data.claude_signed_in === 'boolean' ? data.claude_signed_in : undefined;
+    if (_known === false) { const pill = document.getElementById('waiting-banner'); if (pill && pill.classList.contains('waiting-banner-not-started')) setPill(pill, false, ''); } // the card now says it
     const line = document.getElementById('claude-signin-line');
     if (!line) return;
     const off = !!data && data.claude_signed_in === false;
