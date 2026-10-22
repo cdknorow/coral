@@ -180,7 +180,7 @@ const STUB = `(() => {
             await tab('needs'); await tab('tasks');
             await waitFor(`document.querySelectorAll('#inbox-tasks-host .ibx-task').length === 3 && !!document.querySelector('#inbox-tasks-host .ibx-task-body:not([hidden]) .ibx-reply-input')`, 'the open task is open again', 6000);
             check(`${dev}: leaving the tab and coming back keeps the open task open`, (await ev(`[...document.querySelectorAll('#inbox-tasks-host .ibx-task-head')].map(h => h.getAttribute('aria-expanded')).join()`)) === 'true,false,false');
-            check(`${dev}: the page heading is the tab it is on`, (await ev(`document.getElementById('inbox-title').textContent`)) === 'Tasks for you');
+            check(`${dev}: the Inbox heading stays while its tabs name the panels`, (await ev(`document.getElementById('inbox-title').textContent`)) === 'Inbox');
             const lv = () => ev(`document.querySelector('#inbox-tasks-host .ibx-live').textContent.trim()`);
             await head(1);
             await waitFor(`!!document.querySelectorAll('#inbox-tasks-host .ibx-task-body')[1].querySelector('.ibx-reply-input')`, 'the second task', 4000);

@@ -45,12 +45,12 @@ export function withScope(query, scope) {
     return s ? `?${s}` : '';
 }
 
-/** The panel's heading: "Saved: QA Engineer", "Saved: coral-go-team", "Saved: all". */
-export function scopeHeading(scope) { return `Saved: ${scope && scope.label ? scope.label : 'all'}`; }
+/** The panel's heading: "Saved: QA Engineer", "Saved: coral-go-team", "All saved". */
+export function scopeHeading(scope) { return !scope || scope.kind === 'all' ? 'All saved' : `Saved: ${scope.label}`; }
 
 /** What an empty list says in this scope. */
 export function scopeEmpty(scope, tab) {
     if (tab === 'done') return 'Nothing marked done.';
-    if (!scope || scope.kind === 'all') return 'Nothing saved yet. Use the bookmark on a message to save it for later.';
+    if (!scope || scope.kind === 'all') return 'Bookmark a message to save it here.';
     return `Nothing saved from ${scope.label} yet. Use the bookmark on a message to save it for later.`;
 }

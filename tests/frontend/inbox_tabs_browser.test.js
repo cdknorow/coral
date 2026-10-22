@@ -56,9 +56,9 @@ const BASE = require('./test_base').BASE;
             // roles and names
             const roles = await ev(`(() => { const l = document.getElementById('inbox-tablist'); const tabs = [...l.querySelectorAll('[role=tab]')]; const panel = id => document.getElementById(id);
                 return { list: l.getAttribute('role'), name: l.getAttribute('aria-label'), tabs: tabs.map(t => t.textContent.trim()), panels: tabs.map(t => { const p = panel(t.getAttribute('aria-controls')); return !!p && p.getAttribute('role') === 'tabpanel' && p.getAttribute('aria-labelledby') === t.id; }),
-                    title: document.getElementById('inbox-title').textContent.trim(), sub: document.querySelector('.inbox-sub').textContent.trim() }; })()`);
+                    title: document.getElementById('inbox-title').textContent.trim(), sub: !!document.querySelector('.inbox-sub') }; })()`);
             check(`${dev}: a tablist named Inbox with the hub's tab names (and Tasks for you, #5754), each controlling the tabpanel it labels`, roles.list === 'tablist' && roles.name === 'Inbox' && roles.tabs.join('|') === 'Needs you|Tasks for you|Saved for later' && roles.panels.every(Boolean), JSON.stringify(roles));
-            check(`${dev}: the page has the hub's header (Needs you) and a subtitle`, roles.title === 'Needs you' && roles.sub.length > 10, JSON.stringify([roles.title, roles.sub]));
+            check(`${dev}: the page has one Inbox heading without a repeated overview`, roles.title === 'Inbox' && !roles.sub, JSON.stringify([roles.title, roles.sub]));
             let s = await look();
             check(`${dev}: it opens on Needs you, and only that section is on screen`, s.sel.join() === 'needs' && s.panels.join() === 'true,false,false' && s.list && !s.savedView && !(await shown('saved-scope')), JSON.stringify(s));
             check(`${dev}: Needs you lists the waiting agent`, (await ev(`document.querySelectorAll('#inbox-needs-list .inbox-needs-item').length`)) === 1);
@@ -73,7 +73,7 @@ const BASE = require('./test_base').BASE;
             await waitFor(`document.getElementById('inbox-panel-saved').getClientRects().length > 0 && document.querySelectorAll('#saved-list .saved-item').length === 1`, 'Saved for later', 8000);
             s = await look();
             check(`${dev}: ArrowRight moves on to Saved for later, and only that section is on screen`, s.sel.join() === 'saved' && s.focus === 'inbox-tab-saved' && s.tabindex.join() === '-1,-1,0' && s.panels.join() === 'false,false,true' && !s.list && s.savedView, JSON.stringify(s));
-            check(`${dev}: the Saved scope heading is inside the Saved tab`, (await ev(`document.getElementById('inbox-panel-saved').contains(document.getElementById('saved-scope')) && document.getElementById('saved-scope').textContent`)) === 'Saved: all');
+            check(`${dev}: the Saved scope heading is inside the Saved tab`, (await ev(`document.getElementById('inbox-panel-saved').contains(document.getElementById('saved-scope')) && document.getElementById('saved-scope').textContent`)) === 'All saved');
             await key('ArrowRight', 39); s = await look();
             check(`${dev}: ArrowRight wraps to Needs you`, s.sel.join() === 'needs' && s.focus === 'inbox-tab-needs' && s.panels.join() === 'true,false,false', JSON.stringify(s));
             await key('End', 35); s = await look();

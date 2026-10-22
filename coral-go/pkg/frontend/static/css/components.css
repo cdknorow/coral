@@ -4126,7 +4126,6 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 .inbox-local { gap: var(--space-md, 12px); }
 .inbox-head { margin: 0; }
 .inbox-title { margin: 0 0 4px; font-size: 1.5rem; font-weight: 600; color: var(--text-primary); }
-.inbox-sub { margin: 0; color: var(--text-secondary); font-size: 0.875rem; }
 .inbox-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
 .inbox-tab { background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--text-secondary); font: inherit; font-size: 0.9375rem; font-weight: 600; padding: 10px 14px; min-height: 44px; cursor: pointer; }
 .inbox-tab:hover { color: var(--text-primary); }
@@ -4153,7 +4152,7 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 body[data-saved-scope="all"] #agentic-state #agentic-tab-saved { display: none !important; } /* an id more than the page kinds' own tab rules above */
 body[data-saved-scope="all"] #agentic-state[data-page="other"], body[data-saved-scope="all"] #agentic-state[data-page="chats"] { display: none !important; }
 body[data-saved-scope="all"][data-dock-page="other"] #panel-toggle-btn, body[data-saved-scope="all"][data-dock-page="chats"] #panel-toggle-btn { display: none !important; }
-/* Which scope the list shows (#4792): "Saved: QA Engineer", "Saved: coral-go-team" or "Saved: all". */
+/* Which scope the list shows (#4792): "Saved: QA Engineer", "Saved: coral-go-team" or "All". */
 .saved-scope { margin: 0; padding: 10px 12px 2px; font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saved-tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--border); flex: none; align-items: center; }
 /* A visible way to shut the sidebar the Saved button opened (#4742): the dock's own edge chevron is easy to miss. A phone's overlay has its own close. */
