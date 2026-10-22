@@ -8,7 +8,6 @@ if ($lnk) { $sh = New-Object -ComObject WScript.Shell; $l = $sh.CreateShortcut($
 $env:CORAL_DATA_DIR = 'C:\walk\data'; $env:CORAL_CLOUD_URL = 'off'
 New-Item -ItemType Directory -Force -Path C:\walk\data | Out-Null
 $env:PATH = 'C:\walk\bin;' + $env:PATH
-$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9333 --remote-allow-origins=*'  # lets the walk drive the app's own window
 $sw = [Diagnostics.Stopwatch]::StartNew()
 Start-Process $lnk.FullName
 "launched the Start Menu entry"
@@ -29,3 +28,12 @@ Get-ChildItem C:\walk\data -ErrorAction SilentlyContinue | ForEach-Object { "  "
 Get-ChildItem "$env:USERPROFILE\.coral" -Force -ErrorAction SilentlyContinue | ForEach-Object { "  " + $_.Name }
 "--- tray log tail"
 foreach ($f in @('C:\walk\data\tray.log', "$env:USERPROFILE\.coral\tray.log")) { if (Test-Path $f) { "== $f"; Get-Content $f -Tail 25 } }
+
+"--- the app window, once more with a debugging port, so the walk can drive it (the tray's own window above is what a person first sees)"
+Get-Process coral-app -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 2
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9333 --remote-allow-origins=*'
+Start-Process 'C:\Program Files (x86)\Coral\coral-app.exe' -ArgumentList '--url', 'http://localhost:8450', '--data-dir', 'C:\walk\data'
+$ok = $false
+for ($i = 0; $i -lt 30; $i++) { Start-Sleep -Seconds 1; try { $t = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:9333/json/version' -TimeoutSec 2; $ok = $true; break } catch {} }
+"debug port 9333 answers: $ok"
