@@ -48,6 +48,12 @@ const BASE = require('./test_base').BASE;
         // the export is the raw Markdown: no span, the @ text as written
         const raw = await ev(`fetch('/api/board/${B}/messages/all?limit=10&format=dashboard').then(r => r.json()).then(d => JSON.stringify(d.messages.map(m => m.content)))`);
         assert.ok(!/mb-mention/.test(raw) && /@Security Reviewer Windows/.test(raw), 'the stored text has no markup');
+        // a member who arrives after the first draw is marked IN PLACE: the message is not redrawn, so a jump's outline and the keyboard stay (saved_link's jump into the board is outlined while the members load)
+        const kept = await ev(`(async () => { const u = await import((window.__coralStatic || '/static/') + 'utils.js'); const c = document.getElementById('mb-messages'); const el = c.querySelector('.mb-message'); el.classList.add('chat-search-target'); el.tabIndex = -1; el.focus();
+            el.querySelector('.mb-message-body').append(document.createTextNode(' also @Late Joiner')); const before = el.querySelector('.mb-message-body').textContent;
+            const changed = u.setBoardMentionNames(['Late Joiner', 'Orchestrator', 'Security Reviewer Windows', 'Security Reviewer', 'QA Engineer']); u.highlightMentionsIn(c);
+            const again = c.querySelector('.mb-message'); return { changed, same: again === el, outline: el.classList.contains('chat-search-target'), focused: document.activeElement === el, marked: [...el.querySelectorAll('.mb-mention')].map(x => x.textContent).includes('@Late Joiner'), text: el.querySelector('.mb-message-body').textContent === before }; })()`);
+        assert.deepEqual(kept, { changed: true, same: true, outline: true, focused: true, marked: true, text: true }, 'members arriving late: marked in place, outline and focus kept: ' + JSON.stringify(kept));
         await installAudit(ev);
         for (const [w, h, mobile, tag] of [[1280, 900, false, 'desktop'], [390, 844, true, '390']]) {
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });

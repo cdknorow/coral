@@ -138,12 +138,10 @@ export function setBoardMentionNames(names) {
 }
 setBoardMentionNames([]);
 
-/** The sanitized HTML with member mentions wrapped in <span class="mb-mention"> (and mb-mention-self for the viewer's own name). */
-export function highlightMentionsHtml(html) {
-    if (!_mentionRe || typeof document === 'undefined' || !html || !html.includes('@')) return html;
-    const t = document.createElement('template');
-    t.innerHTML = html;
-    const walker = document.createTreeWalker(t.content, NodeFilter.SHOW_TEXT);
+/** Wrap the member mentions in the text nodes under `root` (a fragment or an element) in place; true when anything changed. Skips code, pre, links and what is already a mention. */
+function wrapMentionsIn(root) {
+    if (!_mentionRe) return false;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const nodes = [];
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
         if (!n.nodeValue.includes('@')) continue;
@@ -171,7 +169,21 @@ export function highlightMentionsHtml(html) {
         if (at < text.length) frag.append(text.slice(at));
         n.replaceWith(frag);
     }
-    return changed ? t.innerHTML : html;
+    return changed;
+}
+
+/** The sanitized HTML with member mentions wrapped in <span class="mb-mention"> (and mb-mention-self for the viewer's own name). */
+export function highlightMentionsHtml(html) {
+    if (!_mentionRe || typeof document === 'undefined' || !html || !html.includes('@')) return html;
+    const t = document.createElement('template');
+    t.innerHTML = html;
+    return wrapMentionsIn(t.content) ? t.innerHTML : html;
+}
+
+/** The mentions in the message bodies already on screen, wrapped IN PLACE: no message is redrawn, so a jump's outline, a focus and a selection stay (the members arrive after the first draw). */
+export function highlightMentionsIn(container) {
+    if (!container || typeof document === 'undefined') return;
+    for (const body of container.querySelectorAll('.mb-message-body')) if (body.textContent.includes('@')) wrapMentionsIn(body);
 }
 
 // ── bare artifact references ─────────────────────────────────────────────

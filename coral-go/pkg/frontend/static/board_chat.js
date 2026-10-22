@@ -1,7 +1,7 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
 import { formatHourMinute } from './format.js';
 import { morphHtml } from './dom_morph.js';
-import { OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, getAgentColor, externalMessageBadge, hubUserBadge, renderBoardMessageBody, setBoardMentionNames, boardAvatar, boardMessageColorStyle } from './utils.js';
+import { OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, getAgentColor, externalMessageBadge, hubUserBadge, renderBoardMessageBody, setBoardMentionNames, highlightMentionsIn, boardAvatar, boardMessageColorStyle } from './utils.js';
 import { splitKey, keyLabel, boardFetch } from './server_base.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { messageAttachmentAttrs, messageAttachmentsHtml } from './board_attachments.js';
@@ -471,7 +471,7 @@ async function _checkBoardPauseState(boardName) {
 // Board chat @mention autocomplete
 let _boardSubscribers = {};
 let _mentionBoard = '';
-/** The board's member names for @mention highlighting, once per board: fetched (or taken from the @ picker's cache), then the messages are drawn again if the names changed. */
+/** The board's member names for @mention highlighting, once per board: fetched (or taken from the @ picker's cache), then the bodies on screen are marked in place if the names changed. */
 async function _syncMentionNames(boardName) {
     if (_mentionBoard === boardName) return;
     _mentionBoard = boardName;
@@ -480,7 +480,7 @@ async function _syncMentionNames(boardName) {
     } catch { _mentionBoard = ''; return; }
     if (_activeBoardChat !== boardName) return;
     const subs = Array.isArray(_boardSubscribers[boardName]) ? _boardSubscribers[boardName] : [];
-    if (setBoardMentionNames(subs.flatMap(s => [s.job_title, s.subscriber_id]))) { const el = document.getElementById('board-panel-msgs'); if (el) _renderBoardPanelMessages(el, false); }
+    if (setBoardMentionNames(subs.flatMap(s => [s.job_title, s.subscriber_id]))) highlightMentionsIn(document.getElementById('board-panel-msgs')); // in place: nothing is redrawn
 }
 export async function _boardMentionInput(event, boardName) {
     const input = event.target;
