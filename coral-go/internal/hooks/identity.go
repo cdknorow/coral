@@ -58,6 +58,9 @@ func (t identityTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, &PlainHTTPTokenError{Host: r.URL.Host}
 	} else if !t.tokenAllowed(r.URL) {
 		r.Header.Del(SessionTokenHeader)
+	} else if (t.token != "" || r.Header.Get(SessionTokenHeader) != "") && t.localCoral(r.URL) && verifyLocalListener(r.URL) != nil {
+		// A Coral on this computer, but the program on its port is not this user's (#224 B): fail closed, say why.
+		return nil, verifyLocalListener(r.URL)
 	} else if t.token != "" && r.Header.Get(SessionTokenHeader) == "" {
 		r.Header.Set(SessionTokenHeader, t.token)
 	}
@@ -141,6 +144,16 @@ func (t identityTransport) plainHTTPOffThisComputer(u *url.URL) bool {
 	}
 	host := u.Hostname()
 	return !isLoopback(host) && t.configured(host) && !localInterfaceIP(host)
+}
+
+// localCoral: the request goes to a Coral on this computer (loopback, or a configured address of this computer itself), where
+// the program on the port can be checked before the token goes (#224 B).
+func (t identityTransport) localCoral(u *url.URL) bool {
+	if u == nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	host := u.Hostname()
+	return isLoopback(host) || (t.configured(host) && localInterfaceIP(host))
 }
 
 // configured: host is one Coral named in the agent's environment.
