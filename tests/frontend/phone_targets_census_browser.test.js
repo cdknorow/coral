@@ -63,7 +63,13 @@ async function httpJson(method, p, body) { const r = await fetch(BASE + p, { met
             await tap('.mobile-send-btn[data-on-click="cmd-send"]');
             await waitFor(`[...document.querySelectorAll('#live-history-messages .chat-bubble.human')].some(b => /build green/.test(b.textContent))`, 'my message', 15000);
         }, { min: 10, expect: `!!document.getElementById('command-input') && document.querySelectorAll('#live-history-messages .chat-bubble').length >= 1` });
-        await sc('composer: model menu', async () => { await waitFor(`document.getElementById('model-chip').getClientRects().length > 0`, 'the model chip', 20000); await tap('#model-chip'); }, { min: 10, expect: `!document.getElementById('model-chip-menu').hidden` });
+        // The chip is drawn from the agent's row in the page's live list, and this harness serves that list from its mocked agents (agent_view_harness PRELOAD), of which there are none here (the agent is a real
+        // stand-in): the page's list is empty, so the chip only drew by chance. The row is handed to the chip directly, so the chip and its menu are the real ones.
+        await sc('composer: model menu', async () => {
+            await ev(`import(${S} + 'model_chip.js').then(m => m.updateModelChip({ session_id: ${JSON.stringify(standIn.sid)}, name: ${JSON.stringify(standIn.name)}, agent_type: 'claude', model: 'claude-sonnet-5-5', sleeping: false, archived: false }, 'local')).then(() => true)`);
+            await waitFor(`document.getElementById('model-chip').getClientRects().length > 0`, 'the model chip', 10000);
+            await tap('#model-chip');
+        }, { min: 10, expect: `!document.getElementById('model-chip-menu').hidden` });
         await ev(`document.body.click(); true`);
         await sc('chat: find bar', async () => { await tap('#chat-find-btn'); await waitFor(`!document.querySelector('.chat-find-bar').hidden`, 'find bar', 5000); }, { min: 12, expect: `document.querySelector('.chat-find-input').getClientRects().length > 0` });
         await tap('.chat-find-close');
