@@ -1,3 +1,3 @@
 {
-  "_about": "Dashboard CDP suites that fail on the Windows runner for a reason that is Windows' own and not yet fixed (run 39864407476 of ci/win-ci-6109: everything else in the 481 suites passes). run_cdp_suites.mjs leaves them out of a run ON WINDOWS ONLY and prints each skip with its reason; Linux and macOS run them. Each entry is a task to fix and delete; an entry naming a suite that is not a CDP suite is an error."
+  "_about": "Dashboard CDP suites skipped on the Windows runner because they fail there for a Windows-only reason. run_cdp_suites.mjs leaves each out ON WINDOWS ONLY and prints the skip with its reason; Linux and macOS run them. Empty since #6162 (the four first entries were the unowned test folders' warnings, a stale golden and the Terminal text); a new entry needs a reviewed change to REVIEWED in windows_known_reds.test.mjs."
 }
