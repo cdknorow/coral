@@ -136,7 +136,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
 
         // ── The built-in terminal became the default: one line, once, for an install that ran on the old default (#6064) ──
         await ev(`window.__tbFake = { status: () => ({ saved: '', running: 'pty', next: 'pty', forced: false, choice: true, restart_required: false, can_restart: false, running_agents: 0, leftover_tmux_agents: 0, default_notice: !window.__tbFake.seen }) };
-            import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.checkDefaultNotice()).then(() => true)`);
+            import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.checkTerminalNotices()).then(() => true)`);
         await until(`!document.getElementById('default-notice-banner').hidden`, 'the default notice');
         const notice = await ev(`document.getElementById('default-notice-banner').textContent.replace(/\\s+/g, ' ').trim()`);
         check('the line says agents now stop on quit and where to keep them running', notice === 'info Agents now stop when you quit Coral. To keep them running, choose tmux in Settings > Terminal. Got it', notice);
@@ -148,7 +148,7 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await until(`document.getElementById('default-notice-banner').hidden`, 'the notice dismissed');
         check('after Got it, focus is on the Agents search box, not the page body', await ev(`document.activeElement && document.activeElement.id === 'agent-search-input'`), await ev(`document.activeElement ? document.activeElement.tagName + '#' + document.activeElement.id : 'none'`));
         check('Got it is recorded on the server (not in the browser) and the line goes', await ev(`window.__tbFake.seen === true && window.__tbCalls.includes('POST /api/system/terminal-backend/notice-seen')`), JSON.stringify(await ev(`window.__tbCalls`)));
-        await ev(`import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.checkDefaultNotice()).then(() => true)`);
+        await ev(`import((window.__coralStatic || '/static/') + 'terminal_backend.js').then(m => m.checkTerminalNotices()).then(() => true)`);
         check('once dismissed it is not shown again', await ev(`document.getElementById('default-notice-banner').hidden`));
 
         // ── Under pty, agents left in the old tmux server ───────────────────
