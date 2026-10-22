@@ -333,6 +333,34 @@ type e2eHub struct {
 	done    chan struct{}
 }
 
+// openHubDB opens the hub's database, which a test may open again on the same file after closing the first hub (a restart). On Windows a database a closed hub still had a connection busy on stays
+// locked: opening it again waited out SQLite's 30 s busy timeout for every statement of the schema and the test failed three minutes later with "ensure schema: database is locked" (SQLITE_BUSY),
+// and nothing said who held it. The open now waits at most openHubDBWait; past that it fails at once with every goroutine's stack, so the holder is in the failure, not a guess.
+const openHubDBWait = 20 * time.Second
+
+func openHubDB(t *testing.T, path string) *store.DB {
+	t.Helper()
+	type result struct {
+		db  *store.DB
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		db, err := storetest.Open(t, path)
+		done <- result{db, err}
+	}()
+	select {
+	case r := <-done:
+		require.NoError(t, r.err)
+		return r.db
+	case <-time.After(openHubDBWait):
+		buf := make([]byte, 1<<20)
+		n := runtime.Stack(buf, true)
+		t.Fatalf("the hub's database did not open within %s (is another handle on it still busy?); every goroutine:\n%s", openHubDBWait, buf[:n])
+		return nil
+	}
+}
+
 func newE2EHub(t *testing.T, env *e2eEnv, dir string, hubMode bool) *e2eHub {
 	t.Helper()
 	if dir == "" {
@@ -340,8 +368,7 @@ func newE2EHub(t *testing.T, env *e2eEnv, dir string, hubMode bool) *e2eHub {
 	}
 	cfg := newE2EConfig(t, dir)
 	cfg.HubMode = hubMode
-	db, err := storetest.Open(t, cfg.DBPath)
-	require.NoError(t, err)
+	db := openHubDB(t, cfg.DBPath)
 	stack := newTermStack(t)
 	backend := stack.backend
 	h := &e2eHub{t: t, env: env, dir: dir, cfg: cfg, db: db, backend: backend, done: make(chan struct{})}
@@ -379,7 +406,9 @@ func (h *e2eHub) close() {
 		killTerminal(h.backend, s.AgentName)
 	}
 	h.srv.Close() // its loops and board database first (#3914)
-	h.db.Close()
+	if err := h.db.Close(); err != nil {
+		h.t.Logf("closing the hub's database: %v", err) // a close that failed leaves the file locked for the next hub on it
+	}
 	h.cancel = nil
 }
 
