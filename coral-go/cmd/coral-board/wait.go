@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"net/http"
 	"net/url"
 	"os"
@@ -113,7 +114,7 @@ func cmdWait() {
 	}
 	if w.project == "" {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board. Run: coral-board join <project> --as <role> or specify --board <project>")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	subscriberID := resolveSubscriberID()
 	sessionName := resolveSessionName()
@@ -214,12 +215,12 @@ func blockUntilResolved(project, subscriberID string) {
 		req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/board/%s/waits/poll?subscriber_id=%s&timeout=30", serverURL, url.PathEscape(project), url.QueryEscape(subscriberID)), nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Poll error:", err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		resp, err := pollClient.Do(req)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Poll error:", err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		respBytes, _ := readServer(resp.Body)
 		status := resp.StatusCode
@@ -228,7 +229,7 @@ func blockUntilResolved(project, subscriberID string) {
 		json.Unmarshal(respBytes, &pollResult)
 		if e := serverError(status, pollResult); e != nil {
 			fmt.Fprintln(os.Stderr, e)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		if s, _ := pollResult["status"].(string); s == "resolved" {
 			fmt.Println("Wait resolved.")

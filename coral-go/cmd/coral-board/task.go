@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"github.com/subgentic/coral/internal/taskcli"
 	"io"
 	"net/http"
@@ -32,13 +33,13 @@ Subcommands:
   approve <id> [--round N] [--note "..."] / reject <id> [--round N] --note "why"   (a delegated reviewer)
   attach <id> --artifacts manifest.json / send-back <id> --note "why" / mark-landed <id> --digest D [--commit SHA[:subject]]   (the merge queue)
   complete <id> [--message "note"]`)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board. Run: coral-board join <project> --as <role>")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	sub := os.Args[2]
@@ -63,17 +64,17 @@ Subcommands:
 		id, err := strconv.ParseInt(taskArgs[0], 10, 64)
 		if err != nil || id <= 0 {
 			fmt.Fprintln(os.Stderr, "task detail requires a positive task ID")
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		data, status, err := apiCallRaw("GET", fmt.Sprintf("/%s/tasks/%d", url.PathEscape(st.Project), id), nil)
 		if err != nil || status != http.StatusOK {
 			fmt.Fprintf(os.Stderr, "Unable to read task: %v %s\n", err, data)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		var task map[string]any
 		if err := json.Unmarshal(data, &task); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		noteSeenRound(st.Project, task)
 		pretty, _ := json.MarshalIndent(task, "", "  ")
@@ -101,7 +102,7 @@ Subcommands:
 		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n", sub)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 }
 
@@ -174,7 +175,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 
 	if title == "" {
 		fmt.Fprintln(os.Stderr, `Usage: coral-board task add "title" [--body "details"] [--priority P] [--assignee "Agent Name"] [--reviewers "A,B"]`)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	subscriberID := resolveSubscriberID()
 
@@ -193,7 +194,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 		at, err := parseWhen(*remindAt, time.Now())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "--remind-at:", err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		reqBody["remind_at"] = at.UTC().Format(time.RFC3339)
 	}
@@ -201,7 +202,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 		var deps any
 		if err := json.Unmarshal([]byte(*blockedBy), &deps); err != nil {
 			fmt.Fprintln(os.Stderr, "Invalid --blocked-by JSON:", err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		reqBody["blocked_by"] = deps
 	}
@@ -216,7 +217,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 		var gates any
 		if err := json.Unmarshal([]byte(*completionGates), &gates); err != nil {
 			fmt.Fprintln(os.Stderr, "Invalid --completion-gates JSON:", err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		workflowBody["completion_gates"] = gates
 	}
@@ -234,11 +235,11 @@ func cmdTaskAdd(st *boardState, args []string) {
 	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(st.Project)+"/tasks", reqBody)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusCreated && status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error creating task: %s\n", string(data))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var task map[string]any
@@ -294,11 +295,11 @@ func fetchAllTasks(st *boardState) []map[string]any {
 		data, statusCode, err := apiCallRaw("GET", path, nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		if statusCode != http.StatusOK {
 			fmt.Fprintf(os.Stderr, "Error listing tasks: %s\n", string(data))
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		var page struct {
 			Tasks      []map[string]any `json:"tasks"`
@@ -341,7 +342,7 @@ func cmdTaskClaim(st *boardState, args ...string) {
 		id, err := strconv.ParseInt(args[0], 10, 64)
 		if err != nil || id <= 0 {
 			fmt.Fprintln(os.Stderr, "task claim requires a positive task ID")
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		body["task_id"] = id
 	}
@@ -349,7 +350,7 @@ func cmdTaskClaim(st *boardState, args ...string) {
 	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(st.Project)+"/tasks/claim", body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	if status == http.StatusNotFound {
@@ -360,7 +361,7 @@ func cmdTaskClaim(st *boardState, args ...string) {
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error claiming task: %s\n", string(data))
 		taskcli.PrintBlocked(os.Stderr, data)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var task map[string]any
@@ -385,7 +386,7 @@ func cmdTaskCurrent(st *boardState, asJSON bool) {
 	data, status, err := apiCallRaw("POST", "/"+url.PathEscape(st.Project)+"/tasks/current", body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	if status == http.StatusNotFound {
@@ -398,7 +399,7 @@ func cmdTaskCurrent(st *boardState, asJSON bool) {
 	}
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", string(data))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var task map[string]any
@@ -424,13 +425,13 @@ func cmdTaskCurrent(st *boardState, asJSON bool) {
 func cmdTaskComplete(st *boardState, args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: coral-board task complete <id> [--revision N] [--message \"note\"]")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	taskID, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid task ID: %s\n", args[0])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	fs := flag.NewFlagSet("task-complete", flag.ExitOnError)
@@ -457,12 +458,12 @@ func cmdTaskComplete(st *boardState, args []string) {
 		data, err := os.ReadFile(*artifactsFile)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		var artifacts []map[string]any
 		if err := json.Unmarshal(data, &artifacts); err != nil {
 			fmt.Fprintln(os.Stderr, "Invalid artifacts JSON:", err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		body["artifacts"] = artifacts
 	}
@@ -473,11 +474,11 @@ func cmdTaskComplete(st *boardState, args []string) {
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/complete", url.PathEscape(st.Project), taskID), body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error completing task: %s\n", string(data))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var task map[string]any
@@ -512,13 +513,13 @@ func printTaskWorkflow(task map[string]any) {
 func cmdTaskCancel(st *boardState, args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: coral-board task cancel <id> [--message \"reason\"]")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	taskID, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid task ID: %s\n", args[0])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	fs := flag.NewFlagSet("task-cancel", flag.ExitOnError)
@@ -537,11 +538,11 @@ func cmdTaskCancel(st *boardState, args []string) {
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/cancel", url.PathEscape(st.Project), taskID), body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error cancelling task: %s\n", string(data))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var task map[string]any
@@ -570,13 +571,13 @@ func parseReassignAssignee(args []string) (string, error) {
 func cmdTaskReassign(st *boardState, args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, `Usage: coral-board task reassign <id> [--to "Agent Name"]`)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	taskID, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid task ID: %s\n", args[0])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	newAssignee, err := parseReassignAssignee(args[1:])
@@ -595,11 +596,11 @@ func cmdTaskReassign(st *boardState, args []string) {
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/reassign", url.PathEscape(st.Project), taskID), body)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error reassigning task: %s\n", string(data))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 
 	var task map[string]any
@@ -615,12 +616,12 @@ func cmdTaskReassign(st *boardState, args []string) {
 func cmdTaskAmend(st *boardState, args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, `Usage: coral-board task amend <id> --revision N --reason "..." [--body "..."]`)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	taskID, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid task ID: %s\n", args[0])
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	fs := flag.NewFlagSet("task-amend", flag.ExitOnError)
 	revision := fs.Int("revision", 0, "Expected current task revision")
@@ -632,7 +633,7 @@ func cmdTaskAmend(st *boardState, args []string) {
 	*bodyText = flagText(*bodyText, "task body")
 	if *revision <= 0 || strings.TrimSpace(*reason) == "" {
 		fmt.Fprintln(os.Stderr, "--revision and --reason are required")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	changes := map[string]any{}
 	if *bodyText != "" {
@@ -645,22 +646,22 @@ func cmdTaskAmend(st *boardState, args []string) {
 		var gates any
 		if err := json.Unmarshal([]byte(*completionGates), &gates); err != nil {
 			fmt.Fprintln(os.Stderr, "Invalid --completion-gates JSON:", err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		changes["completion_gates"] = gates
 	}
 	if len(changes) == 0 {
 		fmt.Fprintln(os.Stderr, "at least --body or --workflow-instructions is required")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	data, status, err := apiCallRaw("PATCH", fmt.Sprintf("/%s/tasks/%d/amend", url.PathEscape(st.Project), taskID), map[string]any{"subscriber_id": resolveSubscriberID(), "base_revision": *revision, "reason": *reason, "changes": changes})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error amending task: %s\n", string(data))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	var task map[string]any
 	_ = json.Unmarshal(data, &task)
@@ -672,12 +673,12 @@ func cmdTaskAmend(st *boardState, args []string) {
 func cmdTaskReview(st *boardState, args []string, action string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, "Usage: coral-board task", action, "<id> --reason <reason> [--message <message>] [--artifacts manifest.json]")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	id, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Invalid task ID")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	reason := fs.String("reason", "", "Reason review is needed or capacity is being released")
@@ -690,7 +691,7 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 	*message = flagText(*message, "completion message")
 	if strings.TrimSpace(*reason) == "" {
 		fmt.Fprintln(os.Stderr, "--reason is required")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	body := map[string]any{"subscriber_id": resolveSubscriberID(), "reason": *reason, "message": *message, "outcome": *outcome}
 	if *candidateRevision != "" {
@@ -703,19 +704,19 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 		data, err := os.ReadFile(*manifest)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		var artifacts []map[string]any
 		if err := json.Unmarshal(data, &artifacts); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		body["artifacts"] = artifacts
 	}
 	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", url.PathEscape(st.Project), id, action), body)
 	if err != nil || status != http.StatusOK {
 		fmt.Fprintln(os.Stderr, "Review action failed:", err, string(data))
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if action == "submit-review" {
 		var t struct {
@@ -743,12 +744,12 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, `Usage: coral-board task review <id> --to "Reviewer A,Reviewer B" | approve <id> [--round N] [--note "..."] | reject <id> [--round N] --note "why"`)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	id, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Invalid task ID")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	to := fs.String("to", "", "Reviewers, comma-separated (review)")
@@ -775,13 +776,13 @@ func cmdTaskReviewFlow(st *boardState, args []string, action string) {
 		}
 		if len(reviewers) == 0 {
 			fmt.Fprintln(os.Stderr, `--to "Reviewer A,Reviewer B" is required`)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		body["reviewers"] = reviewers
 	case "reject":
 		if strings.TrimSpace(*note) == "" {
 			fmt.Fprintln(os.Stderr, `--note "why" is required`)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		body["note"] = *note
 		body["round"] = *round

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"net/http"
 	"net/url"
 	"os"
@@ -24,12 +25,12 @@ var digestRe = regexp.MustCompile(`^(sha256:)?[0-9a-fA-F]{64}$`)
 func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, `Usage: coral-board task attach <id> --artifacts manifest.json | send-back <id> --note "why" | mark-landed <id> --digest D [--commit SHA[:subject]]`)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	id, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Invalid task ID")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	manifest := fs.String("artifacts", "", "Manifest of the patch rows to add (attach)")
@@ -44,23 +45,23 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	case "attach":
 		if *manifest == "" {
 			fmt.Fprintln(os.Stderr, "--artifacts manifest.json is required")
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		data, err := os.ReadFile(*manifest)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		var artifacts []map[string]any
 		if err := json.Unmarshal(data, &artifacts); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		body["artifacts"] = artifacts
 	case "mark-landed":
 		if len(digests) == 0 {
 			fmt.Fprintln(os.Stderr, "--digest D is required (repeat it for each patch that landed)")
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		for _, d := range digests {
 			if !digestRe.MatchString(d) {
@@ -78,7 +79,7 @@ func cmdTaskQueueVerb(st *boardState, args []string, action string) {
 	case "send-back":
 		if strings.TrimSpace(*note) == "" {
 			fmt.Fprintln(os.Stderr, `--note "why" is required`)
-			os.Exit(1)
+			clierr.Exit1()
 		}
 		body["note"] = *note
 	}

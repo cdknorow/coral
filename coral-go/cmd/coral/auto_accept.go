@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/subgentic/coral/internal/cliauth"
+	"github.com/subgentic/coral/internal/clierr"
 	"io"
 	"net/http"
 	"os"
@@ -46,7 +47,7 @@ func runAutoAccept(args []string, stdout, stderr io.Writer) int {
 	// Coral rejects unsigned command-line requests (#3421 v2): the kill switch signs with
 	// Coral's command-line token (never inside an agent session). A server that can't
 	// prove it knows that token gets nothing, and the error says which folder was used.
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: clierr.Timeout(15 * time.Second)}
 	dir := cliauth.DataDir()
 	if tok, terr := cliauth.ReadToken(dir); terr == nil && !cliauth.InsideAgentSession() {
 		client.Transport = cliauth.Transport{Base: http.DefaultTransport, Token: tok, Dir: dir}

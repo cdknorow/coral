@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/clierr"
 	"io"
 	"net/http"
 	"net/url"
@@ -162,7 +163,7 @@ func cmdSend() {
 	}
 	if err := runSend(os.Args[2:], id, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 }
 
@@ -271,11 +272,11 @@ func cmdTargets() {
 	st := loadState()
 	if st == nil {
 		fmt.Fprintln(os.Stderr, "Not subscribed to any board.")
-		os.Exit(1)
+		clierr.Exit1()
 	}
 	if err := runTargets(st.Project, resolveSubscriberID(), resolveSessionName(), os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		clierr.Exit1()
 	}
 }
 
