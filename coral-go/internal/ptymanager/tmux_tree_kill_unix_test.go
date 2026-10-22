@@ -89,3 +89,30 @@ func TestTmuxKillAndRestartEndWhatTheAgentStarted(t *testing.T) {
 		})
 	}
 }
+
+// A Coral that quits while a tmux tree kill is waiting out its grace finishes it: the children here ignore the hangup and SIGTERM, so only the SIGKILL after the grace would end them, and the process
+// that was going to send it is the one quitting.
+func TestQuittingFinishesAPendingTmuxTreeKill(t *testing.T) {
+	needPerl(t)
+	b := newTestTmuxBackend(t)
+	term := NewTmuxSessionTerminal(b.client)
+	dir := t.TempDir()
+	const gone = "claude-00006141-0020-4000-8000-000000000000"
+	spawnTmuxSession(t, term, gone, dir)
+	x, y := startHelpers(t, term, gone, dir, true)
+	if err := term.KillSession(context.Background(), gone, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, pid := range []int{x, y} {
+		if err := syscall.Kill(pid, 0); err != nil {
+			t.Fatalf("the children ignore the stop, so they are still there during the grace: %v", err)
+		}
+	}
+	start := time.Now()
+	b.Close() // quitting
+	waitGone(t, x, 2*time.Second)
+	waitGone(t, y, 2*time.Second)
+	if took := time.Since(start); took > tmuxTreeGrace-time.Second {
+		t.Fatalf("they were ended after %v, which is the grace running out, not the quit finishing the kill", took)
+	}
+}
