@@ -3,6 +3,8 @@
 // rest of the run). The CLI path fields are filled late in opening (after two requests); until then they are empty, and an
 // empty field the person never touched is not a change. A field the person types into is still sent.
 // The shard's own CLI paths are put back at the end.
+// Two programs that exist: Coral refuses a CLI path that is not an executable file.
+const EXE1 = (process.platform === 'win32' ? require('node:path').join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'whoami.exe') : '/bin/echo'), EXE2 = (process.platform === 'win32' ? require('node:path').join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'hostname.exe') : '/usr/bin/true');
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
@@ -25,7 +27,7 @@ const BASE = require('./test_base').BASE;
     await ev(`new Promise(r=>{const t=setInterval(()=>{if(window.__coralStatic||document.readyState==='complete'){clearInterval(t);r(true)}},50)})`);
     original = await server();
     // This page knows the paths: they are in the settings it loaded.
-    assert.equal(await put({ cli_path_claude: '/bin/echo', cli_path_codex: '/usr/bin/true' }), 200);
+    assert.equal(await put({ cli_path_claude: EXE1, cli_path_codex: EXE2 }), 200);
     await ev(`import(${MOD}+'settings_core.js').then(m=>m.loadSettings()).then(()=>true)`);
 
     // Open the dialog and Save in the same breath, as a suite that does not wait for it: the fields are not filled yet.
@@ -39,17 +41,17 @@ const BASE = require('./test_base').BASE;
     })()`);
     assert.equal(filled, '', 'the CLI path field is not filled yet when the Save is made');
     const s = await server();
-    assert.equal(s.cli_path_claude, '/bin/echo', 'a Save before the fields are filled leaves the CLI paths alone');
-    assert.equal(s.cli_path_codex, '/usr/bin/true');
+    assert.equal(s.cli_path_claude, EXE1, 'a Save before the fields are filled leaves the CLI paths alone');
+    assert.equal(s.cli_path_codex, EXE2);
 
     // A path typed into the field (after the dialog filled it) is still saved, and one cleared on purpose is cleared.
     await ev(`import(${MOD}+'modals.js').then(m=>m.showSettingsModal()).then(()=>true)`);
-    await ev(`new Promise(r=>{const t=setInterval(()=>{if(document.getElementById('settings-cli-path-claude').value==='/bin/echo'){clearInterval(t);r(true)}},50)})`);
+    await ev(`new Promise(r=>{const t=setInterval(()=>{if(document.getElementById('settings-cli-path-claude').value===${JSON.stringify(EXE1)}){clearInterval(t);r(true)}},50)})`);
     await ev(`(()=>{const e=document.getElementById('settings-cli-path-codex');e.value='';e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
     await ev(`import(${MOD}+'modals.js').then(m=>m.applySettings()).then(()=>true)`);
     const s2 = await server();
     assert.equal(s2.cli_path_codex || '', '', 'a path cleared on purpose is cleared');
-    assert.equal(s2.cli_path_claude, '/bin/echo', 'and the other is untouched');
+    assert.equal(s2.cli_path_claude, EXE1, 'and the other is untouched');
     console.log('PASS a Save before the dialog is filled does not clear the CLI paths');
   } finally {
     try {

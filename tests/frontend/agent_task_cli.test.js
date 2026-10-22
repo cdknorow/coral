@@ -16,7 +16,7 @@ process.on('exit', () => {
   if (work) fs.rmSync(work, { recursive: true, force: true });
 });
 if (!BIN) {
-  BIN = path.join(os.tmpdir(), `coral-agent-test-${process.pid}`);
+  BIN = path.join(os.tmpdir(), `coral-agent-test-${process.pid}${process.platform === 'win32' ? '.exe' : ''}`); // go build -o names a Windows program with .exe
   execFileSync('go', ['build', '-o', BIN, './cmd/coral-agent/'], { cwd: path.join(__dirname, '..', '..', 'coral-go'), stdio: 'inherit' });
 }
 const results = []; const check = (l, c, d) => { const v = c ? 'PASS' : 'FAIL'; results.push(v); console.log(`[${v}] ${l}${d !== undefined ? ' — ' + d : ''}`); };

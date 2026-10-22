@@ -21,24 +21,27 @@ const BASE = require('./test_base').BASE;
             await ev(`window.__coralReady.startup('liveList', 'settings')`);
             const open = async group => { await ev(`(async () => { await window.showSettingsModal(${JSON.stringify(group)}); return true; })()`); await waitFor(`getComputedStyle(document.getElementById('settings-modal')).display !== 'none'`, 'Settings'); };
 
-            console.log(`1. (${w}) Terminal: one line each, the whole explanation under Learn more`);
-            await open('terminal');
-            await waitFor(`!document.getElementById('settings-terminal-backend').hidden && !document.getElementById('tb-choice').hidden`, 'the backend row', 10000);
-            const tb = await ev(`(() => { const vis = e => e.checkVisibility({ checkVisibilityCSS: true }); return [...document.querySelectorAll('#settings-terminal-backend .tb-opt')].map(l => ({ short: l.querySelector('.tb-short').textContent, shortLen: l.querySelector('.tb-short').textContent.length, fullShown: vis(l.querySelector('.tb-d')), learn: l.querySelector('.tb-learn').textContent, expanded: l.querySelector('.tb-learn').getAttribute('aria-expanded'), full: l.querySelector('.tb-d').textContent.length })); })()`);
-            assert.equal(tb.length, 2);
-            for (const t of tb) { assert.ok(t.shortLen < 140 && !t.fullShown && t.learn === 'Learn more' && t.expanded === 'false' && t.full > 300, JSON.stringify(t)); }
-            assert.match(tb[0].short, /^Agents keep running when Coral restarts or upgrades\.$/); assert.match(tb[1].short, /^Agents end when Coral restarts; Coral wakes them\.$/);
-            assert.match(await ev(`document.getElementById('tb-d-tmux').textContent`), /any other program running as you, can find that socket/, 'the access warning moved into Learn more, whole');
-            const os = await ev(`[...document.querySelectorAll('#settings-terminal-backend .tb-d')].map(d => ({ os: (d.querySelector('.tb-d-os') || {}).textContent || '', shown: d.checkVisibility({ checkVisibilityCSS: true }) }))`);
-            assert.ok(os.length === 2 && os.every(o => !o.shown && o.os.length > 100), 'the operating system note ends each backend\'s Learn more, closed at first, said once (no third Learn more): ' + JSON.stringify(os));
-            assert.equal(await ev(`document.querySelectorAll('#settings-terminal-backend .tb-learn').length`), 2);
-            await shot('terminal-short', w);
-            await ev(`document.querySelector('#tb-opt-pty').checked = false; document.querySelector('#settings-terminal-backend .tb-learn[aria-controls=tb-d-pty]').click(); true`);
-            const opened = await ev(`(() => { const d = document.getElementById('tb-d-pty'); return { shown: d.checkVisibility({ checkVisibilityCSS: true }), text: d.textContent, label: document.querySelector('.tb-learn[aria-controls=tb-d-pty]').textContent, expanded: document.querySelector('.tb-learn[aria-controls=tb-d-pty]').getAttribute('aria-expanded'), radioChanged: document.getElementById('tb-opt-pty').checked }; })()`);
-            assert.ok(opened.shown && opened.label === 'Show less' && opened.expanded === 'true' && /puts them to sleep first when it stops cleanly/.test(opened.text), JSON.stringify(opened).slice(0, 200));
-            assert.equal(opened.radioChanged, false, 'Learn more does not choose the backend');
-            await shot('terminal-learn', w);
-            await ev(`window.hideSettingsModal(); true`);
+            // Windows has no tmux choice; keep the current non-Windows UI assertions.
+            if (process.platform !== 'win32') {
+                console.log(`1. (${w}) Terminal: one line each, the whole explanation under Learn more`);
+                await open('terminal');
+                await waitFor(`!document.getElementById('settings-terminal-backend').hidden && !document.getElementById('tb-choice').hidden`, 'the backend row', 10000);
+                const tb = await ev(`(() => { const vis = e => e.checkVisibility({ checkVisibilityCSS: true }); return [...document.querySelectorAll('#settings-terminal-backend .tb-opt')].map(l => ({ short: l.querySelector('.tb-short').textContent, shortLen: l.querySelector('.tb-short').textContent.length, fullShown: vis(l.querySelector('.tb-d')), learn: l.querySelector('.tb-learn').textContent, expanded: l.querySelector('.tb-learn').getAttribute('aria-expanded'), full: l.querySelector('.tb-d').textContent.length })); })()`);
+                assert.equal(tb.length, 2);
+                for (const t of tb) { assert.ok(t.shortLen < 140 && !t.fullShown && t.learn === 'Learn more' && t.expanded === 'false' && t.full > 300, JSON.stringify(t)); }
+                assert.match(tb[0].short, /^Agents keep running when Coral restarts or upgrades\.$/); assert.match(tb[1].short, /^Agents end when Coral restarts; Coral wakes them\.$/);
+                assert.match(await ev(`document.getElementById('tb-d-tmux').textContent`), /any other program running as you, can find that socket/, 'the access warning moved into Learn more, whole');
+                const os = await ev(`[...document.querySelectorAll('#settings-terminal-backend .tb-d')].map(d => ({ os: (d.querySelector('.tb-d-os') || {}).textContent || '', shown: d.checkVisibility({ checkVisibilityCSS: true }) }))`);
+                assert.ok(os.length === 2 && os.every(o => !o.shown && o.os.length > 100), 'the operating system note ends each backend\'s Learn more, closed at first, said once (no third Learn more): ' + JSON.stringify(os));
+                assert.equal(await ev(`document.querySelectorAll('#settings-terminal-backend .tb-learn').length`), 2);
+                await shot('terminal-short', w);
+                await ev(`document.querySelector('#tb-opt-pty').checked = false; document.querySelector('#settings-terminal-backend .tb-learn[aria-controls=tb-d-pty]').click(); true`);
+                const opened = await ev(`(() => { const d = document.getElementById('tb-d-pty'); return { shown: d.checkVisibility({ checkVisibilityCSS: true }), text: d.textContent, label: document.querySelector('.tb-learn[aria-controls=tb-d-pty]').textContent, expanded: document.querySelector('.tb-learn[aria-controls=tb-d-pty]').getAttribute('aria-expanded'), radioChanged: document.getElementById('tb-opt-pty').checked }; })()`);
+                assert.ok(opened.shown && opened.label === 'Show less' && opened.expanded === 'true' && /puts them to sleep first when it stops cleanly/.test(opened.text), JSON.stringify(opened).slice(0, 200));
+                assert.equal(opened.radioChanged, false, 'Learn more does not choose the backend');
+                await shot('terminal-learn', w);
+                await ev(`window.hideSettingsModal(); true`);
+            }
 
             console.log(`2. (${w}) General: the machine health is part of About`);
             await open('general');

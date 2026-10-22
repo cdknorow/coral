@@ -91,6 +91,7 @@ import { fileURLToPath } from 'node:url';
 import { classifySuites, problems } from './suites.mjs';
 import { loadDurations, orderLongestFirst, partsByDuration } from './suite_order.mjs';
 import { failingOutput } from './failing_output.mjs';
+import { sqliteAvailable, sqliteExec } from './helpers/sqlite.js';
 import { snapshot as serverSnapshot, diff as serverDiff, rowLeaks, restoreSettings, leftovers, cleanup as cleanupLeftovers } from './helpers/server_state.mjs';
 
 // Linux: the run goes in a private network namespace with only loopback (#3466). Chrome cancels
@@ -429,11 +430,11 @@ async function startShard(n, gen = 0, strict = false) {
     const vals = CLI_TYPES.map(t => `('cli_path_${t}','${MOCK_AGENT.replace(/'/g, "''")}')`).join(',');
     const sql = `CREATE TABLE IF NOT EXISTS user_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);\nINSERT OR REPLACE INTO user_settings (key,value) VALUES ${vals};`;
     try {
-      execFileSync('sqlite3', [path.join(data, 'sessions.db'), sql], { stdio: ['ignore', 'ignore', 'pipe'] });
+      // The sqlite3 tool when it is on PATH, else Node's own SQLite (helpers/sqlite.js); with neither, the same values are PUT through the settings API once the server is up (below).
+      if (sqliteAvailable()) sqliteExec(path.join(data, 'sessions.db'), sql);
+      else seedViaApi = true;
     } catch (e) {
-      // No sqlite3 command-line tool (a Windows machine has none by default): the same values are PUT through the settings API once the server is up (below).
-      if (e.code === 'ENOENT') seedViaApi = true;
-      else throw new Error(`#4354: could not seed cli_path into ${path.join(data, 'sessions.db')} (is sqlite3 installed?): ${e.stderr || e.message}`);
+      throw new Error(`#4354: could not seed cli_path into ${path.join(data, 'sessions.db')}: ${e.stderr || e.message}`);
     }
   }
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',

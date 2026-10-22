@@ -32,7 +32,7 @@ const BASE = require('./test_base').BASE;
     await ev(`new Promise(r=>{const t=setInterval(()=>{if(window.__coralStatic||document.readyState==='complete'){clearInterval(t);r(true)}},50)})`);
     original = await server();
     const keep = k => original[k] || '';
-    const exe1 = '/bin/echo', exe2 = '/usr/bin/true';
+    const exe1 = (process.platform === 'win32' ? require('node:path').join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'whoami.exe') : '/bin/echo'), exe2 = (process.platform === 'win32' ? require('node:path').join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'hostname.exe') : '/usr/bin/true');
 
     // 1. A path another client saved after this page loaded shows when the dialog opens.
     assert.equal(await otherClientPut({ cli_path_claude: exe1 }), 200);

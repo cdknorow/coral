@@ -31,26 +31,42 @@ process.on('beforeExit', async () => { for (const stop of [...PENDING]) await st
 // suites' own JSON helpers do. It returns {sid, name, token, launch, ms, diag, stop}; token is
 // '' when it never came, and diag then explains why. Always call stop() (in a finally): it
 // kills the session, restores cli_path_claude and removes the script's folder.
-async function launchStandIn(api, { workingDir = '/tmp', displayName = 'Stand-in Agent', deadlineMs = TOKEN_DEADLINE_MS } = {}) {
+async function launchStandIn(api, { workingDir = os.tmpdir(), displayName = 'Stand-in Agent', deadlineMs = TOKEN_DEADLINE_MS } = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-standin-'));
     const tokenFile = path.join(dir, 'token');
     const ranFile = path.join(dir, 'ran');
-    const cli = path.join(dir, 'claude');
+    const WIN = process.platform === 'win32';
+    const cli = path.join(dir, WIN ? 'claude.cmd' : 'claude');
     // Coral runs the configured CLI with --version on every launch, at the same time as the pane's
     // launch line (recordCLIVersion), and that run has no token. The stub answers it without
     // touching the files, and only an invocation that has a token writes one: before #3502 the
     // version probe could land last and overwrite the token with an empty file, which is the
     // "no token" flake, not a slow shell. "ran" marks the launched invocation (it has --session-id).
-    fs.writeFileSync(cli, [
-        '#!/bin/sh',
-        'case "$1" in --version) echo "0.0.0 (stand-in)"; exit 0;; auth) echo \'{"loggedIn": true}\'; exit 0;; esac', // the version probe and the sign-in check (#5838) are answered like the CLI's, never a launch
-        `: > '${ranFile}'`,
-        `[ -n "$CORAL_SESSION_TOKEN" ] || { echo "stand-in: no CORAL_SESSION_TOKEN" >&2; : > '${tokenFile}.none'; exec sleep 600; }`,
-        `printf '%s' "$CORAL_SESSION_TOKEN" > '${tokenFile}.tmp' && mv '${tokenFile}.tmp' '${tokenFile}'`,
-        // A real agent draws its screen. The launch line used to be the pane's first text; it is erased now (#5911), so the stand-in says something, for the suites that wait for text in the terminal.
-        'echo "stand-in agent ready"',
-        'exec sleep 600', '',
-    ].join('\n'), { mode: 0o755 });
+    if (WIN) {
+        // The same stand-in as a batch file: Coral's launch line runs it from PowerShell (`& 'claude.cmd' ...`), which a .cmd answers. ping is the sleep.
+        const q = f => '"' + f + '"';
+        fs.writeFileSync(cli, [
+            '@echo off',
+            'if "%~1"=="--version" (echo 0.0.0 ^(stand-in^) & exit /b 0)',
+            'if "%~1"=="auth" (echo {"loggedIn": true}& exit /b 0)', // the version probe and the sign-in check (#5838) are answered like the real CLI
+            `type nul > ${q(ranFile)}`,
+            `if "%CORAL_SESSION_TOKEN%"=="" (echo stand-in: no CORAL_SESSION_TOKEN 1>&2 & type nul > ${q(tokenFile + '.none')} & ping -n 600 127.0.0.1 >nul & exit /b 0)`,
+            `<nul set /p "=%CORAL_SESSION_TOKEN%" > ${q(tokenFile + '.tmp')}`,
+            `move /y ${q(tokenFile + '.tmp')} ${q(tokenFile)} >nul`,
+            'echo stand-in agent ready', // a real agent draws its screen (#5911): the suites that wait for text in the terminal need some
+            'ping -n 600 127.0.0.1 >nul', '',
+        ].join('\r\n'));
+    } else {
+        fs.writeFileSync(cli, [
+            '#!/bin/sh',
+            'case "$1" in --version) echo "0.0.0 (stand-in)"; exit 0;; auth) echo \'{"loggedIn": true}\'; exit 0;; esac', // the version probe and the sign-in check (#5838) are answered like the CLI's, never a launch
+            `: > '${ranFile}'`,
+            `[ -n "$CORAL_SESSION_TOKEN" ] || { echo "stand-in: no CORAL_SESSION_TOKEN" >&2; : > '${tokenFile}.none'; exec sleep 600; }`,
+            `printf '%s' "$CORAL_SESSION_TOKEN" > '${tokenFile}.tmp' && mv '${tokenFile}.tmp' '${tokenFile}'`,
+            'echo "stand-in agent ready"', // a real agent draws its screen (#5911): the suites that wait for text in the terminal need some
+            'exec sleep 600', '',
+        ].join('\n'), { mode: 0o755 });
+    }
     if (!LIVE.size) ORIGINAL = ((await api('GET', '/api/settings')).data?.settings || {}).cli_path_claude || '';
     LIVE.add(cli); OURS.add(cli);
     await api('PUT', '/api/settings', { cli_path_claude: cli });
