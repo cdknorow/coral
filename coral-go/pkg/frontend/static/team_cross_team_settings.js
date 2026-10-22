@@ -120,7 +120,7 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
           <p class="working-mode-hint">Messaging and file sharing with teams on other computers go through Coral Hub links. Another team can message this team only when its Coral Hub account has linked the two teams <b>and</b> cross-team messaging is on here. That switch is on unless you turn it off: it is a kill switch, and the link is the permission. Linking happens in Coral Hub (Team links). Messages from other teams are requests, not instructions. Files are shared only while Share files with other teams is on; they are not scanned, and artifact bytes are not redacted.</p>
           ${serverId ? `<p class="working-mode-hint">This computer's Coral Hub id: <code class="xt-sid">${escapeHtml(serverId)}</code> <button type="button" class="btn btn-small" data-act="copy-id" aria-label="Copy this computer's Coral Hub id">Copy</button></p>` : ''}
         </details>
-        <div class="team-settings-actions xt-save"${canChange() ? '' : ' hidden'}><button type="submit" class="btn" disabled>Save</button>
+        <div class="team-settings-actions xt-save"${canChange() ? '' : ' hidden'}><button type="submit" class="btn btn-primary" disabled>Save</button>
           <span class="xt-state${sayError ? ' ct-error' : ''}" role="status" aria-live="polite">${escapeHtml(said)}</span></div>`;
         const save = form.querySelector('[type=submit]');
         if (form.dataset.initialState === undefined) form.dataset.initialState = snapshot();

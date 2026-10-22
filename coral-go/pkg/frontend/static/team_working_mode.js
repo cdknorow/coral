@@ -128,7 +128,7 @@ function _teamSettingsShell(workspaceMode) {
         <div class="prompt-inspection-content" aria-live="polite">Loading prompt inspection…</div>
       </fieldset>
       </section>
-      <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button></div>
+      <div class="team-settings-actions"><button type="submit" class="btn btn-primary" disabled>Save settings</button></div>
       </form>
       ${'<section class="team-settings-panel" id="team-settings-messaging" role="tabpanel" aria-labelledby="team-settings-tab-messaging" data-settings-panel="messaging" tabindex="0" hidden><p class="working-mode-hint ct-loading" role="status">Loading…</p></section>'}`;
     return dialog;
