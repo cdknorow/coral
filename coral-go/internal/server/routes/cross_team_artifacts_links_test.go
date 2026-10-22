@@ -140,6 +140,33 @@ func TestADowngradedHubIsRefusedAFileNotSentBackToTheOldRule(t *testing.T) {
 	assert.Equal(t, 403, code, "a restart does not forget that the hub advertised them")
 }
 
+// The refuse mode of the file door by itself (#5865 review): the three checks of PostExternalArtifact (before the body, after the metadata, before the store) all ask receivingOn, so it must say no
+// for a connection without the capability once this computer has seen a links hub, with the board's switches on, the source on its server list and a fresh link: the old rule would say yes.
+func TestReceivingOnIsFalseOnAConnectionThatLostTheLinksCapability(t *testing.T) {
+	e := newFileDoorEnv(t)
+	e.servers(e.target, "lab2")
+	e.snapshotOK(1, e.link("lab2", srcTeam1, e.target))
+	req := func(cap bool) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "/api/board/"+e.target+"/external-artifacts", nil)
+		r.Header.Set(tunnel.HubServerHeader, "lab2")
+		r.Header.Set(tunnel.ViaHeader, cloud.ViaSecret())
+		r.Header.Set(tunnel.HubSourceTeamHeader, srcTeam1)
+		if cap {
+			r.Header.Set(tunnel.HubLinksCapHeader, "1")
+		}
+		return r
+	}
+	ctx := context.Background()
+	on, err := e.h.receivingOn(ctx, req(true), e.target, "lab2", "", false)
+	require.NoError(t, err)
+	require.True(t, on, "the same board, server and link are admitted on a links connection")
+	for _, known := range []bool{false, true} {
+		on, err = e.h.receivingOn(ctx, req(false), e.target, "lab2", "", known)
+		require.NoError(t, err)
+		assert.False(t, on, "no capability after links were seen: refused, not the old server-list rule")
+	}
+}
+
 func TestAHubThatNeverAdvertisedLinksKeepsTheOldFileRule(t *testing.T) {
 	e := newFileDoorEnv(t)
 	e.servers(e.target, "lab2")
