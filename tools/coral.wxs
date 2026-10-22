@@ -135,13 +135,20 @@
          it as SYSTEM or elevated). ExitDialog shows the checkbox only on a first install or an upgrade (NOT Installed), and
          the launch has the same condition plus NOT REMOVE~="ALL", so a repair or an uninstall starts nothing. A silent or
          basic-UI install (/qn, /passive) shows no ExitDialog and starts nothing.
-         The action is Directory-based, so coral-tray starts in its install folder, not in the folder the installer was run from
-         (often Downloads). One limit: an msiexec started from an elevated prompt ("Run as administrator") has an elevated client
-         process too, and Windows Installer can't tell the two apart, so Coral starts elevated then, as anything started from
-         that prompt would. A normal double-click install starts it unelevated. -->
+         Unelevated even from an elevated install (#194): an msiexec started from an elevated prompt ("Run as administrator")
+         has an elevated client process, and Windows Installer can't tell the two apart, so starting coral-tray directly would
+         start it elevated. The start is handed to explorer.exe instead (by its full path, never searched for). explorer.exe
+         passes an executable it is given to its "Elevated-Unelevated Explorer Factory" (CLSID_SeparateMultipleProcessExplorerHost,
+         {75dff2b7-6936-4c06-a8bb-676a7b00b24b}), a COM server whose AppID runs it as the Interactive User. DCOM starts it with
+         the signed-in desktop user's own token, Medium integrity, whatever the caller's elevation, and it starts coral-tray.
+         So Coral runs as the person at the desktop, unelevated, after an elevated install too. explorer.exe passes the
+         program no arguments (none are needed: coral-tray's defaults are the Start Menu shortcut's, and the started tray
+         changes to the user's home itself), and its working folder is the factory's (System32), which coral-tray doesn't use.
+         With no Explorer shell on the computer (a replaced shell, Assigned Access) nothing starts, and the person starts Coral
+         from the Start Menu. -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch $(var.ProductName)" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
-    <CustomAction Id="LaunchCoral" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]coral-tray.exe&quot;" Execute="immediate" Return="asyncNoWait" />
+    <CustomAction Id="LaunchCoral" Directory="INSTALLFOLDER" ExeCommand="&quot;[WindowsFolder]explorer.exe&quot; &quot;[INSTALLFOLDER]coral-tray.exe&quot;" Execute="immediate" Return="asyncNoWait" />
     <UI>
       <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchCoral"
         Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed AND NOT REMOVE~=&quot;ALL&quot;" />
