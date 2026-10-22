@@ -185,6 +185,9 @@ func plainStatus(s statusOut, w io.Writer) {
 		switch {
 		case i.Unsupported != "":
 			p("This install (%s) is not updated by Coral: %s", i.Kind, i.Unsupported)
+			if i.Kind == "homebrew" {
+				p("Update it with: brew upgrade --cask coral (a Homebrew in a custom prefix is not seen by Coral when it is opened from Finder, and then Coral would try to update itself)")
+			}
 		case !i.Writable:
 			p("This install (%s) is in a folder this user cannot write, so Coral cannot replace it", i.Kind)
 		default:
@@ -265,7 +268,9 @@ func reasonText(r string) string {
 // runStatus answers "status" and "status --json"; the caller has checked the argv.
 func runStatus(args []string, getenv func(string) string, stdout io.Writer) int {
 	out := collectStatus(getenv, config.ResolveCoralDir(""), time.Now())
-	out.Install = probeInstall()
+	if i := probeInstall(); i != nil { // macOS and Linux; Windows has its own answer (installSupport), which collectStatus already put in
+		out.Install = i
+	}
 	if len(args) == 2 {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
