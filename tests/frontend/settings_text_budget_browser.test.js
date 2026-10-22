@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 // words a person can see in a group now, per the audit (artifact 141071b6); a group with no number has not been cut yet
-const BUDGET = { 'Network and Hub': 90, 'Agents': 130 };
+const BUDGET = { 'Network and Hub': 80, 'Agents': 80, 'Storage and cleanup': 65 }; // (Storage: 47 on a fresh server; a server where an earlier suite turned automatic cleanup on shows its two status lines, up to 62)
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
@@ -26,8 +26,9 @@ const BUDGET = { 'Network and Hub': 90, 'Agents': 130 };
         for (const g of groups) {
             await ev(`document.getElementById(${JSON.stringify(g.id)}).click(); true`);
             await waitFor(`(() => { const p = document.querySelector('#settings-modal .settings-pane:not([hidden])'); return !!p && p.dataset.group === ${JSON.stringify(g.id.replace('settings-tab-', ''))}; })()`, `${g.name} shown`, 4000);
+            await waitFor(`!/Loading…|Couldn't read/.test(document.querySelector('#settings-modal .settings-pane:not([hidden])').textContent)`, `${g.name} loaded`, 6000).catch(() => {}); // the count is of the settled pane (a pane that never settles is counted as it is)
             const words = await ev(`(() => { const pane = document.querySelector('#settings-modal .settings-pane:not([hidden])'); let n = 0;
-                const shown = e => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || s.visibility === 'hidden' || p.hidden) return false; } return true; };
+                const shown = e => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || s.visibility === 'hidden' || p.hidden) return false; const d = p.parentElement; if (d && d.tagName === 'DETAILS' && !d.open && p.tagName !== 'SUMMARY') return false; /* a closed disclosure hides what is in it */ } return true; };
                 const w = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT);
                 for (let t = w.nextNode(); t; t = w.nextNode()) { const e = t.parentElement; if (!e || e.closest('select, option, script, style, .material-icons') || !shown(e)) continue; n += t.nodeValue.trim().split(/\\s+/).filter(Boolean).length; }
                 return n; })()`);

@@ -136,6 +136,7 @@ function _gib(n) {
 /** Settings: the artifact store's size and the saved diffs' sizes, as separate lines, next to the
  *  store limit (which counts the artifacts only). This computer's dashboard only. */
 async function loadArtifactStoreSize({ fresh = false } = {}) {
+    let fileCount = null; // the file counts the breakdown shows (the limit lines say only how much space)
     const out = document.getElementById('settings-artifact-store-size');
     const input = document.getElementById('settings-artifact-store-max');
     if (!out || !input) return;
@@ -153,16 +154,17 @@ async function loadArtifactStoreSize({ fresh = false } = {}) {
     }
     try {
         const d = await requestJson('GET', '/api/system/artifact-store');
+        fileCount = { artifacts: Number(d.objects) || 0, taskDiffs: Number(d.task_diffs?.files) || 0, sessionDiffs: Number(d.session_diffs?.files) || 0 };
         input.value = d.max_bytes > 0 ? String(Math.round(d.max_bytes / GIB)) : '0';
         input.dataset.loaded = '1'; // only a limit read from Coral is saved back
         input.disabled = false;
         const plural = (n, one, many) => `${Number(n).toLocaleString()} ${Number(n) === 1 ? one : many}`;
         // The same three states as the received files' line: below 80%, from 80% with what to do, and at the limit that new uploads are refused, in the warning colour.
-        let art = `Artifacts: ${_gib(d.bytes)} in ${plural(d.objects, 'file', 'files')}`;
+        let art = _gib(d.bytes); // the limit field is beside it: "3.0 GiB of 10.0 GiB"; the file count is in the breakdown
         const atLimit = d.max_bytes > 0 && d.bytes >= d.max_bytes;
         if (d.max_bytes > 0) {
             const full = atLimit || d.bytes * 5 >= d.max_bytes * 4;
-            art += atLimit ? ` (limit ${_gib(d.max_bytes)} reached: new uploads are refused)` : full ? ` (limit ${_gib(d.max_bytes)}, ${Math.floor((d.bytes / d.max_bytes) * 100)}% full)` : ` (limit ${_gib(d.max_bytes)})`;
+            art += atLimit ? ` of ${_gib(d.max_bytes)}: new uploads are refused` : full ? ` of ${_gib(d.max_bytes)} (${Math.floor((d.bytes / d.max_bytes) * 100)}% full)` : ` of ${_gib(d.max_bytes)}`;
             if (full) art += '. Delete artifacts in Team Artifacts to make room, or raise the limit.';
             // Coral raised an unset limit by itself when the 20 GiB default arrived (#4602): the Operator should know it, and can change it here.
             if (d.auto_raised > 0 && d.auto_raised === d.max_bytes) art += `${full ? ' ' : '. '}The limit was raised to ${_gib(d.auto_raised)} automatically when the 20 GiB default arrived, because the store already held more than 16 GiB. Change it here.`;
@@ -170,10 +172,7 @@ async function loadArtifactStoreSize({ fresh = false } = {}) {
         const artNode = document.createElement('span');
         artNode.textContent = art;
         if (atLimit) artNode.dataset.state = 'warn';
-        const rest = [
-            `Saved task diffs: ${_gib(d.task_diffs?.bytes || 0)} in ${plural(d.task_diffs?.files || 0, 'file', 'files')} (not limited)`,
-            `Saved session diffs: ${_gib(d.session_diffs?.bytes || 0)} in ${plural(d.session_diffs?.files || 0, 'file', 'files')} (not limited)`,
-        ];
+        const rest = [`Diffs: ${_gib((d.task_diffs?.bytes || 0) + (d.session_diffs?.bytes || 0))} in ${plural((d.task_diffs?.files || 0) + (d.session_diffs?.files || 0), 'file', 'files')}`];
         out.replaceChildren(artNode, ...rest.flatMap(l => [document.createElement('br'), l]));
         showReceivedCap(d.received);
     } catch {
@@ -183,7 +182,7 @@ async function loadArtifactStoreSize({ fresh = false } = {}) {
             if (rout) rout.textContent = "Couldn't read the received files' size, so their limit is not shown.";
         } else out.textContent = "Couldn't read the store's size.";
     }
-    loadStorageDetail();
+    loadStorageDetail(fileCount);
     importOnce('./received_cap_notice.js').then(m => m.checkReceivedCap({ inSettings: true })).catch(() => {}); // remembered once at 80%; the line says it, no toast over this dialog (#4441)
 }
 
@@ -199,10 +198,10 @@ async function loadTerminalLogs() {
         const d = await requestJson('GET', '/api/system/terminal-logs');
         const n = Number(d.ended?.count) || 0;
         _endedLogs = { count: n, bytes: Number(d.ended?.bytes) || 0 };
-        const files = `${Number(d.files).toLocaleString()} terminal log${d.files === 1 ? '' : 's'}`;
+        const files = `${Number(d.files).toLocaleString()} log${d.files === 1 ? '' : 's'}`;
         out.textContent = n
-            ? `${files}, ${_gib(d.bytes)}. ${n.toLocaleString()} ${n === 1 ? 'belongs' : 'belong'} to ended agents (${_gib(_endedLogs.bytes)}).`
-            : `${files}, ${_gib(d.bytes)}. None belong to ended agents.`;
+            ? `${files}, ${_gib(d.bytes)}. ${n.toLocaleString()} from ended agents (${_gib(_endedLogs.bytes)}).`
+            : `${files}, ${_gib(d.bytes)}`;
         button.hidden = n === 0;
         if (n) button.textContent = `Delete ${n.toLocaleString()} terminal log${n === 1 ? '' : 's'} of ended agents (${_gib(_endedLogs.bytes)})`;
         if (!button.dataset.wired) { button.dataset.wired = '1'; button.addEventListener('click', confirmDeleteEndedLogs); }
@@ -241,7 +240,7 @@ function _lines(el, lines) {
 }
 
 /** The store's breakdown (by age, by board, kept) and automatic cleanup's state. */
-async function loadStorageDetail() {
+async function loadStorageDetail(fileCount = null) {
     const out = document.getElementById('settings-storage-detail');
     const days = document.getElementById('settings-retention-days');
     const kind = document.getElementById('settings-retention-kind');
@@ -250,10 +249,12 @@ async function loadStorageDetail() {
         const d = (await requestJson('GET', '/api/system/artifact-store?detail=1')).detail;
         if (!d) throw new Error('no detail');
         const age = (k) => ['<1d', '1-7d', '7-30d', '>30d'].map(b => `${b} ${_gib(d.by_age?.[k]?.[b]?.bytes || 0)}`).join(' · ');
-        const lines = [
+        const lines = [];
+        if (fileCount) lines.push(`Files: ${fileCount.artifacts.toLocaleString()} artifacts, ${(fileCount.taskDiffs + fileCount.sessionDiffs).toLocaleString()} saved diffs`);
+        lines.push(
             `Artifacts by age: ${age('objects')}`,
             `Task diffs by age: ${age('task_diffs')}`,
-        ];
+        );
         const boards = (d.by_board || []).slice(0, 5).map(b => `${b.label || b.board} ${_gib(b.bytes)}`);
         if (boards.length) lines.push(`Largest boards: ${boards.join(' · ')}`);
         if (d.kept?.count) lines.push(`Kept: ${d.kept.count} artifact${d.kept.count === 1 ? '' : 's'}, ${_gib(d.kept.bytes)}`);
@@ -278,7 +279,7 @@ function showRetentionStatus(ret) {
     const waiting = days > 0 && enabled && !(acked && acked >= enabled) && Date.now() - enabled < 24 * 3600e3;
     review.hidden = !waiting;
     const lines = [];
-    if (!days) lines.push('Off.');
+    if (!days) { /* off: the field says 0 */ }
     else if (waiting) lines.push(`On (${days} days), waiting: review what it would do to start now, or it starts on ${new Date(enabled.getTime() + 24 * 3600e3).toLocaleString()}.`);
     else if (days && !enabled) lines.push(`On (${days} days): its first check is within the hour; it then waits for your review.`);
     else lines.push(`On (${days} days).`);
@@ -386,15 +387,14 @@ function wireStorageActions() {
 /** Settings: what other teams and Corals have sent this computer, against the limit on it (#4441). One status line says the total, how full it is (from
  *  80% on, with what to do), that new files are refused at the limit (in the warning colour), and how many received files no board lists. */
 function receivedLine(r) {
-    const files = `${Number(r.objects).toLocaleString()} file${r.objects === 1 ? '' : 's'}`;
-    let line = `Received: ${_gib(r.bytes)} in ${files}`;
+    let line = _gib(r.bytes);
     let full = false, atLimit = false;
     if (r.max_bytes > 0) {
         const pct = Math.floor((r.bytes / r.max_bytes) * 100);
         atLimit = r.bytes >= r.max_bytes;
         full = atLimit || r.bytes * 5 >= r.max_bytes * 4;
-        line += atLimit ? ` (limit ${_gib(r.max_bytes)} reached: new received files are refused)` : full ? ` (limit ${_gib(r.max_bytes)}, ${pct}% full)` : ` (limit ${_gib(r.max_bytes)})`;
-    } else line += ' (no limit)';
+        line += atLimit ? ` of ${_gib(r.max_bytes)}: new received files are refused` : full ? ` of ${_gib(r.max_bytes)} (${pct}% full)` : ` of ${_gib(r.max_bytes)}`;
+    }
     if (full) line += '. Delete received files in Team Artifacts to make room, or raise the limit.';
     const u = Number(r.unlisted?.count) || 0;
     if (u) line += `${full ? ' ' : '. '}Not listed on any board: ${u.toLocaleString()} file${u === 1 ? '' : 's'}, ${_gib(r.unlisted.bytes)}. Another Coral sent ${u === 1 ? 'it' : 'them'} but the message that names ${u === 1 ? 'it' : 'them'} never came. ${u === 1 ? 'It counts' : 'They count'} toward the limit.${u > (r.unlisted.items || []).length ? ` Showing the oldest ${(r.unlisted.items || []).length}; delete them, then the rest.` : ''}`;

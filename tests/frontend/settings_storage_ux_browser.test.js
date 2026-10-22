@@ -41,7 +41,7 @@ const GIB = 1024 ** 3;
 
         console.log('1. A failed or slow load leaves the fields empty and off, and Save writes neither limit');
         await ev(`window.showSettingsModal('cleanup'); true`);
-        await waitFor(`/Artifacts: 4\\.0 GiB in 120 files/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the store line', 8000);
+        await waitFor(`/^4\\.0 GiB of 10\\.0 GiB/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the store line', 8000);
         assert.equal(await ev(`document.getElementById('settings-artifact-store-max').value`), '10', 'the limit is shown');
         await close();
         await ev(`window.__hold = true; window.showSettingsModal('cleanup'); true`);
@@ -53,7 +53,7 @@ const GIB = 1024 ** 3;
         await apply();
         assert.ok(!(await ev(`window.__puts.some(b => 'artifact_store_max_bytes' in b)`)), 'a limit that was not read is never saved back, even if the field was typed in meanwhile');
         await ev(`window.__hold = null; window.__release && window.__release(); true`);
-        await waitFor(`/Artifacts: 4\\.0 GiB/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the late answer', 8000);
+        await waitFor(`/^4\\.0 GiB/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the late answer', 8000);
         await close();
         await ev(`window.__down = true; window.showSettingsModal('cleanup'); true`);
         await waitFor(`/Couldn't read the store's size, so the limit is not shown\\./.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the error', 8000);
@@ -77,29 +77,30 @@ const GIB = 1024 ** 3;
         await ev(`window.__down = false; true`);
 
         console.log('2. The artifact store line: three states, "1 file"');
-        const open = async body => { await close(); await ev(`window.__store = ${JSON.stringify(body)}; window.showSettingsModal('cleanup'); true`); await waitFor(`/Artifacts: /.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the line', 8000); await sleep(300); // sleep-ok: the dialog finishes laying out
+        const open = async body => { await close(); await ev(`window.__store = ${JSON.stringify(body)}; window.showSettingsModal('cleanup'); true`); await waitFor(`/ GiB| B/.test((document.getElementById('settings-artifact-store-size')?.textContent ?? ''))`, 'the line', 8000); await sleep(300); // sleep-ok: the dialog finishes laying out
             return ev(`(() => { const o = document.getElementById('settings-artifact-store-size'); const span = o.querySelector('span'); return { text: o.textContent, warn: span && span.dataset.state || '', color: getComputedStyle(span).color, other: getComputedStyle(o).color, lines: o.querySelectorAll('br').length + 1 }; })()`); };
         const calm = await open(storeBody({ bytes: 3 * GIB, objects: 5, max: 10 * GIB, diffs: 1 }));
-        assert.equal(calm.text.split('Saved task diffs')[0], 'Artifacts: 3.0 GiB in 5 files (limit 10.0 GiB)'); assert.equal(calm.warn, ''); assert.match(calm.text, /Saved task diffs: 2 KiB in 1 file \(not limited\)/, '"1 file", not "1 files"');
+        assert.equal(calm.text.split('Diffs')[0], '3.0 GiB of 10.0 GiB'); assert.equal(calm.warn, ''); assert.match(calm.text, /Diffs: 2 KiB in 1 file$/, '"1 file", not "1 files"');
         const nearly = await open(storeBody({ bytes: 8.5 * GIB, objects: 5, max: 10 * GIB }));
-        assert.match(nearly.text, /^Artifacts: 8\.5 GiB in 5 files \(limit 10\.0 GiB, 85% full\)\. Delete artifacts in Team Artifacts to make room, or raise the limit\./); assert.equal(nearly.warn, '');
+        assert.match(nearly.text, /^8\.5 GiB of 10\.0 GiB \(85% full\)\. Delete artifacts in Team Artifacts to make room, or raise the limit\./); assert.equal(nearly.warn, '');
         const full = await open(storeBody({ bytes: 10.4 * GIB, objects: 1, max: 10 * GIB }));
-        assert.match(full.text, /^Artifacts: 10\.4 GiB in 1 file \(limit 10\.0 GiB reached: new uploads are refused\)\. Delete artifacts in Team Artifacts to make room, or raise the limit\./);
+        assert.match(full.text, /^10\.4 GiB of 10\.0 GiB: new uploads are refused\. Delete artifacts in Team Artifacts to make room, or raise the limit\./);
         assert.equal(full.warn, 'warn', 'at the limit the line is in the warning colour'); assert.notEqual(full.color, nearly.other, 'a colour that differs from the calm one');
         await ev(`document.getElementById('settings-artifact-store-size').scrollIntoView({ block: 'center' }); true`); await sleep(300); // sleep-ok: the scroll settles for the screenshot
         await shot('storage-ux-at-limit');
         const nolimit = await open(storeBody({ bytes: 3 * GIB, objects: 5, max: 0 }));
-        assert.equal(nolimit.text.split('Saved task diffs')[0], 'Artifacts: 3.0 GiB in 5 files', 'no limit: just the total');
+        assert.equal(nolimit.text.split('Diffs')[0], '3.0 GiB', 'no limit: just the total');
         // #4602: a limit Coral raised by itself when the 20 GiB default arrived is said, while it is still the saved limit.
         const raised = await open({ ...storeBody({ bytes: 17 * GIB, objects: 9, max: 34 * GIB }), auto_raised: 34 * GIB });
-        assert.match(raised.text, /^Artifacts: 17\.0 GiB in 9 files \(limit 34\.0 GiB\)\. The limit was raised to 34\.0 GiB automatically when the 20 GiB default arrived, because the store already held more than 16 GiB\. Change it here\./);
+        assert.match(raised.text, /^17\.0 GiB of 34\.0 GiB\. The limit was raised to 34\.0 GiB automatically when the 20 GiB default arrived, because the store already held more than 16 GiB\. Change it here\./);
         const changed = await open({ ...storeBody({ bytes: 17 * GIB, objects: 9, max: 50 * GIB }), auto_raised: 34 * GIB });
         assert.doesNotMatch(changed.text, /raised to/, 'once the Operator saved another limit the note is gone');
 
         console.log('3. One line per kind in the age breakdown');
         await waitFor(`/Artifacts by age: /.test((document.getElementById('settings-storage-detail')?.textContent ?? ''))`, 'the breakdown', 8000);
         const ages = await ev(`[...document.getElementById('settings-storage-detail').childNodes].filter(n => n.nodeType === 3).map(n => n.textContent)`);
-        assert.match(ages[0], /^Artifacts by age: <1d /); assert.match(ages[1], /^Task diffs by age: <1d /);
+        assert.match(ages[0], /^Files: \d+ artifacts, \d+ saved diffs$/, 'the file counts moved here from the limit lines'); assert.match(ages[1], /^Artifacts by age: <1d /); assert.match(ages[2], /^Task diffs by age: <1d /);
+        assert.equal(await ev(`document.querySelector('.settings-storage-breakdown').open`), false, 'the breakdown is closed until asked');
 
         console.log('4. Shrink and Prune sit on one row with their fields');
         await ev(`document.getElementById('settings-storage-prune').scrollIntoView({ block: 'center' }); true`); await sleep(300); // sleep-ok: the scroll settles
