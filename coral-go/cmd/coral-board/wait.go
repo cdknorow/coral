@@ -61,6 +61,12 @@ func parseWaitArgs(args []string, project string) (waitArgs, string) {
 			i++
 		}
 	}
+	if w.timeout != "" {
+		// A value the server cannot read used to register the default two-hour wait without a word.
+		if d, err := time.ParseDuration(w.timeout); err != nil || d <= 0 {
+			return w, fmt.Sprintf("--timeout needs a duration such as 30m or 2h, got %q", w.timeout)
+		}
+	}
 	targets := 0
 	for _, t := range []string{w.from, w.task, w.commit, w.operator} {
 		if t != "" {
