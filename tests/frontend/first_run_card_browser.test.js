@@ -55,8 +55,8 @@ const SESSIONS = [{ name: 'first-agent', display_name: 'Agent', agent_type: 'cla
         assert.ok(!/startup prompt/.test(c.text), 'not the generic words');
         await waitFor(`document.getElementById('waiting-banner').hidden`, 'the generic pill gone beside the signed-out card', 8000);
         assert.ok(await ev(`document.getElementById('waiting-banner').hidden`), 'the signed-out card is the one message: the "hasn\'t done anything yet" pill is not shown with it');
-        // and a later update of the same agent (the WebSocket tick) does not bring it back: wait out the pill's show delay with animation frames, then look
-        await ev(`import((window.__coralStatic || '/static/') + 'session_header_updates.js').then(m => { m.updateWaitingIndicator(window.__sessions[0]); return new Promise(r => { const t0 = performance.now(); (function f() { performance.now() - t0 > 1800 ? r(true) : requestAnimationFrame(f); })(); }); })`);
+        // and a later update of the same agent (the WebSocket tick) does not bring it back: wait out the pill's show delay in the page, then look
+        await ev(`import((window.__coralStatic || '/static/') + 'session_header_updates.js').then(m => { m.updateWaitingIndicator(window.__sessions[0]); return new Promise(r => setTimeout(() => r(true), 1800)); })`); // the page's own timer, not a sleep of the test: longer than the pill's 1.5 s show delay
         assert.ok(await ev(`document.getElementById('waiting-banner').hidden`), 'a live update does not bring the generic pill back beside the signed-out card');
         await withStatus(true);
         await waitFor(`/startup prompt/.test((document.querySelector('#live-history-messages > .chat-needs-input') || {}).textContent || '')`, 'the generic card when signed in', 10000);
