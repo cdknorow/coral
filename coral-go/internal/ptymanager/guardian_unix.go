@@ -130,22 +130,37 @@ func runGuardian(in io.Reader) {
 	finish()
 }
 
-// guardianClient is Coral's end: the guardian it started, and what it has told it, so a guardian that died is replaced and told again. It holds no goroutine: the guardian is found dead by a write to
-// it failing or by a non-blocking wait (pid), so a test's goroutine leak check sees nothing of it.
+// guardianClient is Coral's end: the guardian it started, and what it has told it. A goroutine waits on the guardian process (watch) and, as soon as it exits while terminals are registered, starts another
+// and tells it every terminal, after a delay that grows if it keeps dying at once, so a guardian that cannot run cannot make Coral spin. Terminals are therefore guarded again within a moment of a guardian
+// being killed, not at the next terminal start or end. The goroutine lives for the process by design (testleak ignores it).
 type guardianClient struct {
-	mu   sync.Mutex
-	cmd  *exec.Cmd
-	in   io.WriteCloser
-	regs map[int]guarded
-	off  bool
+	mu       sync.Mutex
+	h        *guardianHandle
+	regs     map[int]guarded
+	off      bool
+	stopping bool
+	delay    time.Duration // the wait before the next restart: it doubles while guardians die within guardianLives of starting
+}
+
+type guardianHandle struct {
+	cmd     *exec.Cmd
+	in      io.WriteCloser
+	done    chan struct{} // closed when the process has exited and been waited for
+	started time.Time
 }
 
 var guardian guardianClient
 
+const (
+	guardianRestartMin = 100 * time.Millisecond
+	guardianRestartMax = 5 * time.Second
+	guardianLives      = 10 * time.Second // a guardian that ran at least this long is not a crash loop: the delay starts again
+)
+
 // disable is for a test that must not start one.
 func (g *guardianClient) disable() { g.mu.Lock(); g.off = true; g.mu.Unlock() }
 
-// start runs the guardian (g.mu held). The environment it gets is only the marker: it needs none of Coral's.
+// start runs the guardian (g.mu held) and tells it every registered terminal. The environment it gets is only the marker: it needs none of Coral's.
 func (g *guardianClient) start() error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -155,49 +170,75 @@ func (g *guardianClient) start() error {
 	if err != nil {
 		return err
 	}
-	g.cmd, g.in = c, in
+	h := &guardianHandle{cmd: c, in: in, done: make(chan struct{}), started: time.Now()}
+	g.h = h
 	for _, r := range g.regs { // a replacement is told what the first knew
 		fmt.Fprintf(in, "add %d %d %s\n", r.root.pid, r.root.created, r.tag)
 	}
+	go g.watch(h)
 	return nil
 }
 
-// drop forgets a guardian that has died, and reaps it (g.mu held).
-func (g *guardianClient) drop() {
-	if g.cmd != nil {
-		g.in.Close()
-		var ws syscall.WaitStatus
-		syscall.Wait4(g.cmd.Process.Pid, &ws, syscall.WNOHANG, nil)
+// watch waits for the guardian to exit; if Coral did not stop it and terminals are registered, it starts the next one.
+func (g *guardianClient) watch(h *guardianHandle) {
+	h.cmd.Wait()
+	close(h.done)
+	g.mu.Lock()
+	if g.h != h {
+		g.mu.Unlock()
+		return
 	}
-	g.cmd, g.in = nil, nil
+	g.h = nil
+	if g.stopping || g.off || len(g.regs) == 0 {
+		g.mu.Unlock()
+		return
+	}
+	g.delay = nextRestartDelay(g.delay, time.Since(h.started))
+	wait := g.delay
+	g.mu.Unlock()
+	time.Sleep(wait)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.h == nil && !g.stopping && !g.off && len(g.regs) > 0 { // nothing else has started one meanwhile, and there is still something to guard
+		g.start()
+	}
 }
 
-// alive reports whether the guardian is running (g.mu held): a non-blocking wait says so, and reaps one that has died.
+// nextRestartDelay is how long to wait before replacing a guardian that has just exited, given the wait before the last one and how long this one lived: the minimum for the first death and after a
+// guardian that lived long enough to be no crash loop, otherwise double the last, up to the maximum.
+func nextRestartDelay(prev, lived time.Duration) time.Duration {
+	if lived >= guardianLives || prev == 0 {
+		return guardianRestartMin
+	}
+	return min(prev*2, guardianRestartMax)
+}
+
+// alive reports whether the guardian is running (g.mu held).
 func (g *guardianClient) alive() bool {
-	if g.cmd == nil {
+	if g.h == nil {
 		return false
 	}
-	var ws syscall.WaitStatus
-	if wpid, err := syscall.Wait4(g.cmd.Process.Pid, &ws, syscall.WNOHANG, nil); wpid == g.cmd.Process.Pid || err == syscall.ECHILD {
-		g.cmd, g.in = nil, nil
+	select {
+	case <-g.h.done:
 		return false
+	default:
+		return true
 	}
-	return true
 }
 
-// send writes a line, starting a new guardian first if there is none (which is told every registered terminal, this line's included).
+// send writes a line, starting a guardian first if there is none (which is told every registered terminal, this line's included).
 func (g *guardianClient) send(line string) {
-	for try := 0; try < 2; try++ {
-		if !g.alive() {
-			if g.start() != nil {
-				return
-			}
-			return // it was told everything registered
+	if !g.alive() {
+		if g.h != nil { // exited, its watcher not yet through
+			g.h = nil
 		}
-		if _, err := io.WriteString(g.in, line); err == nil {
-			return
-		}
-		g.drop()
+		g.start()
+		return
+	}
+	if _, err := io.WriteString(g.h.in, line); err != nil {
+		g.h.in.Close()
+		g.h = nil
+		g.start()
 	}
 }
 
@@ -224,7 +265,7 @@ func (g *guardianClient) remove(pid int) {
 	}
 	delete(g.regs, pid)
 	if g.alive() {
-		g.send(fmt.Sprintf("del %d\n", pid))
+		io.WriteString(g.h.in, fmt.Sprintf("del %d\n", pid))
 	}
 }
 
@@ -233,18 +274,19 @@ func (g *guardianClient) pid() (pid, registered int) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.alive() {
-		pid = g.cmd.Process.Pid
+		pid = g.h.cmd.Process.Pid
 	}
 	return pid, len(g.regs)
 }
 
-// stop ends the guardian by closing its pipe, as Coral's exit would, for a test that checks no process is left.
+// stop ends the guardian by closing its pipe, as Coral's exit would, and does not replace it (a test that checks no process is left).
 func (g *guardianClient) stop() {
 	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.cmd != nil {
-		g.in.Close()
-		g.cmd.Wait()
-		g.cmd, g.in = nil, nil
+	h := g.h
+	g.stopping = true
+	g.mu.Unlock()
+	if h != nil {
+		h.in.Close()
+		<-h.done
 	}
 }
