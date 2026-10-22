@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -44,7 +45,7 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 	ss := store.NewSessionStore(db)
 	ctx := context.Background()
 	// The CLI the restart types is a harmless stand-in: never a real agent CLI in a test.
-	stub := stubCLI(t)
+	stub, launched := launchRecorderCLI(t, dataDir)
 	for _, agentType := range []string{"claude", "agy"} {
 		require.NoError(t, ss.SetSetting(ctx, "cli_path_"+agentType, stub))
 	}
@@ -75,6 +76,7 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 				SessionID: sid, AgentName: "tester", AgentType: agentType, WorkingDir: dataDir, Backend: &onPTY,
 			}))
 
+			before := launched()
 			body, _ := json.Marshal(map[string]any{"session_id": sid, "agent_type": agentType})
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/restart", bytes.NewReader(body))
 			rec := httptest.NewRecorder()
@@ -93,8 +95,8 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 			require.NotNil(t, ls, "the store has the new session")
 			assert.Eventually(t, func() bool {
 				replay, _ := pty.Replay(out.SessionName)
-				return typedStart(replay)
-			}, 5*time.Second, 50*time.Millisecond, "the start command was typed into the new session")
+				return launched() > before || typedStart(replay)
+			}, 5*time.Second, 50*time.Millisecond, "the start command ran in the new session")
 		})
 	}
 
@@ -110,6 +112,7 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 			require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
 				SessionID: sid, AgentName: "tester", AgentType: "claude", WorkingDir: dataDir, Backend: &onPTY,
 			}))
+			before := launched()
 			resumeID := "4767eeee-0000-4000-8000-000000000005" // the conversation to resume
 			body, _ := json.Marshal(map[string]any{"session_id": resumeID, "agent_type": "claude", "current_session_id": sid})
 			req := httptest.NewRequest(http.MethodPost, "/api/sessions/live/"+name+"/resume", bytes.NewReader(body))
@@ -125,9 +128,26 @@ func TestRestartOfALivePTYSessionStartsItUnderItsNewName(t *testing.T) {
 			assert.False(t, pty.IsRunning(name), "the old terminal is ended")
 			assert.Eventually(t, func() bool {
 				replay, _ := pty.Replay(out.SessionName)
-				return typedStart(replay)
-			}, 5*time.Second, 50*time.Millisecond, "the start command was typed into the new session")
+				return launched() > before || typedStart(replay)
+			}, 5*time.Second, 50*time.Millisecond, "the start command ran in the new session")
 		})
+	}
+}
+
+// launchRecorderCLI is the stand-in CLI for a test that must see the start command run. The quiet launch (#5911)
+// clears the screen and the replay buffer restarts there, so the typed line may be gone before a poll sees it; a
+// run is evidence that stays. On Unix the stand-in appends a line to a file and launched counts the lines; on
+// Windows (stubCLI's true.cmd) it counts nothing and the replay check stays the evidence.
+func launchRecorderCLI(t *testing.T, dir string) (string, func() int) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return stubCLI(t), func() int { return 0 }
+	}
+	marker := filepath.Join(dir, "launched")
+	script := stubScript(t, filepath.Join(dir, "recorder"), "#!/bin/sh\necho run >> "+marker+"\n")
+	return script, func() int {
+		b, _ := os.ReadFile(marker)
+		return bytes.Count(b, []byte("\n"))
 	}
 }
 
