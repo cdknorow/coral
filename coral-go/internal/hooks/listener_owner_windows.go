@@ -13,6 +13,9 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/subgentic/coral/internal/agentenv"
+	"github.com/subgentic/coral/internal/cliauth"
 )
 
 var procGetExtendedTcpTable = windows.NewLazySystemDLL("iphlpapi.dll").NewProc("GetExtendedTcpTable")
@@ -23,11 +26,14 @@ const (
 	afInet6                  = 23
 )
 
-// listenerPIDs, pidOwner and coralFolders are the system lookups; a test replaces them.
+// listenerPIDs, pidOwner, coralFolders, tcpRows, selfSID and fileOwner are the system lookups; a test replaces them.
 var (
 	listenerPIDs = tcpListenerPIDs
 	pidOwner     = processOwner
 	coralFolders = allowedCoralFolders
+	tcpRows      = tcpListeners
+	selfSID      = currentUserSID
+	fileOwner    = fileOwnerSID
 )
 
 // checkListener: the process that would receive a connection to host:port is Coral's (#224 B): its token's user is this user's
@@ -35,7 +41,7 @@ var (
 // dev build and the installed tools, or the Coral install under Program Files). No listener at all is fine (the connection
 // fails by itself). Anything else, or a listener whose owner can't be read, fails closed with a reason.
 func checkListener(host string, port int) error {
-	me, err := currentUserSID()
+	owners, err := allowedOwners()
 	if err != nil {
 		return fmt.Errorf("coral: can't read this user's account to check Coral's port %d: %w", port, err)
 	}
@@ -52,12 +58,12 @@ func checkListener(host string, port int) error {
 		if err != nil {
 			return &ForeignListenerError{Port: port, PID: pid, Why: "can't be checked (" + err.Error() + "), so it may be another account's"}
 		}
-		if sid == nil || !sid.Equals(me) {
+		if !ownedByOneOf(sid, owners) {
 			who := "another account"
 			if sid != nil {
 				who = sid.String()
 			}
-			return &ForeignListenerError{Port: port, PID: pid, Why: "belongs to " + who + ", not this user"}
+			return &ForeignListenerError{Port: port, PID: pid, Why: "belongs to " + who + ", not this user or the owner of Coral's data folder"}
 		}
 		if !isCoralImage(image, coralFolders()) && !sameExecutable(image) {
 			return &ForeignListenerError{Port: port, PID: pid, Why: "is " + image + ", not Coral's coral.exe or coral-tray.exe from its own folder"}
@@ -113,6 +119,64 @@ func allowedCoralFolders() []string {
 		}
 	}
 	return out
+}
+
+// allowedOwners: the accounts Coral's server may run as, for this tool. This user, and the owner of the session's token file and
+// of Coral's data folder: a tool started inside a sandbox that runs commands as another local account (Codex's elevated
+// Windows sandbox) has another SID than the user running Coral, whose data folder and token file are the user's (Security's
+// note on #224). A well-known service or group owner (SYSTEM, LocalService, NetworkService, Administrators) is never added:
+// those are not one person's Coral, and a service such as the one this computer has on 8420 runs as one of them.
+func allowedOwners() ([]*windows.SID, error) {
+	me, err := selfSID()
+	if err != nil {
+		return nil, err
+	}
+	owners := []*windows.SID{me}
+	paths := []string{cliauth.DataDir()}
+	if p := strings.TrimSpace(os.Getenv(agentenv.SessionAuthFileEnv)); p != "" {
+		paths = append(paths, p)
+	}
+	for _, p := range paths {
+		if sid, err := fileOwner(p); err == nil && sid != nil && isPersonSID(sid) && !ownedByOneOf(sid, owners) {
+			owners = append(owners, sid)
+		}
+	}
+	return owners, nil
+}
+
+// isPersonSID: sid is not a well-known service or group account.
+func isPersonSID(sid *windows.SID) bool {
+	for _, wk := range []windows.WELL_KNOWN_SID_TYPE{windows.WinLocalSystemSid, windows.WinLocalServiceSid, windows.WinNetworkServiceSid, windows.WinBuiltinAdministratorsSid, windows.WinBuiltinUsersSid, windows.WinWorldSid, windows.WinAuthenticatedUserSid} {
+		if sid.IsWellKnown(wk) {
+			return false
+		}
+	}
+	return true
+}
+
+func ownedByOneOf(sid *windows.SID, owners []*windows.SID) bool {
+	if sid == nil {
+		return false
+	}
+	for _, o := range owners {
+		if sid.Equals(o) {
+			return true
+		}
+	}
+	return false
+}
+
+// fileOwnerSID is the owner of the file or folder at path.
+func fileOwnerSID(path string) (*windows.SID, error) {
+	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		return nil, err
+	}
+	owner, _, err := sd.Owner()
+	if err != nil {
+		return nil, err
+	}
+	return owner.Copy()
 }
 
 func currentUserSID() (*windows.SID, error) {
@@ -206,7 +270,7 @@ func tcpListenerPIDs(host string, port int) ([]uint32, error) {
 		if ip.To4() != nil {
 			af = afInet
 		}
-		rows, err := tcpListeners(af)
+		rows, err := tcpRows(af)
 		if err != nil {
 			return nil, err
 		}
