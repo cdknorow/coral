@@ -202,7 +202,10 @@ func TestTheJobWaitsFirstThenChecksAndDoublesTheWaitAfterAFailure(t *testing.T) 
 	waits := make(chan time.Duration, 8)
 	e.h.checkTimes = checkTimes{jitterOf: func(time.Duration) time.Duration { return 0 },
 		after: func(d time.Duration) <-chan time.Time {
-			waits <- d
+			select {
+			case waits <- d:
+			default: // the test has what it needs; never block the job
+			}
 			c := make(chan time.Time, 1)
 			c <- time.Now()
 			return c
