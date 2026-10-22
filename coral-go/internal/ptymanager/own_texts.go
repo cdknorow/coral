@@ -14,15 +14,24 @@ import (
 const (
 	ownTextsPerSession = 8
 	ownTextMaxAge      = 6 * time.Hour
+	// A typed send (not a paste) has its Enter pressed without the screen confirming it left the box, so its record is not forgotten on delivery; it is kept only this
+	// long, so a person's identical draft typed later is soon theirs (Security's question on #112).
+	ownTypedMaxAge = 2 * time.Minute
 )
 
 type ownText struct {
-	text string // squeezed
-	at   time.Time
+	text  string // squeezed
+	at    time.Time
+	typed bool // typed with its Enter pressed unseen, not pasted and confirmed: remembered for ownTypedMaxAge
 }
 
-// noteOwnText records that the gate is typing text into name.
-func (g *inputGate) noteOwnText(name, text string) {
+// noteOwnText records that the gate is pasting text into name (remembered for ownTextMaxAge, or until its Enter is seen to empty the box).
+func (g *inputGate) noteOwnText(name, text string) { g.noteOwn(name, text, false) }
+
+// noteOwnTyped records that the gate is typing text into name with a send whose Enter is not confirmed from the screen: remembered for ownTypedMaxAge.
+func (g *inputGate) noteOwnTyped(name, text string) { g.noteOwn(name, text, true) }
+
+func (g *inputGate) noteOwn(name, text string, typed bool) {
 	t := squeeze(text)
 	if t == "" {
 		return
@@ -33,7 +42,7 @@ func (g *inputGate) noteOwnText(name, text string) {
 	if g.ownTexts == nil {
 		g.ownTexts = map[string][]ownText{}
 	}
-	list := append(g.ownTexts[name], ownText{text: t, at: now})
+	list := append(g.ownTexts[name], ownText{text: t, at: now, typed: typed})
 	if len(list) > ownTextsPerSession {
 		list = list[len(list)-ownTextsPerSession:]
 	}
@@ -55,7 +64,11 @@ func (g *inputGate) ownLeftover(name, box string) bool {
 	}
 	var recent []string
 	for _, o := range g.ownTexts[name] {
-		if now.Sub(o.at) <= ownTextMaxAge {
+		limit := ownTextMaxAge
+		if o.typed {
+			limit = ownTypedMaxAge
+		}
+		if now.Sub(o.at) <= limit {
 			recent = append(recent, o.text)
 		}
 	}
