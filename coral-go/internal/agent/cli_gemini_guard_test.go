@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,7 +33,8 @@ func TestCLIHelpDoesNotPassInheritedCredentials(t *testing.T) {
 	prog := filepath.Join(t.TempDir(), "help")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$PATH\" \"$HOME\" \"${CORAL_HELP_PROBE_SECRET-unset}\" \"${NODE_OPTIONS-unset}\" \"${ANTHROPIC_API_KEY-unset}\"\n"
 	require.NoError(t, os.WriteFile(prog, []byte(script), 0o700))
-	assert.Equal(t, os.Getenv("PATH")+"\n"+home+"\nunset\nunset\nunset\n", cliHelp(prog))
+	// This checks inherited credentials, not the production setup deadline.
+	assert.Equal(t, os.Getenv("PATH")+"\n"+home+"\nunset\nunset\nunset\n", cliHelpWithTimeout(prog, time.Minute))
 }
 
 func TestCLIHelpOutputDrainsPastLimit(t *testing.T) {
@@ -61,7 +63,8 @@ func TestCLIHelpCapsCombinedOutputWhileChildFinishes(t *testing.T) {
 	prog := filepath.Join(dir, "help")
 	script := "#!/bin/sh\nprintf 'Gemini CLI\\n'\ni=0\nwhile [ \"$i\" -lt 5000 ]; do printf x >&2; i=$((i+1)); done\nprintf done > \"$HOME/finished\"\n"
 	require.NoError(t, os.WriteFile(prog, []byte(script), 0o700))
-	help := cliHelp(prog)
+	// This checks output draining and child completion, not probe latency.
+	help := cliHelpWithTimeout(prog, time.Minute)
 	assert.Len(t, help, cliHelpOutputLimit)
 	assert.True(t, strings.HasPrefix(help, "Gemini CLI\n"))
 	finished, err := os.ReadFile(filepath.Join(dir, "finished"))
