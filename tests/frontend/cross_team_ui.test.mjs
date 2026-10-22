@@ -78,7 +78,7 @@ assert.equal(boardSettings.cross_team_messaging, true);
 // ── Share files with other teams (cross_team_artifacts, #4407): on the Messaging tab, its own switch, sent only when it was changed.
 const files = sw('cross_team_artifacts');
 assert.ok(files, 'the files switch exists');
-assert.equal(files.closest('label').textContent.trim(), 'Share files with teams on other computers (through Coral Hub links)');
+assert.equal(files.closest('label').textContent.trim(), 'Share files with teams on other computers');
 assert.equal(files.checked, false);
 files.checked = true;
 files.dispatchEvent(new window.Event('change', { bubbles: true }));

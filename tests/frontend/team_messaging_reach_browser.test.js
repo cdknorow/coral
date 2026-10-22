@@ -1,5 +1,5 @@
 // #5916: the Messaging tab tells the two reaches of the cross-team messaging switch apart, against the real server. A board that never set the switch shows it on: "Teams on other computers:
-// on (needs a Coral Hub link)", and "Teams on this computer: off" with a button to turn that on, because two teams on one computer have no link to hold and need an explicit on. The button
+// on (needs a Coral Hub link)", and "Message teams here: off" with a button to turn that on, because two teams on one computer have no link to hold and need an explicit on. The button
 // saves the switch as an explicit on (the board's state then says so); an explicit off shows both reaches off and no button.
 // Run against an isolated dev server.
 const assert = require('node:assert/strict');
@@ -35,7 +35,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await open();
         let r = await reach();
         assert.equal(r.msg, true, 'the switch shows on by default');
-        assert.match(r.here, /^Message teams on this computer: off/);
+        assert.match(r.here, /^Message teams here: off/);
         assert.equal(r.button, true, 'a button to turn it on for this computer');
         let st = await state();
         assert.equal(st.messaging_elsewhere, true);
@@ -43,8 +43,9 @@ const { removeBoards } = require('./helpers/board_cleanup');
         console.log('PASS a board that never set the switch: other computers on (needs a link), this computer off');
 
         // the button saves an explicit on
+        assert.equal(await ev(`document.querySelector('${P} [data-act=turn-on-here]').getAttribute('aria-label')`), 'Turn on messaging for teams on this computer', 'the button says which messaging it turns on (its visible words stay "Turn on")');
         await ev(`document.querySelector('${P} [data-act=turn-on-here]').click(); true`);
-        await waitFor(`document.querySelector('${P} .xt-reach-here')?.textContent.trim() === 'Message teams on this computer: on'`, 'this computer on', 8000);
+        await waitFor(`document.querySelector('${P} .xt-reach-here')?.textContent.trim() === 'Message teams here: on'`, 'this computer on', 8000);
         r = await reach();
         assert.equal(r.button, false);
         st = await state();
@@ -57,7 +58,7 @@ const { removeBoards } = require('./helpers/board_cleanup');
         await open();
         r = await reach();
         assert.equal(r.msg, false);
-        assert.equal(r.here, 'Message teams on this computer: off');
+        assert.equal(r.here, 'Message teams here: off');
         assert.equal(r.button, false);
         st = await state();
         assert.equal(st.messaging_elsewhere, false);

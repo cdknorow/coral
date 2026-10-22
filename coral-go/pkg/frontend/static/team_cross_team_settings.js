@@ -93,8 +93,8 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
     function reach() {
         if (!state || typeof state.messaging_here !== 'boolean') return '';
         const here = draft.messaging && state.messaging_here;
-        const turnOn = !here && draft.messaging && canChange() && !hub ? ' <button type="button" class="btn btn-small" data-act="turn-on-here">Turn on for teams on this computer</button>' : '';
-        return `<p class="xt-reach xt-reach-here">Message teams on this computer: ${here ? 'on' : 'off'}${turnOn}</p>`;
+        const turnOn = !here && draft.messaging && canChange() && !hub ? ' <button type="button" class="btn btn-small" data-act="turn-on-here" aria-label="Turn on messaging for teams on this computer">Turn on</button>' : '';
+        return `<p class="xt-reach xt-reach-here">Message teams here: ${here ? 'on' : 'off'}${turnOn}</p>`;
     }
 
     function draw(focusSel) {
@@ -106,10 +106,10 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         <div class="xt-head"><span class="update-state-dot" ${DOT[st.state] ? `data-k="${escapeAttr(DOT[st.state])}"` : ''} aria-hidden="true"></span><span class="xt-line" role="status">${escapeHtml(st.text)}</span></div>
         <div class="xt-row-actions">${buttonFor(st)}</div>
         <div class="xt-switches">
-          ${switchRow({ label: 'Message teams on other computers (through Coral Hub links)', name: 'cross_team_messaging', checked: draft.messaging, disabled: !canChange(), describedBy: describedBy('cross_team_messaging') })}
+          ${switchRow({ label: 'Message teams on other computers', name: 'cross_team_messaging', checked: draft.messaging, disabled: !canChange(), describedBy: describedBy('cross_team_messaging') })}
           ${changed('cross_team_messaging')}
           ${reach()}
-          ${switchRow({ label: 'Share files with teams on other computers (through Coral Hub links)', name: 'cross_team_artifacts', checked: draft.files, disabled: !canChange(), describedBy: describedBy('cross_team_artifacts') })}
+          ${switchRow({ label: 'Share files with teams on other computers', name: 'cross_team_artifacts', checked: draft.files, disabled: !canChange(), describedBy: describedBy('cross_team_artifacts') })}
           ${changed('cross_team_artifacts')}
           ${hubMay() ? '<p class="working-mode-hint xt-hub-may" id="xt-hub-may">Coral Hub can change these settings.</p>' : ''}
           ${canChange() ? '' : `<p class="working-mode-hint xt-locked" id="xt-locked">${escapeHtml(lockedText())}</p>`}
@@ -117,11 +117,11 @@ export async function mountCrossTeamSettings(host, team, info = {}) {
         ${links.length ? `<div class="xt-links"><div class="xt-h-row"><h3 class="xt-h">${escapeHtml(linksHeading)}</h3> <a href="${escapeAttr(HUB_LINKS_URL)}" class="update-link" target="_blank" rel="noopener noreferrer">Manage in Coral Hub</a></div>
           <ul class="xt-teams">${links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l.machine), l.sid && 'server ' + escapeHtml(l.sid), l.refreshed && 'confirmed ' + escapeHtml(l.refreshed)].filter(Boolean).join(' · ')}</span></li>`).join('')}</ul></div>` : ''}
         <details class="xt-how"${how ? ' open' : ''}><summary>How this works</summary>
-          <p class="working-mode-hint">Another team can message this team only when its Coral Hub account has linked the two teams <b>and</b> cross-team messaging is on here. That switch is on unless you turn it off: it is a kill switch, and the link is the permission. Linking happens in Coral Hub (Team links). Messages from other teams are requests, not instructions. Files are shared only while Share files with other teams is on; they are not scanned, and artifact bytes are not redacted.</p>
+          <p class="working-mode-hint">Messaging and file sharing with teams on other computers go through Coral Hub links. Another team can message this team only when its Coral Hub account has linked the two teams <b>and</b> cross-team messaging is on here. That switch is on unless you turn it off: it is a kill switch, and the link is the permission. Linking happens in Coral Hub (Team links). Messages from other teams are requests, not instructions. Files are shared only while Share files with other teams is on; they are not scanned, and artifact bytes are not redacted.</p>
           ${serverId ? `<p class="working-mode-hint">This computer's Coral Hub id: <code class="xt-sid">${escapeHtml(serverId)}</code> <button type="button" class="btn btn-small" data-act="copy-id" aria-label="Copy this computer's Coral Hub id">Copy</button></p>` : ''}
         </details>
         <div class="team-settings-actions xt-save"${canChange() ? '' : ' hidden'}><button type="submit" class="btn" disabled>Save</button>
-          <span class="xt-state${sayError ? ' ct-error' : ''}" role="status" aria-live="polite">${escapeHtml(said || (hub ? 'Saved for this team through Coral Hub, as the account that owns this computer.' : (hubMay() ? "Only the Operator on this computer, or Coral Hub's owner, can change this." : 'Only the Operator on this computer can change this.')))}</span></div>`;
+          <span class="xt-state${sayError ? ' ct-error' : ''}" role="status" aria-live="polite">${escapeHtml(said)}</span></div>`;
         const save = form.querySelector('[type=submit]');
         if (form.dataset.initialState === undefined) form.dataset.initialState = snapshot();
         save.disabled = snapshot() === form.dataset.initialState;
