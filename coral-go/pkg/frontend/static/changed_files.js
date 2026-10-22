@@ -323,7 +323,7 @@ function splitPath(filepath) {
 export function openFilePreview(filepath, line, opts) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     if (/^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(filepath || '')) {
-        openArtifactTab(filepath);
+        openArtifactTab(filepath, { phoneFull: true });
         return;
     }
     openPreviewTab(filepath, line, opts);
@@ -335,6 +335,7 @@ function openTeamArtifactPreview(item) {
         externalURL: item.external_url,
         mediaType: item.media_type,
         filename: item.name,
+        phoneFull: true,
     });
 }
 

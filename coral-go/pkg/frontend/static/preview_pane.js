@@ -500,6 +500,7 @@ export function openArtifactTab(uri, options = {}) {
         _addTab(tab);
     }
     _activate(tab);
+    if (options.phoneFull && _isMobile()) _setPhoneFull(true); // a person's own open (a link, the Artifacts tab) gives an artifact a phone's whole screen, not a strip under the side panel; Back returns to the chat (#6116)
 }
 
 function switchTab(tabId) {
