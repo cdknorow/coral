@@ -498,7 +498,7 @@ PUT /api/board/{project}/settings   {"subscriber_id": "Operator", "cross_team_me
 PUT /api/board/{project}/settings   {"subscriber_id": "Operator", "cross_team_servers": ["<Coral Hub server id>"]}
 ```
 
-Only the Operator can change settings. Every setting defaults to off. `cross_team_servers` lists the other Corals (Coral Hub server ids, up to 20, stored lower case; `[]` clears it) whose Orchestrators may send this board cross-team messages through Coral Hub (see [cross-team.md](cross-team.md#messages-from-another-coral-through-coral-hub)).
+Only the Operator can change settings. Every setting defaults to off, except the two cross-team switches (`cross_team_messaging`, `cross_team_artifacts`), which are kill switches that default to on for a team on another Coral through Coral Hub (the explicit team link is the permission; an explicit off stays off), while between boards of this Coral they still need an explicit on. `cross_team_servers` lists the other Corals (Coral Hub server ids, up to 20, stored lower case; `[]` clears it) whose Orchestrators may send this board cross-team messages through Coral Hub (see [cross-team.md](cross-team.md#messages-from-another-coral-through-coral-hub)).
 
 ## Board status and routing
 

@@ -166,7 +166,7 @@ func TestTheRateLimiterTripsAtTheSameCountForAMissingTeamAndAnExistingOne(t *tes
 func TestARelayedMessageToAListedTeamNeedsItsSwitchOn(t *testing.T) {
 	e := newArtifactEnv(t)
 	e.h.crossTeam.now = func() time.Time { return fixedNow }
-	code, out := e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": []string{relaySrc}}, false)
+	code, out := e.put("/api/board/beta/settings", map[string]any{"subscriber_id": "Operator", "cross_team_servers": []string{relaySrc}, "cross_team_messaging": false}, false)
 	require.Equal(t, http.StatusOK, code, out)
 	off := relayedRec(e, relaySrc, "beta", "sw-"+strings.Repeat("a", 3), "Orchestrator", "")
 	assert.Equal(t, http.StatusNotFound, off.Code, "listed but switched off: refused like any other cause")

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/board"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/store/storetest"
 )
@@ -45,6 +46,9 @@ func newAttributionHarness(t *testing.T) *attributionHarness {
 		a.tokens[s.key], err = db.MintSessionToken(ctx, "sid-"+s.key, s.session)
 		require.NoError(t, err)
 	}
+	off := false // the cross-team switches default to on (#5916): these tests are about a board that has messaging off
+	_, err = bh.bs.UpdateBoardSettings(ctx, "team", board.BoardSettingsUpdate{CrossTeamMessaging: &off})
+	require.NoError(t, err)
 	task, err := bh.bs.CreateTask(ctx, "team", "T1", "", "medium", "Orchestrator", "Dev")
 	require.NoError(t, err)
 	a.taskID = task.ID

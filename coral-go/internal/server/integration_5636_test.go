@@ -33,7 +33,7 @@ func TestTheOwnerReadOfATeamsCrossTeamStateThroughTheRealConnector(t *testing.T)
 	sort.Strings(keys)
 	assert.Equal(t, []string{"cross_team_artifacts", "cross_team_messaging", "hub_may_change", "last_changed", "linkable"}, keys)
 	assert.Equal(t, true, out["cross_team_messaging"])
-	assert.Equal(t, false, out["cross_team_artifacts"])
+	assert.Equal(t, true, out["cross_team_artifacts"], "files were never set: the default, on (#5916)")
 	assert.NotContains(t, body, other, "no id of another team")
 	assert.NotContains(t, body, "bob", "nothing of another team's agents or labels")
 

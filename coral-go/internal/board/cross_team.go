@@ -42,7 +42,8 @@ func (r RawJSON) MarshalJSON() ([]byte, error) {
 
 // ── Board settings ───────────────────────────────────────────────────
 
-// BoardSettings are per-board switches. Every setting defaults to off.
+// BoardSettings are per-board switches. The two cross-team switches default to ON for a board that never set them (#5916: they are kill switches; what admits a team from another
+// Coral is the explicit Coral Hub team link, #5862), and an owner's explicit off stays off. The rest default to off.
 type BoardSettings struct {
 	// CrossTeamMessaging lets this board's Orchestrators (and the Operator)
 	// message other boards' Orchestrators, and receive their messages. Both
@@ -60,7 +61,17 @@ type BoardSettings struct {
 	CrossTeamAllowed []AllowedSender `json:"cross_team_allowed"`
 	// Health is the team's health check configuration (#4175).
 	Health HealthSettings `json:"health"`
+	// MessagingStored and ArtifactsStored say that the owner set the switch (to either value), as against the default.
+	MessagingStored bool `json:"-"`
+	ArtifactsStored bool `json:"-"`
 }
+
+// LocalMessagingOn is whether boards of THIS Coral may message this one: an explicit opt-in only. The default-on of the switches is for the relay, where the Coral Hub team link is the
+// grant; two teams on one computer have no link to hold, so they are not opened to each other by a default (#5916).
+func (b BoardSettings) LocalMessagingOn() bool { return b.MessagingStored && b.CrossTeamMessaging }
+
+// LocalFilesOn is LocalMessagingOn for files between boards of this Coral.
+func (b BoardSettings) LocalFilesOn() bool { return b.ArtifactsStored && b.CrossTeamArtifacts }
 
 // BoardSettingsUpdate changes only the settings that are set.
 type BoardSettingsUpdate struct {
@@ -138,18 +149,18 @@ func (s *Store) GetBoardSettings(ctx context.Context, project string) (BoardSett
 		Key   string `db:"key"`
 		Value string `db:"value"`
 	}
-	var out BoardSettings
+	out := BoardSettings{CrossTeamMessaging: true, CrossTeamArtifacts: true} // the defaults (#5916): a stored value, either way, replaces them
 	if err := s.db.SelectContext(ctx, &rows, `SELECT key, value FROM board_settings WHERE project = ?`, project); err != nil {
-		return out, err
+		return BoardSettings{}, err
 	}
 	for _, r := range rows {
 		switch r.Key {
 		case settingCrossTeamMessaging:
-			out.CrossTeamMessaging = r.Value == "true"
+			out.CrossTeamMessaging, out.MessagingStored = r.Value == "true", true
 		case settingCrossTeamServers:
 			_ = json.Unmarshal([]byte(r.Value), &out.CrossTeamServers)
 		case settingCrossTeamArtifacts:
-			out.CrossTeamArtifacts = r.Value == "true"
+			out.CrossTeamArtifacts, out.ArtifactsStored = r.Value == "true", true
 		case settingCrossTeamAllowed:
 			_ = json.Unmarshal([]byte(r.Value), &out.CrossTeamAllowed)
 		}

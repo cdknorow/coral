@@ -51,6 +51,10 @@ func newHubSwitchEnv(t *testing.T) *hubSwitchEnv {
 	for _, team := range []string{"team", "other"} {
 		_, err := bs.Subscribe(context.Background(), team, "Orchestrator", "Orchestrator", team+"-orch", nil, "mentions")
 		require.NoError(t, err)
+		// The switches default to on (#5916): these tests are about the owner turning them on and off, so each team starts with both explicitly off.
+		off := false
+		_, err = bs.UpdateBoardSettings(context.Background(), team, board.BoardSettingsUpdate{CrossTeamMessaging: &off, CrossTeamArtifacts: &off})
+		require.NoError(t, err)
 	}
 	return e
 }
