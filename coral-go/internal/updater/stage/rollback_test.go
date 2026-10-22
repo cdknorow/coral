@@ -173,3 +173,30 @@ func TestTheKeptRollbackPackageIsVerifiedAgainAtUse(t *testing.T) {
 	_, err = ReverifyRollback(cfg.Verifier, cfg.Pins, s, msiName, "1.4.124", verify.State{}, testNow, 0)
 	assert.Error(t, err, "verified for exactly the installed version")
 }
+
+// #162 (b), Security's ordering note: a NEW release whose manifest revokes the installed version makes the kept rollback copy refused at use.
+// The check records the new manifest's revocations in the state when it verifies (Observe, #5301), and the apply's Rollback verifies again
+// against the state on disk, so a revoked version is never put back even though its own manifest doesn't revoke it.
+func TestANewReleaseThatRevokesTheInstalledVersionBlocksItsRollback(t *testing.T) {
+	tr, cfg := newTwo(t)
+	require.Equal(t, ResultStaged, Check(context.Background(), cfg).Result)
+	s, err := LoadRollback(cfg.DataDir, "1.4.125")
+	require.NoError(t, err, "kept while nothing revokes it")
+
+	// 1.4.131 is promoted and revokes 1.4.125.
+	tr.mu.Lock()
+	tr.release("1.4.131", 8, []byte("the msi of 1.4.131"), []string{"1.4.125"})
+	tr.tags["v1.4.131"][ManifestFile] = mustManifest(t, "1.4.131", tr.tags["v1.4.131"][SumsFile], 8, "2026-11-20T10:00:00Z", []string{"1.4.125"})
+	tr.tags["v1.4.131"][ManifestBundleFile] = bundleOf(tr.tags["v1.4.131"][ManifestFile], "")
+	tr.latest = "v1.4.131"
+	tr.mu.Unlock()
+	require.Equal(t, ResultStaged, Check(context.Background(), cfg).Result)
+
+	st, err := verify.LoadState(filepath.Join(cfg.DataDir, UpdatesDir))
+	require.NoError(t, err)
+	assert.Contains(t, st.Revoked, "1.4.125", "the check recorded the new manifest's revocation")
+	_, err = ReverifyRollback(cfg.Verifier, cfg.Pins, s, msiName, "1.4.125", st, testNow, 0)
+	assert.Error(t, err, "the apply's re-verification at use refuses a version a later release revoked")
+	_, err = LoadRollback(cfg.DataDir, "1.4.125")
+	assert.Error(t, err, "and the check no longer keeps it")
+}
