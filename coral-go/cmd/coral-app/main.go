@@ -166,7 +166,13 @@ func main() {
 	log.Printf("[WEBVIEW] setting title=%q size=%dx%d", *title, *width, *height)
 	installFilePanel(w.Window()) // a file input opens the system chooser (#5743)
 	w.SetTitle(*title)
-	w.SetSize(*width, *height, webview.HintNone)
+	workW, workH := workArea()
+	fw, fh := fitSize(*width, *height, workW, workH)
+	if fw != *width || fh != *height {
+		log.Printf("[WEBVIEW] the screen's work area cannot hold %dx%d: opening at %dx%d", *width, *height, fw, fh)
+	}
+	w.SetSize(fw, fh, webview.HintNone)
+	placeInWorkArea(w.Window()) // the cascade can put the window partly off a small screen (#6004 W5)
 
 	// Configure native title bar (macOS: transparent, content extends into title bar)
 	log.Println("[WEBVIEW] setting up native titlebar")
