@@ -160,3 +160,142 @@ func TestGitSettingsThatRunAProgramAreHeldInPowerShellAndCmd(t *testing.T) {
 		assert.Empty(t, shellRisk(c, wd), "should be allowed: %s", c)
 	}
 }
+
+// #5934: quotation may start in the middle of a shell word. Keep the key/value
+// together, remove only shell syntax, and still allow literal non-program aliases.
+func TestGitConfigMidWordQuotesAreHeld(t *testing.T) {
+	wd := t.TempDir()
+	for _, command := range []string{
+		`git -c alias.x='!evil' x`,
+		`git -c alias.x="!evil" x`,
+		`git -c alias.x=' !evil' x`,
+		`git -c alias.x=" !evil" x`,
+		`git -calias.x=' !evil' x`,
+		`git -c al'ias'.x='!evil' x`,
+		`git -c submodule.vendor.update='!evil' submodule update`,
+		`git -c submodule.vendor.update=" !evil" submodule update`,
+		`git clone -c alias.x='!evil' https://example.com/r.git`,
+		`git clone --config=alias.x=" !evil" https://example.com/r.git`,
+		`git init --config submodule.vendor.update='!evil'`,
+		`git --config-env=core.'sshCommand'=EVIL fetch`,
+		`git --config-env 'core.'hooksPath="EVIL" status`,
+		`git -c alias.x=\!evil x`,
+		`git -c alias.x=\ !evil x`,
+		`env X=y git -c alias.x=' !evil' x`,
+		`env -S "git -c core.hooksPath=/tmp/hooks status"`,
+		`echo ok && git -c alias.x=' !evil' x`,
+		`bash -c 'git -c alias.x=" !evil" x'`,
+	} {
+		assert.NotEmpty(t, shellRisk(command, wd), "should be held: %s", command)
+	}
+	for _, command := range []string{
+		`git -c alias.x='checkout' x`,
+		`git -c alias.x="checkout" x`,
+		`git -c alias.x=' checkout' x`,
+		`git -c alias.x='' status`,
+		`git -c core.hooksPath='' status`,
+		`git -c protocol.ext.allow='never' status`,
+		`git -c pager.diff="false" diff`,
+		`git -c alias.x='\!evil' x`, // POSIX single quotes preserve the backslash
+		`git -c alias.x="\!evil" x`, // ! is not escapable inside POSIX double quotes
+		`git --config-env=user.'name'=NAME status`,
+	} {
+		assert.Empty(t, shellRisk(command, wd), "should remain allowed: %s", command)
+	}
+}
+
+// Both modes use the same tokenizer, with their own shell's escape rules. These
+// pure Windows classifier calls run on every OS; no Windows command is executed.
+func TestGitConfigQuotesUseTheShellsOwnRules(t *testing.T) {
+	for _, command := range []string{
+		`git -c alias.x='!evil' x`,
+		`git -c alias.x=" !evil" x`,
+		`git -c submodule.vendor.update=' !evil' submodule update`,
+		`git --config-env=core.'sshCommand'=EVIL fetch`,
+		"git -c alias.x=`!evil x", // PowerShell backtick escapes !
+	} {
+		assert.NotEmpty(t, winVerbRisk(command, func(string) bool { return false }), command)
+	}
+	for _, command := range []string{
+		`git -c alias.x='\!evil' x`,
+		`git -c alias.x="\!evil" x`,
+		`git -c alias.x=\!evil x`, // Windows preserves an unquoted backslash too
+		`git -c alias.x='checkout' x`,
+		`git --config-env=user.'name'=NAME status`,
+	} {
+		assert.Empty(t, winVerbRisk(command, func(string) bool { return false }), command)
+	}
+	cases := []struct {
+		command        string
+		posix, windows []string
+	}{
+		{`git -c alias.x='\!evil' x`, []string{"git", "-c", `alias.x=\!evil`, "x"}, []string{"git", "-c", `alias.x=\!evil`, "x"}},
+		{`git -c alias.x=\!evil x`, []string{"git", "-c", "alias.x=!evil", "x"}, []string{"git", "-c", `alias.x=\!evil`, "x"}},
+		{`git -c alias.x="\!evil" x`, []string{"git", "-c", `alias.x=\!evil`, "x"}, []string{"git", "-c", `alias.x=\!evil`, "x"}},
+		{"git -c alias.x=\"\\\"!evil\" x", []string{"git", "-c", "alias.x=\"!evil", "x"}, nil},
+		{"git -c alias.x=`!evil x", []string{"git", "-c", "alias.x=`!evil", "x"}, []string{"git", "-c", "alias.x=!evil", "x"}},
+	}
+	for _, c := range cases {
+		stages := commandStages(c.command, true)
+		if assert.Len(t, stages, 1, c.command) {
+			assert.Equal(t, c.posix, stages[0].words, c.command)
+		}
+		if c.windows != nil {
+			stages = winStages(c.command)
+			if assert.Len(t, stages, 1, c.command) {
+				assert.Equal(t, c.windows, stages[0].words, c.command)
+			}
+		}
+	}
+}
+
+// #5934 round 2: dollar quoting and expansion can hide both the key and a !
+// value. The classifier never evaluates these words; they wait for the person.
+func TestGitConfigUnresolvedSettingWordsAreHeld(t *testing.T) {
+	wd := t.TempDir()
+	for _, command := range []string{
+		`git -c alias.x=$'!evil' x`,
+		`git -c alias.x=$'\x21evil' x`,
+		`git -c alias.x=$X x`,
+		`git -c alias.x=${X} x`,
+		`git -c alias.x=$(echo '!evil') x`,
+		"git -c alias.x=`echo '!evil'` x",
+		`git -c $'alias.x=!evil' x`,
+		`git -c $KEY=value status`,
+		`git -c "$PAIR" status`,
+		`git -c$PAIR status`,
+		`git clone --config alias.x=$X https://example.com/r.git`,
+		`git clone --config=alias.x=$'\x21evil' https://example.com/r.git`,
+		`git init --config submodule.vendor.update=$X`,
+		`git --config-env=$KEY=ENV status`,
+		`git --config-env user.name=$ENV_NAME status`,
+		`git --config-env=alias.x=ENV x`, // the environment value might itself start with !
+		`git --config-env=submodule.vendor.update=ENV submodule update`,
+		`git config --global alias.x $'\x21evil'`,
+		`git config alias.x $X`,
+		`git config --global $KEY value`,
+		`git config --global $PAIR`,
+		`git config set alias.x $X`,
+		`git -c user.name=$USER status`, // known conservative cost accepted in review
+	} {
+		assert.NotEmpty(t, shellRisk(command, wd), "should be held: %s", command)
+	}
+	for _, command := range []string{
+		`git config --get alias.$X`,
+		`git config --unset alias.$X`,
+		`git config --get-regexp 'alias.*$'`,
+		`git config --global alias.co checkout`,
+		`git -c user.name='A Person' status`,
+		`git --config-env=user.name=NAME status`,
+	} {
+		assert.Empty(t, shellRisk(command, wd), "should remain allowed: %s", command)
+	}
+	for _, command := range []string{
+		`git -c alias.x=$X x`,
+		`git -c alias.x=$env:COMMAND x`,
+		`git --config-env user.name=$ENV_NAME status`,
+		`git config --global alias.x $X`,
+	} {
+		assert.NotEmpty(t, winVerbRisk(command, func(string) bool { return false }), "Windows: %s", command)
+	}
+}

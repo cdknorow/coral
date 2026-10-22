@@ -119,6 +119,19 @@ func shellRiskFrom(command, workDir, dir string) string {
 		}
 		cmd := filepath.Base(bareCommand(words[0]))
 		args := words[1:]
+		if cmd == "git" || shellWrapperRe.MatchString(words[0]) {
+			why, decoded := gitQuotedConfigRisk(seg)
+			if why != "" {
+				return why
+			}
+			// Preserve the old conservative check when a wrapper (e.g. env -S)
+			// exposed Git to shellWords but not to the quote-aware reading.
+			if cmd == "git" && !decoded {
+				if why := gitCodeExecRisk(args); why != "" {
+					return why
+				}
+			}
+		}
 		if why := posixHookWriteRisk(cmd, args, nil, at); why != "" {
 			return why
 		}
@@ -235,11 +248,11 @@ func chmodRisk(_ string, args []string, at func([]string) []string, workDir stri
 	return ""
 }
 
-// gitRisk: the git subcommands that rewrite a remote or destroy uncommitted work, and the settings that make git run a program (auto_accept_gitcfg.go).
+// gitRisk checks subcommands that rewrite a remote or destroy uncommitted work.
+// Git settings are checked on the original segment by gitQuotedConfigRisk before
+// shellWords drops quotation; feeding those lossy words to gitExecKey again would
+// mistake e.g. protocol.ext.allow='never' for a program-enabling value.
 func gitRisk(_ string, args []string, _ func([]string) []string, _ string) string {
-	if why := gitCodeExecRisk(args); why != "" {
-		return why
-	}
 	sub, rest := gitSubcommand(args)
 	switch sub {
 	case "push":

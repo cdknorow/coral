@@ -24,7 +24,13 @@ type winStage struct {
 // winStages splits a command into stages at ; && || | and newlines outside quotes, and each stage into words
 // (single and double quotes group and are dropped, a backtick escapes the next character outside single quotes).
 // Redirection targets are taken out of the words.
-func winStages(command string) []winStage {
+func winStages(command string) []winStage { return commandStages(command, false) }
+
+// commandStages reuses the stage tokenizer for Git's POSIX word reading too.
+// POSIX single quotes preserve every byte; outside quotes a backslash escapes
+// the next byte, and inside double quotes it only escapes $, `, ", \ or newline.
+// Windows mode retains winStages' PowerShell/cmd rules.
+func commandStages(command string, posix bool) []winStage {
 	var stages []winStage
 	var cur winStage
 	var word strings.Builder
@@ -53,13 +59,24 @@ func winStages(command string) []winStage {
 		case c == '\'' || c == '"':
 			have = true
 			for i++; i < len(rs) && rs[i] != c; i++ {
-				if c == '"' && rs[i] == '`' && i+1 < len(rs) {
-					i++
+				if c == '"' && i+1 < len(rs) {
+					next := rs[i+1]
+					if !posix && rs[i] == '`' {
+						i++
+					} else if posix && rs[i] == '\\' && strings.ContainsRune("$`\"\\\n", next) {
+						i++
+						if next == '\n' {
+							continue
+						}
+					}
 				}
 				word.WriteRune(rs[i])
 			}
-		case c == '`' && i+1 < len(rs):
+		case ((!posix && c == '`') || (posix && c == '\\')) && i+1 < len(rs):
 			i++
+			if posix && rs[i] == '\n' {
+				continue
+			}
 			have = true
 			word.WriteRune(rs[i])
 		case c == ' ' || c == '\t' || c == '\r':
