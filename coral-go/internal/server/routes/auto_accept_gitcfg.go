@@ -1,6 +1,9 @@
 package routes
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // git settings that run a program, held by auto-accept (#182, Security's #181 F2). A git option such as core.hooksPath, core.fsmonitor, core.sshCommand or an alias that
 // starts with "!" makes git run a command the next time it does something ordinary (status, commit, fetch): set with `git config --global` or `--system` it does so in
@@ -34,8 +37,28 @@ var gitExecKeys = map[string]bool{
 	"sendemail.smtpserver":       true, // a path to a program when it starts with /
 }
 
-// gitExecKey says whether setting key (any case) to value makes git run a program. An empty value resets the setting and is harmless.
+const gitExpansionKey = "<unresolved shell expansion>"
+
+// gitSettingExpansion treats decoded dollar/backtick words as unresolved. This
+// also holds ANSI-C/localized quoting, whose leading dollar survives quote
+// removal. Never expand variables or execute substitutions to classify them.
+// A quoted literal dollar can be held too: a deliberate conservative cost.
+func gitSettingExpansion(words ...string) bool {
+	for _, word := range words {
+		if strings.ContainsAny(word, "$`") {
+			return true
+		}
+	}
+	return false
+}
+
+// gitExecKey says whether setting key (any case) to value makes git run a program,
+// or cannot be judged because a shell expansion can change either. Literal empty
+// values reset a setting and remain harmless.
 func gitExecKey(key, value string) (bool, string) {
+	if gitSettingExpansion(key, value) {
+		return true, gitExpansionKey
+	}
 	k := strings.ToLower(strings.TrimSpace(key))
 	if k == "" || strings.TrimSpace(value) == "" {
 		return false, ""
@@ -89,6 +112,9 @@ func gitKeyValue(kv string) (key, value string) {
 }
 
 func gitExecWhy(key string) string {
+	if key == gitExpansionKey {
+		return "it uses a git setting with shell expansion that cannot be judged"
+	}
 	return "it sets a git option that runs a program (" + key + "), which would run it in later git commands without it being judged"
 }
 
@@ -106,7 +132,7 @@ func gitCodeExecRisk(args []string) string {
 					return gitExecWhy(key)
 				}
 			}
-		case strings.HasPrefix(a, "-c") && !strings.HasPrefix(a, "--") && len(a) > 2 && strings.Contains(a, "="):
+		case strings.HasPrefix(a, "-c") && !strings.HasPrefix(a, "--") && len(a) > 2 && (strings.Contains(a, "=") || gitSettingExpansion(a[2:])):
 			if bad, key := gitExecKey(gitKeyValue(a[2:])); bad {
 				return gitExecWhy(key)
 			}
@@ -114,14 +140,12 @@ func gitCodeExecRisk(args []string) string {
 			i++
 		case a == "--config-env" && i+1 < len(args):
 			i++
-			key, _ := gitKeyValue(args[i])
-			if bad, k := gitExecKey(key, "env"); bad { // the value comes from the environment: it is not empty as far as can be told
-				return gitExecWhy(k)
+			if why := gitConfigEnvRisk(args[i]); why != "" {
+				return why
 			}
 		case strings.HasPrefix(a, "--config-env="):
-			key, _ := gitKeyValue(strings.TrimPrefix(a, "--config-env="))
-			if bad, k := gitExecKey(key, "env"); bad {
-				return gitExecWhy(k)
+			if why := gitConfigEnvRisk(strings.TrimPrefix(a, "--config-env=")); why != "" {
+				return why
 			}
 		case strings.HasPrefix(a, "--exec-path="):
 			return "it runs git commands from another folder (--exec-path)"
@@ -209,6 +233,13 @@ func gitConfigWriteRisk(args []string) string {
 			return ""
 		}
 	}
+	// A single expanded positional can split into key and value in the shell.
+	// Read/unset modes returned above; only setting positions are considered here.
+	for _, word := range pos[:min(2, len(pos))] {
+		if gitSettingExpansion(word) {
+			return gitExecWhy(gitExpansionKey)
+		}
+	}
 	if len(pos) >= 2 {
 		if bad, key := gitExecKey(pos[0], pos[1]); bad {
 			return gitExecWhy(key)
@@ -216,6 +247,53 @@ func gitConfigWriteRisk(args []string) string {
 		if file != "" && gitHookPath(file) { // any write to .git/config by `git config -f` (a harmless key too: the file is the place) (#186)
 			return gitHookWhy(file)
 		}
+	}
+	return ""
+}
+
+// gitQuotedConfigRisk receives the original POSIX segment, before shellWords
+// splits quoted spaces and loses their grouping. The existing stage tokenizer
+// removes quotes/escapes using its POSIX mode, so -c and --config-env keys and
+// values reach gitExecKey as one shell word (alias.x=' !evil', for example).
+// Windows callers already pass winStages' decoded words to gitCodeExecRisk.
+func gitQuotedConfigRisk(segment string) (why string, decoded bool) {
+	for _, stage := range commandStages(segment, true) {
+		words := unwrapCommand(stage.words)
+		if len(words) == 0 {
+			continue
+		}
+		if filepath.Base(bareCommand(words[0])) == "git" {
+			decoded = true
+			if why := gitCodeExecRisk(words[1:]); why != "" {
+				return why, true
+			}
+		} else if shellWrapperRe.MatchString(words[0]) {
+			// A shell's -c value is another command, not words to flatten: doing
+			// that would drop quotes inside its Git key/value a second time.
+			for i, a := range words[1:] {
+				if strings.HasPrefix(a, "-") && strings.Contains(a, "c") && i+2 < len(words) {
+					why, innerDecoded := gitQuotedConfigRisk(words[i+2])
+					decoded = decoded || innerDecoded
+					if why != "" {
+						return why, decoded
+					}
+					break
+				}
+			}
+		}
+	}
+	return "", decoded
+}
+
+// The environment variable's name can contain shell expansion too. Even with a
+// literal name, its unknown value could start with ! (alias/submodule commands).
+func gitConfigEnvRisk(kv string) string {
+	key, env := gitKeyValue(kv)
+	if gitSettingExpansion(key, env) {
+		return gitExecWhy(gitExpansionKey)
+	}
+	if bad, k := gitExecKey(key, "!"); bad {
+		return gitExecWhy(k)
 	}
 	return ""
 }
