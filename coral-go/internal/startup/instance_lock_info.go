@@ -10,7 +10,7 @@ import (
 )
 
 // errAlreadyRunning: the data folder's instance lock is held, so another Coral server runs for it.
-var errAlreadyRunning = errors.New("another Coral server is already running for this data directory")
+var errAlreadyRunning = errors.New("another Coral is already running on this data folder")
 
 // recordAddress writes the address this server listens on after its PID ("<pid>\n<url>\n"), once it listens, so a command finds
 // the server of its data folder on whatever port it took (config.RecordedServer), and a second start on the same folder can say
@@ -49,10 +49,12 @@ func alreadyRunningError(coralDir, lockPath string) error {
 	which := ""
 	switch {
 	case pid > 0 && url != "":
-		which = fmt.Sprintf(" (PID %d, %s)", pid, url)
+		which = fmt.Sprintf(", at %s, PID %d", url, pid)
 	case pid > 0:
-		which = fmt.Sprintf(" (PID %d)", pid)
+		which = fmt.Sprintf(", PID %d", pid)
 	}
-	return fmt.Errorf("Coral is already running for the data folder %s%s. Open it with 'coral open', or stop it first "+
-		"(Ctrl+C in its window, or Quit in the Coral tray), or start this one with another data folder (--home or CORAL_DATA_DIR)", coralDir, which)
+	// One step per sentence (#279): open it, stop it, or give a second Coral its own folder.
+	return fmt.Errorf("Coral is already running on this data folder (%s)%s. Open it with 'coral open'. "+
+		"To stop it, press Ctrl+C in its window or choose Quit in the Coral tray. "+
+		"To run a second Coral, give it its own data folder (--home or CORAL_DATA_DIR).", coralDir, which)
 }

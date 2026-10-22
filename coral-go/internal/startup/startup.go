@@ -209,10 +209,10 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	instance, err := acquireInstanceLock(lockPath)
 	if errors.Is(err, errAlreadyRunning) {
 		// Say which server runs for this folder, where, and what to do, not only "in use" (#235).
-		return nil, fmt.Errorf("cannot start Coral: %w", alreadyRunningError(coralDir, lockPath))
+		return nil, alreadyRunningError(coralDir, lockPath) // it begins "Coral is already running": no "cannot start Coral:" before it (#279)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("cannot start Coral: %w (stop the existing server or use a different data directory)", err)
+		return nil, fmt.Errorf("cannot start Coral: %w (stop the other Coral on this data folder, or use another data folder: --home or CORAL_DATA_DIR)", err)
 	}
 	releaseOnError := true
 	defer func() {
