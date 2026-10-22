@@ -391,8 +391,8 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"can_change": true, "owner_path_live": true, "hub_may_change": h.hubMayChange(ctx), "last_changed": lastChanged,
 		"enforced": h.allowlistOn(ctx), "allowed": entries, "max_entries": board.MaxAllowedSenders, "self_cross_team_id": self,
-		"was_open": settings.CrossTeamMessaging && len(settings.CrossTeamAllowed) == 0, "suggestions": suggestions,
-		"status": statusFor(linkable, settings.CrossTeamMessaging, len(links), stale, heard),
+		"was_open": settings.ExplicitMessagingOn() && len(settings.CrossTeamAllowed) == 0, // the owner had turned it on (the default is not "open", #5916) "suggestions": suggestions,
+		"status":   statusFor(linkable, settings.CrossTeamMessaging, len(links), stale, heard),
 		// The two reaches of the messaging switch, shown apart (#5916): teams on other computers (on unless the owner turned it off; they also need a Coral Hub link) and teams on this
 		// computer (an explicit on only).
 		"messaging_elsewhere": settings.CrossTeamMessaging, "messaging_here": settings.ExplicitMessagingOn(),
