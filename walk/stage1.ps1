@@ -5,16 +5,17 @@ gh release download "v$ver" --repo $env:GITHUB_REPOSITORY --dir $dl --pattern "C
 $msi = Join-Path $dl "Coral-$ver-x64.msi"
 $want = ((Get-Content (Join-Path $dl 'SHA256SUMS.txt') | Where-Object { $_ -match "Coral-$ver-x64.msi" }) -split '\s+')[0].ToLower()
 "msi sha256 ok: $($want -eq (Get-FileHash $msi -Algorithm SHA256).Hash.ToLower())"
+"--- the package's platform (summary information, template)"
+try { $wi = New-Object -ComObject WindowsInstaller.Installer; $db = $wi.GetType().InvokeMember("OpenDatabase", "InvokeMethod", $null, $wi, @($msi, 0)); $si = $db.GetType().InvokeMember("SummaryInformation", "GetProperty", $null, $db, @(0)); "template: " + $si.GetType().InvokeMember("Property", "GetProperty", $null, $si, @(7)) } catch { "could not read: $($_.Exception.Message)" }
 "running as: " + [Security.Principal.WindowsIdentity]::GetCurrent().Name + ", session " + (Get-Process -Id $PID).SessionId + ", elevated " + ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-Shot 'desktop-before'
 $sw = [Diagnostics.Stopwatch]::StartNew()
 $p = Start-Process msiexec -ArgumentList "/i `"$msi`" /l*v `"$env:RUNNER_TEMP\walk-msi.log`"" -PassThru
 $w = FindWindow 'Coral Setup' 0 40
 "[{0:n1}s] first screen: {1}" -f $sw.Elapsed.TotalSeconds, [bool]$w
-Start-Sleep -Seconds 2; Shot 'msi-license'
+Start-Sleep -Seconds 2; ShotWin 'msi-license' $w
 "--- before accepting: Install enabled? " + (FindControl $w 'Button' 'Install').Current.IsEnabled
 ToggleCheck $w 'I accept*' $true | Out-Null
-Start-Sleep -Milliseconds 700; Shot 'msi-license-accepted'
+Start-Sleep -Milliseconds 700; ShotWin 'msi-license-accepted' $w
 "--- after accepting: Install enabled? " + (FindControl $w 'Button' 'Install').Current.IsEnabled
 ClickButton $w 'Install' | Out-Null
 $t0 = $sw.Elapsed.TotalSeconds
@@ -23,7 +24,7 @@ for ($i = 0; $i -lt 90; $i++) {
     Start-Sleep -Seconds 2
     $names = @(TopWindows | Where-Object { $_ -match 'Coral|Windows Installer|User Account|Setup' })
     $key = ($names -join ';')
-    if (-not $seen.ContainsKey($key)) { $seen[$key] = 1; "[{0:n1}s] windows: {1}" -f $sw.Elapsed.TotalSeconds, $key; Shot ('msi-progress-' + $i) }
+    if (-not $seen.ContainsKey($key)) { $seen[$key] = 1; "[{0:n1}s] windows: {1}" -f $sw.Elapsed.TotalSeconds, $key; ShotWin ('msi-progress-' + $i) $w }
     $w2 = FindWindow 'Coral Setup' 0 1
     if ($w2) {
         $finish = FindControl $w2 'Button' 'Finish'
@@ -31,13 +32,13 @@ for ($i = 0; $i -lt 90; $i++) {
     }
     if ($p.HasExited) { "msiexec exited: $($p.ExitCode)"; break }
 }
-Start-Sleep -Seconds 1; Shot 'msi-finish'
+Start-Sleep -Seconds 1; if ($w2) { ShotWin 'msi-finish' $w2 }
 "install took {0:n0}s from clicking Install" -f ($sw.Elapsed.TotalSeconds - $t0)
 if ($w2) { ToggleCheck $w2 'Launch*' $true | Out-Null; ClickButton $w2 'Finish' | Out-Null }
 Start-Sleep -Seconds 12
 "--- after Finish: coral processes"
 Get-Process | Where-Object { $_.ProcessName -like 'coral*' } | ForEach-Object { "  {0} pid {1}" -f $_.ProcessName, $_.Id }
-Shot 'after-finish'
+Shot 'after-finish-desktop'
 "--- installed files"
 Get-ChildItem 'C:\Program Files\Coral' -ErrorAction SilentlyContinue | ForEach-Object { "  " + $_.Name }
 "--- start menu"

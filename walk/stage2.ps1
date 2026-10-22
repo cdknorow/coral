@@ -17,8 +17,8 @@ for ($i = 0; $i -lt 40; $i++) {
     try { $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8450/api/health' -TimeoutSec 2; if ($r.StatusCode -eq 200) { $up = $true; break } } catch {}
 }
 "[{0:n1}s] server answers /api/health: {1}" -f $sw.Elapsed.TotalSeconds, $up
-Start-Sleep -Seconds 4; Shot 'after-start-4s'
-Start-Sleep -Seconds 12; Shot 'after-start-16s'
+Start-Sleep -Seconds 4; $aw = FindWindow 'Coral' 0 5; if ($aw) { ShotWin 'app-window-4s' $aw } else { Shot 'after-start-4s' }
+Start-Sleep -Seconds 12; $aw = FindWindow 'Coral' 0 5; if ($aw) { ShotWin 'app-window-16s' $aw; "app window: $($aw.Current.BoundingRectangle)" } else { Shot 'after-start-16s' }
 "--- processes"
 Get-Process | Where-Object { $_.ProcessName -match 'coral|msedge|chrome|claude' } | Group-Object ProcessName | ForEach-Object { "  {0} x{1}" -f $_.Name, $_.Count }
 "--- top windows"; TopWindows
@@ -29,3 +29,24 @@ Get-ChildItem "$env:USERPROFILE\.coral" -Force -ErrorAction SilentlyContinue | F
 "--- tray log tail"
 foreach ($f in @('C:\walk\data\tray.log', "$env:USERPROFILE\.coral\tray.log")) { if (Test-Path $f) { "== $f"; Get-Content $f -Tail 25 } }
 
+
+"--- the notification area (tray icon)"
+$root = [System.Windows.Automation.AutomationElement]::RootElement
+$tray = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, (New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::ClassNameProperty), 'Shell_TrayWnd'))
+if ($tray) {
+  foreach ($c in $tray.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) { try { if ($c.Current.ControlType.ProgrammaticName -match 'Button') { "  tray button: '{0}'" -f $c.Current.Name } } catch {} }
+  $chev = FindControl $tray 'Button' '*hidden icons*'
+  if (-not $chev) { $chev = FindControl $tray 'Button' '*Show Hidden*' }
+  if ($chev) { "found the overflow chevron: $($chev.Current.Name)"; try { $chev.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() } catch { "invoke chevron failed: $($_.Exception.Message)" }; Start-Sleep -Seconds 2 }
+  Shot 'tray-overflow-open'
+  $icon = $null
+  foreach ($c in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) { try { if ($c.Current.Name -like 'Coral*' -and $c.Current.ControlType.ProgrammaticName -match 'Button' -and $c.Current.ClassName -ne 'webview') { $icon = $c; "tray candidate: '{0}' ({1}) at {2}" -f $c.Current.Name, $c.Current.ClassName, $c.Current.BoundingRectangle; break } } catch {} }
+  if ($icon) {
+    $r = $icon.Current.BoundingRectangle
+    [Mouse]::Click([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2), $true)
+    Start-Sleep -Seconds 2; Shot 'tray-menu'
+    "--- tray menu"; TopWindows | Where-Object { $_ -match '32768|Menu|Context' }
+    foreach ($m in $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) { try { if ($m.Current.ClassName -eq '#32768') { Describe $m 30 } } catch {} }
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+  } else { "no Coral icon found in the notification area or its overflow" }
+}

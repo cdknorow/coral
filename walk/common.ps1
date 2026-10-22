@@ -56,3 +56,29 @@ function ToggleCheck($win, [string]$nameLike, [bool]$on) {
     if ($p.Current.ToggleState -ne $want) { $p.Toggle() }
     "checkbox '$($c.Current.Name)' is $($p.Current.ToggleState)"; return $true
 }
+
+function ShotRect([string]$name, $rect, [int]$pad = 6) {
+    $script:n++
+    $f = Join-Path $script:shotDir ('{0:00}-{1}.png' -f $script:n, $name)
+    try {
+        $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
+        $x = [Math]::Max(0, [int]$rect.X - $pad); $y = [Math]::Max(0, [int]$rect.Y - $pad)
+        $w = [Math]::Min($b.Width - $x, [int]$rect.Width + 2 * $pad); $h = [Math]::Min($b.Height - $y, [int]$rect.Height + 2 * $pad)
+        $bmp = New-Object System.Drawing.Bitmap $w, $h
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($x, $y, 0, 0, $bmp.Size)
+        $bmp.Save($f, [System.Drawing.Imaging.ImageFormat]::Png)
+        $g.Dispose(); $bmp.Dispose()
+        "shot: $f (${w}x${h})"
+    } catch { "shot FAILED: $name $($_.Exception.Message)" }
+}
+function ShotWin([string]$name, $win) { ShotRect $name $win.Current.BoundingRectangle }
+Add-Type -TypeDefinition @"
+using System; using System.Runtime.InteropServices;
+public static class Mouse {
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
+  public static void Click(int x, int y, bool right) { SetCursorPos(x, y); System.Threading.Thread.Sleep(150);
+    uint down = right ? 0x8u : 0x2u, up = right ? 0x10u : 0x4u; mouse_event(down, 0, 0, 0, UIntPtr.Zero); mouse_event(up, 0, 0, 0, UIntPtr.Zero); }
+}
+"@
