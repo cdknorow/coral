@@ -266,7 +266,7 @@ const MD = ['# Migration plan', '', '## Steps', '', '1. Add the new columns behi
             const at = `390 px, ${theme}`;
             const tg = await rect('.ac-toggle');
             check(`${at}: a "Comments (3)" button of 44 px is in the header`, tg && tg.h >= 44 && /Comments \(3\)/.test(await ev(`document.querySelector('.ac-toggle').textContent`)), JSON.stringify(tg));
-            await click('.ac-toggle'); // open threads start shown; exercise hiding too
+            // Phones start on the document, even with open comments.
             await shot(`comments-390-closed-${theme}`);
             const p0 = await rect('.ac-panel');
             check(`${at}: the sheet starts shut, below the screen (top ${p0.t} >= 844)`, p0.t >= 844);

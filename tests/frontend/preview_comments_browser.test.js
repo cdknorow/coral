@@ -58,10 +58,11 @@ const IMG = 'f'.repeat(64);
             await waitFor(`!!document.querySelector('#preview-body .preview-pane-markdown') && document.querySelectorAll('#preview-main .ac-card').length > 0`, `${tag}: the document and its comments`, { timeout: 10000 });
             let s = await state();
             const sheet = s.w < 720;
-            check(`${tag}: the comments start open with a toolbar toggle counting two open threads`, s.toggle === 'Comments (2)' && s.sheetOpen && !s.panelInert && (sheet ? s.panelPos === 'absolute' : s.panelPos !== 'absolute'), JSON.stringify(s).slice(0,300));
+            check(`${tag}: the toolbar counts two open threads; phone starts on the document`, s.toggle === 'Comments (2)' && s.sheetOpen === !mobile && s.panelInert === mobile && (sheet ? s.panelPos === 'absolute' : s.panelPos !== 'absolute'), JSON.stringify(s).slice(0,300));
             check(`${tag}: the two open comments are highlighted in the document and the document is a named region`, s.highlights === 2 && s.bodyRegion === 'region', JSON.stringify({ h: s.highlights, r: s.bodyRegion }));
             if (sheet) {
-                await settle(500); // the count-based default has already opened it
+                if (mobile) await ev(`document.querySelector('#preview-toolbar .ac-toggle').click();true`);
+                await settle(500); // desktop starts open; the phone opens on demand
                 s = await state();
                 check(`${tag}: the Comments button opens the sheet with its cards (and the document behind is out of reach)`, s.sheetOpen && !s.panelInert && s.cards === 2, JSON.stringify(s).slice(0, 240));
                 await shot(`preview-comments-sheet-${w}`);

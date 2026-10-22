@@ -66,10 +66,10 @@ const COMMENTS = [
             await load(width,theme,COMMENTS,false);
             let s=await state();assert.equal(s.text,'Comments (1)');assert.equal(s.expanded,'false');
             await ev(`window.BL.remove('coral-artifact-comments-open');window.PP.closeAllTabs();true`);await open();
-            await waitFor(`document.querySelector('#preview-toolbar .ac-toggle').getAttribute('aria-expanded')==='true'`,'open threads start shown');
             s=await state();assert.equal(s.text,'Comments (1)');
+            assert.equal(s.expanded,width===390?'false':'true','phone starts on the document, desktop shows open threads');
             // The saved open choice also survives reload on a phone.
-            await ev(`document.querySelector('#preview-toolbar .ac-toggle').click();document.querySelector('#preview-toolbar .ac-toggle').click();true`);
+            await ev(`(()=>{const t=document.querySelector('#preview-toolbar .ac-toggle');if(t.getAttribute('aria-expanded')==='true')t.click();t.click();})()`);
             await load(width,theme,COMMENTS,false);s=await state();assert.equal(s.expanded,'true');
             await ev(`window.BL.remove('coral-artifact-comments-open');window.PP.closeAllTabs();window.__cs=window.__cs.filter(c=>c.resolved_at);true`);await open();
             s=await state();assert.equal(s.text,'Comments');assert.equal(s.expanded,'false','resolved-only starts hidden');
