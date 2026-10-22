@@ -13,6 +13,7 @@ import { escapeHtml, escapeAttr } from './utils.js';
 import { boardFetch } from './server_base.js';
 import { rebaseChanges } from './settings_diff.js';
 const { fieldRow } = await importOnce('./field_row.js');
+const { infoButton, infoBox, bindInfo } = await importOnce('./info_toggle.js'); // lazy modules load each other through importOnce, so a failed load is retried
 const { refusalOf, answeredLocally } = await importOnce('./owner_refusal.js'); // a lazy module loads the others it needs through importOnce, so a failed load is retried
 
 const HEALTH_LIMITS = { minutes: [5, 1440], nudges: [1, 5], reviewers: 8 };
@@ -31,13 +32,14 @@ const [MIN_LO, MIN_HI] = HEALTH_LIMITS.minutes;
 const [N_LO, N_HI] = HEALTH_LIMITS.nudges;
 
 function knob(name, label, value, lo, hi, unit) {
-    // The name is the label and the unit ("After minutes idle"); the limits are its description, not part of the name.
-    return fieldRow({ id: `hk-${name}`, label, name, type: 'number', value, min: lo, max: hi, unit, desc: `${Number(lo)} to ${Number(hi)}` });
+    // The name is the label and the unit ("After minutes idle"); the range is in the box (min, max, its tooltip) and is the description for a screen reader, not a line of its own.
+    return fieldRow({ id: `hk-${name}`, label, name, type: 'number', value, min: lo, max: hi, unit, desc: `${Number(lo)} to ${Number(hi)}`, hideDesc: true, attrs: { title: `${Number(lo)} to ${Number(hi)}` } });
 }
 
 function rule(key, title, why, on, knobs, extra = '') {
-    // The title names the switch and the group of numbers under it, so "After minutes" is heard inside its rule; the explanation describes the switch.
-    return `<div class="health-rule" data-rule="${escapeAttr(key)}" role="group" aria-labelledby="hr-${escapeAttr(key)}-t">${switchRow({ label: title, name: `${key}_on`, checked: on, labelClass: 'health-rule-head', labelId: `hr-${key}-t`, desc: why, descId: `hr-${key}-w`, descTag: 'p', descClass: 'health-why' })}<div class="health-knobs">${knobs}${extra}</div></div>`;
+    // The title names the switch and the group of numbers under it, so "After minutes" is heard inside its rule; the explanation is behind the (i) and describes the switch.
+    const info = `hr-${key}-w`;
+    return `<div class="health-rule" data-rule="${escapeAttr(key)}" role="group" aria-labelledby="hr-${escapeAttr(key)}-t"><div class="health-line">${switchRow({ label: title, name: `${key}_on`, checked: on, labelClass: 'health-rule-head', labelId: `hr-${key}-t`, describedBy: [info] })}${infoButton(info, title)}</div>${infoBox(info, why)}<div class="health-knobs">${knobs}${extra}</div></div>`;
 }
 
 /** The panel's HTML for a health object and the team's members (active subscribers: { subscriber_id, job_title }). */
@@ -48,26 +50,27 @@ function healthPanelHTML(h, members) {
         .concat(members.map(m => `<option value="${escapeAttr(m.subscriber_id)}"${m.subscriber_id === rcpt ? ' selected' : ''}>${escapeHtml(m.subscriber_id)}${m.job_title ? ` (${escapeHtml(m.job_title)})` : ''}</option>`));
     if (rcpt && !names.includes(rcpt)) options.push(`<option value="${escapeAttr(rcpt)}" selected>${escapeHtml(rcpt)} (not in the team now)</option>`);
     const reviewers = fieldRow({ id: 'hk-default_reviewers', label: 'Default reviewers', name: 'default_reviewers', value: (h.default_reviewers || []).join(', '), wide: true, descFirst: true,
-        desc: `Names of agents on this team, up to ${HEALTH_LIMITS.reviewers}, separated by commas. None: reviews wait for the orchestrator.`,
-        attrs: { list: 'health-members', autocomplete: 'off', maxlength: 400, placeholder: 'Names, separated by commas' },
+        desc: `Names of agents on this team, up to ${HEALTH_LIMITS.reviewers}, separated by commas.`, hideDesc: true,
+        attrs: { list: 'health-members', autocomplete: 'off', maxlength: 400, placeholder: `Agent names (up to ${HEALTH_LIMITS.reviewers})` },
         after: `<datalist id="health-members">${names.map(n => `<option value="${escapeAttr(n)}">`).join('')}</datalist>` });
     const held = h.held_notice ? rule('held_notice', 'Tell the Operator about a held delivery',
         'A message Coral could not type into an agent (its terminal is on a dialog) and has held back for a while is reported to the Operator.',
         !!h.held_notice.on, knob('held_notice_after_min', 'After', h.held_notice.after_min, MIN_LO, MIN_HI, 'minutes held')) : '';
     return `<form class="health-form working-mode-form" autocomplete="off" novalidate>
-      <fieldset class="team-settings-section"><legend>The check</legend>
-        ${switchRow({ label: 'Send a health check to this team', name: 'on', checked: h.on, labelClass: 'health-rule-head', labelId: 'hc-on-t', titleTag: 'b', desc: 'Off until you turn it on. Coral checks in on the team every few minutes to spot stuck or idle agents and tells one person who is idle, stuck or waiting, and what changed. It uses tokens each time.', descId: 'hc-on-w', descClass: 'health-why', descInside: true, sep: '<br>', gap: '' })}
-        <div class="health-row">${knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'minutes')}
+      <fieldset class="team-settings-section" aria-label="Health check">
+        <div class="health-line">${switchRow({ label: 'Send health check', name: 'on', checked: h.on, labelClass: 'health-rule-head', labelId: 'hc-on-t', titleTag: 'b', desc: 'Uses tokens each time.', descId: 'hc-on-h', descClass: 'health-why', descInside: true, sep: ' ', describedBy: ['hc-on-w'] })}${infoButton('hc-on-w', 'the health check')}</div>
+        ${infoBox('hc-on-w', 'Checks in on the team every few minutes to spot stuck or idle agents, and tells one person who is idle, stuck or waiting, and what changed.')}
+        <div class="health-row">${knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'min')}
           <label class="health-wide-select">Send it to<select name="recipient">${options.join('')}</select></label></div>
-        ${switchRow({ label: 'Also post one short line when nothing needs attention', name: 'all_clear', checked: h.all_clear, labelClass: 'health-rule-head', labelId: 'hc-clear-t', desc: 'So a quiet team is not mistaken for a stopped check. Off: say nothing when all is well.', descId: 'hc-clear-w', descClass: 'health-why', descInside: true, sep: '<br>', gap: '' })}
+        <div class="health-line" data-check-dep>${switchRow({ label: 'Post when all is well', name: 'all_clear', checked: h.all_clear, labelClass: 'health-rule-head', labelId: 'hc-clear-t', describedBy: ['hc-clear-w'] })}${infoButton('hc-clear-w', 'posting when all is well')}</div>
+        ${infoBox('hc-clear-w', 'A short line so a quiet team is not mistaken for a stopped check.')}
       </fieldset>
       <details class="disclosure health-advanced"><summary>Reviews and automatic rules</summary>
       <fieldset class="team-settings-section"><legend>Reviews</legend>
-        <p class="working-mode-hint">Works whether or not the health check above is on.</p>
-        ${rule('auto_delegate', 'Hand reviews to the default reviewers', 'When a task is submitted for review and nobody is assigned, Coral delegates it. On unless you turn it off here.', !!h.auto_delegate.on, '', reviewers)}
+        ${rule('auto_delegate', 'Hand reviews to the default reviewers', 'When a task is submitted for review and nobody is assigned, Coral delegates it to the default reviewers; with none named, reviews wait for the orchestrator. Works whether or not the health check is on.', !!h.auto_delegate.on, '', reviewers)}
       </fieldset>
       <fieldset class="team-settings-section"><legend>Automatic rules</legend>
-        <p class="working-mode-hint">Coral acts on these by itself between checks, and only while the health check is on. Each can be turned off.</p>
+        <p class="working-mode-hint">Run only while the health check is on.</p>
         ${rule('claim_nudge', 'Nudge an idle agent to claim its work', 'An agent that is idle with ready work gets a reminder; past the count, the orchestrator is told.', !!h.claim_nudge.on,
             knob('claim_nudge_after_min', 'After', h.claim_nudge.after_min, MIN_LO, MIN_HI, 'minutes idle') + knob('claim_nudge_nudges', 'Nudges before telling the orchestrator', h.claim_nudge.nudges, N_LO, N_HI, 'nudges'))}
         ${rule('status_nudge', 'Ask a quiet agent for a status', 'An agent that has done nothing for a while is asked where it stands; if it stays quiet, the orchestrator is told.', !!h.status_nudge.on,
@@ -78,7 +81,7 @@ function healthPanelHTML(h, members) {
       </fieldset>
       </details>
       <div class="team-settings-actions health-actions"><button type="submit" class="btn btn-primary" disabled>Save health check</button><button type="button" class="btn health-reset">Reset to defaults</button>
-        <span class="health-state" role="status" aria-live="polite">Only the Operator on this computer can change these. Saved for this team only.</span></div>
+        <span class="health-state" role="status" aria-live="polite"></span></div>
     </form>`;
 }
 
@@ -89,7 +92,9 @@ const num = (form, name) => parseInt(field(form, name).value, 10);
 function readHealth(form, base) {
     const h = JSON.parse(JSON.stringify(base));
     h.on = field(form, 'on').checked;
-    h.interval_min = num(form, 'interval_min');
+    // what the three show is saved as shown; a number that is not a whole number (typed, then the check turned off) keeps what was read
+    const every = num(form, 'interval_min');
+    h.interval_min = Number.isInteger(every) ? every : base.interval_min;
     h.recipient = field(form, 'recipient').value;
     h.all_clear = field(form, 'all_clear').checked;
     h.default_reviewers = field(form, 'default_reviewers').value.split(',').map(s => s.trim()).filter((s, i, a) => s && a.indexOf(s) === i);
@@ -129,12 +134,20 @@ export async function mountHealthSettings(host, team, health) {
 /** Draw the form for base and wire it; said is a line to show at once (after a save). */
 function bind(host, team, base, members, said) {
     host.innerHTML = healthPanelHTML(base, members);
+    bindInfo(host);
     const form = host.querySelector('form');
     const save = form.querySelector('[type=submit]');
     const state = form.querySelector('.health-state');
     const idle = state.textContent;
     const say = (text, error = false) => { state.textContent = text; state.classList.toggle('health-error', error); };
+    // While the check is off, what only matters with it on (how often, to whom, the all-clear line) is dimmed and off: the screen says "turn this on first".
+    const syncCheck = () => {
+        const on = field(form, 'on').checked;
+        for (const name of ['interval_min', 'recipient', 'all_clear']) field(form, name).disabled = !on;
+        for (const el of form.querySelectorAll('.health-row, [data-check-dep]')) el.classList.toggle('off', !on);
+    };
     const syncRules = () => {
+        syncCheck();
         for (const card of form.querySelectorAll('.health-rule')) {
             const on = card.querySelector('.health-rule-head input').checked;
             card.classList.toggle('off', !on);

@@ -94,7 +94,7 @@ function _teamSettingsShell(workspaceMode) {
     const workspaceActions = workspaceMode
         ? ''  // sidebar panel: no close/back, the team context owns navigation
         : `<button type="button" class="modal-close-btn" data-dialog-close aria-label="Close"><span class="material-icons" aria-hidden="true">close</span></button>`;
-    dialog.innerHTML = `<header><div><h2 id="working-mode-title">Team settings</h2><p class="working-mode-team"></p></div>${workspaceActions}</header>
+    dialog.innerHTML = `<header><div><h2 id="working-mode-title">Team settings</h2><p class="working-mode-team"></p><p class="working-mode-note">Only the Operator on this computer can change these.</p></div>${workspaceActions}</header>
       <div class="working-mode-status" role="status" aria-live="polite"></div>
       <nav class="team-settings-tabs" aria-label="Team settings sections" role="tablist">
         <button type="button" role="tab" id="team-settings-tab-workflow" aria-selected="true" aria-controls="team-settings-workflow" tabindex="0" data-settings-tab="workflow" data-initial-focus autofocus>Workflow</button>
@@ -427,7 +427,11 @@ export async function showTeamWorkingMode(team, options = {}) {
                     crossTeam = stateResponse?.ok ? await stateResponse.json().catch(() => null) : null;
                 }
                 await fillMessagingPanel({ state: crossTeam, settings: boardSettings }).catch(() => fillMessagingPanel({}));
-                if (openHealthTab) document.getElementById('team-settings-tab-health')?.click();
+                if (openHealthTab) { // the Health check tab is selected, and the keyboard goes where the selection is (not left on the first tab)
+                    const healthTab = document.getElementById('team-settings-tab-health');
+                    healthTab?.click();
+                    if (healthTab && document.activeElement?.matches?.('[data-settings-tab]')) healthTab.focus();
+                }
             } else {
                 // The board settings could not be loaded: through Coral Hub the owner-only settings can be refused (#5323): the Messaging tab says why, in our words (and the Health check tab is not drawn).
                 await fillMessagingPanel({ refusal: boardSettingsResponse ? await refusalOf(boardSettingsResponse, answeredLocally(team)) : '' });

@@ -635,7 +635,13 @@
 1	team_cross_team_settings.js	turnOn
 1	team_health_settings.js	extra
 1	team_health_settings.js	held
-1	team_health_settings.js	knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'minutes')
+1	team_health_settings.js	infoBox('hc-clear-w', 'A short line so a quiet team is not mistaken for a stopped check.')
+1	team_health_settings.js	infoBox('hc-on-w', 'Checks in on the team every few minutes to spot stuck or idle agents, and tells one person
+1	team_health_settings.js	infoBox(info, why)
+1	team_health_settings.js	infoButton('hc-clear-w', 'posting when all is well')
+1	team_health_settings.js	infoButton('hc-on-w', 'the health check')
+1	team_health_settings.js	infoButton(info, title)
+1	team_health_settings.js	knob('interval_min', 'Every', h.interval_min, MIN_LO, MIN_HI, 'min')
 1	team_health_settings.js	knobs
 1	team_health_settings.js	names.map(n => `<option value="${escapeAttr(n)}">`).join('')
 1	team_health_settings.js	options.join('')
@@ -643,8 +649,8 @@
 1	team_health_settings.js	rule('claim_nudge', 'Nudge an idle agent to claim its work', 'An agent that is idle with ready work gets a rem
 1	team_health_settings.js	rule('mention_renudge', 'Remind the orchestrator of an unanswered mention', 'A message that @mentions the orch
 1	team_health_settings.js	rule('status_nudge', 'Ask a quiet agent for a status', 'An agent that has done nothing for a while is asked wh
-1	team_health_settings.js	switchRow({ label: 'Also post one short line when nothing needs attention', name: 'all_clear', checked: h.all_
-1	team_health_settings.js	switchRow({ label: 'Send a health check to this team', name: 'on', checked: h.on, labelClass: 'health-rule-hea
+1	team_health_settings.js	switchRow({ label: 'Post when all is well', name: 'all_clear', checked: h.all_clear, labelClass: 'health-rule-
+1	team_health_settings.js	switchRow({ label: 'Send health check', name: 'on', checked: h.on, labelClass: 'health-rule-head', labelId: 'h
 1	team_health_settings.js	switchRow({ label: title, name: `${key}_on`, checked: on, labelClass: 'health-rule-head', labelId: `hr-${key}-
 1	team_templates_ui.js	suffix
 1	team_working_mode.js	block(role, name, title, text)

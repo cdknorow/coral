@@ -1729,6 +1729,11 @@
 }
 
 /* Team settings, Health check tab (#4230): the check, then one card per automatic rule with its numbers and the server's limits under each. */
+.health-line { display: flex; align-items: flex-start; gap: 6px; }
+.health-line > label { flex: 0 1 auto; min-width: 0; }
+.health-line > .settings-info-btn { margin-top: 1px; }
+.health-form .settings-info-text { margin: 0 0 0 26px; font-size: calc(var(--fs-md) * .9); color: var(--text-secondary); }
+.working-mode-note { margin: 2px 0 0; font-size: 0.75rem; color: var(--text-secondary); }
 .health-form .health-rule-head { display: flex; align-items: flex-start; gap: 8px; font-weight: 600; }
 .health-form .health-rule-head input { margin-top: 3px; flex: none; }
 .health-form .health-why { display: block; color: var(--text-secondary); font-size: calc(var(--fs-md) * .9); font-weight: 400; margin: 0; } /* from the title's own size token, so it scales with the title (#4259) */
@@ -1736,6 +1741,7 @@
 .health-rule > .health-why { margin-left: 26px; }
 .health-knobs { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 2px 0 0 26px; }
 .health-knobs:empty { display: none; }
+.health-row.off, .health-line.off { opacity: .55; }
 .health-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; }
 .working-mode-form label.health-knob { display: flex; flex-direction: column; gap: 3px; font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
 .health-knob-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -2159,6 +2165,7 @@
 .health-form select, .health-form input[type="text"] { max-width: 100%; }
 /* A phone or a touch screen: the check rows and the inputs are touch-size targets. */
 @media (max-width: 767px), (pointer: coarse) {
+    .health-line > .settings-info-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); border-radius: var(--radius-md); margin-top: 0; }
     .health-form .health-rule-head { min-height: var(--control-touch-height, 44px); align-items: center; }
     .health-form .health-rule-head input { margin-top: 0; }
     .health-form input[type="number"], .health-form input[type="text"], .health-form select { min-height: var(--control-touch-height, 44px); }

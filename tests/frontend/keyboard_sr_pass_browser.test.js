@@ -131,9 +131,9 @@ const { removeBoards } = require('./helpers/board_cleanup');
         };
         const P = '#team-settings-health';
         const on = await ax(`${P} input[name=on]`);
-        assert.equal(on.name, 'Send a health check to this team'); assert.match(on.desc, /^Off until you turn it on\. Coral checks in on the team/);
+        assert.equal(on.name, 'Send health check'); assert.match(on.desc, /Uses tokens each time\./); assert.match(on.desc, /Checks in on the team every few minutes/); // the hint, and the explanation behind the (i)
         const every = await ax(`${P} input[name=interval_min]`);
-        assert.equal(every.name, 'Every minutes'); assert.equal(every.desc, '5 to 1440');
+        assert.equal(every.name, 'Every min'); assert.equal(every.desc, '5 to 1440');
         await ev(`document.querySelector('${P} .health-advanced').open = true; true`); // Reviews and the automatic rules are behind one disclosure (#5589 finding 11)
         const rev = await ax(`${P} input[name=default_reviewers]`);
         assert.equal(rev.name, 'Default reviewers'); assert.match(rev.desc, /^Names of agents on this team/);

@@ -62,11 +62,12 @@ const TEAM = 'health-bounds-team';
 
             // 3. The reviewers field: a short placeholder, the explanation above it.
             const rev = await ev(`(() => { const i = document.querySelector('#team-settings-health input[name=default_reviewers]'); return { ph: i.placeholder, hint: i.closest('label').querySelector('.health-limits').textContent }; })()`);
-            assert.equal(rev.ph, 'Names, separated by commas');
-            assert.match(rev.hint, /up to 8/); assert.match(rev.hint, /reviews wait for the orchestrator/);
+            assert.equal(rev.ph, 'Agent names (up to 8)');
+            assert.match(rev.hint, /up to 8/); // the range is the field's description for a screen reader (not drawn); what no reviewers means is behind the (i)
+            assert.match(await ev(`document.getElementById('hr-auto_delegate-w').textContent`), /reviews wait for the orchestrator/);
 
             // 4. The explanation scales with the title (the same ratio at 100 and 200 percent).
-            const ratio = await ev(`(() => { const r = document.querySelector('#team-settings-health .health-rule[data-rule=claim_nudge]'); return parseFloat(getComputedStyle(r.querySelector(':scope > .health-why')).fontSize) / parseFloat(getComputedStyle(r.querySelector('.health-rule-head')).fontSize); })()`);
+            const ratio = await ev(`(() => { const r = document.querySelector('#team-settings-health .health-rule[data-rule=claim_nudge]'); return parseFloat(getComputedStyle(r.querySelector(':scope > .settings-info-text')).fontSize) / parseFloat(getComputedStyle(r.querySelector('.health-rule-head')).fontSize); })()`);
             assert.ok(ratio > 0.8 && ratio < 1, `the explanation is a little smaller than the title, at every size (${ratio.toFixed(2)} at ${name})`);
             await ev(`document.getElementById('team-settings-workspace')?.remove(); true`);
         }
