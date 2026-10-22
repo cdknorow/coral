@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	nethttputil "net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -138,13 +140,35 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t Target, dec, raw string) {
-	stream := strings.Contains(r.Header.Get("Accept"), "text/event-stream")
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+	// Bound the wait for headers after the upload, including for event streams.
+	// A target can answer before it finishes reading the body. Serialize arming
+	// with stopping so a late body read cannot restart the timer on that reply.
+	var mu sync.Mutex
 	var timer *time.Timer
-	if !stream {
-		timer = time.AfterFunc(headerTimeout, cancel)
-		defer timer.Stop()
+	finished := false
+	arm := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if !finished && timer == nil {
+			timer = time.AfterFunc(headerTimeout, cancel)
+		}
+	}
+	stop := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		finished = true
+		if timer != nil {
+			timer.Stop()
+		}
+	}
+	defer stop()
+	request := r.WithContext(ctx)
+	if r.Body == nil || r.Body == http.NoBody {
+		arm()
+	} else {
+		request.Body = &headerTimeoutBody{ReadCloser: r.Body, remaining: r.ContentLength, complete: arm}
 	}
 
 	rp := &nethttputil.ReverseProxy{
@@ -172,9 +196,7 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
-			if timer != nil {
-				timer.Stop()
-			}
+			stop()
 			// Only the remote's own key refusal means the key was rejected (#3649): a
 			// 401 that is an application answer (session_token_required for a call
 			// without the remote's session token) or a 403 (demo limit reached,
@@ -208,7 +230,29 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			h.writeUpstreamErr(w, req.Context(), id, err)
 		},
 	}
-	rp.ServeHTTP(deadlineWriter(w), r.WithContext(ctx))
+	rp.ServeHTTP(deadlineWriter(w), request)
+}
+
+// headerTimeoutBody notifies the handler when a target consumes the upload.
+// A known-length body need not be read again for EOF, so count its bytes too.
+type headerTimeoutBody struct {
+	io.ReadCloser
+	remaining int64
+	complete  func()
+}
+
+func (b *headerTimeoutBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if b.remaining > 0 {
+		b.remaining -= int64(n)
+		if b.remaining == 0 {
+			b.complete()
+		}
+	}
+	if err == io.EOF {
+		b.complete()
+	}
+	return n, err
 }
 
 // respWriteTimeout bounds each write of a proxied reply to the browser (#4172). A browser that
