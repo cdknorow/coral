@@ -3,6 +3,7 @@ package inputlog
 import (
 	"bytes"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"path/filepath"
@@ -226,7 +227,7 @@ func TestDeleteKeptLog(t *testing.T) {
 	assert.ErrorIs(t, err, ErrOn, "never while on")
 
 	SetSetting(false)
-	assert.Contains(t, out.String(), path+" is kept, its older copy (.1) removed")
+	assert.Contains(t, out.String(), logsafe.Path(path)+" is kept, its older copy (.1) removed", "the log names the file with the home folder as ~ (#6053)")
 	assert.NoFileExists(t, path+".1", "the rotated copy goes when the log is turned off (#60)")
 	st := State()
 	assert.True(t, st.FileExists)
