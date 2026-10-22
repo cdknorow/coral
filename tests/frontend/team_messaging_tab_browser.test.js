@@ -48,7 +48,7 @@ const SID = '0b7c2e4a-5d1f-4c8e-9a36-2f4d8e1b7c90';
         const dot = q('.xt-head .update-state-dot'); const prim = q('.xt-primary');
         return { line: (q('.xt-line') || {}).textContent || '', dot: dot ? dot.dataset.k || '' : null, prim: prim ? { tag: prim.tagName, text: prim.textContent.replace(/\\s+/g, ' ').trim(), href: prim.getAttribute('href'), target: prim.target, rel: prim.rel, act: prim.dataset.act || '' } : null,
             msg: q('input[name=cross_team_messaging]') ? q('input[name=cross_team_messaging]').checked : null, files: q('input[name=cross_team_artifacts]') ? q('input[name=cross_team_artifacts]').checked : null,
-            labels: all('.xt-switches label').map(l => l.textContent.trim()), teams: all('.xt-teams li').map(li => ({ name: li.querySelector('b').textContent, sub: li.querySelector('.xt-sub').textContent })), manage: (q('.xt-links a') || {}).href || null,
+            labels: all('.xt-switches label').map(l => l.textContent.trim()), teams: all('.xt-teams li').map(li => ({ name: li.querySelector('b').textContent, sub: li.querySelector('.xt-sub').textContent })), manage: (q('.xt-links a') || {}).href || null, heading: (q('.xt-links .xt-h') || {}).textContent || null,
             how: q('.xt-how') ? q('.xt-how').open : null, sid: (q('.xt-sid') || {}).textContent || '', save: q('[type=submit]') ? q('[type=submit]').disabled : null, stateText: (q('.xt-state') || {}).textContent || '',
             unavailable: (q('.ct-unavailable') || {}).textContent || '', msgDisabled: q('input[name=cross_team_messaging]') ? q('input[name=cross_team_messaging]').disabled : null, filesDisabled: q('input[name=cross_team_artifacts]') ? q('input[name=cross_team_artifacts]').disabled : null, locked: (q('.xt-locked') || {}).textContent || '', saveHidden: q('.xt-save') ? q('.xt-save').hidden : null, pwn: !!window.__pwn, imgs: all('img').length + all('script').length, workflowHasSwitch: !!document.querySelector('#team-settings-workflow [name=cross_team_messaging], #team-settings-workflow [name=cross_team_artifacts]') }; })()`);
     const click = sel => ev(`document.querySelector(${JSON.stringify(sel)}).click(); true`);
@@ -94,7 +94,7 @@ const SID = '0b7c2e4a-5d1f-4c8e-9a36-2f4d8e1b7c90';
             // 2. the server's states: its words as text, the dot and the button from the state
             const base = { enforced: false, allowed: [], max_entries: 200, was_open: false, suggestions: [] };
             for (const [state, text, dot, prim, act, href] of [['waiting', 'No team on another Coral is linked to this team yet.', 'warm', 'Link a team on another Coral', '', HUB_LINKS], ['ready', '2 teams on other Corals can message this team.', 'ok', 'Link a team on another Coral', '', HUB_LINKS],
-                ['off', 'Cross-team messaging is off on <b>this</b> team. Turn it on in Team settings > Messaging.', '', 'Turn on cross-team messaging', 'turn-on', null], ['stale', 'Links are paused: this Coral has not heard from Coral Hub since 14:02.', 'bad', 'Check the Coral Hub connection', 'check-hub', null],
+                ['off', 'Cross-team messaging is off on <b>this</b> team. Turn it on in Team settings > Messaging.', '', 'Turn on cross-team messaging', 'turn-on', null], ['stale', 'Waiting for Coral Hub: messages from other teams are refused until this computer reconnects. Last heard from Coral Hub today 14:02. Check the connection in Settings > Coral Hub.', 'bad', 'Check the Coral Hub connection', 'check-hub', null],
                 ['old', 'This team was made before Coral Hub links existed, so it cannot use the relay.', 'bad', 'Create a new team', 'new-team', null]]) {
                 await setState({ ...base, status: { state, text }, links: state === 'old' ? links(1) : state === 'ready' ? links(2) : [] });
                 await open();
@@ -108,6 +108,13 @@ const SID = '0b7c2e4a-5d1f-4c8e-9a36-2f4d8e1b7c90';
                 if (state === 'stale') { await click(`${P} .xt-primary`); check(`${tag}: stale: the button opens Settings > Network and Hub`, (await ev(`window.__xt.calls.includes('settings:network')`))); }
                 if (state === 'old') { await ev(`window.__xt.calls.length = 0; true`); await click(`${P} .xt-primary`); check(`${tag}: old: the button opens the launch dialog on Agent Team`, JSON.stringify(await ev(`window.__xt.calls`)) === JSON.stringify(['launch', 'type:team'])); }
             }
+            // stale keeps the last known rows but says they are not active: the heading must not claim they can message this team
+            await setState({ ...base, status: { state: 'stale', text: 'Waiting for Coral Hub: messages from other teams are refused until this computer reconnects.' }, links: links(2) });
+            await open(); p = await panel();
+            check(`${tag}: stale: the rows stay, under a heading that says they are not active (${p.heading})`, p.teams.length === 2 && p.heading === 'Last known links (not active until Coral Hub reconnects)' && /refused until this computer reconnects/.test(p.line));
+            await shot(`messaging-stale-${view.name}-${view.theme}`);
+            await setState({ ...base, status: { state: 'ready', text: '2 teams on other Corals can message this team.' }, links: links(2) }); await open(); p = await panel();
+            check(`${tag}: ready: the heading says they can message this team (${p.heading})`, p.heading === 'Linked teams that can message this one');
             // a draft is not a state: with the server saying ready, turning the switch off in the form makes the line follow the form
             await setState({ ...base, status: { state: 'ready', text: '2 teams on other Corals can message this team.' }, links: links(2) });
             await board('/settings', 'PUT', { subscriber_id: 'Operator', cross_team_messaging: true });

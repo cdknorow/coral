@@ -360,17 +360,19 @@ func (h *BoardHandler) GetCrossTeamState(w http.ResponseWriter, r *http.Request)
 		for _, l := range h.links.linkedTo(project, now) {
 			live[l] = true
 		}
+		var latest time.Time
 		if stored, err := h.bs.TeamLinksTo(ctx, project); err == nil {
 			for _, l := range stored {
 				if !stale && !live[teamLink{l.SourceServer, l.SourceTeam, l.TargetTeam}] {
 					continue
 				}
 				links = append(links, map[string]any{"server_id": l.SourceServer, "server_label": l.SourceServerLabel, "team_id": l.SourceTeam, "team_label": l.SourceLabel, "refreshed": l.AppliedAt})
-				if t, err := time.Parse(time.RFC3339, l.AppliedAt); err == nil {
-					heard = t.Local().Format("15:04")
+				if t, err := time.Parse(time.RFC3339, l.AppliedAt); err == nil && t.After(latest) {
+					latest = t
 				}
 			}
 		}
+		heard = heardWords(latest, now)
 	} else {
 		for _, srv := range settings.CrossTeamServers {
 			links = append(links, map[string]any{"server_id": srv, "server_label": "", "team_label": "", "refreshed": ""})

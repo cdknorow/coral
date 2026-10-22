@@ -61,8 +61,8 @@ func TestTheOwnersStatusLineByState(t *testing.T) {
 		{"an old team that is off", false, false, false, 0, "", statusOld, "cannot use the relay"},
 		{"off", true, false, false, 2, "", statusOff, "Turn it on in Team settings > Messaging."},
 		{"off wins over stale", true, false, true, 2, "", statusOff, "off for this team"},
-		{"stale, when it last heard", true, true, true, 2, "14:02", statusStale, "since 14:02. Check its connection in Settings > Coral Hub."},
-		{"stale, never heard", true, true, true, 2, "", statusStale, "has not heard from Coral Hub. Check"},
+		{"stale, when it last heard", true, true, true, 2, "today 14:02", statusStale, "Waiting for Coral Hub: messages from other teams are refused until this computer reconnects. Last heard from Coral Hub today 14:02. Check the connection in Settings > Coral Hub."},
+		{"stale, never heard", true, true, true, 2, "", statusStale, "reconnects. Check the connection in Settings > Coral Hub."},
 		{"waiting", true, true, false, 0, "", statusWaiting, "No team on another Coral is linked to this team yet."},
 		{"ready, one", true, true, false, 1, "", statusReady, "1 team on another Coral can message this team."},
 		{"ready, two", true, true, false, 2, "", statusReady, "2 teams on other Corals can message this team."},
@@ -176,4 +176,12 @@ func TestARelayedMessageToAListedTeamNeedsItsSwitchOn(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, out)
 	on := relayedRec(e, relaySrc, "beta", "sw-"+strings.Repeat("b", 3), "Orchestrator", "")
 	assert.NotEqual(t, http.StatusNotFound, on.Code, "listed and switched on: admitted (%d %s)", on.Code, on.Body.String())
+}
+
+func TestHeardWordsGivesTheDateOnlyWhenItIsNotToday(t *testing.T) {
+	now := time.Date(2026, 10, 22, 16, 0, 0, 0, time.Local)
+	assert.Equal(t, "", heardWords(time.Time{}, now))
+	assert.Equal(t, "today 09:05", heardWords(time.Date(2026, 10, 22, 9, 5, 0, 0, time.Local), now))
+	assert.Equal(t, "21 Oct 23:59", heardWords(time.Date(2026, 10, 21, 23, 59, 0, 0, time.Local), now))
+	assert.Equal(t, "22 Oct 2025 09:05", heardWords(time.Date(2025, 10, 22, 9, 5, 0, 0, time.Local), now), "another year says the year")
 }

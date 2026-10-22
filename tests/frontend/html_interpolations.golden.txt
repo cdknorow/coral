@@ -626,7 +626,7 @@
 1	team_cross_team_settings.js	buttonFor(st)
 1	team_cross_team_settings.js	changed('cross_team_artifacts')
 1	team_cross_team_settings.js	changed('cross_team_messaging')
-1	team_cross_team_settings.js	links.length ? `<div class="xt-links"><div class="xt-h-row"><h3 class="xt-h">Linked teams that can message thi
+1	team_cross_team_settings.js	links.length ? `<div class="xt-links"><div class="xt-h-row"><h3 class="xt-h">${escapeHtml(linksHeading)}</h3> 
 1	team_cross_team_settings.js	links.map(l => `<li><span><b>${escapeHtml(l.team)}</b></span><span class="xt-sub">${[l.machine && escapeHtml(l
 1	team_cross_team_settings.js	switchRow({ label: 'Cross-team messaging', name: 'cross_team_messaging', checked: draft.messaging, disabled: !
 1	team_cross_team_settings.js	switchRow({ label: 'Share files with other teams', name: 'cross_team_artifacts', checked: draft.files, disable
