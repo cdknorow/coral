@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -239,5 +240,31 @@ func TestGetDiffBaseWithNoCommit(t *testing.T) {
 	}
 	if got := GetDiffBase(context.Background(), repo, ""); got != "HEAD" {
 		t.Fatalf("a repo with a commit keeps HEAD, got %q", got)
+	}
+}
+
+// #6144: a sha256 repository's empty tree has a different id from a sha1 repository's, and git does not know the wrong one. Skipped where git cannot make a sha256 repository.
+func TestGetDiffBaseWithNoCommitInASHA256Repository(t *testing.T) {
+	if !Available() {
+		t.Skip("git not installed")
+	}
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "-C", repo, "init", "-q", "--object-format=sha256").CombinedOutput(); err != nil {
+		t.Skipf("this git cannot make a sha256 repository: %v %s", err, out)
+	}
+	got := GetDiffBase(context.Background(), repo, "")
+	if got != emptyTreeSHA256 {
+		t.Fatalf("a sha256 repo with no commit diffs against its own empty tree, got %q", got)
+	}
+	// and git accepts it: a staged file shows up as a new file
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", repo, "add", "a.txt").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v %s", err, out)
+	}
+	out, err := exec.Command("git", "-C", repo, "diff", "--numstat", got, "--").CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "a.txt") {
+		t.Fatalf("git diff against the base: %v %q", err, out)
 	}
 }
