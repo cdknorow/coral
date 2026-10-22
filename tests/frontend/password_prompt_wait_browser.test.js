@@ -1,7 +1,8 @@
 // The first-run "Set a password" prompt waits its turn (#294, QA on a fresh data folder): it opened over the New Agent dialog
-// and covered its error, and it took the Esc a focused terminal was sent. Now it waits until no other dialog is on screen and
-// the keyboard is not in a terminal, asks the server again, and opens; with nothing in the way it opens at once, so a fresh
-// install still sees it. The server's /api/system/auth-status is stubbed on the page. Run against an isolated dev server.
+// and covered its error, and it took the Esc a focused terminal was sent. Now it waits until no other dialog is on screen and,
+// with the keyboard in a terminal, until the person has stopped typing for 3 s (people type there, so it never waits for the
+// terminal to lose focus), asks the server again, and opens; with nothing in the way it opens at once, so a fresh install
+// still sees it. The server's /api/system/auth-status is stubbed on the page. Run against an isolated dev server.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
@@ -40,15 +41,28 @@ const { connect } = require('./agent_view_harness');
         await waitFor(`window.__settled === true`, 'the promise settled once it opened', 2000);
         await dismiss();
 
-        console.log('2. the keyboard in a terminal: the prompt waits without taking it, then opens when it leaves');
+        console.log('2. typing in a terminal: the prompt waits while the person types, and opens there once they stop for 3 s');
         await ev(`(() => { const x = document.createElement('div'); x.className = 'xterm'; x.id = 'qa-xterm'; x.style.cssText = 'position:fixed;left:0;top:0;width:200px;height:100px';
             x.innerHTML = '<textarea id="qa-xterm-input"></textarea>'; document.body.appendChild(x); document.getElementById('qa-xterm-input').focus(); return true; })()`);
         await ask();
-        await pause(1800);
-        assert.equal(await shown(), false, 'not while the terminal has the keyboard');
-        assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-xterm-input', 'the terminal keeps the keyboard');
-        await ev(`document.getElementById('qa-xterm-input').blur(); true`);
-        await waitFor(`!!document.getElementById('set-password-modal')`, 'the prompt once the terminal let go', 4000);
+        const type = () => ev(`document.getElementById('qa-xterm-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true })); true`);
+        for (let i = 0; i < 10; i++) { await pause(500); await type(); } // 5 s of typing, a key every half second
+        assert.equal(await shown(), false, 'not while the person types');
+        assert.equal(await ev(`document.activeElement && document.activeElement.id`), 'qa-xterm-input', 'the terminal keeps the keyboard while they type');
+        const stopped = Date.now();
+        await waitFor(`!!document.getElementById('set-password-modal')`, 'the prompt once the typing stopped, the terminal still focused', 6000);
+        const quiet = Date.now() - stopped;
+        assert.ok(quiet >= 2500, `it opened ${quiet} ms after the last key: not mid-typing`);
+        await dismiss();
+        await ev(`document.getElementById('qa-xterm').remove(); true`);
+
+        console.log('2b. a terminal that just has the keyboard (no typing): it still opens after the quiet spell');
+        await ev(`(() => { const x = document.createElement('div'); x.className = 'xterm'; x.id = 'qa-xterm'; x.style.cssText = 'position:fixed;left:0;top:0;width:200px;height:100px';
+            x.innerHTML = '<textarea id="qa-xterm-input"></textarea>'; document.body.appendChild(x); document.getElementById('qa-xterm-input').focus(); return true; })()`);
+        await ask();
+        await pause(1500);
+        assert.equal(await shown(), false, 'not at once over a focused terminal');
+        await waitFor(`!!document.getElementById('set-password-modal')`, 'the prompt after the quiet spell', 5000);
         await dismiss();
         await ev(`document.getElementById('qa-xterm').remove(); true`);
 
@@ -64,7 +78,7 @@ const { connect } = require('./agent_view_harness');
         await ev(`window.__ps = true; document.getElementById('qa-other-dialog').remove(); true`);
         await waitFor(`window.__settled === true`, 'the promise settled', 4000);
         assert.equal(await shown(), false, 'no prompt once a password is set');
-        console.log('PASS password prompt waits for open dialogs and a focused terminal, and still opens on its own');
+        console.log('PASS password prompt waits for open dialogs and for typing in a terminal to stop, and still opens on its own');
     } finally {
         await client.close();
     }
