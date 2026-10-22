@@ -141,7 +141,7 @@
     "agentType": "codex",
     "model": "gpt-x",
     "prompt": "Write the code.\nCarefully.",
-    "flags": "--dangerously-bypass-approvals-and-sandbox",
+    "flags": "--sandbox workspace-write -a never",
     "capabilities": null
   },
   "team_full": {
@@ -180,7 +180,10 @@
         "agent_type": "codex",
         "model": "gpt-x",
         "flags": [
-          "--dangerously-bypass-approvals-and-sandbox"
+          "--sandbox",
+          "workspace-write",
+          "-a",
+          "never"
         ]
       }
     ],
