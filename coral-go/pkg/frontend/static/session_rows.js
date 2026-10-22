@@ -10,7 +10,7 @@ import { isStaleSession, staleReason, serversShown } from './server_status.js';
 import { sessionServer, keyLabel, sessionTeamKey } from './server_base.js';
 import { redrawLiveList } from './list_hooks.js';
 import { state } from './state.js';
-import { modelName, providerName, sessionLevel } from './model_labels.js';
+import { modelName, providerName, sessionLevel, typeName } from './model_labels.js';
 import { terminalGoneChip } from './terminal_gone.js';
 import { browserLocal } from './safe_storage.js';
 import { onBuilt } from './lazy_dom.js';
@@ -273,7 +273,9 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
     // -> board_job_title -> Agent/Terminal). The prompt is never a name; it
     // shows on the goal line below when there is no summary.
     const identity = resolveSessionIdentity(s);
-    const displayLabel = identity;
+    // An agent called by its folder under that folder's own group would read the same twice: its CLI tells it from the group ("my-app · Claude", #6029).
+    const sameAsGroup = !isTerminal && groupName && String(identity).toLowerCase() === String(keyLabel(groupName)).toLowerCase() && typeName(s.agent_type);
+    const displayLabel = sameAsGroup ? `${identity} \u00b7 ${typeName(s.agent_type)}` : identity;
     // A long name is cut with an ellipsis, and agents of one team share a prefix: its last characters never shrink, so the end that tells them apart stays ("release-engineering-coo...-4-9").
     const [nameHead, nameTail] = splitLabel(displayLabel);
     const reminder = getCachedAgentAvailability(s);
@@ -321,7 +323,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
     const clickHandler = stale ? '' : ` data-on-click="session-open" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}"`;
     // Focusable list item (not a button: it contains the kebab, the open-tab
     // anchor and the sparkle). Selection is delegated (see _wireListKeyboard).
-    const ariaLabel = `${identity}, ${stateInfo.label}`
+    const ariaLabel = `${displayLabel}, ${stateInfo.label}`
         + (ctxHigh ? `, context ${s.context_pct >= 100 ? 'full' : Math.round(s.context_pct) + '%'}` : '')
         + (unreadCount > 0 ? `, ${unreadCount} unread` : '');
     const stuckClass = stateInfo.key === 'stuck' ? ' is-stuck' : '';
