@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,9 +36,14 @@ type agentTerm struct {
 	enters  int
 	onType  func(text string) // what the agent's screen does with typed text and its Enter
 	onEnter func()            // what an Enter pressed again does
+	// screenDelay makes each read of the screen take this long (nanoseconds): a pass of the send loop whose screen read ends after the confirm wait did not start it (#6089).
+	screenDelay atomic.Int64
 }
 
 func (a *agentTerm) AgentScreen(context.Context, string, string, string) (string, error) {
+	if d := a.screenDelay.Load(); d > 0 {
+		time.Sleep(time.Duration(d))
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.screen, nil

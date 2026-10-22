@@ -174,6 +174,26 @@ func TestHumanSendWithGoneHooks(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, code)
 		assert.Equal(t, "not_confirmed", res.code, "unchanged for an agent whose hooks can run")
 	})
+	t.Run("a screen read that outlasts the confirm wait does not make the pass give up before it looked at the transcript", func(t *testing.T) {
+		h := setupHooksGone(t, liveDir(t))
+		h.term.show(codexReady(t, ""))
+		var mu sync.Mutex
+		window := []map[string]any{{"type": "assistant", "content": "ready"}}
+		sendTranscriptReader = func(*SessionsHandler, context.Context, string, string) *jsonl.Transcript {
+			mu.Lock()
+			defer mu.Unlock()
+			return &jsonl.Transcript{Window: append([]map[string]any(nil), window...), Total: len(window)}
+		}
+		h.term.onType = func(text string) {
+			h.term.show(codexReady(t, ""))
+			mu.Lock()
+			window = append(window, map[string]any{"type": "user", "content": text})
+			mu.Unlock()
+			h.term.screenDelay.Store(int64(200 * time.Millisecond)) // the confirm wait is 80 ms: every pass's screen read ends after it began
+		}
+		code, res := run(h, "please run the migration")
+		assert.Equal(t, http.StatusOK, code, res.body)
+	})
 	t.Run("hooks that are there but sent nothing: the transcript still confirms it", func(t *testing.T) {
 		h := setupHooksGone(t, liveDir(t))
 		h.term.show(codexReady(t, ""))

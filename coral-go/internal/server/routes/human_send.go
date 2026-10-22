@@ -271,7 +271,10 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 		if h.promptSubmittedAfter(ctx, sessionID, base) {
 			return nil
 		}
-		if (hooksGone || time.Since(typedAt) >= confirmWait) && tx.tookPrompt(h, ctx, sessionID, agentType, text) {
+		// One reading of the clock for this pass: the transcript is looked at once the confirm wait is over, and the pass may only give up on the message if it looked. Two readings (this one and the one
+		// that guards the give-up below) could straddle the end of the wait, so a pass that had not yet looked at the transcript went on to say "not confirmed" (#6089: a CI run did).
+		waited := time.Since(typedAt) >= confirmWait
+		if (hooksGone || waited) && tx.tookPrompt(h, ctx, sessionID, agentType, text) {
 			return nil // the transcript gained the message: the agent took it, whatever its hooks said (#6089)
 		}
 		screen, ok := h.humanScreen(ctx, name, agentType, sessionID)
@@ -288,7 +291,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 			if open, _ := ptymanager.PromptOnScreen(screen); command && open {
 				return nil // the command opened its own menu (/model's picker): it ran
 			}
-			if time.Since(typedAt) < confirmWait {
+			if !waited {
 				continue
 			}
 			if busy && ptymanager.InputBoxEmpty(screen) {
