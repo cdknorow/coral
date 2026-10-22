@@ -142,33 +142,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t Target, dec, raw string) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	// Bound the wait for headers after the upload, including for event streams.
-	// A target can answer before it finishes reading the body. Serialize arming
-	// with stopping so a late body read cannot restart the timer on that reply.
-	var mu sync.Mutex
-	var timer *time.Timer
-	finished := false
-	arm := func() {
-		mu.Lock()
-		defer mu.Unlock()
-		if !finished && timer == nil {
-			timer = time.AfterFunc(headerTimeout, cancel)
-		}
-	}
-	stop := func() {
-		mu.Lock()
-		defer mu.Unlock()
-		finished = true
-		if timer != nil {
-			timer.Stop()
-		}
-	}
-	defer stop()
+	deadlines := &proxyDeadlines{cancel: cancel, abortBody: func() {
+		cancel()
+		// Context cancellation stops the upstream; a read deadline also releases
+		// a transport goroutine blocked reading the browser's request body.
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now())
+	}}
+	defer deadlines.stop()
 	request := r.WithContext(ctx)
 	if r.Body == nil || r.Body == http.NoBody {
-		arm()
+		deadlines.bodyProgress(0, true)
 	} else {
-		request.Body = &headerTimeoutBody{ReadCloser: r.Body, remaining: r.ContentLength, complete: arm}
+		deadlines.startBody()
+		request.Body = &headerTimeoutBody{ReadCloser: r.Body, remaining: r.ContentLength, progress: deadlines.bodyProgress}
 	}
 
 	rp := &nethttputil.ReverseProxy{
@@ -196,7 +182,7 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
-			stop()
+			deadlines.headersDone()
 			// Only the remote's own key refusal means the key was rejected (#3649): a
 			// 401 that is an application answer (session_token_required for a call
 			// without the remote's session token) or a 403 (demo limit reached,
@@ -224,7 +210,7 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			return directResponseFilter(resp)
 		},
 		ErrorHandler: func(w http.ResponseWriter, req *http.Request, err error) {
-			if r.Context().Err() != nil {
+			if r.Context().Err() != nil && !deadlines.bodyExpired() {
 				return // browser went away
 			}
 			h.writeUpstreamErr(w, req.Context(), id, err)
@@ -233,25 +219,115 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 	rp.ServeHTTP(deadlineWriter(w), request)
 }
 
+const (
+	uploadStallTimeout = 30 * time.Second
+	uploadTimeout      = 10 * time.Minute
+)
+
+// proxyDeadlines bounds the upload separately from waiting for response headers.
+// An early response stops only the header timer: its upload still has bounds.
+// All transitions, including timeout callbacks, serialize with handler cleanup.
+type proxyDeadlines struct {
+	mu                                 sync.Mutex
+	cancel                             context.CancelFunc
+	abortBody                          func()
+	header, idle, total                *time.Timer
+	lastProgress                       time.Time
+	bodyDone, headersReceived, stopped bool
+	bodyTimedOut                       bool
+}
+
+func (d *proxyDeadlines) startBody() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.lastProgress = time.Now()
+	d.idle = time.AfterFunc(uploadStallTimeout, func() { d.expireBody(true) })
+	d.total = time.AfterFunc(uploadTimeout, func() { d.expireBody(false) })
+}
+
+func (d *proxyDeadlines) expireBody(idle bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.stopped || d.bodyDone {
+		return
+	}
+	if idle {
+		// A read may have made progress as this callback was starting. Check
+		// the current idle deadline instead of trusting a stale timer firing.
+		if left := uploadStallTimeout - time.Since(d.lastProgress); left > 0 {
+			d.idle.Reset(left)
+			return
+		}
+	}
+	d.bodyTimedOut = true
+	d.abortBody()
+}
+
+func (d *proxyDeadlines) bodyProgress(n int, complete bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.stopped || d.bodyDone {
+		return
+	}
+	if n > 0 {
+		d.lastProgress = time.Now()
+	}
+	if complete {
+		d.bodyDone = true
+		stopTimer(d.idle)
+		stopTimer(d.total)
+		if !d.headersReceived {
+			d.header = time.AfterFunc(headerTimeout, d.cancel)
+		}
+	}
+}
+
+func (d *proxyDeadlines) headersDone() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.headersReceived = true
+	stopTimer(d.header)
+}
+
+// Expiring the browser read deadline can cancel its request context as well;
+// retain the timeout reply instead of treating that as a browser disconnect.
+func (d *proxyDeadlines) bodyExpired() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.bodyTimedOut
+}
+
+func (d *proxyDeadlines) stop() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.stopped = true
+	stopTimer(d.header)
+	stopTimer(d.idle)
+	stopTimer(d.total)
+}
+
+func stopTimer(t *time.Timer) {
+	if t != nil {
+		t.Stop()
+	}
+}
+
 // headerTimeoutBody notifies the handler when a target consumes the upload.
 // A known-length body need not be read again for EOF, so count its bytes too.
 type headerTimeoutBody struct {
 	io.ReadCloser
 	remaining int64
-	complete  func()
+	progress  func(int, bool)
 }
 
 func (b *headerTimeoutBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
+	complete := err == io.EOF
 	if b.remaining > 0 {
 		b.remaining -= int64(n)
-		if b.remaining == 0 {
-			b.complete()
-		}
+		complete = complete || b.remaining == 0
 	}
-	if err == io.EOF {
-		b.complete()
-	}
+	b.progress(n, complete)
 	return n, err
 }
 
