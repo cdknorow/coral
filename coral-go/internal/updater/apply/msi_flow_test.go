@@ -84,6 +84,7 @@ type fakeMSI struct {
 	healthErr  []error
 	notes      []string
 	holdHook   func(path string)
+	onMsiexec  func() // runs as msiexec does (a test ends the apply's context here)
 	// registeredAfterInstall, when set, is what Windows reports as registered after the update's install (another product).
 	registeredAfterInstall string
 }
@@ -130,6 +131,9 @@ func (f *fakeMSI) RegisteredVersion() (string, error) {
 func (f *fakeMSI) Msiexec(ctx context.Context, args ...string) (int, error) {
 	f.rec("msiexec " + args[0])
 	f.msiArgs = append(f.msiArgs, args)
+	if f.onMsiexec != nil {
+		f.onMsiexec()
+	}
 	if args[0] == "/i" {
 		b, _ := os.ReadFile(args[1])
 		f.sawAtExec = b
@@ -464,6 +468,30 @@ func TestAnInterruptedWindowsApplyIsFinishedByTheNext(t *testing.T) {
 }
 
 var _ io.Closer = fakeHeld{}
+
+// N3: an unanswered consent prompt is bounded by coral-update's context. When it ends, msiexec is ended (exit 1), the result is failed with
+// the reason timeout, the old Coral is started again, and the journal stays for the next run to check what Windows has registered.
+func TestAnUnansweredConsentPromptEndsWithTheContextAndStartsTheOldCoral(t *testing.T) {
+	r := newMSIRig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.msi.onMsiexec = cancel
+	r.msi.codes = []int{1}
+	res := RunMSI(ctx, r.cfg)
+	assert.Equal(t, ResultFailed, res.Result)
+	assert.Equal(t, "timeout", res.FailedStage)
+	assert.Equal(t, "start", r.msi.calls[len(r.msi.calls)-1], "the old Coral is started again")
+	assert.NotContains(t, r.msi.calls, "healthy")
+	assert.Equal(t, "timeout", r.lastHistory().Reason)
+	_, err := os.Stat(filepath.Join(r.data, stage.UpdatesDir, msiJournalFile))
+	assert.NoError(t, err, "the journal stays for the next run")
+
+	// The next run: the old version is still registered (Windows Installer rolled back), so the journal goes and a normal apply runs.
+	r.msi.onMsiexec, r.msi.calls, r.msi.msiArgs = nil, nil, nil
+	res = r.run()
+	assert.Equal(t, ResultRelaunched, res.Result, res.FailedStage)
+	assert.Equal(t, "msiexec /i", r.msi.calls[4])
+}
 
 // #82's click: the apply honours only a click for what is staged now. No clicked version (no marker) or another one (a newer version staged
 // since, a stale marker): refused before anything is verified or asked, and the old Coral is started again.
