@@ -69,9 +69,20 @@ func TestWindowsIdleShellStopsWithinThePoliteStop(t *testing.T) {
 	name := "claude-68-idle"
 	require.NoError(t, b.Spawn(name, "claude", t.TempDir(), "0069", "powershell.exe -NoProfile", 120, 40))
 	time.Sleep(2 * time.Second)
+	assertPoliteStop(t, func(grace time.Duration) { require.NoError(t, b.KillWithin(name, grace)) }, "an idle shell is told to exit once the Ctrl-Cs are in, never force-killed")
+}
+
+// assertPoliteStop runs kill with a longer grace and asserts the stop was polite (#261): the polite stop takes 1-2 s, but on a loaded
+// machine (a full test run) it once took 7 s, past the 5 s grace, and a wall-clock bound under 5 s failed. What the stop tests
+// prove is that the polite path ends the shell, not the machine's speed: so the force kill is given room it should never use,
+// and the test fails only if the stop was forced or hung.
+func assertPoliteStop(t *testing.T, kill func(grace time.Duration), why string) {
+	t.Helper()
+	forced := forcedKills.Load()
 	start := time.Now()
-	require.NoError(t, b.Kill(name))
-	assert.Less(t, time.Since(start), 3*time.Second, "an idle shell is told to exit once the Ctrl-Cs are in, not killed after 5 s")
+	kill(15 * time.Second)
+	assert.Equal(t, forced, forcedKills.Load(), "%s (took %s)", why, time.Since(start).Round(time.Millisecond))
+	assert.Less(t, time.Since(start), 12*time.Second, "%s: the stop never hangs", why)
 }
 
 // #5706 (Security's answer a): the stop's control keys are in the input debug log: the first Ctrl-C (session.killWithin), the second
@@ -85,9 +96,7 @@ func TestWindowsStopRecordsItsControlKeysAndKeepsItsTiming(t *testing.T) {
 	name := "claude-5706-stop"
 	require.NoError(t, b.Spawn(name, "claude", t.TempDir(), "5706", "powershell.exe -NoProfile", 120, 40))
 	time.Sleep(2 * time.Second)
-	start := time.Now()
-	require.NoError(t, b.Kill(name))
-	assert.Less(t, time.Since(start), 3*time.Second, "the same polite stop as without the log")
+	assertPoliteStop(t, func(grace time.Duration) { require.NoError(t, b.KillWithin(name, grace)) }, "the same polite stop as without the log")
 	inputlog.Flush()
 	raw, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
 	require.NoError(t, err)
@@ -112,4 +121,16 @@ func TestRootIsShellReadsTheImageOfTheProcess(t *testing.T) {
 
 	assert.False(t, rootIsShell(os.Getpid()), "the test binary is not a shell")
 	assert.False(t, rootIsShell(0x7ffffff0), "a process that does not exist is not one")
+}
+
+// The force kill is counted (#261): a stop given no time for the polite exit is a forced one, so assertPoliteStop can fail.
+func TestAForcedStopIsCounted(t *testing.T) {
+	naming.SetDefaultLogDir(t.TempDir())
+	b := NewPTYBackend()
+	name := "claude-261-forced"
+	require.NoError(t, b.Spawn(name, "claude", t.TempDir(), "0261", "powershell.exe -NoProfile", 120, 40))
+	time.Sleep(2 * time.Second)
+	forced := forcedKills.Load()
+	require.NoError(t, b.KillWithin(name, time.Millisecond))
+	assert.Equal(t, forced+1, forcedKills.Load())
 }

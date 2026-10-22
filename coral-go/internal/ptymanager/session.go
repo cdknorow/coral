@@ -303,6 +303,10 @@ func (s *session) replayBytes() []byte {
 	return out
 }
 
+// forcedKills counts the stops that ended with the force kill: the polite stop missed its grace. The stop tests read it (#261):
+// on a loaded machine they give the polite stop longer, and assert it was polite rather than how long it took.
+var forcedKills atomic.Int64
+
 // kill terminates the session and all child processes.
 func (s *session) kill() error { return s.killWithin(5 * time.Second) }
 
@@ -324,6 +328,7 @@ func (s *session) killWithin(grace time.Duration) error {
 		// Clean exit
 	case <-time.After(grace):
 		// Force kill
+		forcedKills.Add(1)
 		s.proc.ForceKill()
 		<-s.proc.Done()
 	}
