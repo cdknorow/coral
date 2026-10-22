@@ -64,6 +64,9 @@ func (h *SystemHandler) loadCustomModels(ctx context.Context) ([]agentmodels.Cus
 
 // GetCustomModels lists the custom models and the limits Settings validates against. GET /api/custom-models
 func (h *SystemHandler) GetCustomModels(w http.ResponseWriter, r *http.Request) {
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5996)
+		return
+	}
 	models, err := h.loadCustomModels(r.Context())
 	if err != nil {
 		errInternalServer(w, "the custom models could not be read")
@@ -75,6 +78,9 @@ func (h *SystemHandler) GetCustomModels(w http.ResponseWriter, r *http.Request) 
 // PutCustomModels replaces the whole set: the list is validated as a whole, in one transaction, and a problem names the row, the family and the field with nothing changed.
 // PUT /api/custom-models {"models":[{"family","value","display_name","efforts"}]}
 func (h *SystemHandler) PutCustomModels(w http.ResponseWriter, r *http.Request) {
+	if refuseNonOwner(w, r) { // through Coral Hub the owner's alone (#5996)
+		return
+	}
 	// Replace-all must never be a way to wipe the set by accident (#5485): the body is an object with exactly one key, "models", whose value is a list (empty to clear). A body with no
 	// "models" (a typo, {} or null) or with a key this route does not know is refused, so a misspelt "models" cannot clear everything.
 	var raw map[string]json.RawMessage

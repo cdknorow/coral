@@ -395,6 +395,12 @@ var routeTable = cat(
 	// and the machine refuses anyone but the owner (the stamped marker, hubrole.go): a grantee at launch tier gets 403. The hub may set only
 	// the health part of a board's settings; the cross-team fields stay local (#3377, #4379).
 	owner(OwnerRefuse, rules(http.MethodPut, TierLaunch, "/api/board/{project}/settings")),
+	// The custom models (#5996): the models a person adds by hand for a provider, for the model chip's "Add a model…", the launch and restart forms and Settings > Agents. The list is
+	// View, the replace-all write is Launch, and both are the owner's alone through the hub (the stamped marker, hubrole.go): a grantee gets 403 owner_only and the dashboard hides
+	// "Add a model…" for them. This computer's own requests are not refused. The PUT keeps its validation and limits (custom_models.go); the models themselves reach everyone in the
+	// catalog (GET /api/agents/models).
+	owner(OwnerRefuse, rules(http.MethodGet, TierView, "/api/custom-models")),
+	owner(OwnerRefuse, rules(http.MethodPut, TierLaunch, "/api/custom-models")),
 	// Deleting an artifact from the hub's Artifacts tab (#5575): Launch, and the machine refuses anyone but the owner (the stamped marker, hubrole.go); each delete is
 	// recorded in the Operator actions with the hub user. Pasted images are artifacts too, so this removes them as well.
 	owner(OwnerRefuse, rules(http.MethodDelete, TierLaunch, "/api/artifacts/{hex64}")),

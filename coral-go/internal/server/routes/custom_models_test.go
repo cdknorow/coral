@@ -15,6 +15,7 @@ import (
 
 	"github.com/subgentic/coral/internal/agentmodels"
 	"github.com/subgentic/coral/internal/store"
+	"github.com/subgentic/coral/pkg/tunnel"
 )
 
 // #5480: the operator's custom models. The set is replaced as a whole, validated as a whole; both catalogs the pickers read carry the customs after the CLI's models.
@@ -222,12 +223,65 @@ func TestACustomModelThatNoLongerPassesIsNeverServed(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), `"fine"`)
 }
 
-// The writes are the operator's, never an agent's, and never through Coral Hub.
-func TestCustomModelRoutesAreTheOperatorsAndNeverThroughTheHub(t *testing.T) {
+// The writes are the operator's, never an agent's. Through Coral Hub they are the machine owner's (#5996): the tunnel rows say so and the handlers refuse anyone else.
+func TestCustomModelRoutesAreTheOperatorsAndThroughTheHubTheOwners(t *testing.T) {
 	for _, key := range []string{"GET /api/custom-models", "PUT /api/custom-models"} {
 		_, ok := operatorOnlyRoutes[key]
 		assert.True(t, ok, key+" is in the operator-only table")
 	}
+	_, mode := tunnel.OwnerRoute(http.MethodGet, "/api/custom-models")
+	assert.Equal(t, tunnel.OwnerRefuse, mode, "the list is the owner's through the hub")
+	_, mode = tunnel.OwnerRoute(http.MethodPut, "/api/custom-models")
+	assert.Equal(t, tunnel.OwnerRefuse, mode, "the write is the owner's through the hub")
+	assert.Equal(t, tunnel.TierView, tunnel.Classify(http.MethodGet, "/api/custom-models", ""), "the list is View")
+	assert.Equal(t, tunnel.TierLaunch, tunnel.Classify(http.MethodPut, "/api/custom-models", ""), "the write is Launch")
+}
+
+func customCall(h *SystemHandler, method, body string, hdr map[string]string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, "/api/custom-models", strings.NewReader(body))
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	if method == http.MethodGet {
+		h.GetCustomModels(rec, req)
+	} else {
+		h.PutCustomModels(rec, req)
+	}
+	return rec
+}
+
+const oneCustomModel = `{"models":[{"family":"claude","value":"my-model","display_name":"Mine","efforts":[]}]}`
+
+// Through Coral Hub the owner can read and replace the list; a grantee, even at launch tier, is refused with owner_only and nothing changes; this computer is as before.
+func TestCustomModelsThroughTheHubAreTheOwnersAlone(t *testing.T) {
+	withLabel(t, ownerLabel, nil)
+	h := customRig(t)
+
+	rec := customCall(h, http.MethodGet, "", ownerHeaders(ownerLabel))
+	assert.Equal(t, http.StatusOK, rec.Code, "the owner reads the list through the hub")
+	rec = customCall(h, http.MethodPut, oneCustomModel, ownerHeaders(ownerLabel))
+	assert.Equal(t, http.StatusOK, rec.Code, "the owner writes it through the hub: "+rec.Body.String())
+	assert.Len(t, getCustom(t, h)["models"], 1)
+
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		rec = customCall(h, method, `{"models":[]}`, granteeHeaders())
+		assert.Equal(t, http.StatusForbidden, rec.Code, method+" by a grantee")
+		assert.Contains(t, rec.Body.String(), "owner_only", method+" by a grantee says why")
+	}
+	assert.Len(t, getCustom(t, h)["models"], 1, "a refused write changed nothing")
+
+	assert.Equal(t, http.StatusOK, customCall(h, http.MethodGet, "", nil).Code, "this computer reads as before")
+	assert.Equal(t, http.StatusOK, customCall(h, http.MethodPut, `{"models":[]}`, nil).Code, "this computer writes as before")
+	assert.Len(t, getCustom(t, h)["models"], 0)
+}
+
+// A machine that has not recorded its owner's label refuses even the owner through the hub (the check fails closed, as for the other owner routes).
+func TestCustomModelsThroughTheHubNeedTheRecordedOwnerLabel(t *testing.T) {
+	withLabel(t, "", nil)
+	h := customRig(t)
+	assert.Equal(t, http.StatusForbidden, customCall(h, http.MethodGet, "", ownerHeaders(ownerLabel)).Code)
+	assert.Equal(t, http.StatusForbidden, customCall(h, http.MethodPut, oneCustomModel, ownerHeaders(ownerLabel)).Code)
 }
 
 // The switcher types "/model <id>" into the agent's terminal: an id with [ ] @ : / + and the longest one are typed exactly, and one that is not an id is refused with nothing typed.

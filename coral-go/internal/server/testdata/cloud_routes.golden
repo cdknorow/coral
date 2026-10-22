@@ -87,7 +87,7 @@ GET /api/board/{project}/working-mode view
 GET /api/board/{project}/working-mode/presets view
 GET /api/call-metrics/summary view
 GET /api/cloud/status never
-GET /api/custom-models never
+GET /api/custom-models view
 GET /api/filesystem/is-git launch
 GET /api/filesystem/list launch
 GET /api/folder-tags view
@@ -370,7 +370,7 @@ PUT /api/cloud/hub-cross-team never
 PUT /api/cloud/hub-relaunch never
 PUT /api/cloud/max-mode never
 PUT /api/cloud/redact-tokens never
-PUT /api/custom-models never
+PUT /api/custom-models launch
 PUT /api/scheduled/jobs/{jobID} never
 PUT /api/sessions/history/{sessionID}/notes never
 PUT /api/sessions/live/{name}/display-name interact

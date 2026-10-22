@@ -127,7 +127,8 @@ func TestHubSweepNoHomeInAnyViewRoute(t *testing.T) {
 	owner := map[string]string{tunnel.ViaHeader: cloud.ViaSecret(), tunnel.HubRoleHeader: "owner", tunnel.HubUserHeader: sweepOwner}
 	ownerOnly := map[string]bool{"/api/artifacts": true, "/api/artifacts/{id}": true, "/api/artifacts/{id}/meta": true, "/api/artifacts/{id}/comments": true, "/api/artifacts/{id}/readers": true,
 		"/api/board/{project}/artifacts": true, "/api/board/{project}/cross-team/settings": true, "/api/session-artifacts": true, "/api/board/{project}/tasks/{taskID}/artifact-content": true,
-		"/api/saved": true, "/api/saved/{id}/message": true} // saved for later is the owner's alone since #5753
+		"/api/saved": true, "/api/saved/{id}/message": true, // saved for later is the owner's alone since #5753
+		"/api/custom-models": true} // the custom models are the owner's alone through the hub (#5996)
 
 	golden, err := os.ReadFile("testdata/cloud_routes.golden")
 	require.NoError(t, err)

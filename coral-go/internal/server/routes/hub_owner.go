@@ -77,6 +77,8 @@ var ownerRefusals = map[string]string{
 	tunnel.OwnerRouteKey("PUT", "/api/board/{project}/settings"):                    "only the account this computer is linked to can change board settings through Coral Hub",
 	tunnel.OwnerRouteKey("GET", tunnel.PromptInspectionPath):                        "only the account this computer is linked to can read the prompts through Coral Hub",
 	tunnel.OwnerRouteKey("GET", "/api/board/{project}/cross-team/settings"):         textHubSwitchOwnerOnly,
+	tunnel.OwnerRouteKey("GET", "/api/custom-models"):                               textCustomModelsOwnerOnly,
+	tunnel.OwnerRouteKey("PUT", "/api/custom-models"):                               textCustomModelsOwnerOnly,
 	tunnel.OwnerRouteKey("GET", "/api/saved"):                                       textSavedOwnerOnly,
 	tunnel.OwnerRouteKey("GET", "/api/saved/{id}/message"):                          textSavedOwnerOnly,
 	tunnel.OwnerRouteKey("POST", "/api/saved"):                                      textSavedOwnerOnly,
@@ -88,6 +90,8 @@ var ownerRefusals = map[string]string{
 	tunnel.OwnerRouteKey("POST", "/api/board/{project}/cross-team/files/disable"):   textHubSwitchOwnerOnly,
 	tunnel.OwnerRouteKey("POST", "/api/hub-auto-accept"):                            textHubAutoAcceptOwnerOnly,
 }
+
+const textCustomModelsOwnerOnly = "through Coral Hub only the account this computer is linked to can add or change custom models (#5996)"
 
 const textSavedOwnerOnly = "through Coral Hub the saved messages are for the account this computer is linked to only (#5753)"
 

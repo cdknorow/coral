@@ -26,6 +26,7 @@ GET /api/board/{project}/tasks/{id}/cost redact
 GET /api/board/{project}/working-mode redact
 GET /api/board/{project}/working-mode/presets redact
 GET /api/call-metrics/summary redact
+GET /api/custom-models redact
 GET /api/folder-tags redact
 GET /api/folder-tags/{name} redact
 GET /api/goals/metrics redact
