@@ -57,6 +57,61 @@ func TestInstallCommandsAreThoseOfTheVendorsPagesAndBothTablesAgree(t *testing.T
 	}
 }
 
+// #5885, Windows: the macOS line is "curl ... | bash" and its note says export PATH in ~/.zshrc, none of which works there (no bash; curl in PowerShell is Invoke-WebRequest). The vendor's page gives
+// Windows its own PowerShell line; the server answers with it on a Windows server, and the dashboard's table carries the same value as its fallback.
+func TestWindowsGetsTheVendorsPowerShellLineAndNoUnixAdvice(t *testing.T) {
+	const ps = "irm https://antigravity.google/cli/install.ps1 | iex"
+	for _, typ := range []string{at.Agy, at.Antigravity, at.Gemini} {
+		win, mac := cliInfoFor("windows", typ), cliInfoFor("darwin", typ)
+		require.NotNil(t, win, typ)
+		assert.Equal(t, ps, win.InstallCommand, typ)
+		assert.Contains(t, win.InstallNote, `%LOCALAPPDATA%\agy\bin`, typ)
+		assert.Contains(t, win.InstallNote, "new terminal", typ)
+		assert.Equal(t, "curl -fsSL https://antigravity.google/cli/install.sh | bash", mac.InstallCommand, typ+": macOS and Linux keep their line")
+		assert.Equal(t, mac, cliInfoFor("linux", typ), typ)
+	}
+	for typ := range agentCLIs {
+		win := cliInfoFor("windows", typ)
+		for _, text := range []string{win.InstallCommand, win.InstallNote} {
+			for _, unix := range []string{"bash", "export ", "~/.local", ".zshrc", ".bashrc"} {
+				assert.NotContains(t, text, unix, typ+": a Windows value has no Unix advice")
+			}
+		}
+	}
+	for _, typ := range []string{at.Claude, at.Codex, at.Pi} {
+		assert.Equal(t, cliInfoFor("darwin", typ), cliInfoFor("windows", typ), typ+": the npm lines are the same on Windows")
+	}
+	raw, err := os.ReadFile(filepath.Join("..", "..", "pkg", "frontend", "static", "cli_check.js"))
+	require.NoError(t, err)
+	js := string(raw)
+	assert.Contains(t, js, "winCmd: '"+ps+"'", "the dashboard's table has the Windows command")
+	assert.Contains(t, js, strings.ReplaceAll(cliInfoFor("windows", at.Agy).InstallNote, `\`, `\\`), "and the Windows note, word for word")
+	assert.Nil(t, cliInfoFor("windows", "nope"))
+}
+
+// Where a CLI is looked for on Windows when it is not on PATH includes where Antigravity's installer puts agy.exe, so a Coral that was running before the install finds it.
+func TestWindowsCommonDirsHaveAntigravitysFolder(t *testing.T) {
+	dirs := windowsCommonDirs(`C:\Users\a\AppData\Roaming`, `C:\Users\a\AppData\Local`)
+	assert.Contains(t, dirs, filepath.Join(`C:\Users\a\AppData\Local`, "agy", "bin"))
+	assert.Contains(t, dirs, filepath.Join(`C:\Users\a\AppData\Local`, "npm"), "npm's folders stay")
+	assert.Contains(t, dirs, filepath.Join(`C:\Users\a\AppData\Roaming`, "npm"))
+	assert.Empty(t, windowsCommonDirs("", ""), "no base variable: no folder relative to the working directory")
+}
+
+func TestFindCLIInCommonPathsFindsAgyInItsWindowsFolder(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("the Windows lookup")
+	}
+	local := t.TempDir()
+	t.Setenv("LOCALAPPDATA", local)
+	t.Setenv("APPDATA", t.TempDir())
+	dir := filepath.Join(local, "agy", "bin")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	exe := filepath.Join(dir, "agy.exe")
+	require.NoError(t, os.WriteFile(exe, []byte("x"), 0o755))
+	assert.Equal(t, exe, FindCLIInCommonPaths("agy"))
+}
+
 // The old Antigravity address (/install.sh, which is "not found" now) must not come back anywhere Coral shows or documents it.
 func TestOldAntigravityInstallAddressIsGone(t *testing.T) {
 	old := "antigravity.google/" + "install.sh"
@@ -98,7 +153,7 @@ func TestDashboardInstallTableMirrorsTheServer(t *testing.T) {
 	assert.Contains(t, js, agyInstallNote, "the agy PATH note is the same words")
 	urls := regexp.MustCompile(`https://[^'"\s]+`).FindAllString(js, -1)
 	for _, u := range urls {
-		if strings.Contains(u, "install.sh") || strings.HasPrefix(u, "https://registry") {
+		if strings.Contains(u, "install.sh") || strings.Contains(u, "install.ps1") || strings.HasPrefix(u, "https://registry") { // an installer line, not a page
 			continue
 		}
 		found := false
