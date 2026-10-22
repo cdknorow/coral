@@ -235,6 +235,11 @@ body.panel-dragging .sidebar {
     flex-shrink: 0;
     margin-top: auto;
     display: flex;
+    /* Pinned to the bottom of the sidebar while the agent list scrolls under it (#6159): with 20+ agents the button was below the fold. It still takes its own space at the end, so the last agent is not covered. */
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: var(--bg-secondary);
 }
 
 .sidebar-search {
