@@ -13,7 +13,7 @@ Coral runs the agent CLIs you already use, each in its own terminal session, and
 |---|---|
 | **An agent CLI** | At least one of Claude Code (`claude`), Codex (`codex`), Antigravity (`agy`) or Pi (`pi`), installed **and signed in**. Coral does not install or authenticate these. Follow each vendor's own instructions: [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://github.com/openai/codex), [Antigravity](https://antigravity.google), [Pi](https://pi.dev). |
 | **git** | Needed for worktree, branch and diff features. |
-| **tmux** | Included in the macOS app. Linux needs your own tmux for the default backend. See [Platforms](#platforms). |
+| **tmux** | Optional. Coral runs agents in its own built-in terminal by default; tmux is for agents that keep running when Coral quits. Included in the macOS app; Linux needs your own tmux if you choose it. See [Platforms](#platforms). |
 
 ## Platforms
 
@@ -21,7 +21,7 @@ Coral runs the agent CLIs you already use, each in its own terminal session, and
 |---|---|---|
 | **macOS** (13 or later) | [`Coral.dmg`](https://github.com/subgentic/coral/releases/latest/download/Coral.dmg), a universal (Apple Silicon and Intel) signed and notarized app | Bundled tmux 3.7c with its terminal definitions. Keep the app bundle intact. |
 | **Windows** (x64) | [`Coral-x64.msi`](https://github.com/subgentic/coral/releases/latest/download/Coral-x64.msi) (installer) or [`Coral-x64-portable.zip`](https://github.com/subgentic/coral/releases/latest/download/Coral-x64-portable.zip). Not code-signed: SmartScreen warns that the publisher is unknown, so check the file as the [README](https://github.com/subgentic/coral#verify-your-download) describes before you run it. The default port is 8450, not 8420. | Not used: Windows uses the native PTY backend (ConPTY; there is no tmux on Windows). |
-| **Linux** (x86-64 or ARM64) | [`coral-linux-amd64.tar.gz`](https://github.com/subgentic/coral/releases/latest/download/coral-linux-amd64.tar.gz) (x86-64) or [`coral-linux-arm64.tar.gz`](https://github.com/subgentic/coral/releases/latest/download/coral-linux-arm64.tar.gz) (ARM64), statically linked CLI/server tools, no desktop app | Not bundled. Install tmux yourself, or start with `--backend pty`. |
+| **Linux** (x86-64 or ARM64) | [`coral-linux-amd64.tar.gz`](https://github.com/subgentic/coral/releases/latest/download/coral-linux-amd64.tar.gz) (x86-64) or [`coral-linux-arm64.tar.gz`](https://github.com/subgentic/coral/releases/latest/download/coral-linux-arm64.tar.gz) (ARM64), statically linked CLI/server tools, no desktop app | Not bundled. Optional: install tmux yourself if you choose the tmux backend. |
 
 These file names always point to the newest release. Each release also keeps versioned names (`Coral.v<version>.dmg`, `Coral-<version>-x64.msi`, `Coral-<version>-x64-portable.zip`, `coral-linux-<arch>-<version>.tar.gz`): the same files.
 
@@ -75,7 +75,7 @@ Open Coral from Applications on macOS or the Start menu on Windows. From a termi
 coral --no-browser
 ```
 
-On Linux without tmux, use `coral --backend pty --no-browser`. Keep the terminal open while the server runs. On first launch, review the Terms of Service and accept them if you agree.
+On Linux, start it with `coral --no-browser`. Keep the terminal open while the server runs: agents run in Coral's built-in terminal and stop when you quit Coral. To keep agents running after Coral quits, install tmux and choose it in Settings > Terminal, or start with `--backend tmux`. On first launch, review the Terms of Service and accept them if you agree.
 
 By default Coral stores data in `~/.coral`, uses port **8420**, and listens on this computer only (`127.0.0.1`). Open `http://localhost:8420`.
 
@@ -87,7 +87,7 @@ Use the address printed at startup if it differs from the default. If the browse
 | `--host <addr>` | Address to bind (also `CORAL_HOST`). Only honored for network addresses when [remote access](remote-access.md) is enabled. |
 | `--remote` | Allow remote access for this run without saving the setting (see [remote access](remote-access.md)). With no `--host`, Coral then listens on every interface. |
 | `--port <n>` | Port (default 8420; also `CORAL_PORT`) |
-| `--backend tmux\|pty` | Terminal backend. Default `tmux` on macOS/Linux; `pty` on Windows. |
+| `--backend tmux\|pty` | Terminal backend. Default `pty` (the built-in terminal: agents stop when you quit Coral); `tmux` keeps agents running after Coral quits. `pty` only on Windows. |
 | `--no-browser` | Do not open a browser on startup |
 
 `coral --version` (or `coral -v`, or `coral version`) prints the version of the program you run. A running server's version is in its startup log and in `/api/system/status`.

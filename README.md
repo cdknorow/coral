@@ -55,7 +55,7 @@ Coral is a single Go binary that runs on your laptop or a remote box and wraps t
 
 It works by managing three things:
 
-- **Separate sessions and worktrees.** Every agent gets its own tmux session. Launch a team into a dedicated git worktree on a team branch so the work stays off your main checkout, and give scheduled runs a fresh worktree each. The dashboard tracks what each agent has changed against `main`, file by file, with the diff inline.
+- **Separate sessions and worktrees.** Every agent gets its own terminal session. Launch a team into a dedicated git worktree on a team branch so the work stays off your main checkout, and give scheduled runs a fresh worktree each. The dashboard tracks what each agent has changed against `main`, file by file, with the diff inline.
 
 <p align="center">
   <img alt="An agent's changed-files panel: four files changed versus the previous commit, with an inline diff of cooldown.go and the agent's chat alongside" src="assets/readme/changed-files.png" width="100%" />
@@ -93,7 +93,7 @@ Five things Coral does that your agent's own tooling doesn't:
 
 4. **Teams that survive you closing the lid.** Sleep a whole team; the processes stop, the conversations don't. Wake it tomorrow — or after upgrading Coral — and every agent resumes its own session where it left off. Crashed agents are detected and parked the same way.
 
-5. **Run it anywhere, operate it from anywhere — including your phone.** Put Coral on a build server or a spare Mac and the agents run there, in tmux, whether or not your laptop is open. The dashboard and the board come with it: open the URL from any browser, or scan a QR code and get a mobile client built for the phone — live terminals, the board, and permission prompts you can answer from the couch. Slack or Discord pings you when someone's stuck.
+5. **Run it anywhere, operate it from anywhere — including your phone.** Put Coral on a build server or a spare Mac and the agents run there, whether or not your laptop is open (they stop if Coral quits there; choose tmux in Settings to keep them running). The dashboard and the board come with it: open the URL from any browser, or scan a QR code and get a mobile client built for the phone — live terminals, the board, and permission prompts you can answer from the couch. Slack or Discord pings you when someone's stuck.
 
 Everything else — cron-scheduled runs, shell-and-agent workflows with OAuth tokens injected, per-task cost, one searchable history across every vendor's transcripts, a board-health monitor that escalates idle work to the orchestrator, agents that publish their own UI panels — is in the [feature list](#features) below.
 
@@ -156,10 +156,10 @@ First install and sign in to at least one agent CLI: [Claude Code](https://code.
   mkdir -p "$HOME/.local/share/coral"
   tar -xzf coral-linux-amd64.tar.gz -C "$HOME/.local/share/coral"
   export PATH="$HOME/.local/share/coral:$PATH"
-  coral --backend pty --no-browser
+  coral --no-browser
   ```
 
-  Add that `PATH` line to your shell's startup file for later terminals. To use the default tmux backend instead, install tmux and omit `--backend pty`.
+  Add that `PATH` line to your shell's startup file for later terminals. Agents run in Coral's built-in terminal and stop when you quit Coral. To keep them running after Coral quits, install tmux and choose it in Settings > Terminal, or start with `--backend tmux`.
 
 On first launch, review the Terms of Service and accept them if you agree. For a terminal launch, keep the terminal open while Coral runs. Open the local address printed at startup. If the browser shows **Create a password**, enter and confirm a password, then choose **Create password and open Coral**. The app can open a signed-in browser directly; you can also run `coral open` from a terminal on the server.
 
@@ -227,7 +227,7 @@ Define a team of agents, each with a role and a system prompt. For example: an O
 
 ### 2. Agents work in their own sessions
 
-Coral starts every agent in a separate tmux session. Launch a team with the worktree option and Coral checks the team out into `~/.coral/worktrees/<team>` on a `coral-team/<team>` branch, so the agents share one branch and your main checkout stays clean. Scheduled and one-shot jobs get a worktree per run. If you want each agent on a separate branch, set the team's working mode to `worktrees` and the agents are instructed to create their own.
+Coral starts every agent in a separate terminal session. Launch a team with the worktree option and Coral checks the team out into `~/.coral/worktrees/<team>` on a `coral-team/<team>` branch, so the agents share one branch and your main checkout stays clean. Scheduled and one-shot jobs get a worktree per run. If you want each agent on a separate branch, set the team's working mode to `worktrees` and the agents are instructed to create their own.
 
 ### 3. Agents communicate via the message board
 

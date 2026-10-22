@@ -13,8 +13,10 @@ Open the agent's terminal in the dashboard and look for a trust or sign-in promp
 
 ## "tmux not found" or launch fails
 
+Coral runs each agent in its own built-in terminal (pty) by default, so tmux is needed only if you chose it (Settings > Terminal, or `--backend tmux`). With the built-in terminal, agents stop when you quit Coral. If tmux is chosen and missing:
+
 - **macOS app:** tmux 3.7c is bundled. If it is reported missing, the app bundle was probably modified or partially copied. Re-download it.
-- **Linux or source builds:** install tmux, or start Coral with `--backend pty`.
+- **Linux or source builds:** install tmux (the launch dialog shows the command for your system), or choose the built-in terminal in Settings > Terminal or with `--backend pty`.
 - `CORAL_TMUX_BIN=/path/to/tmux` selects a specific executable. Order: that override, the bundled tmux (macOS), `PATH`, common install locations, your login shell.
 
 ### tmux version mismatch after an upgrade
