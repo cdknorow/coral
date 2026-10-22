@@ -13,22 +13,25 @@ import "strings"
 
 // gitExecKeys are the keys (lower case) whose value, when it is not empty, names a program git runs.
 var gitExecKeys = map[string]bool{
-	"core.hookspath":            true,
-	"core.fsmonitor":            true,
-	"core.sshcommand":           true,
-	"core.pager":                true,
-	"core.editor":               true,
-	"core.askpass":              true,
-	"core.gitproxy":             true,
-	"credential.helper":         true,
-	"diff.external":             true,
-	"sequence.editor":           true,
-	"gpg.program":               true,
-	"gpg.ssh.program":           true,
-	"gpg.x509.program":          true,
-	"gpg.openpgp.program":       true,
-	"gpg.ssh.defaultkeycommand": true,
-	"include.path":              true,
+	"core.hookspath":             true,
+	"core.fsmonitor":             true,
+	"core.sshcommand":            true,
+	"core.pager":                 true,
+	"core.editor":                true,
+	"core.askpass":               true,
+	"core.gitproxy":              true,
+	"credential.helper":          true,
+	"diff.external":              true,
+	"sequence.editor":            true,
+	"gpg.program":                true,
+	"gpg.ssh.program":            true,
+	"gpg.x509.program":           true,
+	"gpg.openpgp.program":        true,
+	"gpg.ssh.defaultkeycommand":  true,
+	"include.path":               true,
+	"uploadpack.packobjectshook": true,
+	"interactive.difffilter":     true,
+	"sendemail.smtpserver":       true, // a path to a program when it starts with /
 }
 
 // gitExecKey says whether setting key (any case) to value makes git run a program. An empty value resets the setting and is harmless.
@@ -42,7 +45,14 @@ func gitExecKey(key, value string) (bool, string) {
 	}
 	parts := strings.Split(k, ".")
 	last := parts[len(parts)-1]
+	v := strings.ToLower(strings.TrimSpace(value))
 	switch {
+	case k == "protocol.ext.allow" && v != "never", k == "protocol.allow" && v == "always":
+		return true, key // git's ext:: transport runs the command in the URL
+	case parts[0] == "pager" && len(parts) >= 2 && !gitBoolWord[v]:
+		return true, key // pager.<command> is a program unless it is true or false
+	case parts[0] == "trailer" && len(parts) >= 3 && (last == "cmd" || last == "command"):
+		return true, key
 	case parts[0] == "alias" && len(parts) > 1 && strings.HasPrefix(strings.TrimSpace(value), "!"):
 		return true, key // an alias that is a shell command
 	case parts[0] == "submodule" && last == "update" && strings.HasPrefix(strings.TrimSpace(value), "!"):
@@ -68,6 +78,9 @@ func gitExecKey(key, value string) (bool, string) {
 	}
 	return false, ""
 }
+
+// gitBoolWord are the values of a boolean git setting: pager.<command> set to one of them runs nothing.
+var gitBoolWord = map[string]bool{"true": true, "false": true, "yes": true, "no": true, "on": true, "off": true, "1": true, "0": true}
 
 // gitKeyValue splits "key=value" as git's -c does (no "=" is the key set to nothing).
 func gitKeyValue(kv string) (key, value string) {
@@ -164,7 +177,7 @@ func gitConfigWriteRisk(args []string) string {
 				readOnly = true
 			}
 		case a == "--get" || a == "--get-all" || a == "--get-regexp" || a == "--get-urlmatch" || a == "--list" || a == "-l" ||
-			a == "--unset" || a == "--unset-all" || a == "--remove-section" || a == "--name-only" || a == "--get-color" || a == "--get-colorbool":
+			a == "--unset" || a == "--unset-all" || a == "--remove-section" || a == "--get-color" || a == "--get-colorbool":
 			readOnly = true
 		case strings.HasPrefix(a, "--rename-section=") || strings.HasPrefix(a, "--get-urlmatch="):
 			readOnly = true
