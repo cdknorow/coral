@@ -238,14 +238,14 @@ func (h *SessionsHandler) generatePersistedDiff(ctx context.Context, workdir str
 		size += int(fi.Size())
 	}
 	newDiff, err := diffNewFiles(ctx, workdir, files)
+	droppedByCount := 0 // new files past the one-at-a-time path's file limit
 	if err != nil {
 		// An older git (no --pathspec-from-file before 2.26): one file at a time, as before, but bounded.
 		slog.Debug("changes diff: new files in one git diff failed; diffing them one at a time", "workdir", workdir, "error", err)
-		var dropped int
-		if newDiff, dropped, err = diffNewFilesOneByOne(ctx, workdir, files); err != nil {
+		if newDiff, droppedByCount, err = diffNewFilesOneByOne(ctx, workdir, files); err != nil {
 			return nil, err
 		}
-		skipped += dropped
+		skipped += droppedByCount
 	}
 	// A new file's patch is a little bigger than the file: keep whole sections only, while they fit what the limit leaves after
 	// the notes and the tracked changes, so the note counts every new file that isn't in the diff.
@@ -261,7 +261,7 @@ func (h *SessionsHandler) generatePersistedDiff(ctx context.Context, workdir str
 		kept = append(kept, sec...)
 	}
 	if skipped > 0 {
-		notes = append(notes, diffNote("%d more new files are not in this diff (it is limited to %d MiB, and to %d files when diffed one at a time); they stay in the working directory", skipped, diffPersistMax>>20, untrackedOneByOneMax)...)
+		notes = append(notes, diffNote("%s", skippedNewFilesNote(skipped, droppedByCount > 0))...)
 	}
 	out := append(notes, trackedDiff...)
 	if len(out) > 0 && out[len(out)-1] != '\n' {
@@ -352,4 +352,18 @@ func gitOutput(ctx context.Context, workdir string, args ...string) ([]byte, err
 		return nil, fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
 	}
 	return out, nil
+}
+
+// skippedNewFilesNote is the diff's note for the new files left out (#279): how many, the limit that left them out (the file
+// limit only when an older git made it apply), and that they are still in the folder.
+func skippedNewFilesNote(skipped int, byCount bool) string {
+	what := fmt.Sprintf("%d new files are", skipped)
+	if skipped == 1 {
+		what = "1 new file is"
+	}
+	limit := fmt.Sprintf("%d MiB", diffPersistMax>>20)
+	if byCount {
+		limit += fmt.Sprintf(" and, with this computer's older git, to %d new files", untrackedOneByOneMax)
+	}
+	return fmt.Sprintf("%s left out of this diff, which is limited to %s. They are still in the agent's working folder.", what, limit)
 }
