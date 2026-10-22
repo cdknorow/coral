@@ -152,7 +152,7 @@ func TestDownloadOfAMissingArtifactSaysItMayLiveOnAnotherCoral(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, want := range []string{"HTTP 404", "not on this computer", "another Coral", "coral-board send --attach"} {
+	for _, want := range []string{"Coral says: this artifact is not on this computer", "(HTTP 404)", "not on this computer", "another Coral", "coral-board send --attach"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("missing %q in %v", want, err)
 		}
