@@ -1,0 +1,26 @@
+name: probe-app-ua
+on:
+  push:
+    branches: [trial/app-ua-6100]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: mingw for cgo
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) { choco install mingw --version=16.1.0 -y --no-progress; if ($LASTEXITCODE -ne 0) { throw "choco install mingw failed" } }
+          gcc --version
+      - name: The User-Agent the app's web view sends
+        shell: pwsh
+        run: ./probe/app_ua.ps1
