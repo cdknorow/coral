@@ -55,11 +55,13 @@ jobs:
         run: |
           if (-not $env:VERSION) {
             # The newest release, a pre-release too (the releases are pre-releases until the operator promotes one), whose packages are all published.
-            $tag = gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName'
+            $tag = gh release list --repo "${{ github.repository }}" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName'
             if ($LASTEXITCODE -ne 0 -or -not $tag) { throw "could not read the latest release" }
             $env:VERSION = $tag.TrimStart('v')
             echo "VERSION=$env:VERSION" >> $env:GITHUB_ENV
           }
+          # Whether typed at dispatch or resolved, the version is a plain release version before it becomes a gh argument (never a name with spaces or one that reads as an option).
+          if ($env:VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$') { throw "not a release version: $env:VERSION" }
           "smoke testing v$env:VERSION"
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           gh release download "v$env:VERSION" --repo "${{ github.repository }}" --pattern "Coral-*-x64-portable.zip" --dir dist

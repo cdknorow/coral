@@ -118,6 +118,10 @@ def check_dryrun(dry):
         errs.append("windows-runner-dryrun.yml pins a default release for the dispatch input: it goes stale (use an empty default: the latest release)")
     if re.search(r"\|\|\s*'\d+\.\d+\.\d+'", dry):
         errs.append("windows-runner-dryrun.yml pins a fallback release for a push: it goes stale (the step resolves the latest release)")
+    if "--exclude-drafts" not in dry:
+        errs.append("windows-runner-dryrun.yml lists releases without --exclude-drafts")
+    if "'^[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.]+)?$'" not in dry or "-notmatch" not in dry:
+        errs.append("windows-runner-dryrun.yml does not check the version is a plain release version before it reaches gh")
     if "gh release list" not in dry or "--limit 1" not in dry:
         errs.append("windows-runner-dryrun.yml does not resolve the latest published release (gh release list --limit 1)")
     if re.search(r"\bwix build\b", dry):
@@ -164,6 +168,8 @@ def main():
         ("the dry run pins its input's default release", dry.replace('default: ""', 'default: "1.4.153"', 1)),
         ("the dry run pins a push fallback release", dry.replace("${{ github.event.inputs.version }}", "${{ github.event.inputs.version || '1.4.153' }}", 1)),
         ("the dry run stops resolving the latest release", dry.replace("gh release list", "gh release view", 1)),
+        ("the dry run lists drafts too", dry.replace("--exclude-drafts ", "", 1)),
+        ("the dry run stops validating the version", dry.replace("-notmatch", "-match", 1)),
         ("the dry run builds an MSI", dry + "\n          wix build tools\\coral.wxs -o x.msi\n"),
     ]
     for name, text in dry_mutations:
