@@ -11,6 +11,7 @@ import (
 	"time"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/executil"
 )
 
 // The "gemini" agent type is Antigravity compatibility: it runs agy (GetCLIInfo says so: its binary and installer are agy's), with agy's flags (--add-dir, --conversation, --mode,
@@ -33,7 +34,9 @@ func cliHelpWithTimeout(path string, timeout time.Duration) string {
 	cmd := exec.CommandContext(ctx, path, "--help")
 	cmd.Env = cliHelpEnv()
 	cmd.Stdout, cmd.Stderr = &out, &out
-	_ = cmd.Run() // a help that fails or times out is read as far as it got
+	executil.NoCwdSearch(cmd) // Windows: a shim looks for its interpreter in the current folder first (#183)
+	executil.HideWindow(cmd)  // Windows: no console window of its own when Coral has none (#211)
+	_ = cmd.Run()             // a help that fails or times out is read as far as it got
 	return out.String()
 }
 
