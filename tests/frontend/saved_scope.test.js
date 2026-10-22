@@ -46,7 +46,7 @@ const { pathToFileURL } = require('node:url');
     assert.equal(m.withScope('?team=other&q=a', t), '?team=coral-go-team&q=a', 'the scope wins over a leftover team');
     // the empty line
     assert.equal(m.scopeEmpty(m.ALL, 'open'), 'Bookmark a message to save it here.');
-    assert.equal(m.scopeEmpty(a, 'open'), 'Nothing saved from QA Engineer yet. Use the bookmark on a message to save it for later.');
+    assert.equal(m.scopeEmpty(a, 'open'), 'Nothing saved from QA Engineer yet.');
     assert.equal(m.scopeEmpty(a, 'done'), 'Nothing marked done.');
     console.log('saved_scope: ok');
 })().catch(e => { console.error(e); process.exit(1); });

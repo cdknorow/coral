@@ -57,8 +57,6 @@
 2	changed_files.js	copyBtn
 1	changed_files.js	dels
 2	changed_files.js	editBtn
-1	changed_files.js	emptyOptions
-1	changed_files.js	emptySelect
 1	changed_files.js	f.additions
 1	changed_files.js	f.deletions
 1	changed_files.js	fileIconHtml(name)

@@ -134,7 +134,7 @@ async function run() {
     // Condition waits (#3118). Soft: on timeout they return and the next check() reports what is wrong.
     const { waitFor, waitStable, nextFrame } = require('./helpers/wait').bind(evalInPage);
     const until = (expression, what, timeout = 5000) => waitFor(expression, what, { soft: true, timeout });
-    const selected = sid => until(`document.querySelector('#live-sessions-list .session-group-item.active')?.dataset.sessionId === ${JSON.stringify(sid)} && /^Sending to:/.test(document.getElementById('command-input').placeholder)`, `${sid} selected`);
+    const selected = sid => until(`document.querySelector('#live-sessions-list .session-group-item.active')?.dataset.sessionId === ${JSON.stringify(sid)} && /^Message /.test(document.getElementById('command-input').placeholder)`, `${sid} selected`);
     // Keep the HTTP stub and the rendered list in lockstep.
     const setFixture = (sessions) => evalInPage(`window.__fixture = ${JSON.stringify(sessions)}; window._coralSetLiveSessions(window.__fixture); true`);
 
@@ -311,8 +311,8 @@ async function run() {
         }))()`);
         check('header is Agent for a prompt-only session (prompt is not identity)', header.name === 'coral-go', header.name);
         check('terminal header label is the identity only (no session id suffix)', header.term === 'coral-go', header.term);
-        check('placeholder "Sending to:" uses resolved identity',
-            /^Sending to: coral-go \(claude\)/.test(header.placeholder), header.placeholder);
+        check('placeholder "Message" uses resolved identity',
+            /^Message coral-go,/.test(header.placeholder), header.placeholder);
         // The fixture session has no real terminal, so the poll returns an
         // error placeholder rather than a buffer -> label must fall back.
         check('Mode label falls back to "Mode" when undetectable', header.modeLabel === 'Mode', header.modeLabel);
@@ -405,7 +405,7 @@ async function run() {
         check('diff still applies changed fields (context_pct 45 in state)', afterDiff.ctx === 45, String(afterDiff.ctx));
         check('diff without first_prompt keeps header identity', afterDiff.header === 'coral-go', afterDiff.header);
         check('diff without first_prompt keeps terminal label identity', afterDiff.term === 'coral-go', afterDiff.term);
-        check('diff without first_prompt keeps Sending-to placeholder', /^Sending to: coral-go/.test(afterDiff.placeholder), afterDiff.placeholder);
+        check('diff without first_prompt keeps its placeholder', /^Message coral-go/.test(afterDiff.placeholder), afterDiff.placeholder);
         // sid-c went to sleep above, and sleeping agents collapse behind the "N sleeping"
         // summary row, so its row is not in the list; every other row keeps its place.
         const ORDER_AWAKE = ORDER.split(',').filter(id => id !== 'sid-c').join(',');
@@ -426,7 +426,7 @@ async function run() {
         check('diff display_name update applies to row + header', afterRename.label === 'Renamed Bot' && afterRename.header === 'Renamed Bot', JSON.stringify(afterRename));
         check('diff summary update applies to goal line', afterRename.goal === 'Now writing tests', afterRename.goal);
         check('aria-label follows display_name after rename', /^Renamed Bot, /.test(afterRename.aria || ''), afterRename.aria);
-        check('placeholder follows display_name after rename', /^Sending to: Renamed Bot/.test(afterRename.placeholder), afterRename.placeholder);
+        check('placeholder follows display_name after rename', /^Message Renamed Bot/.test(afterRename.placeholder), afterRename.placeholder);
         await setFixture(SESSIONS);
 
         // ── Passive label vs sparkle ──────────────────────────────────────
@@ -485,7 +485,7 @@ async function run() {
         const hdrF = await evalInPage(`({ name: document.getElementById('session-name').textContent, term: (document.getElementById('terminal-header-label') || {}).textContent || '', ph: document.getElementById('command-input').placeholder })`);
         check('header uses auto_name', hdrF.name === 'Store Refactorer', hdrF.name);
         check('terminal label uses auto_name', hdrF.term === 'Store Refactorer', hdrF.term);
-        check('placeholder uses auto_name', /^Sending to: Store Refactorer \(claude\)/.test(hdrF.ph), hdrF.ph);
+        check('placeholder uses auto_name', /^Message Store Refactorer,/.test(hdrF.ph), hdrF.ph);
 
         // Summary-only update: goal changes, identity does not.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
@@ -496,7 +496,7 @@ async function run() {
         const hdrF2 = await evalInPage(`({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder })`);
         check('summary-only diff updates the goal line', f.goal === 'Now profiling startup', f.goal);
         check('summary-only diff leaves label + aria identity unchanged', f.label === 'Store Refactorer' && /^Store Refactorer, /.test(f.aria || ''), JSON.stringify(f));
-        check('summary-only diff leaves header + placeholder unchanged', hdrF2.name === 'Store Refactorer' && /^Sending to: Store Refactorer/.test(hdrF2.ph), JSON.stringify(hdrF2));
+        check('summary-only diff leaves header + placeholder unchanged', hdrF2.name === 'Store Refactorer' && /^Message Store Refactorer/.test(hdrF2.ph), JSON.stringify(hdrF2));
 
         // Explicit values overwrite: null clears auto_name, "" clears summary, a number replaces context_pct.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
@@ -505,7 +505,7 @@ async function run() {
         await nextFrame();
         f = await rowF();
         const hdrF3 = await evalInPage(`({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder })`);
-        check('explicit null auto_name falls back to Agent', f.label === 'other-proj' && hdrF3.name === 'other-proj' && /^Sending to: other-proj/.test(hdrF3.ph), JSON.stringify({ f, hdrF3 }));
+        check('explicit null auto_name falls back to Agent', f.label === 'other-proj' && hdrF3.name === 'other-proj' && /^Message other-proj/.test(hdrF3.ph), JSON.stringify({ f, hdrF3 }));
         check('aria identity falls back to Agent after auto_name cleared', /^other-proj, /.test(f.aria || ''), f.aria);
         check('explicit empty summary clears the goal line', /No goal yet/.test(f.goal || ''), f.goal);
         check('explicit context_pct value overwrites', f.ctx === 71, String(f.ctx));
@@ -580,7 +580,7 @@ async function run() {
         // restore the fixture: the 1024px probe renamed sid-g, which must not leak into later identity checks
         await setFixture(SESSIONS);
         await nextFrame();
-        check('placeholder uses board_job_title', /^Sending to: Release Wrangler \(claude\)/.test(hdrG.ph), hdrG.ph);
+        check('placeholder uses board_job_title', /^Message Release Wrangler,/.test(hdrG.ph), hdrG.ph);
         // auto_name outranks board_job_title.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', auto_name: 'Ship Bot' } ] }); true`);
         await nextFrame();
@@ -599,7 +599,7 @@ async function run() {
         await selected('sid-c');
         const bare = await evalInPage(`(() => ({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder }))()`);
         check('header falls back to "Agent" with no identity', bare.name === 'coral-go', bare.name);
-        check('placeholder falls back to "Agent"', /^Sending to: coral-go \(claude\)/.test(bare.ph), bare.ph);
+        check('placeholder falls back to "Agent"', /^Message coral-go,/.test(bare.ph), bare.ph);
 
         // Clicking the high-context bar itself must not send anything: the
         // context display is informational only. (It still bubbles to the row

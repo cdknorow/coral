@@ -327,7 +327,7 @@ function _syncViewedSession(data) {
             updateHeaderContext(s);
             const cmdInput = document.getElementById("command-input");
             if (cmdInput) {
-                const ph = commandPlaceholder(headerName, s.agent_type, s.board_project);
+                const ph = commandPlaceholder(headerName, s.agent_type);
                 setCommandPlaceholder(cmdInput, ph); // view only and asleep keep their words (#5856)
             }
             updateSessionStatus(s.status);

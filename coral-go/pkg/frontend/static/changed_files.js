@@ -488,13 +488,10 @@ export async function refreshChangedFiles() {
     }
 
     if (files.length === 0) {
-        const emptyOptions = _diffModes.map(m =>
-            `<option value="${escapeAttr(m)}"${m === _getGitDiffMode() ? ' selected' : ''}>${escapeHtml(_diffModeLabels[m])}</option>`
-        ).join('');
-        const emptySelect = `<br><select class="diff-mode-select" data-on-change="diff-mode" style="margin-top:8px" title="Diff comparison mode">${emptyOptions}</select>`;
+        // The comparison choice is in the header above, with the count: not drawn a second time under "No changed files" (#5991).
         list.innerHTML = _filesRefused
             ? '<div class="file-empty">Too many changed files to show through Coral Hub; open the agent on the computer.</div>'
-            : `<div class="file-empty">No changed files${emptySelect}</div>`;
+            : `<div class="file-empty">No changed files</div>`;
         return;
     }
 

@@ -530,7 +530,7 @@ async function run() {
     const fxCalls = await ta.ev(`window.__calls.filter(c => /\\/api\\/sessions\\/live\\/[^/]+\\/(capture|poll|send|keys|resize)(\\?|$)/.test(c.path) || /^\\/api\\/sessions\\/live\\/[^/]+$/.test(c.path)).map(c => ({ path: c.path, method: c.method, query: c.query, body: c.body }))`);
     const fxBad = fxCalls.filter(c => { const name = decodeURIComponent(c.path.split('/')[4]); let at = null, sid2 = null; if (c.method === 'GET') { const q = new URLSearchParams(c.query); at = q.get('agent_type'); sid2 = q.get('session_id'); } else { try { const b = JSON.parse(c.body || '{}'); at = b.agent_type; sid2 = b.session_id; } catch {} } return at !== 'claude' || sid2 !== A || name !== 'coral-go'; });
     check('4 fixture popout: every per-session REST call uses resolver name + both routing fields', fxCalls.length > 0 && fxBad.length === 0, JSON.stringify({ n: fxCalls.length, bad: fxBad.slice(0, 3) }));
-    check('26 placeholder names the resolved identity', await ta.ev(`/^Sending to: Auto Bot/.test(document.getElementById('command-input').placeholder)`));
+    check('26 placeholder names the resolved identity', await ta.ev(`/^Message Auto Bot/.test(document.getElementById('command-input').placeholder)`));
     // rename via WS diff
     await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', waiting_for_input: false, working: true })}] }); true`); await ta.nextFrame();
     sa = await ta.ev(SHELL_PROBE);
