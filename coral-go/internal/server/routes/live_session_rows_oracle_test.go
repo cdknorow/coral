@@ -52,6 +52,7 @@ func lsrRows(t *testing.T, h *SessionsHandler, old, full bool) string {
 		for _, r := range rows {
 			delete(r, "team_health_on")       // new in #4962: the old implementation has no such field
 			delete(r, "live_permission_mode") // new in #5951: the old implementation has no such field
+			delete(r, "terminal")             // new in 159 (which terminal the agent runs on): the old implementation has no such field; live_terminal_field_test.go pins it through the route
 		}
 	}
 	b, merr := json.Marshal(rows)

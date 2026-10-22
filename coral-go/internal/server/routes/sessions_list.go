@@ -251,16 +251,18 @@ type liveIndex struct {
 	createdAt          map[string]string
 	boardNames         map[string][2]string
 	extras             map[string]liveExtra
+	launchPath         map[string]string // the stored launch path of each session ("pty": through the terminal backend; "tmux": the legacy direct tmux path)
 }
 
 // newLiveIndex indexes the authoritative snapshot of the live sessions (a second, ignored query failure used to
 // erase team names and other identity metadata).
 func newLiveIndex(allLive []store.LiveSession) liveIndex {
 	lv := liveIndex{sleeping: map[string]bool{}, archived: map[string]bool{}, createdAt: map[string]string{},
-		boardNames: map[string][2]string{}, extras: map[string]liveExtra{}}
+		boardNames: map[string][2]string{}, extras: map[string]liveExtra{}, launchPath: map[string]string{}}
 	for _, session := range allLive {
 		lv.sleeping[session.SessionID] = session.IsSleeping == 1
 		lv.archived[session.SessionID] = session.IsArchived == 1
+		lv.launchPath[session.SessionID] = ptr.Value(session.Backend)
 		// Launch times, used to bound how long after launch a stalled start is
 		// reported. See agentNeverStarted.
 		lv.createdAt[session.SessionID] = session.CreatedAt
@@ -449,6 +451,7 @@ func (h *SessionsHandler) agentRow(trace *phaseTrace, agent AgentInfo, lv liveIn
 		"agent_type":            agent.AgentType,
 		"session_id":            sid,
 		"tmux_session":          agent.TmuxSession,
+		"terminal":              h.terminalOfAgent(lv.launchPath[sid]), // where it really runs: tmux agents survive a quit, pty agents end with Coral
 		"status":                statusVal,
 		"summary":               summaryVal,
 		"staleness_seconds":     listStaleness(staleness),
@@ -544,6 +547,7 @@ func (h *SessionsHandler) sleepingRows(allLive []store.LiveSession, liveSIDs map
 			"agent_type":            ls.AgentType,
 			"session_id":            ls.SessionID,
 			"tmux_session":          nil,
+			"terminal":              h.terminalOfAgent(ptr.Value(ls.Backend)),
 			"status":                "Sleeping",
 			"summary":               nil,
 			"staleness_seconds":     nil,
@@ -942,4 +946,13 @@ func runBounded(limit int, fns []func()) {
 		}(fn)
 	}
 	wg.Wait()
+}
+
+// terminalOfAgent is the terminal an agent really runs on, "tmux" or "pty": the kind this Coral runs, except that on a pty Coral an agent that was started the legacy tmux way (its stored launch path is
+// "tmux") is in tmux. A live row carries it (#6146's follow-up): the hub shows which agents survive a quit. The stored launch path alone cannot say: on a tmux Coral every agent's reads "pty".
+func (h *SessionsHandler) terminalOfAgent(launchPath string) string {
+	if _, onPTY := h.backend.(*ptymanager.PTYBackend); onPTY && launchPath == "tmux" {
+		return "tmux"
+	}
+	return terminalKind(h.backend)
 }
