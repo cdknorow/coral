@@ -207,3 +207,53 @@ func TestGetBoardTimesOut(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot reach Coral server")
 	assert.Less(t, time.Since(start), 5*time.Second)
 }
+
+// task current --json prints the task as JSON, or null when there is none; without --json it is the text it always was (#241 R1).
+func TestTaskCurrentJSON(t *testing.T) {
+	have := true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !have {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"no active task"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":7,"title":"fix it","priority":"high","status":"in_progress","revision":2,"workflow":{}}`))
+	}))
+	defer srv.Close()
+	dir := subscribedDataDir(t, srv.URL)
+
+	res := runBoard(t, srv.URL, dir, "task", "current", "--json")
+	require.Equal(t, 0, res.code, res.stderr)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal([]byte(res.stdout), &got), res.stdout)
+	assert.EqualValues(t, 7, got["id"])
+	assert.Equal(t, "fix it", got["title"])
+	res = runBoard(t, srv.URL, dir, "task", "detail", "--json") // no id: the current task
+	require.NoError(t, json.Unmarshal([]byte(res.stdout), &got), res.stdout)
+	res = runBoard(t, srv.URL, dir, "task", "current")
+	assert.Contains(t, res.stdout, "Task #7")
+
+	have = false
+	res = runBoard(t, srv.URL, dir, "task", "current", "--json")
+	assert.Equal(t, 0, res.code)
+	assert.Equal(t, "null", strings.TrimSpace(res.stdout))
+	res = runBoard(t, srv.URL, dir, "task", "current")
+	assert.Contains(t, res.stdout, "No active task")
+}
+
+// A misspelt option after the text of a post is refused, not posted as text (#241).
+func TestPostRefusesAMisspeltOptionAfterTheText(t *testing.T) {
+	srv := newRecordingServer(t)
+	dir := subscribedDataDir(t, srv.URL)
+	for _, args := range [][]string{{"post", "hello", "--too", "Lead"}, {"post", "hello", "world", "--fiel", "x"}} {
+		res := runBoard(t, srv.URL, dir, args...)
+		assert.Equal(t, 2, res.code, "%v: %q", args, res.stderr)
+		assert.Contains(t, res.stderr, "unknown option")
+	}
+	assert.Empty(t, srv.requests())
+	res := runBoard(t, srv.URL, dir, "post", "--to", "Lead", "hello there")
+	assert.Equal(t, 0, res.code, res.stderr)
+	res = runBoard(t, srv.URL, dir, "post", "--", "see", "--help")
+	assert.Equal(t, 0, res.code, res.stderr)
+}
