@@ -506,6 +506,10 @@ func (s *SessionStore) SetSessionSleeping(ctx context.Context, sessionID string,
 // longer exists (killed, or its tmux server died), not because the user asked (#3344).
 const SleepReasonTerminalGone = "terminal_gone"
 
+// SleepReasonAgentExited: Coral put the agent to sleep because its CLI exited and left its pane at a plain shell
+// (#6058). The dashboard says "Ended" and offers Restart, not a plain "Sleeping". Waking clears it.
+const SleepReasonAgentExited = "agent_exited"
+
 // SleepReasonCoralStopped: the agent was running when a pty Coral stopped (cleanly, or a crash
 // found at the next start), so Coral may wake it again at its next start (#3636). Only Coral's
 // own shutdown and startup code writes it; no request can (an Operator's Sleep is reason "").

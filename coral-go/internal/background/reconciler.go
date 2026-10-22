@@ -216,7 +216,7 @@ func (r *SessionReconciler) checkExited(ctx context.Context, ls store.LiveSessio
 		return
 	}
 	delete(r.exited, ls.SessionID)
-	if err := r.sessionStore.SetSessionSleeping(ctx, ls.SessionID, true); err != nil {
+	if err := r.sessionStore.SetSessionSleepingFor(ctx, ls.SessionID, store.SleepReasonAgentExited); err != nil {
 		r.logger.Error("failed to mark exited agent as sleeping", "session_id", ls.SessionID, "error", err)
 		return
 	}

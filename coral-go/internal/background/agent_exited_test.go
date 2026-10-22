@@ -95,6 +95,10 @@ func TestReconciler_ExitedAgentIsMarkedSleeping(t *testing.T) {
 	r.reconcileOnce(ctx)
 	assert.True(t, isSleeping(t, ss, testUUID), "marked sleeping after reconcileMissThreshold passes")
 	assert.Empty(t, rt.killed, "the shell is left as it is (Wake resumes in it)")
+	ls, err := ss.GetLiveSession(ctx, testUUID)
+	require.NoError(t, err)
+	require.NotNil(t, ls.SleepReason, "it says why: the CLI ended (#6058)")
+	assert.Equal(t, store.SleepReasonAgentExited, *ls.SleepReason)
 }
 
 func TestReconciler_RunningAgentIsNotMarked(t *testing.T) {

@@ -145,6 +145,8 @@ export function sessionStateInfo(s, opts) {
     // Asleep because its terminal session is gone, not because anyone asked (#3344): the
     // same state, said plainly. The row's "Terminal gone" chip restarts it.
     if (key === 'sleeping' && isGoneAsleep(s)) info.label = 'Terminal gone';
+    // Asleep because its CLI exited (#6058): the word is "Ended", in the row and the header, not a plain "Sleeping".
+    if (key === 'sleeping' && !s.archived && s.sleep_reason === 'agent_exited') info.label = info.pill = 'Ended';
     if (key === 'waiting_on') info.label = waitingOnLabel(getCachedAgentAvailability(s)?.waiting_on) || info.label;
     // What the agent itself says it waits on (#3481): its permission, question, plan or
     // input request. A prompt Coral only saw on the screen has no kind: plain Needs input.

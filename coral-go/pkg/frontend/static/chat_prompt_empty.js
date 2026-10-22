@@ -12,7 +12,7 @@ import { announcePrompt, promptOptionsBySession, syncNeedsInputCard } from './ne
 function emptyStateWords(session) {
     const row = (state.liveSessions || []).find(s => s.session_id === session?.session_id) || session;
     switch (deriveSessionState(row)) {
-        case 'sleeping': return ["This agent is asleep", "Use Wake below to chat with it."];
+        case 'sleeping': return row.sleep_reason === 'agent_exited' ? ["This agent has ended", "Its CLI exited. Use Restart below to start it again."] : ["This agent is asleep", "Use Wake below to chat with it."];
         default: return ["No messages yet", "Type below to start."];
     }
 }

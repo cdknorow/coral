@@ -49,11 +49,17 @@ export function pruneTerminalGone(sessions) {
     if (changed) syncTerminalGoneHeader();
 }
 
-/** The "Terminal gone" chip for an agent's sidebar row ('' otherwise); a click restarts it. */
+/** Coral put this agent to sleep because its CLI exited and left a plain shell (#6058): the row says "Ended" and a click restarts it. */
+export function isExitedAsleep(s) {
+    return !!s && !!s.sleeping && !s.archived && s.sleep_reason === 'agent_exited';
+}
+
+/** The "Terminal gone" chip for an agent's sidebar row, "Ended" for one whose CLI exited ('' otherwise); a click restarts it. */
 export function terminalGoneChip(s) {
-    if (!isTerminalGone(s)) return '';
-    return `<button type="button" class="terminal-gone-chip" title="This agent's terminal is gone. Click to restart it."`
-        + ` data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type || '')}" data-session-id="${escapeAttr(s.session_id)}">Terminal gone</button>`;
+    const ended = isExitedAsleep(s);
+    if (!ended && !isTerminalGone(s)) return '';
+    return `<button type="button" class="terminal-gone-chip" title="${ended ? "This agent's CLI exited. Click to restart it." : "This agent's terminal is gone. Click to restart it."}"`
+        + ` data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type || '')}" data-session-id="${escapeAttr(s.session_id)}">${ended ? 'Ended' : 'Terminal gone'}</button>`;
 }
 
 /** The header badge for the selected agent while its terminal is gone. */

@@ -44,10 +44,17 @@ export function applySleepingView(sleeping, { manageInput = true, archived } = {
     const row = cur && (state.liveSessions || []).find(s => s.session_id === cur.session_id);
     const gone = sleeping && !archived && !!row && row.sleep_reason === 'terminal_gone';
     const text = document.getElementById('sleeping-composer-text');
-    if (text) text.textContent = archived ? 'This agent is archived' : gone ? "This agent's terminal is gone" : 'This agent is sleeping';
+    // Its CLI exited (#6058): said once, with the agent's name, and "before answering" when a message of the person's is still waiting.
+    const ended = sleeping && !archived && !gone && !!row && row.sleep_reason === 'agent_exited';
+    const who = (cur && (cur.display_name || cur.name)) || 'This agent';
+    const endedText = !!(cur && state.lastSendAt && state.lastSendAt.has(cur.session_id)) ? `${who} stopped before answering` : `${who} has ended`;
+    if (text) {
+        const next = archived ? 'This agent is archived' : gone ? "This agent's terminal is gone" : ended ? endedText : 'This agent is sleeping';
+        if (text.textContent !== next) text.textContent = next; // a status line: written only when it changes, so it is announced once
+    }
     const icon = document.getElementById('sleeping-composer-icon');
-    if (icon) icon.textContent = archived ? '🗄️' : gone ? '⚠️' : '🌙';
-    if (bar) bar.classList.toggle('is-terminal-gone', gone);
+    if (icon) icon.textContent = archived ? '🗄️' : gone || ended ? '⚠️' : '🌙';
+    if (bar) bar.classList.toggle('is-terminal-gone', gone || ended);
     // Its terminal session is gone, so there is nothing to wake (Wake answers ok and the agent
     // falls asleep again): Restart is the way back (#3344).
     const wakeBtn = document.getElementById('sleeping-wake-btn');

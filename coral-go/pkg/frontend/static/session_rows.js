@@ -5,7 +5,7 @@ import { escapeHtml, escapeAttr, agentNameColor } from './utils.js';
 import { autoAcceptChip, autoAcceptMenuItem } from './auto_accept.js';
 import { formatTokens } from './format.js';
 import { getCachedAgentAvailability } from './team_availability.js';
-import { isGoneAsleep } from './terminal_gone.js';
+import { isGoneAsleep, isExitedAsleep } from './terminal_gone.js';
 import { isStaleSession, staleReason, serversShown } from './server_status.js';
 import { sessionServer, keyLabel, sessionTeamKey } from './server_base.js';
 import { redrawLiveList } from './list_hooks.js';
@@ -378,8 +378,9 @@ export function _renderAgentListWithSubgroups(agents, teamDefaultDir, isCompact,
 
     // An agent asleep because its terminal is gone stays in view with its "Terminal gone" chip
     // (#3344), not folded into the "N sleeping agents" row: it needs a Restart, not a nap.
-    const awake = agents.filter(s => !s.sleeping || isGoneAsleep(s));
-    const sleeping = agents.filter(s => s.sleeping && !isGoneAsleep(s));
+    // One whose CLI exited stays in view too, with an "Ended" chip (#6058).
+    const awake = agents.filter(s => !s.sleeping || isGoneAsleep(s) || isExitedAsleep(s));
+    const sleeping = agents.filter(s => s.sleeping && !isGoneAsleep(s) && !isExitedAsleep(s));
 
     // One flat list: an agent's folder is shown in the header bar, not as
     // sidebar sub-groups.
