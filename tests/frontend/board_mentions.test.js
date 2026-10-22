@@ -39,5 +39,16 @@ const { JSDOM } = require('jsdom');
     // the text inside a span is text, whatever the author wrote
     m.setBoardMentionNames([]);
     assert.ok(!/<img/.test(mark('<p>@all &lt;img src=x onerror=1&gt;</p>')));
+    // bare coral://artifacts/<64 hex> (#5974): a link, as a named one is; never inside code, a code block or a link; only the exact shape
+    const H = 'a'.repeat(8) + 'b1'.repeat(28);
+    assert.strictEqual(H.length, 64);
+    const links = html => { const d = dom.window.document.createElement('div'); d.innerHTML = html; return [...d.querySelectorAll('a.mb-artifact-ref')].map(a => [a.getAttribute('href'), a.textContent, a.getAttribute('aria-label'), a.title, a.getAttribute('rel')]); };
+    const lk = m.linkArtifactRefsHtml;
+    assert.deepStrictEqual(links(lk(`<p>see coral://artifacts/${H} now</p>`)), [[`coral://artifacts/${H}`, 'artifact aaaaaaaa', `artifact aaaaaaaa: id ${H}`, `coral://artifacts/${H}`, 'noopener noreferrer']]);
+    assert.deepStrictEqual(links(lk(`<p>(coral://artifacts/${H}), coral://artifacts/${H.toUpperCase()}.</p>`)).map(x => x[0]), [`coral://artifacts/${H}`, `coral://artifacts/${H}`], 'after a bracket and before a full stop; upper-case hex is the same id');
+    assert.deepStrictEqual(links(lk(`<p><code>coral://artifacts/${H}</code></p><pre><code>coral://artifacts/${H}</code></pre><p><a href="https://x">coral://artifacts/${H}</a> <kbd>coral://artifacts/${H}</kbd></p>`)), [], 'never inside code, a block or a link');
+    assert.deepStrictEqual(links(lk(`<p>coral://artifacts/${H.slice(0, 63)} and coral://artifacts/${H}0 and xcoral://artifacts/${H} and /coral://artifacts/${H} and coral://artifacts/${H}z</p>`)), [], 'only the exact 64-hex shape, on its own');
+    assert.strictEqual(lk('<p>no ref</p>'), '<p>no ref</p>');
+    assert.deepStrictEqual(links(lk(`<p>@all coral://artifacts/${H}</p>`)).length, 1);
     console.log('board_mentions.test.js: ok');
 })().catch(e => { console.error(e); process.exit(1); });

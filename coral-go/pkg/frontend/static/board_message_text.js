@@ -174,19 +174,66 @@ export function highlightMentionsHtml(html) {
     return changed ? t.innerHTML : html;
 }
 
+// ── bare artifact references ─────────────────────────────────────────────
+// An exact coral://artifacts/<64 hex> in a post's text (not in a link, code or a code block) is a link to that artifact, as a named Markdown link is: the board's own artifact pass
+// (resolveBoardArtifacts) points it at the board's server and opens the viewer on a plain click. The shown label is "artifact" and the first 8 characters (the Inbox's label); the full id is in the
+// accessible name (which starts with the visible words) and the tooltip. The href is only ever the exact shape, built here from validated hex.
+const ARTIFACT_REF = /(^|[^A-Za-z0-9/])coral:\/\/artifacts\/([a-f0-9]{64})(?![A-Za-z0-9])/gi;
+
+/** The sanitized HTML with each bare coral://artifacts/<64 hex> made a link. */
+export function linkArtifactRefsHtml(html) {
+    if (typeof document === 'undefined' || !html || !html.includes('coral://artifacts/')) return html;
+    const t = document.createElement('template');
+    t.innerHTML = html;
+    const walker = document.createTreeWalker(t.content, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!n.nodeValue.includes('coral://artifacts/')) continue;
+        const up = n.parentElement;
+        if (up && up.closest('code, pre, a, kbd, samp, script, style')) continue;
+        nodes.push(n);
+    }
+    let changed = false;
+    for (const n of nodes) {
+        const text = n.nodeValue;
+        ARTIFACT_REF.lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        let at = 0, m;
+        while ((m = ARTIFACT_REF.exec(text))) {
+            const start = m.index + m[1].length;
+            if (start > at) frag.append(text.slice(at, start));
+            const hex = m[2].toLowerCase();
+            const a = document.createElement('a');
+            a.setAttribute('href', `coral://artifacts/${hex}`);
+            a.setAttribute('rel', 'noopener noreferrer');
+            a.className = 'mb-artifact-ref';
+            a.textContent = `artifact ${hex.slice(0, 8)}`;
+            a.setAttribute('aria-label', `artifact ${hex.slice(0, 8)}: id ${hex}`);
+            a.title = `coral://artifacts/${hex}`;
+            frag.append(a);
+            at = start + 'coral://artifacts/'.length + 64;
+            changed = true;
+        }
+        if (at === 0) continue;
+        if (at < text.length) frag.append(text.slice(at));
+        n.replaceWith(frag);
+    }
+    return changed ? t.innerHTML : html;
+}
+
 /** A board message's body as sanitized HTML (board link policy). */
 export function renderBoardMessageBody(m) {
     const text = boardMessageText(boardMessageDisplayText(m));
     const id = Number(m && m.id);
     if (!text || !Number.isFinite(id) || typeof marked === 'undefined' || typeof DOMPurify === 'undefined'
         || (typeof hljs === 'undefined' && FENCED_WITH_LANG.test(text))) {
-        return highlightMentionsHtml(renderMarkdown(text, BOARD_MARKDOWN, 'board'));
+        return highlightMentionsHtml(linkArtifactRefsHtml(renderMarkdown(text, BOARD_MARKDOWN, 'board')));
     }
     const pass = boardBodyPass();
     const key = id + ':' + textHash(text) + ':' + _mentionSig; // a change of the board's members draws a body again
     const hit = _boardBodyCache.get(key);
     if (hit && hit.text === text) { hit.pass = pass; return hit.html; }
-    const html = highlightMentionsHtml(_renderMarkdownUncached(text, BOARD_MARKDOWN, 'board'));
+    const html = highlightMentionsHtml(linkArtifactRefsHtml(_renderMarkdownUncached(text, BOARD_MARKDOWN, 'board')));
     if (hit) { _boardBodyCache.delete(key); _boardBodyBytes -= hit.bytes; }
     const bytes = 2 * (text.length + html.length) + BOARD_BODY_ENTRY_OVERHEAD; // UTF-16
     if (bytes <= BOARD_BODY_ENTRY_MAX_BYTES && makeBoardBodyRoom(bytes, id, pass)) {
