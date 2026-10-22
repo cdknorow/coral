@@ -19,9 +19,9 @@ import (
 	"github.com/subgentic/coral/internal/updater/verify"
 )
 
-// applyEnabled is the off switch of the apply (#5325): until all three platforms pass their upgrade tests it answers not_enabled. A constant on
-// purpose: nothing a caller, a setting or the environment says turns it on.
-const applyEnabled = false
+// applyEnabled is the off switch of the apply (#5325), one per platform (apply_switch.go): until a platform passes its upgrade tests it answers not_enabled.
+// Compile-time on purpose: nothing a caller, a setting or the environment says turns it on.
+var applyEnabled = applyOn(runtime.GOOS, applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt)
 
 const (
 	checkTimeout   = 30 * time.Minute
