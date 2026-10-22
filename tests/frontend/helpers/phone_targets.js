@@ -23,9 +23,18 @@ const ALLOW = [];
 
 const allowed = (scene, c) => ALLOW.some(([s, d]) => new RegExp(s).test(scene) && new RegExp(d).test(`${c.d} ${c.t}`));
 
-/** Record one scene: its controls and the ones under 44 px (minus the allow list). */
-async function scene(ev, results, name, setup, { min = 3 } = {}) {
-    try { await setup(); } catch (e) { results.push({ name, error: String(e && e.message || e).slice(0, 200) }); return; }
+/** Click a control a person could tap: it throws when the selector matches nothing or the match is not on screen, so a scene that depends on it fails as "did not open" instead of measuring the screen it was already on. */
+async function tap(ev, selector) {
+    const r = await ev(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return 'no element'; if (!e.getClientRects().length || e.closest('[hidden]')) return 'not visible'; e.click(); return 'ok'; })()`);
+    if (r !== 'ok') throw new Error(`${selector}: ${r}`);
+}
+
+/** Record one scene: its controls and the ones under 44 px (minus the allow list). `expect` is an expression that must be true once the scene is open (its own content is showing), checked before anything is measured. */
+async function scene(ev, results, name, setup, { min = 3, expect } = {}) {
+    try {
+        await setup();
+        if (expect) { await new Promise(r => setTimeout(r, 400)); if (!(await ev(expect))) throw new Error(`the scene is not showing (${expect.slice(0, 80)})`); } // sleep-ok: the scene's own transition settles
+    } catch (e) { results.push({ name, error: String(e && e.message || e).slice(0, 200) }); return; }
     await new Promise(r => setTimeout(r, 600)); // sleep-ok: the scene's own transitions settle
     const m = await ev(MEASURE);
     results.push({ name, n: m.n, min, small: m.small.filter(c => !allowed(name, c)) });
@@ -44,4 +53,10 @@ function problems(results) {
     return out;
 }
 
-module.exports = { MEASURE, ALLOW, scene, problems };
+/** The scenes a suite must have run: a loop over what the page offers (its tabs, its settings groups) cannot quietly shrink to nothing when the page stops offering them. */
+function required(results, names) {
+    const have = new Set(results.map(r => r.name));
+    return names.filter(n => !have.has(n)).map(n => `${n}: the scene was never visited`);
+}
+
+module.exports = { MEASURE, ALLOW, scene, tap, problems, required };

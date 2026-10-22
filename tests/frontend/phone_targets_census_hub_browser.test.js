@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 const { safePaused } = require('./helpers/paused');
-const { scene, problems } = require('./helpers/phone_targets');
+const { scene, tap: tapSel, problems, required } = require('./helpers/phone_targets');
 const { BASE } = require('./test_base');
 const HOST = new URL(BASE).host;
 const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "style-src-attr 'unsafe-inline'", "font-src 'self'", "img-src 'self' data: blob:", `connect-src 'self' ws://${HOST}`, "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join('; ');
@@ -14,6 +14,7 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
     const { Fetch, Network } = client;
     const results = [];
     const sc = (name, setup, opts) => scene(ev, results, name, setup, opts);
+    const tap = sel => tapSel(ev, sel);
     try {
         await Promise.all([Page.enable(), Network.enable()]);
         await Network.setBypassServiceWorker({ bypass: true });
@@ -61,24 +62,25 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self'", "sty
         const menu = async () => { await ev(`document.getElementById('nav-select').click();true`); await waitFor(`!document.getElementById('nav-more-menu').hidden`, 'phone nav'); };
         const pick = async arg => { await menu(); await ev(`document.querySelector('#nav-more-menu [data-arg="${arg}"]').click();true`); };
         await sc('hub: home', async () => { await waitFor(`document.querySelectorAll('button, a[href]').length > 5`, 'home'); }, { min: 4 });
-        await sc('hub: nav menu', async () => { await menu(); }, { min: 10 });
-        await sc('hub: chats list', async () => { await ev(`document.querySelector('#nav-more-menu [data-arg="history"]').click();true`); await waitFor(`document.getElementById('history-sessions-list').textContent.includes('Laptop conversation')`, 'history'); }, { min: 4 });
-        await sc('hub: chat transcript', async () => { await ev(`document.querySelector('#history-sessions-list [data-on-click="history-open"]').click();true`); await waitFor(`document.getElementById('history-messages').textContent.includes('needle from m1')`, 'transcript'); }, { min: 10 });
-        for (const t of ['events', 'tasks', 'notes', 'commits', 'changes']) await sc(`hub: chat tab ${t}`, async () => { await ev(`(() => { const b = [...document.querySelectorAll('.history-tab-btn')].find(x => x.dataset.tab === ${JSON.stringify(t)} || new RegExp('^' + ${JSON.stringify(t)}, 'i').test(x.textContent.trim())); if (b) b.click(); return !!b; })()`); }, { min: 10 });
+        await sc('hub: nav menu', async () => { await menu(); }, { min: 10, expect: `!document.getElementById('nav-more-menu').hidden && document.querySelectorAll('#nav-more-menu .nav-more-item').length >= 5` });
+        await sc('hub: chats list', async () => { await ev(`document.querySelector('#nav-more-menu [data-arg="history"]').click();true`); await waitFor(`document.getElementById('history-sessions-list').textContent.includes('Laptop conversation')`, 'history'); }, { min: 4, expect: `document.getElementById('nav-select').textContent.includes('Chats')` });
+        await sc('hub: chat transcript', async () => { await ev(`document.querySelector('#history-sessions-list [data-on-click="history-open"]').click();true`); await waitFor(`document.getElementById('history-messages').textContent.includes('needle from m1')`, 'transcript'); }, { min: 10, expect: `document.getElementById('history-messages').getClientRects().length > 0` });
+        for (const t of ['notes', 'activity', 'tasks', 'agent-notes', 'commits']) await sc(`hub: chat tab ${t}`, async () => { await tap(`.history-tab-btn[data-tab="${t}"]`); }, { min: 10, expect: `document.querySelector('.history-tab-btn[data-tab="${t}"]').classList.contains('active')` });
         await ev(`document.querySelector('.mobile-history-back').click();true`);
-        await sc('hub: boards list', async () => { await pick('board'); await waitFor(`document.querySelectorAll('#mb-projects-ul [data-project]').length===2`, 'boards'); }, { min: 4 });
-        await sc('hub: board', async () => { await ev(`document.querySelector('#mb-projects-ul [data-project="@m1/same-team"]').click();true`); await waitFor(`document.getElementById('mb-messages').textContent.includes('Board message from m1')`, 'board'); }, { min: 10 });
-        await sc('hub: servers', async () => { await pick('servers'); await waitFor(`document.getElementById('servers-view').getClientRects().length > 0`, 'servers'); }, { min: 8 });
-        await sc('hub: inbox', async () => { await pick('hub-inbox'); }, { min: 3 });
-        await sc('hub: docs', async () => { await pick('docs'); }, { min: 10 });
-        await sc('hub: account menu', async () => { await ev(`(document.querySelector('[aria-label="Account menu"]') || {click(){}}).click(); true`); }, { min: 5 });
+        await sc('hub: boards list', async () => { await pick('board'); await waitFor(`document.querySelectorAll('#mb-projects-ul [data-project]').length===2`, 'boards'); }, { min: 4, expect: `document.querySelectorAll('#mb-projects-ul [data-project]').length === 2` });
+        await sc('hub: board', async () => { await ev(`document.querySelector('#mb-projects-ul [data-project="@m1/same-team"]').click();true`); await waitFor(`document.getElementById('mb-messages').textContent.includes('Board message from m1')`, 'board'); }, { min: 10, expect: `document.getElementById('mb-messages').textContent.includes('Board message from m1')` });
+        await sc('hub: servers', async () => { await pick('servers'); await waitFor(`document.getElementById('servers-view').getClientRects().length > 0`, 'servers'); }, { min: 8, expect: `document.getElementById('servers-view').getClientRects().length > 0 && /Laptop/.test(document.getElementById('servers-view').textContent)` });
+        await sc('hub: inbox', async () => { await pick('hub-inbox'); }, { min: 3, expect: `document.getElementById('nav-select').textContent.includes('Inbox')` });
+        await sc('hub: docs', async () => { await pick('docs'); }, { min: 10, expect: `document.getElementById('nav-select').textContent.includes('Docs')` });
+        await sc('hub: account menu', async () => { await tap('[aria-label="Account menu"]'); }, { min: 5, expect: `document.querySelector('[aria-label="Account menu"]').getAttribute('aria-expanded') === 'true'` });
         await ev(`document.body.click(); true`);
-        for (const g of ['general', 'agents', 'terminal', 'notifications', 'files', 'cleanup', 'network', 'security']) await sc(`hub: settings ${g}`, async () => { await ev(`(async () => { await window.showSettingsModal(); document.getElementById('settings-tab-${g}').click(); return true; })()`); }, { min: 8 });
+        await ev(`(async () => { await window.showSettingsModal(); return true; })()`);
+        for (const g of await ev(`[...document.querySelectorAll('#settings-group-select option')].filter(o => !o.hidden).map(o => o.value)`).catch(() => [])) await sc(`hub: settings ${g}`, async () => { await ev(`(async () => { await window.showSettingsModal(); return true; })()`); await ev(`(() => { const p = document.getElementById('settings-group-select'); p.value = '${g}'; p.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`); }, { min: 8, expect: `document.querySelector('#settings-modal .settings-pane:not([hidden])').dataset.group === '${g}'` });
         await ev(`window.hideSettingsModal(); true`);
-        await sc('hub: launch', async () => { await ev(`(async () => { await window.showLaunchModal(); return true; })()`); }, { min: 5 });
+        await sc('hub: launch', async () => { await ev(`(async () => { await window.showLaunchModal(); return true; })()`); }, { min: 5, expect: `document.querySelector('#launch-modal .modal-content').getClientRects().length > 0` });
         await ev(`(window.hideLaunchModal || (() => {}))(); true`);
     } finally { await client.close(); }
-    const bad = problems(results);
+    const bad = problems(results).concat(required(results, ['hub: home', 'hub: nav menu', 'hub: chats list', 'hub: chat transcript', 'hub: chat tab notes', 'hub: chat tab commits', 'hub: boards list', 'hub: board', 'hub: servers', 'hub: inbox', 'hub: docs', 'hub: account menu', 'hub: settings general', 'hub: launch']));
     if (process.env.PHONE_TARGETS_REPORT) { require('node:fs').writeFileSync(process.env.PHONE_TARGETS_REPORT, results.map(r => `${r.name}: ${r.error || r.n + ' controls, ' + r.small.length + ' small'}`).join('\n') + '\n--\n' + bad.join('\n') + '\n'); process.exit(0); }
     assert.deepEqual(bad, [], 'controls under 44 px on a phone through the Hub:\n  ' + bad.join('\n  '));
     console.log(`PASS ${results.length} Hub scenes: every control is at least 44 x 44 px`);
