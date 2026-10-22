@@ -32,8 +32,14 @@ const WRAP = `(function(){ const Real = window.WebSocket; window.__ws = [];
 
 async function run() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'));
-    const cli = path.join(dir, 'fake-claude.sh');
-    fs.writeFileSync(cli, `#!/bin/bash\nif [ "$1" = auth ]; then echo '{"loggedIn": true}'; exit 0; fi\nprintf '\\n  Bash command\\n\\n    rm -rf /tmp/x\\n\\n Do you want to proceed?\\n \\xe2\\x9d\\xaf 1. Yes\\n   2. No, and tell Claude what to do differently (esc)\\n'\nwhile true; do read -r -n1 k; done\n`, { mode: 0o755 });
+    const WIN = process.platform === 'win32';
+    const cli = path.join(dir, WIN ? 'fake-claude.cmd' : 'fake-claude.sh');
+    if (WIN) {
+        // The same fake CLI as a batch file: Coral's launch line runs it from PowerShell. '>' marks the selected option (the menu detector takes it as it takes the arrow).
+        fs.writeFileSync(cli, ['@echo off', 'if "%~1"=="auth" (echo {"loggedIn": true}& exit /b 0)', 'echo.', 'echo   Bash command', 'echo.', 'echo     rm -rf /tmp/x', 'echo.', 'echo  Do you want to proceed?', 'echo  ^> 1. Yes', 'echo    2. No, and tell Claude what to do differently (esc)', 'ping -n 600 127.0.0.1 >nul', ''].join('\r\n'));
+    } else {
+        fs.writeFileSync(cli, `#!/bin/bash\nif [ "$1" = auth ]; then echo '{"loggedIn": true}'; exit 0; fi\nprintf '\\n  Bash command\\n\\n    rm -rf /tmp/x\\n\\n Do you want to proceed?\\n \\xe2\\x9d\\xaf 1. Yes\\n   2. No, and tell Claude what to do differently (esc)\\n'\nwhile true; do read -r -n1 k; done\n`, { mode: 0o755 });
+    }
     const launched = [];
     const client = await CDP({ port: CDP_PORT });
     const { Page, Runtime } = client;

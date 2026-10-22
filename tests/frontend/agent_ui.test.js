@@ -8,7 +8,7 @@ const BASE = require('./test_base').BASE;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-ui-test-'));
- const bin = path.join(dir, 'coral-agent');
+ const bin = path.join(dir, 'coral-agent' + (process.platform === 'win32' ? '.exe' : ''));
  execFileSync('go', ['build', '-o', bin, './cmd/coral-agent'], {cwd:path.resolve(__dirname, '../../coral-go')});
  const api = async (route, method='GET', body) => {
   const r = await fetch(BASE + route, {method,headers:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});

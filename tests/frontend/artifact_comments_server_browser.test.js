@@ -23,7 +23,8 @@ const DATA = process.env.CORAL_TEST_DATA_DIR || '';
     const sleep = ms => new Promise(r => setTimeout(r, ms)); // sleep-ok: the selection button appears after a short debounce
     const api = (method, p, body) => ev(`fetch(${JSON.stringify(p)}, { method: ${JSON.stringify(method)}, headers: { 'Content-Type': 'application/json' }, body: ${body ? JSON.stringify(JSON.stringify(body)) : 'undefined'} }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }))`);
     const list = async () => (await api('GET', `/api/artifacts/${HEX}/comments?state=all`)).body;
-    const sql = q => execFileSync('sqlite3', [path.join(DATA, 'sessions.db'), q], { encoding: 'utf8' });
+    const { sqliteText, sqliteExec } = require('./helpers/sqlite.js');
+    const sql = q => /^\s*select/i.test(q) ? sqliteText(path.join(DATA, 'sessions.db'), q) : (sqliteExec(path.join(DATA, 'sessions.db'), q), '');
     try {
         assert.ok(DATA, 'run under run_cdp_suites.mjs (CORAL_TEST_DATA_DIR names the isolated server\'s folder)');
         const dir = path.join(DATA, 'artifacts', 'objects');

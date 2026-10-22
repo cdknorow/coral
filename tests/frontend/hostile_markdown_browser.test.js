@@ -48,7 +48,7 @@ window.run = function (text, policy) {
         await waitFor(`typeof window.AccountMarkdown === 'object'`, 'the shared renderer is loaded on demand (vendor/safe-markdown.js)', 15000);
         await ev(`(() => { const o = document.createElement('div'); o.id = 'out'; document.body.append(o); return true; })()`);
         await ev(HARNESS);
-        const { checkCorpus, HIDDEN } = await import(path.join(__dirname, 'fixtures', 'markdown-corpus.mjs'));
+        const { checkCorpus, HIDDEN } = await import(require('node:url').pathToFileURL(path.join(__dirname, 'fixtures', 'markdown-corpus.mjs')).href);
         const run = async (text, policy) => JSON.parse(await ev(`window.run(${JSON.stringify(text)}, ${JSON.stringify(policy || null)})`));
         const FORBIDDEN = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'img', 'svg', 'math', 'link', 'meta', 'base', 'video', 'audio', 'source', 'canvas', 'details', 'textarea', 'select', 'frame', 'frameset'];
         const ALLOWED = new Set(['div', 'p', 'pre', 'code', 'ul', 'ol', 'li', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a', 'strong', 'em', 'br', 'hr', 'span']);

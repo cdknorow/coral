@@ -1468,6 +1468,11 @@ button.subscriber-history-link {
     color: var(--text-primary);
 }
 
+/* A finger needs 44 px: the dismiss button of a toast (update, security, Windows Firewall, database damage) was 24 px on a touch screen, where the toast can be shown to a phone through remote access. */
+@media (pointer: coarse) {
+    .update-toast-close { min-width: 44px; min-height: 44px; }
+}
+
 .update-toast-notes {
     list-style: none;
     padding: 0;

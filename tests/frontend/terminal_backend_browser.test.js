@@ -72,6 +72,15 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
         await open();
         await wrap();
 
+        // Verify the native Windows row before the cross-platform stand-in cases.
+        if (process.platform === 'win32') {
+            await ev(`window.showSettingsModal(); true`);
+            await until(`document.getElementById('settings-terminal-backend')?.hidden === false`, 'the native Windows backend row');
+            const native = await row();
+            check('Windows runs pty with no backend choice', !native.hidden && native.now === 'Running now: pty' && !native.choice && native.fixed, JSON.stringify(native));
+            await ev(`window.hideSettingsModal(); true`);
+        }
+
         // ── The row for an install that chose tmux (this server itself runs the pty default) ─────────
         await ev(`window.__tbFake = { status: () => ({ saved: 'tmux', running: 'tmux', next: 'tmux', forced: false, choice: true, restart_required: false, can_restart: false, running_agents: 0, leftover_tmux_agents: 0 }) }; window.showSettingsModal(); true`);
         await until(`document.getElementById('settings-terminal-backend')?.hidden === false`, 'the backend row');
