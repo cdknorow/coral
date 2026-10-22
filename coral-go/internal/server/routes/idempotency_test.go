@@ -274,3 +274,75 @@ func TestIdempotencyMiddlewareCoversExactlyTheFiveRoutes(t *testing.T) {
 		assert.EqualValues(t, before+2, c.runs.Load(), "%s ran every time", path)
 	}
 }
+
+// #5855 (Security's LOW 1): the query string is part of the request: the same key and body with another query is a reuse, not a replay.
+func TestIdempotencyKeyWithAnotherQueryIsRefused(t *testing.T) {
+	c, i := newCounting(200), NewIdempotency()
+	h := i.Wrap(c.handler())
+	withQuery := func(q string) *http.Request {
+		req := idemReq("/api/tasks/run", `{"a":1}`, "hub-user-1234abcd", idemKey)
+		req.URL.RawQuery = q
+		return req
+	}
+	idemDo(h, withQuery("x=1"))
+	rec := idemDo(h, withQuery("x=2"))
+	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	assert.Contains(t, rec.Body.String(), "idempotency_key_reuse")
+	assert.Equal(t, "true", idemDo(h, withQuery("x=1")).Header().Get("Idempotent-Replay"), "the same query is answered again")
+	assert.EqualValues(t, 1, c.runs.Load())
+}
+
+// bigAnswer is a handler whose answer is n bytes, counting its runs.
+func bigAnswer(n int, runs *atomic.Int32) http.HandlerFunc {
+	body := []byte(strings.Repeat("x", n))
+	return func(w http.ResponseWriter, r *http.Request) {
+		runs.Add(1)
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write(body)
+	}
+}
+
+// #5855 (LOW 2): the answers kept have a byte budget: past it the oldest finished ones go (a repeat of those runs again), the newest is still answered again.
+func TestIdempotencyAnswersAreKeptWithinAByteBudget(t *testing.T) {
+	var runs atomic.Int32
+	i := NewIdempotency()
+	h := i.Wrap(bigAnswer(600<<10, &runs))
+	clock := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	i.now = func() time.Time { return clock }
+	key := func(n int) string {
+		return "0123456789abcdef-budget-" + strings.Repeat("k", n/10) + string(rune('a'+n%10))
+	}
+	const requests = 60 // 60 x 600 KiB is more than the 32 MiB budget
+	user := func(n int) string {
+		return []string{"hub-user-1111aaaa", "hub-user-2222bbbb", "hub-user-3333cccc"}[n%3]
+	} // three users: the per-user cap is not what bounds it
+	for n := 0; n < requests; n++ {
+		clock = clock.Add(time.Second)
+		idemDo(h, idemReq("/api/sessions/launch-team", `{}`, user(n), key(n)))
+	}
+	assert.LessOrEqual(t, i.bytes, idempotencyMaxBytes, "the kept answers fit the budget")
+	assert.Less(t, len(i.entries), requests, "some of the oldest were dropped")
+	before := runs.Load()
+	last := idemDo(h, idemReq("/api/sessions/launch-team", `{}`, user(requests-1), key(requests-1)))
+	assert.Equal(t, "true", last.Header().Get("Idempotent-Replay"), "the newest is still answered again")
+	assert.Equal(t, before, runs.Load())
+	idemDo(h, idemReq("/api/sessions/launch-team", `{}`, user(0), key(0)))
+	assert.Equal(t, before+1, runs.Load(), "the oldest was evicted: it runs again")
+}
+
+// An answer too big to keep is not run again either: a repeat is told that the request already succeeded.
+func TestAnswerTooBigToKeepIsNotRunAgain(t *testing.T) {
+	var runs atomic.Int32
+	i := NewIdempotency()
+	h := i.Wrap(bigAnswer(idempotencyMaxBody+1, &runs))
+	first := idemDo(h, idemReq("/api/sessions/launch-team", `{}`, "hub-user-1234abcd", idemKey))
+	assert.Equal(t, 200, first.Code)
+	assert.Equal(t, idempotencyMaxBody+1, first.Body.Len(), "the first caller got the whole answer")
+	again := idemDo(h, idemReq("/api/sessions/launch-team", `{}`, "hub-user-1234abcd", idemKey))
+	assert.Equal(t, http.StatusConflict, again.Code)
+	assert.Contains(t, again.Body.String(), "request_already_done")
+	assert.EqualValues(t, 1, runs.Load(), "it started once")
+	assert.Zero(t, i.bytes, "nothing was kept")
+	other := idemDo(h, idemReq("/api/sessions/launch-team", `{"b":1}`, "hub-user-1234abcd", idemKey))
+	assert.Equal(t, http.StatusUnprocessableEntity, other.Code, "another body is still a reuse")
+}
