@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"github.com/subgentic/coral/internal/clihelp"
+	"github.com/subgentic/coral/internal/linktest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -213,4 +215,78 @@ func TestUnknownTaskSubcommandIsUsageAgent(t *testing.T) {
 	code, _, stderr := runAgent(t, srv.URL, "task", "frobnicate")
 	assert.Equal(t, 2, code, stderr)
 	assert.Contains(t, stderr, "Unknown task subcommand")
+}
+
+// Where the file system has no hard links (FAT/exFAT on a USB stick, some shares), --output is still written: the verified bytes are copied into a file created
+// exclusively and checked again; an existing file is still refused, --force still replaces, and an error that is not "no links here" is not swallowed.
+func TestDownloadOutputFallsBackToACopyWhereThereAreNoHardLinks(t *testing.T) {
+	srv, id := artifactServer(t, []byte("payload on a fat stick"))
+	old := linkFile
+	defer func() { linkFile = old }()
+
+	for _, errno := range unsupportedLinkErrnos {
+		linkFile = func(oldname, newname string) error {
+			return &os.LinkError{Op: "link", Old: oldname, New: newname, Err: errno}
+		}
+		dir := t.TempDir()
+		out := filepath.Join(dir, "got.txt")
+		p, err := downloadArtifactOpts(srv.URL, id, out, false)
+		require.NoError(t, err, "errno %d", errno)
+		assert.Equal(t, out, p)
+		b, _ := os.ReadFile(out)
+		assert.Equal(t, "payload on a fat stick", string(b), "errno %d", errno)
+		left, _ := filepath.Glob(filepath.Join(dir, "coral-artifact-*"))
+		assert.Empty(t, left, "no temporary file is left beside it")
+
+		_, err = downloadArtifactOpts(srv.URL, id, out, false)
+		require.Error(t, err, "an existing file is still refused through the copy path")
+		assert.Contains(t, err.Error(), "already exists", "errno %d", errno)
+		assert.Contains(t, err.Error(), "--force")
+	}
+
+	linkFile = func(oldname, newname string) error {
+		return &os.LinkError{Op: "link", Old: oldname, New: newname, Err: os.ErrPermission}
+	}
+	_, err := downloadArtifactOpts(srv.URL, id, filepath.Join(t.TempDir(), "x.txt"), false)
+	require.Error(t, err, "a permission error is not a reason to copy")
+	assert.True(t, errors.Is(err, os.ErrPermission))
+}
+
+// The copy is checked against the SHA-256 again: bytes that changed on the way (a failing stick) are removed, not left as the artifact.
+func TestPublishNewRemovesACopyThatDoesNotMatch(t *testing.T) {
+	old := linkFile
+	defer func() { linkFile = old }()
+	linkFile = func(string, string) error { return &os.LinkError{Op: "link", Err: unsupportedLinkErrnos[0]} }
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	require.NoError(t, os.WriteFile(src, []byte("not the artifact"), 0o600))
+	dst := filepath.Join(dir, "dst")
+	err := publishNew(src, dst, strings.Repeat("0", 64))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mismatch")
+	_, statErr := os.Stat(dst)
+	assert.True(t, os.IsNotExist(statErr), "the bad copy is gone")
+}
+
+// Through the copy path, a link planted at the target name is never written through (O_EXCL: the name exists, so the create fails), and a target that
+// cannot be created at all (here: its folder is a file, as an access-denied one would be) is an error, not a quiet success (Security's questions on #109).
+func TestPublishNewDoesNotWriteThroughAPlantedLinkAndSurfacesAnUncreatableTarget(t *testing.T) {
+	old := linkFile
+	defer func() { linkFile = old }()
+	linkFile = func(string, string) error { return &os.LinkError{Op: "link", Err: unsupportedLinkErrnos[0]} }
+	data := []byte("artifact")
+	sum := sha256.Sum256(data)
+	id := hex.EncodeToString(sum[:])
+	src := filepath.Join(t.TempDir(), "src")
+	require.NoError(t, os.WriteFile(src, data, 0o600))
+
+	dir := t.TempDir()
+	linktest.Each(t, filepath.Join(dir, "planted"), func(t *testing.T, p linktest.Planted) {
+		err := publishNew(src, filepath.Join(dir, "planted"), id)
+		require.Error(t, err, "%s: the name is taken, whatever it is a link to", p.Kind) // (a file name that exists: ErrExist; a junction to a folder: "is a directory")
+	})
+
+	notAFolder := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(notAFolder, []byte("x"), 0o600))
+	require.Error(t, publishNew(src, filepath.Join(notAFolder, "out.txt"), id), "a target that cannot be created is an error")
 }
