@@ -155,6 +155,8 @@
 }
 
 .sched-prompt {
+    max-height: 40vh;
+    overflow-y: auto;
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -162,8 +164,6 @@
     font-size: 0.8125rem;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 200px;
-    overflow-y: auto;
 }
 
 .sched-runs-table {
@@ -211,7 +211,7 @@
 }
 
 .sched-runs-section h3,
-.sched-prompt-section h3 {
+.sched-prompt-section > summary {
     font-size: var(--fs-xl);
     margin-bottom: 8px;
 }
@@ -273,3 +273,8 @@
 .run-failure-text { font-weight: 600; }
 .run-failure-hint { color: var(--text-secondary); }
 .run-failure-tag { color: var(--error); font-size: 0.8125rem; }
+
+.sched-prompt-section > summary { display: flex; align-items: center; gap: 4px; list-style: none; }
+.sched-prompt-section > summary::-webkit-details-marker { display: none; }
+.sched-prompt-section > summary::before { content: '▸' / ''; }
+.sched-prompt-section[open] > summary::before { content: '▾' / ''; }
