@@ -3,6 +3,7 @@
 import { escapeHtml, showToast, escapeAttr } from './utils.js';
 import { registerActions, textOf } from './actions.js';
 import { browserLocal } from './safe_storage.js';
+import { importOnce } from './import_once.js';
 import { reportUpdate } from './dashboard_analytics.js';
 import { noticeColumn, announceNotice } from './notifications.js';
 
@@ -105,7 +106,7 @@ export function showSecurityWarning(message) {
 /** Damage the server's integrity check found in a database (#4157): what to do, as text. */
 export async function showFirewallWarning(message) {
     if (!message || document.getElementById("firewall-warning-toast")) return;
-    const fw = await import("./firewall_warning.js");
+    const fw = await importOnce("./firewall_warning.js");
     if (fw.firewallDismissedForGood(message)) return; // "Don't show again": Settings > Security still has it, with the commands (#295)
     const toast = buildWarningToast("firewall-warning-toast", "Windows Firewall", fw.parseFirewallWarning(message).summary, "status");
     const body = toast.querySelector(".update-toast-body");

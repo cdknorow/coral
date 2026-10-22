@@ -48,6 +48,10 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
                     return { id: t.id, ok: b.top >= s.top - 1 && (b.bottom <= s.bottom + 1 || b.top <= s.top + 1) && s.top >= -1 && s.bottom <= innerHeight + 1, b: [b.top, b.bottom], s: [s.top, s.bottom] }; }); st.scrollTop = 0; return out; })()`);
                 for (const f of fit) assert.ok(f.ok, f.id + ' is inside the strip, and the strip inside the window, once scrolled to: ' + JSON.stringify(f));
             }
+            // A strip that scrolls opens at the top: the first warning's heading and its close button are in the first view.
+            const first = await ev(`(() => { const st = document.getElementById('warning-toasts'); const f = st.firstElementChild, sr = st.getBoundingClientRect(), h = f.querySelector('.update-toast-title').getBoundingClientRect(), x = f.querySelector('.update-toast-close').getBoundingClientRect(); return { scrollTop: st.scrollTop, title: h.top >= sr.top - 1 && h.bottom <= sr.bottom + 1, close: x.top >= sr.top - 1 && x.bottom <= sr.bottom + 1 }; })()`);
+            assert.equal(first.scrollTop, 0, name + ': the strip opens at the top');
+            assert.ok(first.title && first.close, name + ': the first heading and its close button are in view: ' + JSON.stringify(first));
             assert.ok(m.stack.l >= -1 && m.stack.r <= m.vw + 1 && m.stack.t >= -1 && m.stack.b <= m.vh + 1, 'the column of warnings is inside the window (it scrolls when 200% text outgrows it): ' + JSON.stringify(m.stack));
             assert.ok(!m.overflowX, 'the page does not scroll sideways');
             // the × closes its own warning and leaves the others where they are readable
@@ -61,7 +65,7 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
         await Emulation.setDeviceMetricsOverride({ width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
         await waitFor(`!!document.getElementById('agent-search-input')`, 'the page', 15000);
-        await ev(`localStorage.removeItem('coral-firewall-warning-dismissed'); true`);
+        await ev(`localStorage.removeItem('coral-firewall-warning-dismissed'); document.getElementById('firewall-warning-toast')?.remove(); true`); // a machine with a real broad rule shows its own toast at load: this test shows its own text
         await ev(`(async () => { const m = await import(${STATIC} + 'update_check.js'); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); return true; })()`);
         await waitFor(`!!document.getElementById('firewall-warning-toast')`, 'the firewall toast');
         const fw = await ev(`(() => { const t = document.getElementById('firewall-warning-toast'); const d = t.querySelector('details'); const b = t.getBoundingClientRect();
@@ -110,7 +114,7 @@ const DATABASE = 'The sessions database is damaged (page 12 is corrupt). Stop Co
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: w === 640 ? 2 : 1, mobile: false });
             await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired(); await install();
             await waitFor(`!!document.getElementById('agent-search-input')`, 'the page', 15000);
-            await ev(`localStorage.removeItem('coral-firewall-warning-dismissed'); (async () => { const m = await import(${STATIC} + 'update_check.js'); m.showSecurityWarning(${JSON.stringify(SECURITY)}); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); m.showDatabaseWarning(${JSON.stringify(DATABASE)}); m.showSecurityNotice('Coral made its data folder private.'); return true; })()`);
+            await ev(`localStorage.removeItem('coral-firewall-warning-dismissed'); document.getElementById('firewall-warning-toast')?.remove(); (async () => { const m = await import(${STATIC} + 'update_check.js'); m.showSecurityWarning(${JSON.stringify(SECURITY)}); await m.showFirewallWarning(${JSON.stringify(FIREWALL)}); m.showDatabaseWarning(${JSON.stringify(DATABASE)}); m.showSecurityNotice('Coral made its data folder private.'); return true; })()`);
             await waitFor(`document.querySelectorAll('.security-warning-toast').length === 4`, 'four toasts');
             const z = await ev(`(() => { const s = document.getElementById('warning-toasts').getBoundingClientRect(); return { h: s.height, vh: innerHeight, w: s.width, vw: innerWidth, r: s.right, b: s.bottom }; })()`);
             const top = await ev(`(() => { const s = document.getElementById('warning-toasts'); const first = s.firstElementChild.querySelector('.update-toast-title').getBoundingClientRect(); const x = s.firstElementChild.querySelector('.update-toast-close').getBoundingClientRect(); const sr = s.getBoundingClientRect(); return { scrollTop: s.scrollTop, titleVisible: first.top >= sr.top - 1 && first.bottom <= sr.bottom + 1, closeVisible: x.top >= sr.top - 1 && x.bottom <= sr.bottom + 1 }; })()`);

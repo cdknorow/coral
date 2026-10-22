@@ -70,7 +70,7 @@ export async function renderFirewallRow() {
     const body = document.getElementById('settings-firewall-status');
     if (!row || !body) return;
     let message = '';
-    try { const r = await fetchSystemStatus(); if (r.ok) message = (await r.json()).firewall_warning || ''; } catch { /* the row stays hidden */ }
+    try { const r = await fetchSystemStatus({ fresh: true }); if (r.ok) message = (await r.json()).firewall_warning || ''; } catch { /* the row stays hidden */ }
     body.replaceChildren();
     if (!message) { row.hidden = true; return; }
     body.append(el('p', 'firewall-summary', parseFirewallWarning(message).summary), firewallDetails(message));
