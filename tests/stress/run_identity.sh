@@ -277,7 +277,9 @@ for round in 1 2; do
 done
 # Each stand-in writes its dump asynchronously: give the last ones a moment, then count.
 union36() { collect; [[ $(grep -c . "$ALL_TOKENS" || true) -ge 36 ]]; }
-wait_until 30 "all 36 tokens to be reported by their agents" union36 || true
+# 60 s: on the PTY backend (Windows) the 24 restarts take ~1.8 s each and a restarted stand-in can write its dump after a
+# 30 s wait (seen once: 35 of 36, no token reused); only a late dump spends the extra time.
+wait_until 60 "all 36 tokens to be reported by their agents" union36 || true
 ELAPSED=$((SECONDS - STARTED))
 total=$(grep -c . "$ALL_TOKENS" || true)
 [[ $total -ge 36 ]] && pass "restarts minted new tokens: $total unique across 3 rounds of 12, no collision" || fail "only $total unique tokens after 2 restart rounds (want 36)"
