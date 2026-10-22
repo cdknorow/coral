@@ -243,7 +243,8 @@ const STUB_MARKER = path.join(tmp, 'REAL_CLI_WAS_CALLED');
 // suite that opens the Launch dialog, probes a CLI version or lists models uses the mock; the stub only
 // fires on a genuine PATH fallback.
 const CLI_TYPES = ['claude', 'codex', 'gemini', 'agy', 'pi', 'antigravity'];
-const MOCK_AGENT = path.join(tmp, 'mock-agent');
+const EXE = process.platform === 'win32' ? '.exe' : ''; // go build -o <dir>/ names a program coral.exe on Windows
+const MOCK_AGENT = path.join(tmp, 'mock-agent' + EXE);
 // Each shard gets its OWN stub dir on its server's PATH (writeStubs, in startShard). A stub ALWAYS exits
 // 1, so a real CLI never runs; it RECORDS the call to STUB_MARKER only once that shard's readyPath exists,
 // which startShard creates after it has PUT cli_path_<type> at the mock. So the brief server-startup window
@@ -311,7 +312,7 @@ console.log('building coral (dev) and its tools ...');
 // release scripts fill: sync them, or a fresh checkout's build has none (routes_browser opens /docs/<name>).
 const sd = spawnSync('bash', [path.resolve(goDir, '../tools/sync-agent-docs.sh')], { stdio: 'inherit' });
 if (sd.status !== 0) process.exit(2);
-const bin = path.join(tmp, 'coral');
+const bin = path.join(tmp, 'coral' + EXE);
 // This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
 // installed app's (#3492), so without them its agents would send no status events.
 const toolPackages = ['./cmd/coral', './cmd/coral-board', './cmd/coral-agent', './cmd/coral-hook-agentic-state',
@@ -419,13 +420,16 @@ async function startShard(n, gen = 0, strict = false) {
   // stub on PATH. user_settings is (key TEXT PRIMARY KEY, value TEXT NOT NULL) created IF NOT EXISTS, so
   // pre-creating it and the rows is safe; the server opens the DB (WAL set on open) and keeps these rows.
   // The post-health PUT below and the stub stay as backstops.
+  let seedViaApi = false;
   {
     const vals = CLI_TYPES.map(t => `('cli_path_${t}','${MOCK_AGENT.replace(/'/g, "''")}')`).join(',');
     const sql = `CREATE TABLE IF NOT EXISTS user_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);\nINSERT OR REPLACE INTO user_settings (key,value) VALUES ${vals};`;
     try {
       execFileSync('sqlite3', [path.join(data, 'sessions.db'), sql], { stdio: ['ignore', 'ignore', 'pipe'] });
     } catch (e) {
-      throw new Error(`#4354: could not seed cli_path into ${path.join(data, 'sessions.db')} (is sqlite3 installed?): ${e.stderr || e.message}`);
+      // No sqlite3 command-line tool (a Windows machine has none by default): the same values are PUT through the settings API once the server is up (below).
+      if (e.code === 'ENOENT') seedViaApi = true;
+      else throw new Error(`#4354: could not seed cli_path into ${path.join(data, 'sessions.db')} (is sqlite3 installed?): ${e.stderr || e.message}`);
     }
   }
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off',
@@ -453,6 +457,11 @@ async function startShard(n, gen = 0, strict = false) {
   // fails the shard loudly. Then arm the stub's recording (a PATH call after this is a genuine fallback).
   {
     const key = fs.readFileSync(path.join(data, 'api_key'), 'utf8').trim();
+    if (seedViaApi) {
+      const put = await fetch(`http://127.0.0.1:${port}/api/settings`, { method: 'PUT', headers: { authorization: 'Bearer ' + key, 'content-type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(CLI_TYPES.map(t => ['cli_path_' + t, MOCK_AGENT]))) });
+      if (!put.ok) throw new Error(`#4354: could not PUT the cli_path seed on :${port} (no sqlite3 to seed the database): HTTP ${put.status} ${await put.text()}`);
+    }
     const r = await fetch(`http://127.0.0.1:${port}/api/settings`, { headers: { authorization: 'Bearer ' + key } });
     if (!r.ok) throw new Error(`#4354: could not read settings on :${port} to verify the cli_path seed: HTTP ${r.status} ${await r.text()}`);
     const s = (await r.json()).settings || {}; // GET /api/settings answers { settings: {...} }
