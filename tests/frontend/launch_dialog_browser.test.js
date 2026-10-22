@@ -38,7 +38,7 @@ const BASE = require('./test_base').BASE;
         await ev(`window.showLaunchModal(); window._selectLaunchType('agent'); true`);
         await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the agent step');
         await ev(`document.getElementById('launch-dir').value = ''; window.launchSession(); true`);
-        assert.equal(await hasToast(/Choose a folder/), true); assert.equal((await ev(`window.__launches.length`)), 0);
+        assert.equal(await hasToast(/Choose a folder/), false, 'said once, under the field (#6029)'); assert.match(await ev(`document.getElementById('launch-dir-error').textContent`), /Choose a folder/); assert.equal((await ev(`window.__launches.length`)), 0);
         await ev(`document.getElementById('launch-dir').value = '/work/project'; document.getElementById('launch-agent-name-input').value = 'Ada'; window.launchSession(); true`);
         await waitFor(`window.__launches.length === 1`, 'the launch');
         let sent = await lastLaunch();

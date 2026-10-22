@@ -104,7 +104,7 @@ const BASE = require('./test_base').BASE;
         await ev(`document.getElementById('team-board-name').value = ''; window.launchTeam(); true`);
         assert.ok((await toasts()).some(t => /Team name is required/.test(t)));
         await ev(`document.getElementById('team-board-name').value = 'crew-1'; document.getElementById('launch-team-dir').value = ''; window._validateTeamName(); window.launchTeam(); true`);
-        assert.ok((await toasts()).some(t => /Choose a folder for the team/.test(t)));
+        assert.ok(!(await toasts()).some(t => /Choose a folder for the team/.test(t)), 'said once, under the field (#6029)'); assert.match(await ev(`document.getElementById('launch-team-dir-error').textContent`), /Choose a folder/);
         await ev(`document.getElementById('launch-team-dir').value = '/work/project'; document.getElementById('team-goal').value = 'Build the login page.'; window.launchTeam(); true`);
         await waitFor(`window.__teamLaunches.length === 1`, 'the request');
         const sent = await ev(`window.__teamLaunches[0]`);

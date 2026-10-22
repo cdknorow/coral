@@ -276,7 +276,6 @@ export async function launchSession() {
 
     if (!dir) {
         const agentForm = launch.mode !== "terminal";
-        showToast(agentForm ? "Choose a folder" : "Working directory is required", true);
         markFieldInvalid(document.getElementById(agentForm ? "launch-dir" : "launch-terminal-dir"), agentForm ? "Choose a folder" : "Working directory is required");
         return;
     }

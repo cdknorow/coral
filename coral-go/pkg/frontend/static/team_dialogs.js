@@ -416,7 +416,6 @@ async function launchTeam() {
 
     const workingDir = document.getElementById("launch-team-dir").value.trim();
     if (!workingDir) {
-        showToast("Choose a folder for the team", true);
         markFieldInvalid(document.getElementById("launch-team-dir"), "Choose a folder for the team");
         return;
     }
