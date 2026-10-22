@@ -51,6 +51,11 @@ func artifactDigest(base, ref string) (string, error) {
 }
 
 func downloadArtifact(base, ref, output string) (string, error) {
+	return downloadArtifactOpts(base, ref, output, false)
+}
+
+// downloadArtifactOpts is downloadArtifact; with force an existing output file is replaced, otherwise it is refused.
+func downloadArtifactOpts(base, ref, output string, force bool) (string, error) {
 	id, err := artifactDigest(base, ref)
 	if err != nil {
 		return "", err
@@ -131,8 +136,19 @@ func downloadArtifact(base, ref, output string) (string, error) {
 		return "", err
 	}
 	if output != "" {
+		if force {
+			// An explicit --force: the file the person named is replaced (a rename over it; on Windows it fails if another program has it open).
+			if err := os.Rename(f.Name(), output); err != nil {
+				return "", fmt.Errorf("cannot replace %s: %w", output, err)
+			}
+			keep = true
+			return output, nil
+		}
 		// Publish without overwriting an existing file, including concurrent writers.
 		if err := os.Link(f.Name(), output); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				return "", fmt.Errorf("the file %s already exists; choose another --output or add --force to replace it", output)
+			}
 			return "", err
 		}
 		return output, nil

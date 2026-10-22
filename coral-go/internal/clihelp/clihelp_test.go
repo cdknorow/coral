@@ -68,3 +68,20 @@ func TestIsFlagLike(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckFlags(t *testing.T) {
+	spec := FlagSpec{Bools: []string{"--json", "-a"}, Values: []string{"--id"}, Positional: 1}
+	for _, ok := range [][]string{nil, {"--json"}, {"-a", "--id", "3", "x"}, {"--id=3"}, {"x", "--json"}, {"--", "-weird"}, {"-5"}} {
+		if err := CheckFlags(ok, spec); err != nil {
+			t.Errorf("%v: %v", ok, err)
+		}
+	}
+	for _, bad := range [][]string{{"--nope"}, {"--jsno"}, {"--id"}, {"--json=1"}, {"x", "y"}, {"--id", "3", "x", "y"}, {"--", "a", "b"}} {
+		if err := CheckFlags(bad, spec); err == nil {
+			t.Errorf("%v was accepted", bad)
+		}
+	}
+	if err := CheckFlags([]string{"a", "b", "c"}, FlagSpec{Positional: -1}); err != nil {
+		t.Errorf("any number of positionals: %v", err)
+	}
+}

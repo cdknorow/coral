@@ -16,6 +16,8 @@ func runBoardStatus(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	project := fs.String("board", "", "Board name (defaults to current subscription)")
 	activity := fs.Bool("activity", false, "Include private bounded activity for open-task agents (Orchestrator/Operator only)")
+	fs.Bool("json", true, "Accepted for consistency: status always prints JSON")
+	fs.SetOutput(io.Discard) // the error is printed once, by the caller
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

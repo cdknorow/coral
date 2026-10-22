@@ -45,14 +45,14 @@ Commands:
   ui <publish|list|events|remove>  Publish interactive sidebar panels
   artifact upload <file>           Store long reports/logs/diffs/evidence; link the
                                  returned coral://artifacts/<digest> in a short post
-  artifact download <uri> [--output FILE] Download and verify an artifact; prints local path
+  artifact download <uri> [--output FILE] [--force] Download and verify an artifact; prints local path
   launch [dir] [--type T] [--name N] [--model M] [--prompt P] [--board ID]
                                  Launch an agent in dir (default: current
                                  directory) with your default settings;
                                  --board joins it to that board (its id)
   task add "title" [--body "details"] [--priority P]  Create a task
-  task list                      List all tasks
-  task detail <id>               Read requirements, dependencies and results
+  task list [--json]             List all tasks (--json: a JSON array)
+  task detail <id> [--json]      Read requirements, dependencies and results (always JSON)
   task claim [id]                Claim a named ready task or next ready work
   task edit <id>                 Edit unstarted task text/dependencies
   task current                   Show your current in-progress task
@@ -137,7 +137,9 @@ func main() {
 }
 
 const artifactUsageText = `Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]
-       coral-agent artifact download <coral://artifacts/digest> [--output FILE]
+       coral-agent artifact download <coral://artifacts/digest> [--output FILE] [--force]
+       (options may stand before or after the link; --force replaces an existing
+       --output file)
 
 Upload long reports, logs, diffs and evidence instead of pasting them into posts.
 Link the returned coral://artifacts/<digest> in a short board post: a one-line
@@ -147,11 +149,16 @@ use coral-board post - <<'EOF' (body and closing EOF on separate lines).
 Never put backticks or $( ) inside a double-quoted post argument.`
 
 func cmdArtifact(args []string) {
-	if len(args) >= 2 && args[0] == "download" {
-		fs := flag.NewFlagSet("artifact-download", flag.ExitOnError)
-		output := fs.String("output", "", "Local destination (must not exist; default: temporary file with media extension)")
-		fs.Parse(args[2:])
-		path, err := downloadArtifact(serverURL, args[1], *output)
+	if len(args) >= 1 && args[0] == "download" {
+		opts, err := splitOptions(args[1:], []string{"output"}, []string{"force"})
+		if err != nil || len(opts.Positional) != 1 {
+			if err == nil {
+				err = fmt.Errorf("download needs exactly one artifact link")
+			}
+			fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactUsageText)
+			os.Exit(2)
+		}
+		path, err := downloadArtifactOpts(serverURL, opts.Positional[0], opts.Values["output"], opts.Bools["force"])
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -163,14 +170,22 @@ func cmdArtifact(args []string) {
 		fmt.Fprintln(os.Stderr, artifactUsageText)
 		os.Exit(1)
 	}
-	file := args[1]
-	fs := flag.NewFlagSet("artifact-upload", flag.ExitOnError)
-	name := fs.String("name", filepath.Base(file), "Artifact filename")
-	mediaType := fs.String("media-type", "", "Artifact media type (default: inferred from the file extension)")
-	fs.Parse(args[2:])
-	*name = mediatype.EnsureExtension(*name, file)
-	*mediaType = mediatype.Resolve(*mediaType, file, *name)
-	if err := uploadArtifact(serverURL, file, *name, *mediaType, resolveSessionID(), os.Stdout, os.Stderr); err != nil {
+	opts, err := splitOptions(args[1:], []string{"name", "media-type"}, nil)
+	if err != nil || len(opts.Positional) != 1 {
+		if err == nil {
+			err = fmt.Errorf("upload needs exactly one file")
+		}
+		fmt.Fprintf(os.Stderr, "Error: %v\n%s\n", err, artifactUsageText)
+		os.Exit(2)
+	}
+	file := opts.Positional[0]
+	name, ok := opts.Values["name"]
+	if !ok {
+		name = filepath.Base(file)
+	}
+	name = mediatype.EnsureExtension(name, file)
+	mediaType := mediatype.Resolve(opts.Values["media-type"], file, name)
+	if err := uploadArtifact(serverURL, file, name, mediaType, resolveSessionID(), os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -276,11 +291,17 @@ func cmdTask() {
 	sub := os.Args[2]
 	taskArgs := os.Args[3:]
 
+	if err := checkTaskFlags(sub, taskArgs); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		printTaskUsage()
+		os.Exit(2)
+	}
+
 	switch sub {
 	case "add":
 		cmdTaskAdd(taskArgs)
 	case "list":
-		cmdTaskList()
+		cmdTaskList(hasFlag(taskArgs, "--json"))
 	case "claim":
 		cmdTaskClaim(taskArgs...)
 	case "current":
@@ -489,7 +510,7 @@ func cmdTaskAdd(args []string) {
 	fmt.Printf("Created Task #%.0f: %s\n", task["id"], title)
 }
 
-func cmdTaskList() {
+func cmdTaskList(asJSON bool) {
 	data, statusCode, err := apiCallRaw("GET", "/tasks?session_id="+url.QueryEscape(resolveSessionID()), nil)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -504,6 +525,14 @@ func cmdTaskList() {
 	json.Unmarshal(data, &result)
 	tasks, _ := result["tasks"].([]any)
 
+	if asJSON {
+		if tasks == nil {
+			tasks = []any{} // no tasks is [], never null
+		}
+		out, _ := json.MarshalIndent(tasks, "", "  ")
+		fmt.Println(string(out))
+		return
+	}
 	if len(tasks) == 0 {
 		fmt.Println("No tasks found.")
 		return
@@ -679,6 +708,7 @@ func positiveTaskID(arg string) int64 {
 }
 
 func cmdTaskDetail(args []string) {
+	args = withoutFlag(args, "--json") // task detail always prints JSON; --json is accepted so a script can say so
 	if len(args) != 1 {
 		fmt.Fprintln(os.Stderr, "Usage: coral-agent task detail <id>")
 		os.Exit(1)

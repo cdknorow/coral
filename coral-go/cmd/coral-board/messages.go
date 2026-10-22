@@ -106,7 +106,7 @@ func cmdPost() {
 	}
 
 	// Parse --to flag and collect remaining args as the message
-	var toNames string
+	var toNames, filePath string
 	var msgParts []string
 	literal := false
 	for i := 2; i < len(os.Args); i++ {
@@ -118,12 +118,29 @@ func cmdPost() {
 		if os.Args[i] == "--to" && i+1 < len(os.Args) {
 			toNames = os.Args[i+1]
 			i++ // skip the value
+		} else if os.Args[i] == "--file" && i+1 < len(os.Args) {
+			filePath = os.Args[i+1]
+			i++
+		} else if os.Args[i] == "--to" || os.Args[i] == "--file" {
+			fmt.Fprintf(os.Stderr, "Error: %s needs a value\n", os.Args[i])
+			os.Exit(2)
 		} else {
 			msgParts = append(msgParts, os.Args[i])
 		}
 	}
 	var message string
-	if !literal && len(msgParts) == 1 && msgParts[0] == "-" {
+	if filePath != "" {
+		if len(msgParts) > 0 {
+			fmt.Fprintln(os.Stderr, "Error: --file can't be combined with message text")
+			os.Exit(2)
+		}
+		text, err := readFileText(filePath, "message")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(2)
+		}
+		message = text
+	} else if !literal && len(msgParts) == 1 && msgParts[0] == "-" {
 		message = stdinTextOrExit("message")
 	} else {
 		message = strings.Join(msgParts, " ")
@@ -194,15 +211,15 @@ type readArgs struct {
 // overrides an earlier one, and a value that is not a number leaves what it had (0), as fmt.Sscanf does.
 func parseReadArgs(args []string) readArgs {
 	var r readArgs
-	for i, arg := range args {
-		if arg == "--id" && i+1 < len(args) {
-			fmt.Sscanf(args[i+1], "%d", &r.messageID)
+	for i := range args {
+		if v, ok := optionValue(args, i, "--id"); ok {
+			fmt.Sscanf(v, "%d", &r.messageID)
 		}
 	}
-	for i, arg := range args {
-		if arg == "--last" && i+1 < len(args) {
+	for i := range args {
+		if v, ok := optionValue(args, i, "--last"); ok {
 			r.useLast = true
-			fmt.Sscanf(args[i+1], "%d", &r.lastN)
+			fmt.Sscanf(v, "%d", &r.lastN)
 		}
 	}
 	for _, arg := range args {
@@ -214,6 +231,17 @@ func parseReadArgs(args []string) readArgs {
 		}
 	}
 	return r
+}
+
+// optionValue is the value of the option args[i] names (--last N or --last=N), if args[i] is that option.
+func optionValue(args []string, i int, name string) (string, bool) {
+	if args[i] == name && i+1 < len(args) {
+		return args[i+1], true
+	}
+	if v, ok := strings.CutPrefix(args[i], name+"="); ok {
+		return v, true
+	}
+	return "", false
 }
 
 // readPath is the request for r on project: the message by id, the newest N, or the subscriber's unread (50; all of
