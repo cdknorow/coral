@@ -127,7 +127,9 @@ func (s *SessionStore) ListArtifactComments(ctx context.Context, artifactID, sta
 			args = append(args, b)
 		}
 	}
-	q += " ORDER BY created_at, id"
+	// In the order they were written. Not by created_at: it is RFC3339Nano text, which drops trailing zeros ("...00.12Z" is 120 ms, "...00.123Z" is 123 ms), so two comments written within a second can
+	// sort the wrong way round as strings.
+	q += " ORDER BY id"
 	all := []ArtifactComment{}
 	if err := s.reader().SelectContext(ctx, &all, q, args...); err != nil {
 		return nil, err
