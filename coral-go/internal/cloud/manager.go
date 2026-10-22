@@ -750,7 +750,7 @@ func (m *Manager) modeWorker(conn *store.CloudConnection) {
 		cs := m.session.Load()
 		if cs == nil || !cs.CanSendLocalMode() {
 			m.modeWorkerEnds()
-			m.startTunnel(conn) // the tunnel was replaced meanwhile: its Hello carries the mode
+			m.reconnectForMode(conn) // the tunnel was replaced meanwhile: its Hello carries the mode
 			return
 		}
 		ctx, cancel := context.WithTimeout(m.root, 5*time.Second)
@@ -759,13 +759,23 @@ func (m *Manager) modeWorker(conn *store.CloudConnection) {
 		if err != nil {
 			m.o.Logger.Info("[cloud] the hub did not take the local mode message: reconnecting so the next hello carries it", "error", err.Error())
 			m.modeWorkerEnds()
-			m.startTunnel(conn)
+			m.reconnectForMode(conn)
 			return
 		}
 		m.modeMu.Lock()
 		m.announced, m.modeAt = mode, m.o.Now()
 		m.modeMu.Unlock()
 	}
+}
+
+// reconnectForMode restarts the tunnel on the connection record as it is NOW, not the one of the call that started the worker: the record may have changed since (a disconnect, another
+// enrollment), and then there is nothing to reconnect (#5918, Security's low).
+func (m *Manager) reconnectForMode(_ *store.CloudConnection) {
+	conn, err := m.o.Store.Get(m.root)
+	if err != nil || conn.State != store.CloudStateActive || conn.HubURL != m.o.HubURL {
+		return
+	}
+	m.startTunnel(conn)
 }
 
 func (m *Manager) modeWorkerEnds() {
