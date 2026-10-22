@@ -17,8 +17,10 @@ const shot = async (name) => { const r = await Page.captureScreenshot({ format: 
 const dump = async (label) => {
     const d = await ev(`(() => { const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
       const dlg = [...document.querySelectorAll('dialog[open], [role=dialog], .modal, .modal-overlay')].filter(vis).map(e => e.innerText.replace(/\\s+/g, ' ').slice(0, 700));
+      const openDlg = [...document.querySelectorAll('dialog[open], [role=dialog], .modal, .modal-overlay')].filter(vis);
+      const scope = openDlg.length ? openDlg[openDlg.length - 1] : document;
       return JSON.stringify({ url: location.href, title: document.title, dialogs: dlg,
-        buttons: [...document.querySelectorAll('button, [role=button], a, [data-on-click]')].filter(vis).map(e => (e.innerText || e.getAttribute('aria-label') || e.title || '').trim().replace(/\\s+/g, ' ').slice(0, 50)).filter(Boolean).slice(0, 60),
+        buttons: [...scope.querySelectorAll('button, [role=button], a, [data-on-click]')].filter(vis).map(e => (e.innerText || e.getAttribute('aria-label') || e.title || '').trim().replace(/\\s+/g, ' ').slice(0, 50)).filter(Boolean).slice(0, 60),
         inputs: [...document.querySelectorAll('input, select, textarea')].filter(vis).map(e => [e.type, e.name || e.id, e.placeholder || '', e.value ? 'v=' + String(e.value).slice(0, 40) : '', e.getAttribute('aria-label') || ''].join('|')).slice(0, 20),
         text: document.body.innerText.replace(/\\s+/g, ' ').slice(0, 1100) }); })()`);
     console.log('PAGE ' + label + ' ' + d);
@@ -53,18 +55,27 @@ await step('2 create password', async () => {
     await clickText(/^Create password and open Coral$/); await sleep(4000);
     await shot('A3-home'); await dump('A3-home');
 });
-await step('3 launch agent dialog', async () => {
-    await clickText(/Launch agent|New agent|Launch an agent/i); await sleep(2500);
+await step('3 launch agent', async () => {
+    await clickText(/Launch agent One agent in a folder/); await sleep(2500);
     await shot('A4-launch-dialog'); await dump('A4-launch-dialog');
+    if (await ev(`/Launch New Session/.test(document.body.innerText)`)) { await clickText(/AI Agent Launch Claude/); await sleep(2500); await shot('A4b-agent-form'); await dump('A4b-agent-form'); }
 });
 await step('4 launch the agent', async () => {
-    await clickText(/^Launch$/); await sleep(5000);
-    await shot('A5-agent'); await dump('A5-agent');
+    await clickText(/^(Launch|Launch Agent|Start|Launch agent)$/); await sleep(6000);
+    await shot('A5-after-launch'); await dump('A5-after-launch');
 });
-await step('5 home again, team', async () => {
+await step('5 the agent window', async () => {
+    await sleep(4000); await shot('A6-agent-later'); await dump('A6-agent-later');
+});
+await step('6 team dialog', async () => {
     await Page.navigate({ url: base + '/' }); await sleep(3000);
-    await dump('B1-home-again');
-    await clickText(/Launch team|Team|Launch a team/i); await sleep(2500);
-    await shot('B2-team-dialog'); await dump('B2-team-dialog');
+    await clickText(/Launch team Agents with roles/); await sleep(2500);
+    await shot('B1-team-members'); await dump('B1-team-members');
+    await clickText(/Board & workspace/); await sleep(1500); await shot('B2-team-board'); await dump('B2-team-board');
+    await clickText(/^tune Defaults$|Defaults/); await sleep(1500); await shot('B3-team-defaults'); await dump('B3-team-defaults');
+});
+await step('7 launch the team', async () => {
+    await clickText(/^(Launch Team|Launch team|Launch)$/); await sleep(8000);
+    await shot('B4-after-team-launch'); await dump('B4-after-team-launch');
 });
 await client.close(); chrome.kill();
