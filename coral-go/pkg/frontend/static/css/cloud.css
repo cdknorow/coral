@@ -56,6 +56,13 @@ body.cloud-mode [data-local-only] { display: none !important; }
 .cs-rename { justify-content: flex-start; }
 .cs-launch select { width: 100%; min-width: 9rem; max-width: 100%; }
 .cs-access-effective { font-weight: 600; }
+.cs-meta.cs-access-help { opacity: 1; color: var(--text-secondary); }
+.cs-access-info { display: inline-flex; align-items: center; gap: var(--space-xs); margin-top: var(--space-xs); color: var(--text-secondary); }
+.cs-access-info .material-icons { font-size: 1rem; }
+.cs-access-matrix { color: var(--text-secondary); font-size: var(--fs-base); line-height: 1.5; }
+.cs-access-matrix p { margin: var(--space-sm) 0; }
+@media (pointer: coarse) { .cs-access-info, #cs-enroll-toggle { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); } }
+
 .cs-main { min-width: 0; overflow-wrap: anywhere; }
 .cs-title { font-weight: 600; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; overflow-wrap: anywhere; }
 /* The row's "(online)" / "(offline)" is for screen readers only; the dot shows it. */

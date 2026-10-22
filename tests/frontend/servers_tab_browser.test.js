@@ -150,7 +150,7 @@ const contrast = (a, b) => {
             await installAudit(ev);
             for (const theme of ['dark', 'light']) {
                 await setTheme(ev, theme);
-                const au = await auditRegion(ev, ['#servers-view .cs-launch', '#servers-view .cs-access-help', '#servers-view .cs-limit', '#servers-view .cs-note']);
+                const au = await auditRegion(ev, ['#servers-view .cs-launch', '#servers-view .cs-access-help', '#servers-view .cs-limit', '#servers-view .cs-note', '#servers-view .cs-access-info', '#servers-view .cs-access-matrix']);
                 assert.ok(au.checked > 0 && !au.fails.length, `${tag} ${theme}: the row's words hold 4.5:1: ${JSON.stringify(au.fails).slice(0, 300)}`);
                 if (process.env.CORAL_SCREENSHOT_DIR) { fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR, { recursive: true }); fs.writeFileSync(`${process.env.CORAL_SCREENSHOT_DIR}/servers-access-${tag}-${theme}.png`, Buffer.from((await Page.captureScreenshot({ format: 'png' })).data, 'base64')); }
             }
@@ -164,7 +164,7 @@ const contrast = (a, b) => {
             return { options: [...sel.options].map(o => o.textContent + (o.disabled ? ' (disabled)' : '')), value: sel.value, label: r.querySelector('.cs-launch').firstChild.textContent.trim(), describedBy: sel.getAttribute('aria-describedby'),
                 help: (document.getElementById(sel.getAttribute('aria-describedby')) || {}).textContent || null,
                 effective: [...d.querySelectorAll('.cs-access-effective')].map(n => n.textContent), actions: [...r.querySelectorAll('.cs-col-actions button')].map(b => b.textContent),
-                inDetails: [...d.querySelectorAll('button')].map(b => b.textContent), follow: !!r.querySelector('.cs-follow, .cs-limit'), raise: !!r.querySelector('.cs-raise'), summary: !!d.querySelector('.cs-access'), dialogs: document.querySelectorAll('dialog.cs-confirm').length }; })()`);
+                inDetails: [...d.querySelectorAll('button:not(.cs-access-info)')].map(b => b.textContent), follow: !!r.querySelector('.cs-follow, .cs-limit'), raise: !!r.querySelector('.cs-raise'), summary: !!d.querySelector('.cs-access'), dialogs: document.querySelectorAll('dialog.cs-confirm').length }; })()`);
         let r = Object.fromEntries((await rows()).map(x => [x.id, x]));
         assert.ok(Object.values(r).every(x => x.tabindex === '-1'), 'rows are focus targets (tabindex=-1)');
         await ev(`document.querySelectorAll('#servers-view .cs-toggle[aria-expanded="false"]').forEach(b => b.click()); true`);
@@ -187,7 +187,7 @@ const contrast = (a, b) => {
         // m3: Launch on a computer that allows Launch: nothing limits, the help says what Launch means.
         v = await rowView('m3');
         assert.deepEqual(v.options, ['View', 'Interact', 'Launch']);
-        assert.equal(v.value, 'launch'); assert.deepEqual(v.effective, []); assert.match(v.help, /^Launch: /);
+        assert.equal(v.value, 'launch'); assert.deepEqual(v.effective, []); assert.equal(v.help, 'Can run commands on this computer.');
         // m4: the computer has not announced: View until it connects; Launch is disabled.
         v = await rowView('m4');
         assert.deepEqual(v.options, ['View', 'Interact', 'Launch (disabled)']);

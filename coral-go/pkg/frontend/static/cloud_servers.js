@@ -36,6 +36,10 @@ let confirming = null;   // id awaiting revoke confirmation
 let renaming = null;     // id being renamed
 let busy = new Set();
 let timer = null;
+let loaded = false;
+let enrollOpen = null; // null follows the account: first machine open, existing machines closed
+let enrollCode = '';
+const accessDetails = new Set();
 
 /** Open the Servers tab, optionally at one server's row. */
 export async function showCloudServers(focusId) {
@@ -47,6 +51,7 @@ export async function showCloudServers(focusId) {
 export async function renderCloudServersInto(el) {
     host = el;
     confirming = null; renaming = null; loadError = '';
+    loaded = false; enrollOpen = null;
     resetRelaunchReads(); // the first list of a visit reads each online machine's relaunch status once
     render();
     await load();
@@ -68,6 +73,7 @@ async function load() {
         else {
             const d = await r.json();
             servers = Array.isArray(d && d.servers) ? d.servers : [];
+            loaded = true;
             loadError = '';
             syncRelaunchReads(servers, render);
         }
@@ -352,7 +358,18 @@ function detailCell(s, live, online, isBusy, helpId) {
     const effective = effectiveOf(s);
     // What the computer allows, and (only when lower than the choice) what applies; the select is described by this line.
     const help = local ? launchNote(s) : 'View until this computer connects.';
-    const helpEl = h('div', { className: 'cs-meta cs-access-help', id: helpId, text: help || `${MODE_INFO[effective].label}: ${MODE_INFO[effective].text}` });
+    // Keep the consequence and the local limit beside the control. The full capability matrix is optional.
+    const consequence = effective === 'view' ? (help ? '' : 'Read-only access.') : (local ? 'Can run commands on this computer.' : '');
+    const helpEl = h('div', { className: 'cs-meta cs-access-help', id: helpId, text: [help, consequence].filter(Boolean).join(' ') });
+    const infoId = `${rowId(s.id)}-access-details`;
+    const infoOpen = accessDetails.has(s.id);
+    const info = h('div', { className: 'cs-access-details' },
+        h('button', { type: 'button', className: 'btn btn-small cs-access-info', 'aria-label': `Access details for ${s.label || 'this server'}`, 'aria-expanded': String(infoOpen), 'aria-controls': infoId,
+            onclick: () => { if (accessDetails.has(s.id)) accessDetails.delete(s.id); else accessDetails.add(s.id); render(); } },
+            h('span', { className: 'material-icons', 'aria-hidden': 'true', text: 'info' }), 'Access details'),
+        h('div', { id: infoId, className: 'cs-access-matrix', hidden: !infoOpen },
+            h('p', { text: 'What Coral Hub may do on a machine is what you allowed when you connected it; you can limit it further here.' }),
+            ...MODES.map(mode => h('p', {}, h('strong', { text: `${MODE_INFO[mode].label}: ` }), MODE_INFO[mode].text))));
     const eff = effectiveNote(s);
     const effEl = eff ? h('div', { className: 'cs-meta cs-access-effective', text: eff }) : null;
     const update = updateNotice(live);
@@ -365,7 +382,7 @@ function detailCell(s, live, online, isBusy, helpId) {
     const meta = online ? null : h('div', { className: 'cs-meta cs-lastseen', text: `Last contact ${formatLastSeen(s.last_seen)}` });
     return h('td', { colSpan: COLUMNS.length, role: 'cell', className: 'cs-detail-cell' },
         h('div', { className: 'cs-main' }, meta, belowMinimumText(live) ? h('div', { className: 'cs-meta server-below-minimum', text: belowMinimumText(live) }) : null,
-            online ? healthCard(live.machine_health, { title: 'Health', online: true }) : null, effEl, helpEl),
+            online ? healthCard(live.machine_health, { title: 'Health', online: true, waitingText: 'No health reading yet.' }) : null, effEl, helpEl, info),
         confirming === s.id ? h('div', { className: 'cs-note', id: revokeNoteId(s), text: `Revoke ${s.label || 'this server'}? It disconnects this computer from Coral Hub. Its token stops working; to connect it again you must enroll it again.` }) : null,
         updateNote);
 }
@@ -395,7 +412,8 @@ function rows(s) {
 
 /** The steps to add a machine, with the download link and what the person will see on that computer. */
 function enrollBlock() {
-    const input = h('input', { type: 'text', className: 'cloud-code', placeholder: 'XXXX-XXXX', maxLength: 9, autocomplete: 'off', spellcheck: false, 'aria-label': 'Enrollment code', id: 'cs-enroll-code' });
+    const open = enrollOpen ?? (loaded && servers.length === 0);
+    const input = h('input', { type: 'text', className: 'cloud-code', placeholder: 'XXXX-XXXX', value: enrollCode, maxLength: 9, autocomplete: 'off', spellcheck: false, 'aria-label': 'Enrollment code', id: 'cs-enroll-code', oninput: e => { enrollCode = e.target.value; } });
     const go = () => {
         const v = input.value.trim().toUpperCase();
         location.href = '/enroll' + (v ? '?code=' + encodeURIComponent(v) : '');
@@ -405,9 +423,11 @@ function enrollBlock() {
     // The light picture carries the alt text through its sibling: one description, one picture shown per theme (css).
     const lightShot = shot('light'); lightShot.alt = shot('dark').alt;
     return h('section', { className: 'cs-enroll', id: 'cs-add-machine', 'aria-labelledby': 'cs-enroll-title' },
-        h('h3', { className: 'cs-enroll-title', id: 'cs-enroll-title', text: 'Add a machine' }),
-        h('div', { className: 'cs-enroll-body' },
+        h('h3', { className: 'cs-enroll-title', id: 'cs-enroll-title' },
+            h('button', { type: 'button', id: 'cs-enroll-toggle', className: open ? 'btn btn-small' : 'btn btn-primary btn-small', 'aria-expanded': String(open), 'aria-controls': 'cs-enroll-body', onclick: () => { enrollOpen = !open; render(); } }, 'Add a machine')),
+        h('div', { className: 'cs-enroll-body', id: 'cs-enroll-body', hidden: !open },
             h('div', { className: 'cs-enroll-steps' },
+                h('p', { className: 'cs-meta', text: 'Each machine connects out to this hub; no inbound port is needed.' }),
                 h('ol', {},
                     h('li', {}, h('strong', { text: 'Install Coral' }), ' on the computer you want to add: ', h('a', { href: DOWNLOAD_URL, target: '_blank', rel: 'noopener noreferrer', text: 'coralhub.dev/coral.html#download' })),
                     h('li', {}, 'Open Coral on that computer and press ', h('strong', { text: 'Connect to Coral Hub' }), ' (Settings › Network and Hub, or the Coral Hub card on the home screen).'),
@@ -437,7 +457,7 @@ function render() {
     // replaceChildren() would render a null as the text "null": leave it out.
     const restoreFocus = rememberFocus(host); // a control the redraw replaced gets focus back (#4882)
     host.replaceChildren(...[
-        h('p', { className: 'servers-intro', text: 'Machines connected to your account. Each one connects out to this hub; no inbound port is needed. What Coral Hub may do on a machine is what you allowed when you connected it; you can limit it further here.' }),
+        h('p', { className: 'servers-intro', text: 'Manage connected machines.' }),
         enrollBlock(),
         loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
         table].filter(Boolean));

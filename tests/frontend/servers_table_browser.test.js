@@ -196,15 +196,25 @@ const contrast = (a, b) => {
         assert.ok(acts.every(x => x.buttons.length === 2 && /^Rename\|Rename /.test(x.buttons[0]) && /^Revoke\|Revoke /.test(x.buttons[1])), 'Rename and Revoke, named with the machine, in every row: ' + JSON.stringify(acts));
         await ev(`document.querySelector('#server-row-m1 .cs-toggle').focus(); document.querySelector('#server-row-m1 .cs-toggle').click(); true`);
         await waitFor(`document.querySelector('#server-row-m1 .cs-toggle').getAttribute('aria-expanded') === 'true' && !document.getElementById('server-row-m1-detail').hidden`, 'm1 open', 3000);
-        const d = await ev(`(() => { const x = document.getElementById('server-row-m1-detail'); return { text: x.textContent.replace(/\\s+/g, ' '), buttons: [...x.querySelectorAll('button')].map(b => b.textContent.trim()), update: (x.querySelector('.cs-update a') || {}).href || null, focus: document.activeElement && document.activeElement.classList.contains('cs-toggle') }; })()`);
-        assert.deepEqual(d.buttons, [], 'the details hold no buttons');
+        const d = await ev(`(() => { const x = document.getElementById('server-row-m1-detail'); return { text: x.textContent.replace(/\\s+/g, ' '), buttons: [...x.querySelectorAll('button:not(.cs-access-info)')].map(b => b.textContent.trim()), update: (x.querySelector('.cs-update a') || {}).href || null, focus: document.activeElement && document.activeElement.classList.contains('cs-toggle') }; })()`);
+        assert.deepEqual(d.buttons, [], 'the details hold no machine-action buttons');
+        const infoState = () => ev(`(() => { const b = document.querySelector('#server-row-m1-detail .cs-access-info'), p = document.getElementById(b.getAttribute('aria-controls')); return { open:b.getAttribute('aria-expanded'), hidden:p.hidden, words:p.textContent, focus:document.activeElement===b }; })()`);
+        assert.equal((await infoState()).open, 'false');
+        assert.equal((await infoState()).hidden, true, 'the complete access matrix starts folded');
+        await ev(`document.querySelector('#server-row-m1-detail .cs-access-info').focus(); document.querySelector('#server-row-m1-detail .cs-access-info').click(); true`);
+        const info = await infoState();
+        assert.equal(info.open, 'true'); assert.equal(info.hidden, false); assert.equal(info.focus, true, 'focus survives the redraw');
+        assert.match(info.words, /View:.*Interact:.*Launch:/, 'every access level remains available on demand');
+        assert.match(info.words, /What Coral Hub may do on a machine is what you allowed when you connected it; you can limit it further here\./, 'the enrollment access limit remains reachable');
+        assert.match(info.words, /turn on auto-accept/, 'the complete capability text is preserved');
+        await ev(`document.querySelector('#server-row-m1-detail .cs-access-info').click(); true`);
         assert.equal(d.update, DOWNLOAD, 'the update notice points to the download page, not GitHub');
         assert.doesNotMatch(d.text, /Follow this computer|Limit to|Hub: |Machine: /, 'none of the old wording');
         assert.ok(d.focus, 'focus stays on the toggle');
         assert.equal(await ev(`document.querySelectorAll('#servers-view .cs-detail:not([hidden])').length`), 1, 'only the open row shows details');
         // Status and Health agree: an online machine with no reading yet is waiting for one, never "not connected".
         const hc = await ev(`[...document.querySelectorAll('#servers-view tr.cs-row')].map(r => ({ status: r.querySelector('.cs-col-status').textContent, note: ((document.getElementById(r.id + '-detail').querySelector('.machine-health-note')) || {}).textContent || null }))`);
-        assert.ok(hc.filter(x => x.status === 'Online').every(x => x.note === 'Waiting for a health reading from this computer.'), 'online rows wait for a reading: ' + JSON.stringify(hc));
+        assert.ok(hc.filter(x => x.status === 'Online').every(x => x.note === 'No health reading yet.'), 'online rows wait for a reading: ' + JSON.stringify(hc));
         assert.ok(!hc.some(x => x.status === 'Online' && /not connected/.test(x.note || '')), 'no online row says not connected');
         await ev(`document.querySelector('#servers-view .cs-table').scrollIntoView(); true`);
         await shot('table-desktop-open'); // a row open (Box One)
@@ -237,7 +247,11 @@ const contrast = (a, b) => {
         await waitFor(`!document.querySelector('#server-row-m4 .cs-rename')`, 'rename cancelled', 3000);
         console.log('   ok');
 
-        console.log('4. Add a machine: the download link, the steps, a local picture; no brew command, no GitHub releases link');
+        console.log('4. Add a machine: closed for an existing account, with the original steps on demand');
+        assert.equal(await ev(`document.querySelector('#cs-enroll-toggle').getAttribute('aria-expanded')`), 'false');
+        await ev(`document.querySelector('#cs-enroll-toggle').click(); true`);
+        assert.equal(await ev(`document.querySelector('#cs-enroll-body').hidden`), false);
+        await waitFor(`document.querySelector('.cs-shot-dark').naturalWidth > 0`, 'the disclosed local picture');
         const a = await ev(`(() => { const e = document.getElementById('cs-add-machine'); const links = [...e.querySelectorAll('a')].map(x => x.href);
             const imgs = [...e.querySelectorAll('img')].map(i => ({ src: new URL(i.src).origin === location.origin, name: i.src.split('/').pop(), alt: i.alt, shown: getComputedStyle(i).display !== 'none', w: i.getBoundingClientRect().width, nat: i.naturalWidth }));
             return { links, imgs, text: e.textContent.replace(/\\s+/g, ' '), steps: e.querySelectorAll('ol li').length, code: !!e.querySelector('#cs-enroll-code') }; })()`);
