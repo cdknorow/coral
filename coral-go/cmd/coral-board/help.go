@@ -83,6 +83,7 @@ func checkFreeText(args []string) error {
 	}
 	rest := args[1:]
 	if args[0] == "post" {
+		seenText := false
 		for i := 0; i < len(rest); i++ {
 			if rest[i] == "--" {
 				break
@@ -92,9 +93,16 @@ func checkFreeText(args []string) error {
 				continue
 			}
 			if clihelp.IsFlagLike(rest[i]) {
-				return fmt.Errorf("unknown option %q for post (put -- before message text that has '-word' in it)", rest[i])
+				if !seenText {
+					return fmt.Errorf("unknown option %q for post (put -- before message text that starts with '-')", rest[i])
+				}
+				// After the text, a separate argument that is one letter off a real option is a typo ("post hello --too Lead"); any other
+				// "--word" is text ("post use --force here" posts as written).
+				if near, ok := clihelp.NearFlag(rest[i], []string{"--to", "--file"}); ok {
+					return fmt.Errorf("unknown option %q for post: did you mean %s? (put -- before message text that has it)", rest[i], near)
+				}
 			}
-			// (not a stop at the first word of the text: "post hello --too Lead" has a misspelt --to after it, and would post "hello --too Lead")
+			seenText = true
 		}
 	}
 	if args[0] == "send" {
