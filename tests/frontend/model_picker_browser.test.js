@@ -49,10 +49,10 @@ const { connect } = require('./agent_view_harness');
         await waitFor(`!!document.querySelector('#acf-t .acf-model-select option[value="claude-opus-4-1-20250805"]')`, 'the cached list', 3000);
         let b = await box();
         assert.equal(b.picker, true, 'the picker shows from the cache before the server answers');
-        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Other…']);
-        await waitFor(`document.querySelectorAll('#acf-t .acf-model-select option').length === 4`, 'the server list', 4000);
+        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Other…', 'Add a model…']);
+        await waitFor(`document.querySelectorAll('#acf-t .acf-model-select option').length === 5`, 'the server list', 4000);
         b = await box();
-        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…'], 'the server\'s list replaced the cached one');
+        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…', 'Add a model…'], 'the server\'s list replaced the cached one');
         assert.equal(b.value, '', 'Default is selected for a blank model'); assert.equal(b.inputShown, false, 'the text box is behind Other…');
 
         console.log('2. choosing, Other…, Default');
@@ -74,18 +74,18 @@ const { connect } = require('./agent_view_harness');
         b = await box(); assert.equal(b.value, OPUS.value, 'a known model is selected'); assert.equal(b.inputShown, false);
         await ev(`window.__acf.setAgentConfig('acf-t', { agentType: 'claude', model: 'something-else' }); true`); await sleep(300); // sleep-ok: the form's async loads have no completion event
         b = await box(); assert.equal(b.value, 'something-else', 'a model the list does not name shows as itself, not under Other… (#5044)');
-        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'something-else', 'Other…'], 'in an option of its own, before Other…');
+        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'something-else', 'Other…', 'Add a model…'], 'in an option of its own, before Other…');
         assert.equal(b.inputValue, 'something-else'); assert.equal(b.inputShown, false, 'and the text box stays hidden');
         assert.equal(await formModel(), 'something-else', 'the form still returns it');
         await ev(`{ const s = document.querySelector('#acf-t .acf-model-select'); s.value = '__other'; s.dispatchEvent(new Event('change', { bubbles: true })); true }`);
         b = await box(); assert.equal(b.value, '__other', 'Other… is the user\'s choice and is still there'); assert.equal(b.inputShown, true); assert.equal(b.inputValue, 'something-else', 'with the text kept to edit');
-        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…'], 'the option of its own is gone while the text is edited');
+        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…', 'Add a model…'], 'the option of its own is gone while the text is edited');
         await ev(`{ const s = document.querySelector('#acf-t .acf-model-select'); s.value = ${JSON.stringify(OPUS.value)}; s.dispatchEvent(new Event('change', { bubbles: true })); true }`);
-        b = await box(); assert.equal(b.value, OPUS.value); assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…'], 'choosing a listed model leaves no extra option');
+        b = await box(); assert.equal(b.value, OPUS.value); assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…', 'Add a model…'], 'choosing a listed model leaves no extra option');
         await ev(`window.__acf.setAgentConfig('acf-t', { agentType: 'claude', model: 'something-else' }); true`); await sleep(300); // sleep-ok: the form's async loads have no completion event
         b = await box(); assert.equal(b.value, 'something-else', 'set from code again: shown as itself');
         await ev(`window.__acf.setAgentConfig('acf-t', { agentType: 'claude', model: '' }); true`); await sleep(300); // sleep-ok: the form's async loads have no completion event
-        b = await box(); assert.equal(b.value, '', 'a blank model is Default'); assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…'], 'and the option for the earlier model is gone');
+        b = await box(); assert.equal(b.value, '', 'a blank model is Default'); assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Sonnet 4.5', 'Other…', 'Add a model…'], 'and the option for the earlier model is gone');
 
         console.log('4. the agent type switches the list; no list means free text');
         await ev(`{ const t = document.querySelector('#acf-t .acf-agent-type'); t.value = 'codex'; t.dispatchEvent(new Event('change', { bubbles: true })); true }`);
@@ -95,12 +95,12 @@ const { connect } = require('./agent_view_harness');
 
         console.log('5. refresh');
         await ev(`{ const t = document.querySelector('#acf-t .acf-agent-type'); t.value = 'claude'; t.dispatchEvent(new Event('change', { bubbles: true })); window.__delay = 0; true }`);
-        await waitFor(`document.querySelector('#acf-t .acf-model-select').options.length === 4`, 'the claude list again', 4000);
+        await waitFor(`document.querySelector('#acf-t .acf-model-select').options.length === 5`, 'the claude list again', 4000);
         await ev(`window.__calls.length = 0; window.__serve.claude = { models: [${JSON.stringify(OPUS)}, ${JSON.stringify(SONNET)}], refreshing: true }; document.querySelector('#acf-t .acf-model-refresh').click(); true`);
         await waitFor(`window.__calls.includes('POST /api/agents/models/refresh?type=claude')`, 'the refresh POST', 3000);
         await ev(`setTimeout(() => { window.__serve.claude = { models: [${JSON.stringify(OPUS)}, ${JSON.stringify(SONNET)}, ${JSON.stringify(HAIKU)}], refreshing: false }; }, 4000); true`);
         await waitFor(`document.querySelector('#acf-t .acf-model-note').textContent === 'Updating the list…'`, 'the note while the server refreshes', 4000);
-        await waitFor(`document.querySelectorAll('#acf-t .acf-model-select option').length === 5`, 'the list to update after polling', 12000);
+        await waitFor(`document.querySelectorAll('#acf-t .acf-model-select option').length === 6`, 'the list to update after polling', 12000);
         assert.ok((await ev(`window.__calls.filter(c => c.startsWith('GET')).length`)) >= 2, 'it polled while the server said refreshing');
         for (const [status, text] of [[429, /just refreshed/i], [403, /only the operator/i]]) {
             await ev(`window.__refresh = { status: ${status} }; document.querySelector('.toast') && document.querySelectorAll('.toast').forEach(t => t.remove()); document.querySelector('#acf-t .acf-model-refresh').click(); true`);
@@ -126,7 +126,7 @@ const { connect } = require('./agent_view_harness');
             (() => { const old = document.getElementById('acf-t'); if (old) old.remove(); const host = document.createElement('div'); host.id = 'acf-t'; document.body.appendChild(host); window.__acf.renderAgentConfigForm('acf-t', {}); })(); true`);
         await waitFor(`!!document.querySelector('#acf-t .acf-model-select option[value="global-opus-5-5"]')`, 'the custom model in the list', 4000);
         b = await box();
-        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Global Opus 5.5 (custom)', '<img src=x onerror="window.__pwn=1"> (custom)', 'Other…'], 'a custom model says so in the list, and a name with markup is text');
+        assert.deepEqual(b.options, ['Default', 'Opus 4.1', 'Global Opus 5.5 (custom)', '<img src=x onerror="window.__pwn=1"> (custom)', 'Other…', 'Add a model…'], 'a custom model says so in the list, and a name with markup is text');
         assert.equal(await ev(`document.querySelectorAll('#acf-t img').length + (window.__pwn ? 1 : 0)`), 0, 'a custom model\'s name never becomes markup');
         await ev(`{ const s = document.querySelector('#acf-t .acf-model-select'); s.value = 'global-opus-5-5'; s.dispatchEvent(new Event('change', { bubbles: true })); true }`);
         assert.equal(await formModel(), 'global-opus-5-5', 'the form returns the custom id like any other');

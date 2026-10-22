@@ -7,6 +7,7 @@
 import { serverFetch } from './server_base.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { importOnce } from './import_once.js';
+import { familyOf, addCustomModel } from './custom_model_add.js';
 import { modelLabel, readModelsCache, writeModelsCache, clearModelsCache, levelName } from './model_labels.js';
 import { setText, setHidden, setTitle, setData, setAttr } from './dom_write.js';
 
@@ -147,12 +148,9 @@ export function levelsFor(data, modelId) {
 
 function _levelsFor(modelId) { return levelsFor(_data, modelId); }
 
-/** The provider whose custom models an agent type's CLI reads (the server's agentmodels families), '' for a type that has none. */
-function _familyOf(agentType) { return { claude: 'claude', codex: 'codex', agy: 'agy', antigravity: 'agy', gemini: 'agy', pi: 'pi' }[agentType] || ''; }
-
 /** The end of the model menu: "Add a model…", or its form. A person whose model is missing adds it here and picks it, instead of going to Settings. */
 function _addHtml(s) {
-    if (!_familyOf(s.agent_type) || _loading) return '';
+    if (!familyOf(s.agent_type) || _loading) return '';
     if (!_add) return '<div class="model-chip-add-row"><button type="button" role="menuitem" class="model-chip-item model-chip-add" data-add><span class="model-chip-item-label">Add a model…</span><span class="material-icons" aria-hidden="true">add</span></button></div>';
     const a = _add, dis = a.busy ? ' disabled' : '';
     return `<form class="model-chip-add-form" role="group" aria-label="Add a model" aria-busy="${escapeAttr(String(a.busy))}" novalidate>`
@@ -289,30 +287,14 @@ function _openAdd() { _add = { id: '', name: '', error: '', busy: false }; _addi
 function _closeAdd() { _add = null; _addingFlag(false); _renderMenu('model'); _focusInMenu('.model-chip-add'); }
 function _addError(text) { if (_add) { _add.error = text; _add.busy = false; _renderMenu('model'); _focusInMenu('.model-chip-add-id'); } }
 
-/** Add the model to the operator's custom models (the same list as Settings > Agents > Custom models): read the whole list, add one row, write it back; never write after a read that failed
- *  (the route replaces the whole list). The new model shows in the menu and takes the keyboard; it is not applied: the person picks it. */
+/** Add the model (the shared catalog write, custom_model_add.js); the new model shows in the menu and takes the keyboard; it is not applied: the person picks it. */
 async function _submitAdd() {
-    const s = _cur && _cur.session, family = s && _familyOf(s.agent_type);
-    if (!_add || _add.busy || !family) return;
+    const s = _cur && _cur.session;
+    if (!_add || _add.busy || !s || !familyOf(s.agent_type)) return;
     const id = _add.id.trim(), name = _add.name.trim();
-    const { MODEL_ID_RULE, MODEL_ID_MISSING, MODEL_ID_INVALID } = await importOnce('./custom_models.js');
-    if (!id) { _addError(MODEL_ID_MISSING); return; }
-    if (!MODEL_ID_RULE.test(id)) { _addError(MODEL_ID_INVALID); return; }
-    if (((_data && _data.models) || []).some(m => m.value === id)) { _addError(`${id} is already in the list.`); return; }
     _add.busy = true; _add.error = ''; _renderMenu('model');
-    const server = _cur.server, route = '/api/custom-models', json = { 'Content-Type': 'application/json' };
-    try {
-        const got = await serverFetch(server, route);
-        if (got.status === 401 || got.status === 403) { _addError('Only the Operator can add models.'); return; }
-        const data = got.ok ? await got.json().catch(() => null) : null;
-        if (!data || !Array.isArray(data.models)) { _addError('Could not read the custom models, so nothing was changed. Try again.'); return; }
-        if (data.models.some(m => m.family === family && m.value === id)) { _addError(`${id} is already in the list.`); return; }
-        const max = (data.limits && data.limits.max_per_family) || 50;
-        if (data.models.filter(m => m.family === family).length >= max) { _addError(`At most ${max} custom models per provider. Remove one in Settings > Agents first.`); return; }
-        const put = await serverFetch(server, route, { method: 'PUT', headers: json, body: JSON.stringify({ models: [...data.models, { family, value: id, display_name: name, efforts: [] }] }) });
-        if (put.status === 401 || put.status === 403) { _addError('Only the Operator can add models.'); return; }
-        if (!put.ok) { const d = await put.json().catch(() => ({})); _addError((d && (d.message || d.error)) || 'The model was not added.'); return; }
-    } catch { _addError('Could not reach Coral to add the model.'); return; }
+    const res = await addCustomModel({ server: _cur.server, agentType: s.agent_type, id, name, known: ((_data && _data.models) || []).map(m => m.value) });
+    if (!res.ok) { _addError(res.error); return; }
     // the catalog every picker reads has it now: forget the lists this page kept, ask again, and show it
     clearModelsCache(); _data = null; _dataKey = ''; _add = null; _addingFlag(false); _loading = true;
     if (_open === 'model') _renderMenu('model');

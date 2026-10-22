@@ -4090,6 +4090,9 @@ dialog.signed-out-panel code { background: var(--bg-tertiary); padding: 1px 6px;
 /* The Model picker of the launch and restart forms (#4066): a list with the free-text box behind "Other…". */
 .acf-model-picker[hidden], .acf-model-picker [hidden] { display: none; }
 .acf-model-picker { display: block; margin-top: var(--space-xs); }
+.acf-model-add { display: block; margin-top: var(--space-sm); }
+.acf-model-add .model-chip-add-form { padding: 0; border-top: 0; margin-top: 0; }
+.acf-model-add .model-chip-add-actions .btn { margin: 0; } /* "Add a model…" (#5938): its form is the chip menu's, under the list */
 .acf-model-row { display: flex; gap: var(--space-sm); align-items: center; }
 .acf-model-select { flex: 1; min-width: 0; }
 .acf-model-refresh {

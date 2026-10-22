@@ -4,11 +4,13 @@
  * (.acf-model) remains the form's value: the picker writes it and reads it, so everything that reads the form is unchanged. */
 import { serverFetch } from './server_base.js';
 import { showToast, escapeAttr, escapeHtml } from './utils.js';
-import { readModelsCache, writeModelsCache } from './model_labels.js';
+import { readModelsCache, writeModelsCache, clearModelsCache } from './model_labels.js';
+import { familyOf, addCustomModel, addModelForm } from './custom_model_add.js';
 import { importOnce } from './import_once.js';
 const { _acfServer } = await importOnce('./launch_models.js');
 
 const OTHER = '__other';
+const ADD = '__add';
 const POLL_MS = 3000;
 const POLL_MAX = 5;
 
@@ -22,6 +24,7 @@ function parts(container) {
         id: container.querySelector('.acf-model-id'),
         refresh: container.querySelector('.acf-model-refresh'),
         note: container.querySelector('.acf-model-note'),
+        add: container.querySelector('.acf-model-add'),
     };
 }
 
@@ -30,7 +33,7 @@ export function modelPickerHtml() {
     return `<span class="acf-model-picker" hidden>`
         + `<span class="acf-model-row"><select class="acf-model-select" aria-label="Model"></select>`
         + `<button type="button" class="acf-model-refresh" aria-label="Refresh the model list" title="Refresh the model list"><span class="material-icons" aria-hidden="true">refresh</span></button></span>`
-        + `<span class="acf-model-id"></span><span class="acf-model-note" role="status"></span></span>`;
+        + `<span class="acf-model-id"></span><span class="acf-model-note" role="status"></span><span class="acf-model-add" hidden></span></span>`;
 }
 
 function fill(container, agentType, data) {
@@ -43,7 +46,8 @@ function fill(container, agentType, data) {
     if (!models.length) { wrap.hidden = true; input.hidden = false; return; }   // no list: the text box, as before
     select.innerHTML = `<option value="">Default</option>`
         + models.map(m => `<option value="${escapeAttr(m.value)}">${escapeHtml((m.display_name || m.value) + (m.custom === true ? ' (custom)' : ''))}</option>`).join('')
-        + `<option value="${escapeAttr(OTHER)}">Other…</option>`;
+        + `<option value="${escapeAttr(OTHER)}">Other…</option>`
+        + (familyOf(agentType) ? `<option value="${escapeAttr(ADD)}">Add a model…</option>` : '');
     wrap.hidden = false;
     if (note) note.textContent = data && data.error ? data.error : (data && data.refreshing ? 'Updating the list…' : '');
     syncModelPicker(container);
@@ -70,6 +74,7 @@ export function syncModelPicker(container, fromCode = true) {
     }
     const known = listed || unlisted;
     select.value = known ? v : OTHER;
+    container._lastSel = select.value;   // what the list showed before "Add a model…" was chosen, to go back to
     input.hidden = known;
     if (id) {
         const hit = models.find(m => m.value === v);
@@ -103,6 +108,7 @@ export async function loadModelPicker(container, agentType) {
     const { wrap, input, select } = parts(container);
     if (!container || !wrap || !select) return;
     const token = container._modelToken = (container._modelToken || 0) + 1;
+    closeAdd(container, false);
     if (agentType === 'terminal') { wrap.hidden = true; container._thinkingLevels = []; syncThinking(container); return; }
     const cached = readModelsCache(_acfServer(container), agentType);
     if (cached) fill(container, agentType, cached); else { wrap.hidden = true; if (input) input.hidden = false; }
@@ -115,12 +121,47 @@ export async function loadModelPicker(container, agentType) {
     }
 }
 
+/** "Add a model…": the small form under the list (shared with the model chip's menu, custom_model_add.js). A new model goes in the operator's custom models and is chosen for this form. */
+function openAdd(container) {
+    const { select, add } = parts(container);
+    if (!add) return;
+    select.value = container._lastSel || '';   // the list keeps showing what it showed: the form is the next step, not a model
+    if (add._form) { add._form.focus(); return; }
+    const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
+    const f = addModelForm({
+        prefix: `acf-model-add-${Math.random().toString(36).slice(2, 8)}`,
+        cancel: () => { closeAdd(container, true); },
+        submit: async (id, name) => {
+            const res = await addCustomModel({ server: _acfServer(container), agentType, id, name, known: (container._modelList || []).map(m => m.value) });
+            if (!res.ok) return res.error;
+            clearModelsCache();
+            await loadModelPicker(container, agentType);   // the catalog has it now (this also closes the form)
+            const { input: box, select: sel } = parts(container);
+            box.value = id.trim(); container._otherChosen = false;
+            box.dispatchEvent(new Event('input', { bubbles: true }));   // the form's own "the user chose a model" bookkeeping
+            syncModelPicker(container, false);
+            showToast(`Model added: ${name.trim() || id.trim()}`);
+            sel.focus();
+            return '';
+        },
+    });
+    add._form = f; add.replaceChildren(f.form); add.hidden = false; f.focus();
+}
+
+function closeAdd(container, focusSelect) {
+    const { select, add } = parts(container);
+    if (!add || !add._form) return;
+    add._form = null; add.replaceChildren(); add.hidden = true;
+    if (focusSelect && select) select.focus();
+}
+
 /** Wire the picker's events once per form. */
 export function wireModelPicker(container) {
     const { input, select, refresh } = parts(container);
     if (!select || select.dataset.wired) return;
     select.dataset.wired = '1';
     select.addEventListener('change', () => {
+        if (select.value === ADD) { openAdd(container); return; }
         container._otherChosen = select.value === OTHER;   // an empty box under Other… stays Other…, not Default
         if (select.value === OTHER) { if (models_has(container, input.value)) input.value = ''; input.hidden = false; input.focus(); }
         else { input.value = select.value; input.hidden = true; }
