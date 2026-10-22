@@ -140,3 +140,36 @@ func TestTheInstalledCoralIsFoundByItsUpgradeCode(t *testing.T) {
 	_, err = os.Stat(filepath.Join(install, "coral.exe"))
 	assert.NoError(t, err)
 }
+
+// #162 N1: only the product registered PER MACHINE is Coral's. The UpgradeCode is public, so a same-user process could install a per-user
+// product with it: that product is ignored beside the machine one, and alone it is no product at all; two machine products fail closed.
+func TestOnlyThePerMachineProductIsCoral(t *testing.T) {
+	oldRelated, oldProp := relatedProducts, machineProperty
+	t.Cleanup(func() { relatedProducts, machineProperty = oldRelated, oldProp })
+	const perUser, machine = "{AAAAAAAA-0000-0000-0000-000000000001}", "{BBBBBBBB-0000-0000-0000-000000000002}"
+	machineCodes := map[string]string{machine: "1.4.125"}
+	machineProperty = func(code, property string) (string, bool) {
+		v, ok := machineCodes[code]
+		return v, ok
+	}
+	w := &WindowsMSI{}
+
+	relatedProducts = func() ([]string, error) { return []string{perUser, machine}, nil }
+	got, err := w.RegisteredProduct()
+	require.NoError(t, err)
+	assert.Equal(t, machine, got, "the per-user product beside it is ignored")
+	v, err := w.RegisteredVersion()
+	require.NoError(t, err)
+	assert.Equal(t, "1.4.125", v)
+
+	relatedProducts = func() ([]string, error) { return []string{perUser}, nil }
+	_, err = w.RegisteredProduct()
+	assert.Error(t, err, "a per-user product alone is not Coral's")
+
+	machineCodes["{CCCCCCCC-0000-0000-0000-000000000003}"] = "1.4.130"
+	relatedProducts = func() ([]string, error) {
+		return []string{machine, "{CCCCCCCC-0000-0000-0000-000000000003}"}, nil
+	}
+	_, err = w.RegisteredProduct()
+	assert.Error(t, err, "two machine products: fail closed")
+}
