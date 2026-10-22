@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/subgentic/coral/internal/safefs"
 	"github.com/subgentic/coral/internal/safego"
 	"github.com/subgentic/coral/internal/updater/runrecord"
 	"github.com/subgentic/coral/internal/updater/status"
@@ -431,7 +432,7 @@ func programPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	real, err := filepath.EvalSymlinks(exe)
+	real, err := safefs.Resolve(exe)
 	if err != nil {
 		return "", err
 	}
