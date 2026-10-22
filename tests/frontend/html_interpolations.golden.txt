@@ -454,6 +454,7 @@
 1	session_rows.js	dotClass
 1	session_rows.js	goalBtn
 1	session_rows.js	goalLine
+1	session_rows.js	hooksMissingChip(s)
 1	session_rows.js	label
 1	session_rows.js	mobileAttentionBanner
 1	session_rows.js	mobileStatusChip

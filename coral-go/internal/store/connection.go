@@ -311,6 +311,8 @@ var columnMigrations = []struct {
 	{"live_sessions", "cli_version", "TEXT"},
 	// The hook set a Claude agent loaded at launch (#3665), e.g. 3; NULL = unknown.
 	{"live_sessions", "hooks_rev", "INTEGER"},
+	// The folder the agent was launched with its Coral tools (coral-board and the coral-hook-* programs) on its PATH, e.g. the app bundle (#6089); NULL or "" = none recorded.
+	{"live_sessions", "hook_dir", "TEXT"},
 	{"live_sessions", "permission_mode", "TEXT"}, // the launch's effective permission mode (#5188)
 	{"cloud_connection", "route_key", "TEXT"},    // the hub's routing hint for this enrollment (#3683)
 	{"cloud_connection", "hub_owner", "TEXT"},    // the Coral Hub account that owns this enrollment (#3966)

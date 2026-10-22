@@ -24,6 +24,7 @@ import (
 
 // noteLaunchedHooks records that a Claude agent was just started with the current hook set.
 func (h *SessionsHandler) noteLaunchedHooks(ctx context.Context, sessionID, agentType string) {
+	h.noteLaunchedHookDir(ctx, sessionID) // every agent type's hooks are found on the PATH it was started with (#6089)
 	if agentType != at.Claude || sessionID == "" || h.ss == nil {
 		return
 	}
@@ -111,7 +112,42 @@ func (h *SessionsHandler) HooksStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		return agents[i].Name < agents[j].Name
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"current": agent.ClaudeHooksRev, "agents": agents})
+	writeJSON(w, http.StatusOK, map[string]any{"current": agent.ClaudeHooksRev, "agents": agents, "missing": h.agentsWithoutHooks(ctx, sessions)})
+}
+
+// agentsWithoutHooks lists the running agents, of any type, whose hook programs are gone from the folder they were started with (#6089): the app was replaced or moved while they ran. The
+// dashboard flags each once on its row; resuming it (Sleep then Wake) starts it with the tools that are there now.
+func (h *SessionsHandler) agentsWithoutHooks(ctx context.Context, sessions []store.LiveSession) []hooksAgent {
+	out := []hooksAgent{}
+	dirs, err := h.ss.HookDirs(ctx)
+	if err != nil || len(dirs) == 0 {
+		return out
+	}
+	gone := map[string]bool{} // one look at each folder, however many agents share it
+	for _, ls := range sessions {
+		if ls.IsSleeping == 1 || ls.IsArchived == 1 || ls.IsJob == 1 {
+			continue
+		}
+		dir := dirs[ls.SessionID]
+		if dir == "" {
+			continue
+		}
+		g, seen := gone[dir]
+		if !seen {
+			g = hookDirGone(dir)
+			gone[dir] = g
+		}
+		if !g {
+			continue
+		}
+		name := ptr.Value(ls.DisplayName)
+		if name == "" {
+			name = ls.AgentName
+		}
+		out = append(out, hooksAgent{SessionID: ls.SessionID, Name: name, Team: ptr.Value(ls.BoardName), Status: "missing"})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // RefreshHooks resumes one Claude agent on the current hook set: Sleep then Wake (the same
@@ -149,7 +185,7 @@ func (h *SessionsHandler) RefreshHooks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "Session not found"})
 		return
 	}
-	if ls.AgentType != at.Claude {
+	if ls.AgentType != at.Claude && !h.hooksUnreachable(ctx, sessionID) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "only Claude agents have a hook set to update"})
 		return
 	}

@@ -30,6 +30,29 @@ func (s *SessionStore) SetHooksRev(ctx context.Context, sessionID string, rev in
 	return err
 }
 
+// SetHookDir records the folder an agent was started with its Coral tools on its PATH (#6089): at every launch, restart, resume and wake. The agent's hooks are programs found there, so a
+// folder that is gone later (the app replaced or moved while the agent ran) means its hooks can no longer run.
+func (s *SessionStore) SetHookDir(ctx context.Context, sessionID, dir string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET hook_dir = ? WHERE session_id = ?", dir, sessionID)
+	return err
+}
+
+// HookDirs returns the recorded tools folder of every live session that has one.
+func (s *SessionStore) HookDirs(ctx context.Context) (map[string]string, error) {
+	var rows []struct {
+		ID  string `db:"session_id"`
+		Dir string `db:"hook_dir"`
+	}
+	if err := s.db.Reader().SelectContext(ctx, &rows, "SELECT session_id, hook_dir FROM live_sessions WHERE hook_dir IS NOT NULL AND hook_dir != ''"); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.ID] = r.Dir
+	}
+	return out, nil
+}
+
 // HooksRevs returns the recorded hook set of every live session that has one.
 func (s *SessionStore) HooksRevs(ctx context.Context) (map[string]int, error) {
 	var rows []struct {

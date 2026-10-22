@@ -7,8 +7,9 @@
  * this exists through Coral Hub. */
 
 import { showToast } from './utils.js';
+import { setHooksMissing } from './hooks_missing.js';
 import { isCloud } from './server_base.js';
-import { isSignedOut } from './overload.js';
+import { isSignedOut, pollEvery } from './overload.js';
 import { showConfirmModal } from './render.js';
 import { state } from './state.js';
 import { browserSession } from './safe_storage.js';
@@ -337,6 +338,7 @@ export async function dismissAutoWake() {
 
 const HOOKS_DISMISS_KEY = 'coral.hooksBanner.dismissed';
 let _hooksWired = false;
+let _hooksTimer = null;
 
 async function hooksStatus() {
     const resp = await fetch('/api/system/hooks-status');
@@ -433,7 +435,12 @@ function showHooksBanner(st) {
 /** After a start, list the agents on an older hook set (Operator only: not through Coral Hub). */
 export async function watchHooksStatus() {
     if (isCloud()) return;
-    try { showHooksBanner(await hooksStatus()); } catch { /* not shown */ }
+    try {
+        const st = await hooksStatus();
+        showHooksBanner(st);
+        setHooksMissing(st.missing); // the agents whose hook programs are gone are flagged on their rows (#6089)
+    } catch { /* not shown */ }
+    if (!_hooksTimer) _hooksTimer = pollEvery(watchHooksStatus, 60000); // an app replaced while Coral runs is seen within a minute
 }
 
 async function refreshHooksOf(sessionId, force) {

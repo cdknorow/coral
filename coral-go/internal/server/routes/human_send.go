@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/jsonl"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/terminalinput"
 )
@@ -157,9 +158,11 @@ var (
 	errSendNotReady     = &errHumanSend{"agent_not_ready", "The agent isn't ready for messages yet: your message was not sent. Try again in a moment."}
 	errSendNotSubmit    = &errHumanSend{"not_submitted", "Your message is in the agent's input box but wasn't submitted. Send it again to submit it, or press Enter in its terminal."}
 	errSendNotConfirmed = &errHumanSend{"not_confirmed", "The agent didn't confirm your message: it may not have been sent. Check its terminal before sending it again."}
-	errSendHooksReview  = &errHumanSend{"codex_hooks_review_pending", "Codex is asking you to review Coral's hooks before it starts. Trusting them lets those hooks run outside Codex's sandbox, so only you can answer: pick Review hooks, Trust all and continue, or Continue without trusting (Coral then gets no hook events from this agent) in its terminal or the prompt above. Your message was not sent."}
-	errSendBusy         = &errHumanSend{"agent_busy", "Other messages to this agent are still being sent: yours was not sent. Try again in a moment."}
-	errSendLeftover     = &errHumanSend{"box_not_empty", "An earlier message is still in the agent's input box, not submitted: yours was not sent. Send that one again, or clear it in its terminal."}
+	// An agent whose hook programs are gone (the app it started from was replaced) takes the message but cannot say so: said plainly, not as "may not have been sent" (#6089).
+	errSendHooksGone   = &errHumanSend{"hooks_unreachable", "Coral can't reach this agent's hooks, so it can't tell whether your message arrived. Check the agent's terminal. To fix this, reopen Coral or restart the agent."}
+	errSendHooksReview = &errHumanSend{"codex_hooks_review_pending", "Codex is asking you to review Coral's hooks before it starts. Trusting them lets those hooks run outside Codex's sandbox, so only you can answer: pick Review hooks, Trust all and continue, or Continue without trusting (Coral then gets no hook events from this agent) in its terminal or the prompt above. Your message was not sent."}
+	errSendBusy        = &errHumanSend{"agent_busy", "Other messages to this agent are still being sent: yours was not sent. Try again in a moment."}
+	errSendLeftover    = &errHumanSend{"box_not_empty", "An earlier message is still in the agent's input box, not submitted: yours was not sent. Send that one again, or clear it in its terminal."}
 )
 
 // humanScreen is the agent's screen as text, for its input box: the PTY's rendered (its output is not the
@@ -247,7 +250,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 	}
 	// The same text already in the box: an earlier send of it that wasn't submitted. It gets Enter; typing it again
 	// would put a second copy in the box.
-	before := screen // the screen before anything is typed: a send that never arrived leaves it as it is
+	before := screen                                   // the screen before anything is typed: a send that never arrived leaves it as it is
+	hooksGone := h.hooksUnreachable(ctx, sessionID)    // its hook programs are gone: no event will come for this message, so other evidence is all there is (#6089)
+	tx := h.transcriptTotal(ctx, sessionID, agentType) // the agent's own transcript, before the typing: a message it took is added to it
 	seen := canEnter && ptymanager.TextInInputBox(screen, text)
 	if seen {
 		if err := es.SendEnter(ctx, name, agentType, sessionID); err != nil {
@@ -265,6 +270,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 		}
 		if h.promptSubmittedAfter(ctx, sessionID, base) {
 			return nil
+		}
+		if (hooksGone || time.Since(typedAt) >= confirmWait) && tx.tookPrompt(h, ctx, sessionID, agentType, text) {
+			return nil // the transcript gained the message: the agent took it, whatever its hooks said (#6089)
 		}
 		screen, ok := h.humanScreen(ctx, name, agentType, sessionID)
 		if !ok {
@@ -287,7 +295,7 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 				return nil // typed to an agent in the middle of a turn, and its box is empty: queued behind its work (#4794). A box
 				// holding anything else (an image chip and the text the match above could not read, a draft) may still hold the message.
 			}
-			if h.agentHasNoEvents(ctx, sessionID) && ptymanager.InputBoxEmpty(screen) {
+			if (h.agentHasNoEvents(ctx, sessionID) || hooksGone) && ptymanager.InputBoxEmpty(screen) {
 				// An empty box is also what a submitted message looks like, and an agent whose hooks are not reaching Coral (or
 				// that has none yet) sends no event for it. So a message counts as taken only on evidence of its text: the
 				// agent's echo of it, on the screen more times than before the typing. A screen that merely changed (a spinner,
@@ -310,6 +318,9 @@ func (h *SessionsHandler) deliverHumanSend(ctx context.Context, name, agentType,
 			}
 			if command && !h.agentHasNoEvents(ctx, sessionID) {
 				return nil // a CLI's own command sends no hook: out of the box, with nothing against it, it ran
+			}
+			if hooksGone {
+				return errSendHooksGone // nothing confirms it, and nothing could: say why, not that it may be lost
 			}
 			return errSendNotConfirmed
 		}
@@ -454,5 +465,94 @@ func humanSendError(err error) (int, map[string]any, bool) {
 	if !errors.As(err, &e) {
 		return 0, nil, false
 	}
-	return 409, map[string]any{"error": e.text, "code": e.code, "not_sent": e.code != "not_submitted"}, true
+	return 409, map[string]any{"error": e.text, "code": e.code, "not_sent": e.code != "not_submitted" && e.code != "hooks_unreachable"}, true
+}
+
+// transcriptMark is how many messages the agent's own transcript held before a message was typed (#6089): the transcript is a signal that does not depend on the agent's hooks.
+type transcriptMark struct {
+	total int
+	ok    bool
+}
+
+func (h *SessionsHandler) transcriptTotal(ctx context.Context, sessionID, agentType string) transcriptMark {
+	tv := h.readSendTranscript(ctx, sessionID, agentType)
+	if tv == nil {
+		return transcriptMark{}
+	}
+	return transcriptMark{total: tv.Total, ok: true}
+}
+
+// sendTranscriptReader reads the transcript for a send's confirmation; a variable so a test can stand in for an agent's transcript file.
+var sendTranscriptReader = func(h *SessionsHandler, ctx context.Context, sessionID, agentType string) *jsonl.Transcript {
+	return h.readLiveTranscript(ctx, sessionID, agentType)
+}
+
+func (h *SessionsHandler) readSendTranscript(ctx context.Context, sessionID, agentType string) *jsonl.Transcript {
+	return sendTranscriptReader(h, ctx, sessionID, agentType)
+}
+
+func (h *SessionsHandler) readLiveTranscript(ctx context.Context, sessionID, agentType string) *jsonl.Transcript {
+	if h.jsonl == nil || h.ss == nil || sessionID == "" {
+		return nil
+	}
+	ls, err := h.ss.GetLiveSession(ctx, sessionID)
+	if err != nil || ls == nil {
+		return nil
+	}
+	return h.jsonl.ReadTranscriptForLiveContext(ctx, sessionID, ls.WorkingDir, agentType)
+}
+
+// tookPrompt reports whether the transcript gained a user message that is this text since the mark.
+func (m transcriptMark) tookPrompt(h *SessionsHandler, ctx context.Context, sessionID, agentType, text string) bool {
+	if !m.ok {
+		return false
+	}
+	tv := h.readSendTranscript(ctx, sessionID, agentType)
+	if tv == nil || tv.Total <= m.total {
+		return false
+	}
+	return transcriptHasUserText(tv.Window, tv.Total-m.total, text)
+}
+
+// transcriptHasUserText reports whether one of the last n messages is a user message holding the text (its echo key, as on a screen: a long message is compared by its start).
+func transcriptHasUserText(window []map[string]any, n int, text string) bool {
+	key := echoKey(text)
+	if len([]rune(key)) < echoMinChars {
+		return false
+	}
+	if n > len(window) {
+		n = len(window)
+	}
+	for _, m := range window[len(window)-n:] {
+		if t, _ := m["type"].(string); t != "user" {
+			continue
+		}
+		if strings.Contains(noSpace(messageText(m["content"])), key) {
+			return true
+		}
+	}
+	return false
+}
+
+// messageText is a transcript message's text: a string, or the text blocks of a list.
+func messageText(content any) string {
+	switch c := content.(type) {
+	case string:
+		return c
+	case []any:
+		var b strings.Builder
+		for _, part := range c {
+			switch p := part.(type) {
+			case string:
+				b.WriteString(p)
+			case map[string]any:
+				if t, ok := p["text"].(string); ok {
+					b.WriteString(t)
+				}
+			}
+			b.WriteByte(' ')
+		}
+		return b.String()
+	}
+	return ""
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -191,4 +193,43 @@ func TestRefreshHooksParallelRequestsGetRefreshing(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, code)
 	code, _ = refreshHooks(t, r.h, "aaaaaaaa-3685-4000-8000-00000000dead", "")
 	assert.Equal(t, http.StatusNotFound, code, "an early answer releases the session too")
+}
+
+// #6089: running agents of any type whose hook programs are gone from the folder they were started with are listed under "missing", once each, so the dashboard can flag them on their rows.
+func TestHooksStatusListsAgentsWhoseHookProgramsAreGone(t *testing.T) {
+	r := newWakeRig(t)
+	ctx := context.Background()
+	reg := func(sid, name, agentType, dir string, asleep bool) {
+		t.Helper()
+		team := "t1"
+		require.NoError(t, r.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: name, AgentType: agentType, WorkingDir: t.TempDir(), BoardName: &team}))
+		if dir != "" {
+			require.NoError(t, r.ss.SetHookDir(ctx, sid, dir))
+		}
+		if asleep {
+			require.NoError(t, r.ss.SetSessionSleepingFor(ctx, sid, store.SleepReasonHooksUpdate))
+		}
+	}
+	gone := filepath.Join(t.TempDir(), "Coral.app", "Contents", "MacOS") // the app was replaced: nothing is there
+	here := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(here, "coral-hook-agentic-state"), []byte("x"), 0o755))
+	reg("bbbbbbbb-6089-4000-8000-00000000000a", "claude-gone", "claude", gone, false)
+	reg("bbbbbbbb-6089-4000-8000-00000000000b", "codex-gone", "codex", gone, false)
+	reg("bbbbbbbb-6089-4000-8000-00000000000c", "fine", "claude", here, false)
+	reg("bbbbbbbb-6089-4000-8000-00000000000d", "nothing-recorded", "codex", "", false)
+	reg("bbbbbbbb-6089-4000-8000-00000000000e", "asleep-gone", "claude", gone, true) // a wake starts it with the tools that are there now
+
+	w := httptest.NewRecorder()
+	r.h.HooksStatus(w, httptest.NewRequest("GET", "/api/system/hooks-status", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	var body struct {
+		Missing []hooksAgent `json:"missing"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	var names []string
+	for _, a := range body.Missing {
+		names = append(names, a.Name)
+		assert.Equal(t, "missing", a.Status)
+	}
+	assert.Equal(t, []string{"claude-gone", "codex-gone"}, names, "awake agents of any type whose tools folder is gone; none that are fine, unrecorded or asleep")
 }
