@@ -60,7 +60,7 @@ export async function showTemplateBrowser(type, onSelect) {
                 <button class="btn template-browser-close" data-on-click="template-browser-close">&times;</button>
             </div>
             <div style="font-size:0.6875rem;color:var(--text-muted);padding:4px 0 8px">
-                Browse community templates from <a href="https://www.aitmpl.com/${type === 'agents' ? 'agents' : 'commands'}" target="_blank" rel="noopener" style="color:var(--accent)">aitmpl.com</a> — open-source Claude Code templates library
+                Templates from <a href="https://www.aitmpl.com/${type === 'agents' ? 'agents' : 'commands'}" target="_blank" rel="noopener" style="color:var(--accent)">aitmpl.com</a>
             </div>
             <div class="template-browser-body">
                 <div class="template-browser-categories">
