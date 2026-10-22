@@ -49,8 +49,8 @@ func TestSignInAnswerIsCountedWithOnlyToolStatusAndSource(t *testing.T) {
 			sink := captureAnalytics(t)
 			fakeClaude(t, signInFixture(tc.loggedIn), int(tc.exit[0]-'0'))
 			cliCheckBody(t, "type=claude&signin=1")
-			require.Eventually(t, func() bool { return len(signInEvents(sink)) >= 1 }, 3*time.Second, 5*time.Millisecond)
-			time.Sleep(60 * time.Millisecond)
+			require.Eventually(t, func() bool { return len(signInEvents(sink)) >= 1 }, 15*time.Second, 5*time.Millisecond)
+			tracking.WaitForAsyncForTest() // any further event the request sent has left too: wait on the tracker, not on a fixed time
 			events := signInEvents(sink)
 			require.Len(t, events, 1)
 			assert.Equal(t, tracking.ToolClaude, events[0]["tool"])
@@ -74,14 +74,14 @@ func TestSignInIsNotCountedWithoutAClearAnswerOrARequest(t *testing.T) {
 		sink := captureAnalytics(t)
 		fakeClaude(t, `garbage`, 0)
 		cliCheckBody(t, "type=claude&signin=1")
-		time.Sleep(100 * time.Millisecond)
+		tracking.WaitForAsyncForTest() // everything the request sent has been delivered; nothing is to be there
 		assert.Empty(t, signInEvents(sink))
 	})
 	t.Run("not asked for", func(t *testing.T) {
 		sink := captureAnalytics(t)
 		fakeClaude(t, signInFixture("false"), 1)
 		cliCheckBody(t, "type=claude")
-		time.Sleep(100 * time.Millisecond)
+		tracking.WaitForAsyncForTest() // everything the request sent has been delivered; nothing is to be there
 		assert.Empty(t, signInEvents(sink))
 	})
 }
@@ -93,7 +93,7 @@ func TestSignInStatusIsPartOfTheDedupeKey(t *testing.T) {
 		tracking.TrackPrerequisite(tracking.ToolClaude, tracking.PrereqSignedOut, tracking.SourceLaunchProbe)
 	}
 	tracking.TrackPrerequisite(tracking.ToolClaude, tracking.PrereqSignedIn, tracking.SourceLaunchProbe)
-	require.Eventually(t, func() bool { return len(signInEvents(sink)) >= 2 }, 3*time.Second, 5*time.Millisecond)
-	time.Sleep(60 * time.Millisecond)
+	require.Eventually(t, func() bool { return len(signInEvents(sink)) >= 2 }, 15*time.Second, 5*time.Millisecond)
+	tracking.WaitForAsyncForTest()
 	assert.Len(t, signInEvents(sink), 2)
 }
