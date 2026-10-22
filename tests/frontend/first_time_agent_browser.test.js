@@ -20,7 +20,7 @@ const BASE = require('./test_base').BASE;
         console.log('1. New Agent opens with no folder chosen; the home folder, once chosen, says what it means');
         await open(1280, 900, false);
         await ev(`(async () => { await window.showLaunchModal(); window._selectLaunchType('agent'); return true; })()`);
-        await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the agent step');
+        await waitFor(`!!document.getElementById('launch-step-agent') && getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the agent step');
         const first = await ev(`(() => { const d = document.getElementById('launch-dir'), n = document.getElementById('launch-dir-note'); return { value: d.value, placeholder: d.placeholder, noteHidden: n.hidden, root: d.dataset.coralRoot }; })()`);
         assert.equal(first.value, '', 'no folder is chosen for the person'); assert.equal(first.placeholder, 'Choose a folder'); assert.equal(first.noteHidden, true); assert.ok(first.root, 'the server has a root to compare with');
         const typed = v => ev(`(() => { const d = document.getElementById('launch-dir'); d.value = ${JSON.stringify(v)}; d.dispatchEvent(new Event('input', { bubbles: true })); return !document.getElementById('launch-dir-note').hidden; })()`);
@@ -41,7 +41,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(phone.welcome, true); assert.equal(phone.plain, false); assert.equal(phone.title, 'What do you want to work on?'); assert.deepEqual(phone.buttons, ['Launch agent', 'Launch team']);
         assert.ok(phone.target.every(h => h >= 44), 'the cards are touch targets: ' + phone.target);
         await ev(`document.querySelector('.session-list li.empty-welcome button').click(); true`);
-        await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the same New Agent dialog the desktop opens');
+        await waitFor(`!!document.getElementById('launch-step-agent') && getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the same New Agent dialog the desktop opens'); // (the dialog is a lazy template: it is not in the page until the click has built it)
         assert.equal(await ev(`document.getElementById('launch-agent-title').textContent.replace(/\\s+/g, ' ').trim().replace(/^←\\s*/, '')`), 'New Agent');
         await open(1280, 900, false);
         const desk = await ev(`(() => { const shown = e => !!e && getComputedStyle(e).display !== 'none'; return { welcome: shown(document.querySelector('.session-list li.empty-welcome')), plain: shown(document.querySelector('.session-list li.empty-plain')) }; })()`); // (the sidebar's section may itself be folded away on a desktop with nothing running: the rule is what is checked)
