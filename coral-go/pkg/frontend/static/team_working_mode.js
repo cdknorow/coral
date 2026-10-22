@@ -318,7 +318,7 @@ export async function showTeamWorkingMode(team, options = {}) {
     function renderPresets() {
         presetSelect.innerHTML = presets.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(presetLabel(p))}</option>`).join('');
         const modeSelect = form.elements.mode;
-        presets.filter(p => ![...modeSelect.options].some(option => option.value === p.id)).forEach(p => modeSelect.add(new Option(presetLabel(p), p.id)));
+        presets.filter(p => ![...modeSelect.options].some(option => option.value === p.id)).forEach(p => modeSelect.add(new Option(presetNameText(p), p.id))); // the Working mode list names them all the same way: only the preset editor says which are built in (#6058 follow-up)
         if (workingMode?.mode && presets.some(p => p.id === workingMode.mode)) presetSelect.value = workingMode.mode;
         syncPresetForm();
         syncModeDescription();
