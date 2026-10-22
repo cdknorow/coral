@@ -67,7 +67,7 @@ const EXPECTED = {
     "minHeight": "44px",
     "padding": "4px 8px 4px 0px",
     "size": "13px",
-    "w": 185,
+    "w": 198,
     "weight": "600"
   },
   "health advanced | coarse | open": {
@@ -79,7 +79,7 @@ const EXPECTED = {
     "minHeight": "44px",
     "padding": "4px 8px 4px 0px",
     "size": "13px",
-    "w": 185,
+    "w": 198,
     "weight": "600"
   },
   "health advanced | fine | closed": {
@@ -115,7 +115,7 @@ const EXPECTED = {
     "minHeight": "44px",
     "padding": "12px 8px 12px 0px",
     "size": "13px",
-    "w": 151,
+    "w": 163,
     "weight": "600"
   },
   "more template options | coarse | open": {
@@ -127,7 +127,7 @@ const EXPECTED = {
     "minHeight": "44px",
     "padding": "12px 8px 12px 0px",
     "size": "13px",
-    "w": 151,
+    "w": 163,
     "weight": "600"
   },
   "more template options | fine | closed": {
@@ -163,7 +163,7 @@ const EXPECTED = {
     "minHeight": "44px",
     "padding": "0px 0px 0px 0px",
     "size": "12px",
-    "w": 850,
+    "w": 854,
     "weight": "600"
   },
   "prompt text | coarse | open": {
@@ -187,7 +187,7 @@ const EXPECTED = {
     "minHeight": "0px",
     "padding": "0px 0px 0px 0px",
     "size": "12px",
-    "w": 850,
+    "w": 854,
     "weight": "600"
   },
   "prompt text | fine | open": {

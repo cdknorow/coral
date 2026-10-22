@@ -229,6 +229,9 @@ svg[width="48"][height="48"] { width: 3rem; height: 3rem; }
     .preview-tab-close { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); display: inline-flex; align-items: center; justify-content: center; }
     .artifact-viewer-close, .artifact-viewer-download, .ac-toggle { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
     .ac-panel .ac-showresolved, .ac-panel .ac-replybox, .ac-panel .ac-resolve, .ac-panel .ac-act, .ac-panel .ac-jump { min-height: var(--control-touch-height, 44px); }
-    .disclosure > summary { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
+    .disclosure > summary { display: flex; align-items: center; gap: .4rem; min-height: var(--control-touch-height, 44px); }
+    /* display:flex takes the native marker away: every disclosure keeps its fold arrow on touch, with the empty alternative so a screen reader does not read it (#6042) */
+    .disclosure > summary::before { content: '\25B8' / ''; flex: none; }
+    .disclosure[open] > summary::before { content: '\25BE' / ''; }
     .terminal-branch-text, .title-branch .branch-text { min-height: var(--control-touch-height, 44px); min-width: var(--control-touch-height, 44px); line-height: var(--control-touch-height, 44px); vertical-align: middle; }
 }

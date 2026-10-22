@@ -206,7 +206,7 @@
                 </div>
                 <div class="settings-modal-body">
                     <div class="sd-essentials sd-name-grid">
-                        <label for="team-board-name">Team name (the board)</label>
+                        <label for="team-board-name">Team name <span class="req-mark">(required)</span></label>
                         <div class="sd-name-field">
                             <input type="text" id="team-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" data-on-input="m-validate-team-name" aria-describedby="team-board-name-hint">
                             <div id="team-board-name-hint" class="team-field-hint"></div>
@@ -227,9 +227,9 @@
                                 </ul>
                             </div>
                         </div>
-                        <label for="team-goal">First task</label>
+                        <label for="team-goal">First task <span class="req-mark">(optional)</span></label>
                         <div class="sd-name-field">
-                            <textarea id="team-goal" rows="2" maxlength="2000" placeholder="What should the team work on? Sent to the Orchestrator (optional)"></textarea>
+                            <textarea id="team-goal" rows="2" maxlength="2000" placeholder="What should the team work on? Sent to the Orchestrator"></textarea>
                         </div>
                     </div>
                     <div class="settings-shell">
