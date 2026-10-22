@@ -30,3 +30,8 @@ Write-Host "marker present in every request: $((($seen | Where-Object { $_ -notm
 Write-Host "looks like Edge: $((($seen | Where-Object { $_ -notmatch ' Edg/' }).Count) -eq 0)"
 Get-Process -Name 'coral-app','msedgewebview2' -ErrorAction SilentlyContinue | Stop-Process -Force
 $listener.Stop()
+foreach ($r in 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}','HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}','HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}') {
+  $v = (Get-ItemProperty -Path $r -ErrorAction SilentlyContinue).pv
+  Write-Host "registry $r pv=$v"
+}
+Get-ChildItem C:\walk\data -Filter *.log -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "log $($_.Name):"; Get-Content $_.FullName | Where-Object { $_ -match 'WEBVIEW|User-Agent|marked' } | Select-Object -First 12 | ForEach-Object { Write-Host "   $($_ -replace [regex]::Escape($env:USERNAME),'<user>')" } }
