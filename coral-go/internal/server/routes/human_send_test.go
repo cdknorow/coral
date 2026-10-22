@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/naming"
+	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/terminalinput"
 )
@@ -559,6 +560,37 @@ func TestHumanSendIsSubmittedOrSaysSo(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 		typed, _ := h.term.counts()
 		assert.Len(t, typed, 1)
+	})
+	// Codex's hooks-review dialog is a question for the person (trusting runs hooks outside Codex's sandbox): a message is not its answer.
+	// Typed in, its Enter picks "Review hooks" and the message is lost while the reply says sent (#147).
+	for name, screen := range map[string]func(t *testing.T) string{
+		"0.155 (tmux capture)": func(t *testing.T) string { return codexHookTrust(t, "tmux_open.txt") },
+		"0.161 (ConPTY)": func(t *testing.T) string {
+			return ptymanager.RenderScreen([]byte(codexHookTrust(t, "pty161_open.raw")), 120, 40)
+		},
+	} {
+		for _, msg := range []string{"hello there", "/clear"} {
+			t.Run("codex hooks review "+name+": "+msg+" is refused with 409 and nothing is typed", func(t *testing.T) {
+				h := setup(t, "codex", false)
+				h.term.show(screen(t))
+				rec := h.send(msg)
+				assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+				assert.Equal(t, "codex_hooks_review_pending", code(rec))
+				assert.Contains(t, rec.Body.String(), "outside Codex's sandbox")
+				typed, enters := h.term.counts()
+				assert.Empty(t, typed, "SendInput is never called")
+				assert.Zero(t, enters)
+			})
+		}
+	}
+	t.Run("codex: once the hooks are trusted a message is sent as usual", func(t *testing.T) {
+		h := setup(t, "codex", false)
+		h.term.show(codexReady(t, ""))
+		h.term.onType = func(string) { h.submit() } // the agent takes it and fires its hook
+		rec := h.send("hello there")
+		assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		typed, _ := h.term.counts()
+		assert.Equal(t, []string{"hello there"}, typed)
 	})
 	t.Run("a message that starts with a path is a message: no evidence, not confirmed", func(t *testing.T) {
 		h := setup(t, "codex", true)
