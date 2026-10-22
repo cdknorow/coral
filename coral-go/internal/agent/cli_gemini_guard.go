@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -25,15 +24,34 @@ var ErrRealGeminiCLI = errors.New("this is the Gemini CLI, but Coral's gemini ty
 var cliHelp = func(path string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	var out bytes.Buffer
+	var out cliHelpOutput
 	cmd := exec.CommandContext(ctx, path, "--help")
+	cmd.Env = cliHelpEnv()
 	cmd.Stdout, cmd.Stderr = &out, &out
 	_ = cmd.Run() // a help that fails or times out is read as far as it got
-	if out.Len() > 4096 {
-		out.Truncate(4096)
-	}
 	return out.String()
 }
+
+// Only the executable search path and home reach this setup probe. Go's os/exec
+// adds SYSTEMROOT on Windows; credentials and runtime settings are not inherited.
+func cliHelpEnv() []string {
+	return []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME")}
+}
+
+const cliHelpOutputLimit = 4096
+
+// cliHelpOutput retains a fixed-size prefix while draining both output streams.
+type cliHelpOutput struct {
+	buf [cliHelpOutputLimit]byte
+	n   int
+}
+
+func (b *cliHelpOutput) Write(p []byte) (int, error) {
+	b.n += copy(b.buf[b.n:], p)
+	return len(p), nil
+}
+
+func (b *cliHelpOutput) String() string { return string(b.buf[:b.n]) }
 
 // isRealGeminiHelp tells the Gemini CLI's help ("Usage: gemini [options] [command]", "Gemini CLI - Defaults to interactive mode") from agy's ("Usage of agy:").
 func isRealGeminiHelp(help string) bool {
