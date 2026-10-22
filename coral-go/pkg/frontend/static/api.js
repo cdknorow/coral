@@ -22,15 +22,17 @@
  *   - /api/token-usage*, /api/call-metrics/*, cost dashboard: aggregate
  *     views, "this server only" per the spec's non-goals
  *   - /api/sessions/live (merged list, already carries `server` per row),
- *     /api/sessions/history* (the hub's own history database)
+ *     /api/sessions/history* on a local dashboard; the Cloud Hub's Chats
+ *     explicitly scopes its history reads to the chosen linked computer
  *   - /api/templates/*, /api/agent-models, /api/teams/generate (hub catalogs)
  *   - static assets, service worker, artifact previews of hub files
  */
 
+import { historyFetch, historyServer } from './history_source.js';
 import { state, loadSessionDrafts } from './state.js';
 import { renderLiveSessions, renderHistorySessions } from './render.js';
 import { buildApiParams } from './search_filters.js';
-import { serverUrl, initHub, fetchValidated } from './server_base.js';
+import { serverUrl, initHub, fetchValidated, isCloud } from './server_base.js';
 import { updateServersTabVisibility } from './servers_tab.js';
 import { updateInboxTab } from './inbox_tab.js';
 import { ageOutStored } from './local_store.js';
@@ -155,12 +157,22 @@ async function _loadLiveSessions(onFailure) {
 export async function loadHistorySessionsPaged(page = 1, pageSize = 50) {
     try {
         const params = buildApiParams(page, pageSize);
-        const data = await apiFetch(`/api/sessions/history?${params}`);
+        const source = historyServer();
+        const response = await historyFetch(`/api/sessions/history?${params}`);
+        if (!response.ok) throw await httpError(response);
+        const data = await response.json();
+        if (source !== historyServer()) return null;
         const sessions = data.sessions || data;
         renderHistorySessions(sessions, data.total, data.page, data.page_size);
         return data;
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error("Failed to load paged history sessions:", e);
+        if (isCloud()) {
+            renderHistorySessions([], 0, page, pageSize);
+            const empty = document.querySelector('#history-sessions-list .empty-state');
+            if (empty) empty.textContent = historyServer() ? 'Could not load chats from this computer.' : 'No computers online.';
+        }
         return null;
     }
 }
@@ -171,8 +183,13 @@ export async function loadHistoryMessages(sessionId, options = {}) {
         if (options.limit != null) params.set('limit', String(options.limit));
         if (options.offset != null) params.set('offset', String(options.offset));
         const qs = params.toString() ? `?${params}` : '';
-        return await apiFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}${qs}`);
+        const source = historyServer();
+        const response = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}${qs}`);
+        if (!response.ok) throw await httpError(response);
+        const data = await response.json();
+        return source === historyServer() ? data : null;
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error("Failed to load history messages:", e);
         return null;
     }

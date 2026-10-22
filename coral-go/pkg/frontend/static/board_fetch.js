@@ -1,6 +1,6 @@
 /* What the message board asks the server for (moved out of message_board.js, #5065; no behaviour change). */
 import { state } from './state.js';
-import { identityKey, noteBoardLabels, serverFetch, boardFetch, sessionServer } from './server_base.js';
+import { identityKey, noteBoardLabels, serverFetch, boardFetch, sessionServer, isCloud } from './server_base.js';
 
 export const PAGE_SIZE = 50;
 
@@ -16,8 +16,9 @@ export function mergeMessages(...lists) {
 // hub's own boards plus those of every online remote. Each entry's `project`
 // is a team key (server + name); local keys are the bare name.
 export async function fetchProjects() {
-    const resp = await fetch('/api/board/projects');
-    const local = await resp.json();
+    const resp = isCloud() ? null : await fetch('/api/board/projects');
+    const data = resp ? await resp.json() : [];
+    const local = Array.isArray(data) ? data : [];
     noteBoardLabels(local, 'project'); // board_label beside each key (#3536)
     const remotes = !state.hub ? [] : (state.servers || []).filter(s => s.id !== 'local' && s.status === 'online');
     const lists = await Promise.all(remotes.map(async srv => {

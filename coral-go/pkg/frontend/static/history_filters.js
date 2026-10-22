@@ -1,4 +1,5 @@
 /* The History tab's search, filter and paging (moved out of app.js, #5084; no behaviour change). */
+import { refreshHistorySource } from './history_source_ui.js';
 import { setHistoryPage, getHistoryPage } from './history_state.js';
 import { loadHistorySessionsPaged } from './api.js';
 import { filterState, serializeToUrl, countActiveFilters, hasActiveFilters, resetFilters } from './search_filters.js';
@@ -14,6 +15,7 @@ export function loadHistoryPage(page) {
 }
 
 export function loadHistoryFiltered() {
+    refreshHistorySource();
     serializeToUrl(getHistoryPage());
     const generation = ++filterGeneration;
     const query = filterState.q, page = getHistoryPage();
@@ -32,7 +34,7 @@ export function loadHistoryFiltered() {
 }
 
 export async function populateHfTagSelect() {
-    const tags = await loadAllTags();
+    const tags = await loadAllTags(true);
     const sel = document.getElementById('hf-tag-add');
     if (!sel || !tags) return;
     sel.innerHTML = '<option value="">+ tag</option>';

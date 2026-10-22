@@ -325,3 +325,8 @@
 .chat-search-hit mark { background:color-mix(in srgb, var(--accent-secondary) 45%, transparent); color:var(--text-primary); font-weight:700; border-radius:2px; padding:0 2px; }
 .chat-search-status { padding:10px; color:var(--text-secondary); font-size: var(--fs-base); }
 .chat-search-target { outline:2px solid var(--accent-secondary); outline-offset:3px; }
+
+/* A named source for linked-computer history, including the phone sidebar. */
+.history-computer-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-sm); color: var(--text-secondary); }
+.history-computer-row[hidden] { display: none; }
+.history-computer-row select { width: 100%; min-width: 0; min-height: 44px; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); }

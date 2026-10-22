@@ -1,3 +1,4 @@
+import { historyFetch } from './history_source.js';
 /* Git commits tab: loading and rendering commit history for a session */
 
 import { escapeHtml } from './utils.js';
@@ -7,10 +8,11 @@ export async function loadSessionCommits(sessionId) {
     container.innerHTML = '<div class="empty-notes">Loading commits...</div>';
 
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/git`);
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/git`);
         const data = await resp.json();
         renderCommits(data.commits || []);
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error("Failed to load session commits:", e);
         container.innerHTML = '<div class="empty-notes">Failed to load commits</div>';
     }

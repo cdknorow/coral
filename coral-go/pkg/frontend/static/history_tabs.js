@@ -1,3 +1,4 @@
+import { historyFetch } from './history_source.js';
 /* History tabs — read-only rendering of Activity, Tasks, and Agent Notes for historical sessions */
 
 import { escapeHtml, sanitizeMarkdown } from './utils.js';
@@ -24,9 +25,10 @@ export async function loadHistoryEvents(sessionId) {
     historyEvents = [];
     historyEventsView.events = historyEvents;
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/events?limit=200`);
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/events?limit=200`);
         historyEvents = await resp.json();
     } catch (e) {
+        if (e.name === 'AbortError') return;
         historyEvents = [];
     }
     historyEventsView.events = historyEvents;
@@ -68,9 +70,10 @@ function renderHistoryEventTimeline() {
 export async function loadHistoryTasks(sessionId) {
     historyTasks = [];
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/tasks`);
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/tasks`);
         historyTasks = await resp.json();
     } catch (e) {
+        if (e.name === 'AbortError') return;
         historyTasks = [];
     }
 
@@ -110,9 +113,10 @@ function renderHistoryTaskList() {
 export async function loadHistoryAgentNotes(sessionId) {
     historyAgentNotes = [];
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/agent-notes`);
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/agent-notes`);
         historyAgentNotes = await resp.json();
     } catch (e) {
+        if (e.name === 'AbortError') return;
         historyAgentNotes = [];
     }
 

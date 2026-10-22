@@ -1,3 +1,5 @@
+import { isCloud } from './server_base.js';
+import { historyFetch, historyServer } from './history_source.js';
 /* Session notes: loading, editing, rendering, and tab switching */
 
 import { state } from './state.js';
@@ -59,7 +61,7 @@ export async function loadSessionNotes(sessionId) {
     updateSummaryActionButton(null);
 
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/notes`);
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/notes`);
         const data = await resp.json();
         currentNotesData = data;
         updateSummaryActionButton(data, { loading: Boolean(data.summarizing) });
@@ -75,22 +77,24 @@ export async function loadSessionNotes(sessionId) {
             renderNotes(data);
         }
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error("Failed to load session notes:", e);
         document.getElementById("notes-rendered").innerHTML =
             '<div class="empty-notes">Failed to load notes</div>';
     }
 }
 
-function pollForSummary(sessionId) {
+function pollForSummary(sessionId, source = historyServer()) {
     pollTimer = setTimeout(async () => {
+        if (isCloud() && (source !== historyServer() || state.currentSession?.type !== 'history' || state.currentSession.name !== sessionId)) return;
         try {
-            const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/notes`);
+            const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/notes`);
             const data = await resp.json();
             currentNotesData = data;
 
             if (data.summarizing) {
                 updateSummaryActionButton(data, { loading: true });
-                pollForSummary(sessionId);
+                pollForSummary(sessionId, source);
             } else {
                 document.getElementById("notes-spinner").style.display = "none";
                 updateHistoryTitleFromNotes(data);
@@ -98,6 +102,7 @@ function pollForSummary(sessionId) {
                 renderNotes(data);
             }
         } catch (e) {
+        if (e.name === 'AbortError') return;
             document.getElementById("notes-spinner").style.display = "none";
             updateSummaryActionButton(currentNotesData);
             document.getElementById("notes-rendered").innerHTML =
@@ -112,7 +117,7 @@ function renderNotes(data) {
 
     const content = data.notes_md || data.auto_summary;
     if (!content) {
-        container.innerHTML = '<div class="empty-notes">No notes yet. Click "Edit" to add notes, or "Generate Summary" to create an AI summary.</div>';
+        container.innerHTML = isCloud() ? '<div class="empty-notes">No notes recorded.</div>' : '<div class="empty-notes">No notes yet. Click "Edit" to add notes, or "Generate Summary" to create an AI summary.</div>';
         return;
     }
 
@@ -128,6 +133,7 @@ function renderNotes(data) {
         const html = marked.parse(content);
         container.innerHTML = label + sanitizeHtml(html, undefined, { links: 'board' }); // an auto summary is agent-derived (#3542)
     } catch (e) {
+        if (e.name === 'AbortError') return;
         // Fallback if marked.js didn't load
         container.innerHTML = label + '<pre>' + content.replace(/</g, '&lt;') + '</pre>';
     }
@@ -167,7 +173,7 @@ export async function saveNotes() {
     const notesMd = document.getElementById("notes-textarea").value;
 
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/notes`, {
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/notes`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ notes_md: notesMd }),
@@ -190,6 +196,7 @@ export async function saveNotes() {
         renderNotes(currentNotesData);
         showToast("Notes saved");
     } catch (e) {
+        if (e.name === 'AbortError') return;
         showToast("Failed to save notes", true);
     }
 }
@@ -203,7 +210,7 @@ export async function generateSummary() {
     updateSummaryActionButton(currentNotesData, { loading: true });
 
     try {
-        const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/resummarize`, {
+        const resp = await historyFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/resummarize`, {
             method: "POST",
         });
         const result = await resp.json();
@@ -232,6 +239,7 @@ export async function generateSummary() {
             updateSummaryActionButton(currentNotesData);
         }
     } catch (e) {
+        if (e.name === 'AbortError') return;
         document.getElementById("notes-spinner").style.display = "none";
         updateSummaryActionButton(currentNotesData);
         showToast("Failed to generate summary", true);

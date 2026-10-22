@@ -1,5 +1,6 @@
 /* Persisted changes.diff tab for historical sessions. */
 
+import { historyFetch, historyUrl } from './history_source.js';
 import { state } from './state.js';
 
 export async function loadHistoryChanges(sessionId) {
@@ -11,10 +12,10 @@ export async function loadHistoryChanges(sessionId) {
     button.style.display = 'none';
     content.textContent = '';
     const url = `/api/sessions/${encodeURIComponent(sessionId)}/changes`;
-    download.href = url;
+    try { download.href = historyUrl(url); } catch { return; }
 
     try {
-        const resp = await fetch(url);
+        const resp = await historyFetch(url);
         // Ignore a stale response if the user selected another session.
         if (state.currentSession?.type !== 'history' || state.currentSession?.name !== sessionId) return;
         if (!resp.ok) return;
@@ -23,6 +24,7 @@ export async function loadHistoryChanges(sessionId) {
         if (state.currentSession?.type !== 'history' || state.currentSession?.name !== sessionId) return;
         button.style.display = '';
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error('Failed to load session changes.diff:', e);
     }
 }

@@ -17,6 +17,9 @@ rt('/agents', { view: 'agents' });
 rt(`/agents/${S}`, { view: 'agents', server: null, id: S, sub: null });
 rt(`/agents/@m2/${S}/files`, { view: 'agents', server: 'm2', id: S, sub: 'files' });
 rt('/chats', { view: 'chats', query: '' });
+rt('/chats/@m2', { view: 'chats', server: 'm2', query: '' });
+rt('/chats/@m2?page=2&q=battle', { view: 'chats', server: 'm2', query: 'page=2&q=battle' });
+rt(`/chats/@m2/${S}`, { view: 'chats', server: 'm2', id: S });
 rt('/chats?page=2&q=battle', { view: 'chats', query: 'page=2&q=battle' }); // the query in the Chats tab's canonical key order
 rt(`/chats/${S}`, { view: 'chats', id: S });
 rt('/team/coral-go-team', { view: 'team', server: null, id: 'coral-go-team', sub: null });
@@ -42,7 +45,7 @@ assert.equal(chatsQuery('?q=x&page=1&page_size=50&debug=1'), 'q=x');
 for (const bad of [
     '/agents/..%2F..%2Fapi%2Fsettings', `/agents/${S}%2F..%2Fx`, `/agents/${S}%3Fx`, '/agents/not-a-uuid', `/agents/${S}/evil`, `/agents/${S}/changes`, `/agents/${S}/team-settings`,
     `/agents/@bad%2Fslug/${S}`, `/agents/@../${S}`, `/agents/@/${S}`,
-    '/chats/..%2F..%2Fapi', '/chats/a%2Fb', '/chats/a%3Fb', '/chats/%E0%A4%A', '/chats/' + 'x'.repeat(200), '/chats/a%00b', '/chats/..',
+    '/chats/@../x', '/chats/@bad%2Fslug/x', '/chats/@m2/..%2Fapi', '/chats/@m2/a%3Fb', '/chats/@m2/a/b', '/chats/..%2F..%2Fapi', '/chats/a%2Fb', '/chats/a%3Fb', '/chats/%E0%A4%A', '/chats/' + 'x'.repeat(200), '/chats/a%00b', '/chats/..',
     '/team/%3Cscript%3E%0d%0a', '/team/' + encodeURIComponent('x'.repeat(201)), '/team/a%00b', '/team/%E0%A4%A', '/team/a/b/c', '/team/x/admin',
     '/workflows/1%2F..', '/workflows/0', '/workflows/-1', '/workflows/7/runs/x', '/workflows/abc',
     '/docs/..%2Fsecrets', '/docs/%3Cscript%3E', '/docs/a/b',

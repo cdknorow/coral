@@ -1,4 +1,5 @@
 /* Token usage in the header and the team's token usage view, and the team's knowledge button (moved out of render.js, #4996; no behaviour change). */
+import { historyFetch } from './history_source.js';
 import { serverFetch, serverForSession, teamFetch, keyLabel } from './server_base.js';
 import { formatTokens } from './format.js';
 import { _formatCost } from './session_state.js';
@@ -31,7 +32,7 @@ export async function updateHistoryTokenUsage(sessionId) {
     if (!sessionId) { container.style.display = 'none'; return; }
 
     try {
-        const resp = await fetch(`/api/token-usage?session_id=${encodeURIComponent(sessionId)}`);
+        const resp = await historyFetch(`/api/token-usage?session_id=${encodeURIComponent(sessionId)}`);
         if (!resp.ok) { container.style.display = 'none'; return; }
         const data = await resp.json();
         const t = data.totals;
@@ -44,7 +45,8 @@ export async function updateHistoryTokenUsage(sessionId) {
         document.getElementById('htu-requests').textContent = String(t.num_sessions || '—');
         document.getElementById('htu-cost').textContent = t.cost_usd > 0 ? _formatCost(t.cost_usd) : '—';
         container.style.display = '';
-    } catch {
+    } catch (error) {
+        if (error.name === 'AbortError') return;
         container.style.display = 'none';
     }
 }

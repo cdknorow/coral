@@ -1,3 +1,5 @@
+import { historyFetch, historyServer } from './history_source.js';
+import { identityKey } from './server_base.js';
 import { filterState } from './search_filters.js';
 import { escapeHtml } from './utils.js';
 
@@ -69,7 +71,7 @@ function renderResult(result, index) {
 async function openSearchHit(result, hit) {
     const locator = hit.locator || {};
     if (result.type === 'group' || locator.project) {
-        if (window.selectBoardProject) window.selectBoardProject(locator.project || result.project, locator.message_id);
+        if (window.selectBoardProject) window.selectBoardProject(identityKey(historyServer(), locator.project || result.project), locator.message_id);
         return;
     }
     if (locator.session_id && window.selectHistorySession) {
@@ -83,15 +85,16 @@ export async function searchChats(query, page = 1) {
     if (!container || !list) return;
     const q = String(query || '').trim();
     const generation = ++requestGeneration;
+    const source = historyServer();
     if (!q) { container.hidden = true; container.replaceChildren(); list.hidden = false; return; }
     container.hidden = false; list.hidden = true;
     container.replaceChildren(Object.assign(document.createElement('div'), { className: 'loading-indicator', textContent: 'Searching chats…' }));
     try {
         const params = new URLSearchParams({ q, page: String(page), page_size: '20', type: filterState.chatType || 'all' });
-        const response = await fetch(`/api/sessions/history/search?${params}`);
+        const response = await historyFetch(`/api/sessions/history/search?${params}`);
         if (!response.ok) throw new Error(`Search failed (${response.status})`);
         const data = await response.json();
-        if (generation !== requestGeneration) return;
+        if (generation !== requestGeneration || source !== historyServer()) return;
         container.replaceChildren();
         if (data.status && !isSearchResponseUsable(data.status)) {
             container.textContent = 'Search is temporarily unavailable.';
@@ -104,7 +107,7 @@ export async function searchChats(query, page = 1) {
         }
         data.results.forEach((result, i) => container.appendChild(renderResult(result, i)));
     } catch (error) {
-        if (generation !== requestGeneration) return;
+        if (error.name === 'AbortError' || generation !== requestGeneration || source !== historyServer()) return;
         container.textContent = error.message || 'Search failed.';
     }
 }
