@@ -541,6 +541,7 @@ func (b *TmuxBackend) LogPath(name string) string {
 }
 
 func (b *TmuxBackend) Close() error {
+	finishPendingTreeKills() // a kill still waiting out its grace is finished, not left to die with this process (#6141)
 	// Stop all tails
 	b.mu.Lock()
 	for name := range b.tails {
