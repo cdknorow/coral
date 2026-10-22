@@ -22,11 +22,12 @@ const STATIC = "(window.__coralStatic || '/static/')";
             const before = location.href;
             a.focus(); const shown = a.getBoundingClientRect();
             a.click();
-            return { exists: !!a, isFirst: first === a, onScreen: shown.top >= 0 && shown.left >= 0, focusedMain: document.activeElement && document.activeElement.id === 'main-stage', sameAddress: location.href === before, text: a.textContent };
+            return { exists: !!a, isFirst: first === a, onScreen: shown.top >= 0 && shown.left >= 0, height: shown.height, focusedMain: document.activeElement && document.activeElement.id === 'main-stage', sameAddress: location.href === before, text: a.textContent };
         })()`);
         assert.ok(skip.exists, 'there is a skip link');
         assert.ok(skip.isFirst, 'and it is the first stop');
         assert.ok(skip.onScreen, 'it is on screen when it has the focus');
+        assert.ok(skip.height >= 44, 'and a touch target of at least 44 px: ' + skip.height);
         assert.ok(skip.focusedMain, 'activating it focuses the main area');
         assert.ok(skip.sameAddress, 'without changing the address (the hash is a route)');
 
