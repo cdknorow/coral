@@ -55,6 +55,7 @@ export function applyCloudSettingsDialog() {
     const note = document.createElement('p');
     note.className = 'settings-hint settings-cloud-note';
     note.textContent = ('Settings for this account are saved on the hub. Machine settings (working directory, remote access, API key, CLI paths, telemetry) are set on the machine in Coral.');
-    shell.before(note);
+    // Inside the content column, not beside the shell: .settings-modal-body is a row, and a sibling there takes the shell's width (the dialog collapsed to a few pixels in hub mode).
+    (shell.querySelector('.settings-panes') || shell).prepend(note);
     refreshSettingsGroups();
 }
