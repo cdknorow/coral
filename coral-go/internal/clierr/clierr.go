@@ -232,6 +232,10 @@ func Describe(err error, status int, body []byte) string {
 		if codeShape.MatchString(reply.Code) {
 			code = reply.Code
 		}
+		// Some answers put the code in "error" and the words in "message" ({"error":"session_token_required","message":"This comes from the agent's own Coral tools..."}): then "error" is the code.
+		if code == "" && reply.Message != "" && reply.Error != reply.Message && codeShape.MatchString(reply.Error) {
+			code = reply.Error
+		}
 	}
 	// The words come from whatever answered at CORAL_URL: no terminal control, one line, cut at a character boundary.
 	text = strings.Join(strings.FieldsFunc(clitext.Clean(text), func(r rune) bool { return r == 10 || r == 13 }), " ")
