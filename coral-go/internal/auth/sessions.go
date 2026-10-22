@@ -192,6 +192,29 @@ func sessionHash(token string) string {
 	return hex.EncodeToString(h[:])
 }
 
+// uaOS names the operating system in a User-Agent ("" when it names none).
+func uaOS(ua string) string {
+	for _, o := range []struct{ token, name string }{
+		{"iPhone", "iOS"}, {"iPad", "iPadOS"}, {"Android", "Android"}, {"Mac OS X", "macOS"}, {"Macintosh", "macOS"},
+		{"Windows", "Windows"}, {"CrOS", "ChromeOS"}, {"Linux", "Linux"},
+	} {
+		if strings.Contains(ua, o.token) {
+			return o.name
+		}
+	}
+	return ""
+}
+
+// appSessionLabel names a session the Coral app made (#6100): "Coral app on Windows". The app's web view sends its platform's ordinary
+// User-Agent (WebView2 ignores a User-Agent argument), so the app says who it is in the sign-in link it opens (AppClientParam), and only
+// that link's session gets this name. It is a name, not a permission: anyone can ask for it, and it changes nothing the session may do.
+func appSessionLabel(ua string) string {
+	if osName := uaOS(ua); osName != "" {
+		return "Coral app on " + osName
+	}
+	return "Coral app"
+}
+
 // sessionLabel is a short, plain-text name for the browser from its User-Agent: the client
 // chooses it, so control characters are dropped and it is cut at maxLabel runes.
 func sessionLabel(ua string) string {
@@ -204,16 +227,7 @@ func sessionLabel(ua string) string {
 			break
 		}
 	}
-	osName := ""
-	for _, o := range []struct{ token, name string }{
-		{"iPhone", "iOS"}, {"iPad", "iPadOS"}, {"Android", "Android"}, {"Mac OS X", "macOS"}, {"Macintosh", "macOS"},
-		{"Windows", "Windows"}, {"CrOS", "ChromeOS"}, {"Linux", "Linux"},
-	} {
-		if strings.Contains(ua, o.token) {
-			osName = o.name
-			break
-		}
-	}
+	osName := uaOS(ua)
 	label := ua
 	switch {
 	case browser != "" && osName != "":
@@ -239,6 +253,14 @@ func sessionLabel(ua string) string {
 	return "Unknown browser"
 }
 
+// newSessionLabel is the label of the session r signs in: from its User-Agent, or "Coral app on ..." for the Coral app's sign-in link.
+func newSessionLabel(r *http.Request, method string) string {
+	if method == SessionByLink && r.URL != nil && r.URL.Query().Get(AppClientParam) == AppClientApp {
+		return appSessionLabel(r.UserAgent())
+	}
+	return sessionLabel(r.UserAgent())
+}
+
 // NewSession signs a browser in: a fresh 256-bit cookie value, its hash kept with the label
 // and an absolute expiry (30 days with keep, else sessionMaxAge).
 func (ks *KeyStore) NewSession(r *http.Request, method string, keep bool) (string, error) {
@@ -255,7 +277,7 @@ func (ks *KeyStore) NewSession(r *http.Request, method string, keep bool) (strin
 	ctx := context.Background()
 	be := ks.backend()
 	if err := be.PutSession(ctx, SessionRecord{
-		IDHash: sessionHash(token), Label: sessionLabel(r.UserAgent()), Method: method, Persistent: keep,
+		IDHash: sessionHash(token), Label: newSessionLabel(r, method), Method: method, Persistent: keep,
 		CreatedAt: now, LastSeen: now, ExpiresAt: now.Add(life),
 	}); err != nil {
 		return "", fmt.Errorf("save session: %w", err)

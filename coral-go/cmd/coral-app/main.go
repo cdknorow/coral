@@ -142,6 +142,8 @@ func main() {
 			startURL = link
 		}
 	}
+	// The session this link makes is named "Coral app on ..." on the Sessions page (#6100), so a person can tell it from their own browser.
+	startURL = loginlink.MarkApp(startURL)
 
 	log.Println("[WEBVIEW] calling showInDock()")
 	showInDock()
@@ -389,7 +391,7 @@ func main() {
 				log.Printf("[WEBVIEW] sign-in page shown; no new sign-in link: %v", err)
 				return
 			}
-			link = loginlink.OnPage(link, page)
+			link = loginlink.MarkApp(loginlink.OnPage(link, page))
 			log.Printf("[WEBVIEW] sign-in page shown; signing in again at %s", loginlink.Redact(link))
 			w.Dispatch(func() { w.Navigate(link) })
 		}()
