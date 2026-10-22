@@ -1,7 +1,7 @@
 name: cdp-gate
 # The full CDP set (tests/frontend/run_cdp_suites.mjs) on GitHub-hosted runners, so a release gate doesn't
 # depend on one machine (#4383: epoch dropped three gates on 2026-10-17). Six parts of the default-mode suites
-# (--part K/6, each suite in exactly one part), the sequences and the strict phase run as separate jobs; each
+# (--part K/6, each suite in exactly one part, on the default terminal backend, the built-in terminal), the sequences, the strict phase and the tmux phase (--tmux, #6064: the suites that drive tmux itself and a cross-check set) run as separate jobs; each
 # uploads its results.json and Coral logs, and one summary job is the check. Same rules as the epoch gate: one
 # retry per suite, and a suite that passes only on its retry (FLAKY) fails its part (runner exit 3).
 #
@@ -65,6 +65,7 @@ jobs:
           - { name: "part 6/6", args: "--part 6/6" }
           - { name: "sequences", args: "--sequences" }
           - { name: "strict", args: "--strict" }
+          - { name: "tmux", args: "--tmux" }
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:

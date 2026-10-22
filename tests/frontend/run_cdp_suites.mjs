@@ -3,7 +3,7 @@
 //
 //   node run_cdp_suites.mjs [--only substring[,substring...]] [--timeout seconds] [--chrome /path/to/chrome]
 //                           [--shards N] [--retries N] [--allow-flaky] [--keep] [--stress [--runs N] [--cpu-throttle X]]
-//                           [--sequences] [--strict | --no-strict] [--pty | --no-pty] [--part K/N] [--results-out FILE]
+//                           [--sequences] [--strict | --no-strict] [--tmux | --no-tmux] [--part K/N] [--results-out FILE]
 //
 // It builds coral with -tags "dev fts5" into a temp dir, starts it with a temp CORAL_DATA_DIR on a
 // free non-default port (never ~/.coral, never :8420), starts headless Chrome with a temp profile and
@@ -161,19 +161,25 @@ const STRICT_SUITES = [
   'strict_mode_browser.test.js', 'server_switcher_browser.test.js', 'agent_state.test.js',
   'team_view_consolidation.test.js', 'team_view_responsive_rows.test.js', 'a11y_dashboard_browser.test.js',
 ];
-// Terminal backend (#6064): the built-in terminal (pty) is Coral's default on macOS and Linux, tmux a choice. The suites were written when tmux was the default and several drive the tmux server
-// itself (pane sizes, fit width, a gone session), so the main run pins --backend tmux (CORAL_BACKEND overrides it; 'default' passes no flag). --pty runs PTY_SUITES on a shard that starts Coral
-// as a new install does, with no --backend: a full run adds one such shard at the end; --no-pty leaves it out.
-const ptyOnly = flag('--pty');
-const PTY_SUITES = [
-  'first_run_browser.test.js', 'terminal_backend_browser.test.js', 'tmux_first_run_browser.test.js', 'launch_dialog_browser.test.js', 'auto_wake_browser.test.js',
-  'kill_log_note_browser.test.js', 'settings_side_change_browser.test.js', 'terminal_open_from_card_browser.test.js', 'terminal_reconnect_browser.test.js',
+// Terminal backend (#6064): the built-in terminal (pty) is Coral's default on macOS and Linux, so the main run starts Coral as a new install does, with no --backend (CORAL_BACKEND overrides it).
+// TMUX_SUITES run afterwards on one shard started with --backend tmux: the suites that drive the tmux server itself (a pane's size, a gone session, the socket), and a cross-check set that must
+// hold on both backends. --tmux runs only that set; a full run adds it as one more shard; --no-tmux leaves it out. A suite that is merely broken on pty is fixed, not listed here.
+const tmuxOnly = flag('--tmux');
+// TMUX_ONLY_SUITES drive tmux itself: they run only in the tmux phase (on pty they cannot pass). CROSS_SUITES run in the main run and again on tmux.
+const TMUX_ONLY_SUITES = [
+  'terminal_pane_size_browser.test.js', 'terminal_fit_width_browser.test.js', 'terminal_gone_browser.test.js', 'terminal_gone_ws_browser.test.js', 'terminal_gone_asleep_browser.test.js',
+  'terminal_silent_socket_browser.test.js', 'terminal_reconnect_browser.test.js',
+];
+const CROSS_SUITES = [
+  'first_run_browser.test.js', 'terminal_backend_browser.test.js', 'tmux_first_run_browser.test.js', 'auto_wake_browser.test.js', 'kill_log_note_browser.test.js',
+  'update_ui_browser.test.js', 'terminal_open_from_card_browser.test.js',
   'terminal_switch_desktop_agent_browser.test.js', 'terminal_switch_desktop_browser.test.js', 'terminal_switch_desktop_stream_browser.test.js',
   'terminal_switch_phone_agent_browser.test.js', 'terminal_switch_phone_browser.test.js', 'terminal_switch_phone_stream_browser.test.js',
 ];
-const MAIN_BACKEND = process.env.CORAL_BACKEND || 'tmux';
-const ptyShard = ptyOnly || (!flag('--no-pty') && !only && !stress && !flag('--sequences') && !part);
-const strictShard = strictOnly || (!flag('--no-strict') && !ptyOnly && !only && !stress && !flag('--sequences') && !part);
+const TMUX_SUITES = [...TMUX_ONLY_SUITES, ...CROSS_SUITES];
+const MAIN_BACKEND = process.env.CORAL_BACKEND || 'default';
+const tmuxShard = tmuxOnly || (!flag('--no-tmux') && !only && !stress && !flag('--sequences') && !part);
+const strictShard = strictOnly || (!flag('--no-strict') && !tmuxOnly && !only && !stress && !flag('--sequences') && !part);
 const PROD_PORT = 8420;
 const chromePath = arg('--chrome', process.env.CHROME || [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
@@ -522,16 +528,16 @@ async function stopShard(shard) {
 // starting at once could be handed the same port. Each shard also waits for coral's own "bound" log line.
 const shardsUp = [];
 try {
-  for (let i = 1; i <= shards; i++) shardsUp.push(await startShard(i, 0, strictOnly, ptyOnly ? 'default' : MAIN_BACKEND));
+  for (let i = 1; i <= shards; i++) shardsUp.push(await startShard(i, 0, strictOnly, tmuxOnly || sequencesOnly ? 'tmux' : MAIN_BACKEND));
 } catch (e) { console.error(e.message); process.exit(2); }
 console.log('');
 
 for (const t of STRICT_SUITES) if (!suites.cdp.includes(t)) { console.error(`STRICT_SUITES names ${t}, which is not a CDP suite`); process.exit(2); }
-for (const t of PTY_SUITES) if (!suites.cdp.includes(t)) { console.error(`PTY_SUITES names ${t}, which is not a CDP suite`); process.exit(2); }
+for (const t of TMUX_SUITES) if (!suites.cdp.includes(t)) { console.error(`TMUX_SUITES names ${t}, which is not a CDP suite`); process.exit(2); }
 // Longest first, from the durations of a previous run (suite_durations.json; update_suite_durations.mjs writes it): shards take the next
 // suite from one queue, and a long suite left to the end of an alphabetical queue would leave the other shards idle (#3916).
 const suiteDurations = loadDurations(path.join(here, 'suite_durations.json'));
-let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : ptyOnly ? PTY_SUITES : [...suites.cdp, ...suites.server])
+let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : tmuxOnly ? TMUX_SUITES : [...suites.cdp, ...suites.server].filter(f => MAIN_BACKEND !== 'default' || !TMUX_ONLY_SUITES.includes(f)))
   .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
 // --part K/N: the parts have about equal recorded time, not every Nth name (#4605: by name, the six CI parts ran 152 to 272 s of suites).
 if (part) tests = partsByDuration(tests, suiteDurations, part.n)[part.k - 1];
@@ -543,8 +549,8 @@ if (shuffleSeed) { // mulberry32: the same seed gives the same order, so a failu
 }
 if (Object.keys(suiteDurations).length) console.log(`queue: longest first (${tests.filter(t => typeof suiteDurations[t] === 'number').length} of ${tests.length} suites have a recorded duration in suite_durations.json)`);
 // The strict phase's results are named 'strict: <suite>' (the default-mode run of a suite is separate).
-let phase = strictOnly ? 'strict: ' : ptyOnly ? 'pty: ' : '';
-const sequences = stress || strictOnly || ptyOnly || part || (only && !sequencesOnly) ? [] : SEQUENCES;
+let phase = strictOnly ? 'strict: ' : tmuxOnly ? 'tmux: ' : '';
+const sequences = stress || strictOnly || tmuxOnly || part || (only && !sequencesOnly) ? [] : SEQUENCES;
 for (const t of sequences.flat()) if (!suites.cdp.includes(t)) { console.error(`SEQUENCES names ${t}, which is not a CDP suite`); process.exit(2); }
 if (!tests.length && !sequences.length) { console.error('no CDP suites matched'); process.exit(2); }
 console.log(`running ${tests.length} of ${suites.cdp.length + suites.server.length} suites${only ? ` (--only ${only})` : ''}${part ? ` (part ${part.k}/${part.n})` : ''}${sequences.length ? `, then ${sequences.length} sequence(s)` : ''}`);
@@ -785,16 +791,17 @@ async function runSequences() {
 const runStarted = Date.now();
 try {
   for (let run = 1; run <= runs; run++) await runOnce(run);
-  await runSequences();
-  if (ptyShard && !ptyOnly) {
-    // One more shard, started as a new install is (the built-in terminal default, no --backend), for the suites that matter there (#6064).
-    tests = PTY_SUITES.slice().sort();
-    phase = 'pty: ';
-    console.log(`\npty phase: ${tests.length} suites on one shard with the default backend (the built-in terminal)`);
+  if (!(tmuxShard && !tmuxOnly)) await runSequences(); // the sequences drive a tmux pane: with a tmux phase they run on its shard
+  if (tmuxShard && !tmuxOnly) {
+    // One more shard, started with --backend tmux, for the suites that drive tmux itself and the cross-check set (#6064).
+    tests = TMUX_SUITES.slice().sort();
+    phase = 'tmux: ';
+    console.log(`\ntmux phase: ${tests.length} suites on one shard with --backend tmux`);
     for (const sh of shardsUp) await stopShard(sh);
     shardsUp.length = 0;
-    shardsUp.push(await startShard(shards + 1, 0, false, 'default'));
+    shardsUp.push(await startShard(shards + 1, 0, false, 'tmux'));
     await runOnce(1);
+    await runSequences();
   }
   if (strictShard && !strictOnly) {
     // One more shard, in strict mode, for the suites that matter there (#3527).
