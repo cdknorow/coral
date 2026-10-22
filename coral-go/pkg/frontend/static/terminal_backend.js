@@ -79,6 +79,7 @@ export async function loadTerminalBackendRow() {
     $('tb-now').append('Running now: ', Object.assign(document.createElement('b'), { textContent: _status.running }));
     $('tb-choice').hidden = !_status.choice;
     $('tb-fixed').hidden = !!_status.choice;
+    $('tb-learn-fixed').hidden = !!_status.choice; // the one-line note's detail, behind Learn more (its target stays closed)
     // Waking the agents that were running when Coral stopped (#3636): a pty Coral only.
     const aw = $('tb-autowake');
     if (aw) {

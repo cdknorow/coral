@@ -830,7 +830,9 @@
                         <p class="tb-note">Agents that were running when Coral stopped. Coral wakes them one at a time when it starts, and they resume their conversation with the permissions they ran with, including an agent that bypassed permissions. More than this many: Coral asks first. Agents you put to sleep stay asleep.</p>
                     </div>
                 </div>
-                <p class="tb-fixed" id="tb-fixed" hidden>This Coral runs agents in its own terminals (pty), the only backend here (no tmux on this system). Agents end when Coral restarts or upgrades; when it starts again Coral wakes them (up to the number set below; more after you confirm; you can turn this off), and they resume their conversation.</p>
+                <p class="tb-fixed" id="tb-fixed" hidden>Agents run in Coral's own terminals (pty), the only backend here. They stop when Coral quits and wake next time.</p>
+                <button type="button" class="tb-learn" id="tb-learn-fixed" aria-expanded="false" aria-controls="tb-d-fixed" hidden>Learn more</button>
+                <div class="tb-d" id="tb-d-fixed" hidden>This Coral runs agents in its own terminals (pty), the only backend here (no tmux on this system). Agents end when Coral restarts or upgrades; when it starts again Coral wakes them (up to the number set below; more after you confirm; you can turn this off), and they resume their conversation.</div>
             </div>
                 <div class="settings-row">
                 <dt class="toggle-dt">
