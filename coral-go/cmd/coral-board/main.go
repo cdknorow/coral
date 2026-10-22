@@ -6,8 +6,11 @@ import (
 	"github.com/subgentic/coral/internal/cliauth"
 	"github.com/subgentic/coral/internal/clierr"
 	"github.com/subgentic/coral/internal/clitext"
+	"github.com/subgentic/coral/internal/config"
 	"github.com/subgentic/coral/internal/hooks"
 	"os"
+	"strconv"
+	"strings"
 )
 
 var serverURL = "http://localhost:8420"
@@ -109,9 +112,12 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, usageText)
 }
 
-const usageText = `Usage: coral-board <command> [args]
+// usageText is the usage with this platform's default port filled in (8450 on Windows, 8420 elsewhere).
+var usageText = strings.ReplaceAll(usageTextTemplate, "{{PORT}}", strconv.Itoa(config.DefaultPort))
 
-Help topics:  coral-board help windows | exit-codes | json | timeouts   (also: help post, help send)
+const usageTextTemplate = `Usage: coral-board <command> [args]
+
+Help topics:  coral-board help windows | exit-codes | json | timeouts   (also: help post, help send, help wait)
 
 Commands:
   join <project> --as <role>   Subscribe to a board
@@ -183,7 +189,8 @@ Output:
               tasks and peeked screens are removed before printing.
 
 Environment:
-  CORAL_URL   Server URL (default http://localhost:8420)
+  CORAL_URL   Coral's address (default: the one the running Coral recorded,
+              else http://localhost:{{PORT}}, this platform's port)
   CORAL_PORT  Server port (overrides CORAL_URL)
 
 Windows:
