@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,6 +26,9 @@ func goodFixtureFolder(t *testing.T) string {
 
 // Security's condition 5: a fixture build listens on this computer only, connects to no hub unless the test names one, and does not start without a valid fixture folder.
 func TestAFixtureBuildRefusesToBeExposedOrToStartWithoutAFixture(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the relaunch fixture is for macOS and Linux (#175): on Windows a fixture build refuses to start, which TestAFixtureBuildRefusesToStartOnWindows checks")
+	}
 	goodFixtureFolder(t)
 	no := false
 	yes := true
@@ -53,6 +57,9 @@ func TestAFixtureBuildRefusesToBeExposedOrToStartWithoutAFixture(t *testing.T) {
 
 // #5456: a fixture build never runs on the default data folder (~/.coral), spelled directly or through a link.
 func TestAFixtureBuildRefusesTheDefaultDataFolder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the relaunch fixture is for macOS and Linux (#175): on Windows a fixture build refuses to start, which TestAFixtureBuildRefusesToStartOnWindows checks")
+	}
 	goodFixtureFolder(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -75,4 +82,16 @@ func TestAFixtureBuildRefusesTheDefaultDataFolder(t *testing.T) {
 	cfg = &config.Config{}
 	cfg.UseCoralDir(own)
 	assert.NoError(t, applyRelaunchFixtureBuild(cfg, "", &no, false), "a folder of its own")
+}
+
+// #175: a fixture build on Windows refuses to start, saying why (Windows never relaunches from Coral Hub).
+func TestAFixtureBuildRefusesToStartOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows only")
+	}
+	no := false
+	t.Setenv("CORAL_RELAUNCH_FIXTURE_DIR", t.TempDir())
+	err := applyRelaunchFixtureBuild(&config.Config{}, "", &no, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "macOS and Linux")
 }
