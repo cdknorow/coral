@@ -10,7 +10,6 @@ jobs:
     env:
       CGO_ENABLED: "0"
       CORAL_TELEMETRY_DISABLED: "1"
-      CORAL_UPDATE_GOLDEN: "1"
       CHROME: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -30,7 +29,7 @@ jobs:
         working-directory: tests/frontend
         shell: pwsh
         run: |
-          node run_cdp_suites.mjs --only settings_modal_trace --shards 1 --retries 0 --timeout 180 2>&1 | Tee-Object -FilePath windows-settings-run.txt
+          node run_cdp_suites.mjs --only settings_modal_trace,agent_task_cli,terminal_backend,ui_audit_batch3,touch_targets --shards 1 --retries 0 --timeout 180 2>&1 | Tee-Object -FilePath windows-settings-run.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
