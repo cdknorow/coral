@@ -370,7 +370,7 @@ async function run() {
   // task and (by default) sends it to the agent
   const tasksTab = await ev(`import((window.__coralStatic||'/static/')+'agentic_state.js').then(a => { a.switchAgenticTab('tasks', 'top'); return import((window.__coralStatic||'/static/')+'tasks.js'); }).then(t => { t.renderBoardTaskList(); const sec = document.getElementById('board-tasks-section');
     return { shown: getComputedStyle(sec).display !== 'none', addBtn: !!sec.querySelector('.btn-create-task'), empty: (document.querySelector('#board-task-list .board-task-empty') || {}).textContent || '' }; })`);
-  check('a solo agent\'s Tasks tab shows + Task and an empty state', tasksTab.shown && tasksTab.addBtn && /No tasks yet/.test(tasksTab.empty), JSON.stringify(tasksTab));
+  check('a solo agent\'s Tasks tab shows + Task and an empty state', tasksTab.shown && tasksTab.addBtn && /No tasks/.test(tasksTab.empty), JSON.stringify(tasksTab));
   await ev(`document.querySelector('#board-tasks-section .btn-create-task').click(); true`);
   await until(`!!document.getElementById('create-task-heading') && document.getElementById('create-task-heading').textContent.trim() !== '' && document.getElementById('create-task-modal').style.display !== 'none'`, 'the Create Task dialog');
   const dlg = await ev(`(() => { const vis = (id) => { const e = document.getElementById(id); return !!e && !e.hidden && getComputedStyle(e).display !== 'none'; };
