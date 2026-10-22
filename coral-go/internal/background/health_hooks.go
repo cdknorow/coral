@@ -20,6 +20,7 @@ type HealthHooks struct {
 	Signal      func(ctx context.Context, sessionID string) (AgentSignal, bool)
 	Deliver     func(ctx context.Context, a AgentInfo, key, text string) error
 	HeldDialogs func() map[string]time.Time
+	HeldDrafts  func() map[string]time.Time
 }
 
 // SetHooks replaces the nudge rules' clock, agents, state, gate and held dialogs.
@@ -38,6 +39,9 @@ func (h *HealthNudges) SetHooks(k HealthHooks) {
 	}
 	if k.HeldDialogs != nil {
 		h.heldDialogs = k.HeldDialogs
+	}
+	if k.HeldDrafts != nil {
+		h.heldDrafts = k.HeldDrafts
 	}
 }
 

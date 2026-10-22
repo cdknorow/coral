@@ -221,3 +221,42 @@ func TestOperatorQuestionEndsOnlyWithTheOperator(t *testing.T) {
 	qs, _ = s.ListOperatorQuestions(ctx, "proj")
 	assert.Empty(t, qs)
 }
+
+// #247: a task or commit wait also ends on a message that tags the waiter by name; a message that doesn't (or tags someone
+// else) leaves it waiting.
+func TestAnExplicitMentionEndsATaskOrCommitWait(t *testing.T) {
+	tmp := t.TempDir()
+	s, err := NewStoreWithKey(filepath.Join(tmp, "board.db"), "")
+	require.NoError(t, err)
+	defer s.Close()
+	ctx := context.Background()
+	for _, who := range []string{"Codex Tester", "QA Engineer", "Lead Developer"} {
+		_, err = s.Subscribe(ctx, "proj", who, who, "sess-"+who, nil, "mentions")
+		require.NoError(t, err)
+	}
+	_, err = s.RegisterWait(ctx, "proj", "Codex Tester", "sess-Codex Tester", "task", "223", "waiting for #223", time.Hour)
+	require.NoError(t, err)
+	_, err = s.RegisterWait(ctx, "proj", "QA Engineer", "sess-QA Engineer", "commit", "abc1234", "waiting for the merge", time.Hour)
+	require.NoError(t, err)
+
+	matched, err := s.ResolveMatchingMessageWaits(ctx, "proj", "Orchestrator", "status update for everyone")
+	require.NoError(t, err)
+	assert.Empty(t, matched, "a message for no one in particular leaves both waiting")
+	matched, err = s.ResolveMatchingMessageWaits(ctx, "proj", "Orchestrator", "@Lead Developer please look")
+	require.NoError(t, err)
+	assert.Empty(t, matched, "a message for someone else leaves both waiting")
+
+	matched, err = s.ResolveMatchingMessageWaits(ctx, "proj", "Orchestrator", "@Codex Tester please stop and read the board")
+	require.NoError(t, err)
+	require.Len(t, matched, 1)
+	assert.Equal(t, "Codex Tester", matched[0].SubscriberID)
+	assert.Equal(t, "resolved", matched[0].Status)
+	active, err := s.GetActiveWait(ctx, "proj", "QA Engineer")
+	require.NoError(t, err)
+	require.NotNil(t, active, "the commit wait of someone not named still waits")
+
+	matched, err = s.ResolveMatchingMessageWaits(ctx, "proj", "Orchestrator", "@QA Engineer the merge moved")
+	require.NoError(t, err)
+	require.Len(t, matched, 1)
+	assert.Equal(t, "commit", matched[0].WaitType)
+}

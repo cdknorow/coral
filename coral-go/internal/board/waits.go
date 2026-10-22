@@ -265,10 +265,6 @@ func (s *Store) ResolveMatchingMessageWaits(ctx context.Context, project, sender
 			}
 			continue
 		}
-		if w.WaitType != "message" && w.WaitType != "any" {
-			continue
-		}
-
 		var jobTitle string
 		var sub struct {
 			JobTitle string `db:"job_title"`
@@ -276,11 +272,20 @@ func (s *Store) ResolveMatchingMessageWaits(ctx context.Context, project, sender
 		if err := s.reader().GetContext(ctx, &sub, "SELECT job_title FROM board_subscribers WHERE project = ? AND subscriber_id = ?", project, w.SubscriberID); err == nil {
 			jobTitle = sub.JobTitle
 		}
+		numbered := s.numberedNamesCached(ctx, project)
+		explicitlyForWaiter := containsExplicitTag(content, w.SubscriberID, jobTitle, numbered)
+
+		if w.WaitType != "message" && w.WaitType != "any" {
+			// A task or commit wait also ends on a message that explicitly tags the waiter (#247): whoever wrote to it by
+			// name wants it awake now, not when the task or the commit it waits for comes. Anything else leaves it waiting.
+			if explicitlyForWaiter && s.resolveWait(ctx, &w, nowStr) {
+				matched = append(matched, w)
+			}
+			continue
+		}
 
 		target := strings.TrimSpace(w.TargetID)
 		matches := false
-		numbered := s.numberedNamesCached(ctx, project)
-		explicitlyForWaiter := containsExplicitTag(content, w.SubscriberID, jobTitle, numbered)
 		explicitlyForSomeoneElse := false
 		if !explicitlyForWaiter {
 			for _, sub := range subscribers {
@@ -393,4 +398,15 @@ func (s *Store) ResolveMatchingCommitWaits(ctx context.Context, project, commitH
 		s.waitChanges.signal()
 	}
 	return matched, nil
+}
+
+// resolveWait marks w resolved at now; false when the update failed (w is left as it was).
+func (s *Store) resolveWait(ctx context.Context, w *RegisteredWait, now string) bool {
+	if _, err := s.db.ExecContext(ctx, "UPDATE board_waits SET status = 'resolved', resolved_at = ? WHERE id = ?", now, w.ID); err != nil {
+		return false
+	}
+	w.Status = "resolved"
+	resAt := now
+	w.ResolvedAt = &resAt
+	return true
 }

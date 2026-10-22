@@ -2,7 +2,12 @@
 
 package ptymanager
 
-import "context"
+import (
+	"context"
+	"strings"
+
+	at "github.com/subgentic/coral/internal/agenttypes"
+)
 
 // WaitingOnUser reports whether the agent is waiting on a prompt from the user,
 // and why. An open prompt on its screen always counts. Its state (hook and
@@ -67,8 +72,13 @@ func (in AutomatedInput) waiting(ctx context.Context) (waiting bool, why, kind s
 			decided = "signals"
 		}
 	}
+	if agentType == at.Codex && sWait && st.State == StateInTurn && (st.Since.IsZero() || gate.now().Sub(st.Since) < inTurnFallback) {
+		// Codex keeps what is typed during its turn, so its own signals hold every send then, a mention too, whatever the screen
+		// shows (#247: while it streams, the rendered screen shows neither its working line nor its box).
+		decided = "signals: Codex in turn"
+	}
 	gate.shadowLog(in, waiting, why, sWait, sWhy, sKind, st, decided)
-	if decided == "signals" {
+	if strings.HasPrefix(decided, "signals") {
 		return sWait, sWhy, sKind
 	}
 	return waiting, why, kind
@@ -79,6 +89,17 @@ func (in AutomatedInput) waiting(ctx context.Context) (waiting bool, why, kind s
 func (in AutomatedInput) screenWaiting(ctx context.Context) (waiting bool, why, kind string) {
 	if waiting, why := WaitingOnUser(ctx, in.Term, in.Name, in.AgentType, in.SessionID); waiting {
 		return true, why, promptKind(why)
+	}
+	if agentType, sessionID := in.identity(); agentType == at.Codex {
+		// Codex keeps what is typed while it works (in its box, or queued), so nothing is typed into a working Codex,
+		// mention or not: Coral's text left there was taken for a person's draft and held everything behind it (#247).
+		if r, ok := in.Term.(ScreenReader); ok {
+			if screen, err := r.AgentScreen(ctx, in.Name, agentType, sessionID); err == nil {
+				if line, busy := codexWorkingOnScreen(screen); busy {
+					return true, busyWhy + line, ""
+				}
+			}
+		}
 	}
 	if !in.RequireInputBox {
 		return false, "", ""
