@@ -10,7 +10,7 @@ These guides cover the current **Go application**, including the macOS, Linux an
 
 ## Get started
 
-1. [Download and install Coral](getting-started.md). The macOS app includes tmux; Linux needs a separate tmux installation for the default backend.
+1. [Download and install Coral](getting-started.md). Agents run in Coral's built-in terminal and stop when you quit Coral; tmux is optional, for agents that keep running (the macOS app includes it).
 2. Install and sign in to your agent CLI. Coral uses your installed agents and their provider accounts.
 3. Open Coral, select a project directory, and launch an agent or [create a team](teams-and-tasks.md).
 

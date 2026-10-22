@@ -97,7 +97,7 @@ which path you mean.
 | **Team launch**, `worktree: true` | **one**, `coral-team/<board>`, shared by the whole team | off |
 | **Scheduled job / task run** | **one per run**, `<repo>_task_run_<runID>` — genuinely isolated | on |
 
-Either way, each agent does get its own tmux session.
+Either way, each agent does get its own terminal session (a tmux session on the tmux backend).
 
 Jobs are the path *designed* to behave the way the README described teams as behaving —
 `internal/background/scheduler.go:551` keys the worktree on `runID` and `create_worktree`

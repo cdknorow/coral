@@ -238,14 +238,25 @@ returns an error listing the supported types instead of silently starting Claude
 launch types are `claude`, `codex`, `agy` and `pi`; `gemini` is a deprecated alias for `agy`.
 An empty `agent_type` uses the default (Claude).
 
-### Agent launch fails with a tmux error
+### Which terminal backend runs, and agent launch fails with a tmux error
 
-Coral does not fail at startup when tmux is missing — it logs a warning, the dashboard
+Coral runs each agent in its own built-in terminal (pty) by default, so agents stop when you quit
+Coral. tmux is a choice: Settings > Terminal, or `--backend tmux`, keeps agents running when Coral
+quits, restarts or upgrades, and lets you attach from your own terminal. tmux is needed only when
+you chose it. An install that ran on the older tmux default and still has agents running in tmux
+keeps tmux for that one start, so nothing is hidden; the first start without them runs the built-in
+terminal.
+
+With tmux chosen, Coral does not fail at startup when tmux is missing — it logs a warning, the dashboard
 loads normally, and only agent launch fails:
 
 ```
 [startup] tmux not found — agents cannot be launched until tmux is installed (brew install tmux)
 ```
+
+The command in that line is the one for this computer: `brew` on macOS; `apt`, `dnf`, `pacman` or
+`zypper` on Linux, by what is installed. A launch that fails for this reason says the same, and so
+do the dashboard's launch dialogs before you press Launch.
 
 The macOS app packaging includes tmux and its terminal definitions. Older downloads
 and standalone/source builds may still need tmux installed separately. Keep the app
@@ -254,7 +265,7 @@ separately.
 
 Coral checks an executable `CORAL_TMUX_BIN` override first, then the bundled tmux
 on macOS, then `PATH`, common install locations, and your login shell. For a build
-without bundled tmux, install it or start with `--backend pty`.
+without bundled tmux, install it or choose the built-in terminal (`--backend pty`, or Settings > Terminal).
 
 A running tmux server can outlive Coral. If an app upgrade reports a tmux client/server
 version mismatch, preserve your running sessions and use `CORAL_TMUX_BIN` to select
