@@ -401,8 +401,8 @@ error connecting to ... (File name too long)
 The server still logs `Using tmux terminal backend` and starts cleanly. Keep the data
 directory short (`/tmp/coral-t1`). Confirm which backend an agent really used by checking
 `tmux_session` in `/api/sessions/live`, or the `terminal` field in the launch response. The
-launch response's `backend` field names the launch path and reads `pty` even for
-tmux-backed sessions.
+launch response's `launch_path` field (and a live session's) names the launch path and
+reads `pty` even for tmux-backed sessions.
 
 ### Running a test server or the frontend suites
 
