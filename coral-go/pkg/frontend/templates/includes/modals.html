@@ -90,10 +90,11 @@
                     <div class="sd-essentials">
                     <label>Working Directory:
                         <div class="dir-input-row">
-                            <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
+                            <input type="text" id="launch-dir" placeholder="Choose a folder" data-coral-root="{{ .CoralRoot }}" value="">
                             <button class="btn" id="btn-browse" data-on-click="m-toggle-browser" data-browser="launch-dir dir-browser browser-list browser-current-path">Browse</button>
                         </div>
                     </label>
+                    <p id="launch-dir-note" class="settings-hint launch-dir-note" role="status" hidden>This is your home folder: the agent can change any file in it.</p>
                     <div id="dir-browser" class="dir-browser" style="display:none">
                         <div class="dir-browser-header">
                             <button class="btn btn-small dir-browser-up" data-on-click="m-browser-navigate-up" title="Go up">..</button>
@@ -161,7 +162,7 @@
                 </div>
                 <div class="modal-actions">
                     <button class="btn" data-on-click="m-hide-launch-modal">Cancel</button>
-                    <button class="btn btn-primary" data-on-click="m-launch-session">Launch</button>
+                    <button class="btn btn-primary" id="launch-agent-go" data-on-click="m-launch-session">Launch</button>
                 </div>
             </div>
 

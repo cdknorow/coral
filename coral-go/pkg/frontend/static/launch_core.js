@@ -74,7 +74,7 @@ function _resetDirInputs(ids, server, settings, { switching = false } = {}) {
             delete el.dataset.dirServer;
             el.placeholder = el.dataset.localPlaceholder;
             if (settings.default_working_dir) el.value = settings.default_working_dir;
-            else if (switching || wasRemote) el.value = el.dataset.coralRoot || '';
+            else if (switching || wasRemote) el.value = id === 'launch-dir' ? '' : el.dataset.coralRoot || ''; // New Agent never starts on the home folder: the person chooses (#5990)
         }
     }
 }
@@ -146,6 +146,7 @@ function inlineProblem(input, message) {
     const dir = /^launch-(terminal-)?dir$|^launch-team-dir$/.test(input.id || '');
     if (message === 'Choose a folder for the team') return 'Choose a folder: type a path, or use Browse.';
     if (message === 'Working directory is required') return 'Choose a working directory: type a path, or use Browse.';
+    if (message === 'Choose a folder') return 'Choose a folder: type a path, or use Browse.';
     if (message === 'Team name is required') return "Type a name for the team, for example auth-feature. Letters, digits, '-' and '_' only.";
     if (message === 'Agent name is required') return 'Type a name for the agent.';
     if (dir && !/browse/i.test(message)) return `${message.replace(/^directory not found/i, 'Folder not found').replace(/[.\s]+$/, '')}. Pick one with Browse.`;

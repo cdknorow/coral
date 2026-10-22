@@ -67,6 +67,23 @@
     font-style: italic;
 }
 
+.session-list li.empty-welcome { display: none; font-style: normal; color: var(--text-secondary); padding: 20px 12px; }
+.session-list li.empty-welcome h2 { margin: 0 0 6px; font-size: 1.125rem; font-weight: 600; color: var(--text-primary); }
+.session-list li.empty-welcome p { margin: 0 0 14px; font-size: 0.875rem; line-height: 1.45; }
+.session-list li.empty-welcome .empty-launch-list { display: grid; grid-template-columns: 1fr; gap: 10px; }
+/* the phone Home's own cards: the desktop welcome's card rules under their own names, so one class names one thing (UI/UX #5990) */
+.empty-launch:hover { border-color: var(--border-light); background: var(--bg-tertiary); } /* --bg-hover takes the muted line under 4.5:1 (#4218) */
+.empty-launch { position: relative; display: flex; border: 1px solid var(--border); font-family: inherit; cursor: pointer; transition: border-color .15s ease, background .15s ease, transform .15s ease; flex-direction: column; align-items: flex-start; gap: 14px; min-width: 0; padding: 20px; border-radius: 14px; background: var(--bg-secondary); color: var(--text-secondary); text-align: left; }
+.empty-launch:hover { transform: translateY(-1px); }
+.empty-launch .empty-launch-icon { display: flex; align-items: center; justify-content: center; width: 2.625rem; height: 2.625rem; border-radius: 11px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: 1.3125rem; line-height: 1; }
+.empty-launch-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.empty-launch-copy strong { color: var(--text-primary); font-size: 0.9375rem; }
+.empty-launch-copy span { color: var(--text-muted); font-size: 0.75rem; line-height: 1.45; }
+.empty-launch .empty-launch-arrow { position: absolute; top: 20px; right: 20px; color: var(--text-muted); font-size: 1.1875rem; }
+.empty-launch:hover .empty-launch-arrow { color: var(--accent); }
+.session-list li.empty-welcome:hover { background: transparent; }
+@media (max-width: 767px) { .session-list li.empty-plain { display: none; } .session-list li.empty-welcome { display: block; } }
+
 .session-list li.empty-state:hover {
     background: transparent;
     color: var(--text-muted);

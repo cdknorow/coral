@@ -48,7 +48,12 @@ func AuthPage(s PageState) string {
 	return b.String()
 }
 
-var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hub"}}
+var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hubwarn"}}
+{{if or (eq .HubSignin "disabled_in_hub") (eq .HubSignin "ready")}}
+    <div class="warn" id="hub-disabled" role="status"{{if eq .HubSignin "ready"}} hidden{{end}}><span style="font-size:1rem">&#9432;</span><span><b>Sign in with Coral Hub is off for this computer.</b> Turn on Sign in with Coral Hub for this machine in Coral Hub, then come back.{{if .HubURL}} <a class="link" href="{{.HubURL}}" target="_blank" rel="noopener noreferrer">Open Coral Hub</a>{{end}}</span></div>
+{{end}}
+{{end}}
+{{define "hub"}}
 {{if eq .HubSignin "ready"}}
     <div class="or">or</div>
     <form method="post" action="/auth/hub/start" id="hub-start-form"><button type="submit" class="btn hub" id="hub-btn"><span class="hubmark"></span>Sign in with Coral Hub</button></form>
@@ -57,9 +62,14 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hub"}}
     <div class="or">or</div>
     <button type="button" class="btn hub" id="hub-link-open"><span class="hubmark"></span>Link this computer to Coral Hub and sign in</button>
 {{end}}
-{{if or (eq .HubSignin "disabled_in_hub") (eq .HubSignin "ready")}}
-    <div class="warn" id="hub-disabled" role="status"{{if eq .HubSignin "ready"}} hidden{{end}}><span style="font-size:1rem">&#9432;</span><span><b>Sign in with Coral Hub is off for this computer.</b> Turn on Sign in with Coral Hub for this machine in Coral Hub, then come back.{{if .HubURL}} <a class="link" href="{{.HubURL}}" target="_blank" rel="noopener noreferrer">Open Coral Hub</a>{{end}}</span></div>
+{{template "hubwarn" .}}
 {{end}}
+{{define "hubquiet"}}
+{{if eq .HubSignin "ready"}}
+    <form method="post" action="/auth/hub/start" id="hub-start-form" class="hubquiet"><button type="submit" class="link" id="hub-btn">Sign in with Coral Hub</button></form>
+    <p class="note">Uses your Coral Hub account, as the owner of this computer. Gives full control of it.</p>
+{{end}}
+{{template "hubwarn" .}}
 {{end}}<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -90,6 +100,7 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hub"}}
   .btn.wide { flex: 1; padding: 10px 14px; font-size: 0.9375rem; justify-content: center; }
   .link { color: var(--accent); font-size: 0.8125rem; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
   [data-theme="light"] .link { color: var(--accent-dim); }   /* the light theme's accent is 4.4:1 on the card: the dim accent passes AA */
+  .hubquiet { margin: 14px 0 0; }
   .linkrow { margin-top: 16px; font-size: 0.8125rem; color: var(--text-secondary); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
   .check { display: flex; align-items: flex-start; gap: 9px; font-size: 0.875rem; margin: 4px 0 18px; }
   .check input { margin-top: 3px; width: 16px; height: 16px; flex: none; padding: 0; appearance: auto; -webkit-appearance: checkbox; background: none; accent-color: var(--accent); }
@@ -170,8 +181,8 @@ var authPageTmpl = template.Must(template.New("auth").Parse(`{{define "hub"}}
       <div class="btnrow"><button type="submit" id="submit" class="btn btn-primary wide">Create password and open Coral</button></div>
     </form>
     <p class="note">Your password manager can save it. There is no email: if you forget it, run coral reset-password on this computer.</p>
-{{template "hub" .}}
-    <div class="linkrow"><span></span><button type="button" class="link" id="show-key">Use an API key instead</button></div>
+{{template "hubquiet" .}}
+    <div class="linkrow">{{if eq .HubSignin "unpaired"}}<button type="button" class="link" id="hub-link-open">Link this computer to Coral Hub and sign in</button>{{else}}<span></span>{{end}}<button type="button" class="link" id="show-key">Use an API key instead</button></div>
   </section>
 {{end}}
 {{if eq .HubSignin "unpaired"}}

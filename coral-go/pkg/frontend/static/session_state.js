@@ -1,6 +1,6 @@
 /* Moved out of render.js as it was (#3795): no behaviour change. */
 import { modelDisplayName } from './model_names.js';
-import { sessionLevel } from './model_labels.js';
+import { sessionLevel, typeName } from './model_labels.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { formatTokens, formatCost } from './format.js';
 import { getCachedAgentAvailability } from './team_availability.js';
@@ -53,7 +53,17 @@ export function resolveSessionIdentity(s) {
     if (!s) return 'Agent';
     const src = sessionIdentitySource(s);
     if (src) return oneLine(src, 60);
-    return s.agent_type === 'terminal' ? 'Terminal' : 'Agent';
+    if (s.agent_type === 'terminal') return 'Terminal';
+    // An agent nobody named is called by the folder it works in, else by its CLI (the home folder is no name): "my-app", "Claude", not "Agent" (#5990).
+    return defaultAgentName(s.working_directory, s.agent_type);
+}
+
+/** The name an unnamed agent shows: its folder's name (not the home folder, the root or a drive), else the CLI's name, else "Agent". */
+export function defaultAgentName(dir, agentType) {
+    const trim = p => String(p || '').trim().replace(/[\\/]+$/, '');
+    const d = trim(dir), root = trim(typeof document !== 'undefined' ? document.body?.dataset?.coralRoot : '');
+    const folder = d && d !== '~' && d !== root && !/^[A-Za-z]:$/.test(d) ? d.split(/[\\/]/).pop() : '';
+    return oneLine(folder, 60) || typeName(agentType) || 'Agent';
 }
 
 export function formatShortTime(isoStr) {

@@ -19,7 +19,7 @@ const base=require('./test_base').BASE;
  };`});
  await c.Page.navigate({url:base});await c.Page.loadEventFired();await settle();
  await ev(`(async()=>{window.checks=await import((window.__coralStatic||'/static/')+'prerequisites.js');const p=document.createElement('div');p.id='fixture';p.className='modal-content';p.style.cssText='position:fixed;top:140px;left:20px;width:560px;height:700px;overflow:auto;z-index:99999;background:var(--bg-primary);padding:16px';document.body.append(p);await (await import((window.__coralStatic||'/static/')+'lazy_panels.js')).loadModals();window.renderAgentConfigForm('fixture',{showPreset:false,showName:false,value:{agentType:'claude'}})})()`);await settle();
- assert.match(await text(),/claude CLI was not found/);assert.match(await text(),/Install in your terminal/);await shot('prerequisites-missing');
+ assert.match(await text(),/claude CLI was not found/);assert.match(await text(),/Install it from the official page/);await shot('prerequisites-missing');
  // #4569: the vendor's own install page is a link (https only, safe to open) and the note shows; a server's answer is data, not markup.
  assert.deepEqual(await ev(`(()=>{const a=document.querySelector('#fixture .acf-cli-warning a');return a&&{href:a.href,target:a.target,rel:a.rel,text:a.textContent}})()`),{href:'https://code.claude.com/docs/en/overview',target:'_blank',rel:'noopener noreferrer',text:'code.claude.com/docs/en/overview'});
  assert.match(await text(),/Put it on your PATH, then check again\./);

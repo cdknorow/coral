@@ -43,28 +43,21 @@ const { setTheme, installAudit, auditRegion } = require('./helpers/contrast');
         await waitFor(`getComputedStyle(document.querySelector('#launch-cli-slot .acf-cli-warning')).display === 'none'`, 'the line gone', 8000);
         assert.ok((await ev(`window.__checks`)).some(q => /source=cli_recheck/.test(q)), 'the recheck says it is one');
 
-        console.log('3. the Not Found dialog: Check again says so when it is still missing, and launches when it is found');
-        await ev(`window.__found = false; window.__launches.length = 0; document.getElementById('launch-dir').value = '/tmp'; window.launchSession(); true`);
-        await waitFor(`!!document.querySelector('body > .modal:not([id]) [data-action="recheck"]')`, 'the Not Found dialog', 8000);
-        assert.deepEqual(await ev(`[...document.querySelectorAll('body > .modal:not([id]) .modal-actions button')].map(b => b.dataset.action)`), ['settings', 'close', 'recheck']);
-        // the dialog is readable in both themes (the install-page link used the accent: 4.44:1 on the light panel), and the keyboard keeps its place after Check again
-        for (const theme of ['light', 'dark']) {
-            await setTheme(ev, theme);
-            const au = await auditRegion(ev, ['body > .modal:not([id])'], { focus: ['body > .modal:not([id]) [data-action="recheck"]'] });
-            assert.ok(au.checked > 0 && !au.fails.length, `${theme}: the Not Found dialog holds 4.5:1: ` + JSON.stringify(au.fails).slice(0, 300));
-        }
-        await setTheme(ev, 'dark');
-        await ev(`document.querySelector('body > .modal:not([id]) [data-action="recheck"]').focus(); true`);
-        await ev(`document.querySelector('body > .modal:not([id]) [data-action="recheck"]').click(); true`);
-        await waitFor(`/Still not found/.test((document.querySelector('body > .modal:not([id]) .cli-recheck-status') || {}).textContent || '')`, 'the still-missing words', 8000);
-        assert.equal(await ev(`window.__launches.length`), 1, 'no second launch while it is missing');
-        assert.equal(await ev(`document.activeElement && document.activeElement.dataset.action`), 'recheck', 'focus is back on Check again after the answer (the button is disabled while it looks)');
-        await ev(`window.__found = true; document.querySelector('body > .modal:not([id]) [data-action="recheck"]').click(); true`);
-        await waitFor(`window.__launches.length === 2`, 'the launch after the CLI was found', 8000);
-        // the toast names the agent as the list does ("Agent"), not the session's raw id (#5895): the stubbed launch answers session_name 'first'
+        console.log('3. while it is missing, Launch is off (no second dialog), the message is its reason, the vendor page comes before the command; found: Launch works');
+        await ev(`window.__found = false; window.__launches.length = 0; document.getElementById('launch-dir').value = '/tmp'; true`);
+        await ev(`window._selectLaunchType('back'); window._selectLaunchType('agent'); document.getElementById('launch-dir').value = '/tmp'; true`);
+        await ev(`window.__coral._checkAgentCLI('claude', document.querySelector('#launch-cli-slot .acf-cli-warning'), true); true`); // a fresh look: the last answer (found) is cached for 30 s
+        await waitFor(`!!document.querySelector('#launch-cli-slot [data-blocks-launch]')`, 'the missing CLI blocks the launch', 8000);
+        const off = await ev(`(() => { const go = document.getElementById('launch-agent-go'), w = document.querySelector('#launch-cli-slot [data-blocks-launch]'); const links = [...w.querySelectorAll('p')].map(p => p.textContent.slice(0, 12));
+            go.click(); window.launchSession(); return { disabled: go.disabled, describedBy: go.getAttribute('aria-describedby') === w.id, order: links, launches: window.__launches.length, dialog: !!document.querySelector('body > .modal:not([id]) [data-action="recheck"]') }; })()`);
+        assert.deepEqual(off, { disabled: true, describedBy: true, order: ['Install it f', 'Or in your t'], launches: 0, dialog: false });
+        await ev(`window.__found = true; document.querySelector('#launch-cli-slot .acf-cli-warning button').click(); true`);
+        await waitFor(`!document.getElementById('launch-agent-go').disabled`, 'Launch is back once the CLI is found', 8000);
+        await ev(`document.getElementById('launch-agent-go').click(); true`);
+        await waitFor(`window.__launches.length === 1`, 'the launch after the CLI was found', 8000);
+        // the toast names the agent as the list does (its folder, "tmp", not "Agent" and not the session's raw id, #5895, #5990): the stubbed launch answers session_name 'first'
         await waitFor(`[...document.querySelectorAll('.toast .toast-message')].some(t => /^Launched: /.test(t.textContent))`, 'the launch toast', 8000);
-        assert.deepEqual(await ev(`[...document.querySelectorAll('.toast .toast-message')].map(t => t.textContent).filter(t => /^Launched/.test(t))`), ['Launched: Agent'], 'Launched: Agent, not the session id');
-        assert.equal(await ev(`!!document.querySelector('body > .modal:not([id]) [data-action="recheck"]')`), false, 'the dialog closed');
+        assert.deepEqual(await ev(`[...document.querySelectorAll('.toast .toast-message')].map(t => t.textContent).filter(t => /^Launched/.test(t))`), ['Launched: tmp'], 'Launched: the folder, not the session id');
 
         console.log('4. a launch that is not the New Agent dialog (a board launch) has no form to repeat: Check again says to press Launch again, and never calls launchSession');
         const modalGone = `!document.querySelector('body > .modal:not([id]) [data-action="recheck"]')`;

@@ -5,6 +5,7 @@ import { showToast, escapeHtml, escapeAttr, boardNameProblem } from './utils.js'
 import { blockedReason } from './hub_access.js';
 import { loadLiveSessions } from './api.js';
 import { recordRecentDir, setDirServerResolver } from './browser.js';
+import { defaultAgentName } from './session_state.js';
 import { serverFetch, identityKey, isHub, normServer, LOCAL_SERVER, keyLabel, noteBoardLabels } from './server_base.js';
 import { pickerVisible, pickerOptions, serverLabel, coerceSelection, bareBoardName } from './launch_server.js';
 const { launch } = await importOnce('./launch_state.js');
@@ -40,6 +41,7 @@ function _selectLaunchType(type) {
             adopt: { advanced: 'launch-advanced-extra' },
             value: { agentType: _settingsFor(_effectiveServer(launch.server)).default_agent_type || 'claude' },
         });
+        _wireDirNote(); _syncDirNote(); _syncLaunchBlock();
         document.getElementById('launch-dir')?.focus(); // the one thing most launches need: the folder
     } else if (type === "team") {
         _initTeamForm();
@@ -226,9 +228,36 @@ function _syncLaunchAccess() {
 }
 document.addEventListener('coral:server-access-loaded', () => { if (document.getElementById('launch-modal')?.style.display === 'flex') _syncLaunchAccess(); });
 
+// A missing CLI is said once, under the folder, and Launch stays off until it is there (#5990); the message is the button's reason.
+const _cliBlock = () => document.querySelector('#launch-step-agent [data-blocks-launch]');
+function _syncLaunchBlock() {
+    const go = document.getElementById('launch-agent-go');
+    if (!go) return;
+    const why = _cliBlock();
+    go.disabled = !!why;
+    if (why) { why.id ||= 'launch-cli-warning'; go.setAttribute('aria-describedby', why.id); } else go.removeAttribute('aria-describedby');
+}
+document.addEventListener('cli-blocks-launch', e => { if (e.target.closest && e.target.closest('#launch-step-agent')) _syncLaunchBlock(); });
+
+// The home folder is a wide place to start an agent in: the person may choose it, and one line says what that means (#5990).
+function _syncDirNote() {
+    const input = document.getElementById('launch-dir'), note = document.getElementById('launch-dir-note');
+    if (!input || !note) return;
+    const v = input.value.trim().replace(/[\\/]+$/, '');
+    const root = (input.dataset.coralRoot || '').replace(/[\\/]+$/, '');
+    note.hidden = !(v && (v === '~' || (!input.dataset.dirServer && root && v === root)));
+}
+function _wireDirNote() {
+    const input = document.getElementById('launch-dir');
+    if (!input || input.dataset.noteWired) return;
+    input.dataset.noteWired = '1';
+    input.addEventListener('input', _syncDirNote); input.addEventListener('change', _syncDirNote);
+}
+
 
 export async function launchSession() {
     let dir, type, agentName, flagsStr, backend;
+    if (launch.mode !== 'terminal' && _cliBlock()) return; // the CLI it needs is missing: the message under the folder says so
 
     if (launch.mode === "terminal") {
         dir = document.getElementById("launch-terminal-dir").value.trim();
@@ -246,8 +275,9 @@ export async function launchSession() {
     }
 
     if (!dir) {
-        showToast("Working directory is required", true);
-        markFieldInvalid(document.getElementById(launch.mode === "terminal" ? "launch-terminal-dir" : "launch-dir"), "Working directory is required");
+        const agentForm = launch.mode !== "terminal";
+        showToast(agentForm ? "Choose a folder" : "Working directory is required", true);
+        markFieldInvalid(document.getElementById(agentForm ? "launch-dir" : "launch-terminal-dir"), agentForm ? "Choose a folder" : "Working directory is required");
         return;
     }
 
@@ -312,8 +342,8 @@ export async function launchSession() {
         const result = await _launchOn(server, "/api/sessions/launch", payload, type, { dirInput, retry: launchSession }); // the Not Found dialog's Check again launches again, from this dialog's own fields
         if (result) {
             recordRecentDir(dir, server);
-            // The agent as the list names it (its name, else "Agent" or "Terminal"), not the session's raw id (#5895)
-            const shown = agentName || (type === 'terminal' ? 'Terminal' : 'Agent');
+            // The agent as the list names it (its name, else its folder or CLI, or "Terminal"), not the session's raw id (#5895)
+            const shown = agentName || (type === 'terminal' ? 'Terminal' : defaultAgentName(dir, type));
             showToast(server === LOCAL_SERVER ? `Launched: ${shown}` : `Launched on ${serverLabel(server, state.servers)}: ${shown}`);
             hideLaunchModal();
             setTimeout(loadLiveSessions, 2000);
@@ -324,6 +354,7 @@ export async function launchSession() {
         showToast("Failed to launch session", true);
     } finally {
         if (launchBtn) { launchBtn.disabled = false; launchBtn.textContent = 'Launch'; }
+        if (launch.mode !== 'terminal') _syncLaunchBlock();
     }
 }
 

@@ -4571,3 +4571,6 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .settings-row-hub .settings-hub-mode-toggle { display: flex; align-items: center; min-height: var(--control-touch-height, 44px); }
 #settings-modal .settings-row-hub .settings-hub-mode-toggle > input[type="checkbox"] { align-self: center; position: relative; top: 0; }
 .settings-row-hub .settings-hub-mode-toggle { justify-content: center; min-width: var(--control-touch-height, 44px); }
+/* New Agent (#5990): a Launch that is off (the CLI it needs is missing) looks off; the line under the folder is its reason. */
+#launch-modal .btn:disabled { opacity: .5; cursor: not-allowed; }
+.launch-dir-note { margin: 6px 0 0; }

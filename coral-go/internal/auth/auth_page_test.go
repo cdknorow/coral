@@ -90,7 +90,12 @@ func TestAuthPageHubStates(t *testing.T) {
 		assert.NotContains(t, none, id, "no Hub UI when the server offers none: "+id)
 	}
 	for _, st := range []PageState{{HubSignin: "ready"}, {HubSignin: "unpaired"}} {
-		assert.Contains(t, AuthPage(PageState{PasswordSet: st.PasswordSet, Local: true, HubSignin: st.HubSignin}), "or</div>", "an or divider")
+		assert.Contains(t, AuthPage(PageState{PasswordSet: true, Local: true, HubSignin: st.HubSignin}), "or</div>", "an or divider")
+		// The first page (create a password) has one way in: the Hub is a quiet link beside the API-key one (#5990), not a second big button.
+		first := AuthPage(PageState{Local: true, HubSignin: st.HubSignin})
+		assert.NotContains(t, first, `class="btn hub"`, "no second primary path on the first page")
+		assert.NotContains(t, first, "or</div>")
+		assert.Contains(t, first, `class="link" id="hub-`, "the Hub way is a link")
 	}
 
 	ready := AuthPage(PageState{PasswordSet: true, Local: true, HubSignin: "ready", HubURL: "https://app.coralhub.dev"})

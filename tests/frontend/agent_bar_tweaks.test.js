@@ -242,25 +242,25 @@ async function run() {
         check('terminal without goal shows no goal affordance', !bySid['sid-d'].hasGoal);
         // Screenshot cases (task #85): a sentence or a path in first_prompt is
         // goal text, never a name or initials.
-        check('sentence prompt is not the row label (Agent)', bySid['sid-b'].label === 'Agent', bySid['sid-b'].label);
+        check('sentence prompt is not the row label (Agent)', bySid['sid-b'].label === 'coral-go', bySid['sid-b'].label);
         check('sentence prompt still shows on the goal line', bySid['sid-b'].goalText.startsWith('Please fix the flaky websocket'), bySid['sid-b'].goalText);
-        check('row label carries a title with the resolved identity', bySid['sid-b'].labelTitle === 'Agent' && bySid['sid-g'].labelTitle === 'Release Wrangler', `${bySid['sid-b'].labelTitle} / ${bySid['sid-g'].labelTitle}`);
+        check('row label carries a title with the resolved identity', bySid['sid-b'].labelTitle === 'coral-go' && bySid['sid-g'].labelTitle === 'Release Wrangler', `${bySid['sid-b'].labelTitle} / ${bySid['sid-g'].labelTitle}`);
         check('path prompt with board_job_title uses the job title as label', bySid['sid-g'].label === 'Release Wrangler', bySid['sid-g'].label);
         check('path prompt shows on the goal line', bySid['sid-g'].goalText === '/Users/me/Software/coral/coral-go fix the release workflow', bySid['sid-g'].goalText);
         check('identity from board_job_title, not path words (aria-label)', /^Release Wrangler, /.test(bySid['sid-g'].ariaLabel || ''), bySid['sid-g'].ariaLabel);
-        check('row label with no identity falls back to Agent', bySid['sid-c'].label === 'Agent', bySid['sid-c'].label);
-        check('summary is goal text only, never the row label', bySid['sid-f'].label === 'Agent', bySid['sid-f'].label);
+        check('row label with no identity falls back to Agent', bySid['sid-c'].label === 'coral-go', bySid['sid-c'].label);
+        check('summary is goal text only, never the row label', bySid['sid-f'].label === 'other-proj', bySid['sid-f'].label);
         check('terminal row label falls back to Terminal', bySid['sid-d'].label === 'Terminal', bySid['sid-d'].label);
         // Passive "No goal yet" label: no click handler, no action title, no pointer.
         check('"No goal yet" label has no onclick', bySid['sid-c'].emptyLabelOnclick === null, bySid['sid-c'].emptyLabelOnclick);
         check('"No goal yet" label has no action title', bySid['sid-c'].emptyLabelTitle === null, bySid['sid-c'].emptyLabelTitle);
         check('"No goal yet" label has no cursor styling of its own (inherits the row)', bySid['sid-c'].emptyLabelCursor === bySid['sid-c'].rowCursor, `${bySid['sid-c'].emptyLabelCursor} vs row ${bySid['sid-c'].rowCursor}`);
         check('sparkle hit target is at least 24x24', bySid['sid-c'].sparkleW >= 24 && bySid['sid-c'].sparkleH >= 24, `${bySid['sid-c'].sparkleW}x${bySid['sid-c'].sparkleH}`);
-        check('sparkle has an aria-label naming the agent', bySid['sid-c'].sparkleAria === 'Generate goal for Agent', bySid['sid-c'].sparkleAria);
-        check('identity never derives from prompt words (aria-label Agent)', /^Agent, /.test(bySid['sid-b'].ariaLabel || ''), bySid['sid-b'].ariaLabel);
+        check('sparkle has an aria-label naming the agent', bySid['sid-c'].sparkleAria === 'Generate goal for coral-go', bySid['sid-c'].sparkleAria);
+        check('identity never derives from prompt words (aria-label Agent)', /^coral-go, /.test(bySid['sid-b'].ariaLabel || ''), bySid['sid-b'].ariaLabel);
         // AGENT_LIST_COMPACT supersedes D1 avatars in the list: no avatar element in any row.
         check('no avatar element in list rows (AGENT_LIST_COMPACT)', rows.every(r => r.avatarW === null && r.initials === null && r.avatarEmoji === null), JSON.stringify(rows.map(r => [r.avatarW, r.initials])));
-        check('identity never derives from mutable summary (aria-label Agent)', /^Agent, /.test(bySid['sid-f'].ariaLabel || ''), bySid['sid-f'].ariaLabel);
+        check('identity never derives from mutable summary (aria-label Agent)', /^other-proj, /.test(bySid['sid-f'].ariaLabel || ''), bySid['sid-f'].ariaLabel);
         check('summary-only row still shows summary as goal', bySid['sid-f'].goalText === 'Investigate slow startup on Windows', bySid['sid-f'].goalText);
         check('identity from display_name when present (aria-label)', /^Zed, /.test(bySid['sid-e'].ariaLabel || ''), bySid['sid-e'].ariaLabel);
         check('named agent aria-label carries identity + state (+ context suffix at >= 80%)', /^Lead Dev, (Working|Idle)(, context (87%|full))?$/.test(bySid['sid-a'].ariaLabel || ''), bySid['sid-a'].ariaLabel);
@@ -309,10 +309,10 @@ async function run() {
             modeLabel: (document.querySelector('#btn-mode-toggle .btn-label') || {}).textContent || null,
             modeTip: (document.getElementById('btn-mode-toggle') || { getAttribute(){ return null; } }).getAttribute('data-tooltip'),
         }))()`);
-        check('header is Agent for a prompt-only session (prompt is not identity)', header.name === 'Agent', header.name);
-        check('terminal header label is the identity only (no session id suffix)', header.term === 'Agent', header.term);
+        check('header is Agent for a prompt-only session (prompt is not identity)', header.name === 'coral-go', header.name);
+        check('terminal header label is the identity only (no session id suffix)', header.term === 'coral-go', header.term);
         check('placeholder "Sending to:" uses resolved identity',
-            /^Sending to: Agent \(claude\)/.test(header.placeholder), header.placeholder);
+            /^Sending to: coral-go \(claude\)/.test(header.placeholder), header.placeholder);
         // The fixture session has no real terminal, so the poll returns an
         // error placeholder rather than a buffer -> label must fall back.
         check('Mode label falls back to "Mode" when undetectable', header.modeLabel === 'Mode', header.modeLabel);
@@ -401,11 +401,11 @@ async function run() {
             };
         })()`);
         check('diff without first_prompt keeps row goal', afterDiff.goal === 'Please fix the flaky websocket reconnect test in xterm_renderer.js', afterDiff.goal);
-        check('diff without first_prompt keeps Agent identity (aria-label)', /^Agent, /.test(afterDiff.aria || ''), afterDiff.aria);
+        check('diff without first_prompt keeps Agent identity (aria-label)', /^coral-go, /.test(afterDiff.aria || ''), afterDiff.aria);
         check('diff still applies changed fields (context_pct 45 in state)', afterDiff.ctx === 45, String(afterDiff.ctx));
-        check('diff without first_prompt keeps header identity', afterDiff.header === 'Agent', afterDiff.header);
-        check('diff without first_prompt keeps terminal label identity', afterDiff.term === 'Agent', afterDiff.term);
-        check('diff without first_prompt keeps Sending-to placeholder', /^Sending to: Agent/.test(afterDiff.placeholder), afterDiff.placeholder);
+        check('diff without first_prompt keeps header identity', afterDiff.header === 'coral-go', afterDiff.header);
+        check('diff without first_prompt keeps terminal label identity', afterDiff.term === 'coral-go', afterDiff.term);
+        check('diff without first_prompt keeps Sending-to placeholder', /^Sending to: coral-go/.test(afterDiff.placeholder), afterDiff.placeholder);
         // sid-c went to sleep above, and sleeping agents collapse behind the "N sleeping"
         // summary row, so its row is not in the list; every other row keeps its place.
         const ORDER_AWAKE = ORDER.split(',').filter(id => id !== 'sid-c').join(',');
@@ -438,7 +438,7 @@ async function run() {
         await evalInPage(`document.querySelector('#live-sessions-list [data-session-id="sid-c"] .session-goal-empty-label').click(); true`);
         await selected('sid-c');
         const afterLabel = await evalInPage(`({ active: document.querySelector('#live-sessions-list .session-group-item.active')?.dataset.sessionId, sends: window.__sendCalls.length, goals: window.__goalCalls, header: document.getElementById('session-name').textContent })`);
-        check('passive label click selects the row', afterLabel.active === 'sid-c' && afterLabel.header === 'Agent', JSON.stringify(afterLabel));
+        check('passive label click selects the row', afterLabel.active === 'sid-c' && afterLabel.header === 'coral-go', JSON.stringify(afterLabel));
         check('passive label click sends zero requests', afterLabel.sends === 0, `${afterLabel.sends}`);
         check('passive label click does not request a goal', afterLabel.goals === 0, `${afterLabel.goals}`);
         // Sparkle is the sole trigger, and it does not change the selection.
@@ -505,8 +505,8 @@ async function run() {
         await nextFrame();
         f = await rowF();
         const hdrF3 = await evalInPage(`({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder })`);
-        check('explicit null auto_name falls back to Agent', f.label === 'Agent' && hdrF3.name === 'Agent' && /^Sending to: Agent/.test(hdrF3.ph), JSON.stringify({ f, hdrF3 }));
-        check('aria identity falls back to Agent after auto_name cleared', /^Agent, /.test(f.aria || ''), f.aria);
+        check('explicit null auto_name falls back to Agent', f.label === 'other-proj' && hdrF3.name === 'other-proj' && /^Sending to: other-proj/.test(hdrF3.ph), JSON.stringify({ f, hdrF3 }));
+        check('aria identity falls back to Agent after auto_name cleared', /^other-proj, /.test(f.aria || ''), f.aria);
         check('explicit empty summary clears the goal line', /No goal yet/.test(f.goal || ''), f.goal);
         check('explicit context_pct value overwrites', f.ctx === 71, String(f.ctx));
 
@@ -523,7 +523,7 @@ async function run() {
             window._coralHandleWsMessage({ type: 'coral_diff', changed: [window.__newSessionPayload] }); true`);
         await nextFrame();
         const rowNew = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-new"]'); return li ? { label: li.querySelector('.session-label').textContent.trim(), aria: li.getAttribute('aria-label'), count: window._coralGetLiveSessions().length } : null; })()`);
-        check('new session via diff renders intact (path prompt -> Agent identity)', rowNew && rowNew.label === 'Agent' && /^Agent, /.test(rowNew.aria || '') && rowNew.count === SESSIONS.length + 1, JSON.stringify(rowNew));
+        check('new session via diff renders intact (path prompt -> Agent identity)', rowNew && rowNew.label === 'coral-go' && /^coral-go, /.test(rowNew.aria || '') && rowNew.count === SESSIONS.length + 1, JSON.stringify(rowNew));
         check('new session merge does not alias incoming payload', await evalInPage(`window._coralGetLiveSessions().find(s => s.session_id === 'sid-new') !== window.__newSessionPayload`));
 
         // A full update follows the same contract: omitted fields survive,
@@ -598,8 +598,8 @@ async function run() {
         await evalInPage(`window.selectLiveSession('coral-go', 'claude', 'sid-c'); true`);
         await selected('sid-c');
         const bare = await evalInPage(`(() => ({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder }))()`);
-        check('header falls back to "Agent" with no identity', bare.name === 'Agent', bare.name);
-        check('placeholder falls back to "Agent"', /^Sending to: Agent \(claude\)/.test(bare.ph), bare.ph);
+        check('header falls back to "Agent" with no identity', bare.name === 'coral-go', bare.name);
+        check('placeholder falls back to "Agent"', /^Sending to: coral-go \(claude\)/.test(bare.ph), bare.ph);
 
         // Clicking the high-context bar itself must not send anything: the
         // context display is informational only. (It still bubbles to the row

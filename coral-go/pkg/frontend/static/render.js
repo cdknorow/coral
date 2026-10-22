@@ -292,7 +292,7 @@ function _renderLiveSessions(sessions) {
 
     if (!sessions.length && !archived.length && !pinsShown) {
         // Coral Hub with no machine connected: say what to do (the same list is the phone's Agents page), not just that there is nothing
-        list.innerHTML = (!unfilteredCount && hubEmptyListHtml(machineState())) || `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
+        list.innerHTML = (!unfilteredCount && hubEmptyListHtml(machineState())) || `<li class="empty-state empty-plain">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>${unfilteredCount ? '' : PHONE_WELCOME}`;
         syncGroupToggle(); // no groups drawn: the header toggle goes
         return;
     }
@@ -324,6 +324,14 @@ function _renderLiveSessions(sessions) {
     syncGroupToggle(); // the header's Collapse / Expand toggle reads the headers just drawn (#4947)
     _refreshTeamBadges(sessions);
 }
+
+// A phone has no welcome screen (the agent list is its Home): with nothing running, the list says what Coral is for and offers the same two launches as the desktop's welcome (#5990).
+// The desktop's sidebar keeps its plain line; the CSS shows one or the other.
+const PHONE_WELCOME = `<li class="empty-state empty-welcome"><h2>What do you want to work on?</h2><p>Launch a single agent, or a team that works together on a shared message board.</p>
+<div class="empty-launch-list">
+<button type="button" class="empty-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="agent"><span class="empty-launch-icon material-icons" aria-hidden="true">smart_toy</span><span class="empty-launch-copy"><strong>Launch agent</strong><span>One agent in a folder you choose.</span></span><span class="material-icons empty-launch-arrow" aria-hidden="true">arrow_forward</span></button>
+<button type="button" class="empty-launch" data-on-click="m-show-launch-modal-then-select-launch-type" data-arg="team"><span class="empty-launch-icon material-icons" aria-hidden="true">groups</span><span class="empty-launch-copy"><strong>Launch team</strong><span>Agents with roles on a shared board.</span></span><span class="material-icons empty-launch-arrow" aria-hidden="true">arrow_forward</span></button>
+</div></li>`;
 
 // Hidden tabs skip availability polls; catch up as soon as the tab is shown.
 document.addEventListener('visibilitychange', () => {

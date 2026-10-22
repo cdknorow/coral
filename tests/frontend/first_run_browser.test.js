@@ -5,7 +5,7 @@
 //      offers "Launch agent", they pick a folder and press Launch -> THE NEW AGENT OPENS (#5835 finding 1: today the dialog closes, a toast shows and the page stays on the home
 //      screen), they type a first prompt and it reaches the CLI.
 //   2. Signed-out CLI, a stand-in that prints Claude Code's login menu and waits: the agent opens the same way, and its terminal tab is there to sign in with.
-//   3. CLI missing (nothing named claude on PATH): Launch answers with the "CLI Not Found" dialog (install command, Set CLI path, OK), starts no agent, and leaves the dialog usable.
+//   3. CLI missing (nothing named claude on PATH): the New Agent dialog says so once under the folder (install page, command, Check again) with Launch off (#5990), and starts no agent.
 //
 // No real agent CLI runs: the server's PATH holds only this suite's stand-in folder (and /usr/bin:/bin), HOME is empty, telemetry is off, no cloud. Scenario 3 needs "no claude" on the
 // machine's fixed install paths too (Coral looks in /usr/local/bin and others after PATH); when one is there the scenario is SKIPPED, never run against it.
@@ -183,7 +183,7 @@ async function freshServer(standIn) {
         });
 
         // ---------------------------------------------------------------- 3
-        console.log('3. claude is not installed: Launch says so, starts nothing, and the dialog stays usable');
+        console.log('3. claude is not installed: the dialog says so once, Launch is off, nothing starts');
         await scenario(async () => {
             const fixed = ['/usr/local/bin/claude', '/opt/homebrew/bin/claude', '/snap/bin/claude'].filter(p => fs.existsSync(p));
             if (fixed.length) console.log(`   SKIPPED: a claude exists at ${fixed.join(', ')}, where Coral looks after PATH; this scenario would launch it`);
@@ -191,24 +191,19 @@ async function freshServer(standIn) {
                 const s = await fresh(null);
                 await signUp(s);
                 const { before } = await launchFromHome(s);
-                await answerQuestions();
-                await waitFor(`[...document.querySelectorAll('body > .modal:not([id]) h3')].some(h => /CLI Not Found/.test(h.textContent))`, 'the "CLI Not Found" dialog', { timeout: 15000, diag: `document.body.innerText.slice(0, 400)` });
-                const d = await ev(`(() => { const m = [...document.querySelectorAll('body > .modal:not([id])')].find(m => /CLI Not Found/.test(m.textContent)); return { title: m.querySelector('h3').textContent, text: m.textContent.replace(/\\s+/g, ' '), code: [...m.querySelectorAll('code')].map(c => c.textContent), buttons: [...m.querySelectorAll('button')].map(b => b.textContent.trim()) }; })()`);
-                assert.match(d.title, /claude/i); assert.match(d.text, /could not find the claude command/);
-                assert.ok(d.code.some(c => c.length > 8), `an install command is offered (${JSON.stringify(d.code)})`);
-                assert.ok(d.buttons.includes('OK') && d.buttons.includes('Set CLI path') && d.buttons.includes('Check again'), `OK, Set CLI path and Check again are there (${JSON.stringify(d.buttons)})`);
+                // #5990: it is said once, under the folder, with Launch off: no second dialog
+                await waitFor(`!!document.querySelector('#launch-step-agent [data-blocks-launch]')`, 'the missing CLI said under the folder', { timeout: 15000, diag: `document.body.innerText.slice(0, 400)` });
+                const d = await ev(`(() => { const w = document.querySelector('#launch-step-agent [data-blocks-launch]'); const go = document.getElementById('launch-agent-go'); return { text: w.textContent.replace(/\\s+/g, ' '), code: [...w.querySelectorAll('code')].map(c => c.textContent), link: [...w.querySelectorAll('a')].map(a => a.href), disabled: go.disabled, describedBy: go.getAttribute('aria-describedby') === w.id, dialog: !!document.querySelector('body > .modal:not([id]) [data-action="recheck"]') }; })()`);
+                assert.match(d.text, /claude CLI was not found/); assert.ok(d.code.some(c => c.length > 8), `an install command is offered (${JSON.stringify(d.code)})`);
+                assert.ok(d.link.some(u => /^https:\/\//.test(u)), `the vendor's install page is linked (${JSON.stringify(d.link)})`);
+                assert.deepEqual({ disabled: d.disabled, describedBy: d.describedBy, dialog: d.dialog }, { disabled: true, describedBy: true, dialog: false }, 'Launch is off with the message as its reason, and no second dialog');
                 const after = await ev(`fetch('/api/sessions/live').then(r => r.json()).then(l => (Array.isArray(l) ? l : l.sessions || []).length)`);
                 assert.equal(after, before.length, 'no agent was started');
-                // What the server answered, for the record (#5838 turns today's 500 into a 4xx); either way it is an error that names the CLI, never a success.
+                // What the server answers if a launch gets there anyway (an older page, the API), for the record: an error that names the CLI, never a success.
                 const raw = await ev(`fetch('/api/sessions/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ working_dir: ${JSON.stringify(s.dirs.work)}, agent_type: 'claude' }) }).then(async r => ({ status: r.status, body: await r.text() }))`);
                 assert.ok(raw.status >= 400, `the launch of a missing CLI is an error (got ${raw.status})`);
                 assert.match(raw.body, /not found/i);
-                console.log(`   ✓ the dialog names the CLI and the install command; no agent; the server answers HTTP ${raw.status}`);
-                await ev(`document.querySelector('body > .modal:not([id]) [data-action="close"]').click(); true`);
-                await waitFor(`![...document.querySelectorAll('body > .modal:not([id]) h3')].some(h => /CLI Not Found/.test(h.textContent))`, 'OK closing the dialog', { timeout: 5000 });
-                const btn = await ev(`(() => { const b = document.querySelector('#launch-step-agent [data-on-click="m-launch-session"]'); return { disabled: b.disabled, text: b.textContent.trim() }; })()`);
-                assert.deepEqual(btn, { disabled: false, text: 'Launch' }, 'the Launch button is usable again (a person installs claude, then presses it again)');
-                console.log('   ✓ OK closes the dialog and Launch is usable again');
+                console.log(`   ✓ said once under the folder with the install page and command; Launch off; no agent; the server answers HTTP ${raw.status}`);
                 await s.stop(); servers.splice(servers.indexOf(s), 1);
             }
         });

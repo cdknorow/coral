@@ -9,7 +9,7 @@ const TYPE_NAMES = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', agy: 'A
 
 const MODELS_CACHE_PREFIX = 'coral-models:v1:';
 
-function typeName(agentType) {
+export function typeName(agentType) {
     return TYPE_NAMES[agentType] || (agentType ? agentType.charAt(0).toUpperCase() + agentType.slice(1) : '');
 }
 

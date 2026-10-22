@@ -379,6 +379,7 @@
 1	preview_pane.js	renderMarkdownStrict(content)
 1	preview_pane.js	safe
 1	prompt_modals.js	bg
+1	render.js	unfilteredCount ? '' : PHONE_WELCOME
 1	sandbox_frame.js	DOC_CSP
 1	sandbox_frame.js	content
 2	saved_marks.js	BOOKMARK_SVG
