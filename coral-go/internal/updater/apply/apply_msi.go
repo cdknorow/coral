@@ -131,7 +131,14 @@ type msiJournal struct {
 	To      string         `json:"to"`
 	Product string         `json:"product"` // the new package's ProductCode
 	Record  *verify.Record `json:"record,omitempty"`
+	// StartedAt is when this apply wrote its first journal: a journal older than maxMSIJournalAge (or without it) is for no apply still
+	// running, and is dropped without a rollback (Security's L on #80).
+	StartedAt time.Time `json:"started_at"`
 }
+
+// maxMSIJournalAge: coral-update's context (30 minutes) and a margin. A journal kept past it (after a timeout) must not later roll back a
+// version the person installed by hand.
+const maxMSIJournalAge = time.Hour
 
 // RunMSI applies the staged update on a Windows MSI install. It never returns an error: every outcome is a Result, recorded in the state.
 func RunMSI(ctx context.Context, mc MSIConfig) Result {
@@ -263,7 +270,7 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 	if mc.BeforeInstall != nil {
 		mc.BeforeInstall()
 	}
-	if err := writeMSIJournal(dir, msiJournal{Phase: "installing", From: cfg.Installed, To: rec.Version, Product: product, Record: rec}); err != nil {
+	if err := writeMSIJournal(dir, msiJournal{Phase: "installing", From: cfg.Installed, To: rec.Version, Product: product, Record: rec, StartedAt: now}); err != nil {
 		closeHeld()
 		return fail("journal")
 	}
@@ -299,7 +306,7 @@ func RunMSI(ctx context.Context, mc MSIConfig) Result {
 		_ = verify.SaveState(dir, st)
 		return fail("msiexec_" + strconv.Itoa(code))
 	}
-	_ = writeMSIJournal(dir, msiJournal{Phase: "installed", From: cfg.Installed, To: rec.Version, Product: product, Record: rec})
+	_ = writeMSIJournal(dir, msiJournal{Phase: "installed", From: cfg.Installed, To: rec.Version, Product: product, Record: rec, StartedAt: now})
 
 	// 7: start the new Coral as this user, never from the installer; roll back if it doesn't come up.
 	startErr := m.Start(ctx, install)
@@ -468,6 +475,11 @@ func removeMSIJournal(dir string) { _ = os.Remove(filepath.Join(dir, msiJournalF
 func recoverMSI(ctx context.Context, mc MSIConfig, cfg Config, dir, install string) (Result, bool) {
 	j, ok := readMSIJournal(dir)
 	if !ok {
+		return Result{}, false
+	}
+	// Too old, from the future, or without a time: no apply of the last hour wrote it. Dropped, never rolled back.
+	if age := cfg.now().Sub(j.StartedAt); j.StartedAt.IsZero() || age < 0 || age > maxMSIJournalAge {
+		removeMSIJournal(dir)
 		return Result{}, false
 	}
 	m := mc.MSI
