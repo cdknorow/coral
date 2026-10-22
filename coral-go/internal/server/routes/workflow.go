@@ -619,7 +619,7 @@ func (h *WorkflowHandler) GetStepFile(w http.ResponseWriter, r *http.Request) {
 	// sensitivePath lists (keys, credential files), judged by the path inside the step folder.
 	if cloud.Tunneled(r) {
 		rel, rerr := filepath.Rel(realStep, realFile)
-		if rerr != nil || sensitivePath(filepath.VolumeName(realStep) + string(os.PathSeparator) + "step" + string(os.PathSeparator) + rel) {
+		if rerr != nil || sensitivePath(filepath.VolumeName(realStep)+string(os.PathSeparator)+"step"+string(os.PathSeparator)+rel) {
 			errNotFound(w, "file not found")
 			return
 		}
