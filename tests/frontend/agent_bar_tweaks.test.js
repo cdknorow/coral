@@ -350,7 +350,7 @@ async function run() {
         check('Mode label: a screen with no mode line is unknown (Mode), never guessed as Default', def.label === 'Mode', def.label);
         await evalInPage(`document.getElementById('pane-capture').textContent = '❯ \\n  ⏸ manual mode on (shift+tab to cycle)'; document.dispatchEvent(new CustomEvent('coral:terminal-updated')); true`);
         const man = await evalInPage(`(() => ({ label: document.querySelector('#btn-mode-toggle .btn-label').textContent, tip: document.getElementById('btn-mode-toggle').getAttribute('data-tooltip') }))()`);
-        check('Mode label tracks buffer: Manual (Claude 2.1.307: "manual mode on")', man.label === 'Manual' && man.tip === 'Current: Manual. Click to switch to Accept Edits (Shift+Tab).', JSON.stringify(man));
+        check('Mode label tracks buffer: Manual (Claude 2.1.307: "manual mode on")', man.label === 'Manual' && man.tip === 'Current: Manual (Default in Settings). Click to switch to Accept Edits (Shift+Tab).' && await evalInPage(`document.getElementById('btn-mode-toggle').getAttribute('aria-label')`) === 'Mode: Manual (Default in Settings). Click to switch to Accept Edits (Shift+Tab).', JSON.stringify(man));
         
 
         // Regression: a live coral_diff tick that omits first_prompt (and has no

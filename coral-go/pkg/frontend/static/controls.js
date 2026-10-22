@@ -818,7 +818,8 @@ function _modeLabelInfo() {
     // A mode the agent reported is a label only: the next step is not named from it (the screen's own mode line is what a click is counted from).
     const next = !reported && m.next ? MODES[m.next].label : "";
     const tail = next ? `Click to switch to ${next} (Shift+Tab).` : "Click for the next mode (Shift+Tab).";
-    const who = reported ? " (reported by the agent)" : "";
+    // Claude calls its starting mode Manual; Coral's Settings and launch form call the same mode Default: the tooltip and the name say so once
+    const who = (reported ? " (reported by the agent)" : "") + (current === "default" ? " (Default in Settings)" : "");
     return { label: m.short, tooltip: `Current: ${m.label}${who}. ${tail}`, aria: `Mode: ${m.label}${who}. ${tail}` };
 }
 
