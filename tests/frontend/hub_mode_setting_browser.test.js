@@ -1,10 +1,10 @@
 // Settings > Run as a hub (#3460) on the real test server, from the dashboard on this computer:
-//   1. the row: a labelled toggle, off, "Off.", no Restart button (a test server can't restart itself);
+//   1. the row: a labelled toggle, off, nothing said, no Restart button (a test server can't restart itself);
 //   2. on: saved at once (GET /api/system/hub-mode), "becomes a hub when it restarts" and how to
 //      restart; the running server is unchanged (/api/health hub false, no /api/servers);
 //   3. where the process can restart itself (stubbed: this suite never restarts the test server):
 //      a Restart Coral button; it POSTs /api/system/restart and says it is restarting;
-//   4. off again: "Off.", nothing to restart;
+//   4. off again: nothing said, nothing to restart;
 //   5. PUT /api/settings can't set hub_mode (400): only its own local route;
 //   6. through Coral Hub the row is hidden, with the other machine settings.
 //
@@ -23,13 +23,13 @@ const BASE = require('./test_base').BASE;
         const st = document.getElementById('settings-hub-mode-status');
         const btn = document.getElementById('settings-hub-mode-restart');
         const dd = document.getElementById('settings-hub-mode');
-        return box && { checked: box.checked, disabled: box.disabled, label: box.closest('label').textContent.trim(),
+        return box && { checked: box.checked, disabled: box.disabled, label: box.getAttribute('aria-label'),
             described: (box.getAttribute('aria-describedby') || '').split(' ').every(id => !!document.getElementById(id)),
-            status: st.textContent, restart: !btn.hidden, shown: !!dd && !dd.hidden && dd.offsetParent !== null };
+            status: st.textContent, restart: !btn.hidden, shown: !!dd && !dd.hidden && box.offsetParent !== null };
     })()`);
     const openSettings = async () => {
         await ev(`(async () => { await showSettingsModal('network'); return true; })()`);
-        await waitFor(`(document.getElementById('settings-hub-mode-status') || {}).textContent !== ''`, 'the hub mode status', 8000);
+        await waitFor(`(() => { const d = document.getElementById('settings-hub-mode-enabled'); return !!d && d.offsetParent !== null; })()`, 'the hub mode row', 8000); // off says nothing now, so the row being shown is the sign it was read
     };
 
     const guard = await require('./helpers/settings_guard').guardSettings(); // the settings this suite changes are put back in its finally (#4849)
@@ -47,7 +47,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(r.label, 'Run this Coral as a hub');
         assert.ok(r.described, 'the toggle is described by the explanation and the status');
         assert.equal(r.checked, false);
-        assert.equal(r.status, 'Off.');
+        assert.equal(r.status, '', 'off says nothing: the switch shows it');
         assert.equal(r.restart, false, 'no Restart button where the process cannot restart itself');
         console.log('   ✓ off, labelled, no Restart button');
 
@@ -89,7 +89,7 @@ const BASE = require('./test_base').BASE;
         console.log('4. Off again');
         await openSettings();
         await ev(`(() => { document.getElementById('settings-hub-mode-enabled').click(); return true; })()`);
-        await waitFor(`document.getElementById('settings-hub-mode-status').textContent === 'Off.'`, 'off', 5000);
+        await waitFor(`document.getElementById('settings-hub-mode-status').textContent === ''`, 'off', 5000);
         r = await row();
         assert.equal(r.checked, false); assert.equal(r.restart, false);
         assert.equal((await ev(`fetch('/api/system/hub-mode').then(r => r.json())`)).saved, false);

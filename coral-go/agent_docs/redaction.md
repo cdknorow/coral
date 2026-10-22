@@ -1,7 +1,7 @@
 # What the redactor recognises
 
 Coral removes secrets from a board reply, a stream or an event before it leaves this computer for a Coral Hub viewer, and from the lines of `coral.log`
-(Settings > Coral Hub, "Hide tokens from Coral Hub viewers who can only look"). The replacement is `[redacted token]`. Three sources of rules run together,
+(Settings > Coral Hub, "Hide tokens from view-only hub users"). The replacement is `[redacted token]`. Three sources of rules run together,
 so a library update cannot take Coral's own away, and the text is checked a chunk at a time with a time budget: text that could not be checked in time is
 never passed on as it is.
 

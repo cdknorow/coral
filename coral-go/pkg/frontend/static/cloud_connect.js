@@ -22,6 +22,8 @@ const HUB_OPERATOR_URL = '/api/system/hub-operator';
     interact: 'Also type into agents that are already running (send text, keys, answer prompts), post on boards, change tasks and notes, and rename or archive agents. Typing can run commands: an agent with shell tools acts on it. It can also change a team\'s working mode.',
     launch: 'Also start, stop, sleep, wake and restart agents (one agent or a whole team), browse folders to choose where, pause boards, delete board messages and boards, and turn on auto-accept. Launching runs code on this computer as you.',
 };
+// The one line under the Hub access select: what the chosen level means in a few words (the full text, MODE_HELP, is behind the select's (i)).
+ const MODE_SHORT = { view: 'Read only.', interact: 'Can type into running agents.', launch: 'Can start agents: runs code on this computer as you.' };
 // Said when this page is not the dashboard on the computer running Coral (the cloud routes
 // answer 403): connecting has to happen there.
  const ELSEWHERE_TEXT = 'Connecting has to happen on the computer running Coral. On that computer, run: coral cloud connect';
@@ -29,7 +31,7 @@ const HUB_OPERATOR_URL = '/api/system/hub-operator';
 // The command a server with no hub is started with (the OFF_TEXT's first step), with a Copy button beside it (UI audit #5589, finding 21: a command to run in a terminal was text only).
  const START_COMMAND = 'coral --cloud-url https://app.coralhub.dev';
 // In Settings the sentence says it once and the row holds the whole sequence, which Copy takes (UI audit #5589); the connect dialog keeps the sentence the command line says too (#3285).
- const OFF_SHORT = "Coral Hub isn't configured on this server. Run the first command to start Coral with the Hub address. Once Coral is running again, run the second in another terminal to connect it.";
+ const OFF_SHORT = "Start Coral with the Hub address, then connect:";
 // Said when this server has no hub (a dev build, or --cloud-url off); the CLI says the same (#3285).
  const OFF_TEXT = "Coral Hub isn't configured on this server. Start Coral with --cloud-url https://app.coralhub.dev (or CORAL_CLOUD_URL=https://app.coralhub.dev), then run: coral cloud connect";
 
@@ -241,7 +243,9 @@ class CloudPanel {
             sel.value = unchosen ? '' : mode;
         }
         const desc = this.part('mode-desc');
-        if (desc) desc.textContent = unchosen ? (st.state !== 'idle' && st.state !== 'off' ? 'Coral Hub can only view until you choose here.' : 'You choose this when you connect to Coral Hub (the Connect screen offers View, Interact or Launch). Until then Coral Hub can only view.') : MODE_HELP[mode];
+        const full = this.part('mode-full');
+        if (full) full.textContent = MODE_HELP[mode] + ' Coral Hub\'s owner can limit this further for each server, never raise it.';
+        if (desc) desc.textContent = unchosen ? (st.state !== 'idle' && st.state !== 'off' ? 'Coral Hub can only view until you choose here.' : 'Chosen when you connect. Until then Coral Hub can only view.') : MODE_SHORT[mode];
         // Auto-accept from the hub (#3182): a local kill switch, shown only with Launch (the owner's opt-in),
         // on unless the owner turned it off here. Only changeable on this computer.
         show('auto-accept-row', mode === 'launch');

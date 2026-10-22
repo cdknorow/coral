@@ -30,17 +30,17 @@ export function renderRemoteAccessStatus(status, loadError = false) {
     const effective = settingBool(status?.remote_access_effective, false);
     const restart = status?.remote_access_restart_required === true || saved !== effective;
     if (restart) {
-        el.textContent = `Saved: ${saved ? 'enabled' : 'disabled'}. Running now: ${effective ? 'remote access enabled' : 'local-only'}; restart required to apply the saved value.`;
+        el.textContent = `Saved: ${saved ? 'on' : 'off'}. Running: ${effective ? 'on' : 'local only'}. Restart to apply.`;
     } else {
-        el.textContent = `Saved and running: ${effective ? 'remote access enabled' : 'local-only'}.`;
+        el.textContent = ''; // the switch already says it; only a mismatch or a risk is worth a line
     }
     // Remote access without TLS is plain HTTP (#3355): say so wherever it is, or will be, on.
     if ((effective || saved) && status?.remote_access_tls !== true) {
-        el.textContent += ' Not encrypted: the API key, login and terminal traffic cross the network as plain HTTP. Use Coral Hub, a TLS reverse proxy, or start Coral with --tls-cert and --tls-key.';
+        el.textContent = `${el.textContent} Not encrypted: the API key, login and terminal traffic cross the network as plain HTTP. Use Coral Hub, a TLS proxy, or --tls-cert and --tls-key.`.trim();
         el.dataset.unencrypted = 'true';
     } else {
         delete el.dataset.unencrypted;
-        if (effective && status?.remote_access_tls === true) el.textContent += ' Encrypted (HTTPS).';
+        if (effective && status?.remote_access_tls === true) el.textContent = `${el.textContent} Encrypted (HTTPS).`.trim();
     }
     el.dataset.state = restart ? 'restart-required' : 'current';
 }

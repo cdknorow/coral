@@ -90,7 +90,7 @@ const BASE = require('./test_base').BASE;
       };
     })()`);
 
-    assert.equal(afterSaveState.statusText, 'Saved and running: local-only.', 'status updates to saved and running local-only');
+    assert.equal(afterSaveState.statusText, '', 'status is empty once it is local only (the switch says it)');
     assert.equal(afterSaveState.statusState, 'current');
 
     // 4. Verify backend persistence via direct fetch
