@@ -33,7 +33,7 @@ const WRAP = `(function(){ const Real = window.WebSocket; window.__ws = [];
 async function run() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cp-'));
     const cli = path.join(dir, 'fake-claude.sh');
-    fs.writeFileSync(cli, `#!/bin/bash\nprintf '\\n  Bash command\\n\\n    rm -rf /tmp/x\\n\\n Do you want to proceed?\\n \\xe2\\x9d\\xaf 1. Yes\\n   2. No, and tell Claude what to do differently (esc)\\n'\nwhile true; do read -r -n1 k; done\n`, { mode: 0o755 });
+    fs.writeFileSync(cli, `#!/bin/bash\nif [ "$1" = auth ]; then echo '{"loggedIn": true}'; exit 0; fi\nprintf '\\n  Bash command\\n\\n    rm -rf /tmp/x\\n\\n Do you want to proceed?\\n \\xe2\\x9d\\xaf 1. Yes\\n   2. No, and tell Claude what to do differently (esc)\\n'\nwhile true; do read -r -n1 k; done\n`, { mode: 0o755 });
     const launched = [];
     const client = await CDP({ port: CDP_PORT });
     const { Page, Runtime } = client;
