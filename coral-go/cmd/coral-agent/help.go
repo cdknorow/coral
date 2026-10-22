@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/subgentic/coral/internal/clihelp"
 )
@@ -28,6 +29,14 @@ func handleHelp(args []string, w io.Writer) (bool, int) {
 		return false, 0
 	}
 	cmd, rest := args[0], args[1:]
+	if cmd == "help" && len(rest) > 0 && !clihelp.IsHelpArg(rest[0]) {
+		return true, helpTopic("coral-agent", rest[0], w, func(name string) string {
+			if commands[name] {
+				return commandUsage(name, nil)
+			}
+			return ""
+		})
+	}
 	if clihelp.IsHelpArg(cmd) || cmd == "help" {
 		fmt.Fprintln(w, agentUsageText)
 		return true, 0
@@ -75,4 +84,18 @@ func checkFreeText(args []string) error {
 		return nil
 	}
 	return clihelp.CheckTextFlags(args[1:], textFlags)
+}
+
+// helpTopic answers "help <topic>": the topic's page, the usage of a command it names, or (for anything else) an error that lists the topics.
+func helpTopic(tool string, name string, w io.Writer, commandUsage func(string) string) (code int) {
+	if page, ok := clihelp.TopicPage(tool, name); ok {
+		fmt.Fprintln(w, page)
+		return 0
+	}
+	if u := commandUsage(name); u != "" {
+		fmt.Fprintln(w, u)
+		return 0
+	}
+	fmt.Fprintln(os.Stderr, "Error: "+clihelp.UnknownTopic(tool, name))
+	return 2
 }

@@ -4,10 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/subgentic/coral/internal/clihelp"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -163,6 +165,46 @@ func TestDownloadOutputProblemsAreExplained(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not exist")
 	assert.NotContains(t, err.Error(), "The system cannot find")
+
+}
+
+func TestHelpTopicsAgent(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	for _, topic := range []string{"windows", "exit-codes", "json", "timeouts"} {
+		code, stdout, stderr := runAgent(t, srv.URL, "help", topic)
+		assert.Equal(t, 0, code, "%s: %s", topic, stderr)
+		assert.Contains(t, stdout, "coral-agent", topic)
+	}
+	_, stdout, _ := runAgent(t, srv.URL, "help", "json")
+	assert.Contains(t, stdout, "task list --json")
+	code, _, stderr := runAgent(t, srv.URL, "help", "nonsense")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "windows | exit-codes | json | timeouts")
+	_, stdout, _ = runAgent(t, srv.URL, "--help")
+	assert.Contains(t, stdout, "Help topics:  coral-agent help windows | exit-codes | json | timeouts")
+}
+
+// Every "coral-agent <word>" in a help page is a command coral-agent has: its windows and exit-codes pages once showed post and read, which belong to coral-board.
+func TestHelpPagesNameOnlyRealCommands(t *testing.T) {
+	re := regexp.MustCompile(`coral-agent ([a-z][a-z-]*)`)
+	for _, topic := range clihelp.TopicNames() {
+		page, ok := clihelp.TopicPage("coral-agent", topic)
+		require.True(t, ok, topic)
+		for _, m := range re.FindAllStringSubmatch(page, -1) {
+			assert.True(t, commands[m[1]] || m[1] == "help", "%s page: %q is not a coral-agent command", topic, m[0])
+		}
+		assert.NotContains(t, page, "coral-agent post", topic)
+		assert.NotContains(t, page, "coral-agent read", topic)
+	}
+	win, _ := clihelp.TopicPage("coral-agent", "windows")
+	assert.Contains(t, win, "coral-board help windows", "posting a message is pointed at coral-board")
+	codes, _ := clihelp.TopicPage("coral-agent", "exit-codes")
+	assert.Contains(t, codes, "coral-agent task list; $LASTEXITCODE")
+	assert.Contains(t, codes, "cmd.exe:     coral-agent task list\n               echo %ERRORLEVEL%", "the echo is on its own line")
+	boardCodes, _ := clihelp.TopicPage("coral-board", "exit-codes")
+	assert.Contains(t, boardCodes, "cmd.exe:     coral-board read\n               echo %ERRORLEVEL%")
+	assert.Contains(t, boardCodes, "server_url", "exit 3 mentions the address saved by join")
 }
 
 func TestUnknownTaskSubcommandIsUsageAgent(t *testing.T) {
