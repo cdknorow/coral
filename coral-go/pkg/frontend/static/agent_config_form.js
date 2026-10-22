@@ -225,7 +225,7 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                     <option value="default"${permModeVal === 'default' ? ' selected' : ''}>Default</option>
                     <option value="plan"${permModeVal === 'plan' ? ' selected' : ''}>Plan</option>
                     <option value="acceptEdits"${permModeVal === 'acceptEdits' ? ' selected' : ''}>Accept Edits</option>
-                    <option value="auto"${permModeVal === 'auto' ? ' selected' : ''}>Auto Edit + Bash</option>
+                    <option value="auto"${permModeVal === 'auto' ? ' selected' : ''}>Auto</option>
                     <option value="bypassPermissions"${permModeVal === 'bypassPermissions' ? ' selected' : ''}>Bypass Permissions</option>
                     <option value="dontAsk"${permModeVal === 'dontAsk' ? ' selected' : ''}>Don't Ask</option>
                 </select>
