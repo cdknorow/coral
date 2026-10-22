@@ -314,7 +314,7 @@ function buildStatus({ personal, items, busy, error, truncated }) {
     status.setAttribute('role', error ? 'alert' : 'status');
     status.textContent = (personal ? !sessionID : !team) ? (personal ? 'Select an agent to browse its artifacts.' : 'Select an agent on a team to browse its artifacts.')
         : error ? error : busy ? (personal ? 'Loading agent artifacts…' : 'Loading team artifacts…')
-        : !items.length ? (isFiltered(view().filters) ? 'No artifacts match this search.' : personal ? 'No artifacts attributed to this agent yet.' : 'No artifacts shared by this team yet.') : (caches[source].counts && caches[source].counts.matched > items.length) ? `Showing ${items.length} of ${caches[source].counts.matched}${truncated ? '+' : ''}` : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
+        : !items.length ? (isFiltered(view().filters) ? 'No artifacts match this search.' : personal ? 'No artifacts yet.' : 'No artifacts yet.') : (caches[source].counts && caches[source].counts.matched > items.length) ? `Showing ${items.length} of ${caches[source].counts.matched}${truncated ? '+' : ''}` : `${items.length} artifact${items.length === 1 ? '' : 's'}`;
     if (error) status.dataset.state = 'error';
     return status;
 }

@@ -56,7 +56,7 @@ function createRequestForm(sid) {
     const form = document.createElement('form'); form.className = 'agent-ui-guide agent-ui-request';
     const title = document.createElement('label'); title.htmlFor = 'agent-ui-request-text'; title.textContent = 'What would you like your agent to show here?';
     const hint = document.createElement('p'); hint.id = 'agent-ui-request-hint'; hint.className = 'agent-ui-help';
-    hint.textContent = 'Your agent can create diagrams, dashboards, and interactive UI panels and display them here.';
+    hint.textContent = 'Diagrams, dashboards and interactive panels appear here.';
     const input = document.createElement('textarea'); input.id = 'agent-ui-request-text'; input.className = 'agent-ui-prompt'; input.value = value.draft;
     input.placeholder = 'For example, build an interactive diagram of this project’s architecture.';
     input.setAttribute('aria-describedby', hint.id); input.rows = 4;

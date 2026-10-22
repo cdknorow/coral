@@ -99,7 +99,7 @@ const DEVICES = [
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
         const desk = await evaluate(`import((window.__coralStatic||'/static/')+'render.js').then(m => ({ ph: m.commandPlaceholder('n', 'claude', 'b'), closeShown: getComputedStyle(document.getElementById('agentic-mobile-close-btn')).display !== 'none', order: getComputedStyle(document.getElementById('agentic-mobile-close-btn')).order }))`);
-        assert.equal(desk.ph, 'Sending to: n (claude) on b \u2014 type a command or paste an image...', 'desktop keeps the full placeholder');
+        assert.equal(desk.ph, 'Message n, or paste an image', 'desktop keeps the longer placeholder');
         assert.equal(desk.closeShown, false, 'desktop does not show the panel close button');
         assert.equal(desk.order, '0', 'desktop strip order is untouched');
         console.log('PASS desktop unchanged');

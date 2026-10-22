@@ -52,5 +52,5 @@ export function scopeHeading(scope) { return !scope || scope.kind === 'all' ? 'A
 export function scopeEmpty(scope, tab) {
     if (tab === 'done') return 'Nothing marked done.';
     if (!scope || scope.kind === 'all') return 'Bookmark a message to save it here.';
-    return `Nothing saved from ${scope.label} yet. Use the bookmark on a message to save it for later.`;
+    return `Nothing saved from ${scope.label} yet.`;
 }

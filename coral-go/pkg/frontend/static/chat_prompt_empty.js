@@ -13,7 +13,7 @@ function emptyStateWords(session) {
     const row = (state.liveSessions || []).find(s => s.session_id === session?.session_id) || session;
     switch (deriveSessionState(row)) {
         case 'sleeping': return ["This agent is asleep", "Use Wake below to chat with it."];
-        default: return ["No messages yet", "Type below and press Enter to send, Shift+Enter for a new line. The agent's replies and steps appear here."];
+        default: return ["No messages yet", "Type below to start."];
     }
 }
 

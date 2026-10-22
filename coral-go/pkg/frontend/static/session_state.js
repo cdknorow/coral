@@ -39,13 +39,12 @@ const GOAL_LINE_MAX = 140;
         || (s.board_job_title || '').trim();
 }
 
-// Placeholder of the command box. The full text (with the agent type and board) is too long for a phone's box and
-// gets cut off mid-word, so narrow screens get the target only.
-export function commandPlaceholder(identity, agentType, boardProject) {
-    if (window.innerWidth <= 767) return `Send to ${identity}…`;
-    const typeInfo = agentType ? ` (${agentType})` : '';
-    const boardInfo = boardProject ? ` on ${boardProject}` : '';
-    return `Sending to: ${identity}${typeInfo}${boardInfo} \u2014 type a command or paste an image...`;
+// Placeholder of the command box: who it goes to, and that an image can be pasted. The agent's type is in the header and the board's name in the sidebar, so neither is repeated here
+// (the board's generated id used to be, #5991); a phone gets the target only, as the full text is cut off mid-word in its box.
+export function commandPlaceholder(identity, agentType) {
+    if (window.innerWidth <= 767) return `Message ${identity}\u2026`;
+    if (agentType === 'terminal') return `Type a command in ${identity}`;
+    return `Message ${identity}, or paste an image`;
 }
 
 /** Shared identity resolver used by row label, avatar, header, terminal label and placeholder. */
