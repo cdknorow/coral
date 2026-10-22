@@ -204,6 +204,9 @@ func (s *Server) registerAuth(r *chi.Mux) {
 func (s *Server) newRouteHandlers() *routeHandlers {
 	// ── API Routes ──────────────────────────────────────────────
 	sessHandler := routes.NewSessionsHandler(s.db, s.cfg, s.backend, s.terminal, s.boardStore)
+	// A tmux agent's tag, for Kill, sleep and Restart to find what it started and detached (#6141): read from its row at the moment of the kill.
+	runTagStore := store.NewSessionStore(s.db)
+	ptymanager.SetRunTagLookup(func(sessionID string) string { return runTagStore.RunTagOf(context.Background(), sessionID) })
 	s.sessHandler = sessHandler
 	// The automated-input gate reads agents' state through it (#3431).
 	sessHandler.InstallAutomatedInputHooks()

@@ -157,6 +157,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 		CoralDir:  h.cfg.CoralDir(),
 		CoralHost: h.cfg.AgentHost(),
 		CoralPort: h.cfg.Port,
+		RunTag:    h.runTagFor(ctx, sessionID, spec.ResumeSessionID),
 	}
 	if cliPath != "" {
 		log.Printf("[launch] using custom CLI path: %s", logsafe.Path(cliPath))

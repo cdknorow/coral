@@ -665,6 +665,7 @@ func (h *SessionsHandler) restartCommand(ctx context.Context, p *restartPlan) (s
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
+		RunTag:          h.runTagFor(ctx, p.newSessionID, storedSessionID(p.stored)),
 	})
 	if err != nil {
 		return "", func(w http.ResponseWriter) { errInternalServer(w, fmt.Sprintf("launch command failed: %v", err)) }
@@ -1054,6 +1055,7 @@ func (h *SessionsHandler) resumeCommand(ctx context.Context, p *restartPlan, age
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.AgentHost(),
 		CoralPort:       h.cfg.Port,
+		RunTag:          h.runTagFor(ctx, p.newSessionID, storedSessionID(p.stored)),
 	})
 	if err != nil {
 		return "", func(w http.ResponseWriter) { errInternalServer(w, err.Error()) }
@@ -1351,4 +1353,12 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 		"board":   team.Name,
 		"agents":  launched,
 	})
+}
+
+// storedSessionID is the id of the session a restart continues ("" when it is unknown to the store).
+func storedSessionID(ls *store.LiveSession) string {
+	if ls == nil {
+		return ""
+	}
+	return ls.SessionID
 }

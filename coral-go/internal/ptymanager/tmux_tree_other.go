@@ -8,6 +8,9 @@ import (
 	"github.com/subgentic/coral/internal/tmux"
 )
 
+// SetRunTagLookup: tmux does not run on Windows, so there is no tag to look up.
+func SetRunTagLookup(func(sessionID string) string) {}
+
 // tmux does not run on Windows: no tree kill is ever pending.
 func finishPendingTreeKills() {}
 
