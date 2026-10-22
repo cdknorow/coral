@@ -37,5 +37,5 @@ func describeInstall(p installer, goos string, writable func(path string) bool) 
 // homebrewFolder: a folder Linuxbrew's default prefix owns. (The environment is not read here: coral-update takes no variable but CORAL_AUTO_UPDATE; a Linuxbrew in another prefix is
 // still refused by the apply, as a package manager's folder, and is called unwritable here.)
 func homebrewFolder(path string) bool {
-	return path == "/home/linuxbrew" || strings.HasPrefix(path, "/home/linuxbrew"+string(filepath.Separator))
+	return path == "/home/linuxbrew" || strings.HasPrefix(path, "/home/linuxbrew/") // a Linux path: its separator is "/" on whatever machine the test runs (a Windows runner too)
 }
