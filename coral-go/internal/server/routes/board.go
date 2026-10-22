@@ -93,6 +93,10 @@ type BoardHandler struct {
 	// (notifications, wait resolution), all of which use the store,
 	// so a shutdown or a test can wait for it before closing the store (#3486).
 	background sync.WaitGroup
+	// taskArtifactLocks serialises the after-the-reply writes of one task's changes.diff (task id -> *sync.Mutex), so two
+	// completions of the same task close together (complete then cancel, or a retry) write one after the other, never
+	// interleaved. Each write is atomic already (a rename into place); this keeps a slower, older diff from landing last.
+	taskArtifactLocks sync.Map
 }
 
 // SetHubOperatorAllowed tells the board whether a Coral Hub user may act as the
@@ -164,7 +168,10 @@ func (h *BoardHandler) persistTaskArtifactAfterReply(task *board.Task) {
 	if task == nil || task.SessionID == nil || *task.SessionID == "" || h.coralDir == "" || h.writeTaskArtifact == nil {
 		return
 	}
+	lock, _ := h.taskArtifactLocks.LoadOrStore(task.ID, &sync.Mutex{})
 	h.goBG(func() {
+		lock.(*sync.Mutex).Lock() // one write at a time for this task
+		defer lock.(*sync.Mutex).Unlock()
 		ctx, cancel := context.WithTimeout(context.Background(), taskArtifactTimeout)
 		defer cancel()
 		h.persistTaskArtifact(ctx, task)
