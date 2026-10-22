@@ -526,10 +526,22 @@ func classifyLaunchError(err error) string {
 
 // launchDirError is the error for a launch working directory that is not an
 // existing directory, or "" when it is usable.
+// isExtendedDrivePath reports whether p is a local drive in the extended-length form: \?\ and a drive letter and a colon.
+func isExtendedDrivePath(p string) bool {
+	if len(p) < 6 || p[:4] != string([]byte{92, 92, 63, 92}) || p[5] != ':' {
+		return false
+	}
+	c := p[4] | 0x20
+	return c >= 'a' && c <= 'z'
+}
+
 func launchDirError(dir string) string {
 	// A network path is refused before anything stats it: on Windows the stat alone connects to
 	// the host as the user (#3671).
 	if safefs.RefuseRemote(dir) != nil {
+		if isExtendedDrivePath(dir) {
+			return fmt.Sprintf("an extended-length path (one starting \\\\?\\) can't be a working folder: use the ordinary path, such as %s", dir[4:])
+		}
 		return fmt.Sprintf("a network path can't be a working folder: %s", dir)
 	}
 	abs, err := filepath.Abs(dir)
