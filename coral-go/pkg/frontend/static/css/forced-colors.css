@@ -73,4 +73,7 @@
        Highlight and none moves. */
     .inbox-tab { border-bottom-width: 4px; border-bottom-color: Canvas; }
     .inbox-tab[aria-selected="true"] { border-bottom-color: Highlight; }
+    /* @mentions of a board member (#5964): the tint is dropped, the weight stays; a thin border says "mention" and an underline says "you" (the viewer's own name). */
+    .mb-mention { border: 1px solid CanvasText; }
+    .mb-mention-self { text-decoration: underline; }
 }
