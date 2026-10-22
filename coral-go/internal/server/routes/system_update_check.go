@@ -189,10 +189,16 @@ func (h *UpdateRelaunchHandler) RunBackgroundChecks(ctx context.Context) {
 	t := h.checkTimes.get()
 	wait, failures := t.first, 0
 	for {
+		if ctx.Err() != nil {
+			return // checked first: a timer that is already due must not outvote the end
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.after(wait):
+		}
+		if ctx.Err() != nil {
+			return
 		}
 		if h.backgroundCheck(ctx) {
 			failures = 0
