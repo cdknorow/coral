@@ -1,9 +1,11 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -345,4 +347,110 @@ func TestAnswerTooBigToKeepIsNotRunAgain(t *testing.T) {
 	assert.Zero(t, i.bytes, "nothing was kept")
 	other := idemDo(h, idemReq("/api/sessions/launch-team", `{"b":1}`, "hub-user-1234abcd", idemKey))
 	assert.Equal(t, http.StatusUnprocessableEntity, other.Code, "another body is still a reuse")
+}
+
+// #5855 (coral-hub's review): the in-progress record is gone on EVERY way a handler can end. A success becomes the stored answer; a refusal, a failure, a handler that returned without
+// answering, a panic and a request whose client went away mid-launch (its context cancelled) either keep the answer (a success) or free the key (anything else).
+func TestTheRunningRecordEndsOnEveryExitOfTheHandler(t *testing.T) {
+	type exit struct {
+		name   string
+		cancel bool // the client goes away while the handler runs
+		do     func(w http.ResponseWriter)
+		kept   bool // the answer is stored (a repeat is a replay); otherwise the key is free (a repeat runs)
+		panics bool
+	}
+	ok := func(w http.ResponseWriter) { w.WriteHeader(200); _, _ = w.Write([]byte(`{"ok":true}`)) }
+	for _, tc := range []exit{
+		{name: "2xx", do: ok, kept: true},
+		{name: "a refusal", do: func(w http.ResponseWriter) { w.WriteHeader(403) }},
+		{name: "a failure", do: func(w http.ResponseWriter) { w.WriteHeader(500) }},
+		{name: "no answer at all", do: func(w http.ResponseWriter) {}},
+		{name: "a panic", panics: true},
+		{name: "the client gone, the launch still succeeded", cancel: true, do: ok, kept: true},
+		{name: "the client gone, the handler failed", cancel: true, do: func(w http.ResponseWriter) { w.WriteHeader(503) }},
+		{name: "the client gone, nothing answered", cancel: true, do: func(w http.ResponseWriter) {}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i := NewIdempotency()
+			var runs atomic.Int32
+			started := make(chan struct{})
+			h := i.Wrap(func(w http.ResponseWriter, r *http.Request) {
+				if runs.Add(1) > 1 {
+					ok(w) // the retry
+					return
+				}
+				if tc.cancel {
+					close(started)
+					<-r.Context().Done() // the client left: the handler goes on to its end, as a launch does
+				}
+				if tc.panics {
+					panic("boom")
+				}
+				tc.do(w)
+			})
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			req := idemReq("/api/sessions/launch", `{}`, "hub-user-1234abcd", idemKey).WithContext(ctx)
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				defer func() { _ = recover() }()
+				idemDo(h, req)
+			}()
+			if tc.cancel {
+				<-started
+				cancel()
+			}
+			<-done
+			assert.Len(t, i.entries, map[bool]int{true: 1, false: 0}[tc.kept], "the record after the exit: kept only for a success")
+			again := idemDo(h, idemReq("/api/sessions/launch", `{}`, "hub-user-1234abcd", idemKey))
+			if tc.kept {
+				assert.Equal(t, "true", again.Header().Get("Idempotent-Replay"), "a success is answered again")
+				assert.EqualValues(t, 1, runs.Load())
+			} else {
+				assert.Empty(t, again.Header().Get("Idempotent-Replay"))
+				assert.Equal(t, 200, again.Code, "the key is free: the retry ran, not 409")
+				assert.EqualValues(t, 2, runs.Load())
+			}
+		})
+	}
+}
+
+// A running record has its own bound: a handler that never returns does not keep every retry on 409; after the bound the key is free (and the late handler, if it ever returns,
+// does not touch the new record).
+func TestARunningRecordIsFreeAfterItsBound(t *testing.T) {
+	i := NewIdempotency()
+	clock := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	i.now = func() time.Time { return clock }
+	release, started := make(chan struct{}), make(chan struct{})
+	var runs atomic.Int32
+	h := i.Wrap(func(w http.ResponseWriter, r *http.Request) {
+		if runs.Add(1) == 1 {
+			close(started)
+			<-release // never returns during the test
+		}
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"run":` + strconv.Itoa(int(runs.Load())) + `}`))
+	})
+	stuck := make(chan *httptest.ResponseRecorder, 1)
+	go func() { stuck <- idemDo(h, idemReq("/api/sessions/launch", `{}`, "hub-user-1234abcd", idemKey)) }()
+	<-started
+	clock = clock.Add(idempotencyRunningMax - time.Second)
+	assert.Equal(t, http.StatusConflict, idemDo(h, idemReq("/api/sessions/launch", `{}`, "hub-user-1234abcd", idemKey)).Code, "still within the bound: in progress")
+	clock = clock.Add(2 * time.Second)
+	rec := idemDo(h, idemReq("/api/sessions/launch", `{}`, "hub-user-1234abcd", idemKey))
+	assert.Equal(t, 200, rec.Code, "past the bound the key is free: the retry ran")
+	assert.EqualValues(t, 2, runs.Load())
+	close(release) // the late handler returns now: it must not overwrite or drop the new record
+	<-stuck
+	again := idemDo(h, idemReq("/api/sessions/launch", `{}`, "hub-user-1234abcd", idemKey))
+	assert.Equal(t, "true", again.Header().Get("Idempotent-Replay"), "the retry's answer stands")
+	assert.EqualValues(t, 2, runs.Load())
+}
+
+// The bound is chosen from the longest a launch route may run: the lifecycle bound plus a member's share for a team of 60, and under the time to live.
+func TestTheRunningBoundCoversALegitimateTeamLaunch(t *testing.T) {
+	longest := lifecycleTimeout + 60*lifecyclePerSession
+	assert.GreaterOrEqual(t, idempotencyRunningMax, longest, "a launch of a team of 60 is still running at the bound")
+	assert.Less(t, idempotencyRunningMax, idempotencyTTL, "and the bound is under the time to live")
 }

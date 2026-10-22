@@ -27,7 +27,11 @@ import (
 )
 
 const (
-	idempotencyTTL        = 10 * time.Minute
+	idempotencyTTL = 10 * time.Minute
+	// idempotencyRunningMax bounds a record that is still running: past it the key is free again, so a handler that never returns does not leave every retry on 409 for the
+	// whole time to live. The longest a launch route legitimately runs is its lifecycle bound, lifecycleTimeout (2 minutes) plus lifecyclePerSession (5 seconds) for each member of
+	// a team: 8 minutes covers a team of 72 members; it is under the time to live (a test pins both).
+	idempotencyRunningMax = 8 * time.Minute
 	idempotencyMaxKeys    = 2000
 	idempotencyMaxPerUser = 200
 	idempotencyMaxBody    = 1 << 20  // a request body bigger than this is not deduplicated; an answer bigger than this is not kept (a repeat is answered 409 request_already_done)
@@ -162,8 +166,11 @@ func (i *Idempotency) begin(scope [sha256.Size]byte, user string, hash [sha256.S
 	defer i.mu.Unlock()
 	now := i.now()
 	if old, ok := i.entries[scope]; ok {
-		if now.Sub(old.at) > idempotencyTTL && old.done {
-			i.removeLocked(scope, old)
+		if (old.done && now.Sub(old.at) > idempotencyTTL) || (!old.done && now.Sub(old.at) > idempotencyRunningMax) {
+			if !old.done {
+				slog.Warn("[cloud] a request with an Idempotency-Key ran longer than any launch route should: its key is free again", "hub_user", user, "ran", now.Sub(old.at).Round(time.Second))
+			}
+			i.removeLocked(scope, old) // finished and expired, or running for longer than a launch route may: the key is free
 		} else if old.bodyHash != hash {
 			return nil, nil, "key_reuse"
 		} else if !old.done {
@@ -192,11 +199,8 @@ func (i *Idempotency) finish(scope [sha256.Size]byte, e *idemEntry, rec *idemWri
 		return // unrecorded
 	}
 	status := rec.status
-	if status == 0 {
-		status = http.StatusOK
-	}
-	if status < 200 || status > 299 {
-		i.removeLocked(scope, e) // not a success: a retry runs again
+	if status < 200 || status > 299 { // 0: the handler returned without answering (its request ended): not a success either
+		i.removeLocked(scope, e) // not a success: the key is free, a retry runs again
 		return
 	}
 	e.done, e.status, e.at = true, status, i.now()
