@@ -157,7 +157,7 @@ body.panel-dragging .agentic-state {
 
 /* The panel's name (#6029): a tab the keyboard reaches says it in a small label under it (the hover title and the accessible name, aria-label, are the same words). */
 .agentic-tab { position: relative; }
-.agentic-tab[aria-label]:focus-visible::after { content: attr(aria-label); position: absolute; top: 100%; left: 50%; transform: translateX(-50%); z-index: 20; white-space: nowrap; padding: 4px 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); pointer-events: none; }
+.agentic-tab[aria-label]:focus-visible::after { content: attr(aria-label) / ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); z-index: 20; white-space: nowrap; padding: 4px 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius-md); pointer-events: none; }
 .agentic-tab[aria-label]:nth-last-child(-n+3):focus-visible::after { left: auto; right: 0; transform: none; }
 
 .agentic-tab-count:empty {

@@ -257,10 +257,10 @@ async function run() {
         check('"No goal yet" label has no cursor styling of its own (inherits the row)', bySid['sid-c'].emptyLabelCursor === bySid['sid-c'].rowCursor, `${bySid['sid-c'].emptyLabelCursor} vs row ${bySid['sid-c'].rowCursor}`);
         check('sparkle hit target is at least 24x24', bySid['sid-c'].sparkleW >= 24 && bySid['sid-c'].sparkleH >= 24, `${bySid['sid-c'].sparkleW}x${bySid['sid-c'].sparkleH}`);
         check('sparkle has an aria-label naming the agent', bySid['sid-c'].sparkleAria === 'Generate goal for coral-go', bySid['sid-c'].sparkleAria);
-        check('identity never derives from prompt words (aria-label Agent)', /^coral-go · Claude, /.test(bySid['sid-b'].ariaLabel || ''), bySid['sid-b'].ariaLabel);
+        check('identity never derives from prompt words (aria-label Agent)', /^coral-go, Claude, /.test(bySid['sid-b'].ariaLabel || ''), bySid['sid-b'].ariaLabel);
         // AGENT_LIST_COMPACT supersedes D1 avatars in the list: no avatar element in any row.
         check('no avatar element in list rows (AGENT_LIST_COMPACT)', rows.every(r => r.avatarW === null && r.initials === null && r.avatarEmoji === null), JSON.stringify(rows.map(r => [r.avatarW, r.initials])));
-        check('identity never derives from mutable summary (aria-label Agent)', /^other-proj · Claude, /.test(bySid['sid-f'].ariaLabel || ''), bySid['sid-f'].ariaLabel);
+        check('identity never derives from mutable summary (aria-label Agent)', /^other-proj, Claude, /.test(bySid['sid-f'].ariaLabel || ''), bySid['sid-f'].ariaLabel);
         check('summary-only row still shows summary as goal', bySid['sid-f'].goalText === 'Investigate slow startup on Windows', bySid['sid-f'].goalText);
         check('identity from display_name when present (aria-label)', /^Zed, /.test(bySid['sid-e'].ariaLabel || ''), bySid['sid-e'].ariaLabel);
         check('named agent aria-label carries identity + state (+ context suffix at >= 80%)', /^Lead Dev, (Working|Idle)(, context (87%|full))?$/.test(bySid['sid-a'].ariaLabel || ''), bySid['sid-a'].ariaLabel);
@@ -401,7 +401,7 @@ async function run() {
             };
         })()`);
         check('diff without first_prompt keeps row goal', afterDiff.goal === 'Please fix the flaky websocket reconnect test in xterm_renderer.js', afterDiff.goal);
-        check('diff without first_prompt keeps Agent identity (aria-label)', /^coral-go · Claude, /.test(afterDiff.aria || ''), afterDiff.aria);
+        check('diff without first_prompt keeps Agent identity (aria-label)', /^coral-go, Claude, /.test(afterDiff.aria || ''), afterDiff.aria);
         check('diff still applies changed fields (context_pct 45 in state)', afterDiff.ctx === 45, String(afterDiff.ctx));
         check('diff without first_prompt keeps header identity', afterDiff.header === 'coral-go', afterDiff.header);
         check('diff without first_prompt keeps terminal label identity', afterDiff.term === 'coral-go', afterDiff.term);
@@ -506,7 +506,7 @@ async function run() {
         f = await rowF();
         const hdrF3 = await evalInPage(`({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder })`);
         check('explicit null auto_name falls back to Agent', f.label === 'other-proj · Claude' && hdrF3.name === 'other-proj' && /^Message other-proj/.test(hdrF3.ph), JSON.stringify({ f, hdrF3 }));
-        check('aria identity falls back to Agent after auto_name cleared', /^other-proj · Claude, /.test(f.aria || ''), f.aria);
+        check('aria identity falls back to Agent after auto_name cleared', /^other-proj, Claude, /.test(f.aria || ''), f.aria);
         check('explicit empty summary clears the goal line', /No goal yet/.test(f.goal || ''), f.goal);
         check('explicit context_pct value overwrites', f.ctx === 71, String(f.ctx));
 
@@ -523,7 +523,7 @@ async function run() {
             window._coralHandleWsMessage({ type: 'coral_diff', changed: [window.__newSessionPayload] }); true`);
         await nextFrame();
         const rowNew = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-new"]'); return li ? { label: li.querySelector('.session-label').textContent.trim(), aria: li.getAttribute('aria-label'), count: window._coralGetLiveSessions().length } : null; })()`);
-        check('new session via diff renders intact (path prompt -> Agent identity)', rowNew && rowNew.label === 'coral-go · Claude' && /^coral-go · Claude, /.test(rowNew.aria || '') && rowNew.count === SESSIONS.length + 1, JSON.stringify(rowNew));
+        check('new session via diff renders intact (path prompt -> Agent identity)', rowNew && rowNew.label === 'coral-go · Claude' && /^coral-go, Claude, /.test(rowNew.aria || '') && rowNew.count === SESSIONS.length + 1, JSON.stringify(rowNew));
         check('new session merge does not alias incoming payload', await evalInPage(`window._coralGetLiveSessions().find(s => s.session_id === 'sid-new') !== window.__newSessionPayload`));
 
         // A full update follows the same contract: omitted fields survive,

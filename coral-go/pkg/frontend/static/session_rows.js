@@ -323,7 +323,7 @@ export function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefau
     const clickHandler = stale ? '' : ` data-on-click="session-open" data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type)}"`;
     // Focusable list item (not a button: it contains the kebab, the open-tab
     // anchor and the sparkle). Selection is delegated (see _wireListKeyboard).
-    const ariaLabel = `${displayLabel}, ${stateInfo.label}`
+    const ariaLabel = `${sameAsGroup ? `${identity}, ${typeName(s.agent_type)}` : identity}, ${stateInfo.label}`
         + (ctxHigh ? `, context ${s.context_pct >= 100 ? 'full' : Math.round(s.context_pct) + '%'}` : '')
         + (unreadCount > 0 ? `, ${unreadCount} unread` : '');
     const stuckClass = stateInfo.key === 'stuck' ? ' is-stuck' : '';
