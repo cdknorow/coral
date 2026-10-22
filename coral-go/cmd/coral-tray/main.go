@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -60,8 +61,8 @@ func main() {
 	stop := flag.Bool("stop", false, "Stop a running tray instance")
 	noBrowser := flag.Bool("no-browser", false, "Don't open the browser on startup")
 	debugMode := flag.Bool("debug", false, "Enable debug logging to ~/.coral/tray.log")
-	// "" = not given: Settings > Terminal backend, else tmux (pty on Windows) (#3634).
-	backendFlag := flag.String("backend", "", "Terminal backend: pty or tmux (default: Settings > Terminal backend, else tmux; pty on Windows)")
+	// "" = not given: Settings > Terminal backend, else the built-in terminal, pty (#3634, #6064).
+	backendFlag := flag.String("backend", "", "Terminal backend: pty or tmux (default: Settings > Terminal backend, else pty: agents stop when you quit Coral)")
 	serverChild := flag.Bool("server-child", false, "Run Coral's server for the tray (used internally, #4163)")
 	fromInstaller := flag.Bool(installerLaunchFlag, false, "Started by the installer's Launch Coral: starts nothing when elevated (used internally, #5883)")
 	flag.Parse()
@@ -398,14 +399,36 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 		go func() { defer safego.Recover("coral-tray/main:updateItem"); upd.run(context.Background()) }()
 		systray.AddSeparator()
 		var mShutdown, mQuit *systray.MenuItem
+		var runningBackend atomic.Value // "tmux" or "pty": what the server runs (watchBackend)
 		if runtime.GOOS == "windows" {
 			// On Windows (PTY backend), agents cannot survive without the server,
 			// so there is only one exit action.
 			mShutdown = systray.AddMenuItem("Quit and stop all agents", "Stop all agents and exit Coral")
 			mQuit = mShutdown // both point to the same item
 		} else {
-			mShutdown = systray.AddMenuItem("Quit and stop all agents", "Kill all agents, then stop the server and exit")
-			mQuit = systray.AddMenuItem("Quit Coral", "Exit Coral. Agents keep running only on the tmux terminal backend; on the PTY backend they end with the server.")
+			// The built-in terminal (pty) is the default (#6064): quitting Coral ends its agents, so there is one exit; with tmux there are two. The server says which it runs.
+			runningBackend.Store("pty")
+			items := exitItemsFor(runtime.GOOS, runningBackend.Load().(string))
+			mShutdown = systray.AddMenuItem(items.shutdown, items.shutTip)
+			mQuit = systray.AddMenuItem(items.quit, items.quitTip)
+			if items.oneExit {
+				mShutdown.Hide()
+			}
+			go func() {
+				defer safego.Recover("coral-tray/main:watchBackend")
+				watchBackend(ctx.Done(), url, dataDir, &runningBackend, func(b string) {
+					it := exitItemsFor(runtime.GOOS, b)
+					mShutdown.SetTitle(it.shutdown)
+					mShutdown.SetTooltip(it.shutTip)
+					mQuit.SetTitle(it.quit)
+					mQuit.SetTooltip(it.quitTip)
+					if it.oneExit {
+						mShutdown.Hide()
+					} else {
+						mShutdown.Show()
+					}
+				})
+			}()
 		}
 
 		go func() {
@@ -445,6 +468,18 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 						systray.Quit()
 					}()
 				case <-mQuit.ClickedCh:
+					if exitItemsFor(runtime.GOOS, runningBackend.Load().(string)).oneExit {
+						// On the built-in terminal Quit stops the agents too, as the Windows tray's only exit does.
+						go func() {
+							defer safego.Recover("coral-tray/main:quitStopsAgents")
+							killed := killAllAgents(url, dataDir)
+							killCoralApp()
+							stopServer()
+							beeep.Notify("Coral", fmt.Sprintf("Stopped %d agent(s) and quit Coral.", killed), "")
+							systray.Quit()
+						}()
+						continue
+					}
 					killCoralApp()
 					stopServer()
 					systray.Quit()
