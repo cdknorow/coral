@@ -14,12 +14,11 @@ import (
 type ForeignListenerError struct {
 	Port int
 	PID  uint32
-	Why  string
+	Why  string // what the program on the port is, and what to do: whole sentences (#279)
 }
 
 func (e *ForeignListenerError) Error() string {
-	return fmt.Sprintf("coral: not sending this agent's session token to port %d on this computer: the process listening there (PID %d) %s. "+
-		"Is another account's program on Coral's port? Start Coral, or check what is listening there", e.Port, e.PID, e.Why)
+	return fmt.Sprintf("Refused: the agent's token was not sent to port %d on this computer. %s", e.Port, e.Why)
 }
 
 // TokenWithheld marks the error as Coral's own refusal to send the token, not a server that couldn't be reached: the CLIs exit

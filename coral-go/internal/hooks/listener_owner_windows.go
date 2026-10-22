@@ -56,19 +56,21 @@ func checkListener(host string, port int) error {
 		}
 		sid, image, err := pidOwner(pid)
 		if err != nil {
-			return &ForeignListenerError{Port: port, PID: pid, Why: "can't be checked (" + err.Error() + "), so it may be another account's"}
+			return &ForeignListenerError{Port: port, PID: pid, Why: fmt.Sprintf("Coral couldn't check who runs the program on that port (PID %d): %v. "+
+				"Start Coral, or stop that program.", pid, err)}
 		}
 		if !ownedByOneOf(sid, owners) {
 			who := "another account"
 			if sid != nil {
-				who = sid.String()
+				who = "another account (" + sid.String() + ")"
 			}
-			return &ForeignListenerError{Port: port, PID: pid, Why: "belongs to " + who + ", not this user or the owner of Coral's data folder"}
+			return &ForeignListenerError{Port: port, PID: pid, Why: fmt.Sprintf("The program on that port (PID %d) runs as %s, not as you or the owner of Coral's data folder. "+
+				"Start Coral as yourself, or stop that program.", pid, who)}
 		}
 		if !isCoralImage(image, coralFolders()) && !(AllowTestServerListener && sameExecutable(image)) {
-			return &ForeignListenerError{Port: port, PID: pid, Why: "is " + image + ", not Coral's coral.exe or coral-tray.exe from its own folder" +
-				" (if that is your own Coral, a dev or test build run from another folder, build coral-agent and the hooks into the folder of its coral.exe," +
-				" as 'make dev' does, so this tool sits beside it)"}
+			return &ForeignListenerError{Port: port, PID: pid, Why: fmt.Sprintf("The program on that port is %s (PID %d), not Coral's coral.exe or coral-tray.exe. "+
+				"Start Coral, or stop the program that holds its port. If it is your own dev or test build of Coral, build coral-agent and the hooks "+
+				"into the folder of its coral.exe ('make dev' does), so this tool sits beside it.", image, pid)}
 		}
 	}
 	return nil
