@@ -1,5 +1,6 @@
 /* WebSocket connection for real-time coral updates */
 
+import { setCommandPlaceholder } from './composer_placeholder.js';
 import { updateModelChip } from './model_chip.js';
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
@@ -327,7 +328,7 @@ function _syncViewedSession(data) {
             const cmdInput = document.getElementById("command-input");
             if (cmdInput) {
                 const ph = commandPlaceholder(headerName, s.agent_type, s.board_project);
-                if (cmdInput.placeholder !== ph) cmdInput.placeholder = ph;
+                setCommandPlaceholder(cmdInput, ph); // view only and asleep keep their words (#5856)
             }
             updateSessionStatus(s.status);
             updateSessionSummary(s.summary);
