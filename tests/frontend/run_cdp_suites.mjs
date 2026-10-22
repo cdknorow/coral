@@ -598,6 +598,14 @@ for (const t of TMUX_SUITES) if (!suites.cdp.includes(t)) { console.error(`TMUX_
 const suiteDurations = loadDurations(path.join(here, 'suite_durations.json'));
 let tests = sequencesOnly ? [] : (strictOnly ? STRICT_SUITES : tmuxOnly ? TMUX_SUITES : [...suites.cdp, ...suites.server].filter(f => MAIN_BACKEND !== 'default' || !TMUX_ONLY_SUITES.includes(f)))
   .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
+// Suites known to fail on Windows only (windows_known_reds.json, each with its reason) are left out there; every entry must still be a CDP suite.
+const windowsReds = JSON.parse(fs.readFileSync(path.join(here, 'windows_known_reds.json'), 'utf8'));
+delete windowsReds._about;
+for (const name of Object.keys(windowsReds)) if (![...suites.cdp, ...suites.server].includes(name)) { console.error(`windows_known_reds.json names ${name}, which is not a CDP suite`); process.exit(2); }
+if (process.platform === 'win32') {
+  for (const name of tests.filter(f => f in windowsReds)) console.log(`skipped on Windows: ${name}: ${windowsReds[name]}`);
+  tests = tests.filter(f => !(f in windowsReds));
+}
 // --part K/N: the parts have about equal recorded time, not every Nth name (#4605: by name, the six CI parts ran 152 to 272 s of suites).
 if (part) tests = partsByDuration(tests, suiteDurations, part.n)[part.k - 1];
 tests = orderLongestFirst(tests, suiteDurations);
