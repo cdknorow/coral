@@ -39,7 +39,9 @@ permissions:
 
 concurrency:
   group: windows-tests-${{ github.ref }}
-  cancel-in-progress: true
+  # Only a pull request's older run is cancelled by a newer push: on main every commit's run finishes, so a failing commit is never
+  # shown as cancelled (the Orchestrator's ask on #118).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Five test shards and the "package" job (six jobs in a run, #5886) run at once (#4605, #4956): "packages" is every package but the timing packages, pkg/tunnel and the slow
 # tests below, "timing" is the packages in TIMING_PKGS and "tunnel" is TUNNEL_PKG (every package runs in exactly one), "slow-1" is vet and the
