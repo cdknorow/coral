@@ -23,18 +23,6 @@ import (
 // Compile-time on purpose: nothing a caller, a setting or the environment says turns it on.
 var applyEnabled = applyOn(runtime.GOOS, applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt)
 
-// windowsApplyEnabled is the Windows apply's own off switch (#162): the MSI major upgrade stays off in releases until the coral-go-team has
-// reviewed it, whatever applyEnabled says for macOS and Linux.
-const windowsApplyEnabled = false
-
-// applyOn reports whether the apply is switched on for goos.
-func applyOn(goos string) bool {
-	if goos == "windows" {
-		return windowsApplyEnabled
-	}
-	return applyEnabled
-}
-
 const (
 	checkTimeout   = 30 * time.Minute
 	bytesPerSecond = 8 << 20
@@ -105,7 +93,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) int {
 		print(stdout, output{Result: "off"})
 		return 0
 	}
-	if args[0] == "apply" && !applyOn(runtime.GOOS) {
+	if args[0] == "apply" && !applyEnabled {
 		print(stdout, output{Result: "not_enabled", Installed: config.Version})
 		return 0
 	}

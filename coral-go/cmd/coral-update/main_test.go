@@ -72,8 +72,8 @@ func TestAssetNamesAreTheOnesReleaseYmlUploads(t *testing.T) {
 
 // #162: Windows has its own off switch, whatever macOS and Linux have: the MSI apply stays off until the coral-go-team has reviewed it.
 func TestWindowsApplyHasItsOwnOffSwitch(t *testing.T) {
-	assert.Equal(t, windowsApplyEnabled, applyOn("windows"))
-	assert.Equal(t, applyEnabled, applyOn("darwin"))
-	assert.Equal(t, applyEnabled, applyOn("linux"))
-	assert.False(t, windowsApplyEnabled, "off in this build")
+	assert.False(t, applyOn("windows", true, true, applyEnabledWindows, windowsApplyBuilt), "Mac and Linux on do not turn Windows on")
+	assert.True(t, applyOn("windows", false, false, true, windowsApplyBuilt), "its own switch does, now that its apply is built")
+	assert.False(t, applyEnabledWindows, "off in this build")
+	assert.False(t, applyOn("windows", applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt), "so the Windows apply is off")
 }

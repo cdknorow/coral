@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 	"unicode"
@@ -138,7 +137,7 @@ func timeText(s string) string {
 }
 
 func collectStatus(getenv func(string) string, dataDir string, now time.Time) statusOut {
-	out := statusOut{Feature: "on", ApplyEnabled: applyOn(runtime.GOOS), Installed: config.Version}
+	out := statusOut{Feature: "on", ApplyEnabled: applyEnabled, Installed: config.Version}
 	switch {
 	case !config.TierChecksForUpdates:
 		out.Feature, out.OffReason = "off", "build_tier"

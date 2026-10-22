@@ -15,7 +15,7 @@ func TestNoPlatformHasTheApplyOnInThisChange(t *testing.T) {
 	assert.False(t, applyEnabledDarwin, "Mac stays off until the operator turns it on, in a change of its own")
 	assert.False(t, applyEnabledLinux, "Linux stays off until the operator turns it on, in a change of its own")
 	assert.False(t, applyEnabledWindows, "Windows stays off")
-	assert.False(t, windowsApplyBuilt)
+	assert.True(t, windowsApplyBuilt, "the Windows apply exists (#162), and stays off by applyEnabledWindows")
 	for _, goos := range []string{"darwin", "linux", "windows", "freebsd"} {
 		assert.False(t, applyOn(goos, applyEnabledDarwin, applyEnabledLinux, applyEnabledWindows, windowsApplyBuilt), goos)
 	}
@@ -36,12 +36,15 @@ func TestWindowsIsRefusedEvenIfItsSwitchIsFlipped(t *testing.T) {
 	assert.True(t, applyOn("windows", false, false, true, true), "only with its apply built")
 }
 
-// windowsApplyBuilt may be true only when the Windows apply is real: pid_windows.go still says it is not built while it is a stub.
+// windowsApplyBuilt may be true only when the Windows apply is real: the MSI major upgrade (#162), apply.RunMSI over Windows Installer
+// (apply.WindowsMSI), is what coral-update's Windows apply runs. (pid_windows.go's stubs are the macOS/Linux swap apply's, which Windows
+// never takes.)
 func TestWindowsApplyBuiltNeedsARealWindowsApply(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "updater", "apply", "pid_windows.go"))
+	raw, err := os.ReadFile("apply_windows.go")
 	require.NoError(t, err)
-	stub := strings.Contains(string(raw), "not built for Windows")
+	real := strings.Contains(string(raw), "apply.RunMSI(") && strings.Contains(string(raw), "&apply.WindowsMSI{")
+	_, statErr := os.Stat(filepath.Join("..", "..", "internal", "updater", "apply", "apply_msi.go"))
 	if windowsApplyBuilt || applyEnabledWindows {
-		assert.False(t, stub, "pid_windows.go is still the stub: Windows cannot be switched on")
+		assert.True(t, real && statErr == nil, "the Windows apply must be the MSI one before Windows can be switched on")
 	}
 }
