@@ -6,9 +6,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
-	"runtime/debug"
 
 	"github.com/subgentic/coral/internal/hooks"
 )
@@ -17,7 +15,7 @@ func main() {
 	hooks.InstallIdentity("coral-hook-session-start") // the agent session's token, sent with every request (#3387)
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[CRASH] hook panicked: %v\n%s", r, debug.Stack())
+			hooks.LogCrash(r)
 		}
 	}()
 

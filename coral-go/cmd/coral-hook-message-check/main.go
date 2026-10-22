@@ -8,13 +8,11 @@ import (
 	"fmt"
 	"github.com/subgentic/coral/internal/tmux"
 	"io"
-	"log"
 	"net/url"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strings"
 
 	"github.com/subgentic/coral/internal/hooks"
@@ -24,7 +22,7 @@ func main() {
 	hooks.InstallIdentity("coral-hook-message-check") // the agent session's token, sent with every request (#3387)
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[CRASH] hook panicked: %v\n%s", r, debug.Stack())
+			hooks.LogCrash(r)
 		}
 	}()
 

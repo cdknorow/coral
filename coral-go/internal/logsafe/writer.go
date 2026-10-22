@@ -1,6 +1,7 @@
 package logsafe
 
 import (
+	"github.com/subgentic/coral/internal/secrets"
 	"io"
 	"os"
 	"regexp"
@@ -11,17 +12,38 @@ import (
 // Writer wraps a log sink so a line never carries the person's profile folder, name or computer name (#6053): the home folder is written as "~", the folder under /Users, /home and
 // C:\Users (8.3 short form too) as "<user>", the computer name as "<host>". It rewrites each Write on its own (a log line is one Write), holds nothing back and never changes how many
 // bytes the caller wrote, so a terminal or file that is slow stays as it was.
+//
+// Writer also runs each line through the secrets redactor (internal/secrets), so a token-shaped string in an error or a child's stderr never reaches the file either (#6069); a line that cannot be
+// checked (the check failed or ran out of its budget) is withheld, never written as it is. PathWriter is the same without the secrets pass, for a sink that already has one (coral.log's logOutput).
 func Writer(w io.Writer) io.Writer {
+	return &redactingWriter{w: w, r: newRedactor(homeFolders(), hostName()), secrets: true}
+}
+
+// PathWriter hides the home folder, user names and computer name only: for a sink whose own writer already redacts secrets.
+func PathWriter(w io.Writer) io.Writer {
 	return &redactingWriter{w: w, r: newRedactor(homeFolders(), hostName())}
 }
 
+// secretsText redacts secrets in one log line; a variable so a test can stand in for a check that fails.
+var secretsText = func(b []byte) ([]byte, error) { return secrets.LogRedactor().Text(b) }
+
+const withheld = "[log line withheld: it could not be checked for secrets]\n"
+
 type redactingWriter struct {
-	w io.Writer
-	r *redactor
+	w       io.Writer
+	r       *redactor
+	secrets bool
 }
 
 func (rw *redactingWriter) Write(p []byte) (int, error) {
 	out := rw.r.redact(p)
+	if rw.secrets {
+		if red, err := secretsText(out); err != nil {
+			out = []byte(withheld)
+		} else {
+			out = red
+		}
+	}
 	if _, err := rw.w.Write(out); err != nil {
 		return 0, err
 	}
@@ -29,7 +51,12 @@ func (rw *redactingWriter) Write(p []byte) (int, error) {
 }
 
 // profileFolder matches the folder a profile lives in: /Users/<name>, /home/<name>, C:\Users\<name> (either slash), the name up to the next separator or a character no folder name has.
-var profileFolder = regexp.MustCompile(`(?i)((?:[a-z]:)?[\\/](?:users|home)[\\/])([^\\/\s"'<>:|*?]+)`)
+//
+// It matches only where a path starts: at the start of the text or after a space, a quote, "=", "(", "[", "," or ";" (so "/api/home/x" is a URL, not a profile), and it leaves the shared accounts alone
+// (/home/linuxbrew, /Users/Shared, C:\Users\Public and Default are not a person).
+var profileFolder = regexp.MustCompile(`(?i)(^|[\s"'=(\[,;])((?:[a-z]:)?[\\/](?:users|home)[\\/])([^\\/\s"'<>:|*?]+)`)
+
+var sharedProfiles = map[string]bool{"linuxbrew": true, "shared": true, "public": true, "default": true, "all users": true, "default user": true, "<user>": true, "~": true}
 
 type redactor struct {
 	homes []string       // longest first, each as the system writes it and with the other slash
@@ -54,9 +81,18 @@ func newRedactor(homes []string, host string) *redactor {
 	}
 	sort.Slice(hs, func(i, j int) bool { return len(hs[i]) > len(hs[j]) })
 	r := &redactor{homes: hs}
-	// A name like "mac" or "localhost" is a word the log uses on its own: hiding it would damage lines that say nothing about the person.
-	if len(host) >= 4 && !strings.EqualFold(host, "localhost") {
-		r.host = regexp.MustCompile(`(?i)(^|[^a-z0-9_-])` + regexp.QuoteMeta(host) + `([^a-z0-9_-]|$)`)
+	// The computer's name is hidden whole and as its short name (the part before the first dot, "build-mac" for "build-mac.local"). A name like "mac" or "localhost" is a word the log uses on its
+	// own: hiding it would damage lines that say nothing about the person.
+	var names []string
+	for _, n := range []string{host, strings.SplitN(host, ".", 2)[0]} {
+		if len(n) >= 4 && !strings.EqualFold(n, "localhost") && !seen["host:"+strings.ToLower(n)] {
+			seen["host:"+strings.ToLower(n)] = true
+			names = append(names, regexp.QuoteMeta(n))
+		}
+	}
+	sort.Slice(names, func(i, j int) bool { return len(names[i]) > len(names[j]) })
+	if len(names) > 0 {
+		r.host = regexp.MustCompile(`(?i)(^|[^a-z0-9_-])(?:` + strings.Join(names, "|") + `)([^a-z0-9_-]|$)`)
 	}
 	return r
 }
@@ -68,10 +104,10 @@ func (r *redactor) redact(p []byte) []byte {
 	}
 	s = profileFolder.ReplaceAllStringFunc(s, func(m string) string {
 		sub := profileFolder.FindStringSubmatch(m)
-		if sub[2] == "~" || sub[2] == "<user>" {
+		if sharedProfiles[strings.ToLower(sub[3])] {
 			return m
 		}
-		return sub[1] + "<user>"
+		return sub[1] + sub[2] + "<user>"
 	})
 	if r.host != nil {
 		s = r.host.ReplaceAllString(s, "${1}<host>${2}")

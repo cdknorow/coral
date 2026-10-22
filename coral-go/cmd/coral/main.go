@@ -58,7 +58,7 @@ func setupCrashLogging(coralDir string) {
 		return
 	}
 	out, terminal := logOutput(f, os.Stderr)
-	log.SetOutput(logsafe.Writer(out)) // the home folder, user and computer name never reach coral.log or the terminal copy (#6053)
+	log.SetOutput(logsafe.PathWriter(out)) // logOutput redacts secrets; the home folder, user and computer name never reach coral.log or the terminal copy (#6053)
 	logexit.SetFlush(terminal.Flush)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 }
