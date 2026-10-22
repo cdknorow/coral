@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -338,7 +339,14 @@ const (
 	agyInstallURL     = "https://antigravity.google"
 )
 
-// agentCLIs maps agent types to their required CLI tools and install instructions.
+// On Windows the vendor's page gives its own lines (PowerShell and CMD): the macOS and Linux line needs bash, and curl in PowerShell is Invoke-WebRequest. PowerShell is what Coral's Windows
+// terminals use. The installer puts agy.exe in %LOCALAPPDATA%\agy\bin (FindCLIInCommonPaths looks there) and sets up the shell, which a terminal opened before it does not see.
+const (
+	agyWindowsInstallCommand = "irm https://antigravity.google/cli/install.ps1 | iex"
+	agyWindowsInstallNote    = "Run this in PowerShell. The installer puts agy.exe in %LOCALAPPDATA%\\agy\\bin. Coral looks there too, so it finds agy either way. To run agy in a terminal of your own, open a new terminal after the install so it picks up the PATH change."
+)
+
+// agentCLIs maps agent types to their required CLI tools and install instructions (for macOS and Linux; GetCLIInfo gives the Windows line of agy on Windows).
 var agentCLIs = map[string]CLIInfo{
 	at.Claude:      {Binary: "claude", InstallCommand: "npm install -g @anthropic-ai/claude-code", InstallURL: "https://code.claude.com/docs/en/overview"},
 	at.Agy:         {Binary: "agy", InstallCommand: agyInstallCommand, InstallURL: agyInstallURL, InstallNote: agyInstallNote},
@@ -349,11 +357,18 @@ var agentCLIs = map[string]CLIInfo{
 }
 
 // GetCLIInfo returns CLI info for an agent type, or nil if unknown.
-func GetCLIInfo(agentType string) *CLIInfo {
-	if info, ok := agentCLIs[agentType]; ok {
-		return &info
+func GetCLIInfo(agentType string) *CLIInfo { return cliInfoFor(runtime.GOOS, agentType) }
+
+// cliInfoFor is GetCLIInfo for the OS goos: agy (and the types that run it) has its own command and note on Windows, with no bash, export or ~/.local in them.
+func cliInfoFor(goos, agentType string) *CLIInfo {
+	info, ok := agentCLIs[agentType]
+	if !ok {
+		return nil
 	}
-	return nil
+	if goos == "windows" && info.Binary == "agy" {
+		info.InstallCommand, info.InstallNote = agyWindowsInstallCommand, agyWindowsInstallNote
+	}
+	return &info
 }
 
 // CLIPathSettingKey returns the settings key for the agent's custom CLI path.

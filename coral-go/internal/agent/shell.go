@@ -286,6 +286,19 @@ func WrapWithBundlePath(cmd string) string {
 	return cmd
 }
 
+// windowsCommonDirs are the folders on Windows where a CLI is looked for when it is not on PATH: npm's global folders, and where Antigravity's installer puts agy.exe
+// (%LOCALAPPDATA%\agy\bin), so a Coral that was already running finds an agy installed after it started. A folder whose base variable is unset is left out.
+func windowsCommonDirs(appData, localAppData string) []string {
+	var dirs []string
+	if appData != "" {
+		dirs = append(dirs, filepath.Join(appData, "npm"))
+	}
+	if localAppData != "" {
+		dirs = append(dirs, filepath.Join(localAppData, "npm"), filepath.Join(localAppData, "agy", "bin"))
+	}
+	return dirs
+}
+
 // FindCLIInCommonPaths searches common install locations for a CLI binary.
 // Returns the full path if found, empty string if not.
 func FindCLIInCommonPaths(binary string) string {
@@ -325,10 +338,7 @@ func FindCLIInCommonPaths(binary string) string {
 		}
 	case "windows":
 		exts := []string{"", ".exe", ".cmd", ".bat"}
-		basePaths := []string{
-			filepath.Join(os.Getenv("APPDATA"), "npm"),
-			filepath.Join(os.Getenv("LOCALAPPDATA"), "npm"),
-		}
+		basePaths := windowsCommonDirs(os.Getenv("APPDATA"), os.Getenv("LOCALAPPDATA"))
 		for _, base := range basePaths {
 			for _, ext := range exts {
 				candidates = append(candidates, filepath.Join(base, binary+ext))
