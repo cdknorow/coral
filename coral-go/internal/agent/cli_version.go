@@ -57,6 +57,7 @@ func CLIVersion(settings map[string]string, agentType string) string {
 	// the kill: stop waiting for the pipes 2 s after it (Backend's review).
 	cmd.WaitDelay = 2 * time.Second
 	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
+	executil.HideWindow(cmd)  // Windows: a console program started by a Coral with no console of its own would open a visible window (#211); its output still comes through the pipes
 	out, _ := cmd.Output()
 	v := cliVersionRe.FindString(string(out))
 	if ctx.Err() == nil {

@@ -235,6 +235,7 @@ func probeCLIVersion(parent context.Context, path string) (version, probe string
 	var out cliVersionOutput
 	cmd.Stdout = &out
 	executil.NoCwdSearch(cmd) // Windows: a claude.cmd shim looks for node in the current folder first, so a repository's node.exe would run
+	executil.HideWindow(cmd)  // Windows: a console program started by a Coral with no console of its own would open a visible window (#211); its output still comes through the pipes
 	err := cmd.Run()
 	if err == nil {
 		version = strings.TrimSpace(out.String())

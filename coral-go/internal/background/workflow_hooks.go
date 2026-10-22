@@ -102,6 +102,7 @@ func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interf
 			cmd.Dir = dir
 			cmd.Env = withShellDirs(append(agentenv.Filter(os.Environ()), env...), shell) // #3389: no server-only settings
 			executil.NoCwdSearch(cmd)
+			executil.HideWindow(cmd) // Windows: a console program started by a Coral with no console of its own would open a visible window (#211); its output still comes through the pipes
 			configureChildProcess(cmd)
 			err := cmd.Start()
 			if err == nil {
