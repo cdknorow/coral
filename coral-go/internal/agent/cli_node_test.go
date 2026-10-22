@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/secfile"
 )
 
 // An npm-installed CLI is a "#!/usr/bin/env node" script; the macOS app's minimal PATH has no node, so env fails ("env: node: No such file or directory"). The CLI runs with its own
@@ -109,6 +111,7 @@ func TestNodeDirForFindsTheNodeInTheLayoutsNpmMakes(t *testing.T) {
 // Codex Test's controls (#5899 round 1): a folder another user can write is never used, an arbitrary folder above the CLI is not searched, and with none the error says node.
 func TestNodeDirForRefusesAFolderOthersCanWrite(t *testing.T) {
 	env := minimalEnv(t)
+	groupIsNotMine(t) // a group of several: its write bit counts
 	for name, unsafe := range map[string]func(t *testing.T, prefix string){
 		"the node's folder is world-writable (0777)": func(t *testing.T, prefix string) { require.NoError(t, os.Chmod(filepath.Join(prefix, "bin"), 0o777)) },
 		"the node's folder is group-writable":        func(t *testing.T, prefix string) { require.NoError(t, os.Chmod(filepath.Join(prefix, "bin"), 0o775)) },
@@ -291,14 +294,16 @@ func TestNodeDirForRefusesWhatPathWritersNamesOrCannotExamine(t *testing.T) {
 
 	old := pathWriters
 	t.Cleanup(func() { pathWriters = old })
-	pathWriters = func(string) ([]string, error) { return []string{"everyone can write /somewhere"}, nil }
+	pathWriters = func(string) ([]secfile.Writer, error) {
+		return []secfile.Writer{{Text: "everyone can write /somewhere", Path: "/somewhere"}}, nil
+	}
 	_, err = NodeDirFor(cli, env)
 	var nf *NodeNotFoundError
 	require.True(t, errors.As(err, &nf), "%v", err)
 	assert.Contains(t, nf.Reason, "written by others")
 	assert.Contains(t, nf.Reason, "everyone can write /somewhere")
 
-	pathWriters = func(string) ([]string, error) { return nil, errors.New("the access list could not be read") }
+	pathWriters = func(string) ([]secfile.Writer, error) { return nil, errors.New("the access list could not be read") }
 	_, err = NodeDirFor(cli, env)
 	require.True(t, errors.As(err, &nf), "%v", err)
 	assert.Contains(t, nf.Reason, "could not be checked")
@@ -323,4 +328,75 @@ func TestNodeDirForRefusesALinkChainThroughAFolderAnyoneCanWrite(t *testing.T) {
 	var nf *NodeNotFoundError
 	require.True(t, errors.As(err, &nf), "%v", err)
 	assert.Contains(t, nf.Reason, "bad")
+}
+
+// groupIsNotMine answers "not the user's alone" for every group, as on a machine with a second account.
+func groupIsNotMine(t *testing.T) {
+	t.Helper()
+	old := groupAlone
+	t.Cleanup(func() { groupAlone = old })
+	groupAlone = func(uint32) (bool, error) { return false, nil }
+}
+
+// Homebrew's folders are the user's own and group-writable for admin (#5899, Homebrew's installer): on a Mac where admin is the user alone that bit grants nobody anything and the node is
+// used; everywhere else the refusal stands, and says what to do.
+func TestNodeDirForAcceptsAGroupWriteBitOnlyWhenTheGroupIsTheUsersAlone(t *testing.T) {
+	env := minimalEnv(t)
+	group := func(t *testing.T, alone bool, err error) (string, string) {
+		t.Helper()
+		old := groupAlone
+		t.Cleanup(func() { groupAlone = old })
+		groupAlone = func(uint32) (bool, error) { return alone, err }
+		prefix, cli := npmLayout(t, "#!/usr/bin/env node", true)
+		require.NoError(t, os.Chmod(filepath.Join(prefix, "bin"), 0o775)) // user-owned, group-writable
+		return prefix, cli
+	}
+
+	t.Run("the group is the user's alone: accepted", func(t *testing.T) {
+		prefix, cli := group(t, true, nil)
+		dir, err := NodeDirFor(cli, env)
+		require.NoError(t, err)
+		assert.Equal(t, real(t, filepath.Join(prefix, "bin")), real(t, dir))
+	})
+	t.Run("the group has other members: refused, with the folder, the group and the chmod", func(t *testing.T) {
+		prefix, cli := group(t, false, nil)
+		_, err := NodeDirFor(cli, env)
+		var nf *NodeNotFoundError
+		require.True(t, errors.As(err, &nf), "%v", err)
+		bin := real(t, filepath.Join(prefix, "bin")) // the walk names the folder after its links are resolved
+		msg := nf.Error()
+		assert.Contains(t, nf.Reason, "its group (")
+		assert.Contains(t, nf.Reason, bin)
+		assert.Contains(t, msg, "chmod g-w '"+bin+"'", "the fix names the folder")
+		assert.Contains(t, msg, "PATH has node's folder")
+		assert.NotContains(t, msg, "Install Node.js", "the person has node")
+	})
+	t.Run("a world write bit is refused whatever the group is", func(t *testing.T) {
+		prefix, cli := group(t, true, nil)
+		require.NoError(t, os.Chmod(filepath.Join(prefix, "bin"), 0o777))
+		_, err := NodeDirFor(cli, env)
+		var nf *NodeNotFoundError
+		require.True(t, errors.As(err, &nf), "%v", err)
+		assert.Contains(t, nf.Reason, "everyone can write in")
+		assert.Contains(t, nf.Error(), "Ask whoever owns those folders", "chmod g-w would not help: the fix says so")
+		assert.NotContains(t, nf.Error(), "chmod g-w")
+	})
+	t.Run("a group that could not be checked is refused", func(t *testing.T) {
+		_, cli := group(t, true, errors.New("dscl timed out"))
+		_, err := NodeDirFor(cli, env)
+		var nf *NodeNotFoundError
+		require.True(t, errors.As(err, &nf), "%v", err)
+		assert.Contains(t, nf.Reason, "could not be checked")
+		assert.Contains(t, nf.Reason, "dscl timed out")
+	})
+}
+
+func TestNodeNotFoundKeepsTheInstallAdviceOnlyWhenThereIsNoNode(t *testing.T) {
+	env := minimalEnv(t)
+	_, cli := npmLayout(t, "#!/usr/bin/env node", false)
+	_, err := NodeDirFor(cli, env)
+	var nf *NodeNotFoundError
+	require.True(t, errors.As(err, &nf), "%v", err)
+	assert.Contains(t, nf.Error(), "Install Node.js")
+	assert.Contains(t, nf.Error(), "PATH has node's folder")
 }

@@ -3,6 +3,7 @@
 package secfile
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,4 +177,65 @@ func TestPathWritersFailsClosedWhenAnAccessListCannotBeRead(t *testing.T) {
 	require.Len(t, who, 1)
 	assert.Contains(t, who[0], "group:staff")
 	assert.Contains(t, who[0], "/d")
+}
+
+// A group write bit on the user's own folder passes only when the caller says the group is the user's alone; every other finding stays (#5899, Homebrew's group-writable folders).
+func TestPathWritersTrustingGroupLetsOnlyTheUsersAloneGroupPass(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "bin")
+	require.NoError(t, os.Mkdir(bin, 0o755))
+	f := filepath.Join(bin, "tool")
+	require.NoError(t, os.WriteFile(f, []byte("x"), 0o755))
+	require.NoError(t, os.Chmod(bin, 0o775))
+	yes := func(uint32) (bool, error) { return true, nil }
+	no := func(uint32) (bool, error) { return false, nil }
+
+	w, err := PathWritersTrustingGroup(f, yes)
+	require.NoError(t, err)
+	assert.Empty(t, w, "the group is the user's alone")
+
+	w, err = PathWritersTrustingGroup(f, no)
+	require.NoError(t, err)
+	require.NotEmpty(t, w)
+	for _, x := range w {
+		assert.True(t, x.Group, x.Text)
+	}
+	assert.Equal(t, evalDir(t, bin), evalDir(t, w[len(w)-1].Path))
+
+	_, err = PathWritersTrustingGroup(f, func(uint32) (bool, error) { return true, errors.New("no directory service") })
+	assert.Error(t, err, "a check that fails refuses")
+
+	require.NoError(t, os.Chmod(bin, 0o777))
+	w, err = PathWritersTrustingGroup(f, yes)
+	require.NoError(t, err)
+	require.NotEmpty(t, w, "an other write bit is never forgiven")
+	assert.False(t, w[0].Group)
+
+	plain, err := PathWriters(f)
+	require.NoError(t, err)
+	assert.NotEmpty(t, plain, "PathWriters itself trusts no group")
+}
+
+func evalDir(t *testing.T, p string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(p)
+	require.NoError(t, err)
+	return r
+}
+
+// The group is forgiven only on the user's OWN entries: for a program run as someone else the same folder's group bit counts, however the caller answers.
+func TestAGroupWriteBitOnAnotherUsersFolderIsNeverForgiven(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "bin")
+	require.NoError(t, os.Mkdir(bin, 0o755))
+	f := filepath.Join(bin, "tool")
+	require.NoError(t, os.WriteFile(f, []byte("x"), 0o755))
+	require.NoError(t, os.Chmod(bin, 0o775))
+	w, err := pathWriters(f, os.Geteuid()+1, func(uint32) (bool, error) { return true, nil }) // the folders are not this uid's
+	require.NoError(t, err)
+	var group bool
+	for _, x := range w {
+		group = group || (x.Group && strings.Contains(x.Text, "its group"))
+	}
+	assert.True(t, group, "%v", w)
 }
