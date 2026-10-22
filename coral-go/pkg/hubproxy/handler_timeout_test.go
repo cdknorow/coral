@@ -4,7 +4,9 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -122,4 +124,77 @@ func TestProxyHeaderTimeoutAfterBody(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A browser that starts an upload then stops must release both sides rather
+// than hold a proxy request and a machine's stream slot indefinitely.
+func TestProxyUploadStallTimeout(t *testing.T) {
+	t.Parallel()
+	remoteDone := make(chan struct{})
+	_, hub, _ := setup(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(remoteDone)
+		_, _ = io.Copy(io.Discard, r.Body)
+	}), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	go func() {
+		_, _ = writer.Write([]byte("upload started"))
+		pause := time.NewTimer(31 * time.Second)
+		defer pause.Stop()
+		select {
+		case <-ctx.Done():
+		case <-pause.C:
+			_, _ = writer.Write([]byte("too late"))
+		}
+	}()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hub.URL+"/api/remote/a/api/upload", reader)
+	require.NoError(t, err)
+	started := time.Now()
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	require.GreaterOrEqual(t, time.Since(started), 29*time.Second)
+	require.Less(t, time.Since(started), 35*time.Second)
+	select {
+	case <-remoteDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stalled upstream body reader was not released")
+	}
+}
+
+type uploadTimeoutTarget struct {
+	HTTPTarget
+	roundTrip func(*http.Request) (*http.Response, error)
+}
+
+func (t uploadTimeoutTarget) RoundTrip(r *http.Request) (*http.Response, error) {
+	return t.roundTrip(r)
+}
+
+// Fake time exercises the actual ten-minute production cap without adding a
+// ten-minute CI delay. The target reads continuously until context cancellation.
+func TestProxyUploadOverallTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		body := &pacedUpload{remaining: 1 << 60, interval: time.Second, cancel: func() {}}
+		var received int64
+		target := uploadTimeoutTarget{roundTrip: func(r *http.Request) (*http.Response, error) {
+			body.ctx = r.Context()
+			var err error
+			received, err = io.Copy(io.Discard, r.Body)
+			return nil, err
+		}}
+		req := httptest.NewRequest(http.MethodPost, "/api/remote/a/api/upload", body)
+		req.ContentLength = -1
+		recorder := httptest.NewRecorder()
+		started := time.Now()
+		(&Handler{}).proxyHTTP(recorder, req, "a", target, "/api/upload", "/api/upload")
+		require.Equal(t, http.StatusBadGateway, recorder.Code)
+		require.Equal(t, 10*time.Minute, time.Since(started), "moving bytes reset the idle limit, never the total cap")
+		require.Greater(t, received, int64(0))
+		require.Greater(t, body.remaining, int64(0), "the trickle never reached EOF")
+	})
 }
