@@ -18,6 +18,8 @@ import (
 // list stays true. Keyed file:function:call, never by line.
 var reviewedFileOpens = map[string]string{
 	"telemetry_install_id.go:telemetryInstallID:OpenNoFollow":             "fixed .install_id in the server instance data folder, not a request path; read-only, no-follow, regular file, 128-byte cap and 36-character UUID validation (#6047)",
+	"changes_diff_filter.go:diffWithNewFiles:ReadFile":                    "the working tree's own index, at the path git rev-parse --git-path index gives (git reads the same file on every command); copied only into a private temp folder, never served (#243)",
+	"changes_diff_filter.go:diffWithNewFiles:WriteFile":                   "the index copy in this call's own os.MkdirTemp folder, 0600, removed when it returns (#243)",
 	"relaunch_fixture.go:readFixture:OpenNoFollow":                        "relaunchfixture builds only: the one fixture file in the owner-only folder named by CORAL_RELAUNCH_FIXTURE_DIR, Lstat-checked regular 0600 own file, 16 KiB cap (#5452)",
 	"updates_dir.go:updatesDir.read:OpenNoFollow":                         "<data dir>/updates/ack.key and ack_used.json: fixed names, Lstat-checked plain files only this user can read (#5280)",
 	"artifact_prune.go:SessionsHandler.shrinkDiffs:ReadFile":              "server data folder; object names match objectNameRe",

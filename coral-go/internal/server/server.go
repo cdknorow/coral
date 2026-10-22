@@ -229,17 +229,24 @@ func (s *Server) Close() {
 	s.closeOnce.Do(func() {
 		if s.bgStop != nil {
 			s.bgStop()
-			done := make(chan struct{})
-			go func() {
-				defer safego.Recover("server/server:206")
+		}
+		// The server's loops, and the work board requests started after answering (a task's changes.diff, #243): both may
+		// still use the board database, so they finish, or closeWait passes, before it closes.
+		done := make(chan struct{})
+		go func() {
+			defer safego.Recover("server/server:206")
+			if s.bgStop != nil {
 				s.bg.Wait()
-				close(done)
-			}()
-			select {
-			case <-done:
-			case <-time.After(closeWait):
-				log.Printf("[server] background work still running after %s; closing the board database anyway", closeWait)
 			}
+			if s.boardHandler != nil {
+				s.boardHandler.WaitBackground()
+			}
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(closeWait):
+			log.Printf("[server] background work still running after %s; closing the board database anyway", closeWait)
 		}
 		if s.boardStore != nil {
 			if err := s.boardStore.Close(); err != nil {

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -288,4 +289,75 @@ func dashboardRequest(r *http.Request) *http.Request {
 	r.Host = "localhost:8420"
 	r.Header.Set("Sec-Fetch-Site", "same-origin")
 	return r
+}
+
+// #243: a tree with 3,000 new files. The diff is written in seconds, not one git process a file (about 0.1 s each, past the
+// 2-minute bound of a task's changes.diff), says it was truncated where the files don't fit, and the real index is untouched.
+func TestGeneratePersistedDiffManyNewFiles(t *testing.T) {
+	_, h, _, _ := setupSessionsTestServer(t)
+	repo := diffRepo(t)
+	body := strings.Repeat("a line of a new file\n", 200) // 4,200 bytes: 3,000 of them are 12 MiB, over the 8 MiB limit
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, "gen"), 0o755))
+	for i := 0; i < 3000; i++ {
+		require.NoError(t, os.WriteFile(filepath.Join(repo, "gen", fmt.Sprintf("f%04d.txt", i)), []byte(body), 0o644))
+	}
+	indexBefore, err := os.ReadFile(filepath.Join(repo, ".git", "index"))
+	require.NoError(t, err)
+
+	start := time.Now()
+	diff, err := h.generatePersistedDiff(context.Background(), repo)
+	require.NoError(t, err)
+	took := time.Since(start)
+	assert.Less(t, took, 60*time.Second, "one git diff for all the new files, not one each")
+	t.Logf("3,000 new files: %s, %d bytes", took, len(diff))
+
+	out := string(diff)
+	assert.True(t, strings.HasPrefix(out, "# Coral: "), "the notes come first, so the cap never cuts them off")
+	assert.Regexp(t, `# Coral: \d+ more new files are not in this diff`, out)
+	assert.Contains(t, out, "# Coral: diff cut at 8 MiB")
+	assert.Contains(t, out, "+++ b/gen/f0000.txt")
+	assert.LessOrEqual(t, len(diff), diffPersistMax+512)
+
+	indexAfter, err := os.ReadFile(filepath.Join(repo, ".git", "index"))
+	require.NoError(t, err)
+	assert.Equal(t, indexBefore, indexAfter, "the new files are added to a copy of the index, never to the real one")
+	status, err := exec.Command("git", "-C", repo, "status", "--porcelain", "--", "gen/f0000.txt").Output()
+	require.NoError(t, err)
+	assert.Equal(t, "?? gen/f0000.txt\n", string(status), "still untracked")
+}
+
+// The new files' names are taken literally (a "[a].txt" is that file, not a pattern), spaces and non-ASCII included; the
+// one-at-a-time way, kept for an older git, gives the same sections.
+func TestGeneratePersistedDiffNewFileNames(t *testing.T) {
+	_, h, _, _ := setupSessionsTestServer(t)
+	repo := diffRepo(t)
+	names := []string{"[a].txt", "a.txt", "space name.txt", "\u00fcn\u00efcode.txt"}
+	for _, n := range names {
+		require.NoError(t, os.WriteFile(filepath.Join(repo, n), []byte("content of "+n+"\n"), 0o644))
+	}
+	diff, err := h.generatePersistedDiff(context.Background(), repo)
+	require.NoError(t, err)
+	for _, n := range names {
+		assert.Contains(t, string(diff), "+content of "+n, n)
+	}
+	assert.Equal(t, 1, strings.Count(string(diff), "+content of a.txt"), "a.txt once: [a].txt did not match it as a pattern")
+	assert.NotContains(t, string(diff), "more new files are not in this diff")
+
+	batched, err := diffWithNewFiles(context.Background(), repo, "HEAD", names)
+	require.NoError(t, err)
+	oneByOne, dropped, err := diffNewFilesOneByOne(context.Background(), repo, "HEAD", names)
+	require.NoError(t, err)
+	assert.Zero(t, dropped)
+	section := func(d []byte, name string) string {
+		for _, s := range splitDiffSections(d) {
+			if bytes.Contains(s, []byte("+content of "+name)) {
+				return string(s)
+			}
+		}
+		return ""
+	}
+	for _, n := range []string{"a.txt", "space name.txt"} {
+		assert.NotEmpty(t, section(batched, n), n)
+		assert.Equal(t, section(oneByOne, n), section(batched, n), "the same patch for %s either way", n)
+	}
 }
