@@ -882,6 +882,11 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p,
 .welcome-launch-copy span { color: var(--text-muted); font-size: 0.75rem; line-height: 1.45; }
 .welcome-launch .welcome-launch-arrow { position: absolute; top: 20px; right: 20px; color: var(--text-muted); font-size: 1.1875rem; }
 .welcome-launch:hover .welcome-launch-arrow { color: var(--accent); }
+/* Home: one obvious start (#6042). Launch agent, the first card, carries the accent (border, tint, a filled icon); Launch team and Open folder stay as they were. */
+.welcome-launch-list > .welcome-launch:first-child { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-secondary)); }
+.welcome-launch-list > .welcome-launch:first-child .welcome-launch-icon { background: var(--accent-dim, var(--accent)); color: var(--text-on-accent); }
+.welcome-launch-list > .welcome-launch:first-child .welcome-launch-arrow { color: var(--accent); }
+.welcome-launch-list > .welcome-launch:first-child .welcome-launch-copy span { color: var(--text-secondary); } /* 4.5:1 on the tint in the light theme */
 .welcome-links { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 28px; }
 .welcome-links a,
 .welcome-links button { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 0.8125rem; text-decoration: none; background: none; border: none; padding: 0; font-family: inherit; cursor: pointer; }
@@ -902,6 +907,8 @@ body.hub-no-machine .welcome-launch-list, body.hub-no-machine .welcome-header p,
 @media (pointer: coarse), (max-width: 1024px) { .editions-home-hide { width: 44px; height: 44px; margin: -8px -8px -8px 0; } }
 .editions-home-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .editions-home-item { position: relative; display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 14px 40px 14px 14px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: transparent; color: var(--text-secondary); font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+/* "Use Coral from anywhere" is a quiet row under the launch cards, not two more cards of their weight (#6042); its border returns on hover and focus. */
+.editions-home-item { border-color: transparent; background: transparent; }
 .editions-home-item:hover, .editions-home-item:focus-visible { border-color: var(--border-light); background: var(--bg-tertiary); } /* as .welcome-launch (#4218) */
 .editions-home-icon { flex-shrink: 0; color: var(--text-muted); font-size: 1.25rem; }
 .editions-home-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }

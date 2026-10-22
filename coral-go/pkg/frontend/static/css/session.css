@@ -81,6 +81,9 @@
 .empty-launch-copy span { color: var(--text-muted); font-size: 0.75rem; line-height: 1.45; }
 .empty-launch .empty-launch-arrow { position: absolute; top: 20px; right: 20px; color: var(--text-muted); font-size: 1.1875rem; }
 .empty-launch:hover .empty-launch-arrow { color: var(--accent); }
+.empty-launch-list > .empty-launch:first-child { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-secondary)); } /* as the desktop welcome: Launch agent is the start (#6042) */
+.empty-launch-list > .empty-launch:first-child .empty-launch-icon { background: var(--accent-dim, var(--accent)); color: var(--text-on-accent); }
+.empty-launch-list > .empty-launch:first-child .empty-launch-copy span { color: var(--text-secondary); }
 .session-list li.empty-welcome:hover { background: transparent; }
 @media (max-width: 767px) { .session-list li.empty-plain { display: none; } .session-list li.empty-welcome { display: block; } }
 
