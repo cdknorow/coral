@@ -85,13 +85,13 @@ To spin up a test server for manual verification, use `0.0.0.0` (not `127.0.0.1`
 ```bash
 cd coral-go && go build -tags dev -o coral ./cmd/coral/ && CORAL_DATA_DIR=/tmp/coral-test ./coral --host 0.0.0.0 --port 8450 --cloud-url off
 ```
+`--cloud-url off` keeps a test server away from the real Coral Hub (a release build connects to app.coralhub.dev by default, and a `CORAL_CLOUD_URL` in the shell would point it there).
+Build the agent tools with the server (`go build -tags dev -o <dir>/ ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-*`, which `make dev` does), or set `CORAL_HOOK_DIR`: a dev or test server never uses the installed app's hooks, and its startup log names where its agents' hooks come from.
 On Windows, 8450 is the installed Coral's own port, so pick another, and `--host 0.0.0.0` makes Windows Firewall ask: keep a test server on `127.0.0.1` unless another machine must reach it. The bash line above is Bash only; in PowerShell:
 ```powershell
 cd coral-go; go build -tags dev -o coral.exe ./cmd/coral/; if ($?) { Get-ChildItem env:CORAL_* | Remove-Item; $env:CORAL_DATA_DIR = "$env:TEMP\coral-test"; .\coral.exe --host 127.0.0.1 --port 8470 --cloud-url off --no-browser }
 ```
 (`Remove-Item` on `env:CORAL_*` drops the CORAL_* variables a shell inside Coral carries, which would point the test server at the live Coral's data folder. It changes that shell only.) The server prints its data folder at startup (`[startup] data folder: …`).
-`--cloud-url off` keeps a test server away from the real Coral Hub (a release build connects to app.coralhub.dev by default, and a `CORAL_CLOUD_URL` in the shell would point it there).
-Build the agent tools with the server (`go build -tags dev -o <dir>/ ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-*`, which `make dev` does), or set `CORAL_HOOK_DIR`: a dev or test server never uses the installed app's hooks, and its startup log names where its agents' hooks come from.
 
 ### Database
 - SQLite with WAL mode, stored at `~/.coral/sessions.db`
