@@ -20,6 +20,8 @@ type PTYBackend struct {
 	// humanAt: when a person last typed in each session's terminal (SendHumanInput),
 	// for the gate's PTY rule: the box can't be read from raw output (#3482, P3).
 	humanAt map[string]time.Time
+	// clearWindow is how long an ArmReplayClear stays open (0: defaultReplayClearWindow); a test sets it on its own backend.
+	clearWindow time.Duration
 }
 
 // NewPTYBackend creates a new PTY-based terminal backend.
@@ -419,6 +421,20 @@ func (m *PTYBackend) Unsubscribe(name, subscriberID string) {
 		return
 	}
 	s.unsubscribe(subscriberID)
+}
+
+// ArmReplayClear lets the next ESC[3J the session prints restart its replay buffer, once, within a short window: Coral calls it when it types a quiet launch line (#5911).
+func (m *PTYBackend) ArmReplayClear(name string) {
+	m.mu.RLock()
+	s, ok := m.sessions[name]
+	m.mu.RUnlock()
+	if ok {
+		window := m.clearWindow
+		if window == 0 {
+			window = defaultReplayClearWindow
+		}
+		s.armReplayClear(window)
+	}
 }
 
 func (m *PTYBackend) Replay(name string) ([]byte, error) {

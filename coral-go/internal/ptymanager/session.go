@@ -42,9 +42,10 @@ type session struct {
 	cols, rows  uint16          // the PTY's size as last set (guarded by mu)
 
 	// Ring buffer of recent output for snapshot on reconnect
-	ringMu  sync.Mutex
-	ring    []byte
-	ringMax int
+	ringMu          sync.Mutex
+	clearResetUntil time.Time // while the time is ahead, the next ESC[3J restarts the replay ring, once (armReplayClear); the zero time is not armed
+	ring            []byte
+	ringMax         int
 
 	// bracketedPaste is the application's last DECSET/DECRST 2004 state seen in
 	// its output; bpCarry holds a possible sequence split across reads (only
@@ -136,7 +137,7 @@ func (s *session) readLoop() {
 			// Store in ring buffer for snapshot
 			s.ringMu.Lock()
 			s.ring = append(s.ring, data...)
-			s.ring = restartRingAtClear(s.ring, len(data))
+			s.resetRingAtArmedClear(len(data))
 			if len(s.ring) > s.ringMax {
 				s.ring = s.ring[len(s.ring)-s.ringMax:]
 			}
@@ -245,19 +246,47 @@ func (s *session) unsubscribe(id string) {
 // clearScrollback is the sequence that erases a terminal's scrollback (ESC[3J). A quiet launch script prints it first (cmdhandoff.QuietShellScript, #5911).
 var clearScrollback = []byte("\x1b[3J")
 
+// defaultReplayClearWindow is how long after a quiet launch is typed its script's ESC[3J may restart the replay ring.
+const defaultReplayClearWindow = 30 * time.Second
+
+// armReplayClear lets the NEXT ESC[3J this session prints, within window, restart the replay ring, once: Coral arms it when it types a quiet launch line (#5911). Output is
+// never trusted to reset the replay by itself: a program in the terminal, an agent included, that prints ESC[3J must not be able to erase what came before it from what a person is
+// shown on reconnect.
+func (s *session) armReplayClear(window time.Duration) {
+	s.ringMu.Lock()
+	s.clearResetUntil = time.Now().Add(window)
+	s.ringMu.Unlock()
+}
+
+// resetRingAtArmedClear, called with the ring holding the n bytes just read, restarts the ring at the clear in them when the session is armed and the window is open, and disarms it
+// (the first clear is the script's; a later one, or one when not armed, changes nothing). An armed session whose window has passed is disarmed without effect.
+func (s *session) resetRingAtArmedClear(n int) {
+	if s.clearResetUntil.IsZero() {
+		return
+	}
+	if time.Now().After(s.clearResetUntil) {
+		s.clearResetUntil = time.Time{}
+		return
+	}
+	if ring, ok := restartRingAtClear(s.ring, n); ok {
+		s.ring = ring
+		s.clearResetUntil = time.Time{}
+	}
+}
+
 // restartRingAtClear drops what was in the replay ring before the last clear-scrollback sequence in the newly appended n bytes (or one that straddles them), keeping the sequence
-// itself, so a terminal opened later is replayed what the screen shows now, not the short line that started the agent (#5911). A ring with no such sequence is as it was.
-func restartRingAtClear(ring []byte, n int) []byte {
+// itself, so a terminal opened later is replayed what the screen shows now, not the short line that started the agent (#5911). ok is false, and the ring as it was, when there is none.
+func restartRingAtClear(ring []byte, n int) (out []byte, ok bool) {
 	start := len(ring) - n - len(clearScrollback) + 1
 	if start < 0 {
 		start = 0
 	}
 	i := bytes.LastIndex(ring[start:], clearScrollback)
 	if i < 0 {
-		return ring
+		return ring, false
 	}
 	kept := copy(ring, ring[start+i:])
-	return ring[:kept]
+	return ring[:kept], true
 }
 
 // replayBytes returns a copy of the ring buffer for reconnect replay.
