@@ -151,6 +151,26 @@ func (h *BoardHandler) taskArtifactPath(taskID int64) string {
 	return filepath.Join(h.coralDir, "artifacts", "tasks", strconv.FormatInt(taskID, 10), "changes.diff")
 }
 
+// taskArtifactTimeout bounds the after-the-reply writing of a task's changes.diff: the agent's working tree is diffed (git diff,
+// and one git diff --no-index per untracked file), which on a large tree takes many seconds.
+const taskArtifactTimeout = 2 * time.Minute
+
+// persistTaskArtifactAfterReply writes the task's changes.diff after the request has answered, on a context of its own (#217).
+// It was written before the reply, on the request's context: on a large working tree that took longer than coral-board's
+// 10-second client timeout, so the client reported a failure for a completion that had been committed, the closed connection
+// cancelled the request's context, that killed the git it was running, and the artifact was never written ("context canceled").
+// It stays best-effort, as before: a failure is logged, never returned.
+func (h *BoardHandler) persistTaskArtifactAfterReply(task *board.Task) {
+	if task == nil || task.SessionID == nil || *task.SessionID == "" || h.coralDir == "" || h.writeTaskArtifact == nil {
+		return
+	}
+	h.goBG(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), taskArtifactTimeout)
+		defer cancel()
+		h.persistTaskArtifact(ctx, task)
+	})
+}
+
 func (h *BoardHandler) persistTaskArtifact(ctx context.Context, task *board.Task) {
 	if task == nil || h.coralDir == "" || h.writeTaskArtifact == nil {
 		return
