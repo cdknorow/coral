@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"unsafe"
@@ -38,6 +40,14 @@ func handleIsValid(h windows.Handle) bool {
 	return r != 0
 }
 
+var procCompareObjectHandles = windows.NewLazySystemDLL("kernelbase.dll").NewProc("CompareObjectHandles")
+
+// sameObject says whether two handles, in this process, refer to the same kernel object (Windows 10 1607 and later).
+func sameObject(a, b windows.Handle) bool {
+	r, _, _ := procCompareObjectHandles.Call(uintptr(a), uintptr(b))
+	return r != 0
+}
+
 type seen struct {
 	Args         []string
 	Exe          string
@@ -53,8 +63,16 @@ func childRecord(out string) {
 	cwd, _ := os.Getwd()
 	s := seen{Args: os.Args[1:], Exe: exe, Cwd: cwd}
 	if h, err := strconv.ParseUint(os.Getenv("CORAL_TRIGGER_TEST_HANDLE"), 10, 64); err == nil {
-		// A handle value the parent had open and inheritable: valid here only if it was inherited.
-		s.HandleLeaked = handleIsValid(windows.Handle(h))
+		// The parent's inheritable handle was an event with a unique name. It was inherited only if the SAME number is a handle here AND it is that event: a number can be a
+		// valid handle of something else in this process, which is not a leak, so the object is compared, not the number.
+		if name := os.Getenv("CORAL_TRIGGER_TEST_EVENT"); name != "" && handleIsValid(windows.Handle(h)) {
+			if p, perr := windows.UTF16PtrFromString(name); perr == nil {
+				if named, oerr := windows.OpenEvent(windows.SYNCHRONIZE, false, p); oerr == nil {
+					s.HandleLeaked = sameObject(windows.Handle(h), named)
+					windows.CloseHandle(named)
+				}
+			}
+		}
 	}
 	if d := os.Getenv("CORAL_TRIGGER_TEST_DATA"); d != "" {
 		_, err := os.Stat(filepath.Join(d, UpdatesDir, markerFile))
@@ -79,7 +97,7 @@ func fileHash(t *testing.T, p string) string {
 
 func fakeInstall(t *testing.T) (installDir, dataDir string) {
 	t.Helper()
-	updaterEnvExtra = map[string]bool{"CORAL_TRIGGER_TEST_CHILD": true, "CORAL_TRIGGER_TEST_DATA": true, "CORAL_TRIGGER_TEST_HANDLE": true, "CORAL_TRIGGER_TEST_SECRET": false}
+	updaterEnvExtra = map[string]bool{"CORAL_TRIGGER_TEST_CHILD": true, "CORAL_TRIGGER_TEST_DATA": true, "CORAL_TRIGGER_TEST_HANDLE": true, "CORAL_TRIGGER_TEST_EVENT": true, "CORAL_TRIGGER_TEST_SECRET": false}
 	t.Cleanup(func() { updaterEnvExtra = nil })
 	installDir, dataDir = t.TempDir(), t.TempDir()
 	self, err := os.Executable()
@@ -118,11 +136,15 @@ func TestLaunchRunsACopyOutsideTheInstallFolderWithNoInheritedHandles(t *testing
 
 	// A handle of this process that is inheritable: a child started with bInheritHandles=true would hold it.
 	sa := &windows.SecurityAttributes{Length: uint32(24), InheritHandle: 1}
-	ev, err := windows.CreateEvent(sa, 1, 0, nil)
+	evName := fmt.Sprintf("Local\\coral-trigger-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	evNamePtr, err := windows.UTF16PtrFromString(evName)
+	require.NoError(t, err)
+	ev, err := windows.CreateEvent(sa, 1, 0, evNamePtr)
 	require.NoError(t, err)
 	defer windows.CloseHandle(ev)
 	require.NoError(t, windows.SetHandleInformation(ev, windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT))
 	t.Setenv("CORAL_TRIGGER_TEST_HANDLE", strconv.FormatUint(uint64(ev), 10))
+	t.Setenv("CORAL_TRIGGER_TEST_EVENT", evName)
 
 	require.NoError(t, Launch(t.Context(), dataDir, "1.5.0"))
 	s := waitSeen(t, out)
@@ -202,4 +224,26 @@ func TestTheCopyIsHeldAgainstWritingDeletingAndRenamingUntilClosed(t *testing.T)
 
 	require.NoError(t, hold.Close())
 	assert.NoError(t, os.Remove(copyPath), "free once closed")
+}
+
+// The control for the test above: a child that is GIVEN the handle (explicitly inherited) is seen to have it, by the same identity check. So "not inherited" in the Launch test means the
+// check can see an inherited handle, not that it cannot.
+func TestTheHandleCheckSeesAnInheritedHandle(t *testing.T) {
+	sa := &windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), InheritHandle: 1}
+	evName := fmt.Sprintf("Local\\coral-trigger-control-%d-%d", os.Getpid(), time.Now().UnixNano())
+	namePtr, err := windows.UTF16PtrFromString(evName)
+	require.NoError(t, err)
+	ev, err := windows.CreateEvent(sa, 1, 0, namePtr)
+	require.NoError(t, err)
+	defer windows.CloseHandle(ev)
+
+	self, err := os.Executable()
+	require.NoError(t, err)
+	out := filepath.Join(t.TempDir(), "seen.json")
+	cmd := exec.Command(self)
+	cmd.Env = append(os.Environ(), "CORAL_TRIGGER_TEST_CHILD="+out, "CORAL_TRIGGER_TEST_HANDLE="+strconv.FormatUint(uint64(ev), 10), "CORAL_TRIGGER_TEST_EVENT="+evName)
+	cmd.SysProcAttr = &syscall.SysProcAttr{AdditionalInheritedHandles: []syscall.Handle{syscall.Handle(ev)}}
+	require.NoError(t, cmd.Run())
+	s := waitSeen(t, out)
+	assert.True(t, s.HandleLeaked, "a handle that was given to the child is the same object there")
 }
