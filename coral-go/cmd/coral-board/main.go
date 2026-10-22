@@ -27,6 +27,7 @@ func main() {
 	// A person running it in their own terminal (no agent session) signs with the
 	// command-line token instead, as the local Operator (strict local auth, #3418).
 	cliauth.InstallOperatorSigning()
+	installWithheldNoter() // a withheld token exits refused (5), whichever request met it (Security's #260 pass)
 	os.Args, rawOutput = clitext.TakeRaw(os.Args)
 	if len(os.Args) < 2 {
 		printUsage()

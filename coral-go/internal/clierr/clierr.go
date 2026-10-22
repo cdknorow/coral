@@ -78,6 +78,9 @@ func Note(k Kind) { last.Store(int32(k)) }
 // NoteStatus records the kind of an HTTP status (anything but 401, 403 and 404 is Other; a 2xx clears it).
 func NoteStatus(status int) { Note(StatusKind(status)) }
 
+// Noted is the kind Exit1 would exit with now (the last noted).
+func Noted() Kind { return Kind(last.Load()) }
+
 // StatusKind is the kind of an HTTP status.
 func StatusKind(status int) Kind {
 	switch status {
