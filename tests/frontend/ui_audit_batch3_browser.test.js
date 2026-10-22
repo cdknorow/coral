@@ -38,6 +38,8 @@ const BASE = require('./test_base').BASE;
                 await ev(`document.querySelector('#tb-opt-pty').checked = false; document.querySelector('#settings-terminal-backend .tb-learn[aria-controls=tb-d-pty]').click(); true`);
                 const opened = await ev(`(() => { const d = document.getElementById('tb-d-pty'); return { shown: d.checkVisibility({ checkVisibilityCSS: true }), text: d.textContent, label: document.querySelector('.tb-learn[aria-controls=tb-d-pty]').textContent, expanded: document.querySelector('.tb-learn[aria-controls=tb-d-pty]').getAttribute('aria-expanded'), radioChanged: document.getElementById('tb-opt-pty').checked }; })()`);
                 assert.ok(opened.shown && opened.label === 'Show less' && opened.expanded === 'true' && /puts them to sleep first when it stops cleanly/.test(opened.text), JSON.stringify(opened).slice(0, 200));
+                const learnName = await ev(`document.querySelector('.tb-learn[aria-controls=tb-d-pty]').getAttribute('aria-label')`);
+                assert.equal(learnName, 'Show less: pty', 'an open Learn more is named by its visible words and what it explains: ' + learnName);
                 assert.equal(opened.radioChanged, false, 'Learn more does not choose the backend');
                 await shot('terminal-learn', w);
                 await ev(`window.hideSettingsModal(); true`);

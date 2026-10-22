@@ -92,15 +92,19 @@ export async function loadTerminalBackendRow() {
         _autoWakeShown = aw.hidden ? null : { on, cap: Number($('tb-autowake-cap').value) };
     }
     // Every Learn more in the row opens its text (also the auto-wake one, which a system with no choice shows without the backend options).
+    // Each is named by what it explains (data-about), starting with its visible words, so the several in the row do not read as one button (#6152).
+    const nameLearn = b => b.setAttribute('aria-label', `${b.textContent}${b.textContent === 'Learn more' ? ' about ' : ': '}${b.dataset.about || ''}`.trim());
     for (const b of document.querySelectorAll('#settings-terminal-backend .tb-learn')) {
         if (b._tbWired) continue;
         b._tbWired = true;
+        nameLearn(b);
         b.addEventListener('click', () => {
             const target = document.getElementById(b.getAttribute('aria-controls'));
             if (!target) return;
             target.hidden = !target.hidden;
             b.setAttribute('aria-expanded', String(!target.hidden));
             b.textContent = target.hidden ? 'Learn more' : 'Show less';
+            nameLearn(b);
         });
     }
     if (_status.choice) {
