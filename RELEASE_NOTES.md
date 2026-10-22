@@ -1,5 +1,35 @@
 # Release Notes
 
+## v1.4.153 — Claude always carries a permission mode, Pi and Plan need the Hub switch, and the updater ships (switched off)
+
+### Features
+
+- **The updater program ships in every package, switched off:** `coral-update` is in the Linux and macOS packages, the Windows ZIP and the MSI (with its command-line link), and `coral-update status` says so (`apply_enabled` is false on every platform: nothing is updated by it yet). The release check that runs on every package now includes it. Its trust anchors (the Apple team and the promote repository) are pinned in the build. The packages are larger: the third-party licence texts of its new libraries add about 175 entries to each Linux tarball and about 110 to the Windows ZIP, plus the `coral-update` program itself.
+- **The first-run screens are finished off:** a sign-in is said once (the card in the chat, or the pill when the card is not on screen, never both), the terminal tab is not covered, the toast names the agent, and the waiting pill over a long chat comes back when you scroll away from the card and goes when you scroll to it. The Shared Inbox keeps only the message body in an inset panel. The Hub setup screen answers Escape only while it is the topmost thing.
+- **Antigravity models in the launch dialog:** the `antigravity` alias, and every agent type of one CLI family, now take that family's model list.
+- **Windows: Coral trusts its own hooks for each Codex it starts**, when only an administrator can change them; and a person's send into Codex's hooks-review dialog is refused with 409 `codex_hooks_review_pending` instead of being typed into it (checked against Codex 0.161; 0.163 is being verified).
+
+### Changes
+
+- **Claude launches always carry a permission mode:** an interactive Claude launch now passes `--permission-mode` explicitly (`default` where nothing chose a mode). This fixes the 1.4.152 known issue: with Claude Code 2.1.283 or later, a launch Coral meant to keep asking (a Hub launch with the auto-accept switch off, or an agent started by another agent) could start in Claude's own default, Auto. Claude's Plan mode no longer counts as keeping the prompts (it runs the commands its classifier approves): a Hub request for Plan needs the same owner switch, Launch mode and provenance as Auto or Bypass. Only `default` (also spelled `manual`) asks.
+- **Pi counts as skipping the prompts:** Pi has no mode that asks, so a Pi launch through Coral Hub needs the owner's "Coral Hub can turn on auto-accept" switch, Launch access and the dashboard's provenance. An agent cannot start Pi (nor a team with a Pi member, nor a team type that takes Pi); you can.
+- **Antigravity and Gemini:** the old `--approval-mode` spelling is translated to Antigravity's own `--mode` (an unknown value is refused with a message); the `gemini` type is Antigravity compatibility, so a path that is the real Gemini CLI is refused with a setup message naming the setting; Coral's help probe of the Gemini CLI now runs with a limited environment and output.
+- **Codex 0.163:** the old `--approval-mode` and `--ask-for-approval untrusted` spellings are emitted in the form Codex 0.163 accepts (before, it refused to start).
+- **Updater switch per platform (internal to the switch):** the apply's off switch is now one per platform; all three are still off.
+
+### Fixes
+
+- **The model picker loads instead of staying empty:** a model list that is still refreshing is not kept as the answer; the menu says "Loading models…" and asks again.
+- **Install lines:** the missing-CLI help gives Windows the vendor's PowerShell line for Antigravity (with a Windows note), and Coral looks for `agy` in `%LOCALAPPDATA%\agy\bin`; Pi's install command names its new package, `@earendil-works/pi-coding-agent`; the other install commands were checked against their vendors' pages.
+- **Accessibility:** the first-run card's Open terminal link is underlined and full size, the missing-CLI dialog's link meets contrast in the light theme, Check again keeps focus, and a view-only message box is named "View only through Coral Hub" for screen readers.
+- **A person's message to an agent is not retyped by mistake (Windows round 5):** it is retyped only when the screen is as it was before the typing, never as a slash command; it counts as taken only on evidence of its text; the echo is matched ignoring all whitespace, so a wrapped line or an indented continuation cannot hide it.
+- **The Windows installer's Launch Coral does nothing when the installer was run as administrator:** `coral-tray` starts nothing when it is launched from the installer with an elevated token (a normal install is unchanged), so Coral does not start with the installer's rights.
+- **Workflow steps on Windows use only Git for Windows' own shell layouts**, never a shell found above the install folder.
+
+### Internal
+
+- Test fixes: Codex trust off-Windows reports the switch before the OS; `human_send_test.go` formatted; the settings golden gains the Codex trust-hooks control; `perf_budgets` pins "Fit pane width" off; `first_run_card` waits without raw animation-frame waits; a test that no XML comment in `tools/coral.wxs` has a double hyphen.
+
 ## v1.4.152 — First run that guides you, Claude starts in Auto mode, and safer launches through Coral Hub
 
 ### Features
