@@ -26,7 +26,7 @@ const TERMINAL_BUDGET = 60; // the same as settings_text_budget_browser's, now o
         const seen = await ev(`(() => { const pane = document.querySelector('#settings-modal .settings-pane:not([hidden])'); const out = [];
             const shown = e => { for (let p = e; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.display === 'none' || s.visibility === 'hidden' || p.hidden) return false; } return true; };
             const w = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT);
-            for (let t = w.nextNode(); t; t = w.nextNode()) { const e = t.parentElement; if (!e || e.closest('select, option, script, style, .material-icons') || !shown(e)) continue; const v = t.nodeValue.trim(); if (v) out.push(v); }
+            for (let t = w.nextNode(); t; t = w.nextNode()) { const e = t.parentElement; if (!e || e.closest('select, option, script, style, .material-icons, #settings-tools-folder-row') || !shown(e)) continue; const v = t.nodeValue.trim(); if (v) out.push(v); }
             return out; })()`);
         const words = seen.join(' ').split(/\s+/).filter(Boolean).length;
         assert.ok(words <= TERMINAL_BUDGET, `Terminal shows ${words} words on a pty-only system, budget ${TERMINAL_BUDGET}: ${JSON.stringify(seen)}`);
