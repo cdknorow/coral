@@ -68,7 +68,7 @@ Subcommands:
 		}
 		data, status, err := apiCallRaw("GET", fmt.Sprintf("/%s/tasks/%d", url.PathEscape(st.Project), id), nil)
 		if err != nil || status != http.StatusOK {
-			fmt.Fprintf(os.Stderr, "Unable to read task: %v %s\n", err, data)
+			fmt.Fprintln(os.Stderr, "Unable to read task: "+clierr.Describe(err, status, data))
 			clierr.Exit1()
 		}
 		var task map[string]any
