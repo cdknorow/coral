@@ -2,14 +2,37 @@ package tmux
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
+
+// logDiscovery logs one line about where tmux was or was not found, and only when that line differs from the last one this process logged: the status poll and every tmux command look again, and
+// the same answer every 30 seconds filled tray.log (a Windows walk, #6004 W9). No line carries the PATH: it names a person's profile folders, and a bug report should not.
+var (
+	discoveryMu   sync.Mutex
+	lastDiscovery string
+)
+
+func logDiscovery(format string, a ...any) {
+	msg := "[tmux] " + fmt.Sprintf(format, a...)
+	discoveryMu.Lock()
+	defer discoveryMu.Unlock()
+	if msg == lastDiscovery {
+		return
+	}
+	lastDiscovery = msg
+	log.Print(msg)
+}
+
+// shellName is the shell's file name, not its folder.
+func shellName() string { return filepath.Base(os.Getenv("SHELL")) }
 
 // resolveTmuxBin returns the path used to invoke tmux, re-checking the
 // filesystem if the cached binary isn't reachable. This lets a tmux that
@@ -25,21 +48,21 @@ func (c *Client) resolveTmuxBin() string {
 		if err == nil {
 			return c.TmuxBin
 		}
-		log.Printf("[tmux] cached absolute tmux path is not usable: path=%q err=%v", c.TmuxBin, err)
+		logDiscovery("cached absolute tmux path is not usable: path=%q err=%v", c.TmuxBin, err)
 	} else if _, err := exec.LookPath(c.TmuxBin); err == nil {
 		return c.TmuxBin
 	} else {
-		log.Printf("[tmux] cached tmux binary not found on PATH: bin=%q path=%q err=%v", c.TmuxBin, os.Getenv("PATH"), err)
+		logDiscovery("cached tmux binary not found on PATH: bin=%q err=%v", c.TmuxBin, err)
 	}
 	// Cached path no longer works — re-search common locations.
 	if p, ok := IsAvailable(); ok {
 		c.TmuxBin = p
 		if p != original {
-			log.Printf("[tmux] resolved tmux binary: previous=%q resolved=%q path=%q", original, p, os.Getenv("PATH"))
+			logDiscovery("resolved tmux binary: previous=%q resolved=%q", original, p)
 		}
 		return p
 	}
-	log.Printf("[tmux] tmux discovery failed; using unresolved binary: bin=%q path=%q shell=%q coral_tmux_bin=%q", c.TmuxBin, os.Getenv("PATH"), os.Getenv("SHELL"), os.Getenv("CORAL_TMUX_BIN"))
+	logDiscovery("tmux discovery failed; using unresolved binary: bin=%q shell=%q coral_tmux_bin_set=%t", c.TmuxBin, shellName(), os.Getenv("CORAL_TMUX_BIN") != "")
 	return c.TmuxBin
 }
 
@@ -62,28 +85,28 @@ var commonTmuxPaths = []string{
 // locations and a login shell lookup.
 func IsAvailable() (string, bool) {
 	if p := tmuxFromEnv(); p != "" {
-		log.Printf("[tmux] discovery found tmux via CORAL_TMUX_BIN: %s", p)
+		logDiscovery("discovery found tmux via CORAL_TMUX_BIN: %s", p)
 		return p, true
 	}
 	if p, _ := bundledTmux(); p != "" {
-		log.Printf("[tmux] discovery found bundled tmux: %s", p)
+		logDiscovery("discovery found bundled tmux: %s", p)
 		return p, true
 	}
 	if p, err := exec.LookPath("tmux"); err == nil {
-		log.Printf("[tmux] discovery found tmux on PATH: %s", p)
+		logDiscovery("discovery found tmux on PATH: %s", p)
 		return p, true
 	}
 	for _, p := range commonTmuxPaths {
 		if executableFileExists(p) {
-			log.Printf("[tmux] discovery found tmux in common path: %s", p)
+			logDiscovery("discovery found tmux in common path: %s", p)
 			return p, true
 		}
 	}
-	if p := tmuxFromLoginShell(); p != "" {
-		log.Printf("[tmux] discovery found tmux via login shell: %s", p)
+	if p := loginShellTmux(); p != "" {
+		logDiscovery("discovery found tmux via login shell: %s", p)
 		return p, true
 	}
-	log.Printf("[tmux] discovery failed: path=%q shell=%q coral_tmux_bin=%q common_paths=%v", os.Getenv("PATH"), os.Getenv("SHELL"), os.Getenv("CORAL_TMUX_BIN"), commonTmuxPaths)
+	logDiscovery("discovery failed: shell=%q coral_tmux_bin_set=%t common_paths=%v", shellName(), os.Getenv("CORAL_TMUX_BIN") != "", commonTmuxPaths)
 	return "", false
 }
 
@@ -98,9 +121,12 @@ func tmuxFromEnv() string {
 	if executableFileExists(p) {
 		return p
 	}
-	log.Printf("[tmux] CORAL_TMUX_BIN is set but not executable: %q", p)
+	logDiscovery("CORAL_TMUX_BIN is set but not executable: %q", p)
 	return ""
 }
+
+// loginShellTmux asks a login shell where tmux is (a variable so a test can make the lookup find nothing).
+var loginShellTmux = tmuxFromLoginShell
 
 func tmuxFromLoginShell() string {
 	if runtime.GOOS == "windows" {
