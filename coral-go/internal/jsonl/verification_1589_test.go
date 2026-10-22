@@ -31,6 +31,9 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 
 	coralID_A := "f0736582-0619-0882-abde-b5d8d69911b4" // Game Design Director
 	coralID_B := "97d6c65d-1111-2222-3333-444444444444" // Frontend Dev
+	// These subtests share matching rollouts. Give every marked fixture an
+	// explicit place on one timeline, independent of filesystem write clocks.
+	fixtureTime := time.Date(2026, time.September, 29, 12, 0, 0, 0, time.UTC)
 
 	t.Run("1_UserMessageQuotedUUID_DoesNotMatch", func(t *testing.T) {
 		rolloutPath := filepath.Join(tempBase, "2026", "09", "29", "rollout-user-quote.jsonl")
@@ -56,12 +59,14 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 		pathArray := filepath.Join(tempBase, "2026", "09", "29", "rollout-meta-array.jsonl")
 		contentArray := fmt.Sprintf(`{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Coral session metadata:\nCORAL_SESSION_ID: %s"}]}}`+"\n", coralID_A)
 		require.NoError(t, os.WriteFile(pathArray, []byte(contentArray), 0644))
+		require.NoError(t, os.Chtimes(pathArray, fixtureTime.Add(-20*time.Minute), fixtureTime.Add(-20*time.Minute)))
 		require.Equal(t, coralID_A, codexTranscriptCoralSessionID(pathArray))
 
 		// String format
 		pathString := filepath.Join(tempBase, "2026", "09", "29", "rollout-meta-string.jsonl")
 		contentString := fmt.Sprintf(`{"type":"response_item","payload":{"type":"message","role":"developer","content":"Coral session metadata:\nCORAL_SESSION_ID: %s"}}`+"\n", coralID_B)
 		require.NoError(t, os.WriteFile(pathString, []byte(contentString), 0644))
+		require.NoError(t, os.Chtimes(pathString, fixtureTime.Add(-20*time.Minute), fixtureTime.Add(-20*time.Minute)))
 		require.Equal(t, coralID_B, codexTranscriptCoralSessionID(pathString))
 	})
 
@@ -73,9 +78,8 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 		require.NoError(t, os.WriteFile(oldRollout, []byte(meta), 0644))
 		require.NoError(t, os.WriteFile(newRollout, []byte(meta), 0644))
 
-		now := time.Now()
-		require.NoError(t, os.Chtimes(oldRollout, now.Add(-10*time.Minute), now.Add(-10*time.Minute)))
-		require.NoError(t, os.Chtimes(newRollout, now, now))
+		require.NoError(t, os.Chtimes(oldRollout, fixtureTime.Add(-10*time.Minute), fixtureTime.Add(-10*time.Minute)))
+		require.NoError(t, os.Chtimes(newRollout, fixtureTime, fixtureTime))
 
 		resolved := resolveCodexTranscriptByMarker(tempBase, coralID_A)
 		require.Equal(t, newRollout, resolved, "must select newest rollout by mtime")
@@ -86,8 +90,7 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 		// or returns empty if no marked rollout exists.
 		unmarkedRollout := filepath.Join(tempBase, "2026", "09", "29", "rollout-unmarked-active.jsonl")
 		require.NoError(t, os.WriteFile(unmarkedRollout, []byte(`{"type":"event_msg","payload":{"type":"task_started"}}`+"\n"), 0644))
-		now := time.Now()
-		require.NoError(t, os.Chtimes(unmarkedRollout, now.Add(5*time.Minute), now.Add(5*time.Minute)))
+		require.NoError(t, os.Chtimes(unmarkedRollout, fixtureTime.Add(5*time.Minute), fixtureTime.Add(5*time.Minute)))
 
 		// coralID_C has NO marked rollout
 		coralID_C := "cccccccc-cccc-cccc-cccc-cccccccccccc"
@@ -108,10 +111,8 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 
 		require.NoError(t, os.WriteFile(rolloutA, []byte(metaA), 0644))
 		require.NoError(t, os.WriteFile(rolloutB, []byte(metaB), 0644))
-		// Newer than subtest 4's marked rollouts, explicitly: a file's write time comes
-		// from the kernel's coarse clock (ext4: a few ms behind time.Now()), so a file
-		// written just now can look OLDER than one Chtimes set to time.Now() (#3458).
-		later := time.Now().Add(2 * time.Minute)
+		// Newer than subtest 4's marked rollouts, explicitly (#3458).
+		later := fixtureTime.Add(2 * time.Minute)
 		require.NoError(t, os.Chtimes(rolloutA, later, later))
 		require.NoError(t, os.Chtimes(rolloutB, later, later))
 
