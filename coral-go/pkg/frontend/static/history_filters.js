@@ -4,9 +4,9 @@ import { loadHistorySessionsPaged } from './api.js';
 import { filterState, serializeToUrl, countActiveFilters, hasActiveFilters, resetFilters } from './search_filters.js';
 import { loadAllTags } from './tags.js';
 import { escapeHtml } from './utils.js';
-import { lazyFns, loadChatSearch } from './lazy_panels.js';
+import { loadChatSearch } from './lazy_panels.js';
 
-const { searchChats } = lazyFns(loadChatSearch, ['searchChats']);
+let filterGeneration = 0;
 
 export function loadHistoryPage(page) {
     setHistoryPage(page);
@@ -15,7 +15,18 @@ export function loadHistoryPage(page) {
 
 export function loadHistoryFiltered() {
     serializeToUrl(getHistoryPage());
-    const loaded = filterState.q ? searchChats(filterState.q, getHistoryPage()) : loadHistorySessionsPaged(getHistoryPage(), 50);
+    const generation = ++filterGeneration;
+    const query = filterState.q, page = getHistoryPage();
+    let loaded;
+    if (query) {
+        loaded = loadChatSearch().then(m => {
+            // Clear or a newer filter change can win while the module loads.
+            if (generation === filterGeneration) return m.searchChats(query, page);
+        }, () => undefined);
+    } else {
+        loadChatSearch.module?.searchChats('');
+        loaded = loadHistorySessionsPaged(page, 50);
+    }
     updateFilterBadge();
     return loaded;
 }

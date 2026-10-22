@@ -82,10 +82,10 @@ export async function searchChats(query, page = 1) {
     const list = document.getElementById('history-sessions-list');
     if (!container || !list) return;
     const q = String(query || '').trim();
-    if (!q) { container.hidden = true; list.hidden = false; return; }
+    const generation = ++requestGeneration;
+    if (!q) { container.hidden = true; container.replaceChildren(); list.hidden = false; return; }
     container.hidden = false; list.hidden = true;
     container.replaceChildren(Object.assign(document.createElement('div'), { className: 'loading-indicator', textContent: 'Searching chats…' }));
-    const generation = ++requestGeneration;
     try {
         const params = new URLSearchParams({ q, page: String(page), page_size: '20', type: filterState.chatType || 'all' });
         const response = await fetch(`/api/sessions/history/search?${params}`);
