@@ -62,6 +62,7 @@ jobs:
           bash tests/release/release_cadence_test.sh    # the cadence table (#5559); a stand-in gh, no network
           bash tests/release/release_notes_edits_test.sh   # lines removed from a published body on purpose; no network
           python3 tests/release/windows_build_census_test.py   # windows-tests' package build is release.yml's Windows build: same tags and programs (#5886)
+          python3 tests/release/trimpath_census_test.py   # every release and installer go build has -trimpath: no builder path in a shipped trace (#6052)
           bash tests/release/signature_required_check_test.sh   # the N4 check: a required Windows signature never meets an unsigned build
           bash tests/release/ldflags_build_test.sh      # every build script's -X flags take effect: version and PostHog key land in the binary (#5539)
           bash tests/release/resolve_release.sh "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
@@ -119,7 +120,7 @@ jobs:
           mkdir -p ../dist/linux
           for cmd in $COMMANDS; do
             [ -d "./cmd/$cmd" ] || continue
-            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build \
+            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build -trimpath \
               -tags "$BUILD_TAGS" \
               -ldflags "$LDFLAGS" \
               -o "../dist/linux/$cmd" \
@@ -224,7 +225,7 @@ jobs:
           $env:CGO_ENABLED = "0"
           foreach ($cmd in ($env:COMMANDS -split ' ')) {
             if (Test-Path "./cmd/$cmd") {
-              go build -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
+              go build -trimpath -tags $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
             }
           }
 
@@ -232,8 +233,8 @@ jobs:
           $env:CGO_ENABLED = "1"
           $env:CC = "gcc"
           $webviewTags = "webview,$buildTags"
-          go build -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
-          go build -tags $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
+          go build -trimpath -tags $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
+          go build -trimpath -tags $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
 
       # dist\windows\bin\licenses goes into the portable ZIP (bin\*) and the MSI (Coral\licenses, tools/coral.wxs).
@@ -435,10 +436,10 @@ jobs:
           LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
           mkdir -p ../dist/macos-arm64
           for cmd in $COMMANDS; do
-            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
           for cmd in $GUI_COMMANDS; do
-            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 go build -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
+            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 go build -trimpath -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
       # Restored from main's cache when its inputs are unchanged, else built; checked either way (#4126).
       - uses: ./.github/actions/bundled-tmux
@@ -498,10 +499,10 @@ jobs:
           LDFLAGS="-s -w -X github.com/subgentic/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/subgentic/coral/internal/config.Version=${VERSION}"
           mkdir -p ../dist/macos-amd64
           for cmd in $COMMANDS; do
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
           for cmd in $GUI_COMMANDS; do
-            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 go build -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
+            MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 go build -trimpath -tags "webview,$BUILD_TAGS" -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
       # Restored from main's cache when its inputs are unchanged, else built; checked either way (#4126).
       - uses: ./.github/actions/bundled-tmux
