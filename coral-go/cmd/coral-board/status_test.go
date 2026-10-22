@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/subgentic/coral/internal/clierr"
 )
 
 func TestBoardStatusCurrentAndExplicitBoard(t *testing.T) {
@@ -47,4 +49,30 @@ func TestBoardStatusErrors(t *testing.T) {
 	serverURL = server.URL
 	require.ErrorContains(t, runBoardStatus([]string{"--board", "routing"}, &out), "HTTP 503")
 	require.Empty(t, out.String())
+}
+
+// #285: a board the server says is not there (exists:false) is not found (exit 6), with nothing on stdout; a board that exists,
+// and a server from before the field, print the status as before.
+func TestBoardStatusOfAnAbsentBoard(t *testing.T) {
+	isolateBoardEnv(t)
+	reply := `{"board":"nope","exists":false,"agents":[],"health_report":["No queue health issues detected."]}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(reply))
+	}))
+	defer server.Close()
+	serverURL = server.URL
+	var out bytes.Buffer
+	clierr.Note(clierr.Other)
+	defer clierr.Note(clierr.Other)
+	require.ErrorContains(t, runBoardStatus([]string{"--board", "nope"}, &out), "Board not found: nope")
+	require.Empty(t, out.String())
+	require.Equal(t, clierr.ExitNotFound, clierr.Noted().Code())
+
+	for _, r := range []string{`{"board":"yes","exists":true,"agents":[]}`, `{"board":"old","agents":[]}`} {
+		reply = r
+		out.Reset()
+		require.NoError(t, runBoardStatus([]string{"--board", "x"}, &out), r)
+		require.True(t, json.Valid(out.Bytes()))
+	}
 }

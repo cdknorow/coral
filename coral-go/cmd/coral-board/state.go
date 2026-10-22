@@ -162,7 +162,9 @@ func resolveViaPID() *pidResolution {
 	pidResolutionDone = true
 
 	pids := getAncestorPIDs()
-	fmt.Fprintf(os.Stderr, "[coral-board] PID resolution: ancestors=%v serverURL=%s\n", pids, redactedServerURL())
+	if os.Getenv("CORAL_BOARD_DEBUG") == "1" { // a diagnosis line, not output: only when asked (#285)
+		fmt.Fprintf(os.Stderr, "[coral-board] PID resolution: ancestors=%v serverURL=%s\n", pids, redactedServerURL())
+	}
 	if len(pids) == 0 {
 		return nil
 	}

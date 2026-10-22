@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+
+	"github.com/subgentic/coral/internal/clierr"
 )
 
 // runBoardStatus returns the same JSON used by the availability dashboard.
@@ -41,6 +43,15 @@ func runBoardStatus(args []string, out io.Writer) error {
 	}
 	if status != http.StatusOK {
 		return fmt.Errorf("board status failed (HTTP %d): %s", status, data)
+	}
+	// A board with no subscriber, message or open task is not there (#285): not found (6), not an empty board's "No queue health
+	// issues". A server from before the "exists" field says nothing, and its answer is printed as it was.
+	var probe struct {
+		Exists *bool `json:"exists"`
+	}
+	if json.Unmarshal(data, &probe) == nil && probe.Exists != nil && !*probe.Exists {
+		clierr.Note(clierr.NotFound)
+		return fmt.Errorf("Board not found: %s (coral-board projects lists the boards)", *project)
 	}
 	var pretty bytes.Buffer
 	if err := json.Indent(&pretty, data, "", "  "); err != nil {

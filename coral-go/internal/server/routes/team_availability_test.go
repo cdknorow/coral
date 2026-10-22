@@ -385,3 +385,27 @@ func TestTeamAvailabilityAwaitingReviewNeedsATaskUnderReview(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "awaiting-review", state(), "its task is under review")
 }
+
+// #285: the status says whether the board is there (a subscriber, a message or an open task), so coral-board status can say
+// "Board not found" for a name with nothing on it instead of an empty board's "No queue health issues".
+func TestTeamAvailabilitySaysWhetherTheBoardExists(t *testing.T) {
+	_, h, _, _ := setupSessionsTestServer(t)
+	ctx := context.Background()
+	_, err := h.bs.Subscribe(ctx, "with-member", "QA", "QA", "claude-qa", nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.PostMessage(ctx, "with-message", "someone", "hello", nil)
+	require.NoError(t, err)
+	r := chi.NewRouter()
+	r.Get("/api/board/{project}/status", h.TeamAvailability)
+	for board, want := range map[string]bool{"with-member": true, "with-message": true, "nothing-here": false} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", "/api/board/"+board+"/status", nil))
+		require.Equal(t, 200, w.Code, w.Body.String())
+		var got struct {
+			Exists *bool `json:"exists"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		require.NotNil(t, got.Exists, board)
+		require.Equal(t, want, *got.Exists, board)
+	}
+}

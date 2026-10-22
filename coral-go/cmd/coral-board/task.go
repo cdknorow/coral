@@ -79,6 +79,8 @@ Subcommands:
 		noteSeenRound(st.Project, task)
 		pretty, _ := json.MarshalIndent(task, "", "  ")
 		fmt.Println(string(pretty))
+	case "show":
+		cmdTaskShow(st, taskArgs)
 	case "submit-review", "release-review":
 		cmdTaskReview(st, taskArgs, sub)
 	case "review", "approve", "reject":
@@ -114,6 +116,8 @@ Subcommands:
   claim [id]                       Claim a specific task or the next available one
   current                          Show your current in-progress task
   detail <id> [--json]             Read task instructions, inputs and results (always JSON; --json is accepted)
+  show <id> [--json]               A task for a person: title, status, assignee, body, outcome, result message and its
+                                   artifacts' coral:// links (--json: those fields as one JSON object)
   submit-review <id> --reason "review pending" [--revision N] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
                                    Hands the task to the team's orchestrator (frees your slot); with no orchestrator, completes it
   review <id> --to "Security Reviewer,QA Engineer"  The orchestrator delegates a task in review: one review task each

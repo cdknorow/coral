@@ -43,7 +43,7 @@ func checkKnownFlags(args []string) error {
 		switch sub {
 		case "list", "current":
 			spec = jsonOnly
-		case "detail":
+		case "detail", "show":
 			spec = clihelp.FlagSpec{Bools: []string{"--json"}, Positional: 1}
 		default:
 			return nil
