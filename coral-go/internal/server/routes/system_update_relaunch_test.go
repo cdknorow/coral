@@ -257,9 +257,18 @@ func TestOwnerChecksFailClosed(t *testing.T) {
 		code, st := e.status(hdr)
 		require.Equal(t, 200, code, name)
 		rl := st["relaunch"].(map[string]any)
-		assert.Equal(t, false, rl["available"], name)
-		assert.Equal(t, "owner_only", rl["reason"], name)
-		assert.NotContains(t, rl, "ack", name)
+		if hdr[tunnel.ViaHeader] == "" {
+			// no tunnel stamp at all: a request that did not come through the Hub is the person at this computer, whatever Hub headers it carries; its token is the local one and the
+			// Hub's route (just refused above) does not take it
+			assert.Equal(t, true, rl["available"], name)
+			code, out := e.post(ack(rl["ack"].(string)), hdr)
+			assert.Equal(t, 403, code, name+": a local token is no key to the Hub's route")
+			assert.Equal(t, "owner_only", out["code"], name)
+		} else {
+			assert.Equal(t, false, rl["available"], name)
+			assert.Equal(t, "owner_only", rl["reason"], name)
+			assert.NotContains(t, rl, "ack", name)
+		}
 		assert.Zero(t, e.up.applyCount(), name)
 	}
 	// Two copies of the marker, or of the user, are not one.
@@ -567,12 +576,11 @@ func TestLastResultIsShownOnlyInTheFixedVocabulary(t *testing.T) {
 	}
 }
 
-func TestALocalCallerSeesTheStatusButNoTokenAndCannotRelaunchHere(t *testing.T) {
+// A local caller (no tunnel stamp) is not the Hub's owner: the Hub's own route refuses it. Its relaunch is the local route's (relaunch_local_test.go), with a token of its own.
+func TestALocalCallerCannotUseTheHubsRelaunchRoute(t *testing.T) {
 	e := newRelaunchEnv(t)
-	code, st := e.status(nil)
-	require.Equal(t, 200, code)
-	assert.NotContains(t, st["relaunch"], "ack")
 	code, out := e.post(`{"ack":"x"}`, nil)
 	assert.Equal(t, 403, code)
 	assert.Equal(t, "owner_only", out["code"])
+	assert.Empty(t, e.up.applies)
 }

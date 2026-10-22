@@ -436,6 +436,7 @@ func (s *Server) registerCloud(r *chi.Mux) {
 	r.Get("/api/system/update", upd.Status)
 	r.Post("/api/system/update/relaunch", upd.Relaunch)
 	r.Post("/api/system/update/install", s.cloudHandler.InstallUpdate) // #166: the local "Install update" (Windows), never through Coral Hub
+	r.Post("/api/system/update/relaunch-local", upd.RelaunchLocal)     // #5280 step 3: the person at this computer; local only, 404 until the feature is on
 	r.Post("/api/system/update/check", upd.CheckNow)                   // #5280 step 3 B: local only, 404 until the feature is on
 	r.Put("/api/system/update/settings", upd.SetAuto)                  // check automatically
 	s.goBackground(upd.RunBackgroundChecks)                            // returns at once while the feature is off

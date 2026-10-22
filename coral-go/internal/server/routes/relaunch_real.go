@@ -407,6 +407,7 @@ func (u *realUpdater) giveUp(st relaunchState, reason string) {
 		return // another relaunch has been started since
 	}
 	cur.StartedAt = time.Time{}
+	cur.HubRelaunched = "" // nothing was installed: the version may be tried again (after the spacing, which LastHubRelaunch keeps)
 	cur.Failed = &relaunchFailure{At: u.clock(), Reason: reason}
 	_ = u.saveState(cur)
 	u.cachedOK = false
