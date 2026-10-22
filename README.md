@@ -144,32 +144,51 @@ This proves the file came from Coral's release workflow. It is not Windows code 
 
 Each Linux tarball also has its own bundle (`coral-linux-<amd64|arm64>.tar.gz.sigstore.json`, and the same for the versioned name), verified the same way. The bundles are in Sigstore's current bundle format: cosign 2.x reads them only with `--new-bundle-format` (without it, it fails with "bundle does not contain cert for verification"); cosign 3 reads them either way. Either check failing means the file is not an official build: don't run it.
 
+### Install and start
+
+First install and sign in to at least one agent CLI: [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://github.com/openai/codex), [Antigravity (`agy`)](https://antigravity.google), or [Pi](https://pi.dev). Coral runs these tools; it does not install or authenticate them.
+
+- **macOS:** Open the DMG, drag `Coral.app` to Applications, then open Coral. The app includes tmux. For terminal commands, run `/Applications/Coral.app/Contents/MacOS/install-cli.sh` and add `~/.local/bin` to your `PATH`.
+- **Windows:** Run the MSI, then open **Coral** from the Start menu. For the portable ZIP, extract it, open PowerShell in that folder, and run `.\coral.exe --no-browser`.
+- **Linux:** Download the archive for your architecture, then extract and start it (ARM64: replace `amd64` with `arm64`):
+
+  ```bash
+  mkdir -p "$HOME/.local/share/coral"
+  tar -xzf coral-linux-amd64.tar.gz -C "$HOME/.local/share/coral"
+  export PATH="$HOME/.local/share/coral:$PATH"
+  coral --backend pty --no-browser
+  ```
+
+  Add that `PATH` line to your shell's startup file for later terminals. To use the default tmux backend instead, install tmux and omit `--backend pty`.
+
+On first launch, review the Terms of Service and accept them if you agree. For a terminal launch, keep the terminal open while Coral runs. Open the local address printed at startup. If the browser shows **Create a password**, enter and confirm a password, then choose **Create password and open Coral**. The app can open a signed-in browser directly; you can also run `coral open` from a terminal on the server.
+
+In the dashboard, choose **Launch agent**, enter an existing project folder on the computer running Coral (or use **Browse**), and choose **Launch**. To choose an agent CLI, open **More options > Agent** first. In the agent's **Terminal**, answer any folder-trust or sign-in prompt, then send a task from **Chat** with Enter. Use **Launch team** on Home to start several agents together.
+
+See [Getting started](https://subgentic.github.io/coral/getting-started/) for the full installation and first-agent walkthrough.
+
 ### Build from source
 
+Install Git, Make, Go 1.26.10 or later, and a C compiler (on macOS, Xcode Command Line Tools), then:
+
 ```bash
-cd coral-go
+git clone https://github.com/subgentic/coral.git
+cd coral/coral-go
 make build
+./bin/coral --backend pty --no-browser
 ```
 
-### Run
-
-```bash
-./coral
-```
-
-Open **http://localhost:8420** in your browser. Click **+New** to launch your first agent or create a team.
-
-> **Requirements:** The macOS app build includes [tmux](https://github.com/tmux/tmux); older downloads, Linux, and standalone/source builds may need it installed separately. Agent CLIs must still be installed and authenticated. Coral works with Claude Code, Codex, Gemini CLI (Antigravity), and Pi.dev; each can be pointed at a custom binary with a `cli_path_<type>` setting.
+The build puts the tools in `bin/`. For the commands below, add that directory to your `PATH` or use `./bin/coral` in place of `coral`.
 
 ### Run it on a remote machine
 
-Coral doesn't have to run where you sit. Start it on a dev box, a home server, or a cloud VM and the agents run there, in tmux, until you stop them:
+Coral doesn't have to run where you sit. Start it on a dev box, a home server, or a cloud VM and the agents run there in their own terminal sessions until you stop them:
 
 ```bash
-./coral --remote --host 0.0.0.0 --port 8420
+coral --remote --host 0.0.0.0 --port 8420
 ```
 
-Then open `http://<that-machine>:8420` from any browser. Requests from anywhere other than localhost need the API key Coral generated on first run; the **Mobile QR** button in the dashboard shows it, along with a QR code that encodes the URL and key together. Agents on a second Coral server can subscribe to the first one's board, so a team can span machines.
+Then open `http://<that-machine>:8420` from any browser. Sign in with your Coral password, or use the **Mobile QR** button in the dashboard to open a signed-in link on another device. See [Remote access](https://subgentic.github.io/coral/remote-access/) for setup. Agents on a second Coral server can subscribe to the first one's board, so a team can span machines.
 
 ### Use it from your phone
 
