@@ -429,6 +429,12 @@
         gap: 6px;
         align-items: flex-end;
     }
+    /* Pending image chips are their own row above the box (#6137): beside it they left the box a one-character strip. The box and the send buttons stay on one row under them. */
+    .command-pane-body { flex-wrap: wrap; }
+    .command-pane-body > .image-attachments { flex: 0 0 100%; min-width: 0; box-sizing: border-box; }
+    .command-pane-body > .command-editor { min-width: 0; }
+    .command-pane-body .image-attachment-remove { min-width: var(--control-touch-height, 44px); min-height: var(--control-touch-height, 44px); }
+    .command-pane-body .image-attachment img { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); } /* the thumbnail is as tall as its remove button */
 
     .command-pane textarea {
         min-height: 2.25rem !important;   /* 36px; rem, so the box grows with the text size (#4086) */
