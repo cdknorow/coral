@@ -67,10 +67,9 @@ const BASE = require('./test_base').BASE;
 
         console.log('2. On a phone: a short Save footer, and nothing under it');
         await open(390, 844, true);
-        const foot = await ev(`(() => { const f = document.querySelector('.team-settings-actions'); const r = f.getBoundingClientRect(); const sp = f.querySelector('span'); return { h: Math.round(r.height), caption: getComputedStyle(sp).whiteSpace, title: sp.title.length > 20, wrap: r.width }; })()`);
-        assert.ok(foot.h <= 64, 'the footer is short: ' + JSON.stringify(foot)); assert.equal(foot.caption, 'normal', 'the caption wraps, it is not cut');
-        const cap = await ev(`(() => { const sp = document.querySelector('.team-settings-actions > span'); return { text: sp.innerText.trim(), cut: sp.scrollWidth > sp.clientWidth + 1 || getComputedStyle(sp).textOverflow === 'ellipsis' }; })()`);
-        assert.deepEqual(cap, { text: 'Save preset instructions separately.', cut: false }, 'on a phone the caption is one whole sentence, not cut with an ellipsis'); assert.ok(foot.title, 'the whole caption stays in its title');
+        const foot = await ev(`(() => { const f = document.querySelector('.team-settings-actions'); const r = f.getBoundingClientRect(); return { h: Math.round(r.height), wrap: r.width }; })()`);
+        assert.ok(foot.h <= 64, 'the footer is short: ' + JSON.stringify(foot)); 
+        assert.equal(await ev(`[...document.querySelector('.working-mode-form > .team-settings-actions').children].filter(c => c.tagName === 'SPAN').length`), 0, 'no caption beside the Save button: it says what it saves (#5998)');
         const wide = await ev(`(() => { const f = document.querySelector('.working-mode-form'); const over = [...f.querySelectorAll('*')].filter(e => e.getClientRects().length && e.getBoundingClientRect().right > f.getBoundingClientRect().right + 1).slice(0, 4).map(e => e.tagName + '.' + (e.className || e.name || '')); return { sw: f.scrollWidth, cw: f.clientWidth, over }; })()`);
         assert.ok(wide.sw <= wide.cw + 1, 'the form does not scroll sideways on a phone: ' + JSON.stringify(wide));
         // the end of the Workflow tab, and the Edit presets editor: the last control scrolled to is above the footer, not under it

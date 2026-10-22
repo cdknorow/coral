@@ -1742,7 +1742,6 @@
 /* On a phone the footer is one row (Save and a one-line caption, the whole caption in its title): three lines of caption under a full-width button covered a sixth of the screen; and what scrolls into view or takes the focus stops above it (UI audit #5589, finding 13). */
 @media(max-width: 600px) {
     .team-settings-actions { align-items: center; flex-direction: row; flex-wrap: wrap; } /* two buttons (the health tab) wrap at large text */
-    .team-settings-actions .ts-caption-more { display: none; } /* on a phone the caption is the one sentence that is not obvious, whole */
     .team-settings-actions span { flex: 1 1 8rem; min-width: 0; } /* the one sentence may take a second line: never cut with an ellipsis */
     .working-mode-form { scroll-padding-bottom: 4.5rem; }
 }
@@ -2228,3 +2227,7 @@
 .availability-help > summary::-webkit-details-marker { display: none; }
 .availability-help > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .availability-help > .availability-note { margin: 0; }
+.workflow-mode-line { display: flex; align-items: flex-end; gap: 6px; }
+.workflow-mode-line > label { flex: 1 1 auto; min-width: 0; }
+.workflow-mode-line > .settings-info-btn { margin-bottom: 6px; }
+@media (pointer: coarse) { .workflow-mode-line > .settings-info-btn { width: var(--control-touch-height, 44px); height: var(--control-touch-height, 44px); border-radius: var(--radius-md); margin-bottom: 0; } }

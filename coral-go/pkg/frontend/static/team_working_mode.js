@@ -104,17 +104,16 @@ function _teamSettingsShell(workspaceMode) {
       </nav>
       <form class="working-mode-form">
       <section class="team-settings-panel active" id="team-settings-workflow" role="tabpanel" aria-labelledby="team-settings-tab-workflow" data-settings-panel="workflow" tabindex="0">
-      <fieldset class="team-settings-section">
-        <legend>Team working mode</legend>
-        <label>Working mode<select name="mode" aria-describedby="working-mode-desc"><option value="none">None</option><option value="shared_checkout">Shared checkout</option><option value="worktrees">Worktrees</option></select></label>
+      <fieldset class="team-settings-section" aria-label="Team working mode">
+        <div class="workflow-mode-line"><label>Working mode<select name="mode" aria-describedby="working-mode-desc"><option value="none">None</option><option value="shared_checkout">Shared checkout</option><option value="worktrees">Worktrees</option></select></label>${infoButton('wm-info', 'working modes')}</div>
+        <p class="settings-info-text" id="wm-info" hidden>Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
         <p class="working-mode-hint working-mode-desc" id="working-mode-desc"></p>
         ${switchRow({ label: 'Include dependent-queue guidance', name: 'dependency_guidance', labelClass: 'check-hit' })}
         <label>Additional instructions<textarea name="custom_instructions" rows="4" placeholder="Team-specific conventions"></textarea></label>
-        <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
       </fieldset>
       <details class="disclosure team-settings-section workflow-presets-section preset-editor">
         <summary>Edit presets</summary>
-        <p class="working-mode-hint">Choose the instructions captured on tasks when they are first claimed. Preset edits are local to this team.</p>
+        <p class="working-mode-hint">A preset saves with Save preset, not Save settings.</p>
         <label>Preset<select name="preset"></select></label>
         <div class="workflow-preset-actions"><button type="button" class="btn preset-new">New preset</button><button type="button" class="btn preset-reset" hidden>Reset built-in</button></div>
         <label class="preset-name-field">Preset name<input name="preset_name" maxlength="80" autocomplete="off"></label>
@@ -129,7 +128,7 @@ function _teamSettingsShell(workspaceMode) {
         <div class="prompt-inspection-content" aria-live="polite">Loading prompt inspection…</div>
       </fieldset>
       </section>
-      <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button><span title="Saves the working mode and additional guidance. Save preset instructions separately."><span class="ts-caption-more">Saves the working mode and additional guidance. </span>Save preset instructions separately.</span></div>
+      <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button></div>
       </form>
       ${'<section class="team-settings-panel" id="team-settings-messaging" role="tabpanel" aria-labelledby="team-settings-tab-messaging" data-settings-panel="messaging" tabindex="0" hidden><p class="working-mode-hint ct-loading" role="status">Loading…</p></section>'}`;
     return dialog;
@@ -155,6 +154,7 @@ function _mountTeamSettings(dialog, team, workspaceMode) {
         dialog.showModal();
     }
 
+    bindInfo(dialog.querySelector('#team-settings-workflow fieldset')); // the (i) after Working mode, in the dialog and in the sidebar's tab alike (its own group: the other tabs bind their own, a second binding on the whole dialog would toggle twice)
     dialog.addEventListener('click', event => {
         const docLink = event.target.closest('.working-mode-docs-link');
         if (docLink) {
@@ -305,16 +305,13 @@ export async function showTeamWorkingMode(team, options = {}) {
         presetSave.hidden = hubLocked;
         presetReset.hidden = !preset.builtin || !preset.overridden || isCloud();
         presetSave.textContent = preset.builtin ? 'Save built-in override' : 'Save preset';
-        presetState.textContent = preset.builtin
-            ? (preset.overridden ? 'This built-in preset has a team-local override.' : 'This is the shipped built-in preset.')
-            : 'This is a team-local custom preset.';
-        if (hubLocked) presetState.textContent += ' Through Coral Hub a preset can be added but not changed: edit it in Coral on that computer.';
+        presetState.textContent = hubLocked ? 'Through Coral Hub a preset can be added but not changed: edit it in Coral on that computer.' : ''; // the buttons say the rest (Save built-in override, Reset built-in)
     }
     // One line under the Working mode list: what the chosen mode means, from the preset (the server's description; a team's own preset has none, and the line is empty).
     function syncModeDescription() {
         const preset = presets.find(p => p.id === form.elements.mode.value);
         const line = dialog.querySelector('#working-mode-desc');
-        line.textContent = (preset && preset.description) || '';
+        line.textContent = (preset && preset.id === 'none') ? 'No extra guidance.' : ((preset && preset.description) || '');
         line.hidden = !line.textContent;
     }
     form.elements.mode.addEventListener('change', syncModeDescription);

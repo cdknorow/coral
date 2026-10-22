@@ -659,6 +659,7 @@
 1	team_working_mode.js	cards
 1	team_working_mode.js	head
 1	team_working_mode.js	infoBox(infoId, explanation)
+1	team_working_mode.js	infoButton('wm-info', 'working modes')
 1	team_working_mode.js	infoButton(infoId, `${label} prompts`)
 2	team_working_mode.js	label
 1	team_working_mode.js	options

@@ -37,7 +37,7 @@ const BASE = require('./test_base').BASE;
         assert.ok(sub < 300);
         await ev(`import((window.__coralStatic || '/static/') + 'team_working_mode.js').then(m => m.showTeamWorkingMode(${JSON.stringify(TEAM)}, { workspace: false })); true`);
         await waitFor(`!!document.querySelector('form.working-mode-form') && document.querySelector('form.working-mode-form').dataset.initialState !== undefined`, 'the Team settings', 15000);
-        const wf = await ev(`(() => { const sections = [...document.querySelectorAll('#team-settings-workflow .team-settings-section')].map(s => s.tagName.toLowerCase() + ':' + (s.querySelector('legend, summary')?.textContent.trim())); const ed = document.querySelector('.preset-editor'); const vis = e => e.checkVisibility({ checkVisibilityCSS: true });
+        const wf = await ev(`(() => { const sections = [...document.querySelectorAll('#team-settings-workflow .team-settings-section')].map(s => s.tagName.toLowerCase() + ':' + (s.querySelector('legend, summary')?.textContent.trim() || s.getAttribute('aria-label'))); const ed = document.querySelector('.preset-editor'); const vis = e => e.checkVisibility({ checkVisibilityCSS: true });
             return { sections, open: ed.open, nameVisible: vis(document.querySelector('[name=preset_name]')), modeVisible: vis(document.querySelector('[name=mode]')) }; })()`);
         assert.deepEqual(wf.sections, ['fieldset:Team working mode', 'details:Edit presets'], JSON.stringify(wf));
         assert.equal(wf.open, false); assert.equal(wf.nameVisible, false, 'the preset editor is closed'); assert.equal(wf.modeVisible, true);
