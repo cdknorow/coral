@@ -50,32 +50,41 @@ func (m member) current() bool {
 	return err == nil && created == m.created
 }
 
-// treeMembers is every live process of the terminal whose shell is root and that carries tag: root and what descends from it, and what carries the tag wherever it now is. root counts only while
-// it is still the process the terminal started (its pid and start time were recorded then): once the shell is gone its pid can belong to an unrelated process, which must not seed the tree. Never
-// Coral's own process or group, and never PID 1.
-func treeMembers(root member, tag string) []member {
+// procSnap is the process table at one moment: who is whose child, and a handle on each process. One scan serves every terminal that is asked about.
+type procSnap struct {
+	parent map[int]int
+	byPID  map[int]*process.Process
+}
+
+func takeSnap() *procSnap {
 	procs, err := process.Processes()
 	if err != nil {
-		return nil
+		return &procSnap{}
 	}
-	self, selfGroup := os.Getpid(), syscall.Getpgrp()
-	parent := make(map[int]int, len(procs))
-	byPID := make(map[int]*process.Process, len(procs))
+	s := &procSnap{parent: make(map[int]int, len(procs)), byPID: make(map[int]*process.Process, len(procs))}
 	for _, p := range procs {
-		byPID[int(p.Pid)] = p
+		s.byPID[int(p.Pid)] = p
 		if pp, err := p.Ppid(); err == nil {
-			parent[int(p.Pid)] = int(pp)
+			s.parent[int(p.Pid)] = int(pp)
 		}
 	}
+	return s
+}
+
+// tree is every live process of the terminal whose shell is root and that carries tag: root and what descends from it, and what carries the tag wherever it now is. root counts only while it is
+// still the process the terminal started (its pid and start time were recorded then): once the shell is gone its pid can belong to an unrelated process, which must not seed the tree. Never Coral's
+// own process or group, and never PID 1.
+func (s *procSnap) tree(root member, tag string) []member {
+	self, selfGroup := os.Getpid(), syscall.Getpgrp()
 	members := map[int]bool{}
 	if root.pid > 1 && root.current() {
-		if _, ok := parent[root.pid]; ok {
+		if _, ok := s.parent[root.pid]; ok {
 			members[root.pid] = true
 		}
 	}
 	for grown := true; grown; {
 		grown = false
-		for pid, pp := range parent {
+		for pid, pp := range s.parent {
 			if !members[pid] && members[pp] {
 				members[pid] = true
 				grown = true
@@ -83,7 +92,7 @@ func treeMembers(root member, tag string) []member {
 		}
 	}
 	want := runTagEnv + "=" + tag
-	for pid, p := range byPID {
+	for pid, p := range s.byPID {
 		if members[pid] {
 			continue
 		}
@@ -101,7 +110,7 @@ func treeMembers(root member, tag string) []member {
 		if excluded(pid, self, selfGroup) {
 			continue
 		}
-		created, err := byPID[pid].CreateTime()
+		created, err := s.byPID[pid].CreateTime()
 		if err != nil {
 			continue
 		}
@@ -109,6 +118,9 @@ func treeMembers(root member, tag string) []member {
 	}
 	return out
 }
+
+// treeMembers is the tree of one terminal, from a fresh scan.
+func treeMembers(root member, tag string) []member { return takeSnap().tree(root, tag) }
 
 // excluded: a process that is never part of a terminal's tree, whatever carries its tag: PID 1, Coral itself, and anything in Coral's own process group.
 func excluded(pid, self, selfGroup int) bool {
