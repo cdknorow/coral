@@ -2,7 +2,7 @@
 import { markBlockedControls } from './hub_blocked_controls.js';
 import { openRowMenu } from './session_rows.js';
 import { browserLocal } from './safe_storage.js';
-import { ensureBuilt } from './lazy_dom.js';
+import { ensureBuilt, onBuilt } from './lazy_dom.js';
 
 // ── Sidebar kebab menu helpers ───────────────────────────────────────────
 // With restoreFocus (Escape) the focus goes back to the button of the menu that was open, when it was inside it (#4621).
@@ -79,3 +79,5 @@ export function closeTopBarSettings({ restoreFocus = false } = {}) {
     menu.style.display = 'none';
     if (restoreFocus && hadFocus) document.querySelector('[aria-controls="top-bar-settings-menu"]')?.focus({ preventScroll: true });
 }
+// Escape in the open Settings menu closes it and the focus goes back to its button (#6038): on the menu itself, so no listener is added to the document at startup.
+onBuilt('top-bar-settings-menu', menu => menu.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); closeTopBarSettings({ restoreFocus: true }); } }));

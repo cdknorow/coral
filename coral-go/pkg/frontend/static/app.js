@@ -601,13 +601,6 @@ document.addEventListener('click', (e) => {
     document.querySelector('[aria-controls="top-bar-settings-menu"]')?.focus({ preventScroll: true });
 }, true);
 
-// Escape in the open Settings menu closes it and the focus goes back to its button (#6038).
-document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    const menu = document.getElementById('top-bar-settings-menu');
-    if (menu && menu.style.display !== 'none' && menu.contains(document.activeElement)) { e.preventDefault(); closeTopBarSettings({ restoreFocus: true }); }
-});
-
 // Close kebab menus when clicking outside
 document.addEventListener('click', (e) => {
     if (!e.target.closest('.top-bar-settings-wrapper')) {
