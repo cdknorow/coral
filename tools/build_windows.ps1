@@ -127,6 +127,7 @@ if (Test-Path $LicenseSrc) {
 }
 
 wix build $WixSrc `
+    -arch x64 `
     -ext WixToolset.UI.wixext `
     -d "Version=$Version" `
     -d "BinDir=$BinDir" `

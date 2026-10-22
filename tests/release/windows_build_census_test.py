@@ -93,6 +93,14 @@ def check(wt, rel, resolve, commands, gui):
         i0, i1 = step.find('$env:CGO_ENABLED = "0"'), step.find('$env:CGO_ENABLED = "1"')
         if i0 >= 0 and i1 >= 0 and not i0 < i1:
             errs.append(f"{name} turns cgo on before it builds the command-line programs with it off")
+    # Every place the MSI is built says -arch x64: without it the package is a 32-bit one and installs into Program Files (x86) (#6004's W1).
+    for name, text in (("release.yml", rel), ("windows-tests.yml", wt)):
+        lines = [l for l in text.splitlines() if re.search(r"\bwix build\b", l) and "coral.wxs" in l]
+        if not lines:
+            errs.append(f"{name} has no 'wix build ... coral.wxs' line: the census cannot see the MSI build")
+        for l in lines:
+            if not re.search(r"-arch\s+x64\b", l):
+                errs.append(f"{name} builds the MSI without -arch x64: {l.strip()[:80]}")
     # every command is built by the loop in both (neither names one by hand)
     named = [c for c in commands if f"./cmd/{c}/" in wt_step and c not in gui]
     if named:
@@ -120,6 +128,8 @@ def main():
         ("windows-tests drops the webview tag", lambda w, r, g: (w.replace('-tags "webview,$buildTags"', "-tags $buildTags"), r, g)),
         ("windows-tests drops -H windowsgui from the tray", lambda w, r, g: (w.replace('-ldflags "-H windowsgui $ldflags" -o "..\\dist\\windows\\bin\\coral-tray.exe"', '-ldflags "$ldflags" -o "..\\dist\\windows\\bin\\coral-tray.exe"'), r, g)),
         ("release.yml drops the bundle check", lambda w, r, g: (w, r.replace("verify_standard_bundle.ps1", "x.ps1"), g)),
+        ("release.yml builds the MSI as a 32-bit package", lambda w, r, g: (w, r.replace("-arch x64 ", ""), g)),
+        ("windows-tests builds the MSI as a 32-bit package", lambda w, r, g: (w.replace("-arch x64 ", ""), r, g)),
         ("windows-tests names no commands.txt", lambda w, r, g: (w.replace("commands.txt", "other.txt"), r, g)),
     ]
     for name, mut in mutations:
