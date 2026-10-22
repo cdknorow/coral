@@ -37,7 +37,39 @@ STRICT=0
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/backend.sh"
-coral_test_backend_only tmux "its #3421 checks read the tmux server's global environment (show-environment -g)"
+# Both backends (#191): the token checks read each agent's own environment from the stand-in's dump, which works the
+# same on tmux and on the PTY backend (Windows). Only the two looks into tmux's global environment are tmux's own; on
+# the PTY backend there is no shared terminal server holding an environment, so they are skipped, saying so.
+NP() { coral_test_native_path "$1"; }   # a path as a Windows program sees it (unchanged elsewhere)
+EXE="$CORAL_TEST_EXE"
+# process_cmdlines: every process's command line, for the no-token-in-argv check (Git Bash's ps has no -o).
+process_cmdlines() {
+    if coral_test_is_windows; then
+        powershell -NoProfile -Command 'Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }' 2>/dev/null
+    else
+        ps -axo command
+    fi
+}
+# own_mock_pids: this run's stand-ins, by their exact program path, never a pattern.
+own_mock_pids() {
+    if coral_test_is_windows; then
+        local exe; exe="$(cygpath -w "$BIN/mock-agent$EXE")"
+        powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='mock-agent.exe'\" | Where-Object { \$_.ExecutablePath -eq '$exe' } | ForEach-Object { \$_.ProcessId }" 2>/dev/null | tr -d '\r'
+    else
+        ps -eo pid=,args= | awk -v b="$BIN/mock-agent" '$2 == b {print $1}'
+    fi
+}
+# Windows' Python ends its lines with CRLF: a session id read from it would keep the CR and name no dump file. Strip it,
+# keeping python's own exit status (some checks below are its sys.exit).
+if coral_test_is_windows; then
+    python3() { command python3 "$@" | tr -d '\r'; return "${PIPESTATUS[0]}"; }
+fi
+stop_pid() {
+    if coral_test_is_windows; then powershell -NoProfile -Command "Stop-Process -Id $1 -Force -ErrorAction SilentlyContinue" 2>/dev/null; else kill "$1" 2>/dev/null; fi
+}
+# env -i drops SystemRoot on Windows, and a Go program then can't open a socket: keep the variables Windows itself needs.
+WIN_ENV=()
+coral_test_is_windows && WIN_ENV=(SystemRoot="${SYSTEMROOT:-${SystemRoot:-C:\Windows}}" WINDIR="${WINDIR:-C:\Windows}")
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CORAL_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)/coral-go"
@@ -68,8 +100,8 @@ cleanup() {
     # Stand-ins still running (a timed-out run, #3827): only processes whose program is this run's
     # own mock-agent, by exact path and PID, never a pattern.
     local pid
-    for pid in $(ps -eo pid=,args= | awk -v b="$BIN/mock-agent" '$2 == b {print $1}'); do
-        kill "$pid" 2>/dev/null || true
+    for pid in $(own_mock_pids); do
+        stop_pid "$pid" || true
     done
     if [[ $code -ne 0 || $FAIL -gt 0 || ${KEEP_TEST_DATA:-0} == 1 ]]; then
         log "Test data and server log kept: $TMP"
@@ -118,7 +150,7 @@ log "Building coral, coral-board and the stand-in agent..."
 # This build's coral-board and coral-hook-* next to coral: a dev or test server never uses the
 # installed app's (#3492), so without them its agents would send no status events.
 (cd "$CORAL_DIR" && go build -tags "dev fts5" -o "$BIN/" ./cmd/coral ./cmd/coral-board ./cmd/coral-agent ./cmd/coral-hook-agentic-state ./cmd/coral-hook-session-start ./cmd/coral-hook-message-check ./cmd/coral-hook-task-sync \
-    && go build -o "$BIN/mock-agent" ./cmd/mock-agent/)
+    && go build -o "$BIN/mock-agent$EXE" ./cmd/mock-agent/)
 
 log "Starting an isolated server on $PORT (data $DATA)..."
 # #3421: the server is started from a HOSTILE parent environment, like a test server started
@@ -128,22 +160,22 @@ HOSTILE_ENV=(CORAL_PORT=1 CORAL_HOST=10.255.255.1 CORAL_URL=http://10.255.255.1:
     CORAL_DATA_DIR=/nonexistent/parent-coral CORAL_SESSION_NAME=parent-session-3421 CORAL_SESSION_ID=parent-sid-3421
     CORAL_SUBSCRIBER_ID=ParentRole3421 CORAL_SESSION_TOKEN=leak-token-parent-3421)
 coral_test_sandbox   # #4354: stub claude/codex/gemini first on PATH; checked at the end
-env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$TMP/h" USERPROFILE="$TMP/h" PATH="$CORAL_TEST_STUB_BIN:$PATH" "${HOSTILE_ENV[@]}" \
+env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$(NP "$TMP/h")" USERPROFILE="$(NP "$TMP/h")" PATH="$CORAL_TEST_STUB_BIN:$PATH" "${HOSTILE_ENV[@]}" \
     CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 CORAL_TMUX_NO_FALLBACK=1 \
-    MOCK_AGENT_CORAL_BOARD="$BIN/coral-board" MOCK_AGENT_ENV_DUMP="$DUMP" MOCK_AGENT_BLIND_PREFIX=id-blind \
+    MOCK_AGENT_CORAL_BOARD="$BIN/coral-board" MOCK_AGENT_ENV_DUMP="$(NP "$DUMP")" MOCK_AGENT_BLIND_PREFIX=id-blind \
     CORAL_TEST_LOGIN_TOKEN_TTL=3s \
-    "$BIN/coral" --home "$DATA" --no-browser --cloud-url off --host 127.0.0.1 --port "$PORT" --backend "$CORAL_TEST_BACKEND" \
+    "$BIN/coral" --home "$(NP "$DATA")" --no-browser --cloud-url off --host 127.0.0.1 --port "$PORT" --backend "$CORAL_TEST_BACKEND" \
     $([[ $STRICT == 1 ]] && echo --strict-local-auth || echo --strict-local-auth=false) >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
 wait_until 30 "the server" curl -fsS -m 2 "$BASE/api/health" -o /dev/null || exit 1
-coral_open() { env -u DISPLAY "$BIN/coral" open --print --url "$BASE" --home "$DATA" | sed -n 's/^ *\(http[^ ]*login_token=[^ ]*\).*/\1/p' | head -1; }
+coral_open() { env -u DISPLAY "$BIN/coral" open --print --url "$BASE" --home "$(NP "$DATA")" | sed -n 's/^ *\(http[^ ]*login_token=[^ ]*\).*/\1/p' | head -1; }
 if [[ $STRICT == 1 ]]; then
     log "STRICT: signing the harness in with a 'coral open' link, then every call carries the cookie"
     signin=$(coral_open)
     [[ -n "$signin" ]] && curl -s -m 10 -c "$JAR" -o /dev/null "$signin"
     grep -q coral_session "$JAR" 2>/dev/null && COOKIE_ARGS="-b $JAR" || { fail "could not sign in with a coral open link"; exit 1; }
 fi
-api PUT /api/settings -d "{\"cli_path_claude\": \"$BIN/mock-agent\"}" >/dev/null
+api PUT /api/settings -d "{\"cli_path_claude\": \"$(NP "$BIN/mock-agent$EXE")\"}" >/dev/null
 
 # ── Dashboard sign-in links ───────────────────────────────────────────
 check_link() { # check_link <link> <label>
@@ -173,7 +205,7 @@ LOGIN_TOKENS="$STARTUP_TOKEN ${open_link##*=} ${late_link##*=}"
 # ── Scale: 3 teams x 4 agents ─────────────────────────────────────────
 STARTED=$SECONDS
 for t in 1 2 3; do
-    out=$(api POST /api/sessions/launch-team -d "{\"board_name\":\"id-team-$t\",\"working_dir\":\"$TMP/w\",\"agents\":[
+    out=$(api POST /api/sessions/launch-team -d "{\"board_name\":\"id-team-$t\",\"working_dir\":\"$(NP "$TMP/w")\",\"agents\":[
         {\"agent_type\":\"claude\",\"name\":\"Orchestrator\",\"prompt\":\"Lead.\"},
         {\"agent_type\":\"claude\",\"name\":\"Dev $t\",\"prompt\":\"Dev.\"},
         {\"agent_type\":\"claude\",\"name\":\"QA $t\",\"prompt\":\"QA.\"},
@@ -181,7 +213,7 @@ for t in 1 2 3; do
     echo "$out" | grep -q '"session' || fail "team $t launch: $out"
 done
 # A 4th, "blind" team: its stand-ins never read the token (like a real agent).
-out=$(api POST /api/sessions/launch-team -d "{\"board_name\":\"id-blind-1\",\"working_dir\":\"$TMP/w\",\"agents\":[
+out=$(api POST /api/sessions/launch-team -d "{\"board_name\":\"id-blind-1\",\"working_dir\":\"$(NP "$TMP/w")\",\"agents\":[
     {\"agent_type\":\"claude\",\"name\":\"Orchestrator\",\"prompt\":\"Lead.\"},{\"agent_type\":\"claude\",\"name\":\"Blind Dev\",\"prompt\":\"Dev.\"},
     {\"agent_type\":\"claude\",\"name\":\"Blind QA\",\"prompt\":\"QA.\"},{\"agent_type\":\"claude\",\"name\":\"Blind Ops\",\"prompt\":\"Ops.\"}]}")
 echo "$out" | grep -q '"session' || fail "blind team launch: $out"
@@ -218,10 +250,10 @@ htok=$(sed -n 's/^CORAL_SESSION_TOKEN=//p' "$DUMP/$hsid.env"); hsess=$(sed -n 's
 # The agent's own board state (written when it joined) names its board and role.
 hstate="$DATA/board_state_$hsess.json"
 wait_until 30 "the agent's board state ($hsess)" test -s "$hstate" || true
-hsub=$(python3 -c "import sys,json;d=json.load(open(sys.argv[1]));print(d.get('subscriber_id') or d.get('job_title',''))" "$hstate" 2>/dev/null || true)
+hsub=$(python3 -c "import sys,json;d=json.load(open(sys.argv[1]));print(d.get('subscriber_id') or d.get('job_title',''))" "$(NP "$hstate")" 2>/dev/null || true)
 [[ -n "$hsub" ]] || log "hook check: no subscriber in $hstate"
 before=$(rjson 'd["attributed_by_tool"].get("coral-hook-message-check",0)')
-hook_out=$(echo '{}' | env -u CORAL_URL CORAL_SESSION_TOKEN="$htok" CORAL_SESSION_NAME="$hsess" CORAL_SUBSCRIBER_ID="$hsub" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" "$BIN/coral-hook-message-check" 2>&1 || true)
+hook_out=$(echo '{}' | env -u CORAL_URL CORAL_SESSION_TOKEN="$htok" CORAL_SESSION_NAME="$hsess" CORAL_SUBSCRIBER_ID="$hsub" CORAL_DATA_DIR="$(NP "$DATA")" CORAL_URL="$BASE" "$BIN/coral-hook-message-check" 2>&1 || true)
 after=$(rjson 'd["attributed_by_tool"].get("coral-hook-message-check",0)')
 [[ $after -gt $before ]] || log "hook check: session=$hsess sub=$hsub output=$hook_out"
 [[ $after -gt $before ]] && pass "coral-hook-message-check sends the token from its environment and is attributed" || fail "hook not attributed ($before -> $after)"
@@ -291,18 +323,24 @@ collect
 envdumps=$(ls "$DUMP"/*.coralenv 2>/dev/null | wc -l | tr -d ' ')
 parent_leaks=$(cat "$DUMP"/*.coralenv 2>/dev/null | grep -cE 'parent-session-3421|parent-sid-3421|ParentRole3421|leak-token-parent-3421|/nonexistent/parent-coral|10\.255\.255\.1|^CORAL_PORT=1$' || true)
 wrong_port=$(cat "$DUMP"/*.coralenv 2>/dev/null | grep '^CORAL_PORT=' | grep -vc "^CORAL_PORT=$PORT$" || true)
-tmux_parent=$(tmux -S "$DATA/tmux.sock" show-environment -g 2>/dev/null | grep -cE 'parent-session-3421|ParentRole3421|leak-token-parent-3421|/nonexistent/parent-coral|10\.255\.255\.1' || true)
+tmux_parent=0
+if [[ $CORAL_TEST_BACKEND == tmux ]]; then
+    tmux_parent=$(tmux -S "$DATA/tmux.sock" show-environment -g 2>/dev/null | grep -cE 'parent-session-3421|ParentRole3421|leak-token-parent-3421|/nonexistent/parent-coral|10\.255\.255\.1' || true)
+else
+    log "PTY backend: no shared terminal server, so there is no global environment to check (tmux's show-environment -g)"
+fi
 if [[ $envdumps -ge 12 && $parent_leaks -eq 0 && $wrong_port -eq 0 && $tmux_parent -eq 0 ]]; then
-    pass "a server started from a hostile parent env gives its $envdumps agents only its own CORAL_* (port $PORT, its data dir, their own identity); the tmux server holds none of the parent's"
+    pass "a server started from a hostile parent env gives its $envdumps agents only its own CORAL_* (port $PORT, its data dir, their own identity)$([[ $CORAL_TEST_BACKEND == tmux ]] && echo "; the tmux server holds none of the parent's")"
 else
     fail "parent env reached agents: dumps=$envdumps leaks=$parent_leaks wrong_port=$wrong_port tmux=$tmux_parent"
 fi
 
 # ── Leaks: the token is nowhere it shouldn't be ───────────────────────
 leaks=0
-pslist=$(ps -axo command)
+pslist=$(process_cmdlines)
 boards=$(for t in 1 2 3; do api GET "/api/board/id-team-$t/messages/all"; done)
-globalenv=$(for s in "$DATA"/tmux.sock "$DATA"/*.sock; do [[ -S "$s" ]] && tmux -S "$s" show-environment -g 2>/dev/null; done || true)
+globalenv=""
+[[ $CORAL_TEST_BACKEND == tmux ]] && globalenv=$(for s in "$DATA"/tmux.sock "$DATA"/*.sock; do [[ -S "$s" ]] && tmux -S "$s" show-environment -g 2>/dev/null; done || true)
 while read -r tok; do
     [[ -z "$tok" ]] && continue
     grep -qF -- "$tok" <<<"$pslist" && { fail "token in a process's argv"; leaks=1; }
@@ -314,7 +352,7 @@ grep -q "CORAL_SESSION_TOKEN=" <<<"$globalenv" && { fail "CORAL_SESSION_TOKEN in
 for lt in $LOGIN_TOKENS; do
     grep -qF -- "$lt" "$DATA/coral.log" 2>/dev/null && { fail "a sign-in token in coral.log"; leaks=1; }
 done
-[[ $leaks -eq 0 ]] && pass "no token in argv, the server log, the data folder (terminal logs, databases), the board or tmux's global env ($(grep -c . "$ALL_TOKENS") tokens checked)"
+[[ $leaks -eq 0 ]] && pass "no token in argv, the server log, the data folder (terminal logs, databases), the board$([[ $CORAL_TEST_BACKEND == tmux ]] && echo " or tmux's global env") ($(grep -c . "$ALL_TOKENS") tokens checked)"
 
 # ── Impersonation is detected (phase 1: counted and logged, not refused) ──
 wait_sessions_ready || log "no live agent has its dump yet"
@@ -357,7 +395,7 @@ if [[ $STRICT == 1 ]]; then
     [[ $c == 401 ]] && grep -q session_token_required <<<"$b" && pass "STRICT: an agent-tool call with no token is refused (401 session_token_required)" || fail "STRICT: untokened call answered $c $b"
     # ...and the real coral-board from an agent-marked shell whose token was removed: refused, never Operator.
     st0=$(rjson 'd.get("refused",{}).get("session_token_required",0)')
-    out=$(env -i PATH="$PATH" HOME="$TMP/h" USERPROFILE="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" CORAL_SESSION_NAME="stripped-agent" CORAL_SUBSCRIBER_ID="Operator" "$BIN/coral-board" post "stripped token probe" 2>&1) && rc=0 || rc=$?
+    out=$(env -i "${WIN_ENV[@]}" PATH="$PATH" HOME="$(NP "$TMP/h")" USERPROFILE="$(NP "$TMP/h")" CORAL_DATA_DIR="$(NP "$DATA")" CORAL_URL="$BASE" CORAL_SESSION_NAME="stripped-agent" CORAL_SUBSCRIBER_ID="Operator" "$BIN/coral-board" post "stripped token probe" 2>&1) && rc=0 || rc=$?
     EXP_TOKEN=$((EXP_TOKEN + 1))
     st1=$(rjson 'd.get("refused",{}).get("session_token_required",0)')
     # The SERVER must have refused it (the counter moved), not merely coral-board failing for another reason.
@@ -368,9 +406,9 @@ if [[ $STRICT == 1 ]]; then
     fi
 
     # A human at a normal shell (no agent markers) signs with the CLI token and acts as the Operator.
-    out=$(env -i PATH="$PATH" HOME="$TMP/h" USERPROFILE="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" "$BIN/coral-board" join id-team-1 --as Operator 2>&1) && rc=0 || rc=$?
+    out=$(env -i "${WIN_ENV[@]}" PATH="$PATH" HOME="$(NP "$TMP/h")" USERPROFILE="$(NP "$TMP/h")" CORAL_DATA_DIR="$(NP "$DATA")" CORAL_URL="$BASE" "$BIN/coral-board" join id-team-1 --as Operator 2>&1) && rc=0 || rc=$?
     if [[ $rc -eq 0 ]]; then
-        out2=$(env -i PATH="$PATH" HOME="$TMP/h" USERPROFILE="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" "$BIN/coral-board" post "operator from a plain shell" 2>&1) && rc2=0 || rc2=$?
+        out2=$(env -i "${WIN_ENV[@]}" PATH="$PATH" HOME="$(NP "$TMP/h")" USERPROFILE="$(NP "$TMP/h")" CORAL_DATA_DIR="$(NP "$DATA")" CORAL_URL="$BASE" "$BIN/coral-board" post "operator from a plain shell" 2>&1) && rc2=0 || rc2=$?
         if [[ $rc2 -eq 0 ]] && api GET "/api/board/id-team-1/messages/all" | grep -q "operator from a plain shell"; then
             pass "STRICT: coral-board from a plain shell signs with the CLI token and posts as the Operator"
         else
