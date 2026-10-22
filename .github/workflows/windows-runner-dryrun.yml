@@ -15,7 +15,7 @@ on:
       version:
         description: "Released version to smoke test (no leading v), e.g. 1.4.69"
         required: true
-        default: "1.4.153"
+        default: "1.4.157"
   push:
     branches: ["ci/**"]
     paths:
@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 15
     env:
       # workflow_dispatch supplies the version; a push (no inputs) defaults to a release that ships every program tests/release/commands.txt lists (1.4.153 added coral-update; move this with each release that adds one).
-      VERSION: ${{ github.event.inputs.version || '1.4.153' }}
+      VERSION: ${{ github.event.inputs.version || '1.4.157' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
