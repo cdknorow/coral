@@ -87,13 +87,62 @@ async function authStatus() {
 }
 
 /** Ask a signed-in browser to set a password when none is set. "Not now" is final on this computer (the server's own
- *  `local` check says which), and asks again on each visit from another computer. */
+ *  `local` check says which), and asks again on each visit from another computer. The prompt never opens over another
+ *  dialog or takes the keyboard from the terminal (#294: it covered the New Agent dialog's error, and took the Esc a
+ *  terminal was sent): it waits until neither is so, then asks the server again and opens. It still opens on a fresh
+ *  install, as soon as the person is between tasks; the promise settles once it has opened or is not needed, so the
+ *  next question (Coral Hub sign-in) stays behind it. */
 export async function maybePromptSetPassword() {
     if (document.getElementById('set-password-modal')) return;
-    const st = await authStatus();
+    let st = await authStatus();
     if (!st || st.authenticated === false || st.password_set !== false) return;
     if (st.local === true && _notNowGet()) return;
+    if (!promptFree()) {
+        await untilPromptFree();
+        if (document.getElementById('set-password-modal')) return;
+        st = await authStatus(); // a password may have been set meanwhile (in Settings, or from another browser)
+        if (!st || st.authenticated === false || st.password_set !== false) return;
+        if (st.local === true && _notNowGet()) return;
+    }
     showSetPasswordModal({ local: st.local === true });
+}
+
+/** Nothing the prompt would interrupt: no other dialog on screen, and the keyboard is not in an agent's terminal. */
+function promptFree() {
+    const a = document.activeElement;
+    if (a && a.closest && a.closest('.xterm')) return false;
+    return ![...document.querySelectorAll('.modal, dialog[open], [role="dialog"][aria-modal="true"]')]
+        .some(m => m.id !== 'set-password-modal' && m.style.display !== 'none' && m.getClientRects().length > 0);
+}
+
+// How long the page must stay free before the prompt opens: one dialog closing as the next opens (Launch, then its error) is
+// not a gap to open into.
+const FREE_SETTLE_MS = 400;
+
+/** Resolves once promptFree has held for FREE_SETTLE_MS, looking again on each focus change, on any change to the page's
+ *  dialogs, and every second. */
+function untilPromptFree() {
+    return new Promise(resolve => {
+        let settle = null;
+        const look = () => {
+            if (!promptFree()) { clearTimeout(settle); settle = null; return; }
+            if (settle) return;
+            settle = setTimeout(() => {
+                settle = null;
+                if (!promptFree()) return;
+                observer.disconnect(); clearInterval(tick);
+                document.removeEventListener('focusin', look); document.removeEventListener('focusout', onFocusOut);
+                resolve();
+            }, FREE_SETTLE_MS);
+        };
+        const onFocusOut = () => setTimeout(look, 0); // activeElement is updated after focusout
+        const observer = new MutationObserver(look);
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'open', 'hidden'] });
+        const tick = setInterval(look, 1000);
+        document.addEventListener('focusin', look);
+        document.addEventListener('focusout', onFocusOut);
+        look();
+    });
 }
 
 export function showSetPasswordModal({ local = false } = {}) {
