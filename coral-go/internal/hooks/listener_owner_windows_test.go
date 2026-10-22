@@ -29,11 +29,11 @@ func TestMain(m *testing.M) {
 // resetListenerCheck clears the per-process cache and restores the real lookups (or the test's) for one test.
 func resetListenerCheck(t *testing.T, pids func(string, int) ([]uint32, error), owner func(uint32) (*windows.SID, string, error)) {
 	t.Helper()
-	prevPIDs, prevOwner, prevFolders := listenerPIDs, pidOwner, coralFolders
+	prevPIDs, prevOwner, prevFolders, prevSelf, prevFileOwner := listenerPIDs, pidOwner, coralFolders, selfSID, fileOwner
 	listenerPIDs, pidOwner = pids, owner
 	listenerVerified = sync.Map{}
 	t.Cleanup(func() {
-		listenerPIDs, pidOwner, coralFolders = prevPIDs, prevOwner, prevFolders
+		listenerPIDs, pidOwner, coralFolders, selfSID, fileOwner = prevPIDs, prevOwner, prevFolders, prevSelf, prevFileOwner // TestTheDataFolderOwnerIsAnAllowedListenerOwner stubs the last two
 		listenerVerified = sync.Map{}
 	})
 }

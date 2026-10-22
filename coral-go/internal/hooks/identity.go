@@ -115,8 +115,8 @@ func inSessionTokens(p string) bool {
 type PlainHTTPTokenError struct{ Host string }
 
 func (e *PlainHTTPTokenError) Error() string {
-	return "coral: not sending this agent's session token over plain http to " + e.Host + ", which is not this computer: " +
-		"the token would cross the network unencrypted. Use an https:// CORAL_URL, or a loopback address (127.0.0.1) for a Coral on this computer"
+	return "Refused: the agent's token was not sent over plain http to " + e.Host + ", which is not this computer, because it would cross " +
+		"the network unencrypted. Use an https:// CORAL_URL, or 127.0.0.1 for the Coral on this computer."
 }
 
 // TokenWithheld marks the error as Coral's own refusal to send the token (see ForeignListenerError.TokenWithheld).
