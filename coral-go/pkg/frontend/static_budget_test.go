@@ -17,7 +17,7 @@ const (
 	// staticBudget is the most the embedded static tree may hold. It is about 4.5 MB (4.1 MB plus the
 	// agent docs that `make` syncs into static/agent_docs); raise it deliberately, with the reason in
 	// the commit, when a real asset needs the room.
-	staticBudget = 6<<20 + 32<<10 // 6 MiB plus 32 KiB (#5280 step 3 B): the embedded docs only, a 2 KiB overage: the agent docs of the updater's two new routes took the last 2 KiB of the 6 MiB; the room is for what the updater still needs, not a new habit
+	staticBudget = 6<<20 + 128<<10 // 6 MiB + 128 KiB (#5987: the embedded tree passed 6 MiB with the hub's two Connect pictures and the small (i) module; the text cut removes more than it adds as it lands)
 	// fileBudget is the most one embedded file may hold (the CodeMirror bundle, the largest, is ~1 MB).
 	fileBudget = 1536 << 10
 )
