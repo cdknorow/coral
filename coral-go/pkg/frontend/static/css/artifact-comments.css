@@ -17,6 +17,10 @@
 .ac-panel .ac-showresolved:hover { color: var(--text-primary); background: var(--bg-tertiary); }
 .ac-sheet-close { display: none; }
 .ac-toggle { display: none; }
+/* The viewer's Comments (N) button is on at every width; its panel is a column only while it is open (a phone's sheet has its own rules below). */
+.artifact-viewer-header .ac-toggle:not([hidden]) { display: inline-flex; align-items: center; }
+@media (min-width: 768px) { .artifact-viewer-header .ac-toggle:not([hidden]) { min-height: 28px; } }
+@media (min-width: 768px) { .artifact-viewer-main > .ac-panel:not(.ac-sheet-open) { display: none; } }
 .ac-note { margin: 0; padding: 6px 10px; border-radius: var(--radius-md); background: var(--bg-tertiary); color: var(--text-secondary); font-size: var(--fs-sm, 0.8125rem); }
 .ac-list { display: flex; flex-direction: column; gap: var(--space-sm); list-style: none; margin: 0; padding: 0; }
 .ac-empty { margin: 0; color: var(--text-muted); font-size: var(--fs-sm, 0.8125rem); }

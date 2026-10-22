@@ -74,6 +74,8 @@ const LABELS = ['Feels like a slideshow', "Doesn't show the game", 'Tone/story i
         await ev(`(() => { let b = document.getElementById('a11y-opener'); if (!b) { b = document.createElement('button'); b.id = 'a11y-opener'; b.textContent = 'Open plan.md'; b.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:5'; document.body.appendChild(b); } b.focus(); return true; })()`);
         await ev(`(async () => { const v = await import(${S} + 'artifact_viewer.js'); v.openArtifactViewer(${JSON.stringify(HEX)}, { filename: 'plan.md' }); return true; })()`);
         await waitFor(`!!document.querySelector('#artifact-viewer .artifact-viewer-markdown') && document.querySelectorAll('#artifact-viewer .ac-card').length >= 3`, 'the document and its comments', 8000); await settle(500);
+        // The panel is closed until asked for (#5941): a desktop opens it with the header's Comments (N) button (a phone's sheet is opened where a check needs it).
+        await ev(`(() => { if (!matchMedia('(max-width: 767px)').matches && !document.querySelector('.ac-panel').classList.contains('ac-sheet-open')) document.querySelector('.ac-toggle').click(); return true; })()`);
     };
     const tabOrder = async (max = 40) => {
         const seen = [];
