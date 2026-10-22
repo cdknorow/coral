@@ -57,7 +57,7 @@ func run(raw []byte) {
 		if sessionID != "" {
 			payload["session_id"] = sessionID
 		}
-		_ = hooks.CoralPost(base, hooks.LivePath(agentName, "/tasks"), payload)
+		hooks.CoralAPI(base, "POST", hooks.LivePath(agentName, "/tasks"), payload) // (not CoralPost: this post is the agent's own task reaching Coral, and a busy server must not lose it)
 
 		// Cache task ID for later TaskUpdate lookups
 		taskID := parseTaskIDFromResponse(d)
