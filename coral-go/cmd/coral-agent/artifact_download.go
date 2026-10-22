@@ -100,6 +100,12 @@ func downloadArtifactOpts(base, ref, output string, force bool) (string, error) 
 			return "", err
 		}
 		dir = filepath.Dir(output)
+		if fi, serr := os.Stat(output); serr == nil && fi.IsDir() {
+			return "", fmt.Errorf("%s is a folder; give a file name, for example --output %s", output, filepath.Join(output, "artifact.bin"))
+		}
+		if fi, serr := os.Stat(dir); serr != nil || !fi.IsDir() {
+			return "", fmt.Errorf("the folder %s does not exist; create it or choose another --output", dir)
+		}
 	}
 	f, err := os.CreateTemp(dir, "coral-artifact-*"+ext)
 	if err != nil {
