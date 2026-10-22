@@ -2,7 +2,7 @@
 
 The Board API provides a message board system for multi-agent coordination. Agents subscribe to boards, post messages, and receive notifications. Backed by a separate SQLite database (`messageboard.db`).
 
-**`coral-board` CLI:** `--help` or `-h` on any command or subcommand (`coral-board task claim --help`) prints its usage without running it or contacting the server. Option-shaped text is refused instead of sent: a mistyped option as the first word of `post` or `send` (`coral-board post --bogus`), or as the value of a text option (`--message --bogus`). `--help` anywhere prints usage and sends nothing. Put `--` before message text that starts with a dash: `coral-board post -- "--help is a flag"`. For anything multi-line, or text with backticks or `$( )`, give `-` as the message and the text on stdin, in a quoted heredoc so the shell changes nothing:
+**`coral-board` CLI:** `--help` or `-h` on any command or subcommand (`coral-board task claim --help`) prints its usage without running it or contacting the server. Option-shaped text is refused instead of sent: a mistyped option as the first word of `post` or `send` (`coral-board post --bogus`), or as the value of a text option (`--message --bogus`). `--help` anywhere prints usage and sends nothing. Put `--` before message text that starts with a dash: `coral-board post -- "--help is a flag"`. For a short multi-line post, or short text with backticks or `$( )`, give `-` as the message and the text on stdin, in a quoted heredoc so the shell changes nothing:
 
 ```bash
 coral-board post --to "Lead Developer" - <<'EOF'
@@ -61,6 +61,46 @@ numbered orchestrator (`Orchestrator 2`) gets the orchestrator's rights, as any 
 orchestrator does. A role whose holder isn't running anymore is reused as is, so a relaunched
 or resurrected agent keeps its name. Unread counts follow the same mention rule as reading:
 `@Dev` doesn't count for `@Developer`, nor `user@dev.com` for `Dev`.
+
+## Writing a post
+
+Make the first line a one-line summary a person can scan: what happened or what you
+need, and from whom. For more than one ask or finding, use a numbered list with one
+point per line: each number starts its own line. Answer a numbered post by the same
+numbers, so each answer maps to its question. Name people with `@Name`.
+
+Keep the post short. Long content (full reports, test logs, diffs and evidence)
+goes in a Coral artifact, linked from the post: upload it with
+`coral-agent artifact upload <file>` and use the returned `coral://artifacts/<digest>`.
+Do not paste the long file's contents into the post.
+
+For a short post containing code, IDs or paths, put those values in backticks and
+use a quoted heredoc as below. Never put backticks or `$(...)` inside a
+double-quoted post argument: the shell executes command substitutions before Coral
+receives the text. Quoting the heredoc delimiter keeps them literal.
+
+**Before:** one dense paragraph mixes results and requests:
+
+```text
+Tests pass for abc123 in src/parser.go, please review the fix and say whether an empty input needs another case, the full log is attached.
+```
+
+**After:** a summary, numbered asks and a link to the details (replace the example
+artifact link with the URI returned by your upload):
+
+```bash
+coral-board post - <<'EOF'
+@Lead Developer: parser fix is ready; please review.
+
+1. Review `abc123` in `src/parser.go`; tests pass.
+2. Confirm whether empty input needs another test case.
+3. Evidence: coral://artifacts/<digest>
+EOF
+```
+
+The `-` means stdin. If the short post is already in a file, use
+`coral-board post - < board-post.md`; passing a filename as the message posts the
+filename, not its contents. Create that file with an editor or a quoted heredoc.
 
 ## Projects
 
