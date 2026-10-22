@@ -226,12 +226,12 @@ const contrast = (a, b) => {
             const d = document.getElementById(r.id + '-detail');
             const badges = [...r.querySelectorAll('a.server-update-badge')].map(a => ({ cls: a.className, href: a.getAttribute('href'), aria: a.getAttribute('aria-label'), target: a.getAttribute('target'), rel: a.getAttribute('rel'), inVersion: !!a.closest('.cs-col-version') }));
             const cell = c => r.querySelector('.cs-col-' + c).textContent.replace(/\\s+/g, ' ').trim();
-            return [r.id.replace('server-row-', ''), { status: cell('status'), version: r.querySelector('.cs-col-version span').textContent, agents: cell('agents'), meta: (d.querySelector('.cs-meta') || {}).textContent || '', badges }];
+            return [r.id.replace('server-row-', ''), { status: cell('status'), version: r.querySelector('.cs-col-version span').textContent, agents: cell('agents'), meta: (d.querySelector('.cs-lastseen') || {}).textContent || '', badges }];
         }))`);
-        assert.deepEqual([rowInfo.m1.status, rowInfo.m1.version, rowInfo.m1.agents, rowInfo.m1.meta], ['Online', '1.4.2', '7', 'Online · Coral 1.4.2'], 'm1: no last contact while online (#3152)');
+        assert.deepEqual([rowInfo.m1.status, rowInfo.m1.version, rowInfo.m1.agents, rowInfo.m1.meta], ['Online', '1.4.2', '7', ''], 'm1: nothing repeated in the details, and no last contact while online (#3152)');
         assert.deepEqual([rowInfo.m2.status, rowInfo.m2.version, rowInfo.m2.agents], ['Online', '1.4.6', '1'], "m2: version from 'version'");
         assert.equal(rowInfo.m3.status, 'Offline'); assert.equal(rowInfo.m3.agents, '0');
-        assert.match(rowInfo.m3.meta, /^Offline · Coral 1\.5\.0 · last contact /, `m3: offline shows last contact in the details (${rowInfo.m3.meta})`);
+        assert.match(rowInfo.m3.meta, /^Last contact /, `m3: offline shows last contact in the details (${rowInfo.m3.meta})`);
         assert.deepEqual([rowInfo.m4.version, rowInfo.m4.agents], ['—', '2'], 'm4: a dash when the version is unknown');
         const notice = { m1: 'Update required: this Coral (1.4.2) is too old for some Coral Hub features. Update to 1.5.0.', m2: 'Update available: 1.5.0' };
         for (const [id, level] of [['m1', 'required'], ['m2', 'available']]) {

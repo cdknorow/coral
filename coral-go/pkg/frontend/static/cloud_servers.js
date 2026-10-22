@@ -367,8 +367,8 @@ function detailCell(s, live, online, isBusy, helpId) {
             h('span', { text: update.text + ' ' }),
             h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Download the latest Coral' }))
         : null;
-    const version = serverVersion(live);
-    const meta = h('div', { className: 'cs-meta', text: [online ? 'Online' : 'Offline', version ? `Coral ${version}` : '', online ? '' : `last contact ${formatLastSeen(s.last_seen)}`].filter(Boolean).join(' · ') });
+    // The row shows the status and the version; the details add only what it does not: when an offline machine was last heard from.
+    const meta = online ? null : h('div', { className: 'cs-meta cs-lastseen', text: `Last contact ${formatLastSeen(s.last_seen)}` });
     return h('td', { colSpan: COLUMNS.length, role: 'cell', className: 'cs-detail-cell' },
         h('div', { className: 'cs-detail-grid' },
             h('div', { className: 'cs-main' }, meta, belowMinimumText(live) ? h('div', { className: 'cs-meta server-below-minimum', text: belowMinimumText(live) }) : null,
@@ -416,7 +416,7 @@ function enrollBlock() {
             h('div', { className: 'cs-enroll-steps' },
                 h('ol', {},
                     h('li', {}, h('strong', { text: 'Install Coral' }), ' on the computer you want to add: ', h('a', { href: DOWNLOAD_URL, target: '_blank', rel: 'noopener noreferrer', text: 'coralhub.dev/coral.html#download' })),
-                    h('li', {}, 'Open Coral on that computer and press ', h('strong', { text: 'Connect to Coral Hub' }), ' (Settings › General › About, or the Coral Hub card on the home screen).'),
+                    h('li', {}, 'Open Coral on that computer and press ', h('strong', { text: 'Connect to Coral Hub' }), ' (Settings › Network and Hub, or the Coral Hub card on the home screen).'),
                     h('li', {}, 'Choose what Coral Hub may do on that computer, then press ', h('strong', { text: 'Connect' }), '. Coral shows a short code.'),
                     h('li', {}, 'Enter the code here, check the computer\'s details on the next page and approve.')),
                 h('form', { className: 'cs-enroll-form', onsubmit: e => { e.preventDefault(); go(); } }, input,
