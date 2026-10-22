@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
 
 // words a person can see in a group now, per the audit (artifact 141071b6); a group with no number has not been cut yet
-const BUDGET = { 'Network and Hub': 80, 'Agents': 80, 'Storage and cleanup': 65, 'Terminal': 60, 'General': 40, 'Notifications': 6, 'Files and Git': 16, 'Security and privacy': 40 }; // (Storage: 47 on a fresh server; a server where an earlier suite turned automatic cleanup on shows its two status lines, up to 62)
+const BUDGET = { 'Network and Hub': 80, 'Agents': 80, 'Storage and cleanup': 65, 'Terminal': 60, 'General': 40, 'Notifications': 6, 'Files and Git': 16, 'Security and privacy': 43 }; // (Security: +3 for #6047's install ID row, "Install ID", "Copy" and its hint; "No prompts, transcripts, or secrets are sent." stays visible beside the Usage analytics switch: it is what a person reads where they decide) // (Storage: 47 on a fresh server; a server where an earlier suite turned automatic cleanup on shows its two status lines, up to 62)
 
 (async () => {
     const { client, Page, Emulation, ev, waitFor, PRELOAD, install } = await connect();
