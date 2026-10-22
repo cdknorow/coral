@@ -101,7 +101,7 @@ func (p *unixPTY) ForceKill() error {
 	if p.cmd.Process == nil {
 		return nil
 	}
-	signalTree(unionOf(p.seen.all(), treeMembers(p.Pid(), p.tag)), syscall.SIGKILL) // the whole tree, not only the shell's group (#6125)
+	killTree(p.seen.all(), p.Pid(), p.tag) // the whole tree, not only the shell's group (#6125)
 	pgid, err := syscall.Getpgid(p.cmd.Process.Pid)
 	if err == nil && pgid > 0 {
 		return syscall.Kill(-pgid, syscall.SIGKILL)

@@ -124,6 +124,23 @@ func signalTree(ms []member, sig syscall.Signal) {
 	}
 }
 
+// killTree ends known and what else is found of the terminal's tree. A process can fork between the sweep that found the tree and the signal that ends it, and its child would be missed, so the
+// tree is first stopped (SIGSTOP: nothing in it can fork), swept again, and stopped again until a sweep finds nothing new, and only then killed; a stopped process dies of SIGKILL like any other.
+// It returns what it killed.
+func killTree(known []member, root int, tag string) []member {
+	set := unionOf(known, treeMembers(root, tag))
+	for i := 0; i < 5; i++ {
+		signalTree(set, syscall.SIGSTOP)
+		next := unionOf(set, treeMembers(root, tag))
+		if len(next) == len(set) {
+			break
+		}
+		set = next
+	}
+	signalTree(set, syscall.SIGKILL)
+	return set
+}
+
 // anyAlive reports whether any of ms is still the process it was.
 func anyAlive(ms []member) bool {
 	for _, m := range ms {
@@ -173,11 +190,10 @@ func (p *unixPTY) reapTree(grace time.Duration) {
 	for anyAlive(known) && time.Now().Before(deadline) {
 		time.Sleep(25 * time.Millisecond)
 	}
-	left := unionOf(known, treeMembers(p.Pid(), p.tag))
-	if !anyAlive(left) {
+	if !anyAlive(unionOf(known, treeMembers(p.Pid(), p.tag))) {
 		return
 	}
-	signalTree(left, syscall.SIGKILL)
+	left := killTree(known, p.Pid(), p.tag)
 	for end := time.Now().Add(time.Second); anyAlive(left) && time.Now().Before(end); {
 		time.Sleep(10 * time.Millisecond)
 	}
