@@ -72,7 +72,7 @@ func runSetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) in
 	base := fs.String("url", hooks.CoralBase(), "the running Coral server, on this computer")
 	home := fs.String("home", "", "Coral's data folder, if the server was started with --home")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: coral set-password [--stdin] [--url http://localhost:8420] [--home DIR]")
+		fmt.Fprintln(stderr, "usage: coral set-password [--stdin] [--url "+defaultCoralURL()+"] [--home DIR]")
 		return 2
 	}
 	*base = runningServerURL(fs, *base, *home)
@@ -106,7 +106,7 @@ func runResetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	base := fs.String("url", hooks.CoralBase(), "the running Coral server, on this computer")
 	home := fs.String("home", "", "Coral's data folder, if the server was started with --home")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: coral reset-password [--clear | --stdin] [--url http://localhost:8420] [--home DIR]")
+		fmt.Fprintln(stderr, "usage: coral reset-password [--clear | --stdin] [--url "+defaultCoralURL()+"] [--home DIR]")
 		return 2
 	}
 	*base = runningServerURL(fs, *base, *home)
@@ -199,7 +199,7 @@ func runSetupCode(args []string, stdout, stderr io.Writer) int {
 	base := fs.String("url", hooks.CoralBase(), "the running Coral server, on this computer")
 	home := fs.String("home", "", "Coral's data folder, if the server was started with --home")
 	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "usage: coral setup-code [--url http://localhost:8420] [--home DIR]")
+		fmt.Fprintln(stderr, "usage: coral setup-code [--url "+defaultCoralURL()+"] [--home DIR]")
 		return 2
 	}
 	*base = runningServerURL(fs, *base, *home)

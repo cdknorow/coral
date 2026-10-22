@@ -18,10 +18,10 @@ import (
 //
 // Turns auto-accept off for every agent on the running Coral server (#3182):
 // the owner's "Stop all auto-accept" from a terminal. The server is CORAL_URL,
-// or http://localhost:$CORAL_PORT (default 8420), unless --url is given.
+// or http://localhost:$CORAL_PORT (default: the platform's port, 8450 on Windows), unless --url is given.
 func runAutoAccept(args []string, stdout, stderr io.Writer) int {
 	usage := func() int {
-		fmt.Fprintln(stderr, "usage: coral auto-accept off --all [--url http://localhost:8420]")
+		fmt.Fprintln(stderr, "usage: coral auto-accept off --all [--url "+defaultCoralURL()+"]")
 		return 2
 	}
 	if len(args) == 0 || args[0] != "off" {
@@ -73,6 +73,10 @@ func runAutoAccept(args []string, stdout, stderr io.Writer) int {
 
 // subcommand runs a `coral <subcommand>` and reports whether there was one.
 func subcommand(args []string) (int, bool) {
+	// Help first, before any command or the server parses anything (#235).
+	if code, ok := helpRequest(args, os.Stdout, os.Stderr); ok {
+		return code, true
+	}
 	if len(args) > 0 && isVersionArg(args[0]) {
 		printVersion(os.Stdout)
 		return 0, true
@@ -103,6 +107,11 @@ func subcommand(args []string) (int, bool) {
 	}
 	if len(args) > 0 && args[0] == "artifacts" {
 		return runArtifacts(args[1:], os.Stdin, os.Stdout, os.Stderr), true
+	}
+	// A bare word that is no command ("coral stop", "coral status") is reported as one, with a hint, not as a stray server
+	// argument followed by every server flag (#235). A flag goes on to the server's parser.
+	if len(args) > 0 && args[0] != "" && !strings.HasPrefix(args[0], "-") {
+		return unknownCommand(os.Stderr, args[0]), true
 	}
 	return 0, false
 }

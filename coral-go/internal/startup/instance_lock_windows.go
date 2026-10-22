@@ -36,7 +36,7 @@ func acquireInstanceLock(path string) (*instanceLock, error) {
 	if err != nil {
 		f.Close()
 		if errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
-			return nil, fmt.Errorf("another Coral server is already running for this data directory")
+			return nil, errAlreadyRunning
 		}
 		return nil, fmt.Errorf("lock %s: %w", path, err)
 	}

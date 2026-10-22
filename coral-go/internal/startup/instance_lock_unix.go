@@ -22,7 +22,7 @@ func acquireInstanceLock(path string) (*instanceLock, error) {
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
-			return nil, fmt.Errorf("another Coral server is already running for this data directory")
+			return nil, errAlreadyRunning
 		}
 		return nil, err
 	}

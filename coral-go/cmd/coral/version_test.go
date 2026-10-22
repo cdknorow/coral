@@ -39,7 +39,9 @@ func TestVersionAndHelpExitBeforeTheServerStarts(t *testing.T) {
 		{"version --no-browser", 0, "coral ", ""},
 		{"--no-browser --version", 0, "coral ", ""}, // after another flag
 		{"--no-browser -v", 0, "coral ", ""},
-		{"-h --no-browser", 0, "", "Usage"},
+		{"-h --no-browser", 0, "Coral: ", ""}, // help is asked for: stdout, exit 0 (#235)
+		{"help --no-browser", 0, "Coral: ", ""},
+		{"--no-browser stop", 2, "", `unexpected argument "stop"`},
 		{"--no-browser --no-such-flag", 2, "", "flag provided but not defined"},
 		{"--no-browser stray", 2, "", `unexpected argument "stray"`}, // a positional word never starts a server
 	} {
@@ -69,7 +71,7 @@ func TestVersionAndHelpExitBeforeTheServerStarts(t *testing.T) {
 			entries, _ := os.ReadDir(dir)
 			assert.Empty(t, entries, "%s wrote nothing in %s", c.args, dir)
 		}
-		if c.code == 0 && c.stdout != "" {
+		if c.code == 0 && c.stdout == "coral " {
 			assert.Equal(t, 1, strings.Count(stdout.String(), "\n"), "%s prints one line: %q", c.args, stdout.String())
 		}
 	}

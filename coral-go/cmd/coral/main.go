@@ -102,6 +102,23 @@ func main() {
 	showVersion := flag.Bool("version", false, "Print the version and exit (also -v, or coral version)")
 	flag.BoolVar(showVersion, "v", false, "Print the version and exit")
 	allowSharedDataDir := flag.Bool("allow-shared-data-dir", false, "Run even when the data folder can be read by other accounts and Coral can't make it private (Windows: it is owned by someone else, or is a link). By default Coral makes such a folder private to you, or refuses to start (also CORAL_ALLOW_SHARED_DATA_DIR=1)")
+	// A bad flag gets one line and where to look, not every server flag (#235); --help-all prints them all.
+	flag.Usage = func() {
+		for _, a := range os.Args[1:] {
+			if strings.TrimLeft(a, "-") == "stop" {
+				fmt.Fprintln(os.Stderr, unknownCommandHints["stop"])
+			}
+		}
+		fmt.Fprintln(os.Stderr, "Run 'coral --help' for the commands and main flags, or 'coral --help-all' for every server flag.")
+	}
+	if len(os.Args) > 1 && (os.Args[1] == "--help-all" || os.Args[1] == "-help-all") {
+		printHelp(os.Stdout)
+		fmt.Fprintln(os.Stdout)
+		fmt.Fprintln(os.Stdout, "Every server flag:")
+		flag.CommandLine.SetOutput(os.Stdout)
+		flag.PrintDefaults()
+		os.Exit(0)
+	}
 	flag.Parse()
 	config.SetAllowSharedDataDir(*allowSharedDataDir) // before config.Load, which makes the data folder
 	if *showVersion {
