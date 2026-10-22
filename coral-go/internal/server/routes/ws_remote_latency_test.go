@@ -124,89 +124,88 @@ func schedulerJitter() time.Duration {
 	return worst
 }
 
-// A burst of remote changes still costs at most one build a second: the
-// first goes out at once, the rest arrive together in one later diff.
+// A burst of remote changes still costs at most one build per debounce window: the first goes out at once, the rest arrive together in one later diff carrying the latest state.
+//
+// The window is fired by the test, not waited for (#5942). The test used to run the burst against a real 500 ms window and count the windows it crossed from three measured durations
+// (the first change's lag, the burst's span, the read), and it still failed under load (#83, #4136, #4736, and "2 is not <= 1" in whole-package runs): the window is anchored at the
+// server's own build, a loaded host delays the sends and the reads by amounts the test can only estimate, and a window that fires mid-burst rightly sends an intermediate state. Here the
+// window is an hour and its timer is the test's (Handler.remoteAfter): no change can fire it, so nothing is sent for the burst until the test says the window is over, and then exactly one
+// diff, with the latest state, comes. A rebuild per change (no coalescing) puts diffs on the wire before the window is fired and fails the first check.
 func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 	server, h := setupTestServer(t)
-	h.cfg.WSPollInterval = 10 * time.Second
-	h.cfg.WSRemoteDebounce = 500 * time.Millisecond // shortened from a second; still well over the 180 ms burst
+	h.cfg.WSPollInterval = time.Hour   // no tick in the test
+	h.cfg.WSRemoteDebounce = time.Hour // the window never ends by itself
+	windows := make(chan chan time.Time, 4)
+	h.remoteAfter = func(time.Duration) <-chan time.Time {
+		w := make(chan time.Time, 1)
+		windows <- w
+		return w
+	}
 	src := &fakeSource{}
 	h.SetRemoteAgents(src)
 	src.set(remoteSnap("b-0"))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	conn := dialFeed(t, ctx, server.URL)
-	time.Sleep(h.cfg.WSRemoteDebounce + 100*time.Millisecond) // past the remote limit since the first build
-	// A tick inside the burst would carry the change pending then (b-2, b-8) as its own diff,
-	// as it should: keep the next one out of the burst and the read window (#3932).
-	clearOfTick(h.cfg.WSPollInterval, 3*time.Second)
-
-	setAt := time.Now()
-	src.set(remoteSnap("b-1"))
-	first := awaitStatus(t, ctx, conn, "b-1", time.Second)
-	// awaitStatus times from its own call: a test goroutine starved between the set and that call (a loaded host: the failure showed
-	// first = 0s) understates how far into the window b-1's build sits, and the burst then seems to fit one window when it
-	// does not. From the set it is the whole lag (#83).
-	seen := first
-	first = max(first, time.Since(setAt))
-	// Not held back means sent before the debounce would have let it go; under a loaded gate the
-	// send itself can take more than a fixed 100 ms (#4136: this failed twice in full gates).
-	assert.Less(t, seen, h.cfg.WSRemoteDebounce, "the first change of a burst is not held back")
-	burstStart := time.Now()
-	for i := 2; i <= 10; i++ {
-		src.set(remoteSnap(fmt.Sprintf("b-%d", i)))
-		time.Sleep(20 * time.Millisecond)
-	}
-	burst := time.Since(burstStart)
-	// The debounce window is anchored at b-1's build on the server, not at burstStart: burstStart is
-	// set only once awaitStatus has delivered b-1 to the client, which lags the build by at most
-	// `first`. So the burst sits up to `first` into the window and spans at most `first+burst` of it,
-	// and that span -- not burst alone -- decides how many windows it crosses. Under load `first` grows
-	// (a starved client reads b-1 late) while the sends stay ~180 ms, so the window can fire mid-burst
-	// and rightly send an intermediate state; counting from burst alone then wrongly demanded a single
-	// diff (the #4736 flake: 2 diffs where it expected 1, with burst still under the window).
-	span := first + burst
-	// The other nine changes come as one diff with the latest state, within the
-	// limit, and no further diff follows. Read until the latest state has come (a loaded machine
-	// can send it later than a fixed window: the test failed that way under load after #4136),
-	// then one more window for a diff that should not come.
-	var diffs []string
-	// read takes the diffs that come within d; it stops at the one carrying the latest state when
-	// untilLatest is set.
-	read := func(d time.Duration, untilLatest bool) {
-		rctx, stop := context.WithTimeout(ctx, d)
-		defer stop()
+	// ONE reader for the whole test: a read whose context ends closes the connection, so a quiet period is watched on a channel, never with a read timeout.
+	seen := make(chan string, 64)
+	go func() {
 		for {
 			var msg struct {
-				Type    string           `json:"type"`
 				Changed []map[string]any `json:"changed"`
 			}
-			if err := wsjson.Read(rctx, conn, &msg); err != nil {
+			if wsjson.Read(ctx, conn, &msg) != nil {
 				return
 			}
 			for _, e := range msg.Changed {
 				if e["session_id"] == "ra-1" {
-					diffs = append(diffs, fmt.Sprint(e["status"]))
-					if untilLatest && e["status"] == "b-10" {
-						return
-					}
+					seen <- fmt.Sprint(e["status"])
 				}
 			}
 		}
+	}()
+	next := func(within time.Duration) (string, bool) {
+		select {
+		case st := <-seen:
+			return st, true
+		case <-time.After(within):
+			return "", false
+		}
 	}
-	read(10*h.cfg.WSRemoteDebounce, true)
-	read(2*h.cfg.WSRemoteDebounce, false) // nothing more should come
-	// One coalesced diff per debounce window the burst crossed, counted from the window's anchor
-	// (span = first+burst): one when the whole burst landed inside a single window (the ~180 ms it
-	// takes unloaded, delivered promptly), more only when the span reached into a later window, which
-	// then rightly sends what was pending by then. Never a diff per change, and the last one carries
-	// the latest state.
-	allowed := 1 + int(span/h.cfg.WSRemoteDebounce)
-	require.NotEmpty(t, diffs, "the burst's changes arrive")
-	assert.LessOrEqual(t, len(diffs), allowed, "coalesced: %v over a %s span (first %s + burst %s)", diffs, span, first, burst)
-	assert.Equal(t, "b-10", diffs[len(diffs)-1], "the last diff carries the latest remote state")
-	if span < h.cfg.WSRemoteDebounce {
-		assert.Equal(t, []string{"b-10"}, diffs, "one coalesced diff carrying the latest remote state (span %s)", span)
+
+	// The first change of a burst is sent at once, with no window to wait for: it arrives while the window is closed to the rest.
+	src.set(remoteSnap("b-1"))
+	st, ok := next(30 * time.Second)
+	require.True(t, ok, "the first change of a burst arrives")
+	require.Equal(t, "b-1", st)
+
+	// The other nine, in a burst: held for the window, however long the host takes to send them.
+	for i := 2; i <= 10; i++ {
+		src.set(remoteSnap(fmt.Sprintf("b-%d", i)))
+	}
+	var window chan time.Time
+	select {
+	case window = <-windows:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the burst opened no debounce window")
+	}
+	// Nothing goes out while the window is open: a build per change would have put b-2 on the wire already.
+	if st, ok := next(300 * time.Millisecond); ok {
+		t.Fatalf("%q was sent while the debounce window was open (no coalescing)", st)
+	}
+
+	// The window ends: the nine changes arrive as ONE diff carrying the latest state, and no further diff follows.
+	window <- time.Now()
+	st, ok = next(30 * time.Second)
+	require.True(t, ok, "the held changes arrive when the window ends")
+	assert.Equal(t, "b-10", st, "one coalesced diff carrying the latest remote state")
+	if more, ok := next(500 * time.Millisecond); ok {
+		t.Fatalf("a further diff %q followed the coalesced one", more)
+	}
+	select {
+	case <-windows:
+		t.Fatal("a second window was opened for the burst")
+	default:
 	}
 }
