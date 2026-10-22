@@ -569,3 +569,22 @@ func TestTheApplyHonoursOnlyAClickForWhatIsStaged(t *testing.T) {
 	assert.Equal(t, ResultRelaunched, r.run().Result)
 	assert.Contains(t, r.msi.calls, "msiexec /i")
 }
+
+// #162 (b), the interaction Security asked for: the staged update's manifest revokes the installed version, so when the new version then
+// fails its health check, the rollback package is refused at use (stage.ReverifyRollback with the state's revocations) and the person is
+// told how to go back; nothing is removed or installed.
+func TestARollbackToARevokedVersionIsRefusedAndThePersonIsTold(t *testing.T) {
+	r := newMSIRig(t)
+	r.msi.healthErr = []error{errors.New("not up")}
+	r.cfg.Rollback = func() (string, *verify.Record, error) {
+		// What ReverifyRollback answers once the update's manifest put the installed version on the state's revoked list.
+		return "", nil, &verify.Failure{Stage: verify.StageManifestRules, Reason: "version 1.4.125 is revoked"}
+	}
+	res := r.run()
+	assert.Equal(t, ResultFailed, res.Result)
+	assert.Equal(t, "rollback_package_refused", res.FailedStage)
+	assert.NotContains(t, strings.Join(r.msi.calls, " "), "msiexec /x", "the new version is never removed for a package that didn't pass")
+	require.NotEmpty(t, r.msi.notes)
+	assert.Contains(t, r.msi.notes[len(r.msi.notes)-1], "didn't pass its checks", "the person is told")
+	assert.Empty(t, r.state().Version, "the new version isn't accepted either")
+}
