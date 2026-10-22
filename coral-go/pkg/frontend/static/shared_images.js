@@ -73,7 +73,7 @@ export async function removeSharedCopy(server, sessionId, hex) {
 
 /** What the person is told once their shared copy is removed: whether the image is gone from Coral Hub too, or stays because another agent was given the same image. */
 export function removedCopyText(result) {
-    if (result && result.artifactRemoved === false) return 'Removed from this chat. The same image is also shared with another agent, so it stays there.';
+    if (result && result.artifactRemoved === false) return 'Removed from this chat. The same image is still shared elsewhere, so it stays on Coral Hub.';
     if (result && result.artifactRemoved === true) return 'Removed from this chat and from Coral Hub.';
     return 'Removed from this chat.';
 }

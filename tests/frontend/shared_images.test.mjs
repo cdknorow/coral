@@ -88,7 +88,7 @@ console.log('shared_images: ok');
 }
 
 // What the person is told after Remove shared copy (#6167): gone from Coral Hub too, or kept because another agent was given the same image.
-assert.equal(removedCopyText({ artifactRemoved: false }), 'Removed from this chat. The same image is also shared with another agent, so it stays there.');
+assert.equal(removedCopyText({ artifactRemoved: false }), 'Removed from this chat. The same image is still shared elsewhere, so it stays on Coral Hub.');
 assert.equal(removedCopyText({ artifactRemoved: true }), 'Removed from this chat and from Coral Hub.');
 assert.equal(removedCopyText({ artifactRemoved: undefined }), 'Removed from this chat.');
 assert.equal(removedCopyText(null), 'Removed from this chat.');

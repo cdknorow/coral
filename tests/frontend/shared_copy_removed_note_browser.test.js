@@ -26,7 +26,7 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
         const HINT = await ev(`import(${S} + 'shared_images.js').then(m => m.imageHint(['coral://artifacts/${HEX}']))`);
         const typed = `coral://artifacts/${HEX} ${HINT} what is this`;
         const cases = [
-            ['shared with another agent', { removed: true, artifact_removed: false }, 'Removed from this chat. The same image is also shared with another agent, so it stays there.'],
+            ['shared with another agent', { removed: true, artifact_removed: false }, 'Removed from this chat. The same image is still shared elsewhere, so it stays on Coral Hub.'],
             ['the image went too', { removed: true, artifact_removed: true }, 'Removed from this chat and from Coral Hub.'],
             ['an answer that does not say', 'nobody', 'Removed from this chat.'],
         ];
@@ -38,7 +38,7 @@ const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
             await ev(`document.querySelector('#scn-box .chat-attachment-unshare').click(); true`);
             await waitFor(`document.getElementById('confirm-modal').style.display === 'flex'`, `${name}: the confirmation`, 5000);
             const asked = await ev(`document.getElementById('confirm-modal-message').textContent`);
-            check(`${name}: the confirm does not promise the image leaves Coral Hub whatever happens`, /unless another agent was given the same image/.test(asked) && !/^The image is removed from Coral Hub/.test(asked), asked);
+            check(`${name}: the confirm does not promise the image leaves Coral Hub whatever happens`, /unless the same image is still shared elsewhere/.test(asked) && !/^The image is removed from Coral Hub/.test(asked), asked);
             await ev(`document.getElementById('confirm-modal-yes').click(); true`);
             await waitFor(`window.__deletes.length === 1 && [...document.querySelectorAll('.toast')].some(t => /^Removed/.test(t.textContent.trim()))`, `${name}: the result is said`, 8000);
             const said = await ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent.replace(/\\u00d7/g, '').trim())`);

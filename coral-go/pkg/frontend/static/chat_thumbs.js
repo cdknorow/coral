@@ -90,7 +90,7 @@ export function wireThumbs(bubble) {
 function askRemoveSharedCopy(x, after) {
     const s = state.currentSession;
     if (!x || !s || !s.session_id) return;
-    showConfirmModal('Remove the shared copy?', 'The image is removed from this chat, and from Coral Hub unless another agent was given the same image. The agent keeps its own file.', async () => {
+    showConfirmModal('Remove the shared copy?', 'The image is removed from this chat, and from Coral Hub unless the same image is still shared elsewhere. The agent keeps its own file.', async () => {
         const result = await removeSharedCopy(serverOf(), s.session_id, x.dataset.artifact).catch(() => null);
         if (result) {
             const thumb = x.previousElementSibling;
