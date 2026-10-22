@@ -231,7 +231,11 @@ const killTmux = sock => {
 const tmuxSocks = new Set(); // the sockets of the shards this run started
 
 // Kill what a previous runner that was SIGKILLed left behind (see "Leftovers" above).
-const pidDir = os.tmpdir();
+// On Windows os.tmpdir() can contain an 8.3 alias (RUNNER~1). Launch the
+// sibling server and tools through the same canonical folder that the tools'
+// listener-owner check resolves; keep that security check unchanged.
+const tempRoot = process.platform === 'win32' ? fs.realpathSync.native(os.tmpdir()) : os.tmpdir();
+const pidDir = tempRoot;
 const pidFile = path.join(pidDir, `coral-cdp-runner-${process.pid}.json`);
 const isAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 // Whether process pid is one of a run's own: its program is in the run's folder (coral, mock-agent) or its command line names it (Chrome's profile, a suite's files).
@@ -263,7 +267,7 @@ function sweepLeftovers() {
     // The folder a runner that was killed left behind (its binaries, profiles and logs: a killed run never reaches its own clean-up): only a coral-cdp-* folder
     // of the system temp folder, as recorded by that runner, and only when nothing of it is running any more (a file in use stays and is tried again next time).
     for (const t of folders) {
-      if (path.dirname(t) === os.tmpdir() && path.basename(t).startsWith('coral-cdp-')) {
+      if (path.dirname(t) === tempRoot && path.basename(t).startsWith('coral-cdp-')) {
         try { fs.rmSync(t, { recursive: true, force: true }); } catch { /* in use: the next run tries again */ }
       }
     }
@@ -273,7 +277,7 @@ function sweepLeftovers() {
 }
 sweepLeftovers();
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-cdp-'));
+const tmp = fs.mkdtempSync(path.join(tempRoot, 'coral-cdp-'));
 // Mock-agent run safety (#4354): a stub claude/codex/gemini first on every shard server's PATH, so
 // a launch that ever falls back to the PATH CLI hits the stub (records a marker, exits 1) instead of
 // the operator's real CLI. HOME already points into each shard, so transcripts never reach the real

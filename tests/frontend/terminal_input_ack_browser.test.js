@@ -13,6 +13,7 @@
 // Expects CORAL_TEST_URL + CDP_PORT from tests/frontend/run.sh. Exit 0 / 1.
 
 const CDP = require('chrome-remote-interface');
+const os = require('node:os');
 const BASE = require('./test_base').BASE;
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 
@@ -66,7 +67,7 @@ async function run() {
     const ST = `(await import((window.__coralStatic||'/static/')+'state.js'))`;
 
     const launch = async (name) => {
-        const r = await httpJson('POST', '/api/sessions/launch', { working_dir: '/tmp', agent_type: 'terminal', display_name: name });
+        const r = await httpJson('POST', '/api/sessions/launch', { working_dir: os.tmpdir(), agent_type: 'terminal', display_name: name });
         if (!r.data || !r.data.session_id) throw new Error(`launch ${name}: ${r.status} ${JSON.stringify(r.data)}`);
         launched.push(r.data);
         return r.data;
