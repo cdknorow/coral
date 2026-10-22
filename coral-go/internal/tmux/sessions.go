@@ -3,6 +3,7 @@ package tmux
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"os/exec"
@@ -74,7 +75,7 @@ func (c *Client) HasSession(ctx context.Context, name string) bool {
 // It automatically disables bracketed paste mode to prevent '00~' characters
 // from being prepended to commands sent via send-keys.
 func (c *Client) NewSession(ctx context.Context, name, workDir string) error {
-	log.Printf("[tmux] NewSession requested: name=%q work_dir=%q tmux_bin=%q socket=%q", name, workDir, c.TmuxBin, c.SocketPath)
+	log.Printf("[tmux] NewSession requested: name=%q work_dir=%q tmux_bin=%q socket=%q", name, logsafe.Dir(workDir), logsafe.Path(c.TmuxBin), logsafe.Path(c.SocketPath))
 	c.scrubServerEnv(ctx)
 	out, err := c.run(ctx, "new-session", "-d", "-P", "-F", "#{pane_pid}", "-s", name, "-c", workDir)
 	if err != nil {

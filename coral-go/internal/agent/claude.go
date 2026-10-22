@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"github.com/subgentic/coral/internal/logsafe"
 	"io"
 	"log/slog"
 	"os"
@@ -69,7 +70,7 @@ func (a *ClaudeAgent) ExtractSessions(basePath string, knownMtimes map[string]fl
 			}
 			sess, err := hist.session(fpath, info, mtime, indexed)
 			if err != nil {
-				slog.Debug("claude: failed to parse session file", "path", fpath, "error", err)
+				slog.Debug("claude: failed to parse session file", "path", logsafe.Dir(fpath), "error", err)
 				continue
 			}
 			if sess != nil {
@@ -522,11 +523,11 @@ func copyDir(src, dst string) {
 		}
 		data, err := os.ReadFile(srcPath)
 		if err != nil {
-			slog.Warn("copyDir: failed to read file", "src", srcPath, "error", err)
+			slog.Warn("copyDir: failed to read file", "src", logsafe.Dir(srcPath), "error", err)
 			continue
 		}
 		if err := writeNoFollow(dstPath, data); err != nil {
-			slog.Warn("copyDir: failed to write file", "dst", dstPath, "error", err)
+			slog.Warn("copyDir: failed to write file", "dst", logsafe.Dir(dstPath), "error", err)
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -88,7 +89,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 
 	// Clear old log
 	if err := ptymanager.ResetAgentLog(logFile); err != nil { // 0600, never through a link (#3601, W17)
-		slog.Warn("failed to clear agent log file", "path", logFile, "error", err)
+		slog.Warn("failed to clear agent log file", "path", logsafe.Dir(logFile), "error", err)
 	}
 
 	// Build the launch command (empty for terminal sessions)
@@ -133,7 +134,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	if resumeSessionID != "" {
 		slog.Info("resuming agent", "session_id", sessionID, "agent_type", agentType, "agent_name", folderName, "resume_from", resumeSessionID)
 	} else {
-		slog.Info("spawning agent", "session_id", sessionID, "agent_type", agentType, "agent_name", folderName, "workdir", workingDir)
+		slog.Info("spawning agent", "session_id", sessionID, "agent_type", agentType, "agent_name", folderName, "workdir", logsafe.Dir(workingDir))
 	}
 	if err := l.runtime.SpawnAgent(ctx, sessionName, workingDir, logFile, launchCmd); err != nil {
 		return nil, fmt.Errorf("spawn agent failed: %w", err)
@@ -184,7 +185,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	l.logger.Info("launched agent",
 		"session_id", sessionID[:8],
 		"agent_type", agentType,
-		"working_dir", workingDir,
+		"working_dir", logsafe.Dir(workingDir),
 	)
 
 	return &LaunchResult{

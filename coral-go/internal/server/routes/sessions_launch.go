@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"net/http"
 	"os"
@@ -106,7 +107,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("launch request received",
-		"working_dir", body.WorkingDir,
+		"working_dir", logsafe.Dir(body.WorkingDir),
 		"agent_type", body.AgentType,
 		"display_name", body.DisplayName,
 		"requested_backend", body.Backend,

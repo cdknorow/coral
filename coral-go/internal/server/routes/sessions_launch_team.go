@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"net/http"
 	"os"
@@ -283,7 +284,7 @@ func (h *SessionsHandler) rollBackTeamLaunch(ctx context.Context, body launchTea
 	}
 	if worktreePath != "" {
 		if out, err := gitutil.Command(ctx, body.WorkingDir, "worktree", "remove", "--force", "--", worktreePath).CombinedOutput(); err != nil {
-			log.Printf("[launch-team] could not remove the empty team's worktree %s: %v: %s", worktreePath, err, strings.TrimSpace(string(out)))
+			log.Printf("[launch-team] could not remove the empty team's worktree %s: %v: %s", logsafe.Dir(worktreePath), err, strings.TrimSpace(string(out)))
 		} else if branchCreated {
 			// The branch this request made; one that was already there (a previous run's work) stays.
 			branch := fmt.Sprintf("coral-team/%s", body.BoardName)
@@ -480,7 +481,7 @@ func (h *SessionsHandler) createTeamWorktree(ctx context.Context, body launchTea
 	} else {
 		branchCreated = true // the branch is new: a launch that starts nobody takes it back
 	}
-	log.Printf("[launch-team] created worktree at %s (branch %s from %s)", worktreePath, worktreeBranch, branch)
+	log.Printf("[launch-team] created worktree at %s (branch %s from %s)", logsafe.Dir(worktreePath), worktreeBranch, branch)
 	return worktreePath, worktreePath, branchCreated, ""
 }
 

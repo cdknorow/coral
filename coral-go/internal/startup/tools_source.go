@@ -1,6 +1,7 @@
 package startup
 
 import (
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"path/filepath"
@@ -24,7 +25,7 @@ func setupAgentTools(coralDir string) {
 	dir, source := agent.CoralToolsSource()
 	switch {
 	case dir != "":
-		log.Printf("[tools] agents get coral-board and the Coral hooks from %s (%s)", dir, source)
+		log.Printf("[tools] agents get coral-board and the Coral hooks from %s (%s)", logsafe.Path(dir), source)
 		warnWritableTools(dir)
 	case testServer:
 		log.Printf("[tools] WARNING: no coral-board or coral-hook-* binaries next to this build, and a dev or test server " +
@@ -44,13 +45,13 @@ func setupAgentTools(coralDir string) {
 func warnWritableTools(dir string) {
 	who, err := secfile.Writers(dir)
 	if err != nil {
-		log.Printf("[tools] could not read who can change the tools folder %s: %v", dir, err)
+		log.Printf("[tools] could not read who can change the tools folder %s: %v", logsafe.Path(dir), err)
 		return
 	}
 	agent.SetToolsFolderWriters(dir, who)
 	if len(who) > 0 {
 		log.Printf("[tools] WARNING: the tools folder %s can be changed by %s, not only by an administrator: "+
 			"a program running as that account could replace the hooks every agent runs. Install Coral with the "+
-			"installer (Program Files) to keep them where only an administrator can change them.", dir, strings.Join(who, ", "))
+			"installer (Program Files) to keep them where only an administrator can change them.", logsafe.Path(dir), strings.Join(who, ", "))
 	}
 }

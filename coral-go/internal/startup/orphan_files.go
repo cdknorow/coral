@@ -1,6 +1,7 @@
 package startup
 
 import (
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"path/filepath"
@@ -25,10 +26,10 @@ func removeOrphanProxyCA(dataDir string) []string {
 			continue
 		}
 		if err := os.Remove(path); err != nil {
-			log.Printf("[startup] could not remove the old proxy CA file %s: %v", path, err)
+			log.Printf("[startup] could not remove the old proxy CA file %s: %v", logsafe.Path(path), err)
 			continue
 		}
-		log.Printf("[startup] removed the old proxy CA file %s (left by the removed cost proxy; if you added that CA to a browser or keychain by hand, remove it there too)", path)
+		log.Printf("[startup] removed the old proxy CA file %s (left by the removed cost proxy; if you added that CA to a browser or keychain by hand, remove it there too)", logsafe.Path(path))
 		removed = append(removed, name)
 	}
 	return removed

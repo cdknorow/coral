@@ -253,6 +253,7 @@ func (lm *limiter) refused(c requestClass, path string, perUser bool) {
 	n := lm.rejected.Add(1)
 	now := time.Now().Unix()
 	if last := lm.lastLog.Load(); now-last >= 60 && lm.lastLog.CompareAndSwap(last, now) {
+		// logsafe-ok: a request's URL path, not a place on this computer
 		slog.Warn("[tunnel] Coral Hub request refused: too many at once", "pool", c.String(), "one_user", perUser, "path", path, "refused_total", n)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"net/http"
 	neturl "net/url"
@@ -417,7 +418,7 @@ func setupDebugLogging(dataDir string) {
 	if err != nil {
 		return
 	}
-	log.SetOutput(f)
+	log.SetOutput(logsafe.Writer(f)) // no home folder, user or computer name in app.log (#6053)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	fmt.Fprintf(os.Stderr, "Debug logging to %s\n", logFile)
 }

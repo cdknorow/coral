@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"io"
 	"log"
 	"net/http"
@@ -181,7 +182,7 @@ func runForeground(host string, port int, noBrowser, debugMode bool, backendType
 	logFile := filepath.Join(dataDir, "tray.log")
 	// Rotates as coral.log does (#4112): 0600, no symlink followed, 20 MB x 5.
 	if lf, err := logrotate.Open(logFile, logrotate.DefaultMaxSize, logrotate.DefaultKeep, logrotate.DefaultTrim); err == nil {
-		log.SetOutput(lf)
+		log.SetOutput(logsafe.Writer(lf)) // no home folder, user or computer name in tray.log (#6053)
 		log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 
 		// Redirect OS-level stderr (fd 2) to the log file, and to each new file after a
@@ -763,7 +764,7 @@ func findCoralApp() string {
 	// Resolve symlinks to handle macOS App Translocation
 	if resolved, resolveErr := filepath.EvalSymlinks(exe); resolveErr == nil {
 		if resolved != exe {
-			log.Printf("[WARN] App Translocation detected: exe=%s resolved=%s", exe, resolved)
+			log.Printf("[WARN] App Translocation detected: exe=%s resolved=%s", logsafe.Path(exe), resolved)
 		}
 		exe = resolved
 	}

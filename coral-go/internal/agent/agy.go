@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -74,7 +75,7 @@ func (a *AgyAgent) ExtractSessions(basePath string, knownMtimes map[string]float
 			if prev, ok := knownMtimes[transcriptPath]; !ok || prev != mtime {
 				sess, err := parseAgyTranscriptSession(entry.Name(), transcriptPath, mtime)
 				if err != nil {
-					slog.Debug("agy: failed to parse transcript file", "path", transcriptPath, "error", err)
+					slog.Debug("agy: failed to parse transcript file", "path", logsafe.Dir(transcriptPath), "error", err)
 				} else if sess != nil {
 					sessions = append(sessions, *sess)
 				}
@@ -95,7 +96,7 @@ func (a *AgyAgent) ExtractSessions(basePath string, knownMtimes map[string]float
 				}
 				sess, err := parseGeminiSession(fpath, mtime)
 				if err != nil {
-					slog.Debug("gemini: failed to parse legacy session file", "path", fpath, "error", err)
+					slog.Debug("gemini: failed to parse legacy session file", "path", logsafe.Dir(fpath), "error", err)
 					continue
 				}
 				if sess != nil {

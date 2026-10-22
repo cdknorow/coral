@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"net/http"
 	"os"
@@ -72,7 +73,7 @@ func messageKeySecretFor(cfg *config.Config) []byte {
 	}
 	s, err := loadOrCreateKeySecret(dir)
 	if err != nil {
-		slog.Warn("message keys: the per-install secret is not kept; keys last until restart", "dir", dir, "error", err)
+		slog.Warn("message keys: the per-install secret is not kept; keys last until restart", "dir", logsafe.Path(dir), "error", err)
 		s = randomSecret()
 	}
 	keySecrets[dir] = s

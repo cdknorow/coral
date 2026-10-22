@@ -339,7 +339,7 @@ func logStartup(opts Options) {
 		config.TierName,
 		opts.BackendType,
 		os.Getpid(),
-		exe,
+		logsafe.Path(exe),
 		exeErr,
 		logsafe.Count(),
 		filepath.Base(os.Getenv("SHELL")),

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -214,7 +215,7 @@ func (p *GitPoller) groupByGitRoot(ctx context.Context, agents []AgentInfo) map[
 		if !ok {
 			resolveStart := time.Now()
 			root = gitutil.ResolveGitRoot(ctx, agent.WorkingDirectory)
-			p.logger.Debug("git resolve root", "workdir", agent.WorkingDirectory, "root", root, "duration_ms", time.Since(resolveStart).Milliseconds())
+			p.logger.Debug("git resolve root", "workdir", logsafe.Dir(agent.WorkingDirectory), "root", logsafe.Dir(root), "duration_ms", time.Since(resolveStart).Milliseconds())
 			rootOf[agent.WorkingDirectory] = root
 		}
 		dirToAgents[root] = append(dirToAgents[root], agent)
@@ -236,34 +237,34 @@ func (p *GitPoller) pollDir(ctx context.Context, workdir string, dirAgents []Age
 	queryDur := time.Since(queryStart)
 	if err != nil {
 		if !failed {
-			p.logger.Warn("git query failed (not a git repository?); checking this folder again every 30 minutes", "workdir", workdir, "duration_ms", queryDur.Milliseconds(), "error", err)
+			p.logger.Warn("git query failed (not a git repository?); checking this folder again every 30 minutes", "workdir", logsafe.Dir(workdir), "duration_ms", queryDur.Milliseconds(), "error", err)
 		} else {
-			p.logger.Debug("git query still failing", "workdir", workdir, "error", err)
+			p.logger.Debug("git query still failing", "workdir", logsafe.Dir(workdir), "error", err)
 		}
 		p.failing[workdir] = p.now().Add(gitFailureBackoff)
 		return
 	}
 	if failed {
 		delete(p.failing, workdir)
-		p.logger.Info("git query works again", "workdir", workdir)
+		p.logger.Info("git query works again", "workdir", logsafe.Dir(workdir))
 	}
 	if gitInfo == nil {
 		return
 	}
-	p.logger.Debug("git query", "workdir", workdir, "branch", gitInfo.Branch, "duration_ms", queryDur.Milliseconds())
+	p.logger.Debug("git query", "workdir", logsafe.Dir(workdir), "branch", gitInfo.Branch, "duration_ms", queryDur.Milliseconds())
 
 	filesStart := time.Now()
 	changedFiles, err := queryChangedFilesFrom(ctx, workdir, gitInfo.status, gitInfo.statusErr)
 	filesDur := time.Since(filesStart)
 	if err != nil {
-		p.logger.Warn("git changed files query failed; clearing cached list", "workdir", workdir, "duration_ms", filesDur.Milliseconds(), "error", err)
+		p.logger.Warn("git changed files query failed; clearing cached list", "workdir", logsafe.Dir(workdir), "duration_ms", filesDur.Milliseconds(), "error", err)
 		changedFiles = []store.ChangedFile{}
 	} else {
-		p.logger.Debug("git changed files", "workdir", workdir, "file_count", len(changedFiles), "duration_ms", filesDur.Milliseconds())
+		p.logger.Debug("git changed files", "workdir", logsafe.Dir(workdir), "file_count", len(changedFiles), "duration_ms", filesDur.Milliseconds())
 	}
 	// Cap file count to prevent DB thrashing on large monorepos
 	if len(changedFiles) > maxChangedFiles {
-		p.logger.Warn("capping changed files", "workdir", workdir, "agents", len(dirAgents), "total", len(changedFiles), "cap", maxChangedFiles)
+		p.logger.Warn("capping changed files", "workdir", logsafe.Dir(workdir), "agents", len(dirAgents), "total", len(changedFiles), "cap", maxChangedFiles)
 		changedFiles = changedFiles[:maxChangedFiles]
 	}
 	filesHash := hashChangedFiles(workdir, changedFiles)
@@ -284,10 +285,10 @@ func (p *GitPoller) pollDir(ctx context.Context, workdir string, dirAgents []Age
 		seen[key] = true
 		p.writeChangedFiles(ctx, key, agent.AgentName, workdir, changedFiles, snap.SessionID, filesHash)
 	}
-	p.logger.Debug("git db writes", "workdir", workdir, "agents", len(dirAgents), "duration_ms", time.Since(dbStart).Milliseconds())
+	p.logger.Debug("git db writes", "workdir", logsafe.Dir(workdir), "agents", len(dirAgents), "duration_ms", time.Since(dbStart).Milliseconds())
 
 	if dirDur := time.Since(dirStart); dirDur > 2*time.Second {
-		p.logger.Warn("git poll slow for directory", "workdir", workdir, "total_ms", dirDur.Milliseconds(),
+		p.logger.Warn("git poll slow for directory", "workdir", logsafe.Dir(workdir), "total_ms", dirDur.Milliseconds(),
 			"query_ms", queryDur.Milliseconds(), "files_ms", filesDur.Milliseconds())
 	}
 }

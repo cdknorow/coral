@@ -3,6 +3,7 @@ package ptymanager
 import (
 	"context"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"github.com/subgentic/coral/internal/terminalinput"
 	"io"
 	"log"
@@ -560,14 +561,14 @@ func (b *TmuxBackend) startTail(name, tmuxName, logPath string) *logTail {
 
 	f, err := os.Open(logPath)
 	if err != nil {
-		log.Printf("tail: open %s: %v", logPath, err)
+		log.Printf("tail: open %s: %v", logsafe.Dir(logPath), err)
 		cancel()
 		close(tail.done)
 		return tail
 	}
 	offset, err := f.Seek(0, io.SeekEnd)
 	if err != nil {
-		log.Printf("tail: seek %s: %v", logPath, err)
+		log.Printf("tail: seek %s: %v", logsafe.Dir(logPath), err)
 		f.Close()
 		cancel()
 		close(tail.done)
@@ -582,7 +583,7 @@ func (b *TmuxBackend) startTail(name, tmuxName, logPath string) *logTail {
 		return tail
 	}
 	if err := watcher.Add(logPath); err != nil {
-		log.Printf("tail: watch %s: %v", logPath, err)
+		log.Printf("tail: watch %s: %v", logsafe.Dir(logPath), err)
 		watcher.Close()
 		f.Close()
 		cancel()

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -55,7 +56,7 @@ func (a *CodexAgent) ExtractSessions(basePath string, knownMtimes map[string]flo
 		}
 		sess, err := parseCodexSession(path, mtime)
 		if err != nil {
-			slog.Debug("codex: failed to parse session file", "path", path, "error", err)
+			slog.Debug("codex: failed to parse session file", "path", logsafe.Dir(path), "error", err)
 			return nil
 		}
 		if sess != nil {

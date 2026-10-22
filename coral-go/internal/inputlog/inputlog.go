@@ -16,6 +16,7 @@ package inputlog
 import (
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"path/filepath"
@@ -153,7 +154,7 @@ func Delete() (int, error) {
 		n++
 	}
 	if n > 0 {
-		log.Printf("[input] terminal input debug log deleted (%s)", path)
+		log.Printf("[input] terminal input debug log deleted (%s)", logsafe.Path(path))
 	}
 	return n, nil
 }
@@ -188,9 +189,9 @@ func applyLocked(why string) {
 		if forced {
 			via = "CORAL_DEBUG_INPUT / --debug-input"
 		}
-		log.Printf("[input] terminal input debug log is ON (%s): every write to an agent terminal is recorded in %s, with the secrets Coral recognises redacted and a person's own typing kept as its length only; it can still hold text sent to agents. Turn it off when you are done.", via, path)
+		log.Printf("[input] terminal input debug log is ON (%s): every write to an agent terminal is recorded in %s, with the secrets Coral recognises redacted and a person's own typing kept as its length only; it can still hold text sent to agents. Turn it off when you are done.", via, logsafe.Path(path))
 	case !on && was:
-		log.Printf("[input] terminal input debug log is OFF (%s). %s is kept, its older copy (.1) removed: delete it (Settings, or by hand) when you no longer need it; it goes by itself after %d days unwritten.", why, path, int(retention.Hours()/24))
+		log.Printf("[input] terminal input debug log is OFF (%s). %s is kept, its older copy (.1) removed: delete it (Settings, or by hand) when you no longer need it; it goes by itself after %d days unwritten.", why, logsafe.Path(path), int(retention.Hours()/24))
 	}
 }
 

@@ -1,0 +1,124 @@
+package logsafe
+
+import (
+	"bytes"
+	"errors"
+	"strings"
+	"testing"
+)
+
+func TestRedactorLines(t *testing.T) {
+	r := newRedactor([]string{"/Users/ann", `C:\Users\Ann Lee`}, "Annes-MacBook-Pro")
+	cases := []struct{ in, want string }{
+		{"opening /Users/ann/.coral/sessions.db", "opening ~/.coral/sessions.db"},
+		{"home is /Users/ann", "home is ~"},
+		{"/Users/ann: permission denied", "~: permission denied"},
+		{"not ann: /Users/annabel/x", "not ann: /Users/<user>/x"}, // another user's folder: still a name
+		{"/Users/annabel2 and /Users/ann", "/Users/<user> and ~"}, // a longer name is not the home folder
+		{"read /home/bob/.config/x failed", "read /home/<user>/.config/x failed"},
+		{`read C:\Users\Bob\AppData\x`, `read C:\Users\<user>\AppData\x`},
+		{"read C:/Users/Bob/AppData/x", "read C:/Users/<user>/AppData/x"},
+		{`read c:\users\RUNNER~1\x`, `read c:\users\<user>\x`}, // the 8.3 form of a name
+		{`in C:\Users\Ann Lee\Documents`, `in ~\Documents`},    // a home folder with a space
+		{"host Annes-MacBook-Pro is up", "host <host> is up"},
+		{"ANNES-MACBOOK-PRO", "<host>"},
+		{"Annes-MacBook-Pro-2 stays", "Annes-MacBook-Pro-2 stays"}, // only the whole name
+		{"no paths here", "no paths here"},
+		{"", ""},
+		{"/usr/local/bin/tmux and /opt/homebrew/bin", "/usr/local/bin/tmux and /opt/homebrew/bin"},
+		{"~/.coral already", "~/.coral already"},
+		{"/Users/<user>/x", "/Users/<user>/x"},
+	}
+	for _, c := range cases {
+		if got := string(r.redact([]byte(c.in))); got != c.want {
+			t.Errorf("redact(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestRedactorShortHostIsLeftAlone(t *testing.T) {
+	for _, host := range []string{"mac", "localhost", "pc", ""} {
+		r := newRedactor(nil, host)
+		if got := string(r.redact([]byte("the mac and localhost and pc"))); got != "the mac and localhost and pc" {
+			t.Errorf("host %q damaged the line: %q", host, got)
+		}
+	}
+}
+
+type recorder struct {
+	writes []string
+	err    error
+}
+
+func (r *recorder) Write(p []byte) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	r.writes = append(r.writes, string(p))
+	return len(p), nil
+}
+
+// Per write, nothing held back: each Write reaches the sink at once, redacted, and reports the bytes the caller wrote (not the redacted length).
+func TestWriterPassesEachWriteThroughAtOnce(t *testing.T) {
+	rec := &recorder{}
+	w := &redactingWriter{w: rec, r: newRedactor([]string{"/Users/ann"}, "")}
+	for _, line := range []string{"a /Users/ann/x\n", "b\n", "/Users/ann"} {
+		n, err := w.Write([]byte(line))
+		if err != nil || n != len(line) {
+			t.Fatalf("Write(%q) = %d, %v; want %d, nil", line, n, err, len(line))
+		}
+	}
+	if got := strings.Join(rec.writes, "|"); got != "a ~/x\n|b\n|~" {
+		t.Fatalf("sink saw %q", got)
+	}
+}
+
+func TestWriterReportsASinkError(t *testing.T) {
+	boom := errors.New("disk full")
+	w := &redactingWriter{w: &recorder{err: boom}, r: newRedactor(nil, "")}
+	if n, err := w.Write([]byte("x")); !errors.Is(err, boom) || n != 0 {
+		t.Fatalf("Write = %d, %v", n, err)
+	}
+}
+
+func TestWriterOnTheRealEnvironment(t *testing.T) {
+	t.Setenv("HOME", "/Users/zed")
+	t.Setenv("USERPROFILE", "")
+	var buf bytes.Buffer
+	w := Writer(&buf)
+	_, _ = w.Write([]byte("x /Users/zed/y /home/other/z\n"))
+	if got := buf.String(); strings.Contains(got, "zed") && !strings.Contains(got, "~") && !strings.Contains(got, "<user>") {
+		t.Fatalf("not redacted: %q", got)
+	}
+	if strings.Contains(buf.String(), "other") {
+		t.Fatalf("another user's folder name survived: %q", buf.String())
+	}
+}
+
+func TestDir(t *testing.T) {
+	for in, want := range map[string]string{
+		"/Users/ann/work/app":    "app",
+		`C:\Users\ann\work\app`:  "app",
+		`C:\Users\ann\work\app\`: "app",
+		"/Users/ann/work/app/":   "app",
+		"app":                    "app",
+		"":                       ".",
+		"/":                      ".",
+		`\\server\share\proj`:    "proj",
+	} {
+		if got := Dir(in); got != want {
+			t.Errorf("Dir(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestPath(t *testing.T) {
+	t.Setenv("HOME", "/Users/zed")
+	t.Setenv("USERPROFILE", "")
+	if got := Path("/Users/zed/bin/coral"); got != "~/bin/coral" {
+		t.Errorf("Path = %q", got)
+	}
+	if got := Path("/usr/local/bin/tmux"); got != "/usr/local/bin/tmux" {
+		t.Errorf("Path = %q", got)
+	}
+}

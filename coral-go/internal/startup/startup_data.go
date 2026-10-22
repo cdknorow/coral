@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os"
 	"path/filepath"
@@ -177,7 +178,7 @@ func prepareWithDatabase(ctx context.Context, db *store.DB, cfg *config.Config, 
 	setupSessionStateSweep(db, cfg.CoralDir())
 	if dir := agent.LaunchTempDir(); dir != os.TempDir() {
 		if n := cmdhandoff.SweepIn(dir); n > 0 {
-			log.Printf("[startup] removed %d launch script(s) older than a day from %s", n, dir)
+			log.Printf("[startup] removed %d launch script(s) older than a day from %s", n, logsafe.Path(dir))
 		}
 	}
 	if n := cmdhandoff.Sweep(); n > 0 {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"log"
 	"os/exec"
 	"runtime"
@@ -94,7 +95,7 @@ func logExecFailure(bin, socketPath string, args []string, err error) {
 	if heldBack > 0 {
 		more = fmt.Sprintf(" (and %d more like it in the last %s)", heldBack, execFailureEvery)
 	}
-	log.Printf("[tmux] exec failed: bin=%q socket=%q %s err=%v stderr=%q%s", bin, socketPath, describeTmuxCommand(args), err, stderr, more)
+	log.Printf("[tmux] exec failed: bin=%q socket=%q %s err=%v stderr=%q%s", logsafe.Path(bin), logsafe.Path(socketPath), describeTmuxCommand(args), err, stderr, more)
 }
 
 // tmuxCommandName is a tmux command's subcommand and -t target, past the socket arguments.

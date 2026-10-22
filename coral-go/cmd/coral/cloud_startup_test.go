@@ -211,7 +211,8 @@ func TestCloudStartupStepLeavesAConnectedServerAlone(t *testing.T) {
 	runCloudStartupStep(context.Background(), cfg, cloudConnectPrompt, &interruptRouter{}, strings.NewReader("\n"), &out)
 	assert.Zero(t, f.connects)
 	assert.Empty(t, out.String(), "no prompt")
-	assert.Contains(t, logs.String(), "[CLOUD] Coral Hub: this server is connected as build-box")
+	assert.Contains(t, logs.String(), "[CLOUD] Coral Hub: this server is connected")
+	assert.NotContains(t, logs.String(), "build-box", "the Hub label is not written to the log")
 
 	f2, cfg2, _ := stepEnv(t, notConfigured)
 	runCloudStartupStep(context.Background(), cfg2, cloudConnectPrompt, &interruptRouter{}, strings.NewReader("\n"), &out)

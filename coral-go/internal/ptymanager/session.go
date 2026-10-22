@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"io"
 	"log"
 	"os"
@@ -91,7 +92,7 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 
 	logFile, err := openLogAppend(logPath)
 	if err != nil {
-		log.Printf("Warning: could not open log file %s: %v", logPath, err)
+		log.Printf("Warning: could not open log file %s: %v", logsafe.Dir(logPath), err)
 	}
 
 	s := &session{

@@ -4,6 +4,7 @@ package secfile
 
 import (
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"io"
 	"log"
 	"os"
@@ -103,7 +104,7 @@ func CheckOpen(f *os.File) error {
 		if err := Protect(path); err != nil {
 			return fmt.Errorf("%w: %s: make its access list private: %v", ErrNotPrivate, path, err)
 		}
-		log.Printf("[secfile] %s: its access list was inherited (only this user, SYSTEM and Administrators); it is now private to this user", path)
+		log.Printf("[secfile] %s: its access list was inherited (only this user, SYSTEM and Administrators); it is now private to this user", logsafe.Path(path))
 	}
 	return nil
 }

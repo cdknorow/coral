@@ -180,7 +180,7 @@ func pathLogs(fset *token.FileSet, file *ast.File) []string {
 func parse(t *testing.T, src string) (*token.FileSet, *ast.File) {
 	t.Helper()
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "x.go", src, 0)
+	f, err := parser.ParseFile(fset, "x.go", src, parser.ParseComments)
 	require.NoError(t, err)
 	return fset, f
 }
@@ -232,7 +232,7 @@ func TestNoGoCodeOfCoralLogsThePath(t *testing.T) {
 			return nil
 		}
 		fset := token.NewFileSet()
-		f, err := parser.ParseFile(fset, p, nil, 0)
+		f, err := parser.ParseFile(fset, p, nil, parser.ParseComments)
 		if err != nil {
 			return nil // a file that does not parse is the compiler's to report
 		}

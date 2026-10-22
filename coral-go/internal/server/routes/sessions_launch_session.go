@@ -158,7 +158,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, spec launchSpec) (_
 		CoralPort: h.cfg.Port,
 	}
 	if cliPath != "" {
-		log.Printf("[launch] using custom CLI path: %s", cliPath)
+		log.Printf("[launch] using custom CLI path: %s", logsafe.Path(cliPath))
 	}
 
 	// The launch command is built before any terminal is made: when its prompt or settings
@@ -295,7 +295,7 @@ func resolveLaunchCLI(agentType, cliPath string) (string, error) {
 	}
 	// LookPath failed — try common install locations
 	if found := agent.FindCLIInCommonPaths(checkBin); found != "" {
-		log.Printf("[launch] %s not on PATH, found at %s", checkBin, found)
+		log.Printf("[launch] %s not on PATH, found at %s", logsafe.Path(checkBin), logsafe.Path(found))
 		return found, nil
 	}
 	installCmd, installURL := "", ""
@@ -362,9 +362,9 @@ func (h *SessionsHandler) startOnTmux(ctx context.Context, params agent.LaunchPa
 		tmuxPath, ok := tmux.IsAvailable()
 		slog.Info("launch tmux availability",
 			"available", ok,
-			"resolved_path", tmuxPath,
-			"client_tmux_bin_before", tmuxTerm.Client().TmuxBin,
-			"socket", tmuxTerm.Client().SocketPath,
+			"resolved_path", logsafe.Path(tmuxPath),
+			"client_tmux_bin_before", logsafe.Path(tmuxTerm.Client().TmuxBin),
+			"socket", logsafe.Path(tmuxTerm.Client().SocketPath),
 		)
 		if !ok {
 			// What was missing and where it was looked for, without the PATH itself (it is logged once, at server start, with the home folder as "~").
@@ -373,8 +373,8 @@ func (h *SessionsHandler) startOnTmux(ctx context.Context, params agent.LaunchPa
 		}
 		if tmuxPath != "" && tmuxTerm.Client().TmuxBin != tmuxPath {
 			slog.Info("launch updating tmux client binary",
-				"from", tmuxTerm.Client().TmuxBin,
-				"to", tmuxPath,
+				"from", logsafe.Path(tmuxTerm.Client().TmuxBin),
+				"to", logsafe.Path(tmuxPath),
 			)
 			tmuxTerm.Client().TmuxBin = tmuxPath
 		}
@@ -383,13 +383,13 @@ func (h *SessionsHandler) startOnTmux(ctx context.Context, params agent.LaunchPa
 	ptymanager.ResetAgentLog(logFile) // 0600, never through a link (#3601, W17)
 	slog.Info("launch creating tmux session",
 		"session_name", sessionName,
-		"working_dir", dir,
+		"working_dir", logsafe.Dir(dir),
 		"terminal_type", fmt.Sprintf("%T", h.terminal),
 	)
 	if err := h.terminal.CreateSession(ctx, sessionName, dir); err != nil {
 		slog.Error("launch tmux CreateSession failed",
 			"session_name", sessionName,
-			"working_dir", dir,
+			"working_dir", logsafe.Dir(dir),
 			"terminal_type", fmt.Sprintf("%T", h.terminal),
 			"error", err,
 		)

@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/subgentic/coral/internal/logsafe"
 	"github.com/subgentic/coral/internal/testguard"
 	"log"
 	"os"
@@ -142,7 +143,7 @@ func Load(dataDir ...string) *Config {
 	// Ensure data directory exists: only this user may read it (#3552, Security's #3551 audit)
 	testguard.CheckDataPath(coralDir)
 	if err := EnsureDataDir(coralDir); err != nil {
-		log.Printf("[config] data folder %s: %v", coralDir, err)
+		log.Printf("[config] data folder %s: %v", logsafe.Path(coralDir), err)
 	}
 
 	// Agent pipe logs (everything an agent's terminal shows) live in the data folder, never in
