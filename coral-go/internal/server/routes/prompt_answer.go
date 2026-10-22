@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	at "github.com/subgentic/coral/internal/agenttypes"
+	"github.com/subgentic/coral/internal/clitext"
 	"github.com/subgentic/coral/internal/ptymanager"
 	"github.com/subgentic/coral/internal/terminalinput"
 )
@@ -127,7 +128,46 @@ func indentOf(s string) int {
 // separators, and stops at the prompt's own question line. A numbered list
 // elsewhere on screen (a plan's steps, a reply) is never reached, and a block
 // without a selection marker is not a prompt.
+//
+// Its text (title, question, option labels, review lines, the Submit label) comes out clean (cleanPromptScreen): what an agent's
+// screen can carry is shown on the card, matched by auto-accept and kept in the session state.
 func parsePromptScreen(capture string) (promptScreen, bool) {
+	s, ok := parsePromptScreenRaw(capture)
+	if !ok {
+		return s, false
+	}
+	return cleanPromptScreen(s), true
+}
+
+// cleanPromptScreen drops from a parsed prompt's text what can hide or reorder it (Security on #132): controls and escape
+// sequences, the bidirectional and other format characters (U+202A-202E, U+2066-2069, U+200B-200F, U+061C, U+FEFF, the soft
+// hyphen, ...) and the tag characters, with whitespace folded, through clitext.CleanName, the cleaner names and titles use.
+// A screen without them (every one in testdata) is unchanged.
+func cleanPromptScreen(s promptScreen) promptScreen {
+	s.Title = clitext.CleanName(s.Title)
+	s.Question = clitext.CleanName(s.Question)
+	opts := make([]promptOption, len(s.Options))
+	for i, o := range s.Options {
+		o.Label = clitext.CleanName(o.Label)
+		opts[i] = o
+	}
+	s.Options = opts
+	if len(s.Review) > 0 {
+		review := make([]promptReviewItem, len(s.Review))
+		for i, r := range s.Review {
+			review[i] = promptReviewItem{Question: clitext.CleanName(r.Question), Answer: clitext.CleanName(r.Answer)}
+		}
+		s.Review = review
+	}
+	if s.Submit != nil {
+		sub := *s.Submit
+		sub.Label = clitext.CleanName(sub.Label)
+		s.Submit = &sub
+	}
+	return s
+}
+
+func parsePromptScreenRaw(capture string) (promptScreen, bool) {
 	lines := strings.Split(strings.ReplaceAll(capture, "\r", ""), "\n")
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
