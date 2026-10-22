@@ -1,5 +1,31 @@
 # Release Notes
 
+## v1.4.151 — A shared Inbox, Coral Hub controls its auto-accept, Windows round 4, and faster Saved
+
+### Features
+
+- **The shared Inbox:** the Inbox tab shows Tasks for you (expand one and reply) and "Read the whole message", drawn by the same Markdown renderer Coral Hub uses (vendored byte for byte and pinned by hash), so a message reads the same in both places. A refresh draws an open task again without a read or link lookups when it did not change.
+- **Working mode descriptions:** Team settings explains the chosen working mode in one line under the list (None, Shared checkout, Worktrees and Merge queue each have a short description).
+- **Edited tasks record when:** changing a task's body, title, priority or assignee records `edited_at`, so a client can tell an edit from a new task.
+- **Mac app:** opening Coral.app again while it runs brings its window forward, and the relaunch after an update opens the window only if it was open when the update began (a tray-only Coral stays in the background).
+
+### Changes
+
+- **Coral Hub can turn on auto-accept stays on by default, and the Hub owner can change it:** the switch now lives in Settings > Network and Hub, and the account this computer is linked to can turn it on or off from Coral Hub. Turning it off ends every auto-accept that was started through the Hub (local ones stay). With it on, an agent that skips permission prompts can be started from Coral Hub at Launch access: the Hub owner account is trusted as much as the person at this computer, so protect it with the Hub's own sign-in controls (the threat model page says so).
+- **Hub launches that skip permission prompts are checked everywhere:** launch, launch team (each member, when its turn comes, with the settings read then), restart and task runs check the flags against an allowlist (anything unknown counts as skipping), and refuse with `no_dashboard_provenance`, `hub_auto_accept_disabled`, `hub_mode_too_low` or `hub_settings_unreadable`. A team member that is exactly one of the owner's saved templates keeps its allow rules, tools and hooks.
+- **Saved messages are for the Hub owner only:** through Coral Hub the Saved list and its messages belong to the account this computer is linked to.
+- **The Saved list is fast with a large history:** the server marks bookmarks that are gone or not reachable itself, within a time budget and from the bookmark's own agent store, and keeps a small cache; a first list with 10,000 Codex rollouts takes 1.5 s, the next 167 ms.
+- **Merge queue from the dashboard:** attach, send-back and mark-landed take the verified actor when the body names nobody (in the default identity mode too), and mark-landed accepts a bare or `sha256:`-prefixed digest. A task reply from the dashboard works in the default identity mode.
+- **Windows:** the updater's folders and staged files are private; a task run refuses a network `repo_path` before any stat; the tools folder joins PATH with the platform separator; Hub-visible paths hide the home folder's 8.3 form; Git Bash gets `cygpath -u`; and a configured CLI path that cannot be run is a setup problem. A team launch that started nobody keeps a board that something else used meanwhile.
+- **Accessibility:** the Board and Team views (task rows are no longer buttons holding buttons; the message list is a list; Team cards are named), Create task and task detail (a spoken refusal, a keyboard dependency picker, a named dialog), the Inbox (focus after send, one announcement, a turning chevron, the selected tab in forced colors), the light theme (the warning toast's title holds 4.5:1; toasts, the hover card and pasted-image chips are held to it).
+- **Startup:** the shared Inbox renderer and the Coral Hub connect screen load when first used, not at startup; if the connect screen cannot load after an update, a toast says to reload the page.
+- **Docs:** user docs for the thinking level, comments and the agent line (with fresh screenshots), and the threat model refreshed for 146 to 151.
+
+### Internal
+
+- The health check form's fields come from one shared field builder (no visible change).
+- Watchdogs in the Windows stress runners signal only the process they started; tmux capture and four terminal tests wait for what the shell prints; CDP suites that look at the light theme clear the custom colour variables first, and the "really light" check runs in every gate.
+
 ## v1.4.150 — A merge queue for teams, Windows round 3, comments redesigned, and high-contrast fixes
 
 ### Features
