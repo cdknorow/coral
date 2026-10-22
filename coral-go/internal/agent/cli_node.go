@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,11 +18,21 @@ import (
 type NodeNotFoundError struct {
 	CLI    string // the CLI's path
 	Reason string // why no node was used: none found, or the one found is in a folder others can write
+	Fix    string // what to do about it; "" for none found
 }
 
 func (e *NodeNotFoundError) Error() string {
-	return fmt.Sprintf("node not found: %s is a node script and needs node, but %s. Install Node.js, or put its folder on the PATH Coral runs with.", e.CLI, e.Reason)
+	fix := e.Fix
+	if fix == "" {
+		fix = "Install Node.js, or start Coral from a shell whose PATH has node's folder."
+	}
+	return fmt.Sprintf("node not found: %s is a node script and needs node, but %s. %s", e.CLI, e.Reason, fix)
 }
+
+// nodeRefusal is why a node that is there is not used, and what the person can do about it.
+type nodeRefusal struct{ Reason, Fix string }
+
+func (e *nodeRefusal) Error() string { return e.Reason }
 
 // NodeDirFor is the folder to put at the end of PATH so the CLI at cliPath runs with its own node, for a child that gets env: "" with a nil error when nothing is needed
 // (Windows, whose npm shims name their node; a CLI that is not an "env node" script; a node already on env's PATH), a *NodeNotFoundError when the CLI needs node and no node
@@ -37,9 +48,9 @@ func NodeDirFor(cliPath string, env []string) (string, error) {
 	if nodeOnPath(pathOf(env)) {
 		return "", nil
 	}
-	dir, why := nodeDirFor(cliPath, real)
+	dir, why, fix := nodeDirFor(cliPath, real)
 	if dir == "" {
-		return "", &NodeNotFoundError{CLI: cliPath, Reason: why}
+		return "", &NodeNotFoundError{CLI: cliPath, Reason: why, Fix: fix}
 	}
 	return dir, nil
 }
@@ -138,7 +149,7 @@ func needsEnvNode(file string) bool {
 // nodeDirFor is the folder of the node that installed the CLI, from the layouts npm and its managers make and nothing else: beside the CLI as it was named (the Homebrew
 // and nvm layouts, <prefix>/bin/claude next to <prefix>/bin/node), beside the file it links to, or <prefix>/bin for a package under <prefix>/lib/node_modules. The first such
 // folder with a node is used if trustedNodeDir accepts it; "" and why when there is none or it is not safe.
-func nodeDirFor(cliPath, real string) (dir, why string) {
+func nodeDirFor(cliPath, real string) (dir, why, fix string) {
 	var dirs []string
 	if abs, err := filepath.Abs(cliPath); err == nil {
 		dirs = append(dirs, filepath.Dir(abs))
@@ -159,9 +170,13 @@ func nodeDirFor(cliPath, real string) (dir, why string) {
 		}
 		if err := trustedNodeDir(d); err != nil {
 			why = fmt.Sprintf("the node in %s is not used (%v)", d, err)
+			var r *nodeRefusal
+			if errors.As(err, &r) {
+				fix = r.Fix
+			}
 			continue
 		}
-		return d, ""
+		return d, "", ""
 	}
-	return "", why
+	return "", why, fix
 }
