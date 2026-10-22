@@ -230,6 +230,19 @@ async function run() {
             await until(savedIs('welcome_pending', 'False'), 'Escape saved with the focus outside');
             check(`${label}: Escape is "Skip for now" with the focus outside the screen`, !(await open()) && (await settings()).welcome_choice === 'skipped');
 
+            // a dialog opened over the screen has the Escape (the topmost one closes, as everywhere else); the screen stays open and unanswered until the next Escape
+            await put({ welcome_pending: 'True', welcome_choice: '' });
+            await load();
+            await until(`!!document.querySelector('#editions-modal [data-editions="skip"]')`, 'the screen, for a dialog over it');
+            await ev(`import((window.__coralStatic || '/static/') + 'cli_dialogs.js').then(m => { m._showCLINotFoundModal('claude', 'local'); return true; })`);
+            await until(`!!document.querySelector('body > .modal:not([id])')`, 'the dialog over the screen');
+            await escape();
+            await until(`!document.querySelector('body > .modal:not([id])')`, 'Escape closed the dialog over the screen');
+            check(`${label}: Escape closes the dialog over the screen first; the screen is still open and unanswered`, (await open()) && (await settings()).welcome_pending === "True", JSON.stringify([await open(), await settings()]));
+            await escape();
+            await until(savedIs('welcome_pending', 'False'), 'the second Escape answers the screen');
+            check(`${label}: the next Escape is "Skip for now"`, !(await open()) && (await settings()).welcome_choice === 'skipped');
+
             await put({ welcome_pending: 'True' });
             await load();
             await until(`!!document.querySelector('#editions-modal [data-editions="own-hub"]')`, 'the screen');
