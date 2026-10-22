@@ -278,6 +278,15 @@ function sweepLeftovers() {
 sweepLeftovers();
 
 const tmp = fs.mkdtempSync(path.join(tempRoot, 'coral-cdp-'));
+// Windows: a folder made under the runner's temp inherits an access list that lets other accounts change it (BUILTIN\\Users here), which Coral warns about in the
+// dashboard of every shard server: a "Security warning" toast over the page's bottom controls at phone width (sleeping_agent_view's Wake, ui_audit_batch4's Cancel) and
+// the writable-tools-folder text in Settings > Terminal (settings_text_budget's 102 words). Owner only, as Coral's own data folder is; everything below inherits it.
+function ownerOnlyOnWindows(p, isDir) {
+  if (process.platform !== 'win32') return;
+  const me = execFileSync('whoami', [], { encoding: 'utf8' }).trim();
+  execFileSync('icacls', [p, '/inheritance:r', '/grant:r', `${me}:${isDir ? '(OI)(CI)F' : 'F'}`], { stdio: 'ignore' });
+}
+ownerOnlyOnWindows(tmp, true);
 // Mock-agent run safety (#4354): a stub claude/codex/gemini first on every shard server's PATH, so
 // a launch that ever falls back to the PATH CLI hits the stub (records a marker, exits 1) instead of
 // the operator's real CLI. HOME already points into each shard, so transcripts never reach the real
@@ -470,12 +479,9 @@ async function startShard(n, gen = 0, strict = false, backend = MAIN_BACKEND) {
   // test the prompt and the sign-in page stub the auth API themselves.
   const pwFile = path.join(dir, 'initial-password');
   fs.writeFileSync(pwFile, TEST_PASSWORD + '\n', { mode: 0o600 }); fs.chmodSync(pwFile, 0o600);
-  // On Windows the mode means nothing: the file inherits its folder's access list, which Coral refuses for a password ("CORAL_INITIAL_PASSWORD_FILE not used"),
-  // so every suite met the first-run "Set a password" prompt (#3948) over its page (93 of the 481 suites failed there). Owner only, as Coral asks.
-  if (process.platform === 'win32') {
-    const me = execFileSync('whoami', [], { encoding: 'utf8' }).trim();
-    execFileSync('icacls', [pwFile, '/inheritance:r', '/grant:r', `${me}:F`], { stdio: 'ignore' });
-  }
+  // On Windows the mode means nothing: the file inherits its folder's access list, which Coral refuses for a password ("CORAL_INITIAL_PASSWORD_FILE not used"), so every
+  // suite met the first-run "Set a password" prompt (#3948) over its page (93 of the 481 suites failed there). Owner only, as Coral asks.
+  ownerOnlyOnWindows(pwFile, false);
   const serverEnv = { ...testEnv, CORAL_TEST_HOOKS: '1', CORAL_DATA_DIR: data, HOME: hostHome, CORAL_INITIAL_PASSWORD_FILE: pwFile,
     PATH: stubBin + path.delimiter + (testEnv.PATH || process.env.PATH || '') };  // #4354: this shard's stub CLI first on PATH
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
