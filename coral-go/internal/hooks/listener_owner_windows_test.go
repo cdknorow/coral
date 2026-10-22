@@ -199,6 +199,11 @@ func TestAListenerRunningThisToolsOwnExecutablePasses(t *testing.T) {
 	resetListenerCheck(t, func(string, int) ([]uint32, error) { return []uint32{77}, nil },
 		func(uint32) (*windows.SID, string, error) { return me, exe, nil })
 	coralFolders = func() []string { return nil }
+	resolved, err := filepath.EvalSymlinks(exe)
+	require.NoError(t, err)
+	assert.True(t, sameExecutable(exe), "the original executable path")
+	assert.True(t, sameExecutable(resolved), "its resolved long path names the same file")
+	assert.False(t, sameExecutable(filepath.Join(t.TempDir(), filepath.Base(exe))), "a missing same-named file is refused")
 	assert.NoError(t, checkListener("127.0.0.1", 8450), "the listener is %s, this tool's own executable", exe)
 	listenerVerified = sync.Map{}
 	pidOwner = func(uint32) (*windows.SID, string, error) { return me, `C:\elsewhere\` + filepath.Base(exe), nil }
