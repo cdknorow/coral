@@ -38,15 +38,15 @@ func artifactDigest(base, ref string) (string, error) {
 		u, err := url.Parse(ref)
 		b, baseErr := url.Parse(base)
 		if err != nil || baseErr != nil || u.Scheme != b.Scheme || u.Host != b.Host || u.User != nil || (u.RawQuery != "" && !linkVersion.MatchString(u.RawQuery)) || u.Fragment != "" {
-			return "", fmt.Errorf("artifact URL must belong to the configured Coral server")
+			return "", usageError{"artifact URL must belong to the configured Coral server"}
 		}
 		id = strings.TrimPrefix(u.Path, "/api/artifacts/")
 	}
 	if len(id) != 64 {
-		return "", fmt.Errorf("expected coral://artifacts/<SHA-256>, /api/artifacts/<SHA-256>, or a SHA-256 digest")
+		return "", usageError{"expected coral://artifacts/<SHA-256>, /api/artifacts/<SHA-256>, or a SHA-256 digest"}
 	}
 	if _, err := hex.DecodeString(id); err != nil {
-		return "", fmt.Errorf("invalid artifact SHA-256")
+		return "", usageError{"invalid artifact SHA-256"}
 	}
 	return strings.ToLower(id), nil
 }

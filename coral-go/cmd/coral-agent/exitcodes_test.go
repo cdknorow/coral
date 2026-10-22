@@ -46,3 +46,30 @@ func TestAgentExitCodesByFailure(t *testing.T) {
 	code, _, _ = runAgent(t, srv.URL, "task", "list", "--nope")
 	assert.Equal(t, 2, code)
 }
+
+// A value the command line does not take is a usage error: exit 2 and the usage line, nothing on stdout, and Coral is never asked (#282 rows 1, 2).
+func TestAgentInputValidationIsAUsageError(t *testing.T) {
+	asked := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { asked = true }))
+	defer srv.Close()
+	for _, args := range [][]string{
+		{"task", "detail", "not-a-number"},
+		{"ui", "events"},
+		{"ui", "publish", "--file", "x.html"},
+		{"artifact", "download", "not-a-uri"},
+		{"history", "search"},
+		{"not-a-command"},
+	} {
+		code, stdout, stderr := runAgent(t, srv.URL, args...)
+		assert.Equal(t, 2, code, "%v: %q", args, stderr)
+		assert.Empty(t, stdout, "%v prints nothing on stdout", args)
+		assert.NotEmpty(t, stderr, "%v", args)
+	}
+	_, _, stderr := runAgent(t, srv.URL, "task", "detail", "not-a-number")
+	assert.Contains(t, stderr, "Task ID must be a positive integer")
+	assert.Contains(t, stderr, "Usage:")
+	_, _, stderr = runAgent(t, srv.URL, "not-a-command")
+	assert.Contains(t, stderr, "Unknown command: not-a-command")
+	assert.NotContains(t, stderr, "Usage: coral-agent <command>", "a short message, not the whole help")
+	assert.False(t, asked, "none of these reached Coral")
+}

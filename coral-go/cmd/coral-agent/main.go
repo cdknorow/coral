@@ -13,6 +13,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/subgentic/coral/internal/cliauth"
@@ -133,8 +134,7 @@ func main() {
 	case "--help", "-h", "help":
 		printUsage()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", os.Args[1])
-		printUsage()
+		fmt.Fprintf(os.Stderr, "Unknown command: %s. Run coral-agent help for the commands.\n", os.Args[1])
 		os.Exit(2) // usage
 	}
 }
@@ -162,6 +162,10 @@ func cmdArtifact(args []string) {
 			os.Exit(2)
 		}
 		path, err := downloadArtifactOpts(serverURL, opts.Positional[0], opts.Values["output"], opts.Bools["force"])
+		var ue usageError
+		if errors.As(err, &ue) {
+			failUsage(ue.msg, "artifact", args)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			clierr.Exit1()
@@ -716,8 +720,7 @@ func printTaskWorkflow(task map[string]any) {
 func positiveTaskID(arg string) int64 {
 	id, err := strconv.ParseInt(arg, 10, 64)
 	if err != nil || id <= 0 {
-		fmt.Fprintln(os.Stderr, "Task ID must be a positive integer")
-		clierr.Exit1()
+		failUsage("Task ID must be a positive integer", "task", os.Args[2:])
 	}
 	return id
 }
