@@ -23,6 +23,7 @@ import { h } from './cloud.js';
 import { formatLastSeen, updateNotice, RELEASES_URL, DOWNLOAD_URL, serverVersion, serverAgentCount, belowMinimumText } from './server_status.js';
 import { accessBlockedMessage, accessChanged } from './hub_access.js';
 import { pollEvery } from './overload.js';
+import { OWNER_LABEL_STEP } from './owner_label.js';
 import { healthDot, healthCard } from './machine_health.js';
 // This module is loaded lazily, so its search box is loaded the same way (a static import of a module not loaded at startup could not be retried: import_hygiene).
 const { syncRelaunchReads, resetRelaunchReads, relaunchBadge } = await importOnce('./relaunch_badge.js'); // the "Updating" badge of a hub relaunch (#5355, behind the update flag)
@@ -40,6 +41,12 @@ let loaded = false;
 let enrollOpen = null; // null follows the account: first machine open, existing machines closed
 let enrollCode = '';
 const accessDetails = new Set();
+const relinkOpen = new Set(); // ids whose "Owner not confirmed" explanation is open (#6110)
+/** The words for a machine the hub says cannot confirm its owner yet (GET /api/servers needs_relink, #6110). The step is owner_label.js's, the same one the message on that computer says (#6108); the Servers row names the machine,
+ *  because it is not the computer in the person's hand. */
+export const RELINK_BUTTON = 'Owner not confirmed';
+export const relinkHelp = label => `${label || 'This machine'} can't confirm its owner yet. On that computer, ${OWNER_LABEL_STEP}.`;
+const relinkId = s => `${rowId(s.id)}-relink`;
 
 /** Open the Servers tab, optionally at one server's row. */
 export async function showCloudServers(focusId) {
@@ -350,7 +357,9 @@ function rowActions(s, isBusy) {
     return confirming === s.id
         ? [h('button', { type: 'button', className: 'btn btn-small btn-danger', text: 'Confirm revoke', 'aria-describedby': revokeNoteId(s), onclick: () => { confirming = null; call(s.id, 'DELETE'); } }),
            h('button', { type: 'button', className: 'btn btn-small cs-revoke-cancel', text: 'Cancel', 'aria-describedby': revokeNoteId(s), onclick: () => cancelRevoke(s) })]
-        : [h('button', { type: 'button', className: 'btn btn-small cs-rename-btn', text: 'Rename', 'aria-label': `Rename ${s.label || 'this server'}`, disabled: isBusy, onclick: () => { renaming = s.id; render(); } }),
+        : [s.needs_relink === true ? h('button', { type: 'button', className: 'btn btn-small btn-primary cs-relink', text: RELINK_BUTTON, 'aria-label': `${RELINK_BUTTON} for ${s.label || 'this server'}: how to confirm it`, 'aria-expanded': String(relinkOpen.has(s.id)), 'aria-controls': relinkId(s),
+               onclick: () => { if (relinkOpen.has(s.id)) relinkOpen.delete(s.id); else relinkOpen.add(s.id); render(); focusRow(s.id, '.cs-relink'); } }) : null,
+           h('button', { type: 'button', className: 'btn btn-small cs-rename-btn', text: 'Rename', 'aria-label': `Rename ${s.label || 'this server'}`, disabled: isBusy, onclick: () => { renaming = s.id; render(); } }),
            h('button', { type: 'button', className: 'btn btn-small btn-danger-text cs-revoke', text: 'Revoke', 'aria-label': `Revoke ${s.label || 'this server'}`, disabled: isBusy, onclick: () => askRevoke(s) })];
 }
 
@@ -382,6 +391,7 @@ function detailCell(s, live, online, isBusy, helpId) {
     // The row shows the status and the version; the details add only what it does not: when an offline machine was last heard from.
     const meta = online ? null : h('div', { className: 'cs-meta cs-lastseen', text: `Last contact ${formatLastSeen(s.last_seen)}` });
     return h('td', { colSpan: COLUMNS.length, role: 'cell', className: 'cs-detail-cell' },
+        s.needs_relink === true ? h('div', { className: 'cs-note cs-relink-note', id: relinkId(s), hidden: !relinkOpen.has(s.id), text: relinkHelp(s.label) }) : null,
         h('div', { className: 'cs-main' }, meta, belowMinimumText(live) ? h('div', { className: 'cs-meta server-below-minimum', text: belowMinimumText(live) }) : null,
             online ? healthCard(live.machine_health, { title: 'Health', online: true, waitingText: 'No health reading yet.' }) : null, effEl, helpEl, info),
         confirming === s.id ? h('div', { className: 'cs-note', id: revokeNoteId(s), text: `Revoke ${s.label || 'this server'}? It disconnects this computer from Coral Hub. Its token stops working; to connect it again you must enroll it again.` }) : null,
@@ -394,7 +404,7 @@ function rows(s) {
     const isBusy = busy.has(s.id);
     const online = s.online === true;
     const id = rowId(s.id), detailId = `${id}-detail`, helpId = `${id}-access-help`;
-    const isOpen = expanded.has(s.id) || renaming === s.id || confirming === s.id;
+    const isOpen = expanded.has(s.id) || renaming === s.id || confirming === s.id || (s.needs_relink === true && relinkOpen.has(s.id));
     const version = serverVersion(live);
     const agents = serverAgentCount(live);
     const upd = updateBadge(live);

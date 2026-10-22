@@ -3,7 +3,9 @@
  * for it, and the check for that answer. The sentence is ours: the server's words are not shown. */
 
 export const OWNER_LABEL_MISSING = 'owner_label_missing';
-export const OWNER_LABEL_TEXT = 'Coral Hub can\'t confirm you own this computer yet. On the computer, open Settings > Network and Hub and choose Confirm owner.';
+/** The step itself, shared with the Servers tab's row for a machine that needs it (#6110), so the two cannot drift. */
+export const OWNER_LABEL_STEP = 'open Settings > Network and Hub and choose Confirm owner';
+export const OWNER_LABEL_TEXT = `Coral Hub can't confirm you own this computer yet. On the computer, ${OWNER_LABEL_STEP}.`;
 /** The short form beside a thumbnail that cannot load. */
 export const OWNER_LABEL_NOTE = 'Confirm the owner on the computer to use this.';
 
