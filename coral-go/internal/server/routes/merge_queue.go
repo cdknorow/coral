@@ -59,7 +59,7 @@ func (h *BoardHandler) AttachPatches(w http.ResponseWriter, r *http.Request) {
 		case strings.Contains(err.Error(), "only the author, a reviewer of the round or the orchestrator"):
 			errForbidden(w, err.Error())
 		default:
-			errBadRequest(w, err.Error())
+			errTaskGone(w, err)
 		}
 		return
 	}
@@ -108,7 +108,7 @@ func (h *BoardHandler) SendBack(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(err.Error(), "orchestrator is required") {
 			errForbidden(w, err.Error())
 		} else {
-			errBadRequest(w, err.Error())
+			errTaskGone(w, err)
 		}
 		return
 	}
@@ -197,7 +197,7 @@ func (h *BoardHandler) MarkLanded(w http.ResponseWriter, r *http.Request) {
 		case strings.Contains(err.Error(), "is not on this board"):
 			writeError(w, http.StatusNotFound, "not_found", err.Error())
 		default:
-			errBadRequest(w, err.Error())
+			errTaskGone(w, err)
 		}
 		return
 	}

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"github.com/subgentic/coral/internal/diskguard"
@@ -88,6 +89,32 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 }
 
 func errBadRequest(w http.ResponseWriter, msg string) { writeError(w, http.StatusBadRequest, "", msg) }
+
+// errTaskStore answers a failed task operation: 404 "Task not found" when there is no such task (the database's own "sql: no rows in result set", or the
+// "task #N is not on this board" of the merge queue), else 400 with the error's words.
+func errTaskStore(w http.ResponseWriter, err error) {
+	if errors.Is(err, sql.ErrNoRows) || taskNotOnBoard(err) {
+		errNotFound(w, "Task not found")
+		return
+	}
+	errBadRequest(w, err.Error())
+}
+
+// taskNotOnBoard is the merge queue's "task #N is not on this board" (a reviewer who is not on the board has "<name> is not on this board", which is not this).
+func taskNotOnBoard(err error) bool {
+	msg := err.Error()
+	return strings.HasPrefix(msg, "task #") && strings.Contains(msg, " is not on this board")
+}
+
+// errTaskGone is errTaskStore for the routes whose store can also fail on another lookup (a reviewer who is not a subscriber): only the explicit
+// "task #N is not on this board" is a 404.
+func errTaskGone(w http.ResponseWriter, err error) {
+	if taskNotOnBoard(err) {
+		errNotFound(w, "Task not found")
+		return
+	}
+	errBadRequest(w, err.Error())
+}
 
 func errNotFound(w http.ResponseWriter, msg string) { writeError(w, http.StatusNotFound, "", msg) }
 
