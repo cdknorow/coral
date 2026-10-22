@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/subgentic/coral/internal/claudestub"
 	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/transcriptlink"
 )
@@ -102,6 +103,7 @@ func TestBuildGoalPrompt(t *testing.T) {
 // goalFixture is one live Claude session with a transcript on disk and a
 // generator whose CLI is faked.
 type goalFixture struct {
+	cli     string // the signed-in stand-in claude (signedInClaude): a bare "claude" asked the machine's own CLI whether it is signed in (#5469)
 	ctx     context.Context
 	ss      *store.SessionStore
 	ts      *store.TaskStore
@@ -113,6 +115,13 @@ type goalFixture struct {
 	err     error
 	metrics *store.GoalMetricsStore
 	prompt  string // the last prompt sent to the CLI
+}
+
+// signedInClaude is a stand-in claude that says it is signed in, so the background sign-in guard (#5469) answers the same on every computer. The tests used the bare name "claude": the guard
+// then ran whatever claude the machine had, and a signed-out one (an isolated HOME, a fresh install) skipped every goal job.
+func signedInClaude(t *testing.T) string {
+	t.Helper()
+	return claudestub.New(t, claudestub.SignedIn).Path() // its absolute path is what the guard asks: no PATH search, so no machine's own claude is reached
 }
 
 func newGoalFixture(t *testing.T, ls store.LiveSession) *goalFixture {
@@ -143,7 +152,8 @@ func newGoalFixture(t *testing.T, ls store.LiveSession) *goalFixture {
 	)
 
 	f.gen = NewGoalGenerator(f.ss, f.ts, time.Hour)
-	f.gen.resolveCLI = func(map[string]string) string { return "claude" }
+	f.cli = signedInClaude(t)
+	f.gen.resolveCLI = func(map[string]string) string { return f.cli }
 	f.gen.SetMetricsStore(f.metrics)
 	f.gen.runCLI = func(_ context.Context, bin, prompt string) (goalCLIResult, error) {
 		f.calls.Add(1)
@@ -312,7 +322,7 @@ func TestGoalGenerator_RecordsTheOperatorsGoalAndAMissingCLIOnce(t *testing.T) {
 	assert.Equal(t, []string{"first:no_cli"}, outcomes(f.attempts(t)), "one row per outage, not per tick")
 	advance(time.Minute)
 
-	f.gen.resolveCLI = func(map[string]string) string { return "claude" }
+	f.gen.resolveCLI = func(map[string]string) string { return f.cli }
 	detail := `{"source":"user"}`
 	sid := f.sid
 	_, err := f.ts.InsertAgentEvent(f.ctx, &store.AgentEvent{AgentName: "coral-go", SessionID: &sid, EventType: GoalEventType, Summary: "Mine", DetailJSON: &detail})

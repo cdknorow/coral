@@ -78,7 +78,8 @@ func runGoalCadence(t *testing.T, agents int, work goalWorkload, fail bool) int 
 	gen := NewGoalGenerator(ss, ts, time.Hour)
 	gen.now = func() time.Time { return clock }
 	gen.resolvePath = func(ls *store.LiveSession) string { return paths[ls.SessionID] }
-	gen.resolveCLI = func(map[string]string) string { return "claude" }
+	cli := signedInClaude(t)
+	gen.resolveCLI = func(map[string]string) string { return cli }
 	var calls atomic.Int32
 	gen.runCLI = func(_ context.Context, _, prompt string) (goalCLIResult, error) {
 		calls.Add(1)
