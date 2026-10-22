@@ -1,0 +1,34 @@
+
+
+› C:/Program Files/Git/status
+
+
+• Did you mean to run git status, or inspect the path C:/Program Files/Git/status?
+
+  Worked for 6s • 4:01 AM
+
+/status
+
+  >_ OpenAI Codex (v0.161.0)
+
+  Visit https://chatgpt.com/settings/usage for up-to-date
+  information on rate limits and credits
+
+  Model:               GPT-6.1-Sol (reasoning low, summaries auto)
+  Model provider:      openai
+  Directory:           D:\work\proj
+  Permissions:         Custom (workspace with network access, never)
+  Agents.md:           <none>
+  Account:             <masked>
+  Thread name:         Introduce yourself and wait
+  Collaboration mode:  Default
+  Session:             00000000-0000-0000-0000-000000000000
+
+  Context window:      97% left (24.4K used / 475K)
+  Weekly limit:        [███████████████████░] 95% left (resets 2:05 AM on 28 Oct)
+
+
+  Ask Codex to do anything
+
+
+  ? for shortcuts                                                                                                                                                              ⚠ 1 warning · f2 to view
