@@ -29,7 +29,12 @@ func TestDefaultPinsNameTheNewHomeAndItsID(t *testing.T) {
 	assert.Equal(t, "subgentic/coral", p.Repo)
 	assert.Equal(t, "1160696364", p.RepoID, "the id survived the transfer (the certificate carried it before and after)")
 	assert.Equal(t, "subgentic/coral-promote", p.PromoteRepo)
-	assert.Empty(t, p.PromoteRepoID, "the promote repository does not exist yet: its id is pinned when it does")
+	assert.Equal(t, "1429118389", p.PromoteRepoID, "the promote repository's id is pinned: a manifest from a repository of another id does not verify")
+}
+
+// The macOS apply installs nothing without a team (see Pins.MacTeamIDs): the one Developer ID team of the app's signature is pinned.
+func TestDefaultPinsNameTheMacTeam(t *testing.T) {
+	assert.Equal(t, []string{"33UR27T84L"}, DefaultPins().MacTeamIDs)
 }
 
 // Nothing verifies without a repository id: a name alone can be taken over by re-creating it.
@@ -40,10 +45,16 @@ func TestAnIdentityWithoutARepositoryIDIsRefused(t *testing.T) {
 	_, err := v.VerifyBundle(bundle, sums, id)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "repository id")
-	// the promote identity of DefaultPins has no id yet: no manifest verifies, whatever it is signed with
-	_, err = v.VerifyBundle(bundle, sums, promoteIdentity(DefaultPins()))
+	// a promote identity with no id (the state before the repository existed) verifies nothing, whatever it is signed with
+	noID := DefaultPins()
+	noID.PromoteRepoID = ""
+	_, err = v.VerifyBundle(bundle, sums, promoteIdentity(noID))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "repository id")
+	// and with the id pinned, a bundle that the RELEASE workflow signed is still not a promote manifest: the SAN names the other repository
+	_, err = v.VerifyBundle(bundle, sums, promoteIdentity(DefaultPins()))
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "repository id")
 }
 
 // The re-created-name case: someone who re-creates the pinned NAME gets a new numeric id, so the certificate carries an id that is not the pinned one and the bundle is refused,

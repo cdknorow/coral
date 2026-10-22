@@ -80,6 +80,10 @@
           <File Id="coral_hook_session_start.exe" Source="$(var.BinDir)\coral-hook-session-start.exe" KeyPath="yes" />
         </Component>
 
+        <Component Id="CoralUpdate" Guid="C26B2BA3-7EA8-404D-AF56-32A41AADF614">
+          <File Id="coral_update.exe" Source="$(var.BinDir)\coral-update.exe" KeyPath="yes" />
+        </Component>
+
         <Component Id="CoralAgentExe" Guid="E1F2A3B4-C5D6-7890-EFAB-012345678901">
           <File Id="coral_agent.exe" Source="$(var.BinDir)\coral-agent.exe" KeyPath="yes" />
         </Component>
@@ -168,6 +172,7 @@
       <ComponentRef Id="HookTaskSync" />
       <ComponentRef Id="HookMessageCheck" />
       <ComponentRef Id="HookSessionStart" />
+      <ComponentRef Id="CoralUpdate" />
       <ComponentRef Id="CoralAgentExe" />
       <ComponentRef Id="CoralShortcut" />
       <!-- every file under bin\licenses, its folders kept (WiX v5 harvesting) -->

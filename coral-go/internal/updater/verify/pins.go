@@ -55,11 +55,12 @@ func DefaultPins() Pins {
 		RepoID:              RepoID,
 		Issuer:              Issuer,
 		PromoteRepo:         "subgentic/coral-promote",
-		PromoteRepoID:       "", // not created yet: until its id is pinned here no promote manifest verifies (fail closed)
+		PromoteRepoID:       "1429118389", // subgentic/coral-promote's id: GitHub's own number for the repository, so a renamed or recreated repository does not verify
 		PromoteWorkflow:     ".github/workflows/promote.yml",
 		PromoteRef:          "refs/heads/main",
 		MaxManifestLifetime: 60 * 24 * time.Hour,
 		MaxSkew:             5 * time.Minute,
+		MacTeamIDs:          []string{"33UR27T84L"}, // the Developer ID team that signs Coral.app (the certificate of 2026-10-21, used since v1.4.143)
 	}
 }
 

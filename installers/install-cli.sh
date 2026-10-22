@@ -45,7 +45,7 @@ fi
 
 # Every program the app ships (tests/release/commands.txt; install_cli_tools_test.sh keeps the two equal).
 # coral-hook-session-start was missing, so CLI-only setups never got that hook on PATH.
-TOOLS=(coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync)
+TOOLS=(coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-update)
 
 if ! mkdir -p "$LINK_DIR" 2>/dev/null; then
     echo "Error: cannot create $LINK_DIR"

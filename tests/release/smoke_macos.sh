@@ -103,6 +103,12 @@ if [ -z "$item1" ]; then
 else
   result "1 dmg" FAIL "$item1"
 fi
+# 7 updater: coral-update ships in the app and is inert: its status says the apply is off (applyEnabled is a compile-time false until a platform passes its upgrade tests)
+if [ -n "$app" ] && [ -x "$app/coral-update" ]; then
+  ud="$(mktemp -d "$work/ud.XXXX")"
+  st="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$ud" CORAL_DATA_DIR="$ud/data" CORAL_CLOUD_URL=off CORAL_TELEMETRY_DISABLED=1 "$app/coral-update" status --json 2>&1)"
+  if grep -Eq '"apply_enabled": *false' <<<"$st"; then result "7 updater" PASS "coral-update ships, status says apply_enabled false"; else result "7 updater" FAIL "coral-update status: $(head -c 200 <<<"$st" | tr '\n' ' ')"; fi
+elif [ -n "$app" ]; then result "7 updater" FAIL "coral-update is not in the app"; fi
 # the rest needs the app: say so, per item, rather than skipping quietly
 if [ -z "$app" ] || [ ! -x "$app/coral-tray" ] || [ ! -x "$app/coral" ]; then
   for i in "2 loopback" "3 analytics" "4 comments" "5 multiselect" "6 settings"; do result "$i" FAIL "no app to run (item 1)"; done
