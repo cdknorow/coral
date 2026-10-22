@@ -77,9 +77,9 @@ const BASE = require('./test_base').BASE;
         await ev(`window.showLaunchModal(); window._selectLaunchType('agent'); true`);
         await waitFor(`getComputedStyle(document.getElementById('launch-step-agent')).display !== 'none'`, 'the agent step');
         const notes = await ev(`[...document.querySelectorAll('#launch-step-agent .acf-default-note')].map(n => n.textContent.trim())`);
-        assert.deepEqual(notes, ['Starts from the default in Settings > General.', 'Starts from the default in Settings > Agents.'], JSON.stringify(notes));
+        assert.deepEqual(notes, [], 'no line restates the default (#6012): ' + JSON.stringify(notes));
         await ev(`window.hideLaunchModal(); window.showLaunchModal(); window._selectLaunchType('team'); true`);
-        assert.deepEqual(await ev(`[...document.querySelectorAll('#launch-step-team .acf-default-note')].map(n => n.textContent.trim())`), ['Starts from the default in Settings > General.', 'Starts from the default in Settings > Agents.']);
+        assert.deepEqual(await ev(`[...document.querySelectorAll('#launch-step-team .acf-default-note')].map(n => n.textContent.trim())`), []);
         await ev(`window.hideLaunchModal(); true`);
 
         console.log('4b. A new agent starts in Auto for Claude and as before for the others; a mode the person picked is kept (#5836)');

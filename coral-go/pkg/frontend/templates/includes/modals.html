@@ -203,14 +203,13 @@
                         <button class="launch-back-btn" data-on-click="m-select-launch-type" data-arg="back" title="Back" aria-label="Back to the choices">&larr;</button>
                         Launch Agent Team
                     </h3>
-                    <p class="sd-sub">Agents launch together on one shared message board.</p>
                 </div>
                 <div class="settings-modal-body">
                     <div class="sd-essentials sd-name-grid">
-                        <label for="team-board-name">Team Name:</label>
+                        <label for="team-board-name">Team name (the board)</label>
                         <div class="sd-name-field">
                             <input type="text" id="team-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" data-on-input="m-validate-team-name" aria-describedby="team-board-name-hint">
-                            <div id="team-board-name-hint" class="team-field-hint">This will also be used as the message board name.</div>
+                            <div id="team-board-name-hint" class="team-field-hint"></div>
                         </div>
                         <label for="launch-team-dir">Folder <span class="req-mark">(required)</span></label>
                         <div class="sd-name-field">
@@ -239,7 +238,7 @@
                             <div class="settings-tabs" role="tablist" aria-orientation="vertical" aria-label="Team sections"></div>
                         </nav>
                         <div class="settings-panes">
-                        <section class="settings-pane" data-section="members" data-title="Members" data-icon="group" data-desc="Choose a template or build the team agent by agent." hidden>
+                        <section class="settings-pane" data-section="members" data-title="Members" data-icon="group" hidden>
                                 <div class="team-agents-container">
                                     <label class="team-template-dropdown-label">Agent Team Templates:
                                         <select id="team-template-selector" data-on-change="m-load-team-template-from-select">
@@ -265,7 +264,7 @@
                                 </div>
 
                         </section>
-                        <section class="settings-pane" data-section="board" data-title="Board &amp; workspace" data-icon="forum" data-desc="A git worktree, and a remote server to run on." hidden>
+                        <section class="settings-pane" data-section="board" data-title="Board &amp; workspace" data-icon="forum" hidden>
                             <div id="team-worktree-option" style="display:none">
                                 <label class="settings-toggle team-settings-toggle">
                                     <input type="checkbox" id="launch-team-worktree" data-on-change="m-team-worktree">
@@ -287,7 +286,7 @@
                                     </div>
 
                         </section>
-                        <section class="settings-pane" data-section="defaults" data-title="Defaults" data-icon="tune" data-desc="Used by members that do not set their own." hidden>
+                        <section class="settings-pane" data-section="defaults" data-title="Defaults" data-icon="tune" hidden>
                                     <div class="team-launch-type-row">
                                         <label>Agent Type:
                                             <select id="team-agent-type">
@@ -296,7 +295,6 @@
                                                 <option value="codex">Codex</option>
                                                 <option value="pi">Pi</option>
                                             </select>
-                                            <span class="settings-hint acf-default-note">Starts from the default in Settings &gt; General.</span>
                                         </label>
                                     </div>
                                     <label style="display:none">Backend:
@@ -314,8 +312,7 @@
                                             <option value="bypassPermissions">Bypass Permissions</option>
                                             <option value="dontAsk">Don't Ask</option>
                                         </select>
-                                        <span class="settings-hint perm-mode-desc">Everything, with background safety checks — best for long tasks and reducing prompt fatigue</span>
-                                        <span class="settings-hint acf-default-note">Starts from the default in Settings &gt; Agents.</span>
+                                        <span class="settings-hint perm-mode-desc">Everything, with safety checks.</span>
                                     </label>
 
                         </section>
@@ -362,7 +359,7 @@
         <div class="modal-content sd-modal-content">
             <div class="modal-header">
                 <h3 id="team-agent-modal-title">Add Team Agent</h3>
-                <p id="team-agent-modal-subtitle" class="sd-sub">Configure a team member, then add it to the team draft.</p>
+                <p id="team-agent-modal-subtitle" class="sd-sub" hidden></p>
             </div>
             <div class="modal-body settings-modal-body">
                 <div class="settings-shell">
@@ -681,7 +678,7 @@
                         <option value="bypassPermissions">Bypass Permissions</option>
                         <option value="dontAsk">Don't Ask</option>
                     </select>
-                    <span class="settings-hint perm-mode-desc">Everything, with background safety checks — best for long tasks and reducing prompt fatigue</span>
+                    <span class="settings-hint perm-mode-desc">Everything, with safety checks.</span>
                 </dd>
                 </div>
                 <div class="settings-row">

@@ -178,7 +178,6 @@ export function renderAgentConfigForm(containerId, opts = {}) {
     const v = opts.value || {};
     // A form that starts from the Settings defaults says so under those two fields: Settings is where the default lives
     // (UI audit #5589, finding 22), the field here is this launch's own choice.
-    const fromSettings = opts.defaultNote === true;
 
     const agentTypeVal = v.agentType || v.agent_type || _settingsFor(_acfServer(container)).default_agent_type || '';
     const modelVal = v.model || '';
@@ -230,7 +229,6 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                     <option value="dontAsk"${permModeVal === 'dontAsk' ? ' selected' : ''}>Don't Ask</option>
                 </select>
                 <span class="settings-hint perm-mode-desc">${escapeHtml(permModeDesc)}</span>
-                ${fromSettings ? '<span class="settings-hint acf-default-note">Starts from the default in Settings > Agents.</span>' : ''}
             </label>`;
     }
 
@@ -244,7 +242,6 @@ export function renderAgentConfigForm(containerId, opts = {}) {
                     <option value="pi"${agentTypeVal === 'pi' ? ' selected' : ''}>Pi</option>
                     <option value="terminal"${agentTypeVal === 'terminal' ? ' selected' : ''}>Terminal</option>
                 </select>
-                ${fromSettings ? '<span class="settings-hint acf-default-note">Starts from the default in Settings > General.</span>' : ''}
             </label>
             <label class="acf-model-wrap">Model <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
                 ${modelPickerHtml()}
@@ -278,11 +275,11 @@ export function renderAgentConfigForm(containerId, opts = {}) {
         const adopted = Object.entries(opts.adopt || {}).map(([paneId, id]) => [paneId, document.getElementById(id)]).filter(([, el]) => el);
         for (const [, el] of adopted) container.after(el);
         container.innerHTML = [
-            (showPreset || showName) ? pane('role', 'Role', 'badge', 'Who this agent is on the team.', `${presetHTML}${nameHTML}`) : '',
-            pane('agent', 'Agent', 'smart_toy', 'Which CLI and model it runs.', topHTML),
-            pane('prompt', 'Prompt', 'description', 'What the agent is told about its role. Edit it here.', `<textarea class="acf-prompt" rows="14" aria-label="Behavior prompt" placeholder="Describe the agent's role and behavior...">${escapeHtml(promptVal)}</textarea>`),
-            pane('permissions', 'Permissions', 'lock', 'What the agent may do without asking.', `${autoPermissionsHTML}${permEditorHTML(true)}`),
-            pane('advanced', 'Advanced', 'tune', opts.adopt?.advanced ? 'Message board and extra flags passed to the CLI.' : 'Extra flags passed to the CLI.', `<label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:${flagsInput}</label>`),
+            (showPreset || showName) ? pane('role', 'Role', 'badge', '', `${presetHTML}${nameHTML}`) : '',
+            pane('agent', 'Agent', 'smart_toy', '', topHTML),
+            pane('prompt', 'Prompt', 'description', '', `<textarea class="acf-prompt" rows="14" aria-label="Behavior prompt" placeholder="Describe the agent's role and behavior...">${escapeHtml(promptVal)}</textarea>`),
+            pane('permissions', 'Permissions', 'lock', '', `${autoPermissionsHTML}${permEditorHTML(true)}`),
+            pane('advanced', 'Advanced', 'tune', '', `<label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:${flagsInput}</label>`),
         ].join('');
         for (const [paneId, el] of adopted) container.querySelector(`[data-section="${CSS.escape(paneId)}"]`)?.prepend(el);
     } else container.innerHTML = `

@@ -33,7 +33,6 @@ function _selectLaunchType(type) {
         _initAgentPresets();
         // Render agent config form
         renderAgentConfigForm('launch-agent-acf', {
-            defaultNote: true,
             showPreset: false,
             showName: false,
             cliSlot: 'launch-cli-slot', // a missing CLI is said under the folder, not only inside More options (#5835)

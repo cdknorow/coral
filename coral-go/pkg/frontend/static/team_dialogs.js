@@ -22,7 +22,7 @@ function _updateTeamAgentSummary(row) {
     const acfId = row.dataset.acfId;
     const config = acfId ? getAgentConfig(acfId) : {};
     const name = config.name || 'New Agent';
-    const promptPreview = _truncatePrompt(config.prompt || '', 200);
+    const promptPreview = _truncatePrompt(config.prompt || '', 60);
     const nameEl = row.querySelector('.team-agent-role-name');
     const previewEl = row.querySelector('.team-agent-prompt-preview');
     if (nameEl) nameEl.textContent = name;
@@ -47,9 +47,7 @@ function showTeamAgentModal(row = null) {
     if (!title || !subtitle || !modal) return;
 
     title.textContent = row ? 'Edit Team Agent' : 'Add Team Agent';
-    subtitle.textContent = row
-        ? 'Update this team member and save the changes back into the draft.'
-        : 'Configure a team member, then add it to the team draft.';
+    subtitle.textContent = ''; // no sub-title (#6012): the title and the form say it
 
     const acfValue = row?.dataset.acfId ? getAgentConfig(row.dataset.acfId) : _defaultTeamAgentModalConfig();
     renderAgentConfigForm('team-agent-modal-acf', { showPreset: true, showName: true, showAutoPermissions: true, sections: true, value: acfValue });
@@ -258,7 +256,7 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
             <div class="team-agent-summary" data-on-click="team-agent-open">
                 <div class="team-agent-summary-left">
                     <span class="team-agent-role-name">${escapeHtml(defaultName || 'New Agent')}</span>
-                    <span class="team-agent-prompt-preview">${escapeHtml(_truncatePrompt(defaultPrompt, 200) || 'No behavior prompt yet.')}</span>
+                    <span class="team-agent-prompt-preview">${escapeHtml(_truncatePrompt(defaultPrompt, 60) || 'No behavior prompt yet.')}</span>
                 </div>
                 <div class="team-agent-summary-actions">
                     <button class="team-agent-reorder-btn" title="Move up" data-on-click="team-agent-move" data-dir="up">
@@ -377,7 +375,7 @@ function _validateTeamName() {
     const value = input.value.trim();
     input.removeAttribute("aria-invalid");
     if (!value) {
-        hint.textContent = "This will also be the message board name.";
+        hint.textContent = "";
         hint.classList.remove("error");
         return false;
     }
@@ -394,7 +392,7 @@ function _validateTeamName() {
         hint.classList.remove("error");
         return true;
     }
-    hint.textContent = "Looks good. This will also be the message board name.";
+    hint.textContent = "";
     hint.classList.remove("error");
     return true;
 }

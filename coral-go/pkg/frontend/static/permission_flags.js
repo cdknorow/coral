@@ -21,7 +21,7 @@ export const PERMISSION_MODE_DESCRIPTIONS = {
     default: 'Reads only — best for getting started and sensitive work',
     acceptEdits: 'Reads, file edits, and common filesystem commands (mkdir, touch, mv, cp, etc.) — best for iterating on code you\'re reviewing',
     plan: 'Reads only — best for exploring a codebase before changing it',
-    auto: 'Everything, with background safety checks — best for long tasks and reducing prompt fatigue',
+    auto: 'Everything, with safety checks.',
     dontAsk: 'Only pre-approved tools — best for locked-down CI and scripts',
     bypassPermissions: 'Everything except protected paths — isolated containers and VMs only',
 };

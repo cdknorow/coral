@@ -3768,7 +3768,6 @@ input[aria-invalid="true"] {
 }
 
 /* The line under a rejected field: the reason and the next step (launch_core.js markFieldInvalid). */
-.acf-default-note { display: block; margin-top: 2px; } /* where this field's default lives: Settings (UI audit #5589, finding 22) */
 label:has(+ .field-error) { margin-bottom: 0; } /* the line sits after the label and takes the label's space below it */
 .field-error { margin: 4px 0 .9rem; color: var(--error-text, var(--error)); font-size: var(--fs-sm, 0.8125rem); line-height: 1.4; overflow-wrap: anywhere; }
 
@@ -4508,7 +4507,6 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
 .sd-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sd-more-btn .material-icons { font-size: 1.25rem; transition: transform .12s; }
 .sd-more-btn[aria-expanded="true"] .material-icons { transform: rotate(180deg); }
-.sd-more-hint { color: var(--text-secondary); font-size: .8125rem; }
 .sd-more { flex: 1; min-height: 0; display: flex; border-top: 1px solid var(--border); }
 .sd-more[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .sd-more-btn .material-icons { transition: none; } }
@@ -4516,7 +4514,6 @@ a.ibx-open, a.ibx-open:visited { color: var(--link-text); }
     .sd-essentials { padding: .8rem 1rem .3rem; }
     .sd-more-row { padding: 0 1rem .8rem; }
     .sd-essentials :is(input[type="text"], .btn), .sd-more-btn { min-height: 44px; }
-    .sd-more-hint { display: none; }
 }
 /* Agent Team (UI audit #5589, findings 5 and 6): the team name, which every launch needs, is above the sections; the template tools are one disclosure after the picker, so the members come first. */
 .modal-content:has(.settings-shell) #launch-step-team .settings-modal-body { flex-direction: column; }
