@@ -210,6 +210,15 @@ GET /api/system/update
 
 The updater's status (it answers 404 while the update feature is off) also carries, additive and each only when known: `channel`; `approved` `{"version", "approved_at"}` (the newest approved release; `approved_at` is "" when its notes carry no `Approved: <time>` line, and is for display only: what is approved is decided by the release's pre-release flag and by `releases/latest`, never by that line); `past_approved: true` when the running build is newer than the newest approved release; and, on the agentic channel and never through Coral Hub, `waiting`: up to five `{"version", "published_at", "notes"}` of unapproved releases newer than the newest approved one, newest first, with the notes as plain text of at most 2000 characters (control and format characters removed). The route never waits for GitHub: until the first answer is cached only `channel` is present, and the next poll has the rest. Coral never approves anything: approving is the Operator's act on GitHub.
 
+Checking for an update (the update feature only; both routes answer 404 while it is off, are local only: never carried through Coral Hub, and an agent's token is refused):
+
+```
+POST /api/system/update/check
+PUT  /api/system/update/settings   {"auto": true|false}
+```
+
+`POST .../check` starts one background check (202): Coral looks for the newest promoted release, verifies it and stages it; it never installs, which always needs a person to relaunch it. It answers 409 `busy` while a check runs, 409 `unsupported_install` (with `install_kind` and, for a Homebrew cask, `upgrade_command: "brew upgrade --cask coral"`) for an install Coral does not update, 409 `switch_off` when the updater is off, and 429 `too_soon` (one a minute). `PUT .../settings` saves `update_auto` ("check for updates automatically", on by default): the background job checks five minutes after Coral starts and then every six hours (up to half an hour later), doubling the wait after a failure up to a day, only while this is on. The status's `auto` field (local callers only) is that switch. A Homebrew-managed install is never checked for a package, staged or applied: the notice stays and `brew upgrade --cask coral` is the way.
+
 ---
 
 ## CLI Check

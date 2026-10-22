@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/subgentic/coral/internal/config"
+	"github.com/subgentic/coral/internal/updater/status"
 )
 
 func runOut(t *testing.T, env map[string]string, args ...string) (int, map[string]any) {
@@ -84,4 +86,31 @@ func TestOnlyAWindowsMSIInstallKeepsTheRollbackPackage(t *testing.T) {
 	assert.False(t, keepsRollback("windows", true), "portable")
 	assert.False(t, keepsRollback("darwin", false))
 	assert.False(t, keepsRollback("linux", false))
+}
+
+// Homebrew policy (#5280 step 3 B): a managed install is never checked for a package, never staged, never applied; the answer is the same word the status gives, and nothing is read or written.
+func TestAnInstallAPackageManagerOwnsIsNeverCheckedOrApplied(t *testing.T) {
+	if !config.TierChecksForUpdates {
+		t.Skip("a build of another tier answers off")
+	}
+	oldVersion := config.Version
+	t.Cleanup(func() { config.Version = oldVersion })
+	config.Version = "1.4.150"
+	old := installProbe
+	t.Cleanup(func() { installProbe = old })
+	installProbe = func() *status.Install {
+		return &status.Install{Kind: "homebrew", Unsupported: "homebrew", Writable: true}
+	}
+	t.Setenv("CORAL_DATA_DIR", t.TempDir())
+	oldApply := applyEnabled
+	t.Cleanup(func() { applyEnabled = oldApply })
+	applyEnabled = true // the switch is not what stops it
+	for _, verb := range []string{"check", "apply"} {
+		code, out := runOut(t, nil, verb)
+		assert.Equal(t, 0, code, verb)
+		assert.Equal(t, "unsupported_install", out["result"], verb)
+		assert.Equal(t, "homebrew", out["failed_stage"], verb)
+	}
+	entries, _ := os.ReadDir(os.Getenv("CORAL_DATA_DIR"))
+	assert.Empty(t, entries, "no updates folder, no trusted root, nothing written")
 }

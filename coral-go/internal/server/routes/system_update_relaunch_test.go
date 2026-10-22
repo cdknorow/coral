@@ -32,6 +32,28 @@ type stubUpdater struct {
 	applies  []string
 	audits   []RelaunchAudit
 	applyErr error
+	// checks: how many times Check ran; checkResult and checkErr are what it answers; checkBlock, when set, holds it until closed.
+	checks      int
+	checkResult string
+	checkErr    error
+	checkBlock  chan struct{}
+}
+
+func (s *stubUpdater) Check(context.Context) (string, error) {
+	s.mu.Lock()
+	s.checks++
+	block, res, err := s.checkBlock, s.checkResult, s.checkErr
+	s.mu.Unlock()
+	if block != nil {
+		<-block
+	}
+	return res, err
+}
+
+func (s *stubUpdater) checkCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.checks
 }
 
 func (s *stubUpdater) Record(context.Context) (UpdaterRecord, error) {

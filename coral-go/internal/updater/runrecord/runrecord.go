@@ -27,7 +27,8 @@ type Record struct {
 // envAllowed are the variables that decide how Coral runs (where its data is, how it listens, its mode) and the ones any program needs to find its tools, a home and a
 // language. Each is a name, a path, a flag or a mode, never a secret: a key or a token is read from a file or the keyring, not from here. Nothing else is recorded.
 var envAllowed = map[string]bool{
-	"CORAL_DATA_DIR": true, "CORAL_DIR": true, "CORAL_HOST": true, "CORAL_HUB": true, "CORAL_STRICT_LOCAL_AUTH": true, "CORAL_DB_ENCRYPTION": true,
+	"HOMEBREW_PREFIX": true, // where a Homebrew cask is looked for, by the updater's install check (#5280 step 3 B)
+	"CORAL_DATA_DIR":  true, "CORAL_DIR": true, "CORAL_HOST": true, "CORAL_HUB": true, "CORAL_STRICT_LOCAL_AUTH": true, "CORAL_DB_ENCRYPTION": true,
 	"CORAL_CLOUD_URL": true, "CORAL_CLOUD_CONNECT": true, "CORAL_CLOUD_MAX_MODE": true, "CORAL_TLS_CERT": true, "CORAL_TLS_KEY": true, "CORAL_TMUX_BIN": true,
 	"CORAL_NO_AUTO_LOOPBACK": true, "CORAL_STALL_WATCHDOG": true,
 	"PATH": true, "HOME": true, "USER": true, "LOGNAME": true, "SHELL": true, "LANG": true, "LC_ALL": true, "TZ": true, "TMPDIR": true, "TERM": true,

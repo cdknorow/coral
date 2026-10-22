@@ -356,6 +356,7 @@ b POST /api/system/terminal-backend/end-leftover
 b POST /api/system/terminal-logs/delete-ended
 b POST /api/system/update/install
 b POST /api/system/update/relaunch
+b POST /api/system/update/check
 b POST /api/tags
 b POST /api/tasks/run
 b POST /api/tasks/runs/{runID}/kill
@@ -383,6 +384,7 @@ b PUT /api/board/{project}/working-mode/presets/{presetID}
 b PUT /api/cloud/allow-auto-accept
 b PUT /api/cloud/hub-cross-team
 b PUT /api/cloud/hub-relaunch
+b PUT /api/system/update/settings
 b PUT /api/cloud/max-mode
 b PUT /api/cloud/redact-tokens
 b PUT /api/custom-models

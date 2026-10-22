@@ -31,6 +31,9 @@ type fakeProgram struct {
 	statusRuns atomic.Int32
 	starts     atomic.Int32
 	kills      atomic.Int32
+	checkRuns  atomic.Int32
+	checkOut   []byte
+	checkErr   error
 
 	// what the started "apply" does: its pid, and the marker it writes (nil: none) once told to (ready is closed by the test; nil: at once).
 	pid      int
@@ -53,6 +56,11 @@ func (f *fakeProgram) Status(context.Context) ([]byte, error) {
 		return nil, f.statusErr
 	}
 	return json.Marshal(f.out)
+}
+
+func (f *fakeProgram) RunCheck(context.Context) ([]byte, error) {
+	f.checkRuns.Add(1)
+	return f.checkOut, f.checkErr
 }
 
 func (f *fakeProgram) StartApply() (applyRun, error) {
@@ -486,4 +494,46 @@ func TestAnApplyThatEndsWhileTheServerWaitsToEndCancelsTheQuit(t *testing.T) {
 	st, _ := u.loadState()
 	assert.Equal(t, "updater_ended", st.Failed.Reason)
 	assert.Zero(t, quit.Load(), "the server is not ended with no apply alive")
+}
+
+func TestTheRealUpdaterRunsACheckAndReadsOnlyItsResultWord(t *testing.T) {
+	f := &fakeProgram{out: readyStatus(), checkOut: []byte(`{"result":"staged","installed":"1.4.150","version":"1.4.155","trust":"tuf"}` + "\n")}
+	u := newRealUpdater(t, f, nil)
+	res, err := u.Check(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "staged", res)
+	assert.EqualValues(t, 1, f.checkRuns.Load())
+
+	for out, want := range map[string]string{`{"result":"Not A Word"}`: "other", `{"result":""}`: "other", `{"result":"` + strings.Repeat("a", 41) + `"}`: "other", `{"result":"backoff"}`: "backoff"} {
+		f.checkOut = []byte(out)
+		res, err = u.Check(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, want, res, out)
+	}
+	f.checkOut = []byte("not json")
+	_, err = u.Check(t.Context())
+	assert.Error(t, err)
+	f.checkErr = errors.New("exit status 1")
+	_, err = u.Check(t.Context())
+	assert.Error(t, err)
+
+	// a check changes what is staged: the record is read again, not answered from the cache
+	f.checkErr, f.checkOut = nil, []byte(`{"result":"staged"}`)
+	before := f.statusRuns.Load()
+	_, _ = u.Record(t.Context())
+	_, _ = u.Check(t.Context())
+	_, _ = u.Record(t.Context())
+	assert.EqualValues(t, before+2, f.statusRuns.Load())
+}
+
+func TestTheUpdaterProgramIsRunForACheckWithTheArgvCheckOnly(t *testing.T) {
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "args")
+	prog := filepath.Join(dir, "coral-update")
+	require.NoError(t, os.WriteFile(prog, []byte("#!/bin/sh\necho \"$@\" > "+argsFile+"\necho '{\"result\":\"up_to_date\"}'\n"), 0o755))
+	out, err := execProgram{path: prog}.RunCheck(t.Context())
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"result":"up_to_date"}`, string(out))
+	b, _ := os.ReadFile(argsFile)
+	assert.Equal(t, "check\n", string(b))
 }
