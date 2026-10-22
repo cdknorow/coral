@@ -40,7 +40,7 @@ func fixtureFolder(t *testing.T, body string) string {
 
 func TestTheFixtureBuildHasTheRelaunchRoutesOnAndAFakeUpdater(t *testing.T) {
 	assert.True(t, updateRelaunchFeature)
-	assert.NotNil(t, BuildRelaunchUpdater())
+	assert.NotNil(t, BuildRelaunchUpdater("", nil))
 }
 
 func TestAValidFixtureIsAcceptedAndBecomesTheStatus(t *testing.T) {
