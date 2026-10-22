@@ -20,6 +20,8 @@ var Ignore = []goleak.Option{
 	// (a sync.Once), and it can still be setting up its performance counter, inside a syscall,
 	// when the server context it was given has already ended.
 	goleak.IgnoreAnyFunction("github.com/shirou/gopsutil/v4/load.loadAvgGoroutine"),
+	// The guardian client's watcher (internal/ptymanager, #6129): one goroutine for the process waits on the guardian that ends terminals when Coral dies, and starts another if it exits.
+	goleak.IgnoreAnyFunction("github.com/subgentic/coral/internal/ptymanager.(*guardianClient).watch"),
 }
 
 // Check returns code, or 1 when the tests passed but left goroutines running (they are printed). It looks for leaks even when
