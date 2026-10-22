@@ -53,7 +53,7 @@ var apartFromTheUser = map[string]bool{"root": true, "_mbsetupuser": true}
 
 // onlyUserAndRoot reads dscl's two answers: the group's "GroupMembership" (names), "GroupMembers" (one GUID each) and "NestedGroups" lines, and the "name gid" lines of the user list. The
 // group is the user's alone when its names are the user and the accepted accounts, it has no nested group (a managed Mac can put a directory group inside admin, whose members the names
-// do not show), it has no more GUID members than there are accepted names (the same, from the other list), and no other account has it as its primary group.
+// do not show), it has no more GUID members than names listed (a member that appears only as a GUID is someone the names do not show), and no other account has it as its primary group.
 func onlyUserAndRoot(read, primary, me, gid string) bool {
 	attrs := dsclAttributes(read)
 	for _, m := range attrs["GroupMembership"] {
@@ -64,7 +64,7 @@ func onlyUserAndRoot(read, primary, me, gid string) bool {
 	if len(attrs["NestedGroups"]) > 0 {
 		return false
 	}
-	if len(attrs["GroupMembers"]) > len(apartFromTheUser)+1 { // root, _mbsetupuser and the user
+	if len(attrs["GroupMembers"]) > len(attrs["GroupMembership"]) { // every member has a name on a normal record: a GUID with no name is someone the names do not show
 		return false
 	}
 	for _, line := range strings.Split(primary, "\n") {
