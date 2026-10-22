@@ -41,7 +41,8 @@ async function freshServer(standIn) {
             : "printf 'stand-in claude ready\\n> '";
         fs.writeFileSync(path.join(dirs.bin, 'claude'), [
             '#!/bin/sh',
-            'case "$1" in --version) echo "2.0.0 (stand-in)"; exit 0;; esac',
+            // --version and Coral's sign-in check ("auth status --json", asked once after a launch, #5838) are answered like the CLI does and never taken for a launch ("ran").
+            'case "$1" in --version) echo "2.0.0 (stand-in)"; exit 0;; auth) echo \'' + (standIn === 'login' ? '{"loggedIn": false}\'; exit 1' : '{"loggedIn": true}\'; exit 0') + ';; esac',
             `: > '${ran}'`,
             banner,
             `while IFS= read -r line; do printf '%s\\n' "$line" >> '${got}'; done`,
