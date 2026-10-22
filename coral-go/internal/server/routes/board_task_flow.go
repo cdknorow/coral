@@ -104,7 +104,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		if strings.Contains(err.Error(), "revision") {
 			errConflict(w, err.Error())
 		} else {
-			errBadRequest(w, err.Error())
+			errTaskStore(w, err)
 		}
 		return
 	}

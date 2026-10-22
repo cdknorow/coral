@@ -164,3 +164,11 @@ func TestDownloadOutputProblemsAreExplained(t *testing.T) {
 	assert.Contains(t, err.Error(), "does not exist")
 	assert.NotContains(t, err.Error(), "The system cannot find")
 }
+
+func TestUnknownTaskSubcommandIsUsageAgent(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	code, _, stderr := runAgent(t, srv.URL, "task", "frobnicate")
+	assert.Equal(t, 2, code, stderr)
+	assert.Contains(t, stderr, "Unknown task subcommand")
+}

@@ -300,3 +300,10 @@ func TestUsageExitAndFileFolderAndSendTypo(t *testing.T) {
 	assert.NotContains(t, res.stderr, "unknown option", "options are read in any case, and --words after the text are text")
 	assert.NotContains(t, res.stderr, "needs a value")
 }
+
+func TestUnknownTaskSubcommandIsUsage(t *testing.T) {
+	srv := newRecordingServer(t)
+	res := runBoard(t, srv.URL, subscribedDataDir(t, srv.URL), "task", "frobnicate")
+	assert.Equal(t, 2, res.code, res.stderr)
+	assert.Contains(t, res.stderr, "Unknown task subcommand")
+}
