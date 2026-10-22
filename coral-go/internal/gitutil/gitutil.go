@@ -99,6 +99,14 @@ func GetDiffBase(ctx context.Context, workdir, mode string) string {
 		return "HEAD"
 	}
 
+	// A repository with no commit yet (a fresh "git init": HEAD points at a branch that does not exist) has no HEAD to diff against, and "git diff HEAD" fails: its changes are what the empty tree
+	// becomes, so every file there is new (#6144).
+	if _, err := git(ctx, workdir, "rev-parse", "--verify", "--quiet", "HEAD"); err != nil {
+		if _, inRepo := git(ctx, workdir, "rev-parse", "--git-dir"); inRepo == nil {
+			return emptyTree(ctx, workdir)
+		}
+	}
+
 	if mode == "previous_commit" {
 		// Check that HEAD~1 exists (at least 2 commits)
 		if _, err := git(ctx, workdir, "rev-parse", "--verify", "HEAD~1"); err == nil {
@@ -131,6 +139,20 @@ func GetDiffBase(ctx context.Context, workdir, mode string) string {
 		}
 	}
 	return "HEAD"
+}
+
+// The empty tree's object id, which a repository has whether or not the object is stored: the sha1 and the sha256 repositories' are different.
+const (
+	emptyTreeSHA1   = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+	emptyTreeSHA256 = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"
+)
+
+// emptyTree is the empty tree of the repository at workdir.
+func emptyTree(ctx context.Context, workdir string) string {
+	if format, err := git(ctx, workdir, "rev-parse", "--show-object-format"); err == nil && format == "sha256" {
+		return emptyTreeSHA256
+	}
+	return emptyTreeSHA1
 }
 
 // ParseRepoName extracts a short "org/repo" name from a git remote URL.
