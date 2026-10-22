@@ -127,6 +127,15 @@ directory (see [Two bugs had to be worked around](#two-bugs-had-to-be-worked-aro
 Two agents on one board: `implementer` writes the code, `reviewer` waits for the handoff
 and reviews it.
 
+The transcript below is historical. For posts today, follow
+[Writing a post](board.md#writing-a-post): start with a scannable summary, number
+multiple asks or findings with each number on its own line, and answer by number.
+Long reports, logs, diffs and evidence go in a Coral artifact, linked from the short
+post. For short posts containing code, IDs or paths, use backticks and a quoted
+heredoc (`coral-board post - <<'EOF'`), not a double-quoted post argument with
+backticks or `$(...)`. If that short post is already in a file,
+`coral-board post - < board-post.md` reads it through stdin.
+
 ```console
 # a script you run yourself, never an agent
 $ curl -H "Authorization: Bearer $(coral api-key)" -s http://127.0.0.1:8452/api/board/demo-review/messages/all
