@@ -22,6 +22,12 @@ func (e *ForeignListenerError) Error() string {
 		"Is another account's program on Coral's port? Start Coral, or check what is listening there", e.Port, e.PID, e.Why)
 }
 
+// AllowTestServerListener lets a test's own server pass the Windows check: the test process itself, or a process running this
+// tool's own executable (a test that runs the CLI as a child of the test binary, which serves on the port). Tests set it (the
+// hooks tests' TestMain, coral-agent's helper process); a shipped tool never does, so the rule there is exactly Coral's image and
+// owner. It does nothing on platforms without the check.
+var AllowTestServerListener bool
+
 // listenerVerified remembers, for this process, each local Coral address already checked ("host:port" -> its error, nil when the
 // listener is this user's), so the check (the platform's checkListener) runs once per address, not once per request.
 var listenerVerified sync.Map

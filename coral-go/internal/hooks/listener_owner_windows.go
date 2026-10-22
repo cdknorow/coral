@@ -51,8 +51,8 @@ func checkListener(host string, port int) error {
 	}
 	self := uint32(os.Getpid())
 	for _, pid := range pids {
-		if pid == self {
-			continue // this very process listens there (a test's in-process server): nothing to check; a tool never listens on Coral's port itself
+		if AllowTestServerListener && pid == self {
+			continue // a test's in-process server (tests only)
 		}
 		sid, image, err := pidOwner(pid)
 		if err != nil {
@@ -65,15 +65,14 @@ func checkListener(host string, port int) error {
 			}
 			return &ForeignListenerError{Port: port, PID: pid, Why: "belongs to " + who + ", not this user or the owner of Coral's data folder"}
 		}
-		if !isCoralImage(image, coralFolders()) && !sameExecutable(image) {
+		if !isCoralImage(image, coralFolders()) && !(AllowTestServerListener && sameExecutable(image)) {
 			return &ForeignListenerError{Port: port, PID: pid, Why: "is " + image + ", not Coral's coral.exe or coral-tray.exe from its own folder"}
 		}
 	}
 	return nil
 }
 
-// sameExecutable: image is this tool's own executable file. A test runs its CLI as a child of the test binary, which serves on
-// the port; a real tool never listens on Coral's port, so an impostor would have to be the user's own coral-board or coral-agent.
+// sameExecutable: image is this tool's own executable file (see AllowTestServerListener).
 func sameExecutable(image string) bool {
 	exe, err := os.Executable()
 	if err != nil || image == "" {
@@ -103,8 +102,8 @@ func isCoralImage(image string, folders []string) bool {
 }
 
 // allowedCoralFolders: where Coral's server runs from. The running tool's own folder (coral-board and the hooks sit beside
-// coral.exe and coral-tray.exe in the install, and in a dev build's output folder), and the Coral install under Program Files
-// (both the x64 and the x86 folder: the release MSI was x86 until #93).
+// coral.exe and coral-tray.exe in the install, and in a dev build's output folder), and the Coral install under the Program Files
+// folders (both the x64 and the x86 one: the release MSI was x86 until #93).
 func allowedCoralFolders() []string {
 	var out []string
 	if exe, err := os.Executable(); err == nil {
@@ -113,8 +112,9 @@ func allowedCoralFolders() []string {
 		}
 		out = append(out, filepath.Dir(exe))
 	}
-	for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)"} {
-		if p := os.Getenv(env); p != "" {
+	// The Program Files folders from the system (as the updater reads them), never from %ProgramFiles%, which the environment sets.
+	for _, id := range []*windows.KNOWNFOLDERID{windows.FOLDERID_ProgramFiles, windows.FOLDERID_ProgramFilesX86} {
+		if p, err := windows.KnownFolderPath(id, 0); err == nil && p != "" {
 			out = append(out, filepath.Join(p, "Coral"))
 		}
 	}
