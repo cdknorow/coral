@@ -333,13 +333,35 @@ func (u *realUpdater) watchReady(run applyRun, st relaunchState) {
 	}
 	tick := time.NewTicker(poll)
 	defer tick.Stop()
+	d := u.quitDelay
+	if d == 0 {
+		d = quitAfter
+	}
 	for {
+		// An apply that has ended is a failure whatever it left behind: a marker is only true while the apply runs, and a stale one must never end the server.
+		select {
+		case <-run.Done:
+			u.giveUp(st, "updater_ended")
+			return
+		default:
+		}
 		if u.readyMarker(run, st) {
-			d := u.quitDelay
-			if d == 0 {
-				d = quitAfter
+			// Give the reply to the relaunch request time to leave, but an apply that ends meanwhile cancels the quit, and the apply is looked at again just before it.
+			select {
+			case <-run.Done:
+				u.giveUp(st, "updater_ended")
+				return
+			case <-time.After(d):
 			}
-			time.Sleep(d)
+			select {
+			case <-run.Done:
+				u.giveUp(st, "updater_ended")
+				return
+			default:
+			}
+			if !u.readyMarker(run, st) {
+				continue // the marker went (the apply is ending): the next turn sees it ended
+			}
 			if u.quit != nil {
 				u.quit()
 			}
@@ -347,9 +369,6 @@ func (u *realUpdater) watchReady(run applyRun, st relaunchState) {
 		}
 		select {
 		case <-run.Done:
-			if u.readyMarker(run, st) { // it wrote the marker and ended in the same moment: the marker is what it said
-				continue
-			}
 			u.giveUp(st, "updater_ended")
 			return
 		case <-tick.C:

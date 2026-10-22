@@ -39,6 +39,8 @@ type fakeProgram struct {
 	ready    chan struct{}
 	endEarly bool // the apply ends without a marker
 	noMarker bool // the apply runs and never writes one
+	// endAfterMarker: the apply writes the marker and ends at once, leaving it behind (a stale marker).
+	endAfterMarker bool
 	// statusDelay makes the updater slow to answer, so concurrent callers all stand at the same check
 	done        chan struct{}
 	statusDelay time.Duration
@@ -80,6 +82,9 @@ func (f *fakeProgram) StartApply() (applyRun, error) {
 			b, _ := json.Marshal(m)
 			_ = f.dir.ensure()
 			_ = f.dir.write(status.ReadyFile, b)
+		}
+		if f.endAfterMarker {
+			close(f.done)
 		}
 	}()
 	return run, nil
@@ -450,4 +455,35 @@ func TestAKilledUpdaterWhoseChildKeepsItsOutputOpenDoesNotHoldTheCall(t *testing
 func TestTheProgramBesideThisOneIsAPlainFileOrNothing(t *testing.T) {
 	_, err := programPath() // the test binary has no coral-update beside it
 	assert.Error(t, err)
+}
+
+// Security's review of #5982: an ended apply is always a failure, so a server is never ended with no apply alive.
+func TestAnApplyThatEndedLeavingAReadyMarkerBehindDoesNotEndTheServer(t *testing.T) {
+	f := &fakeProgram{out: readyStatus(), endAfterMarker: true}
+	var quit atomic.Int32
+	u := newRealUpdater(t, f, func() { quit.Add(1) })
+	u.quitDelay = 30 * time.Millisecond
+	_, err := u.Apply(t.Context(), "local")
+	require.NoError(t, err)
+	untilTrue(t, "it gives up", func() bool { st, _ := u.loadState(); return st.Failed != nil })
+	time.Sleep(100 * time.Millisecond) // sleep-ok: a quit after the delay would come within it
+	st, _ := u.loadState()
+	assert.Equal(t, "updater_ended", st.Failed.Reason)
+	assert.Zero(t, quit.Load(), "a marker that is still there from an apply that has ended is stale")
+}
+
+func TestAnApplyThatEndsWhileTheServerWaitsToEndCancelsTheQuit(t *testing.T) {
+	f := &fakeProgram{out: readyStatus()}
+	var quit atomic.Int32
+	u := newRealUpdater(t, f, func() { quit.Add(1) })
+	u.quitDelay = 300 * time.Millisecond // the reply needs time to leave
+	_, err := u.Apply(t.Context(), "local")
+	require.NoError(t, err)
+	untilTrue(t, "the marker is there", func() bool { _, err := u.dir.read(status.ReadyFile, maxStateBytes); return err == nil })
+	close(f.done) // the apply ends inside the delay
+	untilTrue(t, "it gives up", func() bool { st, _ := u.loadState(); return st.Failed != nil })
+	time.Sleep(400 * time.Millisecond) // sleep-ok: the quit, if it were still scheduled, comes after the 300 ms delay
+	st, _ := u.loadState()
+	assert.Equal(t, "updater_ended", st.Failed.Reason)
+	assert.Zero(t, quit.Load(), "the server is not ended with no apply alive")
 }
