@@ -118,7 +118,9 @@ async function run() {
         // ── Refused by a gone terminal: terminal_gone names the input's id ──
         await attach(gone);
         await ev(`(async () => { const x = ${XT}; x.sendTerminalInputWs('exit'); await new Promise(r => setTimeout(r, 300)); return x.sendTerminalInputWs('\\r'); })()`); // sleep-ok: the composer's own text-then-Enter gap, so the shell runs exit
-        await new Promise(r => setTimeout(r, 300)); // sleep-ok: the pane is gone but the attach watchdog has not ended the stream; no event marks that window
+        // Wait for the pane to be gone, not a fixed time: the stream ends a moment after (on pty, 300 ms after the process), and the input has to reach the server inside that window.
+        const paneGone = async () => (await httpJson('POST', `/api/sessions/live/${encodeURIComponent(gone.session_name)}/resize`, { columns: 80, agent_type: 'terminal', session_id: gone.session_id })).status === 409;
+        for (const end = Date.now() + 8000; !(await paneGone()) && Date.now() < end; await new Promise(r => setTimeout(r, 50))); // sleep-ok: poll interval of a condition wait
         await ev(`window.__out = []; window.__in = []; true`);
         await send('echo to-gone');
         await until(`window.__in.some(m => m.type === 'terminal_gone')`, 'terminal_gone');

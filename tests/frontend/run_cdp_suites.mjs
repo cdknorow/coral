@@ -216,6 +216,11 @@ const tmuxSocks = new Set(); // the sockets of the shards this run started
 const pidDir = os.tmpdir();
 const pidFile = path.join(pidDir, `coral-cdp-runner-${process.pid}.json`);
 const isAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+// Whether process pid is one of a run's own: its program is in the run's folder (coral, mock-agent) or its command line names it (Chrome's profile, a suite's files).
+function winProcessInFolder(pid, folder) {
+  const q = spawnSync('powershell', ['-NoProfile', '-Command', `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${Number(pid)}" -ErrorAction SilentlyContinue; if ($p) { $p.ExecutablePath; $p.CommandLine }`], { encoding: 'utf8' });
+  return q.status === 0 && q.stdout.toLowerCase().includes(folder.toLowerCase());
+}
 function sweepLeftovers() {
   let n = 0;
   for (const f of fs.readdirSync(pidDir)) {
@@ -223,12 +228,26 @@ function sweepLeftovers() {
     if (!m || Number(m[1]) === process.pid || isAlive(Number(m[1]))) continue; // ours, or a runner still running
     let groups = [];
     try { groups = JSON.parse(fs.readFileSync(path.join(pidDir, f), 'utf8')); } catch { /* unreadable: just remove it */ }
+    const folders = new Set();
     for (const { pid, tmux: sock, tmp: t } of groups) {
+      if (t) folders.add(t);
+      if (!sock && !pid) continue; // the entry that only records the folder
       // A recorded tmux socket: only one under that runner's own folder.
       if (sock) { if (t && sock.startsWith(t + path.sep) && fs.existsSync(sock)) { killTmux(sock); n++; } continue; } // counted only when its socket was still there
+      if (process.platform === 'win32') { // no process groups and no ps: the process is ended only if it is one of the dead runner's own (its program or its command line names its folder)
+        if (t && winProcessInFolder(pid, t)) { spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); n++; }
+        continue;
+      }
       const r = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
       if (r.status !== 0 || !t || !r.stdout.includes(t)) continue; // gone, or the pid now belongs to something else
       try { process.kill(-pid, 'SIGKILL'); n++; } catch { /* already gone */ }
+    }
+    // The folder a runner that was killed left behind (its binaries, profiles and logs: a killed run never reaches its own clean-up): only a coral-cdp-* folder
+    // of the system temp folder, as recorded by that runner, and only when nothing of it is running any more (a file in use stays and is tried again next time).
+    for (const t of folders) {
+      if (path.dirname(t) === os.tmpdir() && path.basename(t).startsWith('coral-cdp-')) {
+        try { fs.rmSync(t, { recursive: true, force: true }); } catch { /* in use: the next run tries again */ }
+      }
     }
     try { fs.rmSync(path.join(pidDir, f)); } catch { /* fine */ }
   }
@@ -269,7 +288,7 @@ const claudeBaseline = (() => { try { return new Set(fs.readdirSync(REAL_CLAUDE_
 const procs = new Set(); // every process group we started, killed on exit
 const recordPids = () => {
   try {
-    fs.writeFileSync(pidFile, JSON.stringify([...procs].filter(p => p.pid).map(p => ({ pid: p.pid, tmp }))
+    fs.writeFileSync(pidFile, JSON.stringify([{ tmp }].concat([...procs].filter(p => p.pid).map(p => ({ pid: p.pid, tmp })))
       .concat([...tmuxSocks].map(sock => ({ tmux: sock, tmp })))));
   } catch { /* best effort */ }
 };
@@ -278,6 +297,18 @@ const untrack = p => { procs.delete(p); recordPids(); };
 let allPassed = false; // set at the end: every suite passed on its first attempt
 // pruneTmp deletes the run's folder, or (unless all passed) everything in it but results.json and the
 // coral.log files. Chrome profiles go whole.
+// A kept log is cut to its last MAX_KEPT_LOG bytes: a failed run keeps what it needs to diagnose, not the gigabytes a chatty server wrote.
+const MAX_KEPT_LOG = 20 << 20;
+const capFile = p => {
+  try {
+    const size = fs.statSync(p).size;
+    if (size <= MAX_KEPT_LOG) return;
+    const fd = fs.openSync(p, 'r'), buf = Buffer.alloc(MAX_KEPT_LOG);
+    fs.readSync(fd, buf, 0, MAX_KEPT_LOG, size - MAX_KEPT_LOG); fs.closeSync(fd);
+    fs.writeFileSync(p, `[cut to the last ${MAX_KEPT_LOG >> 20} MiB of ${size} bytes]
+`); fs.appendFileSync(p, buf);
+  } catch { /* best effort */ }
+};
 const pruneTmp = () => {
   if (keep) return;
   try {
@@ -288,6 +319,7 @@ const pruneTmp = () => {
         if (e.isDirectory() && e.name === 'profile') fs.rmSync(p, { recursive: true, force: true });
         else if (e.isDirectory()) { prune(p); try { fs.rmdirSync(p); } catch { /* not empty: it has a log */ } }
         else if (e.name !== 'results.json' && e.name !== 'coral.log') fs.rmSync(p, { force: true });
+        else capFile(p);
       }
     };
     prune(tmp);
