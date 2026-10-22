@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/subgentic/coral/internal/cliauth"
 	"github.com/subgentic/coral/internal/hooks"
@@ -173,6 +174,11 @@ func resolveViaPID() *pidResolution {
 	}
 
 	resp, err := http.Get(serverURL + "/api/sessions/resolve?pids=" + strings.Join(pidStrs, ","))
+	var plainHTTP *hooks.PlainHTTPTokenError
+	if errors.As(err, &plainHTTP) {
+		// Say why, or the agent only sees "Not subscribed to any board" (#224).
+		fmt.Fprintln(os.Stderr, "[coral-board] "+plainHTTP.Error())
+	}
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return nil
 	}
