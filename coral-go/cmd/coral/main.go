@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/subgentic/coral/internal/backendchoice"
 	"golang.org/x/term"
 	"io"
 	"log"
@@ -115,7 +116,7 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if msg := backendFlagProblem(runtime.GOOS, *backendFlag); msg != "" {
+	if msg := backendchoice.FlagProblem(runtime.GOOS, *backendFlag); msg != "" {
 		fmt.Fprintf(os.Stderr, "coral: %s\n", msg)
 		os.Exit(2)
 	}

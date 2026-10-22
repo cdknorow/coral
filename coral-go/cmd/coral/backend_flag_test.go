@@ -16,30 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// On Windows a forced --backend tmux is refused (#304); everywhere else, and for pty, nothing changes.
-func TestBackendFlagProblem(t *testing.T) {
-	for _, c := range []struct {
-		goos, backend string
-		refused       bool
-	}{
-		{"windows", "tmux", true},
-		{"windows", "TMUX", true},
-		{"windows", " tmux ", true},
-		{"windows", "pty", false},
-		{"windows", "", false},
-		{"linux", "tmux", false},
-		{"darwin", "tmux", false},
-	} {
-		msg := backendFlagProblem(c.goos, c.backend)
-		if c.refused {
-			assert.Contains(t, msg, "tmux isn't supported on Windows", "%s %q", c.goos, c.backend)
-			assert.Contains(t, msg, "its own terminals", "it says what Coral uses instead")
-		} else {
-			assert.Empty(t, msg, "%s %q", c.goos, c.backend)
-		}
-	}
-}
-
 // The real binary on Windows: exit 2 with the one line, before anything a server does.
 func TestWindowsRefusesAForcedTmuxBackendAtStartup(t *testing.T) {
 	if args := os.Getenv("CORAL_TEST_MAIN_ARGS_TMUX"); args != "" {
