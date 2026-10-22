@@ -464,6 +464,9 @@
     color: var(--link-text);
     text-decoration: none;
 }
+/* @mentions of a board member (#5964): weight and a tint, never colour alone; the viewer's own name (the Operator) is stronger, with an underline bar as well. Text only: no role change. */
+.mb-mention { font-weight: 600; color: var(--text-primary); background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: var(--radius-sm); padding: 0 3px; }
+.mb-mention-self { background: color-mix(in srgb, var(--accent) 36%, transparent); box-shadow: inset 0 -2px 0 var(--accent); }
 .mb-message-body a:hover,
 .board-artifact-link:hover,
 .subscriber-history-link:hover {

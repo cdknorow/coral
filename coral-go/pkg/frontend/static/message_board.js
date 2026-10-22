@@ -1,6 +1,6 @@
 /* Message Board: project list, messages, subscribers, posting */
 
-import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, getAgentColor, showToast, externalMessageBadge, hubUserBadge, renderBoardMessageBody, boardAvatar, boardMessageColorStyle } from './utils.js';
+import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, getAgentColor, showToast, externalMessageBadge, hubUserBadge, renderBoardMessageBody, setBoardMentionNames, boardAvatar, boardMessageColorStyle } from './utils.js';
 import { registerActions, withId, textOf } from './actions.js';
 import { scrollBehavior } from './motion.js';
 import { boardPageChanged } from './dock_page.js';
@@ -619,6 +619,8 @@ async function loadBoardSubscribers(project) {
     try {
         const subs = await fetchSubscribers(project);
         setBoardMembers([...new Set(subs.map(s => s.job_title || s.subscriber_id).filter(n => typeof n === 'string' && n))].sort().slice(0, 50)); // the From field's names
+        // @mentions of these members are highlighted; the messages on screen are drawn again once (never an empty or busy list: that is not ours to replace)
+        if (setBoardMentionNames(subs.flatMap(s => [s.job_title, s.subscriber_id])) && _allMessages.length && document.querySelector('#mb-messages .mb-message')) renderMessages(_allMessages, { keepAnchor: true });
         // The column and the phone sheet (#3610) show the same list.
         const lists = ['mb-subscribers-list', 'mb-subscribers-sheet-list'].map(id => document.getElementById(id)).filter(Boolean);
         if (!subs.length) {

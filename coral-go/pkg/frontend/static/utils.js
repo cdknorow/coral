@@ -12,7 +12,7 @@ export { notificationLinkTarget, showAlertNotification, showNotificationToast, s
 export { buildWelcome, showView, viewChanges } from './view_switch.js';
 export { DOMPURIFY_CONFIG, artifactRefHex, highlightCodeIn, keepFragmentsInside, renderDocsMarkdown, renderMarkdown, renderMarkdownStrict, sanitizeHtml, sanitizeMarkdown } from './markdown.js';
 export { isImagePath, isMediaPath, renderImagePanes, renderMediaPanes } from './media_panes.js';
-export { _boardBodyCacheStatsForTests, boardAvatar, boardMessageDisplayText, externalMessageBadge, hubUserBadge, labelCodeBlocks, renderBoardMessageBody } from './board_message_text.js';
+export { _boardBodyCacheStatsForTests, boardAvatar, boardMessageDisplayText, externalMessageBadge, hubUserBadge, labelCodeBlocks, renderBoardMessageBody, setBoardMentionNames } from './board_message_text.js';
 export { AGENT_NAME_PALETTE, agentNameColor, boardMessageColorStyle, boardTextColor, getAgentColor, hexToRgba } from './agent_colors.js';
 /* Utility functions: HTML escaping and toast notifications */
 

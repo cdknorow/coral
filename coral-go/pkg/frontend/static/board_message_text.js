@@ -114,19 +114,79 @@ function makeBoardBodyRoom(need, id, pass) {
     return true;
 }
 
+// ── @mentions ────────────────────────────────────────────────────────────
+// A mention of a CURRENT board member ("@Security Reviewer Windows", names can have spaces) is wrapped in a styled span after the Markdown is rendered and sanitized: the names are the board's own
+// (subscribers: job titles and ids) plus Operator, Orchestrator and all; the longest name that matches wins ("@Security Reviewer Windows" is one mention, not "@Security Reviewer" and a word); the case
+// the author wrote is kept; never inside code, a code block or a link; not a mention when the @ is mid-word (an email, "a@b.com"). Only text nodes are touched, and the span's text is set as text. The
+// viewer's own name (the Operator, on the dashboard) gets the stronger style. The Markdown export is the raw text and does not come through here.
+const MENTION_DEFAULTS = ['Operator', 'Orchestrator', 'all'];
+const SELF_MENTION = 'operator';
+let _mentionRe = null, _mentionSig = '';
+const _escRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // a name is literal text in the pattern
+
+/** Set the board's member names for mention highlighting. Returns true when the set changed (the caller may redraw). */
+export function setBoardMentionNames(names) {
+    const set = new Set(MENTION_DEFAULTS);
+    for (const n of names || []) { const t = typeof n === 'string' ? n.trim() : ''; if (t && t.length <= 80 && !/[\u0000-\u001f<>]/.test(t)) set.add(t); }
+    const list = [...set].sort((a, b) => b.length - a.length || a.localeCompare(b)); // longest first
+    const sig = textHash(list.join('\n'));
+    if (sig === _mentionSig) return false;
+    _mentionSig = sig;
+    // an @ that does not follow a letter, digit, "_" or "." (so not an email), then the longest name, then a character that does not continue a word
+    _mentionRe = new RegExp(`(^|[^\\p{L}\\p{N}_.])@(${list.map(_escRe).join('|')})(?![\\p{L}\\p{N}_-])`, 'giu');
+    return true;
+}
+setBoardMentionNames([]);
+
+/** The sanitized HTML with member mentions wrapped in <span class="mb-mention"> (and mb-mention-self for the viewer's own name). */
+export function highlightMentionsHtml(html) {
+    if (!_mentionRe || typeof document === 'undefined' || !html || !html.includes('@')) return html;
+    const t = document.createElement('template');
+    t.innerHTML = html;
+    const walker = document.createTreeWalker(t.content, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!n.nodeValue.includes('@')) continue;
+        const up = n.parentElement;
+        if (up && up.closest('code, pre, a, kbd, samp, script, style, .mb-mention')) continue;
+        nodes.push(n);
+    }
+    let changed = false;
+    for (const n of nodes) {
+        const text = n.nodeValue;
+        _mentionRe.lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        let at = 0, m;
+        while ((m = _mentionRe.exec(text))) {
+            const start = m.index + m[1].length; // the @
+            if (start > at) frag.append(text.slice(at, start));
+            const span = document.createElement('span');
+            span.className = 'mb-mention' + (m[2].toLowerCase() === SELF_MENTION ? ' mb-mention-self' : '');
+            span.textContent = '@' + m[2];
+            frag.append(span);
+            at = start + 1 + m[2].length;
+            changed = true;
+        }
+        if (at === 0) continue;
+        if (at < text.length) frag.append(text.slice(at));
+        n.replaceWith(frag);
+    }
+    return changed ? t.innerHTML : html;
+}
+
 /** A board message's body as sanitized HTML (board link policy). */
 export function renderBoardMessageBody(m) {
     const text = boardMessageText(boardMessageDisplayText(m));
     const id = Number(m && m.id);
     if (!text || !Number.isFinite(id) || typeof marked === 'undefined' || typeof DOMPurify === 'undefined'
         || (typeof hljs === 'undefined' && FENCED_WITH_LANG.test(text))) {
-        return renderMarkdown(text, BOARD_MARKDOWN, 'board');
+        return highlightMentionsHtml(renderMarkdown(text, BOARD_MARKDOWN, 'board'));
     }
     const pass = boardBodyPass();
-    const key = id + ':' + textHash(text);
+    const key = id + ':' + textHash(text) + ':' + _mentionSig; // a change of the board's members draws a body again
     const hit = _boardBodyCache.get(key);
     if (hit && hit.text === text) { hit.pass = pass; return hit.html; }
-    const html = _renderMarkdownUncached(text, BOARD_MARKDOWN, 'board');
+    const html = highlightMentionsHtml(_renderMarkdownUncached(text, BOARD_MARKDOWN, 'board'));
     if (hit) { _boardBodyCache.delete(key); _boardBodyBytes -= hit.bytes; }
     const bytes = 2 * (text.length + html.length) + BOARD_BODY_ENTRY_OVERHEAD; // UTF-16
     if (bytes <= BOARD_BODY_ENTRY_MAX_BYTES && makeBoardBodyRoom(bytes, id, pass)) {
