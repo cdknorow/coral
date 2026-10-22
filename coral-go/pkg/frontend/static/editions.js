@@ -92,6 +92,13 @@ function _modal() {
         if (e.key === 'Escape') { e.preventDefault(); _dismiss('skipped'); }
         if (e.key === 'Tab') trapTab(m, e);
     });
+    // Escape answers "Skip for now" wherever the focus is: while the screen is open, a page-level handler in the capture phase takes it before the generic modal close does
+    // (that one closes any .modal without saving the answer, so the question came back at the next launch). The screen now opens after the connect flow has loaded, a little later
+    // than other start-up steps that move the focus, so the focus is not always inside it when the key is pressed.
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Escape' || m.style.display === 'none' || e.defaultPrevented) return;
+        e.preventDefault(); e.stopPropagation(); _dismiss('skipped');
+    }, true);
     return m;
 }
 

@@ -221,6 +221,15 @@ async function run() {
             await until(savedIs('welcome_pending', 'False'), 'Escape saved');
             check(`${label}: Escape is "Skip for now"`, !(await open()) && (await settings()).welcome_choice === 'skipped');
 
+            // Escape answers wherever the focus is (#5818 opens the screen a little later than other start-up steps that move the focus; the generic modal close would hide it without saving the answer)
+            await put({ welcome_pending: 'True', welcome_choice: '' });
+            await load();
+            await until(`!!document.querySelector('#editions-modal [data-editions="skip"]')`, 'the screen, for Escape with the focus outside it');
+            await ev(`(() => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); document.body.focus(); return !document.getElementById('editions-modal').contains(document.activeElement); })()`);
+            await escape();
+            await until(savedIs('welcome_pending', 'False'), 'Escape saved with the focus outside');
+            check(`${label}: Escape is "Skip for now" with the focus outside the screen`, !(await open()) && (await settings()).welcome_choice === 'skipped');
+
             await put({ welcome_pending: 'True' });
             await load();
             await until(`!!document.querySelector('#editions-modal [data-editions="own-hub"]')`, 'the screen');
