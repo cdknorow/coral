@@ -13,23 +13,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Directory Services' two answers, read for a group the user may be alone in (#5899): the membership line and the primary-group list.
+// Directory Services' answers, read for a group the user may be alone in (#5899): the membership, GUID-member and nested-group lines, and the primary-group list.
 func TestOnlyUserAndRootReadsDirectoryServicesAnswers(t *testing.T) {
 	const gid = "80"
+	const three = "GroupMembers: FFFFEEEE-0 FFFFEEEE-F8 DBD3E55E-1\n"
 	for name, tc := range map[string]struct {
-		membership, primary string
-		alone               bool
+		read, primary string
+		alone         bool
 	}{
 		"the user and root":                           {"GroupMembership: root alice\n", "alice 80\nbob 20\n", true},
-		"Setup Assistant's hidden account is allowed": {"GroupMembership: root _mbsetupuser alice\n", "alice 80\n", true},
-		"another underscore account is not":           {"GroupMembership: root _mbsetupuser _www alice\n", "alice 80\n", false},
 		"the user alone":                              {"GroupMembership: alice\n", "alice 80\n", true},
-		"nobody listed (no such key)":                 {"", "alice 80\n", true},
+		"nobody listed (no such key)":                 {"No such key: GroupMembership\n", "alice 80\n", true},
+		"as a real Mac lists admin":                   {"No such key: NestedGroups\n" + three + "GroupMembership: root _mbsetupuser alice\n", "alice 80\n", true},
+		"Setup Assistant's hidden account is allowed": {"GroupMembership: root _mbsetupuser alice\n", "alice 80\n", true},
 		"a second member":                             {"GroupMembership: root alice bob\n", "alice 80\n", false},
 		"a second account whose primary group it is":  {"GroupMembership: root alice\n", "alice 80\nbob 80\n", false},
 		"another group's primary users do not count":  {"GroupMembership: root alice\n", "alice 80\nbob 20\n_www 70\n", true},
+		"a nested group (a managed Mac)":              {"GroupMembership: root alice\nNestedGroups: AAAA-BBBB\n", "alice 80\n", false},
+		"more GUID members than accepted names":       {"GroupMembers: A B C D\nGroupMembership: root alice\n", "alice 80\n", false},
+		"GUID members continued on the next line":     {"GroupMembers: A B C\n D\nGroupMembership: root alice\n", "alice 80\n", false},
 	} {
-		assert.Equal(t, tc.alone, onlyUserAndRoot(tc.membership, tc.primary, "alice", gid), name)
+		assert.Equal(t, tc.alone, onlyUserAndRoot(tc.read, tc.primary, "alice", gid), name)
+	}
+}
+
+// The system accounts that are not accepted each refuse, as members of the group and as accounts whose primary group it is (#5899 follow-up): only root and _mbsetupuser are let by.
+func TestEverySystemAccountButRootAndSetupAssistantRefuses(t *testing.T) {
+	const gid = "80"
+	for _, who := range []string{"daemon", "nobody", "_www", "_spotlight", "_mbsetupuser2", "Root", "alice2"} {
+		assert.False(t, onlyUserAndRoot("GroupMembership: root alice "+who+"\n", "alice 80\n", "alice", gid), who+" as a member")
+		assert.False(t, onlyUserAndRoot("GroupMembership: root alice\n", "alice 80\n"+who+" 80\n", "alice", gid), who+" by primary group")
+	}
+	for _, who := range []string{"root", "_mbsetupuser"} {
+		assert.True(t, onlyUserAndRoot("GroupMembership: root alice "+who+"\n", "alice 80\n"+who+" 80\n", "alice", gid), who+" is let by")
 	}
 }
 
