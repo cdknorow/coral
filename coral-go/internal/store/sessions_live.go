@@ -37,6 +37,25 @@ func (s *SessionStore) SetHookDir(ctx context.Context, sessionID, dir string) er
 	return err
 }
 
+// RunTagOf is the tag recorded for a session ("" if none): see SetRunTagIfEmpty.
+func (s *SessionStore) RunTagOf(ctx context.Context, sessionID string) string {
+	var tag sql.NullString
+	if err := s.db.Reader().GetContext(ctx, &tag, "SELECT run_tag FROM live_sessions WHERE session_id = ?", sessionID); err != nil {
+		return ""
+	}
+	return tag.String
+}
+
+// SetRunTagIfEmpty records the tag a tmux agent's processes carry (CORAL_PTY_RUN, #6141) unless the session has one already: the tag stays the same for the life of the row. A session with no row is
+// left alone.
+func (s *SessionStore) SetRunTagIfEmpty(ctx context.Context, sessionID, tag string) error {
+	if tag == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET run_tag = ? WHERE session_id = ? AND (run_tag IS NULL OR run_tag = '')", tag, sessionID)
+	return err
+}
+
 // HookDirs returns the recorded tools folder of every live session that has one.
 func (s *SessionStore) HookDirs(ctx context.Context) (map[string]string, error) {
 	var rows []struct {

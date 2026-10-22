@@ -24,6 +24,7 @@ import (
 
 // noteLaunchedHooks records that a Claude agent was just started with the current hook set.
 func (h *SessionsHandler) noteLaunchedHooks(ctx context.Context, sessionID, agentType string) {
+	h.noteLaunchedRunTag(ctx, sessionID)  // a tmux agent's tag, for Kill to find what detaches (#6141)
 	h.noteLaunchedHookDir(ctx, sessionID) // every agent type's hooks are found on the PATH it was started with (#6089)
 	if agentType != at.Claude || sessionID == "" || h.ss == nil {
 		return

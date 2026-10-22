@@ -314,6 +314,9 @@ var columnMigrations = []struct {
 	{"live_sessions", "hooks_rev", "INTEGER"},
 	// The folder the agent was launched with its Coral tools (coral-board and the coral-hook-* programs) on its PATH, e.g. the app bundle (#6089); NULL or "" = none recorded.
 	{"live_sessions", "hook_dir", "TEXT"},
+	// The tag the processes of an agent started on tmux carry in their environment (CORAL_PTY_RUN, #6141): random, kept with the session (and handed on when it is restarted or resumed) so a Kill finds what an
+	// earlier run of the same session left behind; NULL for an agent started before this or on the built-in terminal (which has a tag of its own per terminal).
+	{"live_sessions", "run_tag", "TEXT"},
 	// The proof key derived from a session token (#6103): Coral proves it is Coral to a tool holding the token before the tool sends it; NULL on a token minted before this (those tools do not ask).
 	{"session_tokens", "proof_key", "TEXT"},
 	{"live_sessions", "permission_mode", "TEXT"}, // the launch's effective permission mode (#5188)
