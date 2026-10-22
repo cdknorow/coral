@@ -16,10 +16,10 @@ const BASE = require('./test_base').BASE;
             window.__m.add('arch-c', 'A', 3, { archived: true, sleep_reason: 'agent_exited' });
             window.T.render.renderLiveSessions(window.T.state.liveSessions); return true; })()`);
         const rows = await ev(`(() => { const r = id => document.querySelector('.session-group-item[data-session-id="' + id + '"]');
-            const info = id => { const e = r(id); return e ? { chip: (e.querySelector('.terminal-gone-chip') || {}).textContent || '', title: (e.querySelector('.terminal-gone-chip') || {}).title || '' } : null; };
+            const info = id => { const e = r(id); return e ? { chip: (e.querySelector('.terminal-gone-chip') || {}).textContent || '', aria: (e.querySelector('.terminal-gone-chip') || document.body).getAttribute('aria-label'), title: (e.querySelector('.terminal-gone-chip') || {}).title || '' } : null; };
             return { ended: info('ended-a-id'), nap: info('nap-b-id'), arch: info('arch-c-id') }; })()`);
         assert.ok(rows.ended, 'the ended agent is in view, not folded into the sleeping row: ' + JSON.stringify(rows));
-        assert.equal(rows.ended.chip, 'Ended'); assert.match(rows.ended.title, /CLI exited.*restart/i);
+        assert.equal(rows.ended.chip, 'Ended'); assert.equal(rows.ended.aria, 'Ended. Restart', 'the chip is named for what it does'); assert.match(rows.ended.title, /CLI exited.*restart/i);
         assert.equal(rows.nap, null, 'a plain sleeping agent stays folded');
         assert.equal(!!(rows.arch && rows.arch.chip), false, 'an archived agent is just archived');
         const label = await ev(`(async () => { const r = await import((window.__coralStatic||'/static/') + 'render.js'); const s = id => window.T.state.liveSessions.find(x => x.session_id === id);
@@ -37,6 +37,14 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`(() => { const t = document.getElementById('sleeping-composer-text'); let n = 0; new MutationObserver(m => { n += m.length; }).observe(t, { childList: true, characterData: true, subtree: true }); window.__endedMuts = () => n; return true; })()`), true);
         await ev(`window.T.render.renderLiveSessions(window.T.state.liveSessions); true`); await new Promise(r => setTimeout(r, 1500)); // sleep-ok: two refreshes with nothing to change
         assert.equal(await ev(`window.__endedMuts()`), 0, 'the line is written once: a refresh with the same words rewrites nothing');
+        // A message that did not go because the CLI had exited (the server marked the agent Ended and says agent_exited): the composer names who stopped, keeps the draft and offers Restart.
+        await ev(`window.__m.add('live-x', 'X', 3, {}); window.T.render.renderLiveSessions(window.T.state.liveSessions); true`);
+        const err = await ev(`(async () => { window.selectLiveSession('live-x', 'claude', 'live-x-id', 'local'); await window.__coralReady.agentSelected('live-x-id');
+            const i = document.getElementById('command-input'); i.value = 'please answer'; i.dispatchEvent(new Event('input', { bubbles: true }));
+            const m = await import((window.__coralStatic || '/static/') + 'terminal_gone.js'); m.reportSendError({ name: 'live-x', display_name: 'Xavier' }, 'The agent did not confirm your message.', 'not_confirmed', true);
+            const e = document.getElementById('composer-error');
+            return { hidden: e.hidden, text: e.querySelector('.composer-error-text').textContent, restart: !e.querySelector('.composer-error-restart').hidden, draft: i.value }; })()`);
+        assert.equal(err.hidden, false); assert.match(err.text, /^Xavier stopped before answering/); assert.equal(err.restart, true, 'with Restart'); assert.equal(err.draft, 'please answer', 'the draft is kept');
         console.log('PASS agent ended: the row says Ended, the composer says it once with Restart');
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

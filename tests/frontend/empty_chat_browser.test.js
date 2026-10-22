@@ -29,7 +29,7 @@ const BASE = require('./test_base').BASE;
         };
         const words = () => ev(`(() => { const e = document.querySelector('#live-history-messages > .chat-empty'); return e ? { role: e.getAttribute('role'), title: (e.querySelector('.chat-empty-title') || {}).textContent || '', hint: (e.querySelector('.chat-empty-hint') || {}).textContent || '', size: getComputedStyle(e).fontSize } : null; })()`);
         const open = async (name, patch) => {
-            await ev(`window.__m.add('${name}', '${name}', 0, { sleeping: ${patch.sleeping ? 'true' : 'false'} }); true`);
+            await ev(`window.__m.add('${name}', '${name}', 0, { sleeping: ${patch.sleeping ? 'true' : 'false'} }); { const r = window.T.state.liveSessions.find(x => x.session_id === '${name}-id'); if (r) r.staleness_seconds = ${patch.fresh ? 'null' : '5'}; } true`); // the CLI has written output (5 s ago) unless this one is a just-launched agent with none (#6058)
             await ev(`window.selectLiveSession('${name}', 'claude', '${name}-id', 'local'); true`);
             await waitFor(`!!document.querySelector('#live-history-messages > .chat-empty')`, `the empty state of ${name}`, 8000);
         };
@@ -42,6 +42,13 @@ const BASE = require('./test_base').BASE;
         assert.equal(w.hint, 'Type below to start.'); // #5991: the keys and what appears are said by the box itself
         assert.equal(w.size, '14px', 'sized in rem: 0.875rem is 14px at the default size');
         await shot('idle');
+
+        console.log('1b. The first seconds of a new agent: its CLI has written nothing yet, so it says it is coming up (#6058)');
+        await open('ec-fresh', { fresh: true });
+        w = await words();
+        assert.equal(w.title, 'Waiting for Claude to start');
+        assert.match(w.hint, /first screen is not up yet/);
+        await shot('starting');
 
         console.log('2. The words are written once, not at every refresh');
         await ev(`window.__ecMuts = 0; new MutationObserver(m => { window.__ecMuts += m.length; }).observe(document.querySelector('#live-history-messages > .chat-empty'), { childList: true, characterData: true, subtree: true }); true`);

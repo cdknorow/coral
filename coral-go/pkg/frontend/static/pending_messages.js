@@ -437,10 +437,10 @@ export function syncWorkingIndicator(container, session) {
     if (!el) {
         el = document.createElement("div");
         el.className = "chat-working";
-        el.setAttribute("role", "status");
+        // One status for a screen reader, in its own element (the visible line next to it is never re-read): "Working" now, "Still working, 30 seconds" at 30 s, then once a minute (#6058).
         // Just the state: the latest step is already the group summary above
         el.innerHTML = `<span class="chat-working-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="chat-working-label">Working</span>`
-            + `<span class="chat-working-time" aria-hidden="true"></span><span class="chat-working-live sr-only"></span>`
+            + `<span class="chat-working-time" aria-hidden="true"></span><span class="chat-working-live sr-only" role="status">Working</span>`
             + `<span class="chat-working-still" hidden>Still working. <button type="button" class="chat-working-link" data-on-click="terminal-view-open">Open the terminal</button> to see what it is doing.</span>`;
         // How long it has been (#6058): quiet digits from 5 s, a polite status at 30 s and then once a minute, and a way to look after 30 s. Counted from the send when there was one, else from when the row first showed.
         el.dataset.since = String(lastSendAt.get(session.session_id) || Date.now());

@@ -12,6 +12,7 @@ import { state } from './state.js';
 import { sessionServer } from './server_base.js';
 import { escapeAttr } from './utils.js';
 import { scheduleLiveSessionsRender } from './render.js';
+import { loadLiveSessions } from './api.js';
 import { TERMINAL_GONE_MESSAGE } from './server_status.js';
 import { isPopout } from './popout.js';
 
@@ -59,7 +60,7 @@ export function terminalGoneChip(s) {
     const ended = isExitedAsleep(s);
     if (!ended && !isTerminalGone(s)) return '';
     return `<button type="button" class="terminal-gone-chip" title="${ended ? "This agent's CLI exited. Click to restart it." : "This agent's terminal is gone. Click to restart it."}"`
-        + ` data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type || '')}" data-session-id="${escapeAttr(s.session_id)}">${ended ? 'Ended' : 'Terminal gone'}</button>`;
+        + `${ended ? ' aria-label="Ended. Restart"' : ''} data-name="${escapeAttr(s.name)}" data-agent-type="${escapeAttr(s.agent_type || '')}" data-session-id="${escapeAttr(s.session_id)}">${ended ? 'Ended' : 'Terminal gone'}</button>`;
 }
 
 /** The header badge for the selected agent while its terminal is gone. */
@@ -112,7 +113,14 @@ export function clearComposerError() {
 }
 
 /** A failed send for `session`: inline under the composer; a gone terminal also marks the agent. */
-export function reportSendError(session, message, code) {
+export function reportSendError(session, message, code, exited = false) {
+    // The message did not go because the agent's CLI has exited and the server has just marked it Ended (#6058): say who stopped, keep the draft, offer Restart, and read the row again now.
+    if (exited) {
+        const who = (session && (session.display_name || session.name)) || 'The agent';
+        showComposerError(`${who} stopped before answering. Your message is kept below; Restart the agent to send it.`, { restart: true });
+        loadLiveSessions();
+        return;
+    }
     if (code === 'terminal_gone') {
         markTerminalGone(session);
         showComposerError(TERMINAL_GONE_TEXT, { restart: true });

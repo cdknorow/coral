@@ -3,12 +3,14 @@ package routes
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/subgentic/coral/internal/ptymanager"
+	"github.com/subgentic/coral/internal/store"
 	"github.com/subgentic/coral/internal/terminalinput"
 	"github.com/subgentic/coral/internal/tracking"
 )
@@ -59,6 +61,10 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		// A person's message is submitted, or refused or reported as not submitted: never "sent" for text left
 		// in the agent's input box (#4587).
 		if status, out, ok := humanSendError(err); ok {
+			// A message that did not go to an agent whose CLI has exited at a plain shell: it is Ended now, not after the reconciler's launch grace (#6058).
+			if h.markEndedAfterFailedSend(r.Context(), name, body.AgentType, body.SessionID) {
+				out["agent_exited"] = true
+			}
 			writeJSON(w, status, out)
 			return
 		}
@@ -141,4 +147,22 @@ func (h *SessionsHandler) Resize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "columns": body.Columns})
+}
+
+// markEndedAfterFailedSend: a person's message that could not be delivered, to an agent whose CLI has exited and left its pane at a plain shell
+// (ptymanager.AgentExited, the same process signal the reconciler and the nudges use), puts the agent to sleep with the reason agent_exited at once, so the
+// dashboard says "Ended" instead of leaving the person waiting for the reconciler's launch grace (#6058). The reconciler stays the fallback when this cannot tell.
+// It reports whether the agent was marked.
+func (h *SessionsHandler) markEndedAfterFailedSend(ctx context.Context, name, agentType, sessionID string) bool {
+	if sessionID == "" || h.ss == nil {
+		return false
+	}
+	if exited, _ := ptymanager.AgentExited(ctx, h.terminal, name, agentType, sessionID); !exited {
+		return false
+	}
+	if err := h.ss.SetSessionSleepingFor(ctx, sessionID, store.SleepReasonAgentExited); err != nil {
+		slog.Warn("could not mark an exited agent as ended", "session_id", sessionID, "error", err)
+		return false
+	}
+	return true
 }

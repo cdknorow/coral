@@ -8,9 +8,21 @@ import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
 import { announcePrompt, promptOptionsBySession, syncNeedsInputCard } from './needs_input_card.js';
 
+// The first seconds of a new agent (#6058): its CLI has written nothing yet (the list has no output age for it), and this page first saw it less than STARTING_MS ago. "No messages yet" there reads as ready; it says the CLI is coming up.
+// After that the row's own states take over (the "Waiting in the terminal" card from 25 s with no event at all).
+const STARTING_MS = 25 * 1000;
+const firstSeen = new Map(); // session_id -> ms of the first look at its empty chat
+function isStarting(row) {
+    if (!row || !row.session_id || row.agent_type === "terminal" || row.not_started || row.working || row.waiting_for_input || typeof row.staleness_seconds === "number") return false;
+    if (!firstSeen.has(row.session_id)) firstSeen.set(row.session_id, Date.now());
+    return Date.now() - firstSeen.get(row.session_id) < STARTING_MS;
+}
+const CLI_NAMES = { claude: "Claude", codex: "Codex", pi: "Pi", agy: "Antigravity", antigravity: "Antigravity", gemini: "Antigravity" };
+
 // What a brand-new agent's empty chat says, by what the agent is doing: a title, and a hint on what to do next.
 function emptyStateWords(session) {
     const row = (state.liveSessions || []).find(s => s.session_id === session?.session_id) || session;
+    if (isStarting(row) && deriveSessionState(row) === "idle") return [`Waiting for ${CLI_NAMES[row.agent_type] || "the agent"} to start`, "Its first screen is not up yet. You can type below once it is."];
     switch (deriveSessionState(row)) {
         case 'sleeping': return row.sleep_reason === 'agent_exited' ? ["This agent has ended", "Its CLI exited. Use Restart below to start it again."] : ["This agent is asleep", "Use Wake below to chat with it."];
         default: return ["No messages yet", "Type below to start."];

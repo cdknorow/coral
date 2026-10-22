@@ -204,7 +204,7 @@ async function run() {
   check('the remaining queued message settles when it arrives', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 0);
 
   // Working indicator: right after a send, and while the agent's state is Working
-  const W = () => ev(`(() => { const w = ${C}.querySelector(':scope > .chat-working'); return w ? { shown: true, text: w.innerText.trim(), abovePending: !w.nextElementSibling || w.nextElementSibling.classList.contains('pending-messages') } : { shown: false }; })()`);
+  const W = () => ev(`(() => { const w = ${C}.querySelector(':scope > .chat-working'); return w ? { shown: true, text: [...w.children].filter(c => !c.classList.contains('sr-only') && !c.hidden).map(c => c.textContent).join('').trim(), abovePending: !w.nextElementSibling || w.nextElementSibling.classList.contains('pending-messages') } : { shown: false }; })()`);
   let w = await W();
   check('after a send, a Working row shows before the agent has output anything', w.shown && /^Working/.test(w.text) && w.abovePending, JSON.stringify(w));
   await ev(`window.__msgs.push({ type: 'assistant', text: 'All three received.', timestamp: new Date().toISOString() }); true`);

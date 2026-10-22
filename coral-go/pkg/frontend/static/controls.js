@@ -177,8 +177,8 @@ export async function sendCommand({ nudge = false } = {}) {
                 notSent();
                 // Plain text naming the server; never the raw response (#3151). The draft stays.
                 // Said under the composer (#3218); a gone terminal also marks the agent and offers Restart.
-                const { text, code } = await responseError(resp, sessionServer(targetSession), `The message was not sent (HTTP ${resp.status}).`);
-                reportSendError(targetSession, text, code);
+                const { text, code, exited } = await responseError(resp, sessionServer(targetSession), `The message was not sent (HTTP ${resp.status}).`);
+                reportSendError(targetSession, text, code, exited);
                 console.error("Send failed:", resp.status);
                 return;
             }

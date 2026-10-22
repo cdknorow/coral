@@ -363,9 +363,9 @@ export async function responseErrorText(resp, serverId, fallback) {
 
 /** responseErrorText plus the body's error code ('' when none), for callers that act on it. */
 export async function responseError(resp, serverId, fallback) {
-    let code = '';
-    try { const b = await resp.clone().json(); if (b && typeof b.code === 'string') code = b.code; } catch { /* not JSON */ }
-    return { text: await responseErrorText(resp, serverId, fallback), code };
+    let code = '', exited = false;
+    try { const b = await resp.clone().json(); if (b && typeof b.code === 'string') code = b.code; exited = !!(b && b.agent_exited); } catch { /* not JSON */ }
+    return { text: await responseErrorText(resp, serverId, fallback), code, exited };
 }
 
 /** Relative "x ago" for an RFC3339 timestamp; '' / 'never' for empty. */

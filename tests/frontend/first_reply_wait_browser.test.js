@@ -24,11 +24,11 @@ const BASE = require('./test_base').BASE;
             const at = async secs => ev(`(() => { const f = window.__frw; Date.now = () => f.t0 + ${secs} * 1000; const el = f.c.querySelector('.chat-working'); f.m.tickWorking(el);
                 const q = s => el.querySelector(s); const still = q('.chat-working-still'), link = q('.chat-working-link'); const r = link.getBoundingClientRect();
                 return { time: q('.chat-working-time').textContent, timeHidden: q('.chat-working-time').getAttribute('aria-hidden'), live: q('.chat-working-live').textContent, stillShown: !still.hidden, label: q('.chat-working-label').textContent,
-                    role: el.getAttribute('role'), link: link.tagName + ':' + link.textContent, linkBox: [Math.round(r.width), Math.round(r.height)] }; })()`);
+                    role: el.getAttribute('role'), liveRole: q('.chat-working-live').getAttribute('role'), link: link.tagName + ':' + link.textContent, linkBox: [Math.round(r.width), Math.round(r.height)] }; })()`);
             let s = await at(1);
-            assert.deepEqual([s.label, s.time, s.live, s.stillShown, s.role], ['Working', '', '', false, 'status'], dev + ': at 1 s only the label: ' + JSON.stringify(s));
-            s = await at(6); assert.equal(s.time, ' · 6 s', dev + ': digits from 5 s'); assert.equal(s.timeHidden, 'true', 'the digits are not read'); assert.equal(s.live, ''); assert.equal(s.stillShown, false);
-            s = await at(29); assert.deepEqual([s.live, s.stillShown], ['', false], dev + ': nothing yet at 29 s');
+            assert.deepEqual([s.label, s.time, s.live, s.stillShown, s.role, s.liveRole], ['Working', '', 'Working', false, null, 'status'], dev + ': at 1 s only the label; the one status is its own element: ' + JSON.stringify(s));
+            s = await at(6); assert.equal(s.time, ' · 6 s', dev + ': digits from 5 s'); assert.equal(s.timeHidden, 'true', 'the digits are not read'); assert.equal(s.live, 'Working'); assert.equal(s.stillShown, false);
+            s = await at(29); assert.deepEqual([s.live, s.stillShown], ['Working', false], dev + ': nothing yet at 29 s');
             s = await at(30); assert.deepEqual([s.live, s.stillShown, s.link], ['Still working, 30 seconds', true, 'BUTTON:Open the terminal'], dev + ': at 30 s the line, the link and one status: ' + JSON.stringify(s));
             if (mobile) assert.ok(s.linkBox[1] >= 44, dev + ': the link is a 44 px target ' + JSON.stringify(s.linkBox));
             s = await at(45); assert.equal(s.live, 'Still working, 30 seconds', dev + ': not announced again at 45 s'); assert.equal(s.time, ' · 45 s');
