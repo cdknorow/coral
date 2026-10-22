@@ -219,11 +219,25 @@ export async function applyTerminalBackendChange() {
 
 // ── Agents left in Coral's old tmux server (under pty) ───────────────────
 
-export async function checkLeftoverTmux() {
-    const banner = $('leftover-tmux-banner');
-    if (!banner || isCloud()) return;
+/** The page's two lines about the backend, from one read of the status: the agents left in the old tmux server, and the one-time "agents now stop when you quit" line (#6064). */
+export async function checkTerminalNotices() {
+    if (isCloud()) return;
     let st;
     try { st = await fetchStatus(); } catch { return; }
+    showLeftoverTmux(st);
+    showDefaultNotice(st);
+}
+
+export async function checkLeftoverTmux() {
+    if (isCloud()) return;
+    let st;
+    try { st = await fetchStatus(); } catch { return; }
+    showLeftoverTmux(st);
+}
+
+function showLeftoverTmux(st) {
+    const banner = $('leftover-tmux-banner');
+    if (!banner) return;
     const n = st.running === 'pty' ? (st.leftover_tmux_agents || 0) : 0;
     banner.hidden = n === 0;
     if (!n) return;
@@ -244,11 +258,15 @@ export async function endLeftoverTmux() {
 // One line, once, for an install that ran on the old tmux default; dismissing it is kept in the server's settings.
 
 export async function checkDefaultNotice() {
-    const banner = $('default-notice-banner');
-    if (!banner || isCloud()) return;
+    if (isCloud()) return;
     let st;
     try { st = await fetchStatus(); } catch { return; }
-    banner.hidden = !st.default_notice;
+    showDefaultNotice(st);
+}
+
+function showDefaultNotice(st) {
+    const banner = $('default-notice-banner');
+    if (banner) banner.hidden = !st.default_notice;
 }
 
 export async function dismissDefaultNotice() {
