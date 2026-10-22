@@ -513,3 +513,49 @@ func TestABigTeamLaunchKeepsItsKeyBusyForItsOwnBound(t *testing.T) {
 	close(release)
 	<-stuck
 }
+
+// #5867 (QA's note on #5859): the purge that runs when a request begins also drops the running records past their own bound, so handlers that never return do not keep
+// their per-user slots (and their share of the 2000) until each of their keys happens to be used again.
+func TestPurgeFreesRunningRecordsPastTheirBound(t *testing.T) {
+	i := NewIdempotency()
+	clock := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	i.now = func() time.Time { return clock }
+	const stuck = 5
+	release := make(chan struct{})
+	started := make(chan struct{}, stuck)
+	var runs atomic.Int32
+	h := i.Wrap(func(w http.ResponseWriter, r *http.Request) {
+		if runs.Add(1) <= stuck {
+			started <- struct{}{}
+			<-release
+		}
+		w.WriteHeader(200)
+	})
+	var wg sync.WaitGroup
+	for n := 0; n < stuck; n++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			idemDo(h, idemReq("/api/sessions/launch", `{}`, "hub-user-1234abcd", "0123456789abcdef-stuck-"+strconv.Itoa(n)))
+		}(n)
+	}
+	for n := 0; n < stuck; n++ {
+		<-started
+	}
+	i.mu.Lock()
+	assert.Equal(t, stuck, i.perUser["hub-user-1234abcd"], "five running records hold five slots")
+	i.mu.Unlock()
+	clock = clock.Add(idempotencyRunningMax + time.Second) // past their bound, and no one asks for those keys again
+	assert.Equal(t, 200, idemDo(h, idemReq("/api/sessions/launch", `{}`, "hub-user-1234abcd", "0123456789abcdef-fresh-1")).Code, "another key, from the same user")
+	i.mu.Lock()
+	assert.Equal(t, 1, i.perUser["hub-user-1234abcd"], "the stuck records were purged: only the new one holds a slot")
+	assert.Len(t, i.entries, 1)
+	i.mu.Unlock()
+	close(release) // the late handlers return: they find their records gone and leave the new one alone
+	wg.Wait()
+	i.mu.Lock()
+	assert.Len(t, i.entries, 1)
+	assert.Equal(t, 1, i.perUser["hub-user-1234abcd"])
+	i.mu.Unlock()
+	assert.Equal(t, "true", idemDo(h, idemReq("/api/sessions/launch", `{}`, "hub-user-1234abcd", "0123456789abcdef-fresh-1")).Header().Get("Idempotent-Replay"), "the new record still stands")
+}
